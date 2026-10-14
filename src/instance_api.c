@@ -9,6 +9,7 @@
 #include "effect_api.h"
 #include "instance.h"
 #include "slots.h"
+#include "spawn.h"
 
 #include <math.h>
 
@@ -129,7 +130,83 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
         return mvfx_errorInvalid;
     }
     const mvfxEmitterState* state = &live->emitters[emitter];
-    *statsOut = (mvfxEmitterStats){state->count, state->owed, state->refused};
+    *statsOut = (mvfxEmitterStats){
+        .status = mvfxEmitterStatusOf(live, emitter),
+        .live = state->count,
+        .owed = state->owed,
+        .refused = state->refused,
+    };
+    return mvfx_success;
+}
+
+mvfxEmitterStatus mvfxEmitterStatusOf(const mvfxInstance* instance, int32_t emitter)
+{
+    if (mvfxHasBirthsAhead(instance, emitter))
+    {
+        return instance->clock < instance->effect->emitters[emitter].delay ? mvfx_emitterDelayed
+                                                                           : mvfx_emitterActive;
+    }
+    return instance->emitters[emitter].count > 0 ? mvfx_emitterStopping : mvfx_emitterStopped;
+}
+
+bool mvfxIsInstanceFinished(const mvfxInstance* instance)
+{
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        if (mvfxEmitterStatusOf(instance, e) != mvfx_emitterStopped)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool mvfxInstance_IsFinished(const mvfxContext* context, mvfxInstanceId instance)
+{
+    const mvfxInstance* live =
+        context != nullptr ? mvfxContextInstance(context, instance) : nullptr;
+    return live != nullptr && mvfxIsInstanceFinished(live);
+}
+
+mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfxStopMode mode)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    if (mode != mvfx_stopEmitting && mode != mvfx_stopAndClear)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    live->stopTick = live->clock < live->stopTick ? live->clock : live->stopTick;
+    if (mode == mvfx_stopAndClear)
+    {
+        for (int32_t e = 0; e < live->effect->emitterCount; ++e)
+        {
+            live->emitters[e].count = 0;
+        }
+    }
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    mvfxResetInstance(live);
     return mvfx_success;
 }
 

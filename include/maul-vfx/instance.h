@@ -16,10 +16,6 @@ extern "C"
 {
 #endif
 
-// The ticks in a second: every clock counts ticks of 2^-20 seconds, so
-// that spans of time add exactly however they were split into steps.
-#define MVFX_TICKS_PER_SECOND 1048576
-
 // The longest step a context takes in one call, in seconds: a host
 // catching up a longer span steps it in parts, which reach the same state.
 #define MVFX_MAX_STEP_SECONDS 1.0
@@ -103,13 +99,30 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxInstance_IsValid(const mvfxContext* context, mvfxInstanceId instance);
 
-    // What an emitter of an instance has done since the instance was made.
+    // Where an emitter of an instance stands.
+    typedef uint8_t mvfxEmitterStatus;
+    enum
+    {
+        // Its start delay has not passed.
+        mvfx_emitterDelayed = 0,
+        // It will spawn again.
+        mvfx_emitterActive = 1,
+        // It will not spawn again, and particles it spawned live on.
+        mvfx_emitterStopping = 2,
+        // It will not spawn again and holds no particles.
+        mvfx_emitterStopped = 3,
+    };
+
+    // What an emitter of an instance has done since the instance was made or
+    // restarted.
     typedef struct mvfxEmitterStats
     {
+        mvfxEmitterStatus status;
         // Particles alive now.
         int32_t live;
-        // Particles it owed by now: spawned, refused, and those whose life
-        // ended within the step they were born in.
+        // Particles it owed by now, from its rate and its bursts: spawned,
+        // refused, and those whose life ended within the step they were
+        // born in.
         uint64_t owed;
         // Particles its capacity refused.
         uint64_t refused;
@@ -131,6 +144,54 @@ extern "C"
                                                                     mvfxInstanceId instance,
                                                                     int32_t emitter,
                                                                     mvfxEmitterStats* statsOut);
+
+    /// Returns whether every emitter of an instance is stopped: it will
+    /// spawn nothing more and holds no particles, and stepping it costs
+    /// nothing. A stale id is not misuse.
+    ///
+    /// @param context   The context.
+    /// @param instance  Any id.
+    /// @return Whether the instance is alive and finished.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_API bool mvfxInstance_IsFinished(const mvfxContext* context, mvfxInstanceId instance);
+
+    // How mvfxInstance_Stop treats an instance's particles.
+    typedef uint8_t mvfxStopMode;
+    enum
+    {
+        // They live out their lives.
+        mvfx_stopEmitting = 0,
+        // They are removed at once.
+        mvfx_stopAndClear = 1,
+    };
+
+    /// Stops every emitter of an instance from spawning past its clock.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param mode      What becomes of its particles.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context or an unknown
+    ///         mode, which counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Stop(mvfxContext* context,
+                                                         mvfxInstanceId instance,
+                                                         mvfxStopMode mode);
+
+    /// Plays an instance again from its start: its particles are removed,
+    /// its clock and counts return to 0 and a stop is lifted. Its seed is
+    /// kept, so the same steps play the same particles again.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Restart(mvfxContext* context,
+                                                            mvfxInstanceId instance);
 
     /// Advances every instance of the context by a span of time: each
     /// emitter spawns what it owes by the new time, each particle ages from

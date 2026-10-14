@@ -12,14 +12,20 @@
 void mvfxIntegrateCurve(const mvfxCurveTable* table, double end, mvfxCurveIntegral* integralOut)
 {
     double start = (double)table->start;
-    double step = (end - start) / (double)(MVFX_CURVE_SAMPLES - 1);
+    double width = end - start;
     integralOut->start = start;
     integralOut->end = end;
     integralOut->cumulative[0] = 0.0;
+    // The trapezoids' heights summed first, exact in binary64 for float
+    // samples of a moderate range, then scaled once: a whole number of
+    // particles over a domain stays whole (a constant 64 over [0, 1] sums to
+    // 16,320 halves, and 16,320 / 255 is 64), where adding a rounded width
+    // 255 times would fall short of it.
+    double heights = 0.0;
     for (int32_t i = 1; i < MVFX_CURVE_SAMPLES; ++i)
     {
-        double trapezoid = 0.5 * ((double)table->samples[i - 1] + (double)table->samples[i]) * step;
-        integralOut->cumulative[i] = integralOut->cumulative[i - 1] + trapezoid;
+        heights += 0.5 * ((double)table->samples[i - 1] + (double)table->samples[i]);
+        integralOut->cumulative[i] = heights / (double)(MVFX_CURVE_SAMPLES - 1) * width;
     }
 }
 

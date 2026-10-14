@@ -189,6 +189,146 @@ static void TestInvalidDefsAreMisuse(void)
     mvfxDestroyContext(context);
 }
 
+static void TestLifeFieldsRefused(void)
+{
+    mvfxContext* context = NewContext(NULL, 8);
+    static const mvfxCurveKey ramp[2] = {{0.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+                                         {1.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    static const mvfxCurveKey late[1] = {{1.5f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    static const mvfxCurveKey negative[1] = {{0.5f, -1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    // A cubic overshooting below 0 between keys of 0 and 1.
+    static const mvfxCurveKey dips[2] = {{0.0f, 0.0f, 0.0f, -20.0f, mvfx_interpolationCubic},
+                                         {1.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    static const mvfxCurveKey high[1] = {{0.5f, 2.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    uint64_t misuse = mvfxContext_GetMisuse(context);
+    for (int32_t field = 0; field < 22; ++field)
+    {
+        mvfxBurst burst = {.time = 0.0f,
+                           .minCount = 1,
+                           .maxCount = 4,
+                           .cycles = 2,
+                           .interval = 0.5f,
+                           .probability = 1.0f};
+        mvfxEmitterDef bad = mvfxDefaultEmitterDef();
+        bad.duration = 1.0f;
+        bad.bursts = &burst;
+        bad.burstCount = 1;
+        bad.rateCurve = (mvfxCurve){ramp, 2, mvfx_tangentsGiven};
+        switch (field)
+        {
+        case 0:
+            bad.startDelay = -1.0f;
+            break;
+        case 1:
+            bad.startDelay = NAN;
+            break;
+        case 2:
+            bad.duration = MVFX_MIN_DURATION * 0.5f;
+            break;
+        case 3:
+            bad.duration = MVFX_MAX_LIFETIME * 2.0f;
+            break;
+        case 4:
+            bad.loops = -1;
+            break;
+        case 5:
+            bad.burstCount = MVFX_MAX_BURSTS + 1;
+            break;
+        case 6:
+            bad.bursts = NULL;
+            break;
+        case 7:
+            burst.time = -0.5f;
+            break;
+        case 8:
+            burst.minCount = -1;
+            break;
+        case 9:
+            burst.minCount = 5;
+            break;
+        case 10:
+            burst.maxCount = MVFX_MAX_EMITTER_CAPACITY + 1;
+            break;
+        case 11:
+            burst.cycles = -1;
+            break;
+        case 12:
+            burst.interval = MVFX_MIN_DURATION * 0.5f;
+            break;
+        case 13:
+            burst.probability = 1.5f;
+            break;
+        case 14:
+            burst.probability = NAN;
+            break;
+        case 15:
+            // Past the spawn rate: three million a firing, four firings a
+            // second and one more each loop.
+            burst.maxCount = 3000000;
+            burst.cycles = 0;
+            burst.interval = 0.25f;
+            bad.capacity = 16;
+            break;
+        case 16:
+            bad.duration = 0.0f;
+            break;
+        case 17:
+            bad.rateCurve = (mvfxCurve){late, 1, mvfx_tangentsGiven};
+            break;
+        case 18:
+            bad.rateCurve = (mvfxCurve){negative, 1, mvfx_tangentsGiven};
+            break;
+        case 19:
+            bad.rateCurve = (mvfxCurve){dips, 2, mvfx_tangentsGiven};
+            break;
+        case 20:
+            bad.rate = MVFX_MAX_SPAWN_RATE * 0.75f;
+            bad.rateCurve = (mvfxCurve){high, 1, mvfx_tangentsGiven};
+            break;
+        default:
+            bad.rateCurve.keyCount = -1;
+            break;
+        }
+        mvfxEffectDef def = OneEmitter(&bad);
+        mvfxEffectId effect = {7, 7};
+        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(effect.index1 == 0, "the null id");
+        CHECK(mvfxContext_GetMisuse(context) == ++misuse, "each refusal counted");
+    }
+    // Every field at its edge, and a single burst's interval ignored.
+    mvfxBurst edges[MVFX_MAX_BURSTS];
+    for (int32_t b = 0; b < MVFX_MAX_BURSTS; ++b)
+    {
+        edges[b] = (mvfxBurst){.time = MVFX_MAX_LIFETIME,
+                               .minCount = 0,
+                               .maxCount = 0,
+                               .cycles = 1,
+                               .interval = -5.0f,
+                               .probability = 0.0f};
+    }
+    edges[0] = (mvfxBurst){.time = 0.0f,
+                           .minCount = MVFX_MAX_EMITTER_CAPACITY,
+                           .maxCount = MVFX_MAX_EMITTER_CAPACITY,
+                           .cycles = 1,
+                           .probability = 1.0f};
+    mvfxEmitterDef edge = mvfxDefaultEmitterDef();
+    edge.startDelay = MVFX_MAX_LIFETIME;
+    edge.duration = MVFX_MIN_DURATION;
+    edge.loops = 1;
+    edge.bursts = edges;
+    edge.burstCount = MVFX_MAX_BURSTS;
+    edge.rate = MVFX_MAX_SPAWN_RATE;
+    edge.rateCurve = (mvfxCurve){ramp, 2, mvfx_tangentsGiven};
+    mvfxEffectDef def = OneEmitter(&edge);
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "every edge accepted");
+    edge.duration = MVFX_MAX_LIFETIME;
+    edge.loops = 0;
+    def = OneEmitter(&edge);
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the longest loop");
+    mvfxDestroyContext(context);
+}
+
 static void TestAllocator(void)
 {
     CountingAllocator counter = {.failAfter = -1};
@@ -230,6 +370,7 @@ int main(void)
     TestCreateAndDestroy();
     TestLimit();
     TestInvalidDefsAreMisuse();
+    TestLifeFieldsRefused();
     TestAllocator();
     return s_failures == 0 ? 0 : 1;
 }

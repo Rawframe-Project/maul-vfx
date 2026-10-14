@@ -26,6 +26,10 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3]
     size_t deathsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
     size_t acceptedAt =
         mvfxLayoutAdd(&layout, (size_t)largest, sizeof(uint64_t), alignof(uint64_t));
+    size_t acceptedBirthsAt =
+        mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
+    size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
+                                    alignof(mvfxBurstCursor));
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
         particlesAt[e] = mvfxLayoutAdd(&layout, effect->emitters[e].plan.blockBytes, 1,
@@ -51,13 +55,37 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3]
         .emitters = (mvfxEmitterState*)(block + statesAt),
         .deathScratch = (int64_t*)(block + deathsAt),
         .acceptedScratch = (uint64_t*)(block + acceptedAt),
+        .acceptedBirthScratch = (int64_t*)(block + acceptedBirthsAt),
         .blockBytes = layout.size,
     };
+    mvfxBurstCursor* bursts = (mvfxBurstCursor*)(block + burstsAt);
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
-        instance->emitters[e] = (mvfxEmitterState){.particles = block + particlesAt[e]};
+        instance->emitters[e] = (mvfxEmitterState){
+            .particles = block + particlesAt[e],
+            .bursts = &bursts[effect->emitters[e].firstBurst],
+        };
     }
+    mvfxResetInstance(instance);
     return instance;
+}
+
+void mvfxResetInstance(mvfxInstance* instance)
+{
+    instance->clock = 0;
+    instance->stopTick = INT64_MAX;
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        mvfxEmitterState* state = &instance->emitters[e];
+        state->count = 0;
+        state->owed = 0;
+        state->refused = 0;
+        state->rate = (mvfxRateCursor){0};
+        for (int32_t b = 0; b < instance->effect->emitters[e].burstCount; ++b)
+        {
+            state->bursts[b] = (mvfxBurstCursor){0};
+        }
+    }
 }
 
 void mvfxReleaseInstance(mvfxInstance* instance, const mvfxAllocator* allocator)

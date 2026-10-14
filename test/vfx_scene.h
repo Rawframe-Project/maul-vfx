@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The scene the determinism tests step: three effects' worth of emitters
-// over four instances, with full and churning emitters among them, a fixed
-// sequence of steps, and a hash of every instance's state.
+// The scene the determinism tests step: an effect of three endless
+// emitters over four instances, with full and churning emitters among
+// them, and an effect of emitter lives (a rate curve, looping bursts,
+// delays) over two; a fixed sequence of steps, and a hash of every
+// instance's state.
 
 #ifndef MAUL_VFX_TEST_VFX_SCENE_H
 #define MAUL_VFX_TEST_VFX_SCENE_H
@@ -40,6 +42,55 @@ static inline void BuildScene(mvfxContext* context)
     def.emitterCount = 3;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "scene effect");
+    // An effect of emitter lives: a rate curve over loops, delayed and
+    // looping bursts of random counts and chances, and a late constant rate.
+    static const mvfxCurveKey rise[3] = {
+        {0.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationCubic},
+        {0.4f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+        {1.0f, 0.2f, 0.0f, 0.0f, mvfx_interpolationLinear},
+    };
+    static const mvfxBurst bursts[2] = {
+        {.time = 0.0f,
+         .minCount = 5,
+         .maxCount = 20,
+         .cycles = 3,
+         .interval = 0.1f,
+         .probability = 0.8f},
+        {.time = 0.25f, .minCount = 30, .maxCount = 30, .cycles = 1, .probability = 1.0f},
+    };
+    mvfxEmitterDef lives[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                               mvfxDefaultEmitterDef()};
+    lives[0].capacity = 50;
+    lives[0].rate = 400.0f;
+    lives[0].rateCurve = (mvfxCurve){rise, 3, mvfx_tangentsMonotone};
+    lives[0].duration = 0.75f;
+    lives[0].lifetime = (mvfxRange){0.05f, 0.3f};
+    lives[1].capacity = 40;
+    lives[1].rate = 0.0f;
+    lives[1].bursts = bursts;
+    lives[1].burstCount = 2;
+    lives[1].startDelay = 0.2f;
+    lives[1].duration = 0.5f;
+    lives[1].loops = 3;
+    lives[1].lifetime = (mvfxRange){0.1f, 0.6f};
+    lives[2].capacity = 30;
+    lives[2].rate = 50.0f;
+    lives[2].startDelay = 1.0f;
+    lives[2].lifetime = (mvfxRange){0.2f, 0.9f};
+    mvfxEffectDef livesDef = mvfxDefaultEffectDef();
+    livesDef.emitters = lives;
+    livesDef.emitterCount = 3;
+    mvfxEffectId livesEffect = {0};
+    CHECK(mvfxCreateEffect(context, &livesDef, &livesEffect) == mvfx_success, "lives effect");
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+        instanceDef.effect = livesEffect;
+        instanceDef.seed = 0x5EEDu + (uint32_t)i;
+        mvfxInstanceId instance = {0};
+        CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
+              "lives instance");
+    }
     for (int32_t i = 0; i < 4; ++i)
     {
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();

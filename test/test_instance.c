@@ -40,15 +40,16 @@ static void TestLifecycle(void)
     CHECK(mvfxCreateInstance(context, &def, &instance) == mvfx_success, "created");
     CHECK(mvfxInstance_IsValid(context, instance), "valid");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_errorBusy, "its effect is busy");
-    mvfxEmitterStats stats = {1, 1, 1};
+    mvfxEmitterStats stats = {.status = 9, .live = 1, .owed = 1, .refused = 1};
     CHECK(mvfxInstance_GetEmitterStats(context, instance, 0, &stats) == mvfx_success, "stats");
     CHECK(stats.live == 0 && stats.owed == 0 && stats.refused == 0, "nothing before a step");
+    CHECK(stats.status == mvfx_emitterActive, "active from the start");
     CHECK(mvfxDestroyInstance(context, instance) == mvfx_success, "destroyed");
     CHECK(!mvfxInstance_IsValid(context, instance), "stale after");
     CHECK(mvfxDestroyInstance(context, instance) == mvfx_errorStale, "twice is stale");
     CHECK(mvfxInstance_GetEmitterStats(context, instance, 0, &stats) == mvfx_errorStale,
           "stats of a stale instance");
-    CHECK(stats.live == 0 && stats.owed == 0, "zeroed on failure");
+    CHECK(stats.live == 0 && stats.owed == 0 && stats.status == 0, "zeroed on failure");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "free once its instance is gone");
     CHECK(mvfxContext_GetMisuse(context) == 0, "no misuse so far");
     mvfxDestroyContext(context);

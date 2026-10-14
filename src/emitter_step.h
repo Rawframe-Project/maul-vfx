@@ -12,14 +12,6 @@
 
 #include "instance.h"
 
-// Particle k of an emitter spawning at rate per second is born at tick
-// ceil(k * MVFX_TICKS_PER_SECOND / rate); this is how many are born by
-// tick clock (particles 0 to the result less one), for rate above 0.
-uint64_t mvfxOwedBy(float rate, int64_t clock);
-
-// The tick particle k is born at, for rate above 0.
-int64_t mvfxBirthTick(float rate, uint64_t k);
-
 // The first tick at which a particle born at birth with the given
 // inverse life has ended: the least clock after its birth where its age
 // times its inverse life reaches 1, by the test the step removes it by.

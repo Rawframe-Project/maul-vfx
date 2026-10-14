@@ -49,19 +49,19 @@ static mvfxEmitterStats Stats(const Scene* scene)
 static void TestSpawnAndDeathAtExactTicks(void)
 {
     // 64 a second, each living exactly one second: particle k is born at
-    // tick 16,384 k. At one second 65 are owed (k from 0 to 64) and the first
-    // is exactly one second old, so its life has ended.
+    // tick 16,384 (k + 1), when the rate's integral reaches k + 1. At one
+    // second 64 are owed and the first has lived 63/64 of its life.
     Scene scene = NewScene(1024, 64.0f, (mvfxRange){1.0f, 1.0f});
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.owed == 65, "owed at one second");
-    CHECK(stats.live == 64 && stats.refused == 0, "the first has ended");
+    CHECK(stats.owed == 64, "owed at one second");
+    CHECK(stats.live == 64 && stats.refused == 0, "all alive");
     CHECK(mvfxContext_StepTicks(scene.context, 16383) == mvfx_success, "a tick short");
     stats = Stats(&scene);
-    CHECK(stats.owed == 65 && stats.live == 64, "nothing born or ended a tick early");
+    CHECK(stats.owed == 64 && stats.live == 64, "nothing born or ended a tick early");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "the next birth's tick");
     stats = Stats(&scene);
-    CHECK(stats.owed == 66 && stats.live == 64, "one born as one ends");
+    CHECK(stats.owed == 65 && stats.live == 64, "one born as the first ends");
     mvfxDestroyContext(scene.context);
 }
 
@@ -70,8 +70,8 @@ static void TestCapacityRefuses(void)
     Scene scene = NewScene(10, 100.0f, (mvfxRange){10.0f, 10.0f});
     CHECK(mvfxContext_Step(scene.context, 1.0) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.owed == 101, "owed");
-    CHECK(stats.live == 10 && stats.refused == 91, "the capacity refuses the rest, counted");
+    CHECK(stats.owed == 100, "owed");
+    CHECK(stats.live == 10 && stats.refused == 90, "the capacity refuses the rest, counted");
     mvfxDestroyContext(scene.context);
 }
 
@@ -82,7 +82,7 @@ static void TestBornAndEndedWithinAStep(void)
     Scene scene = NewScene(1000, 1000.0f, (mvfxRange){0.001f, 0.001f});
     CHECK(mvfxContext_Step(scene.context, 0.5) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.owed == 501, "owed");
+    CHECK(stats.owed == 500, "owed");
     CHECK(stats.live <= 2 && stats.refused == 0, "only the newest live; none refused");
     mvfxDestroyContext(scene.context);
 }
@@ -151,28 +151,28 @@ static void TestOneStepEqualsTickByTick(void)
 
 static void TestDeathFreesItsTickForABirth(void)
 {
-    // 64 a second, each living exactly one second, room for 64: each death
-    // falls on a birth's tick and frees its room first, so a full emitter
-    // refuses nothing, and the particle ending on the step's last tick is
-    // gone.
-    Scene scene = NewScene(64, 64.0f, (mvfxRange){1.0f, 1.0f});
+    // 64 a second, each living half a second, room for 32: each death falls
+    // on a birth's tick and frees its room first, so a full emitter refuses
+    // nothing, and the particle born within the step that ends on its last
+    // tick is gone.
+    Scene scene = NewScene(32, 64.0f, (mvfxRange){0.5f, 0.5f});
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.owed == 129, "owed at two seconds");
+    CHECK(stats.owed == 128, "owed at two seconds");
     CHECK(stats.refused == 0, "deaths come before births on a tick");
-    CHECK(stats.live == 64, "the one ending now is gone");
+    CHECK(stats.live == 32, "the one ending now is gone");
     mvfxDestroyContext(scene.context);
 }
 
 static void TestSecondsRoundToTheNearestTick(void)
 {
-    // 16,383.7 ticks round to 16,384, the second birth's tick.
+    // 16,383.7 ticks round to 16,384, the first birth's tick.
     Scene scene = NewScene(16, 64.0f, (mvfxRange){1.0f, 1.0f});
     CHECK(mvfxContext_Step(scene.context, 16383.7 / MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(Stats(&scene).owed == 2, "rounded up to the birth's tick");
+    CHECK(Stats(&scene).owed == 1, "rounded up to the birth's tick");
     CHECK(mvfxContext_Step(scene.context, 16384.3 / MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(Stats(&scene).owed == 3, "rounded down to the next birth's tick");
+    CHECK(Stats(&scene).owed == 2, "rounded down to the next birth's tick");
     mvfxDestroyContext(scene.context);
 }
 

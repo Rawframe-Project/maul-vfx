@@ -8,9 +8,8 @@
 #include "emitter_step.h"
 #include "float_mode.h"
 #include "instance.h"
+#include "instance_api.h"
 #include "tasks.h"
-
-#include <math.h>
 
 // Instance slots one task range takes at least.
 #define STEP_MIN_RANGE 4
@@ -32,7 +31,15 @@ static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
         {
             continue;
         }
+        // A finished instance holds nothing and spawns nothing; whether it
+        // is is known at the step's start, before births up to the new
+        // clock are owed.
+        bool finished = mvfxIsInstanceFinished(instance);
         instance->clock += work->ticks;
+        if (finished)
+        {
+            continue;
+        }
         for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
         {
             mvfxStepEmitter(instance, e);
@@ -78,7 +85,7 @@ mvfxResult mvfxContext_Step(mvfxContext* context, double seconds)
     }
     // Rounded once to the nearest tick, ties up, in the library's mode.
     mvfxFloatMode mode = mvfxEnterFloatMode();
-    int64_t ticks = (int64_t)floor(seconds * (double)MVFX_TICKS_PER_SECOND + 0.5);
+    int64_t ticks = mvfxSecondsToTicks(seconds);
     mvfxLeaveFloatMode(mode);
     mvfxStepInstances(context, ticks);
     return mvfx_success;

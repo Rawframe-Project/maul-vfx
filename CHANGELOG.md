@@ -34,3 +34,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   state; `mvfxInstance_GetEmitterStats` reads live, owed and refused
   counts. An effect an instance plays refuses destruction
   (`mvfx_errorBusy`); the context's def gains a limit of instances.
+- Emitter lives: a start delay, a duration and a loop count; a rate
+  curve over each loop's normalized age; bursts with counts drawn from a
+  range, cycles, an interval and a chance (`mvfxBurst`). Emitter states
+  (`mvfxEmitterStatus` in `mvfxEmitterStats`), `mvfxInstance_IsFinished`,
+  `mvfxInstance_Stop` and `mvfxInstance_Restart`.
+- Changed: the rate's k-th birth is where its integral reaches k + 1, so
+  a rate of 0 spawns nothing and nothing is born at the emitter's start;
+  the golden state hashes change with it.

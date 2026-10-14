@@ -56,6 +56,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/instance.c
     src/instance_api.c
     src/slots.c
+    src/spawn.c
     src/step.c
     src/tasks.c)
 maul_configure_library(maul-vfx)
@@ -84,6 +85,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)
     maul_add_test(slots WHITEBOX)
+    maul_add_test(spawn WHITEBOX)
     maul_add_test(step)
     maul_add_test(tasks WHITEBOX)
     # The web build has no threads; the twins need four.

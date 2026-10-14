@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Removing ended particles in place, and births at exact ticks. A
-// particle's life is drawn from pcg4d at its serial (record mvfx-0001).
+// Removing ended particles in place, and the births spawn.h gives in
+// tick order. A particle's life is drawn from pcg4d at its serial (record
+// mvfx-0001).
 
 #include "emitter_step.h"
 
 #include "death_heap.h"
 #include "random.h"
+#include "spawn.h"
 
 #include <math.h>
 
@@ -16,42 +18,6 @@
 
 // The seconds in a tick, exact.
 #define SECONDS_PER_TICK 0x1p-20
-
-// The particle's quotient k * ticks per second / rate, rounded once: a
-// non-decreasing function of k, so births come in order.
-static double BirthQuotient(float rate, uint64_t k)
-{
-    return (double)k * (double)MVFX_TICKS_PER_SECOND / (double)rate;
-}
-
-int64_t mvfxBirthTick(float rate, uint64_t k)
-{
-    return (int64_t)ceil(BirthQuotient(rate, k));
-}
-
-uint64_t mvfxOwedBy(float rate, int64_t clock)
-{
-    // Particle k is born by clock exactly when its quotient is at most
-    // clock, as clock is a whole tick. Start from the rounded estimate and
-    // move to the exact count.
-    double estimate = floor((double)clock * (double)rate / (double)MVFX_TICKS_PER_SECOND);
-    // Past 2^62 particles (rate times age beyond any clock a host reaches),
-    // the count stops growing rather than overflow.
-    if (estimate >= 0x1p62)
-    {
-        return (uint64_t)1 << 62u;
-    }
-    uint64_t owed = (uint64_t)estimate + 1;
-    while (BirthQuotient(rate, owed) <= (double)clock)
-    {
-        ++owed;
-    }
-    while (owed > 0 && BirthQuotient(rate, owed - 1) > (double)clock)
-    {
-        --owed;
-    }
-    return owed;
-}
 
 // A particle's age in seconds from its birth tick.
 static float AgeAt(int64_t clock, int64_t birth)
@@ -147,28 +113,58 @@ int64_t mvfxDeathTick(int64_t birth, float inverseLife)
     return tick;
 }
 
+// Whether the step's births fit beside the live particles: they are
+// counted on a copy of the cursors, up to the room there is.
+static bool BirthsFit(const mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    int64_t room = compiled->capacity - instance->emitters[emitter].count;
+    mvfxBirths births;
+    mvfxOpenBirths(instance, emitter, &births);
+    int64_t tick = 0;
+    int64_t count = 0;
+    while (count <= room)
+    {
+        int64_t next = mvfxNextBirths(&births, instance->clock, &tick);
+        if (next == 0)
+        {
+            return true;
+        }
+        count += next;
+    }
+    return false;
+}
+
 // The births of a step whose emitter cannot fill: none is refused, so the
 // ones that live past the step are appended in order.
-static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter, uint64_t owed)
+static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
 {
-    float rate = instance->effect->emitters[emitter].rate;
-    for (uint64_t k = instance->emitters[emitter].owed; k < owed; ++k)
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    mvfxBirths births;
+    mvfxOpenBirths(instance, emitter, &births);
+    int64_t tick = 0;
+    int64_t count = 0;
+    while ((count = mvfxNextBirths(&births, instance->clock, &tick)) > 0)
     {
-        int64_t birth = mvfxBirthTick(rate, k);
-        float inverseLife = InverseLifeOf(instance, emitter, k);
-        if (AgeAt(instance->clock, birth) * inverseLife < 1.0f)
+        for (int64_t i = 0; i < count; ++i)
         {
-            Append(instance, emitter, k, birth, inverseLife);
+            uint64_t k = state->owed++;
+            float inverseLife = InverseLifeOf(instance, emitter, k);
+            if (AgeAt(instance->clock, tick) * inverseLife < 1.0f)
+            {
+                Append(instance, emitter, k, tick, inverseLife);
+            }
         }
     }
+    mvfxSaveBirths(instance, &births);
 }
 
 // The births of a step whose emitter may fill, replayed in tick order as
 // if it were stepped one tick at a time (each tick's deaths before its
-// births): a birth finding the emitter full is refused. The particles
-// alive at the step's start are those before it, and stay until their
-// death ticks.
-static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter, uint64_t owed)
+// births): births that find the emitter full are refused, the last of a
+// burst's first. The particles alive at the step's start are those before
+// it, and stay until their death ticks.
+static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
@@ -183,46 +179,49 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter, uint64_t 
     }
     mvfxBuildDeathHeap(&heap);
     int32_t accepted = 0;
-    for (uint64_t k = state->owed; k < owed; ++k)
+    mvfxBirths births;
+    mvfxOpenBirths(instance, emitter, &births);
+    int64_t tick = 0;
+    int64_t count = 0;
+    while ((count = mvfxNextBirths(&births, instance->clock, &tick)) > 0)
     {
-        int64_t birth = mvfxBirthTick(compiled->rate, k);
-        (void)mvfxPopDeathsBy(&heap, birth);
-        if (heap.count >= compiled->capacity)
+        (void)mvfxPopDeathsBy(&heap, tick);
+        int64_t room = compiled->capacity - heap.count;
+        int64_t taken = count < room ? count : room;
+        for (int64_t i = 0; i < taken; ++i)
         {
-            state->refused += 1;
-            continue;
+            uint64_t k = state->owed + (uint64_t)i;
+            int64_t death = mvfxDeathTick(tick, InverseLifeOf(instance, emitter, k));
+            mvfxPushDeath(&heap, death);
+            if (death > instance->clock)
+            {
+                instance->acceptedScratch[accepted] = k;
+                instance->acceptedBirthScratch[accepted] = tick;
+                ++accepted;
+            }
         }
-        int64_t death = mvfxDeathTick(birth, InverseLifeOf(instance, emitter, k));
-        mvfxPushDeath(&heap, death);
-        if (death > instance->clock)
-        {
-            instance->acceptedScratch[accepted++] = k;
-        }
+        state->owed += (uint64_t)count;
+        state->refused += (uint64_t)(count - taken);
     }
+    mvfxSaveBirths(instance, &births);
     RemoveEnded(instance, emitter);
     for (int32_t i = 0; i < accepted; ++i)
     {
         uint64_t k = instance->acceptedScratch[i];
-        Append(instance, emitter, k, mvfxBirthTick(compiled->rate, k),
+        Append(instance, emitter, k, instance->acceptedBirthScratch[i],
                InverseLifeOf(instance, emitter, k));
     }
 }
 
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
 {
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    mvfxEmitterState* state = &instance->emitters[emitter];
-    uint64_t owed =
-        compiled->rate > 0.0f ? mvfxOwedBy(compiled->rate, instance->clock) : state->owed;
-    uint64_t births = owed - state->owed;
-    if ((uint64_t)state->count + births <= (uint64_t)compiled->capacity)
+    if (BirthsFit(instance, emitter))
     {
         RemoveEnded(instance, emitter);
-        BirthsWithRoom(instance, emitter, owed);
+        BirthsWithRoom(instance, emitter);
     }
     else
     {
-        BirthsInTickOrder(instance, emitter, owed);
+        BirthsInTickOrder(instance, emitter);
     }
-    state->owed = owed;
 }

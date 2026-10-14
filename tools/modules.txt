@@ -8,14 +8,15 @@ hash:
 random:
 tasks: float_mode
 slots: allocator
-effect: allocator
+effect: allocator curve curve_integral
 instance: allocator effect
 death_heap:
-emitter_step: death_heap instance random
+spawn: instance random
+emitter_step: death_heap instance random spawn
 context: allocator effect instance slots tasks
 effect_api: context effect float_mode slots
-instance_api: context effect_api instance slots
-step: context emitter_step float_mode instance tasks
+instance_api: context effect_api instance slots spawn
+step: context effect emitter_step float_mode instance instance_api tasks
 curve:
 curve_integral: curve
 gradient:

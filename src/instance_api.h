@@ -11,4 +11,10 @@
 // The instance an id names on the context, or NULL when the id is stale.
 mvfxInstance* mvfxContextInstance(const mvfxContext* context, mvfxInstanceId instance);
 
+// Where an emitter of an instance stands.
+mvfxEmitterStatus mvfxEmitterStatusOf(const mvfxInstance* instance, int32_t emitter);
+
+// Whether every emitter of an instance is stopped.
+bool mvfxIsInstanceFinished(const mvfxInstance* instance);
+
 #endif

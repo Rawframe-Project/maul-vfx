@@ -10,7 +10,12 @@
 #ifndef MAUL_VFX_SRC_EFFECT_H
 #define MAUL_VFX_SRC_EFFECT_H
 
+#include "curve.h"
+#include "curve_integral.h"
+
 #include "maul-vfx/effect.h"
+
+#include <math.h>
 
 // The attributes a particle may have, each one array of float or uint32_t.
 typedef uint8_t mvfxAttribute;
@@ -53,6 +58,31 @@ typedef struct mvfxAttributePlan
     size_t blockBytes;
 } mvfxAttributePlan;
 
+// The ticks in a span of seconds, rounded once to the nearest, ties up.
+static inline int64_t mvfxSecondsToTicks(double seconds)
+{
+    return (int64_t)floor(seconds * (double)MVFX_TICKS_PER_SECOND + 0.5);
+}
+
+// A rate curve baked over a loop's normalized age, its samples already
+// times the emitter's rate, and its integral over [0, 1].
+typedef struct mvfxRateCurve
+{
+    mvfxCurveTable table;
+    mvfxCurveIntegral integral;
+} mvfxRateCurve;
+
+// A burst in ticks.
+typedef struct mvfxCompiledBurst
+{
+    int64_t time;
+    int64_t interval;
+    int32_t minCount;
+    int32_t maxCount;
+    int32_t cycles;
+    float probability;
+} mvfxCompiledBurst;
+
 // An emitter as an instance runs it.
 typedef struct mvfxCompiledEmitter
 {
@@ -60,15 +90,30 @@ typedef struct mvfxCompiledEmitter
     // The capacity rounded up to MVFX_ATTRIBUTE_PADDING.
     int32_t paddedCapacity;
     float rate;
+    // NULL for a constant rate.
+    const mvfxRateCurve* rateCurve;
+    const mvfxCompiledBurst* bursts;
+    int32_t burstCount;
+    // Where its bursts' cursors start in an instance's array of them.
+    int32_t firstBurst;
+    int64_t delay;
+    // 0 without end.
+    int64_t duration;
+    int32_t loops;
+    // The particles the rate owes over one loop, with a duration.
+    double loopIntegral;
     mvfxRange lifetime;
     mvfxAttributePlan plan;
 } mvfxCompiledEmitter;
 
-// A compiled effect, in one block: this header and its emitters after it.
+// A compiled effect, in one block: this header, its emitters, their rate
+// curves and their bursts.
 typedef struct mvfxEffect
 {
     mvfxCompiledEmitter* emitters;
     int32_t emitterCount;
+    // The bursts of every emitter.
+    int32_t burstCount;
     size_t blockBytes;
     size_t blockAlignment;
     // The instances playing it, which keep it from being destroyed.

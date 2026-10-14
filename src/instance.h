@@ -13,14 +13,35 @@
 
 #include "maul-vfx/instance.h"
 
-// One emitter's particles and counts. Live particles are [0, count) of each
-// attribute array, oldest first.
+// Where an emitter's rate stands: the loop it is in, the rate birth of
+// that loop it spawns next, and the loop tick of the last one it spawned
+// (birth ticks never go back, whatever the rounding of a curve's inverse).
+typedef struct mvfxRateCursor
+{
+    uint64_t loop;
+    uint64_t next;
+    int64_t last;
+} mvfxRateCursor;
+
+// Where a burst stands: the loop it is in and the firing of that loop it
+// fires next.
+typedef struct mvfxBurstCursor
+{
+    uint64_t loop;
+    uint64_t firing;
+} mvfxBurstCursor;
+
+// One emitter's particles, counts and cursors. Live particles are [0,
+// count) of each attribute array, oldest first; owed is also the serial
+// of the next birth.
 typedef struct mvfxEmitterState
 {
     unsigned char* particles;
     int32_t count;
     uint64_t owed;
     uint64_t refused;
+    mvfxRateCursor rate;
+    mvfxBurstCursor* bursts;
 } mvfxEmitterState;
 
 // An instance.
@@ -30,12 +51,15 @@ typedef struct mvfxInstance
     double origin[3];
     uint32_t seed;
     int64_t clock;
+    // No birth past this tick; INT64_MAX until the instance is stopped.
+    int64_t stopTick;
     mvfxEmitterState* emitters;
     // Scratch for a step that may reach an emitter's capacity, sized for
     // the largest emitter: its death ticks, and the particles it accepts
-    // that live past the step.
+    // that live past the step, by serial and birth tick.
     int64_t* deathScratch;
     uint64_t* acceptedScratch;
+    int64_t* acceptedBirthScratch;
     size_t blockBytes;
 } mvfxInstance;
 
@@ -43,6 +67,10 @@ typedef struct mvfxInstance
 // NULL when the allocator fails or the block's size does not fit.
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3], uint32_t seed,
                                       const mvfxAllocator* allocator);
+
+// Returns an instance to its start: no particles, its clock, counts and
+// cursors at 0, no stop.
+void mvfxResetInstance(mvfxInstance* instance);
 
 // Returns an instance's block.
 void mvfxReleaseInstance(mvfxInstance* instance, const mvfxAllocator* allocator);
