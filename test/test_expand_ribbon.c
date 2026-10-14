@@ -172,6 +172,24 @@ static void TestTessellatedAndFits(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestWidthBetween(void)
+{
+    // Sizes of 0.5 and 1.5 cut in halves: the middle point a unit wide.
+    mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
+    emitter.ribbon.pieces = 2;
+    Scene scene = NewScene(&emitter);
+    static const double places[6] = {0, 0, 0, 1, 0, 0};
+    static const float sizes[6] = {0.5f, 1, 1, 1.5f, 1, 1};
+    mvfxSpawnRequest request = {.count = 2, .positions = places, .sizes = sizes};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success &&
+              mvfxContext_StepTicks(scene.context, 1) == mvfx_success,
+          "spawned");
+    Written w = Expand(&scene, 24, 48, 128);
+    CHECK(w.vertexCount == 6 && At(&w.vertices[2], 0.5f, 0.5f) && At(&w.vertices[3], 0.5f, -0.5f),
+          "the width between particles");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
@@ -237,6 +255,7 @@ int main(void)
 {
     TestStrip();
     TestTessellatedAndFits();
+    TestWidthBetween();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
