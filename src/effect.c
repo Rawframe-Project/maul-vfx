@@ -431,8 +431,16 @@ static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
            spawn->capacity <= MVFX_MAX_EMITTER_CAPACITY;
 }
 
+// Whether a source is an emitter of the effect already placed: one out of
+// range never is, so its def is refused here, before any check of it.
+static bool IsPlaced(const bool placed[MVFX_MAX_EMITTERS], int32_t source, int32_t count)
+{
+    return source >= 0 && source < count && placed[source];
+}
+
 // The order an effect's emitters step in: repeatedly the lowest index
-// whose source (if any) has stepped; false for a cycle.
+// whose source (if any) has stepped; false for a cycle or a source out of
+// range.
 static bool OrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITTERS])
 {
     bool placed[MVFX_MAX_EMITTERS] = {false};
@@ -443,9 +451,10 @@ static bool OrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITT
         {
             const mvfxEventSpawn* spawn = &def->emitters[i].eventSpawn;
             const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
-            bool ready = (!spawn->enabled || placed[spawn->source]) &&
-                         (!neighbors->enabled || neighbors->source < 0 || neighbors->source == i ||
-                          placed[neighbors->source]);
+            bool ready =
+                (!spawn->enabled || IsPlaced(placed, spawn->source, def->emitterCount)) &&
+                (!neighbors->enabled || neighbors->source == -1 || neighbors->source == i ||
+                 IsPlaced(placed, neighbors->source, def->emitterCount));
             next = !placed[i] && ready ? i : next;
         }
         if (next < 0)
@@ -729,6 +738,8 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
     }
     *out = (mvfxCompiledEmitter){
         .capacity = source->capacity,
+        // A particle a birth until mvfxCompileEffectParts says otherwise.
+        .unitPoints = 1,
         .paddedCapacity = padded,
         .rate = source->rate,
         .rateCurve = curve,

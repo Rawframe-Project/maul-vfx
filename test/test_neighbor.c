@@ -371,7 +371,7 @@ static void TestChecks(void)
     def.emitterCount = 2;
     mvfxEffectId effect = {0};
     int32_t refused = 0;
-    for (int32_t rule = 0; rule < 10; ++rule)
+    for (int32_t rule = 0; rule < 12; ++rule)
     {
         emitters[0] = Emitter(1.0f, 4);
         emitters[1] = Emitter(1.0f, 4);
@@ -399,6 +399,13 @@ static void TestChecks(void)
         case 6:
             n->source = -2;
             break;
+        case 10:
+            // Far out of range either way: refused before any lookup.
+            n->source = 1000;
+            break;
+        case 11:
+            n->source = INT32_MIN;
+            break;
         case 7:
             n->source = 1;
             emitters[1].space = mvfx_spaceLocal;
@@ -422,7 +429,7 @@ static void TestChecks(void)
         }
         refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
     }
-    CHECK(refused == 10, "every check");
+    CHECK(refused == 12, "every check");
     emitters[0] = Emitter(MVFX_MAX_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBORS);
     emitters[1] = Emitter(MVFX_MIN_NEIGHBOR_RADIUS, 1);
     emitters[1].neighbors.source = 1;
