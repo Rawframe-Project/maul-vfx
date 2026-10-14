@@ -112,7 +112,8 @@ static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
     {
         for (int64_t i = 0; i < count; ++i)
         {
-            uint64_t k = state->owed++;
+            uint64_t k = state->owed;
+            state->owed = mvfxSaturatingAdd(state->owed, 1);
             float inverseLife = mvfxInverseLifeOf(instance, emitter, k, tick);
             if (AgeAt(instance->clock, tick) * inverseLife < 1.0f)
             {
@@ -164,8 +165,8 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
                 ++accepted;
             }
         }
-        state->owed += (uint64_t)count;
-        state->refused += (uint64_t)(count - taken);
+        state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)count);
+        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)(count - taken));
     }
     mvfxSaveBirths(instance, &births);
     RemoveEnded(instance, emitter);

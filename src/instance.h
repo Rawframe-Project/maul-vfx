@@ -106,6 +106,13 @@ typedef struct mvfxInstance
     size_t blockBytes;
 } mvfxInstance;
 
+// a + b, held at UINT64_MAX: an emitter's counts never wrap, even after
+// jumps whose refusals are counted in the billions of billions.
+static inline uint64_t mvfxSaturatingAdd(uint64_t a, uint64_t b)
+{
+    return a > UINT64_MAX - b ? UINT64_MAX : a + b;
+}
+
 // Creates an instance of a compiled effect in one block from allocator;
 // NULL when the allocator fails or the block's size does not fit.
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* transform,

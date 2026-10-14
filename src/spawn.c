@@ -255,12 +255,6 @@ void mvfxSaveBirths(mvfxInstance* instance, const mvfxBirths* births)
     }
 }
 
-// a + b, held at UINT64_MAX.
-static uint64_t SaturatingAdd(uint64_t a, uint64_t b)
-{
-    return a > UINT64_MAX - b ? UINT64_MAX : a + b;
-}
-
 void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -283,8 +277,8 @@ void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
         // At most 2^63 counted, so a jump's refusals never wrap a count.
         uint64_t skipped =
             state->distanceSkip < 0x1p63 ? (uint64_t)state->distanceSkip : (uint64_t)1 << 63u;
-        state->owed = SaturatingAdd(state->owed, skipped);
-        state->refused = SaturatingAdd(state->refused, skipped);
+        state->owed = mvfxSaturatingAdd(state->owed, skipped);
+        state->refused = mvfxSaturatingAdd(state->refused, skipped);
     }
 }
 

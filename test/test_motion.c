@@ -167,6 +167,23 @@ static void TestDistance(void)
     mvfxDestroyContext(whole.context);
     mvfxDestroyContext(split.context);
 
+    // Fractions carry from step to step: five moves of 0.4 at one a unit
+    // owe two births, at 1 and 2 units.
+    emitter.ratePerDistance = 1.0f;
+    Scene carried = NewScene(&emitter);
+    for (int32_t i = 1; i <= 5; ++i)
+    {
+        MoveTo(&carried, 0.4 * i, 0.0, 0.0, false);
+        CHECK(mvfxContext_StepTicks(carried.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success,
+              "step");
+    }
+    CHECK(carried.live->emitters[0].count == 2 &&
+              fabsf(Array(&carried, mvfx_attributePositionX)[0] - 1.0f) <= 1e-4f &&
+              fabsf(Array(&carried, mvfx_attributePositionX)[1] - 2.0f) <= 1e-4f,
+          "fractions carried across steps");
+    mvfxDestroyContext(carried.context);
+    emitter.ratePerDistance = 2.0f;
+
     // Moving during a delay spawns nothing; after it, the rest of the way.
     emitter.startDelay = 0.5f;
     Scene delayed = NewScene(&emitter);
@@ -225,7 +242,8 @@ static void TestHugeJumps(void)
               "the capacity taken, the rest refused");
         CHECK(scene.live->emitters[0].distanceCarry == 0.0, "no carry after such a jump");
         uint64_t owed = stats.owed;
-        MoveTo(&scene, 0x1p52 - 1.0, 0x1p52, 0x1p52, false);
+        // Back across: a second jump's refusals would wrap the counts.
+        MoveTo(&scene, -0x1p52, -0x1p52, -0x1p52, false);
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success,
               "step");
         CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 0, &stats) ==
