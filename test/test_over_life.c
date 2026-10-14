@@ -168,6 +168,11 @@ static void TestSize(void)
     mvfxSizeOf(scene.live, 0, 0, size);
     CHECK(Near(size[0], 2.0f) && Near(size[2], 6.0f), "by speed, held at its range's top");
     mvfxDestroyContext(scene.context);
+    // Within the range: speed 2 between 1 and 3 is half way.
+    scene = Run(&emitter, 2.0f, 1);
+    mvfxSizeOf(scene.live, 0, 0, size);
+    CHECK(Near(size[0], 1.0f) && Near(size[1], 2.0f), "by speed, its share of the range");
+    mvfxDestroyContext(scene.context);
 }
 
 static void TestFrames(void)
@@ -225,7 +230,8 @@ static void TestCustomAndRotation(void)
     mvfxEmitterDef emitter = Held();
     emitter.custom = &custom;
     emitter.customCount = 1;
-    Scene scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
+    // Moving, so nothing reads as 0 by chance.
+    Scene scene = Run(&emitter, 1.0f, MVFX_TICKS_PER_SECOND);
     float values[4];
     mvfxCustomOf(scene.live, 0, 0, 0, values);
     CHECK(Near(values[0], 3.0f) && Near(values[1], 4.0f) && values[2] == 0.0f,
@@ -255,7 +261,7 @@ static void TestRefusals(void)
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     static const mvfxCurveKey late[1] = {{.time = 2.0f, .value = 1.0f}};
-    for (int32_t field = 0; field < 12; ++field)
+    for (int32_t field = 0; field < 13; ++field)
     {
         mvfxEmitterDef bad = Held();
         mvfxOverLife* o = &bad.overLife;
@@ -288,6 +294,10 @@ static void TestRefusals(void)
             o->frame = (mvfxFrameOverLife){.animation = mvfx_frameOverLife, .cycles = 1.0f};
             break;
         case 6:
+            o->frame = (mvfxFrameOverLife){
+                .animation = mvfx_frameOverLife, .frameCount = 4, .cycles = 1001.0f};
+            break;
+        case 12:
             o->frame = (mvfxFrameOverLife){.animation = mvfx_frameOverLife, .frameCount = 4};
             break;
         case 7:
@@ -307,12 +317,14 @@ static void TestRefusals(void)
                                          .speedRange = {0.0f, (float)NAN},
                                          .size = {{.value = 1}}};
             break;
-        default:
+        case 11:
             custom.scaledOverLife = true;
             custom.overLife =
                 (mvfxLifeCurve){.value = 1.0f, .curve = {.keys = late, .keyCount = 1}};
             bad.custom = &custom;
             bad.customCount = 1;
+            break;
+        default:
             break;
         }
         mvfxEffectDef effectDef = mvfxDefaultEffectDef();
