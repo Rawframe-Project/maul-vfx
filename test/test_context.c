@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Creating and destroying contexts, and every refusal of a def.
+
+#include "test_harness.h"
+
+#include "maul-vfx/context.h"
+
+#include <stdlib.h>
+
+// An allocator that counts what it holds and can be told to fail.
+typedef struct CountingAllocator
+{
+    int64_t blocks;
+    int64_t bytes;
+    bool fail;
+} CountingAllocator;
+
+static void* CountingAlloc(size_t size, size_t alignment, void* context)
+{
+    CountingAllocator* counter = context;
+    if (counter->fail)
+    {
+        return NULL;
+    }
+    // The test asks for nothing aligned beyond max_align_t of the context.
+    (void)alignment;
+    counter->blocks += 1;
+    counter->bytes += (int64_t)size;
+    return malloc(size);
+}
+
+static void CountingFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    CountingAllocator* counter = context;
+    (void)alignment;
+    counter->blocks -= 1;
+    counter->bytes -= (int64_t)size;
+    free(memory);
+}
+
+static mvfxAllocator CountingAllocatorFor(CountingAllocator* counter)
+{
+    mvfxAllocator allocator = {CountingAlloc, CountingFree, counter};
+    return allocator;
+}
+
+static void* InlineEnqueue(mvfxTaskFn* task, int32_t itemCount, int32_t minRange, void* taskContext,
+                           void* userContext)
+{
+    (void)minRange;
+    (void)userContext;
+    task(0, itemCount, taskContext);
+    return NULL;
+}
+
+static void NoFinish(void* userTask, void* userContext)
+{
+    (void)userTask;
+    (void)userContext;
+}
+
+static void TestDefaultDefCreatesAndDestroys(void)
+{
+    mvfxContextDef def = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "default def creates");
+    CHECK(context != NULL, "context returned");
+    CHECK(mvfxContext_GetMisuse(context) == 0, "no misuse yet");
+    mvfxDestroyContext(context);
+}
+
+static void TestDestroyNullDoesNothing(void)
+{
+    mvfxDestroyContext(NULL);
+    CHECK(true, "destroying NULL returns");
+}
+
+static void TestHostAllocatorHoldsEverything(void)
+{
+    CountingAllocator counter = {0};
+    mvfxContextDef def = mvfxDefaultContextDef();
+    def.allocator = CountingAllocatorFor(&counter);
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "creates on the host allocator");
+    CHECK(counter.blocks == 1, "one block while alive");
+    mvfxDestroyContext(context);
+    CHECK(counter.blocks == 0 && counter.bytes == 0, "everything returned");
+}
+
+static void TestAllocatorFailureIsCapacity(void)
+{
+    CountingAllocator counter = {.fail = true};
+    mvfxContextDef def = mvfxDefaultContextDef();
+    def.allocator = CountingAllocatorFor(&counter);
+    mvfxContext* context = (mvfxContext*)&counter;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorCapacity, "capacity on failure");
+    CHECK(context == NULL, "out-parameter cleared");
+}
+
+static void TestOtherVersionIsRefusedFirst(void)
+{
+    mvfxContextDef def = mvfxDefaultContextDef();
+    def.version = MVFX_ABI_VERSION + 1;
+    def.cookie = 0;
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorVersion, "version before cookie");
+    def.version = MVFX_ABI_VERSION ^ 0x10000u;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorVersion, "another major");
+}
+
+static void TestInvalidDefsAreRefused(void)
+{
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(NULL, &context) == mvfx_errorInvalid, "null def");
+    mvfxContextDef def = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&def, NULL) == mvfx_errorInvalid, "null out-parameter");
+
+    def.cookie = 0;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorInvalid, "no cookie");
+
+    def = mvfxDefaultContextDef();
+    def.allocator.alloc = CountingAlloc;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorInvalid, "alloc without free");
+    def = mvfxDefaultContextDef();
+    def.allocator.free = CountingFree;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorInvalid, "free without alloc");
+
+    def = mvfxDefaultContextDef();
+    def.enqueueTask = InlineEnqueue;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorInvalid, "enqueue without finish");
+    def = mvfxDefaultContextDef();
+    def.finishTask = NoFinish;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorInvalid, "finish without enqueue");
+    CHECK(context == NULL, "nothing created");
+}
+
+static void TestTaskHooksAreAccepted(void)
+{
+    mvfxContextDef def = mvfxDefaultContextDef();
+    def.enqueueTask = InlineEnqueue;
+    def.finishTask = NoFinish;
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "both hooks accepted");
+    mvfxDestroyContext(context);
+}
+
+int main(void)
+{
+    TestDefaultDefCreatesAndDestroys();
+    TestDestroyNullDoesNothing();
+    TestHostAllocatorHoldsEverything();
+    TestAllocatorFailureIsCapacity();
+    TestOtherVersionIsRefusedFirst();
+    TestInvalidDefsAreRefused();
+    TestTaskHooksAreAccepted();
+    return s_failures == 0 ? 0 : 1;
+}

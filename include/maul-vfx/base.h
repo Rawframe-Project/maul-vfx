@@ -21,6 +21,10 @@ extern "C"
 #define MVFX_VERSION_MINOR 0
 #define MVFX_VERSION_PATCH 1
 
+// The version a root def carries: the major and minor version of the
+// headers a program was built with. The ABI holds within a minor version.
+#define MVFX_ABI_VERSION ((MVFX_VERSION_MAJOR << 16) | MVFX_VERSION_MINOR)
+
 // MVFX_API marks the public functions: dllexport or dllimport in a
 // shared Windows build (maul_vfx_EXPORTS is defined while building
 // the library), default visibility in a shared build elsewhere.
@@ -79,6 +83,16 @@ extern "C"
         // The call is not allowed in the object's current state.
         mvfx_errorState = -7,
     };
+
+    // The allocator an owner object takes in its def and keeps for its
+    // lifetime. Alignment is a power of two. A zeroed allocator means the C
+    // library's allocation functions.
+    typedef struct mvfxAllocator
+    {
+        void* (*alloc)(size_t size, size_t alignment, void* context);
+        void (*free)(void* memory, size_t size, size_t alignment, void* context);
+        void* context;
+    } mvfxAllocator;
 
     // A version: major, minor and patch.
     typedef struct mvfxVersion

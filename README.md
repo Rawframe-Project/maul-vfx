@@ -32,8 +32,8 @@ stepping allocates nothing.
 
 ## Status
 
-Not released. The design is decided; the base and the context come
-first. This skeleton has 2 public functions.
+Not released. The design is decided; the context is in place, and the
+math and random numbers come next. It has 6 public functions.
 
 ## Building
 

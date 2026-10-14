@@ -17,6 +17,30 @@ const char* mvfxResultName(mvfxResult result);
 ```
 Returns the name of a result code, for diagnostics.  @param result  Any value; an unknown one is named as such. @return A static, NUL-terminated string such as "mvfx_errorCapacity". @par Thread safety Safe from any thread.
 
+## `context.h`
+
+The root of Maul VFX: a context holds the host's allocator and task hooks, and owns the effects and instances made through it.
+
+```c
+static inline mvfxContextDef mvfxDefaultContextDef(void);
+```
+Returns the default context def: the C library's allocator and serial work.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut);
+```
+Creates a context.  @param def         The def, from mvfxDefaultContextDef. @param contextOut  Receives the context; set to NULL on failure. @return `mvfx_success`; `mvfx_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, an allocator with one function or a task system with one hook; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+
+```c
+void mvfxDestroyContext(mvfxContext* context);
+```
+Destroys a context and everything it owns.  @param context  The context. NULL does nothing. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
+```
+Returns how many calls the context refused as misuse: invalid arguments against it. Stale ids are not misuse.  @param context  The context. @return The count since the context was created. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ---
 
-2 functions across 1 headers.
+6 functions across 2 headers.

@@ -12,3 +12,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The library skeleton: the build, the family rules and tools, the
   version and result API (`mvfxGetVersion`, `mvfxResultName`) and the
   library profile.
+- The context: `mvfxCreateContext` from a def stamped with the headers'
+  version and carrying the host's allocator and task hooks,
+  `mvfxDestroyContext` and `mvfxContext_GetMisuse`. Work handed to the
+  host's tasks runs in round to nearest with subnormals kept, whatever
+  floating-point mode the host's threads are in.
