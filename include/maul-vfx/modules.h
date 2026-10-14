@@ -299,6 +299,84 @@ extern "C"
 #define MVFX_MIN_NEIGHBOR_RADIUS 1e-4f
 #define MVFX_MAX_NEIGHBOR_RADIUS 1e6f
 
+    // A point a particle steers toward or away from, in a space: the
+    // world's, or the emitter's (turning and scaling with the instance).
+    typedef struct mvfxSteerPoint
+    {
+        // The steering's weight: its acceleration a second per unit of
+        // velocity it would change; 0 for none, at most MVFX_MAX_EXTENT.
+        float weight;
+        // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
+        uint8_t space;
+        // Finite, at most MVFX_MAX_EXTENT in size; or a parameter's x, y, z.
+        float point[3];
+        bool fromParameter;
+        int32_t parameter;
+        // Seeking: within it the speed wanted falls with the distance to 0
+        // at the point (arrival; 0 for none). Fleeing: only within it (0 for
+        // everywhere). From 0 to MVFX_MAX_EXTENT.
+        float radius;
+    } mvfxSteerPoint;
+
+// The most points a steering path has.
+#define MVFX_MAX_PATH_POINTS 32
+
+    // A path particles follow (Reynolds 1999): a particle whose place
+    // lookahead seconds ahead lies farther than radius from the path seeks
+    // the path's point nearest that place, moved on along the path by the
+    // distance it would travel in lookahead.
+    typedef struct mvfxSteerPath
+    {
+        // As a steer point's; 0 for none.
+        float weight;
+        // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
+        uint8_t space;
+        // From 2 to MVFX_MAX_PATH_POINTS points, x, y, z each, finite and at
+        // most MVFX_MAX_EXTENT in size, copied at the effect's creation; a
+        // closed path joins its last to its first.
+        const float* points;
+        int32_t pointCount;
+        bool closed;
+        // From 0 to MVFX_MAX_EXTENT, and from 0 to 10 seconds.
+        float radius;
+        float lookahead;
+    } mvfxSteerPath;
+
+    // Flocking and steering (Reynolds 1987, 1999): accelerations added to
+    // each particle's velocity over a step, from its neighbors and its
+    // velocity at the step's start, their sum held to maxForce. Speed is
+    // held by the velocity modules' speed limit.
+    typedef struct mvfxSteeringDef
+    {
+        bool enabled;
+        // The rules from neighbors (mvfxEmitterDef.neighbors, which they
+        // need when their weights are above 0): each a weight (0 for none,
+        // at most MVFX_MAX_EXTENT) and a radius (above 0, at most the
+        // neighbors' radius), counting only neighbors within the view.
+        // Separation: the sum of the offsets from each neighbor to the
+        // particle over their squared lengths. Alignment: the neighbors'
+        // mean velocity less the particle's. Cohesion: their mean place less
+        // the particle's.
+        float separation;
+        float separationRadius;
+        float alignment;
+        float alignmentRadius;
+        float cohesion;
+        float cohesionRadius;
+        // The half angle of the view cone about the velocity, from 0 to pi
+        // (pi sees all); a particle at rest sees all.
+        float viewAngle;
+        // The speed seeking, fleeing and following want, from 0 to
+        // MVFX_MAX_EXTENT.
+        float cruiseSpeed;
+        // The most the summed acceleration may be, from 0 (no limit) to
+        // MVFX_MAX_EXTENT.
+        float maxForce;
+        mvfxSteerPoint seek;
+        mvfxSteerPoint flee;
+        mvfxSteerPath path;
+    } mvfxSteeringDef;
+
     // An event: what happened, to which particle, when and where.
     typedef struct mvfxEvent
     {

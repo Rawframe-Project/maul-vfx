@@ -211,6 +211,9 @@ typedef struct mvfxCompiledEmitter
     // its own grid, the largest radius querying it (0 for no grid).
     mvfxNeighborDef neighbors;
     float gridCell;
+    // Its steering, the path's points copied.
+    mvfxSteeringDef steering;
+    float pathPoints[MVFX_MAX_PATH_POINTS][3];
     int32_t drawPriority;
     bool fixedBounds;
     float boundsMin[3];

@@ -199,3 +199,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   count and offsets to their mean place and velocity, for host modules
   and the records `mvfx_recordNeighborCount`, `mvfx_recordNeighborCenter`
   and `mvfx_recordNeighborVelocity`.
+- Flocking and steering: an emitter's `steering` (separation, alignment
+  and cohesion from its neighbors within a view cone; seeking with
+  arrival, fleeing within a radius, following an open or closed path;
+  the sum held to a maximum force).

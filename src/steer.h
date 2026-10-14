@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Flocking and steering: accelerations from neighbors, points and a path.
+
+#ifndef MVFX_STEER_H
+#define MVFX_STEER_H
+
+#include "instance.h"
+
+// At an emitter's step, after mvfxFindNeighbors and before motion: for a
+// steering emitter, adds each particle's steering over the step to its
+// velocity, from the step's start; walks the neighbors (storing their
+// attributes) for one that finds them.
+void mvfxSteerEmitter(mvfxInstance* instance, int32_t emitter);
+
+#endif

@@ -317,6 +317,33 @@ static inline void BuildScene(mvfxContext* context)
         (mvfxNeighborDef){.enabled = true, .source = 1, .radius = 3.0f, .maxNeighbors = 4};
     emitters[1].neighbors =
         (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.5f, .maxNeighbors = 4};
+    // The second flocks, seeks parameter 0 in the world, flees a point of
+    // its own and follows a closed square round the instance.
+    static const float squarePath[12] = {-2, 0, -2, 2, 0, -2, 2, 0, 2, -2, 0, 2};
+    emitters[1].steering = (mvfxSteeringDef){
+        .enabled = true,
+        .separation = 0.2f,
+        .separationRadius = 0.3f,
+        .alignment = 0.5f,
+        .alignmentRadius = 0.4f,
+        .cohesion = 0.8f,
+        .cohesionRadius = 0.5f,
+        .viewAngle = 2.5f,
+        .cruiseSpeed = 2.0f,
+        .maxForce = 6.0f,
+        .seek = {.weight = 0.6f,
+                 .space = mvfx_spaceWorld,
+                 .fromParameter = true,
+                 .radius = 2000.0f},
+        .flee = {.weight = 0.3f, .space = mvfx_spaceLocal, .point = {0, 1, 0}, .radius = 1.5f},
+        .path = {.weight = 0.4f,
+                 .space = mvfx_spaceLocal,
+                 .points = squarePath,
+                 .pointCount = 4,
+                 .closed = true,
+                 .radius = 1.5f,
+                 .lookahead = 0.5f},
+    };
     emitters[0].eventCapacity = 12;
     // The third collides with the depth image each instance carries.
     emitters[2].collision = (mvfxCollision){.enabled = true,

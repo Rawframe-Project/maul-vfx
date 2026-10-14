@@ -598,6 +598,8 @@ extern "C"
         mvfxEventSpawn eventSpawn;
         // Finding its neighbors.
         mvfxNeighborDef neighbors;
+        // Flocking and steering.
+        mvfxSteeringDef steering;
         // The lights its particles carry (mvfxInstance_WriteLights).
         mvfxLightDef light;
         // Its ribbons (mvfxInstance_WriteRibbons).

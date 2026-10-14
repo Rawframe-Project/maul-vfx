@@ -409,6 +409,73 @@ static bool IsBeamValid(const mvfxEmitterDef* def, int32_t parameterCount)
     return shape && alone && def->ribbon.ids == mvfx_ribbonOne && !def->ribbon.pinHead;
 }
 
+// Whether a steer point is valid: a weight, a point or parameter, a
+// space and a radius in range.
+static bool IsSteerPointValid(const mvfxSteerPoint* point, int32_t parameterCount)
+{
+    return IsWithin(point->weight, 0.0f, MVFX_MAX_EXTENT) && point->space <= mvfx_spaceLocal &&
+           IsWithin(point->radius, 0.0f, MVFX_MAX_EXTENT) &&
+           IsWithin(point->point[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           IsWithin(point->point[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           IsWithin(point->point[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           (!point->fromParameter || (point->parameter >= 0 && point->parameter < parameterCount));
+}
+
+// Whether a steering path is valid: none (weight 0), or its points, space,
+// radius and lookahead in range.
+static bool IsSteerPathValid(const mvfxSteerPath* path)
+{
+    if (!IsWithin(path->weight, 0.0f, MVFX_MAX_EXTENT))
+    {
+        return false;
+    }
+    if (path->weight == 0.0f)
+    {
+        return true;
+    }
+    if (path->points == nullptr || path->pointCount < 2 ||
+        path->pointCount > MVFX_MAX_PATH_POINTS || path->space > mvfx_spaceLocal ||
+        !IsWithin(path->radius, 0.0f, MVFX_MAX_EXTENT) || !IsWithin(path->lookahead, 0.0f, 10.0f))
+    {
+        return false;
+    }
+    for (int32_t i = 0; i < 3 * path->pointCount; ++i)
+    {
+        if (!IsWithin(path->points[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether a flocking rule is valid: no weight, or a weight with neighbors
+// and a radius within theirs.
+static bool IsFlockRuleValid(const mvfxEmitterDef* def, float weight, float radius)
+{
+    return IsWithin(weight, 0.0f, MVFX_MAX_EXTENT) &&
+           (weight == 0.0f ||
+            (def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius));
+}
+
+// Whether an emitter's steering is valid.
+static bool IsSteeringValid(const mvfxEmitterDef* def, int32_t parameterCount)
+{
+    const mvfxSteeringDef* s = &def->steering;
+    if (!s->enabled)
+    {
+        return true;
+    }
+    return IsFlockRuleValid(def, s->separation, s->separationRadius) &&
+           IsFlockRuleValid(def, s->alignment, s->alignmentRadius) &&
+           IsFlockRuleValid(def, s->cohesion, s->cohesionRadius) &&
+           IsWithin(s->viewAngle, 0.0f, 3.14159274f) &&
+           IsWithin(s->cruiseSpeed, 0.0f, MVFX_MAX_EXTENT) &&
+           IsWithin(s->maxForce, 0.0f, MVFX_MAX_EXTENT) &&
+           IsSteerPointValid(&s->seek, parameterCount) &&
+           IsSteerPointValid(&s->flee, parameterCount) && IsSteerPathValid(&s->path);
+}
+
 // Whether an emitter's neighbor queries are valid against its effect: a
 // source of its own or in its space, a radius and a cap in range.
 static bool AreNeighborsValid(const mvfxEffectDef* def, int32_t i)
@@ -520,7 +587,9 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     {
         if (!IsEmitterDefValid(&def->emitters[i]) ||
             !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
-            !AreNeighborsValid(def, i) || !IsBeamValid(&def->emitters[i], def->parameterCount))
+            !AreNeighborsValid(def, i) ||
+            !IsSteeringValid(&def->emitters[i], def->parameterCount) ||
+            !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
         }
@@ -606,6 +675,22 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
     *gradients += IsWhite(&def->ribbon.color) ? 0 : 1;
 }
 
+// Copies an emitter's steering, its path's points into the compiled
+// emitter so nothing of the host's is kept.
+static void CopySteering(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
+{
+    out->steering = def->steering.enabled ? def->steering : (mvfxSteeringDef){0};
+    const mvfxSteerPath* path = &out->steering.path;
+    for (int32_t i = 0; path->weight > 0.0f && i < path->pointCount; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out->pathPoints[i][k] = def->steering.path.points[3 * i + k];
+        }
+    }
+    out->steering.path.points = nullptr;
+}
+
 // Compiles an emitter's initial values into out, its tables into space.
 static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
                           mvfxCompiledEmitter* out)
@@ -628,6 +713,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
     out->events = def->events;
     out->eventSpawn = def->eventSpawn;
+    CopySteering(def, out);
     out->drawPriority = def->drawPriority;
     out->fixedBounds = def->fixedBounds;
     for (int32_t k = 0; k < 3; ++k)

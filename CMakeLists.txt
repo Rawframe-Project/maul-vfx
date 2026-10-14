@@ -68,6 +68,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/emitter_step.c
     src/event.c
     src/neighbor.c
+    src/steer.c
     src/event_spawn.c
     src/float_mode.c
     src/gradient.c
@@ -150,6 +151,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(sort WHITEBOX)
     maul_add_test(spawn WHITEBOX)
     maul_add_test(step)
+    maul_add_test(steering)
     maul_add_test(trail)
     maul_add_test(value WHITEBOX)
     maul_add_test(velocity_modules WHITEBOX)
