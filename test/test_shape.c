@@ -120,6 +120,23 @@ static void TestSphere(void)
         CHECK(NearMean(sumZ / SAMPLES, 0.0, 2.0), "centered");
     }
 
+    // On the surface the radius is exact, not a cube root's rounding of it
+    // (the cube root of 0.1 cubed comes back an ulp short).
+    mvfxShape surface = BaseShape(mvfx_shapeSphere);
+    surface.radius = 0.1f;
+    surface.thickness = 0.0f;
+    mvfxCompiledShape onSurface = Compile(&surface);
+    bool exact = true;
+    for (uint32_t i = 0; i < 2000; ++i)
+    {
+        mvfxShapeSample s = Sample(&onSurface, i);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            exact = exact && s.position[k] == 0.1f * s.normal[k];
+        }
+    }
+    CHECK(exact, "a surface's radius exact");
+
     mvfxShape hemi = BaseShape(mvfx_shapeHemisphere);
     hemi.radius = 1.0f;
     hemi.thickness = 0.0f;
@@ -384,11 +401,16 @@ static void TestCone(void)
     cone.angle = 0.0f;
     compiled = Compile(&cone);
     sumHeight = 0.0;
+    int64_t heights[4] = {0};
     for (uint32_t i = 0; i < SAMPLES; ++i)
     {
-        sumHeight += (double)Sample(&compiled, i).position[2];
+        float z = Sample(&compiled, i).position[2];
+        sumHeight += (double)z;
+        int32_t bin = (int32_t)(z * 2.0f);
+        heights[bin > 3 ? 3 : bin] += 1;
     }
     CHECK(NearMean(sumHeight / SAMPLES, 1.0, 2.0 / sqrt(12.0)), "a cylinder's heights uniform");
+    CHECK(EvenBins(heights, 4), "a cylinder's heights in even bins");
 }
 
 static void TestTurnAndOffset(void)
