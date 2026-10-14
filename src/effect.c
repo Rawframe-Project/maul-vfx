@@ -192,6 +192,15 @@ static bool AreCollisionsValid(const mvfxEmitterDef* def)
             return false;
         }
     }
+    for (int32_t k = 0; def->fixedBounds && k < 3; ++k)
+    {
+        if (!(fabsf(def->boundsMin[k]) <= MVFX_MAX_EXTENT) ||
+            !(fabsf(def->boundsMax[k]) <= MVFX_MAX_EXTENT) ||
+            !(def->boundsMin[k] <= def->boundsMax[k]))
+        {
+            return false;
+        }
+    }
     // Events of known kinds, collisions only where they collide.
     bool collides = def->collision.enabled || (def->events & mvfx_eventMaskCollision) == 0;
     return def->events <= 7u && collides &&
@@ -453,6 +462,13 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
     out->events = def->events;
     out->eventSpawn = def->eventSpawn;
+    out->drawPriority = def->drawPriority;
+    out->fixedBounds = def->fixedBounds;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->boundsMin[k] = def->boundsMin[k];
+        out->boundsMax[k] = def->boundsMax[k];
+    }
     out->eventCapacity = def->events != 0 ? def->eventCapacity : 0;
     out->collision = def->collision;
     out->colliderCount = def->colliderCount;

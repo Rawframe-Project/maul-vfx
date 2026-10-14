@@ -379,6 +379,15 @@ extern "C"
         int32_t eventCapacity;
         // Spawning from another emitter's events.
         mvfxEventSpawn eventSpawn;
+        // Its place in the order emitters are drawn in, lower first
+        // (mvfxContext_OrderEmitters).
+        int32_t drawPriority;
+        // Whether its bounds are a fixed box in its instance's space (each
+        // value finite, at most MVFX_MAX_EXTENT in size, min at most max)
+        // rather than measured from its particles each step.
+        bool fixedBounds;
+        float boundsMin[3];
+        float boundsMax[3];
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second

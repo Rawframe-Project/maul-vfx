@@ -261,6 +261,15 @@ static inline void BuildScene(mvfxContext* context)
     // spawns from the sparks' deaths too, so it steps after them.
     emitters[3].rate = 0.0f;
     emitters[3].capacity = 40;
+    // The sparks draw after the rest, inside a fixed box.
+    emitters[3].drawPriority = 1;
+    emitters[3].fixedBounds = true;
+    emitters[3].boundsMin[0] = -4.0f;
+    emitters[3].boundsMin[1] = -1.0f;
+    emitters[3].boundsMin[2] = -3.0f;
+    emitters[3].boundsMax[0] = 5.0f;
+    emitters[3].boundsMax[1] = 6.0f;
+    emitters[3].boundsMax[2] = 2.0f;
     emitters[3].lifetime = mvfxRangeSource(0.05f, 0.3f);
     emitters[3].velocity.speed = (mvfxRange){0.5f, 1.5f};
     emitters[3].events = mvfx_eventMaskDeath;
@@ -664,9 +673,24 @@ static inline uint64_t HashScene(mvfxContext* context)
             hash = mvfxHashInstance(instance, hash);
             mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
             hash = HashOutput(context, id, instance, hash);
+            mvfxBounds bounds = {0};
+            CHECK(mvfxInstance_GetBounds(context, id, -1, &bounds) == mvfx_success, "scene bounds");
+            hash = mvfxHash64(hash, &bounds.empty, 1);
+            hash = mvfxHash64(hash, bounds.min, (int32_t)sizeof bounds.min);
+            hash = mvfxHash64(hash, bounds.max, (int32_t)sizeof bounds.max);
         }
     }
-    return hash;
+    // The draw order for a view looking down +x past a plane at x = 1490.
+    static const double eye[3] = {1500.0, 3.0, -2.0};
+    const mvfxFrustum frustum = {.planes = {{1, 0, 0, -1490}, {0, 1, 0, 40}}, .planeCount = 2};
+    static mvfxDrawItem items[64];
+    int64_t count = 0;
+    CHECK(mvfxContext_OrderEmitters(context, eye, &frustum, items, 64, &count) == mvfx_success,
+          "scene order");
+    // The twins' six copies hold more than the buffer: its first 64.
+    int64_t kept = count < 64 ? count : 64;
+    hash = mvfxHash64(hash, &count, (int32_t)sizeof count);
+    return mvfxHash64(hash, items, (int32_t)(kept * (int64_t)sizeof items[0]));
 }
 
 #endif

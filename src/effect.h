@@ -184,6 +184,10 @@ typedef struct mvfxCompiledEmitter
     uint8_t events;
     int32_t eventCapacity;
     mvfxEventSpawn eventSpawn;
+    int32_t drawPriority;
+    bool fixedBounds;
+    float boundsMin[3];
+    float boundsMax[3];
     mvfxCollision collision;
     mvfxCollider colliders[MVFX_MAX_COLLIDERS];
     int32_t colliderCount;

@@ -276,6 +276,16 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteParticles( mvfxContext* con
 ```
 Writes a record in a layout for each live particle of an emitter, in the pool's order (oldest first), for a view whose origin positions are made relative to (binary64, each coordinate at most 2^52 in size). A buffer too small takes the first capacity records; the count is always the emitter's live particles.  @param context     The context that owns the instance and the layout. @param instance    The instance. @param emitter     The emitter's index in the effect's def. @param layout      The layout. @param viewOrigin  The view's origin in the world. @param records     The buffer, capacity times the layout's stride bytes; NULL when capacity is 0. @param capacity    The records it holds, at least 0. @param countOut    Receives the records there are. @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout that names nothing live; `mvfx_errorInvalid` for a NULL context, origin or count, an emitter out of range, a negative capacity or a NULL buffer with a capacity, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs (calls that only read a stepped context and write the host's buffers) may run on several threads at once.
 
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxBounds* boundsOut);
+```
+Reads an emitter's bounds in the world after the last step: its fixed box through the instance's transform, or the box of its live particles (measured at the step's end, grown on every side by their largest size component); with emitter -1, the box around every emitter's.  @param context    The context that owns the instance. @param instance   The instance. @param emitter    The emitter's index in the effect's def, or -1. @param boundsOut  Receives the bounds. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3], const mvfxFrustum* frustum, mvfxDrawItem* items, int64_t capacity, int64_t* countOut);
+```
+Lists a view's emitters to draw, in the order to draw them: every live instance's emitters with particles (and, with a frustum, bounds not wholly outside one of its planes), by their effect's draw priority, lower first, then farther first, then by instance slot and emitter index, so the order is fixed for given inputs. A buffer too small takes the first capacity of that order; the count is always all of them.  @param context   The context. @param eye       The view's eye in the world (each coordinate at most 2^52 in size). @param frustum   Its frustum, or NULL to keep every emitter; from 0 to MVFX_MAX_FRUSTUM_PLANES finite planes. @param items     The buffer; NULL when capacity is 0. @param capacity  The items it holds, at least 0. @param countOut  Receives how many emitters there are to draw. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, eye or count, a frustum out of range, a negative capacity or a NULL buffer with a capacity, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
+
 ## `value.h`
 
 Value sources: how a particle's initial values are drawn. Every source is a base times a uniform draw between min and max: the base is 1, a curve or a gradient over the emitter's age, a gradient at a random point, or a parameter of the instance.
@@ -287,4 +297,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-50 functions across 11 headers.
+52 functions across 11 headers.

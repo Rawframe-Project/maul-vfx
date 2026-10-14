@@ -100,6 +100,11 @@ typedef struct mvfxEmitterState
     struct mvfxEvent* events;
     int32_t eventCount;
     uint64_t eventsDropped;
+    // Its particles' box in their space at the step's end, grown by their
+    // largest size; empty with none (or fixed bounds).
+    float boundsMin[3];
+    float boundsMax[3];
+    bool hasBounds;
     // The births its source's events give it this step, in tick order.
     mvfxHostBirth* eventQueue;
     int32_t eventQueueCount;

@@ -158,6 +158,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->queriesDropped = 0;
         state->eventCount = 0;
         state->eventsDropped = 0;
+        state->hasBounds = false;
         state->distanceCarry = 0.0;
         state->distanceDelta = 0.0;
         state->distanceSkip = 0.0;
@@ -210,6 +211,11 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->owed, (int32_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
         hash = HashEvents(state, hash);
+        if (state->hasBounds)
+        {
+            hash = mvfxHash64(hash, state->boundsMin, (int32_t)sizeof state->boundsMin);
+            hash = mvfxHash64(hash, state->boundsMax, (int32_t)sizeof state->boundsMax);
+        }
         const mvfxAttributePlan* plan = &instance->effect->emitters[e].plan;
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {

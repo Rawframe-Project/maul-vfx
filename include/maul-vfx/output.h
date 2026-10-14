@@ -180,6 +180,86 @@ extern "C"
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
         const double viewOrigin[3], void* records, int64_t capacity, int64_t* countOut);
 
+    // A box in the world.
+    typedef struct mvfxBounds
+    {
+        // Whether it holds nothing (an emitter with no particles and no
+        // fixed bounds); min and max are 0 then.
+        bool empty;
+        double min[3];
+        double max[3];
+    } mvfxBounds;
+
+    /// Reads an emitter's bounds in the world after the last step: its
+    /// fixed box through the instance's transform, or the box of its live
+    /// particles (measured at the step's end, grown on every side by their
+    /// largest size component); with emitter -1, the box around every
+    /// emitter's.
+    ///
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param emitter    The emitter's index in the effect's def, or -1.
+    /// @param boundsOut  Receives the bounds.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument or an emitter
+    ///         out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetBounds(mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              int32_t emitter,
+                                                              mvfxBounds* boundsOut);
+
+// The most planes a frustum has.
+#define MVFX_MAX_FRUSTUM_PLANES 8
+
+    // A view's frustum: planes in the world, each n.x + d >= 0 inside it
+    // (n need not be of unit length).
+    typedef struct mvfxFrustum
+    {
+        double planes[MVFX_MAX_FRUSTUM_PLANES][4];
+        int32_t planeCount;
+    } mvfxFrustum;
+
+    // An emitter to draw for a view.
+    typedef struct mvfxDrawItem
+    {
+        mvfxInstanceId instance;
+        int32_t emitter;
+        int32_t priority;
+        // From the eye to its bounds' center.
+        double distance;
+    } mvfxDrawItem;
+
+    /// Lists a view's emitters to draw, in the order to draw them: every
+    /// live instance's emitters with particles (and, with a frustum, bounds
+    /// not wholly outside one of its planes), by their effect's draw
+    /// priority, lower first, then farther first, then by instance slot and
+    /// emitter index, so the order is fixed for given inputs. A buffer too
+    /// small takes the first capacity of that order; the count is always
+    /// all of them.
+    ///
+    /// @param context   The context.
+    /// @param eye       The view's eye in the world (each coordinate at most
+    ///                  2^52 in size).
+    /// @param frustum   Its frustum, or NULL to keep every emitter; from 0 to
+    ///                  MVFX_MAX_FRUSTUM_PLANES finite planes.
+    /// @param items     The buffer; NULL when capacity is 0.
+    /// @param capacity  The items it holds, at least 0.
+    /// @param countOut  Receives how many emitters there are to draw.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, eye or
+    ///         count, a frustum out of range, a negative capacity or a NULL
+    ///         buffer with a capacity, which counts as misuse when the
+    ///         context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult
+    mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3], const mvfxFrustum* frustum,
+                              mvfxDrawItem* items, int64_t capacity, int64_t* countOut);
+
 #ifdef __cplusplus
 }
 #endif

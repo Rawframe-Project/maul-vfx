@@ -146,3 +146,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   particle fields in binary32, binary16, normalized, sRGB and uint32
   formats, and `mvfxInstance_WriteParticles` writing an emitter's
   records for a view; the context gains `limits.layouts`.
+- Bounds and draw order: each emitter's box of its particles measured
+  every step (or `fixedBounds` from its def), read in the world with
+  `mvfxInstance_GetBounds`, and `mvfxContext_OrderEmitters` listing a
+  view's emitters by `drawPriority`, distance, instance and emitter,
+  skipping those outside an optional frustum.

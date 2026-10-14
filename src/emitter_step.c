@@ -7,6 +7,7 @@
 #include "emitter_step.h"
 
 #include "birth.h"
+#include "bounds.h"
 #include "death_heap.h"
 #include "event.h"
 #include "event_spawn.h"
@@ -335,6 +336,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     mvfxRunHostModules(instance, emitter, mvfx_stageAfterMotion);
     RemoveKilled(instance, emitter);
     mvfxWriteSceneQueries(instance, emitter);
+    mvfxMeasureBounds(instance, emitter);
     mvfxEndDistance(instance, emitter);
     instance->emitters[emitter].hostCount = 0;
 }
