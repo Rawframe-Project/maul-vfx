@@ -566,6 +566,8 @@ extern "C"
         uint64_t neighborsCapped;
         // Particles whose contacts in a pass were more than the most.
         uint64_t contactsCapped;
+        // Plexus links past the most an emitter keeps or a particle owns.
+        uint64_t linksDropped;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

@@ -470,6 +470,16 @@ static bool IsPairForceValid(const mvfxEmitterDef* def)
             IsWithin(pair->strength.value, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
 }
 
+// Whether an emitter's plexus links are valid.
+static bool IsPlexusValid(const mvfxPlexusDef* plexus)
+{
+    return !plexus->enabled ||
+           (IsWithin(plexus->distance, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS) &&
+            plexus->maxLinks >= 1 && plexus->maxLinks <= MVFX_MAX_PLEXUS_LINKS &&
+            plexus->maxPerParticle >= 1 && plexus->maxPerParticle <= MVFX_MAX_NEIGHBORS &&
+            IsWithin(plexus->width, 0.0f, MVFX_MAX_EXTENT));
+}
+
 // Whether an emitter's particle contacts are valid.
 static bool AreContactsValid(const mvfxContactDef* contacts)
 {
@@ -613,6 +623,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
             !AreNeighborsValid(def, i) ||
             !IsSteeringValid(&def->emitters[i], def->parameterCount) ||
             !AreContactsValid(&def->emitters[i].contacts) || !IsPairForceValid(&def->emitters[i]) ||
+            !IsPlexusValid(&def->emitters[i].plexus) ||
             !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
@@ -751,6 +762,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->events = def->events;
     out->eventSpawn = def->eventSpawn;
     CopySteering(def, out);
+    out->plexus = def->plexus.enabled ? def->plexus : (mvfxPlexusDef){0};
     out->contacts = def->contacts.enabled ? def->contacts : (mvfxContactDef){0};
     out->drawPriority = def->drawPriority;
     out->fixedBounds = def->fixedBounds;

@@ -405,6 +405,33 @@ extern "C"
         mvfxGradient color;
     } mvfxRibbonDef;
 
+// The most plexus links an emitter keeps a step.
+#define MVFX_MAX_PLEXUS_LINKS (1 << 20)
+
+    // Plexus links: at the end of each step, a line between each two of an
+    // emitter's particles closer than distance, each pair once (owned by the
+    // one born first), drawn as two-point ribbons (mvfxInstance_WritePlexus,
+    // mvfxInstance_ExpandPlexus): straight, the coordinate along from 0 to
+    // 1, facing the eye.
+    typedef struct mvfxPlexusDef
+    {
+        bool enabled;
+        // From MVFX_MIN_NEIGHBOR_RADIUS to MVFX_MAX_NEIGHBOR_RADIUS.
+        float distance;
+        // The most links an emitter keeps, from 1 to MVFX_MAX_PLEXUS_LINKS,
+        // and the most a particle owns, from 1 to MVFX_MAX_NEIGHBORS, in the
+        // particles' order then the grid's; links past either are counted
+        // (mvfxEmitterStats.linksDropped).
+        int32_t maxLinks;
+        int32_t maxPerParticle;
+        // A link point's width over its particle's size X, from 0 to
+        // MVFX_MAX_EXTENT.
+        float width;
+        // Whether a link's colour fades with its length: its alpha times 1
+        // less its length over distance.
+        bool fade;
+    } mvfxPlexusDef;
+
 // The most segments a beam has.
 #define MVFX_MAX_BEAM_SEGMENTS 1024
 
@@ -609,6 +636,8 @@ extern "C"
         mvfxLightDef light;
         // Its ribbons (mvfxInstance_WriteRibbons).
         mvfxRibbonDef ribbon;
+        // Its plexus links.
+        mvfxPlexusDef plexus;
         // A beam through its particles.
         mvfxBeamDef beam;
         // How its particles expand into quads.

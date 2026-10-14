@@ -210,3 +210,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Forces between particles: an emitter's `pairForce` (each neighbor
   within a radius pulls or pushes at a strength curved over their
   distance).
+- Plexus links: an emitter's `plexus` (each pair of its particles within
+  a distance once, caps per particle and per emitter counted in
+  `linksDropped`, a width and a fade by length), written as two-point
+  ribbons by `mvfxInstance_WritePlexus` and as strips by
+  `mvfxInstance_ExpandPlexus`.

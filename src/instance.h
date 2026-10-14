@@ -90,6 +90,16 @@ typedef struct mvfxContactRoom
     float* radii;
 } mvfxContactRoom;
 
+// An emitter's plexus links: a grid of its places at the step's end
+// (keeping no values), and the links found then, pairs of particle
+// indices (the owner first), valid until the next step.
+typedef struct mvfxPlexusRoom
+{
+    mvfxNeighborGrid grid;
+    int32_t* links;
+    int32_t linkCount;
+} mvfxPlexusRoom;
+
 typedef struct mvfxEmitterState
 {
     unsigned char* particles;
@@ -140,6 +150,9 @@ typedef struct mvfxEmitterState
     // Its contacts' room, and the particles whose contacts were capped.
     mvfxContactRoom contacts;
     uint64_t contactsCapped;
+    // Its plexus links, and those dropped.
+    mvfxPlexusRoom plexus;
+    uint64_t linksDropped;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

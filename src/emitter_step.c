@@ -16,6 +16,7 @@
 #include "host_module.h"
 #include "integrate.h"
 #include "neighbor.h"
+#include "plexus.h"
 #include "scene_query.h"
 #include "spawn.h"
 #include "steer.h"
@@ -399,6 +400,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     RemoveKilled(instance, emitter);
     StrikeBeam(instance, emitter);
     mvfxPlaceBeam(instance, emitter);
+    mvfxFindLinks(instance, emitter);
     mvfxWriteSceneQueries(instance, emitter);
     mvfxMeasureBounds(instance, emitter);
     mvfxEndDistance(instance, emitter);

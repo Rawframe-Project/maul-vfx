@@ -35,6 +35,11 @@ typedef struct EmitterAt
     size_t contactIndex;
     size_t contactPlaces;
     uint32_t contactMask;
+    size_t plexusTable;
+    size_t plexusKeys;
+    size_t plexusIndex;
+    size_t plexusLinks;
+    uint32_t plexusMask;
 } EmitterAt;
 
 // The entries of a grid's table at a capacity: a power of two at least
@@ -137,6 +142,24 @@ static void AddContacts(mvfxLayout* layout, const mvfxCompiledEmitter* compiled,
     at->contactPlaces = mvfxLayoutAdd(layout, 7u * (size_t)capacity, sizeof(float), alignof(float));
 }
 
+// Adds an emitter's plexus room to the block, for one with plexus links:
+// its grid and two indices a link.
+static void AddPlexus(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
+                      EmitterAt* at)
+{
+    if (!compiled->plexus.enabled)
+    {
+        return;
+    }
+    uint32_t size = GridTableSize(capacity);
+    at->plexusMask = size - 1u;
+    at->plexusTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
+    at->plexusKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
+    at->plexusIndex = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(int32_t), alignof(int32_t));
+    at->plexusLinks = mvfxLayoutAdd(layout, 2u * (size_t)compiled->plexus.maxLinks, sizeof(int32_t),
+                                    alignof(int32_t));
+}
+
 // Points each emitter's state at its parts of the block, with its
 // capacity at the instance's level.
 static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstCursor* bursts,
@@ -184,6 +207,17 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
             .moved = places + 3u * stride,
             .radii = places + 6u * stride,
         };
+        instance->emitters[e].plexus = (mvfxPlexusRoom){
+            .grid =
+                {
+                    .table = (int32_t*)(block + at[e].plexusTable),
+                    .keys = (uint32_t*)(block + at[e].plexusKeys),
+                    .index = (int32_t*)(block + at[e].plexusIndex),
+                    .capacity = capacities[e],
+                    .mask = at[e].plexusMask,
+                },
+            .links = (int32_t*)(block + at[e].plexusLinks),
+        };
     }
 }
 
@@ -215,6 +249,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         at[e] = AddEmitter(&layout, &effect->emitters[e]);
         AddGrid(&layout, &effect->emitters[e], capacities[e], &at[e]);
         AddContacts(&layout, &effect->emitters[e], capacities[e], &at[e]);
+        AddPlexus(&layout, &effect->emitters[e], capacities[e], &at[e]);
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -287,6 +322,8 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->eventsDropped = 0;
         state->neighborsCapped = 0;
         state->contactsCapped = 0;
+        state->plexus.linkCount = 0;
+        state->linksDropped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;
         state->beamStrike = instance->effect->emitters[e].delay;
@@ -343,6 +380,13 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
         hash = mvfxHash64(hash, &state->neighborsCapped, (int32_t)sizeof state->neighborsCapped);
         hash = mvfxHash64(hash, &state->contactsCapped, (int32_t)sizeof state->contactsCapped);
+        hash = mvfxHash64(hash, &state->linksDropped, (int32_t)sizeof state->linksDropped);
+        hash = mvfxHash64(hash, &state->plexus.linkCount, (int32_t)sizeof state->plexus.linkCount);
+        if (state->plexus.linkCount > 0)
+        {
+            hash = mvfxHash64(hash, state->plexus.links,
+                              2 * state->plexus.linkCount * (int32_t)sizeof(int32_t));
+        }
         hash = HashEvents(state, hash);
         hash = mvfxHash64(hash, &state->ribbonCounter, (int32_t)sizeof state->ribbonCounter);
         hash = mvfxHash64(hash, &state->beamStrike, (int32_t)sizeof state->beamStrike);

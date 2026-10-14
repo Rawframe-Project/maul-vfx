@@ -327,6 +327,14 @@ static inline void BuildScene(mvfxContext* context)
         (mvfxPairForceDef){.enabled = true,
                            .radius = 0.4f,
                            .strength = {.value = -1.5f, .curve = {.keys = nearer, .keyCount = 2}}};
+    // The second links its particles within 0.6, at most 3 each and 64 in
+    // all, fading.
+    emitters[1].plexus = (mvfxPlexusDef){.enabled = true,
+                                         .distance = 0.6f,
+                                         .maxLinks = 64,
+                                         .maxPerParticle = 3,
+                                         .width = 0.2f,
+                                         .fade = true};
     // The second keeps its particles apart, a tenth of their size each.
     emitters[1].contacts = (mvfxContactDef){.enabled = true,
                                             .radiusScale = 0.1f,
@@ -883,6 +891,40 @@ static inline uint64_t HashStrips(mvfxContext* context, mvfxInstanceId id, int32
     return mvfxHash64(hash, indices, (int32_t)(indexCount * (int64_t)sizeof indices[0]));
 }
 
+// Hashes an emitter's plexus links for a view, as points and as strips.
+static inline uint64_t HashPlexus(mvfxContext* context, mvfxInstanceId id, int32_t emitter,
+                                  mvfxLayoutId layout, const mvfxView* view, uint64_t hash)
+{
+    enum
+    {
+        LINKS = 64
+    };
+    static unsigned char points[4 * LINKS * SCENE_RECORD_BYTES];
+    static mvfxRibbon ribbons[LINKS];
+    static uint32_t indices[6 * LINKS];
+    mvfxRibbonBuffers buffers = {
+        .points = points, .pointCapacity = 2 * LINKS, .ribbons = ribbons, .ribbonCapacity = LINKS};
+    int64_t pointCount = 0;
+    int64_t linkCount = 0;
+    CHECK(mvfxInstance_WritePlexus(context, id, emitter, layout, view, &buffers, &pointCount,
+                                   &linkCount) == mvfx_success &&
+              linkCount <= LINKS,
+          "scene plexus");
+    hash = mvfxHash64(hash, points, (int32_t)pointCount * SCENE_RECORD_BYTES);
+    hash = mvfxHash64(hash, ribbons, (int32_t)(linkCount * (int64_t)sizeof ribbons[0]));
+    mvfxExpandBuffers strips = {.vertices = points,
+                                .vertexCapacity = 4 * LINKS,
+                                .indices = indices,
+                                .indexCapacity = 6 * LINKS};
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    CHECK(mvfxInstance_ExpandPlexus(context, id, emitter, layout, view, &strips, &vertexCount,
+                                    &indexCount) == mvfx_success,
+          "scene plexus strips");
+    hash = mvfxHash64(hash, points, (int32_t)vertexCount * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, (int32_t)(indexCount * (int64_t)sizeof indices[0]));
+}
+
 // Hashes every emitter's records of an instance for a view at (1500, 3,
 // -2), through a layout made on the context the first time.
 static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
@@ -915,6 +957,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
         hash = HashRibbons(context, id, e, layout, &view, scratch, hash);
         hash = HashQuads(context, id, e, layout, &view, scratch, hash);
         hash = HashStrips(context, id, e, layout, &view, scratch, hash);
+        hash = HashPlexus(context, id, e, layout, &view, hash);
         static mvfxLight lights[SCENE_RECORDS];
         CHECK(mvfxInstance_WriteLights(context, id, e, &view, lights, SCENE_RECORDS, &count) ==
                       mvfx_success &&

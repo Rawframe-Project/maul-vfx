@@ -44,7 +44,8 @@ event_spawn: instance random space
 neighbor: elementary instance life random
 steer: force instance neighbor space
 contact: appearance instance neighbor
-emitter_step: beam birth bounds death_heap event event_spawn host_module instance contact integrate neighbor scene_query spawn steer
+plexus: instance neighbor
+emitter_step: beam birth bounds death_heap event event_spawn host_module instance contact integrate neighbor plexus scene_query spawn steer
 context: allocator effect grid instance layout mesh slots tasks
 effect_api: context effect float_mode grid grid_api mesh mesh_api slots
 mesh_api: context mesh slots

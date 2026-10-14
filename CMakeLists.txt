@@ -69,6 +69,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/event.c
     src/neighbor.c
     src/contact.c
+    src/plexus.c
     src/steer.c
     src/event_spawn.c
     src/float_mode.c
@@ -144,6 +145,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(neighbor)
     maul_add_test(offscreen)
     maul_add_test(pair_force)
+    maul_add_test(plexus)
     maul_add_test(quality)
     maul_add_test(random WHITEBOX)
     maul_add_test(ribbon)

@@ -31,6 +31,10 @@ typedef struct Chain
     double headPlace[3];
     double length;
     int64_t points;
+    // A plexus link: straight, facing the eye, along from 0 to 1, of the
+    // plexus width, its alpha times fade.
+    bool link;
+    float fade;
 } Chain;
 
 // The particle point j takes its values from: its own, or for the head the
@@ -136,7 +140,7 @@ static void SplinePlace(const Chain* chain, int32_t s, double f, double out[3])
 static int32_t PiecesOf(const Chain* chain, int32_t s)
 {
     const mvfxCompiledEmitter* compiled = chain->compiled;
-    int32_t most = compiled->ribbonPieces;
+    int32_t most = chain->link ? 1 : compiled->ribbonPieces;
     if (most == 1 || compiled->ribbonCosLimits[0] < -1.5f)
     {
         return most;
@@ -211,7 +215,7 @@ static void MeasureChain(Chain* chain)
 {
     chain->points = 0;
     chain->length = 0.0;
-    double before[3];
+    double before[3] = {0.0, 0.0, 0.0};
     double here[3];
     for (Walk walk = FirstWalk(chain); walk.s < chain->count; Advance(chain, &walk))
     {
@@ -255,7 +259,7 @@ static void FrameAt(const Chain* chain, const double before[3], const double her
         across[k] = chain->view->eye[k] - here[k];
     }
     Normalize(way, point->tangent);
-    if (chain->compiled->ribbonFacing == mvfx_ribbonFaceNormal)
+    if (!chain->link && chain->compiled->ribbonFacing == mvfx_ribbonFaceNormal)
     {
         float normal[3];
         mvfxUnmapVector(&chain->source->map, chain->compiled->ribbonNormal, normal);
@@ -300,6 +304,10 @@ static float AlongAt(const Chain* chain, const Walk* walk, float t)
     const mvfxCompiledEmitter* compiled = chain->compiled;
     const mvfxInstance* instance = chain->source->instance;
     float along = t;
+    if (chain->link)
+    {
+        return along;
+    }
     if (compiled->ribbonTexture == mvfx_ribbonTilePerSegment)
     {
         along = (float)walk->s + (float)FractionOf(walk);
@@ -415,11 +423,12 @@ static void WriteChain(const Chain* chain, const Sink* sink, const Totals* at)
                                       : (float)((double)g / (double)(chain->points - 1));
         mvfxRibbonPoint point = {.length = t,
                                  .along = AlongAt(chain, &walk, t),
-                                 .width = mvfxLifeAt(&compiled->ribbonWidth, t),
-                                 .color = {1.0f, 1.0f, 1.0f, 1.0f},
+                                 .width = chain->link ? compiled->plexus.width
+                                                      : mvfxLifeAt(&compiled->ribbonWidth, t),
+                                 .color = {1.0f, 1.0f, 1.0f, chain->link ? chain->fade : 1.0f},
                                  .ribbon = (uint32_t)at->ribbonsWritten};
         FrameAt(chain, before, here, after, &point);
-        if (compiled->ribbonColor != nullptr)
+        if (!chain->link && compiled->ribbonColor != nullptr)
         {
             mvfxGradientTableAt(compiled->ribbonColor, t, point.color);
         }
@@ -509,6 +518,48 @@ static Totals WriteChains(const mvfxInstance* instance, int32_t emitter, const m
     return totals;
 }
 
+// Takes each of an emitter's plexus links as a chain of its two
+// particles.
+static Totals WriteLinks(const mvfxInstance* instance, int32_t emitter, const mvfxView* view,
+                         const Sink* sink)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    const mvfxPlexusRoom* room = &instance->emitters[emitter].plexus;
+    mvfxRecordSource source = mvfxOpenRecordSource(instance, emitter, view->origin);
+    const float* p[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        p[k] = mvfxAttributeArray((mvfxInstance*)instance, emitter,
+                                  (mvfxAttribute)(mvfx_attributePositionX + k));
+    }
+    Totals totals = {0};
+    for (int32_t l = 0; l < room->linkCount; ++l)
+    {
+        const uint32_t particles[2] = {(uint32_t)room->links[2 * l],
+                                       (uint32_t)room->links[2 * l + 1]};
+        float square = 0.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float d = p[k][particles[1]] - p[k][particles[0]];
+            square += d * d;
+        }
+        float fade = 1.0f - sqrtf(square) / compiled->plexus.distance;
+        Chain chain = {.source = &source,
+                       .compiled = compiled,
+                       .view = view,
+                       .particles = particles,
+                       .particleCount = 2,
+                       .count = 2,
+                       .link = true,
+                       .fade = !compiled->plexus.fade ? 1.0f
+                               : fade > 0.0f          ? fade
+                                                      : 0.0f};
+        MeasureChain(&chain);
+        TakeChain(&chain, (uint32_t)l, sink, &totals);
+    }
+    return totals;
+}
+
 bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter, double out[3])
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -534,8 +585,8 @@ bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter, double o
 // *liveOut NULL for an emitter not drawn as ribbons.
 static mvfxResult OpenRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                               mvfxLayoutId layout, const mvfxView* view, bool buffersValid,
-                              const void* scratch, int64_t scratchBytes, mvfxInstance** liveOut,
-                              const mvfxOutputLayout** formatOut)
+                              const void* scratch, int64_t scratchBytes, bool plexus,
+                              mvfxInstance** liveOut, const mvfxOutputLayout** formatOut)
 {
     *liveOut = nullptr;
     mvfxInstance* live = nullptr;
@@ -554,6 +605,11 @@ static mvfxResult OpenRibbons(mvfxContext* context, mvfxInstanceId instance, int
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
+    if (plexus)
+    {
+        *liveOut = live->effect->emitters[emitter].plexus.enabled ? live : nullptr;
+        return mvfx_success;
+    }
     if (live->effect->emitters[emitter].ribbonIds == mvfx_ribbonNone)
     {
         return mvfx_success;
@@ -566,10 +622,11 @@ static mvfxResult OpenRibbons(mvfxContext* context, mvfxInstanceId instance, int
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                     mvfxLayoutId layout, const mvfxView* view,
-                                     const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
-                                     int64_t* ribbonCountOut)
+// The ribbons or plexus links of an emitter as points with a list.
+static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              mvfxLayoutId layout, const mvfxView* view,
+                              const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+                              int64_t* ribbonCountOut, bool plexus)
 {
     if (context == nullptr || view == nullptr || buffers == nullptr || pointCountOut == nullptr ||
         ribbonCountOut == nullptr)
@@ -587,8 +644,9 @@ mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instan
                  mvfxIsBufferValid(buffers->ribbons, buffers->ribbonCapacity, alignof(mvfxRibbon));
     mvfxInstance* live = nullptr;
     const mvfxOutputLayout* format = nullptr;
-    mvfxResult opened = OpenRibbons(context, instance, emitter, layout, view, valid,
-                                    buffers->scratch, buffers->scratchBytes, &live, &format);
+    mvfxResult opened =
+        OpenRibbons(context, instance, emitter, layout, view, valid, buffers->scratch,
+                    buffers->scratchBytes, plexus, &live, &format);
     if (opened != mvfx_success || live == nullptr)
     {
         return opened;
@@ -599,16 +657,18 @@ mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instan
                        .ribbons = buffers->ribbons,
                        .ribbonCapacity = buffers->ribbonCapacity,
                        .scratch = buffers->scratch};
-    Totals totals = WriteChains(live, emitter, view, &sink);
+    Totals totals =
+        plexus ? WriteLinks(live, emitter, view, &sink) : WriteChains(live, emitter, view, &sink);
     *pointCountOut = totals.records;
     *ribbonCountOut = totals.ribbons;
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId instance,
-                                      int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
-                                      const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
-                                      int64_t* indexCountOut)
+// The ribbons or plexus links of an emitter as strips.
+static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              mvfxLayoutId layout, const mvfxView* view,
+                              const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                              int64_t* indexCountOut, bool plexus)
 {
     if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
         indexCountOut == nullptr)
@@ -626,8 +686,9 @@ mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId insta
                  mvfxIsBufferValid(buffers->indices, buffers->indexCapacity, alignof(uint32_t));
     mvfxInstance* live = nullptr;
     const mvfxOutputLayout* format = nullptr;
-    mvfxResult opened = OpenRibbons(context, instance, emitter, layout, view, valid,
-                                    buffers->scratch, buffers->scratchBytes, &live, &format);
+    mvfxResult opened =
+        OpenRibbons(context, instance, emitter, layout, view, valid, buffers->scratch,
+                    buffers->scratchBytes, plexus, &live, &format);
     if (opened != mvfx_success || live == nullptr)
     {
         return opened;
@@ -639,8 +700,45 @@ mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId insta
                        .indices = buffers->indices,
                        .indexCapacity = buffers->indexCapacity,
                        .scratch = buffers->scratch};
-    Totals totals = WriteChains(live, emitter, view, &sink);
+    Totals totals =
+        plexus ? WriteLinks(live, emitter, view, &sink) : WriteChains(live, emitter, view, &sink);
     *vertexCountOut = totals.records;
     *indexCountOut = totals.indices;
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                     mvfxLayoutId layout, const mvfxView* view,
+                                     const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+                                     int64_t* ribbonCountOut)
+{
+    return WritePoints(context, instance, emitter, layout, view, buffers, pointCountOut,
+                       ribbonCountOut, false);
+}
+
+mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId instance,
+                                      int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
+                                      const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                                      int64_t* indexCountOut)
+{
+    return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
+                       indexCountOut, false);
+}
+
+mvfxResult mvfxInstance_WritePlexus(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    mvfxLayoutId layout, const mvfxView* view,
+                                    const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+                                    int64_t* ribbonCountOut)
+{
+    return WritePoints(context, instance, emitter, layout, view, buffers, pointCountOut,
+                       ribbonCountOut, true);
+}
+
+mvfxResult mvfxInstance_ExpandPlexus(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                     mvfxLayoutId layout, const mvfxView* view,
+                                     const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                                     int64_t* indexCountOut)
+{
+    return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
+                       indexCountOut, true);
 }

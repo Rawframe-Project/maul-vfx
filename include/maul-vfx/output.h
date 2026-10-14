@@ -404,6 +404,62 @@ extern "C"
         const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
         int64_t* indexCountOut);
 
+    /// Writes an emitter's plexus links for a view, as two-point ribbons:
+    /// each link the step found (the order it found them) is a ribbon of
+    /// its two particles' records, owner first, its ribbon fields filled as
+    /// a ribbon's (straight, the coordinate along 0 and 1, facing the eye,
+    /// the width the plexus width; its id the link's index), its colour's
+    /// alpha times the fade when the plexus fades. Buffers too small take
+    /// the first links that fit whole; the counts are always all of them, 0
+    /// for an emitter without plexus links. Scratch is not used.
+    ///
+    /// @param context         The context that owns the instance and the
+    ///                        layout.
+    /// @param instance        The instance.
+    /// @param emitter         The emitter's index in the effect's def.
+    /// @param layout          The points' layout.
+    /// @param view            The view.
+    /// @param buffers         The buffers.
+    /// @param pointCountOut   Receives the points there are.
+    /// @param ribbonCountOut  Receives the links there are.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
+    ///         that names nothing live; `mvfx_errorInvalid` for a NULL
+    ///         context, view, buffers or count, a view out of range, an
+    ///         emitter out of range, a negative size or a NULL or misaligned
+    ///         buffer with a size, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WritePlexus(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+        const mvfxView* view, const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+        int64_t* ribbonCountOut);
+
+    /// Expands an emitter's plexus links for a view into triangle strips,
+    /// as mvfxInstance_ExpandRibbons expands ribbons: each link four
+    /// vertices and six indices. Buffers too small take the first whole
+    /// links that fit both; the counts are always all of them. Scratch is
+    /// not used.
+    ///
+    /// @param context         The context that owns the instance and the
+    ///                        layout.
+    /// @param instance        The instance.
+    /// @param emitter         The emitter's index in the effect's def.
+    /// @param layout          The vertices' layout.
+    /// @param view            The view.
+    /// @param buffers         The buffers.
+    /// @param vertexCountOut  Receives the vertices there are.
+    /// @param indexCountOut   Receives the indices there are.
+    /// @return As mvfxInstance_WritePlexus.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ExpandPlexus(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+        const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+        int64_t* indexCountOut);
+
     // A light a particle carries.
     typedef struct mvfxLight
     {

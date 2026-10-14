@@ -215,6 +215,7 @@ typedef struct mvfxCompiledEmitter
     mvfxSteeringDef steering;
     float pathPoints[MVFX_MAX_PATH_POINTS][3];
     mvfxContactDef contacts;
+    mvfxPlexusDef plexus;
     // Its pair force: the radius (0 for none) and the strength over the
     // distance.
     float pairRadius;
