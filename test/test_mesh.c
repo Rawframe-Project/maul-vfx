@@ -77,6 +77,20 @@ static void TestEdgesAndNormals(void)
     CHECK(up, "a flat mesh's normals +Z");
     CHECK(fabs(mesh->triangleSums[2] - 4.0) < 1e-12, "areas summed: 1/2 + 1/2 + 3");
     Free(mesh);
+
+    // Folded at a right angle along the X axis, two triangles of equal area
+    // facing +Z and (by their winding) -Y: their shared vertices' normals
+    // halfway between; the vertex no triangle touches +Z.
+    static const float folded[] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 5, 5};
+    static const uint32_t foldedTriangles[] = {0, 1, 2, 1, 0, 3};
+    mesh = Build(folded, NULL, 5, foldedTriangles, 2, NULL, 0);
+    float half = 0.70710678f;
+    CHECK(fabsf(mesh->normals[0]) <= 1e-6f && fabsf(mesh->normals[1] + half) <= 1e-6f &&
+              fabsf(mesh->normals[2] - half) <= 1e-6f,
+          "a shared vertex's normal the triangles' sum");
+    CHECK(mesh->normals[12] == 0.0f && mesh->normals[13] == 0.0f && mesh->normals[14] == 1.0f,
+          "an untouched vertex's normal +Z");
+    Free(mesh);
 }
 
 static void TestSurfaceByArea(void)
@@ -131,6 +145,14 @@ static void TestSurfaceByArea(void)
         skipped = skipped && p[0] <= 1.0f + 1e-6f;
     }
     CHECK(skipped, "a degenerate triangle never chosen");
+    // Even a draw of exactly 0 passes over a first triangle of no area.
+    static const uint32_t firstFlat[] = {0, 1, 2, 0, 1, 3};
+    mvfxMesh* first = Build(flat, NULL, 5, firstFlat, 2, NULL, 0);
+    float p[3];
+    float n[3];
+    mvfxSampleMesh(first, mvfx_meshSurface, (mvfxWords4){0u, 0u, 0x80000000u, 0x80000000u}, p, n);
+    CHECK(p[2] > 0.0f, "a draw of 0 skips the empty first triangle");
+    Free(first);
     Free(mesh);
 }
 
@@ -293,7 +315,7 @@ static void TestRefusals(void)
     static const float far[] = {0, 0, 0, 2e6f, 0, 0, 0, 1, 0};
     static const float badNormals[] = {0, 0, 3, 0, 0, 1, 0, 0, 1};
     static const uint32_t past[] = {0, 1, 3};
-    for (int32_t field = 0; field < 12; ++field)
+    for (int32_t field = 0; field < 13; ++field)
     {
         mvfxMeshDef def = mvfxDefaultMeshDef();
         def.positions = s_quad;
@@ -335,10 +357,17 @@ static void TestRefusals(void)
         case 10:
             def.normals = badNormals;
             break;
-        default:
+        case 11:
             def.tetrahedra = past;
             def.tetrahedronCount = MVFX_MAX_MESH_ELEMENTS + 1;
             break;
+        default:
+        {
+            static const uint32_t tetrahedron[] = {0, 1, 2, 3};
+            def.tetrahedra = tetrahedron;
+            def.tetrahedronCount = 1;
+            break;
+        }
         }
         mvfxMeshId mesh = {5, 5};
         CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_errorInvalid, "refused");
@@ -385,6 +414,12 @@ static void TestRefusals(void)
     CHECK(mvfxDestroyMesh(NULL, a) == mvfx_errorInvalid, "no context");
     CHECK(mvfxContext_GetMisuse(context) == misuse, "stale ids are not misuse");
     mvfxDestroyContext(context);
+
+    contextDef.limits.meshes = 0;
+    mvfxContext* none = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &none) == mvfx_errorInvalid, "no meshes allowed");
+    contextDef.limits.meshes = 65537;
+    CHECK(mvfxCreateContext(&contextDef, &none) == mvfx_errorInvalid, "too many meshes");
 }
 
 static mvfxEffectDef MeshEffect(mvfxEmitterDef* emitters, mvfxMeshId mesh, mvfxMeshMode mode)
@@ -462,6 +497,18 @@ static void TestThroughTheStep(void)
     CHECK(mvfxContext_GetMisuse(context) == misuse + 2, "counted");
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, (mvfxMeshId){0}) == mvfx_errorStale,
           "a stale mesh");
+    static const uint32_t onlyCells[] = {0, 1, 2, 3};
+    mvfxMeshDef cellsDef = mvfxDefaultMeshDef();
+    cellsDef.positions = raised;
+    cellsDef.vertexCount = 4;
+    cellsDef.tetrahedra = onlyCells;
+    cellsDef.tetrahedronCount = 1;
+    mvfxMeshId cellsOnly = {0};
+    CHECK(mvfxCreateMesh(context, &cellsDef, &cellsOnly) == mvfx_success, "a mesh of cells");
+    misuse = mvfxContext_GetMisuse(context);
+    CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, cellsOnly) == mvfx_errorInvalid,
+          "a surface needs triangles");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 1, "counted");
     CHECK(mvfxInstance_SetEmitterMesh(NULL, instance, 0, solid) == mvfx_errorInvalid, "no context");
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, solid) == mvfx_success, "bound");
     CHECK(mvfxDestroyMesh(context, solid) == mvfx_errorBusy, "busy while an instance uses it");
