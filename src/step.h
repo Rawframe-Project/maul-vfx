@@ -9,6 +9,10 @@
 #define MAUL_VFX_SRC_STEP_H
 
 #include "context.h"
+#include "instance.h"
+
+// Advances one instance by ticks, in the library's float mode.
+void mvfxStepInstance(mvfxInstance* instance, int64_t ticks);
 
 // Advances every live instance by ticks, which the caller has checked.
 void mvfxStepInstances(mvfxContext* context, int64_t ticks);

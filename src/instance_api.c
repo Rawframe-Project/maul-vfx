@@ -298,6 +298,113 @@ mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instan
     return mvfx_success;
 }
 
+// Whether count values from values, of components each, are finite and
+// at most bound in size; true for NULL.
+static bool AreValuesWithin(const float* values, int64_t count, float bound)
+{
+    for (int64_t i = 0; values != nullptr && i < count; ++i)
+    {
+        if (!(fabsf(values[i]) <= bound))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether a spawn request is valid for an emitter with room in its queue.
+static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequest* request)
+{
+    if (request->count < 1 || request->positions == nullptr ||
+        (request->colors != nullptr &&
+         (emitter->plan.present & ((uint64_t)1 << mvfx_attributeColorR)) == 0) ||
+        (request->sizes != nullptr &&
+         (emitter->plan.present & ((uint64_t)1 << mvfx_attributeSizeX)) == 0))
+    {
+        return false;
+    }
+    int64_t count = request->count;
+    for (int64_t i = 0; i < 3 * count; ++i)
+    {
+        if (!(fabs(request->positions[i]) <= 0x1p52))
+        {
+            return false;
+        }
+    }
+    return AreValuesWithin(request->velocities, 3 * count, MVFX_MAX_EXTENT) &&
+           AreValuesWithin(request->colors, 4 * count, MVFX_MAX_VALUE) &&
+           AreValuesWithin(request->sizes, 3 * count, MVFX_MAX_VALUE);
+}
+
+// Copies a request's i-th particle, flagging the values it gives.
+static mvfxHostBirth HostBirthOf(const mvfxSpawnRequest* request, int32_t i)
+{
+    mvfxHostBirth host = {0};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        host.position[k] = request->positions[3 * i + k];
+    }
+    if (request->velocities != nullptr)
+    {
+        host.given |= mvfx_givenVelocity;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            host.velocity[k] = request->velocities[3 * i + k];
+        }
+    }
+    if (request->colors != nullptr)
+    {
+        host.given |= mvfx_givenColor;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            host.color[k] = request->colors[4 * i + k];
+        }
+    }
+    if (request->sizes != nullptr)
+    {
+        host.given |= mvfx_givenSize;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            host.size[k] = request->sizes[3 * i + k];
+        }
+    }
+    return host;
+}
+
+mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              const mvfxSpawnRequest* request)
+{
+    if (context == nullptr || request == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (emitter < 0 || emitter >= live->effect->emitterCount ||
+        !IsSpawnValid(&live->effect->emitters[emitter], request))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    mvfxEmitterState* state = &live->emitters[emitter];
+    if (request->count > live->effect->emitters[emitter].hostSpawnCapacity - state->hostCount)
+    {
+        return mvfx_errorCapacity;
+    }
+    for (int32_t i = 0; i < request->count; ++i)
+    {
+        state->hostQueue[state->hostCount++] = HostBirthOf(request, i);
+    }
+    return mvfx_success;
+}
+
 mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId instance,
                                        int32_t emitter, mvfxMeshId mesh)
 {

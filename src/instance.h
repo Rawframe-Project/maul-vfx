@@ -31,6 +31,24 @@ typedef struct mvfxBurstCursor
     uint64_t firing;
 } mvfxBurstCursor;
 
+// A particle the host queued: its place in the emitter's space, and the
+// values it gave (each flag set for a value given).
+typedef struct mvfxHostBirth
+{
+    double position[3];
+    float velocity[3];
+    float color[4];
+    float size[3];
+    uint8_t given;
+} mvfxHostBirth;
+
+enum
+{
+    mvfx_givenVelocity = 1,
+    mvfx_givenColor = 2,
+    mvfx_givenSize = 4,
+};
+
 // One emitter's particles, counts and cursors. Live particles are [0,
 // count) of each attribute array, oldest first; owed is also the serial
 // of the next birth.
@@ -48,6 +66,9 @@ typedef struct mvfxEmitterState
     // A world-space emitter's anchor: its particles' positions are offsets
     // from it.
     double anchor[3];
+    // The particles the host queued for the next step.
+    mvfxHostBirth* hostQueue;
+    int32_t hostCount;
     // Distance births: the fraction of one the travel owes past the last
     // (below 1), and the step's plan: the integral the step adds, how many
     // of its births are refused at the start (a jump past the capacity),
@@ -75,6 +96,8 @@ typedef struct mvfxBirth
     int64_t tick;
     int64_t batchIndex;
     int64_t batchCount;
+    // The host's queued particle it is, or -1.
+    int32_t host;
 } mvfxBirth;
 
 // An instance.

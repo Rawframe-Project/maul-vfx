@@ -105,6 +105,16 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetTransform(mvfxContext* contex
 Sets where an instance is at the end of the next step. Over that step it moves in a line from where it was (the rotation by normalized interpolation, the scale linearly), and births within it take its place at their ticks; its travel feeds spawning by distance and its velocity what emitters inherit. A teleport moves it at once instead, with no travel and no velocity. How births along the way fall depends on how often the host moves it, which is the host's to keep the same.  @param context   The context that owns the instance. @param instance  The instance. @param origin    Its place in the world, each value finite and at most 2^52 in size. @param rotation  A unit quaternion (x, y, z, w), within 0.001 of unit length. @param scale     From MVFX_MIN_SCALE to MVFX_MAX_SCALE. @param teleport  Whether it jumps there. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or a value out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxSpawnRequest* request);
+```
+Queues particles for an emitter of an instance: they are born at the start of the next step, before its other births, each taking a serial and room like any birth (refused, and counted, when the emitter is full). The values are copied: the arrays may be released at once.  @param context   The context that owns the instance. @param instance  The instance. @param emitter   The emitter's index in the effect's def. @param request   The particles. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, an emitter index out of range, a count below 1, a value out of range, or a color or size for an emitter that does not store it, which counts as misuse when the context is given; `mvfx_errorCapacity` when the emitter's host queue lacks the room (none of the particles is queued). @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, double seconds, double stepSeconds, int32_t maxSteps, double* remainingOut);
+```
+Advances one instance alone toward a span, in steps of a given length (the last shorter), at most a number of steps a call, so a host can spread a long prewarm over frames: it calls again with the span left until none is. The same calls reach the same state. Spans and steps are rounded once to ticks.  @param context       The context that owns the instance. @param instance      The instance. @param seconds       The span left, from 0 to 1e9. @param stepSeconds   Each step's length, above 0 and at most MVFX_MAX_STEP_SECONDS, one tick at least. @param maxSteps      At least 1. @param remainingOut  Receives the span left, exactly as ticks; may be NULL. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context or a value out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxMeshId mesh);
 ```
 Makes an emitter of an instance spawn from another mesh, as each character's skinned mesh feeds its own instance. The mesh may not be destroyed while the instance is bound to it.  @param context   The context that owns the instance and the mesh. @param instance  The instance. @param emitter   The index, in the effect's def, of an emitter with a mesh shape. @param mesh      The mesh, with the triangles or tetrahedra the emitter's mesh mode needs. @return `mvfx_success`; `mvfx_errorStale` for an instance or a mesh id that names nothing live; `mvfx_errorInvalid` for a NULL context, an emitter index out of range or without a mesh shape, or a mesh without the elements its mode needs, which counts as misuse. @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -189,4 +199,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-32 functions across 8 headers.
+34 functions across 8 headers.

@@ -132,6 +132,10 @@ extern "C"
         // The share of the instance's velocity its particles set off with,
         // from -10 to 10; only in world space.
         float inheritVelocity;
+        // How many particles the host may queue for it between steps
+        // (mvfxInstance_Spawn), from 0 to its capacity, reserved in each
+        // instance.
+        int32_t hostSpawnCapacity;
         // Each particle's life in seconds, required: a range above 0 and at
         // most MVFX_MAX_LIFETIME; a curve's or a parameter's lives are held
         // to one tick at least and MVFX_MAX_LIFETIME at most.

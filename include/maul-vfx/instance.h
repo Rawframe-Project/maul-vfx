@@ -142,6 +142,75 @@ extern "C"
                                                                  const float rotation[4],
                                                                  float scale, bool teleport);
 
+    // Particles the host adds to an emitter of an instance. Positions are
+    // in the emitter's space: the world's for a world-space emitter, the
+    // instance's for a local one. Values not given are drawn from the
+    // emitter's sources, a velocity in the instance's space at the given
+    // place (so the shape's normal and its center are away from the
+    // instance's origin).
+    typedef struct mvfxSpawnRequest
+    {
+        // From 1 to the room the emitter's host queue has left.
+        int32_t count;
+        // x, y and z for each particle, finite and at most 2^52 in size.
+        const double* positions;
+        // Optional: x, y and z for each, finite and at most MVFX_MAX_EXTENT in
+        // size, in the emitter's space; NULL to draw them.
+        const float* velocities;
+        // Optional: red, green, blue and alpha for each, finite and at most
+        // MVFX_MAX_VALUE in size, for an emitter that stores color.
+        const float* colors;
+        // Optional: x, y and z for each likewise, for an emitter that stores
+        // size.
+        const float* sizes;
+    } mvfxSpawnRequest;
+
+    /// Queues particles for an emitter of an instance: they are born at the
+    /// start of the next step, before its other births, each taking a serial
+    /// and room like any birth (refused, and counted, when the emitter is
+    /// full). The values are copied: the arrays may be released at once.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in the effect's def.
+    /// @param request   The particles.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, an emitter
+    ///         index out of range, a count below 1, a value out of range, or
+    ///         a color or size for an emitter that does not store it, which
+    ///         counts as misuse when the context is given;
+    ///         `mvfx_errorCapacity` when the emitter's host queue lacks the
+    ///         room (none of the particles is queued).
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Spawn(mvfxContext* context,
+                                                          mvfxInstanceId instance, int32_t emitter,
+                                                          const mvfxSpawnRequest* request);
+
+    /// Advances one instance alone toward a span, in steps of a given length
+    /// (the last shorter), at most a number of steps a call, so a host can
+    /// spread a long prewarm over frames: it calls again with the span left
+    /// until none is. The same calls reach the same state. Spans and steps
+    /// are rounded once to ticks.
+    ///
+    /// @param context       The context that owns the instance.
+    /// @param instance      The instance.
+    /// @param seconds       The span left, from 0 to 1e9.
+    /// @param stepSeconds   Each step's length, above 0 and at most
+    ///                      MVFX_MAX_STEP_SECONDS, one tick at least.
+    /// @param maxSteps      At least 1.
+    /// @param remainingOut  Receives the span left, exactly as ticks; may be
+    ///                      NULL.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context or a value out
+    ///         of range, which counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Prewarm(mvfxContext* context,
+                                                            mvfxInstanceId instance, double seconds,
+                                                            double stepSeconds, int32_t maxSteps,
+                                                            double* remainingOut);
+
     /// Makes an emitter of an instance spawn from another mesh, as each
     /// character's skinned mesh feeds its own instance. The mesh may not be
     /// destroyed while the instance is bound to it.

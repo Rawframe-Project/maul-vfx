@@ -299,6 +299,11 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxEmitterState* state = &instance->emitters[emitter];
+    if (state->hostCount > 0)
+    {
+        // The host's queue is born at the next step, stopped or not.
+        return true;
+    }
     if (instance->stopTick != INT64_MAX && instance->clock >= instance->stopTick)
     {
         return false;

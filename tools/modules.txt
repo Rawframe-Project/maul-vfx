@@ -17,7 +17,7 @@ effect: allocator curve curve_integral shape value velocity
 instance: allocator effect
 death_heap:
 spawn: instance random
-birth: elementary instance random shape value velocity
+birth: direction elementary instance random shape value velocity
 emitter_step: birth death_heap instance spawn
 context: allocator effect instance mesh slots tasks
 effect_api: context effect float_mode mesh mesh_api slots

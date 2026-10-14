@@ -69,3 +69,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   that rebase after 1,024 units) or local space, spawn by distance
   travelled (`ratePerDistance`) and inherit a share of the instance's
   velocity.
+- Host spawns and prewarm: `mvfxInstance_Spawn` queues particles for an
+  emitter (places, and optional velocities, colors and sizes) into a
+  queue each instance reserves (`hostSpawnCapacity`), born first at the
+  next step's start; `mvfxInstance_Prewarm` steps one instance in steps
+  of a given length, at most a number a call, returning the span left.

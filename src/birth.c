@@ -5,6 +5,7 @@
 
 #include "birth.h"
 
+#include "direction.h"
 #include "elementary.h"
 #include "random.h"
 #include "shape.h"
@@ -219,24 +220,100 @@ static void PlaceInWorld(const mvfxInstance* instance, int32_t emitter, int64_t 
     }
 }
 
+// A host's queued particle: its place as given, made an offset from the
+// anchor in world space; its velocity as given, or drawn in the instance's
+// space at the place (its direction from the instance's origin standing
+// for the shape's normal and center) and turned, scaled and given the
+// inherited share as a shape's birth is.
+static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
+                           float position[3], float velocity[3])
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    const mvfxEmitterState* state = &instance->emitters[emitter];
+    const mvfxHostBirth* host = &state->hostQueue[birth->host];
+    bool world = compiled->space == mvfx_spaceWorld;
+    mvfxTransform transform;
+    mvfxTransformAt(instance, birth->tick, &transform);
+    mvfxShapeSample sample = {0};
+    float relative[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        position[k] = (float)(world ? host->position[k] - state->anchor[k] : host->position[k]);
+        relative[k] =
+            world ? (float)((host->position[k] - transform.origin[k]) / (double)transform.scale)
+                  : position[k];
+    }
+    // Into the instance's space: the conjugate turn undoes the rotation.
+    const float* q = transform.rotation;
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    if (world)
+    {
+        mvfxRotate(inverse, relative, sample.local);
+    }
+    else
+    {
+        sample.local[0] = relative[0];
+        sample.local[1] = relative[1];
+        sample.local[2] = relative[2];
+    }
+    if ((host->given & mvfx_givenVelocity) != 0)
+    {
+        velocity[0] = host->velocity[0];
+        velocity[1] = host->velocity[1];
+        velocity[2] = host->velocity[2];
+        return;
+    }
+    mvfxWords4 words = Draw(instance, emitter, VELOCITY_SALT, birth->serial);
+    sample.normal[0] = sample.local[0];
+    sample.normal[1] = sample.local[1];
+    sample.normal[2] = sample.local[2];
+    if (!mvfxNormalize(sample.normal))
+    {
+        mvfxRandomDirection(words.z, words.y, sample.normal);
+    }
+    mvfxDrawVelocity(&compiled->velocity, &sample, words, velocity);
+    if (world)
+    {
+        float scaled[3] = {velocity[0] * transform.scale, velocity[1] * transform.scale,
+                           velocity[2] * transform.scale};
+        mvfxRotate(transform.rotation, scaled, velocity);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            velocity[k] += compiled->inheritVelocity * instance->velocity[k];
+        }
+    }
+}
+
 void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
                      float inverseLife)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     int32_t at = instance->emitters[emitter].count;
-    mvfxWords4 shapeWords = Draw(instance, emitter, SHAPE_SALT, birth->serial);
-    double age = (double)(birth->tick - compiled->delay) / (double)MVFX_TICKS_PER_SECOND;
-    float arc =
-        mvfxArcFraction(&compiled->shape, shapeWords, age, birth->batchIndex, birth->batchCount);
-    mvfxShapeSample sample;
-    mvfxSampleShape(&compiled->shape, instance->emitters[emitter].mesh, shapeWords, arc, &sample);
+    float position[3];
     float velocity[3];
-    mvfxDrawVelocity(&compiled->velocity, &sample,
-                     Draw(instance, emitter, VELOCITY_SALT, birth->serial), velocity);
-    float position[3] = {sample.position[0], sample.position[1], sample.position[2]};
-    if (compiled->space == mvfx_spaceWorld)
+    if (birth->host >= 0)
     {
-        PlaceInWorld(instance, emitter, birth->tick, position, velocity);
+        PlaceHostBirth(instance, emitter, birth, position, velocity);
+    }
+    else
+    {
+        mvfxWords4 shapeWords = Draw(instance, emitter, SHAPE_SALT, birth->serial);
+        double age = (double)(birth->tick - compiled->delay) / (double)MVFX_TICKS_PER_SECOND;
+        float arc = mvfxArcFraction(&compiled->shape, shapeWords, age, birth->batchIndex,
+                                    birth->batchCount);
+        mvfxShapeSample sample;
+        mvfxSampleShape(&compiled->shape, instance->emitters[emitter].mesh, shapeWords, arc,
+                        &sample);
+        mvfxDrawVelocity(&compiled->velocity, &sample,
+                         Draw(instance, emitter, VELOCITY_SALT, birth->serial), velocity);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            position[k] = sample.position[k];
+        }
+        if (compiled->space == mvfx_spaceWorld)
+        {
+            PlaceInWorld(instance, emitter, birth->tick, position, velocity);
+        }
     }
     Store(instance, emitter, mvfx_attributePositionX, at, position[0]);
     Store(instance, emitter, mvfx_attributePositionY, at, position[1]);
@@ -251,5 +328,17 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
     Store(instance, emitter, mvfx_attributeInverseLife, at, inverseLife);
     StoreWord(instance, emitter, mvfx_attributeSerial, at, (uint32_t)birth->serial);
     AppendValues(instance, emitter, birth, at);
+    if (birth->host >= 0)
+    {
+        const mvfxHostBirth* host = &instance->emitters[emitter].hostQueue[birth->host];
+        if ((host->given & mvfx_givenColor) != 0)
+        {
+            StoreVector(instance, emitter, mvfx_attributeColorR, 4, at, host->color);
+        }
+        if ((host->given & mvfx_givenSize) != 0)
+        {
+            StoreVector(instance, emitter, mvfx_attributeSizeX, 3, at, host->size);
+        }
+    }
     instance->emitters[emitter].count = at + 1;
 }

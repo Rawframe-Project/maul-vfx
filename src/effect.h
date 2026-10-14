@@ -134,6 +134,7 @@ typedef struct mvfxCompiledEmitter
     mvfxSimulationSpace space;
     float ratePerDistance;
     float inheritVelocity;
+    int32_t hostSpawnCapacity;
     mvfxCompiledScalar lifetime;
     mvfxCompiledShape shape;
     mvfxCompiledVelocity velocity;

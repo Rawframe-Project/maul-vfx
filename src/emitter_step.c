@@ -86,7 +86,7 @@ static bool BirthsFit(const mvfxInstance* instance, int32_t emitter)
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int64_t tick = 0;
-    int64_t count = 0;
+    int64_t count = instance->emitters[emitter].hostCount;
     while (count <= room)
     {
         int64_t next = mvfxNextBirths(&births, instance->clock, &tick);
@@ -104,6 +104,18 @@ static bool BirthsFit(const mvfxInstance* instance, int32_t emitter)
 static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
+    for (int32_t h = 0; h < state->hostCount; ++h)
+    {
+        uint64_t k = state->owed;
+        state->owed = mvfxSaturatingAdd(state->owed, 1);
+        int64_t start = instance->stepStart;
+        float inverseLife = mvfxInverseLifeOf(instance, emitter, k, start);
+        if (AgeAt(instance->clock, start) * inverseLife < 1.0f)
+        {
+            mvfxBirth birth = {k, start, h, state->hostCount, h};
+            mvfxAppendBirth(instance, emitter, &birth, inverseLife);
+        }
+    }
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int64_t tick = 0;
@@ -117,7 +129,7 @@ static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
             float inverseLife = mvfxInverseLifeOf(instance, emitter, k, tick);
             if (AgeAt(instance->clock, tick) * inverseLife < 1.0f)
             {
-                mvfxBirth birth = {k, tick, i, count};
+                mvfxBirth birth = {k, tick, i, count, -1};
                 mvfxAppendBirth(instance, emitter, &birth, inverseLife);
             }
         }
@@ -145,6 +157,25 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     }
     mvfxBuildDeathHeap(&heap);
     int32_t accepted = 0;
+    // The host's particles first, at the step's start, where nothing has
+    // yet died.
+    int64_t start = instance->stepStart;
+    for (int32_t h = 0; h < state->hostCount; ++h)
+    {
+        uint64_t k = state->owed;
+        state->owed = mvfxSaturatingAdd(state->owed, 1);
+        if (heap.count >= compiled->capacity)
+        {
+            state->refused = mvfxSaturatingAdd(state->refused, 1);
+            continue;
+        }
+        int64_t death = mvfxDeathTick(start, mvfxInverseLifeOf(instance, emitter, k, start));
+        mvfxPushDeath(&heap, death);
+        if (death > instance->clock)
+        {
+            instance->acceptedScratch[accepted++] = (mvfxBirth){k, start, h, state->hostCount, h};
+        }
+    }
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int64_t tick = 0;
@@ -161,7 +192,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
             mvfxPushDeath(&heap, death);
             if (death > instance->clock)
             {
-                instance->acceptedScratch[accepted] = (mvfxBirth){k, tick, i, count};
+                instance->acceptedScratch[accepted] = (mvfxBirth){k, tick, i, count, -1};
                 ++accepted;
             }
         }
@@ -191,4 +222,5 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
         BirthsInTickOrder(instance, emitter);
     }
     mvfxEndDistance(instance, emitter);
+    instance->emitters[emitter].hostCount = 0;
 }

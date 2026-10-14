@@ -89,29 +89,33 @@ static void EndStep(mvfxInstance* instance)
     instance->stepDistance = 0.0;
 }
 
+void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
+{
+    // A finished instance holds nothing and spawns nothing; whether it is
+    // is known at the step's start, before births up to the new clock are
+    // owed.
+    bool finished = mvfxIsInstanceFinished(instance);
+    BeginStep(instance, ticks);
+    if (!finished)
+    {
+        for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+        {
+            mvfxStepEmitter(instance, e);
+        }
+    }
+    EndStep(instance);
+}
+
 static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
 {
     const StepWork* work = taskContext;
     for (int32_t i = startIndex; i < endIndex; ++i)
     {
         mvfxInstance* instance = work->instances->slots[i].object;
-        if (instance == nullptr)
+        if (instance != nullptr)
         {
-            continue;
+            mvfxStepInstance(instance, work->ticks);
         }
-        // A finished instance holds nothing and spawns nothing; whether it
-        // is is known at the step's start, before births up to the new
-        // clock are owed.
-        bool finished = mvfxIsInstanceFinished(instance);
-        BeginStep(instance, work->ticks);
-        if (!finished)
-        {
-            for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
-            {
-                mvfxStepEmitter(instance, e);
-            }
-        }
-        EndStep(instance);
     }
 }
 
@@ -156,5 +160,46 @@ mvfxResult mvfxContext_Step(mvfxContext* context, double seconds)
     int64_t ticks = mvfxSecondsToTicks(seconds);
     mvfxLeaveFloatMode(mode);
     mvfxStepInstances(context, ticks);
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, double seconds,
+                                double stepSeconds, int32_t maxSteps, double* remainingOut)
+{
+    if (remainingOut != nullptr)
+    {
+        *remainingOut = 0.0;
+    }
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    mvfxFloatMode mode = mvfxEnterFloatMode();
+    bool valid = seconds >= 0.0 && seconds <= 1e9 && stepSeconds > 0.0 &&
+                 stepSeconds <= MVFX_MAX_STEP_SECONDS && maxSteps >= 1;
+    int64_t left = valid ? mvfxSecondsToTicks(seconds) : 0;
+    int64_t step = valid ? mvfxSecondsToTicks(stepSeconds) : 0;
+    if (!valid || step < 1)
+    {
+        mvfxLeaveFloatMode(mode);
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    for (int32_t i = 0; i < maxSteps && left > 0; ++i)
+    {
+        int64_t ticks = left < step ? left : step;
+        mvfxStepInstance(live, ticks);
+        left -= ticks;
+    }
+    mvfxLeaveFloatMode(mode);
+    if (remainingOut != nullptr)
+    {
+        *remainingOut = (double)left / (double)MVFX_TICKS_PER_SECOND;
+    }
     return mvfx_success;
 }

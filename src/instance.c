@@ -29,6 +29,12 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
         mvfxLayoutAdd(&layout, (size_t)largest, sizeof(mvfxBirth), alignof(mvfxBirth));
     size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
                                     alignof(mvfxBurstCursor));
+    size_t queuesAt[MVFX_MAX_EMITTERS] = {0};
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        queuesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].hostSpawnCapacity,
+                                    sizeof(mvfxHostBirth), alignof(mvfxHostBirth));
+    }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
         particlesAt[e] = mvfxLayoutAdd(&layout, effect->emitters[e].plan.blockBytes, 1,
@@ -71,6 +77,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             .particles = block + particlesAt[e],
             .bursts = &bursts[effect->emitters[e].firstBurst],
             .mesh = effect->emitters[e].shape.mesh,
+            .hostQueue = (mvfxHostBirth*)(block + queuesAt[e]),
         };
     }
     mvfxResetInstance(instance);
@@ -94,6 +101,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->owed = 0;
         state->refused = 0;
         state->rate = (mvfxRateCursor){0};
+        state->hostCount = 0;
         state->distanceCarry = 0.0;
         state->distanceDelta = 0.0;
         state->distanceSkip = 0.0;
