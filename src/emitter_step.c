@@ -94,8 +94,7 @@ int64_t mvfxDeathTick(int64_t birth, float inverseLife)
 // counted on a copy of the cursors, up to the room there is.
 static bool BirthsFit(const mvfxInstance* instance, int32_t emitter)
 {
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    int64_t room = compiled->capacity - instance->emitters[emitter].count;
+    int64_t room = instance->emitters[emitter].capacity - instance->emitters[emitter].count;
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int64_t tick = 0;
@@ -227,7 +226,6 @@ static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
 static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDeathHeap* heap,
                                 int64_t limit, int32_t* next, int32_t* accepted)
 {
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
     for (; *next < state->eventQueueCount && state->eventQueue[*next].tick <= limit; ++*next)
     {
@@ -235,7 +233,7 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
         (void)mvfxPopDeathsBy(heap, tick);
         uint64_t k = state->owed;
         state->owed = mvfxSaturatingAdd(state->owed, 1);
-        if (heap->count >= compiled->capacity)
+        if (heap->count >= instance->emitters[emitter].capacity)
         {
             state->refused = mvfxSaturatingAdd(state->refused, 1);
             continue;
@@ -256,7 +254,6 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
 // it, and stay until their death ticks.
 static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
 {
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
     const uint32_t* birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow);
     const uint32_t* birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh);
@@ -276,7 +273,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     {
         uint64_t k = state->owed;
         state->owed = mvfxSaturatingAdd(state->owed, 1);
-        if (heap.count >= compiled->capacity)
+        if (heap.count >= instance->emitters[emitter].capacity)
         {
             state->refused = mvfxSaturatingAdd(state->refused, 1);
             continue;
@@ -298,7 +295,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     {
         AcceptEventBirthsBy(instance, emitter, &heap, tick, &next, &accepted);
         (void)mvfxPopDeathsBy(&heap, tick);
-        int64_t room = compiled->capacity - heap.count;
+        int64_t room = instance->emitters[emitter].capacity - heap.count;
         int64_t taken = count < room ? count : room;
         for (int64_t i = 0; i < taken; ++i)
         {
@@ -363,6 +360,15 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
 
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
 {
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (state->capacity == 0)
+    {
+        // Left out at the instance's quality level: the host's spawns are
+        // refused, nothing else happens.
+        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)state->hostCount);
+        state->hostCount = 0;
+        return;
+    }
     mvfxBeginEvents(instance, emitter);
     mvfxPlanDistance(instance, emitter);
     mvfxResolveEmitter(instance, emitter);

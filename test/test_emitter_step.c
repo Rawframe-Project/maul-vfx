@@ -118,10 +118,10 @@ static void TestLivesPastTwoToThe32(void)
     uint64_t first = (uint64_t)1 << 32u;
     lateInstance->emitters[0].owed = first;
     lateInstance->emitters[0].rate.next = first;
-    lateInstance->clock = mvfxRateBirthTick(emitter, 0, first) - 1;
-    int64_t span = mvfxRateBirthTick(emitter, 0, 7);
+    lateInstance->clock = mvfxRateBirthTick(emitter, 1.0f, 0, first) - 1;
+    int64_t span = mvfxRateBirthTick(emitter, 1.0f, 0, 7);
     CHECK(mvfxContext_StepTicks(early, span) == mvfx_success, "early step");
-    int64_t lateSpan = mvfxRateBirthTick(emitter, 0, first + 7) - lateInstance->clock;
+    int64_t lateSpan = mvfxRateBirthTick(emitter, 1.0f, 0, first + 7) - lateInstance->clock;
     CHECK(mvfxContext_StepTicks(late, lateSpan) == mvfx_success, "late step");
     const mvfxInstance* earlyInstance = FirstInstance(early);
     CHECK(earlyInstance->emitters[0].count == 8 && lateInstance->emitters[0].count == 8,

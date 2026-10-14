@@ -25,6 +25,10 @@ struct mvfxContext
     // How many instances the context has created, which seeds those whose
     // def gives no seed.
     uint64_t instancesCreated;
+    // The particles its instances hold, against limits.particles (0 for no
+    // budget).
+    int64_t particlesHeld;
+    int64_t particleBudget;
     // Atomic: outputs for several views may count it at once.
     _Atomic uint64_t misuse;
 };

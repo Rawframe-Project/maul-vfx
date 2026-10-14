@@ -386,7 +386,9 @@ mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId
         return found;
     }
     const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
-    *bytesOut = NeedsScratch(compiled) ? (int64_t)compiled->capacity * MVFX_SORT_BYTES_PER_ITEM : 0;
+    *bytesOut = NeedsScratch(compiled)
+                    ? (int64_t)live->emitters[emitter].capacity * MVFX_SORT_BYTES_PER_ITEM
+                    : 0;
     return mvfx_success;
 }
 

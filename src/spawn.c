@@ -12,9 +12,16 @@
 // The salt that sets bursts' draws apart from any other module's.
 #define BURST_SALT 0x42525354u
 
-int64_t mvfxRateBirthTick(const mvfxCompiledEmitter* emitter, uint64_t loop, uint64_t j)
+int64_t mvfxRateBirthTick(const mvfxCompiledEmitter* emitter, float scale, uint64_t loop,
+                          uint64_t j)
 {
-    double reach = (double)j + 1.0 - (double)loop * emitter->loopIntegral;
+    if (!(scale > 0.0f))
+    {
+        return MVFX_NO_TICK;
+    }
+    // The j-th birth of a rate times scale comes where the rate's own
+    // integral reaches (j + 1) / scale.
+    double reach = ((double)j + 1.0) / (double)scale - (double)loop * emitter->loopIntegral;
     double ticks = 0.0;
     if (emitter->rateCurve == nullptr)
     {
@@ -55,7 +62,8 @@ static bool IsPastLoops(const mvfxCompiledEmitter* emitter, uint64_t loop)
 
 // The tick of the rate's next birth, moving its cursor past loops it has
 // no more births in; MVFX_NO_TICK when none starts by limit.
-static int64_t PeekRate(const mvfxCompiledEmitter* emitter, mvfxRateCursor* cursor, int64_t limit)
+static int64_t PeekRate(const mvfxCompiledEmitter* emitter, float scale, mvfxRateCursor* cursor,
+                        int64_t limit)
 {
     if (emitter->rate <= 0.0f)
     {
@@ -72,7 +80,7 @@ static int64_t PeekRate(const mvfxCompiledEmitter* emitter, mvfxRateCursor* curs
         {
             return MVFX_NO_TICK;
         }
-        int64_t tick = mvfxRateBirthTick(emitter, cursor->loop, cursor->next);
+        int64_t tick = mvfxRateBirthTick(emitter, scale, cursor->loop, cursor->next);
         if (emitter->duration == 0)
         {
             return tick == MVFX_NO_TICK ? MVFX_NO_TICK : start + tick;
@@ -171,7 +179,10 @@ static int64_t BurstCount(const mvfxInstance* instance, int32_t emitter, int32_t
         return 0;
     }
     uint64_t span = (uint64_t)(burst->maxCount - burst->minCount) + 1;
-    return burst->minCount + (int64_t)(((uint64_t)words.x * span) >> 32u);
+    int64_t count = burst->minCount + (int64_t)(((uint64_t)words.x * span) >> 32u);
+    // A quality level's rate scale, rounded to nearest, halves up.
+    float scale = instance->rateScale;
+    return scale == 1.0f ? count : (int64_t)floor((double)count * (double)scale + 0.5);
 }
 
 void mvfxOpenBirths(const mvfxInstance* instance, int32_t emitter, mvfxBirths* births)
@@ -205,7 +216,7 @@ int64_t mvfxNextBirths(mvfxBirths* births, int64_t limit, int64_t* tickOut)
                 which = b;
             }
         }
-        int64_t rateTick = PeekRate(emitter, &births->rate, limit);
+        int64_t rateTick = PeekRate(emitter, instance->rateScale, &births->rate, limit);
         if (rateTick < best)
         {
             best = rateTick;
@@ -259,7 +270,8 @@ void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
-    state->distanceDelta = instance->stepDistance * (double)compiled->ratePerDistance;
+    state->distanceDelta =
+        instance->stepDistance * (double)compiled->ratePerDistance * (double)instance->rateScale;
     state->distanceSkip = 0.0;
     state->distanceTake = 0;
     state->distanceNext = 0;
@@ -268,7 +280,7 @@ void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
     {
         return;
     }
-    double capacity = (double)compiled->capacity;
+    double capacity = (double)instance->emitters[emitter].capacity;
     double take = owed < capacity ? owed : capacity;
     state->distanceTake = (uint64_t)take;
     state->distanceSkip = owed - take;
@@ -299,6 +311,11 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxEmitterState* state = &instance->emitters[emitter];
+    if (state->capacity == 0)
+    {
+        // Left out at the instance's quality level.
+        return false;
+    }
     if (state->hostCount > 0)
     {
         // The host's queue is born at the next step, stopped or not.
@@ -329,7 +346,8 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
     if (compiled->duration > 0)
     {
         // Every loop adds the rate's integral and starts the bursts again.
-        bool rateSpawns = compiled->rate > 0.0f && compiled->loopIntegral > 0.0;
+        bool rateSpawns =
+            compiled->rate > 0.0f && compiled->loopIntegral > 0.0 && instance->rateScale > 0.0f;
         bool burstSpawns = false;
         for (int32_t b = 0; b < compiled->burstCount; ++b)
         {
@@ -339,7 +357,7 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
         }
         return rateSpawns || burstSpawns;
     }
-    if (mvfxRateBirthTick(compiled, 0, state->rate.next) != MVFX_NO_TICK)
+    if (mvfxRateBirthTick(compiled, instance->rateScale, 0, state->rate.next) != MVFX_NO_TICK)
     {
         return true;
     }

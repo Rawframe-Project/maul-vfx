@@ -49,9 +49,10 @@ host defines, mesh indices and lights, sorted for a view), ribbons
 through particles (tessellated, textured, facing the camera or a
 normal), trails pinned to their sources and beams struck along curves,
 sprites and ribbons expanded into quads and strips for renderers that
-cannot instance, bounds and the draw order are in place, and quality
-and budgets come next.
-It has 58 public functions.
+cannot instance, bounds and the draw order, quality levels and the
+context's particle budget are in place, and off-screen policies come
+next.
+It has 60 public functions.
 
 ## Building
 

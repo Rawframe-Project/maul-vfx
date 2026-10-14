@@ -65,6 +65,10 @@ enum
 typedef struct mvfxEmitterState
 {
     unsigned char* particles;
+    // Its capacity at the instance's quality level (0 for an emitter left
+    // out), and the bytes of each of its arrays.
+    int32_t capacity;
+    size_t arrayBytes;
     int32_t count;
     uint64_t owed;
     uint64_t refused;
@@ -166,6 +170,11 @@ typedef struct mvfxInstance
     // The clock at the start of the step being taken.
     int64_t stepStart;
     uint32_t seed;
+    // Its quality level, the rate scale it gives, and the particles its
+    // emitters' capacities hold, which count against the context's budget.
+    int32_t quality;
+    float rateScale;
+    int64_t particles;
     int64_t clock;
     // No birth past this tick; INT64_MAX until the instance is stopped.
     int64_t stopTick;
@@ -199,8 +208,16 @@ static inline uint64_t mvfxSaturatingAdd(uint64_t a, uint64_t b)
 
 // Creates an instance of a compiled effect in one block from allocator;
 // NULL when the allocator fails or the block's size does not fit.
-mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* transform,
-                                      uint32_t seed, const mvfxAllocator* allocator);
+mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
+                                      const mvfxTransform* transform, uint32_t seed,
+                                      const mvfxAllocator* allocator);
+
+// An emitter's capacity at a quality level: its own times the level's
+// scale, rounded down and at least 1 (a beam's whole); 0 when left out.
+int32_t mvfxCapacityAt(const mvfxEffect* effect, int32_t emitter, int32_t quality);
+
+// The particles an effect's emitters hold at a quality level.
+int64_t mvfxParticlesAt(const mvfxEffect* effect, int32_t quality);
 
 // The instance's transform at a tick of the step being taken.
 void mvfxTransformAt(const mvfxInstance* instance, int64_t tick, mvfxTransform* out);
@@ -217,7 +234,8 @@ static inline void* mvfxAttributeArray(const mvfxInstance* instance, int32_t emi
                                        mvfxAttribute attribute)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    return instance->emitters[emitter].particles + compiled->plan.offsets[attribute];
+    const mvfxEmitterState* state = &instance->emitters[emitter];
+    return state->particles + (size_t)compiled->plan.slots[attribute] * state->arrayBytes;
 }
 
 // A hash of everything an instance's step decides: its clock, each

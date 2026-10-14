@@ -72,8 +72,11 @@ static void TestPlans(void)
         CHECK(e->rate == (float)i * 3.0f && e->lifetime.max == 2.0f + (float)i, "values copied");
         CHECK(e->plan.present[0] == s_expected[i] && e->plan.present[1] == 0,
               "the attributes the emitter uses");
-        size_t arrayBytes = (size_t)e->paddedCapacity * sizeof(float);
+        CHECK(mvfxArrayBytes(e->capacity) == (size_t)e->paddedCapacity * sizeof(float) &&
+                  mvfxArrayBytes(e->capacity) % MVFX_ATTRIBUTE_ALIGNMENT == 0,
+              "arrays padded and aligned");
         int32_t stored = 0;
+        uint64_t taken = 0;
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
             if (!mvfxHasAttribute(&e->plan, a))
@@ -81,20 +84,12 @@ static void TestPlans(void)
                 continue;
             }
             ++stored;
-            CHECK(e->plan.offsets[a] % MVFX_ATTRIBUTE_ALIGNMENT == 0, "each array aligned");
-            CHECK(e->plan.offsets[a] + arrayBytes <= e->plan.blockBytes, "inside the block");
-            for (int32_t b = a + 1; b < MVFX_ATTRIBUTE_COUNT; ++b)
-            {
-                if (!mvfxHasAttribute(&e->plan, b))
-                {
-                    continue;
-                }
-                bool apart = e->plan.offsets[a] + arrayBytes <= e->plan.offsets[b] ||
-                             e->plan.offsets[b] + arrayBytes <= e->plan.offsets[a];
-                CHECK(apart, "arrays do not overlap");
-            }
+            uint8_t slot = e->plan.slots[a];
+            CHECK(slot < e->plan.arrayCount && ((taken >> slot) & 1u) == 0,
+                  "a slot of its own in the block");
+            taken |= (uint64_t)1 << slot;
         }
-        CHECK(e->plan.blockBytes == (size_t)stored * arrayBytes, "no room for the unused");
+        CHECK(e->plan.arrayCount == stored, "no room for the unused");
     }
     mvfxReleaseEffect(effect, &allocator);
 }

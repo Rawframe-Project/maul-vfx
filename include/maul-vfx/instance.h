@@ -49,6 +49,10 @@ extern "C"
         // the context created its instances, so the same calls give the same
         // particles.
         uint32_t seed;
+        // The quality level it asks for, from 0 (the full one) to its
+        // effect's level count; it plays at the first level from this one
+        // whose particles fit the context's budget.
+        int32_t quality;
     } mvfxInstanceDef;
 
 // The least and greatest scale of an instance.
@@ -561,6 +565,20 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Restart(mvfxContext* context,
                                                             mvfxInstanceId instance);
+
+    /// Reads the quality level an instance plays at.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param levelOut  Receives its level: 0 the full one.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, which counts
+    ///         as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetQuality(mvfxContext* context,
+                                                               mvfxInstanceId instance,
+                                                               int32_t* levelOut);
 
     /// Ends an emitter's current ribbon, so its next births begin another:
     /// advances its ribbon counter (mvfx_ribbonOne), as a teleport does for

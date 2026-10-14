@@ -47,6 +47,10 @@ extern "C"
         int32_t grids;
         // Output layouts that exist at once, from 1 to 65,536.
         int32_t layouts;
+        // The particles all its instances' emitters may hold at once (the
+        // sum of their capacities at their quality levels), from 1 to 2^40;
+        // 0 for no budget.
+        int64_t particles;
     } mvfxContextLimits;
 
     // How a context is made. Build it with mvfxDefaultContextDef.
@@ -130,6 +134,16 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
+
+    /// Returns the particles the context's instances hold against its
+    /// budget: the sum of their emitters' capacities at their quality
+    /// levels.
+    ///
+    /// @param context  The context.
+    /// @return The particles held now.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_API int64_t mvfxContext_GetParticles(const mvfxContext* context);
 
 #ifdef __cplusplus
 }

@@ -64,6 +64,7 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter);
 // The tick in a loop of the j-th rate birth (from 0), at least 0, when the
 // loops before it owed their whole integrals; MVFX_NO_TICK when the rate
 // never reaches it; before the running maximum is taken.
-int64_t mvfxRateBirthTick(const mvfxCompiledEmitter* emitter, uint64_t loop, uint64_t j);
+int64_t mvfxRateBirthTick(const mvfxCompiledEmitter* emitter, float scale, uint64_t loop,
+                          uint64_t j);
 
 #endif

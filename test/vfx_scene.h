@@ -358,6 +358,12 @@ static inline void BuildScene(mvfxContext* context)
     static const float beamEnd[4] = {3.0f, 1.0f, 2.0f, 0.0f};
     def.parameters = beamEnd;
     def.parameterCount = 1;
+    // A lower level: 60 percent of the capacity, 70 percent of the rate,
+    // no sparks.
+    static const mvfxQualityLevel lower = {
+        .capacityScale = 0.6f, .rateScale = 0.7f, .omitted = 1u << 3u};
+    def.qualityLevels = &lower;
+    def.qualityLevelCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "scene effect");
     // An effect of emitter lives: a rate curve over loops, delayed and
@@ -565,6 +571,8 @@ static inline void BuildScene(mvfxContext* context)
         instanceDef.effect = effect;
         instanceDef.origin[0] = 1000.0 * (double)i;
         instanceDef.seed = i == 3 ? 0 : 0xABCDu + (uint32_t)i;
+        // The third plays at the effect's lower level.
+        instanceDef.quality = i == 2 ? 1 : 0;
         mvfxInstanceId instance = {0};
         CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
               "scene instance");

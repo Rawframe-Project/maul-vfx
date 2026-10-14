@@ -46,6 +46,11 @@ uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
 ```
 Returns how many calls the context refused as misuse: invalid arguments against it. Stale ids are not misuse.  @param context  The context. @return The count since the context was created. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+```c
+int64_t mvfxContext_GetParticles(const mvfxContext* context);
+```
+Returns the particles the context's instances hold against its budget: the sum of their emitters' capacities at their quality levels.  @param context  The context. @return The particles held now. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ## `effect.h`
 
 Effects: what an effect's emitters spawn and how their particles live, stated once in a def and compiled when the effect is created. An effect never changes after; instances of it play it.
@@ -209,6 +214,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Restart(mvfxContext* context, mv
 Plays an instance again from its start: its particles are removed, its clock and counts return to 0 and a stop is lifted. Its seed is kept, so the same steps play the same particles again.  @param context   The context that owns the instance. @param instance  The instance. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance, int32_t* levelOut);
+```
+Reads the quality level an instance plays at.  @param context   The context that owns the instance. @param instance  The instance. @param levelOut  Receives its level: 0 the full one. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter);
 ```
 Ends an emitter's current ribbon, so its next births begin another: advances its ribbon counter (mvfx_ribbonOne), as a teleport does for every emitter drawn as ribbons. Emitters not drawn as ribbons are left alone.  @param context   The context that owns the instance. @param instance  The instance. @param emitter   The emitter's index in the effect's def, or -1 for all. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -327,4 +337,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-58 functions across 11 headers.
+60 functions across 11 headers.

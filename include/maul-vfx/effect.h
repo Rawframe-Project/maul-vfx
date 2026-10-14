@@ -474,6 +474,23 @@ extern "C"
         float stretch;
     } mvfxSpriteDef;
 
+// The most quality levels an effect has below its full one.
+#define MVFX_MAX_QUALITY_LEVELS 8
+
+    // A quality level of an effect: what it scales and leaves out.
+    typedef struct mvfxQualityLevel
+    {
+        // Each emitter's capacity times this, rounded down and at least 1
+        // (a beam's kept whole); above 0 and at most 1.
+        float capacityScale;
+        // Each emitter's rate, distance rate and burst counts times this
+        // (counts rounded to nearest, halves up); from 0 to 1.
+        float rateScale;
+        // Bit e leaves emitter e out: it has no particles, spawns nothing,
+        // and the host's spawns into it are refused and counted.
+        uint64_t omitted;
+    } mvfxQualityLevel;
+
 // The most meshes an emitter's particles choose from.
 #define MVFX_MAX_MESH_INDEX 65536
 
@@ -656,6 +673,13 @@ extern "C"
         // at most MVFX_MAX_PARAMETERS, NULL when parameterCount is 0.
         const float* parameters;
         int32_t parameterCount;
+        // Its quality levels below the full one: level 0 is the def as given,
+        // level k from 1 is qualityLevels[k - 1], each meant to cost less
+        // than the one before; from 0 to MVFX_MAX_QUALITY_LEVELS, NULL when
+        // qualityLevelCount is 0. An instance plays at one level, chosen at
+        // its creation (mvfxInstanceDef.quality and the context's budget).
+        const mvfxQualityLevel* qualityLevels;
+        int32_t qualityLevelCount;
     } mvfxEffectDef;
 
 // The cookie of an effect def, which its default sets and

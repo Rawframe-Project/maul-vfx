@@ -90,12 +90,27 @@ static uint32_t SeedFromOrdinal(uint64_t ordinal)
     return seed != 0 ? seed : 1;
 }
 
+// The first quality level from asked whose particles fit the context's
+// budget beside those its instances hold; -1 for none.
+static int32_t LevelThatFits(const mvfxContext* context, const mvfxEffect* effect, int32_t asked)
+{
+    for (int32_t q = asked; q < effect->qualityLevelCount; ++q)
+    {
+        if (context->particleBudget == 0 ||
+            context->particlesHeld + mvfxParticlesAt(effect, q) <= context->particleBudget)
+        {
+            return q;
+        }
+    }
+    return -1;
+}
+
 mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
                               mvfxInstanceId* instanceOut)
 {
     if (context == nullptr || instanceOut == nullptr || def == nullptr ||
         def->cookie != MVFX_INSTANCE_DEF_COOKIE || !IsOriginValid(def->origin) ||
-        !IsRotationValid(def->rotation) || !IsScaleValid(def->scale))
+        !IsRotationValid(def->rotation) || !IsScaleValid(def->scale) || def->quality < 0)
     {
         if (instanceOut != nullptr)
         {
@@ -113,18 +128,30 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
     {
         return mvfx_errorStale;
     }
+    if (def->quality >= effect->qualityLevelCount)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
     if (context->instances.firstFree == 0)
     {
         return mvfx_errorLimit;
     }
+    int32_t quality = LevelThatFits(context, effect, def->quality);
+    if (quality < 0)
+    {
+        return mvfx_errorCapacity;
+    }
     uint32_t seed = def->seed != 0 ? def->seed : SeedFromOrdinal(context->instancesCreated);
     mvfxTransform transform = MakeTransform(def->origin, def->rotation, def->scale);
-    mvfxInstance* instance = mvfxCreateInstanceBlock(effect, &transform, seed, &context->allocator);
+    mvfxInstance* instance =
+        mvfxCreateInstanceBlock(effect, quality, &transform, seed, &context->allocator);
     if (instance == nullptr)
     {
         return mvfx_errorCapacity;
     }
     context->instancesCreated += 1;
+    context->particlesHeld += instance->particles;
     effect->users += 1;
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -165,6 +192,7 @@ mvfxResult mvfxDestroyInstance(mvfxContext* context, mvfxInstanceId instance)
         mesh != nullptr ? (void)(mesh->users -= 1) : (void)0;
     }
     HoldHostGrids(live, -1);
+    context->particlesHeld -= live->particles;
     mvfxReleaseInstance(live, &context->allocator);
     mvfxFreeSlot(&context->instances, instance.index1);
     return mvfx_success;
@@ -645,5 +673,25 @@ mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instan
         return mvfx_errorInvalid;
     }
     BreakRibbons(live, emitter);
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance, int32_t* levelOut)
+{
+    if (context == nullptr || levelOut == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    *levelOut = 0;
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    *levelOut = live->quality;
     return mvfx_success;
 }

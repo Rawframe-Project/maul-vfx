@@ -454,6 +454,29 @@ static bool OrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITT
     return true;
 }
 
+// Whether an effect's quality levels are valid: a count in range, scales
+// in range, and only its own emitters left out.
+static bool AreQualityLevelsValid(const mvfxEffectDef* def)
+{
+    if (def->qualityLevelCount < 0 || def->qualityLevelCount > MVFX_MAX_QUALITY_LEVELS ||
+        (def->qualityLevelCount > 0 && def->qualityLevels == nullptr))
+    {
+        return false;
+    }
+    uint64_t own =
+        def->emitterCount >= 64 ? ~(uint64_t)0 : ((uint64_t)1 << (uint32_t)def->emitterCount) - 1u;
+    for (int32_t q = 0; q < def->qualityLevelCount; ++q)
+    {
+        const mvfxQualityLevel* level = &def->qualityLevels[q];
+        if (!(level->capacityScale > 0.0f && level->capacityScale <= 1.0f) ||
+            !IsWithin(level->rateScale, 0.0f, 1.0f) || (level->omitted & ~own) != 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE || def->emitters == nullptr ||
@@ -462,7 +485,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
         return false;
     }
     if (def->parameterCount < 0 || def->parameterCount > MVFX_MAX_PARAMETERS ||
-        (def->parameterCount > 0 && def->parameters == nullptr))
+        (def->parameterCount > 0 && def->parameters == nullptr) || !AreQualityLevelsValid(def))
     {
         return false;
     }
@@ -524,21 +547,18 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     }
 }
 
-// The plan of an emitter's attributes, each padded and aligned.
-static mvfxAttributePlan PlanAttributes(const mvfxEmitterDef* def, int32_t paddedCapacity)
+// The plan of an emitter's attributes: a slot for each it stores.
+static mvfxAttributePlan PlanAttributes(const mvfxEmitterDef* def)
 {
     mvfxAttributePlan plan = {0};
     StoreAttributes(def, &plan);
-    mvfxLayout layout = {0};
     for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
     {
         if (mvfxHasAttribute(&plan, a))
         {
-            plan.offsets[a] = mvfxLayoutAdd(&layout, (size_t)paddedCapacity, sizeof(float),
-                                            MVFX_ATTRIBUTE_ALIGNMENT);
+            plan.slots[a] = (uint8_t)plan.arrayCount++;
         }
     }
-    plan.blockBytes = layout.size;
     return plan;
 }
 
@@ -696,7 +716,7 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
         .delay = mvfxSecondsToTicks((double)source->startDelay),
         .duration = mvfxSecondsToTicks((double)source->duration),
         .loops = source->duration > 0.0f ? source->loops : 0,
-        .plan = PlanAttributes(source, padded),
+        .plan = PlanAttributes(source),
         .space = source->space,
         .ratePerDistance = source->ratePerDistance,
         .inheritVelocity = source->inheritVelocity,
@@ -755,6 +775,12 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         .blockAlignment = layout.alignment,
     };
     effect->parameterCount = def->parameterCount;
+    effect->qualityLevels[0] = (mvfxQualityLevel){.capacityScale = 1.0f, .rateScale = 1.0f};
+    for (int32_t q = 0; q < def->qualityLevelCount; ++q)
+    {
+        effect->qualityLevels[q + 1] = def->qualityLevels[q];
+    }
+    effect->qualityLevelCount = def->qualityLevelCount + 1;
     for (int32_t p = 0; p < def->parameterCount; ++p)
     {
         for (int32_t c = 0; c < 4; ++c)

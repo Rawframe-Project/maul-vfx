@@ -100,14 +100,25 @@ static_assert(MVFX_ATTRIBUTE_COUNT <= 64 * MVFX_ATTRIBUTE_WORDS, "attribute set 
 #define MVFX_ATTRIBUTE_PADDING 16
 
 // Which attributes an emitter stores, and where each array lies in the
-// block of the emitter's particles.
+// block of an instance's particles of the emitter: array slot a, each
+// array its padded capacity's floats (a multiple of 64 bytes, so every
+// array is aligned).
 typedef struct mvfxAttributePlan
 {
     // Bit a % 64 of word a / 64 set for each attribute a stored.
     uint64_t present[MVFX_ATTRIBUTE_WORDS];
-    size_t offsets[MVFX_ATTRIBUTE_COUNT];
-    size_t blockBytes;
+    uint8_t slots[MVFX_ATTRIBUTE_COUNT];
+    int32_t arrayCount;
 } mvfxAttributePlan;
+
+// The bytes of each of an emitter's arrays at a capacity: padded to a
+// multiple of MVFX_ATTRIBUTE_PADDING particles.
+static inline size_t mvfxArrayBytes(int32_t capacity)
+{
+    int32_t padded =
+        (capacity + MVFX_ATTRIBUTE_PADDING - 1) / MVFX_ATTRIBUTE_PADDING * MVFX_ATTRIBUTE_PADDING;
+    return (size_t)padded * sizeof(float);
+}
 
 // Whether a plan stores an attribute.
 static inline bool mvfxHasAttribute(const mvfxAttributePlan* plan, int32_t attribute)
@@ -241,6 +252,9 @@ typedef struct mvfxEffect
     // Its parameters' defaults.
     float parameters[MVFX_MAX_PARAMETERS][4];
     int32_t parameterCount;
+    // Its quality levels, level 0 the full one; levels from 1 as given.
+    mvfxQualityLevel qualityLevels[MVFX_MAX_QUALITY_LEVELS + 1];
+    int32_t qualityLevelCount;
     size_t blockBytes;
     size_t blockAlignment;
     // The instances playing it, which keep it from being destroyed.

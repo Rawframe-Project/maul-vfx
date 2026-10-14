@@ -55,9 +55,63 @@ static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compi
     };
 }
 
-mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* transform,
-                                      uint32_t seed, const mvfxAllocator* allocator)
+int32_t mvfxCapacityAt(const mvfxEffect* effect, int32_t emitter, int32_t quality)
 {
+    const mvfxQualityLevel* level = &effect->qualityLevels[quality];
+    const mvfxCompiledEmitter* compiled = &effect->emitters[emitter];
+    if (((level->omitted >> (uint32_t)emitter) & 1u) != 0)
+    {
+        return 0;
+    }
+    if (compiled->beam.enabled)
+    {
+        return compiled->capacity;
+    }
+    int32_t scaled = (int32_t)floor((double)compiled->capacity * (double)level->capacityScale);
+    return scaled > 1 ? scaled : 1;
+}
+
+int64_t mvfxParticlesAt(const mvfxEffect* effect, int32_t quality)
+{
+    int64_t particles = 0;
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        particles += mvfxCapacityAt(effect, e, quality);
+    }
+    return particles;
+}
+
+// Points each emitter's state at its parts of the block, with its
+// capacity at the instance's level.
+static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstCursor* bursts,
+                        const size_t particlesAt[], const EmitterAt at[],
+                        const int32_t capacities[])
+{
+    const mvfxEffect* effect = instance->effect;
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        instance->emitters[e] = (mvfxEmitterState){
+            .particles = block + particlesAt[e],
+            .capacity = capacities[e],
+            .arrayBytes = mvfxArrayBytes(capacities[e]),
+            .bursts = &bursts[effect->emitters[e].firstBurst],
+            .mesh = effect->emitters[e].shape.mesh,
+            .hostQueue = (mvfxHostBirth*)(block + at[e].queue),
+            .forces = (mvfxResolvedForce*)(block + at[e].forces),
+            .killRules = (mvfxResolvedKillRule*)(block + at[e].rules),
+            .colliders = (mvfxResolvedCollider*)(block + at[e].colliders),
+            .queries = (mvfxSceneQuery*)(block + at[e].queries),
+            .events = (mvfxEvent*)(block + at[e].events),
+            .eventQueue = (mvfxHostBirth*)(block + at[e].eventQueue),
+        };
+    }
+}
+
+mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
+                                      const mvfxTransform* transform, uint32_t seed,
+                                      const mvfxAllocator* allocator)
+{
+    int32_t capacities[MVFX_MAX_EMITTERS] = {0};
     mvfxLayout layout = {0};
     (void)mvfxLayoutAdd(&layout, 1, sizeof(mvfxInstance), MVFX_ATTRIBUTE_ALIGNMENT);
     size_t statesAt = mvfxLayoutAdd(&layout, (size_t)effect->emitterCount, sizeof(mvfxEmitterState),
@@ -66,7 +120,8 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
     int32_t largest = 0;
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
-        largest = effect->emitters[e].capacity > largest ? effect->emitters[e].capacity : largest;
+        capacities[e] = mvfxCapacityAt(effect, e, quality);
+        largest = capacities[e] > largest ? capacities[e] : largest;
     }
     size_t deathsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
     size_t acceptedAt =
@@ -81,8 +136,8 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
-        particlesAt[e] = mvfxLayoutAdd(&layout, effect->emitters[e].plan.blockBytes, 1,
-                                       MVFX_ATTRIBUTE_ALIGNMENT);
+        particlesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].plan.arrayCount,
+                                       mvfxArrayBytes(capacities[e]), MVFX_ATTRIBUTE_ALIGNMENT);
     }
     if (layout.overflow)
     {
@@ -102,6 +157,9 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
         .from = *transform,
         .to = *transform,
         .seed = seed,
+        .quality = quality,
+        .rateScale = effect->qualityLevels[quality].rateScale,
+        .particles = mvfxParticlesAt(effect, quality),
         .emitters = (mvfxEmitterState*)(block + statesAt),
         .deathScratch = (int64_t*)(block + deathsAt),
         .acceptedScratch = (mvfxBirth*)(block + acceptedAt),
@@ -115,22 +173,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             instance->parameters[p][c] = effect->parameters[p][c];
         }
     }
-    mvfxBurstCursor* bursts = (mvfxBurstCursor*)(block + burstsAt);
-    for (int32_t e = 0; e < effect->emitterCount; ++e)
-    {
-        instance->emitters[e] = (mvfxEmitterState){
-            .particles = block + particlesAt[e],
-            .bursts = &bursts[effect->emitters[e].firstBurst],
-            .mesh = effect->emitters[e].shape.mesh,
-            .hostQueue = (mvfxHostBirth*)(block + at[e].queue),
-            .forces = (mvfxResolvedForce*)(block + at[e].forces),
-            .killRules = (mvfxResolvedKillRule*)(block + at[e].rules),
-            .colliders = (mvfxResolvedCollider*)(block + at[e].colliders),
-            .queries = (mvfxSceneQuery*)(block + at[e].queries),
-            .events = (mvfxEvent*)(block + at[e].events),
-            .eventQueue = (mvfxHostBirth*)(block + at[e].eventQueue),
-        };
-    }
+    StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, capacities);
     mvfxResetInstance(instance);
     return instance;
 }

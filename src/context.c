@@ -33,7 +33,8 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || def->limits.effects < 1 ||
         def->limits.effects > 65536 || def->limits.instances < 1 || def->limits.instances > 65536 ||
         def->limits.meshes < 1 || def->limits.meshes > 65536 || def->limits.grids < 1 ||
-        def->limits.grids > 65536 || def->limits.layouts < 1 || def->limits.layouts > 65536)
+        def->limits.grids > 65536 || def->limits.layouts < 1 || def->limits.layouts > 65536 ||
+        def->limits.particles < 0 || def->limits.particles > ((int64_t)1 << 40))
     {
         return mvfx_errorInvalid;
     }
@@ -45,6 +46,7 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
     *context = (mvfxContext){
         .allocator = def->allocator,
         .tasks = {def->enqueueTask, def->finishTask, def->userTaskContext},
+        .particleBudget = def->limits.particles,
     };
     mvfxSlots* tables[5] = {&context->effects, &context->instances, &context->meshes,
                             &context->grids, &context->layouts};
@@ -119,6 +121,11 @@ void mvfxDestroyContext(mvfxContext* context)
     }
     mvfxReleaseSlots(&context->layouts, &allocator);
     mvfxRelease(&allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
+}
+
+int64_t mvfxContext_GetParticles(const mvfxContext* context)
+{
+    return context->particlesHeld;
 }
 
 uint64_t mvfxContext_GetMisuse(const mvfxContext* context)
