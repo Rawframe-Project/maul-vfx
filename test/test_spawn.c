@@ -275,6 +275,32 @@ static void TestBurstCountsAndChances(void)
     CHECK(fabs(owed - 2560.0) < 5.0 * sqrt(1024.0 * 11.25), "about half the firings spawn");
     mvfxDestroyContext(scene.context);
 
+    // Firing 23,834,702 of this seed's first burst draws a chance of exactly
+    // 0 (found by a search): a chance of 0 still does not spawn. A second
+    // burst far ahead keeps the emitter from finishing.
+    mvfxBurst zero[2] = {
+        {.time = 0.0f,
+         .minCount = 1,
+         .maxCount = 1,
+         .cycles = 0,
+         .interval = MVFX_MIN_DURATION,
+         .probability = 0.0f},
+        {.time = MVFX_MAX_LIFETIME, .minCount = 1, .maxCount = 1, .cycles = 1, .probability = 1.0f},
+    };
+    emitter.bursts = zero;
+    emitter.burstCount = 2;
+    scene = NewScene(&emitter);
+    mvfxInstance* zeroInstance = scene.context->instances.slots[scene.instance.index1 - 1].object;
+    const uint64_t zeroFiring = 23834702;
+    zeroInstance->emitters[0].bursts[0].firing = zeroFiring;
+    zeroInstance->clock = (int64_t)zeroFiring * 1024 - 1;
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    CHECK(zeroInstance->emitters[0].bursts[0].firing == zeroFiring + 1, "the firing was drawn");
+    CHECK(Stats(&scene).owed == 0, "a draw of exactly 0 against a chance of 0");
+    mvfxDestroyContext(scene.context);
+    emitter.bursts = &chance;
+    emitter.burstCount = 1;
+
     chance.probability = 0.0f;
     scene = NewScene(&emitter);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
@@ -334,6 +360,38 @@ static void TestRateCurvesAgainstIntegrals(void)
         }
         CHECK(close, "a curve's births follow its integral");
         mvfxDestroyContext(scene.context);
+    }
+
+    // A constant curve owes the constant rate's births, loop after loop,
+    // for rates and loops whose products are whole and not.
+    static const float curveRates[] = {10.0f, 37.0f, 3.0f, 7.5f, 100.0f, 1000.0f};
+    static const float curveDurations[] = {0.75f, 0.3f, 1.0f, 0.0625f};
+    for (int32_t r = 0; r < 6; ++r)
+    {
+        for (int32_t d = 0; d < 4; ++d)
+        {
+            mvfxEmitterDef shaped = mvfxDefaultEmitterDef();
+            shaped.capacity = 16;
+            shaped.rate = curveRates[r];
+            shaped.duration = curveDurations[d];
+            shaped.rateCurve = (mvfxCurve){constant, 1, mvfx_tangentsGiven};
+            shaped.lifetime = (mvfxRange){0.01f, 0.01f};
+            mvfxEmitterDef plain = shaped;
+            plain.rateCurve = (mvfxCurve){0};
+            Scene withCurve = NewScene(&shaped);
+            Scene without = NewScene(&plain);
+            int64_t loop = (int64_t)floor((double)curveDurations[d] * MVFX_TICKS_PER_SECOND + 0.5);
+            bool same = true;
+            for (int32_t i = 0; i < 40 && same; ++i)
+            {
+                CHECK(mvfxContext_StepTicks(withCurve.context, loop) == mvfx_success, "step");
+                CHECK(mvfxContext_StepTicks(without.context, loop) == mvfx_success, "step");
+                same = Stats(&withCurve).owed == Stats(&without).owed;
+            }
+            CHECK(same, "a constant curve owes the constant rate's births");
+            mvfxDestroyContext(withCurve.context);
+            mvfxDestroyContext(without.context);
+        }
     }
 
     // A constant curve owes the constant rate's births exactly, loop after
@@ -399,6 +457,18 @@ static void TestEmitterStates(void)
     CHECK(mvfxInstance_IsFinished(scene.context, scene.instance), "finished at once");
     mvfxDestroyContext(scene.context);
 
+    // A looping emitter whose only burst falls at its loops' end never
+    // spawns.
+    mvfxBurst atEnd = {
+        .time = 0.5f, .minCount = 3, .maxCount = 3, .cycles = 1, .probability = 1.0f};
+    emitter.bursts = &atEnd;
+    emitter.burstCount = 1;
+    emitter.duration = 0.5f;
+    scene = NewScene(&emitter);
+    CHECK(Stats(&scene).status == mvfx_emitterStopped, "a burst past its loop never fires");
+    mvfxDestroyContext(scene.context);
+    emitter.duration = 0.0f;
+
     // A burst that fires its cycles and no more, without a duration.
     mvfxBurst once = {.time = 0.5f,
                       .minCount = 3,
@@ -430,7 +500,10 @@ static void TestStop(void)
           "stop");
     mvfxEmitterStats stats = Stats(&scene);
     CHECK(stats.status == mvfx_emitterStopping && stats.owed == 32, "stopping with 32");
-    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
+    CHECK(mvfxInstance_Stop(scene.context, scene.instance, mvfx_stopEmitting) == mvfx_success,
+          "a second stop keeps the first's tick");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
     stats = Stats(&scene);
     CHECK(stats.owed == 32 && stats.live == 32, "no births after; all live a second");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");

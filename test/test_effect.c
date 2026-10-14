@@ -201,7 +201,7 @@ static void TestLifeFieldsRefused(void)
                                          {1.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
     static const mvfxCurveKey high[1] = {{0.5f, 2.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
     uint64_t misuse = mvfxContext_GetMisuse(context);
-    for (int32_t field = 0; field < 22; ++field)
+    for (int32_t field = 0; field < 24; ++field)
     {
         mvfxBurst burst = {.time = 0.0f,
                            .minCount = 1,
@@ -271,6 +271,22 @@ static void TestLifeFieldsRefused(void)
             break;
         case 16:
             bad.duration = 0.0f;
+            break;
+        case 22:
+            // Past the spawn rate in a few cycles: three million a firing,
+            // three firings a loop at a quarter second.
+            burst.maxCount = 3000000;
+            burst.cycles = 3;
+            burst.interval = 0.25f;
+            bad.capacity = 16;
+            break;
+        case 23:
+            // A burst firing once a loop of a looping emitter: 16,777,216 a
+            // second.
+            burst.maxCount = MVFX_MAX_EMITTER_CAPACITY;
+            burst.cycles = 1;
+            bad.duration = 1.0f;
+            bad.loops = 0;
             break;
         case 17:
             bad.rateCurve = (mvfxCurve){late, 1, mvfx_tangentsGiven};
