@@ -25,14 +25,18 @@ typedef struct Record
     float corner[2];
     uint32_t serial;
     uint32_t sheet;
+    float tangent[3];
+    float side[3];
 } Record;
 
-static const mvfxLayoutField s_fields[5] = {
+static const mvfxLayoutField s_fields[7] = {
     {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3, .offset = 0},
     {.field = mvfx_recordFaceNormal, .format = mvfx_formatFloat32, .components = 3, .offset = 12},
     {.field = mvfx_recordCorner, .format = mvfx_formatFloat32, .components = 2, .offset = 24},
     {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 32},
     {.field = mvfx_recordRibbon, .format = mvfx_formatUint32, .components = 1, .offset = 36},
+    {.field = mvfx_recordTangent, .format = mvfx_formatFloat32, .components = 3, .offset = 40},
+    {.field = mvfx_recordSide, .format = mvfx_formatFloat32, .components = 3, .offset = 52},
 };
 
 static const mvfxView s_view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
@@ -88,7 +92,7 @@ static void Open(const mvfxEmitterDef* emitter, float scale)
           "instance");
     mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
     layoutDef.fields = s_fields;
-    layoutDef.fieldCount = 5;
+    layoutDef.fieldCount = 7;
     layoutDef.stride = (uint32_t)sizeof(Record);
     CHECK(mvfxCreateLayout(s_scene.context, &layoutDef, &s_scene.layout) == mvfx_success, "layout");
 }
@@ -260,6 +264,27 @@ static void TestScale(void)
     }
 }
 
+static void TestSkewed(void)
+{
+    // Directions 60 degrees apart, no gravity, a second: the diagonals'
+    // rests differ (0.5 sqrt 3 and 0.5) and every pair keeps its birth
+    // length.
+    mvfxEmitterDef emitter = Sheet(4, 4);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.unit.pinFirstRow = false;
+    emitter.unit.downDirection[0] = 0.5f;
+    emitter.unit.downDirection[2] = sqrtf(3.0f) / 2.0f;
+    Open(&emitter, 1.0f);
+    static const double root[3] = {0, 0, 0};
+    Spawn(1, root);
+    Steps(60, MVFX_TICKS_PER_SECOND / 60);
+    Read();
+    CHECK(Worst(4, 4, 1, 1, 0.5 * sqrt(3.0)) <= 1e-4 && Worst(4, 4, -1, 1, 0.5) <= 1e-4 &&
+              Worst(4, 4, 1, 0, 0.5) <= 1e-4 && Worst(4, 4, 0, 1, 0.5) <= 1e-4,
+          "a skewed sheet's rests");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestMesh(void)
 {
     // Two flat sheets of four by three, no gravity: twelve vertices and
@@ -315,9 +340,11 @@ static void TestMesh(void)
         fields = fields && fabsf(vertices[i].corner[0] - (float)(j % 4) / 3.0f) <= 1e-6f &&
                  fabsf(vertices[i].corner[1] - (float)(j / 4) / 2.0f) <= 1e-6f &&
                  vertices[i].sheet == (uint32_t)(i / 12) && vertices[i].serial == (uint32_t)i &&
-                 fabsf(vertices[i].normal[1] + 1.0f) <= 1e-5f;
+                 fabsf(vertices[i].normal[1] + 1.0f) <= 1e-5f &&
+                 fabsf(vertices[i].tangent[0] - 1.0f) <= 1e-5f &&
+                 fabsf(vertices[i].side[2] - 1.0f) <= 1e-5f;
     }
-    CHECK(fields, "corners, sheets and normals");
+    CHECK(fields, "corners, sheets, normals, tangents and sides");
     buffers.vertexCapacity = 18;
     memset(indices, 0, sizeof indices);
     CHECK(mvfxInstance_ExpandSheets(s_scene.context, s_scene.instance, 0, s_scene.layout, &s_view,
@@ -433,6 +460,26 @@ static void TestChecks(void)
     emitter.capacity = 16;
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a chain's unread");
     mvfxDestroyContext(context);
+    // A chain pins no row: unpinned and launched sideways, it flies whole.
+    emitter = Sheet(4, 3);
+    emitter.unit.kind = mvfx_unitChain;
+    emitter.capacity = 16;
+    Open(&emitter, 1.0f);
+    static const double root[3] = {0, 0, 0};
+    static const float launch[3] = {3, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = root, .velocities = launch};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+          "launched");
+    Steps(30, MVFX_TICKS_PER_SECOND / 60);
+    Read();
+    bool fell = s_scene.count == 4;
+    for (int32_t i = 0; fell && i < 4; ++i)
+    {
+        fell = s_scene.records[i].position[1] < -1.0f &&
+               s_scene.records[i].position[0] > 0.5f * (float)i + 1.4f;
+    }
+    CHECK(fell, "a chain pins no row");
+    mvfxDestroyContext(s_scene.context);
 }
 
 int main(void)
@@ -441,6 +488,7 @@ int main(void)
     TestBanner();
     TestShear();
     TestScale();
+    TestSkewed();
     TestMesh();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
