@@ -11,8 +11,9 @@
 // birth rounding across a loop's end keeps its tick. A burst's c-th firing
 // of a loop is at its time plus c intervals, in ticks, before the loop's
 // end. A distance birth is where the distance the instance travelled
-// times the emitter's distance rate reaches its count plus 1, at the tick
-// along the step's line where it does, while the emitter spawns at all.
+// times the emitter's distance rate reaches the count of distance births
+// so far plus 1, at the tick along the step's line where it does, while
+// the emitter spawns at all.
 // On one tick, bursts come first, by their index, then the rate, then
 // distance; serials follow this order.
 
@@ -33,11 +34,8 @@ typedef struct mvfxBirths
     int32_t emitter;
     mvfxRateCursor rate;
     mvfxBurstCursor bursts[MVFX_MAX_BURSTS];
-    // The distance births owed so far, and the distance rate's integral at
-    // the step's start and end.
+    // The next of the step's distance births to be born.
     uint64_t distanceNext;
-    double reachFrom;
-    double reachTo;
 } mvfxBirths;
 
 // Opens an emitter's births at its cursors.
@@ -50,9 +48,14 @@ int64_t mvfxNextBirths(mvfxBirths* births, int64_t limit, int64_t* tickOut);
 // Writes the cursors back to the emitter.
 void mvfxSaveBirths(mvfxInstance* instance, const mvfxBirths* births);
 
-// Refuses the distance births of a step past the emitter's capacity (a
-// jump), counting them owed and refused, before the step's births.
-void mvfxRefuseDistanceExcess(mvfxInstance* instance, int32_t emitter);
+// Plans the step's distance births from the step's travel alone and the
+// carry below 1, so no count grows with the distance travelled: those
+// past the emitter's capacity (a jump) are refused at once, counted owed
+// and refused (saturating), and at most the capacity are left to be born.
+void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter);
+
+// Ends the step's distance births: the carry moves on.
+void mvfxEndDistance(mvfxInstance* instance, int32_t emitter);
 
 // Whether the emitter may still spawn: it has not been stopped, its loops
 // have not ended, and some source of it has births ahead.

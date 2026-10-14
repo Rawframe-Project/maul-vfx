@@ -83,8 +83,7 @@ void mvfxResetInstance(mvfxInstance* instance)
     instance->stepStart = 0;
     instance->stopTick = INT64_MAX;
     instance->from = instance->to;
-    instance->travelledFrom = 0.0;
-    instance->travelledTo = 0.0;
+    instance->stepDistance = 0.0;
     instance->velocity[0] = 0.0f;
     instance->velocity[1] = 0.0f;
     instance->velocity[2] = 0.0f;
@@ -95,6 +94,10 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->owed = 0;
         state->refused = 0;
         state->rate = (mvfxRateCursor){0};
+        state->distanceCarry = 0.0;
+        state->distanceDelta = 0.0;
+        state->distanceSkip = 0.0;
+        state->distanceTake = 0;
         state->distanceNext = 0;
         for (int32_t k = 0; k < 3; ++k)
         {

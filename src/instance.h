@@ -48,7 +48,14 @@ typedef struct mvfxEmitterState
     // A world-space emitter's anchor: its particles' positions are offsets
     // from it.
     double anchor[3];
-    // The distance births owed so far.
+    // Distance births: the fraction of one the travel owes past the last
+    // (below 1), and the step's plan: the integral the step adds, how many
+    // of its births are refused at the start (a jump past the capacity),
+    // how many it takes, and the next of those to be born.
+    double distanceCarry;
+    double distanceDelta;
+    double distanceSkip;
+    uint64_t distanceTake;
     uint64_t distanceNext;
 } mvfxEmitterState;
 
@@ -78,10 +85,9 @@ typedef struct mvfxInstance
     // step.
     mvfxTransform from;
     mvfxTransform to;
-    // The distance it has travelled by the clock and by the end of the step,
-    // and its velocity over the step.
-    double travelledFrom;
-    double travelledTo;
+    // The distance it travels over the step being taken, and its velocity
+    // over it.
+    double stepDistance;
     float velocity[3];
     // The clock at the start of the step being taken.
     int64_t stepStart;

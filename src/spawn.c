@@ -128,33 +128,31 @@ static bool IsSpawning(const mvfxInstance* instance, const mvfxCompiledEmitter* 
            (emitter->loops == 0 || tick <= LoopStart(emitter, (uint64_t)emitter->loops));
 }
 
-// The tick of the next distance birth, passing over those that fall where
-// the emitter does not spawn; MVFX_NO_TICK when none falls in the step.
-static int64_t PeekDistance(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter,
-                            mvfxBirths* births)
+// The tick of the next distance birth the step takes, passing over those
+// that fall where the emitter does not spawn; MVFX_NO_TICK when none is
+// left. The loop is bounded by the step's take, at most the capacity.
+static int64_t PeekDistance(const mvfxInstance* instance, int32_t emitter, mvfxBirths* births)
 {
-    if (emitter->ratePerDistance <= 0.0f)
-    {
-        return MVFX_NO_TICK;
-    }
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    const mvfxEmitterState* state = &instance->emitters[emitter];
     int64_t span = instance->clock - instance->stepStart;
-    for (;;)
+    while (births->distanceNext < state->distanceTake && span > 0)
     {
-        double reach = (double)births->distanceNext + 1.0;
-        if (!(reach <= births->reachTo) || span <= 0)
-        {
-            return MVFX_NO_TICK;
-        }
-        double share = (reach - births->reachFrom) / (births->reachTo - births->reachFrom);
+        // The birth's place along the step: where carry plus its share of
+        // the step's integral reaches its index in the step plus 1.
+        double index = state->distanceSkip + (double)births->distanceNext;
+        double share = (index + 1.0 - state->distanceCarry) / state->distanceDelta;
+        share = share < 1.0 ? share : 1.0;
         int64_t tick = instance->stepStart + (int64_t)ceil(share * (double)span);
         tick = tick <= instance->stepStart ? instance->stepStart + 1 : tick;
         tick = tick > instance->clock ? instance->clock : tick;
-        if (IsSpawning(instance, emitter, tick))
+        if (IsSpawning(instance, compiled, tick))
         {
             return tick;
         }
         births->distanceNext += 1;
     }
+    return MVFX_NO_TICK;
 }
 
 // The particles a burst's firing spawns: none when its chance fails, else
@@ -183,9 +181,6 @@ void mvfxOpenBirths(const mvfxInstance* instance, int32_t emitter, mvfxBirths* b
     births->emitter = emitter;
     births->rate = state->rate;
     births->distanceNext = state->distanceNext;
-    double rate = (double)instance->effect->emitters[emitter].ratePerDistance;
-    births->reachFrom = instance->travelledFrom * rate;
-    births->reachTo = instance->travelledTo * rate;
     for (int32_t b = 0; b < instance->effect->emitters[emitter].burstCount; ++b)
     {
         births->bursts[b] = state->bursts[b];
@@ -216,7 +211,7 @@ int64_t mvfxNextBirths(mvfxBirths* births, int64_t limit, int64_t* tickOut)
             best = rateTick;
             which = -1;
         }
-        int64_t distanceTick = PeekDistance(instance, emitter, births);
+        int64_t distanceTick = PeekDistance(instance, births->emitter, births);
         if (distanceTick < best)
         {
             best = distanceTick;
@@ -260,19 +255,50 @@ void mvfxSaveBirths(mvfxInstance* instance, const mvfxBirths* births)
     }
 }
 
-void mvfxRefuseDistanceExcess(mvfxInstance* instance, int32_t emitter)
+// a + b, held at UINT64_MAX.
+static uint64_t SaturatingAdd(uint64_t a, uint64_t b)
+{
+    return a > UINT64_MAX - b ? UINT64_MAX : a + b;
+}
+
+void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
-    double reach = instance->travelledTo * (double)compiled->ratePerDistance;
-    double owed = floor(reach) - (double)state->distanceNext;
-    if (owed > (double)compiled->capacity)
+    state->distanceDelta = instance->stepDistance * (double)compiled->ratePerDistance;
+    state->distanceSkip = 0.0;
+    state->distanceTake = 0;
+    state->distanceNext = 0;
+    double owed = floor(state->distanceCarry + state->distanceDelta);
+    if (!(owed >= 1.0))
     {
-        uint64_t excess = (uint64_t)(owed - (double)compiled->capacity);
-        state->distanceNext += excess;
-        state->owed += excess;
-        state->refused += excess;
+        return;
     }
+    double capacity = (double)compiled->capacity;
+    double take = owed < capacity ? owed : capacity;
+    state->distanceTake = (uint64_t)take;
+    state->distanceSkip = owed - take;
+    if (state->distanceSkip > 0.0)
+    {
+        // At most 2^63 counted, so a jump's refusals never wrap a count.
+        uint64_t skipped =
+            state->distanceSkip < 0x1p63 ? (uint64_t)state->distanceSkip : (uint64_t)1 << 63u;
+        state->owed = SaturatingAdd(state->owed, skipped);
+        state->refused = SaturatingAdd(state->refused, skipped);
+    }
+}
+
+void mvfxEndDistance(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    double total = state->distanceCarry + state->distanceDelta;
+    // The fraction past the last birth; none after a jump too long for a
+    // binary64 to hold one.
+    double carry = total - floor(total);
+    state->distanceCarry = total < 0x1p52 && carry >= 0.0 && carry < 1.0 ? carry : 0.0;
+    state->distanceDelta = 0.0;
+    state->distanceTake = 0;
+    state->distanceNext = 0;
 }
 
 bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)

@@ -197,6 +197,45 @@ static void TestDistance(void)
     mvfxDestroyContext(jump.context);
 }
 
+static void TestHugeJumps(void)
+{
+    // Across the whole range a host may give, at the highest distance rate:
+    // the step takes the capacity and refuses the rest at once, its counts
+    // held, and the steps after go on as usual. With a delay over the
+    // jump, nothing is born and nothing hangs.
+    for (int32_t delayed = 0; delayed < 2; ++delayed)
+    {
+        mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+        emitter.rate = 0.0f;
+        emitter.capacity = 8;
+        emitter.ratePerDistance = MVFX_MAX_DISTANCE_RATE;
+        emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+        emitter.startDelay = delayed != 0 ? 5.0f : 0.0f;
+        Scene scene = NewScene(&emitter);
+        MoveTo(&scene, -0x1p52, -0x1p52, -0x1p52, true);
+        MoveTo(&scene, 0x1p52, 0x1p52, 0x1p52, false);
+        CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success,
+              "step");
+        mvfxEmitterStats stats;
+        CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 0, &stats) ==
+                  mvfx_success,
+              "stats");
+        CHECK(stats.live == (delayed != 0 ? 0 : 8) && stats.refused >= ((uint64_t)1 << 62u) &&
+                  stats.refused <= stats.owed,
+              "the capacity taken, the rest refused");
+        CHECK(scene.live->emitters[0].distanceCarry == 0.0, "no carry after such a jump");
+        uint64_t owed = stats.owed;
+        MoveTo(&scene, 0x1p52 - 1.0, 0x1p52, 0x1p52, false);
+        CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success,
+              "step");
+        CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 0, &stats) ==
+                  mvfx_success,
+              "stats");
+        CHECK(stats.owed >= owed, "counts never wrap");
+        mvfxDestroyContext(scene.context);
+    }
+}
+
 static void TestInheritedVelocity(void)
 {
     // Half the instance's velocity: 4 units in half a second is 8 a second,
@@ -251,7 +290,8 @@ static void TestRebase(void)
           "new births near the anchor");
 
     CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success, "restart");
-    CHECK(scene.live->emitters[0].anchor[0] == 1100.0 && scene.live->travelledTo == 0.0,
+    CHECK(scene.live->emitters[0].anchor[0] == 1100.0 && scene.live->stepDistance == 0.0 &&
+              scene.live->emitters[0].distanceCarry == 0.0,
           "a restart anchors where the instance is, with no travel");
     mvfxDestroyContext(scene.context);
 }
@@ -335,6 +375,7 @@ int main(void)
     TestWorldAndLocal();
     TestTurnAndScale();
     TestDistance();
+    TestHugeJumps();
     TestInheritedVelocity();
     TestRebase();
     TestRefusals();

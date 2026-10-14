@@ -54,8 +54,8 @@ static void Rebase(mvfxInstance* instance, int32_t emitter)
     }
 }
 
-// Begins an instance's step of ticks: its travel and velocity along the
-// line from where it was to where it will be.
+// Begins an instance's step of ticks: the distance it travels and its
+// velocity along the line from where it was to where it will be.
 static void BeginStep(mvfxInstance* instance, int64_t ticks)
 {
     instance->stepStart = instance->clock;
@@ -67,7 +67,7 @@ static void BeginStep(mvfxInstance* instance, int64_t ticks)
         d[k] = instance->to.origin[k] - instance->from.origin[k];
         square += d[k] * d[k];
     }
-    instance->travelledTo = instance->travelledFrom + sqrt(square);
+    instance->stepDistance = sqrt(square);
     double seconds = (double)ticks / (double)MVFX_TICKS_PER_SECOND;
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -86,7 +86,7 @@ static void BeginStep(mvfxInstance* instance, int64_t ticks)
 static void EndStep(mvfxInstance* instance)
 {
     instance->from = instance->to;
-    instance->travelledFrom = instance->travelledTo;
+    instance->stepDistance = 0.0;
 }
 
 static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
