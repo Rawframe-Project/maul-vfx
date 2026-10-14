@@ -23,9 +23,6 @@ extern "C"
 // The most parameters an effect declares.
 #define MVFX_MAX_PARAMETERS 16
 
-// The most custom attributes an emitter declares.
-#define MVFX_MAX_CUSTOM_ATTRIBUTES 8
-
 // The largest a source's bound may be.
 #define MVFX_MAX_VALUE 1e30f
 

@@ -40,9 +40,9 @@ gravity and drag) and forces (constant, wind, attractors, vortices,
 turbulence, vector fields from grids, with falloffs) and velocity
 modules (motion scale, added, orbit and radial velocity, a speed limit)
 values over life (colour, alpha, size, flipbook, rotation speed,
-custom attributes) and kill rules are in place, and host modules come
-next.
-It has 39 public functions.
+custom attributes), kill rules and host modules are in place, and
+collision comes next.
+It has 40 public functions.
 
 ## Building
 

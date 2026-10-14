@@ -359,6 +359,11 @@ extern "C"
         // MVFX_MAX_KILL_RULES; NULL when killRuleCount is 0.
         const mvfxKillRule* killRules;
         int32_t killRuleCount;
+        // The host's own modules, at most MVFX_MAX_HOST_MODULES, run in
+        // order at their stages; NULL when hostModuleCount is 0. An effect
+        // with them cannot run on a GPU.
+        const mvfxHostModule* hostModules;
+        int32_t hostModuleCount;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second

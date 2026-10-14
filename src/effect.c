@@ -167,6 +167,23 @@ static bool IsLifetimeValid(const mvfxScalarSource* lifetime, bool hasDuration,
            (lifetime->range.min > 0.0f && lifetime->range.max <= MVFX_MAX_LIFETIME);
 }
 
+// Whether host modules are valid: a function each, a known stage.
+static bool AreHostModulesValid(const mvfxHostModule* modules, int32_t count)
+{
+    if (count < 0 || count > MVFX_MAX_HOST_MODULES || (count > 0 && modules == nullptr))
+    {
+        return false;
+    }
+    for (int32_t m = 0; m < count; ++m)
+    {
+        if (modules[m].function == nullptr || modules[m].stage > mvfx_stageAfterMotion)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whether an emitter's initial values are valid against its effect's
 // parameters.
 static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
@@ -214,6 +231,10 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
         {
             return false;
         }
+    }
+    if (!AreHostModulesValid(def->hostModules, def->hostModuleCount))
+    {
+        return false;
     }
     for (int32_t i = 0; i < def->customCount; ++i)
     {
@@ -345,6 +366,11 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->angularDrag = def->motion.angularDrag;
     mvfxCompileVelocityModules(&def->velocityModules, space, &out->velocityModules);
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
+    out->hostModuleCount = def->hostModuleCount;
+    for (int32_t m = 0; m < def->hostModuleCount; ++m)
+    {
+        out->hostModules[m] = def->hostModules[m];
+    }
     out->killRuleCount = def->killRuleCount;
     for (int32_t r = 0; r < def->killRuleCount; ++r)
     {

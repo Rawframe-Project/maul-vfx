@@ -20,12 +20,13 @@ over_life: gradient life value
 kill: direction force
 effect: allocator curve curve_integral force kill over_life shape value velocity velocity_modules
 integrate: direction effect elementary force instance kill velocity_modules
+host_module: effect instance random
 appearance: effect gradient instance life over_life
 instance: allocator effect force kill
 death_heap:
 spawn: instance random
 birth: direction elementary instance integrate random shape value velocity
-emitter_step: birth death_heap instance integrate spawn
+emitter_step: birth death_heap host_module instance integrate spawn
 context: allocator effect grid instance mesh slots tasks
 effect_api: context effect float_mode grid grid_api mesh mesh_api slots
 mesh_api: context mesh slots

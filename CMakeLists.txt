@@ -62,6 +62,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/float_mode.c
     src/gradient.c
     src/hash.c
+    src/host_module.c
     src/instance.c
     src/instance_api.c
     src/mesh.c
@@ -101,6 +102,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(grid WHITEBOX)
     maul_add_test(half WHITEBOX)
     maul_add_test(host WHITEBOX)
+    maul_add_test(host_module WHITEBOX)
     maul_add_test(integrate WHITEBOX)
     maul_add_test(kill WHITEBOX)
     maul_add_test(instance)

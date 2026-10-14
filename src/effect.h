@@ -162,6 +162,8 @@ typedef struct mvfxCompiledEmitter
     mvfxCompiledOverLife overLife;
     mvfxKillRule killRules[MVFX_MAX_KILL_RULES];
     int32_t killRuleCount;
+    mvfxHostModule hostModules[MVFX_MAX_HOST_MODULES];
+    int32_t hostModuleCount;
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

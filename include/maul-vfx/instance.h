@@ -211,6 +211,21 @@ extern "C"
                                                             double stepSeconds, int32_t maxSteps,
                                                             double* remainingOut);
 
+    /// Draws four random words for a host module: pcg4d (Jarzynski and
+    /// Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the
+    /// module's seed, a particle's serial, a stream number the module picks
+    /// and the step's end tick, so the same call in the same step gives the
+    /// same words however the work is split.
+    ///
+    /// @param call    The module's call.
+    /// @param serial  A particle's serial (or any number).
+    /// @param stream  The module's own number for this draw.
+    /// @param out     Receives the four words.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_API void mvfxModule_Random(const mvfxModuleCall* call, uint32_t serial, uint32_t stream,
+                                    uint32_t out[4]);
+
     /// Makes an emitter of an instance spawn from another mesh, as each
     /// character's skinned mesh feeds its own instance. The mesh may not be
     /// destroyed while the instance is bound to it.

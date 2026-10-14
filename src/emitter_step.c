@@ -8,6 +8,7 @@
 
 #include "birth.h"
 #include "death_heap.h"
+#include "host_module.h"
 #include "integrate.h"
 #include "spawn.h"
 
@@ -202,6 +203,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     }
     mvfxSaveBirths(instance, &births);
     RemoveEnded(instance, emitter);
+    mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
     mvfxIntegrateEmitter(instance, emitter);
     for (int32_t i = 0; i < accepted; ++i)
     {
@@ -249,6 +251,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     if (BirthsFit(instance, emitter))
     {
         RemoveEnded(instance, emitter);
+        mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
         mvfxIntegrateEmitter(instance, emitter);
         BirthsWithRoom(instance, emitter);
     }
@@ -256,6 +259,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     {
         BirthsInTickOrder(instance, emitter);
     }
+    mvfxRunHostModules(instance, emitter, mvfx_stageAfterMotion);
     RemoveKilled(instance, emitter);
     mvfxEndDistance(instance, emitter);
     instance->emitters[emitter].hostCount = 0;

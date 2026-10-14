@@ -24,6 +24,24 @@ static const int64_t s_sceneSteps[] = {17476, 17477, 16000, 1,     40000, 17476,
 
 #define SCENE_STEP_COUNT ((int32_t)(sizeof s_sceneSteps / sizeof s_sceneSteps[0]))
 
+// A host module of the scene: before motion, a kick of up to 0.5 a second
+// along each axis to every particle, drawn from the module's stream by
+// serial, so it is the same however the work is split.
+static inline void SceneKick(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    for (int32_t i = 0; i < p->count; ++i)
+    {
+        uint32_t words[4];
+        mvfxModule_Random(call, p->serial[i], 0u, words);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            p->velocity[k][i] += ((float)(words[k] >> 8u) * 0x1p-24f - 0.5f);
+        }
+    }
+}
+
 // Creates the scene's effects and instances on a context.
 static inline void BuildScene(mvfxContext* context)
 {
@@ -154,6 +172,9 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].killRuleCount = 1;
     emitters[1].killRules = &plane;
     emitters[1].killRuleCount = 1;
+    static const mvfxHostModule kick = {.stage = mvfx_stageBeforeMotion, .function = SceneKick};
+    emitters[1].hostModules = &kick;
+    emitters[1].hostModuleCount = 1;
     // Seven a second, so it spawns within the scene's 1.4 seconds and
     // fills.
     emitters[2].rate = 7.0f;

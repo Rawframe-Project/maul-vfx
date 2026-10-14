@@ -19,6 +19,9 @@ extern "C"
 {
 #endif
 
+// The most custom attributes an emitter declares.
+#define MVFX_MAX_CUSTOM_ATTRIBUTES 8
+
     // A value over a particle's life: value times the curve at the
     // particle's normalized age (its age over its life, held to [0, 1]);
     // a curve with no keys is 1. value is finite and at most MVFX_MAX_VALUE
@@ -194,6 +197,85 @@ extern "C"
         float speed;
         float minimumAge;
     } mvfxKillRule;
+
+// The most host modules an emitter has.
+#define MVFX_MAX_HOST_MODULES 8
+
+    // When in a step a host module runs.
+    typedef uint8_t mvfxModuleStage;
+    enum
+    {
+        // On the particles alive at the step's start (its ended ones taken
+        // out), before they move: what it writes to a velocity moves them.
+        mvfx_stageBeforeMotion = 0,
+        // On every particle at the step's end (the step's births among
+        // them), before the killed are taken out: it may kill.
+        mvfx_stageAfterMotion = 1,
+    };
+
+    // An emitter's particle arrays as a host module sees them: one value a
+    // particle in each, count long; NULL for what the emitter does not
+    // store. Places are in the emitter's space: offsets from anchor for a
+    // world-space emitter, the instance's own space for a local one.
+    typedef struct mvfxParticleArrays
+    {
+        int32_t count;
+        float* position[3];
+        float* velocity[3];
+        float* color[4];
+        float* size[3];
+        float* angle;
+        float* spin;
+        float* orientation[4];
+        float* angularVelocity[3];
+        uint32_t* frame;
+        // Custom attribute i's components, the unused ones NULL.
+        float* custom[MVFX_MAX_CUSTOM_ATTRIBUTES][4];
+        // Read only: each particle's serial, birth tick (low and high words)
+        // and inverse life in seconds.
+        const uint32_t* serial;
+        const uint32_t* birthLow;
+        const uint32_t* birthHigh;
+        const float* inverseLife;
+        // After motion: set a particle's byte to 1 to kill it (it is counted
+        // killed); NULL before motion.
+        uint8_t* kill;
+    } mvfxParticleArrays;
+
+    // What a host module is called with.
+    typedef struct mvfxModuleCall
+    {
+        mvfxParticleArrays particles;
+        mvfxModuleStage stage;
+        // The emitter's index in its effect and the module's in the emitter.
+        int32_t emitter;
+        int32_t module;
+        // The step: its length in seconds, and the instance's clock in ticks
+        // at its start and its end.
+        double seconds;
+        int64_t startTick;
+        int64_t endTick;
+        // A world-space emitter's anchor, which places are offsets from.
+        double anchor[3];
+        bool worldSpace;
+        // The seed of this module's random stream in this instance
+        // (mvfxModule_Random).
+        uint32_t seed;
+    } mvfxModuleCall;
+
+    // A host module: a function over an emitter's particles. It runs inside
+    // the step on the thread stepping the instance (instances may step on
+    // several threads at once), so it must be safe to run beside itself;
+    // and the step stays deterministic only if the module is, which is the
+    // host's to keep (mvfxModule_Random gives it a stream that is).
+    typedef void mvfxModuleFn(const mvfxModuleCall* call, void* user);
+
+    typedef struct mvfxHostModule
+    {
+        mvfxModuleStage stage;
+        mvfxModuleFn* function;
+        void* user;
+    } mvfxHostModule;
 
 #ifdef __cplusplus
 }

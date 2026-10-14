@@ -108,3 +108,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   sphere or a turned box, ending outside one, past a plane, slower than
   a speed after an age), each in the world's or the emitter's space; an
   attractor gains a `killRadius`; emitter stats count the `killed`.
+- Host modules: an emitter def gains `hostModules`, functions over its
+  particles' arrays run before motion or after it (where they may kill),
+  and `mvfxModule_Random` gives a module a random stream fixed by its
+  inputs.
