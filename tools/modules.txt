@@ -3,5 +3,8 @@
 base:
 allocator:
 float_mode:
+half:
+hash:
+random:
 tasks: float_mode
 context: allocator tasks

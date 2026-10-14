@@ -17,3 +17,5 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxDestroyContext` and `mvfxContext_GetMisuse`. Work handed to the
   host's tasks runs in round to nearest with subnormals kept, whatever
   floating-point mode the host's threads are in.
+- `mvfxHash64`, the family's 64-bit hash, which the determinism checks
+  and effect identities are built on.

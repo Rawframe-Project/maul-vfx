@@ -33,7 +33,7 @@ stepping allocates nothing.
 ## Status
 
 Not released. The design is decided; the context is in place, and the
-math and random numbers come next. It has 6 public functions.
+math and random numbers come next. It has 7 public functions.
 
 ## Building
 
