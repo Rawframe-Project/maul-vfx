@@ -112,6 +112,25 @@ static void TestTurnAndScale(void)
     }
     CHECK(turned, "turned and scaled; a teleport moves at once");
     mvfxDestroyContext(scene.context);
+
+    // Over a step: from unturned to a quarter turn given as its negative
+    // (the same turn), the shorter way, and from scale 1 to 3. The birth
+    // half way is at an eighth of a turn, at scale 2.
+    emitter.rate = 2.0f;
+    emitter.velocity.speed = (mvfxRange){0.0f, 0.0f};
+    scene = NewScene(&emitter);
+    const double home[3] = {0.0, 0.0, 0.0};
+    const float negative[4] = {0.0f, 0.0f, -0.70710678f, -0.70710678f};
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, home, negative, 3.0f, false) ==
+              mvfx_success,
+          "moved");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    CHECK(scene.live->emitters[0].count == 2, "two born");
+    float x = Array(&scene, mvfx_attributePositionX)[0];
+    float y = Array(&scene, mvfx_attributePositionY)[0];
+    CHECK(fabsf(x - 2.0f * 0.70710678f) <= 1e-4f && fabsf(y - 2.0f * 0.70710678f) <= 1e-4f,
+          "half way: an eighth of a turn at scale 2");
+    mvfxDestroyContext(scene.context);
 }
 
 static void TestDistance(void)
