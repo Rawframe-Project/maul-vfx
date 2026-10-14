@@ -118,8 +118,8 @@ extern "C"
     /// @param context  The context that owns the effect.
     /// @param effect   The effect.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         effect (the null id included); `mvfx_errorInvalid` for a NULL
-    ///         context.
+    ///         effect (the null id included); `mvfx_errorBusy` while an
+    ///         instance plays it; `mvfx_errorInvalid` for a NULL context.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect);

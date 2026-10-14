@@ -10,6 +10,6 @@
 
 // The compiled effect an id names on the context, or NULL when the id is
 // stale.
-const mvfxEffect* mvfxContextEffect(const mvfxContext* context, mvfxEffectId effect);
+mvfxEffect* mvfxContextEffect(const mvfxContext* context, mvfxEffectId effect);
 
 #endif

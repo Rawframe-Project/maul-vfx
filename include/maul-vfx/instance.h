@@ -1,0 +1,169 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Instances: one playing of an effect, at a place, with a seed. A
+// context's step advances every instance it owns.
+
+#ifndef MAUL_VFX_INSTANCE_H
+#define MAUL_VFX_INSTANCE_H
+
+#include "maul-vfx/effect.h"
+
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+// The ticks in a second: every clock counts ticks of 2^-20 seconds, so
+// that spans of time add exactly however they were split into steps.
+#define MVFX_TICKS_PER_SECOND 1048576
+
+// The longest step a context takes in one call, in seconds: a host
+// catching up a longer span steps it in parts, which reach the same state.
+#define MVFX_MAX_STEP_SECONDS 1.0
+
+    // Names an instance of a context: a 1-based slot, 0 for the null id,
+    // and a generation that tells a live instance from earlier occupants of
+    // its slot.
+    typedef struct mvfxInstanceId
+    {
+        uint32_t index1;
+        uint32_t generation;
+    } mvfxInstanceId;
+
+    // How an instance is made. Build it with mvfxDefaultInstanceDef.
+    typedef struct mvfxInstanceDef
+    {
+        uint32_t cookie;
+        // The effect it plays, which may not be destroyed while it does.
+        mvfxEffectId effect;
+        // Where it plays, in the host's world, in double precision so that
+        // precision does not depend on the distance from the world's origin;
+        // each value finite and at most 2^52 in size.
+        double origin[3];
+        // The seed of its random numbers; 0 takes one from the order in which
+        // the context created its instances, so the same calls give the same
+        // particles.
+        uint32_t seed;
+    } mvfxInstanceDef;
+
+// The cookie of an instance def, which its default sets and
+// mvfxCreateInstance checks.
+#define MVFX_INSTANCE_DEF_COOKIE 0x6D766969u
+
+    /// Returns the default instance def: no effect yet, at the world's origin,
+    /// seeded by its order of creation.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_API mvfxInstanceDef mvfxDefaultInstanceDef(void);
+
+    /// Creates an instance of an effect, allocating every particle it can
+    /// hold in one block from the context's allocator. Its clock starts at 0
+    /// and its emitters start spawning with the next step.
+    ///
+    /// @param context      The context that owns the effect and will own the
+    ///                     instance.
+    /// @param def          The def, from mvfxDefaultInstanceDef.
+    /// @param instanceOut  Receives the instance's id; the null id on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
+    ///         without its cookie or an origin out of range, which counts as
+    ///         misuse when the context is given; `mvfx_errorStale` for an
+    ///         effect id that names no live effect; `mvfx_errorLimit` when the
+    ///         context holds its limit of instances; `mvfx_errorCapacity` when
+    ///         the allocator fails or the block's size does not fit.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateInstance(mvfxContext* context,
+                                                          const mvfxInstanceDef* def,
+                                                          mvfxInstanceId* instanceOut);
+
+    /// Destroys an instance and its particles.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance (the null id included); `mvfx_errorInvalid` for a NULL
+    ///         context.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxDestroyInstance(mvfxContext* context,
+                                                           mvfxInstanceId instance);
+
+    /// Returns whether an id names a live instance of the context. A stale
+    /// id is not misuse.
+    ///
+    /// @param context   The context.
+    /// @param instance  Any id.
+    /// @return Whether the instance is alive.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_API bool mvfxInstance_IsValid(const mvfxContext* context, mvfxInstanceId instance);
+
+    // What an emitter of an instance has done since the instance was made.
+    typedef struct mvfxEmitterStats
+    {
+        // Particles alive now.
+        int32_t live;
+        // Particles it owed by now: spawned, refused, and those whose life
+        // ended within the step they were born in.
+        uint64_t owed;
+        // Particles its capacity refused.
+        uint64_t refused;
+    } mvfxEmitterStats;
+
+    /// Reads what an emitter of an instance has done.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in the effect's def.
+    /// @param statsOut  Receives the counts; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance id that names
+    ///         no live instance; `mvfx_errorInvalid` for a NULL argument or an
+    ///         emitter index out of range, which counts as misuse when the
+    ///         context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context,
+                                                                    mvfxInstanceId instance,
+                                                                    int32_t emitter,
+                                                                    mvfxEmitterStats* statsOut);
+
+    /// Advances every instance of the context by a span of time: each
+    /// emitter spawns what it owes by the new time, each particle ages from
+    /// its birth, and particles whose life has ended are removed. The span is
+    /// rounded once to ticks (MVFX_TICKS_PER_SECOND), so spans whose ticks
+    /// sum to the same clock reach the same state.
+    ///
+    /// @param context  The context.
+    /// @param seconds  The span, from 0 to MVFX_MAX_STEP_SECONDS.
+    /// @return `mvfx_success`, or `mvfx_errorInvalid` for a NULL context or a
+    ///         span out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time. Its
+    /// work runs on the host's task hooks when the context has them.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_Step(mvfxContext* context, double seconds);
+
+    /// Advances every instance of the context by a number of ticks, as
+    /// mvfxContext_Step does without the rounding.
+    ///
+    /// @param context  The context.
+    /// @param ticks    The span in ticks, from 0 to MVFX_MAX_STEP_SECONDS
+    ///                 seconds' worth.
+    /// @return `mvfx_success`, or `mvfx_errorInvalid` for a NULL context or a
+    ///         span out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time. Its
+    /// work runs on the host's task hooks when the context has them.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

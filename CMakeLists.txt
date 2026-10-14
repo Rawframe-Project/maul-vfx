@@ -45,13 +45,18 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/context.c
     src/curve.c
     src/curve_integral.c
+    src/death_heap.c
     src/effect.c
     src/effect_api.c
     src/elementary.c
+    src/emitter_step.c
     src/float_mode.c
     src/gradient.c
     src/hash.c
+    src/instance.c
+    src/instance_api.c
     src/slots.c
+    src/step.c
     src/tasks.c)
 maul_configure_library(maul-vfx)
 # sqrt, floor, ceil and the other exactly rounded functions the library
@@ -71,12 +76,19 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(effect_plan WHITEBOX)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(elementary_sweep WHITEBOX MANUAL)
+    maul_add_test(golden WHITEBOX)
     maul_add_test(gradient WHITEBOX)
     maul_add_test(half WHITEBOX)
+    maul_add_test(instance)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)
     maul_add_test(slots WHITEBOX)
+    maul_add_test(step)
     maul_add_test(tasks WHITEBOX)
+    # The web build has no threads; the twins need four.
+    if(NOT EMSCRIPTEN)
+        maul_add_test(twins WHITEBOX POSIX)
+    endif()
     maul_add_header_tests()
 endif()
 

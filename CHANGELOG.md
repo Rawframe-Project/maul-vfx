@@ -26,3 +26,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and its emitter defs (capacity, spawn rate, lifetime) and compiles them
   into one block, `mvfxDestroyEffect` and `mvfxEffect_IsValid` take its
   generation-checked id; the context's def gains a limit of effects.
+- Instances and the step (`maul-vfx/instance.h`): `mvfxCreateInstance`
+  plays an effect at a double-precision origin with a seed,
+  `mvfxContext_Step` and `mvfxContext_StepTicks` advance every instance
+  on a clock of 2^-20 s ticks, births at exact ticks and deaths from each
+  particle's birth tick, so spans whose ticks sum alike reach the same
+  state; `mvfxInstance_GetEmitterStats` reads live, owed and refused
+  counts. An effect an instance plays refuses destruction
+  (`mvfx_errorBusy`); the context's def gains a limit of instances.

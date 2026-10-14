@@ -20,17 +20,21 @@ enum
     mvfx_attributePositionX = 0,
     mvfx_attributePositionY = 1,
     mvfx_attributePositionZ = 2,
-    // Seconds since birth.
-    mvfx_attributeAge = 3,
+    // The tick of its birth on the instance's clock, an int64 in two
+    // uint32 arrays (low and high halves): its age is the clock minus it,
+    // exact whatever steps came between.
+    mvfx_attributeBirthLow = 3,
+    mvfx_attributeBirthHigh = 4,
     // One over the particle's life, so that age times it is the normalized
     // age.
-    mvfx_attributeInverseLife = 4,
-    // The count of particles the emitter owed before this one.
-    mvfx_attributeSerial = 5,
+    mvfx_attributeInverseLife = 5,
+    // The low 32 bits of the count of particles the emitter owed before
+    // this one.
+    mvfx_attributeSerial = 6,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT 6
+#define MVFX_ATTRIBUTE_COUNT 7
 
 // The alignment of every attribute array, a cache line.
 #define MVFX_ATTRIBUTE_ALIGNMENT 64
@@ -67,6 +71,8 @@ typedef struct mvfxEffect
     int32_t emitterCount;
     size_t blockBytes;
     size_t blockAlignment;
+    // The instances playing it, which keep it from being destroyed.
+    int64_t users;
 } mvfxEffect;
 
 // Whether a def and every emitter def in it are valid.

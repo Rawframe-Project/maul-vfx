@@ -39,6 +39,8 @@ extern "C"
     {
         // Effects that exist at once, from 1 to 65,536.
         int32_t effects;
+        // Instances that exist at once, from 1 to 65,536.
+        int32_t instances;
     } mvfxContextLimits;
 
     // How a context is made. Build it with mvfxDefaultContextDef.
@@ -65,7 +67,7 @@ extern "C"
 #define MVFX_CONTEXT_DEF_COOKIE 0x6D766378u
 
     /// Returns the default context def: the C library's allocator, serial
-    /// work and 256 effects.
+    /// work, 256 effects and 1,024 instances.
     ///
     /// The default is built in the program from the headers it includes,
     /// so the version it stamps is the program's.
@@ -83,6 +85,7 @@ extern "C"
         def.cookie = MVFX_CONTEXT_DEF_COOKIE;
         def.version = MVFX_ABI_VERSION;
         def.limits.effects = 256;
+        def.limits.instances = 1024;
         return def;
     }
 

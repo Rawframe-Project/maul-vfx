@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// A context's step: every instance's clock advances and each of its
+// emitters steps, one instance per task item, so the host's split and
+// schedule never change what any instance holds (record mvfx-0001).
+
+#ifndef MAUL_VFX_SRC_STEP_H
+#define MAUL_VFX_SRC_STEP_H
+
+#include "context.h"
+
+// Advances every live instance by ticks, which the caller has checked.
+void mvfxStepInstances(mvfxContext* context, int64_t ticks);
+
+#endif

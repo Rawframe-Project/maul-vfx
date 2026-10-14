@@ -9,8 +9,13 @@ random:
 tasks: float_mode
 slots: allocator
 effect: allocator
-context: allocator effect slots tasks
+instance: allocator effect
+death_heap:
+emitter_step: death_heap instance random
+context: allocator effect instance slots tasks
 effect_api: context effect float_mode slots
+instance_api: context effect_api instance slots
+step: context emitter_step float_mode instance tasks
 curve:
 curve_integral: curve
 gradient:

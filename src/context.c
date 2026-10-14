@@ -7,6 +7,7 @@
 
 #include "allocator.h"
 #include "effect.h"
+#include "instance.h"
 
 mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut)
 {
@@ -25,7 +26,7 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
     }
     if (def->cookie != MVFX_CONTEXT_DEF_COOKIE || !mvfxIsAllocatorValid(&def->allocator) ||
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || def->limits.effects < 1 ||
-        def->limits.effects > 65536)
+        def->limits.effects > 65536 || def->limits.instances < 1 || def->limits.instances > 65536)
     {
         return mvfx_errorInvalid;
     }
@@ -43,6 +44,12 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
         mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
         return mvfx_errorCapacity;
     }
+    if (!mvfxInitSlots(&context->instances, &context->allocator, (uint32_t)def->limits.instances))
+    {
+        mvfxReleaseSlots(&context->effects, &context->allocator);
+        mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
+        return mvfx_errorCapacity;
+    }
     *contextOut = context;
     return mvfx_success;
 }
@@ -54,6 +61,15 @@ void mvfxDestroyContext(mvfxContext* context)
         return;
     }
     mvfxAllocator allocator = context->allocator;
+    for (uint32_t i = 0; i < context->instances.capacity; ++i)
+    {
+        mvfxInstance* instance = context->instances.slots[i].object;
+        if (instance != nullptr)
+        {
+            mvfxReleaseInstance(instance, &allocator);
+        }
+    }
+    mvfxReleaseSlots(&context->instances, &allocator);
     for (uint32_t i = 0; i < context->effects.capacity; ++i)
     {
         mvfxEffect* effect = context->effects.slots[i].object;

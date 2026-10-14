@@ -54,6 +54,10 @@ mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)
     {
         return mvfx_errorStale;
     }
+    if (compiled->users > 0)
+    {
+        return mvfx_errorBusy;
+    }
     mvfxReleaseEffect(compiled, &context->allocator);
     mvfxFreeSlot(&context->effects, effect.index1);
     return mvfx_success;
@@ -65,7 +69,7 @@ bool mvfxEffect_IsValid(const mvfxContext* context, mvfxEffectId effect)
            mvfxSlotObject(&context->effects, effect.index1, effect.generation) != nullptr;
 }
 
-const mvfxEffect* mvfxContextEffect(const mvfxContext* context, mvfxEffectId effect)
+mvfxEffect* mvfxContextEffect(const mvfxContext* context, mvfxEffectId effect)
 {
     return mvfxSlotObject(&context->effects, effect.index1, effect.generation);
 }
