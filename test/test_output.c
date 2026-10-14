@@ -187,6 +187,9 @@ static void TestFormats(void)
     Write(mvfx_formatSnorm8, false, 4, signs, b);
     CHECK((int8_t)b[0] == -127 && (int8_t)b[1] == 64 && (int8_t)b[2] == -64 && (int8_t)b[3] == 127,
           "snorm8, half away from 0");
+    static const float odd[4] = {(float)NAN, -3.0f, 0.0f, 0.0f};
+    Write(mvfx_formatSnorm8, false, 2, odd, b);
+    CHECK(b[0] == 0 && (int8_t)b[1] == -127, "snorm8: NaN to 0, below -1 to -1");
     Write(mvfx_formatUnorm16, false, 2, units, b);
     memcpy(h, b, 4);
     CHECK(h[0] == 32768 && h[1] == 65535, "unorm16");
@@ -384,6 +387,8 @@ static void TestRefusals(void)
           "layout");
     static const double view[3] = {0, 0, 0};
     static const double far[3] = {0x1p53, 0, 0};
+    static const double farY[3] = {0, 0x1p53, 0};
+    static const double farZ[3] = {0, 0, -0x1p53};
     Record records[1];
     int64_t count = 0;
     uint64_t misuse = mvfxContext_GetMisuse(scene.context);
@@ -400,9 +405,13 @@ static void TestRefusals(void)
               mvfxInstance_WriteParticles(c, i, 0, layout, view, NULL, 1, &count) ==
                   mvfx_errorInvalid &&
               mvfxInstance_WriteParticles(c, i, 0, layout, far, records, 1, &count) ==
+                  mvfx_errorInvalid &&
+              mvfxInstance_WriteParticles(c, i, 0, layout, farY, records, 1, &count) ==
+                  mvfx_errorInvalid &&
+              mvfxInstance_WriteParticles(c, i, 0, layout, farZ, records, 1, &count) ==
                   mvfx_errorInvalid,
           "refused");
-    CHECK(mvfxContext_GetMisuse(c) == misuse + 6, "each counted");
+    CHECK(mvfxContext_GetMisuse(c) == misuse + 8, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     mvfxLayoutId staleLayout = layout;
@@ -415,6 +424,39 @@ static void TestRefusals(void)
                   mvfx_errorInvalid,
           "stale, no context");
     mvfxDestroyContext(c);
+
+    // A context's layouts: from 1 to 65,536.
+    mvfxContextDef def = mvfxDefaultContextDef();
+    mvfxContext* other = NULL;
+    def.limits.layouts = 0;
+    CHECK(mvfxCreateContext(&def, &other) == mvfx_errorInvalid, "no layouts");
+    def.limits.layouts = 65537;
+    CHECK(mvfxCreateContext(&def, &other) == mvfx_errorInvalid, "too many layouts");
+    def.limits.layouts = 65536;
+    CHECK(mvfxCreateContext(&def, &other) == mvfx_success, "the most layouts");
+    mvfxDestroyContext(other);
+}
+
+static void TestFrameAsFloat(void)
+{
+    // A fixed frame of 5, as binary32.
+    mvfxEmitterDef emitter = Held();
+    emitter.frame = (mvfxFrameStart){.mode = mvfx_frameFixed, .first = 5, .last = 5};
+    Scene scene = NewScene(&emitter);
+    Place(&scene, 0, 0, 0, 0.0f);
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    static const mvfxLayoutField field = {
+        .field = mvfx_recordFrame, .format = mvfx_formatFloat32, .components = 1};
+    mvfxLayoutId layout = {0};
+    CHECK(Make(scene.context, &field, 1, 4, &layout) == mvfx_success, "a float frame");
+    static const double view[3] = {0, 0, 0};
+    float frame = 0.0f;
+    int64_t count = 0;
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, &frame, 1,
+                                      &count) == mvfx_success &&
+              frame == 5.0f,
+          "frame 5 as a float");
+    mvfxDestroyContext(scene.context);
 }
 
 int main(void)
@@ -424,5 +466,6 @@ int main(void)
     TestRecords();
     TestLocal();
     TestRefusals();
+    TestFrameAsFloat();
     return s_failures == 0 ? 0 : 1;
 }
