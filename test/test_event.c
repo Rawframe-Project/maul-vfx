@@ -243,6 +243,36 @@ static void TestLocal(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestMovingInstance(void)
+{
+    // A local emitter's instance moving from the origin to (10, 0, 0) over
+    // each step: a birth at the step's start is placed where the instance
+    // was then; a death by age, where the particle last was, at that
+    // step's start.
+    mvfxEmitterDef emitter = Telling(0.5f);
+    emitter.space = mvfx_spaceLocal;
+    Scene scene = NewScene(&emitter);
+    static const double there[3] = {10.0, 0.0, 0.0};
+    static const double back[3] = {0.0, 0.0, 0.0};
+    static const float still[4] = {0, 0, 0, 1};
+    Place(&scene, 0, 0, 0, 0, 0, 0);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, there, still, 1.0f, false) ==
+              mvfx_success,
+          "moving");
+    Step(&scene, 1);
+    const mvfxEvent* events = NULL;
+    CHECK(Events(&scene, &events) == 1 && Near(events[0].place[0], 0.0, 1e-9),
+          "a birth where the instance was at its tick");
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, back, still, 1.0f, false) ==
+              mvfx_success,
+          "moving back");
+    Step(&scene, MVFX_TICKS_PER_SECOND);
+    CHECK(Events(&scene, &events) == 1 && events[0].kind == mvfx_eventDeath &&
+              Near(events[0].place[0], 10.0, 1e-9),
+          "a death where it last was");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Telling(10.0f);
@@ -312,6 +342,7 @@ int main(void)
     TestKillsAndCollisions();
     TestMaskAndCapacity();
     TestLocal();
+    TestMovingInstance();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
