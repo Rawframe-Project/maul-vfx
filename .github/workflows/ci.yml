@@ -1,0 +1,150 @@
+# Continuous integration for Maul VFX.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # apt retries a stalled download and gives up on a dead one.
+  APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+  PREFIX: MAUL_VFX
+
+jobs:
+  # The rules no compiler checks: formatting, static analysis and the
+  # family's source, module, documentation and length checks.
+  checks:
+    name: checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install tools
+        timeout-minutes: 15
+        run: |
+          sudo apt-get $APT_OPTIONS update -q
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 clang-tidy-20
+          sudo apt-get $APT_OPTIONS install -y -q ninja-build
+          pip install clang-format==22.1.5 >/dev/null
+      - name: clang-format
+        run: |
+          clang-format --version
+          clang-format --dry-run -Werror $(find include src test tools bench samples -name '*.[ch]' 2>/dev/null)
+      - name: Family checks
+        run: |
+          python3 tools/check_source.py
+          python3 tools/check_modules.py
+          python3 tools/check_docs.py
+          python3 tools/check_lengths.py
+          python3 tools/check_guide.py
+      - name: clang-tidy
+        run: |
+          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          for f in src/*.c; do
+            clang-tidy-20 -p build --quiet --warnings-as-errors='*' "$f" || exit 1
+          done
+
+  # Every cell builds with warnings as errors and runs the whole suite,
+  # the header tests included.
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-gcc-14,        os: ubuntu-24.04,     cc: gcc-14,   cxx: g++-14,     config: Release, extra: "" }
+          - { name: linux-clang-20,      os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Release, extra: "" }
+          - { name: linux-clang-20-asan, os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_VFX_SANITIZE=ON" }
+          - { name: linux-clang-20-tsan, os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_VFX_TSAN=ON" }
+          - { name: linux-shared,        os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Release, extra: "-DMAUL_VFX_BUILD_SHARED=ON" }
+          - { name: linux-arm64-gcc-14,  os: ubuntu-24.04-arm, cc: gcc-14,   cxx: g++-14,     config: Release, extra: "" }
+          - { name: macos-clang,         os: macos-15,         cc: clang,    cxx: clang++,    config: Release, extra: "" }
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install compilers
+        timeout-minutes: 15
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get $APT_OPTIONS update -q
+          # clang without its recommends, with the sanitizers' runtime.
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 libclang-rt-20-dev
+          sudo apt-get $APT_OPTIONS install -y -q gcc-14 g++-14 ninja-build
+      - name: Configure
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.extra }}
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        # A skipped test fails the step, as it would hide a broken job.
+        run: |
+          set -o pipefail
+          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
+      - name: Package
+        if: matrix.name == 'linux-shared'
+        run: cmake --install build --prefix "$PWD/package"
+      - name: Size
+        # The library's code size, reported, not gated (family record
+        # 0013).
+        if: matrix.name == 'linux-gcc-14'
+        run: size -t build/libmaul-vfx.a | tail -1
+
+  # The API reference is generated from the headers; it must match them,
+  # and the README must give its function count.
+  docs:
+    name: generated docs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: The API reference matches the headers
+        run: |
+          COUNT=$(python3 tools/gen_api.py | grep -oE '\([0-9]+ functions\)' | grep -oE '[0-9]+')
+          git diff --exit-code docs/api.md || { echo "docs/api.md is stale: run tools/gen_api.py"; exit 1; }
+          grep -q "$COUNT public functions" README.md || { echo "README says the wrong function count ($COUNT)"; exit 1; }
+
+  windows-clang-cl:
+    name: windows-clang-cl
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -B build -T ClangCL -D${PREFIX}_WERROR=ON
+      - name: Build
+        run: cmake --build build --config Release -j 4
+      - name: Test
+        # A skipped test fails the step, as it would hide a broken job.
+        run: |
+          set -o pipefail
+          ctest --test-dir build -C Release --output-on-failure --timeout 300 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
+      # The public headers alone under MSVC's cl, as C17 and C++17 with
+      # /W4 /WX, which cannot build the library itself (family record 0008).
+      - name: Headers under MSVC
+        run: |
+          cmake -S cmake/HeaderCheck -B build-headers
+          cmake --build build-headers --config Release
+
+  web:
+    name: web-emscripten
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: emscripten-core/setup-emsdk@v16
+      - name: Configure
+        run: emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: |
+          for t in build/test_*.js; do node "$t" || exit 1; done
+      - name: Size
+        # The static library's size, reported, not gated (family record
+        # 0013).
+        run: stat -c '%s bytes' build/libmaul-vfx.a
