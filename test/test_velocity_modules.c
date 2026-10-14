@@ -235,6 +235,74 @@ static void TestUnderAnInstance(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestMoreUnderAnInstance(void)
+{
+    static const double origin[3] = {100.0, 0.0, 0.0};
+    static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    // A speed limit of 2 in the emitter's space is 4 under scale 2.
+    mvfxEmitterDef emitter = Held();
+    emitter.velocityModules.limitSpeed = true;
+    emitter.velocityModules.speedLimit.value = 2.0f;
+    emitter.velocityModules.limitDampen = MVFX_MAX_DRAG;
+    Scene scene = NewScene(&emitter);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
+              mvfx_success,
+          "placed");
+    Place(&scene, 100, 0, 0, 10, 0, 0);
+    Run(&scene, 1, MVFX_TICKS_PER_SECOND / 4);
+    CHECK(Near(At(&scene, mvfx_attributeVelocityX), 4.0, 1e-4), "the limit scaled");
+    mvfxDestroyContext(scene.context);
+
+    // Radial 1 a second from the emitter's (0, 1, 0), the world's
+    // (98, 0, 0) under the turn and scale, so 2 a second there: from
+    // (99, 0, 0) along +X.
+    emitter = Held();
+    emitter.velocityModules.radialCenter[1] = 1.0f;
+    emitter.velocityModules.radialSpeed.value = 1.0f;
+    scene = NewScene(&emitter);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
+              mvfx_success,
+          "placed");
+    Place(&scene, 99, 0, 0, 0, 0, 0);
+    Run(&scene, 2, MVFX_TICKS_PER_SECOND);
+    CHECK(Near(At(&scene, mvfx_attributePositionX), 101.0, 1e-4) &&
+              Near(At(&scene, mvfx_attributePositionY), 0.0, 1e-4),
+          "radial from the mapped center, scaled");
+    mvfxDestroyContext(scene.context);
+
+    // An orbit about the emitter's X, the world's Y: a quarter turn from
+    // (101, 0, 1) about the line through (100, 0, 0) along Y.
+    emitter = Held();
+    emitter.velocityModules.orbitAxis[0] = 1.0f;
+    emitter.velocityModules.orbitRate.value = 1.5707963f;
+    scene = NewScene(&emitter);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
+              mvfx_success,
+          "placed");
+    Place(&scene, 100, 0, 1, 0, 0, 0);
+    Run(&scene, 4, MVFX_TICKS_PER_SECOND);
+    CHECK(Near(At(&scene, mvfx_attributePositionX), 101.0, 1e-4) &&
+              Near(At(&scene, mvfx_attributePositionZ), 0.0, 1e-4),
+          "about the mapped axis");
+    mvfxDestroyContext(scene.context);
+
+    // A motion scale of value 1 over a curve falling from 1 to 0: by its
+    // curve, half the motion over the life.
+    static const mvfxCurveKey falling[2] = {
+        {.time = 0.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear}};
+    emitter = Held();
+    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.velocityModules.motionScale =
+        (mvfxLifeCurve){.value = 1.0f, .curve = {.keys = falling, .keyCount = 2}};
+    scene = NewScene(&emitter);
+    Place(&scene, 0, 0, 0, 4, 0, 0);
+    Run(&scene, 1024, MVFX_TICKS_PER_SECOND);
+    // Over the first second the scale falls 1 to 0.5: 4 times its mean.
+    CHECK(Near(At(&scene, mvfx_attributePositionX), 3.0, 5e-3), "a motion scale by its curve");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -294,6 +362,7 @@ int main(void)
     TestOrbitAndRadial();
     TestSpeedLimit();
     TestUnderAnInstance();
+    TestMoreUnderAnInstance();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
