@@ -76,7 +76,6 @@ typedef struct mvfxNeighborGrid
     float* values;
     int32_t capacity;
     uint32_t mask;
-    int32_t count;
 } mvfxNeighborGrid;
 
 typedef struct mvfxEmitterState

@@ -246,7 +246,6 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->queriesDropped = 0;
         state->eventCount = 0;
         state->eventsDropped = 0;
-        state->grid.count = 0;
         state->neighborsCapped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;

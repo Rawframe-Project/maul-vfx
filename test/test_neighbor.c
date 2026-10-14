@@ -206,6 +206,33 @@ static void TestClouds(void)
     CHECK(s_seen[0].neighbors[17] == 4.0f && s_seen[0].neighbors[0] == 2.0f, "the lattice's");
 }
 
+static void TestEdges(void)
+{
+    // Exactly the radius apart: not neighbors. Far out, past 2^30 cells
+    // each way: the outermost cells, still neighbors.
+    mvfxEmitterDef emitter = Emitter(0.5f, MVFX_MAX_NEIGHBORS);
+    Scene scene = NewScene(&emitter, 1, NULL);
+    static const double apart[6] = {5000.0, 0, 0, 5000.5, 0, 0};
+    static const float still[6] = {0, 0, 0, 0, 0, 0};
+    mvfxSpawnRequest request = {.count = 2, .positions = apart, .velocities = still};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success,
+          "spawned");
+    Settle(&scene);
+    CHECK(s_seen[0].count == 2 && s_seen[0].neighbors[0] == 0.0f, "at the radius, none");
+    mvfxDestroyContext(scene.context);
+    emitter = Emitter(MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBORS);
+    scene = NewScene(&emitter, 1, NULL);
+    static const double far[12] = {-4e5, 3e5, 0, -4e5, 3e5, 5e-5, 9e5, -2e5, 0, 9e5, -2e5, 5e-5};
+    static const float none[12] = {0};
+    mvfxSpawnRequest farRequest = {.count = 4, .positions = far, .velocities = none};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &farRequest) == mvfx_success,
+          "spawned far");
+    Settle(&scene);
+    CHECK(s_seen[0].count == 4 && s_seen[0].neighbors[0] == 1.0f && s_seen[0].neighbors[3] == 1.0f,
+          "the outermost cells");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestCapped(void)
 {
     // Nine in a clump at a cap of 8: eight each, none left out; ten: each
@@ -243,6 +270,18 @@ static void TestOtherGrid(void)
               MatchesBruteForce(&s_seen[0], &s_seen[1], 0.5f, false) &&
               s_seen[1].neighbors[0] == -1.0f,
           "another emitter's grid, at its step's start");
+    mvfxDestroyContext(scene.context);
+    // Queried within 0.5 by the first and 0.2 by itself: its cells are the
+    // larger.
+    emitters[1].neighbors.enabled = true;
+    emitters[1].neighbors.radius = 0.2f;
+    scene = NewScene(emitters, 2, NULL);
+    Spawn(&scene, 0, 150, 2.0f);
+    Spawn(&scene, 1, 250, 2.0f);
+    Settle(&scene);
+    CHECK(MatchesBruteForce(&s_seen[0], &s_seen[1], 0.5f, false) &&
+              MatchesBruteForce(&s_seen[1], &s_seen[1], 0.2f, true),
+          "two radii, the cells the larger");
     mvfxDestroyContext(scene.context);
     // Its source left out at a quality level: none found.
     static const mvfxQualityLevel level = {.capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 2u};
@@ -413,6 +452,7 @@ static void TestChecks(void)
 int main(void)
 {
     TestClouds();
+    TestEdges();
     TestCapped();
     TestOtherGrid();
     TestRecords();

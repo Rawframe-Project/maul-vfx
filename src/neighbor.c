@@ -76,7 +76,6 @@ static void BuildGrid(mvfxInstance* instance, int32_t emitter, float cell)
             grid->values[(size_t)(3 + k) * stride + (size_t)j] = v[k][i];
         }
     }
-    grid->count = n;
 }
 
 // A query of a source's grid from a place in the querying emitter's
