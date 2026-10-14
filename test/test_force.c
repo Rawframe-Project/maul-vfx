@@ -540,6 +540,16 @@ static void TestVectorField(void)
     CHECK(Is(a, -1.0f, 3.0f, 3.0f), "new values read");
     mvfxDestroyContext(scene.context);
 
+    // A rotation 0.0005 longer than a unit acts as the unit one.
+    force.boxRotation[2] = 0.70710678f * 1.0005f;
+    force.boxRotation[3] = 0.70710678f * 1.0005f;
+    scene = NewFieldScene(&force, 1, mvfx_spaceWorld, &grid);
+    AccelerationIn(&scene, inside, a);
+    CHECK(Is(a, -0.5f, 1.5f, 1.5f), "a near-unit rotation normalized");
+    mvfxDestroyContext(scene.context);
+    force.boxRotation[2] = 0.70710678f;
+    force.boxRotation[3] = 0.70710678f;
+
     // Clamped: past the box's far Z face, the face's values.
     force.border = mvfx_borderClamp;
     scene = NewFieldScene(&force, 1, mvfx_spaceWorld, &grid);

@@ -111,8 +111,8 @@ static void Locate(float u, int32_t n, mvfxGridBorder border, int32_t* low, int3
     {
         // n points a period, the last joining the first. A place that is not
         // finite (a particle flown past the float range) reads the first
-        // cell; the wrapped cell is held inside the grid, since rounding far
-        // out can carry it to n.
+        // cell. For a finite one u times n is exact in binary64, so the wrap
+        // is exact and lies in [0, n); the cell is held there all the same.
         double g = isfinite(u) ? (double)u * (double)n : 0.0;
         double cell = floor(g);
         *share = (float)(g - cell);

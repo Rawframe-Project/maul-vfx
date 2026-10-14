@@ -143,6 +143,17 @@ static void TestLife(void)
     CHECK(mvfxGrid_SetValues(context, a, values, 8) == mvfx_success, "set");
     CHECK(mvfxSampleGrid(live, middle, mvfx_borderNone, out) && out[0] == 1.0f, "the new values");
     mvfxDestroyContext(context);
+
+    // The context's grid limit is from 1 to 65,536.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* refused = NULL;
+    contextDef.limits.grids = 0;
+    CHECK(mvfxCreateContext(&contextDef, &refused) == mvfx_errorInvalid, "a limit of 0");
+    contextDef.limits.grids = 65537;
+    CHECK(mvfxCreateContext(&contextDef, &refused) == mvfx_errorInvalid, "past 65,536");
+    contextDef.limits.grids = 65536;
+    CHECK(mvfxCreateContext(&contextDef, &refused) == mvfx_success, "65,536");
+    mvfxDestroyContext(refused);
 }
 
 static void TestSampling(void)
@@ -188,6 +199,23 @@ static void TestSampling(void)
         }
     }
     CHECK(held, "wild places read inside the grid");
+
+    // A 2x3x4 grid of x + 10 y + 100 z: each axis's stride its own.
+    static float uneven[24];
+    for (int32_t p = 0; p < 24; ++p)
+    {
+        uneven[p] = (float)(p % 2) + 10.0f * (float)((p / 2) % 3) + 100.0f * (float)(p / 6);
+    }
+    mvfxGridDef box = mvfxDefaultGridDef();
+    box.size[0] = 2;
+    box.size[1] = 3;
+    box.size[2] = 4;
+    box.values = uneven;
+    CHECK(mvfxCreateGrid(context, &box, &id) == mvfx_success, "an uneven grid");
+    const float at[3] = {0.5f, 0.25f, 0.5f};
+    CHECK(mvfxSampleGrid(mvfxContextGrid(context, id), at, mvfx_borderNone, out) &&
+              out[0] == 0.5f + 5.0f + 150.0f,
+          "each axis's stride");
 
     // One point along an axis: constant along it.
     static const float flat[4] = {1, 2, 3, 4};
