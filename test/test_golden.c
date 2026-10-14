@@ -4,14 +4,14 @@
 // The scene's state hashed after every step against values committed here
 // (record mvfx-0001: the same bits on every platform). CI runs it on every
 // platform of its matrix; one hash differing anywhere fails. A change meant
-// to change results updates the values and says so in the changelog. Set
-// MVFX_PRINT_GOLDEN to print the values this build computes.
+// to change results updates the values and says so in the changelog. Run
+// it with --print to print the values this build computes.
 
 #include "vfx_scene.h"
 
 #include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <string.h>
 
 static const uint64_t s_golden[SCENE_STEP_COUNT] = {
     0xACE09DC97D5DDADEu, 0x5F6447E54A0D44B5u, 0xF31D84CAF7F8433Du, 0xF23601A13C2BE24Cu,
@@ -21,13 +21,13 @@ static const uint64_t s_golden[SCENE_STEP_COUNT] = {
     0x044500AE1C66A2F0u, 0x39728C1D9F725D0Eu, 0x819D11F142F7A83Bu, 0x27228C4A975F70DFu,
 };
 
-int main(void)
+int main(int argc, char** argv)
 {
     mvfxContextDef def = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "context");
     BuildScene(context);
-    bool print = getenv("MVFX_PRINT_GOLDEN") != NULL;
+    bool print = argc > 1 && strcmp(argv[1], "--print") == 0;
     for (int32_t step = 0; step < SCENE_STEP_COUNT; ++step)
     {
         CHECK(mvfxContext_StepTicks(context, s_sceneSteps[step]) == mvfx_success, "step");
