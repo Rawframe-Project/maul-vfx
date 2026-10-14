@@ -42,6 +42,7 @@ endif()
 add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/allocator.c
     src/base.c
+    src/birth.c
     src/context.c
     src/curve.c
     src/curve_integral.c
@@ -55,10 +56,12 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/hash.c
     src/instance.c
     src/instance_api.c
+    src/shape.c
     src/slots.c
     src/spawn.c
     src/step.c
-    src/tasks.c)
+    src/tasks.c
+    src/velocity.c)
 maul_configure_library(maul-vfx)
 # sqrt, floor, ceil and the other exactly rounded functions the library
 # takes from libm (mvfx-0001); the tests' oracles use more of it.
@@ -84,6 +87,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(instance)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)
+    maul_add_test(shape WHITEBOX)
     maul_add_test(slots WHITEBOX)
     maul_add_test(spawn WHITEBOX)
     maul_add_test(step)

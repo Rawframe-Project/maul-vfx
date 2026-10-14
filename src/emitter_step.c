@@ -2,19 +2,15 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Removing ended particles in place, and the births spawn.h gives in
-// tick order. A particle's life is drawn from pcg4d at its serial (record
-// mvfx-0001).
+// tick order, their values from birth.h.
 
 #include "emitter_step.h"
 
+#include "birth.h"
 #include "death_heap.h"
-#include "random.h"
 #include "spawn.h"
 
 #include <math.h>
-
-// The salt that sets the life's draws apart from any other module's.
-#define LIFE_SALT 0x4C494645u
 
 // The seconds in a tick, exact.
 #define SECONDS_PER_TICK 0x1p-20
@@ -63,38 +59,6 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
         ++kept;
     }
     state->count = kept;
-}
-
-// Appends particle k, born at birth with the given inverse life, at the
-// emitter's origin.
-static void Append(mvfxInstance* instance, int32_t emitter, uint64_t k, int64_t birth,
-                   float inverseLife)
-{
-    int32_t at = instance->emitters[emitter].count;
-    ((float*)mvfxAttributeArray(instance, emitter, mvfx_attributePositionX))[at] = 0.0f;
-    ((float*)mvfxAttributeArray(instance, emitter, mvfx_attributePositionY))[at] = 0.0f;
-    ((float*)mvfxAttributeArray(instance, emitter, mvfx_attributePositionZ))[at] = 0.0f;
-    ((uint32_t*)mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow))[at] =
-        (uint32_t)((uint64_t)birth & 0xFFFFFFFFu);
-    ((uint32_t*)mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh))[at] =
-        (uint32_t)((uint64_t)birth >> 32u);
-    ((float*)mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife))[at] = inverseLife;
-    ((uint32_t*)mvfxAttributeArray(instance, emitter, mvfx_attributeSerial))[at] = (uint32_t)k;
-    instance->emitters[emitter].count = at + 1;
-}
-
-// One over particle k's life, drawn from the emitter's range.
-static float InverseLifeOf(const mvfxInstance* instance, int32_t emitter, uint64_t k)
-{
-    const mvfxRange* range = &instance->effect->emitters[emitter].lifetime;
-    mvfxWords4 words = mvfxPcg4d((mvfxWords4){
-        instance->seed,
-        ((uint32_t)emitter * 0x9E3779B9u) ^ LIFE_SALT,
-        (uint32_t)k,
-        (uint32_t)(k >> 32u),
-    });
-    float life = range->min + (range->max - range->min) * mvfxUnitFloat(words.x);
-    return 1.0f / life;
 }
 
 int64_t mvfxDeathTick(int64_t birth, float inverseLife)
@@ -149,10 +113,11 @@ static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
         for (int64_t i = 0; i < count; ++i)
         {
             uint64_t k = state->owed++;
-            float inverseLife = InverseLifeOf(instance, emitter, k);
+            float inverseLife = mvfxInverseLifeOf(instance, emitter, k);
             if (AgeAt(instance->clock, tick) * inverseLife < 1.0f)
             {
-                Append(instance, emitter, k, tick, inverseLife);
+                mvfxBirth birth = {k, tick, i, count};
+                mvfxAppendBirth(instance, emitter, &birth, inverseLife);
             }
         }
     }
@@ -191,12 +156,11 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
         for (int64_t i = 0; i < taken; ++i)
         {
             uint64_t k = state->owed + (uint64_t)i;
-            int64_t death = mvfxDeathTick(tick, InverseLifeOf(instance, emitter, k));
+            int64_t death = mvfxDeathTick(tick, mvfxInverseLifeOf(instance, emitter, k));
             mvfxPushDeath(&heap, death);
             if (death > instance->clock)
             {
-                instance->acceptedScratch[accepted] = k;
-                instance->acceptedBirthScratch[accepted] = tick;
+                instance->acceptedScratch[accepted] = (mvfxBirth){k, tick, i, count};
                 ++accepted;
             }
         }
@@ -207,9 +171,9 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     RemoveEnded(instance, emitter);
     for (int32_t i = 0; i < accepted; ++i)
     {
-        uint64_t k = instance->acceptedScratch[i];
-        Append(instance, emitter, k, instance->acceptedBirthScratch[i],
-               InverseLifeOf(instance, emitter, k));
+        const mvfxBirth* birth = &instance->acceptedScratch[i];
+        mvfxAppendBirth(instance, emitter, birth,
+                        mvfxInverseLifeOf(instance, emitter, birth->serial));
     }
 }
 

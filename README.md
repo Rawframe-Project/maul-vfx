@@ -33,8 +33,9 @@ stepping allocates nothing.
 ## Status
 
 Not released. The design is decided; the context, the library's own
-math and random numbers, curves, effects, instances, the step and
-emitter lives are in place, and spawn shapes come next.
+math and random numbers, curves, effects, instances, the step, emitter
+lives, spawn shapes and initial velocity are in place, and mesh shapes
+come next.
 It has 22 public functions.
 
 ## Building

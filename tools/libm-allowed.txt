@@ -9,6 +9,8 @@ fabs
 fabsf
 floor
 floorf
+fmaxf
+fminf
 frexp
 ldexp
 sqrt

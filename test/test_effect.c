@@ -345,6 +345,155 @@ static void TestLifeFieldsRefused(void)
     mvfxDestroyContext(context);
 }
 
+static void TestShapeAndVelocityRefused(void)
+{
+    mvfxContext* context = NewContext(NULL, 8);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
+    for (int32_t field = 0; field < 27; ++field)
+    {
+        mvfxEmitterDef bad = mvfxDefaultEmitterDef();
+        mvfxShape* shape = &bad.shape;
+        mvfxVelocity* velocity = &bad.velocity;
+        shape->radius = 1.0f;
+        shape->length = 1.0f;
+        shape->angle = 0.5f;
+        shape->halfExtents[0] = 1.0f;
+        switch (field)
+        {
+        case 0:
+            shape->kind = 7;
+            break;
+        case 1:
+            shape->rotation[3] = 0.99f;
+            break;
+        case 2:
+            shape->rotation[0] = NAN;
+            break;
+        case 3:
+            shape->offset[1] = MVFX_MAX_EXTENT * 2.0f;
+            break;
+        case 4:
+            shape->arcMode = 4;
+            break;
+        case 5:
+            shape->arcSpeed = -1.0f;
+            break;
+        case 6:
+            shape->thickness = 1.5f;
+            break;
+        case 7:
+            shape->kind = mvfx_shapeLine;
+            shape->length = -1.0f;
+            break;
+        case 8:
+            shape->kind = mvfx_shapeCircle;
+            shape->arc = 0.0f;
+            break;
+        case 9:
+            shape->kind = mvfx_shapeCircle;
+            shape->arc = 7.0f;
+            break;
+        case 10:
+            shape->kind = mvfx_shapeCircle;
+            shape->radius = NAN;
+            break;
+        case 11:
+            shape->kind = mvfx_shapeSphere;
+            shape->radius = -2.0f;
+            break;
+        case 12:
+            shape->kind = mvfx_shapeHemisphere;
+            shape->radius = INFINITY;
+            break;
+        case 13:
+            shape->kind = mvfx_shapeBox;
+            shape->halfExtents[2] = -1.0f;
+            break;
+        case 14:
+            shape->kind = mvfx_shapeCone;
+            shape->angle = MVFX_MAX_CONE_ANGLE + 0.01f;
+            break;
+        case 15:
+            shape->kind = mvfx_shapeCone;
+            shape->angle = -0.1f;
+            break;
+        case 16:
+            // A top radius past the largest extent.
+            shape->kind = mvfx_shapeCone;
+            shape->angle = MVFX_MAX_CONE_ANGLE;
+            shape->length = MVFX_MAX_EXTENT;
+            break;
+        case 17:
+            shape->kind = mvfx_shapeCone;
+            shape->arc = -1.0f;
+            break;
+        case 18:
+            velocity->mode = 4;
+            break;
+        case 19:
+            velocity->mode = mvfx_directionFixed;
+            velocity->direction[0] = 0.0f;
+            velocity->direction[1] = 0.0f;
+            velocity->direction[2] = 0.0f;
+            break;
+        case 20:
+            velocity->mode = mvfx_directionCone;
+            velocity->direction[2] = NAN;
+            break;
+        case 21:
+            velocity->coneAngle = 3.2f;
+            break;
+        case 22:
+            velocity->randomize = -0.5f;
+            break;
+        case 23:
+            velocity->speed = (mvfxRange){-1.0f, 1.0f};
+            break;
+        case 24:
+            velocity->speed = (mvfxRange){2.0f, 1.0f};
+            break;
+        case 25:
+            velocity->speed = (mvfxRange){0.0f, MVFX_MAX_EXTENT * 2.0f};
+            break;
+        default:
+            velocity->direction[0] = INFINITY;
+            break;
+        }
+        mvfxEffectDef def = OneEmitter(&bad);
+        mvfxEffectId effect = {7, 7};
+        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxContext_GetMisuse(context) == ++misuse, "each refusal counted");
+    }
+    // A kind's unread fields are not checked, and every edge is accepted.
+    static const mvfxShapeKind kinds[7] = {mvfx_shapePoint,  mvfx_shapeLine,       mvfx_shapeCircle,
+                                           mvfx_shapeSphere, mvfx_shapeHemisphere, mvfx_shapeBox,
+                                           mvfx_shapeCone};
+    for (int32_t k = 0; k < 7; ++k)
+    {
+        mvfxEmitterDef edge = mvfxDefaultEmitterDef();
+        edge.shape.kind = kinds[k];
+        edge.shape.radius = kinds[k] == mvfx_shapeCone ? 0.0f : MVFX_MAX_EXTENT;
+        edge.shape.length = kinds[k] == mvfx_shapeCone ? 0.0f : MVFX_MAX_EXTENT;
+        edge.shape.angle = kinds[k] == mvfx_shapeCone ? MVFX_MAX_CONE_ANGLE : -5.0f;
+        edge.shape.halfExtents[0] = kinds[k] == mvfx_shapeBox ? MVFX_MAX_EXTENT : -1.0f;
+        edge.shape.offset[0] = -MVFX_MAX_EXTENT;
+        edge.shape.thickness = 0.0f;
+        edge.shape.arcSpeed = 1000.0f;
+        edge.shape.arcMode = mvfx_arcBurstSpread;
+        edge.shape.rotation[3] = 1.0009f;
+        edge.velocity.mode = mvfx_directionCone;
+        edge.velocity.direction[0] = 1e-6f;
+        edge.velocity.coneAngle = 3.14159265f;
+        edge.velocity.randomize = 1.0f;
+        edge.velocity.speed = (mvfxRange){MVFX_MAX_EXTENT, MVFX_MAX_EXTENT};
+        mvfxEffectDef def = OneEmitter(&edge);
+        mvfxEffectId effect = {0};
+        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "every edge accepted");
+        CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "destroyed");
+    }
+    mvfxDestroyContext(context);
+}
+
 static void TestAllocator(void)
 {
     CountingAllocator counter = {.failAfter = -1};
@@ -387,6 +536,7 @@ int main(void)
     TestLimit();
     TestInvalidDefsAreMisuse();
     TestLifeFieldsRefused();
+    TestShapeAndVelocityRefused();
     TestAllocator();
     return s_failures == 0 ? 0 : 1;
 }

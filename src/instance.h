@@ -44,6 +44,16 @@ typedef struct mvfxEmitterState
     mvfxBurstCursor* bursts;
 } mvfxEmitterState;
 
+// A birth: the particle's serial and tick, and its place among the births
+// of its batch (a burst's firing; a rate's births are batches of one).
+typedef struct mvfxBirth
+{
+    uint64_t serial;
+    int64_t tick;
+    int64_t batchIndex;
+    int64_t batchCount;
+} mvfxBirth;
+
 // An instance.
 typedef struct mvfxInstance
 {
@@ -56,10 +66,9 @@ typedef struct mvfxInstance
     mvfxEmitterState* emitters;
     // Scratch for a step that may reach an emitter's capacity, sized for
     // the largest emitter: its death ticks, and the particles it accepts
-    // that live past the step, by serial and birth tick.
+    // that live past the step.
     int64_t* deathScratch;
-    uint64_t* acceptedScratch;
-    int64_t* acceptedBirthScratch;
+    mvfxBirth* acceptedScratch;
     size_t blockBytes;
 } mvfxInstance;
 

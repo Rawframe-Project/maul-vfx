@@ -585,6 +585,46 @@ static void TestRestartReplays(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestShapesThroughTheStep(void)
+{
+    // A burst of 8 spread evenly on a ring of radius 2 lifted by 1, setting
+    // off outward at 3: particle k (in serial order) at k eighths of a turn.
+    mvfxBurst ring = {
+        .time = 0.125f, .minCount = 8, .maxCount = 8, .cycles = 1, .probability = 1.0f};
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.bursts = &ring;
+    emitter.burstCount = 1;
+    emitter.shape.kind = mvfx_shapeCircle;
+    emitter.shape.radius = 2.0f;
+    emitter.shape.thickness = 0.0f;
+    emitter.shape.offset[2] = 1.0f;
+    emitter.shape.arcMode = mvfx_arcBurstSpread;
+    emitter.velocity.speed = (mvfxRange){3.0f, 3.0f};
+    Scene scene = NewScene(&emitter);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
+    const mvfxInstance* instance = scene.context->instances.slots[scene.instance.index1 - 1].object;
+    CHECK(instance->emitters[0].count == 8, "eight born");
+    const float* x = mvfxAttributeArray(instance, 0, mvfx_attributePositionX);
+    const float* y = mvfxAttributeArray(instance, 0, mvfx_attributePositionY);
+    const float* z = mvfxAttributeArray(instance, 0, mvfx_attributePositionZ);
+    const float* vx = mvfxAttributeArray(instance, 0, mvfx_attributeVelocityX);
+    const float* vy = mvfxAttributeArray(instance, 0, mvfx_attributeVelocityY);
+    const uint32_t* serial = mvfxAttributeArray(instance, 0, mvfx_attributeSerial);
+    bool spread = true;
+    for (int32_t k = 0; k < 8; ++k)
+    {
+        double angle = 2.0 * 3.14159265358979323846 * k / 8.0;
+        spread = spread && serial[k] == (uint32_t)k &&
+                 fabs((double)x[k] - 2.0 * cos(angle)) <= 1e-5 &&
+                 fabs((double)y[k] - 2.0 * sin(angle)) <= 1e-5 && z[k] == 1.0f &&
+                 fabs((double)vx[k] - 3.0 * cos(angle)) <= 1e-5 &&
+                 fabs((double)vy[k] - 3.0 * sin(angle)) <= 1e-5;
+    }
+    CHECK(spread, "spread evenly on the ring, outward at 3");
+    mvfxDestroyContext(scene.context);
+}
+
 int main(void)
 {
     TestRatesAgainstIntegers();
@@ -594,5 +634,6 @@ int main(void)
     TestEmitterStates();
     TestStop();
     TestRestartReplays();
+    TestShapesThroughTheStep();
     return s_failures == 0 ? 0 : 1;
 }

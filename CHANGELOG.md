@@ -42,3 +42,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Changed: the rate's k-th birth is where its integral reaches k + 1, so
   a rate of 0 spawns nothing and nothing is born at the emitter's start;
   the golden state hashes change with it.
+- Spawn shapes and initial velocity (`maul-vfx/shape.h`): point, line,
+  circle and arc, sphere, hemisphere, box and cone, on their surface, in
+  a shell or in their volume, turned and moved within the emitter; arc
+  modes random, loop, ping-pong and burst spread; a direction from the
+  shape's normal, its center, a cone or a fixed vector, randomized by a
+  share, times a speed range. Particles now store a velocity.

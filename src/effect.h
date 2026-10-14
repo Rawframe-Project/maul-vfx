@@ -12,6 +12,8 @@
 
 #include "curve.h"
 #include "curve_integral.h"
+#include "shape.h"
+#include "velocity.h"
 
 #include "maul-vfx/effect.h"
 
@@ -36,10 +38,14 @@ enum
     // The low 32 bits of the count of particles the emitter owed before
     // this one.
     mvfx_attributeSerial = 6,
+    // Velocity, one array per axis.
+    mvfx_attributeVelocityX = 7,
+    mvfx_attributeVelocityY = 8,
+    mvfx_attributeVelocityZ = 9,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT 7
+#define MVFX_ATTRIBUTE_COUNT 10
 
 // The alignment of every attribute array, a cache line.
 #define MVFX_ATTRIBUTE_ALIGNMENT 64
@@ -103,6 +109,8 @@ typedef struct mvfxCompiledEmitter
     // The particles the rate owes over one loop, with a duration.
     double loopIntegral;
     mvfxRange lifetime;
+    mvfxCompiledShape shape;
+    mvfxCompiledVelocity velocity;
     mvfxAttributePlan plan;
 } mvfxCompiledEmitter;
 

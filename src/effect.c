@@ -16,6 +16,13 @@ mvfxEmitterDef mvfxDefaultEmitterDef(void)
         .capacity = 1024,
         .rate = 64.0f,
         .lifetime = {1.0f, 1.0f},
+        .shape =
+            {
+                .kind = mvfx_shapePoint,
+                .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
+                .arc = 6.28318530717958647692f,
+            },
+        .velocity = {.mode = mvfx_directionShapeNormal, .direction = {0.0f, 0.0f, 1.0f}},
     };
 }
 
@@ -121,7 +128,8 @@ static bool IsEmitterDefValid(const mvfxEmitterDef* def)
             return false;
         }
     }
-    return BurstRate(def) <= (double)MVFX_MAX_SPAWN_RATE && IsRateCurveValid(def);
+    return BurstRate(def) <= (double)MVFX_MAX_SPAWN_RATE && IsRateCurveValid(def) &&
+           mvfxIsShapeValid(&def->shape) && mvfxIsVelocityValid(&def->velocity);
 }
 
 bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
@@ -142,7 +150,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
 }
 
 // The plan of the attributes every emitter has: position, birth tick,
-// inverse life and serial, each padded and aligned.
+// inverse life, serial and velocity, each padded and aligned.
 static mvfxAttributePlan PlanAttributes(int32_t paddedCapacity)
 {
     mvfxAttributePlan plan = {0};
@@ -236,6 +244,8 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, const mvfxAllocator* all
             .lifetime = source->lifetime,
             .plan = PlanAttributes(padded),
         };
+        mvfxCompileShape(&source->shape, &effect->emitters[i].shape);
+        mvfxCompileVelocity(&source->velocity, &effect->emitters[i].velocity);
         double seconds = (double)effect->emitters[i].duration / (double)MVFX_TICKS_PER_SECOND;
         effect->emitters[i].loopIntegral =
             curve != nullptr ? seconds * mvfxCurveIntegralAt(&curve->table, &curve->integral, 1.0)

@@ -10,6 +10,7 @@
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/curve.h"
+#include "maul-vfx/shape.h"
 
 #include <stdbool.h>
 
@@ -50,14 +51,6 @@ extern "C"
         uint32_t index1;
         uint32_t generation;
     } mvfxEffectId;
-
-    // A value drawn uniformly from [min, max] for each particle; min equal to
-    // max gives that value.
-    typedef struct mvfxRange
-    {
-        float min;
-        float max;
-    } mvfxRange;
 
     // A burst: particles born at once at a time of each loop, repeated a
     // number of times at an interval.
@@ -118,6 +111,10 @@ extern "C"
         // Each particle's life in seconds: above 0, at most
         // MVFX_MAX_LIFETIME, min at most max.
         mvfxRange lifetime;
+        // Where its particles are born.
+        mvfxShape shape;
+        // How they set off.
+        mvfxVelocity velocity;
     } mvfxEmitterDef;
 
 // The cookie of an emitter def, which its default sets and the effect's
@@ -126,7 +123,8 @@ extern "C"
 
     /// Returns the default emitter def: 1,024 particles, 64 a second without
     /// end from the instance's start, no bursts, each living one second,
-    /// born at the emitter's origin.
+    /// born at the emitter's origin at rest (a point shape, unturned, whole
+    /// arcs, along the shape's normal at a speed of 0).
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

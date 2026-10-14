@@ -25,9 +25,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3]
     }
     size_t deathsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
     size_t acceptedAt =
-        mvfxLayoutAdd(&layout, (size_t)largest, sizeof(uint64_t), alignof(uint64_t));
-    size_t acceptedBirthsAt =
-        mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
+        mvfxLayoutAdd(&layout, (size_t)largest, sizeof(mvfxBirth), alignof(mvfxBirth));
     size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
                                     alignof(mvfxBurstCursor));
     for (int32_t e = 0; e < effect->emitterCount; ++e)
@@ -54,8 +52,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3]
         .seed = seed,
         .emitters = (mvfxEmitterState*)(block + statesAt),
         .deathScratch = (int64_t*)(block + deathsAt),
-        .acceptedScratch = (uint64_t*)(block + acceptedAt),
-        .acceptedBirthScratch = (int64_t*)(block + acceptedBirthsAt),
+        .acceptedScratch = (mvfxBirth*)(block + acceptedAt),
         .blockBytes = layout.size,
     };
     mvfxBurstCursor* bursts = (mvfxBurstCursor*)(block + burstsAt);
