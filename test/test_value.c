@@ -73,6 +73,15 @@ static void TestScalarKinds(void)
     unbounded.curve.keyCount = 1;
     CHECK(!mvfxIsScalarSourceValid(&unbounded, false, true, 0), "a key past 1 with a duration");
     CHECK(mvfxIsScalarSourceValid(&unbounded, false, false, 0), "in seconds without one");
+    // A curve in seconds, from 2 s to 4 s, read at 3 s: half way.
+    static const mvfxCurveKey seconds[2] = {{2.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+                                            {4.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    mvfxScalarSource inSeconds = {
+        .kind = mvfx_sourceCurve, .range = {1.0f, 1.0f}, .curve = {seconds, 2, mvfx_tangentsGiven}};
+    mvfxTableSpace secondsSpace = {.curves = curves};
+    mvfxCompileScalar(&inSeconds, false, &secondsSpace, &compiled);
+    CHECK(fabsf(mvfxDrawScalar(&compiled, 3.0f, parameters, Words(9)) - 0.5f) <= 1e-6f,
+          "a curve in seconds over its keys' span");
     static const mvfxScalarSource bad[4] = {
         {.kind = 6, .range = {0.0f, 1.0f}},
         {.kind = mvfx_sourceRange, .range = {2.0f, 1.0f}},
@@ -150,8 +159,8 @@ static void TestVectorKinds(void)
 
     // A curve scales every component; a parameter each by its own.
     mvfxVectorSource curve = {.kind = mvfx_sourceCurve,
-                              .min = {1, 2, 3, 0},
-                              .max = {1, 2, 3, 0},
+                              .min = {1, 2, 3, 7},
+                              .max = {1, 2, 3, 7},
                               .curve = {s_ramp, 2, mvfx_tangentsGiven}};
     mvfxCompileVector(&curve, 3, true, &space, &compiled);
     mvfxDrawVector(&compiled, 0.5f, parameters, Words(4), v);
@@ -300,6 +309,58 @@ static void TestValuesThroughTheStep(void)
     }
     CHECK(euler, "Euler angles about X, then Z; a fixed frame its first");
     mvfxDestroyContext(scene.context);
+
+    // Three angles at once, against qz qy qx multiplied out in binary64.
+    double angles[3] = {0.3, -1.1, 2.0};
+    double h[3][2];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        h[k][0] = sin(0.5 * (double)(float)angles[k]);
+        h[k][1] = cos(0.5 * (double)(float)angles[k]);
+    }
+    // qy qx, then qz (qy qx): Hamilton products of (x, y, z, w).
+    double yx[4] = {h[1][1] * h[0][0], h[1][0] * h[0][1], -h[1][0] * h[0][0], h[1][1] * h[0][1]};
+    double expected[4] = {
+        h[2][1] * yx[0] - h[2][0] * yx[1],
+        h[2][1] * yx[1] + h[2][0] * yx[0],
+        h[2][1] * yx[2] + h[2][0] * yx[3],
+        h[2][1] * yx[3] - h[2][0] * yx[2],
+    };
+    emitter.orientation =
+        (mvfxVectorSource){.kind = mvfx_sourceRange,
+                           .min = {(float)angles[0], (float)angles[1], (float)angles[2]},
+                           .max = {(float)angles[0], (float)angles[1], (float)angles[2]}};
+    scene = NewScene(&emitter, NULL, 0);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 16) == mvfx_success, "step");
+    bool product = scene.live->emitters[0].count == 4;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        product = product &&
+                  fabs((double)Array(&scene, (mvfxAttribute)(mvfx_attributeOrientationX + k))[0] -
+                       expected[k]) <= 1e-6;
+    }
+    CHECK(product, "three angles as qz qy qx");
+    mvfxDestroyContext(scene.context);
+
+    // Two custom attributes of one source draw apart.
+    mvfxCustomAttribute twins[2] = {
+        {.components = 1, .initial = {.kind = mvfx_sourceRange, .min = {0}, .max = {1}}},
+        {.components = 1, .initial = {.kind = mvfx_sourceRange, .min = {0}, .max = {1}}},
+    };
+    emitter = mvfxDefaultEmitterDef();
+    emitter.custom = twins;
+    emitter.customCount = 2;
+    scene = NewScene(&emitter, NULL, 0);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
+    const float* first = Array(&scene, mvfx_attributeCustom);
+    const float* second = Array(&scene, (mvfxAttribute)(mvfx_attributeCustom + 4));
+    int32_t alike = 0;
+    for (int32_t i = 0; i < scene.live->emitters[0].count; ++i)
+    {
+        alike += first[i] == second[i] ? 1 : 0;
+    }
+    CHECK(scene.live->emitters[0].count == 16 && alike == 0, "each custom attribute its own draws");
+    mvfxDestroyContext(scene.context);
 }
 
 static void TestLivesAndParameters(void)
@@ -360,6 +421,17 @@ static void TestLivesAndParameters(void)
     CHECK(mvfxInstance_SetParameter(NULL, scene.instance, 0, zero) == mvfx_errorInvalid,
           "no context");
     CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 5, "stale ids are not misuse");
+    mvfxDestroyContext(scene.context);
+
+    // A parameter's life past the longest is held to it.
+    static const float forever[4] = {1e20f, 0, 0, 0};
+    emitter = mvfxDefaultEmitterDef();
+    emitter.lifetime =
+        (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {1.0f, 1.0f}, .parameter = 0};
+    scene = NewScene(&emitter, forever, 1);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
+    CHECK(Array(&scene, mvfx_attributeInverseLife)[0] == 1.0f / MVFX_MAX_LIFETIME,
+          "held to the longest life");
     mvfxDestroyContext(scene.context);
 
     // Lives by a curve over the loop: births late in a loop live longer.
