@@ -144,6 +144,57 @@ extern "C"
         mvfxRotationOverLife rotation;
     } mvfxOverLife;
 
+// The most kill rules an emitter has.
+#define MVFX_MAX_KILL_RULES 8
+
+    // What a kill rule kills. Region rules test the straight segment a
+    // particle covered over a step, so a particle is caught however fast it
+    // went; how a curving path is cut into steps can still decide it.
+    typedef uint8_t mvfxKillKind;
+    enum
+    {
+        // Passing through a sphere of radius about center.
+        mvfx_killInsideSphere = 0,
+        // Ending a step outside it.
+        mvfx_killOutsideSphere = 1,
+        // Passing through a box of halfExtents about center, turned by
+        // rotation.
+        mvfx_killInsideBox = 2,
+        // Ending a step outside it.
+        mvfx_killOutsideBox = 3,
+        // Ending a step past the plane through center, on the side normal
+        // points to.
+        mvfx_killPastPlane = 4,
+        // Ending a step slower than speed, once older than minimumAge
+        // seconds.
+        mvfx_killSlower = 5,
+    };
+
+    // A kill rule, tested at the end of each step; a particle it kills is
+    // gone from then. Its places and lengths are in its space, the world's or
+    // the emitter's (turning and scaling with the instance); each value
+    // finite and at most MVFX_MAX_EXTENT in size, fields its kind does not
+    // read not checked.
+    typedef struct mvfxKillRule
+    {
+        mvfxKillKind kind;
+        // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
+        uint8_t space;
+        float center[3];
+        // A sphere's radius, above 0.
+        float radius;
+        // A box's half sizes, each above 0, and its rotation, a unit
+        // quaternion within 0.001.
+        float halfExtents[3];
+        float rotation[4];
+        // A plane's normal, not of length 0.
+        float normal[3];
+        // The speed, at least 0, and the age before which it does not kill,
+        // from 0 to MVFX_MAX_LIFETIME seconds.
+        float speed;
+        float minimumAge;
+    } mvfxKillRule;
+
 #ifdef __cplusplus
 }
 #endif

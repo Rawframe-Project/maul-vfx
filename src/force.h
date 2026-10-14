@@ -43,6 +43,7 @@ typedef struct mvfxResolvedForce
     float point[3];
     float strength;
     float softening;
+    float killRadius;
     float pull;
     float center[3];
     float axis[3];

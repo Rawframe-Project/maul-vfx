@@ -238,6 +238,10 @@ extern "C"
         float strength;
         // The attractor's softening radius, from MVFX_MIN_SOFTENING.
         float softening;
+        // The attractor's kill radius: a particle whose step passes within it
+        // of point is killed, as an inside-sphere kill rule; 0 for none, at
+        // most MVFX_MAX_EXTENT.
+        float killRadius;
         // The vortex's acceleration toward its axis; a negative one pushes
         // out.
         float pull;
@@ -351,6 +355,10 @@ extern "C"
         mvfxVelocityModules velocityModules;
         // The values over life they show.
         mvfxOverLife overLife;
+        // The rules that kill them before their life ends, at most
+        // MVFX_MAX_KILL_RULES; NULL when killRuleCount is 0.
+        const mvfxKillRule* killRules;
+        int32_t killRuleCount;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second

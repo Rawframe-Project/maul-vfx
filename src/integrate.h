@@ -29,11 +29,16 @@ typedef struct mvfxDragFactors
 // The factors of drag k a second over a span of seconds, in binary64.
 mvfxDragFactors mvfxDragFactorsOf(double drag, double seconds);
 
-// Resolves the emitter's forces for the step, then moves the particles it
-// holds at the step's start over the whole step.
+// Resolves the emitter's forces, kill rules and velocity modules for the
+// step, from the instance's transform at its start.
+void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter);
+
+// Moves the particles the emitter holds over the whole step (those alive
+// at its start, once the ended ones are gone), marking those killed.
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter);
 
-// Moves a particle born within the step from its birth to the step's end.
+// Moves a particle born within the step from its birth to the step's end,
+// marking it if killed.
 void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick);
 
 #endif

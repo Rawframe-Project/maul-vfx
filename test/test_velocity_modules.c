@@ -40,13 +40,14 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     return scene;
 }
 
-// An emitter of what the host spawns, living a second.
+// An emitter of what the host spawns, living ten seconds (past every
+// test's run, so no test reads a particle whose life ended).
 static mvfxEmitterDef Held(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
     return emitter;
 }
 

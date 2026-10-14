@@ -7,6 +7,7 @@
 #include "effect.h"
 #include "elementary.h"
 #include "force.h"
+#include "kill.h"
 
 #include <math.h>
 
@@ -267,6 +268,33 @@ static float AgeOf(const Range* r, int32_t i)
     return fminf(fmaxf(age, 0.0f), 1.0f);
 }
 
+// Whether a kill rule or an attractor's kill radius kills particle i,
+// gone from start to end over the span.
+static bool IsKilled(const Range* r, int32_t i, const float start[3], const float end[3])
+{
+    const mvfxCompiledEmitter* compiled = r->compiled;
+    const mvfxEmitterState* state = &r->instance->emitters[r->emitter];
+    for (int32_t f = 0; f < compiled->forceCount; ++f)
+    {
+        const mvfxResolvedForce* force = &r->forces[f];
+        if (force->kind == mvfx_forceAttractor && force->killRadius > 0.0f &&
+            mvfxSegmentMeetsSphere(start, end, force->point, force->killRadius))
+        {
+            return true;
+        }
+    }
+    if (compiled->killRuleCount == 0)
+    {
+        return false;
+    }
+    const uint32_t* low = r->birthLow;
+    const uint32_t* high = r->birthHigh;
+    int64_t birth = (int64_t)(((uint64_t)high[i] << 32u) | low[i]);
+    double age = (double)(r->tick - birth) / (double)MVFX_TICKS_PER_SECOND + r->seconds;
+    const float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
+    return mvfxIsKilled(state->killRules, compiled->killRuleCount, start, end, velocity, age);
+}
+
 // Moves particle i: its speed held to the limit, its motion under gravity,
 // drag and forces, then the velocity modules' moves.
 static void MoveParticle(const Range* r, int32_t i)
@@ -300,6 +328,7 @@ static void MoveParticle(const Range* r, int32_t i)
     {
         r->p[k][i] = place[k];
     }
+    r->instance->killScratch[i] = IsKilled(r, i, start, place) ? 1 : 0;
 }
 
 // Moves particles from first to end over seconds from tick.
@@ -373,29 +402,37 @@ static void ResolveVelocityModules(mvfxInstance* instance, int32_t emitter)
     mvfxMapPoint(&map, compiled->radialCenter, out->radialCenter);
 }
 
-void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
+void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxEmitterState* state = &instance->emitters[emitter];
     for (int32_t f = 0; f < compiled->forceCount; ++f)
     {
         const mvfxForce* force = &compiled->forces[f];
         mvfxSpaceMap map = SpaceMapOf(instance, emitter, force->space);
-        instance->emitters[emitter].forces[f] =
-            mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters, instance->seed,
-                             compiled->forceGrids[f]);
+        state->forces[f] = mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters,
+                                            instance->seed, compiled->forceGrids[f]);
     }
+    for (int32_t r = 0; r < compiled->killRuleCount; ++r)
+    {
+        const mvfxKillRule* rule = &compiled->killRules[r];
+        mvfxSpaceMap map = SpaceMapOf(instance, emitter, (mvfxSimulationSpace)rule->space);
+        state->killRules[r] = mvfxResolveKillRule(rule, &map);
+    }
+    ResolveVelocityModules(instance, emitter);
+}
+
+void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
+{
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
-    ResolveVelocityModules(instance, emitter);
     MoveRange(instance, emitter, 0, instance->emitters[emitter].count, instance->stepStart,
               seconds);
 }
 
 void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick)
 {
+    // Even one born at the step's end, so the kill rules test where it is.
     double seconds = (double)(instance->clock - birthTick) / (double)MVFX_TICKS_PER_SECOND;
-    if (seconds > 0.0)
-    {
-        MoveRange(instance, emitter, at, at + 1, birthTick, seconds);
-    }
+    MoveRange(instance, emitter, at, at + 1, birthTick, seconds);
 }

@@ -70,6 +70,10 @@ typedef struct mvfxEmitterState
     struct mvfxResolvedForce* forces;
     // Its velocity modules as resolved for the step.
     mvfxResolvedVelocityModules velocityModules;
+    // Its kill rules as resolved for the step, and the particles they
+    // killed.
+    struct mvfxResolvedKillRule* killRules;
+    uint64_t killed;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;
@@ -130,6 +134,9 @@ typedef struct mvfxInstance
     // that live past the step.
     int64_t* deathScratch;
     mvfxBirth* acceptedScratch;
+    // Whether each particle of the emitter being stepped was killed this
+    // step.
+    uint8_t* killScratch;
     size_t blockBytes;
 } mvfxInstance;
 

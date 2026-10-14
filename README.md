@@ -39,8 +39,9 @@ instances, host spawns and prewarm), the integrator (exact under
 gravity and drag) and forces (constant, wind, attractors, vortices,
 turbulence, vector fields from grids, with falloffs) and velocity
 modules (motion scale, added, orbit and radial velocity, a speed limit)
-and values over life (colour, alpha, size, flipbook, rotation speed,
-custom attributes) are in place, and kill rules come next.
+values over life (colour, alpha, size, flipbook, rotation speed,
+custom attributes) and kill rules are in place, and host modules come
+next.
 It has 39 public functions.
 
 ## Building

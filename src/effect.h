@@ -160,6 +160,8 @@ typedef struct mvfxCompiledEmitter
     struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
     mvfxCompiledVelocityModules velocityModules;
     mvfxCompiledOverLife overLife;
+    mvfxKillRule killRules[MVFX_MAX_KILL_RULES];
+    int32_t killRuleCount;
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

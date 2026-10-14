@@ -104,3 +104,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   looping or held, rotation speed over life), and a custom attribute may
   be scaled over life. All but rotation are taken where a value is read
   and never written back.
+- Kill rules: an emitter def gains up to eight `killRules` (through a
+  sphere or a turned box, ending outside one, past a plane, slower than
+  a speed after an age), each in the world's or the emitter's space; an
+  attractor gains a `killRadius`; emitter stats count the `killed`.

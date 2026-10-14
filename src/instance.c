@@ -8,6 +8,7 @@
 
 #include "allocator.h"
 #include "force.h"
+#include "kill.h"
 
 #include <math.h>
 #include <string.h>
@@ -28,16 +29,20 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
     size_t deathsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
     size_t acceptedAt =
         mvfxLayoutAdd(&layout, (size_t)largest, sizeof(mvfxBirth), alignof(mvfxBirth));
+    size_t killsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(uint8_t), alignof(uint8_t));
     size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
                                     alignof(mvfxBurstCursor));
     size_t queuesAt[MVFX_MAX_EMITTERS] = {0};
     size_t forcesAt[MVFX_MAX_EMITTERS] = {0};
+    size_t rulesAt[MVFX_MAX_EMITTERS] = {0};
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
         queuesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].hostSpawnCapacity,
                                     sizeof(mvfxHostBirth), alignof(mvfxHostBirth));
         forcesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].forceCount,
                                     sizeof(mvfxResolvedForce), alignof(mvfxResolvedForce));
+        rulesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].killRuleCount,
+                                   sizeof(mvfxResolvedKillRule), alignof(mvfxResolvedKillRule));
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -65,6 +70,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
         .emitters = (mvfxEmitterState*)(block + statesAt),
         .deathScratch = (int64_t*)(block + deathsAt),
         .acceptedScratch = (mvfxBirth*)(block + acceptedAt),
+        .killScratch = block + killsAt,
         .blockBytes = layout.size,
     };
     for (int32_t p = 0; p < effect->parameterCount; ++p)
@@ -83,6 +89,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             .mesh = effect->emitters[e].shape.mesh,
             .hostQueue = (mvfxHostBirth*)(block + queuesAt[e]),
             .forces = (mvfxResolvedForce*)(block + forcesAt[e]),
+            .killRules = (mvfxResolvedKillRule*)(block + rulesAt[e]),
         };
     }
     mvfxResetInstance(instance);
@@ -107,6 +114,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->refused = 0;
         state->rate = (mvfxRateCursor){0};
         state->hostCount = 0;
+        state->killed = 0;
         state->distanceCarry = 0.0;
         state->distanceDelta = 0.0;
         state->distanceSkip = 0.0;

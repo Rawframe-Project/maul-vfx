@@ -93,7 +93,8 @@ bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
     case mvfx_forceWind:
         return IsWithin(force->strength, 0.0f, MVFX_MAX_DRAG);
     case mvfx_forceAttractor:
-        return IsWithin(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT);
+        return IsWithin(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT) &&
+               IsWithin(force->killRadius, 0.0f, MVFX_MAX_EXTENT);
     case mvfx_forceVortex:
         return IsAxis(force->vector) && IsWithin(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
     case mvfx_forceTurbulence:
@@ -176,6 +177,7 @@ mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* m
         .falloff = force->falloff.kind,
         .strength = strength,
         .softening = force->softening * sigma,
+        .killRadius = force->killRadius * sigma,
         .pull = force->pull * sigma,
         .radius = force->falloff.radius * sigma,
         .exponent = force->falloff.exponent,

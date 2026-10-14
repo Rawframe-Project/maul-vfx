@@ -84,14 +84,17 @@ static inline void BuildScene(mvfxContext* context)
     emitters[1].motion.drag = 1.5f;
     emitters[1].motion.dragScale = mvfxRangeSource(0.25f, 2.0f);
     emitters[2].motion.drag = 30.0f;
-    // Forces: an attractor in a sphere on the first; a vortex in a tube
+    // Forces: an attractor in a sphere, with a kill radius, in the
+    // emitter's space on the first; a vortex in a tube
     // and a vector field in a turned, tiled box, in the emitter's space, on
     // the third.
     static const mvfxForce attract = {
         .kind = mvfx_forceAttractor,
+        .space = mvfx_spaceLocal,
         .point = {0, 2, 0},
         .strength = 6.0f,
         .softening = 0.5f,
+        .killRadius = 1.0f,
         .falloff = {
             .kind = mvfx_falloffSphere, .center = {0, 2, 0}, .radius = 5.0f, .exponent = 1.5f}};
     const mvfxForce swirlAndField[2] = {
@@ -139,6 +142,18 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].velocityModules.limitDampen = 5.0f;
     emitters[1].velocityModules.motionScale.value = 0.5f;
     emitters[1].velocityModules.radialSpeed.value = 1.25f;
+    // Kill rules, in the emitter's space: past a sphere on the first, past
+    // a plane on the second.
+    static const mvfxKillRule outside = {
+        .kind = mvfx_killOutsideSphere, .space = mvfx_spaceLocal, .radius = 2.5f};
+    static const mvfxKillRule plane = {.kind = mvfx_killPastPlane,
+                                       .space = mvfx_spaceLocal,
+                                       .center = {0, 0, 1.75f},
+                                       .normal = {0.2f, 0, 1}};
+    emitters[0].killRules = &outside;
+    emitters[0].killRuleCount = 1;
+    emitters[1].killRules = &plane;
+    emitters[1].killRuleCount = 1;
     // Seven a second, so it spawns within the scene's 1.4 seconds and
     // fills.
     emitters[2].rate = 7.0f;
@@ -331,6 +346,9 @@ static inline void BuildScene(mvfxContext* context)
     };
     meshEmitters[1].forces = meshForces;
     meshEmitters[1].forceCount = 2;
+    static const mvfxKillRule slow = {.kind = mvfx_killSlower, .speed = 0.4f, .minimumAge = 0.2f};
+    meshEmitters[1].killRules = &slow;
+    meshEmitters[1].killRuleCount = 1;
     mvfxEffectDef meshEffectDef = mvfxDefaultEffectDef();
     meshEffectDef.emitters = meshEmitters;
     meshEffectDef.emitterCount = 3;

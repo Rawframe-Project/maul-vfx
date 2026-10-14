@@ -202,6 +202,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     }
     mvfxSaveBirths(instance, &births);
     RemoveEnded(instance, emitter);
+    mvfxIntegrateEmitter(instance, emitter);
     for (int32_t i = 0; i < accepted; ++i)
     {
         const mvfxBirth* birth = &instance->acceptedScratch[i];
@@ -210,21 +211,52 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     }
 }
 
+// Takes out the particles the step killed, keeping the others' order,
+// and counts them.
+static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    const uint8_t* killed = instance->killScratch;
+    uint64_t present = instance->effect->emitters[emitter].plan.present;
+    int32_t kept = 0;
+    for (int32_t i = 0; i < state->count; ++i)
+    {
+        if (killed[i] != 0)
+        {
+            continue;
+        }
+        for (int32_t a = 0; kept != i && a < MVFX_ATTRIBUTE_COUNT; ++a)
+        {
+            if ((present & ((uint64_t)1 << a)) != 0)
+            {
+                uint32_t* array = mvfxAttributeArray(instance, emitter, a);
+                array[kept] = array[i];
+            }
+        }
+        ++kept;
+    }
+    state->killed = mvfxSaturatingAdd(state->killed, (uint64_t)(state->count - kept));
+    state->count = kept;
+}
+
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
 {
     mvfxPlanDistance(instance, emitter);
-    // The particles alive at the step's start move first; births are
-    // moved from their ticks as they are appended.
-    mvfxIntegrateEmitter(instance, emitter);
+    mvfxResolveEmitter(instance, emitter);
+    // The particles alive at the step's start move once the ended ones are
+    // gone and before the births, which move from their ticks as they are
+    // appended; the killed are taken out after all of them.
     if (BirthsFit(instance, emitter))
     {
         RemoveEnded(instance, emitter);
+        mvfxIntegrateEmitter(instance, emitter);
         BirthsWithRoom(instance, emitter);
     }
     else
     {
         BirthsInTickOrder(instance, emitter);
     }
+    RemoveKilled(instance, emitter);
     mvfxEndDistance(instance, emitter);
     instance->emitters[emitter].hostCount = 0;
 }

@@ -294,6 +294,8 @@ extern "C"
         uint64_t owed;
         // Particles its capacity refused.
         uint64_t refused;
+        // Particles its kill rules (and attractors' kill radii) killed.
+        uint64_t killed;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

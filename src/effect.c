@@ -9,6 +9,7 @@
 
 #include "allocator.h"
 #include "force.h"
+#include "kill.h"
 
 #include <math.h>
 
@@ -202,6 +203,18 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
     {
         return false;
     }
+    if (def->killRuleCount < 0 || def->killRuleCount > MVFX_MAX_KILL_RULES ||
+        (def->killRuleCount > 0 && def->killRules == nullptr))
+    {
+        return false;
+    }
+    for (int32_t r = 0; r < def->killRuleCount; ++r)
+    {
+        if (!mvfxIsKillRuleValid(&def->killRules[r]))
+        {
+            return false;
+        }
+    }
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         const mvfxCustomAttribute* custom = &def->custom[i];
@@ -332,6 +345,11 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->angularDrag = def->motion.angularDrag;
     mvfxCompileVelocityModules(&def->velocityModules, space, &out->velocityModules);
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
+    out->killRuleCount = def->killRuleCount;
+    for (int32_t r = 0; r < def->killRuleCount; ++r)
+    {
+        out->killRules[r] = mvfxCompileKillRule(&def->killRules[r]);
+    }
     out->forceCount = def->forceCount;
     for (int32_t f = 0; f < def->forceCount; ++f)
     {
