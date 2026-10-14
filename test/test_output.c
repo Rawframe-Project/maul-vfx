@@ -492,6 +492,11 @@ static void TestMeshIndex(void)
     };
     mvfxLayoutId layout = {0};
     CHECK(Make(scene.context, fields, 2, 8, &layout) == mvfx_success, "layout");
+    static const mvfxLayoutField two = {
+        .field = mvfx_recordMesh, .format = mvfx_formatUint32, .components = 2};
+    mvfxLayoutId refusedLayout = {0};
+    CHECK(Make(scene.context, &two, 1, 8, &refusedLayout) == mvfx_errorInvalid,
+          "a mesh index has one component");
     static const double view[3] = {0, 0, 0};
     static uint32_t records[400 * 2];
     int64_t count = 0;
