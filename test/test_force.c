@@ -288,6 +288,79 @@ static void TestSpaces(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestScaledAndWindy(void)
+{
+    static const double origin[3] = {100.0, 0.0, 0.0};
+    static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    float a[3];
+    // A vortex about Z through (1, 0, 0) in the emitter's space, strength
+    // 3 and pull 1, in a tube along X of radius 2 about its origin,
+    // exponent 1, under the instance: in the world about Z through
+    // (100, 2, 0), strength 6 and pull 2, in a tube along Y of radius 4
+    // through (100, 0, 0). At (101, 2, 0): a weight of 3/4 of 6 along +Y
+    // and 2 toward the axis.
+    mvfxForce force = {
+        .kind = mvfx_forceVortex,
+        .space = mvfx_spaceLocal,
+        .vector = {0, 0, 1},
+        .point = {1, 0, 0},
+        .strength = 3.0f,
+        .pull = 1.0f,
+        .falloff = {.kind = mvfx_falloffTube, .axis = {1, 0, 0}, .radius = 2.0f, .exponent = 1.0f}};
+    mvfxEmitterDef emitter = Held(&force, 1);
+    Scene scene = NewScene(&emitter, 0);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
+              mvfx_success,
+          "placed");
+    static const double beside[3] = {101.0, 2.0, 0.0};
+    AccelerationIn(&scene, beside, a);
+    CHECK(Is(a, -1.5f, 4.5f, 0), "a vortex and its tube turned and scaled");
+    mvfxDestroyContext(scene.context);
+
+    // A wind (4, 0, 0) taking 2 a second within a sphere of radius 2,
+    // exponent 1: at distance 1 a drag of 1 and a pull of 4.
+    force = (mvfxForce){.kind = mvfx_forceWind,
+                        .vector = {4, 0, 0},
+                        .strength = 2.0f,
+                        .falloff = {.kind = mvfx_falloffSphere, .radius = 2.0f, .exponent = 1.0f}};
+    emitter = Held(&force, 1);
+    AccelerationAt(&emitter, 0, 1, 0, a);
+    float carry = (float)((1.0 - exp(-1.0 / 1024.0)) * 1024.0);
+    CHECK(Is(a, 4.0f * carry, 0, 0), "a wind's drag weighed by its falloff");
+
+    // With a drag per particle of 1 and a wind of 3: drag 4 over a second,
+    // from 8 along X with a wind at rest.
+    force = (mvfxForce){.kind = mvfx_forceWind, .strength = 3.0f};
+    emitter = Held(&force, 1);
+    emitter.motion.drag = 1.0f;
+    emitter.motion.dragScale = mvfxRangeSource(1.0f, 1.0f);
+    scene = NewScene(&emitter, 0);
+    static const double home[3] = {0, 0, 0};
+    static const float thrown[3] = {8, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = home, .velocities = thrown};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "placed");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    CHECK(fabs((double)Array(&scene, mvfx_attributeVelocityX)[0] - 8.0 * exp(-4.0)) <= 1e-5,
+          "a particle's drag and the wind's together");
+    mvfxDestroyContext(scene.context);
+
+    // A world attractor at (5000, 2, 0) after the anchor moved to (5000,
+    // 0, 0): at its softening radius from a particle there.
+    force = (mvfxForce){
+        .kind = mvfx_forceAttractor, .point = {5000, 2, 0}, .strength = 8.0f, .softening = 2.0f};
+    emitter = Held(&force, 1);
+    scene = NewScene(&emitter, 0);
+    static const double far[3] = {5000.0, 0.0, 0.0};
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, far,
+                                    (const float[4]){0, 0, 0, 1}, 1.0f, true) == mvfx_success,
+          "placed");
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    CHECK(scene.live->emitters[0].anchor[0] == 5000.0, "rebased");
+    AccelerationIn(&scene, far, a);
+    CHECK(Is(a, 0, 8, 0), "a world point through the moved anchor");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestParameters(void)
 {
     // A constant's strength from parameter 0, then held; a wind's to 0 and
@@ -411,6 +484,7 @@ int main(void)
     TestWindExact();
     TestFalloffs();
     TestSpaces();
+    TestScaledAndWindy();
     TestParameters();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
