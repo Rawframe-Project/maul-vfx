@@ -131,10 +131,7 @@ static float InverseLifeOf(const mvfxInstance* instance, int32_t emitter, uint64
     return 1.0f / life;
 }
 
-// The first tick at which a particle born at birth with the given
-// inverse life has ended: the least clock where its age times its inverse
-// life reaches 1, which is after its birth.
-static int64_t DeathTick(int64_t birth, float inverseLife)
+int64_t mvfxDeathTick(int64_t birth, float inverseLife)
 {
     double life = 1.0 / (double)inverseLife;
     int64_t span = (int64_t)ceil(life * (double)MVFX_TICKS_PER_SECOND);
@@ -182,7 +179,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter, uint64_t 
     for (int32_t i = 0; i < state->count; ++i)
     {
         int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
-        heap.ticks[i] = DeathTick(birth, inverseLife[i]);
+        heap.ticks[i] = mvfxDeathTick(birth, inverseLife[i]);
     }
     mvfxBuildDeathHeap(&heap);
     int32_t accepted = 0;
@@ -195,7 +192,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter, uint64_t 
             state->refused += 1;
             continue;
         }
-        int64_t death = DeathTick(birth, InverseLifeOf(instance, emitter, k));
+        int64_t death = mvfxDeathTick(birth, InverseLifeOf(instance, emitter, k));
         mvfxPushDeath(&heap, death);
         if (death > instance->clock)
         {

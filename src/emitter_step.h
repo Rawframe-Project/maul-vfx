@@ -20,6 +20,11 @@ uint64_t mvfxOwedBy(float rate, int64_t clock);
 // The tick particle k is born at, for rate above 0.
 int64_t mvfxBirthTick(float rate, uint64_t k);
 
+// The first tick at which a particle born at birth with the given
+// inverse life has ended: the least clock after its birth where its age
+// times its inverse life reaches 1, by the test the step removes it by.
+int64_t mvfxDeathTick(int64_t birth, float inverseLife);
+
 // Steps emitter e of instance to the instance's clock.
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter);
 
