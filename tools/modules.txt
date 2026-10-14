@@ -8,4 +8,7 @@ hash:
 random:
 tasks: float_mode
 context: allocator tasks
+curve:
+curve_integral: curve
+gradient:
 elementary:

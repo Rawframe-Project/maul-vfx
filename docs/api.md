@@ -48,4 +48,4 @@ Returns how many calls the context refused as misuse: invalid arguments against 
 
 ---
 
-7 functions across 2 headers.
+7 functions across 3 headers.

@@ -19,3 +19,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   floating-point mode the host's threads are in.
 - `mvfxHash64`, the family's 64-bit hash, which the determinism checks
   and effect identities are built on.
+- Curves and gradients as effects state them (`maul-vfx/curve.h`): keys
+  with constant, linear or cubic segments, tangents given, smooth or
+  monotone, and color and alpha keys.
