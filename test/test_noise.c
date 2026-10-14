@@ -213,6 +213,10 @@ static void TestOctavesScrollAndWrap(void)
     const double huge[3] = {0x1p70 + 0.0, -0x1p66, 1e300};
     mvfxGradientNoise3(huge, 1u, value, gradient);
     CHECK(isfinite(value[0]) && isfinite(gradient[2][2]), "finite at huge places");
+    const double wild[3] = {(double)INFINITY, (double)NAN, -(double)INFINITY};
+    mvfxGradientNoise3(wild, 1u, value, gradient);
+    CHECK(isfinite(value[0]) && isfinite(value[1]) && isfinite(gradient[0][0]),
+          "finite where a place is not");
 
     // Seeds differ.
     mvfxCurlNoise(&s_noise, 1u, p, 0.0, a);

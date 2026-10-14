@@ -173,6 +173,22 @@ static void TestSampling(void)
     }
     CHECK(tiled, "tiled");
 
+    // Places past any range, as a particle flown past the float range
+    // brings: every border reads inside the grid (the sanitizers watch).
+    static const float wild[6] = {INFINITY, -INFINITY, NAN, 1e30f, -1e30f, 3.4e38f};
+    bool held = true;
+    for (int32_t i = 0; i < 6; ++i)
+    {
+        for (mvfxGridBorder border = 0; border <= mvfx_borderRepeat; ++border)
+        {
+            const float at[3] = {wild[i], wild[(i + 1) % 6], wild[(i + 2) % 6]};
+            bool within = mvfxSampleGrid(grid, at, border, out);
+            held = held && isfinite(out[0]) && out[0] >= 0.0f && out[0] <= 7.0f &&
+                   (border != mvfx_borderNone || !within);
+        }
+    }
+    CHECK(held, "wild places read inside the grid");
+
     // One point along an axis: constant along it.
     static const float flat[4] = {1, 2, 3, 4};
     mvfxGridDef line = mvfxDefaultGridDef();

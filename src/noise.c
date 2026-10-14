@@ -26,9 +26,15 @@ static float FadeSlope(float t)
 }
 
 // A lattice coordinate's cell, wrapped to 32 bits, and the fraction past
-// it: exact for any finite coordinate.
+// it: exact for any finite coordinate; one that is not finite (a particle
+// flown past the float range) reads as 0.
 static uint32_t Cell(double p, float* fraction)
 {
+    if (!isfinite(p))
+    {
+        *fraction = 0.0f;
+        return 0;
+    }
     double cell = floor(p);
     *fraction = (float)(p - cell);
     double wrapped = cell - 4294967296.0 * floor(cell / 4294967296.0);

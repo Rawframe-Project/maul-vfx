@@ -109,15 +109,20 @@ static void Locate(float u, int32_t n, mvfxGridBorder border, int32_t* low, int3
 {
     if (border == mvfx_borderRepeat)
     {
-        // n points a period, the last joining the first.
-        double g = (double)u * (double)n;
+        // n points a period, the last joining the first. A place that is not
+        // finite (a particle flown past the float range) reads the first
+        // cell; the wrapped cell is held inside the grid, since rounding far
+        // out can carry it to n.
+        double g = isfinite(u) ? (double)u * (double)n : 0.0;
         double cell = floor(g);
         *share = (float)(g - cell);
         double wrapped = cell - (double)n * floor(cell / (double)n);
-        *low = (int32_t)wrapped;
-        *high = *low + 1 == n ? 0 : *low + 1;
+        int32_t index = wrapped >= 0.0 && wrapped < (double)n ? (int32_t)wrapped : 0;
+        *low = index;
+        *high = index + 1 == n ? 0 : index + 1;
         return;
     }
+    // fmaxf takes a NaN to 0.
     float clamped = fminf(fmaxf(u, 0.0f), 1.0f);
     float g = clamped * (float)(n - 1);
     float cell = floorf(g);
