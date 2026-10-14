@@ -64,8 +64,8 @@ static inline void BuildScene(mvfxContext* context)
     gridDef.values = fieldValues;
     mvfxGridId fieldGrid = {0};
     CHECK(mvfxCreateGrid(context, &gridDef, &fieldGrid) == mvfx_success, "scene grid");
-    mvfxEmitterDef emitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
-                                  mvfxDefaultEmitterDef()};
+    mvfxEmitterDef emitters[4] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                  mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
     emitters[0].capacity = 100;
     emitters[0].rate = 37.5f;
     emitters[0].lifetime = mvfxRangeSource(0.25f, 1.5f);
@@ -253,9 +253,26 @@ static inline void BuildScene(mvfxContext* context)
     // fills.
     emitters[2].rate = 7.0f;
     emitters[2].lifetime = mvfxRangeSource(5.0f, 9.0f);
+    // The fourth throws sparks from the first's collisions, and the third
+    // spawns from the sparks' deaths too, so it steps after them.
+    emitters[3].rate = 0.0f;
+    emitters[3].capacity = 40;
+    emitters[3].lifetime = mvfxRangeSource(0.05f, 0.3f);
+    emitters[3].velocity.speed = (mvfxRange){0.5f, 1.5f};
+    emitters[3].events = mvfx_eventMaskDeath;
+    emitters[3].eventCapacity = 16;
+    emitters[3].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventCollision,
+                                              .minCount = 1,
+                                              .maxCount = 3,
+                                              .inheritVelocity = 0.4f,
+                                              .inheritColor = true};
+    emitters[2].eventSpawn =
+        (mvfxEventSpawn){.enabled = true, .source = 3, .kind = mvfx_eventDeath, .maxCount = 1};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
-    def.emitterCount = 3;
+    def.emitterCount = 4;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "scene effect");
     // An effect of emitter lives: a rate curve over loops, delayed and

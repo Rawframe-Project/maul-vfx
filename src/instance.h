@@ -42,6 +42,9 @@ typedef struct mvfxHostBirth
     float color[4];
     float size[3];
     uint8_t given;
+    // An event's birth: its tick, and its place in the queue as built.
+    int64_t tick;
+    int32_t order;
 } mvfxHostBirth;
 
 enum
@@ -49,6 +52,9 @@ enum
     mvfx_givenVelocity = 1,
     mvfx_givenColor = 2,
     mvfx_givenSize = 4,
+    // The velocity is added to the one drawn (an event's inherited share,
+    // in the particles' space).
+    mvfx_givenAddedVelocity = 8,
 };
 
 // One emitter's particles, counts and cursors. Live particles are [0,
@@ -94,6 +100,9 @@ typedef struct mvfxEmitterState
     struct mvfxEvent* events;
     int32_t eventCount;
     uint64_t eventsDropped;
+    // The births its source's events give it this step, in tick order.
+    mvfxHostBirth* eventQueue;
+    int32_t eventQueueCount;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;
@@ -126,6 +135,9 @@ typedef struct mvfxBirth
     int64_t batchCount;
     // The host's queued particle it is, or -1.
     int32_t host;
+    // The event's birth it is in the emitter's event queue, from 1; 0 for
+    // none.
+    int32_t event1;
 } mvfxBirth;
 
 // An instance.

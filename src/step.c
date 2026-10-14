@@ -107,8 +107,10 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
     // owed.
     bool finished = mvfxIsInstanceFinished(instance);
     BeginStep(instance, ticks);
-    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    for (int32_t n = 0; n < instance->effect->emitterCount; ++n)
     {
+        // Sources before the emitters spawning from their events.
+        int32_t e = instance->effect->stepOrder[n];
         if (finished)
         {
             // Nothing happens to it: the last step's events go.

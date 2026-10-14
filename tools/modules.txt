@@ -31,7 +31,8 @@ space: force instance
 event: appearance context direction instance instance_api space
 birth: direction elementary event instance integrate random shape value velocity
 scene_query: context direction effect force instance instance_api space
-emitter_step: birth death_heap event host_module instance integrate scene_query spawn
+event_spawn: instance random space
+emitter_step: birth death_heap event event_spawn host_module instance integrate scene_query spawn
 context: allocator effect grid instance mesh slots tasks
 effect_api: context effect float_mode grid grid_api mesh mesh_api slots
 mesh_api: context mesh slots

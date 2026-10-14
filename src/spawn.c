@@ -317,6 +317,15 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
         // It spawns whenever the instance moves.
         return true;
     }
+    if (compiled->eventSpawn.enabled)
+    {
+        // It spawns while its source may write events.
+        int32_t source = compiled->eventSpawn.source;
+        if (instance->emitters[source].count > 0 || mvfxHasBirthsAhead(instance, source))
+        {
+            return true;
+        }
+    }
     if (compiled->duration > 0)
     {
         // Every loop adds the rate's integral and starts the bursts again.

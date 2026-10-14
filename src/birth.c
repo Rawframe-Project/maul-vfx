@@ -238,6 +238,17 @@ static void PlaceInWorld(const mvfxInstance* instance, int32_t emitter, int64_t 
     }
 }
 
+// The given values of a host's queued particle or of an event's birth;
+// NULL for a birth of the emitter's own.
+static const mvfxHostBirth* GivenOf(const mvfxInstance* instance, int32_t emitter,
+                                    const mvfxBirth* birth)
+{
+    const mvfxEmitterState* state = &instance->emitters[emitter];
+    return birth->host >= 0    ? &state->hostQueue[birth->host]
+           : birth->event1 > 0 ? &state->eventQueue[birth->event1 - 1]
+                               : nullptr;
+}
+
 // A host's queued particle: its place as given, made an offset from the
 // anchor in world space; its velocity as given, or drawn in the instance's
 // space at the place (its direction from the instance's origin standing
@@ -248,7 +259,7 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxEmitterState* state = &instance->emitters[emitter];
-    const mvfxHostBirth* host = &state->hostQueue[birth->host];
+    const mvfxHostBirth* host = GivenOf(instance, emitter, birth);
     bool world = compiled->space == mvfx_spaceWorld;
     mvfxTransform transform;
     mvfxTransformAt(instance, birth->tick, &transform);
@@ -303,6 +314,10 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
             velocity[k] += compiled->inheritVelocity * instance->velocity[k];
         }
     }
+    for (int32_t k = 0; (host->given & mvfx_givenAddedVelocity) != 0 && k < 3; ++k)
+    {
+        velocity[k] += host->velocity[k];
+    }
 }
 
 void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
@@ -312,7 +327,8 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
     int32_t at = instance->emitters[emitter].count;
     float position[3];
     float velocity[3];
-    if (birth->host >= 0)
+    const mvfxHostBirth* given = GivenOf(instance, emitter, birth);
+    if (given != nullptr)
     {
         PlaceHostBirth(instance, emitter, birth, position, velocity);
     }
@@ -349,9 +365,9 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
     Store(instance, emitter, mvfx_attributeInverseLife, at, inverseLife);
     StoreWord(instance, emitter, mvfx_attributeSerial, at, (uint32_t)birth->serial);
     AppendValues(instance, emitter, birth, at);
-    if (birth->host >= 0)
+    if (given != nullptr)
     {
-        const mvfxHostBirth* host = &instance->emitters[emitter].hostQueue[birth->host];
+        const mvfxHostBirth* host = given;
         if ((host->given & mvfx_givenColor) != 0)
         {
             StoreVector(instance, emitter, mvfx_attributeColorR, 4, at, host->color);

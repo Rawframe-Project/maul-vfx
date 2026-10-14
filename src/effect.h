@@ -183,6 +183,7 @@ typedef struct mvfxCompiledEmitter
     int32_t hostModuleCount;
     uint8_t events;
     int32_t eventCapacity;
+    mvfxEventSpawn eventSpawn;
     mvfxCollision collision;
     mvfxCollider colliders[MVFX_MAX_COLLIDERS];
     int32_t colliderCount;
@@ -213,6 +214,9 @@ typedef struct mvfxEffect
     size_t blockAlignment;
     // The instances playing it, which keep it from being destroyed.
     int64_t users;
+    // The order its emitters step in: each source before the emitters
+    // spawning from its events, otherwise by index.
+    int32_t stepOrder[MVFX_MAX_EMITTERS];
 } mvfxEffect;
 
 // Whether a def and every emitter def in it are valid.

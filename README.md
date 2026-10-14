@@ -42,9 +42,10 @@ modules (motion scale, added, orbit and radial velocity, a speed limit)
 values over life (colour, alpha, size, flipbook, rotation speed,
 custom attributes), kill rules, host modules and collision with planes,
 spheres, boxes, heightfields, distance grids, the host's scene (by
-queries it answers between steps) and a depth image, and events
-(births, deaths and collisions the host reads after a step) are in
-place, and emitters spawning from events come next.
+queries it answers between steps) and a depth image, events (births,
+deaths and collisions the host reads after a step) and emitters
+spawning from other emitters' events are in place, and output comes
+next.
 It has 45 public functions.
 
 ## Building

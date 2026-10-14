@@ -24,6 +24,7 @@ typedef struct EmitterAt
     size_t colliders;
     size_t queries;
     size_t events;
+    size_t eventQueue;
 } EmitterAt;
 
 static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compiled)
@@ -48,6 +49,9 @@ static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compi
             mvfxLayoutAdd(layout, (size_t)queries, sizeof(mvfxSceneQuery), alignof(mvfxSceneQuery)),
         .events = mvfxLayoutAdd(layout, (size_t)compiled->eventCapacity, sizeof(mvfxEvent),
                                 alignof(mvfxEvent)),
+        .eventQueue =
+            mvfxLayoutAdd(layout, compiled->eventSpawn.enabled ? (size_t)compiled->capacity : 0,
+                          sizeof(mvfxHostBirth), alignof(mvfxHostBirth)),
     };
 }
 
@@ -124,6 +128,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             .colliders = (mvfxResolvedCollider*)(block + at[e].colliders),
             .queries = (mvfxSceneQuery*)(block + at[e].queries),
             .events = (mvfxEvent*)(block + at[e].events),
+            .eventQueue = (mvfxHostBirth*)(block + at[e].eventQueue),
         };
     }
     mvfxResetInstance(instance);

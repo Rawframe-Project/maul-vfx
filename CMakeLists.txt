@@ -62,6 +62,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/life.c
     src/emitter_step.c
     src/event.c
+    src/event_spawn.c
     src/float_mode.c
     src/gradient.c
     src/hash.c
@@ -105,6 +106,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)
     maul_add_test(event WHITEBOX)
+    maul_add_test(event_spawn WHITEBOX)
     maul_add_test(elementary_sweep WHITEBOX MANUAL)
     maul_add_test(golden WHITEBOX)
     maul_add_test(gradient WHITEBOX)

@@ -136,3 +136,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and `eventCapacity`; `mvfxInstance_GetEvents` reads a step's events,
   each with its tick, place, velocity, normal, colour and size, and
   emitter stats count the `eventsDropped`.
+- Sub-emitters: an emitter def gains `eventSpawn`, spawning a drawn
+  count of particles per event of a kind another emitter writes, at its
+  tick and place, inheriting a share of its velocity and optionally its
+  colour and size; an effect's emitters step in an order their links
+  make, and a cycle is refused.

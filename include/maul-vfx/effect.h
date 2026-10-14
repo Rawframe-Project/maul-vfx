@@ -377,6 +377,8 @@ extern "C"
         // (mvfxInstance_GetEvents).
         uint8_t events;
         int32_t eventCapacity;
+        // Spawning from another emitter's events.
+        mvfxEventSpawn eventSpawn;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second

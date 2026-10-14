@@ -236,6 +236,34 @@ extern "C"
         mvfx_eventMaskCollision = 1u << mvfx_eventCollision,
     };
 
+// The most particles one event spawns.
+#define MVFX_MAX_EVENT_SPAWN 1024
+
+    // An emitter spawning from another's events (a sub-emitter): for each
+    // event of a kind its source wrote in the step, from minCount to
+    // maxCount particles (drawn for the event), born at its tick and its
+    // place, with the emitter's own velocity plus inheritVelocity of the
+    // event's, and its colour and size when asked. The source steps first
+    // (an effect's emitters step in an order its links make; a cycle is
+    // refused); the source's capacity of events bounds the spawns, and so
+    // does the emitter's own capacity, the rest counted refused. Spawns
+    // follow the emitter's delay, loops and a stop, as its rate does.
+    typedef struct mvfxEventSpawn
+    {
+        bool enabled;
+        // The source's index in the effect's emitters, not its own; it must
+        // write the kind.
+        int32_t source;
+        mvfxEventKind kind;
+        // From 0 to MVFX_MAX_EVENT_SPAWN, minCount at most maxCount.
+        int32_t minCount;
+        int32_t maxCount;
+        // From 0 to 1.
+        float inheritVelocity;
+        bool inheritColor;
+        bool inheritSize;
+    } mvfxEventSpawn;
+
     // An event: what happened, to which particle, when and where.
     typedef struct mvfxEvent
     {

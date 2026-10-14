@@ -283,6 +283,50 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
     return true;
 }
 
+// Whether an emitter's spawning from events is valid against its effect:
+// a source not its own that writes the kind, counts and a share in range.
+static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
+{
+    const mvfxEventSpawn* spawn = &def->emitters[i].eventSpawn;
+    if (!spawn->enabled)
+    {
+        return true;
+    }
+    if (spawn->source < 0 || spawn->source >= def->emitterCount || spawn->source == i ||
+        spawn->kind > mvfx_eventCollision)
+    {
+        return false;
+    }
+    bool written = (def->emitters[spawn->source].events & (1u << spawn->kind)) != 0;
+    return written && spawn->minCount >= 0 && spawn->minCount <= spawn->maxCount &&
+           spawn->maxCount <= MVFX_MAX_EVENT_SPAWN && spawn->inheritVelocity >= 0.0f &&
+           spawn->inheritVelocity <= 1.0f;
+}
+
+// The order an effect's emitters step in: repeatedly the lowest index
+// whose source (if any) has stepped; false for a cycle.
+static bool OrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITTERS])
+{
+    bool placed[MVFX_MAX_EMITTERS] = {false};
+    for (int32_t n = 0; n < def->emitterCount; ++n)
+    {
+        int32_t next = -1;
+        for (int32_t i = 0; next < 0 && i < def->emitterCount; ++i)
+        {
+            const mvfxEventSpawn* spawn = &def->emitters[i].eventSpawn;
+            bool ready = !spawn->enabled || placed[spawn->source];
+            next = !placed[i] && ready ? i : next;
+        }
+        if (next < 0)
+        {
+            return false;
+        }
+        placed[next] = true;
+        order[n] = next;
+    }
+    return true;
+}
+
 bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE || def->emitters == nullptr ||
@@ -305,12 +349,13 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         if (!IsEmitterDefValid(&def->emitters[i]) ||
-            !AreValuesValid(&def->emitters[i], def->parameterCount))
+            !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i))
         {
             return false;
         }
     }
-    return true;
+    int32_t order[MVFX_MAX_EMITTERS];
+    return OrderEmitters(def, order);
 }
 
 // Adds count attributes from first to a plan when a condition holds.
@@ -406,6 +451,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     mvfxCompileVelocityModules(&def->velocityModules, space, &out->velocityModules);
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
     out->events = def->events;
+    out->eventSpawn = def->eventSpawn;
     out->eventCapacity = def->events != 0 ? def->eventCapacity : 0;
     out->collision = def->collision;
     out->colliderCount = def->colliderCount;
@@ -570,6 +616,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
     {
         CompileEmitter(&def->emitters[i], meshes[i], &emitterSpace, &effect->emitters[i]);
     }
+    (void)OrderEmitters(def, effect->stepOrder);
     return effect;
 }
 
