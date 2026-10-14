@@ -70,12 +70,13 @@ static void TestPlans(void)
                   e->paddedCapacity < e->capacity + MVFX_ATTRIBUTE_PADDING,
               "padded to the next multiple of 16");
         CHECK(e->rate == (float)i * 3.0f && e->lifetime.max == 2.0f + (float)i, "values copied");
-        CHECK(e->plan.present == s_expected[i], "the attributes the emitter uses");
+        CHECK(e->plan.present[0] == s_expected[i] && e->plan.present[1] == 0,
+              "the attributes the emitter uses");
         size_t arrayBytes = (size_t)e->paddedCapacity * sizeof(float);
         int32_t stored = 0;
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
-            if ((e->plan.present & ((uint64_t)1 << a)) == 0)
+            if (!mvfxHasAttribute(&e->plan, a))
             {
                 continue;
             }
@@ -84,7 +85,7 @@ static void TestPlans(void)
             CHECK(e->plan.offsets[a] + arrayBytes <= e->plan.blockBytes, "inside the block");
             for (int32_t b = a + 1; b < MVFX_ATTRIBUTE_COUNT; ++b)
             {
-                if ((e->plan.present & ((uint64_t)1 << b)) == 0)
+                if (!mvfxHasAttribute(&e->plan, b))
                 {
                     continue;
                 }

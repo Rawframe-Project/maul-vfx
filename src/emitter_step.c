@@ -42,7 +42,7 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
         }
         ++kept;
     }
-    uint64_t present = instance->effect->emitters[emitter].plan.present;
+    const mvfxAttributePlan* plan = &instance->effect->emitters[emitter].plan;
     for (int32_t i = kept; i < state->count; ++i)
     {
         int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
@@ -52,7 +52,7 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
         }
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
-            if ((present & ((uint64_t)1 << a)) != 0)
+            if (mvfxHasAttribute(plan, a))
             {
                 uint32_t* array = mvfxAttributeArray(instance, emitter, a);
                 array[kept] = array[i];
@@ -219,7 +219,7 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
     const uint8_t* killed = instance->killScratch;
-    uint64_t present = instance->effect->emitters[emitter].plan.present;
+    const mvfxAttributePlan* plan = &instance->effect->emitters[emitter].plan;
     int32_t kept = 0;
     for (int32_t i = 0; i < state->count; ++i)
     {
@@ -229,7 +229,7 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
         }
         for (int32_t a = 0; kept != i && a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
-            if ((present & ((uint64_t)1 << a)) != 0)
+            if (mvfxHasAttribute(plan, a))
             {
                 uint32_t* array = mvfxAttributeArray(instance, emitter, a);
                 array[kept] = array[i];

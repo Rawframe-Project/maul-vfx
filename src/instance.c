@@ -169,10 +169,10 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->count, (int32_t)sizeof state->count);
         hash = mvfxHash64(hash, &state->owed, (int32_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
-        uint64_t present = instance->effect->emitters[e].plan.present;
+        const mvfxAttributePlan* plan = &instance->effect->emitters[e].plan;
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
-            if ((present & ((uint64_t)1 << a)) != 0)
+            if (mvfxHasAttribute(plan, a))
             {
                 hash = mvfxHash64(hash, mvfxAttributeArray(instance, e, a),
                                   state->count * (int32_t)sizeof(float));

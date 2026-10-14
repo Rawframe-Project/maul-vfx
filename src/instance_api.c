@@ -330,10 +330,8 @@ static bool AreValuesWithin(const float* values, int64_t count, float bound)
 static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequest* request)
 {
     if (request->count < 1 || request->positions == nullptr ||
-        (request->colors != nullptr &&
-         (emitter->plan.present & ((uint64_t)1 << mvfx_attributeColorR)) == 0) ||
-        (request->sizes != nullptr &&
-         (emitter->plan.present & ((uint64_t)1 << mvfx_attributeSizeX)) == 0))
+        (request->colors != nullptr && !mvfxHasAttribute(&emitter->plan, mvfx_attributeColorR)) ||
+        (request->sizes != nullptr && !mvfxHasAttribute(&emitter->plan, mvfx_attributeSizeX)))
     {
         return false;
     }

@@ -76,6 +76,11 @@ enum
 // How many attributes exist.
 #define MVFX_ATTRIBUTE_COUNT (mvfx_attributeCollisions + 1)
 
+// The words of an attribute plan's set, and room in them for every
+// attribute.
+#define MVFX_ATTRIBUTE_WORDS 2
+static_assert(MVFX_ATTRIBUTE_COUNT <= 64 * MVFX_ATTRIBUTE_WORDS, "attribute set too narrow");
+
 // The alignment of every attribute array, a cache line.
 #define MVFX_ATTRIBUTE_ALIGNMENT 64
 
@@ -87,11 +92,17 @@ enum
 // block of the emitter's particles.
 typedef struct mvfxAttributePlan
 {
-    // Bit a set for each attribute a stored.
-    uint64_t present;
+    // Bit a % 64 of word a / 64 set for each attribute a stored.
+    uint64_t present[MVFX_ATTRIBUTE_WORDS];
     size_t offsets[MVFX_ATTRIBUTE_COUNT];
     size_t blockBytes;
 } mvfxAttributePlan;
+
+// Whether a plan stores an attribute.
+static inline bool mvfxHasAttribute(const mvfxAttributePlan* plan, int32_t attribute)
+{
+    return ((plan->present[attribute >> 6] >> (attribute & 63)) & 1u) != 0;
+}
 
 // The ticks in a span of seconds, rounded once to the nearest, ties up.
 static inline int64_t mvfxSecondsToTicks(double seconds)

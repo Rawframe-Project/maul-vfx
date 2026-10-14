@@ -80,7 +80,7 @@ static void StoreWord(mvfxInstance* instance, int32_t emitter, mvfxAttribute att
 // Whether the emitter stores an attribute.
 static bool Has(const mvfxCompiledEmitter* emitter, mvfxAttribute attribute)
 {
-    return (emitter->plan.present & ((uint64_t)1 << attribute)) != 0;
+    return mvfxHasAttribute(&emitter->plan, attribute);
 }
 
 // A uniformly random rotation from three uniforms (Shoemake, "Uniform

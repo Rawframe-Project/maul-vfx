@@ -135,15 +135,15 @@ static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfx
                         float speedScale)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    uint64_t present = compiled->plan.present;
-    if ((present & ((uint64_t)1 << mvfx_attributeAngle)) != 0)
+    const mvfxAttributePlan* plan = &compiled->plan;
+    if (mvfxHasAttribute(plan, mvfx_attributeAngle))
     {
         float* angle = mvfxAttributeArray(instance, emitter, mvfx_attributeAngle);
         float* spin = mvfxAttributeArray(instance, emitter, mvfx_attributeSpin);
         angle[i] += spin[i] * (f.carry * speedScale);
         spin[i] *= f.decay;
     }
-    if ((present & ((uint64_t)1 << mvfx_attributeOrientationX)) != 0)
+    if (mvfxHasAttribute(plan, mvfx_attributeOrientationX))
     {
         float* q[4];
         float* w[3];
@@ -408,7 +408,7 @@ static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, in
         r.v[k] =
             mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
     }
-    if ((compiled->plan.present & ((uint64_t)1 << mvfx_attributeDrag)) != 0)
+    if (mvfxHasAttribute(&compiled->plan, mvfx_attributeDrag))
     {
         r.dragScales = mvfxAttributeArray(instance, emitter, mvfx_attributeDrag);
     }
@@ -421,9 +421,8 @@ static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, in
     {
         MoveParticle(&r, i);
     }
-    uint64_t rotating =
-        ((uint64_t)1 << mvfx_attributeAngle) | ((uint64_t)1 << mvfx_attributeOrientationX);
-    if ((compiled->plan.present & rotating) != 0)
+    if (mvfxHasAttribute(&compiled->plan, mvfx_attributeAngle) ||
+        mvfxHasAttribute(&compiled->plan, mvfx_attributeOrientationX))
     {
         mvfxDragFactors angular = mvfxDragFactorsOf((double)compiled->angularDrag, seconds);
         // Rotation speed over life scales each particle's turn at its age.

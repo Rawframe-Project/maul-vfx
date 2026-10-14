@@ -7,7 +7,7 @@
 
 static bool Has(const mvfxCompiledEmitter* emitter, mvfxAttribute attribute)
 {
-    return (emitter->plan.present & ((uint64_t)1 << attribute)) != 0;
+    return mvfxHasAttribute(&emitter->plan, attribute);
 }
 
 static const float* Floats(const mvfxInstance* instance, int32_t emitter, mvfxAttribute attribute)

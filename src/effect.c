@@ -310,45 +310,46 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     return true;
 }
 
+// Adds count attributes from first to a plan when a condition holds.
+static void Store(mvfxAttributePlan* plan, bool when, int32_t first, int32_t count)
+{
+    for (int32_t a = first; when && a < first + count; ++a)
+    {
+        plan->present[a >> 6] |= (uint64_t)1 << (a & 63);
+    }
+}
+
 // The attributes an emitter stores: position, birth tick, inverse life,
 // serial and velocity always; each optional value when its source is set;
 // each custom attribute's components.
-static uint64_t PresentAttributes(const mvfxEmitterDef* def)
+static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
 {
-    uint64_t present = 0;
-    for (int32_t a = 0; a <= mvfx_attributeVelocityZ; ++a)
-    {
-        present |= (uint64_t)1 << a;
-    }
-    uint64_t three = 7u;
-    uint64_t four = 15u;
-    present |= def->size.kind != mvfx_sourceNone ? three << mvfx_attributeSizeX : 0;
-    present |= def->color.kind != mvfx_sourceNone ? four << mvfx_attributeColorR : 0;
+    Store(plan, true, 0, mvfx_attributeVelocityZ + 1);
+    Store(plan, def->size.kind != mvfx_sourceNone, mvfx_attributeSizeX, 3);
+    Store(plan, def->color.kind != mvfx_sourceNone, mvfx_attributeColorR, 4);
     bool sprite = def->angle.kind != mvfx_sourceNone || def->spin.kind != mvfx_sourceNone;
-    present |= sprite ? (uint64_t)3 << mvfx_attributeAngle : 0;
+    Store(plan, sprite, mvfx_attributeAngle, 2);
     bool mesh = def->orientationMode != mvfx_orientationNone ||
                 def->angularVelocity.kind != mvfx_sourceNone;
-    present |= mesh ? (uint64_t)127 << mvfx_attributeOrientationX : 0;
-    present |= def->frame.mode != mvfx_frameNone ? (uint64_t)1 << mvfx_attributeFrame : 0;
-    present |=
-        def->motion.dragScale.kind != mvfx_sourceNone ? (uint64_t)1 << mvfx_attributeDrag : 0;
-    present |= def->collision.enabled ? (uint64_t)1 << mvfx_attributeCollisions : 0;
+    Store(plan, mesh, mvfx_attributeOrientationX, 7);
+    Store(plan, def->frame.mode != mvfx_frameNone, mvfx_attributeFrame, 1);
+    Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
+    Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
     for (int32_t i = 0; i < def->customCount; ++i)
     {
-        uint64_t components = ((uint64_t)1 << def->custom[i].components) - 1;
-        present |= components << (mvfx_attributeCustom + 4 * i);
+        Store(plan, true, mvfx_attributeCustom + 4 * i, def->custom[i].components);
     }
-    return present;
 }
 
 // The plan of an emitter's attributes, each padded and aligned.
 static mvfxAttributePlan PlanAttributes(const mvfxEmitterDef* def, int32_t paddedCapacity)
 {
-    mvfxAttributePlan plan = {.present = PresentAttributes(def)};
+    mvfxAttributePlan plan = {0};
+    StoreAttributes(def, &plan);
     mvfxLayout layout = {0};
     for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
     {
-        if ((plan.present & ((uint64_t)1 << a)) != 0)
+        if (mvfxHasAttribute(&plan, a))
         {
             plan.offsets[a] = mvfxLayoutAdd(&layout, (size_t)paddedCapacity, sizeof(float),
                                             MVFX_ATTRIBUTE_ALIGNMENT);

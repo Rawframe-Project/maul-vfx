@@ -13,8 +13,7 @@
 // The array of an attribute, or NULL when the emitter does not store it.
 static void* ArrayOf(mvfxInstance* instance, int32_t emitter, int32_t attribute)
 {
-    uint64_t present = instance->effect->emitters[emitter].plan.present;
-    if ((present & ((uint64_t)1 << attribute)) == 0)
+    if (!mvfxHasAttribute(&instance->effect->emitters[emitter].plan, attribute))
     {
         return nullptr;
     }
