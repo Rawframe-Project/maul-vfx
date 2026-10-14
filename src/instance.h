@@ -9,6 +9,7 @@
 #ifndef MAUL_VFX_SRC_INSTANCE_H
 #define MAUL_VFX_SRC_INSTANCE_H
 
+#include "depth.h"
 #include "effect.h"
 #include "force.h"
 
@@ -85,6 +86,10 @@ typedef struct mvfxEmitterState
     int32_t queryCount;
     mvfxSpaceMap queryMap;
     uint64_t queriesDropped;
+    // The instance's depth image as resolved for the step, when it takes
+    // one and one is set.
+    mvfxResolvedDepth depth;
+    bool hasDepth;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;
@@ -148,6 +153,9 @@ typedef struct mvfxInstance
     // Whether each particle of the emitter being stepped was killed this
     // step.
     uint8_t* killScratch;
+    // The depth image the host set, checked, its pixels borrowed.
+    mvfxDepthView depthView;
+    bool hasDepthView;
     // The colliders the host set, compiled, and their grids, held.
     mvfxCollider hostColliders[MVFX_MAX_COLLIDERS];
     struct mvfxGrid* hostColliderGrids[MVFX_MAX_COLLIDERS];

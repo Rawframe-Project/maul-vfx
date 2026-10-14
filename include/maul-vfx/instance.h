@@ -293,6 +293,79 @@ extern "C"
     mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                                     const mvfxSceneAnswer* answers, int32_t count);
 
+// The most pixels a depth image has along a side.
+#define MVFX_MAX_DEPTH_SIZE 16384
+
+    // How a depth image keeps its pixels: device depth from 0 to 1.
+    typedef uint8_t mvfxDepthFormat;
+    enum
+    {
+        // A binary32 a pixel.
+        mvfx_depthFloat32 = 0,
+        // A uint16 a pixel, over 65,535.
+        mvfx_depthUnorm16 = 1,
+        // The low 24 bits of a uint32 a pixel, over 16,777,215 (the high 8,
+        // a stencil's, not read).
+        mvfx_depthUnorm24 = 2,
+    };
+
+    // A view's depth image, as a camera saw the world (often the frame
+    // before, so a moving camera sees it a frame late). Its pixels are the
+    // host's, borrowed: they stay valid while the image is set. Pixels in
+    // the host's byte order, rows from the image's top.
+    typedef struct mvfxDepthImage
+    {
+        const void* pixels;
+        // The bytes pixels holds, at least (height - 1) stride + width a
+        // pixel's size.
+        int64_t byteCount;
+        // From 1 to MVFX_MAX_DEPTH_SIZE pixels a side; a row's bytes, at
+        // least a row of pixels.
+        int32_t width;
+        int32_t height;
+        int32_t stride;
+        mvfxDepthFormat format;
+        // Whether the far plane is at 0 rather than at 1. A pixel at the far
+        // plane (or not a number, or outside 0 to 1) holds no surface.
+        bool reversed;
+        // The view's projection, column-major: clip = projection (x, y, z, 1)
+        // from the view's space; device depth z / w from 0 to 1, x / w from
+        // -1 (the left) to 1, y / w from -1 (the bottom) to 1. Finite and
+        // invertible: perspective, orthographic, reversed or not.
+        float projection[16];
+        // The view's place in the world (each coordinate at most 2^52 in
+        // size) and its turn, a unit quaternion within 0.001: the world's
+        // point is origin + turn(rotation, the view's).
+        double origin[3];
+        float rotation[4];
+        // Optionally, the surface's normal at each pixel in the view's
+        // space, three binary32 a pixel, with its bytes and its row's (as
+        // for pixels); NULL to make it from the depth.
+        const float* normals;
+        int64_t normalByteCount;
+        int32_t normalStride;
+    } mvfxDepthImage;
+
+    /// Sets the depth image an instance's emitters collide with when their
+    /// collision asks for it, until it is set again or cleared (NULL). It
+    /// is checked once, here; its pixels are borrowed, not copied, and must
+    /// stay valid while it is set.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param image     The image, or NULL for none.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context or an image
+    ///         out of range (a size, a stride, a byte count short of its
+    ///         rows, a format, a projection not finite or not invertible,
+    ///         a place or a turn), which counts as misuse when the context
+    ///         is given (the image set before is then kept).
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context,
+                                                                  mvfxInstanceId instance,
+                                                                  const mvfxDepthImage* image);
+
     /// Draws four random words for a host module: pcg4d (Jarzynski and
     /// Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the
     /// module's seed, a particle's serial, a stream number the module picks

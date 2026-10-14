@@ -128,3 +128,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   count the `queriesDropped`.
 - Fixed: a particle born in the slot of an ended one took its count of
   collisions.
+- Collision with a depth image: `mvfxInstance_SetDepthImage` borrows a
+  view's depth (binary32, unorm16 or unorm24, any projection, optional
+  normals), and a collision gains `depthImage`, `depthThickness`,
+  `depthSamples` and `killOutsideView`.

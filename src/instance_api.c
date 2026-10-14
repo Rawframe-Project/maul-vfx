@@ -460,6 +460,34 @@ mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instan
     return mvfx_success;
 }
 
+mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId instance,
+                                      const mvfxDepthImage* image)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (image == nullptr)
+    {
+        live->hasDepthView = false;
+        return mvfx_success;
+    }
+    mvfxDepthView view;
+    if (!mvfxPrepareDepthView(image, &view))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    live->depthView = view;
+    live->hasDepthView = true;
+    return mvfx_success;
+}
+
 mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId instance,
                                        int32_t emitter, mvfxMeshId mesh)
 {

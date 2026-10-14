@@ -209,6 +209,9 @@ extern "C"
 // The most scene queries an emitter writes a step.
 #define MVFX_MAX_SCENE_QUERIES 65536
 
+// The most points a step of a particle is tested at against a depth image.
+#define MVFX_MAX_DEPTH_SAMPLES 64
+
     // What a collider is. Particles stay on its allowed side: above a plane,
     // outside a sphere or a box, or inside one (inside).
     typedef uint8_t mvfxColliderKind;
@@ -296,6 +299,19 @@ extern "C"
         bool sceneQueries;
         int32_t queryCapacity;
         float lookahead;
+        // Whether they collide with the depth image the host sets on the
+        // instance (mvfxInstance_SetDepthImage): a particle behind the
+        // image's surface by less than depthThickness (above 0, at most
+        // MVFX_MAX_EXTENT, in the world) has met it. A step is tested at
+        // its segment's end and at up to depthSamples points along it (from
+        // 1 to MVFX_MAX_DEPTH_SAMPLES), one a pixel it crosses, so a fast
+        // particle does not pass a thin wall. Outside the image (or behind
+        // the camera) there is no depth and they do not collide, or are
+        // killed there when killOutsideView is set.
+        bool depthImage;
+        float depthThickness;
+        int32_t depthSamples;
+        bool killOutsideView;
     } mvfxCollision;
 
 // The most host modules an emitter has.

@@ -159,6 +159,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_AnswerSceneQueries(mvfxContext* 
 Answers an emitter's scene queries, one answer each in their order: each particle takes its answer's plane, or none, for the steps after. The queries are then gone.  @param context   The context that owns the instance. @param instance  The instance. @param emitter   The emitter's index in the effect's def. @param answers   The answers; NULL when count is 0. @param count     How many: the queries' count. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context, an emitter out of range, a count not the queries' or an answer out of range, which counts as misuse when the context is given (no answer is then taken). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId instance, const mvfxDepthImage* image);
+```
+Sets the depth image an instance's emitters collide with when their collision asks for it, until it is set again or cleared (NULL). It is checked once, here; its pixels are borrowed, not copied, and must stay valid while it is set.  @param context   The context that owns the instance. @param instance  The instance. @param image     The image, or NULL for none. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context or an image out of range (a size, a stride, a byte count short of its rows, a format, a projection not finite or not invertible, a place or a turn), which counts as misuse when the context is given (the image set before is then kept). @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 void mvfxModule_Random(const mvfxModuleCall* call, uint32_t serial, uint32_t stream, uint32_t out[4]);
 ```
 Draws four random words for a host module: pcg4d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the module's seed, a particle's serial, a stream number the module picks and the step's end tick, so the same call in the same step gives the same words however the work is split.  @param call    The module's call. @param serial  A particle's serial (or any number). @param stream  The module's own number for this draw. @param out     Receives the four words. @par Thread safety Safe from any thread.
@@ -248,4 +253,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-43 functions across 10 headers.
+44 functions across 10 headers.

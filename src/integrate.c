@@ -305,9 +305,16 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
     float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
     float restSpeed = collision->restSpeed * r->modules->sigma;
     mvfxResolvedCollider plane;
-    const mvfxResolvedCollider* own = ScenePlaneOf(r, i, &plane) ? &plane : nullptr;
-    int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, own, collision,
+    mvfxOwnColliders own = {
+        .plane = ScenePlaneOf(r, i, &plane) ? &plane : nullptr,
+        .depth = state->hasDepth ? &state->depth : nullptr,
+    };
+    int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, &own, collision,
                                    restSpeed, start, place, velocity);
+    if (state->hasDepth && collision->killOutsideView && !mvfxDepthSees(&state->depth, place))
+    {
+        return true;
+    }
     if (contacts == 0)
     {
         return false;
@@ -493,6 +500,17 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
     }
     mvfxSpaceMap local = SpaceMapOf(instance, emitter, mvfx_spaceLocal);
     float radius = compiled->collision.radius * local.sigma;
+    state->hasDepth = compiled->collision.depthImage && instance->hasDepthView;
+    if (state->hasDepth)
+    {
+        state->depth = (mvfxResolvedDepth){
+            .view = &instance->depthView,
+            .map = SpaceMapOf(instance, emitter, mvfx_spaceWorld),
+            .radius = radius,
+            .thickness = compiled->collision.depthThickness,
+            .samples = compiled->collision.depthSamples,
+        };
+    }
     int32_t hosts = compiled->collision.hostColliders ? instance->hostColliderCount : 0;
     for (int32_t c = 0; c < compiled->colliderCount + hosts; ++c)
     {

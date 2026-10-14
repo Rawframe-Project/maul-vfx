@@ -49,6 +49,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/curve.c
     src/curve_integral.c
     src/death_heap.c
+    src/depth.c
     src/direction.c
     src/effect.c
     src/effect_api.c
@@ -95,6 +96,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(context)
     maul_add_test(curve WHITEBOX)
     maul_add_test(curve_integral WHITEBOX)
+    maul_add_test(depth WHITEBOX)
     maul_add_test(effect)
     maul_add_test(effect_plan WHITEBOX)
     maul_add_test(force WHITEBOX)

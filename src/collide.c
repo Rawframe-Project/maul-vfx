@@ -3,6 +3,7 @@
 
 #include "collide.h"
 
+#include "depth.h"
 #include "direction.h"
 #include "grid.h"
 
@@ -62,15 +63,25 @@ bool mvfxIsColliderValid(const mvfxCollider* c)
     }
 }
 
+// Whether the scene queries and the depth image an emitter's collision
+// asks for are in range.
+static bool AreAsksValid(const mvfxCollision* c)
+{
+    bool scene =
+        !c->sceneQueries || (c->queryCapacity >= 1 && c->queryCapacity <= MVFX_MAX_SCENE_QUERIES &&
+                             c->lookahead > 0.0f && c->lookahead <= 1.0f);
+    bool depth =
+        !c->depthImage || (c->depthThickness > 0.0f && c->depthThickness <= MVFX_MAX_EXTENT &&
+                           c->depthSamples >= 1 && c->depthSamples <= MVFX_MAX_DEPTH_SAMPLES);
+    return scene && depth;
+}
+
 bool mvfxIsCollisionValid(const mvfxCollision* c)
 {
     return !c->enabled ||
            (IsShare(c->restitution) && IsShare(c->friction) && IsShare(c->lifeLoss) &&
             c->restSpeed >= 0.0f && c->restSpeed <= MVFX_MAX_EXTENT && c->radius >= 0.0f &&
-            c->radius <= MVFX_MAX_EXTENT &&
-            (!c->sceneQueries ||
-             (c->queryCapacity >= 1 && c->queryCapacity <= MVFX_MAX_SCENE_QUERIES &&
-              c->lookahead > 0.0f && c->lookahead <= 1.0f)));
+            c->radius <= MVFX_MAX_EXTENT && AreAsksValid(c));
 }
 
 mvfxCollider mvfxCompileCollider(const mvfxCollider* collider)
@@ -586,9 +597,16 @@ static bool HitField(const mvfxResolvedCollider* c, const float s[3], const floa
 
 // The segment's earliest contact with any collider, or the particle's own.
 static bool FirstHit(const mvfxResolvedCollider* colliders, int32_t count,
-                     const mvfxResolvedCollider* own, const float s[3], const float e[3], Hit* best)
+                     const mvfxOwnColliders* own, const float s[3], const float e[3], Hit* best)
 {
-    bool found = own != nullptr && HitPlane(own, s, e, best);
+    bool found = own->plane != nullptr && HitPlane(own->plane, s, e, best);
+    Hit seen;
+    if (own->depth != nullptr && mvfxDepthHit(own->depth, s, e, &seen.t, seen.point, seen.normal) &&
+        (!found || seen.t < best->t))
+    {
+        *best = seen;
+        found = true;
+    }
     for (int32_t i = 0; i < count; ++i)
     {
         Hit hit;
@@ -621,7 +639,7 @@ static void Bounce(const mvfxCollision* response, const float n[3], float v[3])
 }
 
 int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
-                    const mvfxResolvedCollider* own, const mvfxCollision* response, float restSpeed,
+                    const mvfxOwnColliders* own, const mvfxCollision* response, float restSpeed,
                     const float start[3], float place[3], float velocity[3])
 {
     float s[3] = {start[0], start[1], start[2]};

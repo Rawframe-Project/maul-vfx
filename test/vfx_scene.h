@@ -240,6 +240,12 @@ static inline void BuildScene(mvfxContext* context)
                                             .lookahead = 0.1f};
     emitters[0].colliders = ground;
     emitters[0].colliderCount = 2;
+    // The third collides with the depth image each instance carries.
+    emitters[2].collision = (mvfxCollision){.enabled = true,
+                                            .restitution = 0.5f,
+                                            .depthImage = true,
+                                            .depthThickness = 1.0f,
+                                            .depthSamples = 8};
     // Seven a second, so it spawns within the scene's 1.4 seconds and
     // fills.
     emitters[2].rate = 7.0f;
@@ -478,6 +484,39 @@ static inline void BuildScene(mvfxContext* context)
 // Moves every instance of the context before a step: along a fixed path
 // of exact values (quaternions of exact floats, scales of 1 and 1.5), with
 // a teleport far enough at step 10 for world-space anchors to rebase.
+// A depth image of 32 pixels a side: a camera 6 above an instance looking
+// down its -Z at a plane tilted along X through its origin, 90 degrees
+// wide, depth from 0.1 to 100.
+#define SCENE_DEPTH_SIDE 32
+static float s_sceneDepth[SCENE_DEPTH_SIDE * SCENE_DEPTH_SIDE];
+
+static inline mvfxDepthImage SceneDepth(const double origin[3])
+{
+    const float a = (float)(100.0 / (0.1 - 100.0));
+    for (int32_t r = 0; r < SCENE_DEPTH_SIDE; ++r)
+    {
+        for (int32_t c = 0; c < SCENE_DEPTH_SIDE; ++c)
+        {
+            // Along the ray (x, y, -1) s from the camera: 6 - s = 0.4 x s.
+            float x = ((float)c + 0.5f) / (float)SCENE_DEPTH_SIDE * 2.0f - 1.0f;
+            float s = 6.0f / (1.0f + 0.4f * x);
+            s_sceneDepth[r * SCENE_DEPTH_SIDE + c] = (a * -s + a * 0.1f) / s;
+        }
+    }
+    mvfxDepthImage image = {
+        .pixels = s_sceneDepth,
+        .byteCount = (int64_t)sizeof s_sceneDepth,
+        .width = SCENE_DEPTH_SIDE,
+        .height = SCENE_DEPTH_SIDE,
+        .stride = SCENE_DEPTH_SIDE * 4,
+        .format = mvfx_depthFloat32,
+        .projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, a, -1, 0, 0, a * 0.1f, 0},
+        .origin = {origin[0], origin[1], origin[2] + 6.0},
+        .rotation = {0, 0, 0, 1},
+    };
+    return image;
+}
+
 // Answers every scene query of the context as a host's scene might: a
 // wall halfway along the segment of every third particle by serial, of
 // every other one from step 8, facing back along it; nothing for the rest.
@@ -533,6 +572,8 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
         CHECK(mvfxInstance_SetTransform(context, id, origin, turns[step % 2],
                                         step % 3 == 0 ? 1.5f : 1.0f, step == 10) == mvfx_success,
               "scene moved");
+        mvfxDepthImage depth = SceneDepth(origin);
+        CHECK(mvfxInstance_SetDepthImage(context, id, &depth) == mvfx_success, "scene depth");
     }
 }
 
