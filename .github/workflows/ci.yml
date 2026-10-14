@@ -142,8 +142,12 @@ jobs:
       - name: Build
         run: cmake --build build -j 4
       - name: Test
+        # The registered tests, through node as the toolchain's emulator;
+        # the manual sweeps are built but not run (conventions 13).
         run: |
-          for t in build/test_*.js; do node "$t" || exit 1; done
+          set -o pipefail
+          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Size
         # The static library's size, reported, not gated (family record
         # 0013).
