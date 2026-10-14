@@ -337,10 +337,52 @@ extern "C"
         mvfx_ribbonPerSource = 3,
     };
 
+    // A ribbon's texture coordinate along it.
+    typedef uint8_t mvfxRibbonTexture;
+    enum
+    {
+        // Its normalized length: the texture stretched once over it.
+        mvfx_ribbonStretch = 0,
+        // The segment's index and the place within it: once a segment.
+        mvfx_ribbonTilePerSegment = 1,
+        // The ribbon's distance stored at each point's birth over the tile's
+        // length, so the texture stays on the points as the ribbon grows.
+        mvfx_ribbonTileByDistance = 2,
+    };
+
+    // Which way a ribbon faces.
+    typedef uint8_t mvfxRibbonFacing;
+    enum
+    {
+        // Toward the view's eye, about its tangent.
+        mvfx_ribbonFaceCamera = 0,
+        // Across a fixed normal in the particles' space.
+        mvfx_ribbonFaceNormal = 1,
+    };
+
+// The most pieces a ribbon's segment is cut into.
+#define MVFX_MAX_RIBBON_PIECES 16
+
     // An emitter drawn as ribbons through its particles.
     typedef struct mvfxRibbonDef
     {
         mvfxRibbonIds ids;
+        // Each segment cut into this many pieces along a centripetal
+        // Catmull-Rom spline through the points, from 1 to
+        // MVFX_MAX_RIBBON_PIECES; with bendAngle above 0, into as few as
+        // keep each piece's turn at most bendAngle (radians, at most pi).
+        int32_t pieces;
+        float bendAngle;
+        // The texture coordinate along: tileLength (above 0, at most
+        // MVFX_MAX_EXTENT) for a tile by distance, in the particles' space;
+        // plus scroll (finite, at most MVFX_MAX_EXTENT in size) times the
+        // instance's seconds.
+        mvfxRibbonTexture texture;
+        float tileLength;
+        float scroll;
+        // Its facing, and the normal it faces across (finite, not 0).
+        mvfxRibbonFacing facing;
+        float normal[3];
         // A point's width is its size's X times this over the ribbon's
         // normalized length (0 at its oldest point, 1 at its youngest).
         mvfxLifeCurve width;

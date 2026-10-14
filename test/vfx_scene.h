@@ -94,6 +94,13 @@ static inline void BuildScene(mvfxContext* context)
     static const mvfxAlphaKey ribbonFade[2] = {{0.0f, 1.0f}, {1.0f, 0.2f}};
     emitters[1].ribbon =
         (mvfxRibbonDef){.ids = mvfx_ribbonOne,
+                        .pieces = 4,
+                        .bendAngle = 0.3f,
+                        .texture = mvfx_ribbonTileByDistance,
+                        .tileLength = 0.5f,
+                        .scroll = 0.75f,
+                        .facing = mvfx_ribbonFaceCamera,
+                        .normal = {0.0f, 0.0f, 1.0f},
                         .width = {.value = 1.0f, .curve = {.keys = narrowing, .keyCount = 2}},
                         .color = {.colorKeys = ribbonWarm,
                                   .colorKeyCount = 2,
@@ -301,6 +308,10 @@ static inline void BuildScene(mvfxContext* context)
     emitters[3].events = mvfx_eventMaskDeath;
     // Each collision's sparks draw a ribbon of their own.
     emitters[3].ribbon.ids = mvfx_ribbonPerSource;
+    emitters[3].ribbon.pieces = 3;
+    emitters[3].ribbon.texture = mvfx_ribbonTilePerSegment;
+    emitters[3].ribbon.facing = mvfx_ribbonFaceNormal;
+    emitters[3].ribbon.normal[1] = 1.0f;
     emitters[3].eventCapacity = 16;
     emitters[3].eventSpawn = (mvfxEventSpawn){.enabled = true,
                                               .source = 0,
@@ -641,7 +652,7 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
 
 // A record of every field, in many formats: what the scene's output
 // writes for a view.
-static const mvfxLayoutField s_sceneFields[16] = {
+static const mvfxLayoutField s_sceneFields[18] = {
     {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3, .offset = 0},
     {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 12},
     {.field = mvfx_recordColor,
@@ -662,18 +673,26 @@ static const mvfxLayoutField s_sceneFields[16] = {
     {.field = mvfx_recordLength, .format = mvfx_formatUnorm16, .components = 1, .offset = 72},
     {.field = mvfx_recordAlong, .format = mvfx_formatFloat32, .components = 1, .offset = 76},
     {.field = mvfx_recordRibbon, .format = mvfx_formatUint32, .components = 1, .offset = 80},
+    {.field = mvfx_recordSide, .format = mvfx_formatSnorm16, .components = 3, .offset = 84},
+    {.field = mvfx_recordFaceNormal, .format = mvfx_formatFloat32, .components = 3, .offset = 92},
 };
-#define SCENE_RECORD_BYTES 84
+#define SCENE_RECORD_BYTES 104
 #define SCENE_RECORDS      128
 
 // Hashes an emitter's ribbons for a view: their points and list.
 static inline uint64_t HashRibbons(mvfxContext* context, mvfxInstanceId id, int32_t emitter,
-                                   mvfxLayoutId layout, const mvfxView* view, unsigned char* points,
-                                   uint32_t* scratch, uint64_t hash)
+                                   mvfxLayoutId layout, const mvfxView* view, uint32_t* scratch,
+                                   uint64_t hash)
 {
+    // Room for every particle's segment cut into the most pieces.
+    enum
+    {
+        POINTS = SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES
+    };
+    static unsigned char points[POINTS * SCENE_RECORD_BYTES];
     static mvfxRibbon ribbons[SCENE_RECORDS];
     mvfxRibbonBuffers buffers = {.points = points,
-                                 .pointCapacity = SCENE_RECORDS,
+                                 .pointCapacity = POINTS,
                                  .ribbons = ribbons,
                                  .ribbonCapacity = SCENE_RECORDS,
                                  .scratch = scratch,
@@ -682,7 +701,7 @@ static inline uint64_t HashRibbons(mvfxContext* context, mvfxInstanceId id, int3
     int64_t ribbonCount = 0;
     CHECK(mvfxInstance_WriteRibbons(context, id, emitter, layout, view, &buffers, &pointCount,
                                     &ribbonCount) == mvfx_success &&
-              pointCount <= SCENE_RECORDS,
+              pointCount <= POINTS,
           "scene ribbons");
     hash = mvfxHash64(hash, points, (int32_t)pointCount * SCENE_RECORD_BYTES);
     return mvfxHash64(hash, ribbons, (int32_t)(ribbonCount * (int64_t)sizeof ribbons[0]));
@@ -695,7 +714,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
 {
     mvfxLayoutDef def = mvfxDefaultLayoutDef();
     def.fields = s_sceneFields;
-    def.fieldCount = 16;
+    def.fieldCount = 18;
     def.stride = SCENE_RECORD_BYTES;
     mvfxLayoutId layout = {1, 1};
     if (!mvfxLayout_IsValid(context, layout))
@@ -715,7 +734,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
                   count <= SCENE_RECORDS,
               "scene output");
         hash = mvfxHash64(hash, records, (int32_t)count * SCENE_RECORD_BYTES);
-        hash = HashRibbons(context, id, e, layout, &view, records, scratch, hash);
+        hash = HashRibbons(context, id, e, layout, &view, scratch, hash);
         static mvfxLight lights[SCENE_RECORDS];
         CHECK(mvfxInstance_WriteLights(context, id, e, &view, lights, SCENE_RECORDS, &count) ==
                       mvfx_success &&

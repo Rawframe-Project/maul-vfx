@@ -46,8 +46,9 @@ queries it answers between steps) and a depth image, events (births,
 deaths and collisions the host reads after a step), emitters spawning
 from other emitters' events, output (particle records in layouts the
 host defines, mesh indices and lights, sorted for a view), ribbons
-through particles, bounds and the draw order are in place, and ribbon
-tessellation, trails and beams come next.
+through particles (tessellated, textured, facing the camera or a
+normal), bounds and the draw order are in place, and trails and beams
+come next.
 It has 55 public functions.
 
 ## Building

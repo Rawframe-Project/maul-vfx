@@ -79,10 +79,13 @@ enum
     mvfx_attributeMesh = 67,
     // A uint32 id of the ribbon it joins.
     mvfx_attributeRibbon = 68,
+    // The ribbon's distance at its birth in the particles' space, from its
+    // ribbon's point before.
+    mvfx_attributeRibbonDistance = 69,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeRibbon + 1)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeRibbonDistance + 1)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.
@@ -207,6 +210,14 @@ typedef struct mvfxCompiledEmitter
     mvfxSortMode sortMode;
     mvfxSortMeasure sortMeasure;
     mvfxRibbonIds ribbonIds;
+    int32_t ribbonPieces;
+    // The cosine of the turn k + 1 pieces allow a segment, -2 for any.
+    float ribbonCosLimits[MVFX_MAX_RIBBON_PIECES];
+    mvfxRibbonTexture ribbonTexture;
+    float ribbonTileLength;
+    float ribbonScroll;
+    mvfxRibbonFacing ribbonFacing;
+    float ribbonNormal[3];
     mvfxCompiledLife ribbonWidth;
     // NULL for white.
     const mvfxGradientTable* ribbonColor;

@@ -30,6 +30,8 @@ typedef struct mvfxRecordSource
 typedef struct mvfxRibbonPoint
 {
     float tangent[3];
+    float side[3];
+    float faceNormal[3];
     float length;
     float along;
     float width;
@@ -47,6 +49,14 @@ void mvfxWorldPlaceOf(const mvfxRecordSource* source, int32_t particle, double o
 // Writes a particle's record; a ribbon point's where point is given.
 void mvfxWriteRecord(const mvfxRecordSource* source, const mvfxOutputLayout* layout,
                      int32_t particle, const mvfxRibbonPoint* point, unsigned char* record);
+
+// Writes a ribbon point's record between particles first and second (the
+// same for a point on a particle), a fraction of the way: its values
+// interpolated (an orientation along the shorter way, counts the nearer
+// particle's), its position the given place in the world.
+void mvfxWriteRibbonRecord(const mvfxRecordSource* source, const mvfxOutputLayout* layout,
+                           int32_t first, int32_t second, float fraction, const double place[3],
+                           const mvfxRibbonPoint* point, unsigned char* record);
 
 // Whether a view is within its bounds.
 bool mvfxIsViewValid(const mvfxView* view);

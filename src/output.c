@@ -81,6 +81,18 @@ static void RibbonValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, 
     case mvfx_recordAlong:
         v[0] = at->along;
         break;
+    case mvfx_recordSide:
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            v[k] = at->side[k];
+        }
+        break;
+    case mvfx_recordFaceNormal:
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            v[k] = at->faceNormal[k];
+        }
+        break;
     default:
         w[0] = at->ribbon;
         v[0] = (float)at->ribbon;
@@ -183,6 +195,72 @@ void mvfxWriteRecord(const mvfxRecordSource* source, const mvfxOutputLayout* lay
         uint32_t words[4] = {0, 0, 0, 0};
         ValuesOf(source, &layout->fields[f], particle, point, values, words);
         mvfxWriteField(&layout->fields[f], values, words, record);
+    }
+}
+
+// Whether a field counts (a frame, serial, mesh or ribbon), so a point
+// between particles takes the nearer one's.
+static bool IsCounted(mvfxField field)
+{
+    return field == mvfx_recordFrame || field == mvfx_recordSerial || field == mvfx_recordMesh ||
+           field == mvfx_recordRibbon;
+}
+
+// Values a fraction of the way from a to b, an orientation's along the
+// shorter way and renormalized.
+static void Between(mvfxField field, float a[4], const float b[4], float fraction)
+{
+    float sign = 1.0f;
+    if (field == mvfx_recordOrientation)
+    {
+        float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+        sign = dot < 0.0f ? -1.0f : 1.0f;
+    }
+    float square = 0.0f;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        a[k] += (sign * b[k] - a[k]) * fraction;
+        square += a[k] * a[k];
+    }
+    if (field == mvfx_recordOrientation && square > 0.0f)
+    {
+        float length = sqrtf(square);
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            a[k] /= length;
+        }
+    }
+}
+
+void mvfxWriteRibbonRecord(const mvfxRecordSource* source, const mvfxOutputLayout* layout,
+                           int32_t first, int32_t second, float fraction, const double place[3],
+                           const mvfxRibbonPoint* point, unsigned char* record)
+{
+    int32_t nearer = fraction < 0.5f ? first : second;
+    for (int32_t f = 0; f < layout->fieldCount; ++f)
+    {
+        const mvfxLayoutField* field = &layout->fields[f];
+        float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        uint32_t words[4] = {0, 0, 0, 0};
+        if (field->field == mvfx_recordPosition)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                values[k] = (float)(place[k] - source->viewOrigin[k]);
+            }
+        }
+        else if (IsCounted(field->field) || fraction == 0.0f || first == second)
+        {
+            ValuesOf(source, field, nearer, point, values, words);
+        }
+        else
+        {
+            float other[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            ValuesOf(source, field, first, point, values, words);
+            ValuesOf(source, field, second, point, other, words);
+            Between(field->field, values, other, fraction);
+        }
+        mvfxWriteField(field, values, words, record);
     }
 }
 

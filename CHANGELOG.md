@@ -165,3 +165,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxInstance_WriteRibbons`, writing each chain's points in a layout
   with the ribbon fields (tangent, width, length, coordinate along,
   ribbon) and the ribbon list.
+- Ribbon shape: `ribbon.pieces` and `bendAngle` tessellate along a
+  centripetal Catmull-Rom spline; `ribbon.texture` (stretch, per
+  segment, by a distance stored at birth) with `tileLength` and
+  `scroll`; `ribbon.facing` (camera or a normal) written by the record
+  fields `mvfx_recordSide` and `mvfx_recordFaceNormal`.

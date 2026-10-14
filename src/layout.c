@@ -28,15 +28,15 @@ static uint32_t FormatBytes(mvfxFormat format)
 // The components a field may have, from low to high.
 static void ComponentRange(mvfxField field, uint8_t* low, uint8_t* high)
 {
-    static const uint8_t lows[16] = {1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-    static const uint8_t highs[16] = {3, 3, 4, 1, 4, 3, 1, 1, 4, 1, 1, 3, 1, 1, 1, 1};
+    static const uint8_t lows[18] = {1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    static const uint8_t highs[18] = {3, 3, 4, 1, 4, 3, 1, 1, 4, 1, 1, 3, 1, 1, 1, 1, 3, 3};
     *low = lows[field];
     *high = highs[field];
 }
 
 static bool IsFieldValid(const mvfxLayoutField* f, uint32_t stride)
 {
-    if (f->field > mvfx_recordRibbon || f->format > mvfx_formatUint32)
+    if (f->field > mvfx_recordFaceNormal || f->format > mvfx_formatUint32)
     {
         return false;
     }

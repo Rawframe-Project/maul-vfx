@@ -9,6 +9,7 @@
 
 #include "allocator.h"
 #include "collide.h"
+#include "elementary.h"
 #include "force.h"
 #include "kill.h"
 
@@ -29,7 +30,10 @@ mvfxEmitterDef mvfxDefaultEmitterDef(void)
             },
         .velocity = {.mode = mvfx_directionShapeNormal, .direction = {0.0f, 0.0f, 1.0f}},
         .velocityModules = {.motionScale = {.value = 1.0f}},
-        .ribbon = {.width = {.value = 1.0f}},
+        .ribbon = {.pieces = 1,
+                   .tileLength = 1.0f,
+                   .normal = {0.0f, 0.0f, 1.0f},
+                   .width = {.value = 1.0f}},
     };
 }
 
@@ -169,6 +173,45 @@ static bool IsLifetimeValid(const mvfxScalarSource* lifetime, bool hasDuration,
            (lifetime->range.min > 0.0f && lifetime->range.max <= MVFX_MAX_LIFETIME);
 }
 
+// Whether a ribbon's tessellation, texture and facing are valid.
+static bool IsRibbonShapeValid(const mvfxRibbonDef* ribbon)
+{
+    const float* n = ribbon->normal;
+    bool normal = IsWithin(n[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+                  IsWithin(n[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+                  IsWithin(n[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+                  (n[0] != 0.0f || n[1] != 0.0f || n[2] != 0.0f);
+    return ribbon->pieces >= 1 && ribbon->pieces <= MVFX_MAX_RIBBON_PIECES &&
+           IsWithin(ribbon->bendAngle, 0.0f, 3.14159265f) &&
+           ribbon->texture <= mvfx_ribbonTileByDistance && ribbon->tileLength > 0.0f &&
+           ribbon->tileLength <= MVFX_MAX_EXTENT &&
+           IsWithin(ribbon->scroll, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           ribbon->facing <= mvfx_ribbonFaceNormal && normal;
+}
+
+// Compiles a ribbon's tessellation, texture and facing: for a bend angle,
+// the cosine each count of pieces allows a segment's turn down to.
+static void CompileRibbonShape(const mvfxRibbonDef* ribbon, mvfxCompiledEmitter* out)
+{
+    out->ribbonPieces = ribbon->pieces;
+    for (int32_t k = 1; k <= MVFX_MAX_RIBBON_PIECES; ++k)
+    {
+        float turn = fminf(ribbon->bendAngle * (float)k, 3.14159265f);
+        float sine = 0.0f;
+        float cosine = 1.0f;
+        mvfxSinCos(turn, &sine, &cosine);
+        out->ribbonCosLimits[k - 1] = ribbon->bendAngle > 0.0f ? cosine : -2.0f;
+    }
+    out->ribbonTexture = ribbon->texture;
+    out->ribbonTileLength = ribbon->tileLength;
+    out->ribbonScroll = ribbon->scroll;
+    out->ribbonFacing = ribbon->facing;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->ribbonNormal[k] = ribbon->normal[k];
+    }
+}
+
 // Whether a gradient has no keys, so is white.
 static bool IsWhite(const mvfxGradient* gradient)
 {
@@ -187,6 +230,7 @@ static bool AreOutputsValid(const mvfxEmitterDef* def)
                             light->radiusBySize >= 0.0f && light->radiusBySize <= MVFX_MAX_EXTENT);
     const mvfxRibbonDef* ribbon = &def->ribbon;
     bool ribbonValid = ribbon->ids <= mvfx_ribbonPerSource &&
+                       (ribbon->ids == mvfx_ribbonNone || IsRibbonShapeValid(ribbon)) &&
                        mvfxIsLifeCurveValid(&ribbon->width) &&
                        (IsWhite(&ribbon->color) || mvfxIsGradientValid(&ribbon->color));
     return lightValid && ribbonValid && def->sortMode <= mvfx_sortFrontToBack &&
@@ -423,6 +467,9 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, def->frame.mode != mvfx_frameNone, mvfx_attributeFrame, 1);
     Store(plan, def->meshIndex.mode != mvfx_frameNone, mvfx_attributeMesh, 1);
     Store(plan, def->ribbon.ids != mvfx_ribbonNone, mvfx_attributeRibbon, 1);
+    Store(plan,
+          def->ribbon.ids != mvfx_ribbonNone && def->ribbon.texture == mvfx_ribbonTileByDistance,
+          mvfx_attributeRibbonDistance, 1);
     Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
     Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
@@ -534,6 +581,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->sortMode = def->sortMode;
     out->sortMeasure = def->sortMeasure;
     out->ribbonIds = def->ribbon.ids;
+    CompileRibbonShape(&def->ribbon, out);
     mvfxCompileLife(&def->ribbon.width, space, &out->ribbonWidth);
     out->ribbonColor = nullptr;
     if (!IsWhite(&def->ribbon.color))

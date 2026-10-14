@@ -160,8 +160,37 @@ static uint32_t DrawIndex(const mvfxInstance* instance, int32_t emitter,
     return index;
 }
 
-// A birth's word attributes: its frame, mesh index, ribbon and a count of
-// no collisions.
+// How far back a birth looks for its ribbon's point before.
+#define RIBBON_LOOKBACK 256
+
+// A ribbon's distance at the particle at: its ribbon's youngest point
+// before's distance and the gap to it, in the particles' space; 0 for the
+// first (or one past RIBBON_LOOKBACK particles back).
+static float RibbonDistanceOf(mvfxInstance* instance, int32_t emitter, int32_t at)
+{
+    const uint32_t* ids = mvfxAttributeArray(instance, emitter, mvfx_attributeRibbon);
+    const float* distances = mvfxAttributeArray(instance, emitter, mvfx_attributeRibbonDistance);
+    int32_t last = at > RIBBON_LOOKBACK ? at - RIBBON_LOOKBACK : 0;
+    for (int32_t j = at - 1; j >= last; --j)
+    {
+        if (ids[j] != ids[at])
+        {
+            continue;
+        }
+        float square = 0.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            const float* p = mvfxAttributeArray(instance, emitter, mvfx_attributePositionX + k);
+            float d = p[at] - p[j];
+            square += d * d;
+        }
+        return distances[j] + sqrtf(square);
+    }
+    return 0.0f;
+}
+
+// A birth's word attributes (its frame, mesh index, ribbon and a count of
+// no collisions), and its ribbon's distance.
 static void StoreWords(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth, int32_t at)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -183,6 +212,11 @@ static void StoreWords(mvfxInstance* instance, int32_t emitter, const mvfxBirth*
     if (Has(compiled, mvfx_attributeCollisions))
     {
         StoreWord(instance, emitter, mvfx_attributeCollisions, at, 0);
+    }
+    if (Has(compiled, mvfx_attributeRibbonDistance))
+    {
+        Store(instance, emitter, mvfx_attributeRibbonDistance, at,
+              RibbonDistanceOf(instance, emitter, at));
     }
 }
 

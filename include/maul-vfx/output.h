@@ -73,6 +73,13 @@ extern "C"
         // Its ribbon's index in the ribbon list: uint32 or binary32 (0 in a
         // particle's record).
         mvfx_recordRibbon = 15,
+        // Its unit side across the ribbon, toward which its width spans:
+        // the tangent crossed with the way to the eye or with the facing
+        // normal, 3 (0 in a particle's record or where they are parallel).
+        mvfx_recordSide = 16,
+        // The unit normal of its face, the side crossed with the tangent, 3
+        // (0 in a particle's record).
+        mvfx_recordFaceNormal = 17,
     };
 
     // How a field's components are written.
