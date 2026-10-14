@@ -204,18 +204,19 @@ static void TestNewborns(void)
 
 static void TestGravitySpaces(void)
 {
-    // An instance turned a quarter about Z at scale 2. World gravity in a
-    // world emitter: as given. Emitter gravity in a world emitter: turned
+    // An instance turned a quarter about Z at scale 2, gravity (1, -4, 0).
+    // World gravity in a world emitter: as given. Emitter gravity in a world emitter: turned
     // and scaled. World gravity in a local emitter: turned back and
     // unscaled.
     static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
     static const double origin[3] = {0.0, 0.0, 0.0};
-    static const float expected[3][2] = {{0.0f, -4.0f}, {8.0f, 0.0f}, {-2.0f, 0.0f}};
+    static const float expected[3][2] = {{1.0f, -4.0f}, {8.0f, 2.0f}, {-2.0f, -0.5f}};
     for (int32_t c = 0; c < 3; ++c)
     {
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
         emitter.rate = 4.0f;
         emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+        emitter.motion.gravity[0] = 1.0f;
         emitter.motion.gravity[1] = -4.0f;
         emitter.motion.gravitySpace = c == 1 ? mvfx_spaceLocal : mvfx_spaceWorld;
         emitter.space = c == 2 ? mvfx_spaceLocal : mvfx_spaceWorld;
@@ -329,6 +330,80 @@ static void TestRotation(void)
     }
 }
 
+// The quaternion product a b, (x, y, z, w).
+static void Multiply(const double a[4], const double b[4], double out[4])
+{
+    out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    out[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+}
+
+static void TestTurnUnderDrag(void)
+{
+    // Started a quarter turn about X, turning about (0, 0.6, 0.8) at 2 a
+    // second under angular drag 0.5: the turn r(theta) q0, theta the
+    // angular velocity's integral 2 (1 - e) / 0.5, composed on the
+    // parent's side; the angular velocity slows by e.
+    mvfxEmitterDef emitter = Thrown();
+    emitter.motion = (mvfxMotion){.angularDrag = 0.5f};
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {1.5707963f, 0, 0, 0}, .max = {1.5707963f, 0, 0, 0}};
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0, 1.2f, 1.6f, 0}, .max = {0, 1.2f, 1.6f, 0}};
+    Scene scene = NewScene(&emitter);
+    for (int32_t i = 0; i < 29; ++i)
+    {
+        CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 29) == mvfx_success,
+              "step");
+    }
+    double t = AgeOf(&scene, 0);
+    double e = exp(-0.5 * t);
+    double theta = 2.0 * (1.0 - e) / 0.5;
+    const double turn[4] = {0.0, 0.6 * sin(0.5 * theta), 0.8 * sin(0.5 * theta), cos(0.5 * theta)};
+    const double start[4] = {sin(0.25 * 3.14159265358979323846), 0.0, 0.0,
+                             cos(0.25 * 3.14159265358979323846)};
+    double expected[4];
+    Multiply(turn, start, expected);
+    bool turned = true;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        turned = turned &&
+                 fabs((double)Array(&scene, (mvfxAttribute)(mvfx_attributeOrientationX + k))[0] -
+                      expected[k]) <= 2e-5;
+    }
+    CHECK(turned, "turned on the parent's side by the slowing turn");
+    CHECK(Near(Array(&scene, mvfx_attributeAngularZ)[0], 1.6 * e, 1e-5) &&
+              Near(Array(&scene, mvfx_attributeAngularY)[0], 1.2 * e, 1e-5),
+          "the angular velocity slowed");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestTurnStaysUnit(void)
+{
+    // Twenty thousand small turns about a slanted axis: the orientation
+    // stays of unit length, normalized each step.
+    mvfxEmitterDef emitter = Thrown();
+    emitter.motion = (mvfxMotion){0};
+    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {3.1f, -7.3f, 5.9f, 0}, .max = {3.1f, -7.3f, 5.9f, 0}};
+    Scene scene = NewScene(&emitter);
+    for (int32_t i = 0; i < 20000; ++i)
+    {
+        CHECK(mvfxContext_StepTicks(scene.context, 211) == mvfx_success, "step");
+    }
+    double length = 0.0;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        double c = (double)Array(&scene, (mvfxAttribute)(mvfx_attributeOrientationX + k))[0];
+        length += c * c;
+    }
+    CHECK(fabs(sqrt(length) - 1.0) <= 1e-6, "of unit length");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -378,6 +453,8 @@ int main(void)
     TestGravitySpaces();
     TestDragPerParticle();
     TestRotation();
+    TestTurnUnderDrag();
+    TestTurnStaysUnit();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
