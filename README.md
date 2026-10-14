@@ -51,8 +51,8 @@ normal), trails pinned to their sources and beams struck along curves,
 sprites and ribbons expanded into quads and strips for renderers that
 cannot instance, bounds and the draw order, quality levels, the
 context's particle budget, off-screen policies and the neighbor grid
-with its neighbor attributes, flocking, steering and particle contacts
-are in place, and forces between particles come next.
+with its neighbor attributes, flocking, steering, particle contacts and
+forces between particles are in place, and plexus links come next.
 It has 62 public functions.
 
 ## Building

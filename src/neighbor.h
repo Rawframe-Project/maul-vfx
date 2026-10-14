@@ -8,6 +8,7 @@
 #define MVFX_NEIGHBOR_H
 
 #include "instance.h"
+#include "life.h"
 #include "random.h"
 
 #include <math.h>
@@ -59,11 +60,17 @@ typedef struct mvfxNeighborQuery
     float alignmentSquared;
     float cohesionSquared;
     float viewCosine;
+    // The pair force's: its squared radius and its inverse (0 for none),
+    // and its strength over the distance.
+    float pairSquared;
+    float pairInverse;
+    const mvfxCompiledLife* pairStrength;
 } mvfxNeighborQuery;
 
 // What a query found, in the grid's order: its neighbors' count and sums,
-// whether more were left out; and for flocking, the separation's sum and
-// the counts and sums of those within alignment's and cohesion's radii.
+// whether more were left out; for flocking, the separation's sum and the
+// counts and sums of those within alignment's and cohesion's radii; and
+// the pair force's pull.
 typedef struct mvfxNeighborSums
 {
     int32_t count;
@@ -75,6 +82,8 @@ typedef struct mvfxNeighborSums
     float alignedVelocity[3];
     int32_t cohered;
     float coheredPlace[3];
+    // The pair force's sum of accelerations.
+    float pull[3];
 } mvfxNeighborSums;
 
 // The query of a valid emitter that finds neighbors.

@@ -228,12 +228,15 @@ void mvfxSteerEmitter(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxSteeringDef* s = &compiled->steering;
-    if (!s->enabled)
+    if (!s->enabled && !(compiled->pairRadius > 0.0f))
     {
         return;
     }
-    Targets targets;
-    ResolveTargets(instance, emitter, &targets);
+    Targets targets = {0};
+    if (s->enabled)
+    {
+        ResolveTargets(instance, emitter, &targets);
+    }
     bool neighbors = compiled->neighbors.enabled;
     mvfxNeighborQuery query = {0};
     if (neighbors)
@@ -254,11 +257,15 @@ void mvfxSteerEmitter(mvfxInstance* instance, int32_t emitter)
         float place[3] = {p[0][i], p[1][i], p[2][i]};
         float velocity[3] = {v[0][i], v[1][i], v[2][i]};
         float acc[3] = {0.0f, 0.0f, 0.0f};
+        float pull[3] = {0.0f, 0.0f, 0.0f};
         if (neighbors)
         {
             mvfxNeighborSums sums = mvfxSearchNeighbors(&query, i, place, velocity);
             mvfxStoreNeighbors(instance, emitter, i, &sums, place, velocity);
             Flock(s, &sums, place, velocity, acc);
+            pull[0] = sums.pull[0];
+            pull[1] = sums.pull[1];
+            pull[2] = sums.pull[2];
         }
         s->seek.weight > 0.0f ? Seek(s, &targets, place, velocity, acc) : (void)0;
         s->flee.weight > 0.0f ? Flee(s, &targets, place, velocity, acc) : (void)0;
@@ -266,7 +273,8 @@ void mvfxSteerEmitter(mvfxInstance* instance, int32_t emitter)
         Limit(s->maxForce, acc);
         for (int32_t k = 0; k < 3; ++k)
         {
-            v[k][i] += acc[k] * seconds;
+            // The pair force is a force, not steering: not held.
+            v[k][i] += (acc[k] + pull[k]) * seconds;
         }
     }
 }

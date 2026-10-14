@@ -425,7 +425,7 @@ extern "C"
     // struck again when they die, with new noise. A beam is drawn as one
     // ribbon; its points are placed, not moved, so it takes no rate,
     // bursts, distance rate, events in, host spawns, forces, collisions,
-    // steering, contacts or birth events, its ribbon ids are
+    // steering, contacts, pair forces or birth events, its ribbon ids are
     // mvfx_ribbonOne without a pinned
     // head, and its capacity holds its points.
     typedef struct mvfxBeamDef
@@ -603,6 +603,8 @@ extern "C"
         mvfxSteeringDef steering;
         // Its particles kept apart.
         mvfxContactDef contacts;
+        // Its particles pulling and pushing each other.
+        mvfxPairForceDef pairForce;
         // The lights its particles carry (mvfxInstance_WriteLights).
         mvfxLightDef light;
         // Its ribbons (mvfxInstance_WriteRibbons).

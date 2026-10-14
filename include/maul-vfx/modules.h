@@ -377,6 +377,23 @@ extern "C"
         mvfxSteerPath path;
     } mvfxSteeringDef;
 
+    // A force between an emitter's particles by their distance: each
+    // neighbor within radius pulls a particle toward it (pushes it away
+    // where the strength is negative) at an acceleration of the strength at
+    // their distance over radius, from the step's start, added to its
+    // velocity over the step. The same curve both ways makes each pair's
+    // pulls equal and opposite.
+    typedef struct mvfxPairForceDef
+    {
+        bool enabled;
+        // Above 0 and at most the neighbors' radius
+        // (mvfxEmitterDef.neighbors, which it needs).
+        float radius;
+        // Its value finite and at most MVFX_MAX_EXTENT in size, its curve over
+        // the distance from 0 to radius as 0 to 1.
+        mvfxLifeCurve strength;
+    } mvfxPairForceDef;
+
 // The most projection passes particle contacts take a step.
 #define MVFX_MAX_CONTACT_ITERATIONS 16
 

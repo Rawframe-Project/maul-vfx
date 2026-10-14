@@ -215,6 +215,10 @@ typedef struct mvfxCompiledEmitter
     mvfxSteeringDef steering;
     float pathPoints[MVFX_MAX_PATH_POINTS][3];
     mvfxContactDef contacts;
+    // Its pair force: the radius (0 for none) and the strength over the
+    // distance.
+    float pairRadius;
+    mvfxCompiledLife pairStrength;
     int32_t drawPriority;
     bool fixedBounds;
     float boundsMin[3];

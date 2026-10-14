@@ -41,7 +41,7 @@ event: appearance context direction instance instance_api space
 birth: direction elementary event instance integrate random shape value velocity
 scene_query: context direction effect force instance instance_api space
 event_spawn: instance random space
-neighbor: elementary instance random
+neighbor: elementary instance life random
 steer: force instance neighbor space
 contact: appearance instance neighbor
 emitter_step: beam birth bounds death_heap event event_spawn host_module instance contact integrate neighbor scene_query spawn steer

@@ -405,7 +405,8 @@ static bool IsBeamValid(const mvfxEmitterDef* def, int32_t parameterCount)
     bool alone = def->rate == 0.0f && def->burstCount == 0 && def->ratePerDistance == 0.0f &&
                  !def->eventSpawn.enabled && def->hostSpawnCapacity == 0 &&
                  !def->collision.enabled && def->forceCount == 0 && !def->contacts.enabled &&
-                 !def->steering.enabled && (def->events & mvfx_eventMaskBirth) == 0;
+                 !def->steering.enabled && !def->pairForce.enabled &&
+                 (def->events & mvfx_eventMaskBirth) == 0;
     return shape && alone && def->ribbon.ids == mvfx_ribbonOne && !def->ribbon.pinHead;
 }
 
@@ -456,6 +457,17 @@ static bool IsFlockRuleValid(const mvfxEmitterDef* def, float weight, float radi
     return IsWithin(weight, 0.0f, MVFX_MAX_EXTENT) &&
            (weight == 0.0f ||
             (def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius));
+}
+
+// Whether an emitter's pair force is valid: a radius within its
+// neighbors', a strength in range.
+static bool IsPairForceValid(const mvfxEmitterDef* def)
+{
+    const mvfxPairForceDef* pair = &def->pairForce;
+    return !pair->enabled ||
+           (def->neighbors.enabled && pair->radius > 0.0f &&
+            pair->radius <= def->neighbors.radius && mvfxIsLifeCurveValid(&pair->strength) &&
+            IsWithin(pair->strength.value, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
 }
 
 // Whether an emitter's particle contacts are valid.
@@ -600,7 +612,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
             !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
             !AreNeighborsValid(def, i) ||
             !IsSteeringValid(&def->emitters[i], def->parameterCount) ||
-            !AreContactsValid(&def->emitters[i].contacts) ||
+            !AreContactsValid(&def->emitters[i].contacts) || !IsPairForceValid(&def->emitters[i]) ||
             !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
@@ -684,6 +696,7 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
     }
     mvfxOverLifeTables(&def->overLife, def->custom, def->customCount, curves, gradients);
     *curves += mvfxLifeCurves(&def->ribbon.width);
+    *curves += def->pairForce.enabled ? mvfxLifeCurves(&def->pairForce.strength) : 0;
     *gradients += IsWhite(&def->ribbon.color) ? 0 : 1;
 }
 
@@ -701,6 +714,18 @@ static void CopySteering(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
         }
     }
     out->steering.path.points = nullptr;
+}
+
+// Compiles an emitter's pair force, its strength's table into space.
+static void CompilePairForce(const mvfxPairForceDef* pair, mvfxTableSpace* space,
+                             mvfxCompiledEmitter* out)
+{
+    out->pairRadius = pair->enabled ? pair->radius : 0.0f;
+    out->pairStrength = (mvfxCompiledLife){0};
+    if (pair->enabled)
+    {
+        mvfxCompileLife(&pair->strength, space, &out->pairStrength);
+    }
 }
 
 // Compiles an emitter's initial values into out, its tables into space.
@@ -769,6 +794,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->sprite = def->sprite;
     CompileRibbonShape(&def->ribbon, out);
     mvfxCompileLife(&def->ribbon.width, space, &out->ribbonWidth);
+    CompilePairForce(&def->pairForce, space, out);
     out->ribbonColor = nullptr;
     if (!IsWhite(&def->ribbon.color))
     {

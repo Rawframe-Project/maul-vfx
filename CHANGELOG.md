@@ -207,3 +207,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   position-based Jacobi passes averaged over each particle's contacts,
   then impulses with restitution and friction; capped contacts counted
   in `contactsCapped`).
+- Forces between particles: an emitter's `pairForce` (each neighbor
+  within a radius pulls or pushes at a strength curved over their
+  distance).

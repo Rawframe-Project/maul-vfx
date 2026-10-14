@@ -317,6 +317,16 @@ static inline void BuildScene(mvfxContext* context)
         (mvfxNeighborDef){.enabled = true, .source = 1, .radius = 3.0f, .maxNeighbors = 4};
     emitters[1].neighbors =
         (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.5f, .maxNeighbors = 4};
+    // The second's particles push each other within 0.4, harder the
+    // nearer.
+    static const mvfxCurveKey nearer[2] = {
+        {.time = 0.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+    };
+    emitters[1].pairForce =
+        (mvfxPairForceDef){.enabled = true,
+                           .radius = 0.4f,
+                           .strength = {.value = -1.5f, .curve = {.keys = nearer, .keyCount = 2}}};
     // The second keeps its particles apart, a tenth of their size each.
     emitters[1].contacts = (mvfxContactDef){.enabled = true,
                                             .radiusScale = 0.1f,

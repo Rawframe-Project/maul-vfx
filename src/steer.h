@@ -9,9 +9,10 @@
 #include "instance.h"
 
 // At an emitter's step, after mvfxFindNeighbors and before motion: for a
-// steering emitter, adds each particle's steering over the step to its
-// velocity, from the step's start; walks the neighbors (storing their
-// attributes) for one that finds them.
+// steering emitter or one with a pair force, adds each particle's
+// steering and pull over the step to its velocity, from the step's start;
+// walks the neighbors (storing their attributes) for one that finds
+// them.
 void mvfxSteerEmitter(mvfxInstance* instance, int32_t emitter);
 
 #endif

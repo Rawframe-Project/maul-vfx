@@ -100,6 +100,19 @@ static void AddFlock(const mvfxNeighborQuery* q, int32_t j, const float d[3], fl
     }
 }
 
+// Adds the pair force's pull of a neighbor an offset d away: toward it by
+// the strength at the distance over the radius.
+static void AddPull(const mvfxNeighborQuery* q, const float d[3], float square,
+                    mvfxNeighborSums* sums)
+{
+    float distance = sqrtf(square);
+    float strength = mvfxLifeAt(q->pairStrength, distance * q->pairInverse);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        sums->pull[k] += strength * d[k] / distance;
+    }
+}
+
 // A particle's walk: its place and heading, and what it leaves out.
 typedef struct Walk
 {
@@ -147,6 +160,10 @@ static bool VisitKey(const Walk* w, uint32_t key, mvfxNeighborSums* sums)
         if (q->flock)
         {
             AddFlock(q, j, d, square, w->heading, sums);
+        }
+        if (square < q->pairSquared && square > 0.0f)
+        {
+            AddPull(q, d, square, sums);
         }
     }
     return true;
@@ -218,6 +235,9 @@ mvfxNeighborQuery mvfxOpenNeighborQuery(const mvfxInstance* instance, int32_t em
         .cohesionSquared = RuleSquared(steering->cohesion, steering->cohesionRadius),
         // pi's cosine is -1 within its rounding: a view of pi sees all.
         .viewCosine = steering->viewAngle >= 3.14159274f ? -1.0f : cosine,
+        .pairSquared = compiled->pairRadius * compiled->pairRadius,
+        .pairInverse = compiled->pairRadius > 0.0f ? 1.0f / compiled->pairRadius : 0.0f,
+        .pairStrength = &compiled->pairStrength,
     };
 }
 
@@ -248,9 +268,10 @@ void mvfxFindNeighbors(mvfxInstance* instance, int32_t emitter)
     {
         BuildGrid(instance, emitter, compiled->gridCell);
     }
-    if (!compiled->neighbors.enabled || compiled->steering.enabled)
+    if (!compiled->neighbors.enabled || compiled->steering.enabled || compiled->pairRadius > 0.0f)
     {
-        // Steering walks the neighbors itself (mvfxSteerEmitter).
+        // Steering and the pair force walk the neighbors themselves
+        // (mvfxSteerEmitter).
         return;
     }
     mvfxNeighborQuery query = mvfxOpenNeighborQuery(instance, emitter);
