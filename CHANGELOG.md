@@ -189,3 +189,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `limits.particles` budget choosing the first level that fits,
   `mvfxInstance_GetQuality` and `mvfxContext_GetParticles`; particle
   arrays sized per instance.
+- Off-screen policies: `mvfxInstance_SetVisible`, and per instance
+  simulate, throttle (every n-th unseen step by the summed length, in
+  the seed's phase) or pause (`mvfxInstanceDef.offscreen`,
+  `mvfxInstance_SetOffscreen`).

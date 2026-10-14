@@ -139,6 +139,16 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetTransform(mvfxContext* contex
 Sets where an instance is at the end of the next step. Over that step it moves in a line from where it was (the rotation by normalized interpolation, the scale linearly), and births within it take its place at their ticks; its travel feeds spawning by distance and its velocity what emitters inherit. A teleport moves it at once instead, with no travel and no velocity, and ends every ribbon by the counter (mvfxInstance_BreakRibbons). How births along the way fall depends on how often the host moves it, which is the host's to keep the same.  @param context   The context that owns the instance. @param instance  The instance. @param origin    Its place in the world, each value finite and at most 2^52 in size. @param rotation  A unit quaternion (x, y, z, w), within 0.001 of unit length. @param scale     From MVFX_MIN_SCALE to MVFX_MAX_SCALE. @param teleport  Whether it jumps there. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or a value out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetVisible(mvfxContext* context, mvfxInstanceId instance, bool visible);
+```
+Tells an instance whether the host sees it, which its off-screen policy reads at each step. The library reports bounds (mvfxInstance_GetBounds) for the host to decide by.  @param context   The context that owns the instance. @param instance  The instance. @param visible   Whether it is seen. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetOffscreen(mvfxContext* context, mvfxInstanceId instance, mvfxOffscreen offscreen, int32_t interval);
+```
+Changes what an instance does while unseen. Steps it holds back stay held until it steps.  @param context    The context that owns the instance. @param instance   The instance. @param offscreen  The policy. @param interval   For mvfx_offscreenThrottle, every how many steps it steps: from 2 to MVFX_MAX_OFFSCREEN_INTERVAL; read only for that policy. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context or a policy or interval out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxSpawnRequest* request);
 ```
 Queues particles for an emitter of an instance: they are born at the start of the next step, before its other births, each taking a serial and room like any birth (refused, and counted, when the emitter is full). The values are copied: the arrays may be released at once.  @param context   The context that owns the instance. @param instance  The instance. @param emitter   The emitter's index in the effect's def. @param request   The particles. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, an emitter index out of range, a count below 1, a value out of range, or a color or size for an emitter that does not store it, which counts as misuse when the context is given; `mvfx_errorCapacity` when the emitter's host queue lacks the room (none of the particles is queued). @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -337,4 +347,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-60 functions across 11 headers.
+62 functions across 11 headers.

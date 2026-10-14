@@ -122,6 +122,60 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
     EndStep(instance);
 }
 
+// The most ticks one step takes.
+#define MAX_STEP_TICKS ((int64_t)(MVFX_MAX_STEP_SECONDS * MVFX_TICKS_PER_SECOND))
+
+// Whether an instance steps in this step by its off-screen policy,
+// counting its unseen steps.
+static bool IsDue(mvfxInstance* instance)
+{
+    if (instance->visible || instance->offscreen == mvfx_offscreenSimulate)
+    {
+        instance->unseenSteps = 0;
+        return true;
+    }
+    if (instance->offscreen == mvfx_offscreenPause)
+    {
+        return false;
+    }
+    uint64_t interval = (uint64_t)instance->offscreenInterval;
+    instance->unseenSteps += 1;
+    return (instance->unseenSteps + instance->seed % interval) % interval == 0;
+}
+
+// Steps an instance by its policy: due, it steps the ticks it holds and
+// these; otherwise it holds them (a throttle) or lets them go (a pause).
+// A sum past the longest step steps what it holds first.
+static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
+{
+    bool due = IsDue(instance);
+    bool paused = !due && instance->offscreen == mvfx_offscreenPause;
+    if (!due)
+    {
+        // The step the events came from is over.
+        for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+        {
+            mvfxBeginEvents(instance, e);
+        }
+    }
+    if (paused)
+    {
+        return;
+    }
+    if (instance->heldTicks > 0 && instance->heldTicks + ticks > MAX_STEP_TICKS)
+    {
+        mvfxStepInstance(instance, instance->heldTicks);
+        instance->heldTicks = 0;
+    }
+    instance->heldTicks += ticks;
+    if (due)
+    {
+        int64_t held = instance->heldTicks;
+        instance->heldTicks = 0;
+        mvfxStepInstance(instance, held);
+    }
+}
+
 static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
 {
     const StepWork* work = taskContext;
@@ -130,7 +184,7 @@ static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
         mvfxInstance* instance = work->instances->slots[i].object;
         if (instance != nullptr)
         {
-            mvfxStepInstance(instance, work->ticks);
+            StepByPolicy(instance, work->ticks);
         }
     }
 }
@@ -141,9 +195,6 @@ void mvfxStepInstances(mvfxContext* context, int64_t ticks)
     mvfxRunTasks(&context->tasks, StepRange, (int32_t)context->instances.capacity, STEP_MIN_RANGE,
                  &work);
 }
-
-// The most ticks one step takes.
-#define MAX_STEP_TICKS ((int64_t)(MVFX_MAX_STEP_SECONDS * MVFX_TICKS_PER_SECOND))
 
 mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks)
 {

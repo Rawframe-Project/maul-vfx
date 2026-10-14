@@ -174,6 +174,13 @@ typedef struct mvfxInstance
     // emitters' capacities hold, which count against the context's budget.
     int32_t quality;
     float rateScale;
+    // Whether the host sees it, what it does unseen, and the ticks and
+    // unseen steps it holds back.
+    bool visible;
+    mvfxOffscreen offscreen;
+    int32_t offscreenInterval;
+    int64_t heldTicks;
+    uint64_t unseenSteps;
     int64_t particles;
     int64_t clock;
     // No birth past this tick; INT64_MAX until the instance is stopped.

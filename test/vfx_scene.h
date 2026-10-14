@@ -573,6 +573,12 @@ static inline void BuildScene(mvfxContext* context)
         instanceDef.seed = i == 3 ? 0 : 0xABCDu + (uint32_t)i;
         // The third plays at the effect's lower level.
         instanceDef.quality = i == 2 ? 1 : 0;
+        // The second throttled to every third step while unseen, the first
+        // paused (MoveScene hides them).
+        instanceDef.offscreen = i == 1   ? mvfx_offscreenThrottle
+                                : i == 0 ? mvfx_offscreenPause
+                                         : mvfx_offscreenSimulate;
+        instanceDef.offscreenInterval = 3;
         mvfxInstanceId instance = {0};
         CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
               "scene instance");
@@ -695,6 +701,11 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
         {
             CHECK(mvfxInstance_BreakRibbons(context, id, -1) == mvfx_success, "scene break");
         }
+        // The throttled unseen over the longest step, the paused for three.
+        const mvfxInstance* live = context->instances.slots[i].object;
+        bool hidden = (live->offscreen == mvfx_offscreenThrottle && step >= 3 && step < 15) ||
+                      (live->offscreen == mvfx_offscreenPause && step >= 7 && step < 10);
+        CHECK(mvfxInstance_SetVisible(context, id, !hidden) == mvfx_success, "scene seen");
         mvfxDepthImage depth = SceneDepth(origin);
         CHECK(mvfxInstance_SetDepthImage(context, id, &depth) == mvfx_success, "scene depth");
     }

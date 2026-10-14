@@ -90,6 +90,14 @@ static uint32_t SeedFromOrdinal(uint64_t ordinal)
     return seed != 0 ? seed : 1;
 }
 
+// Whether an off-screen policy, and a throttle's interval, are valid.
+static bool IsOffscreenValid(mvfxOffscreen offscreen, int32_t interval)
+{
+    return offscreen <= mvfx_offscreenPause &&
+           (offscreen != mvfx_offscreenThrottle ||
+            (interval >= 2 && interval <= MVFX_MAX_OFFSCREEN_INTERVAL));
+}
+
 // The first quality level from asked whose particles fit the context's
 // budget beside those its instances hold; -1 for none.
 static int32_t LevelThatFits(const mvfxContext* context, const mvfxEffect* effect, int32_t asked)
@@ -110,7 +118,8 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
 {
     if (context == nullptr || instanceOut == nullptr || def == nullptr ||
         def->cookie != MVFX_INSTANCE_DEF_COOKIE || !IsOriginValid(def->origin) ||
-        !IsRotationValid(def->rotation) || !IsScaleValid(def->scale) || def->quality < 0)
+        !IsRotationValid(def->rotation) || !IsScaleValid(def->scale) || def->quality < 0 ||
+        !IsOffscreenValid(def->offscreen, def->offscreenInterval))
     {
         if (instanceOut != nullptr)
         {
@@ -152,6 +161,9 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
     }
     context->instancesCreated += 1;
     context->particlesHeld += instance->particles;
+    instance->visible = true;
+    instance->offscreen = def->offscreen;
+    instance->offscreenInterval = def->offscreenInterval;
     effect->users += 1;
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -354,6 +366,43 @@ mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instan
         live->from = live->to;
         BreakRibbons(live, -1);
     }
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetVisible(mvfxContext* context, mvfxInstanceId instance, bool visible)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    live->visible = visible;
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetOffscreen(mvfxContext* context, mvfxInstanceId instance,
+                                     mvfxOffscreen offscreen, int32_t interval)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (!IsOffscreenValid(offscreen, interval))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    live->offscreen = offscreen;
+    live->offscreenInterval = interval;
     return mvfx_success;
 }
 

@@ -182,6 +182,8 @@ void mvfxResetInstance(mvfxInstance* instance)
 {
     instance->clock = 0;
     instance->stepStart = 0;
+    instance->heldTicks = 0;
+    instance->unseenSteps = 0;
     instance->stopTick = INT64_MAX;
     instance->from = instance->to;
     instance->stepDistance = 0.0;

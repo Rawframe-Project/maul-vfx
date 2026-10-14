@@ -29,6 +29,29 @@ extern "C"
         uint32_t generation;
     } mvfxInstanceId;
 
+    // What an instance does in the steps the host has it unseen
+    // (mvfxInstance_SetVisible).
+    typedef uint8_t mvfxOffscreen;
+    enum
+    {
+        // It steps as when seen.
+        mvfx_offscreenSimulate = 0,
+        // It steps every offscreenInterval-th step, by the steps' summed
+        // length (at most MVFX_MAX_STEP_SECONDS a step: a longer sum steps
+        // what it has first), each instance in its own phase of the
+        // interval from its seed so that instances unseen together do not
+        // all step together. The same steps give the same particles, but
+        // not those of stepping every time. Seen again, it steps what it
+        // has with the next step.
+        mvfx_offscreenThrottle = 1,
+        // Its clock stops: it does not step, and seen again it goes on from
+        // where it stopped.
+        mvfx_offscreenPause = 2,
+    };
+
+// The most steps a throttled instance lets pass unseen.
+#define MVFX_MAX_OFFSCREEN_INTERVAL 64
+
     // How an instance is made. Build it with mvfxDefaultInstanceDef.
     typedef struct mvfxInstanceDef
     {
@@ -53,6 +76,11 @@ extern "C"
         // effect's level count; it plays at the first level from this one
         // whose particles fit the context's budget.
         int32_t quality;
+        // What it does while unseen, and for mvfx_offscreenThrottle every
+        // how many steps it steps, from 2 to MVFX_MAX_OFFSCREEN_INTERVAL
+        // (read only for that policy). It is made seen.
+        mvfxOffscreen offscreen;
+        int32_t offscreenInterval;
     } mvfxInstanceDef;
 
 // The least and greatest scale of an instance.
@@ -146,6 +174,41 @@ extern "C"
                                                                  const double origin[3],
                                                                  const float rotation[4],
                                                                  float scale, bool teleport);
+
+    /// Tells an instance whether the host sees it, which its off-screen
+    /// policy reads at each step. The library reports bounds
+    /// (mvfxInstance_GetBounds) for the host to decide by.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param visible   Whether it is seen.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetVisible(mvfxContext* context,
+                                                               mvfxInstanceId instance,
+                                                               bool visible);
+
+    /// Changes what an instance does while unseen. Steps it holds back stay
+    /// held until it steps.
+    ///
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param offscreen  The policy.
+    /// @param interval   For mvfx_offscreenThrottle, every how many steps it
+    ///                   steps: from 2 to MVFX_MAX_OFFSCREEN_INTERVAL; read
+    ///                   only for that policy.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context or a policy or
+    ///         interval out of range, which counts as misuse when the context
+    ///         is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetOffscreen(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 mvfxOffscreen offscreen,
+                                                                 int32_t interval);
 
     // Particles the host adds to an emitter of an instance. Positions are
     // in the emitter's space: the world's for a world-space emitter, the
