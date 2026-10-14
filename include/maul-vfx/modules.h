@@ -206,6 +206,9 @@ extern "C"
 // The most colliders an emitter has, and an instance the host sets.
 #define MVFX_MAX_COLLIDERS 8
 
+// The most scene queries an emitter writes a step.
+#define MVFX_MAX_SCENE_QUERIES 65536
+
     // What a collider is. Particles stay on its allowed side: above a plane,
     // outside a sphere or a box, or inside one (inside).
     typedef uint8_t mvfxColliderKind;
@@ -282,6 +285,17 @@ extern "C"
         // Its radius, from 0 to MVFX_MAX_EXTENT: colliders grow by it (a
         // box's corners stay square).
         float radius;
+        // Whether they collide with the host's scene. Each step ends with a
+        // query for each moving particle, up to queryCapacity (from 1 to
+        // MVFX_MAX_SCENE_QUERIES; the rest counted dropped): its place and
+        // the segment it covers in lookahead seconds (above 0, at most 1) at
+        // its velocity. The host answers each with a contact plane or none
+        // (mvfxInstance_AnswerSceneQueries) before the next step, which
+        // collides the particle's segment with its plane; a particle keeps
+        // its last plane until an answer replaces it.
+        bool sceneQueries;
+        int32_t queryCapacity;
+        float lookahead;
     } mvfxCollision;
 
 // The most host modules an emitter has.

@@ -305,24 +305,9 @@ float mvfxForceDrag(const mvfxResolvedForce* force)
     return field && force->fieldMode == mvfx_fieldVelocity ? force->tightness : 0.0f;
 }
 
-// v (binary64) turned by a unit quaternion, in binary64.
-static void RotateDouble(const float q[4], const double v[3], double out[3])
-{
-    double x = (double)q[0];
-    double y = (double)q[1];
-    double z = (double)q[2];
-    double w = (double)q[3];
-    double tx = 2.0 * (y * v[2] - z * v[1]);
-    double ty = 2.0 * (z * v[0] - x * v[2]);
-    double tz = 2.0 * (x * v[1] - y * v[0]);
-    out[0] = v[0] + w * tx + (y * tz - z * ty);
-    out[1] = v[1] + w * ty + (z * tx - x * tz);
-    out[2] = v[2] + w * tz + (x * ty - y * tx);
-}
-
 // A stored place back in the force's space, in binary64: the map's
 // inverse.
-static void UnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3])
+void mvfxUnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3])
 {
     double d[3];
     for (int32_t k = 0; k < 3; ++k)
@@ -332,7 +317,7 @@ static void UnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3])
     const float* q = map->rotation;
     const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
     double turned[3];
-    RotateDouble(inverse, d, turned);
+    mvfxRotateDouble(inverse, d, turned);
     for (int32_t k = 0; k < 3; ++k)
     {
         out[k] = turned[k] / (double)map->sigma + map->before[k];
@@ -374,7 +359,7 @@ static void Field(const mvfxResolvedForce* force, const float x[3], double time,
                   float a[3], float* drag)
 {
     double place[3];
-    UnmapPoint(&force->map, x, place);
+    mvfxUnmapPoint(&force->map, x, place);
     float value[3];
     if (force->kind == mvfx_forceTurbulence)
     {
@@ -435,5 +420,31 @@ void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[
             Swirl(force, x, weight, a);
             break;
         }
+    }
+}
+
+void mvfxUnmapVector(const mvfxSpaceMap* map, const float v[3], float out[3])
+{
+    const float* q = map->rotation;
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    mvfxRotate(inverse, v, out);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] /= map->sigma;
+    }
+}
+
+void mvfxMapPointDouble(const mvfxSpaceMap* map, const double p[3], float out[3])
+{
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = (p[k] - map->before[k]) * (double)map->sigma;
+    }
+    double turned[3];
+    mvfxRotateDouble(map->rotation, d, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = (float)(turned[k] + map->after[k]);
     }
 }

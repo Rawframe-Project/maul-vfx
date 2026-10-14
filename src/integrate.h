@@ -14,6 +14,7 @@
 #ifndef MAUL_VFX_SRC_INTEGRATE_H
 #define MAUL_VFX_SRC_INTEGRATE_H
 
+#include "force.h"
 #include "instance.h"
 
 // The factors drag gives a span: how much velocity is left (e), how far
@@ -32,6 +33,12 @@ mvfxDragFactors mvfxDragFactorsOf(double drag, double seconds);
 // Resolves the emitter's forces, kill rules and velocity modules for the
 // step, from the instance's transform at its start.
 void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter);
+
+// How a space maps to the space an emitter's particles are stored in,
+// under a transform of the instance: a world-space emitter's are offsets
+// from its anchor.
+mvfxSpaceMap mvfxSpaceMapAt(const mvfxInstance* instance, int32_t emitter,
+                            mvfxSimulationSpace space, const mvfxTransform* transform);
 
 // Moves the particles the emitter holds over the whole step (those alive
 // at its start, once the ended ones are gone), marking those killed.

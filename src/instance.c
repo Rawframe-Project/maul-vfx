@@ -22,6 +22,7 @@ typedef struct EmitterAt
     size_t forces;
     size_t rules;
     size_t colliders;
+    size_t queries;
 } EmitterAt;
 
 static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compiled)
@@ -31,6 +32,8 @@ static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compi
     {
         colliders += MVFX_MAX_COLLIDERS;
     }
+    bool scene = compiled->collision.enabled && compiled->collision.sceneQueries;
+    int32_t queries = scene ? compiled->collision.queryCapacity : 0;
     return (EmitterAt){
         .queue = mvfxLayoutAdd(layout, (size_t)compiled->hostSpawnCapacity, sizeof(mvfxHostBirth),
                                alignof(mvfxHostBirth)),
@@ -40,6 +43,8 @@ static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compi
                                sizeof(mvfxResolvedKillRule), alignof(mvfxResolvedKillRule)),
         .colliders = mvfxLayoutAdd(layout, (size_t)colliders, sizeof(mvfxResolvedCollider),
                                    alignof(mvfxResolvedCollider)),
+        .queries =
+            mvfxLayoutAdd(layout, (size_t)queries, sizeof(mvfxSceneQuery), alignof(mvfxSceneQuery)),
     };
 }
 
@@ -114,6 +119,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             .forces = (mvfxResolvedForce*)(block + at[e].forces),
             .killRules = (mvfxResolvedKillRule*)(block + at[e].rules),
             .colliders = (mvfxResolvedCollider*)(block + at[e].colliders),
+            .queries = (mvfxSceneQuery*)(block + at[e].queries),
         };
     }
     mvfxResetInstance(instance);
@@ -139,6 +145,8 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->rate = (mvfxRateCursor){0};
         state->hostCount = 0;
         state->killed = 0;
+        state->queryCount = 0;
+        state->queriesDropped = 0;
         state->distanceCarry = 0.0;
         state->distanceDelta = 0.0;
         state->distanceSkip = 0.0;

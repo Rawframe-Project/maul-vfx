@@ -207,6 +207,7 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
         .owed = state->owed,
         .refused = state->refused,
         .killed = state->killed,
+        .queriesDropped = state->queriesDropped,
     };
     return mvfx_success;
 }

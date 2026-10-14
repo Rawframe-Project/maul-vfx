@@ -196,6 +196,11 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
     {
         StoreWord(instance, emitter, mvfx_attributeCollisions, at, 0);
     }
+    for (int32_t k = 0; Has(compiled, mvfx_attributeScenePointX) && k < 6; ++k)
+    {
+        // No contact plane yet.
+        Store(instance, emitter, (mvfxAttribute)(mvfx_attributeScenePointX + k), at, 0.0f);
+    }
     for (int32_t i = 0; i < compiled->customCount; ++i)
     {
         mvfxDrawVector(&compiled->custom[i], age, parameters,

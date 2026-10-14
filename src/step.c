@@ -50,6 +50,16 @@ static void Rebase(mvfxInstance* instance, int32_t emitter)
         {
             positions[i] += shift;
         }
+        if (mvfxHasAttribute(&instance->effect->emitters[emitter].plan, mvfx_attributeScenePointX))
+        {
+            // Contact planes move with them.
+            float* points = mvfxAttributeArray(instance, emitter,
+                                               (mvfxAttribute)(mvfx_attributeScenePointX + k));
+            for (int32_t i = 0; i < state->count; ++i)
+            {
+                points[i] += shift;
+            }
+        }
         state->anchor[k] = origin[k];
     }
 }

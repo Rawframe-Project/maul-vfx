@@ -187,13 +187,9 @@ static float SharedWind(const mvfxResolvedForce* forces, int32_t count)
     return wind;
 }
 
-// How a space maps to the space the emitter's particles are stored in,
-// with the instance's transform at the step's start: a world-space
-// emitter's are offsets from its anchor.
-static mvfxSpaceMap SpaceMapOf(const mvfxInstance* instance, int32_t emitter,
-                               mvfxSimulationSpace space)
+mvfxSpaceMap mvfxSpaceMapAt(const mvfxInstance* instance, int32_t emitter,
+                            mvfxSimulationSpace space, const mvfxTransform* transform)
 {
-    const mvfxTransform* transform = &instance->from;
     const double* anchor = instance->emitters[emitter].anchor;
     bool world = instance->effect->emitters[emitter].space == mvfx_spaceWorld;
     mvfxSpaceMap map = {.rotation = {0.0f, 0.0f, 0.0f, 1.0f}, .sigma = 1.0f};
@@ -235,6 +231,14 @@ static mvfxSpaceMap SpaceMapOf(const mvfxInstance* instance, int32_t emitter,
     return map;
 }
 
+// How a space maps to the space the emitter's particles are stored in,
+// with the instance's transform at the step's start.
+static mvfxSpaceMap SpaceMapOf(const mvfxInstance* instance, int32_t emitter,
+                               mvfxSimulationSpace space)
+{
+    return mvfxSpaceMapAt(instance, emitter, space, &instance->from);
+}
+
 // Moves particles from first to end over seconds.
 // What a range of particles moves by over a span.
 typedef struct Range
@@ -269,6 +273,28 @@ static float AgeOf(const Range* r, int32_t i)
     return fminf(fmaxf(age, 0.0f), 1.0f);
 }
 
+// Particle i's contact plane from the scene, grown by its radius, as a
+// plane collider; false when it has none.
+static bool ScenePlaneOf(const Range* r, int32_t i, mvfxResolvedCollider* out)
+{
+    if (!mvfxHasAttribute(&r->compiled->plan, mvfx_attributeScenePointX))
+    {
+        return false;
+    }
+    float radius = r->compiled->collision.radius * r->modules->sigma;
+    *out = (mvfxResolvedCollider){.kind = mvfx_colliderPlane};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        const float* point = mvfxAttributeArray(r->instance, r->emitter,
+                                                (mvfxAttribute)(mvfx_attributeScenePointX + k));
+        const float* normal = mvfxAttributeArray(r->instance, r->emitter,
+                                                 (mvfxAttribute)(mvfx_attributeSceneNormalX + k));
+        out->normal[k] = normal[i];
+        out->center[k] = point[i] + radius * normal[i];
+    }
+    return out->normal[0] != 0.0f || out->normal[1] != 0.0f || out->normal[2] != 0.0f;
+}
+
 // Collides particle i, gone from start to place: its place and velocity
 // after its contacts, its count of them, and the life a contact takes;
 // whether a contact kills it.
@@ -278,8 +304,10 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
     const mvfxEmitterState* state = &r->instance->emitters[r->emitter];
     float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
     float restSpeed = collision->restSpeed * r->modules->sigma;
-    int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, collision, restSpeed,
-                                   start, place, velocity);
+    mvfxResolvedCollider plane;
+    const mvfxResolvedCollider* own = ScenePlaneOf(r, i, &plane) ? &plane : nullptr;
+    int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, own, collision,
+                                   restSpeed, start, place, velocity);
     if (contacts == 0)
     {
         return false;

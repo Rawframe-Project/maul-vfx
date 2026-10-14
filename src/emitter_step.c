@@ -10,6 +10,7 @@
 #include "death_heap.h"
 #include "host_module.h"
 #include "integrate.h"
+#include "scene_query.h"
 #include "spawn.h"
 
 #include <math.h>
@@ -261,6 +262,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     }
     mvfxRunHostModules(instance, emitter, mvfx_stageAfterMotion);
     RemoveKilled(instance, emitter);
+    mvfxWriteSceneQueries(instance, emitter);
     mvfxEndDistance(instance, emitter);
     instance->emitters[emitter].hostCount = 0;
 }

@@ -335,6 +335,8 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, def->frame.mode != mvfx_frameNone, mvfx_attributeFrame, 1);
     Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
     Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
+    Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
+          6);
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         Store(plan, true, mvfx_attributeCustom + 4 * i, def->custom[i].components);

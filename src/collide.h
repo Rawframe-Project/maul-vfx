@@ -49,10 +49,11 @@ mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const str
                                          const mvfxSpaceMap* map, float radius);
 
 // Collides a particle that went from start to place over a step and ends
-// it with velocity: place and velocity become what the contacts make
-// them. Returns the contacts.
+// it with velocity, with the colliders and its own (a scene plane; NULL
+// for none): place and velocity become what the contacts make them.
+// Returns the contacts.
 int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
-                    const mvfxCollision* response, float restSpeed, const float start[3],
-                    float place[3], float velocity[3]);
+                    const mvfxResolvedCollider* own, const mvfxCollision* response, float restSpeed,
+                    const float start[3], float place[3], float velocity[3]);
 
 #endif

@@ -234,7 +234,10 @@ static inline void BuildScene(mvfxContext* context)
                                             .friction = 0.2f,
                                             .lifeLoss = 0.1f,
                                             .restSpeed = 1.0f,
-                                            .radius = 0.05f};
+                                            .radius = 0.05f,
+                                            .sceneQueries = true,
+                                            .queryCapacity = 24,
+                                            .lookahead = 0.1f};
     emitters[0].colliders = ground;
     emitters[0].colliderCount = 2;
     // Seven a second, so it spawns within the scene's 1.4 seconds and
@@ -475,8 +478,48 @@ static inline void BuildScene(mvfxContext* context)
 // Moves every instance of the context before a step: along a fixed path
 // of exact values (quaternions of exact floats, scales of 1 and 1.5), with
 // a teleport far enough at step 10 for world-space anchors to rebase.
+// Answers every scene query of the context as a host's scene might: a
+// wall halfway along the segment of every third particle by serial, of
+// every other one from step 8, facing back along it; nothing for the rest.
+static inline void AnswerScene(mvfxContext* context, int32_t step)
+{
+    uint32_t every = step < 8 ? 3u : 2u;
+    for (uint32_t i = 0; i < context->instances.capacity; ++i)
+    {
+        const mvfxInstance* instance = context->instances.slots[i].object;
+        if (instance == NULL)
+        {
+            continue;
+        }
+        mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
+        for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+        {
+            const mvfxSceneQuery* queries = NULL;
+            int32_t count = 0;
+            CHECK(mvfxInstance_GetSceneQueries(context, id, e, &queries, &count) == mvfx_success,
+                  "scene queries");
+            mvfxSceneAnswer answers[32] = {0};
+            for (int32_t q = 0; q < count && q < 32; ++q)
+            {
+                const mvfxSceneQuery* query = &queries[q];
+                const float* d = query->segment;
+                answers[q] = (mvfxSceneAnswer){
+                    .hit = query->serial % every == 0,
+                    .point = {query->origin[0] + 0.5 * (double)d[0],
+                              query->origin[1] + 0.5 * (double)d[1],
+                              query->origin[2] + 0.5 * (double)d[2]},
+                    .normal = {-d[0], -d[1], -d[2]},
+                };
+            }
+            CHECK(mvfxInstance_AnswerSceneQueries(context, id, e, answers, count) == mvfx_success,
+                  "scene answered");
+        }
+    }
+}
+
 static inline void MoveScene(mvfxContext* context, int32_t step)
 {
+    AnswerScene(context, step);
     static const float turns[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.6f, 0.8f}};
     for (uint32_t i = 0; i < context->instances.capacity; ++i)
     {

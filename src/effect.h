@@ -71,10 +71,14 @@ enum
     mvfx_attributeCustom = 28,
     // A uint32 count of a particle's collisions.
     mvfx_attributeCollisions = 60,
+    // A particle's contact plane from the host's scene: a point, then a
+    // normal (0 for none).
+    mvfx_attributeScenePointX = 61,
+    mvfx_attributeSceneNormalX = 64,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeCollisions + 1)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeSceneNormalX + 3)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.

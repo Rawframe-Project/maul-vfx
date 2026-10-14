@@ -231,6 +231,68 @@ extern "C"
                                                                  const mvfxCollider* colliders,
                                                                  int32_t count);
 
+    // A scene query: a moving particle, its place in the world and the
+    // segment it covers in the emitter's lookahead at its velocity.
+    typedef struct mvfxSceneQuery
+    {
+        // Its index among the emitter's particles now, and its serial.
+        int32_t particle;
+        uint32_t serial;
+        double origin[3];
+        float segment[3];
+    } mvfxSceneQuery;
+
+    // The host's answer to a scene query: a contact plane through point, the
+    // side normal points to the one the particle keeps to; or none.
+    typedef struct mvfxSceneAnswer
+    {
+        bool hit;
+        // In the world: each coordinate at most 2^52 in size; normal finite,
+        // not of length 0.
+        double point[3];
+        float normal[3];
+    } mvfxSceneAnswer;
+
+    /// Reads the scene queries an emitter of an instance wrote at the end
+    /// of the last step, which the host answers before the next step. They
+    /// stay until answered, the next step or a restart.
+    ///
+    /// @param context     The context that owns the instance.
+    /// @param instance    The instance.
+    /// @param emitter     The emitter's index in the effect's def.
+    /// @param queriesOut  Receives the queries (NULL when there are none),
+    ///                    the instance's own, read only.
+    /// @param countOut    Receives how many.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument or an emitter
+    ///         out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult
+    mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                 const mvfxSceneQuery** queriesOut, int32_t* countOut);
+
+    /// Answers an emitter's scene queries, one answer each in their order:
+    /// each particle takes its answer's plane, or none, for the steps
+    /// after. The queries are then gone.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in the effect's def.
+    /// @param answers   The answers; NULL when count is 0.
+    /// @param count     How many: the queries' count.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context, an emitter
+    ///         out of range, a count not the queries' or an answer out of
+    ///         range, which counts as misuse when the context is given (no
+    ///         answer is then taken).
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult
+    mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    const mvfxSceneAnswer* answers, int32_t count);
+
     /// Draws four random words for a host module: pcg4d (Jarzynski and
     /// Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the
     /// module's seed, a particle's serial, a stream number the module picks
@@ -331,6 +393,8 @@ extern "C"
         uint64_t refused;
         // Particles its kill rules (and attractors' kill radii) killed.
         uint64_t killed;
+        // Scene queries its capacity of them dropped.
+        uint64_t queriesDropped;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

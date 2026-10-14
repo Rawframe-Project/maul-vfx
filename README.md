@@ -41,9 +41,10 @@ turbulence, vector fields from grids, with falloffs) and velocity
 modules (motion scale, added, orbit and radial velocity, a speed limit)
 values over life (colour, alpha, size, flipbook, rotation speed,
 custom attributes), kill rules, host modules and collision with planes,
-spheres, boxes, heightfields and distance grids are in place, and
-collision with the host's scene comes next.
-It has 41 public functions.
+spheres, boxes, heightfields, distance grids and the host's scene (by
+queries it answers between steps) are in place, and collision with a
+depth image comes next.
+It has 43 public functions.
 
 ## Building
 

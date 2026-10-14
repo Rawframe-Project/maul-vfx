@@ -31,6 +31,14 @@ typedef struct mvfxSpaceMap
 void mvfxMapPoint(const mvfxSpaceMap* map, const float p[3], float out[3]);
 void mvfxMapVector(const mvfxSpaceMap* map, const float v[3], float sigma, float out[3]);
 
+// Maps a binary64 point by a map, in binary64 until the end.
+void mvfxMapPointDouble(const mvfxSpaceMap* map, const double p[3], float out[3]);
+
+// Maps a point back by a map, in binary64; and a vector, by the map's
+// turn back and 1 / sigma.
+void mvfxUnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3]);
+void mvfxUnmapVector(const mvfxSpaceMap* map, const float v[3], float out[3]);
+
 struct mvfxGrid;
 
 // A force resolved for a step, in the particles' space, its strength

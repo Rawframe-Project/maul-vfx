@@ -149,6 +149,16 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetColliders(mvfxContext* contex
 Sets the colliders of an instance that its emitters collide with when their collision asks for the instance's (a character, a moving door), replacing the last set; the next step reads them. They are copied.  @param context    The context that owns the instance. @param instance   The instance. @param colliders  From 0 to MVFX_MAX_COLLIDERS colliders; NULL when count is 0. @param count      How many. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context, a count out of range or a collider out of range, which counts as misuse when the context is given (the colliders are then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxSceneQuery** queriesOut, int32_t* countOut);
+```
+Reads the scene queries an emitter of an instance wrote at the end of the last step, which the host answers before the next step. They stay until answered, the next step or a restart.  @param context     The context that owns the instance. @param instance    The instance. @param emitter     The emitter's index in the effect's def. @param queriesOut  Receives the queries (NULL when there are none), the instance's own, read only. @param countOut    Receives how many. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxSceneAnswer* answers, int32_t count);
+```
+Answers an emitter's scene queries, one answer each in their order: each particle takes its answer's plane, or none, for the steps after. The queries are then gone.  @param context   The context that owns the instance. @param instance  The instance. @param emitter   The emitter's index in the effect's def. @param answers   The answers; NULL when count is 0. @param count     How many: the queries' count. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context, an emitter out of range, a count not the queries' or an answer out of range, which counts as misuse when the context is given (no answer is then taken). @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 void mvfxModule_Random(const mvfxModuleCall* call, uint32_t serial, uint32_t stream, uint32_t out[4]);
 ```
 Draws four random words for a host module: pcg4d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the module's seed, a particle's serial, a stream number the module picks and the step's end tick, so the same call in the same step gives the same words however the work is split.  @param call    The module's call. @param serial  A particle's serial (or any number). @param stream  The module's own number for this draw. @param out     Receives the four words. @par Thread safety Safe from any thread.
@@ -238,4 +248,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-41 functions across 10 headers.
+43 functions across 10 headers.

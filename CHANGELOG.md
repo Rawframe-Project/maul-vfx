@@ -121,3 +121,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Collision with grids: colliders gain heightfields and distance grids (a
   `grid` of one component spanning a turned box), sampled along each
   step every half cell; effects and instances hold their grids.
+- Collision with the host's scene: a collision gains `sceneQueries`,
+  `queryCapacity` and `lookahead`; each step writes a query a moving
+  particle (`mvfxInstance_GetSceneQueries`), the host answers with
+  contact planes (`mvfxInstance_AnswerSceneQueries`), and emitter stats
+  count the `queriesDropped`.
+- Fixed: a particle born in the slot of an ended one took its count of
+  collisions.

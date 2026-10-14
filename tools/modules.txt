@@ -27,7 +27,8 @@ instance: allocator collide effect force kill
 death_heap:
 spawn: instance random
 birth: direction elementary instance integrate random shape value velocity
-emitter_step: birth death_heap host_module instance integrate spawn
+scene_query: context direction effect force instance instance_api integrate
+emitter_step: birth death_heap host_module instance integrate scene_query spawn
 context: allocator effect grid instance mesh slots tasks
 effect_api: context effect float_mode grid grid_api mesh mesh_api slots
 mesh_api: context mesh slots

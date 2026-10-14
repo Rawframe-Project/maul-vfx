@@ -21,4 +21,7 @@ void mvfxRotate(const float q[4], const float v[3], float out[3]);
 // The quaternion product a b: b's turn, then a's.
 void mvfxMultiplyRotations(const float a[4], const float b[4], float out[4]);
 
+// Turns a binary64 vector by a unit quaternion, in binary64.
+void mvfxRotateDouble(const float q[4], const double v[3], double out[3]);
+
 #endif

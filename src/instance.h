@@ -10,6 +10,7 @@
 #define MAUL_VFX_SRC_INSTANCE_H
 
 #include "effect.h"
+#include "force.h"
 
 #include "maul-vfx/instance.h"
 
@@ -78,6 +79,12 @@ typedef struct mvfxEmitterState
     // instance's when it takes them).
     struct mvfxResolvedCollider* colliders;
     int32_t colliderCount;
+    // Its scene queries from the last step, the map from the world to its
+    // particles' space they were written under, and those dropped.
+    struct mvfxSceneQuery* queries;
+    int32_t queryCount;
+    mvfxSpaceMap queryMap;
+    uint64_t queriesDropped;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;

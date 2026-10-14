@@ -67,7 +67,10 @@ bool mvfxIsCollisionValid(const mvfxCollision* c)
     return !c->enabled ||
            (IsShare(c->restitution) && IsShare(c->friction) && IsShare(c->lifeLoss) &&
             c->restSpeed >= 0.0f && c->restSpeed <= MVFX_MAX_EXTENT && c->radius >= 0.0f &&
-            c->radius <= MVFX_MAX_EXTENT);
+            c->radius <= MVFX_MAX_EXTENT &&
+            (!c->sceneQueries ||
+             (c->queryCapacity >= 1 && c->queryCapacity <= MVFX_MAX_SCENE_QUERIES &&
+              c->lookahead > 0.0f && c->lookahead <= 1.0f)));
 }
 
 mvfxCollider mvfxCompileCollider(const mvfxCollider* collider)
@@ -581,11 +584,11 @@ static bool HitField(const mvfxResolvedCollider* c, const float s[3], const floa
     return true;
 }
 
-// The segment's earliest contact with any collider.
-static bool FirstHit(const mvfxResolvedCollider* colliders, int32_t count, const float s[3],
-                     const float e[3], Hit* best)
+// The segment's earliest contact with any collider, or the particle's own.
+static bool FirstHit(const mvfxResolvedCollider* colliders, int32_t count,
+                     const mvfxResolvedCollider* own, const float s[3], const float e[3], Hit* best)
 {
-    bool found = false;
+    bool found = own != nullptr && HitPlane(own, s, e, best);
     for (int32_t i = 0; i < count; ++i)
     {
         Hit hit;
@@ -618,13 +621,13 @@ static void Bounce(const mvfxCollision* response, const float n[3], float v[3])
 }
 
 int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
-                    const mvfxCollision* response, float restSpeed, const float start[3],
-                    float place[3], float velocity[3])
+                    const mvfxResolvedCollider* own, const mvfxCollision* response, float restSpeed,
+                    const float start[3], float place[3], float velocity[3])
 {
     float s[3] = {start[0], start[1], start[2]};
     int32_t contacts = 0;
     Hit hit;
-    while (contacts < MVFX_MAX_CONTACTS && FirstHit(colliders, count, s, place, &hit))
+    while (contacts < MVFX_MAX_CONTACTS && FirstHit(colliders, count, own, s, place, &hit))
     {
         contacts += 1;
         float rest[3];
@@ -649,7 +652,7 @@ int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
             return contacts;
         }
     }
-    if (contacts == MVFX_MAX_CONTACTS && FirstHit(colliders, count, s, place, &hit))
+    if (contacts == MVFX_MAX_CONTACTS && FirstHit(colliders, count, own, s, place, &hit))
     {
         // Out of contacts with a path still into a surface: stop at it.
         for (int32_t k = 0; k < 3; ++k)
