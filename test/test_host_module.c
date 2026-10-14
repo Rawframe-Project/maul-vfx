@@ -223,6 +223,58 @@ static void TestOrderAndRandom(void)
     CHECK(a[0] != b[0], "another seed, other words");
 }
 
+static void Record(const mvfxModuleCall* call, void* user)
+{
+    Seen* seen = user;
+    seen->calls += 1;
+    seen->count = call->particles.count;
+    seen->module = call->module;
+    seen->startTick = call->startTick;
+    seen->worldSpace = call->worldSpace;
+    seen->seed = call->seed;
+}
+
+static void TestCallsInFull(void)
+{
+    // The second module of a local emitter, in a second step: its index,
+    // its space and the step's start.
+    Seen seen = {0};
+    Seen other = {0};
+    mvfxHostModule modules[2] = {
+        {.stage = mvfx_stageAfterMotion, .function = Record, .user = &other},
+        {.stage = mvfx_stageAfterMotion, .function = Record, .user = &seen},
+    };
+    mvfxEmitterDef emitter = Held(modules, 2);
+    emitter.space = mvfx_spaceLocal;
+    Scene scene = NewScene(&emitter, 1);
+    Place(&scene, 0, 0.0);
+    CHECK(mvfxContext_StepTicks(scene.context, 100) == mvfx_success, "step");
+    CHECK(mvfxContext_StepTicks(scene.context, 50) == mvfx_success, "step");
+    CHECK(seen.module == 1 && !seen.worldSpace && seen.startTick == 100 && other.module == 0,
+          "the second module of a local emitter in a second step");
+    CHECK(seen.seed != other.seed, "each module its own stream");
+    mvfxDestroyContext(scene.context);
+
+    // A full emitter steps its births in tick order: its modules before
+    // motion still run on the particles alive at the step's start.
+    Seen full = {0};
+    mvfxHostModule before = {
+        .stage = mvfx_stageBeforeMotion, .function = SetVelocity, .user = &full};
+    emitter = Held(&before, 1);
+    emitter.capacity = 2;
+    emitter.hostSpawnCapacity = 2;
+    scene = NewScene(&emitter, 1);
+    Place(&scene, 0, 0.0);
+    Place(&scene, 0, 1.0);
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    Place(&scene, 0, 7.0);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    const float* x = mvfxAttributeArray(scene.live, 0, mvfx_attributePositionX);
+    CHECK(full.count == 2 && fabsf(x[0] - 2.0f) <= 1e-5f && fabsf(x[1] - 3.0f) <= 1e-5f,
+          "before motion when the emitter is full");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -261,6 +313,7 @@ int main(void)
     TestBeforeMotion();
     TestAfterMotion();
     TestOrderAndRandom();
+    TestCallsInFull();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
