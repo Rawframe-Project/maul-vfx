@@ -242,12 +242,50 @@ static void TestOrder(void)
     CHECK(mvfxContext_OrderEmitters(context, eye, &frustum, items, 6, &count) == mvfx_success &&
               count == 2 && IsItem(&items[0], b, 1, 0, 30.0) && IsItem(&items[1], b, 0, 1, 20.0),
           "a box across a plane kept");
+    // x at most 20.25 keeps b's emitter 0, its far side past it; x at
+    // least 20.75 drops it, a quarter short.
+    frustum.planes[0][0] = -1;
+    frustum.planes[0][3] = 20.25;
+    CHECK(mvfxContext_OrderEmitters(context, eye, &frustum, items, 6, &count) == mvfx_success &&
+              count == 4 && IsItem(&items[1], b, 0, 1, 20.0),
+          "a box across a plane facing back kept");
+    frustum.planes[0][0] = 1;
+    frustum.planes[0][3] = -20.75;
+    CHECK(mvfxContext_OrderEmitters(context, eye, &frustum, items, 6, &count) == mvfx_success &&
+              count == 1 && IsItem(&items[0], b, 1, 0, 30.0),
+          "a box just outside skipped");
     frustum.planeCount = 0;
     static const double there[3] = {10, 0, 0};
     CHECK(mvfxContext_OrderEmitters(context, there, &frustum, items, 6, &count) == mvfx_success &&
               count == 5 && IsItem(&items[0], b, 1, 0, 20.0) && IsItem(&items[1], a, 1, 0, 5.0) &&
               IsItem(&items[2], c, 0, 1, sqrt(200.0)),
           "no planes keep all; distance from the eye");
+    mvfxDestroyContext(context);
+}
+
+static void TestTies(void)
+{
+    // Two emitters of one priority as far from the eye: by emitter index.
+    // The second's sizes differ by axis: its box grows by the largest.
+    mvfxContext* context = NewContext();
+    mvfxEmitterDef emitters[2] = {Held(0.5f), Held(0.5f)};
+    emitters[1].size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.5f, 2.0f, 1.0f, 0}, .max = {0.5f, 2.0f, 1.0f, 0}};
+    mvfxInstanceId instance = NewInstance(context, NewEffect(context, emitters, 2));
+    Place(context, instance, 1, 10, 0, 0);
+    Place(context, instance, 0, 0, 10, 0);
+    CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success, "step");
+    static const double eye[3] = {0, 0, 0};
+    mvfxDrawItem items[2] = {0};
+    int64_t count = 0;
+    CHECK(mvfxContext_OrderEmitters(context, eye, NULL, items, 2, &count) == mvfx_success &&
+              count == 2 && IsItem(&items[0], instance, 0, 0, 10.0) &&
+              IsItem(&items[1], instance, 1, 0, 10.0),
+          "by emitter index");
+    mvfxBounds bounds = {0};
+    CHECK(mvfxInstance_GetBounds(context, instance, 1, &bounds) == mvfx_success &&
+              IsBox(&bounds, 8, -2, -2, 12, 2, 2),
+          "grown by the largest size component");
     mvfxDestroyContext(context);
 }
 
@@ -303,6 +341,7 @@ int main(void)
     TestLocal();
     TestFixed();
     TestOrder();
+    TestTies();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
