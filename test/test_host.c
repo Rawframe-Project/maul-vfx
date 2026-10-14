@@ -138,6 +138,62 @@ static void TestDrawnFromCenterAndLocal(void)
     }
 }
 
+static void TestEdges(void)
+{
+    // A rebased anchor, a moving instance's inherited velocity, a drawn
+    // velocity at the instance's very center, given sizes.
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.hostSpawnCapacity = 4;
+    emitter.inheritVelocity = 1.0f;
+    emitter.lifetime = mvfxRangeSource(5.0f, 5.0f);
+    emitter.size =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 0}, .max = {1, 1, 1, 0}};
+    emitter.velocity = (mvfxVelocity){.mode = mvfx_directionFromCenter, .speed = {1.0f, 1.0f}};
+    Scene scene = NewScene(&emitter);
+    const float unturned[4] = {0, 0, 0, 1};
+    const double far[3] = {2000.0, 0.0, 0.0};
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, far, unturned, 1.0f, true) ==
+              mvfx_success,
+          "teleported");
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    CHECK(scene.live->emitters[0].anchor[0] == 2000.0, "rebased");
+    const double next[3] = {2004.0, 0.0, 0.0};
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, next, unturned, 1.0f, false) ==
+              mvfx_success,
+          "moving");
+    // At the instance's place at the step's start, its center.
+    static const double places[3] = {2000.0, 0.0, 0.0};
+    static const float sizes[3] = {4.0f, 5.0f, 6.0f};
+    mvfxSpawnRequest request = {.count = 1, .positions = places, .sizes = sizes};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "queued");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
+    CHECK(scene.live->emitters[0].count == 1, "born");
+    CHECK(Array(&scene, mvfx_attributePositionX)[0] == 0.0f, "an offset from the moved anchor");
+    float vx = Array(&scene, mvfx_attributeVelocityX)[0] - 8.0f;
+    float vy = Array(&scene, mvfx_attributeVelocityY)[0];
+    float vz = Array(&scene, mvfx_attributeVelocityZ)[0];
+    CHECK(fabsf(sqrtf(vx * vx + vy * vy + vz * vz) - 1.0f) <= 1e-5f,
+          "any way at speed 1 from the center, plus the instance's 8 along X");
+    CHECK(Array(&scene, mvfx_attributeSizeX)[0] == 4.0f &&
+              Array(&scene, mvfx_attributeSizeZ)[0] == 6.0f,
+          "given sizes kept");
+    mvfxDestroyContext(scene.context);
+
+    // A host particle whose life ends within the step is owed, not kept.
+    emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.hostSpawnCapacity = 1;
+    emitter.lifetime = mvfxRangeSource(0.1f, 0.1f);
+    scene = NewScene(&emitter);
+    mvfxSpawnRequest one = {.count = 1, .positions = places};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_success, "queued");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
+    mvfxEmitterStats stats = Stats(&scene);
+    CHECK(stats.live == 0 && stats.owed == 1 && stats.refused == 0, "lived and ended in the step");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestQueueAndRoom(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -289,6 +345,7 @@ int main(void)
 {
     TestWorldSpawns();
     TestDrawnFromCenterAndLocal();
+    TestEdges();
     TestQueueAndRoom();
     TestPrewarm();
     return s_failures == 0 ? 0 : 1;
