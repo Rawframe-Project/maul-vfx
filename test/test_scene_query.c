@@ -249,26 +249,62 @@ static void TestSpaces(void)
     mvfxDestroyContext(scene.context);
 
     // A world emitter's planes move with its rebase: its instance jumps
-    // 5000 along X, its anchor follows, and the particle still meets the
+    // 5000 up, its anchor follows, and the particle still meets the
     // world's y = 0.
     emitter = Asking(4);
     scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -1, 0);
     Step(&scene, 1);
     AnswerFloor(&scene, true, 0.0);
-    static const double far[3] = {5000.0, 0.0, 0.0};
+    static const double far[3] = {0.0, 5000.0, 0.0};
     static const float still[4] = {0, 0, 0, 1};
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, far, still, 1.0f, true) ==
               mvfx_success,
           "jumped");
     Step(&scene, MVFX_TICKS_PER_SECOND);
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(scene.live->emitters[0].anchor[0] == 5000.0, "rebased");
+    CHECK(scene.live->emitters[0].anchor[1] == 5000.0, "rebased");
     // The hair it is left off the plane by grows with its place's size,
     // 5000 here.
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 1.0, 1e-2) &&
-              Near(At(&scene, mvfx_attributePositionX, 0), -5000.0, 1e-3),
-          "still met the plane");
+    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 1.0 - 5000.0, 1e-2), "still met the plane");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestAxesAndMotion(void)
+{
+    // Moving only along Z, a plane facing only along Z: from z = -3 at 4,
+    // off z = 0 and back to -1.
+    mvfxEmitterDef emitter = Asking(4);
+    Scene scene = NewScene(&emitter);
+    Place(&scene, 0, 0, -3, 0, 0, 4);
+    Step(&scene, 1);
+    const mvfxSceneQuery* queries = NULL;
+    CHECK(Queries(&scene, &queries) == 1, "a query along Z");
+    mvfxSceneAnswer answer = {.hit = true, .normal = {0, 0, -1}};
+    CHECK(mvfxInstance_AnswerSceneQueries(scene.context, scene.instance, 0, &answer, 1) ==
+              mvfx_success,
+          "answered");
+    Step(&scene, MVFX_TICKS_PER_SECOND);
+    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), -1.0, 1e-3), "a plane facing along Z");
+    // Unanswered, the next step writes its one query again, not two.
+    Step(&scene, 1);
+    CHECK(Queries(&scene, &queries) == 1, "written anew");
+    mvfxDestroyContext(scene.context);
+
+    // A local emitter's instance moving to (10, 0, 0) over a step: the
+    // query is written where it ends.
+    emitter = Asking(4);
+    emitter.space = mvfx_spaceLocal;
+    scene = NewScene(&emitter);
+    static const double to[3] = {10.0, 0.0, 0.0};
+    static const float still[4] = {0, 0, 0, 1};
+    Place(&scene, 0, 0, 0, 0, 1, 0);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, to, still, 1.0f, false) ==
+              mvfx_success,
+          "moving");
+    Step(&scene, 1);
+    CHECK(Queries(&scene, &queries) == 1 && Near(queries[0].origin[0], 10.0, 1e-4),
+          "at the step's end");
     mvfxDestroyContext(scene.context);
 }
 
@@ -374,6 +410,7 @@ int main(void)
     TestRestAndCapacity();
     TestBirthInPlace();
     TestSpaces();
+    TestAxesAndMotion();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
