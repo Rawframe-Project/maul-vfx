@@ -180,6 +180,22 @@ static void TestEdges(void)
           "given sizes kept");
     mvfxDestroyContext(scene.context);
 
+    // Along the shape's normal at the center: any way, at speed 1.
+    emitter.velocity = (mvfxVelocity){.mode = mvfx_directionShapeNormal, .speed = {1.0f, 1.0f}};
+    emitter.inheritVelocity = 0.0f;
+    scene = NewScene(&emitter);
+    static const double center[3] = {0.0, 0.0, 0.0};
+    mvfxSpawnRequest atCenter = {.count = 1, .positions = center};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &atCenter) == mvfx_success,
+          "queued");
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    vx = Array(&scene, mvfx_attributeVelocityX)[0];
+    vy = Array(&scene, mvfx_attributeVelocityY)[0];
+    vz = Array(&scene, mvfx_attributeVelocityZ)[0];
+    CHECK(fabsf(sqrtf(vx * vx + vy * vy + vz * vz) - 1.0f) <= 1e-5f,
+          "a normal any way at the center");
+    mvfxDestroyContext(scene.context);
+
     // A host particle whose life ends within the step is owed, not kept.
     emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;

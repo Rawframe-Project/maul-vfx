@@ -269,7 +269,10 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
     sample.normal[2] = sample.local[2];
     if (!mvfxNormalize(sample.normal))
     {
-        mvfxRandomDirection(words.z, words.y, sample.normal);
+        // Any way, from the shape's draw as a point shape's normal is, apart
+        // from the velocity's own.
+        mvfxWords4 shapeWords = Draw(instance, emitter, SHAPE_SALT, birth->serial);
+        mvfxRandomDirection(shapeWords.x, shapeWords.y, sample.normal);
     }
     mvfxDrawVelocity(&compiled->velocity, &sample, words, velocity);
     if (world)
