@@ -132,3 +132,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   view's depth (binary32, unorm16 or unorm24, any projection, optional
   normals), and a collision gains `depthImage`, `depthThickness`,
   `depthSamples` and `killOutsideView`.
+- Events: an emitter def gains `events` (births, deaths, collisions)
+  and `eventCapacity`; `mvfxInstance_GetEvents` reads a step's events,
+  each with its tick, place, velocity, normal, colour and size, and
+  emitter stats count the `eventsDropped`.

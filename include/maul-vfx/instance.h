@@ -366,6 +366,30 @@ extern "C"
                                                                   mvfxInstanceId instance,
                                                                   const mvfxDepthImage* image);
 
+    /// Reads the events an emitter of an instance wrote in the last step,
+    /// in the order the step met them: deaths by age at its start, then as
+    /// particles move (collisions) and are born (births, their collisions),
+    /// then deaths by kills at its end. They stay until the next step or a
+    /// restart; a finished instance's step clears them.
+    ///
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param emitter    The emitter's index in the effect's def.
+    /// @param eventsOut  Receives the events (NULL when there are none), the
+    ///                   instance's own, read only.
+    /// @param countOut   Receives how many.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument or an emitter
+    ///         out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEvents(mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              int32_t emitter,
+                                                              const mvfxEvent** eventsOut,
+                                                              int32_t* countOut);
+
     /// Draws four random words for a host module: pcg4d (Jarzynski and
     /// Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the
     /// module's seed, a particle's serial, a stream number the module picks
@@ -468,6 +492,8 @@ extern "C"
         uint64_t killed;
         // Scene queries its capacity of them dropped.
         uint64_t queriesDropped;
+        // Events its capacity of them dropped.
+        uint64_t eventsDropped;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

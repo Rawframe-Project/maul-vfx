@@ -34,12 +34,6 @@ mvfxDragFactors mvfxDragFactorsOf(double drag, double seconds);
 // step, from the instance's transform at its start.
 void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter);
 
-// How a space maps to the space an emitter's particles are stored in,
-// under a transform of the instance: a world-space emitter's are offsets
-// from its anchor.
-mvfxSpaceMap mvfxSpaceMapAt(const mvfxInstance* instance, int32_t emitter,
-                            mvfxSimulationSpace space, const mvfxTransform* transform);
-
 // Moves the particles the emitter holds over the whole step (those alive
 // at its start, once the ended ones are gone), marking those killed.
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter);

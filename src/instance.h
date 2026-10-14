@@ -90,6 +90,10 @@ typedef struct mvfxEmitterState
     // one and one is set.
     mvfxResolvedDepth depth;
     bool hasDepth;
+    // Its events from the last step, and those dropped.
+    struct mvfxEvent* events;
+    int32_t eventCount;
+    uint64_t eventsDropped;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;

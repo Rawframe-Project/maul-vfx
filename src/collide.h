@@ -49,6 +49,15 @@ mvfxCollider mvfxCompileCollider(const mvfxCollider* collider);
 mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const struct mvfxGrid* grid,
                                          const mvfxSpaceMap* map, float radius);
 
+// A step's first contact: its share of the segment, its place and the
+// surface's normal.
+typedef struct mvfxContact
+{
+    float t;
+    float point[3];
+    float normal[3];
+} mvfxContact;
+
 // What a particle collides with beyond the emitter's colliders: its scene
 // plane and the instance's depth image, each NULL for none.
 typedef struct mvfxOwnColliders
@@ -59,9 +68,10 @@ typedef struct mvfxOwnColliders
 
 // Collides a particle that went from start to place over a step and ends
 // it with velocity, with the colliders and its own: place and velocity
-// become what the contacts make them. Returns the contacts.
+// become what the contacts make them, and first the first contact's.
+// Returns the contacts.
 int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
                     const mvfxOwnColliders* own, const mvfxCollision* response, float restSpeed,
-                    const float start[3], float place[3], float velocity[3]);
+                    const float start[3], float place[3], float velocity[3], mvfxContact* first);
 
 #endif

@@ -7,6 +7,7 @@
 
 #include "direction.h"
 #include "elementary.h"
+#include "event.h"
 #include "integrate.h"
 #include "random.h"
 #include "shape.h"
@@ -361,5 +362,10 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
         }
     }
     instance->emitters[emitter].count = at + 1;
+    mvfxRecordEvent(instance, emitter,
+                    &(mvfxEventFact){.kind = mvfx_eventBirth,
+                                     .particle = at,
+                                     .tick = birth->tick,
+                                     .placeTick = birth->tick});
     mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
 }

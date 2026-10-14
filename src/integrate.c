@@ -7,8 +7,10 @@
 #include "direction.h"
 #include "effect.h"
 #include "elementary.h"
+#include "event.h"
 #include "force.h"
 #include "kill.h"
+#include "space.h"
 
 #include <math.h>
 
@@ -187,50 +189,6 @@ static float SharedWind(const mvfxResolvedForce* forces, int32_t count)
     return wind;
 }
 
-mvfxSpaceMap mvfxSpaceMapAt(const mvfxInstance* instance, int32_t emitter,
-                            mvfxSimulationSpace space, const mvfxTransform* transform)
-{
-    const double* anchor = instance->emitters[emitter].anchor;
-    bool world = instance->effect->emitters[emitter].space == mvfx_spaceWorld;
-    mvfxSpaceMap map = {.rotation = {0.0f, 0.0f, 0.0f, 1.0f}, .sigma = 1.0f};
-    const float* q = transform->rotation;
-    if (world && space == mvfx_spaceWorld)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            map.after[k] = -anchor[k];
-        }
-    }
-    else if (world)
-    {
-        // From the instance's space: scaled, turned, moved to its origin.
-        for (int32_t k = 0; k < 4; ++k)
-        {
-            map.rotation[k] = q[k];
-        }
-        map.sigma = transform->scale;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            map.after[k] = transform->origin[k] - anchor[k];
-        }
-    }
-    else if (space == mvfx_spaceWorld)
-    {
-        // From the world into the instance's space: moved, turned back,
-        // unscaled.
-        map.rotation[0] = -q[0];
-        map.rotation[1] = -q[1];
-        map.rotation[2] = -q[2];
-        map.rotation[3] = q[3];
-        map.sigma = 1.0f / transform->scale;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            map.before[k] = transform->origin[k];
-        }
-    }
-    return map;
-}
-
 // How a space maps to the space the emitter's particles are stored in,
 // with the instance's transform at the step's start.
 static mvfxSpaceMap SpaceMapOf(const mvfxInstance* instance, int32_t emitter,
@@ -309,8 +267,9 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
         .plane = ScenePlaneOf(r, i, &plane) ? &plane : nullptr,
         .depth = state->hasDepth ? &state->depth : nullptr,
     };
+    mvfxContact first = {0};
     int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, &own, collision,
-                                   restSpeed, start, place, velocity);
+                                   restSpeed, start, place, velocity, &first);
     if (state->hasDepth && collision->killOutsideView && !mvfxDepthSees(&state->depth, place))
     {
         return true;
@@ -326,6 +285,17 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
     uint32_t* count = mvfxAttributeArray(r->instance, r->emitter, mvfx_attributeCollisions);
     count[i] =
         count[i] > UINT32_MAX - (uint32_t)contacts ? UINT32_MAX : count[i] + (uint32_t)contacts;
+    // At the first contact's tick within the span.
+    int64_t tick =
+        r->tick +
+        (int64_t)floor((double)first.t * r->seconds * (double)MVFX_TICKS_PER_SECOND + 0.5);
+    mvfxRecordEvent(r->instance, r->emitter,
+                    &(mvfxEventFact){.kind = mvfx_eventCollision,
+                                     .particle = i,
+                                     .tick = tick,
+                                     .placeTick = tick,
+                                     .point = first.point,
+                                     .normal = first.normal});
     if (collision->killOnCollision || collision->lifeLoss >= 1.0f)
     {
         return true;

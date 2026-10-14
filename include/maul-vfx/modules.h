@@ -212,6 +212,53 @@ extern "C"
 // The most points a step of a particle is tested at against a depth image.
 #define MVFX_MAX_DEPTH_SAMPLES 64
 
+// The most events an emitter writes a step.
+#define MVFX_MAX_EVENTS 65536
+
+    // What happened to a particle.
+    typedef uint8_t mvfxEventKind;
+    enum
+    {
+        // It was born.
+        mvfx_eventBirth = 0,
+        // Its life ended, or it was killed (by a kill rule, a collision, a
+        // life cut by collisions or a host module).
+        mvfx_eventDeath = 1,
+        // It collided, at its step's first contact.
+        mvfx_eventCollision = 2,
+    };
+
+    // The kinds an emitter writes, as a mask.
+    enum
+    {
+        mvfx_eventMaskBirth = 1u << mvfx_eventBirth,
+        mvfx_eventMaskDeath = 1u << mvfx_eventDeath,
+        mvfx_eventMaskCollision = 1u << mvfx_eventCollision,
+    };
+
+    // An event: what happened, to which particle, when and where.
+    typedef struct mvfxEvent
+    {
+        mvfxEventKind kind;
+        // A death by a kill rather than by age.
+        bool killed;
+        uint32_t serial;
+        // The instance's tick it happened at: a birth's tick, an age's
+        // death tick, a killed particle's step end, a contact's tick.
+        int64_t tick;
+        // In the world: its place (an age's death: where it was at the
+        // step's start, its last; a collision: the contact), its velocity
+        // (a collision's: after the contact), and a collision's surface
+        // normal (0 otherwise).
+        double place[3];
+        float velocity[3];
+        float normal[3];
+        // Its colour and size then, with the values over life (1 where the
+        // emitter stores none).
+        float color[4];
+        float size[3];
+    } mvfxEvent;
+
     // What a collider is. Particles stay on its allowed side: above a plane,
     // outside a sphere or a box, or inside one (inside).
     typedef uint8_t mvfxColliderKind;

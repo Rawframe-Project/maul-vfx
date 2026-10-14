@@ -61,6 +61,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/kill.c
     src/life.c
     src/emitter_step.c
+    src/event.c
     src/float_mode.c
     src/gradient.c
     src/hash.c
@@ -74,6 +75,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/scene_query.c
     src/shape.c
     src/slots.c
+    src/space.c
     src/spawn.c
     src/step.c
     src/tasks.c
@@ -102,6 +104,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(force WHITEBOX)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)
+    maul_add_test(event WHITEBOX)
     maul_add_test(elementary_sweep WHITEBOX MANUAL)
     maul_add_test(golden WHITEBOX)
     maul_add_test(gradient WHITEBOX)

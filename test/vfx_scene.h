@@ -240,6 +240,9 @@ static inline void BuildScene(mvfxContext* context)
                                             .lookahead = 0.1f};
     emitters[0].colliders = ground;
     emitters[0].colliderCount = 2;
+    // It tells of every birth, death and collision, up to 12 a step.
+    emitters[0].events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
+    emitters[0].eventCapacity = 12;
     // The third collides with the depth image each instance carries.
     emitters[2].collision = (mvfxCollision){.enabled = true,
                                             .restitution = 0.5f,

@@ -8,6 +8,7 @@
 
 #include "birth.h"
 #include "death_heap.h"
+#include "event.h"
 #include "host_module.h"
 #include "integrate.h"
 #include "scene_query.h"
@@ -49,6 +50,12 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
         int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
         if (AgeAt(instance->clock, birth) * inverseLife[i] >= 1.0f)
         {
+            // Its death at its tick, its place its last, from the step's start.
+            mvfxRecordEvent(instance, emitter,
+                            &(mvfxEventFact){.kind = mvfx_eventDeath,
+                                             .particle = i,
+                                             .tick = mvfxDeathTick(birth, inverseLife[i]),
+                                             .placeTick = instance->stepStart});
             continue;
         }
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
@@ -226,6 +233,12 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
     {
         if (killed[i] != 0)
         {
+            mvfxRecordEvent(instance, emitter,
+                            &(mvfxEventFact){.kind = mvfx_eventDeath,
+                                             .killed = true,
+                                             .particle = i,
+                                             .tick = instance->clock,
+                                             .placeTick = instance->clock});
             continue;
         }
         for (int32_t a = 0; kept != i && a < MVFX_ATTRIBUTE_COUNT; ++a)
@@ -244,6 +257,7 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
 
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
 {
+    mvfxBeginEvents(instance, emitter);
     mvfxPlanDistance(instance, emitter);
     mvfxResolveEmitter(instance, emitter);
     // The particles alive at the step's start move once the ended ones are

@@ -23,6 +23,7 @@ typedef struct EmitterAt
     size_t rules;
     size_t colliders;
     size_t queries;
+    size_t events;
 } EmitterAt;
 
 static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compiled)
@@ -45,6 +46,8 @@ static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compi
                                    alignof(mvfxResolvedCollider)),
         .queries =
             mvfxLayoutAdd(layout, (size_t)queries, sizeof(mvfxSceneQuery), alignof(mvfxSceneQuery)),
+        .events = mvfxLayoutAdd(layout, (size_t)compiled->eventCapacity, sizeof(mvfxEvent),
+                                alignof(mvfxEvent)),
     };
 }
 
@@ -120,6 +123,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             .killRules = (mvfxResolvedKillRule*)(block + at[e].rules),
             .colliders = (mvfxResolvedCollider*)(block + at[e].colliders),
             .queries = (mvfxSceneQuery*)(block + at[e].queries),
+            .events = (mvfxEvent*)(block + at[e].events),
         };
     }
     mvfxResetInstance(instance);
@@ -147,6 +151,8 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->killed = 0;
         state->queryCount = 0;
         state->queriesDropped = 0;
+        state->eventCount = 0;
+        state->eventsDropped = 0;
         state->distanceCarry = 0.0;
         state->distanceDelta = 0.0;
         state->distanceSkip = 0.0;
@@ -168,6 +174,27 @@ void mvfxReleaseInstance(mvfxInstance* instance, const mvfxAllocator* allocator)
     mvfxRelease(allocator, instance, instance->blockBytes, MVFX_ATTRIBUTE_ALIGNMENT);
 }
 
+// Hashes an emitter's events field by field (a struct's padding holds
+// nothing fixed).
+static uint64_t HashEvents(const mvfxEmitterState* state, uint64_t hash)
+{
+    hash = mvfxHash64(hash, &state->eventCount, (int32_t)sizeof state->eventCount);
+    for (int32_t e = 0; e < state->eventCount; ++e)
+    {
+        const mvfxEvent* event = &state->events[e];
+        uint8_t flags[2] = {event->kind, event->killed ? 1u : 0u};
+        hash = mvfxHash64(hash, flags, (int32_t)sizeof flags);
+        hash = mvfxHash64(hash, &event->serial, (int32_t)sizeof event->serial);
+        hash = mvfxHash64(hash, &event->tick, (int32_t)sizeof event->tick);
+        hash = mvfxHash64(hash, event->place, (int32_t)sizeof event->place);
+        hash = mvfxHash64(hash, event->velocity, (int32_t)sizeof event->velocity);
+        hash = mvfxHash64(hash, event->normal, (int32_t)sizeof event->normal);
+        hash = mvfxHash64(hash, event->color, (int32_t)sizeof event->color);
+        hash = mvfxHash64(hash, event->size, (int32_t)sizeof event->size);
+    }
+    return hash;
+}
+
 uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
 {
     uint64_t hash = mvfxHash64(seed, &instance->clock, (int32_t)sizeof instance->clock);
@@ -177,6 +204,7 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->count, (int32_t)sizeof state->count);
         hash = mvfxHash64(hash, &state->owed, (int32_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
+        hash = HashEvents(state, hash);
         const mvfxAttributePlan* plan = &instance->effect->emitters[e].plan;
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {

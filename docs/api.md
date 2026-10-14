@@ -164,6 +164,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetDepthImage(mvfxContext* conte
 Sets the depth image an instance's emitters collide with when their collision asks for it, until it is set again or cleared (NULL). It is checked once, here; its pixels are borrowed, not copied, and must stay valid while it is set.  @param context   The context that owns the instance. @param instance  The instance. @param image     The image, or NULL for none. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context or an image out of range (a size, a stride, a byte count short of its rows, a format, a projection not finite or not invertible, a place or a turn), which counts as misuse when the context is given (the image set before is then kept). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEvents(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxEvent** eventsOut, int32_t* countOut);
+```
+Reads the events an emitter of an instance wrote in the last step, in the order the step met them: deaths by age at its start, then as particles move (collisions) and are born (births, their collisions), then deaths by kills at its end. They stay until the next step or a restart; a finished instance's step clears them.  @param context    The context that owns the instance. @param instance   The instance. @param emitter    The emitter's index in the effect's def. @param eventsOut  Receives the events (NULL when there are none), the instance's own, read only. @param countOut   Receives how many. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 void mvfxModule_Random(const mvfxModuleCall* call, uint32_t serial, uint32_t stream, uint32_t out[4]);
 ```
 Draws four random words for a host module: pcg4d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the module's seed, a particle's serial, a stream number the module picks and the step's end tick, so the same call in the same step gives the same words however the work is split.  @param call    The module's call. @param serial  A particle's serial (or any number). @param stream  The module's own number for this draw. @param out     Receives the four words. @par Thread safety Safe from any thread.
@@ -253,4 +258,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-44 functions across 10 headers.
+45 functions across 10 headers.

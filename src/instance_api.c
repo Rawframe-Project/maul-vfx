@@ -208,6 +208,7 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
         .refused = state->refused,
         .killed = state->killed,
         .queriesDropped = state->queriesDropped,
+        .eventsDropped = state->eventsDropped,
     };
     return mvfx_success;
 }
@@ -591,4 +592,22 @@ mvfxResult mvfxInstance_GetParameter(mvfxContext* context, mvfxInstanceId instan
 mvfxInstance* mvfxContextInstance(const mvfxContext* context, mvfxInstanceId instance)
 {
     return mvfxSlotObject(&context->instances, instance.index1, instance.generation);
+}
+
+// The live instance and the emitter an id and an index name, counting
+// misuse; the result the call returns otherwise.
+mvfxResult mvfxFindEmitter(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                           mvfxInstance** liveOut)
+{
+    *liveOut = mvfxContextInstance(context, instance);
+    if (*liveOut == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (emitter < 0 || emitter >= (*liveOut)->effect->emitterCount)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    return mvfx_success;
 }

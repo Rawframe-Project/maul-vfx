@@ -181,6 +181,8 @@ typedef struct mvfxCompiledEmitter
     int32_t killRuleCount;
     mvfxHostModule hostModules[MVFX_MAX_HOST_MODULES];
     int32_t hostModuleCount;
+    uint8_t events;
+    int32_t eventCapacity;
     mvfxCollision collision;
     mvfxCollider colliders[MVFX_MAX_COLLIDERS];
     int32_t colliderCount;

@@ -6,6 +6,7 @@
 #include "step.h"
 
 #include "emitter_step.h"
+#include "event.h"
 #include "float_mode.h"
 #include "instance.h"
 #include "instance_api.h"
@@ -106,12 +107,15 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
     // owed.
     bool finished = mvfxIsInstanceFinished(instance);
     BeginStep(instance, ticks);
-    if (!finished)
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
-        for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+        if (finished)
         {
-            mvfxStepEmitter(instance, e);
+            // Nothing happens to it: the last step's events go.
+            mvfxBeginEvents(instance, e);
+            continue;
         }
+        mvfxStepEmitter(instance, e);
     }
     EndStep(instance);
 }

@@ -192,7 +192,10 @@ static bool AreCollisionsValid(const mvfxEmitterDef* def)
             return false;
         }
     }
-    return true;
+    // Events of known kinds, collisions only where they collide.
+    bool collides = def->collision.enabled || (def->events & mvfx_eventMaskCollision) == 0;
+    return def->events <= 7u && collides &&
+           (def->events == 0 || (def->eventCapacity >= 1 && def->eventCapacity <= MVFX_MAX_EVENTS));
 }
 
 // Whether host modules are valid: a function each, a known stage.
@@ -402,6 +405,8 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->angularDrag = def->motion.angularDrag;
     mvfxCompileVelocityModules(&def->velocityModules, space, &out->velocityModules);
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
+    out->events = def->events;
+    out->eventCapacity = def->events != 0 ? def->eventCapacity : 0;
     out->collision = def->collision;
     out->colliderCount = def->colliderCount;
     for (int32_t c = 0; c < def->colliderCount; ++c)

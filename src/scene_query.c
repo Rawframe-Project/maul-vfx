@@ -6,7 +6,7 @@
 #include "context.h"
 #include "direction.h"
 #include "instance_api.h"
-#include "integrate.h"
+#include "space.h"
 
 #include <math.h>
 
@@ -49,24 +49,6 @@ void mvfxWriteSceneQueries(mvfxInstance* instance, int32_t emitter)
     }
 }
 
-// The live instance and the emitter an id and an index name, counting
-// misuse; the result the call returns otherwise.
-static mvfxResult FindEmitter(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                              mvfxInstance** liveOut)
-{
-    *liveOut = mvfxContextInstance(context, instance);
-    if (*liveOut == nullptr)
-    {
-        return mvfx_errorStale;
-    }
-    if (emitter < 0 || emitter >= (*liveOut)->effect->emitterCount)
-    {
-        mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
-    }
-    return mvfx_success;
-}
-
 mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId instance,
                                         int32_t emitter, const mvfxSceneQuery** queriesOut,
                                         int32_t* countOut)
@@ -82,7 +64,7 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
     *queriesOut = nullptr;
     *countOut = 0;
     mvfxInstance* live = nullptr;
-    mvfxResult found = FindEmitter(context, instance, emitter, &live);
+    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)
     {
         return found;
@@ -144,7 +126,7 @@ mvfxResult mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId 
         return mvfx_errorInvalid;
     }
     mvfxInstance* live = nullptr;
-    mvfxResult found = FindEmitter(context, instance, emitter, &live);
+    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)
     {
         return found;

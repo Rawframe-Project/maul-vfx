@@ -369,6 +369,14 @@ extern "C"
         // with them cannot run on a GPU.
         const mvfxHostModule* hostModules;
         int32_t hostModuleCount;
+        // The events its particles write each step, a mask of
+        // mvfx_eventMaskBirth, mvfx_eventMaskDeath and mvfx_eventMaskCollision
+        // (collisions only where they collide), at most eventCapacity a step
+        // (from 1 to MVFX_MAX_EVENTS when any is asked; the rest counted
+        // dropped). The host reads them after the step
+        // (mvfxInstance_GetEvents).
+        uint8_t events;
+        int32_t eventCapacity;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second

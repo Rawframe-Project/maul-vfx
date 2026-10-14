@@ -640,7 +640,7 @@ static void Bounce(const mvfxCollision* response, const float n[3], float v[3])
 
 int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
                     const mvfxOwnColliders* own, const mvfxCollision* response, float restSpeed,
-                    const float start[3], float place[3], float velocity[3])
+                    const float start[3], float place[3], float velocity[3], mvfxContact* first)
 {
     float s[3] = {start[0], start[1], start[2]};
     int32_t contacts = 0;
@@ -648,6 +648,12 @@ int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
     while (contacts < MVFX_MAX_CONTACTS && FirstHit(colliders, count, own, s, place, &hit))
     {
         contacts += 1;
+        if (contacts == 1)
+        {
+            *first = (mvfxContact){.t = hit.t,
+                                   .point = {hit.point[0], hit.point[1], hit.point[2]},
+                                   .normal = {hit.normal[0], hit.normal[1], hit.normal[2]}};
+        }
         float rest[3];
         for (int32_t k = 0; k < 3; ++k)
         {
