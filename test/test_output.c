@@ -60,7 +60,7 @@ static void TestLayouts(void)
         switch (rule)
         {
         case 0:
-            f[0].field = 10;
+            f[0].field = 11;
             break;
         case 1:
             f[0].format = 7;
@@ -459,6 +459,84 @@ static void TestFrameAsFloat(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestMeshIndex(void)
+{
+    // Emitter 0 draws one mesh, 3; emitter 1 any of 2 to 5 alike; emitter
+    // 2 none, written 0. As uint32 and as binary32.
+    mvfxEmitterDef emitters[3] = {Held(), Held(), Held()};
+    emitters[0].meshIndex = (mvfxFrameStart){.mode = mvfx_frameFixed, .first = 3, .last = 3};
+    emitters[1].meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 2, .last = 5};
+    emitters[1].capacity = 400;
+    emitters[1].hostSpawnCapacity = 400;
+    Scene scene = {.context = NewContext(4)};
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = emitters;
+    effectDef.emitterCount = 3;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
+          "instance");
+    static double places[400 * 3];
+    for (int32_t e = 0; e < 3; ++e)
+    {
+        mvfxSpawnRequest request = {.count = e == 1 ? 400 : 2, .positions = places};
+        CHECK(mvfxInstance_Spawn(scene.context, scene.instance, e, &request) == mvfx_success,
+              "spawned");
+    }
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    static const mvfxLayoutField fields[2] = {
+        {.field = mvfx_recordMesh, .format = mvfx_formatUint32, .components = 1},
+        {.field = mvfx_recordMesh, .format = mvfx_formatFloat32, .components = 1, .offset = 4},
+    };
+    mvfxLayoutId layout = {0};
+    CHECK(Make(scene.context, fields, 2, 8, &layout) == mvfx_success, "layout");
+    static const double view[3] = {0, 0, 0};
+    static uint32_t records[400 * 2];
+    int64_t count = 0;
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, records, 400,
+                                      &count) == mvfx_success &&
+              count == 2 && records[0] == 3 && records[2] == 3,
+          "one mesh");
+    float asFloat = 0.0f;
+    memcpy(&asFloat, &records[1], 4);
+    CHECK(asFloat == 3.0f, "as binary32");
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 1, layout, view, records, 400,
+                                      &count) == mvfx_success &&
+              count == 400,
+          "four hundred");
+    int32_t seen[8] = {0};
+    for (int32_t i = 0; i < 400; ++i)
+    {
+        seen[records[2 * i] < 8 ? records[2 * i] : 7] += 1;
+    }
+    CHECK(seen[0] == 0 && seen[1] == 0 && seen[6] == 0 && seen[7] == 0 && seen[2] > 60 &&
+              seen[3] > 60 && seen[4] > 60 && seen[5] > 60,
+          "any of 2 to 5, alike");
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 2, layout, view, records, 400,
+                                      &count) == mvfx_success &&
+              count == 2 && records[0] == 0 && records[1] == 0,
+          "none, 0");
+    // Checked: a mode, first below 0 or above last, last too large.
+    mvfxEffectId refused = {0};
+    int32_t refusals = 0;
+    for (int32_t rule = 0; rule < 4; ++rule)
+    {
+        mvfxFrameStart bad[4] = {{.mode = 3},
+                                 {.mode = mvfx_frameFixed, .first = -1, .last = 0},
+                                 {.mode = mvfx_frameRandom, .first = 4, .last = 3},
+                                 {.mode = mvfx_frameRandom, .last = MVFX_MAX_MESH_INDEX}};
+        emitters[2].meshIndex = bad[rule];
+        refusals += mvfxCreateEffect(scene.context, &effectDef, &refused) == mvfx_errorInvalid;
+    }
+    emitters[2].meshIndex =
+        (mvfxFrameStart){.mode = mvfx_frameRandom, .last = MVFX_MAX_MESH_INDEX - 1};
+    CHECK(refusals == 4 && mvfxCreateEffect(scene.context, &effectDef, &refused) == mvfx_success,
+          "mesh indices checked");
+    mvfxDestroyContext(scene.context);
+}
+
 int main(void)
 {
     TestLayouts();
@@ -467,5 +545,6 @@ int main(void)
     TestLocal();
     TestRefusals();
     TestFrameAsFloat();
+    TestMeshIndex();
     return s_failures == 0 ? 0 : 1;
 }

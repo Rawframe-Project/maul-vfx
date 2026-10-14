@@ -295,6 +295,27 @@ extern "C"
     // created, so a repeating burst never drifts. The particles an emitter's
     // rate and its repeating bursts spawn a second, at most, may not exceed
     // MVFX_MAX_SPAWN_RATE each.
+// The most meshes an emitter's particles choose from.
+#define MVFX_MAX_MESH_INDEX 65536
+
+    // The lights an emitter's particles carry: every n-th particle by
+    // serial, so the same particles keep their lights from step to step.
+    typedef struct mvfxLightDef
+    {
+        bool enabled;
+        // A particle carries one when its serial is a multiple of this,
+        // from 1 to 65,536.
+        int32_t every;
+        // Its colour is the particle's red, green and blue times this (and
+        // times its alpha with alphaScales), from 0 to MVFX_MAX_EXTENT.
+        float intensity;
+        bool alphaScales;
+        // Its radius is this plus radiusBySize times the particle's largest
+        // size component in the world, each from 0 to MVFX_MAX_EXTENT.
+        float radius;
+        float radiusBySize;
+    } mvfxLightDef;
+
     typedef struct mvfxEmitterDef
     {
         uint32_t cookie;
@@ -379,6 +400,8 @@ extern "C"
         int32_t eventCapacity;
         // Spawning from another emitter's events.
         mvfxEventSpawn eventSpawn;
+        // The lights its particles carry (mvfxInstance_WriteLights).
+        mvfxLightDef light;
         // Its place in the order emitters are drawn in, lower first
         // (mvfxContext_OrderEmitters).
         int32_t drawPriority;
@@ -405,6 +428,10 @@ extern "C"
         mvfxVectorSource angularVelocity;
         // The flipbook frame it starts at.
         mvfxFrameStart frame;
+        // Which of the host's meshes it is drawn as, kept for its life
+        // (the frame modes: none, one, or any from first to last alike;
+        // last below MVFX_MAX_MESH_INDEX).
+        mvfxFrameStart meshIndex;
         // Its custom attributes, at most MVFX_MAX_CUSTOM_ATTRIBUTES, each of
         // one to four components; NULL when customCount is 0.
         const mvfxCustomAttribute* custom;

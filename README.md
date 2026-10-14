@@ -45,9 +45,9 @@ spheres, boxes, heightfields, distance grids, the host's scene (by
 queries it answers between steps) and a depth image, events (births,
 deaths and collisions the host reads after a step), emitters spawning
 from other emitters' events, output (particle records in layouts the
-host defines), bounds and the draw order are in place, and lights come
-next.
-It has 52 public functions.
+host defines, mesh indices and lights), bounds and the draw order are
+in place, and sorting comes next.
+It has 53 public functions.
 
 ## Building
 

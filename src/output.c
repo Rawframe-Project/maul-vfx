@@ -28,6 +28,17 @@ static float FloatOf(const Source* s, int32_t attribute, int32_t i)
     return ((const float*)mvfxAttributeArray(s->instance, s->emitter, attribute))[i];
 }
 
+// Particle i's word of a uint32 attribute; 0 where the emitter stores
+// none.
+static uint32_t WordOf(const Source* s, int32_t attribute, int32_t i)
+{
+    if (!mvfxHasAttribute(s->plan, attribute))
+    {
+        return 0;
+    }
+    return ((const uint32_t*)mvfxAttributeArray(s->instance, s->emitter, attribute))[i];
+}
+
 static void VectorOf(const Source* s, int32_t first, int32_t i, float out[3])
 {
     for (int32_t k = 0; k < 3; ++k)
@@ -100,9 +111,12 @@ static void ValuesOf(const Source* s, const mvfxLayoutField* f, int32_t i, float
     case mvfx_recordCustom:
         mvfxCustomOf(s->instance, s->emitter, i, f->custom, v);
         break;
+    case mvfx_recordMesh:
+        w[0] = WordOf(s, mvfx_attributeMesh, i);
+        v[0] = (float)w[0];
+        break;
     default:
-        w[0] =
-            ((const uint32_t*)mvfxAttributeArray(s->instance, s->emitter, mvfx_attributeSerial))[i];
+        w[0] = WordOf(s, mvfx_attributeSerial, i);
         break;
     }
 }
@@ -169,5 +183,81 @@ mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId inst
     *countOut = count;
     mvfxWriteRecords(live, emitter, format, viewOrigin, records,
                      count < capacity ? count : capacity);
+    return mvfx_success;
+}
+
+// The light particle i carries for a view.
+static mvfxLight LightOf(const Source* s, const mvfxLightDef* def, int32_t i)
+{
+    float p[3];
+    double world[3];
+    VectorOf(s, mvfx_attributePositionX, i, p);
+    mvfxUnmapPoint(&s->map, p, world);
+    float color[4];
+    float size[3];
+    mvfxColorOf(s->instance, s->emitter, i, color);
+    mvfxSizeOf(s->instance, s->emitter, i, size);
+    float largest = fmaxf(fabsf(size[0]), fmaxf(fabsf(size[1]), fabsf(size[2]))) / s->map.sigma;
+    float scale = def->intensity * (def->alphaScales ? color[3] : 1.0f);
+    mvfxLight light = {.radius = def->radius + def->radiusBySize * largest,
+                       .serial = WordOf(s, mvfx_attributeSerial, i)};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        light.position[k] = (float)(world[k] - s->viewOrigin[k]);
+        light.color[k] = color[k] * scale;
+    }
+    return light;
+}
+
+mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    const double viewOrigin[3], mvfxLight* lights, int64_t capacity,
+                                    int64_t* countOut)
+{
+    if (context == nullptr || viewOrigin == nullptr || countOut == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    *countOut = 0;
+    mvfxInstance* live = nullptr;
+    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
+    if (found != mvfx_success)
+    {
+        return found;
+    }
+    if (capacity < 0 || (capacity > 0 && lights == nullptr) || !IsOriginValid(viewOrigin))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    const mvfxLightDef* def = &live->effect->emitters[emitter].light;
+    if (!def->enabled)
+    {
+        return mvfx_success;
+    }
+    Source s = {
+        .instance = live,
+        .emitter = emitter,
+        .plan = &live->effect->emitters[emitter].plan,
+        .map = mvfxSpaceMapAt(live, emitter, mvfx_spaceWorld, &live->to),
+        .viewOrigin = viewOrigin,
+    };
+    int64_t count = 0;
+    for (int32_t i = 0; i < live->emitters[emitter].count; ++i)
+    {
+        if (WordOf(&s, mvfx_attributeSerial, i) % (uint32_t)def->every != 0)
+        {
+            continue;
+        }
+        if (count < capacity)
+        {
+            lights[count] = LightOf(&s, def, i);
+        }
+        ++count;
+    }
+    *countOut = count;
     return mvfx_success;
 }

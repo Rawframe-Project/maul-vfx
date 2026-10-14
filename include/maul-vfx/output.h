@@ -55,6 +55,9 @@ extern "C"
         mvfx_recordCustom = 8,
         // Its serial: uint32.
         mvfx_recordSerial = 9,
+        // The index of the host's mesh it is drawn as (0 where none):
+        // uint32 or binary32.
+        mvfx_recordMesh = 10,
     };
 
     // How a field's components are written.
@@ -73,7 +76,7 @@ extern "C"
         mvfx_formatUnorm16 = 4,
         // From -1 to 1 as -32,767 to 32,767.
         mvfx_formatSnorm16 = 5,
-        // A uint32: a frame or a serial only.
+        // A uint32: a frame, a serial or a mesh index only.
         mvfx_formatUint32 = 6,
     };
 
@@ -179,6 +182,44 @@ extern "C"
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteParticles(
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
         const double viewOrigin[3], void* records, int64_t capacity, int64_t* countOut);
+
+    // A light a particle carries.
+    typedef struct mvfxLight
+    {
+        // Its place in the world less the view's origin.
+        float position[3];
+        float radius;
+        // Its colour times its intensity.
+        float color[3];
+        // The serial of the particle that carries it.
+        uint32_t serial;
+    } mvfxLight;
+
+    /// Writes the lights an emitter's particles carry (mvfxLightDef: every
+    /// n-th particle by serial), in the pool's order (oldest first), for a
+    /// view whose origin positions are made relative to (each coordinate at
+    /// most 2^52 in size). A buffer too small takes the first capacity, so
+    /// a host that wants at most n lights passes n; the count is always all
+    /// of them, 0 for an emitter without lights.
+    ///
+    /// @param context     The context that owns the instance.
+    /// @param instance    The instance.
+    /// @param emitter     The emitter's index in the effect's def.
+    /// @param viewOrigin  The view's origin in the world.
+    /// @param lights      The buffer; NULL when capacity is 0.
+    /// @param capacity    The lights it holds, at least 0.
+    /// @param countOut    Receives the lights there are.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
+    ///         nothing live; `mvfx_errorInvalid` for a NULL context, origin or
+    ///         count, an origin out of range, an emitter out of range, a
+    ///         negative capacity or a NULL buffer with a capacity, which
+    ///         counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteLights(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const double viewOrigin[3],
+        mvfxLight* lights, int64_t capacity, int64_t* countOut);
 
     // A box in the world.
     typedef struct mvfxBounds

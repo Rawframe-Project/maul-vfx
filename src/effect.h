@@ -75,10 +75,12 @@ enum
     // normal (0 for none).
     mvfx_attributeScenePointX = 61,
     mvfx_attributeSceneNormalX = 64,
+    // A uint32 index of the host's mesh it is drawn as.
+    mvfx_attributeMesh = 67,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeSceneNormalX + 3)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeMesh + 1)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.
@@ -198,6 +200,8 @@ typedef struct mvfxCompiledEmitter
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;
     mvfxFrameStart frame;
+    mvfxFrameStart meshIndex;
+    mvfxLightDef light;
     mvfxCompiledVector custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
     int32_t customCount;
     mvfxAttributePlan plan;

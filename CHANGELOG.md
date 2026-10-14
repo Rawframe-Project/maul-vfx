@@ -151,3 +151,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxInstance_GetBounds`, and `mvfxContext_OrderEmitters` listing a
   view's emitters by `drawPriority`, distance, instance and emitter,
   skipping those outside an optional frustum.
+- Mesh indices and lights: an emitter's `meshIndex` (one or any of a
+  range, chosen at birth) written by the record field `mvfx_recordMesh`,
+  and its `light` making every n-th particle by serial carry a light
+  that `mvfxInstance_WriteLights` writes as `mvfxLight` records.

@@ -27,6 +27,7 @@
 #define FRAME_SALT       0x46524D45u
 #define CUSTOM_SALT      0x43555354u
 #define DRAG_SALT        0x44524147u
+#define MESH_SALT        0x4D455348u
 
 #define TWO_PI 6.28318530717958647692f
 
@@ -128,6 +129,21 @@ static void StoreVector(mvfxInstance* instance, int32_t emitter, mvfxAttribute f
     }
 }
 
+// A frame or mesh index a particle starts with: the first, or any from
+// first to last alike by its own draw.
+static uint32_t DrawIndex(const mvfxInstance* instance, int32_t emitter,
+                          const mvfxFrameStart* start, uint32_t salt, uint64_t serial)
+{
+    uint32_t index = (uint32_t)start->first;
+    if (start->mode == mvfx_frameRandom)
+    {
+        uint64_t span = (uint64_t)(start->last - start->first) + 1;
+        uint32_t word = Draw(instance, emitter, salt, serial).x;
+        index += (uint32_t)(((uint64_t)word * span) >> 32u);
+    }
+    return index;
+}
+
 // The optional values of a birth, each when the emitter stores it.
 static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
                          int32_t at)
@@ -184,14 +200,13 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
     }
     if (Has(compiled, mvfx_attributeFrame))
     {
-        uint32_t frame = (uint32_t)compiled->frame.first;
-        if (compiled->frame.mode == mvfx_frameRandom)
-        {
-            uint64_t span = (uint64_t)(compiled->frame.last - compiled->frame.first) + 1;
-            uint32_t word = Draw(instance, emitter, FRAME_SALT, serial).x;
-            frame += (uint32_t)(((uint64_t)word * span) >> 32u);
-        }
-        StoreWord(instance, emitter, mvfx_attributeFrame, at, frame);
+        StoreWord(instance, emitter, mvfx_attributeFrame, at,
+                  DrawIndex(instance, emitter, &compiled->frame, FRAME_SALT, serial));
+    }
+    if (Has(compiled, mvfx_attributeMesh))
+    {
+        StoreWord(instance, emitter, mvfx_attributeMesh, at,
+                  DrawIndex(instance, emitter, &compiled->meshIndex, MESH_SALT, serial));
     }
     if (Has(compiled, mvfx_attributeCollisions))
     {

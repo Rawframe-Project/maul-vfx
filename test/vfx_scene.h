@@ -68,12 +68,19 @@ static inline void BuildScene(mvfxContext* context)
     mvfxEmitterDef emitters[4] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
     emitters[0].capacity = 100;
+    emitters[0].light = (mvfxLightDef){.enabled = true,
+                                       .every = 2,
+                                       .intensity = 3.0f,
+                                       .alphaScales = true,
+                                       .radius = 0.5f,
+                                       .radiusBySize = 2.0f};
     // A colour drawn per particle, so the output's sRGB matters.
     emitters[0].color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.3f, 0.5f, 0.4f}, .max = {0.9f, 0.7f, 0.6f, 1.0f}};
     emitters[0].rate = 37.5f;
     emitters[0].lifetime = mvfxRangeSource(0.25f, 1.5f);
     emitters[1].capacity = 64;
+    emitters[1].meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 1, .last = 6};
     emitters[1].rate = 2000.0f;
     emitters[1].lifetime = mvfxRangeSource(0.01f, 0.05f);
     emitters[0].shape.kind = mvfx_shapeSphere;
@@ -613,7 +620,7 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
 
 // A record of every field, in many formats: what the scene's output
 // writes for a view.
-static const mvfxLayoutField s_sceneFields[10] = {
+static const mvfxLayoutField s_sceneFields[11] = {
     {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3, .offset = 0},
     {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 12},
     {.field = mvfx_recordColor,
@@ -628,8 +635,9 @@ static const mvfxLayoutField s_sceneFields[10] = {
     {.field = mvfx_recordFrame, .format = mvfx_formatUint32, .components = 1, .offset = 44},
     {.field = mvfx_recordCustom, .format = mvfx_formatSnorm8, .components = 4, .offset = 48},
     {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 52},
+    {.field = mvfx_recordMesh, .format = mvfx_formatUint32, .components = 1, .offset = 56},
 };
-#define SCENE_RECORD_BYTES 56
+#define SCENE_RECORD_BYTES 60
 #define SCENE_RECORDS      128
 
 // Hashes every emitter's records of an instance for a view at (1500, 3,
@@ -639,7 +647,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
 {
     mvfxLayoutDef def = mvfxDefaultLayoutDef();
     def.fields = s_sceneFields;
-    def.fieldCount = 10;
+    def.fieldCount = 11;
     def.stride = SCENE_RECORD_BYTES;
     mvfxLayoutId layout = {1, 1};
     if (!mvfxLayout_IsValid(context, layout))
@@ -656,6 +664,12 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
                   count <= SCENE_RECORDS,
               "scene output");
         hash = mvfxHash64(hash, records, (int32_t)count * SCENE_RECORD_BYTES);
+        static mvfxLight lights[SCENE_RECORDS];
+        CHECK(mvfxInstance_WriteLights(context, id, e, view, lights, SCENE_RECORDS, &count) ==
+                      mvfx_success &&
+                  count <= SCENE_RECORDS,
+              "scene lights");
+        hash = mvfxHash64(hash, lights, (int32_t)(count * (int64_t)sizeof lights[0]));
     }
     return hash;
 }
