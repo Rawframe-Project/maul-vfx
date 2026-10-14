@@ -126,7 +126,9 @@ static inline void BuildScene(mvfxContext* context)
     emitters[1].forces = &turbulence;
     emitters[1].forceCount = 1;
     emitters[2].capacity = 7;
-    emitters[2].rate = 0.7f;
+    // Seven a second, so it spawns within the scene's 1.4 seconds and
+    // fills.
+    emitters[2].rate = 7.0f;
     emitters[2].lifetime = mvfxRangeSource(5.0f, 9.0f);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
