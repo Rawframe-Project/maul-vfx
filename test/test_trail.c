@@ -219,6 +219,63 @@ static void TestBreakDistance(void)
               w.ribbons[1].id == w.ribbons[0].id + 1 && w.points[2].position[0] == 5.0f,
           "a gap past the break distance");
     mvfxDestroyContext(scene.context);
+    // The first particle is a ribbon's youngest point too.
+    scene = NewScene(&emitter, 1);
+    Spawn(&scene, 0);
+    Spawn(&scene, 5);
+    Spawn(&scene, 6);
+    w = Write(&scene, 0);
+    CHECK(w.ribbonCount == 1 && w.ribbons[0].count == 2 && w.points[0].position[0] == 5.0f,
+          "a gap from the first particle");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestPerSourceCounter(void)
+{
+    // A ribbon per source takes the counter for births not of an event.
+    mvfxEmitterDef emitter = Trail();
+    emitter.ribbon.ids = mvfx_ribbonPerSource;
+    Scene scene = NewScene(&emitter, 1);
+    Spawn(&scene, 0);
+    Spawn(&scene, 1);
+    CHECK(mvfxInstance_BreakRibbons(scene.context, scene.instance, 0) == mvfx_success, "broken");
+    Spawn(&scene, 2);
+    Spawn(&scene, 3);
+    Written w = Write(&scene, 0);
+    CHECK(w.ribbonCount == 2 && w.ribbons[0].id == 0 && w.ribbons[1].id == 1, "by the counter");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestHeadPlace(void)
+{
+    // A shape at (1, 0, 0) under an instance at (10, 0, 0) turned a
+    // quarter about Z at scale 2: the head at (10, 2, 0). With no
+    // particles, no head in the bounds.
+    mvfxEmitterDef emitter = Trail();
+    emitter.rate = 1.0f;
+    emitter.shape.offset[0] = 1.0f;
+    emitter.ribbon.pinHead = true;
+    Scene scene = NewScene(&emitter, 1);
+    const double origin[3] = {10, 0, 0};
+    static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
+              mvfx_success,
+          "placed");
+    Step(&scene);
+    mvfxBounds bounds = {0};
+    CHECK(mvfxInstance_GetBounds(scene.context, scene.instance, 0, &bounds) == mvfx_success &&
+              bounds.empty && bounds.max[1] == 0.0 && bounds.min[0] == 0.0,
+          "no particles, no head in the bounds");
+    const double place[3] = {10, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = place};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "one");
+    Step(&scene);
+    Written w = Write(&scene, 0);
+    CHECK(w.ribbonCount == 1 && w.pointCount == 2 &&
+              fabsf(w.points[1].position[0] - 10.0f) <= 1e-5f &&
+              fabsf(w.points[1].position[1] - 2.0f) <= 1e-5f,
+          "the head at the shape's origin, turned and scaled");
+    mvfxDestroyContext(scene.context);
 }
 
 static void TestChecks(void)
@@ -287,6 +344,8 @@ int main(void)
     TestPinned();
     TestBreaks();
     TestBreakDistance();
+    TestPerSourceCounter();
+    TestHeadPlace();
     TestChecks();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
