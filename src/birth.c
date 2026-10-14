@@ -129,22 +129,6 @@ static void StoreVector(mvfxInstance* instance, int32_t emitter, mvfxAttribute f
     }
 }
 
-// The ribbon a birth joins: 0 for one ribbon; its batch's first serial;
-// its event's particle's serial.
-static uint32_t RibbonIdOf(const mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth)
-{
-    switch (instance->effect->emitters[emitter].ribbonIds)
-    {
-    case mvfx_ribbonPerBatch:
-        return (uint32_t)(birth->serial - (uint64_t)birth->batchIndex);
-    case mvfx_ribbonPerSource:
-        return birth->event1 > 0 ? instance->emitters[emitter].eventQueue[birth->event1 - 1].source
-                                 : 0;
-    default:
-        return 0;
-    }
-}
-
 // A frame or mesh index a particle starts with: the first, or any from
 // first to last alike by its own draw.
 static uint32_t DrawIndex(const mvfxInstance* instance, int32_t emitter,
@@ -163,6 +147,63 @@ static uint32_t DrawIndex(const mvfxInstance* instance, int32_t emitter,
 // How far back a birth looks for its ribbon's point before.
 #define RIBBON_LOOKBACK 256
 
+// The youngest particle before at in ribbon id, at most RIBBON_LOOKBACK
+// back; -1 for none.
+static int32_t PreviousInRibbon(mvfxInstance* instance, int32_t emitter, int32_t at, uint32_t id)
+{
+    const uint32_t* ids = mvfxAttributeArray(instance, emitter, mvfx_attributeRibbon);
+    int32_t last = at > RIBBON_LOOKBACK ? at - RIBBON_LOOKBACK : 0;
+    for (int32_t j = at - 1; j >= last; --j)
+    {
+        if (ids[j] == id)
+        {
+            return j;
+        }
+    }
+    return -1;
+}
+
+// The distance between particles a and b in their space.
+static float GapBetween(mvfxInstance* instance, int32_t emitter, int32_t a, int32_t b)
+{
+    float square = 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        const float* p = mvfxAttributeArray(instance, emitter, mvfx_attributePositionX + k);
+        float d = p[a] - p[b];
+        square += d * d;
+    }
+    return sqrtf(square);
+}
+
+// The ribbon a birth at at joins: its batch's first serial; its event's
+// particle's serial; else the counter, advanced first when the birth lies
+// farther than the break distance from the ribbon's youngest point.
+static uint32_t AssignRibbon(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
+                             int32_t at)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (compiled->ribbonIds == mvfx_ribbonPerBatch)
+    {
+        return (uint32_t)(birth->serial - (uint64_t)birth->batchIndex);
+    }
+    if (compiled->ribbonIds == mvfx_ribbonPerSource && birth->event1 > 0)
+    {
+        return state->eventQueue[birth->event1 - 1].source;
+    }
+    if (compiled->ribbonBreakDistance > 0.0f)
+    {
+        int32_t before = PreviousInRibbon(instance, emitter, at, state->ribbonCounter);
+        if (before >= 0 &&
+            GapBetween(instance, emitter, at, before) > compiled->ribbonBreakDistance)
+        {
+            state->ribbonCounter += 1;
+        }
+    }
+    return state->ribbonCounter;
+}
+
 // A ribbon's distance at the particle at: its ribbon's youngest point
 // before's distance and the gap to it, in the particles' space; 0 for the
 // first (or one past RIBBON_LOOKBACK particles back).
@@ -170,23 +211,8 @@ static float RibbonDistanceOf(mvfxInstance* instance, int32_t emitter, int32_t a
 {
     const uint32_t* ids = mvfxAttributeArray(instance, emitter, mvfx_attributeRibbon);
     const float* distances = mvfxAttributeArray(instance, emitter, mvfx_attributeRibbonDistance);
-    int32_t last = at > RIBBON_LOOKBACK ? at - RIBBON_LOOKBACK : 0;
-    for (int32_t j = at - 1; j >= last; --j)
-    {
-        if (ids[j] != ids[at])
-        {
-            continue;
-        }
-        float square = 0.0f;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            const float* p = mvfxAttributeArray(instance, emitter, mvfx_attributePositionX + k);
-            float d = p[at] - p[j];
-            square += d * d;
-        }
-        return distances[j] + sqrtf(square);
-    }
-    return 0.0f;
+    int32_t before = PreviousInRibbon(instance, emitter, at, ids[at]);
+    return before >= 0 ? distances[before] + GapBetween(instance, emitter, at, before) : 0.0f;
 }
 
 // A birth's word attributes (its frame, mesh index, ribbon and a count of
@@ -207,7 +233,7 @@ static void StoreWords(mvfxInstance* instance, int32_t emitter, const mvfxBirth*
     if (Has(compiled, mvfx_attributeRibbon))
     {
         StoreWord(instance, emitter, mvfx_attributeRibbon, at,
-                  RibbonIdOf(instance, emitter, birth));
+                  AssignRibbon(instance, emitter, birth, at));
     }
     if (Has(compiled, mvfx_attributeCollisions))
     {

@@ -5,6 +5,7 @@
 
 #include "appearance.h"
 #include "direction.h"
+#include "ribbon.h"
 #include "space.h"
 
 #include <math.h>
@@ -97,10 +98,22 @@ mvfxBounds mvfxBoundsOf(const mvfxInstance* instance, int32_t emitter)
         return AroundCorners(compiled->boundsMin, compiled->boundsMax, ThroughTransform,
                              &instance->to);
     }
-    if (!state->hasBounds)
+    mvfxBounds box = {.empty = true};
+    if (state->hasBounds)
     {
-        return (mvfxBounds){.empty = true};
+        mvfxSpaceMap map = mvfxSpaceMapAt(instance, emitter, mvfx_spaceWorld, &instance->to);
+        box = AroundCorners(state->boundsMin, state->boundsMax, ThroughMap, &map);
     }
-    mvfxSpaceMap map = mvfxSpaceMapAt(instance, emitter, mvfx_spaceWorld, &instance->to);
-    return AroundCorners(state->boundsMin, state->boundsMax, ThroughMap, &map);
+    // A ribbon's pinned head joins its particles' box.
+    double head[3];
+    if (box.empty || !mvfxRibbonHeadPlace(instance, emitter, head))
+    {
+        return box;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        box.min[k] = fmin(box.min[k], head[k]);
+        box.max[k] = fmax(box.max[k], head[k]);
+    }
+    return box;
 }

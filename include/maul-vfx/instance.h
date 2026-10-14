@@ -119,7 +119,8 @@ extern "C"
     /// interpolation, the scale linearly), and births within it take its
     /// place at their ticks; its travel feeds spawning by distance and its
     /// velocity what emitters inherit. A teleport moves it at once instead,
-    /// with no travel and no velocity. How births along the way fall
+    /// with no travel and no velocity, and ends every ribbon by the counter
+    /// (mvfxInstance_BreakRibbons). How births along the way fall
     /// depends on how often the host moves it, which is the host's to keep
     /// the same.
     ///
@@ -560,6 +561,25 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Restart(mvfxContext* context,
                                                             mvfxInstanceId instance);
+
+    /// Ends an emitter's current ribbon, so its next births begin another:
+    /// advances its ribbon counter (mvfx_ribbonOne), as a teleport does for
+    /// every emitter drawn as ribbons. Emitters not drawn as ribbons are
+    /// left alone.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in the effect's def, or -1 for
+    ///                  all.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context or an emitter
+    ///         out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 int32_t emitter);
 
     /// Advances every instance of the context by a span of time: each
     /// emitter spawns what it owes by the new time, each particle ages from

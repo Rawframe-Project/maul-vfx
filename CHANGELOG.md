@@ -170,3 +170,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   segment, by a distance stored at birth) with `tileLength` and
   `scroll`; `ribbon.facing` (camera or a normal) written by the record
   fields `mvfx_recordSide` and `mvfx_recordFaceNormal`.
+- Trails: a ribbon counter per emitter that `mvfxInstance_BreakRibbons`,
+  a teleport and `ribbon.breakDistance` advance, so trails end and
+  begin; `ribbon.pinHead` pins the current ribbon's head to its source.

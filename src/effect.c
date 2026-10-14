@@ -186,7 +186,9 @@ static bool IsRibbonShapeValid(const mvfxRibbonDef* ribbon)
            ribbon->texture <= mvfx_ribbonTileByDistance && ribbon->tileLength > 0.0f &&
            ribbon->tileLength <= MVFX_MAX_EXTENT &&
            IsWithin(ribbon->scroll, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           ribbon->facing <= mvfx_ribbonFaceNormal && normal;
+           ribbon->facing <= mvfx_ribbonFaceNormal && normal &&
+           IsWithin(ribbon->breakDistance, 0.0f, MVFX_MAX_EXTENT) &&
+           (!ribbon->pinHead || ribbon->ids == mvfx_ribbonOne);
 }
 
 // Compiles a ribbon's tessellation, texture and facing: for a bend angle,
@@ -206,6 +208,8 @@ static void CompileRibbonShape(const mvfxRibbonDef* ribbon, mvfxCompiledEmitter*
     out->ribbonTileLength = ribbon->tileLength;
     out->ribbonScroll = ribbon->scroll;
     out->ribbonFacing = ribbon->facing;
+    out->ribbonBreakDistance = ribbon->breakDistance;
+    out->ribbonPinHead = ribbon->pinHead;
     for (int32_t k = 0; k < 3; ++k)
     {
         out->ribbonNormal[k] = ribbon->normal[k];

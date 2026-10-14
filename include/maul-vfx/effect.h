@@ -326,14 +326,19 @@ extern "C"
     {
         // Not drawn as ribbons.
         mvfx_ribbonNone = 0,
-        // Every particle in one ribbon.
+        // Every particle in the emitter's current ribbon: its id is the
+        // emitter's ribbon counter, which a break advances (the host's
+        // mvfxInstance_BreakRibbons, the instance's teleport, or a birth
+        // farther than breakDistance from the ribbon's youngest point), so
+        // a trail ends and the next begins.
         mvfx_ribbonOne = 1,
         // The particles born at one tick together (a burst's firing) in
         // one ribbon: its id is the serial of the batch's first.
         mvfx_ribbonPerBatch = 2,
         // A particle born of an event in the ribbon of the event's
         // particle: its id is that particle's serial (each spark leaves a
-        // ribbon of its own); others as with mvfx_ribbonOne.
+        // ribbon of its own); others as with mvfx_ribbonOne (the counter
+        // and its breaks).
         mvfx_ribbonPerSource = 3,
     };
 
@@ -383,6 +388,15 @@ extern "C"
         // Its facing, and the normal it faces across (finite, not 0).
         mvfxRibbonFacing facing;
         float normal[3];
+        // A birth farther than this from its ribbon's youngest point (in the
+        // particles' space) starts the next ribbon; 0 never, else at most
+        // MVFX_MAX_EXTENT. For ribbons by the counter.
+        float breakDistance;
+        // With mvfx_ribbonOne: while the emitter may still spawn, its
+        // current ribbon ends at a point pinned to its shape's origin at the
+        // step's end, so a trail never lags behind its source; the point
+        // takes the youngest particle's values.
+        bool pinHead;
         // A point's width is its size's X times this over the ribbon's
         // normalized length (0 at its oldest point, 1 at its youngest).
         mvfxLifeCurve width;

@@ -4,11 +4,13 @@
 #include "ribbon.h"
 
 #include "context.h"
+#include "direction.h"
 #include "gradient.h"
 #include "instance_api.h"
 #include "layout_api.h"
 #include "output.h"
 #include "sort.h"
+#include "spawn.h"
 
 #include <math.h>
 
@@ -20,10 +22,36 @@ typedef struct Chain
     const mvfxCompiledEmitter* compiled;
     const mvfxView* view;
     const uint32_t* particles;
+    int32_t particleCount;
+    // Its points through particles: the particles, and a pinned head
+    // after them.
     int32_t count;
+    bool head;
+    double headPlace[3];
     double length;
     int64_t points;
 } Chain;
+
+// The particle point j takes its values from: its own, or for the head the
+// youngest's.
+static int32_t ParticleAt(const Chain* chain, int32_t j)
+{
+    return (int32_t)chain->particles[j < chain->particleCount ? j : chain->particleCount - 1];
+}
+
+// Point j's place in the world, j within the chain.
+static void PointPlace(const Chain* chain, int32_t j, double out[3])
+{
+    if (j == chain->particleCount)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[k] = chain->headPlace[k];
+        }
+        return;
+    }
+    mvfxWorldPlaceOf(chain->source, ParticleAt(chain, j), out);
+}
 
 // A place along a chain: segment s from particle s to s + 1, piece q of
 // its pieces; the last particle as segment count - 1, piece 0.
@@ -51,15 +79,15 @@ static void PlaceOf(const Chain* chain, int32_t j, double out[3])
 {
     if (j >= 0 && j < chain->count)
     {
-        mvfxWorldPlaceOf(chain->source, (int32_t)chain->particles[j], out);
+        PointPlace(chain, j, out);
         return;
     }
     int32_t end = j < 0 ? 0 : chain->count - 1;
     int32_t next = j < 0 ? 1 : chain->count - 2;
     double a[3];
     double b[3];
-    mvfxWorldPlaceOf(chain->source, (int32_t)chain->particles[end], a);
-    mvfxWorldPlaceOf(chain->source, (int32_t)chain->particles[next], b);
+    PointPlace(chain, end, a);
+    PointPlace(chain, next, b);
     for (int32_t k = 0; k < 3; ++k)
     {
         out[k] = 2.0 * a[k] - b[k];
@@ -251,6 +279,20 @@ static void FrameAt(const Chain* chain, const double before[3], const double her
     Normalize(face, point->faceNormal);
 }
 
+// Point j's distance stored at birth; the head's, the youngest's and the
+// gap to it in the particles' space.
+static float DistanceAt(const Chain* chain, const float* distances, int32_t j)
+{
+    float distance = distances[ParticleAt(chain, j)];
+    if (j < chain->particleCount)
+    {
+        return distance;
+    }
+    double youngest[3];
+    PointPlace(chain, j - 1, youngest);
+    return distance + (float)Distance(youngest, chain->headPlace) * chain->source->map.sigma;
+}
+
 // The texture coordinate along at a place a fraction t of the length.
 static float AlongAt(const Chain* chain, const Walk* walk, float t)
 {
@@ -265,8 +307,8 @@ static float AlongAt(const Chain* chain, const Walk* walk, float t)
     {
         const float* distances = mvfxAttributeArray((mvfxInstance*)instance, chain->source->emitter,
                                                     mvfx_attributeRibbonDistance);
-        float first = distances[chain->particles[walk->s]];
-        float second = walk->q == 0 ? first : distances[chain->particles[walk->s + 1]];
+        float first = DistanceAt(chain, distances, walk->s);
+        float second = walk->q == 0 ? first : DistanceAt(chain, distances, walk->s + 1);
         along = (first + (second - first) * (float)FractionOf(walk)) / compiled->ribbonTileLength;
     }
     double seconds = (double)instance->clock / (double)MVFX_TICKS_PER_SECOND;
@@ -307,8 +349,8 @@ static void WriteChain(const Chain* chain, const mvfxOutputLayout* layout, uint3
         {
             mvfxGradientTableAt(compiled->ribbonColor, t, point.color);
         }
-        int32_t first = (int32_t)chain->particles[walk.s];
-        int32_t second = walk.q == 0 ? first : (int32_t)chain->particles[walk.s + 1];
+        int32_t first = ParticleAt(chain, walk.s);
+        int32_t second = walk.q == 0 ? first : ParticleAt(chain, walk.s + 1);
         mvfxWriteRibbonRecord(chain->source, layout, first, second, (float)FractionOf(&walk), here,
                               &point, records + g * (int64_t)layout->stride);
         walk = ahead;
@@ -381,19 +423,44 @@ static Totals WriteChains(const mvfxInstance* instance, int32_t emitter,
         {
             ++end;
         }
-        if (end - start >= 2)
+        Chain chain = {.source = &source,
+                       .compiled = &instance->effect->emitters[emitter],
+                       .view = view,
+                       .particles = indices + start,
+                       .particleCount = end - start,
+                       .count = end - start};
+        // The current ribbon by the counter takes the pinned head.
+        chain.head = keys[start] == instance->emitters[emitter].ribbonCounter &&
+                     mvfxRibbonHeadPlace(instance, emitter, chain.headPlace);
+        chain.count += chain.head ? 1 : 0;
+        if (chain.count >= 2)
         {
-            Chain chain = {.source = &source,
-                           .compiled = &instance->effect->emitters[emitter],
-                           .view = view,
-                           .particles = indices + start,
-                           .count = end - start};
             MeasureChain(&chain);
             TakeChain(&chain, keys[start], layout, buffers, &totals);
         }
         start = end;
     }
     return totals;
+}
+
+bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter, double out[3])
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    if (!compiled->ribbonPinHead || !mvfxHasBirthsAhead(instance, emitter))
+    {
+        return false;
+    }
+    const mvfxTransform* to = &instance->to;
+    const double offset[3] = {(double)compiled->shape.offset[0] * (double)to->scale,
+                              (double)compiled->shape.offset[1] * (double)to->scale,
+                              (double)compiled->shape.offset[2] * (double)to->scale};
+    double turned[3];
+    mvfxRotateDouble(to->rotation, offset, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = to->origin[k] + turned[k];
+    }
+    return true;
 }
 
 mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,

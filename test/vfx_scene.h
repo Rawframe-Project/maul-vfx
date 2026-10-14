@@ -101,6 +101,8 @@ static inline void BuildScene(mvfxContext* context)
                         .scroll = 0.75f,
                         .facing = mvfx_ribbonFaceCamera,
                         .normal = {0.0f, 0.0f, 1.0f},
+                        .breakDistance = 1.5f,
+                        .pinHead = true,
                         .width = {.value = 1.0f, .curve = {.keys = narrowing, .keyCount = 2}},
                         .color = {.colorKeys = ribbonWarm,
                                   .colorKeyCount = 2,
@@ -645,6 +647,10 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
         CHECK(mvfxInstance_SetTransform(context, id, origin, turns[step % 2],
                                         step % 3 == 0 ? 1.5f : 1.0f, step == 10) == mvfx_success,
               "scene moved");
+        if (step == 6)
+        {
+            CHECK(mvfxInstance_BreakRibbons(context, id, -1) == mvfx_success, "scene break");
+        }
         mvfxDepthImage depth = SceneDepth(origin);
         CHECK(mvfxInstance_SetDepthImage(context, id, &depth) == mvfx_success, "scene depth");
     }

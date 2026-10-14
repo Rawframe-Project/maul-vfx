@@ -284,6 +284,20 @@ mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
     return mvfx_success;
 }
 
+// Advances the ribbon counter of an emitter, or with -1 of every emitter
+// drawn as ribbons.
+static void BreakRibbons(mvfxInstance* instance, int32_t emitter)
+{
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        if ((emitter == -1 || emitter == e) &&
+            instance->effect->emitters[e].ribbonIds != mvfx_ribbonNone)
+        {
+            instance->emitters[e].ribbonCounter += 1;
+        }
+    }
+}
+
 mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instance,
                                      const double origin[3], const float rotation[4], float scale,
                                      bool teleport)
@@ -310,6 +324,7 @@ mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instan
     if (teleport)
     {
         live->from = live->to;
+        BreakRibbons(live, -1);
     }
     return mvfx_success;
 }
@@ -609,5 +624,26 @@ mvfxResult mvfxFindEmitter(mvfxContext* context, mvfxInstanceId instance, int32_
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = nullptr;
+    mvfxResult found = mvfxFindEmitter(context, instance, emitter < 0 ? 0 : emitter, &live);
+    if (found != mvfx_success)
+    {
+        return found;
+    }
+    if (emitter < -1)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    BreakRibbons(live, emitter);
     return mvfx_success;
 }

@@ -1,6 +1,6 @@
-ribbon: context gradient instance instance_api layout_api output sort
+ribbon: context direction gradient instance instance_api layout_api output sort spawn
 sort:
-bounds: appearance direction instance space
+bounds: appearance direction instance ribbon space
 view: bounds context instance instance_api
 layout: allocator elementary half
 layout_api: context layout slots
