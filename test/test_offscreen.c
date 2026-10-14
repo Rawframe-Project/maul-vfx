@@ -113,6 +113,15 @@ static void TestLongestStep(void)
     }
     CHECK(ok, "at most the longest step at once");
     mvfxDestroyContext(s_context);
+    // A second held and one tick more: the second steps first.
+    Open();
+    throttled = New(mvfx_offscreenThrottle, 4, 4);
+    Hide(throttled, true);
+    CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, 1) == mvfx_success && Owed(throttled) == 8,
+          "one tick past the longest step");
+    mvfxDestroyContext(s_context);
 }
 
 static void TestPause(void)
@@ -163,6 +172,41 @@ static void TestRestartAndChange(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestCountsAgain(void)
+{
+    // Seeds 3 and 6 at an interval of 3: due at the third unseen step.
+    // Hidden twice for two steps with a seen step between, the count
+    // starts again; restarted after two, it starts again too.
+    Open();
+    mvfxInstanceId again = New(mvfx_offscreenThrottle, 3, 3);
+    mvfxInstanceId restarted = New(mvfx_offscreenThrottle, 3, 6);
+    mvfxInstanceId changed = New(mvfx_offscreenThrottle, 3, 9);
+    CHECK(mvfxInstance_SetOffscreen(s_context, changed, mvfx_offscreenThrottle, 2) == mvfx_success,
+          "every second step");
+    Hide(again, true);
+    Hide(restarted, true);
+    Hide(changed, true);
+    static const int64_t step = MVFX_TICKS_PER_SECOND / 8;
+    CHECK(mvfxContext_StepTicks(s_context, step) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, step) == mvfx_success && Owed(again) == 0 &&
+              Owed(changed) == 1,
+          "two held; the changed interval due at its first (seed 9's phase)");
+    CHECK(mvfxInstance_Restart(s_context, restarted) == mvfx_success, "restarted");
+    Hide(again, false);
+    CHECK(mvfxContext_StepTicks(s_context, step) == mvfx_success && Owed(again) == 3 &&
+              Owed(restarted) == 0,
+          "seen, stepped; a restart counts from the start");
+    Hide(again, true);
+    CHECK(mvfxContext_StepTicks(s_context, step) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, step) == mvfx_success && Owed(again) == 3 &&
+              Owed(restarted) == 3,
+          "hidden again, the count from the start; the restarted due");
+    CHECK(mvfxContext_StepTicks(s_context, step) == mvfx_success && Owed(again) == 6 &&
+              Owed(restarted) == 3,
+          "due at the third");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestChecks(void)
 {
     Open();
@@ -210,6 +254,7 @@ int main(void)
     TestLongestStep();
     TestPause();
     TestRestartAndChange();
+    TestCountsAgain();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

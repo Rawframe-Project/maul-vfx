@@ -162,7 +162,7 @@ static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
     {
         return;
     }
-    if (instance->heldTicks > 0 && instance->heldTicks + ticks > MAX_STEP_TICKS)
+    if (instance->heldTicks + ticks > MAX_STEP_TICKS)
     {
         mvfxStepInstance(instance, instance->heldTicks);
         instance->heldTicks = 0;
