@@ -246,8 +246,9 @@ extern "C"
     // event's, and its colour and size when asked. The source steps first
     // (an effect's emitters step in an order its links make; a cycle is
     // refused); the source's capacity of events bounds the spawns, and so
-    // does the emitter's own capacity, the rest counted refused. Spawns
-    // follow the emitter's delay, loops and a stop, as its rate does.
+    // do capacity a step and the emitter's own room, the rest counted
+    // refused. Spawns follow the emitter's delay, loops and a stop, as its
+    // rate does.
     typedef struct mvfxEventSpawn
     {
         bool enabled;
@@ -262,6 +263,9 @@ extern "C"
         float inheritVelocity;
         bool inheritColor;
         bool inheritSize;
+        // The most births from events a step, from 1 to
+        // MVFX_MAX_EMITTER_CAPACITY; past it the latest by tick are refused.
+        int32_t capacity;
     } mvfxEventSpawn;
 
     // An event: what happened, to which particle, when and where.

@@ -139,5 +139,5 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Sub-emitters: an emitter def gains `eventSpawn`, spawning a drawn
   count of particles per event of a kind another emitter writes, at its
   tick and place, inheriting a share of its velocity and optionally its
-  colour and size; an effect's emitters step in an order their links
-  make, and a cycle is refused.
+  colour and size, up to its own `capacity` a step; an effect's
+  emitters step in an order their links make, and a cycle is refused.

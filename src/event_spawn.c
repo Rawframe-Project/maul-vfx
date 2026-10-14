@@ -177,11 +177,10 @@ void mvfxBuildEventBirths(mvfxInstance* instance, int32_t emitter)
         {
             mvfxHostBirth birth = BirthOf(instance, emitter, spawn, event);
             birth.order = order++;
-            if (!KeepEarliest(state->eventQueue, &state->eventQueueCount, compiled->capacity,
-                              &birth))
+            if (!KeepEarliest(state->eventQueue, &state->eventQueueCount, spawn->capacity, &birth))
             {
-                // More than the emitter holds even with nothing alive: the
-                // latest refused, a serial spent.
+                // More than a step takes from events: the latest refused, a
+                // serial spent.
                 state->owed = mvfxSaturatingAdd(state->owed, 1);
                 state->refused = mvfxSaturatingAdd(state->refused, 1);
             }

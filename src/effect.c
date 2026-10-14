@@ -300,7 +300,8 @@ static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
     bool written = (def->emitters[spawn->source].events & (1u << spawn->kind)) != 0;
     return written && spawn->minCount >= 0 && spawn->minCount <= spawn->maxCount &&
            spawn->maxCount <= MVFX_MAX_EVENT_SPAWN && spawn->inheritVelocity >= 0.0f &&
-           spawn->inheritVelocity <= 1.0f;
+           spawn->inheritVelocity <= 1.0f && spawn->capacity >= 1 &&
+           spawn->capacity <= MVFX_MAX_EMITTER_CAPACITY;
 }
 
 // The order an effect's emitters step in: repeatedly the lowest index

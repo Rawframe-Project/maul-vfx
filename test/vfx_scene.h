@@ -267,9 +267,10 @@ static inline void BuildScene(mvfxContext* context)
                                               .minCount = 1,
                                               .maxCount = 3,
                                               .inheritVelocity = 0.4f,
-                                              .inheritColor = true};
-    emitters[2].eventSpawn =
-        (mvfxEventSpawn){.enabled = true, .source = 3, .kind = mvfx_eventDeath, .maxCount = 1};
+                                              .inheritColor = true,
+                                              .capacity = 48};
+    emitters[2].eventSpawn = (mvfxEventSpawn){
+        .enabled = true, .source = 3, .kind = mvfx_eventDeath, .maxCount = 1, .capacity = 8};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 4;

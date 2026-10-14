@@ -69,7 +69,8 @@ static mvfxEmitterDef Consumer(int32_t source, int32_t minCount, int32_t maxCoun
                                           .kind = mvfx_eventDeath,
                                           .minCount = minCount,
                                           .maxCount = maxCount,
-                                          .inheritVelocity = 0.5f};
+                                          .inheritVelocity = 0.5f,
+                                          .capacity = 64};
     return emitter;
 }
 
@@ -175,7 +176,9 @@ static void TestLocal(void)
 {
     // A local source and consumer under an instance at (100, 0, 0), turned
     // a quarter about Z, at scale 2: the death at the source's (1, 0, 0)
-    // is born at the consumer's (1, 0, 0).
+    // moving (1, 0, 0) is born at the consumer's (1, 0, 0) moving (0.5, 0,
+    // 0), half the inherited 1 the world's 2 makes back in its space, so at
+    // x = 1.25 by the step's end.
     mvfxEmitterDef emitters[2] = {Source(0.5f, 0.5f), Consumer(0, 1, 1)};
     emitters[0].space = mvfx_spaceLocal;
     emitters[1].space = mvfx_spaceLocal;
@@ -185,12 +188,13 @@ static void TestLocal(void)
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
               mvfx_success,
           "placed");
-    Place(&scene, 0, 1, 0, 0, 0.0f);
+    Place(&scene, 0, 1, 0, 0, 1.0f);
     Step(&scene, 1);
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
     CHECK(scene.live->emitters[1].count == 1 &&
-              fabsf(At(&scene, 1, mvfx_attributePositionX, 0) - 1.0f) <= 1e-5f &&
-              fabsf(At(&scene, 1, mvfx_attributePositionY, 0)) <= 1e-5f,
+              fabsf(At(&scene, 1, mvfx_attributePositionX, 0) - 1.25f) <= 1e-4f &&
+              fabsf(At(&scene, 1, mvfx_attributePositionY, 0)) <= 1e-5f &&
+              fabsf(At(&scene, 1, mvfx_attributeVelocityX, 0) - 0.5f) <= 1e-6f,
           "mapped through the instance");
     mvfxDestroyContext(scene.context);
 }
@@ -233,6 +237,21 @@ static void TestFullAndStopped(void)
     CHECK(mvfxInstance_IsFinished(scene.context, scene.instance), "then finished");
     mvfxDestroyContext(scene.context);
 
+    // A consumer of one loop of 0.3 seconds: a death at 0.5 spawns nothing;
+    // of two loops, it does.
+    for (int32_t loops = 1; loops <= 2; ++loops)
+    {
+        mvfxEmitterDef looped[2] = {Source(0.5f, 0.5f), Consumer(0, 1, 1)};
+        looped[1].duration = 0.3f;
+        looped[1].loops = loops;
+        scene = NewScene(looped, 2);
+        Place(&scene, 0, 0, 0, 0, 0.0f);
+        Step(&scene, 1);
+        Step(&scene, MVFX_TICKS_PER_SECOND - 1);
+        CHECK(scene.live->emitters[1].count == loops - 1, "spawns within its loops only");
+        mvfxDestroyContext(scene.context);
+    }
+
     // Not stopped, a consumer whose source is empty and spawns nothing more
     // lets the instance finish.
     mvfxEmitterDef idle[2] = {Source(0.5f, 0.5f), Consumer(0, 1, 1)};
@@ -242,12 +261,104 @@ static void TestFullAndStopped(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestRoomAndStatus(void)
+{
+    // An event spawning 3 with a step's capacity of 1 from events: one
+    // born, two refused, three serials spent.
+    mvfxEmitterDef emitters[2] = {Source(0.5f, 0.5f), Consumer(0, 3, 3)};
+    emitters[1].eventSpawn.capacity = 1;
+    Scene scene = NewScene(emitters, 2);
+    Place(&scene, 0, 0, 0, 0, 0.0f);
+    Step(&scene, 1);
+    Step(&scene, MVFX_TICKS_PER_SECOND - 1);
+    mvfxEmitterStats stats = {0};
+    CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
+              stats.live == 1 && stats.refused == 2 && stats.owed == 3,
+          "three serials, two refused");
+    mvfxDestroyContext(scene.context);
+
+    // Room for one, lives of a quarter second: the earlier death's birth
+    // dies before the later death, which then finds room.
+    mvfxEmitterDef full[2] = {Source(0.2f, 0.8f), Consumer(0, 1, 1)};
+    full[1].capacity = 1;
+    full[1].lifetime = mvfxRangeSource(0.25f, 0.25f);
+    scene = NewScene(full, 2);
+    Place(&scene, 0, 0, 0, 0, 0.0f);
+    Place(&scene, 0, 1, 0, 0, 0.0f);
+    Step(&scene, 1);
+    const float* inverse = mvfxAttributeArray(scene.live, 0, mvfx_attributeInverseLife);
+    double early = fmin(1.0 / (double)inverse[0], 1.0 / (double)inverse[1]);
+    double late = fmax(1.0 / (double)inverse[0], 1.0 / (double)inverse[1]);
+    CHECK(late - early > 0.26 && late + 0.25 > 1.0, "the lives this needs");
+    Step(&scene, MVFX_TICKS_PER_SECOND - 1);
+    CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
+              stats.live == 1 && stats.refused == 0 &&
+              fabs((double)BirthOf(&scene, 1, 0) / MVFX_TICKS_PER_SECOND - late) <= 2e-6,
+          "room again after a death within the step");
+    mvfxDestroyContext(scene.context);
+
+    // A consumer is active while its source has particles, or births
+    // ahead (a rate after a delay), though it has none itself.
+    mvfxEmitterDef alive[2] = {Source(5.0f, 5.0f), Consumer(0, 1, 1)};
+    scene = NewScene(alive, 2);
+    Place(&scene, 0, 0, 0, 0, 0.0f);
+    Step(&scene, 1);
+    CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
+              stats.status == mvfx_emitterActive,
+          "active while its source has particles");
+    mvfxDestroyContext(scene.context);
+    mvfxEmitterDef ahead[2] = {Source(5.0f, 5.0f), Consumer(0, 1, 1)};
+    ahead[0].rate = 10.0f;
+    ahead[0].startDelay = 1.0f;
+    scene = NewScene(ahead, 2);
+    Step(&scene, 1);
+    CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
+              stats.status == mvfx_emitterActive,
+          "active while its source has births ahead");
+    mvfxDestroyContext(scene.context);
+
+    // One particle bouncing between walls collides every step: the counts
+    // it draws (0 to 4) differ from step to step, the tick in the draw.
+    static const mvfxCollider walls[2] = {
+        {.kind = mvfx_colliderPlane, .center = {-1, 0, 0}, .normal = {1, 0, 0}},
+        {.kind = mvfx_colliderPlane, .center = {1, 0, 0}, .normal = {-1, 0, 0}},
+    };
+    mvfxEmitterDef bouncing[2] = {Source(100.0f, 100.0f), Consumer(0, 0, 4)};
+    bouncing[0].events = mvfx_eventMaskCollision;
+    bouncing[0].collision = (mvfxCollision){.enabled = true, .restitution = 1.0f};
+    bouncing[0].colliders = walls;
+    bouncing[0].colliderCount = 2;
+    bouncing[1].eventSpawn.kind = mvfx_eventCollision;
+    scene = NewScene(bouncing, 2);
+    Place(&scene, 0, 0, 0, 0, 3.0f);
+    uint64_t last = 0;
+    int32_t seen[5] = {0};
+    for (int32_t step = 0; step < 12; ++step)
+    {
+        Step(&scene, MVFX_TICKS_PER_SECOND);
+        CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) ==
+                  mvfx_success,
+              "stats");
+        // One collision a step (its first contact) spawns.
+        uint64_t drawn = stats.owed - last;
+        last = stats.owed;
+        seen[drawn <= 4 ? drawn : 4] += 1;
+    }
+    int32_t kinds = 0;
+    for (int32_t c = 0; c < 5; ++c)
+    {
+        kinds += seen[c] > 0 ? 1 : 0;
+    }
+    CHECK(kinds >= 2, "counts differ by the tick");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    for (int32_t field = 0; field < 11; ++field)
+    for (int32_t field = 0; field < 13; ++field)
     {
         mvfxEmitterDef emitters[3] = {Source(0.5f, 0.5f), Consumer(0, 1, 2), Source(0.5f, 0.5f)};
         mvfxEventSpawn* spawn = &emitters[1].eventSpawn;
@@ -283,12 +394,21 @@ static void TestRefusals(void)
         case 9:
             spawn->inheritVelocity = (float)NAN;
             break;
+        case 10:
+            spawn->capacity = 0;
+            break;
+        case 11:
+            spawn->capacity = MVFX_MAX_EMITTER_CAPACITY + 1;
+            break;
         default:
             // A cycle: the source spawns from its consumer's deaths.
             emitters[1].events = mvfx_eventMaskDeath;
             emitters[1].eventCapacity = 8;
-            emitters[0].eventSpawn = (mvfxEventSpawn){
-                .enabled = true, .source = 1, .kind = mvfx_eventDeath, .maxCount = 1};
+            emitters[0].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                                      .source = 1,
+                                                      .kind = mvfx_eventDeath,
+                                                      .maxCount = 1,
+                                                      .capacity = 8};
             break;
         }
         mvfxEffectDef effectDef = mvfxDefaultEffectDef();
@@ -316,6 +436,7 @@ int main(void)
     TestInherit();
     TestLocal();
     TestFullAndStopped();
+    TestRoomAndStatus();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

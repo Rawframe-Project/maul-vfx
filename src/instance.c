@@ -49,9 +49,9 @@ static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compi
             mvfxLayoutAdd(layout, (size_t)queries, sizeof(mvfxSceneQuery), alignof(mvfxSceneQuery)),
         .events = mvfxLayoutAdd(layout, (size_t)compiled->eventCapacity, sizeof(mvfxEvent),
                                 alignof(mvfxEvent)),
-        .eventQueue =
-            mvfxLayoutAdd(layout, compiled->eventSpawn.enabled ? (size_t)compiled->capacity : 0,
-                          sizeof(mvfxHostBirth), alignof(mvfxHostBirth)),
+        .eventQueue = mvfxLayoutAdd(
+            layout, compiled->eventSpawn.enabled ? (size_t)compiled->eventSpawn.capacity : 0,
+            sizeof(mvfxHostBirth), alignof(mvfxHostBirth)),
     };
 }
 
