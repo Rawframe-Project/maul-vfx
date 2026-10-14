@@ -175,6 +175,84 @@ static void TestAttractorAndSpaces(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestEdgesAndFrames(void)
+{
+    // A box turned 30 degrees about Z, half sizes (2, 0.5, 0.5): crossed
+    // along -X through its center, missed at y = 1.5 (inside its long
+    // diagonal's reach only if the turn were the other way).
+    // The quaternion's halves: sin and cos of 15 degrees.
+    const float s30 = 0.25881905f;
+    const float c30 = 0.96592583f;
+    mvfxKillRule rule = {
+        .kind = mvfx_killInsideBox, .halfExtents = {2, 0.5f, 0.5f}, .rotation = {0, 0, s30, c30}};
+    CHECK(!Survives(&rule, 1, 50, 0, 0, -100, 0, 0), "through a box moving along -X");
+    // The box's +X end at 30 degrees lies at (1.73, 1, 0): a point there is
+    // inside, its mirror (1.73, -1, 0) is not.
+    rule.kind = mvfx_killOutsideBox;
+    CHECK(Survives(&rule, 1, 1.7, 0.95, 0, 0, 0, 0), "inside the turned box's end");
+    CHECK(!Survives(&rule, 1, 1.7, -0.95, 0, 0, 0, 0), "outside its mirror");
+    // A rotation 0.0009 longer than unit acts as the unit one: a place just
+    // inside the end stays inside.
+    rule.rotation[2] = s30 * 1.0009f;
+    rule.rotation[3] = c30 * 1.0009f;
+    // Along the box's X, at 30 degrees: (cos 30, sin 30).
+    CHECK(Survives(&rule, 1, 1.9998 * 0.86602540, 1.9998 * 0.5, 0, 0, 0, 0),
+          "a near-unit rotation");
+
+    // Exactly on a plane is not past it.
+    rule = (mvfxKillRule){.kind = mvfx_killPastPlane, .center = {0, 2, 0}, .normal = {0, 1, 0}};
+    CHECK(Survives(&rule, 1, 0, 2, 0, 0, 0, 0), "on the plane");
+
+    // A vortex's unread kill radius kills nothing.
+    mvfxForce force = {.kind = mvfx_forceVortex, .vector = {0, 0, 1}, .killRadius = 5.0f};
+    mvfxEmitterDef emitter = Held(NULL, 0);
+    emitter.forces = &force;
+    emitter.forceCount = 1;
+    Scene scene = NewScene(&emitter);
+    Place(&scene, 0, 0, 0, 0, 0, 0);
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    CHECK(Stats(&scene).live == 1, "only an attractor's kill radius");
+    mvfxDestroyContext(scene.context);
+
+    // In the emitter's space under an instance turned a quarter about Z at
+    // scale 2: a box turned a quarter about X with half sizes (3, 1, 0.5)
+    // spans (6, 1, 2) in the world after the instance's turn: X from the
+    // emitter's Y... checked at points; and a speed of 1 is 2.
+    static const double origin[3] = {0.0, 0.0, 0.0};
+    static const float quarterZ[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    rule = (mvfxKillRule){.kind = mvfx_killOutsideBox,
+                          .space = mvfx_spaceLocal,
+                          .halfExtents = {3, 1, 0.5f},
+                          .rotation = {0.70710678f, 0, 0, 0.70710678f}};
+    mvfxKillRule slow = {.kind = mvfx_killSlower, .space = mvfx_spaceLocal, .speed = 1.0f};
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        static const double places[4][3] = {{0, 5.5, 0}, {0, 6.5, 0}, {0, 0, 1.5}, {0, 0, 2.5}};
+        static const bool alive[4] = {true, false, true, false};
+        emitter = Held(&rule, 1);
+        scene = NewScene(&emitter);
+        CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarterZ, 2.0f,
+                                        true) == mvfx_success,
+              "placed");
+        Place(&scene, places[c][0], places[c][1], places[c][2], 0, 0, 0);
+        CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+        CHECK((Stats(&scene).live == 1) == alive[c], "a box turned by the instance's and its own");
+        mvfxDestroyContext(scene.context);
+    }
+    for (int32_t c = 0; c < 2; ++c)
+    {
+        emitter = Held(&slow, 1);
+        scene = NewScene(&emitter);
+        CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarterZ, 2.0f,
+                                        true) == mvfx_success,
+              "placed");
+        Place(&scene, 0, 0, 0, c == 0 ? 1.5f : 2.5f, 0, 0);
+        CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+        CHECK((Stats(&scene).live == 1) == (c == 1), "a speed scaled with the instance");
+        mvfxDestroyContext(scene.context);
+    }
+}
+
 static void TestBirthsAndOrder(void)
 {
     // A rate of one a second: its birth falls on the step's end, inside a
@@ -283,6 +361,7 @@ int main(void)
     TestRegions();
     TestSpeedAndAge();
     TestAttractorAndSpaces();
+    TestEdgesAndFrames();
     TestBirthsAndOrder();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
