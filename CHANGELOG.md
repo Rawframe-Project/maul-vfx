@@ -54,3 +54,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxMesh_SetPositions` moves a skinned mesh between steps, and
   `mvfxInstance_SetEmitterMesh` binds an instance's own mesh. The
   context's def gains a limit of meshes.
+- Value sources (`maul-vfx/value.h`): ranges, curves over the emitter's
+  age, gradients at random or over age, and instance parameters
+  (`mvfxInstance_SetParameter`, `mvfxInstance_GetParameter`; an effect
+  declares their defaults). Optional initial values: size, color, a
+  sprite's angle and spin, a mesh particle's orientation and angular
+  velocity, a flipbook start frame and custom attributes, each stored
+  only when set.
+- Changed: an emitter's `lifetime` is a value source
+  (`mvfxRangeSource(min, max)` for the former range).

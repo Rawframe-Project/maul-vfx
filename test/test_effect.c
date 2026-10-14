@@ -151,16 +151,16 @@ static void TestInvalidDefsAreMisuse(void)
             bad.rate = MVFX_MAX_SPAWN_RATE * 2.0f;
             break;
         case 6:
-            bad.lifetime = (mvfxRange){0.0f, 1.0f};
+            bad.lifetime = mvfxRangeSource(0.0f, 1.0f);
             break;
         case 7:
-            bad.lifetime = (mvfxRange){2.0f, 1.0f};
+            bad.lifetime = mvfxRangeSource(2.0f, 1.0f);
             break;
         case 8:
-            bad.lifetime = (mvfxRange){1.0f, INFINITY};
+            bad.lifetime = mvfxRangeSource(1.0f, INFINITY);
             break;
         case 9:
-            bad.lifetime = (mvfxRange){NAN, 1.0f};
+            bad.lifetime = mvfxRangeSource(NAN, 1.0f);
             break;
         case 10:
             broken.cookie = 0;
@@ -183,7 +183,7 @@ static void TestInvalidDefsAreMisuse(void)
     mvfxEmitterDef edges = mvfxDefaultEmitterDef();
     edges.capacity = MVFX_MAX_EMITTER_CAPACITY;
     edges.rate = 0.0f;
-    edges.lifetime = (mvfxRange){MVFX_MAX_LIFETIME, MVFX_MAX_LIFETIME};
+    edges.lifetime = mvfxRangeSource(MVFX_MAX_LIFETIME, MVFX_MAX_LIFETIME);
     mvfxEffectDef atEdges = OneEmitter(&edges);
     CHECK(mvfxCreateEffect(context, &atEdges, &effect) == mvfx_success, "every edge accepted");
     mvfxDestroyContext(context);
@@ -502,6 +502,114 @@ static void TestShapeAndVelocityRefused(void)
     mvfxDestroyContext(context);
 }
 
+static void TestValuesRefused(void)
+{
+    mvfxContext* context = NewContext(NULL, 8);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
+    static const float parameters[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    static const float notFinite[4] = {0, 0, NAN, 0};
+    static const mvfxCurveKey late[1] = {{2.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    static const mvfxColorKey colors[1] = {{0.0f, 1.0f, 1.0f, 1.0f}};
+    static const mvfxAlphaKey alphas[1] = {{0.0f, 1.0f}};
+    for (int32_t field = 0; field < 24; ++field)
+    {
+        mvfxCustomAttribute custom = {.components = 2};
+        mvfxEmitterDef bad = mvfxDefaultEmitterDef();
+        mvfxEffectDef def = OneEmitter(&bad);
+        def.parameters = parameters;
+        def.parameterCount = 2;
+        switch (field)
+        {
+        case 0:
+            bad.lifetime.kind = mvfx_sourceNone;
+            break;
+        case 1:
+            bad.lifetime = mvfxRangeSource(-1.0f, 1.0f);
+            break;
+        case 2:
+            bad.lifetime =
+                (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {1, 1}, .parameter = 2};
+            break;
+        case 3:
+            bad.lifetime = (mvfxScalarSource){
+                .kind = mvfx_sourceCurve, .range = {1, 1}, .curve = {late, 1, mvfx_tangentsGiven}};
+            bad.duration = 1.0f;
+            break;
+        case 4:
+            bad.size = (mvfxVectorSource){.kind = 9};
+            break;
+        case 5:
+            bad.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .max = {1, (float)INFINITY, 1}};
+            break;
+        case 6:
+            bad.size =
+                (mvfxVectorSource){.kind = mvfx_sourceGradient, .gradient = {colors, 1, alphas, 1}};
+            break;
+        case 7:
+            bad.color = (mvfxVectorSource){.kind = mvfx_sourceGradientOverAge,
+                                           .gradient = {colors, 1, alphas, 1}};
+            break;
+        case 8:
+            bad.color =
+                (mvfxVectorSource){.kind = mvfx_sourceGradient, .gradient = {colors, 0, alphas, 1}};
+            break;
+        case 9:
+            bad.color = (mvfxVectorSource){.kind = mvfx_sourceParameter, .parameter = -1};
+            break;
+        case 10:
+            bad.angle = mvfxRangeSource(1.0f, 0.0f);
+            break;
+        case 11:
+            bad.spin = (mvfxScalarSource){.kind = 7};
+            break;
+        case 12:
+            bad.orientationMode = 3;
+            break;
+        case 13:
+            bad.orientationMode = mvfx_orientationEuler;
+            break;
+        case 14:
+            bad.angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {2e30f}};
+            break;
+        case 15:
+            bad.frame = (mvfxFrameStart){3, 0, 0};
+            break;
+        case 16:
+            bad.frame = (mvfxFrameStart){mvfx_frameRandom, 5, 4};
+            break;
+        case 17:
+            bad.frame = (mvfxFrameStart){mvfx_frameRandom, 0, MVFX_MAX_FRAMES};
+            break;
+        case 18:
+            bad.customCount = MVFX_MAX_CUSTOM_ATTRIBUTES + 1;
+            bad.custom = &custom;
+            break;
+        case 19:
+            bad.customCount = 1;
+            break;
+        case 20:
+            custom.components = 5;
+            bad.custom = &custom;
+            bad.customCount = 1;
+            break;
+        case 21:
+            def.parameterCount = MVFX_MAX_PARAMETERS + 1;
+            break;
+        case 22:
+            def.parameters = notFinite;
+            def.parameterCount = 1;
+            break;
+        default:
+            def.parameters = NULL;
+            break;
+        }
+        mvfxEffectId effect = {7, 7};
+        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxContext_GetMisuse(context) == ++misuse, "each refusal counted");
+    }
+    mvfxDestroyContext(context);
+}
+
 static void TestAllocator(void)
 {
     CountingAllocator counter = {.failAfter = -1};
@@ -545,6 +653,7 @@ int main(void)
     TestInvalidDefsAreMisuse();
     TestLifeFieldsRefused();
     TestShapeAndVelocityRefused();
+    TestValuesRefused();
     TestAllocator();
     return s_failures == 0 ? 0 : 1;
 }

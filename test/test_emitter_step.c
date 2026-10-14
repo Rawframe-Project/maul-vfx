@@ -92,7 +92,7 @@ static mvfxContext* OneInstance(int32_t capacity, float rate, mvfxRange lifetime
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = capacity;
     emitter.rate = rate;
-    emitter.lifetime = lifetime;
+    emitter.lifetime = mvfxRangeSource(lifetime.min, lifetime.max);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;

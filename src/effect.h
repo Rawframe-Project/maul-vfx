@@ -13,6 +13,7 @@
 #include "curve.h"
 #include "curve_integral.h"
 #include "shape.h"
+#include "value.h"
 #include "velocity.h"
 
 #include "maul-vfx/effect.h"
@@ -42,10 +43,32 @@ enum
     mvfx_attributeVelocityX = 7,
     mvfx_attributeVelocityY = 8,
     mvfx_attributeVelocityZ = 9,
+    // The optional values, each stored only when the emitter sets it.
+    mvfx_attributeSizeX = 10,
+    mvfx_attributeSizeY = 11,
+    mvfx_attributeSizeZ = 12,
+    mvfx_attributeColorR = 13,
+    mvfx_attributeColorG = 14,
+    mvfx_attributeColorB = 15,
+    mvfx_attributeColorA = 16,
+    mvfx_attributeAngle = 17,
+    mvfx_attributeSpin = 18,
+    // The orientation's quaternion, x, y, z, w.
+    mvfx_attributeOrientationX = 19,
+    mvfx_attributeOrientationY = 20,
+    mvfx_attributeOrientationZ = 21,
+    mvfx_attributeOrientationW = 22,
+    mvfx_attributeAngularX = 23,
+    mvfx_attributeAngularY = 24,
+    mvfx_attributeAngularZ = 25,
+    // A uint32 frame index.
+    mvfx_attributeFrame = 26,
+    // Custom attribute i's component c at 27 + 4 i + c.
+    mvfx_attributeCustom = 27,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT 10
+#define MVFX_ATTRIBUTE_COUNT (27 + 4 * MVFX_MAX_CUSTOM_ATTRIBUTES)
 
 // The alignment of every attribute array, a cache line.
 #define MVFX_ATTRIBUTE_ALIGNMENT 64
@@ -59,7 +82,7 @@ enum
 typedef struct mvfxAttributePlan
 {
     // Bit a set for each attribute a stored.
-    uint32_t present;
+    uint64_t present;
     size_t offsets[MVFX_ATTRIBUTE_COUNT];
     size_t blockBytes;
 } mvfxAttributePlan;
@@ -108,9 +131,19 @@ typedef struct mvfxCompiledEmitter
     int32_t loops;
     // The particles the rate owes over one loop, with a duration.
     double loopIntegral;
-    mvfxRange lifetime;
+    mvfxCompiledScalar lifetime;
     mvfxCompiledShape shape;
     mvfxCompiledVelocity velocity;
+    mvfxCompiledVector size;
+    mvfxCompiledVector color;
+    mvfxCompiledScalar angle;
+    mvfxCompiledScalar spin;
+    mvfxOrientationMode orientationMode;
+    mvfxCompiledVector orientation;
+    mvfxCompiledVector angularVelocity;
+    mvfxFrameStart frame;
+    mvfxCompiledVector custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
+    int32_t customCount;
     mvfxAttributePlan plan;
 } mvfxCompiledEmitter;
 
@@ -122,6 +155,9 @@ typedef struct mvfxEffect
     int32_t emitterCount;
     // The bursts of every emitter.
     int32_t burstCount;
+    // Its parameters' defaults.
+    float parameters[MVFX_MAX_PARAMETERS][4];
+    int32_t parameterCount;
     size_t blockBytes;
     size_t blockAlignment;
     // The instances playing it, which keep it from being destroyed.

@@ -11,6 +11,7 @@
 #include "maul-vfx/context.h"
 #include "maul-vfx/curve.h"
 #include "maul-vfx/shape.h"
+#include "maul-vfx/value.h"
 
 #include <stdbool.h>
 
@@ -108,13 +109,34 @@ extern "C"
         // With a duration, how many loops it spawns before it stops, 0 for
         // forever; at least 0.
         int32_t loops;
-        // Each particle's life in seconds: above 0, at most
-        // MVFX_MAX_LIFETIME, min at most max.
-        mvfxRange lifetime;
+        // Each particle's life in seconds, required: a range above 0 and at
+        // most MVFX_MAX_LIFETIME; a curve's or a parameter's lives are held
+        // to one tick at least and MVFX_MAX_LIFETIME at most.
+        mvfxScalarSource lifetime;
         // Where its particles are born.
         mvfxShape shape;
         // How they set off.
         mvfxVelocity velocity;
+        // The optional initial values, each stored only when its source is
+        // set: size per axis (X, Y, Z), linear color (red, green, blue,
+        // alpha), a sprite's angle in radians and spin in radians a second
+        // (either sets both, the other 0).
+        mvfxVectorSource size;
+        mvfxVectorSource color;
+        mvfxScalarSource angle;
+        mvfxScalarSource spin;
+        // A mesh particle's orientation (a quaternion) and angular velocity
+        // in radians a second (either sets both, the other identity or 0);
+        // orientation reads Euler angles in radians in the euler mode.
+        mvfxOrientationMode orientationMode;
+        mvfxVectorSource orientation;
+        mvfxVectorSource angularVelocity;
+        // The flipbook frame it starts at.
+        mvfxFrameStart frame;
+        // Its custom attributes, at most MVFX_MAX_CUSTOM_ATTRIBUTES, each of
+        // one to four components; NULL when customCount is 0.
+        const mvfxCustomAttribute* custom;
+        int32_t customCount;
     } mvfxEmitterDef;
 
 // The cookie of an emitter def, which its default sets and the effect's
@@ -140,6 +162,10 @@ extern "C"
         // may be released once the effect is created.
         const mvfxEmitterDef* emitters;
         int32_t emitterCount;
+        // The defaults of its instances' parameters, four floats each, finite;
+        // at most MVFX_MAX_PARAMETERS, NULL when parameterCount is 0.
+        const float* parameters;
+        int32_t parameterCount;
     } mvfxEffectDef;
 
 // The cookie of an effect def, which its default sets and

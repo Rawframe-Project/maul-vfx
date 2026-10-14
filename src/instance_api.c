@@ -249,6 +249,79 @@ mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId inst
     return mvfx_success;
 }
 
+// The live instance an id names and whether a parameter index is in
+// range, counting misuse; the result the call returns otherwise.
+static mvfxResult FindParameter(mvfxContext* context, mvfxInstanceId instance, int32_t parameter,
+                                const void* value, mvfxInstance** liveOut)
+{
+    if (context == nullptr || value == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    *liveOut = mvfxContextInstance(context, instance);
+    if (*liveOut == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (parameter < 0 || parameter >= (*liveOut)->effect->parameterCount)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetParameter(mvfxContext* context, mvfxInstanceId instance,
+                                     int32_t parameter, const float value[4])
+{
+    mvfxInstance* live = nullptr;
+    mvfxResult result = FindParameter(context, instance, parameter, value, &live);
+    if (result != mvfx_success)
+    {
+        return result;
+    }
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        if (!isfinite(value[c]))
+        {
+            mvfxCountMisuse(context);
+            return mvfx_errorInvalid;
+        }
+    }
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        live->parameters[parameter][c] = value[c];
+    }
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetParameter(mvfxContext* context, mvfxInstanceId instance,
+                                     int32_t parameter, float valueOut[4])
+{
+    if (valueOut != nullptr)
+    {
+        for (int32_t c = 0; c < 4; ++c)
+        {
+            valueOut[c] = 0.0f;
+        }
+    }
+    mvfxInstance* live = nullptr;
+    mvfxResult result = FindParameter(context, instance, parameter, valueOut, &live);
+    if (result != mvfx_success)
+    {
+        return result;
+    }
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        valueOut[c] = live->parameters[parameter][c];
+    }
+    return mvfx_success;
+}
+
 mvfxInstance* mvfxContextInstance(const mvfxContext* context, mvfxInstanceId instance)
 {
     return mvfxSlotObject(&context->instances, instance.index1, instance.generation);

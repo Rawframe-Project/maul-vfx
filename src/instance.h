@@ -66,6 +66,8 @@ typedef struct mvfxInstance
     int64_t clock;
     // No birth past this tick; INT64_MAX until the instance is stopped.
     int64_t stopTick;
+    // Its parameters, from the effect's defaults until the host sets them.
+    float parameters[MVFX_MAX_PARAMETERS][4];
     mvfxEmitterState* emitters;
     // Scratch for a step that may reach an emitter's capacity, sized for
     // the largest emitter: its death ticks, and the particles it accepts

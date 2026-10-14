@@ -31,10 +31,10 @@ static inline void BuildScene(mvfxContext* context)
                                   mvfxDefaultEmitterDef()};
     emitters[0].capacity = 100;
     emitters[0].rate = 37.5f;
-    emitters[0].lifetime = (mvfxRange){0.25f, 1.5f};
+    emitters[0].lifetime = mvfxRangeSource(0.25f, 1.5f);
     emitters[1].capacity = 64;
     emitters[1].rate = 2000.0f;
-    emitters[1].lifetime = (mvfxRange){0.01f, 0.05f};
+    emitters[1].lifetime = mvfxRangeSource(0.01f, 0.05f);
     emitters[0].shape.kind = mvfx_shapeSphere;
     emitters[0].shape.radius = 1.5f;
     emitters[0].shape.thickness = 0.3f;
@@ -60,7 +60,7 @@ static inline void BuildScene(mvfxContext* context)
     emitters[2].velocity.speed = (mvfxRange){0.5f, 0.5f};
     emitters[2].capacity = 7;
     emitters[2].rate = 0.7f;
-    emitters[2].lifetime = (mvfxRange){5.0f, 9.0f};
+    emitters[2].lifetime = mvfxRangeSource(5.0f, 9.0f);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 3;
@@ -88,7 +88,7 @@ static inline void BuildScene(mvfxContext* context)
     lives[0].rate = 400.0f;
     lives[0].rateCurve = (mvfxCurve){rise, 3, mvfx_tangentsMonotone};
     lives[0].duration = 0.75f;
-    lives[0].lifetime = (mvfxRange){0.05f, 0.3f};
+    lives[0].lifetime = mvfxRangeSource(0.05f, 0.3f);
     lives[1].capacity = 40;
     lives[1].rate = 0.0f;
     lives[1].bursts = bursts;
@@ -96,7 +96,7 @@ static inline void BuildScene(mvfxContext* context)
     lives[1].startDelay = 0.2f;
     lives[1].duration = 0.5f;
     lives[1].loops = 3;
-    lives[1].lifetime = (mvfxRange){0.1f, 0.6f};
+    lives[1].lifetime = mvfxRangeSource(0.1f, 0.6f);
     lives[0].shape.kind = mvfx_shapeCircle;
     lives[0].shape.radius = 2.0f;
     lives[0].shape.thickness = 0.5f;
@@ -118,7 +118,7 @@ static inline void BuildScene(mvfxContext* context)
     lives[2].capacity = 30;
     lives[2].rate = 50.0f;
     lives[2].startDelay = 1.0f;
-    lives[2].lifetime = (mvfxRange){0.2f, 0.9f};
+    lives[2].lifetime = mvfxRangeSource(0.2f, 0.9f);
     mvfxEffectDef livesDef = mvfxDefaultEffectDef();
     livesDef.emitters = lives;
     livesDef.emitterCount = 3;
@@ -163,15 +163,52 @@ static inline void BuildScene(mvfxContext* context)
         meshEmitters[i] = mvfxDefaultEmitterDef();
         meshEmitters[i].capacity = 24;
         meshEmitters[i].rate = 30.0f + 10.0f * (float)i;
-        meshEmitters[i].lifetime = (mvfxRange){0.2f, 0.7f};
+        meshEmitters[i].lifetime = mvfxRangeSource(0.2f, 0.7f);
         meshEmitters[i].shape.kind = mvfx_shapeMesh;
         meshEmitters[i].shape.mesh = mesh;
         meshEmitters[i].shape.meshMode = modes[i];
         meshEmitters[i].velocity.speed = (mvfxRange){0.5f, 1.5f};
     }
+    // Initial values over them: a size and a gradient's color and a spin on
+    // the surface; Euler angles, an angular velocity and frames on the edges;
+    // custom attributes and lives from parameters in the volume.
+    static const mvfxColorKey warm[2] = {{0.0f, 1.0f, 0.8f, 0.2f}, {1.0f, 0.6f, 0.1f, 0.0f}};
+    static const mvfxAlphaKey fade[2] = {{0.0f, 1.0f}, {1.0f, 0.3f}};
+    static const float parameters[8] = {0.6f, 0.0f, 0.0f, 0.0f, 2.0f, -1.0f, 0.5f, 3.0f};
+    static const mvfxCustomAttribute custom[2] = {
+        {.components = 3,
+         .initial = {.kind = mvfx_sourceRange, .min = {-1, 0, 2}, .max = {1, 5, 2}}},
+        {.components = 4,
+         .initial = {.kind = mvfx_sourceParameter,
+                     .min = {1, 1, 1, 1},
+                     .max = {2, 2, 2, 2},
+                     .uniform = true,
+                     .parameter = 1}},
+    };
+    meshEmitters[0].size = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                              .min = {0.1f, 0.1f, 0.1f},
+                                              .max = {0.4f, 0.4f, 0.4f},
+                                              .uniform = true};
+    meshEmitters[0].color = (mvfxVectorSource){.kind = mvfx_sourceGradient,
+                                               .min = {1, 1, 1, 1},
+                                               .max = {1, 1, 1, 1},
+                                               .gradient = {warm, 2, fade, 2}};
+    meshEmitters[0].spin = mvfxRangeSource(-3.0f, 3.0f);
+    meshEmitters[1].orientationMode = mvfx_orientationEuler;
+    meshEmitters[1].orientation =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 0}, .max = {3.1f, 1.0f, 6.2f}};
+    meshEmitters[1].angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-1, -1, -1}, .max = {1, 1, 1}};
+    meshEmitters[1].frame = (mvfxFrameStart){mvfx_frameRandom, 0, 15};
+    meshEmitters[2].custom = custom;
+    meshEmitters[2].customCount = 2;
+    meshEmitters[2].lifetime =
+        (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {0.5f, 1.0f}, .parameter = 0};
     mvfxEffectDef meshEffectDef = mvfxDefaultEffectDef();
     meshEffectDef.emitters = meshEmitters;
     meshEffectDef.emitterCount = 3;
+    meshEffectDef.parameters = parameters;
+    meshEffectDef.parameterCount = 2;
     mvfxEffectId meshEffect = {0};
     CHECK(mvfxCreateEffect(context, &meshEffectDef, &meshEffect) == mvfx_success, "mesh effect");
     mvfxInstanceDef meshInstanceDef = mvfxDefaultInstanceDef();

@@ -7,6 +7,19 @@
 #include "effect.h"
 #include "test_harness.h"
 
+// The attributes each emitter below stores: the always present 0 to 9;
+// size 10 to 12; color 13 to 16; angle and spin 17 and 18; orientation and
+// angular velocity 19 to 25; frame 26; custom from 27.
+static const uint64_t s_expected[6] = {
+    0x3FFu,
+    0x3FFu | 0x1C00u,
+    0x3FFu | 0x1E000u | 0x60000u,
+    0x3FFu | 0x3F80000u | 0x4000000u,
+    0x3FFu | ((uint64_t)0x7u << 27u) | ((uint64_t)0x1u << 31u),
+    0x3FFu | 0x1C00u | 0x1E000u | 0x60000u | 0x3F80000u | 0x4000000u | ((uint64_t)0x7u << 27u) |
+        ((uint64_t)0x1u << 31u),
+};
+
 static void TestPlans(void)
 {
     static const int32_t capacities[] = {1, 15, 16, 17, 1000, MVFX_MAX_EMITTER_CAPACITY};
@@ -16,8 +29,29 @@ static void TestPlans(void)
         emitters[i] = mvfxDefaultEmitterDef();
         emitters[i].capacity = capacities[i];
         emitters[i].rate = (float)i * 3.0f;
-        emitters[i].lifetime = (mvfxRange){0.5f, 2.0f + (float)i};
+        emitters[i].lifetime = mvfxRangeSource(0.5f, 2.0f + (float)i);
     }
+    // Each optional value stored only when set: none on the first; size on
+    // the second; color and a sprite's spin (with its angle) on the third;
+    // an angular velocity (with its orientation) and a frame on the fourth;
+    // two custom attributes of 3 and 1 on the fifth; everything on the
+    // last.
+    mvfxVectorSource set = {.kind = mvfx_sourceRange};
+    mvfxCustomAttribute custom[2] = {{.components = 3}, {.components = 1, .initial = set}};
+    emitters[1].size = set;
+    emitters[2].color = set;
+    emitters[2].spin = mvfxRangeSource(0.0f, 1.0f);
+    emitters[3].angularVelocity = set;
+    emitters[3].frame = (mvfxFrameStart){mvfx_frameFixed, 0, 0};
+    emitters[4].custom = custom;
+    emitters[4].customCount = 2;
+    emitters[5].size = set;
+    emitters[5].color = set;
+    emitters[5].angle = mvfxRangeSource(0.0f, 1.0f);
+    emitters[5].orientationMode = mvfx_orientationRandom;
+    emitters[5].frame = (mvfxFrameStart){mvfx_frameRandom, 2, 9};
+    emitters[5].custom = custom;
+    emitters[5].customCount = 2;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 6;
@@ -34,19 +68,30 @@ static void TestPlans(void)
                   e->paddedCapacity < e->capacity + MVFX_ATTRIBUTE_PADDING,
               "padded to the next multiple of 16");
         CHECK(e->rate == (float)i * 3.0f && e->lifetime.max == 2.0f + (float)i, "values copied");
-        CHECK(e->plan.present == (1u << MVFX_ATTRIBUTE_COUNT) - 1u, "the fixed attributes");
+        CHECK(e->plan.present == s_expected[i], "the attributes the emitter uses");
         size_t arrayBytes = (size_t)e->paddedCapacity * sizeof(float);
+        int32_t stored = 0;
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
+            if ((e->plan.present & ((uint64_t)1 << a)) == 0)
+            {
+                continue;
+            }
+            ++stored;
             CHECK(e->plan.offsets[a] % MVFX_ATTRIBUTE_ALIGNMENT == 0, "each array aligned");
             CHECK(e->plan.offsets[a] + arrayBytes <= e->plan.blockBytes, "inside the block");
             for (int32_t b = a + 1; b < MVFX_ATTRIBUTE_COUNT; ++b)
             {
+                if ((e->plan.present & ((uint64_t)1 << b)) == 0)
+                {
+                    continue;
+                }
                 bool apart = e->plan.offsets[a] + arrayBytes <= e->plan.offsets[b] ||
                              e->plan.offsets[b] + arrayBytes <= e->plan.offsets[a];
                 CHECK(apart, "arrays do not overlap");
             }
         }
+        CHECK(e->plan.blockBytes == (size_t)stored * arrayBytes, "no room for the unused");
     }
     mvfxReleaseEffect(effect, &allocator);
 }

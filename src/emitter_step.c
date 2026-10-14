@@ -40,7 +40,7 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
         }
         ++kept;
     }
-    uint32_t present = instance->effect->emitters[emitter].plan.present;
+    uint64_t present = instance->effect->emitters[emitter].plan.present;
     for (int32_t i = kept; i < state->count; ++i)
     {
         int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
@@ -48,9 +48,9 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
         {
             continue;
         }
-        for (mvfxAttribute a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
+        for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
-            if ((present & (1u << a)) != 0)
+            if ((present & ((uint64_t)1 << a)) != 0)
             {
                 uint32_t* array = mvfxAttributeArray(instance, emitter, a);
                 array[kept] = array[i];
@@ -113,7 +113,7 @@ static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
         for (int64_t i = 0; i < count; ++i)
         {
             uint64_t k = state->owed++;
-            float inverseLife = mvfxInverseLifeOf(instance, emitter, k);
+            float inverseLife = mvfxInverseLifeOf(instance, emitter, k, tick);
             if (AgeAt(instance->clock, tick) * inverseLife < 1.0f)
             {
                 mvfxBirth birth = {k, tick, i, count};
@@ -156,7 +156,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
         for (int64_t i = 0; i < taken; ++i)
         {
             uint64_t k = state->owed + (uint64_t)i;
-            int64_t death = mvfxDeathTick(tick, mvfxInverseLifeOf(instance, emitter, k));
+            int64_t death = mvfxDeathTick(tick, mvfxInverseLifeOf(instance, emitter, k, tick));
             mvfxPushDeath(&heap, death);
             if (death > instance->clock)
             {
@@ -173,7 +173,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     {
         const mvfxBirth* birth = &instance->acceptedScratch[i];
         mvfxAppendBirth(instance, emitter, birth,
-                        mvfxInverseLifeOf(instance, emitter, birth->serial));
+                        mvfxInverseLifeOf(instance, emitter, birth->serial, birth->tick));
     }
 }
 

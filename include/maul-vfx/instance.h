@@ -121,6 +121,40 @@ extern "C"
                                                                    int32_t emitter,
                                                                    mvfxMeshId mesh);
 
+    /// Sets a parameter of an instance; births from the next step read it.
+    /// A restart keeps it.
+    ///
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param parameter  An index below the effect's count of parameters.
+    /// @param value      Four finite floats.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, an index out
+    ///         of range or a value not finite, which counts as misuse when
+    ///         the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetParameter(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 int32_t parameter,
+                                                                 const float value[4]);
+
+    /// Reads a parameter of an instance.
+    ///
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param parameter  An index below the effect's count of parameters.
+    /// @param valueOut   Receives four floats; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument or an index
+    ///         out of range, which counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetParameter(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 int32_t parameter,
+                                                                 float valueOut[4]);
+
     // Where an emitter of an instance stands.
     typedef uint8_t mvfxEmitterStatus;
     enum

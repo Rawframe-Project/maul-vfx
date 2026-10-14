@@ -55,6 +55,13 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3]
         .acceptedScratch = (mvfxBirth*)(block + acceptedAt),
         .blockBytes = layout.size,
     };
+    for (int32_t p = 0; p < effect->parameterCount; ++p)
+    {
+        for (int32_t c = 0; c < 4; ++c)
+        {
+            instance->parameters[p][c] = effect->parameters[p][c];
+        }
+    }
     mvfxBurstCursor* bursts = (mvfxBurstCursor*)(block + burstsAt);
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -100,10 +107,10 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->count, (int32_t)sizeof state->count);
         hash = mvfxHash64(hash, &state->owed, (int32_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
-        uint32_t present = instance->effect->emitters[e].plan.present;
-        for (mvfxAttribute a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
+        uint64_t present = instance->effect->emitters[e].plan.present;
+        for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
         {
-            if ((present & (1u << a)) != 0)
+            if ((present & ((uint64_t)1 << a)) != 0)
             {
                 hash = mvfxHash64(hash, mvfxAttributeArray(instance, e, a),
                                   state->count * (int32_t)sizeof(float));
