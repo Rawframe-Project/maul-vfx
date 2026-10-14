@@ -199,6 +199,21 @@ static void TestBend(void)
     Spawn(&scene, corner, NULL, 3, 1);
     CHECK(Write(&scene, &s_view).count == 9, "a right angle, four pieces a segment");
     mvfxDestroyContext(scene.context);
+    // A segment whose way in has no length takes one piece: both here.
+    scene = NewScene(&emitter);
+    static const double repeated[9] = {0, 0, 0, 0, 0, 0, 1, 1, 0};
+    Spawn(&scene, repeated, NULL, 3, 1);
+    CHECK(Write(&scene, &s_view).count == 3, "no way in, one piece a segment");
+    mvfxDestroyContext(scene.context);
+    // A turn back at 3 radians a piece: two pieces each, the second's
+    // allowance held at a half turn.
+    emitter = Ribbon(4);
+    emitter.ribbon.bendAngle = 3.0f;
+    scene = NewScene(&emitter);
+    static const double back[9] = {0, 0, 0, 1, 0, 0, 0, 0, 0};
+    Spawn(&scene, back, NULL, 3, 1);
+    CHECK(Write(&scene, &s_view).count == 5, "a turn back, two pieces a segment");
+    mvfxDestroyContext(scene.context);
 }
 
 static void TestBetween(void)
@@ -213,6 +228,64 @@ static void TestBetween(void)
     CHECK(w.count == 3 && Near(w.points[1].color[0], 0.5f) && Near(w.points[1].color[2], 0.5f) &&
               Near(w.points[1].color[3], 0.75f) && w.points[2].color[2] == 1.0f,
           "values between particles");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestOrientation(void)
+{
+    // Random orientations: each point between two particles is their
+    // quaternions' sum along the shorter way, renormalized.
+    mvfxEmitterDef emitter = Ribbon(2);
+    emitter.orientationMode = mvfx_orientationRandom;
+    Scene scene = NewScene(&emitter);
+    static const mvfxLayoutField field = {
+        .field = mvfx_recordOrientation, .format = mvfx_formatFloat32, .components = 4};
+    mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
+    layoutDef.fields = &field;
+    layoutDef.fieldCount = 1;
+    layoutDef.stride = 16;
+    mvfxLayoutId layout = {0};
+    CHECK(mvfxCreateLayout(scene.context, &layoutDef, &layout) == mvfx_success, "layout");
+    static const double points[24] = {0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0,
+                                      4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0};
+    Spawn(&scene, points, NULL, 8, 1);
+    static float q[15][4];
+    static uint32_t scratch[8 * 4];
+    static mvfxRibbon ribbons[1];
+    mvfxRibbonBuffers buffers = {.points = q,
+                                 .pointCapacity = 15,
+                                 .ribbons = ribbons,
+                                 .ribbonCapacity = 1,
+                                 .scratch = scratch,
+                                 .scratchBytes = sizeof scratch};
+    int64_t count = 0;
+    int64_t ribbonCount = 0;
+    CHECK(mvfxInstance_WriteRibbons(scene.context, scene.instance, 0, layout, &s_view, &buffers,
+                                    &count, &ribbonCount) == mvfx_success &&
+              count == 15,
+          "fifteen points");
+    bool between = true;
+    int32_t flipped = 0;
+    for (int32_t s = 0; s < 7; ++s)
+    {
+        const float* a = q[2 * s];
+        const float* b = q[2 * s + 2];
+        float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+        float sign = dot < 0.0f ? -1.0f : 1.0f;
+        flipped += dot < 0.0f ? 1 : 0;
+        float sum[4];
+        float square = 0.0f;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            sum[k] = a[k] + sign * b[k];
+            square += sum[k] * sum[k];
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            between = between && fabsf(q[2 * s + 1][k] - sum[k] / sqrtf(square)) <= 1e-5f;
+        }
+    }
+    CHECK(between && flipped > 0, "the shorter way, renormalized");
     mvfxDestroyContext(scene.context);
 }
 
@@ -235,6 +308,19 @@ static void TestTexture(void)
               Near(w.points[2].along, 1.5f) && Near(w.points[4].along, 3.5f),
           "tiled by the distance at birth");
     mvfxDestroyContext(scene.context);
+    // Ribbons per batch: the second's distance starts at 0, not from the
+    // first's last point.
+    emitter.ribbon.ids = mvfx_ribbonPerBatch;
+    scene = NewScene(&emitter);
+    static const double batchA[6] = {0, 0, 0, 1, 0, 0};
+    static const double batchB[6] = {10, 0, 0, 12, 0, 0};
+    Spawn(&scene, batchA, NULL, 2, 1);
+    Spawn(&scene, batchB, NULL, 2, 1);
+    w = Write(&scene, &s_view);
+    CHECK(w.count == 6 && w.points[3].along == 0.0f && Near(w.points[5].along, 1.0f),
+          "a distance of its own ribbon");
+    mvfxDestroyContext(scene.context);
+    emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.ribbon.texture = mvfx_ribbonTilePerSegment;
     emitter.ribbon.scroll = 2.0f;
     scene = NewScene(&emitter);
@@ -259,15 +345,15 @@ static void TestTexture(void)
 
 static void TestNormal(void)
 {
-    // Facing across (0, 1, 0) in a local emitter turned a quarter about Z:
-    // the ribbon along the world's y, the normal the world's -x, the side
-    // +z and the face -x.
+    // Facing across (1, 0, 1) in a local emitter turned a quarter about Z:
+    // the ribbon along the world's y, the normal the world's (0, 1, 1), the
+    // side +x and the face +z (unturned, the side would lean to -z).
     mvfxEmitterDef emitter = Ribbon(1);
     emitter.space = mvfx_spaceLocal;
     emitter.ribbon.facing = mvfx_ribbonFaceNormal;
-    emitter.ribbon.normal[0] = 0.0f;
-    emitter.ribbon.normal[1] = 1.0f;
-    emitter.ribbon.normal[2] = 0.0f;
+    emitter.ribbon.normal[0] = 1.0f;
+    emitter.ribbon.normal[1] = 0.0f;
+    emitter.ribbon.normal[2] = 1.0f;
     Scene scene = NewScene(&emitter);
     static const double origin[3] = {0, 0, 0};
     static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
@@ -277,8 +363,8 @@ static void TestNormal(void)
     static const double points[6] = {0, 0, 0, 1, 0, 0};
     Spawn(&scene, points, NULL, 2, 1);
     Written w = Write(&scene, &s_view);
-    CHECK(w.count == 2 && Near(w.points[0].side[2], 1.0f) && Near(w.points[0].face[0], -1.0f) &&
-              Near(w.points[0].face[1], 0.0f),
+    CHECK(w.count == 2 && Near(w.points[0].side[0], 1.0f) && Near(w.points[0].side[2], 0.0f) &&
+              Near(w.points[0].face[2], 1.0f) && Near(w.points[0].face[0], 0.0f),
           "facing a turned normal");
     mvfxDestroyContext(scene.context);
 }
@@ -373,6 +459,7 @@ int main(void)
     TestCoincident();
     TestBend();
     TestBetween();
+    TestOrientation();
     TestTexture();
     TestNormal();
     TestChecks();
