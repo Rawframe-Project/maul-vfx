@@ -694,7 +694,7 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
 
 // A record of every field, in many formats: what the scene's output
 // writes for a view.
-static const mvfxLayoutField s_sceneFields[18] = {
+static const mvfxLayoutField s_sceneFields[19] = {
     {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3, .offset = 0},
     {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 12},
     {.field = mvfx_recordColor,
@@ -717,8 +717,9 @@ static const mvfxLayoutField s_sceneFields[18] = {
     {.field = mvfx_recordRibbon, .format = mvfx_formatUint32, .components = 1, .offset = 80},
     {.field = mvfx_recordSide, .format = mvfx_formatSnorm16, .components = 3, .offset = 84},
     {.field = mvfx_recordFaceNormal, .format = mvfx_formatFloat32, .components = 3, .offset = 92},
+    {.field = mvfx_recordCorner, .format = mvfx_formatUnorm16, .components = 2, .offset = 104},
 };
-#define SCENE_RECORD_BYTES 104
+#define SCENE_RECORD_BYTES 108
 #define SCENE_RECORDS      128
 
 // Hashes an emitter's ribbons for a view: their points and list.
@@ -771,6 +772,33 @@ static inline uint64_t HashQuads(mvfxContext* context, mvfxInstanceId id, int32_
     return mvfxHash64(hash, indices, (int32_t)(6 * count * (int64_t)sizeof indices[0]));
 }
 
+// Hashes an emitter's ribbons expanded into strips for a view.
+static inline uint64_t HashStrips(mvfxContext* context, mvfxInstanceId id, int32_t emitter,
+                                  mvfxLayoutId layout, const mvfxView* view, uint32_t* scratch,
+                                  uint64_t hash)
+{
+    enum
+    {
+        VERTICES = 2 * SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES
+    };
+    static unsigned char vertices[VERTICES * SCENE_RECORD_BYTES];
+    static uint32_t indices[3 * VERTICES];
+    mvfxExpandBuffers buffers = {.vertices = vertices,
+                                 .vertexCapacity = VERTICES,
+                                 .indices = indices,
+                                 .indexCapacity = 3 * VERTICES,
+                                 .scratch = scratch,
+                                 .scratchBytes = SCENE_RECORDS * 16};
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    CHECK(mvfxInstance_ExpandRibbons(context, id, emitter, layout, view, &buffers, &vertexCount,
+                                     &indexCount) == mvfx_success &&
+              vertexCount <= VERTICES && indexCount <= 3 * VERTICES,
+          "scene strips");
+    hash = mvfxHash64(hash, vertices, (int32_t)vertexCount * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, (int32_t)(indexCount * (int64_t)sizeof indices[0]));
+}
+
 // Hashes every emitter's records of an instance for a view at (1500, 3,
 // -2), through a layout made on the context the first time.
 static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
@@ -778,7 +806,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
 {
     mvfxLayoutDef def = mvfxDefaultLayoutDef();
     def.fields = s_sceneFields;
-    def.fieldCount = 18;
+    def.fieldCount = 19;
     def.stride = SCENE_RECORD_BYTES;
     mvfxLayoutId layout = {1, 1};
     if (!mvfxLayout_IsValid(context, layout))
@@ -802,6 +830,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
         hash = mvfxHash64(hash, records, (int32_t)count * SCENE_RECORD_BYTES);
         hash = HashRibbons(context, id, e, layout, &view, scratch, hash);
         hash = HashQuads(context, id, e, layout, &view, scratch, hash);
+        hash = HashStrips(context, id, e, layout, &view, scratch, hash);
         static mvfxLight lights[SCENE_RECORDS];
         CHECK(mvfxInstance_WriteLights(context, id, e, &view, lights, SCENE_RECORDS, &count) ==
                       mvfx_success &&

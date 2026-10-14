@@ -48,9 +48,10 @@ from other emitters' events, output (particle records in layouts the
 host defines, mesh indices and lights, sorted for a view), ribbons
 through particles (tessellated, textured, facing the camera or a
 normal), trails pinned to their sources and beams struck along curves,
-sprites expanded into quads for renderers that cannot instance, bounds
-and the draw order are in place, and ribbon expansion comes next.
-It has 57 public functions.
+sprites and ribbons expanded into quads and strips for renderers that
+cannot instance, bounds and the draw order are in place, and quality
+and budgets come next.
+It has 58 public functions.
 
 ## Building
 

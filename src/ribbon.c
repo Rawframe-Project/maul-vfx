@@ -3,6 +3,7 @@
 
 #include "ribbon.h"
 
+#include "appearance.h"
 #include "context.h"
 #include "direction.h"
 #include "gradient.h"
@@ -315,9 +316,82 @@ static float AlongAt(const Chain* chain, const Walk* walk, float t)
     return along + (float)((double)compiled->ribbonScroll * seconds);
 }
 
-// Writes a chain's points from its first record on.
-static void WriteChain(const Chain* chain, const mvfxOutputLayout* layout, uint32_t ribbon,
-                       unsigned char* records)
+// Where chains are written: points in a layout with a ribbon list, or
+// strips of two vertices a point with the indices of their triangles.
+typedef struct Sink
+{
+    const mvfxOutputLayout* layout;
+    bool strips;
+    unsigned char* records;
+    int64_t recordCapacity;
+    mvfxRibbon* ribbons;
+    int64_t ribbonCapacity;
+    uint32_t* indices;
+    int64_t indexCapacity;
+    uint32_t* scratch;
+} Sink;
+
+// What the chains of an emitter wrote and count: records (points or
+// vertices), ribbons and indices.
+typedef struct Totals
+{
+    int64_t records;
+    int64_t ribbons;
+    int64_t indices;
+    int64_t recordsWritten;
+    int64_t ribbonsWritten;
+    int64_t indicesWritten;
+    bool full;
+} Totals;
+
+// A point's record, or in a strip its two vertices across its width (0
+// on the side's back, 1 on it) and from all but the last the indices of
+// the two triangles to the next.
+static void WritePoint(const Chain* chain, const Sink* sink, const Walk* walk, const double here[3],
+                       mvfxRibbonPoint* point, int64_t g, const Totals* at)
+{
+    const mvfxRecordSource* source = chain->source;
+    int32_t first = ParticleAt(chain, walk->s);
+    int32_t second = walk->q == 0 ? first : ParticleAt(chain, walk->s + 1);
+    float fraction = (float)FractionOf(walk);
+    int64_t stride = (int64_t)sink->layout->stride;
+    if (!sink->strips)
+    {
+        mvfxWriteRibbonRecord(source, sink->layout, first, second, fraction, here, point,
+                              sink->records + (at->recordsWritten + g) * stride);
+        return;
+    }
+    float a[3];
+    float b[3];
+    mvfxSizeOf(source->instance, source->emitter, first, a);
+    mvfxSizeOf(source->instance, source->emitter, second, b);
+    double half =
+        0.5 * (double)((a[0] + (b[0] - a[0]) * fraction) / source->map.sigma * point->width);
+    int64_t base = at->recordsWritten + 2 * g;
+    for (int32_t v = 0; v < 2; ++v)
+    {
+        double place[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            place[k] = here[k] + (double)point->side[k] * (v == 0 ? -half : half);
+        }
+        point->corner[0] = point->along;
+        point->corner[1] = (float)v;
+        mvfxWriteRibbonRecord(source, sink->layout, first, second, fraction, place, point,
+                              sink->records + (base + v) * stride);
+    }
+    if (g + 1 < chain->points)
+    {
+        static const uint32_t triangles[6] = {0, 1, 2, 2, 1, 3};
+        for (int32_t k = 0; k < 6; ++k)
+        {
+            sink->indices[at->indicesWritten + 6 * g + k] = (uint32_t)base + triangles[k];
+        }
+    }
+}
+
+// Writes a chain's points after those written.
+static void WriteChain(const Chain* chain, const Sink* sink, const Totals* at)
 {
     const mvfxCompiledEmitter* compiled = chain->compiled;
     Walk walk = FirstWalk(chain);
@@ -343,16 +417,13 @@ static void WriteChain(const Chain* chain, const mvfxOutputLayout* layout, uint3
                                  .along = AlongAt(chain, &walk, t),
                                  .width = mvfxLifeAt(&compiled->ribbonWidth, t),
                                  .color = {1.0f, 1.0f, 1.0f, 1.0f},
-                                 .ribbon = ribbon};
+                                 .ribbon = (uint32_t)at->ribbonsWritten};
         FrameAt(chain, before, here, after, &point);
         if (compiled->ribbonColor != nullptr)
         {
             mvfxGradientTableAt(compiled->ribbonColor, t, point.color);
         }
-        int32_t first = ParticleAt(chain, walk.s);
-        int32_t second = walk.q == 0 ? first : ParticleAt(chain, walk.s + 1);
-        mvfxWriteRibbonRecord(chain->source, layout, first, second, (float)FractionOf(&walk), here,
-                              &point, records + g * (int64_t)layout->stride);
+        WritePoint(chain, sink, &walk, here, &point, g, at);
         walk = ahead;
         Advance(chain, &ahead);
         for (int32_t k = 0; k < 3; ++k)
@@ -367,44 +438,39 @@ static void WriteChain(const Chain* chain, const mvfxOutputLayout* layout, uint3
     }
 }
 
-// What the chains of an emitter wrote and count.
-typedef struct Totals
-{
-    int64_t points;
-    int64_t ribbons;
-    int64_t pointsWritten;
-    int64_t ribbonsWritten;
-    bool full;
-} Totals;
-
 // Counts a chain and writes it where it fits whole after those written.
-static void TakeChain(const Chain* chain, uint32_t id, const mvfxOutputLayout* layout,
-                      const mvfxRibbonBuffers* buffers, Totals* totals)
+static void TakeChain(const Chain* chain, uint32_t id, const Sink* sink, Totals* totals)
 {
-    bool fits = !totals->full && totals->ribbonsWritten < buffers->ribbonCapacity &&
-                totals->pointsWritten + chain->points <= buffers->pointCapacity;
+    int64_t records = sink->strips ? 2 * chain->points : chain->points;
+    int64_t indices = sink->strips ? 6 * (chain->points - 1) : 0;
+    bool fits = !totals->full && totals->recordsWritten + records <= sink->recordCapacity &&
+                totals->indicesWritten + indices <= sink->indexCapacity &&
+                (sink->strips || totals->ribbonsWritten < sink->ribbonCapacity);
     if (fits)
     {
-        WriteChain(chain, layout, (uint32_t)totals->ribbonsWritten,
-                   (unsigned char*)buffers->points + totals->pointsWritten * layout->stride);
-        buffers->ribbons[totals->ribbonsWritten] =
-            (mvfxRibbon){.first = totals->pointsWritten, .count = (int32_t)chain->points, .id = id};
-        totals->pointsWritten += chain->points;
+        WriteChain(chain, sink, totals);
+        if (!sink->strips)
+        {
+            sink->ribbons[totals->ribbonsWritten] = (mvfxRibbon){
+                .first = totals->recordsWritten, .count = (int32_t)chain->points, .id = id};
+        }
+        totals->recordsWritten += records;
+        totals->indicesWritten += indices;
         totals->ribbonsWritten += 1;
     }
     totals->full = !fits;
-    totals->points += chain->points;
+    totals->records += records;
+    totals->indices += indices;
     totals->ribbons += 1;
 }
 
 // Chains an emitter's live particles by ribbon id and takes each chain of
-// two or more.
-static Totals WriteChains(const mvfxInstance* instance, int32_t emitter,
-                          const mvfxOutputLayout* layout, const mvfxView* view,
-                          const mvfxRibbonBuffers* buffers)
+// two or more points.
+static Totals WriteChains(const mvfxInstance* instance, int32_t emitter, const mvfxView* view,
+                          const Sink* sink)
 {
     int32_t live = instance->emitters[emitter].count;
-    uint32_t* keys = buffers->scratch;
+    uint32_t* keys = sink->scratch;
     uint32_t* indices = keys + live;
     const uint32_t* ids =
         mvfxAttributeArray((mvfxInstance*)instance, emitter, mvfx_attributeRibbon);
@@ -436,7 +502,7 @@ static Totals WriteChains(const mvfxInstance* instance, int32_t emitter,
         if (chain.count >= 2)
         {
             MeasureChain(&chain);
-            TakeChain(&chain, keys[start], layout, buffers, &totals);
+            TakeChain(&chain, keys[start], sink, &totals);
         }
         start = end;
     }
@@ -463,6 +529,43 @@ bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter, double o
     return true;
 }
 
+// The checks both ribbon outputs share: the instance, emitter and layout
+// found, the view in range, scratch for the chains. Success with
+// *liveOut NULL for an emitter not drawn as ribbons.
+static mvfxResult OpenRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              mvfxLayoutId layout, const mvfxView* view, bool buffersValid,
+                              const void* scratch, int64_t scratchBytes, mvfxInstance** liveOut,
+                              const mvfxOutputLayout** formatOut)
+{
+    *liveOut = nullptr;
+    mvfxInstance* live = nullptr;
+    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
+    if (found != mvfx_success)
+    {
+        return found;
+    }
+    *formatOut = mvfxContextLayout(context, layout);
+    if (*formatOut == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (!mvfxIsViewValid(view) || !buffersValid || !mvfxIsBufferValid(scratch, scratchBytes, 4))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    if (live->effect->emitters[emitter].ribbonIds == mvfx_ribbonNone)
+    {
+        return mvfx_success;
+    }
+    if (scratchBytes < (int64_t)live->emitters[emitter].count * MVFX_SORT_BYTES_PER_ITEM)
+    {
+        return mvfx_errorCapacity;
+    }
+    *liveOut = live;
+    return mvfx_success;
+}
+
 mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                                      mvfxLayoutId layout, const mvfxView* view,
                                      const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
@@ -479,35 +582,65 @@ mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instan
     }
     *pointCountOut = 0;
     *ribbonCountOut = 0;
+    bool valid = buffers->pointCapacity >= 0 &&
+                 (buffers->pointCapacity == 0 || buffers->points != nullptr) &&
+                 mvfxIsBufferValid(buffers->ribbons, buffers->ribbonCapacity, alignof(mvfxRibbon));
     mvfxInstance* live = nullptr;
-    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
-    if (found != mvfx_success)
+    const mvfxOutputLayout* format = nullptr;
+    mvfxResult opened = OpenRibbons(context, instance, emitter, layout, view, valid,
+                                    buffers->scratch, buffers->scratchBytes, &live, &format);
+    if (opened != mvfx_success || live == nullptr)
     {
-        return found;
+        return opened;
     }
-    const mvfxOutputLayout* format = mvfxContextLayout(context, layout);
-    if (format == nullptr)
+    const Sink sink = {.layout = format,
+                       .records = buffers->points,
+                       .recordCapacity = buffers->pointCapacity,
+                       .ribbons = buffers->ribbons,
+                       .ribbonCapacity = buffers->ribbonCapacity,
+                       .scratch = buffers->scratch};
+    Totals totals = WriteChains(live, emitter, view, &sink);
+    *pointCountOut = totals.records;
+    *ribbonCountOut = totals.ribbons;
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId instance,
+                                      int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
+                                      const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                                      int64_t* indexCountOut)
+{
+    if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
+        indexCountOut == nullptr)
     {
-        return mvfx_errorStale;
-    }
-    if (!mvfxIsViewValid(view) || buffers->pointCapacity < 0 ||
-        (buffers->pointCapacity > 0 && buffers->points == nullptr) ||
-        !mvfxIsBufferValid(buffers->ribbons, buffers->ribbonCapacity, alignof(mvfxRibbon)) ||
-        !mvfxIsBufferValid(buffers->scratch, buffers->scratchBytes, 4))
-    {
-        mvfxCountMisuse(context);
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
         return mvfx_errorInvalid;
     }
-    if (live->effect->emitters[emitter].ribbonIds == mvfx_ribbonNone)
+    *vertexCountOut = 0;
+    *indexCountOut = 0;
+    bool valid = buffers->vertexCapacity >= 0 &&
+                 (buffers->vertexCapacity == 0 || buffers->vertices != nullptr) &&
+                 mvfxIsBufferValid(buffers->indices, buffers->indexCapacity, alignof(uint32_t));
+    mvfxInstance* live = nullptr;
+    const mvfxOutputLayout* format = nullptr;
+    mvfxResult opened = OpenRibbons(context, instance, emitter, layout, view, valid,
+                                    buffers->scratch, buffers->scratchBytes, &live, &format);
+    if (opened != mvfx_success || live == nullptr)
     {
-        return mvfx_success;
+        return opened;
     }
-    if (buffers->scratchBytes < (int64_t)live->emitters[emitter].count * MVFX_SORT_BYTES_PER_ITEM)
-    {
-        return mvfx_errorCapacity;
-    }
-    Totals totals = WriteChains(live, emitter, format, view, buffers);
-    *pointCountOut = totals.points;
-    *ribbonCountOut = totals.ribbons;
+    const Sink sink = {.layout = format,
+                       .strips = true,
+                       .records = buffers->vertices,
+                       .recordCapacity = buffers->vertexCapacity,
+                       .indices = buffers->indices,
+                       .indexCapacity = buffers->indexCapacity,
+                       .scratch = buffers->scratch};
+    Totals totals = WriteChains(live, emitter, view, &sink);
+    *vertexCountOut = totals.records;
+    *indexCountOut = totals.indices;
     return mvfx_success;
 }

@@ -359,6 +359,42 @@ extern "C"
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
         const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* countOut);
 
+    /// Expands an emitter's ribbons for a view into triangle strips, for
+    /// renderers that cannot expand them in a shader: each point (as
+    /// mvfxInstance_WriteRibbons makes them, tessellated) two vertices
+    /// across its width along its side (corner 0 on the side's back, 1 on
+    /// it, the coordinate along as the corner's first), and each segment
+    /// six indices (two triangles, counterclockwise seen from its face
+    /// normal's side). Buffers too small take the first whole ribbons that
+    /// fit both; the counts are always all of them, 0 for an emitter not
+    /// drawn as ribbons.
+    ///
+    /// @param context         The context that owns the instance and the
+    ///                        layout.
+    /// @param instance        The instance.
+    /// @param emitter         The emitter's index in the effect's def.
+    /// @param layout          The vertices' layout.
+    /// @param view            The view.
+    /// @param buffers         The buffers; scratch as for
+    ///                        mvfxInstance_WriteRibbons.
+    /// @param vertexCountOut  Receives the vertices there are.
+    /// @param indexCountOut   Receives the indices there are.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
+    ///         that names nothing live; `mvfx_errorCapacity` for scratch too
+    ///         small, with nothing written; `mvfx_errorInvalid` for a NULL
+    ///         context, view, buffers or count, a view out of range, an
+    ///         emitter out of range, a negative size or a NULL or misaligned
+    ///         buffer with a size, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once, each with
+    /// its own scratch.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ExpandRibbons(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+        const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+        int64_t* indexCountOut);
+
     // A light a particle carries.
     typedef struct mvfxLight
     {

@@ -182,3 +182,5 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxInstance_ExpandSprites`, writing four vertices and six indices a
   particle with the corner field `mvfx_recordCorner`; `mvfxView` gains
   `up`.
+- Ribbon strips: `mvfxInstance_ExpandRibbons`, two vertices a ribbon
+  point across its width and six indices a segment.
