@@ -8,6 +8,7 @@
 #include "effect.h"
 
 #include "allocator.h"
+#include "force.h"
 
 #include <math.h>
 
@@ -183,9 +184,17 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
         def->frame.mode > mvfx_frameRandom || def->frame.first < 0 ||
         def->frame.first > def->frame.last || def->frame.last >= MVFX_MAX_FRAMES ||
         def->customCount < 0 || def->customCount > MVFX_MAX_CUSTOM_ATTRIBUTES ||
-        (def->customCount > 0 && def->custom == nullptr))
+        (def->customCount > 0 && def->custom == nullptr) || def->forceCount < 0 ||
+        def->forceCount > MVFX_MAX_FORCES || (def->forceCount > 0 && def->forces == nullptr))
     {
         return false;
+    }
+    for (int32_t f = 0; f < def->forceCount; ++f)
+    {
+        if (!mvfxIsForceValid(&def->forces[f], parameterCount))
+        {
+            return false;
+        }
     }
     for (int32_t i = 0; i < def->customCount; ++i)
     {
@@ -313,6 +322,11 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->gravitySpace = def->motion.gravitySpace;
     out->drag = def->motion.drag;
     out->angularDrag = def->motion.angularDrag;
+    out->forceCount = def->forceCount;
+    for (int32_t f = 0; f < def->forceCount; ++f)
+    {
+        out->forces[f] = mvfxCompileForce(&def->forces[f]);
+    }
     out->orientationMode = def->orientationMode;
     mvfxCompileVector(&def->orientation, 3, d, space, &out->orientation);
     mvfxCompileVector(&def->angularVelocity, 3, d, space, &out->angularVelocity);

@@ -91,6 +91,97 @@ extern "C"
 // The most drag an emitter or a particle may have, a second.
 #define MVFX_MAX_DRAG 1000.0f
 
+// The most forces an emitter has.
+#define MVFX_MAX_FORCES 8
+
+// The least softening radius of an attractor.
+#define MVFX_MIN_SOFTENING 1e-3f
+
+// The steepest falloff.
+#define MVFX_MAX_FALLOFF_EXPONENT 8.0f
+
+    // The region a force acts in, weighting it from 1 at its heart to 0 at
+    // its edge by (1 - share)^exponent, the share how far toward the edge a
+    // particle is.
+    typedef uint8_t mvfxFalloffKind;
+    enum
+    {
+        // Everywhere, a weight of 1.
+        mvfx_falloffNone = 0,
+        // Within radius of center, the share its distance over radius.
+        mvfx_falloffSphere = 1,
+        // Within radius of the line through center along axis, the share
+        // its distance from the line over radius.
+        mvfx_falloffTube = 2,
+        // Within radius of center and angle of axis from it, both shares
+        // weighting: the angle's by its cosine, from 1 on the axis to 0 at
+        // angle.
+        mvfx_falloffCone = 3,
+    };
+
+    // A force's falloff, in the force's space; fields its kind does not
+    // read are not checked.
+    typedef struct mvfxFalloff
+    {
+        mvfxFalloffKind kind;
+        float center[3];
+        // The tube's or the cone's axis, not of length 0; normalized.
+        float axis[3];
+        // Above 0 and at most MVFX_MAX_EXTENT.
+        float radius;
+        // The cone's half angle, above 0 and at most MVFX_MAX_CONE_ANGLE.
+        float angle;
+        // From 0 (a hard edge) to MVFX_MAX_FALLOFF_EXPONENT.
+        float exponent;
+    } mvfxFalloff;
+
+    // What a force does. Each acceleration is held over a step, taken where
+    // a particle is at the step's start (or its birth); wind is exact, as
+    // drag is.
+    typedef uint8_t mvfxForceKind;
+    enum
+    {
+        // A constant acceleration: vector times strength.
+        mvfx_forceConstant = 0,
+        // A drag toward the wind's velocity (vector): (vector - v) times
+        // strength, which is how much of the difference goes a second, from
+        // 0 to MVFX_MAX_DRAG.
+        mvfx_forceWind = 1,
+        // Toward point: strength at the softening radius and beyond it
+        // falling as the square of the distance, within it falling linearly
+        // to 0 at point; a negative strength repels.
+        mvfx_forceAttractor = 2,
+        // About the axis (vector) through point: strength along the turn the
+        // right hand gives the axis, and pull toward the axis.
+        mvfx_forceVortex = 3,
+    };
+
+    // A force on an emitter's particles. Its vectors, points and lengths
+    // are in its space, the world's or the emitter's (turning and scaling
+    // with the instance); each value finite and at most MVFX_MAX_EXTENT in
+    // size.
+    typedef struct mvfxForce
+    {
+        mvfxForceKind kind;
+        mvfxSimulationSpace space;
+        // The constant's acceleration, the wind's velocity or the vortex's
+        // axis (not of length 0; normalized).
+        float vector[3];
+        // The attractor's point or a point on the vortex's axis.
+        float point[3];
+        float strength;
+        // The attractor's softening radius, from MVFX_MIN_SOFTENING.
+        float softening;
+        // The vortex's acceleration toward its axis; a negative one pushes
+        // out.
+        float pull;
+        // Whether strength is multiplied by a parameter's x, then held to
+        // MVFX_MAX_EXTENT in size (to 0 and MVFX_MAX_DRAG for wind).
+        bool strengthFromParameter;
+        int32_t parameter;
+        mvfxFalloff falloff;
+    } mvfxForce;
+
     // How an emitter's particles move: each step moves them exactly under
     // their gravity and drag (an exponential integrator), whatever the
     // steps' lengths, with the forces that vary held for the step.
@@ -170,6 +261,10 @@ extern "C"
         mvfxVelocity velocity;
         // How they move.
         mvfxMotion motion;
+        // The forces on them, at most MVFX_MAX_FORCES, applied in order;
+        // NULL when forceCount is 0.
+        const mvfxForce* forces;
+        int32_t forceCount;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second

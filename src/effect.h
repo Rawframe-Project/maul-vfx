@@ -151,6 +151,9 @@ typedef struct mvfxCompiledEmitter
     float drag;
     float angularDrag;
     mvfxCompiledScalar dragScale;
+    // Its forces, compiled.
+    mvfxForce forces[MVFX_MAX_FORCES];
+    int32_t forceCount;
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

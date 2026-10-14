@@ -13,9 +13,9 @@ mesh: allocator direction random
 shape: direction elementary mesh random
 velocity: direction elementary shape
 value: curve gradient random
-effect: allocator curve curve_integral shape value velocity
-integrate: effect elementary instance
-instance: allocator effect
+effect: allocator curve curve_integral force shape value velocity
+integrate: direction effect elementary force instance
+instance: allocator effect force
 death_heap:
 spawn: instance random
 birth: direction elementary instance integrate random shape value velocity
@@ -27,5 +27,6 @@ instance_api: context effect_api instance mesh mesh_api slots spawn
 step: context effect emitter_step float_mode instance instance_api tasks
 curve:
 curve_integral: curve
+force: direction elementary
 gradient:
 elementary:

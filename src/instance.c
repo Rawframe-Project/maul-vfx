@@ -7,6 +7,7 @@
 #include "instance.h"
 
 #include "allocator.h"
+#include "force.h"
 
 #include <math.h>
 #include <string.h>
@@ -30,10 +31,13 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
     size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
                                     alignof(mvfxBurstCursor));
     size_t queuesAt[MVFX_MAX_EMITTERS] = {0};
+    size_t forcesAt[MVFX_MAX_EMITTERS] = {0};
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
         queuesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].hostSpawnCapacity,
                                     sizeof(mvfxHostBirth), alignof(mvfxHostBirth));
+        forcesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].forceCount,
+                                    sizeof(mvfxResolvedForce), alignof(mvfxResolvedForce));
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -78,6 +82,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             .bursts = &bursts[effect->emitters[e].firstBurst],
             .mesh = effect->emitters[e].shape.mesh,
             .hostQueue = (mvfxHostBirth*)(block + queuesAt[e]),
+            .forces = (mvfxResolvedForce*)(block + forcesAt[e]),
         };
     }
     mvfxResetInstance(instance);
@@ -143,17 +148,6 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         }
     }
     return hash;
-}
-
-void mvfxRotate(const float q[4], const float v[3], float out[3])
-{
-    // v + 2 w (u x v) + 2 u x (u x v), u the quaternion's vector part.
-    float tx = 2.0f * (q[1] * v[2] - q[2] * v[1]);
-    float ty = 2.0f * (q[2] * v[0] - q[0] * v[2]);
-    float tz = 2.0f * (q[0] * v[1] - q[1] * v[0]);
-    out[0] = v[0] + q[3] * tx + (q[1] * tz - q[2] * ty);
-    out[1] = v[1] + q[3] * ty + (q[2] * tx - q[0] * tz);
-    out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
 }
 
 void mvfxTransformAt(const mvfxInstance* instance, int64_t tick, mvfxTransform* out)

@@ -79,3 +79,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   particle, angular drag). Each step moves particles exactly under
   gravity and drag, births from their own ticks, and turns sprites and
   mesh particles by their spin and angular velocity.
+- Forces: an emitter def gains up to eight `forces` (a constant, wind,
+  an attractor, a vortex), each in the world's or the emitter's space,
+  with an optional falloff (sphere, tube, cone) and a strength that may
+  come from a parameter. Wind acts as exact drag toward its velocity.

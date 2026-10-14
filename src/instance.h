@@ -66,6 +66,8 @@ typedef struct mvfxEmitterState
     // A world-space emitter's anchor: its particles' positions are offsets
     // from it.
     double anchor[3];
+    // The emitter's forces as resolved for the step being taken.
+    struct mvfxResolvedForce* forces;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;
@@ -143,9 +145,6 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
 
 // The instance's transform at a tick of the step being taken.
 void mvfxTransformAt(const mvfxInstance* instance, int64_t tick, mvfxTransform* out);
-
-// Turns v by a unit quaternion (x, y, z, w).
-void mvfxRotate(const float q[4], const float v[3], float out[3]);
 
 // Returns an instance to its start: no particles, its clock, counts and
 // cursors at 0, no stop, its anchors at its place.

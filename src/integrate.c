@@ -3,8 +3,10 @@
 
 #include "integrate.h"
 
+#include "direction.h"
 #include "effect.h"
 #include "elementary.h"
+#include "force.h"
 
 #include <math.h>
 
@@ -166,6 +168,69 @@ static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfx
     }
 }
 
+// The drag the winds without a falloff give, summed in order as
+// mvfxForcesAt sums it.
+static float SharedWind(const mvfxResolvedForce* forces, int32_t count)
+{
+    float wind = 0.0f;
+    for (int32_t f = 0; f < count; ++f)
+    {
+        if (forces[f].kind == mvfx_forceWind && forces[f].falloff == mvfx_falloffNone)
+        {
+            wind += 1.0f * forces[f].strength;
+        }
+    }
+    return wind;
+}
+
+// How a space maps to the space the emitter's particles are stored in,
+// with the instance's transform at the step's start: a world-space
+// emitter's are offsets from its anchor.
+static mvfxSpaceMap SpaceMapOf(const mvfxInstance* instance, int32_t emitter,
+                               mvfxSimulationSpace space)
+{
+    const mvfxTransform* transform = &instance->from;
+    const double* anchor = instance->emitters[emitter].anchor;
+    bool world = instance->effect->emitters[emitter].space == mvfx_spaceWorld;
+    mvfxSpaceMap map = {.rotation = {0.0f, 0.0f, 0.0f, 1.0f}, .sigma = 1.0f};
+    const float* q = transform->rotation;
+    if (world && space == mvfx_spaceWorld)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            map.after[k] = -anchor[k];
+        }
+    }
+    else if (world)
+    {
+        // From the instance's space: scaled, turned, moved to its origin.
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            map.rotation[k] = q[k];
+        }
+        map.sigma = transform->scale;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            map.after[k] = transform->origin[k] - anchor[k];
+        }
+    }
+    else if (space == mvfx_spaceWorld)
+    {
+        // From the world into the instance's space: moved, turned back,
+        // unscaled.
+        map.rotation[0] = -q[0];
+        map.rotation[1] = -q[1];
+        map.rotation[2] = -q[2];
+        map.rotation[3] = q[3];
+        map.sigma = 1.0f / transform->scale;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            map.before[k] = transform->origin[k];
+        }
+    }
+    return map;
+}
+
 // Moves particles from first to end over seconds.
 static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
                       double seconds)
@@ -183,12 +248,29 @@ static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, in
     bool perParticle = (compiled->plan.present & ((uint64_t)1 << mvfx_attributeDrag)) != 0;
     const float* scales =
         perParticle ? mvfxAttributeArray(instance, emitter, mvfx_attributeDrag) : nullptr;
-    mvfxDragFactors shared = mvfxDragFactorsOf((double)compiled->drag, seconds);
+    const mvfxResolvedForce* forces = instance->emitters[emitter].forces;
+    int32_t forceCount = compiled->forceCount;
+    // The drag every particle has when its winds weigh as at no falloff:
+    // its factors serve each particle whose drag comes to the same.
+    float sharedDrag = compiled->drag + SharedWind(forces, forceCount);
+    mvfxDragFactors shared = mvfxDragFactorsOf((double)sharedDrag, seconds);
     for (int32_t i = first; i < end; ++i)
     {
-        mvfxDragFactors f =
-            perParticle ? mvfxDragFactorsOf(ParticleDrag(compiled, scales[i]), seconds) : shared;
-        MoveLinear(p, v, i, a, f);
+        float x[3] = {p[0][i], p[1][i], p[2][i]};
+        float acceleration[3] = {a[0], a[1], a[2]};
+        float wind = 0.0f;
+        mvfxForcesAt(forces, forceCount, x, acceleration, &wind);
+        float drag = compiled->drag + wind;
+        mvfxDragFactors f = shared;
+        if (perParticle)
+        {
+            f = mvfxDragFactorsOf(ParticleDrag(compiled, scales[i]) + (double)wind, seconds);
+        }
+        else if (drag != sharedDrag)
+        {
+            f = mvfxDragFactorsOf((double)drag, seconds);
+        }
+        MoveLinear(p, v, i, acceleration, f);
     }
     uint64_t rotating =
         ((uint64_t)1 << mvfx_attributeAngle) | ((uint64_t)1 << mvfx_attributeOrientationX);
@@ -204,6 +286,14 @@ static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, in
 
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
 {
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    for (int32_t f = 0; f < compiled->forceCount; ++f)
+    {
+        const mvfxForce* force = &compiled->forces[f];
+        mvfxSpaceMap map = SpaceMapOf(instance, emitter, force->space);
+        instance->emitters[emitter].forces[f] =
+            mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters);
+    }
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
     MoveRange(instance, emitter, 0, instance->emitters[emitter].count, seconds);

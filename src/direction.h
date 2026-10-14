@@ -15,4 +15,7 @@ void mvfxRandomDirection(uint32_t a, uint32_t b, float out[3]);
 // v normalized; false (and v left) when its length is 0 or not finite.
 bool mvfxNormalize(float v[3]);
 
+// Turns v by a unit quaternion (x, y, z, w).
+void mvfxRotate(const float q[4], const float v[3], float out[3]);
+
 #endif

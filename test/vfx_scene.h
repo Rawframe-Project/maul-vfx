@@ -67,6 +67,26 @@ static inline void BuildScene(mvfxContext* context)
     emitters[1].motion.drag = 1.5f;
     emitters[1].motion.dragScale = mvfxRangeSource(0.25f, 2.0f);
     emitters[2].motion.drag = 30.0f;
+    // Forces: an attractor in a sphere on the first, a vortex in a tube in
+    // the emitter's space on the third.
+    static const mvfxForce attract = {
+        .kind = mvfx_forceAttractor,
+        .point = {0, 2, 0},
+        .strength = 6.0f,
+        .softening = 0.5f,
+        .falloff = {
+            .kind = mvfx_falloffSphere, .center = {0, 2, 0}, .radius = 5.0f, .exponent = 1.5f}};
+    static const mvfxForce swirl = {
+        .kind = mvfx_forceVortex,
+        .space = mvfx_spaceLocal,
+        .vector = {0, 1, 0},
+        .strength = 4.0f,
+        .pull = 1.0f,
+        .falloff = {.kind = mvfx_falloffTube, .axis = {0, 1, 0}, .radius = 3.0f, .exponent = 1.0f}};
+    emitters[0].forces = &attract;
+    emitters[0].forceCount = 1;
+    emitters[2].forces = &swirl;
+    emitters[2].forceCount = 1;
     emitters[2].capacity = 7;
     emitters[2].rate = 0.7f;
     emitters[2].lifetime = mvfxRangeSource(5.0f, 9.0f);
@@ -218,6 +238,25 @@ static inline void BuildScene(mvfxContext* context)
     meshEmitters[0].ratePerDistance = 1.5f;
     meshEmitters[0].inheritVelocity = 0.25f;
     meshEmitters[1].space = mvfx_spaceLocal;
+    // A world wind on the local emitter, its strength from parameter 1,
+    // and a constant in a cone.
+    static const mvfxForce meshForces[2] = {
+        {.kind = mvfx_forceWind,
+         .vector = {2, 0, -1},
+         .strength = 0.5f,
+         .strengthFromParameter = true,
+         .parameter = 1},
+        {.kind = mvfx_forceConstant,
+         .vector = {0, 0, 1},
+         .strength = 2.0f,
+         .falloff = {.kind = mvfx_falloffCone,
+                     .axis = {0, 0, 1},
+                     .radius = 8.0f,
+                     .angle = 0.8f,
+                     .exponent = 2.0f}},
+    };
+    meshEmitters[1].forces = meshForces;
+    meshEmitters[1].forceCount = 2;
     mvfxEffectDef meshEffectDef = mvfxDefaultEffectDef();
     meshEffectDef.emitters = meshEmitters;
     meshEffectDef.emitterCount = 3;

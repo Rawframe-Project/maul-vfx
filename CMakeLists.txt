@@ -51,6 +51,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/effect.c
     src/effect_api.c
     src/elementary.c
+    src/force.c
     src/integrate.c
     src/emitter_step.c
     src/float_mode.c
@@ -83,6 +84,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(curve_integral WHITEBOX)
     maul_add_test(effect)
     maul_add_test(effect_plan WHITEBOX)
+    maul_add_test(force WHITEBOX)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)
     maul_add_test(elementary_sweep WHITEBOX MANUAL)
