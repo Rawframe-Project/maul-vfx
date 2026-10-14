@@ -29,7 +29,7 @@ The root of Maul VFX: a context holds the host's allocator and task hooks, and o
 ```c
 static inline mvfxContextDef mvfxDefaultContextDef(void);
 ```
-Returns the default context def: the C library's allocator, serial work, 256 effects, 1,024 instances and 64 meshes.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
+Returns the default context def: the C library's allocator, serial work, 256 effects, 1,024 instances, 64 meshes and 64 grids.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut);
@@ -74,6 +74,35 @@ Destroys an effect and returns its memory to the context's allocator.  @param co
 bool mvfxEffect_IsValid(const mvfxContext* context, mvfxEffectId effect);
 ```
 Returns whether an id names a live effect of the context. A stale id is not misuse.  @param context  The context. @param effect   Any id. @return Whether the effect is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+## `grid.h`
+
+Grids: values the host gives at the points of a regular 3D lattice, one to four components each, sampled trilinearly. A vector field force reads a grid of three components spanning a box; the host may give a grid new values between steps, as an animated field.
+
+```c
+mvfxGridDef mvfxDefaultGridDef(void);
+```
+Returns the default grid def: one point of one component, binary32, with no values yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGridId* gridOut);
+```
+Creates a grid: checks the def and copies its values.  @param context  The context that will own the grid. @param def      The def, from mvfxDefaultGridDef. @param gridOut  Receives the grid's id; the null id on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a size or count out of range or a value out of range, which counts as misuse when the context is given; `mvfx_errorLimit` when the context holds its limit of grids; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxDestroyGrid(mvfxContext* context, mvfxGridId grid);
+```
+Destroys a grid.  @param context  The context that owns the grid. @param grid     The grid. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live grid; `mvfx_errorBusy` while an effect reads it; `mvfx_errorInvalid` for a NULL context. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+bool mvfxGrid_IsValid(const mvfxContext* context, mvfxGridId grid);
+```
+Returns whether an id names a live grid of the context. A stale id is not misuse.  @param context  The context. @param grid     Any id. @return Whether the grid is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float* values, int64_t count);
+```
+Gives a grid new values for the same points, as an animated field; steps after read them.  @param context  The context that owns the grid. @param grid     The grid. @param values   The values, as in the grid def. @param count    How many: the grid's points times its components. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live grid; `mvfx_errorInvalid` for a NULL context or values, a count not the grid's or a value out of range, which counts as misuse when the context is given (the grid is then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ## `instance.h`
 
@@ -199,4 +228,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-34 functions across 8 headers.
+39 functions across 9 headers.

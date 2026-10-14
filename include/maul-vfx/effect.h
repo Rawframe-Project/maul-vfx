@@ -10,6 +10,7 @@
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/curve.h"
+#include "maul-vfx/grid.h"
 #include "maul-vfx/shape.h"
 #include "maul-vfx/value.h"
 
@@ -157,9 +158,25 @@ extern "C"
         // Turbulence: strength times the curl of a noise potential (noise),
         // a field without divergence, so particles swirl without bunching.
         mvfx_forceTurbulence = 4,
+        // A vector field: strength times a grid of three components spanning
+        // a box centered on point, sampled trilinearly.
+        mvfx_forceVectorField = 5,
     };
 
-    // How a field (turbulence) acts.
+    // Where a vector field reads past its box.
+    typedef uint8_t mvfxGridBorder;
+    enum
+    {
+        // Nothing: no force outside the box.
+        mvfx_borderNone = 0,
+        // The values at the box's faces.
+        mvfx_borderClamp = 1,
+        // The grid again, tiled: its last point joins its first, so a period
+        // is the box's size.
+        mvfx_borderRepeat = 2,
+    };
+
+    // How a field (turbulence, a vector field) acts.
     typedef uint8_t mvfxFieldMode;
     enum
     {
@@ -234,6 +251,16 @@ extern "C"
         float tightness;
         // The turbulence's noise.
         mvfxNoise noise;
+        // The vector field's grid, of three components (it may not be
+        // destroyed while the effect is alive), and its box: the size along
+        // each axis (above 0 and at most MVFX_MAX_EXTENT) and how it is
+        // turned (a unit quaternion, its length within 0.001 of 1), the grid's
+        // points spread over it from face to face (one point a cell more
+        // with the repeat border), and the vectors turning with it.
+        mvfxGridId grid;
+        float boxSize[3];
+        float boxRotation[4];
+        mvfxGridBorder border;
     } mvfxForce;
 
     // How an emitter's particles move: each step moves them exactly under

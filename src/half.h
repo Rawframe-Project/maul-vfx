@@ -59,4 +59,23 @@ static inline uint16_t mvfxHalfFromFloat(float value)
     return (uint16_t)(sign | kept);
 }
 
+// A half's value as a float, exactly: every half is a float.
+static inline float mvfxFloatFromHalf(uint16_t half)
+{
+    uint32_t sign = ((uint32_t)half & 0x8000u) << 16u;
+    uint32_t exponent = ((uint32_t)half >> 10u) & 0x1Fu;
+    uint32_t mantissa = (uint32_t)half & 0x3FFu;
+    if (exponent == 0)
+    {
+        // Zero or a subnormal: the mantissa times 2^-24, exactly.
+        float magnitude = (float)mantissa * 0x1p-24f;
+        return sign != 0 ? -magnitude : magnitude;
+    }
+    uint32_t bits = exponent == 31 ? sign | 0x7F800000u | (mantissa << 13u)
+                                   : sign | ((exponent + 112u) << 23u) | (mantissa << 13u);
+    float value = 0.0f;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
 #endif

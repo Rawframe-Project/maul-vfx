@@ -470,6 +470,118 @@ static void TestTurbulence(void)
     }
 }
 
+// A context with a 2x2x2 grid of three components whose values are each
+// point's coordinates, so the field at the box's own u is u; forces
+// whose kind is a vector field read it.
+static Scene NewFieldScene(mvfxForce* forces, int32_t count, mvfxSimulationSpace space,
+                           mvfxGridId* gridOut)
+{
+    static float values[24];
+    for (int32_t p = 0; p < 8; ++p)
+    {
+        values[3 * p] = (float)(p & 1);
+        values[3 * p + 1] = (float)((p >> 1) & 1);
+        values[3 * p + 2] = (float)((p >> 2) & 1);
+    }
+    Scene scene = {0};
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &scene.context) == mvfx_success, "context");
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 2;
+    gridDef.size[1] = 2;
+    gridDef.size[2] = 2;
+    gridDef.components = 3;
+    gridDef.values = values;
+    CHECK(mvfxCreateGrid(scene.context, &gridDef, gridOut) == mvfx_success, "grid");
+    for (int32_t f = 0; f < count; ++f)
+    {
+        forces[f].grid = *gridOut;
+    }
+    mvfxEmitterDef emitter = Held(forces, count);
+    emitter.space = space;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
+          "instance");
+    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
+    return scene;
+}
+
+static void TestVectorField(void)
+{
+    // A box at (5, 0, 0) of size (2, 4, 8), a quarter turn about Z, strength
+    // 2. At (6, 0.5, 2): (0.5, -1, 2) in the box, u = (0.75, 0.25, 0.75),
+    // the field u turned out with the box, (-0.25, 0.75, 0.75), times 2.
+    mvfxForce force = {.kind = mvfx_forceVectorField,
+                       .point = {5, 0, 0},
+                       .strength = 2.0f,
+                       .boxSize = {2, 4, 8},
+                       .boxRotation = {0, 0, 0.70710678f, 0.70710678f}};
+    mvfxGridId grid = {0};
+    Scene scene = NewFieldScene(&force, 1, mvfx_spaceWorld, &grid);
+    float a[3];
+    static const double inside[3] = {6.0, 0.5, 2.0};
+    AccelerationIn(&scene, inside, a);
+    CHECK(Is(a, -0.5f, 1.5f, 1.5f), "the grid in its turned box");
+    static const double outside[3] = {5.0, 0.0, 9.0};
+    AccelerationIn(&scene, outside, a);
+    CHECK(Is(a, 0, 0, 0), "nothing outside its box");
+
+    // New values: the next step reads them.
+    static const float doubled[24] = {0, 0, 0, 2, 0, 0, 0, 2, 0, 2, 2, 0,
+                                      0, 0, 2, 2, 0, 2, 0, 2, 2, 2, 2, 2};
+    CHECK(mvfxGrid_SetValues(scene.context, grid, doubled, 24) == mvfx_success, "new values");
+    AccelerationIn(&scene, inside, a);
+    CHECK(Is(a, -1.0f, 3.0f, 3.0f), "new values read");
+    mvfxDestroyContext(scene.context);
+
+    // Clamped: past the box's far Z face, the face's values.
+    force.border = mvfx_borderClamp;
+    scene = NewFieldScene(&force, 1, mvfx_spaceWorld, &grid);
+    AccelerationIn(&scene, outside, a);
+    CHECK(Is(a, -1.0f, 1.0f, 2.0f), "the face's values when clamped");
+    mvfxDestroyContext(scene.context);
+
+    // In the emitter's space under an instance at (100, 0, 0) turned a
+    // quarter and at scale 2, an unturned box at the origin of size 4: at
+    // the instance's (1, 0, 0), u = (0.75, 0.5, 0.5), the field turned out
+    // and doubled with the instance, times 2.
+    force = (mvfxForce){.kind = mvfx_forceVectorField,
+                        .space = mvfx_spaceLocal,
+                        .strength = 2.0f,
+                        .boxSize = {4, 4, 4},
+                        .boxRotation = {0, 0, 0, 1}};
+    scene = NewFieldScene(&force, 1, mvfx_spaceWorld, &grid);
+    static const double origin[3] = {100.0, 0.0, 0.0};
+    static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
+              mvfx_success,
+          "placed");
+    static const double near[3] = {100.0, 2.0, 0.0};
+    AccelerationIn(&scene, near, a);
+    CHECK(Is(a, -2.0f, 3.0f, 2.0f), "the emitter's box under a scaled instance");
+    mvfxDestroyContext(scene.context);
+
+    // As a velocity, tightness 4.
+    force = (mvfxForce){.kind = mvfx_forceVectorField,
+                        .strength = 1.0f,
+                        .boxSize = {2, 2, 2},
+                        .boxRotation = {0, 0, 0, 1},
+                        .fieldMode = mvfx_fieldVelocity,
+                        .tightness = 4.0f};
+    scene = NewFieldScene(&force, 1, mvfx_spaceWorld, &grid);
+    static const double home[3] = {0.0, 0.5, -0.5};
+    AccelerationIn(&scene, home, a);
+    float carry = (float)((1.0 - exp(-4.0 / 1024.0)) * 1024.0 / 4.0);
+    CHECK(Is(a, 2.0f * carry, 3.0f * carry, 1.0f * carry), "a velocity pulled toward");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestParameters(void)
 {
     // A constant's strength from parameter 0, then held; a wind's to 0 and
@@ -515,7 +627,7 @@ static void TestRefusals(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    for (int32_t field = 0; field < 28; ++field)
+    for (int32_t field = 0; field < 33; ++field)
     {
         mvfxForce force = {.kind = mvfx_forceAttractor, .softening = 1.0f};
         mvfxEmitterDef bad = Held(&force, 1);
@@ -581,7 +693,33 @@ static void TestRefusals(void)
             force.tightness = 2.0f * MVFX_MAX_DRAG;
             break;
         case 19:
-            force.kind = 5;
+            force.kind = 7;
+            break;
+        case 28:
+        case 29:
+        case 30:
+        case 31:
+            force = (mvfxForce){
+                .kind = mvfx_forceVectorField, .boxSize = {1, 1, 1}, .boxRotation = {0, 0, 0, 1}};
+            if (field == 28)
+            {
+                force.boxSize[1] = 0.0f;
+            }
+            else if (field == 29)
+            {
+                force.boxSize[2] = 2.0f * MVFX_MAX_EXTENT;
+            }
+            else if (field == 30)
+            {
+                force.boxRotation[3] = 0.5f;
+            }
+            else
+            {
+                force.border = 3;
+            }
+            break;
+        case 32:
+            force.kind = 6;
             break;
         default:
         {
@@ -641,6 +779,7 @@ int main(void)
     TestSpaces();
     TestScaledAndWindy();
     TestTurbulence();
+    TestVectorField();
     TestParameters();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;

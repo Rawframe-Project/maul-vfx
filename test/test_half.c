@@ -63,9 +63,27 @@ static void TestFloats(void)
     CHECK(s_checked > 0, "floats checked");
 }
 
+static void TestEveryHalfToFloat(void)
+{
+    // Every half reads as a float that converts back to it; a NaN stays a
+    // NaN, signs and zeros kept.
+    bool exact = true;
+    for (uint32_t h = 0; h < 65536u; ++h)
+    {
+        float value = mvfxFloatFromHalf((uint16_t)h);
+        bool nan = (h & 0x7C00u) == 0x7C00u && (h & 0x3FFu) != 0;
+        exact = exact && (nan ? isnan(value) : mvfxHalfFromFloat(value) == (uint16_t)h);
+    }
+    CHECK(exact, "every half read exactly");
+    CHECK(mvfxFloatFromHalf(0x3C00u) == 1.0f && mvfxFloatFromHalf(0x0001u) == 0x1p-24f &&
+              mvfxFloatFromHalf(0xFC00u) == -INFINITY && signbit(mvfxFloatFromHalf(0x8000u)),
+          "one, the least subnormal, infinity and minus zero");
+}
+
 int main(void)
 {
     TestEdgeCases();
     TestFloats();
+    TestEveryHalfToFloat();
     return s_failures == 0 ? 0 : 1;
 }

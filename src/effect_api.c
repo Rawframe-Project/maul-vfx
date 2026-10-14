@@ -8,8 +8,39 @@
 #include "context.h"
 #include "effect.h"
 #include "float_mode.h"
+#include "grid_api.h"
 #include "mesh_api.h"
 #include "slots.h"
+
+// Finds the grid of each vector field of a valid def: stale for an id
+// that names no live grid, invalid (misuse) for one not of three
+// components.
+static mvfxResult FindGrids(mvfxContext* context, const mvfxEffectDef* def,
+                            mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_FORCES])
+{
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
+        {
+            const mvfxForce* force = &def->emitters[i].forces[f];
+            if (force->kind != mvfx_forceVectorField)
+            {
+                continue;
+            }
+            grids[i][f] = mvfxContextGrid(context, force->grid);
+            if (grids[i][f] == nullptr)
+            {
+                return mvfx_errorStale;
+            }
+            if (grids[i][f]->components != 3)
+            {
+                mvfxCountMisuse(context);
+                return mvfx_errorInvalid;
+            }
+        }
+    }
+    return mvfx_success;
+}
 
 mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
 {
@@ -46,6 +77,12 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
             return mvfx_errorInvalid;
         }
     }
+    mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_FORCES] = {{0}};
+    mvfxResult found = FindGrids(context, def, grids);
+    if (found != mvfx_success)
+    {
+        return found;
+    }
     if (context->effects.firstFree == 0)
     {
         return mvfx_errorLimit;
@@ -60,6 +97,11 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         meshes[i] != nullptr ? (void)(meshes[i]->users += 1) : (void)0;
+        for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
+        {
+            effect->emitters[i].forceGrids[f] = grids[i][f];
+            grids[i][f] != nullptr ? (void)(grids[i][f]->users += 1) : (void)0;
+        }
     }
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->effects, effect, &generation);
@@ -88,6 +130,11 @@ mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)
         if (mesh != nullptr)
         {
             mesh->users -= 1;
+        }
+        for (int32_t f = 0; f < compiled->emitters[i].forceCount; ++f)
+        {
+            mvfxGrid* grid = compiled->emitters[i].forceGrids[f];
+            grid != nullptr ? (void)(grid->users -= 1) : (void)0;
         }
     }
     mvfxReleaseEffect(compiled, &context->allocator);

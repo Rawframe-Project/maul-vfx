@@ -27,6 +27,8 @@ typedef struct mvfxSpaceMap
     float sigma;
 } mvfxSpaceMap;
 
+struct mvfxGrid;
+
 // A force resolved for a step, in the particles' space, its strength
 // taken from its parameter and held.
 typedef struct mvfxResolvedForce
@@ -48,14 +50,19 @@ typedef struct mvfxResolvedForce
     mvfxFieldMode fieldMode;
     float tightness;
     mvfxSpaceMap map;
-    const mvfxNoise* noise;
+    // The compiled force it was resolved from (its noise, its box) and a
+    // vector field's grid.
+    const mvfxForce* source;
+    const struct mvfxGrid* grid;
     uint32_t seed;
 } mvfxResolvedForce;
 
 // Resolves a compiled force with the map, the instance's parameters and
-// its seed; the force must outlive the resolved one.
+// its seed, and a vector field's grid; the force and the grid must outlive
+// the resolved one.
 mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
-                                   const float (*parameters)[4], uint32_t instanceSeed);
+                                   const float (*parameters)[4], uint32_t instanceSeed,
+                                   const struct mvfxGrid* grid);
 
 // The drag a resolved force adds at full weight: a wind's strength, a
 // velocity field's tightness, else 0.

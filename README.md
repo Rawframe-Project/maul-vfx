@@ -37,8 +37,9 @@ math and random numbers, curves, effects, instances, the step, emitter
 lives, spawning (shapes, meshes, value sources, initial values, moving
 instances, host spawns and prewarm), the integrator (exact under
 gravity and drag) and forces (constant, wind, attractors, vortices,
-turbulence, with falloffs) are in place, and vector fields come next.
-It has 34 public functions.
+turbulence, vector fields from grids, with falloffs) are in place, and
+velocity, over-life and kill modules come next.
+It has 39 public functions.
 
 ## Building
 

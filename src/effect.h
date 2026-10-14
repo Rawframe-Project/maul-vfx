@@ -154,6 +154,8 @@ typedef struct mvfxCompiledEmitter
     // Its forces, compiled.
     mvfxForce forces[MVFX_MAX_FORCES];
     int32_t forceCount;
+    // The grid each vector field reads, which the effect counts a user of.
+    struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

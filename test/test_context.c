@@ -15,12 +15,16 @@ typedef struct CountingAllocator
     int64_t blocks;
     int64_t bytes;
     bool fail;
+    // When above 0, the allocation of that number (from 1) fails.
+    int64_t failAt;
+    int64_t calls;
 } CountingAllocator;
 
 static void* CountingAlloc(size_t size, size_t alignment, void* context)
 {
     CountingAllocator* counter = context;
-    if (counter->fail)
+    counter->calls += 1;
+    if (counter->fail || counter->calls == counter->failAt)
     {
         return NULL;
     }
@@ -84,9 +88,25 @@ static void TestHostAllocatorHoldsEverything(void)
     def.allocator = CountingAllocatorFor(&counter);
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "creates on the host allocator");
-    CHECK(counter.blocks == 4, "the context and its three tables while alive");
+    CHECK(counter.blocks == 5, "the context and its four tables while alive");
     mvfxDestroyContext(context);
     CHECK(counter.blocks == 0 && counter.bytes == 0, "everything returned");
+}
+
+static void TestEachAllocationFailing(void)
+{
+    // The context and each of its tables failing in turn: capacity, and
+    // what was taken returned.
+    for (int64_t n = 1; n <= 5; ++n)
+    {
+        CountingAllocator counter = {.failAt = n};
+        mvfxContextDef def = mvfxDefaultContextDef();
+        def.allocator = CountingAllocatorFor(&counter);
+        mvfxContext* context = NULL;
+        CHECK(mvfxCreateContext(&def, &context) == mvfx_errorCapacity && context == NULL,
+              "capacity when one allocation fails");
+        CHECK(counter.blocks == 0 && counter.bytes == 0, "everything taken returned");
+    }
 }
 
 static void TestAllocatorFailureIsCapacity(void)
@@ -152,6 +172,7 @@ int main(void)
     TestDestroyNullDoesNothing();
     TestHostAllocatorHoldsEverything();
     TestAllocatorFailureIsCapacity();
+    TestEachAllocationFailing();
     TestOtherVersionIsRefusedFirst();
     TestInvalidDefsAreRefused();
     TestTaskHooksAreAccepted();

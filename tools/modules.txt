@@ -21,13 +21,15 @@ death_heap:
 spawn: instance random
 birth: direction elementary instance integrate random shape value velocity
 emitter_step: birth death_heap instance integrate spawn
-context: allocator effect instance mesh slots tasks
-effect_api: context effect float_mode mesh mesh_api slots
+context: allocator effect grid instance mesh slots tasks
+effect_api: context effect float_mode grid grid_api mesh mesh_api slots
 mesh_api: context mesh slots
+grid_api: context grid slots
 instance_api: context effect_api instance mesh mesh_api slots spawn
 step: context effect emitter_step float_mode instance instance_api tasks
 curve:
 curve_integral: curve
-force: direction elementary noise
+grid: allocator half
+force: direction elementary grid noise
 gradient:
 elementary:

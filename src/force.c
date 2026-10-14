@@ -5,6 +5,7 @@
 
 #include "direction.h"
 #include "elementary.h"
+#include "grid.h"
 #include "noise.h"
 
 #include <math.h>
@@ -47,9 +48,36 @@ static bool IsNoiseValid(const mvfxNoise* noise)
            IsVectorWithin(noise->scroll, MVFX_MAX_EXTENT);
 }
 
+// Whether a unit quaternion within 0.001, finite.
+static bool IsRotation(const float q[4])
+{
+    double square = 0.0;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        if (!(fabsf(q[k]) <= 1.001f))
+        {
+            return false;
+        }
+        square += (double)q[k] * (double)q[k];
+    }
+    return fabs(sqrt(square) - 1.0) <= 0.001;
+}
+
+static bool IsBoxValid(const mvfxForce* force)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        if (!(force->boxSize[k] > 0.0f && force->boxSize[k] <= MVFX_MAX_EXTENT))
+        {
+            return false;
+        }
+    }
+    return IsRotation(force->boxRotation) && force->border <= mvfx_borderRepeat;
+}
+
 bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
 {
-    if (force->kind > mvfx_forceTurbulence || force->space > mvfx_spaceLocal ||
+    if (force->kind > mvfx_forceVectorField || force->space > mvfx_spaceLocal ||
         force->fieldMode > mvfx_fieldVelocity || !IsWithin(force->tightness, 0.0f, MVFX_MAX_DRAG) ||
         !IsVectorWithin(force->vector, MVFX_MAX_EXTENT) ||
         !IsVectorWithin(force->point, MVFX_MAX_EXTENT) ||
@@ -70,6 +98,8 @@ bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
         return IsAxis(force->vector) && IsWithin(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
     case mvfx_forceTurbulence:
         return IsNoiseValid(&force->noise);
+    case mvfx_forceVectorField:
+        return IsBoxValid(force);
     default:
         return true;
     }
@@ -85,6 +115,19 @@ mvfxForce mvfxCompileForce(const mvfxForce* force)
     if (out.falloff.kind == mvfx_falloffTube || out.falloff.kind == mvfx_falloffCone)
     {
         (void)mvfxNormalize(out.falloff.axis);
+    }
+    if (out.kind == mvfx_forceVectorField)
+    {
+        double square = 0.0;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            square += (double)out.boxRotation[k] * (double)out.boxRotation[k];
+        }
+        double inverse = 1.0 / sqrt(square);
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            out.boxRotation[k] = (float)((double)out.boxRotation[k] * inverse);
+        }
     }
     return out;
 }
@@ -117,7 +160,8 @@ static float Hold(float x, float low, float bound)
 }
 
 mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
-                                   const float (*parameters)[4], uint32_t instanceSeed)
+                                   const float (*parameters)[4], uint32_t instanceSeed,
+                                   const struct mvfxGrid* grid)
 {
     float strength = force->strength;
     if (force->strengthFromParameter)
@@ -138,7 +182,8 @@ mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* m
         .fieldMode = force->fieldMode,
         .tightness = force->tightness,
         .map = *map,
-        .noise = &force->noise,
+        .source = force,
+        .grid = grid,
         .seed = force->noise.seedPerInstance ? force->noise.seed + instanceSeed * 0x85EBCA6Bu
                                              : force->noise.seed,
     };
@@ -254,7 +299,7 @@ float mvfxForceDrag(const mvfxResolvedForce* force)
     {
         return force->strength;
     }
-    bool field = force->kind == mvfx_forceTurbulence;
+    bool field = force->kind == mvfx_forceTurbulence || force->kind == mvfx_forceVectorField;
     return field && force->fieldMode == mvfx_fieldVelocity ? force->tightness : 0.0f;
 }
 
@@ -292,6 +337,35 @@ static void UnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3])
     }
 }
 
+// A vector field's vector at a place in its force's space: the grid
+// sampled in the box's own space, turned out with the box; false outside
+// it under the none border.
+static bool SampleBox(const mvfxResolvedForce* force, const double place[3], float out[3])
+{
+    const mvfxForce* source = force->source;
+    const float* q = source->boxRotation;
+    float d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = (float)(place[k] - (double)source->point[k]);
+    }
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    float local[3];
+    mvfxRotate(inverse, d, local);
+    float u[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        u[k] = local[k] / source->boxSize[k] + 0.5f;
+    }
+    float sample[4];
+    if (!mvfxSampleGrid(force->grid, u, source->border, sample))
+    {
+        return false;
+    }
+    mvfxRotate(q, sample, out);
+    return true;
+}
+
 // A field's vector at x: its acceleration added to a, or, as a velocity,
 // its pull and its drag.
 static void Field(const mvfxResolvedForce* force, const float x[3], double time, float weight,
@@ -299,10 +373,17 @@ static void Field(const mvfxResolvedForce* force, const float x[3], double time,
 {
     double place[3];
     UnmapPoint(&force->map, x, place);
-    float curl[3];
-    mvfxCurlNoise(force->noise, force->seed, place, time, curl);
+    float value[3];
+    if (force->kind == mvfx_forceTurbulence)
+    {
+        mvfxCurlNoise(&force->source->noise, force->seed, place, time, value);
+    }
+    else if (!SampleBox(force, place, value))
+    {
+        return;
+    }
     float field[3];
-    MapVector(&force->map, curl, force->map.sigma * force->strength, field);
+    MapVector(&force->map, value, force->map.sigma * force->strength, field);
     float scale = weight;
     if (force->fieldMode == mvfx_fieldVelocity)
     {
@@ -345,6 +426,7 @@ void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[
             Attract(force, x, weight, a);
             break;
         case mvfx_forceTurbulence:
+        case mvfx_forceVectorField:
             Field(force, x, time, weight, a, drag);
             break;
         default:

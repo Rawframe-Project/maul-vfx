@@ -87,3 +87,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   analytic gradients, octaves, a scroll over time, a seed that may be
   mixed per instance), acting as an acceleration or, like wind, as a
   velocity particles are pulled toward.
+- Grids: `mvfxCreateGrid`, `mvfxDestroyGrid`, `mvfxGrid_IsValid`,
+  `mvfxGrid_SetValues` and `mvfxDefaultGridDef` keep host values at a
+  lattice's points (binary32 or binary16), and a context gains a grid
+  limit. A vector field force samples a grid of three components in a
+  turned box, trilinearly, with a none, clamp or repeat border, as an
+  acceleration or a velocity pulled toward.

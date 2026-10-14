@@ -292,7 +292,8 @@ void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
         const mvfxForce* force = &compiled->forces[f];
         mvfxSpaceMap map = SpaceMapOf(instance, emitter, force->space);
         instance->emitters[emitter].forces[f] =
-            mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters, instance->seed);
+            mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters, instance->seed,
+                             compiled->forceGrids[f]);
     }
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;

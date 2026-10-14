@@ -27,6 +27,23 @@ static const int64_t s_sceneSteps[] = {17476, 17477, 16000, 1,     40000, 17476,
 // Creates the scene's effects and instances on a context.
 static inline void BuildScene(mvfxContext* context)
 {
+    // A 3x2x2 field of binary16 vectors, made of exact small values.
+    static float fieldValues[36];
+    for (int32_t i = 0; i < 12; ++i)
+    {
+        fieldValues[3 * i] = (float)(i % 3) - 1.0f;
+        fieldValues[3 * i + 1] = 0.5f * (float)((i / 3) % 2);
+        fieldValues[3 * i + 2] = 0.25f * (float)(i / 6) - 0.125f;
+    }
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 3;
+    gridDef.size[1] = 2;
+    gridDef.size[2] = 2;
+    gridDef.components = 3;
+    gridDef.format = mvfx_gridFloat16;
+    gridDef.values = fieldValues;
+    mvfxGridId fieldGrid = {0};
+    CHECK(mvfxCreateGrid(context, &gridDef, &fieldGrid) == mvfx_success, "scene grid");
     mvfxEmitterDef emitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef()};
     emitters[0].capacity = 100;
@@ -67,8 +84,9 @@ static inline void BuildScene(mvfxContext* context)
     emitters[1].motion.drag = 1.5f;
     emitters[1].motion.dragScale = mvfxRangeSource(0.25f, 2.0f);
     emitters[2].motion.drag = 30.0f;
-    // Forces: an attractor in a sphere on the first, a vortex in a tube in
-    // the emitter's space on the third.
+    // Forces: an attractor in a sphere on the first; a vortex in a tube
+    // and a vector field in a turned, tiled box, in the emitter's space, on
+    // the third.
     static const mvfxForce attract = {
         .kind = mvfx_forceAttractor,
         .point = {0, 2, 0},
@@ -76,17 +94,27 @@ static inline void BuildScene(mvfxContext* context)
         .softening = 0.5f,
         .falloff = {
             .kind = mvfx_falloffSphere, .center = {0, 2, 0}, .radius = 5.0f, .exponent = 1.5f}};
-    static const mvfxForce swirl = {
-        .kind = mvfx_forceVortex,
-        .space = mvfx_spaceLocal,
-        .vector = {0, 1, 0},
-        .strength = 4.0f,
-        .pull = 1.0f,
-        .falloff = {.kind = mvfx_falloffTube, .axis = {0, 1, 0}, .radius = 3.0f, .exponent = 1.0f}};
+    const mvfxForce swirlAndField[2] = {
+        {.kind = mvfx_forceVortex,
+         .space = mvfx_spaceLocal,
+         .vector = {0, 1, 0},
+         .strength = 4.0f,
+         .pull = 1.0f,
+         .falloff =
+             {.kind = mvfx_falloffTube, .axis = {0, 1, 0}, .radius = 3.0f, .exponent = 1.0f}},
+        {.kind = mvfx_forceVectorField,
+         .space = mvfx_spaceLocal,
+         .point = {0, 3, 0},
+         .strength = 3.0f,
+         .grid = fieldGrid,
+         .boxSize = {4, 2, 6},
+         .boxRotation = {0.6f, 0, 0, 0.8f},
+         .border = mvfx_borderRepeat},
+    };
     emitters[0].forces = &attract;
     emitters[0].forceCount = 1;
-    emitters[2].forces = &swirl;
-    emitters[2].forceCount = 1;
+    emitters[2].forces = swirlAndField;
+    emitters[2].forceCount = 2;
     static const mvfxForce turbulence = {.kind = mvfx_forceTurbulence,
                                          .strength = 2.5f,
                                          .noise = {.frequency = 0.4f,
