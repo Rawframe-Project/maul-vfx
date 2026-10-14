@@ -180,6 +180,50 @@ static void TestBudget(void)
     mvfxDestroyContext(context);
 }
 
+static void TestEdges(void)
+{
+    // A budget the second fits exactly at level 1 (165 + 85 = 250).
+    mvfxContext* context = NewContext(250);
+    mvfxEffectId effect = NewEffect(context);
+    mvfxInstanceId a = {0};
+    mvfxInstanceId b = {0};
+    int32_t level = -1;
+    CHECK(NewInstance(context, effect, 0, &a) == mvfx_success &&
+              NewInstance(context, effect, 0, &b) == mvfx_success &&
+              mvfxInstance_GetQuality(context, b, &level) == mvfx_success && level == 1,
+          "a budget met exactly");
+    mvfxDestroyContext(context);
+    // One looping emitter of 10 a second: finished at a level without its
+    // rate or without it, not at the full one; a tiny scale keeps one.
+    context = NewContext(0);
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = 40;
+    emitter.rate = 10.0f;
+    emitter.duration = 1.0f;
+    static const mvfxQualityLevel levels[3] = {
+        {.capacityScale = 1.0f, .rateScale = 0.0f},
+        {.capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 1u},
+        {.capacityScale = 0.001f, .rateScale = 1.0f},
+    };
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    def.qualityLevels = levels;
+    def.qualityLevelCount = 3;
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "looping effect");
+    mvfxInstanceId at[4] = {{0}};
+    for (int32_t q = 0; q < 4; ++q)
+    {
+        CHECK(NewInstance(context, effect, q, &at[q]) == mvfx_success, "an instance a level");
+    }
+    CHECK(mvfxContext_GetParticles(context) == 40 + 40 + 0 + 1, "a tiny scale keeps one");
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 10) == mvfx_success, "step");
+    CHECK(!mvfxInstance_IsFinished(context, at[0]) && mvfxInstance_IsFinished(context, at[1]) &&
+              mvfxInstance_IsFinished(context, at[2]) && !mvfxInstance_IsFinished(context, at[3]),
+          "finished without a rate or without the emitter");
+    mvfxDestroyContext(context);
+}
+
 static void TestChecks(void)
 {
     mvfxContext* context = NewContext(0);
@@ -264,6 +308,7 @@ int main(void)
     TestLevels();
     TestLeftOut();
     TestBudget();
+    TestEdges();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }
