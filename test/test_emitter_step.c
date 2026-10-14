@@ -53,8 +53,26 @@ static uint64_t OwedOracle(float rate, int64_t clock)
     return low;
 }
 
+// Rates and clocks where the rounded estimate counts one birth short: the
+// birth's quotient rounds to exactly the clock, found by a search.
+static const struct
+{
+    float rate;
+    int64_t clock;
+} s_shortEstimates[] = {
+    {0x1.9b7f58p-7f, 687740290641209},  {0x1.639a9cp-7f, 1564666968285868},
+    {0x1.49fe3p-6f, 674597030182492},   {0x1.68b06ep-7f, 1202595487219710},
+    {0x1.9c51d2p-7f, 1160156928346110},
+};
+
 static void TestOwedAgainstBisection(void)
 {
+    for (int32_t i = 0; i < (int32_t)(sizeof s_shortEstimates / sizeof s_shortEstimates[0]); ++i)
+    {
+        float rate = s_shortEstimates[i].rate;
+        int64_t clock = s_shortEstimates[i].clock;
+        CHECK(mvfxOwedBy(rate, clock) == OwedOracle(rate, clock), "a short estimate corrected");
+    }
     static const float rates[] = {1.0f, 3.0f, 7.0f, 60.0f, 64.0f, 100.0f, 0.3f, 1e7f};
     for (int32_t i = 0; i < 4000; ++i)
     {
