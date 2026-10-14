@@ -179,6 +179,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
 
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
 {
+    mvfxRefuseDistanceExcess(instance, emitter);
     if (BirthsFit(instance, emitter))
     {
         RemoveEnded(instance, emitter);

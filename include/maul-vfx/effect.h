@@ -75,6 +75,19 @@ extern "C"
         float probability;
     } mvfxBurst;
 
+    // Where an emitter's particles live.
+    typedef uint8_t mvfxSimulationSpace;
+    enum
+    {
+        // In the world: they stay where they were born as the instance moves.
+        mvfx_spaceWorld = 0,
+        // In the instance's space: they move, turn and scale with it.
+        mvfx_spaceLocal = 1,
+    };
+
+// The most particles an emitter may spawn a unit of distance.
+#define MVFX_MAX_DISTANCE_RATE 1e4f
+
     // How an emitter is made. Build it with mvfxDefaultEmitterDef.
     //
     // Times are rounded once to ticks of 2^-20 seconds when the effect is
@@ -109,6 +122,16 @@ extern "C"
         // With a duration, how many loops it spawns before it stops, 0 for
         // forever; at least 0.
         int32_t loops;
+        // Where its particles live.
+        mvfxSimulationSpace space;
+        // The particles it spawns a unit of distance the instance travels,
+        // from 0 to MVFX_MAX_DISTANCE_RATE, along the way while it spawns at
+        // all; a step owing more than its capacity (a long jump) refuses the
+        // rest.
+        float ratePerDistance;
+        // The share of the instance's velocity its particles set off with,
+        // from -10 to 10; only in world space.
+        float inheritVelocity;
         // Each particle's life in seconds, required: a range above 0 and at
         // most MVFX_MAX_LIFETIME; a curve's or a parameter's lives are held
         // to one tick at least and MVFX_MAX_LIFETIME at most.
@@ -143,10 +166,10 @@ extern "C"
 // creation checks.
 #define MVFX_EMITTER_DEF_COOKIE 0x6D766565u
 
-    /// Returns the default emitter def: 1,024 particles, 64 a second without
-    /// end from the instance's start, no bursts, each living one second,
-    /// born at the emitter's origin at rest (a point shape, unturned, whole
-    /// arcs, along the shape's normal at a speed of 0).
+    /// Returns the default emitter def: 1,024 particles in world space, 64 a
+    /// second without end from the instance's start, none by distance, no
+    /// bursts, each living one second, born at the emitter's origin at rest (a point shape,
+    /// unturned, whole arcs, along the shape's normal at a speed of 0).
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

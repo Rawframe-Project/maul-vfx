@@ -204,6 +204,9 @@ static inline void BuildScene(mvfxContext* context)
     meshEmitters[2].customCount = 2;
     meshEmitters[2].lifetime =
         (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {0.5f, 1.0f}, .parameter = 0};
+    meshEmitters[0].ratePerDistance = 1.5f;
+    meshEmitters[0].inheritVelocity = 0.25f;
+    meshEmitters[1].space = mvfx_spaceLocal;
     mvfxEffectDef meshEffectDef = mvfxDefaultEffectDef();
     meshEffectDef.emitters = meshEmitters;
     meshEffectDef.emitterCount = 3;
@@ -226,6 +229,27 @@ static inline void BuildScene(mvfxContext* context)
         mvfxInstanceId instance = {0};
         CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
               "scene instance");
+    }
+}
+
+// Moves every instance of the context before a step: along a fixed path
+// of exact values (quaternions of exact floats, scales of 1 and 1.5), with
+// a teleport far enough at step 10 for world-space anchors to rebase.
+static inline void MoveScene(mvfxContext* context, int32_t step)
+{
+    static const float turns[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.6f, 0.8f}};
+    for (uint32_t i = 0; i < context->instances.capacity; ++i)
+    {
+        if (context->instances.slots[i].object == NULL)
+        {
+            continue;
+        }
+        mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
+        double far = step >= 10 ? 3000.0 : 0.0;
+        const double origin[3] = {far + 2.5 * step + (double)i, 0.125 * step * step, -1.0 * step};
+        CHECK(mvfxInstance_SetTransform(context, id, origin, turns[step % 2],
+                                        step % 3 == 0 ? 1.5f : 1.0f, step == 10) == mvfx_success,
+              "scene moved");
     }
 }
 

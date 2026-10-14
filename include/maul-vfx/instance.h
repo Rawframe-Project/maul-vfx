@@ -39,18 +39,32 @@ extern "C"
         // precision does not depend on the distance from the world's origin;
         // each value finite and at most 2^52 in size.
         double origin[3];
+        // How it is turned: a unit quaternion (x, y, z, w), its length within
+        // 0.001 of 1.
+        float rotation[4];
+        // How large it plays, from MVFX_MIN_SCALE to MVFX_MAX_SCALE: shapes,
+        // their offsets and initial velocities scale by it.
+        float scale;
         // The seed of its random numbers; 0 takes one from the order in which
         // the context created its instances, so the same calls give the same
         // particles.
         uint32_t seed;
     } mvfxInstanceDef;
 
+// The least and greatest scale of an instance.
+#define MVFX_MIN_SCALE 1e-6f
+#define MVFX_MAX_SCALE 1e6f
+
+// How far an instance may move from a world-space emitter's anchor
+// before the anchor moves to it, in world units.
+#define MVFX_REBASE_DISTANCE 1024.0
+
 // The cookie of an instance def, which its default sets and
 // mvfxCreateInstance checks.
 #define MVFX_INSTANCE_DEF_COOKIE 0x6D766969u
 
     /// Returns the default instance def: no effect yet, at the world's origin,
-    /// seeded by its order of creation.
+    /// unturned and at scale 1, seeded by its order of creation.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -66,7 +80,8 @@ extern "C"
     /// @param def          The def, from mvfxDefaultInstanceDef.
     /// @param instanceOut  Receives the instance's id; the null id on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
-    ///         without its cookie or an origin out of range, which counts as
+    ///         without its cookie, or an origin, rotation or scale out of
+    ///         range, which counts as
     ///         misuse when the context is given; `mvfx_errorStale` for an
     ///         effect id that names no live effect; `mvfx_errorLimit` when the
     ///         context holds its limit of instances; `mvfx_errorCapacity` when
@@ -98,6 +113,34 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxInstance_IsValid(const mvfxContext* context, mvfxInstanceId instance);
+
+    /// Sets where an instance is at the end of the next step. Over that step
+    /// it moves in a line from where it was (the rotation by normalized
+    /// interpolation, the scale linearly), and births within it take its
+    /// place at their ticks; its travel feeds spawning by distance and its
+    /// velocity what emitters inherit. A teleport moves it at once instead,
+    /// with no travel and no velocity. How births along the way fall
+    /// depends on how often the host moves it, which is the host's to keep
+    /// the same.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param origin    Its place in the world, each value finite and at most
+    ///                  2^52 in size.
+    /// @param rotation  A unit quaternion (x, y, z, w), within 0.001 of unit
+    ///                  length.
+    /// @param scale     From MVFX_MIN_SCALE to MVFX_MAX_SCALE.
+    /// @param teleport  Whether it jumps there.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument or a value out
+    ///         of range, which counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetTransform(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 const double origin[3],
+                                                                 const float rotation[4],
+                                                                 float scale, bool teleport);
 
     /// Makes an emitter of an instance spawn from another mesh, as each
     /// character's skinned mesh feeds its own instance. The mesh may not be

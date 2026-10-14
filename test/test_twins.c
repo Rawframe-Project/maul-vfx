@@ -130,6 +130,8 @@ static void TestTwinsAgree(void)
     }
     for (int32_t step = 0; step < SCENE_STEP_COUNT; ++step)
     {
+        MoveScene(serial, step);
+        MoveScene(parallel, step);
         CHECK(mvfxContext_StepTicks(serial, s_sceneSteps[step]) == mvfx_success, "serial step");
         CHECK(mvfxContext_StepTicks(parallel, s_sceneSteps[step]) == mvfx_success, "parallel step");
         CHECK(HashScene(serial) == HashScene(parallel), "the twins hold the same state");

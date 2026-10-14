@@ -11,6 +11,8 @@
 #include "instance_api.h"
 #include "tasks.h"
 
+#include <math.h>
+
 // Instance slots one task range takes at least.
 #define STEP_MIN_RANGE 4
 
@@ -20,6 +22,72 @@ typedef struct StepWork
     mvfxSlots* instances;
     int64_t ticks;
 } StepWork;
+
+// Moves a world-space emitter's anchor to the instance when the instance
+// has gone MVFX_REBASE_DISTANCE from it, shifting its particles' offsets
+// by the difference once.
+static void Rebase(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    const double* origin = instance->to.origin;
+    double square = 0.0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double d = origin[k] - state->anchor[k];
+        square += d * d;
+    }
+    if (!(square > MVFX_REBASE_DISTANCE * MVFX_REBASE_DISTANCE))
+    {
+        return;
+    }
+    static const mvfxAttribute axes[3] = {mvfx_attributePositionX, mvfx_attributePositionY,
+                                          mvfx_attributePositionZ};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float shift = (float)(state->anchor[k] - origin[k]);
+        float* positions = mvfxAttributeArray(instance, emitter, axes[k]);
+        for (int32_t i = 0; i < state->count; ++i)
+        {
+            positions[i] += shift;
+        }
+        state->anchor[k] = origin[k];
+    }
+}
+
+// Begins an instance's step of ticks: its travel and velocity along the
+// line from where it was to where it will be.
+static void BeginStep(mvfxInstance* instance, int64_t ticks)
+{
+    instance->stepStart = instance->clock;
+    instance->clock += ticks;
+    double square = 0.0;
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = instance->to.origin[k] - instance->from.origin[k];
+        square += d[k] * d[k];
+    }
+    instance->travelledTo = instance->travelledFrom + sqrt(square);
+    double seconds = (double)ticks / (double)MVFX_TICKS_PER_SECOND;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        instance->velocity[k] = seconds > 0.0 ? (float)(d[k] / seconds) : 0.0f;
+    }
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        if (instance->effect->emitters[e].space == mvfx_spaceWorld)
+        {
+            Rebase(instance, e);
+        }
+    }
+}
+
+// Ends the step: the instance is where it was to be.
+static void EndStep(mvfxInstance* instance)
+{
+    instance->from = instance->to;
+    instance->travelledFrom = instance->travelledTo;
+}
 
 static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
 {
@@ -35,15 +103,15 @@ static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
         // is is known at the step's start, before births up to the new
         // clock are owed.
         bool finished = mvfxIsInstanceFinished(instance);
-        instance->clock += work->ticks;
-        if (finished)
+        BeginStep(instance, work->ticks);
+        if (!finished)
         {
-            continue;
+            for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+            {
+                mvfxStepEmitter(instance, e);
+            }
         }
-        for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
-        {
-            mvfxStepEmitter(instance, e);
-        }
+        EndStep(instance);
     }
 }
 

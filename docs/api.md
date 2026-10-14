@@ -53,7 +53,7 @@ Effects: what an effect's emitters spawn and how their particles live, stated on
 ```c
 mvfxEmitterDef mvfxDefaultEmitterDef(void);
 ```
-Returns the default emitter def: 1,024 particles, 64 a second without end from the instance's start, no bursts, each living one second, born at the emitter's origin at rest (a point shape, unturned, whole arcs, along the shape's normal at a speed of 0).  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default emitter def: 1,024 particles in world space, 64 a second without end from the instance's start, none by distance, no bursts, each living one second, born at the emitter's origin at rest (a point shape, unturned, whole arcs, along the shape's normal at a speed of 0).  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ```c
 mvfxEffectDef mvfxDefaultEffectDef(void);
@@ -82,12 +82,12 @@ Instances: one playing of an effect, at a place, with a seed. A context's step a
 ```c
 mvfxInstanceDef mvfxDefaultInstanceDef(void);
 ```
-Returns the default instance def: no effect yet, at the world's origin, seeded by its order of creation.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default instance def: no effect yet, at the world's origin, unturned and at scale 1, seeded by its order of creation.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def, mvfxInstanceId* instanceOut);
 ```
-Creates an instance of an effect, allocating every particle it can hold in one block from the context's allocator. Its clock starts at 0 and its emitters start spawning with the next step.  @param context      The context that owns the effect and will own the instance. @param def          The def, from mvfxDefaultInstanceDef. @param instanceOut  Receives the instance's id; the null id on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie or an origin out of range, which counts as misuse when the context is given; `mvfx_errorStale` for an effect id that names no live effect; `mvfx_errorLimit` when the context holds its limit of instances; `mvfx_errorCapacity` when the allocator fails or the block's size does not fit. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Creates an instance of an effect, allocating every particle it can hold in one block from the context's allocator. Its clock starts at 0 and its emitters start spawning with the next step.  @param context      The context that owns the effect and will own the instance. @param def          The def, from mvfxDefaultInstanceDef. @param instanceOut  Receives the instance's id; the null id on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, or an origin, rotation or scale out of range, which counts as misuse when the context is given; `mvfx_errorStale` for an effect id that names no live effect; `mvfx_errorLimit` when the context holds its limit of instances; `mvfx_errorCapacity` when the allocator fails or the block's size does not fit. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxDestroyInstance(mvfxContext* context, mvfxInstanceId instance);
@@ -98,6 +98,11 @@ Destroys an instance and its particles.  @param context   The context that owns 
 bool mvfxInstance_IsValid(const mvfxContext* context, mvfxInstanceId instance);
 ```
 Returns whether an id names a live instance of the context. A stale id is not misuse.  @param context   The context. @param instance  Any id. @return Whether the instance is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instance, const double origin[3], const float rotation[4], float scale, bool teleport);
+```
+Sets where an instance is at the end of the next step. Over that step it moves in a line from where it was (the rotation by normalized interpolation, the scale linearly), and births within it take its place at their ticks; its travel feeds spawning by distance and its velocity what emitters inherit. A teleport moves it at once instead, with no travel and no velocity. How births along the way fall depends on how often the host moves it, which is the host's to keep the same.  @param context   The context that owns the instance. @param instance  The instance. @param origin    Its place in the world, each value finite and at most 2^52 in size. @param rotation  A unit quaternion (x, y, z, w), within 0.001 of unit length. @param scale     From MVFX_MIN_SCALE to MVFX_MAX_SCALE. @param teleport  Whether it jumps there. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or a value out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxMeshId mesh);
@@ -184,4 +189,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-31 functions across 8 headers.
+32 functions across 8 headers.

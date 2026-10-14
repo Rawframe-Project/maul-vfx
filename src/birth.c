@@ -192,6 +192,33 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
     }
 }
 
+// A world-space birth: its place in the instance's space turned, scaled
+// and moved by the instance's transform at its tick, then made an offset
+// from the emitter's anchor in binary64; its velocity turned and scaled,
+// plus the share of the instance's velocity it inherits.
+static void PlaceInWorld(const mvfxInstance* instance, int32_t emitter, int64_t tick,
+                         float position[3], float velocity[3])
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxTransform transform;
+    mvfxTransformAt(instance, tick, &transform);
+    float scaled[3] = {position[0] * transform.scale, position[1] * transform.scale,
+                       position[2] * transform.scale};
+    float turned[3];
+    mvfxRotate(transform.rotation, scaled, turned);
+    const double* anchor = instance->emitters[emitter].anchor;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        position[k] = (float)((transform.origin[k] - anchor[k]) + (double)turned[k]);
+        scaled[k] = velocity[k] * transform.scale;
+    }
+    mvfxRotate(transform.rotation, scaled, velocity);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        velocity[k] += compiled->inheritVelocity * instance->velocity[k];
+    }
+}
+
 void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
                      float inverseLife)
 {
@@ -206,9 +233,14 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
     float velocity[3];
     mvfxDrawVelocity(&compiled->velocity, &sample,
                      Draw(instance, emitter, VELOCITY_SALT, birth->serial), velocity);
-    Store(instance, emitter, mvfx_attributePositionX, at, sample.position[0]);
-    Store(instance, emitter, mvfx_attributePositionY, at, sample.position[1]);
-    Store(instance, emitter, mvfx_attributePositionZ, at, sample.position[2]);
+    float position[3] = {sample.position[0], sample.position[1], sample.position[2]};
+    if (compiled->space == mvfx_spaceWorld)
+    {
+        PlaceInWorld(instance, emitter, birth->tick, position, velocity);
+    }
+    Store(instance, emitter, mvfx_attributePositionX, at, position[0]);
+    Store(instance, emitter, mvfx_attributePositionY, at, position[1]);
+    Store(instance, emitter, mvfx_attributePositionZ, at, position[2]);
     Store(instance, emitter, mvfx_attributeVelocityX, at, velocity[0]);
     Store(instance, emitter, mvfx_attributeVelocityY, at, velocity[1]);
     Store(instance, emitter, mvfx_attributeVelocityZ, at, velocity[2]);

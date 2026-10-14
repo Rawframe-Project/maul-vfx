@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// An instance as the step runs it: the effect it plays, its origin, seed
+// An instance as the step runs it: the effect it plays, its transform, seed
 // and clock, and per emitter the particles alive and the counts of what it
 // owed and refused. Everything lives in one block allocated when the
 // instance is created (record mvfx-0001); nothing grows after.
@@ -45,7 +45,20 @@ typedef struct mvfxEmitterState
     // The mesh a mesh shape spawns from: the effect's, or the instance's
     // own.
     struct mvfxMesh* mesh;
+    // A world-space emitter's anchor: its particles' positions are offsets
+    // from it.
+    double anchor[3];
+    // The distance births owed so far.
+    uint64_t distanceNext;
 } mvfxEmitterState;
+
+// Where an instance is: its origin, rotation (x, y, z, w) and scale.
+typedef struct mvfxTransform
+{
+    double origin[3];
+    float rotation[4];
+    float scale;
+} mvfxTransform;
 
 // A birth: the particle's serial and tick, and its place among the births
 // of its batch (a burst's firing; a rate's births are batches of one).
@@ -61,7 +74,17 @@ typedef struct mvfxBirth
 typedef struct mvfxInstance
 {
     mvfxEffect* effect;
-    double origin[3];
+    // Where it is at the clock, and where it will be at the end of the next
+    // step.
+    mvfxTransform from;
+    mvfxTransform to;
+    // The distance it has travelled by the clock and by the end of the step,
+    // and its velocity over the step.
+    double travelledFrom;
+    double travelledTo;
+    float velocity[3];
+    // The clock at the start of the step being taken.
+    int64_t stepStart;
     uint32_t seed;
     int64_t clock;
     // No birth past this tick; INT64_MAX until the instance is stopped.
@@ -79,11 +102,17 @@ typedef struct mvfxInstance
 
 // Creates an instance of a compiled effect in one block from allocator;
 // NULL when the allocator fails or the block's size does not fit.
-mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3], uint32_t seed,
-                                      const mvfxAllocator* allocator);
+mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* transform,
+                                      uint32_t seed, const mvfxAllocator* allocator);
+
+// The instance's transform at a tick of the step being taken.
+void mvfxTransformAt(const mvfxInstance* instance, int64_t tick, mvfxTransform* out);
+
+// Turns v by a unit quaternion (x, y, z, w).
+void mvfxRotate(const float q[4], const float v[3], float out[3]);
 
 // Returns an instance to its start: no particles, its clock, counts and
-// cursors at 0, no stop.
+// cursors at 0, no stop, its anchors at its place.
 void mvfxResetInstance(mvfxInstance* instance);
 
 // Returns an instance's block.

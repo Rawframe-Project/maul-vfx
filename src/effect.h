@@ -131,6 +131,9 @@ typedef struct mvfxCompiledEmitter
     int32_t loops;
     // The particles the rate owes over one loop, with a duration.
     double loopIntegral;
+    mvfxSimulationSpace space;
+    float ratePerDistance;
+    float inheritVelocity;
     mvfxCompiledScalar lifetime;
     mvfxCompiledShape shape;
     mvfxCompiledVelocity velocity;

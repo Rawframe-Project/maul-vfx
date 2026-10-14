@@ -117,6 +117,10 @@ static bool IsEmitterDefValid(const mvfxEmitterDef* def)
         !IsWithin(def->startDelay, 0.0f, MVFX_MAX_LIFETIME) ||
         !(def->duration == 0.0f || IsWithin(def->duration, MVFX_MIN_DURATION, MVFX_MAX_LIFETIME)) ||
         def->loops < 0 || def->burstCount < 0 || def->burstCount > MVFX_MAX_BURSTS ||
+        def->space > mvfx_spaceLocal ||
+        !IsWithin(def->ratePerDistance, 0.0f, MVFX_MAX_DISTANCE_RATE) ||
+        !IsWithin(def->inheritVelocity, -10.0f, 10.0f) ||
+        (def->space == mvfx_spaceLocal && def->inheritVelocity != 0.0f) ||
         (def->burstCount > 0 && def->bursts == nullptr) || def->rateCurve.keyCount < 0)
     {
         return false;
@@ -347,6 +351,9 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
         .duration = mvfxSecondsToTicks((double)source->duration),
         .loops = source->duration > 0.0f ? source->loops : 0,
         .plan = PlanAttributes(source, padded),
+        .space = source->space,
+        .ratePerDistance = source->ratePerDistance,
+        .inheritVelocity = source->inheritVelocity,
     };
     space->nextBurst += source->burstCount;
     CompileValues(source, &space->values, out);

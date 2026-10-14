@@ -119,6 +119,44 @@ static int64_t PeekBurst(const mvfxCompiledEmitter* emitter, const mvfxCompiledB
     }
 }
 
+// Whether a tick lies where the emitter spawns: after its delay, within
+// its loops, not past a stop.
+static bool IsSpawning(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter,
+                       int64_t tick)
+{
+    return tick > emitter->delay && tick <= instance->stopTick &&
+           (emitter->loops == 0 || tick <= LoopStart(emitter, (uint64_t)emitter->loops));
+}
+
+// The tick of the next distance birth, passing over those that fall where
+// the emitter does not spawn; MVFX_NO_TICK when none falls in the step.
+static int64_t PeekDistance(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter,
+                            mvfxBirths* births)
+{
+    if (emitter->ratePerDistance <= 0.0f)
+    {
+        return MVFX_NO_TICK;
+    }
+    int64_t span = instance->clock - instance->stepStart;
+    for (;;)
+    {
+        double reach = (double)births->distanceNext + 1.0;
+        if (!(reach <= births->reachTo) || span <= 0)
+        {
+            return MVFX_NO_TICK;
+        }
+        double share = (reach - births->reachFrom) / (births->reachTo - births->reachFrom);
+        int64_t tick = instance->stepStart + (int64_t)ceil(share * (double)span);
+        tick = tick <= instance->stepStart ? instance->stepStart + 1 : tick;
+        tick = tick > instance->clock ? instance->clock : tick;
+        if (IsSpawning(instance, emitter, tick))
+        {
+            return tick;
+        }
+        births->distanceNext += 1;
+    }
+}
+
 // The particles a burst's firing spawns: none when its chance fails, else
 // a count drawn from its range, by pcg4d at the firing.
 static int64_t BurstCount(const mvfxInstance* instance, int32_t emitter, int32_t burstIndex,
@@ -144,6 +182,10 @@ void mvfxOpenBirths(const mvfxInstance* instance, int32_t emitter, mvfxBirths* b
     births->instance = instance;
     births->emitter = emitter;
     births->rate = state->rate;
+    births->distanceNext = state->distanceNext;
+    double rate = (double)instance->effect->emitters[emitter].ratePerDistance;
+    births->reachFrom = instance->travelledFrom * rate;
+    births->reachTo = instance->travelledTo * rate;
     for (int32_t b = 0; b < instance->effect->emitters[emitter].burstCount; ++b)
     {
         births->bursts[b] = state->bursts[b];
@@ -174,11 +216,22 @@ int64_t mvfxNextBirths(mvfxBirths* births, int64_t limit, int64_t* tickOut)
             best = rateTick;
             which = -1;
         }
+        int64_t distanceTick = PeekDistance(instance, emitter, births);
+        if (distanceTick < best)
+        {
+            best = distanceTick;
+            which = -2;
+        }
         if (best > limit)
         {
             return 0;
         }
         *tickOut = best;
+        if (which == -2)
+        {
+            births->distanceNext += 1;
+            return 1;
+        }
         if (which < 0)
         {
             births->rate.last = best - LoopStart(emitter, births->rate.loop);
@@ -200,9 +253,25 @@ void mvfxSaveBirths(mvfxInstance* instance, const mvfxBirths* births)
 {
     mvfxEmitterState* state = &instance->emitters[births->emitter];
     state->rate = births->rate;
+    state->distanceNext = births->distanceNext;
     for (int32_t b = 0; b < instance->effect->emitters[births->emitter].burstCount; ++b)
     {
         state->bursts[b] = births->bursts[b];
+    }
+}
+
+void mvfxRefuseDistanceExcess(mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    double reach = instance->travelledTo * (double)compiled->ratePerDistance;
+    double owed = floor(reach) - (double)state->distanceNext;
+    if (owed > (double)compiled->capacity)
+    {
+        uint64_t excess = (uint64_t)(owed - (double)compiled->capacity);
+        state->distanceNext += excess;
+        state->owed += excess;
+        state->refused += excess;
     }
 }
 
@@ -217,6 +286,11 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
     if (compiled->loops > 0 && instance->clock >= LoopStart(compiled, (uint64_t)compiled->loops))
     {
         return false;
+    }
+    if (compiled->ratePerDistance > 0.0f)
+    {
+        // It spawns whenever the instance moves.
+        return true;
     }
     if (compiled->duration > 0)
     {

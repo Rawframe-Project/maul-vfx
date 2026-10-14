@@ -63,3 +63,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   only when set.
 - Changed: an emitter's `lifetime` is a value source
   (`mvfxRangeSource(min, max)` for the former range).
+- Moving instances: an instance def gains a rotation and a scale, and
+  `mvfxInstance_SetTransform` moves it over the next step (or teleports
+  it). Emitters simulate in world space (offsets from double anchors
+  that rebase after 1,024 units) or local space, spawn by distance
+  travelled (`ratePerDistance`) and inherit a share of the instance's
+  velocity.

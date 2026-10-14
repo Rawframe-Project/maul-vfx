@@ -17,7 +17,11 @@
 
 mvfxInstanceDef mvfxDefaultInstanceDef(void)
 {
-    return (mvfxInstanceDef){.cookie = MVFX_INSTANCE_DEF_COOKIE};
+    return (mvfxInstanceDef){
+        .cookie = MVFX_INSTANCE_DEF_COOKIE,
+        .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
+        .scale = 1.0f,
+    };
 }
 
 // Whether every coordinate of an origin is finite and at most 2^52 in
@@ -34,6 +38,47 @@ static bool IsOriginValid(const double origin[3])
     return true;
 }
 
+// Whether a rotation is a unit quaternion within 0.001, finite.
+static bool IsRotationValid(const float rotation[4])
+{
+    double square = 0.0;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        if (!(fabsf(rotation[k]) <= 1.001f))
+        {
+            return false;
+        }
+        square += (double)rotation[k] * (double)rotation[k];
+    }
+    return fabs(sqrt(square) - 1.0) <= 0.001;
+}
+
+static bool IsScaleValid(float scale)
+{
+    return scale >= MVFX_MIN_SCALE && scale <= MVFX_MAX_SCALE;
+}
+
+// A transform from valid values, its rotation normalized.
+static mvfxTransform MakeTransform(const double origin[3], const float rotation[4], float scale)
+{
+    mvfxTransform transform = {.scale = scale};
+    double square = 0.0;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        square += (double)rotation[k] * (double)rotation[k];
+    }
+    double inverse = 1.0 / sqrt(square);
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        transform.rotation[k] = (float)((double)rotation[k] * inverse);
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        transform.origin[k] = origin[k];
+    }
+    return transform;
+}
+
 // The seed an instance takes when its def gives none: its ordinal among
 // the context's instances, hashed, never 0.
 static uint32_t SeedFromOrdinal(uint64_t ordinal)
@@ -47,7 +92,8 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
                               mvfxInstanceId* instanceOut)
 {
     if (context == nullptr || instanceOut == nullptr || def == nullptr ||
-        def->cookie != MVFX_INSTANCE_DEF_COOKIE || !IsOriginValid(def->origin))
+        def->cookie != MVFX_INSTANCE_DEF_COOKIE || !IsOriginValid(def->origin) ||
+        !IsRotationValid(def->rotation) || !IsScaleValid(def->scale))
     {
         if (instanceOut != nullptr)
         {
@@ -70,8 +116,8 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
         return mvfx_errorLimit;
     }
     uint32_t seed = def->seed != 0 ? def->seed : SeedFromOrdinal(context->instancesCreated);
-    mvfxInstance* instance =
-        mvfxCreateInstanceBlock(effect, def->origin, seed, &context->allocator);
+    mvfxTransform transform = MakeTransform(def->origin, def->rotation, def->scale);
+    mvfxInstance* instance = mvfxCreateInstanceBlock(effect, &transform, seed, &context->allocator);
     if (instance == nullptr)
     {
         return mvfx_errorCapacity;
@@ -219,6 +265,36 @@ mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
         return mvfx_errorStale;
     }
     mvfxResetInstance(live);
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instance,
+                                     const double origin[3], const float rotation[4], float scale,
+                                     bool teleport)
+{
+    if (context == nullptr || origin == nullptr || rotation == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (!IsOriginValid(origin) || !IsRotationValid(rotation) || !IsScaleValid(scale))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    live->to = MakeTransform(origin, rotation, scale);
+    if (teleport)
+    {
+        live->from = live->to;
+    }
     return mvfx_success;
 }
 
