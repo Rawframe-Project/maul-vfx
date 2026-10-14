@@ -133,10 +133,16 @@ static void AppendEventBirthsBy(mvfxInstance* instance, int32_t emitter, int64_t
     }
 }
 
+// The most strikes of a beam a step works through: past them the beam is
+// struck at the step's end, so a lifetime of a tick costs no more than
+// this in a step of any length.
+#define MAX_STRIKES_A_STEP 64
+
 // A beam's strikes by the step's end: each at the tick the last one's
 // points die (its first at the emitter's start), while the instance has
 // not stopped; a strike's points all take its first's lifetime, and one
-// that dies within the step is skipped, its serials still owed.
+// that dies within the step is skipped, its serials still owed. Past
+// MAX_STRIKES_A_STEP strikes the next is struck at the step's end.
 static void StrikeBeam(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -146,23 +152,30 @@ static void StrikeBeam(mvfxInstance* instance, int32_t emitter)
         return;
     }
     int32_t points = compiled->beam.segments + 1;
-    while (state->count == 0 && state->beamStrike <= instance->clock &&
-           state->beamStrike < instance->stopTick)
+    for (int32_t strikes = 0; state->count == 0 && state->beamStrike <= instance->clock &&
+                              state->beamStrike < instance->stopTick;
+         ++strikes)
     {
+        if (strikes == MAX_STRIKES_A_STEP)
+        {
+            state->beamStrike = instance->clock;
+        }
         int64_t tick = state->beamStrike;
         uint64_t first = state->owed;
         float inverseLife = mvfxInverseLifeOf(instance, emitter, first, tick);
         int64_t death = mvfxDeathTick(tick, inverseLife);
         state->beamStrike = death;
+        if (death <= instance->clock)
+        {
+            state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)points);
+            continue;
+        }
         for (int32_t i = 0; i < points; ++i)
         {
             uint64_t k = state->owed;
             state->owed = mvfxSaturatingAdd(state->owed, 1);
-            if (death > instance->clock)
-            {
-                mvfxBirth birth = {k, tick, i, points, -1, 0};
-                mvfxAppendBirth(instance, emitter, &birth, inverseLife);
-            }
+            mvfxBirth birth = {k, tick, i, points, -1, 0};
+            mvfxAppendBirth(instance, emitter, &birth, inverseLife);
         }
     }
 }

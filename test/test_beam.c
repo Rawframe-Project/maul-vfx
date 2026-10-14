@@ -257,6 +257,53 @@ static void TestStrikes(void)
     mvfxDestroyContext(tenths.context);
 }
 
+static void TestBounded(void)
+{
+    // Strikes of about a tick in a second's step: 64 worked through, the
+    // next struck at the step's end, serials 320 on.
+    mvfxEmitterDef emitter = Beam();
+    emitter.lifetime = mvfxRangeSource(1e-6f, 1e-6f);
+    Scene scene = NewScene(&emitter);
+    Step(&scene, MVFX_TICKS_PER_SECOND);
+    Written w = Write(&scene);
+    CHECK(w.count == 5 && w.points[0].serial == 320, "a step works through 64 strikes");
+    mvfxDestroyContext(scene.context);
+    // A strike dying at the step's end: the next struck there, serials 5
+    // on.
+    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    scene = NewScene(&emitter);
+    Step(&scene, MVFX_TICKS_PER_SECOND / 4);
+    w = Write(&scene);
+    CHECK(w.count == 5 && w.points[0].serial == 5, "struck at the step's end");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestAtRest(void)
+{
+    // Born with a speed, a beam's points are at rest.
+    mvfxEmitterDef emitter = Beam();
+    emitter.velocity.speed = (mvfxRange){5.0f, 5.0f};
+    Scene scene = NewScene(&emitter);
+    static const mvfxLayoutField velocity = {
+        .field = mvfx_recordVelocity, .format = mvfx_formatFloat32, .components = 3};
+    mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
+    layoutDef.fields = &velocity;
+    layoutDef.fieldCount = 1;
+    layoutDef.stride = 12;
+    mvfxLayoutId layout = {0};
+    CHECK(mvfxCreateLayout(scene.context, &layoutDef, &layout) == mvfx_success, "layout");
+    Step(&scene, 1);
+    float records[5][3];
+    memset(records, 0xEE, sizeof records);
+    static const mvfxView view = {0};
+    int64_t count = 0;
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      records, 5, &count) == mvfx_success &&
+              count == 5 && records[2][2] == 0.0f && records[4][0] == 0.0f,
+          "at rest");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestStop(void)
 {
     // Stopped, a beam's strike lives out its life and is not struck again.
@@ -404,6 +451,8 @@ int main(void)
     TestCurves();
     TestNoise();
     TestStrikes();
+    TestBounded();
+    TestAtRest();
     TestStop();
     TestLocal();
     TestChecks();
