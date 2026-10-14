@@ -10,6 +10,7 @@
 #define MAUL_VFX_VALUE_H
 
 #include "maul-vfx/curve.h"
+#include "maul-vfx/modules.h"
 #include "maul-vfx/shape.h"
 
 #include <stdbool.h>
@@ -144,6 +145,10 @@ extern "C"
     {
         int32_t components;
         mvfxVectorSource initial;
+        // Whether every component is scaled over the particle's age by
+        // overLife, where the attribute is read (never written back).
+        bool scaledOverLife;
+        mvfxLifeCurve overLife;
     } mvfxCustomAttribute;
 
 #ifdef __cplusplus

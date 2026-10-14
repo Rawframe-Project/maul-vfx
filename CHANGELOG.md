@@ -98,3 +98,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   added velocity, an orbit exact on its circle, radial velocity and a
   speed limit whose excess decays independently of the steps, each a
   value times a curve over the particle's normalized age.
+- Values over life: an emitter def gains `overLife` (colour by a
+  gradient over age or speed and alpha over age, size uniform or per
+  axis over age or speed, the flipbook over the life or at a rate,
+  looping or held, rotation speed over life), and a custom attribute may
+  be scaled over life. All but rotation are taken where a value is read
+  and never written back.

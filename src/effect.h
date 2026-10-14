@@ -12,6 +12,7 @@
 
 #include "curve.h"
 #include "curve_integral.h"
+#include "over_life.h"
 #include "shape.h"
 #include "value.h"
 #include "velocity.h"
@@ -158,6 +159,7 @@ typedef struct mvfxCompiledEmitter
     // The grid each vector field reads, which the effect counts a user of.
     struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
     mvfxCompiledVelocityModules velocityModules;
+    mvfxCompiledOverLife overLife;
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

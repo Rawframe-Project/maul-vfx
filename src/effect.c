@@ -197,7 +197,8 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
             return false;
         }
     }
-    if (!mvfxAreVelocityModulesValid(&def->velocityModules))
+    if (!mvfxAreVelocityModulesValid(&def->velocityModules) ||
+        !mvfxIsOverLifeValid(&def->overLife, def->custom, def->customCount))
     {
         return false;
     }
@@ -308,6 +309,7 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
         *curves += mvfxVectorCurves(&def->custom[i].initial);
         *gradients += mvfxVectorGradients(&def->custom[i].initial);
     }
+    mvfxOverLifeTables(&def->overLife, def->custom, def->customCount, curves, gradients);
 }
 
 // Compiles an emitter's initial values into out, its tables into space.
@@ -329,6 +331,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->drag = def->motion.drag;
     out->angularDrag = def->motion.angularDrag;
     mvfxCompileVelocityModules(&def->velocityModules, space, &out->velocityModules);
+    mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
     out->forceCount = def->forceCount;
     for (int32_t f = 0; f < def->forceCount; ++f)
     {

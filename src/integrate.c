@@ -129,7 +129,8 @@ static void TurnBy(float q[4], const float theta[3])
 
 // Moves particle i's angle and spin, and its orientation and angular
 // velocity, by the angular factors.
-static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfxDragFactors f)
+static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfxDragFactors f,
+                        float speedScale)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     uint64_t present = compiled->plan.present;
@@ -137,7 +138,7 @@ static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfx
     {
         float* angle = mvfxAttributeArray(instance, emitter, mvfx_attributeAngle);
         float* spin = mvfxAttributeArray(instance, emitter, mvfx_attributeSpin);
-        angle[i] += spin[i] * f.carry;
+        angle[i] += spin[i] * (f.carry * speedScale);
         spin[i] *= f.decay;
     }
     if ((present & ((uint64_t)1 << mvfx_attributeOrientationX)) != 0)
@@ -154,7 +155,8 @@ static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfx
             w[k] =
                 mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeAngularX + k));
         }
-        float theta[3] = {w[0][i] * f.carry, w[1][i] * f.carry, w[2][i] * f.carry};
+        float carry = f.carry * speedScale;
+        float theta[3] = {w[0][i] * carry, w[1][i] * carry, w[2][i] * carry};
         float turned[4] = {q[0][i], q[1][i], q[2][i], q[3][i]};
         TurnBy(turned, theta);
         for (int32_t k = 0; k < 4; ++k)
@@ -344,9 +346,13 @@ static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, in
     if ((compiled->plan.present & rotating) != 0)
     {
         mvfxDragFactors angular = mvfxDragFactorsOf((double)compiled->angularDrag, seconds);
+        // Rotation speed over life scales each particle's turn at its age.
+        const mvfxCompiledOverLife* over = &compiled->overLife;
         for (int32_t i = first; i < end; ++i)
         {
-            MoveAngular(instance, emitter, i, angular);
+            float speedScale =
+                over->rotation ? mvfxLifeAt(&over->rotationScale, AgeOf(&r, i)) : 1.0f;
+            MoveAngular(instance, emitter, i, angular, speedScale);
         }
     }
 }

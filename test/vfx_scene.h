@@ -287,6 +287,12 @@ static inline void BuildScene(mvfxContext* context)
     meshEmitters[2].lifetime =
         (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {0.5f, 1.0f}, .parameter = 0};
     meshEmitters[0].motion.angularDrag = 0.75f;
+    // Its spin slowing over the life, by a curve.
+    static const mvfxCurveKey easing[2] = {
+        {.time = 0.0f, .value = 1.5f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
+    meshEmitters[0].overLife.rotation = (mvfxRotationOverLife){
+        .enabled = true, .scale = {.value = 1.0f, .curve = {.keys = easing, .keyCount = 2}}};
     static const mvfxForce meshSwirl = {
         .kind = mvfx_forceTurbulence,
         .space = mvfx_spaceLocal,

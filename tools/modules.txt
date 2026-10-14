@@ -16,8 +16,10 @@ velocity: direction elementary shape
 value: curve gradient random
 life: curve value
 velocity_modules: direction elementary life
-effect: allocator curve curve_integral force shape value velocity velocity_modules
+over_life: gradient life value
+effect: allocator curve curve_integral force over_life shape value velocity velocity_modules
 integrate: direction effect elementary force instance velocity_modules
+appearance: effect gradient instance life over_life
 instance: allocator effect force
 death_heap:
 spawn: instance random

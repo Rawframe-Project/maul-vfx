@@ -41,6 +41,7 @@ else()
 endif()
 add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/allocator.c
+    src/appearance.c
     src/base.c
     src/birth.c
     src/context.c
@@ -65,6 +66,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/mesh.c
     src/mesh_api.c
     src/noise.c
+    src/over_life.c
     src/shape.c
     src/slots.c
     src/spawn.c
@@ -102,6 +104,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(instance)
     maul_add_test(mesh WHITEBOX)
     maul_add_test(noise WHITEBOX)
+    maul_add_test(over_life WHITEBOX)
     maul_add_test(motion WHITEBOX)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)

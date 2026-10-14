@@ -349,6 +349,8 @@ extern "C"
         int32_t forceCount;
         // Their velocity modules.
         mvfxVelocityModules velocityModules;
+        // The values over life they show.
+        mvfxOverLife overLife;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second
