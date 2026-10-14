@@ -129,6 +129,22 @@ static void StoreVector(mvfxInstance* instance, int32_t emitter, mvfxAttribute f
     }
 }
 
+// The ribbon a birth joins: 0 for one ribbon; its batch's first serial;
+// its event's particle's serial.
+static uint32_t RibbonIdOf(const mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth)
+{
+    switch (instance->effect->emitters[emitter].ribbonIds)
+    {
+    case mvfx_ribbonPerBatch:
+        return (uint32_t)(birth->serial - (uint64_t)birth->batchIndex);
+    case mvfx_ribbonPerSource:
+        return birth->event1 > 0 ? instance->emitters[emitter].eventQueue[birth->event1 - 1].source
+                                 : 0;
+    default:
+        return 0;
+    }
+}
+
 // A frame or mesh index a particle starts with: the first, or any from
 // first to last alike by its own draw.
 static uint32_t DrawIndex(const mvfxInstance* instance, int32_t emitter,
@@ -142,6 +158,32 @@ static uint32_t DrawIndex(const mvfxInstance* instance, int32_t emitter,
         index += (uint32_t)(((uint64_t)word * span) >> 32u);
     }
     return index;
+}
+
+// A birth's word attributes: its frame, mesh index, ribbon and a count of
+// no collisions.
+static void StoreWords(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth, int32_t at)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    if (Has(compiled, mvfx_attributeFrame))
+    {
+        StoreWord(instance, emitter, mvfx_attributeFrame, at,
+                  DrawIndex(instance, emitter, &compiled->frame, FRAME_SALT, birth->serial));
+    }
+    if (Has(compiled, mvfx_attributeMesh))
+    {
+        StoreWord(instance, emitter, mvfx_attributeMesh, at,
+                  DrawIndex(instance, emitter, &compiled->meshIndex, MESH_SALT, birth->serial));
+    }
+    if (Has(compiled, mvfx_attributeRibbon))
+    {
+        StoreWord(instance, emitter, mvfx_attributeRibbon, at,
+                  RibbonIdOf(instance, emitter, birth));
+    }
+    if (Has(compiled, mvfx_attributeCollisions))
+    {
+        StoreWord(instance, emitter, mvfx_attributeCollisions, at, 0);
+    }
 }
 
 // The optional values of a birth, each when the emitter stores it.
@@ -198,20 +240,7 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
               mvfxDrawScalar(&compiled->dragScale, age, parameters,
                              Draw(instance, emitter, DRAG_SALT, serial)));
     }
-    if (Has(compiled, mvfx_attributeFrame))
-    {
-        StoreWord(instance, emitter, mvfx_attributeFrame, at,
-                  DrawIndex(instance, emitter, &compiled->frame, FRAME_SALT, serial));
-    }
-    if (Has(compiled, mvfx_attributeMesh))
-    {
-        StoreWord(instance, emitter, mvfx_attributeMesh, at,
-                  DrawIndex(instance, emitter, &compiled->meshIndex, MESH_SALT, serial));
-    }
-    if (Has(compiled, mvfx_attributeCollisions))
-    {
-        StoreWord(instance, emitter, mvfx_attributeCollisions, at, 0);
-    }
+    StoreWords(instance, emitter, birth, at);
     for (int32_t k = 0; Has(compiled, mvfx_attributeScenePointX) && k < 6; ++k)
     {
         // No contact plane yet.

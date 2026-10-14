@@ -14,25 +14,14 @@
 #include <math.h>
 #include <stdint.h>
 
-// What a record reads of a particle: the emitter, the map from its
-// particles' space into the world, and the view's origin.
-typedef struct Source
-{
-    const mvfxInstance* instance;
-    int32_t emitter;
-    const mvfxAttributePlan* plan;
-    mvfxSpaceMap map;
-    const double* viewOrigin;
-} Source;
-
-static float FloatOf(const Source* s, int32_t attribute, int32_t i)
+static float FloatOf(const mvfxRecordSource* s, int32_t attribute, int32_t i)
 {
     return ((const float*)mvfxAttributeArray(s->instance, s->emitter, attribute))[i];
 }
 
 // Particle i's word of a uint32 attribute; 0 where the emitter stores
 // none.
-static uint32_t WordOf(const Source* s, int32_t attribute, int32_t i)
+static uint32_t WordOf(const mvfxRecordSource* s, int32_t attribute, int32_t i)
 {
     if (!mvfxHasAttribute(s->plan, attribute))
     {
@@ -41,7 +30,7 @@ static uint32_t WordOf(const Source* s, int32_t attribute, int32_t i)
     return ((const uint32_t*)mvfxAttributeArray(s->instance, s->emitter, attribute))[i];
 }
 
-static void VectorOf(const Source* s, int32_t first, int32_t i, float out[3])
+static void VectorOf(const mvfxRecordSource* s, int32_t first, int32_t i, float out[3])
 {
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -51,7 +40,7 @@ static void VectorOf(const Source* s, int32_t first, int32_t i, float out[3])
 
 // A world quaternion of particle i: the instance's turn after its own, a
 // local emitter's; identity where it stores none.
-static void OrientationOf(const Source* s, int32_t i, float out[4])
+static void OrientationOf(const mvfxRecordSource* s, int32_t i, float out[4])
 {
     float q[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     if (mvfxHasAttribute(s->plan, mvfx_attributeOrientationX))
@@ -66,10 +55,49 @@ static void OrientationOf(const Source* s, int32_t i, float out[4])
     mvfxMultiplyRotations(turn, q, out);
 }
 
-// Particle i's values for a field: floats, or words for the word fields.
-static void ValuesOf(const Source* s, const mvfxLayoutField* f, int32_t i, float v[4],
-                     uint32_t w[4])
+// A ribbon field's values: a point's, or for a particle's record a zero
+// tangent, length, coordinate and ribbon, and its size's X as its width.
+static void RibbonValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, int32_t i,
+                           const mvfxRibbonPoint* point, float v[4], uint32_t w[4])
 {
+    static const mvfxRibbonPoint none = {.width = 1.0f};
+    const mvfxRibbonPoint* at = point != nullptr ? point : &none;
+    float size[3];
+    switch (f->field)
+    {
+    case mvfx_recordTangent:
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            v[k] = at->tangent[k];
+        }
+        break;
+    case mvfx_recordWidth:
+        mvfxSizeOf(s->instance, s->emitter, i, size);
+        v[0] = size[0] / s->map.sigma * at->width;
+        break;
+    case mvfx_recordLength:
+        v[0] = at->length;
+        break;
+    case mvfx_recordAlong:
+        v[0] = at->along;
+        break;
+    default:
+        w[0] = at->ribbon;
+        v[0] = (float)at->ribbon;
+        break;
+    }
+}
+
+// Particle i's values for a field: floats, or words for the word fields;
+// a ribbon point's where point is given.
+static void ValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, int32_t i,
+                     const mvfxRibbonPoint* point, float v[4], uint32_t w[4])
+{
+    if (f->field >= mvfx_recordTangent)
+    {
+        RibbonValuesOf(s, f, i, point, v, w);
+        return;
+    }
     float p[3];
     double world[3];
     switch (f->field)
@@ -91,6 +119,10 @@ static void ValuesOf(const Source* s, const mvfxLayoutField* f, int32_t i, float
         break;
     case mvfx_recordColor:
         mvfxColorOf(s->instance, s->emitter, i, v);
+        for (int32_t k = 0; point != nullptr && k < 4; ++k)
+        {
+            v[k] *= point->color[k];
+        }
         break;
     case mvfx_recordAngle:
         v[0] = mvfxHasAttribute(s->plan, mvfx_attributeAngle) ? FloatOf(s, mvfx_attributeAngle, i)
@@ -123,34 +155,52 @@ static void ValuesOf(const Source* s, const mvfxLayoutField* f, int32_t i, float
     }
 }
 
-void mvfxWriteRecords(const mvfxInstance* instance, int32_t emitter, const mvfxOutputLayout* layout,
-                      const double viewOrigin[3], const mvfxRecordOrder* order,
-                      unsigned char* records, int64_t count)
+mvfxRecordSource mvfxOpenRecordSource(const mvfxInstance* instance, int32_t emitter,
+                                      const double viewOrigin[3])
 {
-    Source s = {
+    return (mvfxRecordSource){
         .instance = instance,
         .emitter = emitter,
         .plan = &instance->effect->emitters[emitter].plan,
         .map = mvfxSpaceMapAt(instance, emitter, mvfx_spaceWorld, &instance->to),
         .viewOrigin = viewOrigin,
     };
+}
+
+void mvfxWorldPlaceOf(const mvfxRecordSource* source, int32_t particle, double out[3])
+{
+    float p[3];
+    VectorOf(source, mvfx_attributePositionX, particle, p);
+    mvfxUnmapPoint(&source->map, p, out);
+}
+
+void mvfxWriteRecord(const mvfxRecordSource* source, const mvfxOutputLayout* layout,
+                     int32_t particle, const mvfxRibbonPoint* point, unsigned char* record)
+{
+    for (int32_t f = 0; f < layout->fieldCount; ++f)
+    {
+        float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        uint32_t words[4] = {0, 0, 0, 0};
+        ValuesOf(source, &layout->fields[f], particle, point, values, words);
+        mvfxWriteField(&layout->fields[f], values, words, record);
+    }
+}
+
+void mvfxWriteRecords(const mvfxInstance* instance, int32_t emitter, const mvfxOutputLayout* layout,
+                      const double viewOrigin[3], const mvfxRecordOrder* order,
+                      unsigned char* records, int64_t count)
+{
+    mvfxRecordSource s = mvfxOpenRecordSource(instance, emitter, viewOrigin);
     for (int64_t r = 0; r < count; ++r)
     {
         int32_t i = order->indices != nullptr ? (int32_t)order->indices[r]
                     : order->reverse          ? order->live - 1 - (int32_t)r
                                               : (int32_t)r;
-        unsigned char* record = records + r * (int64_t)layout->stride;
-        for (int32_t f = 0; f < layout->fieldCount; ++f)
-        {
-            float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-            uint32_t words[4] = {0, 0, 0, 0};
-            ValuesOf(&s, &layout->fields[f], i, values, words);
-            mvfxWriteField(&layout->fields[f], values, words, record);
-        }
+        mvfxWriteRecord(&s, layout, i, nullptr, records + r * (int64_t)layout->stride);
     }
 }
 
-static bool IsViewValid(const mvfxView* view)
+bool mvfxIsViewValid(const mvfxView* view)
 {
     bool valid = true;
     for (int32_t k = 0; k < 3; ++k)
@@ -167,6 +217,12 @@ static bool SortsByPlace(const mvfxCompiledEmitter* compiled)
     return compiled->sortMode == mvfx_sortBackToFront || compiled->sortMode == mvfx_sortFrontToBack;
 }
 
+// Whether an emitter's output needs scratch: a sort by place, or ribbons.
+static bool NeedsScratch(const mvfxCompiledEmitter* compiled)
+{
+    return SortsByPlace(compiled) || compiled->ribbonIds != mvfx_ribbonNone;
+}
+
 // Sorts an emitter's live particles by their distance or depth from a
 // view's eye, in scratch of four arrays of live words: the order is the
 // second.
@@ -174,7 +230,7 @@ static const uint32_t* SortByPlace(const mvfxInstance* instance, int32_t emitter
                                    const mvfxView* view, uint32_t* scratch, int32_t live)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    Source s = {
+    mvfxRecordSource s = {
         .instance = instance,
         .emitter = emitter,
         .plan = &compiled->plan,
@@ -224,12 +280,11 @@ mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId
         return found;
     }
     const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
-    *bytesOut = SortsByPlace(compiled) ? (int64_t)compiled->capacity * MVFX_SORT_BYTES_PER_ITEM : 0;
+    *bytesOut = NeedsScratch(compiled) ? (int64_t)compiled->capacity * MVFX_SORT_BYTES_PER_ITEM : 0;
     return mvfx_success;
 }
 
-// Whether a host buffer of bytes is NULL only when empty, and aligned.
-static bool IsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment)
+bool mvfxIsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment)
 {
     return bytes >= 0 && (bytes == 0 || buffer != nullptr) && ((uintptr_t)buffer % alignment) == 0;
 }
@@ -259,8 +314,8 @@ mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId inst
     {
         return mvfx_errorStale;
     }
-    if (capacity < 0 || (capacity > 0 && records == nullptr) || !IsViewValid(view) ||
-        !IsBufferValid(scratch, scratchBytes, 4))
+    if (capacity < 0 || (capacity > 0 && records == nullptr) || !mvfxIsViewValid(view) ||
+        !mvfxIsBufferValid(scratch, scratchBytes, 4))
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
@@ -284,7 +339,7 @@ mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId inst
 }
 
 // The light particle i carries for a view.
-static mvfxLight LightOf(const Source* s, const mvfxLightDef* def, int32_t i)
+static mvfxLight LightOf(const mvfxRecordSource* s, const mvfxLightDef* def, int32_t i)
 {
     float p[3];
     double world[3];
@@ -325,7 +380,7 @@ mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instanc
     {
         return found;
     }
-    if (capacity < 0 || (capacity > 0 && lights == nullptr) || !IsViewValid(view))
+    if (capacity < 0 || (capacity > 0 && lights == nullptr) || !mvfxIsViewValid(view))
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
@@ -335,7 +390,7 @@ mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instanc
     {
         return mvfx_success;
     }
-    Source s = {
+    mvfxRecordSource s = {
         .instance = live,
         .emitter = emitter,
         .plan = &live->effect->emitters[emitter].plan,

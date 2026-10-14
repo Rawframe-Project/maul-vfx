@@ -42,9 +42,11 @@ typedef struct mvfxHostBirth
     float color[4];
     float size[3];
     uint8_t given;
-    // An event's birth: its tick, and its place in the queue as built.
+    // An event's birth: its tick, its place in the queue as built, and the
+    // serial of the event's particle.
     int64_t tick;
     int32_t order;
+    uint32_t source;
 } mvfxHostBirth;
 
 enum

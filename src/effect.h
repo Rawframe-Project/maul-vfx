@@ -77,10 +77,12 @@ enum
     mvfx_attributeSceneNormalX = 64,
     // A uint32 index of the host's mesh it is drawn as.
     mvfx_attributeMesh = 67,
+    // A uint32 id of the ribbon it joins.
+    mvfx_attributeRibbon = 68,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeMesh + 1)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeRibbon + 1)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.
@@ -204,6 +206,10 @@ typedef struct mvfxCompiledEmitter
     mvfxLightDef light;
     mvfxSortMode sortMode;
     mvfxSortMeasure sortMeasure;
+    mvfxRibbonIds ribbonIds;
+    mvfxCompiledLife ribbonWidth;
+    // NULL for white.
+    const mvfxGradientTable* ribbonColor;
     mvfxCompiledVector custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
     int32_t customCount;
     mvfxAttributePlan plan;

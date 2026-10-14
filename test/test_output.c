@@ -60,7 +60,7 @@ static void TestLayouts(void)
         switch (rule)
         {
         case 0:
-            f[0].field = 11;
+            f[0].field = 16;
             break;
         case 1:
             f[0].format = 7;

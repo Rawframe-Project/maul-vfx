@@ -160,3 +160,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   distance or depth) through a stable radix sort on scratch the host
   passes, sized by `mvfxInstance_GetSortScratchBytes`. Outputs take an
   `mvfxView` (origin, eye, forward) in place of a view origin.
+- Ribbons: an emitter's `ribbon` (ids: one ribbon, one per batch, one
+  per event's particle; width and colour over length) and
+  `mvfxInstance_WriteRibbons`, writing each chain's points in a layout
+  with the ribbon fields (tangent, width, length, coordinate along,
+  ribbon) and the ribbon list.

@@ -42,7 +42,8 @@ static mvfxHostBirth BirthOf(const mvfxInstance* instance, int32_t emitter,
     mvfxTransform transform;
     mvfxTransformAt(instance, event->tick, &transform);
     mvfxSpaceMap map = mvfxSpaceMapAt(instance, emitter, mvfx_spaceWorld, &transform);
-    mvfxHostBirth birth = {.given = mvfx_givenAddedVelocity, .tick = event->tick};
+    mvfxHostBirth birth = {
+        .given = mvfx_givenAddedVelocity, .tick = event->tick, .source = event->serial};
     float inherited[3] = {event->velocity[0] * spawn->inheritVelocity,
                           event->velocity[1] * spawn->inheritVelocity,
                           event->velocity[2] * spawn->inheritVelocity};

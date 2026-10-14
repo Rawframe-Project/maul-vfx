@@ -9,6 +9,50 @@
 
 #include "instance.h"
 #include "layout.h"
+#include "space.h"
+
+#include <stdint.h>
+
+// What a record reads of a particle: the emitter, the map from its
+// particles' space into the world, and the view's origin.
+typedef struct mvfxRecordSource
+{
+    const mvfxInstance* instance;
+    int32_t emitter;
+    const mvfxAttributePlan* plan;
+    mvfxSpaceMap map;
+    const double* viewOrigin;
+} mvfxRecordSource;
+
+// A ribbon point's own values: its unit tangent in the world, its
+// normalized length, its texture coordinate along, its width's factor,
+// its colour's factor and its ribbon's index in the list.
+typedef struct mvfxRibbonPoint
+{
+    float tangent[3];
+    float length;
+    float along;
+    float width;
+    float color[4];
+    uint32_t ribbon;
+} mvfxRibbonPoint;
+
+// The source of an emitter's records for a view's origin.
+mvfxRecordSource mvfxOpenRecordSource(const mvfxInstance* instance, int32_t emitter,
+                                      const double viewOrigin[3]);
+
+// A particle's place in the world.
+void mvfxWorldPlaceOf(const mvfxRecordSource* source, int32_t particle, double out[3]);
+
+// Writes a particle's record; a ribbon point's where point is given.
+void mvfxWriteRecord(const mvfxRecordSource* source, const mvfxOutputLayout* layout,
+                     int32_t particle, const mvfxRibbonPoint* point, unsigned char* record);
+
+// Whether a view is within its bounds.
+bool mvfxIsViewValid(const mvfxView* view);
+
+// Whether a host buffer of bytes is NULL only when empty, and aligned.
+bool mvfxIsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment);
 
 // The order records follow: indices into the pool, or the pool's own
 // order of live particles, or its reverse.

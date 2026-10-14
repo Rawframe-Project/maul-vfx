@@ -77,6 +77,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/noise.c
     src/output.c
     src/over_life.c
+    src/ribbon.c
     src/scene_query.c
     src/shape.c
     src/slots.c
@@ -132,6 +133,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(motion WHITEBOX)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)
+    maul_add_test(ribbon)
     maul_add_test(scene_query WHITEBOX)
     maul_add_test(shape WHITEBOX)
     maul_add_test(slots WHITEBOX)

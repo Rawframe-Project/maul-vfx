@@ -58,6 +58,21 @@ extern "C"
         // The index of the host's mesh it is drawn as (0 where none):
         // uint32 or binary32.
         mvfx_recordMesh = 10,
+        // A ribbon point's unit tangent in the world toward the younger
+        // end, 3 (0 in a particle's record).
+        mvfx_recordTangent = 11,
+        // Its width: its size's X in the world times the ribbon's width
+        // over length (a particle's record: its size's X).
+        mvfx_recordWidth = 12,
+        // Its normalized length along its ribbon, from 0 at the oldest point
+        // to 1 at the youngest (0 in a particle's record).
+        mvfx_recordLength = 13,
+        // Its texture coordinate along its ribbon (0 in a particle's
+        // record).
+        mvfx_recordAlong = 14,
+        // Its ribbon's index in the ribbon list: uint32 or binary32 (0 in a
+        // particle's record).
+        mvfx_recordRibbon = 15,
     };
 
     // How a field's components are written.
@@ -76,7 +91,7 @@ extern "C"
         mvfx_formatUnorm16 = 4,
         // From -1 to 1 as -32,767 to 32,767.
         mvfx_formatSnorm16 = 5,
-        // A uint32: a frame, a serial or a mesh index only.
+        // A uint32: a frame, a serial, a mesh index or a ribbon only.
         mvfx_formatUint32 = 6,
     };
 
@@ -168,9 +183,9 @@ extern "C"
         float forward[3];
     } mvfxView;
 
-    /// Returns the bytes of scratch mvfxInstance_WriteParticles takes to
-    /// sort an emitter's particles by place: 16 a particle of its capacity,
-    /// 0 when it sorts by none or by age.
+    /// Returns the bytes of scratch an emitter's output takes, enough for
+    /// any step: 16 a particle of its capacity when it sorts by place or is
+    /// drawn as ribbons, else 0.
     ///
     /// @param context   The context that owns the instance.
     /// @param instance  The instance.
@@ -227,6 +242,62 @@ extern "C"
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
         const mvfxView* view, void* scratch, int64_t scratchBytes, void* records, int64_t capacity,
         int64_t* countOut);
+
+    // A ribbon of a ribbon list: its points in the point buffer and its id.
+    typedef struct mvfxRibbon
+    {
+        int64_t first;
+        int32_t count;
+        uint32_t id;
+    } mvfxRibbon;
+
+    // Where mvfxInstance_WriteRibbons writes: points in a layout, the list
+    // of ribbons, and scratch for chaining them (aligned to 4 bytes, 16
+    // bytes a live particle: mvfxInstance_GetSortScratchBytes). Each
+    // pointer may be NULL only when its size is 0.
+    typedef struct mvfxRibbonBuffers
+    {
+        void* points;
+        int64_t pointCapacity;
+        mvfxRibbon* ribbons;
+        int64_t ribbonCapacity;
+        void* scratch;
+        int64_t scratchBytes;
+    } mvfxRibbonBuffers;
+
+    /// Writes an emitter's ribbons for a view: each run of its live
+    /// particles with one ribbon id and at least two particles, oldest
+    /// first, in the order of their ids. Each point is a record of the
+    /// layout, its ribbon fields (tangent, width, length, coordinate along,
+    /// ribbon) filled; its colour is times the ribbon's colour over length.
+    /// Buffers too small take the first ribbons that fit whole, so the list
+    /// never names a point not written; the counts are always all of them,
+    /// 0 for an emitter not drawn as ribbons.
+    ///
+    /// @param context         The context that owns the instance and the
+    ///                        layout.
+    /// @param instance        The instance.
+    /// @param emitter         The emitter's index in the effect's def.
+    /// @param layout          The points' layout.
+    /// @param view            The view.
+    /// @param buffers         The buffers.
+    /// @param pointCountOut   Receives the points there are.
+    /// @param ribbonCountOut  Receives the ribbons there are.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
+    ///         that names nothing live; `mvfx_errorCapacity` for scratch too
+    ///         small, with nothing written; `mvfx_errorInvalid` for a NULL
+    ///         context, view, buffers or count, a view out of range, an
+    ///         emitter out of range, a negative size or a NULL or misaligned
+    ///         buffer with a size, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once, each with
+    /// its own scratch.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteRibbons(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+        const mvfxView* view, const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+        int64_t* ribbonCountOut);
 
     // A light a particle carries.
     typedef struct mvfxLight

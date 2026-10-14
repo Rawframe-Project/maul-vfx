@@ -29,6 +29,7 @@ mvfxEmitterDef mvfxDefaultEmitterDef(void)
             },
         .velocity = {.mode = mvfx_directionShapeNormal, .direction = {0.0f, 0.0f, 1.0f}},
         .velocityModules = {.motionScale = {.value = 1.0f}},
+        .ribbon = {.width = {.value = 1.0f}},
     };
 }
 
@@ -168,7 +169,13 @@ static bool IsLifetimeValid(const mvfxScalarSource* lifetime, bool hasDuration,
            (lifetime->range.min > 0.0f && lifetime->range.max <= MVFX_MAX_LIFETIME);
 }
 
-// Whether an emitter's mesh index and lights are valid.
+// Whether a gradient has no keys, so is white.
+static bool IsWhite(const mvfxGradient* gradient)
+{
+    return gradient->colorKeyCount == 0 && gradient->alphaKeyCount == 0;
+}
+
+// Whether an emitter's mesh index, lights, sorting and ribbons are valid.
 static bool AreOutputsValid(const mvfxEmitterDef* def)
 {
     const mvfxFrameStart* mesh = &def->meshIndex;
@@ -178,7 +185,11 @@ static bool AreOutputsValid(const mvfxEmitterDef* def)
                             light->intensity >= 0.0f && light->intensity <= MVFX_MAX_EXTENT &&
                             light->radius >= 0.0f && light->radius <= MVFX_MAX_EXTENT &&
                             light->radiusBySize >= 0.0f && light->radiusBySize <= MVFX_MAX_EXTENT);
-    return lightValid && def->sortMode <= mvfx_sortFrontToBack &&
+    const mvfxRibbonDef* ribbon = &def->ribbon;
+    bool ribbonValid = ribbon->ids <= mvfx_ribbonPerSource &&
+                       mvfxIsLifeCurveValid(&ribbon->width) &&
+                       (IsWhite(&ribbon->color) || mvfxIsGradientValid(&ribbon->color));
+    return lightValid && ribbonValid && def->sortMode <= mvfx_sortFrontToBack &&
            def->sortMeasure <= mvfx_sortByDepth && mesh->mode <= mvfx_frameRandom &&
            mesh->first >= 0 && mesh->first <= mesh->last && mesh->last < MVFX_MAX_MESH_INDEX;
 }
@@ -411,6 +422,7 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, mesh, mvfx_attributeOrientationX, 7);
     Store(plan, def->frame.mode != mvfx_frameNone, mvfx_attributeFrame, 1);
     Store(plan, def->meshIndex.mode != mvfx_frameNone, mvfx_attributeMesh, 1);
+    Store(plan, def->ribbon.ids != mvfx_ribbonNone, mvfx_attributeRibbon, 1);
     Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
     Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
@@ -458,6 +470,8 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
         *gradients += mvfxVectorGradients(&def->custom[i].initial);
     }
     mvfxOverLifeTables(&def->overLife, def->custom, def->customCount, curves, gradients);
+    *curves += mvfxLifeCurves(&def->ribbon.width);
+    *gradients += IsWhite(&def->ribbon.color) ? 0 : 1;
 }
 
 // Compiles an emitter's initial values into out, its tables into space.
@@ -519,6 +533,16 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->light = def->light;
     out->sortMode = def->sortMode;
     out->sortMeasure = def->sortMeasure;
+    out->ribbonIds = def->ribbon.ids;
+    mvfxCompileLife(&def->ribbon.width, space, &out->ribbonWidth);
+    out->ribbonColor = nullptr;
+    if (!IsWhite(&def->ribbon.color))
+    {
+        mvfxGradientTable* table = &space->gradients[space->nextGradient];
+        space->nextGradient += 1;
+        mvfxBakeGradient(&def->ribbon.color, table);
+        out->ribbonColor = table;
+    }
     out->customCount = def->customCount;
     for (int32_t i = 0; i < def->customCount; ++i)
     {

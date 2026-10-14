@@ -319,6 +319,36 @@ extern "C"
         mvfx_sortByDepth = 1,
     };
 
+    // Which ribbon a particle joins: a ribbon is the run of an emitter's
+    // live particles with one ribbon id, oldest first.
+    typedef uint8_t mvfxRibbonIds;
+    enum
+    {
+        // Not drawn as ribbons.
+        mvfx_ribbonNone = 0,
+        // Every particle in one ribbon.
+        mvfx_ribbonOne = 1,
+        // The particles born at one tick together (a burst's firing) in
+        // one ribbon: its id is the serial of the batch's first.
+        mvfx_ribbonPerBatch = 2,
+        // A particle born of an event in the ribbon of the event's
+        // particle: its id is that particle's serial (each spark leaves a
+        // ribbon of its own); others as with mvfx_ribbonOne.
+        mvfx_ribbonPerSource = 3,
+    };
+
+    // An emitter drawn as ribbons through its particles.
+    typedef struct mvfxRibbonDef
+    {
+        mvfxRibbonIds ids;
+        // A point's width is its size's X times this over the ribbon's
+        // normalized length (0 at its oldest point, 1 at its youngest).
+        mvfxLifeCurve width;
+        // Its colour times this over the normalized length; no keys is
+        // white.
+        mvfxGradient color;
+    } mvfxRibbonDef;
+
 // The most meshes an emitter's particles choose from.
 #define MVFX_MAX_MESH_INDEX 65536
 
@@ -426,6 +456,8 @@ extern "C"
         mvfxEventSpawn eventSpawn;
         // The lights its particles carry (mvfxInstance_WriteLights).
         mvfxLightDef light;
+        // Its ribbons (mvfxInstance_WriteRibbons).
+        mvfxRibbonDef ribbon;
         // The order its records are written in, and what a sort by place
         // measures; equal keys keep the pool's order.
         mvfxSortMode sortMode;
