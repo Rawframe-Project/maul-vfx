@@ -155,33 +155,78 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxLayout_IsValid(const mvfxContext* context, mvfxLayoutId layout);
 
-    /// Writes a record in a layout for each live particle of an emitter, in
-    /// the pool's order (oldest first), for a view whose origin positions
-    /// are made relative to (binary64, each coordinate at most 2^52 in
-    /// size). A buffer too small takes the first capacity records; the
-    /// count is always the emitter's live particles.
+    // A view the host draws: where positions are made relative to, the eye
+    // a sort measures from, and the direction it looks.
+    typedef struct mvfxView
+    {
+        // Records' positions are less this (each coordinate at most 2^52
+        // in size).
+        double origin[3];
+        // The eye, within the same bounds.
+        double eye[3];
+        // The direction depth is measured along: finite, of any length.
+        float forward[3];
+    } mvfxView;
+
+    /// Returns the bytes of scratch mvfxInstance_WriteParticles takes to
+    /// sort an emitter's particles by place: 16 a particle of its capacity,
+    /// 0 when it sorts by none or by age.
     ///
-    /// @param context     The context that owns the instance and the layout.
-    /// @param instance    The instance.
-    /// @param emitter     The emitter's index in the effect's def.
-    /// @param layout      The layout.
-    /// @param viewOrigin  The view's origin in the world.
-    /// @param records     The buffer, capacity times the layout's stride
-    ///                    bytes; NULL when capacity is 0.
-    /// @param capacity    The records it holds, at least 0.
-    /// @param countOut    Receives the records there are.
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in the effect's def.
+    /// @param bytesOut  Receives the bytes.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
+    ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
+    ///         parameter or an emitter out of range, which counts as misuse
+    ///         when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context,
+                                                                        mvfxInstanceId instance,
+                                                                        int32_t emitter,
+                                                                        int64_t* bytesOut);
+
+    /// Writes a record in a layout for each live particle of an emitter for
+    /// a view, in the order its def asks (mvfxSortMode): the pool's, its
+    /// reverse, or by distance or depth from the view's eye through a
+    /// stable radix sort, so equal keys keep the pool's order. A buffer too
+    /// small takes the first capacity records of that order; the count is
+    /// always the emitter's live particles.
+    ///
+    /// @param context       The context that owns the instance and the
+    ///                      layout.
+    /// @param instance      The instance.
+    /// @param emitter       The emitter's index in the effect's def.
+    /// @param layout        The layout.
+    /// @param view          The view.
+    /// @param scratch       Memory for a sort by place, aligned to 4 bytes,
+    ///                      of at least 16 bytes a live particle
+    ///                      (mvfxInstance_GetSortScratchBytes gives enough
+    ///                      for any step); NULL when scratchBytes is 0.
+    ///                      Its contents are not kept.
+    /// @param scratchBytes  Its bytes, at least 0.
+    /// @param records       The buffer, capacity times the layout's stride
+    ///                      bytes; NULL when capacity is 0.
+    /// @param capacity      The records it holds, at least 0.
+    /// @param countOut      Receives the records there are.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
-    ///         that names nothing live; `mvfx_errorInvalid` for a NULL
-    ///         context, origin or count, an emitter out of range, a
-    ///         negative capacity or a NULL buffer with a capacity, which
-    ///         counts as misuse when the context is given.
+    ///         that names nothing live; `mvfx_errorCapacity` for scratch too
+    ///         small for a sort by place, with nothing written;
+    ///         `mvfx_errorInvalid` for a NULL context, view or count, a
+    ///         view out of range, an emitter out of range, a negative
+    ///         capacity or scratch size, a NULL or misaligned buffer with a
+    ///         size, which counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs (calls that only read a stepped context and
-    /// write the host's buffers) may run on several threads at once.
+    /// write the host's buffers) may run on several threads at once, each
+    /// with its own scratch.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteParticles(
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
-        const double viewOrigin[3], void* records, int64_t capacity, int64_t* countOut);
+        const mvfxView* view, void* scratch, int64_t scratchBytes, void* records, int64_t capacity,
+        int64_t* countOut);
 
     // A light a particle carries.
     typedef struct mvfxLight
@@ -197,28 +242,27 @@ extern "C"
 
     /// Writes the lights an emitter's particles carry (mvfxLightDef: every
     /// n-th particle by serial), in the pool's order (oldest first), for a
-    /// view whose origin positions are made relative to (each coordinate at
-    /// most 2^52 in size). A buffer too small takes the first capacity, so
+    /// view (positions less its origin). A buffer too small takes the first capacity, so
     /// a host that wants at most n lights passes n; the count is always all
     /// of them, 0 for an emitter without lights.
     ///
     /// @param context     The context that owns the instance.
     /// @param instance    The instance.
     /// @param emitter     The emitter's index in the effect's def.
-    /// @param viewOrigin  The view's origin in the world.
+    /// @param view        The view.
     /// @param lights      The buffer; NULL when capacity is 0.
     /// @param capacity    The lights it holds, at least 0.
     /// @param countOut    Receives the lights there are.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
-    ///         nothing live; `mvfx_errorInvalid` for a NULL context, origin or
-    ///         count, an origin out of range, an emitter out of range, a
+    ///         nothing live; `mvfx_errorInvalid` for a NULL context, view or
+    ///         count, a view out of range, an emitter out of range, a
     ///         negative capacity or a NULL buffer with a capacity, which
     ///         counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteLights(
-        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const double viewOrigin[3],
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxView* view,
         mvfxLight* lights, int64_t capacity, int64_t* countOut);
 
     // A box in the world.

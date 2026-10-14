@@ -80,6 +80,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/scene_query.c
     src/shape.c
     src/slots.c
+    src/sort.c
     src/space.c
     src/spawn.c
     src/step.c
@@ -134,6 +135,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(scene_query WHITEBOX)
     maul_add_test(shape WHITEBOX)
     maul_add_test(slots WHITEBOX)
+    maul_add_test(sort WHITEBOX)
     maul_add_test(spawn WHITEBOX)
     maul_add_test(step)
     maul_add_test(value WHITEBOX)

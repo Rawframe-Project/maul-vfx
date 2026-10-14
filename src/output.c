@@ -8,9 +8,11 @@
 #include "direction.h"
 #include "instance_api.h"
 #include "layout_api.h"
+#include "sort.h"
 #include "space.h"
 
 #include <math.h>
+#include <stdint.h>
 
 // What a record reads of a particle: the emitter, the map from its
 // particles' space into the world, and the view's origin.
@@ -122,7 +124,8 @@ static void ValuesOf(const Source* s, const mvfxLayoutField* f, int32_t i, float
 }
 
 void mvfxWriteRecords(const mvfxInstance* instance, int32_t emitter, const mvfxOutputLayout* layout,
-                      const double viewOrigin[3], unsigned char* records, int64_t count)
+                      const double viewOrigin[3], const mvfxRecordOrder* order,
+                      unsigned char* records, int64_t count)
 {
     Source s = {
         .instance = instance,
@@ -133,28 +136,110 @@ void mvfxWriteRecords(const mvfxInstance* instance, int32_t emitter, const mvfxO
     };
     for (int64_t r = 0; r < count; ++r)
     {
+        int32_t i = order->indices != nullptr ? (int32_t)order->indices[r]
+                    : order->reverse          ? order->live - 1 - (int32_t)r
+                                              : (int32_t)r;
         unsigned char* record = records + r * (int64_t)layout->stride;
         for (int32_t f = 0; f < layout->fieldCount; ++f)
         {
             float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
             uint32_t words[4] = {0, 0, 0, 0};
-            ValuesOf(&s, &layout->fields[f], (int32_t)r, values, words);
+            ValuesOf(&s, &layout->fields[f], i, values, words);
             mvfxWriteField(&layout->fields[f], values, words, record);
         }
     }
 }
 
-static bool IsOriginValid(const double origin[3])
+static bool IsViewValid(const mvfxView* view)
 {
-    return fabs(origin[0]) <= 0x1p52 && fabs(origin[1]) <= 0x1p52 && fabs(origin[2]) <= 0x1p52;
+    bool valid = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        valid = valid && fabs(view->origin[k]) <= 0x1p52 && fabs(view->eye[k]) <= 0x1p52 &&
+                isfinite(view->forward[k]);
+    }
+    return valid;
+}
+
+// Whether an emitter sorts by place, needing scratch.
+static bool SortsByPlace(const mvfxCompiledEmitter* compiled)
+{
+    return compiled->sortMode == mvfx_sortBackToFront || compiled->sortMode == mvfx_sortFrontToBack;
+}
+
+// Sorts an emitter's live particles by their distance or depth from a
+// view's eye, in scratch of four arrays of live words: the order is the
+// second.
+static const uint32_t* SortByPlace(const mvfxInstance* instance, int32_t emitter,
+                                   const mvfxView* view, uint32_t* scratch, int32_t live)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    Source s = {
+        .instance = instance,
+        .emitter = emitter,
+        .plan = &compiled->plan,
+        .map = mvfxSpaceMapAt(instance, emitter, mvfx_spaceWorld, &instance->to),
+    };
+    uint32_t* keys = scratch;
+    uint32_t* indices = scratch + live;
+    // Back to front sorts the keys' complements, so equal keys keep the
+    // pool's order either way.
+    uint32_t flip = compiled->sortMode == mvfx_sortBackToFront ? 0xFFFFFFFFu : 0u;
+    bool depth = compiled->sortMeasure == mvfx_sortByDepth;
+    for (int32_t i = 0; i < live; ++i)
+    {
+        float p[3];
+        double world[3];
+        VectorOf(&s, mvfx_attributePositionX, i, p);
+        mvfxUnmapPoint(&s.map, p, world);
+        double measure = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double d = world[k] - view->eye[k];
+            measure += depth ? d * (double)view->forward[k] : d * d;
+        }
+        keys[i] = mvfxOrderedKey((float)measure) ^ flip;
+        indices[i] = (uint32_t)i;
+    }
+    mvfxRadixSort(keys, indices, scratch + 2 * (int64_t)live, scratch + 3 * (int64_t)live, live);
+    return indices;
+}
+
+mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId instance,
+                                            int32_t emitter, int64_t* bytesOut)
+{
+    if (context == nullptr || bytesOut == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    *bytesOut = 0;
+    mvfxInstance* live = nullptr;
+    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
+    if (found != mvfx_success)
+    {
+        return found;
+    }
+    const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
+    *bytesOut = SortsByPlace(compiled) ? (int64_t)compiled->capacity * MVFX_SORT_BYTES_PER_ITEM : 0;
+    return mvfx_success;
+}
+
+// Whether a host buffer of bytes is NULL only when empty, and aligned.
+static bool IsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment)
+{
+    return bytes >= 0 && (bytes == 0 || buffer != nullptr) && ((uintptr_t)buffer % alignment) == 0;
 }
 
 mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId instance,
-                                       int32_t emitter, mvfxLayoutId layout,
-                                       const double viewOrigin[3], void* records, int64_t capacity,
-                                       int64_t* countOut)
+                                       int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
+                                       void* scratch, int64_t scratchBytes, void* records,
+                                       int64_t capacity, int64_t* countOut)
 {
-    if (context == nullptr || viewOrigin == nullptr || countOut == nullptr)
+    if (context == nullptr || view == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
         {
@@ -174,14 +259,26 @@ mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId inst
     {
         return mvfx_errorStale;
     }
-    if (capacity < 0 || (capacity > 0 && records == nullptr) || !IsOriginValid(viewOrigin))
+    if (capacity < 0 || (capacity > 0 && records == nullptr) || !IsViewValid(view) ||
+        !IsBufferValid(scratch, scratchBytes, 4))
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
-    int64_t count = live->emitters[emitter].count;
+    const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
+    int32_t count = live->emitters[emitter].count;
+    mvfxRecordOrder order = {.reverse = compiled->sortMode == mvfx_sortYoungestFirst,
+                             .live = count};
+    if (SortsByPlace(compiled))
+    {
+        if (scratchBytes < (int64_t)count * MVFX_SORT_BYTES_PER_ITEM)
+        {
+            return mvfx_errorCapacity;
+        }
+        order.indices = SortByPlace(live, emitter, view, scratch, count);
+    }
     *countOut = count;
-    mvfxWriteRecords(live, emitter, format, viewOrigin, records,
+    mvfxWriteRecords(live, emitter, format, view->origin, &order, records,
                      count < capacity ? count : capacity);
     return mvfx_success;
 }
@@ -210,10 +307,10 @@ static mvfxLight LightOf(const Source* s, const mvfxLightDef* def, int32_t i)
 }
 
 mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                    const double viewOrigin[3], mvfxLight* lights, int64_t capacity,
+                                    const mvfxView* view, mvfxLight* lights, int64_t capacity,
                                     int64_t* countOut)
 {
-    if (context == nullptr || viewOrigin == nullptr || countOut == nullptr)
+    if (context == nullptr || view == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
         {
@@ -228,7 +325,7 @@ mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instanc
     {
         return found;
     }
-    if (capacity < 0 || (capacity > 0 && lights == nullptr) || !IsOriginValid(viewOrigin))
+    if (capacity < 0 || (capacity > 0 && lights == nullptr) || !IsViewValid(view))
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
@@ -243,7 +340,7 @@ mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instanc
         .emitter = emitter,
         .plan = &live->effect->emitters[emitter].plan,
         .map = mvfxSpaceMapAt(live, emitter, mvfx_spaceWorld, &live->to),
-        .viewOrigin = viewOrigin,
+        .viewOrigin = view->origin,
     };
     int64_t count = 0;
     for (int32_t i = 0; i < live->emitters[emitter].count; ++i)

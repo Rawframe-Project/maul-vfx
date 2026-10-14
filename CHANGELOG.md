@@ -155,3 +155,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   range, chosen at birth) written by the record field `mvfx_recordMesh`,
   and its `light` making every n-th particle by serial carry a light
   that `mvfxInstance_WriteLights` writes as `mvfxLight` records.
+- Sorting: an emitter's `sortMode` and `sortMeasure` order its records
+  for a view (youngest first, or back to front or front to back by
+  distance or depth) through a stable radix sort on scratch the host
+  passes, sized by `mvfxInstance_GetSortScratchBytes`. Outputs take an
+  `mvfxView` (origin, eye, forward) in place of a view origin.

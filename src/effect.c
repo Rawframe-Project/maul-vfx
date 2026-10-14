@@ -178,8 +178,9 @@ static bool AreOutputsValid(const mvfxEmitterDef* def)
                             light->intensity >= 0.0f && light->intensity <= MVFX_MAX_EXTENT &&
                             light->radius >= 0.0f && light->radius <= MVFX_MAX_EXTENT &&
                             light->radiusBySize >= 0.0f && light->radiusBySize <= MVFX_MAX_EXTENT);
-    return lightValid && mesh->mode <= mvfx_frameRandom && mesh->first >= 0 &&
-           mesh->first <= mesh->last && mesh->last < MVFX_MAX_MESH_INDEX;
+    return lightValid && def->sortMode <= mvfx_sortFrontToBack &&
+           def->sortMeasure <= mvfx_sortByDepth && mesh->mode <= mvfx_frameRandom &&
+           mesh->first >= 0 && mesh->first <= mesh->last && mesh->last < MVFX_MAX_MESH_INDEX;
 }
 
 // Whether an emitter's collision and colliders are valid, and a kill rule
@@ -516,6 +517,8 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->frame = def->frame;
     out->meshIndex = def->meshIndex;
     out->light = def->light;
+    out->sortMode = def->sortMode;
+    out->sortMeasure = def->sortMeasure;
     out->customCount = def->customCount;
     for (int32_t i = 0; i < def->customCount; ++i)
     {

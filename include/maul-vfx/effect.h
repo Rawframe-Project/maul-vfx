@@ -295,6 +295,30 @@ extern "C"
     // created, so a repeating burst never drifts. The particles an emitter's
     // rate and its repeating bursts spawn a second, at most, may not exceed
     // MVFX_MAX_SPAWN_RATE each.
+    // The order an emitter's records are written in for a view.
+    typedef uint8_t mvfxSortMode;
+    enum
+    {
+        // The pool's: oldest first.
+        mvfx_sortNone = 0,
+        // Youngest first, the pool's reversed.
+        mvfx_sortYoungestFirst = 1,
+        // Farthest first, for blending over what is behind.
+        mvfx_sortBackToFront = 2,
+        // Nearest first.
+        mvfx_sortFrontToBack = 3,
+    };
+
+    // What back to front and front to back measure.
+    typedef uint8_t mvfxSortMeasure;
+    enum
+    {
+        // The distance from the view's eye.
+        mvfx_sortByDistance = 0,
+        // The depth from the eye along the view's forward direction.
+        mvfx_sortByDepth = 1,
+    };
+
 // The most meshes an emitter's particles choose from.
 #define MVFX_MAX_MESH_INDEX 65536
 
@@ -402,6 +426,10 @@ extern "C"
         mvfxEventSpawn eventSpawn;
         // The lights its particles carry (mvfxInstance_WriteLights).
         mvfxLightDef light;
+        // The order its records are written in, and what a sort by place
+        // measures; equal keys keep the pool's order.
+        mvfxSortMode sortMode;
+        mvfxSortMeasure sortMeasure;
         // Its place in the order emitters are drawn in, lower first
         // (mvfxContext_OrderEmitters).
         int32_t drawPriority;

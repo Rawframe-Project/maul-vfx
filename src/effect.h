@@ -202,6 +202,8 @@ typedef struct mvfxCompiledEmitter
     mvfxFrameStart frame;
     mvfxFrameStart meshIndex;
     mvfxLightDef light;
+    mvfxSortMode sortMode;
+    mvfxSortMeasure sortMeasure;
     mvfxCompiledVector custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
     int32_t customCount;
     mvfxAttributePlan plan;

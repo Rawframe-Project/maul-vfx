@@ -73,10 +73,10 @@ static void TestLights(void)
     Scene scene = NewScene(&emitter, 1);
     Spawn(&scene, 8);
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    static const double view[3] = {10.0, -1.0, 0.0};
+    static const mvfxView view = {.origin = {10.0, -1.0, 0.0}};
     mvfxLight lights[4] = {0};
     int64_t count = 0;
-    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, view, lights, 4, &count) ==
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, &view, lights, 4, &count) ==
                   mvfx_success &&
               count == 3,
           "serials 0, 3 and 6");
@@ -89,11 +89,11 @@ static void TestLights(void)
           "colour times intensity; radius plus half the largest size");
     // A buffer of two takes the first; none, the count.
     mvfxLight few[2] = {0};
-    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, view, few, 2, &count) ==
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, &view, few, 2, &count) ==
                   mvfx_success &&
               count == 3 && few[1].serial == 3,
           "a buffer too small");
-    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, view, NULL, 0, &count) ==
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, &view, NULL, 0, &count) ==
                   mvfx_success &&
               count == 3,
           "the count alone");
@@ -113,10 +113,10 @@ static void TestStable(void)
     Spawn(&scene, 6);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 6) == mvfx_success,
           "the first four die");
-    static const double view[3] = {0, 0, 0};
+    static const mvfxView view = {.origin = {0, 0, 0}};
     mvfxLight lights[4] = {0};
     int64_t count = 0;
-    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, view, lights, 4, &count) ==
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, &view, lights, 4, &count) ==
                   mvfx_success &&
               count == 2 && lights[0].serial == 6 && lights[1].serial == 9,
           "the same serials carry them");
@@ -142,10 +142,10 @@ static void TestLocal(void)
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success,
           "spawned");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    static const double view[3] = {0, 0, 0};
+    static const mvfxView view = {.origin = {0, 0, 0}};
     mvfxLight light = {0};
     int64_t count = 0;
-    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, view, &light, 1, &count) ==
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, &view, &light, 1, &count) ==
                   mvfx_success &&
               count == 1 && fabsf(light.position[0] - 102.0f) <= 1e-4f &&
               fabsf(light.radius - 3.0f) <= 1e-5f,
@@ -168,14 +168,14 @@ static void TestUnlit(void)
               mvfxInstance_Spawn(scene.context, scene.instance, 1, &request) == mvfx_success,
           "spawned");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    static const double view[3] = {0, 0, 0};
+    static const mvfxView view = {.origin = {0, 0, 0}};
     mvfxLight light = {0};
     int64_t count = -1;
-    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, view, &light, 1, &count) ==
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, &view, &light, 1, &count) ==
                   mvfx_success &&
               count == 0,
           "no lights");
-    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 1, view, &light, 1, &count) ==
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 1, &view, &light, 1, &count) ==
                   mvfx_success &&
               count == 1 && light.color[0] == 4.0f && light.color[2] == 4.0f &&
               light.radius == 1.5f,
@@ -241,23 +241,23 @@ static void TestRefusals(void)
     Scene scene = NewScene(&emitter, 1);
     mvfxContext* c = scene.context;
     mvfxInstanceId i = scene.instance;
-    static const double view[3] = {0, 0, 0};
-    static const double far[3] = {0, -0x1p53, 0};
+    static const mvfxView view = {.origin = {0, 0, 0}};
+    static const mvfxView far = {.origin = {0, -0x1p53, 0}};
     mvfxLight lights[1];
     int64_t count = 0;
     uint64_t misuse = mvfxContext_GetMisuse(c);
-    CHECK(mvfxInstance_WriteLights(c, i, 1, view, lights, 1, &count) == mvfx_errorInvalid &&
+    CHECK(mvfxInstance_WriteLights(c, i, 1, &view, lights, 1, &count) == mvfx_errorInvalid &&
               mvfxInstance_WriteLights(c, i, 0, NULL, lights, 1, &count) == mvfx_errorInvalid &&
-              mvfxInstance_WriteLights(c, i, 0, view, lights, 1, NULL) == mvfx_errorInvalid &&
-              mvfxInstance_WriteLights(c, i, 0, view, lights, -1, &count) == mvfx_errorInvalid &&
-              mvfxInstance_WriteLights(c, i, 0, view, NULL, 1, &count) == mvfx_errorInvalid &&
-              mvfxInstance_WriteLights(c, i, 0, far, lights, 1, &count) == mvfx_errorInvalid,
+              mvfxInstance_WriteLights(c, i, 0, &view, lights, 1, NULL) == mvfx_errorInvalid &&
+              mvfxInstance_WriteLights(c, i, 0, &view, lights, -1, &count) == mvfx_errorInvalid &&
+              mvfxInstance_WriteLights(c, i, 0, &view, NULL, 1, &count) == mvfx_errorInvalid &&
+              mvfxInstance_WriteLights(c, i, 0, &far, lights, 1, &count) == mvfx_errorInvalid,
           "refused");
     CHECK(mvfxContext_GetMisuse(c) == misuse + 6, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
-    CHECK(mvfxInstance_WriteLights(c, stale, 0, view, lights, 1, &count) == mvfx_errorStale &&
-              mvfxInstance_WriteLights(NULL, i, 0, view, lights, 1, &count) == mvfx_errorInvalid,
+    CHECK(mvfxInstance_WriteLights(c, stale, 0, &view, lights, 1, &count) == mvfx_errorStale &&
+              mvfxInstance_WriteLights(NULL, i, 0, &view, lights, 1, &count) == mvfx_errorInvalid,
           "stale, no context");
     mvfxDestroyContext(c);
 }

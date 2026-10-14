@@ -1,8 +1,9 @@
+sort:
 bounds: appearance direction instance space
 view: bounds context instance instance_api
 layout: allocator elementary half
 layout_api: context layout slots
-output: appearance context direction instance instance_api layout layout_api space
+output: appearance context direction instance instance_api layout layout_api sort space
 # The internal module graph (docs/conventions.md, section 6): each module
 # and the modules it may use. tools/check_modules.py enforces it.
 base:

@@ -80,6 +80,11 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].rate = 37.5f;
     emitters[0].lifetime = mvfxRangeSource(0.25f, 1.5f);
     emitters[1].capacity = 64;
+    // Three emitters drawn in three orders.
+    emitters[0].sortMode = mvfx_sortBackToFront;
+    emitters[1].sortMode = mvfx_sortYoungestFirst;
+    emitters[2].sortMode = mvfx_sortFrontToBack;
+    emitters[2].sortMeasure = mvfx_sortByDepth;
     emitters[1].meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 1, .last = 6};
     emitters[1].rate = 2000.0f;
     emitters[1].lifetime = mvfxRangeSource(0.01f, 0.05f);
@@ -654,18 +659,21 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
     {
         CHECK(mvfxCreateLayout(context, &def, &layout) == mvfx_success, "scene layout");
     }
-    static const double view[3] = {1500.0, 3.0, -2.0};
+    // The eye among the first instances looks down and a little along x.
+    static const mvfxView view = {
+        .origin = {1500.0, 3.0, -2.0}, .eye = {12.0, 1.0, 2.0}, .forward = {0.25f, -0.125f, -1.0f}};
     static unsigned char records[SCENE_RECORDS * SCENE_RECORD_BYTES];
+    static uint32_t scratch[SCENE_RECORDS * 4];
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
         int64_t count = 0;
-        CHECK(mvfxInstance_WriteParticles(context, id, e, layout, view, records, SCENE_RECORDS,
-                                          &count) == mvfx_success &&
+        CHECK(mvfxInstance_WriteParticles(context, id, e, layout, &view, scratch, sizeof scratch,
+                                          records, SCENE_RECORDS, &count) == mvfx_success &&
                   count <= SCENE_RECORDS,
               "scene output");
         hash = mvfxHash64(hash, records, (int32_t)count * SCENE_RECORD_BYTES);
         static mvfxLight lights[SCENE_RECORDS];
-        CHECK(mvfxInstance_WriteLights(context, id, e, view, lights, SCENE_RECORDS, &count) ==
+        CHECK(mvfxInstance_WriteLights(context, id, e, &view, lights, SCENE_RECORDS, &count) ==
                       mvfx_success &&
                   count <= SCENE_RECORDS,
               "scene lights");

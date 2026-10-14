@@ -293,12 +293,12 @@ static void TestRecords(void)
     Place(&scene, 1001.5, 2, 3, 0.5f);
     Place(&scene, 999, 0, 0, -0.25f);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
-    static const double view[3] = {1000.0, 0.0, 0.0};
+    static const mvfxView view = {.origin = {1000.0, 0.0, 0.0}};
     Record records[3];
     memset(records, 0xEE, sizeof records);
     int64_t count = -1;
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, records, 3,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      records, 3, &count) == mvfx_success &&
               count == 2,
           "two records");
     const Record* r = &records[0];
@@ -314,12 +314,12 @@ static void TestRecords(void)
           "the second; padding and the rest untouched");
     // A buffer of one takes the first; none at all, the count.
     memset(records, 0xEE, sizeof records);
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, records, 1,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      records, 1, &count) == mvfx_success &&
               count == 2 && records[0].serial == 0 && records[1].serial == 0xEEEEEEEEu,
           "a buffer too small");
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, NULL, 0,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      NULL, 0, &count) == mvfx_success &&
               count == 2,
           "the count alone");
     mvfxDestroyContext(scene.context);
@@ -360,11 +360,11 @@ static void TestLocal(void)
     };
     mvfxLayoutId layout = {0};
     CHECK(Make(scene.context, fields, 5, 56, &layout) == mvfx_success, "layout");
-    static const double view[3] = {0.0, 0.0, 0.0};
+    static const mvfxView view = {.origin = {0.0, 0.0, 0.0}};
     float record[14];
     int64_t count = 0;
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, record, 1,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      record, 1, &count) == mvfx_success &&
               count == 1,
           "one record");
     CHECK(fabsf(record[0] - 100.0f) <= 1e-4f && fabsf(record[1] - 2.0f) <= 1e-4f &&
@@ -385,30 +385,30 @@ static void TestRefusals(void)
     mvfxLayoutId layout = {0};
     CHECK(Make(scene.context, s_fields, 7, (uint32_t)sizeof(Record), &layout) == mvfx_success,
           "layout");
-    static const double view[3] = {0, 0, 0};
-    static const double far[3] = {0x1p53, 0, 0};
-    static const double farY[3] = {0, 0x1p53, 0};
-    static const double farZ[3] = {0, 0, -0x1p53};
+    static const mvfxView view = {.origin = {0, 0, 0}};
+    static const mvfxView far = {.origin = {0x1p53, 0, 0}};
+    static const mvfxView farY = {.origin = {0, 0x1p53, 0}};
+    static const mvfxView farZ = {.origin = {0, 0, -0x1p53}};
     Record records[1];
     int64_t count = 0;
     uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     mvfxContext* c = scene.context;
     mvfxInstanceId i = scene.instance;
-    CHECK(mvfxInstance_WriteParticles(c, i, 1, layout, view, records, 1, &count) ==
+    CHECK(mvfxInstance_WriteParticles(c, i, 1, layout, &view, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid &&
-              mvfxInstance_WriteParticles(c, i, 0, layout, NULL, records, 1, &count) ==
+              mvfxInstance_WriteParticles(c, i, 0, layout, NULL, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid &&
-              mvfxInstance_WriteParticles(c, i, 0, layout, view, records, 1, NULL) ==
+              mvfxInstance_WriteParticles(c, i, 0, layout, &view, NULL, 0, records, 1, NULL) ==
                   mvfx_errorInvalid &&
-              mvfxInstance_WriteParticles(c, i, 0, layout, view, records, -1, &count) ==
+              mvfxInstance_WriteParticles(c, i, 0, layout, &view, NULL, 0, records, -1, &count) ==
                   mvfx_errorInvalid &&
-              mvfxInstance_WriteParticles(c, i, 0, layout, view, NULL, 1, &count) ==
+              mvfxInstance_WriteParticles(c, i, 0, layout, &view, NULL, 0, NULL, 1, &count) ==
                   mvfx_errorInvalid &&
-              mvfxInstance_WriteParticles(c, i, 0, layout, far, records, 1, &count) ==
+              mvfxInstance_WriteParticles(c, i, 0, layout, &far, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid &&
-              mvfxInstance_WriteParticles(c, i, 0, layout, farY, records, 1, &count) ==
+              mvfxInstance_WriteParticles(c, i, 0, layout, &farY, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid &&
-              mvfxInstance_WriteParticles(c, i, 0, layout, farZ, records, 1, &count) ==
+              mvfxInstance_WriteParticles(c, i, 0, layout, &farZ, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid,
           "refused");
     CHECK(mvfxContext_GetMisuse(c) == misuse + 8, "each counted");
@@ -416,11 +416,11 @@ static void TestRefusals(void)
     stale.generation += 1;
     mvfxLayoutId staleLayout = layout;
     staleLayout.generation += 1;
-    CHECK(mvfxInstance_WriteParticles(c, stale, 0, layout, view, records, 1, &count) ==
+    CHECK(mvfxInstance_WriteParticles(c, stale, 0, layout, &view, NULL, 0, records, 1, &count) ==
                   mvfx_errorStale &&
-              mvfxInstance_WriteParticles(c, i, 0, staleLayout, view, records, 1, &count) ==
-                  mvfx_errorStale &&
-              mvfxInstance_WriteParticles(NULL, i, 0, layout, view, records, 1, &count) ==
+              mvfxInstance_WriteParticles(c, i, 0, staleLayout, &view, NULL, 0, records, 1,
+                                          &count) == mvfx_errorStale &&
+              mvfxInstance_WriteParticles(NULL, i, 0, layout, &view, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid,
           "stale, no context");
     mvfxDestroyContext(c);
@@ -449,11 +449,11 @@ static void TestFrameAsFloat(void)
         .field = mvfx_recordFrame, .format = mvfx_formatFloat32, .components = 1};
     mvfxLayoutId layout = {0};
     CHECK(Make(scene.context, &field, 1, 4, &layout) == mvfx_success, "a float frame");
-    static const double view[3] = {0, 0, 0};
+    static const mvfxView view = {.origin = {0, 0, 0}};
     float frame = 0.0f;
     int64_t count = 0;
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, &frame, 1,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      &frame, 1, &count) == mvfx_success &&
               frame == 5.0f,
           "frame 5 as a float");
     mvfxDestroyContext(scene.context);
@@ -497,18 +497,18 @@ static void TestMeshIndex(void)
     mvfxLayoutId refusedLayout = {0};
     CHECK(Make(scene.context, &two, 1, 8, &refusedLayout) == mvfx_errorInvalid,
           "a mesh index has one component");
-    static const double view[3] = {0, 0, 0};
+    static const mvfxView view = {.origin = {0, 0, 0}};
     static uint32_t records[400 * 2];
     int64_t count = 0;
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, view, records, 400,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      records, 400, &count) == mvfx_success &&
               count == 2 && records[0] == 3 && records[2] == 3,
           "one mesh");
     float asFloat = 0.0f;
     memcpy(&asFloat, &records[1], 4);
     CHECK(asFloat == 3.0f, "as binary32");
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 1, layout, view, records, 400,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 1, layout, &view, NULL, 0,
+                                      records, 400, &count) == mvfx_success &&
               count == 400,
           "four hundred");
     int32_t seen[8] = {0};
@@ -519,8 +519,8 @@ static void TestMeshIndex(void)
     CHECK(seen[0] == 0 && seen[1] == 0 && seen[6] == 0 && seen[7] == 0 && seen[2] > 60 &&
               seen[3] > 60 && seen[4] > 60 && seen[5] > 60,
           "any of 2 to 5, alike");
-    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 2, layout, view, records, 400,
-                                      &count) == mvfx_success &&
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 2, layout, &view, NULL, 0,
+                                      records, 400, &count) == mvfx_success &&
               count == 2 && records[0] == 0 && records[1] == 0,
           "none, 0");
     // Checked: a mode, first below 0 or above last, last too large.
