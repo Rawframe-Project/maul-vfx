@@ -148,6 +148,33 @@ static void TestEdges(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestBoundaries(void)
+{
+    // A touching B exactly, C overlapping B by 0.4: B moves 0.2 from C
+    // alone, A's touch not counted in its average.
+    mvfxEmitterDef emitter = Emitter();
+    static const double line[9] = {0, 0, 0, 1, 0, 0, 1.6, 0, 0};
+    static const float rest[9] = {0};
+    Run(&emitter, line, rest, 3);
+    CHECK(Near(s_seen.place[1][0], 0.8), "touching exactly is not a contact");
+    mvfxDestroyContext(s_context);
+    // A and B moving together (not closing), C closing on B: B's impulse
+    // from C alone stops it.
+    static const double row[9] = {0, 0, 0, 1, 0, 0, 2, 0, 0};
+    static const float moving[9] = {1, 0, 0, 1, 0, 0, -1, 0, 0};
+    Run(&emitter, row, moving, 3);
+    CHECK(s_seen.velocity[1][0] == 0.0f && s_seen.velocity[2][0] == 0.0f,
+          "a contact not closing is not averaged");
+    mvfxDestroyContext(s_context);
+    // Within the slop past the radii's sum, two cells of the radius apart,
+    // closing: kicked.
+    static const double apart[6] = {0.9999, 0, 0, 2.0004, 0, 0};
+    static const float closing[6] = {1, 0, 0, -1, 0, 0};
+    Run(&emitter, apart, closing, 2);
+    CHECK(s_seen.velocity[0][0] == 0.0f && s_seen.velocity[1][0] == 0.0f, "within the slop");
+    mvfxDestroyContext(s_context);
+}
+
 static uint64_t Capped(void)
 {
     mvfxEmitterStats stats = {0};
@@ -219,6 +246,8 @@ static void TestCapped(void)
     static const float rest[15] = {0};
     Run(&emitter, places, rest, 5);
     CHECK(Capped() == 5, "capped, counted once a step");
+    CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success && Capped() == 0,
+          "a restart counts again");
     mvfxDestroyContext(s_context);
 }
 
@@ -301,6 +330,7 @@ int main(void)
 {
     TestPair();
     TestEdges();
+    TestBoundaries();
     TestCluster();
     TestCapped();
     TestChecks();
