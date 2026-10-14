@@ -80,6 +80,10 @@ extern "C"
         // The unit normal of its face, the side crossed with the tangent, 3
         // (0 in a particle's record).
         mvfx_recordFaceNormal = 17,
+        // An expanded vertex's texture coordinate, 2: a sprite's corner, from
+        // (0, 0) at its left bottom to (1, 1) at its right top; a ribbon's
+        // coordinate along and 0 or 1 across (0 elsewhere).
+        mvfx_recordCorner = 18,
     };
 
     // How a field's components are written.
@@ -188,6 +192,9 @@ extern "C"
         double eye[3];
         // The direction depth is measured along: finite, of any length.
         float forward[3];
+        // Which way is up on the view, for sprites facing it: finite, not
+        // along forward; any length.
+        float up[3];
     } mvfxView;
 
     /// Returns the bytes of scratch an emitter's output takes, enough for
@@ -305,6 +312,52 @@ extern "C"
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
         const mvfxView* view, const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
         int64_t* ribbonCountOut);
+
+    // Where an expansion writes: vertices in a layout, uint32 indices of
+    // triangles into them (from 0 at the buffer's first vertex), and
+    // scratch for the emitter's sort (mvfxInstance_GetSortScratchBytes).
+    // Each pointer may be NULL only when its size is 0.
+    typedef struct mvfxExpandBuffers
+    {
+        void* vertices;
+        int64_t vertexCapacity;
+        uint32_t* indices;
+        int64_t indexCapacity;
+        void* scratch;
+        int64_t scratchBytes;
+    } mvfxExpandBuffers;
+
+    /// Expands an emitter's particles for a view into quads, for renderers
+    /// that cannot draw instances: four vertices a particle (left bottom,
+    /// right bottom, left top, right top; records of the layout with their
+    /// corner fields, at the corners' places) and six indices (two
+    /// triangles, counterclockwise seen from the side the quad faces), in
+    /// the order its def sorts, each quad its size's X wide and Y high
+    /// about the particle and turned as its sprite def's billboard says.
+    /// Buffers too small take the first whole quads; the count is always
+    /// the live particles.
+    ///
+    /// @param context     The context that owns the instance and the layout.
+    /// @param instance    The instance.
+    /// @param emitter     The emitter's index in the effect's def.
+    /// @param layout      The vertices' layout.
+    /// @param view        The view.
+    /// @param buffers     The buffers.
+    /// @param countOut    Receives the quads there are.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
+    ///         that names nothing live; `mvfx_errorCapacity` for scratch too
+    ///         small for the emitter's sort, with nothing written;
+    ///         `mvfx_errorInvalid` for a NULL context, view, buffers or
+    ///         count, a view out of range, an emitter out of range, a
+    ///         negative size or a NULL or misaligned buffer with a size, which
+    ///         counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once, each with
+    /// its own scratch.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ExpandSprites(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+        const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* countOut);
 
     // A light a particle carries.
     typedef struct mvfxLight

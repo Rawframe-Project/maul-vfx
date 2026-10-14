@@ -37,6 +37,8 @@ typedef struct mvfxRibbonPoint
     float width;
     float color[4];
     uint32_t ribbon;
+    // An expanded vertex's corner coordinate.
+    float corner[2];
 } mvfxRibbonPoint;
 
 // The source of an emitter's records for a view's origin.
@@ -72,6 +74,14 @@ typedef struct mvfxRecordOrder
     bool reverse;
     int32_t live;
 } mvfxRecordOrder;
+
+// The order an emitter's records follow for a view, the sort its def
+// asks on scratch; false when the scratch is too small.
+bool mvfxOrderRecords(const mvfxInstance* instance, int32_t emitter, const mvfxView* view,
+                      void* scratch, int64_t scratchBytes, mvfxRecordOrder* orderOut);
+
+// The particle of an order's r-th record.
+int32_t mvfxOrderAt(const mvfxRecordOrder* order, int64_t r);
 
 // Writes the records of the first count particles of an order.
 void mvfxWriteRecords(const mvfxInstance* instance, int32_t emitter, const mvfxOutputLayout* layout,

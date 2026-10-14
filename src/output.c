@@ -93,6 +93,10 @@ static void RibbonValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, 
             v[k] = at->faceNormal[k];
         }
         break;
+    case mvfx_recordCorner:
+        v[0] = at->corner[0];
+        v[1] = at->corner[1];
+        break;
     default:
         w[0] = at->ribbon;
         v[0] = (float)at->ribbon;
@@ -271,9 +275,7 @@ void mvfxWriteRecords(const mvfxInstance* instance, int32_t emitter, const mvfxO
     mvfxRecordSource s = mvfxOpenRecordSource(instance, emitter, viewOrigin);
     for (int64_t r = 0; r < count; ++r)
     {
-        int32_t i = order->indices != nullptr ? (int32_t)order->indices[r]
-                    : order->reverse          ? order->live - 1 - (int32_t)r
-                                              : (int32_t)r;
+        int32_t i = mvfxOrderAt(order, r);
         mvfxWriteRecord(&s, layout, i, nullptr, records + r * (int64_t)layout->stride);
     }
 }
@@ -284,7 +286,7 @@ bool mvfxIsViewValid(const mvfxView* view)
     for (int32_t k = 0; k < 3; ++k)
     {
         valid = valid && fabs(view->origin[k]) <= 0x1p52 && fabs(view->eye[k]) <= 0x1p52 &&
-                isfinite(view->forward[k]);
+                isfinite(view->forward[k]) && isfinite(view->up[k]);
     }
     return valid;
 }
@@ -337,6 +339,32 @@ static const uint32_t* SortByPlace(const mvfxInstance* instance, int32_t emitter
     }
     mvfxRadixSort(keys, indices, scratch + 2 * (int64_t)live, scratch + 3 * (int64_t)live, live);
     return indices;
+}
+
+bool mvfxOrderRecords(const mvfxInstance* instance, int32_t emitter, const mvfxView* view,
+                      void* scratch, int64_t scratchBytes, mvfxRecordOrder* orderOut)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    int32_t count = instance->emitters[emitter].count;
+    *orderOut =
+        (mvfxRecordOrder){.reverse = compiled->sortMode == mvfx_sortYoungestFirst, .live = count};
+    if (!SortsByPlace(compiled))
+    {
+        return true;
+    }
+    if (scratchBytes < (int64_t)count * MVFX_SORT_BYTES_PER_ITEM)
+    {
+        return false;
+    }
+    orderOut->indices = SortByPlace(instance, emitter, view, scratch, count);
+    return true;
+}
+
+int32_t mvfxOrderAt(const mvfxRecordOrder* order, int64_t r)
+{
+    return order->indices != nullptr ? (int32_t)order->indices[r]
+           : order->reverse          ? order->live - 1 - (int32_t)r
+                                     : (int32_t)r;
 }
 
 mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId instance,
@@ -398,17 +426,11 @@ mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId inst
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
-    const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
     int32_t count = live->emitters[emitter].count;
-    mvfxRecordOrder order = {.reverse = compiled->sortMode == mvfx_sortYoungestFirst,
-                             .live = count};
-    if (SortsByPlace(compiled))
+    mvfxRecordOrder order = {0};
+    if (!mvfxOrderRecords(live, emitter, view, scratch, scratchBytes, &order))
     {
-        if (scratchBytes < (int64_t)count * MVFX_SORT_BYTES_PER_ITEM)
-        {
-            return mvfx_errorCapacity;
-        }
-        order.indices = SortByPlace(live, emitter, view, scratch, count);
+        return mvfx_errorCapacity;
     }
     *countOut = count;
     mvfxWriteRecords(live, emitter, format, view->origin, &order, records,

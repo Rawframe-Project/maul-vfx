@@ -1,3 +1,4 @@
+expand: appearance context direction elementary instance_api layout_api output
 beam: direction elementary instance noise
 ribbon: context direction gradient instance instance_api layout_api output sort spawn
 sort:

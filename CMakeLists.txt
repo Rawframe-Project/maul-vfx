@@ -56,6 +56,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/effect.c
     src/effect_api.c
     src/elementary.c
+    src/expand.c
     src/force.c
     src/grid.c
     src/grid_api.c
@@ -117,6 +118,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(emitter_step WHITEBOX)
     maul_add_test(event WHITEBOX)
     maul_add_test(event_spawn WHITEBOX)
+    maul_add_test(expand)
     maul_add_test(elementary_sweep WHITEBOX MANUAL)
     maul_add_test(golden WHITEBOX)
     maul_add_test(gradient WHITEBOX)

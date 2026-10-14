@@ -99,6 +99,14 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].rate = 37.5f;
     emitters[0].lifetime = mvfxRangeSource(0.25f, 1.5f);
     emitters[1].capacity = 64;
+    // Each emitter's quads turn their own way.
+    emitters[0].sprite = (mvfxSpriteDef){.billboard = mvfx_billboardDirectional, .stretch = 0.3f};
+    emitters[1].sprite.billboard = mvfx_billboardAxisY;
+    emitters[2].sprite.billboard = mvfx_billboardRotated;
+    emitters[3].sprite.billboard = mvfx_billboardFixed;
+    emitters[2].angle = mvfxRangeSource(0.0f, 6.2831853f);
+    emitters[2].spin = mvfxRangeSource(-2.0f, 2.0f);
+    emitters[3].orientationMode = mvfx_orientationRandom;
     // Three emitters drawn in three orders.
     emitters[0].sortMode = mvfx_sortBackToFront;
     emitters[1].sortMode = mvfx_sortYoungestFirst;
@@ -741,6 +749,28 @@ static inline uint64_t HashRibbons(mvfxContext* context, mvfxInstanceId id, int3
     return mvfxHash64(hash, ribbons, (int32_t)(ribbonCount * (int64_t)sizeof ribbons[0]));
 }
 
+// Hashes an emitter's quads for a view: their vertices and indices.
+static inline uint64_t HashQuads(mvfxContext* context, mvfxInstanceId id, int32_t emitter,
+                                 mvfxLayoutId layout, const mvfxView* view, uint32_t* scratch,
+                                 uint64_t hash)
+{
+    static unsigned char vertices[4 * SCENE_RECORDS * SCENE_RECORD_BYTES];
+    static uint32_t indices[6 * SCENE_RECORDS];
+    mvfxExpandBuffers buffers = {.vertices = vertices,
+                                 .vertexCapacity = 4 * SCENE_RECORDS,
+                                 .indices = indices,
+                                 .indexCapacity = 6 * SCENE_RECORDS,
+                                 .scratch = scratch,
+                                 .scratchBytes = SCENE_RECORDS * 16};
+    int64_t count = 0;
+    CHECK(mvfxInstance_ExpandSprites(context, id, emitter, layout, view, &buffers, &count) ==
+                  mvfx_success &&
+              count <= SCENE_RECORDS,
+          "scene quads");
+    hash = mvfxHash64(hash, vertices, (int32_t)(4 * count) * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, (int32_t)(6 * count * (int64_t)sizeof indices[0]));
+}
+
 // Hashes every emitter's records of an instance for a view at (1500, 3,
 // -2), through a layout made on the context the first time.
 static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
@@ -756,8 +786,10 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
         CHECK(mvfxCreateLayout(context, &def, &layout) == mvfx_success, "scene layout");
     }
     // The eye among the first instances looks down and a little along x.
-    static const mvfxView view = {
-        .origin = {1500.0, 3.0, -2.0}, .eye = {12.0, 1.0, 2.0}, .forward = {0.25f, -0.125f, -1.0f}};
+    static const mvfxView view = {.origin = {1500.0, 3.0, -2.0},
+                                  .eye = {12.0, 1.0, 2.0},
+                                  .forward = {0.25f, -0.125f, -1.0f},
+                                  .up = {0.0f, 1.0f, 0.25f}};
     static unsigned char records[SCENE_RECORDS * SCENE_RECORD_BYTES];
     static uint32_t scratch[SCENE_RECORDS * 4];
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
@@ -769,6 +801,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
               "scene output");
         hash = mvfxHash64(hash, records, (int32_t)count * SCENE_RECORD_BYTES);
         hash = HashRibbons(context, id, e, layout, &view, scratch, hash);
+        hash = HashQuads(context, id, e, layout, &view, scratch, hash);
         static mvfxLight lights[SCENE_RECORDS];
         CHECK(mvfxInstance_WriteLights(context, id, e, &view, lights, SCENE_RECORDS, &count) ==
                       mvfx_success &&

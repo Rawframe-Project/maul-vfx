@@ -177,3 +177,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   or a quadratic or cubic Bezier curve between points fixed or from
   instance parameters, with noise across it faded at both ends, struck
   again when a strike's lifetime ends; drawn as a ribbon.
+- Expansion: an emitter's `sprite` (billboards: camera, rotated, Y axis,
+  fixed, directional with velocity stretch) and
+  `mvfxInstance_ExpandSprites`, writing four vertices and six indices a
+  particle with the corner field `mvfx_recordCorner`; `mvfxView` gains
+  `up`.

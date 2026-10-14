@@ -447,6 +447,33 @@ extern "C"
         float noiseSpeed;
     } mvfxBeamDef;
 
+    // How an expanded sprite's quad is turned (mvfxInstance_ExpandSprites).
+    typedef uint8_t mvfxBillboard;
+    enum
+    {
+        // In the view's plane, upright on its up.
+        mvfx_billboardCamera = 0,
+        // In the view's plane, turned about its forward by the particle's
+        // angle.
+        mvfx_billboardRotated = 1,
+        // Upright on the world's Y, turned about it to face the eye.
+        mvfx_billboardAxisY = 2,
+        // In the plane of the particle's orientation's X and Y.
+        mvfx_billboardFixed = 3,
+        // High along the particle's velocity, turned about it to face the
+        // eye; stretched by its speed.
+        mvfx_billboardDirectional = 4,
+    };
+
+    // How an emitter's particles are expanded into quads.
+    typedef struct mvfxSpriteDef
+    {
+        mvfxBillboard billboard;
+        // A directional quad's height grows by this times its speed (from 0
+        // to MVFX_MAX_EXTENT seconds), so it streaks the way it moves.
+        float stretch;
+    } mvfxSpriteDef;
+
 // The most meshes an emitter's particles choose from.
 #define MVFX_MAX_MESH_INDEX 65536
 
@@ -558,6 +585,8 @@ extern "C"
         mvfxRibbonDef ribbon;
         // A beam through its particles.
         mvfxBeamDef beam;
+        // How its particles expand into quads.
+        mvfxSpriteDef sprite;
         // The order its records are written in, and what a sort by place
         // measures; equal keys keep the pool's order.
         mvfxSortMode sortMode;

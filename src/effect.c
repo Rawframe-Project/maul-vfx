@@ -237,7 +237,9 @@ static bool AreOutputsValid(const mvfxEmitterDef* def)
                        (ribbon->ids == mvfx_ribbonNone || IsRibbonShapeValid(ribbon)) &&
                        mvfxIsLifeCurveValid(&ribbon->width) &&
                        (IsWhite(&ribbon->color) || mvfxIsGradientValid(&ribbon->color));
-    return lightValid && ribbonValid && def->sortMode <= mvfx_sortFrontToBack &&
+    bool spriteValid = def->sprite.billboard <= mvfx_billboardDirectional &&
+                       IsWithin(def->sprite.stretch, 0.0f, MVFX_MAX_EXTENT);
+    return lightValid && ribbonValid && spriteValid && def->sortMode <= mvfx_sortFrontToBack &&
            def->sortMeasure <= mvfx_sortByDepth && mesh->mode <= mvfx_frameRandom &&
            mesh->first >= 0 && mesh->first <= mesh->last && mesh->last < MVFX_MAX_MESH_INDEX;
 }
@@ -624,6 +626,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->sortMeasure = def->sortMeasure;
     out->ribbonIds = def->ribbon.ids;
     out->beam = def->beam;
+    out->sprite = def->sprite;
     CompileRibbonShape(&def->ribbon, out);
     mvfxCompileLife(&def->ribbon.width, space, &out->ribbonWidth);
     out->ribbonColor = nullptr;
