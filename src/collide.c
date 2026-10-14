@@ -411,7 +411,8 @@ static float CellOf(const mvfxResolvedCollider* c)
 }
 
 // The field's gradient at a local place, unit length, toward the allowed
-// side; the box's up (or down, inside) where it is flat.
+// side; the box's up where it is flat (only a distance grid can be: a
+// heightfield's always has its Y).
 static void GradientAt(const mvfxResolvedCollider* c, const float local[3], float out[3])
 {
     float cell = CellOf(c);
@@ -434,7 +435,7 @@ static void GradientAt(const mvfxResolvedCollider* c, const float local[3], floa
     if (!mvfxNormalize(out))
     {
         out[0] = 0.0f;
-        out[1] = c->inside && c->kind == mvfx_colliderHeightfield ? -1.0f : 1.0f;
+        out[1] = 1.0f;
         out[2] = 0.0f;
     }
 }

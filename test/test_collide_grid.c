@@ -195,6 +195,31 @@ static void TestHeightfield(void)
         mvfxDestroyContext(context);
     }
 
+    // As an instance's own collider: met the same.
+    context = NewContext();
+    slope = Heightfield(Slope(context));
+    emitter = Held(NULL, 0, 8);
+    emitter.collision.hostColliders = true;
+    emitter.collision.restitution = 0.0f;
+    emitter.collision.friction = 1.0f;
+    scene = NewScene(context, &emitter);
+    CHECK(mvfxInstance_SetColliders(context, scene.instance, &slope, 1) == mvfx_success, "set");
+    Place(&scene, 1, 5, 0, 0, -10, 0);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 0.5f, 2e-3f), "the instance's heightfield");
+    mvfxDestroyContext(context);
+
+    // Inside, a start above it is put down onto it.
+    context = NewContext();
+    slope = Heightfield(Slope(context));
+    slope.inside = true;
+    emitter = Held(&slope, 1, 8);
+    scene = NewScene(context, &emitter);
+    Place(&scene, 1, 3, 0, 0, 0, 0);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 0.5f, 1e-4f), "a start above put under");
+    mvfxDestroyContext(context);
+
     // Under an instance at scale 2 the slope spans x from -4 to 4 and its
     // heights double: at x = 3 it lies at 1.5.
     context = NewContext();
@@ -311,6 +336,36 @@ static void TestDistance(void)
     mvfxDestroyContext(context);
 }
 
+static void TestThinWall(void)
+{
+    // A wall half a unit thick at x = 1, in a grid fine along X (a cell of
+    // a quarter) and coarse along Y and Z (one of 4): sampled by the fine
+    // cell, a crossing at 3.8 a second is met at its face.
+    mvfxContext* context = NewContext();
+    float distances[17 * 2 * 2];
+    for (int32_t k = 0; k < 17 * 2 * 2; ++k)
+    {
+        float x = (float)(k % 17) * 0.25f - 2.0f;
+        distances[k] = fabsf(x - 1.0f) - 0.25f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 17;
+    def.size[1] = 2;
+    def.size[2] = 2;
+    def.values = distances;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "wall");
+    mvfxCollider wall = Distance(grid);
+    mvfxEmitterDef emitter = Held(&wall, 1, 8);
+    emitter.collision.restitution = 0.0f;
+    emitter.collision.friction = 1.0f;
+    Scene scene = NewScene(context, &emitter);
+    Place(&scene, -1.9, 0, 0, 3.8f, 0, 0);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionX, 0), 0.75f, 2e-3f), "met at the wall's face");
+    mvfxDestroyContext(context);
+}
+
 static void TestHeldAndRefused(void)
 {
     mvfxContext* context = NewContext();
@@ -384,6 +439,7 @@ int main(void)
 {
     TestHeightfield();
     TestDistance();
+    TestThinWall();
     TestHeldAndRefused();
     return s_failures == 0 ? 0 : 1;
 }
