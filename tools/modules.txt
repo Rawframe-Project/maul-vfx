@@ -8,3 +8,4 @@ hash:
 random:
 tasks: float_mode
 context: allocator tasks
+elementary:

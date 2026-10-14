@@ -8,6 +8,8 @@ fabs
 fabsf
 floor
 floorf
+frexp
+ldexp
 sqrt
 sqrtf
 truncf

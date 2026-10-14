@@ -43,6 +43,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/allocator.c
     src/base.c
     src/context.c
+    src/elementary.c
     src/float_mode.c
     src/hash.c
     src/tasks.c)
@@ -58,6 +59,8 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(allocator WHITEBOX)
     maul_add_test(base)
     maul_add_test(context)
+    maul_add_test(elementary WHITEBOX)
+    maul_add_test(elementary_sweep WHITEBOX MANUAL)
     maul_add_test(half WHITEBOX)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)
