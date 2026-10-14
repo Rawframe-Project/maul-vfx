@@ -299,6 +299,16 @@ static void TestOutside(void)
     Step(&scene);
     CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), -1.0, 1e-4), "the background, passing");
     mvfxDestroyContext(scene.context);
+    // The far plane holds no surface, even for a particle whose radius
+    // reaches it.
+    emitter = Seeing();
+    emitter.collision.radius = 0.5f;
+    scene = NewScene(&emitter);
+    Show(&scene, &wall);
+    Place(&scene, 0, 0, -89.8, 0, 0, 0);
+    Step(&scene);
+    CHECK(At(&scene, mvfx_attributePositionZ, 0) == (double)-89.8f, "no surface at the far plane");
+    mvfxDestroyContext(scene.context);
 }
 
 static void TestLocal(void)
@@ -321,6 +331,145 @@ static void TestLocal(void)
     Place(&scene, 0, 0, 0.5, 0, 0, -1);
     Step(&scene);
     CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 0.7, 1e-3), "scaled, with its radius");
+    mvfxDestroyContext(scene.context);
+}
+
+// Paints the wall z = 0 in rows [from, to) only, the far plane elsewhere.
+static void PaintRows(int32_t from, int32_t to)
+{
+    Paint(0.0, 0, SIDE, false);
+    for (int32_t r = 0; r < SIDE; ++r)
+    {
+        if (r >= from && r < to)
+        {
+            continue;
+        }
+        for (int32_t c = 0; c < SIDE; ++c)
+        {
+            s_floats[r * SIDE + c] = 1.0f;
+        }
+    }
+}
+
+static mvfxEmitterDef SeeingStill(void)
+{
+    mvfxEmitterDef emitter = Seeing();
+    emitter.collision.restitution = 0.0f;
+    emitter.collision.friction = 1.0f;
+    return emitter;
+}
+
+static void TestImageEdges(void)
+{
+    // A projection rolled a quarter (x from the view's y, y from its -x)
+    // needs its inverse pivoted: the wall is met the same.
+    Paint(0.0, 0, SIDE, false);
+    mvfxDepthImage rolled = Camera(s_floats, mvfx_depthFloat32, false);
+    static const float roll[8] = {0, -1, 0, 0, 1, 0, 0, 0};
+    memcpy(rolled.projection, roll, sizeof roll);
+    mvfxEmitterDef emitter = Seeing();
+    Scene scene = NewScene(&emitter);
+    Show(&scene, &rolled);
+    Place(&scene, 0.3, -0.2, 1, 0, 0, -2);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, 1e-3), "a rolled projection");
+    mvfxDestroyContext(scene.context);
+
+    // Rows from the image's top: a wall in the top half meets a particle
+    // above the view's axis, not one below it.
+    PaintRows(0, SIDE / 2);
+    mvfxDepthImage top = Camera(s_floats, mvfx_depthFloat32, false);
+    scene = NewScene(&emitter);
+    Show(&scene, &top);
+    Place(&scene, 0, 0.3, 1, 0, 0, -2);
+    Place(&scene, 0, -0.3, 1, 0, 0, -2);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, 1e-3) &&
+              Near(At(&scene, mvfx_attributePositionZ, 1), -1.0, 1e-4),
+          "rows from the top");
+    mvfxDestroyContext(scene.context);
+
+    // At the image's very right edge (x / w = 1): its last column.
+    Paint(0.0, 0, SIDE, false);
+    mvfxDepthImage wall = Camera(s_floats, mvfx_depthFloat32, false);
+    emitter = SeeingStill();
+    scene = NewScene(&emitter);
+    Show(&scene, &wall);
+    Place(&scene, 10.25, 0, -0.25, 0, 0, 0);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 0.0, 1e-3), "the right edge's column");
+    mvfxDestroyContext(scene.context);
+
+    // Beside a step down (z = 0 left of the middle, -3 right of it) the
+    // normal takes the nearer neighbor: straight back.
+    for (int32_t r = 0; r < SIDE; ++r)
+    {
+        for (int32_t c = 0; c < SIDE; ++c)
+        {
+            s_floats[r * SIDE + c] = (float)Device(c < SIDE / 2 ? -10.0 : -13.0, false);
+        }
+    }
+    emitter = Seeing();
+    scene = NewScene(&emitter);
+    Show(&scene, &wall);
+    Place(&scene, -0.15625, 0, 1, 0, 0, -2);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributeVelocityX, 0), 0.0, 1e-3) &&
+              Near(At(&scene, mvfx_attributeVelocityZ, 0), 2.0, 1e-3),
+          "beside a step, the nearer neighbor");
+    mvfxDestroyContext(scene.context);
+
+    // A strip one pixel wide against a thickness of 4: samples by the
+    // pixels crossed, not only by the thickness, meet it.
+    Paint(0.0, SIDE / 2, SIDE / 2 + 1, false);
+    emitter = Seeing();
+    emitter.collision.depthThickness = 4.0f;
+    scene = NewScene(&emitter);
+    Show(&scene, &wall);
+    Place(&scene, -5, 0, -0.1, 10, 0, 0);
+    Step(&scene);
+    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
+    CHECK(count[0] >= 1, "a pixel-wide strip, sampled by pixels");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestTurnedAndPlanes(void)
+{
+    // A camera at the world's (10, 0, 0) turned to look down -X sees the
+    // wall x = 0: met there, its normal turned into the world.
+    Paint(0.0, 0, SIDE, false);
+    mvfxDepthImage turned = Camera(s_floats, mvfx_depthFloat32, false);
+    turned.origin[2] = 0.0;
+    turned.origin[0] = 10.0;
+    turned.rotation[1] = 0.70710678f;
+    turned.rotation[3] = 0.70710678f;
+    mvfxEmitterDef emitter = Seeing();
+    Scene scene = NewScene(&emitter);
+    Show(&scene, &turned);
+    Place(&scene, 1, 0, 0.3, -2, 0, 0);
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionX, 0), 1.0, 1e-3) &&
+              Near(At(&scene, mvfx_attributeVelocityX, 0), 2.0, 1e-3),
+          "a turned camera");
+    mvfxDestroyContext(scene.context);
+
+    // With a scene plane at z = -0.3 too, the wall at z = 0 comes first.
+    Paint(0.0, 0, SIDE, false);
+    mvfxDepthImage wall = Camera(s_floats, mvfx_depthFloat32, false);
+    emitter = Seeing();
+    emitter.collision.sceneQueries = true;
+    emitter.collision.queryCapacity = 4;
+    emitter.collision.lookahead = 0.5f;
+    scene = NewScene(&emitter);
+    Show(&scene, &wall);
+    Place(&scene, 0, 0, 1, 0, 0, -2);
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    mvfxSceneAnswer answer = {.hit = true, .point = {0, 0, -0.3}, .normal = {0, 0, 1}};
+    CHECK(mvfxInstance_AnswerSceneQueries(scene.context, scene.instance, 0, &answer, 1) ==
+              mvfx_success,
+          "answered");
+    Step(&scene);
+    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, 1e-3), "the earlier contact");
     mvfxDestroyContext(scene.context);
 }
 
@@ -447,6 +596,8 @@ int main(void)
     TestNormals();
     TestOutside();
     TestLocal();
+    TestImageEdges();
+    TestTurnedAndPlanes();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
