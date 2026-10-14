@@ -224,6 +224,83 @@ static void TestHanging(void)
     CHECK(reach[1] > reach[0] + 0.01, "softer stretches more");
 }
 
+static void TestBending(void)
+{
+    // Twelve points pinned and held out sideways, stiff in stretch and in
+    // bending: after half a second every pair two apart is within half a
+    // percent of twice the spacing.
+    mvfxEmitterDef emitter = Chain(12);
+    emitter.unit.direction[0] = 1.0f;
+    emitter.unit.direction[1] = 0.0f;
+    emitter.unit.substeps = 16;
+    emitter.capacity = 12;
+    emitter.hostSpawnCapacity = 1;
+    Open(&emitter, NULL, 0);
+    static const double root[3] = {0, 0, 0};
+    Spawn(1, root, NULL);
+    Steps(30, MVFX_TICKS_PER_SECOND / 60);
+    Read();
+    double worst = 0.0;
+    for (int32_t j = 0; j + 2 < 12; ++j)
+    {
+        double off = fabs(Gap(j, j + 2) - 1.0);
+        worst = off > worst ? off : worst;
+    }
+    CHECK(worst <= 0.005, "every bending pair held");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestDistance(void)
+{
+    // A jump of 20 at a unit a unit of travel, room for two units: the
+    // last two along the jump are born, the rest refused at its start.
+    mvfxEmitterDef emitter = Chain(3);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.ratePerDistance = 1.0f;
+    emitter.capacity = 6;
+    emitter.hostSpawnCapacity = 0;
+    emitter.unit.pinFirst = false;
+    Open(&emitter, NULL, 0);
+    static const double far[3] = {20, 0, 0};
+    static const float identity[4] = {0, 0, 0, 1};
+    CHECK(mvfxInstance_SetTransform(s_scene.context, s_scene.instance, far, identity, 1.0f,
+                                    false) == mvfx_success,
+          "moved");
+    Steps(1, MVFX_TICKS_PER_SECOND / 60);
+    Read();
+    CHECK(s_scene.count == 6 && Stats().owed == 20 && Stats().refused == 18 &&
+              s_scene.records[0].position[0] > 18.0f && s_scene.records[3].position[0] > 18.0f,
+          "a jump's last units born");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestFull(void)
+{
+    // Room for two units of three: A at 0 and B at 0.5, each living a
+    // second; a burst of two at 1.1 finds A gone and B alive, so one is
+    // born and one refused, in tick order.
+    mvfxEmitterDef emitter = Chain(3);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.capacity = 6;
+    emitter.hostSpawnCapacity = 2;
+    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    static const mvfxBurst late = {
+        .time = 1.1f, .minCount = 2, .maxCount = 2, .cycles = 1, .probability = 1.0f};
+    emitter.bursts = &late;
+    emitter.burstCount = 1;
+    Open(&emitter, NULL, 0);
+    static const double root[3] = {0, 0, 0};
+    Spawn(1, root, NULL);
+    Steps(2, MVFX_TICKS_PER_SECOND / 4);
+    Spawn(1, root, NULL);
+    Steps(1, MVFX_TICKS_PER_SECOND / 4);
+    CHECK(Stats().live == 6, "two units alive");
+    Steps(1, MVFX_TICKS_PER_SECOND / 2);
+    CHECK(Stats().live == 6 && Stats().refused == 1 && Stats().owed == 4,
+          "in tick order, the room in units");
+    mvfxDestroyContext(s_scene.context);
+}
+
 // Kills the third point of the first unit after motion.
 static void KillOne(const mvfxModuleCall* call, void* user)
 {
@@ -350,7 +427,7 @@ static void TestChecks(void)
             u->damping = 2.0f * MVFX_MAX_DRAG;
             break;
         case 10:
-            emitter.capacity = 15;
+            emitter.capacity = 18;
             break;
         case 11:
             emitter.hostSpawnCapacity = 5;
@@ -391,6 +468,9 @@ int main(void)
     TestBirths();
     TestPendulum();
     TestHanging();
+    TestBending();
+    TestDistance();
+    TestFull();
     TestKill();
     TestRebaseAndRibbons();
     TestQuality();
