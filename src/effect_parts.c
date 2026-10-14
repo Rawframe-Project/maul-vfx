@@ -156,13 +156,15 @@ static float LengthOf(const float a[3], const float b[3], float sign)
 // kind does not read cleared; its points, width and rest lengths.
 static void CompileUnit(const mvfxUnitDef* unit, mvfxCompiledEmitter* out)
 {
-    out->unit = *unit;
     out->unitPoints = 1;
     out->unitWidth = 1;
     if (unit->kind == mvfx_unitParticle)
     {
+        // A particle reads nothing of it.
+        out->unit = (mvfxUnitDef){0};
         return;
     }
+    out->unit = *unit;
     mvfxUnitDef* u = &out->unit;
     (void)mvfxNormalize(u->direction);
     out->unitWidth = unit->points;
@@ -184,6 +186,34 @@ static void CompileUnit(const mvfxUnitDef* unit, mvfxCompiledEmitter* out)
     out->unitRests[1] = unit->spacing;
     out->unitRests[2] = unit->spacing * LengthOf(u->direction, u->downDirection, 1.0f);
     out->unitRests[3] = unit->spacing * LengthOf(u->direction, u->downDirection, -1.0f);
+}
+
+// Whether emitter i's units' attachment is valid: none; or with a pinned
+// point, the instance for a world-space emitter, the host's frames with
+// room for some, or the particles of an event source in the same space.
+static bool IsAttachValid(const mvfxEffectDef* def, int32_t i)
+{
+    const mvfxEmitterDef* emitter = &def->emitters[i];
+    const mvfxUnitDef* unit = &emitter->unit;
+    if (unit->kind == mvfx_unitParticle || unit->attach == mvfx_attachNone)
+    {
+        return true;
+    }
+    bool pinned = unit->pinFirst || (unit->kind == mvfx_unitSheet && unit->pinFirstRow);
+    switch (unit->attach)
+    {
+    case mvfx_attachInstance:
+        return pinned && emitter->space == mvfx_spaceWorld;
+    case mvfx_attachHost:
+        return pinned && unit->attachFrameCapacity >= 1 &&
+               unit->attachFrameCapacity <= MVFX_MAX_ATTACH_FRAMES;
+    case mvfx_attachParticles:
+        // The source is in range: the event spawn's own check passed.
+        return pinned && emitter->eventSpawn.enabled &&
+               def->emitters[emitter->eventSpawn.source].space == emitter->space;
+    default:
+        return false;
+    }
 }
 
 // Whether an emitter's plexus links are valid.
@@ -247,7 +277,7 @@ static bool AreEmitterPartsValid(const mvfxEffectDef* def, int32_t i)
     const mvfxEmitterDef* emitter = &def->emitters[i];
     return AreNeighborsValid(def, i) && IsSteeringValid(emitter, def->parameterCount) &&
            AreContactsValid(&emitter->contacts) && IsPairForceValid(emitter) &&
-           IsPlexusValid(&emitter->plexus) && IsUnitValid(emitter);
+           IsPlexusValid(&emitter->plexus) && IsUnitValid(emitter) && IsAttachValid(def, i);
 }
 
 // Copies an emitter's steering, its path's points into the compiled

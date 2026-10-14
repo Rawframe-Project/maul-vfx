@@ -224,3 +224,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   optional pinned first row; `mvfxInstance_ExpandSheets` writes each
   sheet as a mesh (normals, tangents and texture coordinates from the
   grid, two counterclockwise triangles a quad).
+- Units' attachments: pinned points held to the instance, to frames the
+  host moves (`mvfxInstance_SetAttachFrames`, `attachFrames` in a spawn
+  request) or to the particle that spawned the unit, eased over the
+  substeps, let go when that particle dies.
+- Fixed: a stray pin on a particle emitter's unit no longer zeroes its
+  particles' velocities at birth.

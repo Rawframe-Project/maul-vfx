@@ -87,13 +87,22 @@ enum
     mvfx_attributeNeighborCount = 70,
     mvfx_attributeNeighborCenterX = 71,
     mvfx_attributeNeighborVelocityX = 74,
-    // A unit's point's birth place in the particles' space, where a pinned
-    // first point stays.
+    // A unit's pinned point's place, where it is held: its birth place in
+    // the particles' space, or for a unit held to a frame its place in it
+    // (the instance's space for mvfx_attachInstance).
     mvfx_attributeAnchorX = 77,
+    // A unit's frame, on its first point: its origin in the particles' space
+    // and its orientation (a unit quaternion) as its step began, the host's
+    // frame or the source's particle (its serial) it follows, and its
+    // flags (MVFX_ATTACH_NEW and the others).
+    mvfx_attributeAttachX = 80,
+    mvfx_attributeAttachRotationX = 83,
+    mvfx_attributeAttachSource = 87,
+    mvfx_attributeAttachFlags = 88,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeAnchorX + 3)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeAttachFlags + 1)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.

@@ -231,6 +231,10 @@ extern "C"
         // Optional: x, y and z for each likewise, for an emitter that stores
         // size.
         const float* sizes;
+        // Optional: for an emitter of units held to the host's frames
+        // (mvfx_attachHost), each unit's frame, from 0 to below the
+        // emitter's attachFrameCapacity; NULL for frame 0.
+        const int32_t* attachFrames;
     } mvfxSpawnRequest;
 
     /// Queues particles for an emitter of an instance: they are born at the
@@ -254,6 +258,39 @@ extern "C"
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Spawn(mvfxContext* context,
                                                           mvfxInstanceId instance, int32_t emitter,
                                                           const mvfxSpawnRequest* request);
+
+    // A frame the host moves units on: its place in the world and its
+    // orientation there, a unit quaternion (x, y, z, w).
+    typedef struct mvfxAttachFrame
+    {
+        double position[3];
+        float rotation[4];
+    } mvfxAttachFrame;
+
+    /// Sets the frames an emitter's units are held to (mvfx_attachHost) at
+    /// the end of the next step: each unit's pinned points move from where
+    /// its frame was at that step's start to where it is at its end over
+    /// the substeps. The frames are copied; frames past count are no longer
+    /// set, and units on them are held where they are.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in the effect's def.
+    /// @param frames    count frames; NULL only for a count of 0.
+    /// @param count     From 0 to the emitter's attachFrameCapacity.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context, an emitter
+    ///         index out of range or not held to the host's frames, a count
+    ///         out of range, NULL frames with a count, a position not finite
+    ///         or over 2^52 in size, or a rotation not of length 1 within
+    ///         1e-3, which counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetAttachFrames(mvfxContext* context,
+                                                                    mvfxInstanceId instance,
+                                                                    int32_t emitter,
+                                                                    const mvfxAttachFrame* frames,
+                                                                    int32_t count);
 
     /// Advances one instance alone toward a span, in steps of a given length
     /// (the last shorter), at most a number of steps a call, so a host can

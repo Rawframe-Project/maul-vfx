@@ -6,6 +6,7 @@
 
 #include "emitter_step.h"
 
+#include "attach.h"
 #include "beam.h"
 #include "birth.h"
 #include "bounds.h"
@@ -113,6 +114,7 @@ static void MoveLive(mvfxInstance* instance, int32_t emitter)
 {
     if (instance->effect->emitters[emitter].unitPoints > 1)
     {
+        mvfxPrepareAttachments(instance, emitter);
         mvfxStepUnits(instance, emitter);
         return;
     }
@@ -437,6 +439,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     {
         BirthsInTickOrder(instance, emitter);
     }
+    mvfxAttachNewUnits(instance, emitter);
     mvfxSolveContacts(instance, emitter);
     mvfxRunHostModules(instance, emitter, mvfx_stageAfterMotion);
     RemoveKilled(instance, emitter);

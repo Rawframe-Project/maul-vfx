@@ -411,6 +411,9 @@ extern "C"
 #define MVFX_MAX_SHEET_SIDE   64
 #define MVFX_MAX_SUBSTEPS     32
 
+// The most frames the host moves an emitter's units on.
+#define MVFX_MAX_ATTACH_FRAMES 4096
+
     // What one birth of an emitter is.
     typedef uint8_t mvfxUnitKind;
     enum
@@ -426,6 +429,35 @@ extern "C"
         // two away across and down (bending); drawn as a mesh by
         // mvfxInstance_ExpandSheets.
         mvfx_unitSheet = 2,
+    };
+
+    // What a unit's pinned points are held to. Each unit has a frame,
+    // fixed when its birth's step ends; its pinned points keep their places
+    // in that frame then, so they move as it moves and turn as it turns,
+    // eased from where it was at a step's start to where it is at its end
+    // over the substeps.
+    typedef uint8_t mvfxAttachKind;
+    enum
+    {
+        // Their birth places in the particles' space (a local emitter's move
+        // with its instance).
+        mvfx_attachNone = 0,
+        // The instance, for a world-space emitter: they move, turn and scale
+        // with it as it moves in the world (a cape on a character), where a
+        // local emitter's units would move rigidly with it.
+        mvfx_attachInstance = 1,
+        // A frame the host moves (mvfxInstance_SetAttachFrames): a host
+        // spawn names its unit's (mvfxSpawnRequest.attachFrames), any other
+        // birth takes frame 0. A unit whose frame is not set when its birth's
+        // step ends never moves; one whose frame is no longer set is held
+        // where it was.
+        mvfx_attachHost = 2,
+        // The particle of the emitter's event source whose event spawned it,
+        // its place and (where the source stores one) its orientation: a
+        // banner on a pole the source carries. When that particle is gone
+        // the unit is let go, its points free; a unit born otherwise never
+        // moves.
+        mvfx_attachParticles = 3,
     };
 
     // The units an emitter's births are, solved by XPBD (Macklin et al.
@@ -476,6 +508,14 @@ extern "C"
         // instance).
         bool pinFirst;
         bool pinFirstRow;
+        // What the pinned points are held to; any but mvfx_attachNone needs a
+        // pinned point, mvfx_attachInstance a world-space emitter,
+        // mvfx_attachParticles spawning from events of an emitter in the same
+        // space.
+        mvfxAttachKind attach;
+        // For mvfx_attachHost, the most frames the host sets, 1 to
+        // MVFX_MAX_ATTACH_FRAMES.
+        int32_t attachFrameCapacity;
     } mvfxUnitDef;
 
 // The most plexus links an emitter keeps a step.

@@ -379,6 +379,24 @@ static void TestQuality(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestParticlesUnread(void)
+{
+    // A particle emitter's unit is not read: a stray pin leaves its
+    // particles' velocities as given.
+    mvfxEmitterDef emitter = Chain(4);
+    emitter.unit.kind = mvfx_unitParticle;
+    emitter.motion.gravity[1] = 0.0f;
+    Open(&emitter, NULL, 0);
+    static const double root[3] = {0, 0, 0};
+    static const float launch[3] = {2, 0, 0};
+    Spawn(1, root, launch);
+    Steps(60, MVFX_TICKS_PER_SECOND / 60);
+    Read();
+    CHECK(s_scene.count == 1 && fabsf(s_scene.records[0].position[0] - 2.0f) <= 1e-3f,
+          "a particle's pin unread");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -474,6 +492,7 @@ int main(void)
     TestKill();
     TestRebaseAndRibbons();
     TestQuality();
+    TestParticlesUnread();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

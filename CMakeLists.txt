@@ -42,6 +42,7 @@ endif()
 add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/allocator.c
     src/appearance.c
+    src/attach.c
     src/beam.c
     src/bounds.c
     src/collide.c
@@ -108,6 +109,7 @@ endif()
 if(MAUL_VFX_BUILD_TESTS)
     enable_testing()
     maul_add_test(allocator WHITEBOX)
+    maul_add_test(attach)
     maul_add_test(base)
     maul_add_test(beam)
     maul_add_test(chain)

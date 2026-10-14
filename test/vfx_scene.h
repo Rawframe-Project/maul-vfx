@@ -629,7 +629,8 @@ static inline void BuildScene(mvfxContext* context)
     // Chains and sheets: pinned ropes in the world, two every 0.4 seconds,
     // loose local tails falling with drag toward an attractor, which pulls
     // their points apart, and banners.
-    mvfxEmitterDef chainEmitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+    mvfxEmitterDef chainEmitters[5] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                       mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                        mvfxDefaultEmitterDef()};
     static const mvfxBurst ropes = {.time = 0.0f,
                                     .minCount = 2,
@@ -654,7 +655,8 @@ static inline void BuildScene(mvfxContext* context)
                                           .stretchCompliance = 1e-4f,
                                           .bendCompliance = 1e-2f,
                                           .damping = 1.5f,
-                                          .pinFirst = true};
+                                          .pinFirst = true,
+                                          .attach = mvfx_attachInstance};
     chainEmitters[1].space = mvfx_spaceLocal;
     chainEmitters[1].rate = 3.0f;
     chainEmitters[1].capacity = 4 * 6;
@@ -687,6 +689,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[2].rate = 0.0f;
     chainEmitters[2].bursts = &banners;
     chainEmitters[2].burstCount = 1;
+    chainEmitters[2].hostSpawnCapacity = 1;
     chainEmitters[2].capacity = 3 * 5 * 4;
     chainEmitters[2].lifetime = mvfxRangeSource(1.5f, 1.5f);
     chainEmitters[2].motion.gravity[1] = -9.81f;
@@ -710,10 +713,41 @@ static inline void BuildScene(mvfxContext* context)
                                           .shearCompliance = 1e-3f,
                                           .bendCompliance = 0.05f,
                                           .damping = 1.0f,
-                                          .pinFirstRow = true};
+                                          .pinFirstRow = true,
+                                          .attach = mvfx_attachHost,
+                                          .attachFrameCapacity = 2};
+    // Kites: spinning particles, each trailing a streamer pinned to it and
+    // let go when it dies.
+    chainEmitters[3].rate = 2.5f;
+    chainEmitters[3].capacity = 4;
+    chainEmitters[3].lifetime = mvfxRangeSource(0.6f, 1.0f);
+    chainEmitters[3].velocity.speed = (mvfxRange){2.0f, 3.0f};
+    chainEmitters[3].events = mvfx_eventMaskBirth;
+    chainEmitters[3].eventCapacity = 4;
+    chainEmitters[3].angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0, 1.0f, -2.0f, 0}, .max = {0, 3.0f, 2.0f, 0}};
+    chainEmitters[4].rate = 0.0f;
+    chainEmitters[4].capacity = 4 * 3;
+    chainEmitters[4].lifetime = mvfxRangeSource(1.6f, 1.6f);
+    chainEmitters[4].motion.gravity[1] = -6.0f;
+    chainEmitters[4].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                                   .source = 3,
+                                                   .kind = mvfx_eventBirth,
+                                                   .minCount = 1,
+                                                   .maxCount = 1,
+                                                   .capacity = 4};
+    chainEmitters[4].unit = (mvfxUnitDef){.kind = mvfx_unitChain,
+                                          .points = 3,
+                                          .spacing = 0.2f,
+                                          .direction = {0, -1, 0.5f},
+                                          .substeps = 3,
+                                          .bendCompliance = 0.05f,
+                                          .damping = 0.8f,
+                                          .pinFirst = true,
+                                          .attach = mvfx_attachParticles};
     mvfxEffectDef chainEffectDef = mvfxDefaultEffectDef();
     chainEffectDef.emitters = chainEmitters;
-    chainEffectDef.emitterCount = 3;
+    chainEffectDef.emitterCount = 5;
     mvfxEffectId chainEffect = {0};
     CHECK(mvfxCreateEffect(context, &chainEffectDef, &chainEffect) == mvfx_success, "chain effect");
     mvfxInstanceDef chainInstanceDef = mvfxDefaultInstanceDef();
@@ -849,8 +883,9 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
         CHECK(mvfxInstance_SetTransform(context, id, origin, turns[step % 2],
                                         step % 3 == 0 ? 1.5f : 1.0f, step == 10) == mvfx_success,
               "scene moved");
-        if (step == 5 &&
-            ((const mvfxInstance*)context->instances.slots[i].object)->effect->emitterCount == 5)
+        const mvfxEffect* effect =
+            ((const mvfxInstance*)context->instances.slots[i].object)->effect;
+        if (step == 5 && effect->emitterCount == 5 && effect->parameterCount > 0)
         {
             static const float aimed[4] = {-2.0f, 3.0f, 1.0f, 0.0f};
             CHECK(mvfxInstance_SetParameter(context, id, 0, aimed) == mvfx_success, "scene aim");
@@ -858,6 +893,31 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
         if (step == 6)
         {
             CHECK(mvfxInstance_BreakRibbons(context, id, -1) == mvfx_success, "scene break");
+        }
+        // Banners' frames: one swinging round the instance, one unset until
+        // step 4.
+        for (int32_t e = 0; e < effect->emitterCount; ++e)
+        {
+            if (effect->emitters[e].unit.attach != mvfx_attachHost)
+            {
+                continue;
+            }
+            const mvfxAttachFrame frames[2] = {
+                {.position = {origin[0] + 1.0, origin[1] + 0.25 * step, origin[2]},
+                 .rotation = {0.0f, 0.6f, 0.0f, 0.8f}},
+                {.position = {origin[0] - 2.0, origin[1], origin[2] + 1.0},
+                 .rotation = {0.0f, 0.0f, 0.0f, 1.0f}}};
+            CHECK(mvfxInstance_SetAttachFrames(context, id, e, frames, step < 4 ? 1 : 2) ==
+                      mvfx_success,
+                  "scene frames");
+            // A banner on frame 1 before it is set (held), and after.
+            static const int32_t second = 1;
+            mvfxSpawnRequest request = {
+                .count = 1, .positions = frames[1].position, .attachFrames = &second};
+            if (step == 2 || step == 6)
+            {
+                CHECK(mvfxInstance_Spawn(context, id, e, &request) == mvfx_success, "scene banner");
+            }
         }
         // The throttled unseen over the longest step, the paused for three.
         const mvfxInstance* live = context->instances.slots[i].object;

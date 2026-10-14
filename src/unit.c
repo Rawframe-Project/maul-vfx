@@ -23,19 +23,22 @@
 
 #include "unit.h"
 
+#include "attach.h"
 #include "elementary.h"
 #include "integrate.h"
 
 #include <math.h>
 #include <string.h>
 
-// A substep's view of the points: places, velocities, anchors, the units'
-// shape and which points are pinned.
+// A substep's view of the points: places, velocities, the units' shape,
+// which points are pinned and which units are let go.
 typedef struct Points
 {
     float* x[3];
     float* v[3];
-    const float* anchor[3];
+    const uint32_t* flags;
+    const mvfxInstance* instance;
+    int32_t emitterIndex;
     const mvfxCompiledEmitter* emitter;
     bool pinned;
     int32_t perUnit;
@@ -44,10 +47,14 @@ typedef struct Points
     int32_t units;
 } Points;
 
-// A point's inverse mass: 0 for a pinned point, else 1.
+// A point's inverse mass: 0 for a pinned point of a unit not let go, else
+// 1.
 static float WeightOf(const Points* p, int32_t i)
 {
-    return p->pinned && mvfxIsPinnedPoint(p->emitter, i % p->perUnit) ? 0.0f : 1.0f;
+    int32_t point = i % p->perUnit;
+    bool held = p->pinned && mvfxIsPinnedPoint(p->emitter, point) &&
+                (p->flags == nullptr || (p->flags[i - point] & MVFX_ATTACH_LET_GO) == 0);
+    return held ? 0.0f : 1.0f;
 }
 
 // Projects the distance between points a and b toward rest.
@@ -185,17 +192,23 @@ static void SolveAll(const Points* p, const Family families[6], Pass pass, float
     }
 }
 
-// Holds each pinned point at its anchor.
-static void Pin(const Points* p)
+// Holds each pinned point where its frame puts it at a substep's end,
+// its velocity its move over the substep.
+static void Pin(const Points* p, const mvfxPinFrame* from, const mvfxPinFrame* to, float h)
 {
     int32_t count = p->units * p->perUnit;
     for (int32_t i = 0; p->pinned && i < count; ++i)
     {
         if (WeightOf(p, i) == 0.0f)
         {
+            float before[3];
+            float after[3];
+            mvfxPinPlace(p->instance, p->emitterIndex, from, i / p->perUnit, i, before);
+            mvfxPinPlace(p->instance, p->emitterIndex, to, i / p->perUnit, i, after);
             for (int32_t k = 0; k < 3; ++k)
             {
-                p->x[k][i] = p->anchor[k][i];
+                p->x[k][i] = after[k];
+                p->v[k][i] = (after[k] - before[k]) / h;
             }
         }
     }
@@ -204,7 +217,12 @@ static void Pin(const Points* p)
 static Points PointsOf(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    Points p = {.emitter = compiled,
+    Points p = {.instance = instance,
+                .emitterIndex = emitter,
+                .flags = mvfxHasAttribute(&compiled->plan, mvfx_attributeAttachFlags)
+                             ? mvfxAttributeArray(instance, emitter, mvfx_attributeAttachFlags)
+                             : nullptr,
+                .emitter = compiled,
                 .pinned = mvfxHasAttribute(&compiled->plan, mvfx_attributeAnchorX),
                 .perUnit = compiled->unitPoints,
                 .width = compiled->unitWidth,
@@ -216,9 +234,6 @@ static Points PointsOf(mvfxInstance* instance, int32_t emitter)
             mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributePositionX + k));
         p.v[k] =
             mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
-        p.anchor[k] = p.pinned ? mvfxAttributeArray(instance, emitter,
-                                                    (mvfxAttribute)(mvfx_attributeAnchorX + k))
-                               : nullptr;
     }
     return p;
 }
@@ -236,6 +251,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
     float scale = compiled->space == mvfx_spaceWorld ? instance->to.scale : 1.0f;
     int64_t ticks = instance->clock - instance->stepStart;
     int32_t substeps = unit->substeps;
+    mvfxBeginAttachments(instance, emitter);
     for (int32_t s = 0; s < substeps; ++s)
     {
         int64_t from = instance->stepStart + ticks * s / substeps;
@@ -252,19 +268,22 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
         {
             memcpy(state->unitPrevious + (size_t)k * stride, p.x[k], (size_t)count * sizeof(float));
         }
-        Pin(&p);
+        mvfxPinFrame before = mvfxPinFrameAt(instance, emitter, from);
+        mvfxPinFrame after = mvfxPinFrameAt(instance, emitter, to);
+        Pin(&p, &before, &after, h);
         Family families[6];
         FamiliesOf(compiled, scale, 1.0f / (h * h), families);
         SolveAll(&p, families, PASS_PROJECT, 0.0f);
         // The integrator's velocity (exact under gravity and drag) and the
-        // constraints' correction over the substep; a pinned point at rest.
+        // constraints' correction over the substep; a pinned point's its
+        // frame's.
         for (int32_t k = 0; k < 3; ++k)
         {
             const float* predicted = state->unitPrevious + (size_t)k * stride;
             for (int32_t i = 0; i < count; ++i)
             {
                 float corrected = p.v[k][i] + (p.x[k][i] - predicted[i]) / h;
-                p.v[k][i] = WeightOf(&p, i) > 0.0f ? corrected : 0.0f;
+                p.v[k][i] = WeightOf(&p, i) > 0.0f ? corrected : p.v[k][i];
             }
         }
         float share = 1.0f - mvfxExp(-unit->damping * h);
@@ -273,4 +292,5 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
             SolveAll(&p, families, PASS_DAMP, share);
         }
     }
+    mvfxEndAttachments(instance, emitter);
 }

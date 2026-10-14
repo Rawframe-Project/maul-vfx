@@ -53,9 +53,10 @@ cannot instance, bounds and the draw order, quality levels, the
 context's particle budget, off-screen policies and the neighbor grid
 with its neighbor attributes, flocking, steering, particle contacts,
 forces between particles, plexus links, and chains and cloth sheets by
-XPBD with sheets expanded into meshes are in place, and attachments and
-tearing come next.
-It has 65 public functions.
+XPBD with sheets expanded into meshes and units held to the instance,
+the host's frames or other particles are in place, and tearing comes
+next.
+It has 66 public functions.
 
 ## Building
 

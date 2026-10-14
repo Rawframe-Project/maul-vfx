@@ -51,11 +51,15 @@ static void Rebase(mvfxInstance* instance, int32_t emitter)
         {
             positions[i] += shift;
         }
-        if (mvfxHasAttribute(&instance->effect->emitters[emitter].plan, mvfx_attributeAnchorX))
+        // Pinned points' anchors move with them: their places, or for units
+        // held to frames the frames' origins (the instance's space does not
+        // move).
+        const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+        mvfxAttribute held = compiled->unit.attach == mvfx_attachNone ? mvfx_attributeAnchorX
+                                                                      : mvfx_attributeAttachX;
+        if (mvfxHasAttribute(&compiled->plan, held))
         {
-            // Pinned points' anchors move with them.
-            float* anchors =
-                mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeAnchorX + k));
+            float* anchors = mvfxAttributeArray(instance, emitter, (mvfxAttribute)(held + k));
             for (int32_t i = 0; i < state->count; ++i)
             {
                 anchors[i] += shift;

@@ -47,6 +47,8 @@ typedef struct mvfxHostBirth
     int64_t tick;
     int32_t order;
     uint32_t source;
+    // A host's unit's frame (mvfx_attachHost).
+    int32_t frame;
 } mvfxHostBirth;
 
 enum
@@ -156,6 +158,15 @@ typedef struct mvfxEmitterState
     // For an emitter of units, its points' places the integrator predicts
     // in a substep, three arrays of the capacity.
     float* unitPrevious;
+    // For units held to frames: the host's frames and how many are set;
+    // each unit's frame at the step's end (seven floats a unit: its origin,
+    // then its orientation); and its source's serials sorted with their
+    // particles' indices, with room to sort them (four arrays of the
+    // source's capacity).
+    mvfxAttachFrame* attachFrames;
+    int32_t attachFrameCount;
+    float* attachTargets;
+    uint32_t* sourceTable;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

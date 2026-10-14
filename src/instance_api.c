@@ -440,6 +440,15 @@ static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequ
             return false;
         }
     }
+    bool hosted = emitter->unitPoints > 1 && emitter->unit.attach == mvfx_attachHost;
+    for (int64_t i = 0; request->attachFrames != nullptr && i < count; ++i)
+    {
+        int32_t frame = request->attachFrames[i];
+        if (!hosted || frame < 0 || frame >= emitter->unit.attachFrameCapacity)
+        {
+            return false;
+        }
+    }
     return AreValuesWithin(request->velocities, 3 * count, MVFX_MAX_EXTENT) &&
            AreValuesWithin(request->colors, 4 * count, MVFX_MAX_VALUE) &&
            AreValuesWithin(request->sizes, 3 * count, MVFX_MAX_VALUE);
@@ -448,7 +457,7 @@ static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequ
 // Copies a request's i-th particle, flagging the values it gives.
 static mvfxHostBirth HostBirthOf(const mvfxSpawnRequest* request, int32_t i)
 {
-    mvfxHostBirth host = {0};
+    mvfxHostBirth host = {.frame = request->attachFrames != nullptr ? request->attachFrames[i] : 0};
     for (int32_t k = 0; k < 3; ++k)
     {
         host.position[k] = request->positions[3 * i + k];
@@ -511,6 +520,60 @@ mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int
     {
         state->hostQueue[state->hostCount++] = HostBirthOf(request, i);
     }
+    return mvfx_success;
+}
+
+// Whether a host's frame is valid: its place finite and at most 2^52 in
+// size, its orientation of length 1 within 1e-3.
+static bool IsAttachFrameValid(const mvfxAttachFrame* frame)
+{
+    double square = 0.0;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        square += (double)frame->rotation[k] * (double)frame->rotation[k];
+    }
+    bool placed = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        placed = placed && fabs(frame->position[k]) <= 0x1p52;
+    }
+    return placed && fabs(sqrt(square) - 1.0) <= 1e-3;
+}
+
+mvfxResult mvfxInstance_SetAttachFrames(mvfxContext* context, mvfxInstanceId instance,
+                                        int32_t emitter, const mvfxAttachFrame* frames,
+                                        int32_t count)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    const mvfxCompiledEmitter* compiled = emitter >= 0 && emitter < live->effect->emitterCount
+                                              ? &live->effect->emitters[emitter]
+                                              : nullptr;
+    bool valid = compiled != nullptr && compiled->unitPoints > 1 &&
+                 compiled->unit.attach == mvfx_attachHost && count >= 0 &&
+                 count <= compiled->unit.attachFrameCapacity && (count == 0 || frames != nullptr);
+    for (int32_t f = 0; valid && f < count; ++f)
+    {
+        valid = IsAttachFrameValid(&frames[f]);
+    }
+    if (!valid)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    mvfxEmitterState* state = &live->emitters[emitter];
+    for (int32_t f = 0; f < count; ++f)
+    {
+        state->attachFrames[f] = frames[f];
+    }
+    state->attachFrameCount = count;
     return mvfx_success;
 }
 

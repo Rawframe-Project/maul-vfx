@@ -558,6 +558,13 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
         def->unit.kind != mvfx_unitParticle &&
         (def->unit.pinFirst || (def->unit.kind == mvfx_unitSheet && def->unit.pinFirstRow));
     Store(plan, pinned, mvfx_attributeAnchorX, 3);
+    mvfxAttachKind attach =
+        def->unit.kind != mvfx_unitParticle ? def->unit.attach : mvfx_attachNone;
+    bool framed = attach == mvfx_attachHost || attach == mvfx_attachParticles;
+    Store(plan, framed, mvfx_attributeAttachX, 3);
+    Store(plan, framed, mvfx_attributeAttachRotationX, 4);
+    Store(plan, framed, mvfx_attributeAttachSource, 1);
+    Store(plan, attach != mvfx_attachNone, mvfx_attributeAttachFlags, 1);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
           6);
     for (int32_t i = 0; i < def->customCount; ++i)

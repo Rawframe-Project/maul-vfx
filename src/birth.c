@@ -5,6 +5,7 @@
 
 #include "birth.h"
 
+#include "attach.h"
 #include "direction.h"
 #include "elementary.h"
 #include "event.h"
@@ -492,6 +493,10 @@ static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth
         {
             StoreVector(instance, emitter, mvfx_attributeSizeX, 3, at, host->size);
         }
+    }
+    if (j == 0 && Has(compiled, mvfx_attributeAttachFlags))
+    {
+        mvfxMarkNewUnit(instance, emitter, at, given, birth->event1 > 0);
     }
     instance->emitters[emitter].count = at + 1;
     mvfxRecordEvent(instance, emitter,
