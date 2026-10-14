@@ -361,7 +361,7 @@ static void TestShapeAndVelocityRefused(void)
         switch (field)
         {
         case 0:
-            shape->kind = 7;
+            shape->kind = 8;
             break;
         case 1:
             shape->rotation[3] = 0.99f;

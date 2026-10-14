@@ -42,6 +42,9 @@ typedef struct mvfxEmitterState
     uint64_t refused;
     mvfxRateCursor rate;
     mvfxBurstCursor* bursts;
+    // The mesh a mesh shape spawns from: the effect's, or the instance's
+    // own.
+    struct mvfxMesh* mesh;
 } mvfxEmitterState;
 
 // A birth: the particle's serial and tick, and its place among the births

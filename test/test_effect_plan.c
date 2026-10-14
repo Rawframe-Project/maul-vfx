@@ -23,7 +23,8 @@ static void TestPlans(void)
     def.emitterCount = 6;
     CHECK(mvfxIsEffectDefValid(&def), "valid");
     mvfxAllocator allocator = {0};
-    mvfxEffect* effect = mvfxCompileEffect(&def, &allocator);
+    struct mvfxMesh* meshes[MVFX_MAX_EMITTERS] = {0};
+    mvfxEffect* effect = mvfxCompileEffect(&def, meshes, &allocator);
     CHECK(effect != NULL && effect->emitterCount == 6, "compiled");
     for (int32_t i = 0; i < 6; ++i)
     {

@@ -1,0 +1,496 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Meshes: their refusals, edges built once, normals, each mode's choice
+// in proportion to length, area, count or volume within five standard
+// deviations, points inside their elements and uniform there, moving a
+// mesh, and meshes bound to effects and instances through the step.
+
+#include "context.h"
+#include "instance.h"
+#include "mesh.h"
+#include "test_harness.h"
+
+#include "maul-vfx/instance.h"
+
+#include <math.h>
+
+#define SAMPLES 40000
+
+static mvfxWords4 Words(uint32_t i)
+{
+    return mvfxPcg4d((mvfxWords4){i, 0xBEEFu, 3u, 0u});
+}
+
+// Whether count of SAMPLES draws matches a share within five standard
+// deviations of a binomial.
+static bool NearShare(int64_t count, double share)
+{
+    double deviation = sqrt(SAMPLES * share * (1.0 - share));
+    return fabs((double)count - SAMPLES * share) <= 5.0 * deviation + 1e-9;
+}
+
+static mvfxMesh* Build(const float* positions, const float* normals, int32_t vertices,
+                       const uint32_t* triangles, int32_t triangleCount, const uint32_t* tetrahedra,
+                       int32_t tetrahedronCount)
+{
+    mvfxMeshDef def = mvfxDefaultMeshDef();
+    def.positions = positions;
+    def.normals = normals;
+    def.vertexCount = vertices;
+    def.triangles = triangles;
+    def.triangleCount = triangleCount;
+    def.tetrahedra = tetrahedra;
+    def.tetrahedronCount = tetrahedronCount;
+    CHECK(mvfxIsMeshDefValid(&def), "a valid mesh");
+    mvfxAllocator allocator = {0};
+    return mvfxBuildMesh(&def, &allocator);
+}
+
+static void Free(mvfxMesh* mesh)
+{
+    mvfxAllocator allocator = {0};
+    mvfxReleaseMesh(mesh, &allocator);
+}
+
+// A unit square of two triangles in the XY plane, and a triangle three
+// times as large beside it.
+static const float s_quad[] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 2, 0, 0, 5, 0, 0, 2, 2, 0};
+static const uint32_t s_quadTriangles[] = {0, 1, 2, 0, 2, 3, 4, 5, 6};
+
+static void TestEdgesAndNormals(void)
+{
+    mvfxMesh* mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
+    CHECK(mesh->edgeCount == 8, "the shared diagonal once: 5 + 3 edges");
+    bool ordered = true;
+    for (int32_t e = 0; e < mesh->edgeCount; ++e)
+    {
+        ordered = ordered && mesh->edges[2 * e] < mesh->edges[2 * e + 1];
+    }
+    CHECK(ordered, "the lower vertex first");
+    bool up = true;
+    for (int32_t v = 0; v < 7; ++v)
+    {
+        up = up && mesh->normals[3 * v] == 0.0f && mesh->normals[3 * v + 1] == 0.0f &&
+             mesh->normals[3 * v + 2] == 1.0f;
+    }
+    CHECK(up, "a flat mesh's normals +Z");
+    CHECK(fabs(mesh->triangleSums[2] - 4.0) < 1e-12, "areas summed: 1/2 + 1/2 + 3");
+    Free(mesh);
+}
+
+static void TestSurfaceByArea(void)
+{
+    mvfxMesh* mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
+    int64_t inLarge = 0;
+    double sumX = 0.0;
+    double sumY = 0.0;
+    int64_t large = 0;
+    bool inside = true;
+    for (uint32_t i = 0; i < SAMPLES; ++i)
+    {
+        float p[3];
+        float n[3];
+        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
+        inside = inside && p[2] == 0.0f && n[2] == 1.0f;
+        if (p[0] >= 2.0f - 1e-6f)
+        {
+            // The large triangle (2,0), (5,0), (2,2): x >= 2, y >= 0 and
+            // below its hypotenuse.
+            inside = inside && p[1] >= -1e-6f && 2.0f * (p[0] - 2.0f) + 3.0f * p[1] <= 6.0f + 1e-5f;
+            ++inLarge;
+            sumX += (double)p[0];
+            sumY += (double)p[1];
+            ++large;
+        }
+        else
+        {
+            inside = inside && p[0] >= -1e-6f && p[0] <= 1.0f + 1e-6f && p[1] >= -1e-6f &&
+                     p[1] <= 1.0f + 1e-6f;
+        }
+    }
+    CHECK(inside, "every point in its triangle, the normal +Z");
+    CHECK(NearShare(inLarge, 0.75), "triangles by area");
+    // Uniform within a triangle: its points' mean at its centroid (3, 2/3).
+    double deviation = 1.0 / sqrt((double)large);
+    CHECK(fabs(sumX / (double)large - 3.0) <= 5.0 * deviation &&
+              fabs(sumY / (double)large - 2.0 / 3.0) <= 5.0 * deviation,
+          "uniform within a triangle");
+    Free(mesh);
+
+    // A triangle of no area is never chosen.
+    static const float flat[] = {0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 1, 1, 0, 1};
+    static const uint32_t flatTriangles[] = {0, 1, 2, 0, 1, 3, 1, 4, 3};
+    mesh = Build(flat, NULL, 5, flatTriangles, 3, NULL, 0);
+    bool skipped = true;
+    for (uint32_t i = 0; i < 4000; ++i)
+    {
+        float p[3];
+        float n[3];
+        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
+        skipped = skipped && p[0] <= 1.0f + 1e-6f;
+    }
+    CHECK(skipped, "a degenerate triangle never chosen");
+    Free(mesh);
+}
+
+static void TestEdgesByLength(void)
+{
+    // A right triangle of sides 3, 4 and 5: its edges hit 3 : 4 : 5.
+    static const float right[] = {0, 0, 0, 3, 0, 0, 0, 4, 0};
+    static const uint32_t triangle[] = {0, 1, 2};
+    mvfxMesh* mesh = Build(right, NULL, 3, triangle, 1, NULL, 0);
+    int64_t hits[3] = {0};
+    for (uint32_t i = 0; i < SAMPLES; ++i)
+    {
+        float p[3];
+        float n[3];
+        mvfxSampleMesh(mesh, mvfx_meshEdges, Words(i), p, n);
+        if (fabsf(p[1]) <= 1e-6f)
+        {
+            ++hits[0];
+        }
+        else if (fabsf(p[0]) <= 1e-6f)
+        {
+            ++hits[1];
+        }
+        else
+        {
+            CHECK(fabsf(4.0f * p[0] + 3.0f * p[1] - 12.0f) <= 1e-4f, "on the hypotenuse");
+            ++hits[2];
+        }
+    }
+    CHECK(NearShare(hits[0], 3.0 / 12.0) && NearShare(hits[1], 4.0 / 12.0) &&
+              NearShare(hits[2], 5.0 / 12.0),
+          "edges by length");
+    Free(mesh);
+}
+
+static void TestVerticesAndGivenNormals(void)
+{
+    static const float normals[] = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1};
+    static const float corners[] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0};
+    mvfxMesh* mesh = Build(corners, normals, 4, s_quadTriangles, 2, NULL, 0);
+    int64_t hits[4] = {0};
+    bool given = true;
+    for (uint32_t i = 0; i < SAMPLES; ++i)
+    {
+        float p[3];
+        float n[3];
+        mvfxSampleMesh(mesh, mvfx_meshVertices, Words(i), p, n);
+        int32_t v = (p[0] > 0.5f ? 1 : 0) + (p[1] > 0.5f ? 2 : 0);
+        static const int32_t index[4] = {0, 1, 3, 2};
+        int32_t at = index[v];
+        given = given && n[0] == normals[3 * at] && n[1] == normals[3 * at + 1] &&
+                n[2] == normals[3 * at + 2];
+        ++hits[at];
+    }
+    CHECK(given, "a vertex's given normal");
+    for (int32_t v = 0; v < 4; ++v)
+    {
+        CHECK(NearShare(hits[v], 0.25), "vertices alike");
+    }
+    // On the surface, the given normals blend: the first triangle's three
+    // (+X, +Y, +Z) give a normal with every component at least 0.
+    bool blended = true;
+    for (uint32_t i = 0; i < 4000; ++i)
+    {
+        float p[3];
+        float n[3];
+        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
+        double length = sqrt((double)n[0] * (double)n[0] + (double)n[1] * (double)n[1] +
+                             (double)n[2] * (double)n[2]);
+        blended = blended && fabs(length - 1.0) <= 1e-5;
+    }
+    CHECK(blended, "blended normals of unit length");
+    Free(mesh);
+}
+
+static void TestVolumeByVolume(void)
+{
+    // Two tetrahedra sharing a face, of volumes 1/6 and 2/6.
+    static const float points[] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2};
+    static const uint32_t tetrahedra[] = {0, 1, 2, 3, 0, 2, 1, 4};
+    mvfxMesh* mesh = Build(points, NULL, 5, NULL, 0, tetrahedra, 2);
+    int64_t below = 0;
+    double sum[3] = {0.0};
+    int64_t above = 0;
+    bool inside = true;
+    for (uint32_t i = 0; i < SAMPLES; ++i)
+    {
+        float p[3];
+        float n[3];
+        mvfxSampleMesh(mesh, mvfx_meshVolume, Words(i), p, n);
+        inside = inside && p[0] >= -1e-6f && p[1] >= -1e-6f;
+        if (p[2] < 0.0f)
+        {
+            inside = inside && p[0] + p[1] - p[2] * 0.5f <= 1.0f + 1e-5f;
+            ++below;
+        }
+        else
+        {
+            inside = inside && p[0] + p[1] + p[2] <= 1.0f + 1e-5f;
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                sum[k] += (double)p[k];
+            }
+            ++above;
+        }
+    }
+    CHECK(inside, "every point in its tetrahedron");
+    CHECK(NearShare(below, 2.0 / 3.0), "tetrahedra by volume");
+    // Uniform within one: its points' mean at its centroid (1/4, 1/4, 1/4),
+    // each coordinate's deviation sqrt(3/80).
+    double deviation = sqrt(3.0 / 80.0 / (double)above);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        CHECK(fabs(sum[k] / (double)above - 0.25) <= 5.0 * deviation, "uniform within one");
+    }
+    Free(mesh);
+}
+
+static void TestMoving(void)
+{
+    mvfxMesh* mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
+    // The large triangle shrunk to the others' size and tipped up: a third
+    // of the surface, its normal now along -Y... any way but +Z.
+    float moved[21];
+    for (int32_t i = 0; i < 21; ++i)
+    {
+        moved[i] = s_quad[i];
+    }
+    moved[3 * 5] = 3.0f;
+    moved[3 * 6 + 1] = 0.0f;
+    moved[3 * 6 + 2] = 1.0f;
+    CHECK(mvfxArePositionsValid(moved, NULL, 7), "valid positions");
+    mvfxMoveMesh(mesh, moved, NULL);
+    int64_t inLarge = 0;
+    bool tipped = true;
+    for (uint32_t i = 0; i < SAMPLES; ++i)
+    {
+        float p[3];
+        float n[3];
+        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
+        if (p[0] >= 2.0f - 1e-6f)
+        {
+            tipped = tipped && fabsf(n[1]) == 1.0f;
+            ++inLarge;
+        }
+    }
+    CHECK(tipped, "normals rebuilt");
+    CHECK(NearShare(inLarge, 1.0 / 3.0), "sums rebuilt");
+    Free(mesh);
+}
+
+static void TestRefusals(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    contextDef.limits.meshes = 2;
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    uint64_t misuse = 0;
+    static const float nan[] = {0, 0, 0, NAN, 0, 0, 0, 1, 0};
+    static const float far[] = {0, 0, 0, 2e6f, 0, 0, 0, 1, 0};
+    static const float badNormals[] = {0, 0, 3, 0, 0, 1, 0, 0, 1};
+    static const uint32_t past[] = {0, 1, 3};
+    for (int32_t field = 0; field < 12; ++field)
+    {
+        mvfxMeshDef def = mvfxDefaultMeshDef();
+        def.positions = s_quad;
+        def.vertexCount = 3;
+        def.triangles = s_quadTriangles;
+        def.triangleCount = 1;
+        switch (field)
+        {
+        case 0:
+            def.cookie = 0;
+            break;
+        case 1:
+            def.positions = NULL;
+            break;
+        case 2:
+            def.vertexCount = 0;
+            break;
+        case 3:
+            def.vertexCount = MVFX_MAX_MESH_VERTICES + 1;
+            break;
+        case 4:
+            def.triangles = past;
+            break;
+        case 5:
+            def.triangles = NULL;
+            break;
+        case 6:
+            def.triangleCount = -1;
+            break;
+        case 7:
+            def.tetrahedronCount = 1;
+            break;
+        case 8:
+            def.positions = nan;
+            break;
+        case 9:
+            def.positions = far;
+            break;
+        case 10:
+            def.normals = badNormals;
+            break;
+        default:
+            def.tetrahedra = past;
+            def.tetrahedronCount = MVFX_MAX_MESH_ELEMENTS + 1;
+            break;
+        }
+        mvfxMeshId mesh = {5, 5};
+        CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_errorInvalid, "refused");
+        CHECK(mesh.index1 == 0 && mvfxContext_GetMisuse(context) == ++misuse, "counted");
+    }
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(context, NULL, &mesh) == mvfx_errorInvalid, "no def");
+    CHECK(mvfxCreateMesh(NULL, NULL, &mesh) == mvfx_errorInvalid, "no context");
+    misuse += 1;
+    mvfxMeshDef def = mvfxDefaultMeshDef();
+    def.positions = s_quad;
+    def.vertexCount = 7;
+    def.triangles = s_quadTriangles;
+    def.triangleCount = 3;
+    CHECK(mvfxCreateMesh(context, &def, NULL) == mvfx_errorInvalid, "no out-parameter");
+    misuse += 1;
+    mvfxMeshId a = {0};
+    mvfxMeshId b = {0};
+    CHECK(mvfxCreateMesh(context, &def, &a) == mvfx_success, "first");
+    CHECK(mvfxCreateMesh(context, &def, &b) == mvfx_success, "second");
+    CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_errorLimit, "past the limit");
+    CHECK(mvfxMesh_IsValid(context, a) && !mvfxMesh_IsValid(context, (mvfxMeshId){0}) &&
+              !mvfxMesh_IsValid(NULL, a),
+          "validity");
+    CHECK(mvfxMesh_SetPositions(context, a, s_quad, NULL, 6) == mvfx_errorInvalid,
+          "another count of vertices");
+    CHECK(mvfxMesh_SetPositions(context, a, NULL, NULL, 7) == mvfx_errorInvalid, "no positions");
+    float bad[21];
+    for (int32_t i = 0; i < 21; ++i)
+    {
+        bad[i] = s_quad[i];
+    }
+    bad[4] = INFINITY;
+    CHECK(mvfxMesh_SetPositions(context, a, bad, NULL, 7) == mvfx_errorInvalid, "a bad position");
+    misuse += 3;
+    CHECK(mvfxContext_GetMisuse(context) == misuse, "each counted");
+    CHECK(mvfxMesh_SetPositions(NULL, a, s_quad, NULL, 7) == mvfx_errorInvalid, "no context");
+    CHECK(mvfxMesh_SetPositions(context, (mvfxMeshId){a.index1, a.generation + 1}, s_quad, NULL,
+                                7) == mvfx_errorStale,
+          "a stale mesh");
+    CHECK(mvfxMesh_SetPositions(context, a, s_quad, NULL, 7) == mvfx_success, "moved");
+    CHECK(mvfxDestroyMesh(context, b) == mvfx_success, "destroyed");
+    CHECK(mvfxDestroyMesh(context, b) == mvfx_errorStale, "twice is stale");
+    CHECK(mvfxDestroyMesh(NULL, a) == mvfx_errorInvalid, "no context");
+    CHECK(mvfxContext_GetMisuse(context) == misuse, "stale ids are not misuse");
+    mvfxDestroyContext(context);
+}
+
+static mvfxEffectDef MeshEffect(mvfxEmitterDef* emitters, mvfxMeshId mesh, mvfxMeshMode mode)
+{
+    emitters[0] = mvfxDefaultEmitterDef();
+    emitters[0].shape.kind = mvfx_shapeMesh;
+    emitters[0].shape.mesh = mesh;
+    emitters[0].shape.meshMode = mode;
+    emitters[0].shape.offset[2] = 7.0f;
+    emitters[1] = mvfxDefaultEmitterDef();
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 2;
+    return def;
+}
+
+static void TestThroughTheStep(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxMeshDef def = mvfxDefaultMeshDef();
+    def.positions = s_quad;
+    def.vertexCount = 7;
+    def.triangles = s_quadTriangles;
+    def.triangleCount = 3;
+    mvfxMeshId flat = {0};
+    CHECK(mvfxCreateMesh(context, &def, &flat) == mvfx_success, "a flat mesh");
+    static const float raised[] = {0, 0, 5, 1, 0, 5, 0, 1, 5, 0, 0, 6};
+    static const uint32_t tetrahedron[] = {0, 1, 2, 3};
+    static const uint32_t face[] = {0, 1, 2};
+    mvfxMeshDef solidDef = mvfxDefaultMeshDef();
+    solidDef.positions = raised;
+    solidDef.vertexCount = 4;
+    solidDef.triangles = face;
+    solidDef.triangleCount = 1;
+    solidDef.tetrahedra = tetrahedron;
+    solidDef.tetrahedronCount = 1;
+    mvfxMeshId solid = {0};
+    CHECK(mvfxCreateMesh(context, &solidDef, &solid) == mvfx_success, "a solid mesh");
+
+    mvfxEmitterDef emitters[2];
+    mvfxEffectDef effectDef = MeshEffect(emitters, flat, mvfx_meshVolume);
+    mvfxEffectId effect = {0};
+    uint64_t misuse = mvfxContext_GetMisuse(context);
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid,
+          "a volume needs tetrahedra");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 1, "counted");
+    effectDef =
+        MeshEffect(emitters, (mvfxMeshId){flat.index1, flat.generation + 1}, mvfx_meshSurface);
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorStale, "a stale mesh");
+    effectDef = MeshEffect(emitters, flat, mvfx_meshSurface);
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a surface effect");
+    CHECK(mvfxDestroyMesh(context, flat) == mvfx_errorBusy, "busy while an effect uses it");
+
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
+    const mvfxInstance* live = context->instances.slots[instance.index1 - 1].object;
+    const float* z = mvfxAttributeArray(live, 0, mvfx_attributePositionZ);
+    bool onFlat = live->emitters[0].count == 32;
+    for (int32_t i = 0; i < live->emitters[0].count; ++i)
+    {
+        onFlat = onFlat && z[i] == 7.0f;
+    }
+    CHECK(onFlat, "born on the flat mesh, moved by the offset");
+
+    misuse = mvfxContext_GetMisuse(context);
+    CHECK(mvfxInstance_SetEmitterMesh(context, instance, 1, solid) == mvfx_errorInvalid,
+          "not a mesh shape");
+    CHECK(mvfxInstance_SetEmitterMesh(context, instance, 2, solid) == mvfx_errorInvalid,
+          "no such emitter");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 2, "counted");
+    CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, (mvfxMeshId){0}) == mvfx_errorStale,
+          "a stale mesh");
+    CHECK(mvfxInstance_SetEmitterMesh(NULL, instance, 0, solid) == mvfx_errorInvalid, "no context");
+    CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, solid) == mvfx_success, "bound");
+    CHECK(mvfxDestroyMesh(context, solid) == mvfx_errorBusy, "busy while an instance uses it");
+    int32_t before = live->emitters[0].count;
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
+    z = mvfxAttributeArray(live, 0, mvfx_attributePositionZ);
+    bool onSolid = live->emitters[0].count == before + 16;
+    for (int32_t i = before; i < live->emitters[0].count; ++i)
+    {
+        onSolid = onSolid && z[i] == 12.0f;
+    }
+    CHECK(onSolid, "born on the bound mesh's face");
+
+    CHECK(mvfxDestroyInstance(context, instance) == mvfx_success, "instance gone");
+    CHECK(mvfxDestroyMesh(context, solid) == mvfx_success, "free once the instance is gone");
+    CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "effect gone");
+    CHECK(mvfxDestroyMesh(context, flat) == mvfx_success, "free once the effect is gone");
+    mvfxDestroyContext(context);
+}
+
+int main(void)
+{
+    TestEdgesAndNormals();
+    TestSurfaceByArea();
+    TestEdgesByLength();
+    TestVerticesAndGivenNormals();
+    TestVolumeByVolume();
+    TestMoving();
+    TestRefusals();
+    TestThroughTheStep();
+    return s_failures == 0 ? 0 : 1;
+}

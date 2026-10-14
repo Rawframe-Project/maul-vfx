@@ -10,6 +10,7 @@
 #define MAUL_VFX_SHAPE_H
 
 #include "maul-vfx/base.h"
+#include "maul-vfx/mesh.h"
 
 #include <stdbool.h>
 
@@ -53,6 +54,22 @@ extern "C"
         // A cone from a base of radius in the XY plane, opening by angle as it
         // rises length along Z; its base over arc radians from +X.
         mvfx_shapeCone = 6,
+        // A mesh, in its own positions.
+        mvfx_shapeMesh = 7,
+    };
+
+    // Where on a mesh particles are born.
+    typedef uint8_t mvfxMeshMode;
+    enum
+    {
+        // At its vertices, each alike; the normal the vertex's.
+        mvfx_meshVertices = 0,
+        // On its edges, by length; the normal blended along the edge.
+        mvfx_meshEdges = 1,
+        // On its triangles, by area; the normal blended over the triangle.
+        mvfx_meshSurface = 2,
+        // In its tetrahedra, by volume; the normal any way.
+        mvfx_meshVolume = 3,
     };
 
     // Where along its arc (a circle's or a cone's angle, or a line's length)
@@ -105,6 +122,12 @@ extern "C"
         // Turns a second for the loop and ping-pong arc modes, from 0 to
         // 1,000.
         float arcSpeed;
+        // A mesh shape's mesh, which an instance may replace for itself
+        // (mvfxInstance_SetEmitterMesh), and where on it; the mesh has
+        // triangles for the edges and the surface, tetrahedra for the volume,
+        // and may not be destroyed while the effect is alive.
+        mvfxMeshId mesh;
+        mvfxMeshMode meshMode;
     } mvfxShape;
 
     // Which way a particle sets off.

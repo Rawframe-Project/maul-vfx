@@ -131,9 +131,11 @@ typedef struct mvfxEffect
 // Whether a def and every emitter def in it are valid.
 bool mvfxIsEffectDefValid(const mvfxEffectDef* def);
 
-// Compiles a valid def into a block from allocator; NULL when the
-// allocator fails or the block's size does not fit in size_t.
-mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, const mvfxAllocator* allocator);
+// Compiles a valid def into a block from allocator, each mesh shape's
+// emitter i spawning from meshes[i]; NULL when the allocator fails or the
+// block's size does not fit in size_t.
+mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
+                              const mvfxAllocator* allocator);
 
 // Returns a compiled effect's block.
 void mvfxReleaseEffect(mvfxEffect* effect, const mvfxAllocator* allocator);

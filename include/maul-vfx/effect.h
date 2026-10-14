@@ -164,8 +164,11 @@ extern "C"
     ///         or an emitter def without its cookie, a field out of its
     ///         range or an invalid curve, which counts as misuse when the
     ///         context is given;
-    ///         `mvfx_errorLimit` when the context holds its limit of
-    ///         effects; `mvfx_errorCapacity` when the allocator fails.
+    ///         `mvfx_errorStale` for a mesh shape's mesh that names no live
+    ///         mesh, `mvfx_errorInvalid` too for a mesh without the elements
+    ///         its mode needs; `mvfx_errorLimit` when the context holds its
+    ///         limit of effects; `mvfx_errorCapacity` when the allocator
+    ///         fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateEffect(mvfxContext* context,

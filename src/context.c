@@ -8,6 +8,7 @@
 #include "allocator.h"
 #include "effect.h"
 #include "instance.h"
+#include "mesh.h"
 
 mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut)
 {
@@ -26,7 +27,8 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
     }
     if (def->cookie != MVFX_CONTEXT_DEF_COOKIE || !mvfxIsAllocatorValid(&def->allocator) ||
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || def->limits.effects < 1 ||
-        def->limits.effects > 65536 || def->limits.instances < 1 || def->limits.instances > 65536)
+        def->limits.effects > 65536 || def->limits.instances < 1 || def->limits.instances > 65536 ||
+        def->limits.meshes < 1 || def->limits.meshes > 65536)
     {
         return mvfx_errorInvalid;
     }
@@ -46,6 +48,13 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
     }
     if (!mvfxInitSlots(&context->instances, &context->allocator, (uint32_t)def->limits.instances))
     {
+        mvfxReleaseSlots(&context->effects, &context->allocator);
+        mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
+        return mvfx_errorCapacity;
+    }
+    if (!mvfxInitSlots(&context->meshes, &context->allocator, (uint32_t)def->limits.meshes))
+    {
+        mvfxReleaseSlots(&context->instances, &context->allocator);
         mvfxReleaseSlots(&context->effects, &context->allocator);
         mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
         return mvfx_errorCapacity;
@@ -79,6 +88,15 @@ void mvfxDestroyContext(mvfxContext* context)
         }
     }
     mvfxReleaseSlots(&context->effects, &allocator);
+    for (uint32_t i = 0; i < context->meshes.capacity; ++i)
+    {
+        mvfxMesh* mesh = context->meshes.slots[i].object;
+        if (mesh != nullptr)
+        {
+            mvfxReleaseMesh(mesh, &allocator);
+        }
+    }
+    mvfxReleaseSlots(&context->meshes, &allocator);
     mvfxRelease(&allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
 }
 

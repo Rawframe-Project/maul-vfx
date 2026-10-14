@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Creating, destroying and moving meshes on a context.
+
+#include "mesh_api.h"
+
+#include "context.h"
+#include "mesh.h"
+#include "slots.h"
+
+mvfxMeshDef mvfxDefaultMeshDef(void)
+{
+    return (mvfxMeshDef){.cookie = MVFX_MESH_DEF_COOKIE};
+}
+
+mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def, mvfxMeshId* meshOut)
+{
+    if (context == nullptr || meshOut == nullptr)
+    {
+        if (meshOut != nullptr)
+        {
+            *meshOut = (mvfxMeshId){0};
+        }
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    *meshOut = (mvfxMeshId){0};
+    if (!mvfxIsMeshDefValid(def))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    if (context->meshes.firstFree == 0)
+    {
+        return mvfx_errorLimit;
+    }
+    mvfxMesh* mesh = mvfxBuildMesh(def, &context->allocator);
+    if (mesh == nullptr)
+    {
+        return mvfx_errorCapacity;
+    }
+    uint32_t generation = 0;
+    uint32_t index1 = mvfxTakeSlot(&context->meshes, mesh, &generation);
+    *meshOut = (mvfxMeshId){index1, generation};
+    return mvfx_success;
+}
+
+mvfxResult mvfxDestroyMesh(mvfxContext* context, mvfxMeshId mesh)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxMesh* live = mvfxContextMesh(context, mesh);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (live->users > 0)
+    {
+        return mvfx_errorBusy;
+    }
+    mvfxReleaseMesh(live, &context->allocator);
+    mvfxFreeSlot(&context->meshes, mesh.index1);
+    return mvfx_success;
+}
+
+bool mvfxMesh_IsValid(const mvfxContext* context, mvfxMeshId mesh)
+{
+    return context != nullptr && mvfxContextMesh(context, mesh) != nullptr;
+}
+
+mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const float* positions,
+                                 const float* normals, int32_t vertexCount)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxMesh* live = mvfxContextMesh(context, mesh);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (positions == nullptr || vertexCount != live->vertexCount ||
+        !mvfxArePositionsValid(positions, normals, vertexCount))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    mvfxMoveMesh(live, positions, normals);
+    return mvfx_success;
+}
+
+mvfxMesh* mvfxContextMesh(const mvfxContext* context, mvfxMeshId mesh)
+{
+    return mvfxSlotObject(&context->meshes, mesh.index1, mesh.generation);
+}

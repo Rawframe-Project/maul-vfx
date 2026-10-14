@@ -61,6 +61,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const double origin[3]
         instance->emitters[e] = (mvfxEmitterState){
             .particles = block + particlesAt[e],
             .bursts = &bursts[effect->emitters[e].firstBurst],
+            .mesh = effect->emitters[e].shape.mesh,
         };
     }
     mvfxResetInstance(instance);

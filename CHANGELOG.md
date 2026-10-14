@@ -48,3 +48,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   modes random, loop, ping-pong and burst spread; a direction from the
   shape's normal, its center, a cone or a fixed vector, randomized by a
   share, times a speed range. Particles now store a velocity.
+- Meshes (`maul-vfx/mesh.h`): `mvfxCreateMesh` copies vertices, normals,
+  triangles and tetrahedra; a mesh shape spawns at its vertices, on its
+  edges by length, on its surface by area or in its volume by volume.
+  `mvfxMesh_SetPositions` moves a skinned mesh between steps, and
+  `mvfxInstance_SetEmitterMesh` binds an instance's own mesh. The
+  context's def gains a limit of meshes.

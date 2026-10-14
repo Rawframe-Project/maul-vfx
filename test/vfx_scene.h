@@ -4,8 +4,8 @@
 // The scene the determinism tests step: an effect of three endless
 // emitters over four instances, with full and churning emitters among
 // them, and an effect of emitter lives (a rate curve, looping bursts,
-// delays) over two; a fixed sequence of steps, and a hash of every
-// instance's state.
+// delays) over two, and an effect of mesh emitters over one; a fixed
+// sequence of steps, and a hash of every instance's state.
 
 #ifndef MAUL_VFX_TEST_VFX_SCENE_H
 #define MAUL_VFX_TEST_VFX_SCENE_H
@@ -15,6 +15,7 @@
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
+#include "maul-vfx/mesh.h"
 
 // The steps of the scene, in ticks: uneven, as a host's frames are.
 static const int64_t s_sceneSteps[] = {17476, 17477, 16000, 1,     40000, 17476, 3,
@@ -132,6 +133,53 @@ static inline void BuildScene(mvfxContext* context)
         CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
               "lives instance");
     }
+    // An effect spawning from a mesh: an octahedron's surface, edges and
+    // volume (eight tetrahedra about its center).
+    static const float octahedron[] = {1, 0, 0, -1, 0, 0, 0,  1, 0, 0, -1,
+                                       0, 0, 0, 1,  0, 0, -1, 0, 0, 0};
+    static const uint32_t faces[] = {0, 2, 4, 2, 1, 4, 1, 3, 4, 3, 0, 4,
+                                     2, 0, 5, 1, 2, 5, 3, 1, 5, 0, 3, 5};
+    uint32_t cells[32];
+    for (int32_t f = 0; f < 8; ++f)
+    {
+        cells[4 * f] = faces[3 * f];
+        cells[4 * f + 1] = faces[3 * f + 1];
+        cells[4 * f + 2] = faces[3 * f + 2];
+        cells[4 * f + 3] = 6;
+    }
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = octahedron;
+    meshDef.vertexCount = 7;
+    meshDef.triangles = faces;
+    meshDef.triangleCount = 8;
+    meshDef.tetrahedra = cells;
+    meshDef.tetrahedronCount = 8;
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success, "scene mesh");
+    static const mvfxMeshMode modes[3] = {mvfx_meshSurface, mvfx_meshEdges, mvfx_meshVolume};
+    mvfxEmitterDef meshEmitters[3];
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        meshEmitters[i] = mvfxDefaultEmitterDef();
+        meshEmitters[i].capacity = 24;
+        meshEmitters[i].rate = 30.0f + 10.0f * (float)i;
+        meshEmitters[i].lifetime = (mvfxRange){0.2f, 0.7f};
+        meshEmitters[i].shape.kind = mvfx_shapeMesh;
+        meshEmitters[i].shape.mesh = mesh;
+        meshEmitters[i].shape.meshMode = modes[i];
+        meshEmitters[i].velocity.speed = (mvfxRange){0.5f, 1.5f};
+    }
+    mvfxEffectDef meshEffectDef = mvfxDefaultEffectDef();
+    meshEffectDef.emitters = meshEmitters;
+    meshEffectDef.emitterCount = 3;
+    mvfxEffectId meshEffect = {0};
+    CHECK(mvfxCreateEffect(context, &meshEffectDef, &meshEffect) == mvfx_success, "mesh effect");
+    mvfxInstanceDef meshInstanceDef = mvfxDefaultInstanceDef();
+    meshInstanceDef.effect = meshEffect;
+    meshInstanceDef.seed = 0x3E5Bu;
+    mvfxInstanceId meshInstance = {0};
+    CHECK(mvfxCreateInstance(context, &meshInstanceDef, &meshInstance) == mvfx_success,
+          "mesh instance");
     for (int32_t i = 0; i < 4; ++i)
     {
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();

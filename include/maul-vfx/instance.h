@@ -99,6 +99,28 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxInstance_IsValid(const mvfxContext* context, mvfxInstanceId instance);
 
+    /// Makes an emitter of an instance spawn from another mesh, as each
+    /// character's skinned mesh feeds its own instance. The mesh may not be
+    /// destroyed while the instance is bound to it.
+    ///
+    /// @param context   The context that owns the instance and the mesh.
+    /// @param instance  The instance.
+    /// @param emitter   The index, in the effect's def, of an emitter with a
+    ///                  mesh shape.
+    /// @param mesh      The mesh, with the triangles or tetrahedra the
+    ///                  emitter's mesh mode needs.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a mesh id
+    ///         that names nothing live; `mvfx_errorInvalid` for a NULL
+    ///         context, an emitter index out of range or without a mesh shape,
+    ///         or a mesh without the elements its mode needs, which counts as
+    ///         misuse.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context,
+                                                                   mvfxInstanceId instance,
+                                                                   int32_t emitter,
+                                                                   mvfxMeshId mesh);
+
     // Where an emitter of an instance stands.
     typedef uint8_t mvfxEmitterStatus;
     enum

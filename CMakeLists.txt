@@ -47,6 +47,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/curve.c
     src/curve_integral.c
     src/death_heap.c
+    src/direction.c
     src/effect.c
     src/effect_api.c
     src/elementary.c
@@ -56,6 +57,8 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/hash.c
     src/instance.c
     src/instance_api.c
+    src/mesh.c
+    src/mesh_api.c
     src/shape.c
     src/slots.c
     src/spawn.c
@@ -85,6 +88,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(gradient WHITEBOX)
     maul_add_test(half WHITEBOX)
     maul_add_test(instance)
+    maul_add_test(mesh WHITEBOX)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)
     maul_add_test(shape WHITEBOX)

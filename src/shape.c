@@ -5,7 +5,9 @@
 
 #include "shape.h"
 
+#include "direction.h"
 #include "elementary.h"
+#include "mesh.h"
 
 #include <math.h>
 
@@ -64,6 +66,8 @@ bool mvfxIsShapeValid(const mvfxShape* shape)
     case mvfx_shapeBox:
         return IsSize(shape->halfExtents[0]) && IsSize(shape->halfExtents[1]) &&
                IsSize(shape->halfExtents[2]);
+    case mvfx_shapeMesh:
+        return shape->meshMode <= mvfx_meshVolume;
     case mvfx_shapeCone:
     {
         if (!IsSize(shape->radius) || !IsSize(shape->length) ||
@@ -82,7 +86,7 @@ bool mvfxIsShapeValid(const mvfxShape* shape)
     }
 }
 
-void mvfxCompileShape(const mvfxShape* shape, mvfxCompiledShape* out)
+void mvfxCompileShape(const mvfxShape* shape, struct mvfxMesh* mesh, mvfxCompiledShape* out)
 {
     // The quaternion normalized in binary64, then its matrix.
     double q[4];
@@ -112,6 +116,8 @@ void mvfxCompileShape(const mvfxShape* shape, mvfxCompiledShape* out)
         .thickness = shape->thickness,
         .arc = shape->arc,
         .arcSpeed = shape->arcSpeed,
+        .meshMode = shape->meshMode,
+        .mesh = mesh,
     };
     for (int32_t i = 0; i < 9; ++i)
     {
@@ -151,36 +157,6 @@ float mvfxArcFraction(const mvfxCompiledShape* shape, mvfxWords4 words, double a
     default:
         return mvfxUnitFloat(words.w);
     }
-}
-
-bool mvfxNormalize(float v[3])
-{
-    double square =
-        (double)v[0] * (double)v[0] + (double)v[1] * (double)v[1] + (double)v[2] * (double)v[2];
-    if (!(square > 0.0 && square < (double)INFINITY))
-    {
-        return false;
-    }
-    double scale = 1.0 / sqrt(square);
-    for (int32_t i = 0; i < 3; ++i)
-    {
-        v[i] = (float)((double)v[i] * scale);
-    }
-    return true;
-}
-
-void mvfxRandomDirection(uint32_t a, uint32_t b, float out[3])
-{
-    // Z uniform in [-1, 1] and the azimuth uniform: uniform on the sphere
-    // (Archimedes' hat-box theorem).
-    float z = 1.0f - 2.0f * mvfxUnitFloat(a);
-    float ring = sqrtf(fmaxf(0.0f, 1.0f - z * z));
-    float sine = 0.0f;
-    float cosine = 0.0f;
-    mvfxSinCos(TWO_PI * mvfxUnitFloat(b), &sine, &cosine);
-    out[0] = ring * cosine;
-    out[1] = ring * sine;
-    out[2] = z;
 }
 
 // The radius of a point uniform over the ring between (1 - thickness)
@@ -373,8 +349,8 @@ static void Turn(const mvfxCompiledShape* shape, const float v[3], float out[3])
     }
 }
 
-void mvfxSampleShape(const mvfxCompiledShape* shape, mvfxWords4 words, float arcFraction,
-                     mvfxShapeSample* out)
+void mvfxSampleShape(const mvfxCompiledShape* shape, const struct mvfxMesh* mesh, mvfxWords4 words,
+                     float arcFraction, mvfxShapeSample* out)
 {
     float position[3] = {0.0f, 0.0f, 0.0f};
     float normal[3] = {0.0f, 0.0f, 1.0f};
@@ -407,6 +383,9 @@ void mvfxSampleShape(const mvfxCompiledShape* shape, mvfxWords4 words, float arc
         break;
     case mvfx_shapeCone:
         SampleCone(shape, words, arcFraction, position, normal);
+        break;
+    case mvfx_shapeMesh:
+        mvfxSampleMesh(mesh, shape->meshMode, words, position, normal);
         break;
     default:
         mvfxRandomDirection(words.x, words.y, normal);

@@ -56,7 +56,7 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
     float arc =
         mvfxArcFraction(&compiled->shape, shapeWords, age, birth->batchIndex, birth->batchCount);
     mvfxShapeSample sample;
-    mvfxSampleShape(&compiled->shape, shapeWords, arc, &sample);
+    mvfxSampleShape(&compiled->shape, instance->emitters[emitter].mesh, shapeWords, arc, &sample);
     float velocity[3];
     mvfxDrawVelocity(&compiled->velocity, &sample,
                      Draw(instance, emitter, VELOCITY_SALT, birth->serial), velocity);

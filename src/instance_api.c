@@ -8,6 +8,8 @@
 #include "context.h"
 #include "effect_api.h"
 #include "instance.h"
+#include "mesh.h"
+#include "mesh_api.h"
 #include "slots.h"
 #include "spawn.h"
 
@@ -76,6 +78,11 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
     }
     context->instancesCreated += 1;
     effect->users += 1;
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        mvfxMesh* mesh = instance->emitters[e].mesh;
+        mesh != nullptr ? (void)(mesh->users += 1) : (void)0;
+    }
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->instances, instance, &generation);
     *instanceOut = (mvfxInstanceId){index1, generation};
@@ -94,6 +101,11 @@ mvfxResult mvfxDestroyInstance(mvfxContext* context, mvfxInstanceId instance)
         return mvfx_errorStale;
     }
     live->effect->users -= 1;
+    for (int32_t e = 0; e < live->effect->emitterCount; ++e)
+    {
+        mvfxMesh* mesh = live->emitters[e].mesh;
+        mesh != nullptr ? (void)(mesh->users -= 1) : (void)0;
+    }
     mvfxReleaseInstance(live, &context->allocator);
     mvfxFreeSlot(&context->instances, instance.index1);
     return mvfx_success;
@@ -207,6 +219,33 @@ mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
         return mvfx_errorStale;
     }
     mvfxResetInstance(live);
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t emitter, mvfxMeshId mesh)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    mvfxMesh* bound = mvfxContextMesh(context, mesh);
+    if (live == nullptr || bound == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (emitter < 0 || emitter >= live->effect->emitterCount ||
+        live->effect->emitters[emitter].shape.kind != mvfx_shapeMesh ||
+        !mvfxMeshHasMode(bound, live->effect->emitters[emitter].shape.meshMode))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    mvfxEmitterState* state = &live->emitters[emitter];
+    state->mesh->users -= 1;
+    bound->users += 1;
+    state->mesh = bound;
     return mvfx_success;
 }
 

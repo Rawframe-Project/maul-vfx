@@ -35,7 +35,7 @@ static mvfxCompiledShape Compile(const mvfxShape* shape)
 {
     mvfxCompiledShape compiled;
     CHECK(mvfxIsShapeValid(shape), "a valid shape");
-    mvfxCompileShape(shape, &compiled);
+    mvfxCompileShape(shape, NULL, &compiled);
     return compiled;
 }
 
@@ -43,7 +43,7 @@ static mvfxShapeSample Sample(const mvfxCompiledShape* shape, uint32_t i)
 {
     mvfxWords4 words = Words(i, 7u);
     mvfxShapeSample sample;
-    mvfxSampleShape(shape, words, mvfxArcFraction(shape, words, 0.0, 0, 1), &sample);
+    mvfxSampleShape(shape, NULL, words, mvfxArcFraction(shape, words, 0.0, 0, 1), &sample);
     return sample;
 }
 

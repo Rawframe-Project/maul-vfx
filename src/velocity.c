@@ -5,6 +5,7 @@
 
 #include "velocity.h"
 
+#include "direction.h"
 #include "elementary.h"
 
 #include <math.h>

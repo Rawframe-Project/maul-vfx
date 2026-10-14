@@ -177,7 +177,8 @@ static mvfxCompiledBurst CompileBurst(const mvfxBurst* burst)
     };
 }
 
-mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, const mvfxAllocator* allocator)
+mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
+                              const mvfxAllocator* allocator)
 {
     int32_t curveCount = 0;
     int32_t burstCount = 0;
@@ -244,7 +245,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, const mvfxAllocator* all
             .lifetime = source->lifetime,
             .plan = PlanAttributes(padded),
         };
-        mvfxCompileShape(&source->shape, &effect->emitters[i].shape);
+        mvfxCompileShape(&source->shape, meshes[i], &effect->emitters[i].shape);
         mvfxCompileVelocity(&source->velocity, &effect->emitters[i].velocity);
         double seconds = (double)effect->emitters[i].duration / (double)MVFX_TICKS_PER_SECOND;
         effect->emitters[i].loopIntegral =

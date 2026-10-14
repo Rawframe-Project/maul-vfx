@@ -8,6 +8,7 @@
 #include "context.h"
 #include "effect.h"
 #include "float_mode.h"
+#include "mesh_api.h"
 #include "slots.h"
 
 mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
@@ -26,16 +27,39 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
+    mvfxMesh* meshes[MVFX_MAX_EMITTERS] = {0};
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        const mvfxShape* shape = &def->emitters[i].shape;
+        if (shape->kind != mvfx_shapeMesh)
+        {
+            continue;
+        }
+        meshes[i] = mvfxContextMesh(context, shape->mesh);
+        if (meshes[i] == nullptr)
+        {
+            return mvfx_errorStale;
+        }
+        if (!mvfxMeshHasMode(meshes[i], shape->meshMode))
+        {
+            mvfxCountMisuse(context);
+            return mvfx_errorInvalid;
+        }
+    }
     if (context->effects.firstFree == 0)
     {
         return mvfx_errorLimit;
     }
     mvfxFloatMode mode = mvfxEnterFloatMode();
-    mvfxEffect* effect = mvfxCompileEffect(def, &context->allocator);
+    mvfxEffect* effect = mvfxCompileEffect(def, meshes, &context->allocator);
     mvfxLeaveFloatMode(mode);
     if (effect == nullptr)
     {
         return mvfx_errorCapacity;
+    }
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        meshes[i] != nullptr ? (void)(meshes[i]->users += 1) : (void)0;
     }
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->effects, effect, &generation);
@@ -57,6 +81,14 @@ mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)
     if (compiled->users > 0)
     {
         return mvfx_errorBusy;
+    }
+    for (int32_t i = 0; i < compiled->emitterCount; ++i)
+    {
+        mvfxMesh* mesh = compiled->emitters[i].shape.mesh;
+        if (mesh != nullptr)
+        {
+            mesh->users -= 1;
+        }
     }
     mvfxReleaseEffect(compiled, &context->allocator);
     mvfxFreeSlot(&context->effects, effect.index1);
