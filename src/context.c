@@ -9,7 +9,10 @@
 #include "effect.h"
 #include "grid.h"
 #include "instance.h"
+#include "layout.h"
 #include "mesh.h"
+
+#include <stdatomic.h>
 
 mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut)
 {
@@ -30,7 +33,7 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || def->limits.effects < 1 ||
         def->limits.effects > 65536 || def->limits.instances < 1 || def->limits.instances > 65536 ||
         def->limits.meshes < 1 || def->limits.meshes > 65536 || def->limits.grids < 1 ||
-        def->limits.grids > 65536)
+        def->limits.grids > 65536 || def->limits.layouts < 1 || def->limits.layouts > 65536)
     {
         return mvfx_errorInvalid;
     }
@@ -43,31 +46,21 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
         .allocator = def->allocator,
         .tasks = {def->enqueueTask, def->finishTask, def->userTaskContext},
     };
-    if (!mvfxInitSlots(&context->effects, &context->allocator, (uint32_t)def->limits.effects))
+    mvfxSlots* tables[5] = {&context->effects, &context->instances, &context->meshes,
+                            &context->grids, &context->layouts};
+    const int32_t limits[5] = {def->limits.effects, def->limits.instances, def->limits.meshes,
+                               def->limits.grids, def->limits.layouts};
+    for (int32_t t = 0; t < 5; ++t)
     {
-        mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
-        return mvfx_errorCapacity;
-    }
-    if (!mvfxInitSlots(&context->instances, &context->allocator, (uint32_t)def->limits.instances))
-    {
-        mvfxReleaseSlots(&context->effects, &context->allocator);
-        mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
-        return mvfx_errorCapacity;
-    }
-    if (!mvfxInitSlots(&context->meshes, &context->allocator, (uint32_t)def->limits.meshes))
-    {
-        mvfxReleaseSlots(&context->instances, &context->allocator);
-        mvfxReleaseSlots(&context->effects, &context->allocator);
-        mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
-        return mvfx_errorCapacity;
-    }
-    if (!mvfxInitSlots(&context->grids, &context->allocator, (uint32_t)def->limits.grids))
-    {
-        mvfxReleaseSlots(&context->meshes, &context->allocator);
-        mvfxReleaseSlots(&context->instances, &context->allocator);
-        mvfxReleaseSlots(&context->effects, &context->allocator);
-        mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
-        return mvfx_errorCapacity;
+        if (!mvfxInitSlots(tables[t], &context->allocator, (uint32_t)limits[t]))
+        {
+            for (int32_t u = t - 1; u >= 0; --u)
+            {
+                mvfxReleaseSlots(tables[u], &context->allocator);
+            }
+            mvfxRelease(&def->allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
+            return mvfx_errorCapacity;
+        }
     }
     *contextOut = context;
     return mvfx_success;
@@ -116,15 +109,24 @@ void mvfxDestroyContext(mvfxContext* context)
         }
     }
     mvfxReleaseSlots(&context->grids, &allocator);
+    for (uint32_t i = 0; i < context->layouts.capacity; ++i)
+    {
+        mvfxOutputLayout* layout = context->layouts.slots[i].object;
+        if (layout != nullptr)
+        {
+            mvfxReleaseLayout(layout, &allocator);
+        }
+    }
+    mvfxReleaseSlots(&context->layouts, &allocator);
     mvfxRelease(&allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
 }
 
 uint64_t mvfxContext_GetMisuse(const mvfxContext* context)
 {
-    return context->misuse;
+    return atomic_load_explicit(&context->misuse, memory_order_relaxed);
 }
 
 void mvfxCountMisuse(mvfxContext* context)
 {
-    ++context->misuse;
+    atomic_fetch_add_explicit(&context->misuse, 1, memory_order_relaxed);
 }

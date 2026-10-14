@@ -59,6 +59,8 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/grid_api.c
     src/integrate.c
     src/kill.c
+    src/layout.c
+    src/layout_api.c
     src/life.c
     src/emitter_step.c
     src/event.c
@@ -72,6 +74,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/mesh.c
     src/mesh_api.c
     src/noise.c
+    src/output.c
     src/over_life.c
     src/scene_query.c
     src/shape.c
@@ -119,6 +122,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(instance)
     maul_add_test(mesh WHITEBOX)
     maul_add_test(noise WHITEBOX)
+    maul_add_test(output WHITEBOX)
     maul_add_test(over_life WHITEBOX)
     maul_add_test(motion WHITEBOX)
     maul_add_test(half_sweep WHITEBOX MANUAL)

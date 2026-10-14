@@ -88,7 +88,7 @@ static void TestHostAllocatorHoldsEverything(void)
     def.allocator = CountingAllocatorFor(&counter);
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "creates on the host allocator");
-    CHECK(counter.blocks == 5, "the context and its four tables while alive");
+    CHECK(counter.blocks == 6, "the context and its five tables while alive");
     mvfxDestroyContext(context);
     CHECK(counter.blocks == 0 && counter.bytes == 0, "everything returned");
 }
@@ -97,7 +97,7 @@ static void TestEachAllocationFailing(void)
 {
     // The context and each of its tables failing in turn: capacity, and
     // what was taken returned.
-    for (int64_t n = 1; n <= 5; ++n)
+    for (int64_t n = 1; n <= 6; ++n)
     {
         CountingAllocator counter = {.failAt = n};
         mvfxContextDef def = mvfxDefaultContextDef();

@@ -45,6 +45,8 @@ extern "C"
         int32_t meshes;
         // Grids that exist at once, from 1 to 65,536.
         int32_t grids;
+        // Output layouts that exist at once, from 1 to 65,536.
+        int32_t layouts;
     } mvfxContextLimits;
 
     // How a context is made. Build it with mvfxDefaultContextDef.
@@ -71,7 +73,8 @@ extern "C"
 #define MVFX_CONTEXT_DEF_COOKIE 0x6D766378u
 
     /// Returns the default context def: the C library's allocator, serial
-    /// work, 256 effects, 1,024 instances, 64 meshes and 64 grids.
+    /// work, 256 effects, 1,024 instances, 64 meshes, 64 grids and 64
+    /// layouts.
     ///
     /// The default is built in the program from the headers it includes,
     /// so the version it stamps is the program's.
@@ -92,6 +95,7 @@ extern "C"
         def.limits.instances = 1024;
         def.limits.meshes = 64;
         def.limits.grids = 64;
+        def.limits.layouts = 64;
         return def;
     }
 

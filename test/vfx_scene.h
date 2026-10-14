@@ -16,6 +16,7 @@
 
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
+#include "maul-vfx/output.h"
 
 #include <math.h>
 
@@ -67,6 +68,9 @@ static inline void BuildScene(mvfxContext* context)
     mvfxEmitterDef emitters[4] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
     emitters[0].capacity = 100;
+    // A colour drawn per particle, so the output's sRGB matters.
+    emitters[0].color = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.1f, 0.3f, 0.5f, 0.4f}, .max = {0.9f, 0.7f, 0.6f, 1.0f}};
     emitters[0].rate = 37.5f;
     emitters[0].lifetime = mvfxRangeSource(0.25f, 1.5f);
     emitters[1].capacity = 64;
@@ -598,8 +602,58 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
     }
 }
 
-// A hash of every live instance of the context, in slot order.
-static inline uint64_t HashScene(const mvfxContext* context)
+// A record of every field, in many formats: what the scene's output
+// writes for a view.
+static const mvfxLayoutField s_sceneFields[10] = {
+    {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3, .offset = 0},
+    {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 12},
+    {.field = mvfx_recordColor,
+     .format = mvfx_formatUnorm8,
+     .components = 4,
+     .srgb = true,
+     .offset = 18},
+    {.field = mvfx_recordAngle, .format = mvfx_formatFloat32, .components = 1, .offset = 24},
+    {.field = mvfx_recordOrientation, .format = mvfx_formatSnorm16, .components = 4, .offset = 28},
+    {.field = mvfx_recordVelocity, .format = mvfx_formatFloat16, .components = 3, .offset = 36},
+    {.field = mvfx_recordAge, .format = mvfx_formatUnorm16, .components = 1, .offset = 42},
+    {.field = mvfx_recordFrame, .format = mvfx_formatUint32, .components = 1, .offset = 44},
+    {.field = mvfx_recordCustom, .format = mvfx_formatSnorm8, .components = 4, .offset = 48},
+    {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 52},
+};
+#define SCENE_RECORD_BYTES 56
+#define SCENE_RECORDS      128
+
+// Hashes every emitter's records of an instance for a view at (1500, 3,
+// -2), through a layout made on the context the first time.
+static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
+                                  const mvfxInstance* instance, uint64_t hash)
+{
+    mvfxLayoutDef def = mvfxDefaultLayoutDef();
+    def.fields = s_sceneFields;
+    def.fieldCount = 10;
+    def.stride = SCENE_RECORD_BYTES;
+    mvfxLayoutId layout = {1, 1};
+    if (!mvfxLayout_IsValid(context, layout))
+    {
+        CHECK(mvfxCreateLayout(context, &def, &layout) == mvfx_success, "scene layout");
+    }
+    static const double view[3] = {1500.0, 3.0, -2.0};
+    static unsigned char records[SCENE_RECORDS * SCENE_RECORD_BYTES];
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        int64_t count = 0;
+        CHECK(mvfxInstance_WriteParticles(context, id, e, layout, view, records, SCENE_RECORDS,
+                                          &count) == mvfx_success &&
+                  count <= SCENE_RECORDS,
+              "scene output");
+        hash = mvfxHash64(hash, records, (int32_t)count * SCENE_RECORD_BYTES);
+    }
+    return hash;
+}
+
+// A hash of every live instance of the context, in slot order, and of
+// its output.
+static inline uint64_t HashScene(mvfxContext* context)
 {
     uint64_t hash = MVFX_HASH_INIT;
     for (uint32_t i = 0; i < context->instances.capacity; ++i)
@@ -608,6 +662,8 @@ static inline uint64_t HashScene(const mvfxContext* context)
         if (instance != NULL)
         {
             hash = mvfxHashInstance(instance, hash);
+            mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
+            hash = HashOutput(context, id, instance, hash);
         }
     }
     return hash;

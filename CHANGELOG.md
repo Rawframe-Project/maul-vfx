@@ -141,3 +141,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   tick and place, inheriting a share of its velocity and optionally its
   colour and size, up to its own `capacity` a step; an effect's
   emitters step in an order their links make, and a cycle is refused.
+- Output: `include/maul-vfx/output.h` with layouts (`mvfxCreateLayout`,
+  `mvfxDestroyLayout`, `mvfxLayout_IsValid`, `mvfxDefaultLayoutDef`) of
+  particle fields in binary32, binary16, normalized, sRGB and uint32
+  formats, and `mvfxInstance_WriteParticles` writing an emitter's
+  records for a view; the context gains `limits.layouts`.

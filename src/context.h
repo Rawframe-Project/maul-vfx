@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The context: the host's allocator and task system, the tables of the
-// effects, instances, meshes and grids it owns, and the count of refused calls.
+// effects, instances, meshes, grids and layouts it owns, and the count of
+// refused calls.
 
 #ifndef MAUL_VFX_SRC_CONTEXT_H
 #define MAUL_VFX_SRC_CONTEXT_H
@@ -20,10 +21,12 @@ struct mvfxContext
     mvfxSlots instances;
     mvfxSlots meshes;
     mvfxSlots grids;
+    mvfxSlots layouts;
     // How many instances the context has created, which seeds those whose
     // def gives no seed.
     uint64_t instancesCreated;
-    uint64_t misuse;
+    // Atomic: outputs for several views may count it at once.
+    _Atomic uint64_t misuse;
 };
 
 // Counts one refused call against the context.

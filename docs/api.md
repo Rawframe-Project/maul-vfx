@@ -29,7 +29,7 @@ The root of Maul VFX: a context holds the host's allocator and task hooks, and o
 ```c
 static inline mvfxContextDef mvfxDefaultContextDef(void);
 ```
-Returns the default context def: the C library's allocator, serial work, 256 effects, 1,024 instances, 64 meshes and 64 grids.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
+Returns the default context def: the C library's allocator, serial work, 256 effects, 1,024 instances, 64 meshes, 64 grids and 64 layouts.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut);
@@ -247,6 +247,35 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_SetPositions(mvfxContext* context, m
 ```
 Gives a mesh new positions (and normals) for the same vertices, as a skinned mesh moves, and rebuilds what is drawn from them. Steps after spawn from the new positions.  @param context      The context that owns the mesh. @param mesh         The mesh. @param positions    x, y and z for each vertex, as in the mesh def. @param normals      Unit normals for each vertex, or NULL to compute them. @param vertexCount  The mesh's count of vertices. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live mesh; `mvfx_errorInvalid` for a NULL context or positions, a count not the mesh's or a value out of range, which counts as misuse when the context is given (the mesh is then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+## `output.h`
+
+Output: what the host draws, as data in its own layout. The library draws nothing; after a step the host asks, per view and per emitter, for records written into its buffers.
+
+```c
+mvfxLayoutDef mvfxDefaultLayoutDef(void);
+```
+Returns the default layout def: no fields yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateLayout(mvfxContext* context, const mvfxLayoutDef* def, mvfxLayoutId* layoutOut);
+```
+Creates a layout: checks the def and copies its fields.  @param context    The context that will own the layout. @param def        The def, from mvfxDefaultLayoutDef. @param layoutOut  Receives the layout's id; the null id on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a count, stride, field, format, component count, offset or overlap out of range, which counts as misuse when the context is given; `mvfx_errorLimit` when the context holds its limit of layouts; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxDestroyLayout(mvfxContext* context, mvfxLayoutId layout);
+```
+Destroys a layout.  @param context  The context that owns the layout. @param layout   The layout. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live layout; `mvfx_errorInvalid` for a NULL context. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+bool mvfxLayout_IsValid(const mvfxContext* context, mvfxLayoutId layout);
+```
+Returns whether an id names a live layout of the context. A stale id is not misuse.  @param context  The context. @param layout   Any id. @return Whether the layout is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteParticles( mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout, const double viewOrigin[3], void* records, int64_t capacity, int64_t* countOut);
+```
+Writes a record in a layout for each live particle of an emitter, in the pool's order (oldest first), for a view whose origin positions are made relative to (binary64, each coordinate at most 2^52 in size). A buffer too small takes the first capacity records; the count is always the emitter's live particles.  @param context     The context that owns the instance and the layout. @param instance    The instance. @param emitter     The emitter's index in the effect's def. @param layout      The layout. @param viewOrigin  The view's origin in the world. @param records     The buffer, capacity times the layout's stride bytes; NULL when capacity is 0. @param capacity    The records it holds, at least 0. @param countOut    Receives the records there are. @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout that names nothing live; `mvfx_errorInvalid` for a NULL context, origin or count, an emitter out of range, a negative capacity or a NULL buffer with a capacity, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs (calls that only read a stepped context and write the host's buffers) may run on several threads at once.
+
 ## `value.h`
 
 Value sources: how a particle's initial values are drawn. Every source is a base times a uniform draw between min and max: the base is 1, a curve or a gradient over the emitter's age, a gradient at a random point, or a parameter of the instance.
@@ -258,4 +287,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-45 functions across 10 headers.
+50 functions across 11 headers.
