@@ -198,6 +198,23 @@ static void TestPerBatch(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestStopsAtTheFirstMiss(void)
+{
+    // Ribbons of 3, 3 and 2 points in room for 5: the first alone, though
+    // the third would fit after it.
+    mvfxEmitterDef emitter = Ribbon(mvfx_ribbonPerBatch);
+    Scene scene = NewScene(&emitter, 1);
+    static const double points[9] = {0, 0, 0, 0, 1, 0, 0, 2, 0};
+    Spawn(&scene, 0, points, 3);
+    Spawn(&scene, 0, points, 3);
+    Spawn(&scene, 0, points, 2);
+    Written w = Write(&scene, 0, 5, 4);
+    CHECK(w.pointCount == 8 && w.ribbonCount == 3 && w.ribbons[0].count == 3 &&
+              w.ribbons[1].count == (int32_t)0xEEEEEEEE && w.points[3].serial == 0xEEEEEEEEu,
+          "no ribbon after one that did not fit");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestPerSource(void)
 {
     // Each of two particles' births spawns three: ribbons of the sources'
@@ -223,6 +240,14 @@ static void TestPerSource(void)
     w = Write(&scene, 0, 16, 4);
     CHECK(w.result == mvfx_success && w.pointCount == 0 && w.ribbonCount == 0,
           "an emitter not drawn as ribbons");
+    static const mvfxView view = {0};
+    mvfxRibbonBuffers none = {0};
+    int64_t pointCount = -1;
+    int64_t ribbonCount = -1;
+    CHECK(mvfxInstance_WriteRibbons(scene.context, scene.instance, 0, scene.layout, &view, &none,
+                                    &pointCount, &ribbonCount) == mvfx_success &&
+              pointCount == 0 && ribbonCount == 0,
+          "it needs no scratch");
     mvfxDestroyContext(scene.context);
 }
 
@@ -279,6 +304,24 @@ static void TestChecks(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    // The ribbon fields' components: 3 for a tangent, 1 for the rest.
+    const mvfxLayoutField wide[5] = {
+        {.field = mvfx_recordTangent, .format = mvfx_formatFloat32, .components = 4},
+        {.field = mvfx_recordWidth, .format = mvfx_formatFloat32, .components = 2},
+        {.field = mvfx_recordLength, .format = mvfx_formatFloat32, .components = 2},
+        {.field = mvfx_recordAlong, .format = mvfx_formatFloat32, .components = 2},
+        {.field = mvfx_recordRibbon, .format = mvfx_formatUint32, .components = 2}};
+    int32_t refusedFields = 0;
+    for (int32_t f = 0; f < 5; ++f)
+    {
+        mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
+        layoutDef.fields = &wide[f];
+        layoutDef.fieldCount = 1;
+        layoutDef.stride = 16;
+        mvfxLayoutId refused = {0};
+        refusedFields += mvfxCreateLayout(context, &layoutDef, &refused) == mvfx_errorInvalid;
+    }
+    CHECK(refusedFields == 5, "ribbon fields' components checked");
     mvfxEmitterDef emitter = Ribbon(4);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
@@ -373,6 +416,7 @@ int main(void)
 {
     TestOne();
     TestPerBatch();
+    TestStopsAtTheFirstMiss();
     TestPerSource();
     TestLocal();
     TestParticleRecord();
