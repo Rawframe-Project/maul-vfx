@@ -69,10 +69,12 @@ enum
     mvfx_attributeDrag = 27,
     // Custom attribute i's component c at 28 + 4 i + c.
     mvfx_attributeCustom = 28,
+    // A uint32 count of a particle's collisions.
+    mvfx_attributeCollisions = 60,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (28 + 4 * MVFX_MAX_CUSTOM_ATTRIBUTES)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeCollisions + 1)
 
 // The alignment of every attribute array, a cache line.
 #define MVFX_ATTRIBUTE_ALIGNMENT 64
@@ -164,6 +166,9 @@ typedef struct mvfxCompiledEmitter
     int32_t killRuleCount;
     mvfxHostModule hostModules[MVFX_MAX_HOST_MODULES];
     int32_t hostModuleCount;
+    mvfxCollision collision;
+    mvfxCollider colliders[MVFX_MAX_COLLIDERS];
+    int32_t colliderCount;
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

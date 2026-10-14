@@ -144,6 +144,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mv
 Advances one instance alone toward a span, in steps of a given length (the last shorter), at most a number of steps a call, so a host can spread a long prewarm over frames: it calls again with the span left until none is. The same calls reach the same state. Spans and steps are rounded once to ticks.  @param context       The context that owns the instance. @param instance      The instance. @param seconds       The span left, from 0 to 1e9. @param stepSeconds   Each step's length, above 0 and at most MVFX_MAX_STEP_SECONDS, one tick at least. @param maxSteps      At least 1. @param remainingOut  Receives the span left, exactly as ticks; may be NULL. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context or a value out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instance, const mvfxCollider* colliders, int32_t count);
+```
+Sets the colliders of an instance that its emitters collide with when their collision asks for the instance's (a character, a moving door), replacing the last set; the next step reads them. They are copied.  @param context    The context that owns the instance. @param instance   The instance. @param colliders  From 0 to MVFX_MAX_COLLIDERS colliders; NULL when count is 0. @param count      How many. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context, a count out of range or a collider out of range, which counts as misuse when the context is given (the colliders are then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 void mvfxModule_Random(const mvfxModuleCall* call, uint32_t serial, uint32_t stream, uint32_t out[4]);
 ```
 Draws four random words for a host module: pcg4d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the module's seed, a particle's serial, a stream number the module picks and the step's end tick, so the same call in the same step gives the same words however the work is split.  @param call    The module's call. @param serial  A particle's serial (or any number). @param stream  The module's own number for this draw. @param out     Receives the four words. @par Thread safety Safe from any thread.
@@ -233,4 +238,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-40 functions across 10 headers.
+41 functions across 10 headers.

@@ -52,3 +52,11 @@ void mvfxRotate(const float q[4], const float v[3], float out[3])
     out[1] = v[1] + q[3] * ty + (q[2] * tx - q[0] * tz);
     out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
 }
+
+void mvfxMultiplyRotations(const float a[4], const float b[4], float out[4])
+{
+    out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    out[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+}

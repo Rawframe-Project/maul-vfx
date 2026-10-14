@@ -41,6 +41,7 @@ static mvfxParticleArrays ArraysOf(mvfxInstance* instance, int32_t emitter, bool
         .birthLow = ArrayOf(instance, emitter, mvfx_attributeBirthLow),
         .birthHigh = ArrayOf(instance, emitter, mvfx_attributeBirthHigh),
         .inverseLife = ArrayOf(instance, emitter, mvfx_attributeInverseLife),
+        .collisions = ArrayOf(instance, emitter, mvfx_attributeCollisions),
         .kill = killable ? instance->killScratch : nullptr,
     };
     Fill(instance, emitter, mvfx_attributePositionX, 3, arrays.position);

@@ -42,6 +42,7 @@ endif()
 add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/allocator.c
     src/appearance.c
+    src/collide.c
     src/base.c
     src/birth.c
     src/context.c
@@ -88,6 +89,7 @@ if(MAUL_VFX_BUILD_TESTS)
     enable_testing()
     maul_add_test(allocator WHITEBOX)
     maul_add_test(base)
+    maul_add_test(collide WHITEBOX)
     maul_add_test(context)
     maul_add_test(curve WHITEBOX)
     maul_add_test(curve_integral WHITEBOX)

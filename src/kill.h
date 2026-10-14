@@ -22,6 +22,7 @@ typedef struct mvfxResolvedKillRule
     float normal[3];
     float speed;
     float minimumAge;
+    int32_t collisions;
 } mvfxResolvedKillRule;
 
 bool mvfxIsKillRuleValid(const mvfxKillRule* rule);
@@ -37,8 +38,9 @@ bool mvfxSegmentMeetsSphere(const float start[3], const float end[3], const floa
                             float radius);
 
 // Whether any rule kills a particle that went from start to end over a
-// step, ending it with velocity at ageSeconds.
+// step, ending it with velocity at ageSeconds after collisions in all.
 bool mvfxIsKilled(const mvfxResolvedKillRule* rules, int32_t count, const float start[3],
-                  const float end[3], const float velocity[3], double ageSeconds);
+                  const float end[3], const float velocity[3], double ageSeconds,
+                  uint32_t collisions);
 
 #endif

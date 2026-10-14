@@ -7,11 +7,41 @@
 #include "instance.h"
 
 #include "allocator.h"
+#include "collide.h"
 #include "force.h"
 #include "kill.h"
 
 #include <math.h>
 #include <string.h>
+
+// Where an emitter's host queue and resolved forces, kill rules and
+// colliders lie in the block.
+typedef struct EmitterAt
+{
+    size_t queue;
+    size_t forces;
+    size_t rules;
+    size_t colliders;
+} EmitterAt;
+
+static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compiled)
+{
+    int32_t colliders = compiled->colliderCount;
+    if (compiled->collision.enabled && compiled->collision.hostColliders)
+    {
+        colliders += MVFX_MAX_COLLIDERS;
+    }
+    return (EmitterAt){
+        .queue = mvfxLayoutAdd(layout, (size_t)compiled->hostSpawnCapacity, sizeof(mvfxHostBirth),
+                               alignof(mvfxHostBirth)),
+        .forces = mvfxLayoutAdd(layout, (size_t)compiled->forceCount, sizeof(mvfxResolvedForce),
+                                alignof(mvfxResolvedForce)),
+        .rules = mvfxLayoutAdd(layout, (size_t)compiled->killRuleCount,
+                               sizeof(mvfxResolvedKillRule), alignof(mvfxResolvedKillRule)),
+        .colliders = mvfxLayoutAdd(layout, (size_t)colliders, sizeof(mvfxResolvedCollider),
+                                   alignof(mvfxResolvedCollider)),
+    };
+}
 
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* transform,
                                       uint32_t seed, const mvfxAllocator* allocator)
@@ -32,17 +62,10 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
     size_t killsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(uint8_t), alignof(uint8_t));
     size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
                                     alignof(mvfxBurstCursor));
-    size_t queuesAt[MVFX_MAX_EMITTERS] = {0};
-    size_t forcesAt[MVFX_MAX_EMITTERS] = {0};
-    size_t rulesAt[MVFX_MAX_EMITTERS] = {0};
+    EmitterAt at[MVFX_MAX_EMITTERS] = {0};
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
-        queuesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].hostSpawnCapacity,
-                                    sizeof(mvfxHostBirth), alignof(mvfxHostBirth));
-        forcesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].forceCount,
-                                    sizeof(mvfxResolvedForce), alignof(mvfxResolvedForce));
-        rulesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].killRuleCount,
-                                   sizeof(mvfxResolvedKillRule), alignof(mvfxResolvedKillRule));
+        at[e] = AddEmitter(&layout, &effect->emitters[e]);
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -87,9 +110,10 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, const mvfxTransform* t
             .particles = block + particlesAt[e],
             .bursts = &bursts[effect->emitters[e].firstBurst],
             .mesh = effect->emitters[e].shape.mesh,
-            .hostQueue = (mvfxHostBirth*)(block + queuesAt[e]),
-            .forces = (mvfxResolvedForce*)(block + forcesAt[e]),
-            .killRules = (mvfxResolvedKillRule*)(block + rulesAt[e]),
+            .hostQueue = (mvfxHostBirth*)(block + at[e].queue),
+            .forces = (mvfxResolvedForce*)(block + at[e].forces),
+            .killRules = (mvfxResolvedKillRule*)(block + at[e].rules),
+            .colliders = (mvfxResolvedCollider*)(block + at[e].colliders),
         };
     }
     mvfxResetInstance(instance);

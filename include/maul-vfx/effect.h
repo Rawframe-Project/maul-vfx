@@ -359,6 +359,11 @@ extern "C"
         // MVFX_MAX_KILL_RULES; NULL when killRuleCount is 0.
         const mvfxKillRule* killRules;
         int32_t killRuleCount;
+        // How they collide, and the emitter's colliders, at most
+        // MVFX_MAX_COLLIDERS; NULL when colliderCount is 0.
+        mvfxCollision collision;
+        const mvfxCollider* colliders;
+        int32_t colliderCount;
         // The host's own modules, at most MVFX_MAX_HOST_MODULES, run in
         // order at their stages; NULL when hostModuleCount is 0. An effect
         // with them cannot run on a GPU.

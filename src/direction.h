@@ -18,4 +18,7 @@ bool mvfxNormalize(float v[3]);
 // Turns v by a unit quaternion (x, y, z, w).
 void mvfxRotate(const float q[4], const float v[3], float out[3]);
 
+// The quaternion product a b: b's turn, then a's.
+void mvfxMultiplyRotations(const float a[4], const float b[4], float out[4]);
+
 #endif

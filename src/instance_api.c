@@ -5,6 +5,7 @@
 
 #include "instance_api.h"
 
+#include "collide.h"
 #include "context.h"
 #include "effect_api.h"
 #include "instance.h"
@@ -403,6 +404,36 @@ mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int
     {
         state->hostQueue[state->hostCount++] = HostBirthOf(request, i);
     }
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instance,
+                                     const mvfxCollider* colliders, int32_t count)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    bool valid = count >= 0 && count <= MVFX_MAX_COLLIDERS && (count == 0 || colliders != nullptr);
+    for (int32_t c = 0; valid && c < count; ++c)
+    {
+        valid = mvfxIsColliderValid(&colliders[c]);
+    }
+    if (!valid)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    for (int32_t c = 0; c < count; ++c)
+    {
+        live->hostColliders[c] = mvfxCompileCollider(&colliders[c]);
+    }
+    live->hostColliderCount = count;
     return mvfx_success;
 }
 

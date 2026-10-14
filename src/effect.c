@@ -8,6 +8,7 @@
 #include "effect.h"
 
 #include "allocator.h"
+#include "collide.h"
 #include "force.h"
 #include "kill.h"
 
@@ -167,6 +168,33 @@ static bool IsLifetimeValid(const mvfxScalarSource* lifetime, bool hasDuration,
            (lifetime->range.min > 0.0f && lifetime->range.max <= MVFX_MAX_LIFETIME);
 }
 
+// Whether an emitter's collision and colliders are valid, and a kill rule
+// counting collisions has collisions to count.
+static bool AreCollisionsValid(const mvfxEmitterDef* def)
+{
+    if (!mvfxIsCollisionValid(&def->collision) || def->colliderCount < 0 ||
+        def->colliderCount > MVFX_MAX_COLLIDERS ||
+        (def->colliderCount > 0 && def->colliders == nullptr))
+    {
+        return false;
+    }
+    for (int32_t c = 0; c < def->colliderCount; ++c)
+    {
+        if (!mvfxIsColliderValid(&def->colliders[c]))
+        {
+            return false;
+        }
+    }
+    for (int32_t r = 0; r < def->killRuleCount; ++r)
+    {
+        if (def->killRules[r].kind == mvfx_killCollisions && !def->collision.enabled)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whether host modules are valid: a function each, a known stage.
 static bool AreHostModulesValid(const mvfxHostModule* modules, int32_t count)
 {
@@ -236,6 +264,10 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
     {
         return false;
     }
+    if (!AreCollisionsValid(def))
+    {
+        return false;
+    }
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         const mvfxCustomAttribute* custom = &def->custom[i];
@@ -300,6 +332,7 @@ static uint64_t PresentAttributes(const mvfxEmitterDef* def)
     present |= def->frame.mode != mvfx_frameNone ? (uint64_t)1 << mvfx_attributeFrame : 0;
     present |=
         def->motion.dragScale.kind != mvfx_sourceNone ? (uint64_t)1 << mvfx_attributeDrag : 0;
+    present |= def->collision.enabled ? (uint64_t)1 << mvfx_attributeCollisions : 0;
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         uint64_t components = ((uint64_t)1 << def->custom[i].components) - 1;
@@ -366,6 +399,12 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->angularDrag = def->motion.angularDrag;
     mvfxCompileVelocityModules(&def->velocityModules, space, &out->velocityModules);
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
+    out->collision = def->collision;
+    out->colliderCount = def->colliderCount;
+    for (int32_t c = 0; c < def->colliderCount; ++c)
+    {
+        out->colliders[c] = mvfxCompileCollider(&def->colliders[c]);
+    }
     out->hostModuleCount = def->hostModuleCount;
     for (int32_t m = 0; m < def->hostModuleCount; ++m)
     {

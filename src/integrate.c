@@ -3,6 +3,7 @@
 
 #include "integrate.h"
 
+#include "collide.h"
 #include "direction.h"
 #include "effect.h"
 #include "elementary.h"
@@ -268,6 +269,48 @@ static float AgeOf(const Range* r, int32_t i)
     return fminf(fmaxf(age, 0.0f), 1.0f);
 }
 
+// Collides particle i, gone from start to place: its place and velocity
+// after its contacts, its count of them, and the life a contact takes;
+// whether a contact kills it.
+static bool Collide(const Range* r, int32_t i, const float start[3], float place[3])
+{
+    const mvfxCollision* collision = &r->compiled->collision;
+    const mvfxEmitterState* state = &r->instance->emitters[r->emitter];
+    float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
+    float restSpeed = collision->restSpeed * r->modules->sigma;
+    int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, collision, restSpeed,
+                                   start, place, velocity);
+    if (contacts == 0)
+    {
+        return false;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        r->v[k][i] = velocity[k];
+    }
+    uint32_t* count = mvfxAttributeArray(r->instance, r->emitter, mvfx_attributeCollisions);
+    count[i] =
+        count[i] > UINT32_MAX - (uint32_t)contacts ? UINT32_MAX : count[i] + (uint32_t)contacts;
+    if (collision->killOnCollision || collision->lifeLoss >= 1.0f)
+    {
+        return true;
+    }
+    if (collision->lifeLoss > 0.0f)
+    {
+        // Each contact takes its share of the life left: the life shrinks by
+        // (1 - loss) a contact, so its inverse grows; past its age, it ends.
+        float* inverseLife = mvfxAttributeArray(r->instance, r->emitter, mvfx_attributeInverseLife);
+        for (int32_t c = 0; c < contacts; ++c)
+        {
+            inverseLife[i] /= 1.0f - collision->lifeLoss;
+        }
+        int64_t birth = (int64_t)(((uint64_t)r->birthHigh[i] << 32u) | r->birthLow[i]);
+        double age = (double)(r->tick - birth) / (double)MVFX_TICKS_PER_SECOND + r->seconds;
+        return age * (double)inverseLife[i] >= 1.0;
+    }
+    return false;
+}
+
 // Whether a kill rule or an attractor's kill radius kills particle i,
 // gone from start to end over the span.
 static bool IsKilled(const Range* r, int32_t i, const float start[3], const float end[3])
@@ -292,7 +335,14 @@ static bool IsKilled(const Range* r, int32_t i, const float start[3], const floa
     int64_t birth = (int64_t)(((uint64_t)high[i] << 32u) | low[i]);
     double age = (double)(r->tick - birth) / (double)MVFX_TICKS_PER_SECOND + r->seconds;
     const float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
-    return mvfxIsKilled(state->killRules, compiled->killRuleCount, start, end, velocity, age);
+    uint32_t collisions = 0;
+    if (compiled->collision.enabled)
+    {
+        collisions = ((const uint32_t*)mvfxAttributeArray(r->instance, r->emitter,
+                                                          mvfx_attributeCollisions))[i];
+    }
+    return mvfxIsKilled(state->killRules, compiled->killRuleCount, start, end, velocity, age,
+                        collisions);
 }
 
 // Moves particle i: its speed held to the limit, its motion under gravity,
@@ -324,11 +374,12 @@ static void MoveParticle(const Range* r, int32_t i)
     MoveLinear(r->p, r->v, i, acceleration, f);
     float place[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
     mvfxMoveByModules(r->modules, age, r->seconds, start, place);
+    bool collisionKills = r->compiled->collision.enabled && Collide(r, i, start, place);
     for (int32_t k = 0; k < 3; ++k)
     {
         r->p[k][i] = place[k];
     }
-    r->instance->killScratch[i] = IsKilled(r, i, start, place) ? 1 : 0;
+    r->instance->killScratch[i] = collisionKills || IsKilled(r, i, start, place) ? 1 : 0;
 }
 
 // Moves particles from first to end over seconds from tick.
@@ -402,6 +453,30 @@ static void ResolveVelocityModules(mvfxInstance* instance, int32_t emitter)
     mvfxMapPoint(&map, compiled->radialCenter, out->radialCenter);
 }
 
+// Resolves the emitter's colliders, then the instance's when it takes
+// them, grown by the particles' radius.
+static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    state->colliderCount = 0;
+    if (!compiled->collision.enabled)
+    {
+        return;
+    }
+    mvfxSpaceMap local = SpaceMapOf(instance, emitter, mvfx_spaceLocal);
+    float radius = compiled->collision.radius * local.sigma;
+    int32_t hosts = compiled->collision.hostColliders ? instance->hostColliderCount : 0;
+    for (int32_t c = 0; c < compiled->colliderCount + hosts; ++c)
+    {
+        const mvfxCollider* collider = c < compiled->colliderCount
+                                           ? &compiled->colliders[c]
+                                           : &instance->hostColliders[c - compiled->colliderCount];
+        mvfxSpaceMap map = SpaceMapOf(instance, emitter, (mvfxSimulationSpace)collider->space);
+        state->colliders[state->colliderCount++] = mvfxResolveCollider(collider, &map, radius);
+    }
+}
+
 void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -420,6 +495,7 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
         state->killRules[r] = mvfxResolveKillRule(rule, &map);
     }
     ResolveVelocityModules(instance, emitter);
+    ResolveColliders(instance, emitter);
 }
 
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)

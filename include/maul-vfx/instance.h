@@ -211,6 +211,26 @@ extern "C"
                                                             double stepSeconds, int32_t maxSteps,
                                                             double* remainingOut);
 
+    /// Sets the colliders of an instance that its emitters collide with when
+    /// their collision asks for the instance's (a character, a moving door),
+    /// replacing the last set; the next step reads them. They are copied.
+    ///
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param colliders  From 0 to MVFX_MAX_COLLIDERS colliders; NULL when
+    ///                   count is 0.
+    /// @param count      How many.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL context, a count out
+    ///         of range or a collider out of range, which counts as misuse
+    ///         when the context is given (the colliders are then unchanged).
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetColliders(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 const mvfxCollider* colliders,
+                                                                 int32_t count);
+
     /// Draws four random words for a host module: pcg4d (Jarzynski and
     /// Olano, "Hash Functions for GPU Rendering", JCGT 2020) of the
     /// module's seed, a particle's serial, a stream number the module picks

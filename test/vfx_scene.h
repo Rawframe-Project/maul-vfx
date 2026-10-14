@@ -160,21 +160,38 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].velocityModules.limitDampen = 5.0f;
     emitters[1].velocityModules.motionScale.value = 0.5f;
     emitters[1].velocityModules.radialSpeed.value = 1.25f;
-    // Kill rules, in the emitter's space: past a sphere on the first, past
-    // a plane on the second.
-    static const mvfxKillRule outside = {
-        .kind = mvfx_killOutsideSphere, .space = mvfx_spaceLocal, .radius = 2.5f};
+    // Kill rules, in the emitter's space: past a sphere or at a third
+    // collision on the first, past a plane on the second.
+    static const mvfxKillRule outside[2] = {
+        {.kind = mvfx_killOutsideSphere, .space = mvfx_spaceLocal, .radius = 2.5f},
+        {.kind = mvfx_killCollisions, .collisions = 3},
+    };
     static const mvfxKillRule plane = {.kind = mvfx_killPastPlane,
                                        .space = mvfx_spaceLocal,
                                        .center = {0, 0, 1.75f},
                                        .normal = {0.2f, 0, 1}};
-    emitters[0].killRules = &outside;
-    emitters[0].killRuleCount = 1;
+    emitters[0].killRules = outside;
+    emitters[0].killRuleCount = 2;
     emitters[1].killRules = &plane;
     emitters[1].killRuleCount = 1;
     static const mvfxHostModule kick = {.stage = mvfx_stageBeforeMotion, .function = SceneKick};
     emitters[1].hostModules = &kick;
     emitters[1].hostModuleCount = 1;
+    // The first falls onto a floor in its own space, bouncing, sliding and
+    // losing life, and meets the walls its instances set.
+    static const mvfxCollider floor = {.kind = mvfx_colliderPlane,
+                                       .space = mvfx_spaceLocal,
+                                       .center = {0, -1.2f, 0},
+                                       .normal = {0, 1, 0}};
+    emitters[0].collision = (mvfxCollision){.enabled = true,
+                                            .hostColliders = true,
+                                            .restitution = 0.6f,
+                                            .friction = 0.2f,
+                                            .lifeLoss = 0.1f,
+                                            .restSpeed = 1.0f,
+                                            .radius = 0.05f};
+    emitters[0].colliders = &floor;
+    emitters[0].colliderCount = 1;
     // Seven a second, so it spawns within the scene's 1.4 seconds and
     // fills.
     emitters[2].rate = 7.0f;
@@ -392,6 +409,21 @@ static inline void BuildScene(mvfxContext* context)
         mvfxInstanceId instance = {0};
         CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
               "scene instance");
+        // The second sets a wall at its x = 1, and a box it keeps inside.
+        static const mvfxCollider walls[2] = {
+            {.kind = mvfx_colliderPlane,
+             .space = mvfx_spaceLocal,
+             .center = {1, 0, 0},
+             .normal = {-1, 0, 0}},
+            {.kind = mvfx_colliderBox,
+             .space = mvfx_spaceLocal,
+             .inside = true,
+             .halfExtents = {3, 3, 1.6f},
+             .rotation = {0, 0.19509032f, 0, 0.98078528f}},
+        };
+        int32_t wallCount = i == 1 ? 2 : 0;
+        CHECK(mvfxInstance_SetColliders(context, instance, walls, wallCount) == mvfx_success,
+              "scene walls");
     }
 }
 

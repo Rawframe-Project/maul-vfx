@@ -171,6 +171,8 @@ extern "C"
         // Ending a step slower than speed, once older than minimumAge
         // seconds.
         mvfx_killSlower = 5,
+        // Having collided collisions times (an emitter that collides).
+        mvfx_killCollisions = 6,
     };
 
     // A kill rule, tested at the end of each step; a particle it kills is
@@ -196,7 +198,72 @@ extern "C"
         // from 0 to MVFX_MAX_LIFETIME seconds.
         float speed;
         float minimumAge;
+        // The collisions that kill, from 1.
+        int32_t collisions;
     } mvfxKillRule;
+
+// The most colliders an emitter has, and an instance the host sets.
+#define MVFX_MAX_COLLIDERS 8
+
+    // What a collider is. Particles stay on its allowed side: above a plane,
+    // outside a sphere or a box, or inside one (inside).
+    typedef uint8_t mvfxColliderKind;
+    enum
+    {
+        // The plane through center, its allowed side the one normal points to.
+        mvfx_colliderPlane = 0,
+        // A sphere of radius about center.
+        mvfx_colliderSphere = 1,
+        // A box of halfExtents about center, turned by rotation.
+        mvfx_colliderBox = 2,
+    };
+
+    // A collider. Its places and lengths are in its space, the world's or the
+    // emitter's (turning and scaling with the instance); each value finite
+    // and at most MVFX_MAX_EXTENT in size, fields its kind does not read not
+    // checked. A particle's step is tested as the segment it covered, so it
+    // never passes through a collider however long the step; one that
+    // starts a step on the wrong side is put back on its surface.
+    typedef struct mvfxCollider
+    {
+        mvfxColliderKind kind;
+        // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
+        uint8_t space;
+        // A sphere's or a box's particles kept inside it.
+        bool inside;
+        float center[3];
+        // A plane's normal, not of length 0.
+        float normal[3];
+        // A sphere's radius, above 0.
+        float radius;
+        // A box's half sizes, each above 0, and its rotation, a unit
+        // quaternion within 0.001.
+        float halfExtents[3];
+        float rotation[4];
+    } mvfxCollider;
+
+    // How an emitter's particles collide.
+    typedef struct mvfxCollision
+    {
+        // Whether they collide at all (with the emitter's colliders, and with
+        // the instance's when hostColliders is set).
+        bool enabled;
+        bool hostColliders;
+        // The share of the speed into a surface it bounces back with, and the
+        // share of the speed along it a collision takes, each 0 to 1.
+        float restitution;
+        float friction;
+        // The share of its life left a collision takes, 0 to 1 (1 kills).
+        float lifeLoss;
+        // Whether a collision kills it.
+        bool killOnCollision;
+        // Below this speed after a collision it stops where it hit, from 0 to
+        // MVFX_MAX_EXTENT.
+        float restSpeed;
+        // Its radius, from 0 to MVFX_MAX_EXTENT: colliders grow by it (a
+        // box's corners stay square).
+        float radius;
+    } mvfxCollision;
 
 // The most host modules an emitter has.
 #define MVFX_MAX_HOST_MODULES 8
@@ -237,6 +304,8 @@ extern "C"
         const uint32_t* birthLow;
         const uint32_t* birthHigh;
         const float* inverseLife;
+        // Each particle's collisions so far, for an emitter that collides.
+        uint32_t* collisions;
         // After motion: set a particle's byte to 1 to kill it (it is counted
         // killed); NULL before motion.
         uint8_t* kill;

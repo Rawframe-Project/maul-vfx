@@ -52,6 +52,8 @@ bool mvfxIsKillRuleValid(const mvfxKillRule* rule)
     case mvfx_killSlower:
         return rule->speed >= 0.0f && rule->speed <= MVFX_MAX_EXTENT && rule->minimumAge >= 0.0f &&
                rule->minimumAge <= MVFX_MAX_LIFETIME;
+    case mvfx_killCollisions:
+        return rule->collisions >= 1;
     default:
         return false;
     }
@@ -80,15 +82,6 @@ mvfxKillRule mvfxCompileKillRule(const mvfxKillRule* rule)
     return out;
 }
 
-// The quaternion product a b.
-static void Multiply(const float a[4], const float b[4], float out[4])
-{
-    out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
-    out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
-    out[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
-    out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
-}
-
 mvfxResolvedKillRule mvfxResolveKillRule(const mvfxKillRule* rule, const mvfxSpaceMap* map)
 {
     float sigma = map->sigma;
@@ -99,10 +92,11 @@ mvfxResolvedKillRule mvfxResolveKillRule(const mvfxKillRule* rule, const mvfxSpa
                         rule->halfExtents[2] * sigma},
         .speed = rule->speed * sigma,
         .minimumAge = rule->minimumAge,
+        .collisions = rule->collisions,
     };
     mvfxMapPoint(map, rule->center, out.center);
     mvfxMapVector(map, rule->normal, 1.0f, out.normal);
-    Multiply(map->rotation, rule->rotation, out.rotation);
+    mvfxMultiplyRotations(map->rotation, rule->rotation, out.rotation);
     return out;
 }
 
@@ -169,7 +163,7 @@ static bool SegmentMeetsBox(const mvfxResolvedKillRule* box, const float start[3
 
 // Whether one rule kills the particle.
 static bool Kills(const mvfxResolvedKillRule* rule, const float start[3], const float end[3],
-                  const float velocity[3], double ageSeconds)
+                  const float velocity[3], double ageSeconds, uint32_t collisions)
 {
     float local[3];
     switch (rule->kind)
@@ -191,6 +185,8 @@ static bool Kills(const mvfxResolvedKillRule* rule, const float start[3], const 
         float d[3] = {end[0] - rule->center[0], end[1] - rule->center[1], end[2] - rule->center[2]};
         return Dot(d, rule->normal) > 0.0f;
     }
+    case mvfx_killCollisions:
+        return collisions >= (uint32_t)rule->collisions;
     default:
         return ageSeconds >= (double)rule->minimumAge &&
                Dot(velocity, velocity) < rule->speed * rule->speed;
@@ -198,11 +194,12 @@ static bool Kills(const mvfxResolvedKillRule* rule, const float start[3], const 
 }
 
 bool mvfxIsKilled(const mvfxResolvedKillRule* rules, int32_t count, const float start[3],
-                  const float end[3], const float velocity[3], double ageSeconds)
+                  const float end[3], const float velocity[3], double ageSeconds,
+                  uint32_t collisions)
 {
     for (int32_t r = 0; r < count; ++r)
     {
-        if (Kills(&rules[r], start, end, velocity, ageSeconds))
+        if (Kills(&rules[r], start, end, velocity, ageSeconds, collisions))
         {
             return true;
         }

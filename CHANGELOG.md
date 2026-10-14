@@ -112,3 +112,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   particles' arrays run before motion or after it (where they may kill),
   and `mvfxModule_Random` gives a module a random stream fixed by its
   inputs.
+- Collision with primitives: an emitter def gains `collision` (restitution,
+  friction, life loss, kill on collision, a rest speed, a radius) and
+  `colliders` (planes, spheres, turned boxes, inside or outside, in the
+  world's or the emitter's space), `mvfxInstance_SetColliders` sets an
+  instance's own, a kill rule kills at a collision count, and host
+  modules see the count.

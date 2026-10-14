@@ -74,6 +74,10 @@ typedef struct mvfxEmitterState
     // killed.
     struct mvfxResolvedKillRule* killRules;
     uint64_t killed;
+    // Its colliders as resolved for the step (the effect's, then the
+    // instance's when it takes them).
+    struct mvfxResolvedCollider* colliders;
+    int32_t colliderCount;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;
@@ -137,6 +141,9 @@ typedef struct mvfxInstance
     // Whether each particle of the emitter being stepped was killed this
     // step.
     uint8_t* killScratch;
+    // The colliders the host set, compiled.
+    mvfxCollider hostColliders[MVFX_MAX_COLLIDERS];
+    int32_t hostColliderCount;
     size_t blockBytes;
 } mvfxInstance;
 
