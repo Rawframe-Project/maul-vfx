@@ -168,16 +168,16 @@ static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfx
     }
 }
 
-// The drag the winds without a falloff give, summed in order as
-// mvfxForcesAt sums it.
+// The drag the winds and velocity fields without a falloff give, summed
+// in order as mvfxForcesAt sums it.
 static float SharedWind(const mvfxResolvedForce* forces, int32_t count)
 {
     float wind = 0.0f;
     for (int32_t f = 0; f < count; ++f)
     {
-        if (forces[f].kind == mvfx_forceWind && forces[f].falloff == mvfx_falloffNone)
+        if (forces[f].falloff == mvfx_falloffNone)
         {
-            wind += 1.0f * forces[f].strength;
+            wind += 1.0f * mvfxForceDrag(&forces[f]);
         }
     }
     return wind;
@@ -233,7 +233,7 @@ static mvfxSpaceMap SpaceMapOf(const mvfxInstance* instance, int32_t emitter,
 
 // Moves particles from first to end over seconds.
 static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
-                      double seconds)
+                      double time, double seconds)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     float a[3];
@@ -259,7 +259,7 @@ static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, in
         float x[3] = {p[0][i], p[1][i], p[2][i]};
         float acceleration[3] = {a[0], a[1], a[2]};
         float wind = 0.0f;
-        mvfxForcesAt(forces, forceCount, x, acceleration, &wind);
+        mvfxForcesAt(forces, forceCount, x, time, acceleration, &wind);
         float drag = compiled->drag + wind;
         mvfxDragFactors f = shared;
         if (perParticle)
@@ -292,11 +292,12 @@ void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
         const mvfxForce* force = &compiled->forces[f];
         mvfxSpaceMap map = SpaceMapOf(instance, emitter, force->space);
         instance->emitters[emitter].forces[f] =
-            mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters);
+            mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters, instance->seed);
     }
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
-    MoveRange(instance, emitter, 0, instance->emitters[emitter].count, seconds);
+    double start = (double)instance->stepStart / (double)MVFX_TICKS_PER_SECOND;
+    MoveRange(instance, emitter, 0, instance->emitters[emitter].count, start, seconds);
 }
 
 void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick)
@@ -304,6 +305,7 @@ void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, i
     double seconds = (double)(instance->clock - birthTick) / (double)MVFX_TICKS_PER_SECOND;
     if (seconds > 0.0)
     {
-        MoveRange(instance, emitter, at, at + 1, seconds);
+        double birth = (double)birthTick / (double)MVFX_TICKS_PER_SECOND;
+        MoveRange(instance, emitter, at, at + 1, birth, seconds);
     }
 }

@@ -5,6 +5,7 @@
 
 #include "direction.h"
 #include "elementary.h"
+#include "noise.h"
 
 #include <math.h>
 
@@ -38,9 +39,18 @@ static bool IsFalloffValid(const mvfxFalloff* falloff)
             (falloff->angle > 0.0f && falloff->angle <= MVFX_MAX_CONE_ANGLE));
 }
 
+static bool IsNoiseValid(const mvfxNoise* noise)
+{
+    return noise->frequency > 0.0f && noise->frequency <= MVFX_MAX_FREQUENCY &&
+           noise->octaves >= 1 && noise->octaves <= MVFX_MAX_OCTAVES &&
+           IsWithin(noise->lacunarity, 1.0f, 4.0f) && IsWithin(noise->gain, 0.0f, 1.0f) &&
+           IsVectorWithin(noise->scroll, MVFX_MAX_EXTENT);
+}
+
 bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
 {
-    if (force->kind > mvfx_forceVortex || force->space > mvfx_spaceLocal ||
+    if (force->kind > mvfx_forceTurbulence || force->space > mvfx_spaceLocal ||
+        force->fieldMode > mvfx_fieldVelocity || !IsWithin(force->tightness, 0.0f, MVFX_MAX_DRAG) ||
         !IsVectorWithin(force->vector, MVFX_MAX_EXTENT) ||
         !IsVectorWithin(force->point, MVFX_MAX_EXTENT) ||
         !IsWithin(force->strength, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) ||
@@ -58,6 +68,8 @@ bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
         return IsWithin(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT);
     case mvfx_forceVortex:
         return IsAxis(force->vector) && IsWithin(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
+    case mvfx_forceTurbulence:
+        return IsNoiseValid(&force->noise);
     default:
         return true;
     }
@@ -105,7 +117,7 @@ static float Hold(float x, float low, float bound)
 }
 
 mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
-                                   const float (*parameters)[4])
+                                   const float (*parameters)[4], uint32_t instanceSeed)
 {
     float strength = force->strength;
     if (force->strengthFromParameter)
@@ -123,6 +135,12 @@ mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* m
         .pull = force->pull * sigma,
         .radius = force->falloff.radius * sigma,
         .exponent = force->falloff.exponent,
+        .fieldMode = force->fieldMode,
+        .tightness = force->tightness,
+        .map = *map,
+        .noise = &force->noise,
+        .seed = force->noise.seedPerInstance ? force->noise.seed + instanceSeed * 0x85EBCA6Bu
+                                             : force->noise.seed,
     };
     switch (force->kind)
     {
@@ -230,8 +248,75 @@ static void Swirl(const mvfxResolvedForce* force, const float x[3], float weight
     }
 }
 
-void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[3], float a[3],
-                  float* drag)
+float mvfxForceDrag(const mvfxResolvedForce* force)
+{
+    if (force->kind == mvfx_forceWind)
+    {
+        return force->strength;
+    }
+    bool field = force->kind == mvfx_forceTurbulence;
+    return field && force->fieldMode == mvfx_fieldVelocity ? force->tightness : 0.0f;
+}
+
+// v (binary64) turned by a unit quaternion, in binary64.
+static void RotateDouble(const float q[4], const double v[3], double out[3])
+{
+    double x = (double)q[0];
+    double y = (double)q[1];
+    double z = (double)q[2];
+    double w = (double)q[3];
+    double tx = 2.0 * (y * v[2] - z * v[1]);
+    double ty = 2.0 * (z * v[0] - x * v[2]);
+    double tz = 2.0 * (x * v[1] - y * v[0]);
+    out[0] = v[0] + w * tx + (y * tz - z * ty);
+    out[1] = v[1] + w * ty + (z * tx - x * tz);
+    out[2] = v[2] + w * tz + (x * ty - y * tx);
+}
+
+// A stored place back in the force's space, in binary64: the map's
+// inverse.
+static void UnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3])
+{
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = (double)x[k] - map->after[k];
+    }
+    const float* q = map->rotation;
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    double turned[3];
+    RotateDouble(inverse, d, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = turned[k] / (double)map->sigma + map->before[k];
+    }
+}
+
+// A field's vector at x: its acceleration added to a, or, as a velocity,
+// its pull and its drag.
+static void Field(const mvfxResolvedForce* force, const float x[3], double time, float weight,
+                  float a[3], float* drag)
+{
+    double place[3];
+    UnmapPoint(&force->map, x, place);
+    float curl[3];
+    mvfxCurlNoise(force->noise, force->seed, place, time, curl);
+    float field[3];
+    MapVector(&force->map, curl, force->map.sigma * force->strength, field);
+    float scale = weight;
+    if (force->fieldMode == mvfx_fieldVelocity)
+    {
+        *drag += weight * force->tightness;
+        scale *= force->tightness;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        a[k] += scale * field[k];
+    }
+}
+
+void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[3], double time,
+                  float a[3], float* drag)
 {
     for (int32_t f = 0; f < count; ++f)
     {
@@ -258,6 +343,9 @@ void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[
             break;
         case mvfx_forceAttractor:
             Attract(force, x, weight, a);
+            break;
+        case mvfx_forceTurbulence:
+            Field(force, x, time, weight, a, drag);
             break;
         default:
             Swirl(force, x, weight, a);

@@ -43,16 +43,28 @@ typedef struct mvfxResolvedForce
     float radius;
     float cosine;
     float exponent;
+    // A field's mode and tightness, the map back to its space for sampling,
+    // and the turbulence's noise and seed.
+    mvfxFieldMode fieldMode;
+    float tightness;
+    mvfxSpaceMap map;
+    const mvfxNoise* noise;
+    uint32_t seed;
 } mvfxResolvedForce;
 
-// Resolves a compiled force with the map and the instance's parameters.
+// Resolves a compiled force with the map, the instance's parameters and
+// its seed; the force must outlive the resolved one.
 mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
-                                   const float (*parameters)[4]);
+                                   const float (*parameters)[4], uint32_t instanceSeed);
 
-// Adds what the forces give a particle at x: their accelerations to a,
-// and each wind's share of drag to drag (its pull toward the wind's
-// velocity to a).
-void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[3], float a[3],
-                  float* drag);
+// The drag a resolved force adds at full weight: a wind's strength, a
+// velocity field's tightness, else 0.
+float mvfxForceDrag(const mvfxResolvedForce* force);
+
+// Adds what the forces give a particle at x at time seconds: their
+// accelerations to a, and each wind's or velocity field's share of drag
+// to drag (its pull toward its velocity to a).
+void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[3], double time,
+                  float a[3], float* drag);
 
 #endif

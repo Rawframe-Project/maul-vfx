@@ -87,6 +87,16 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].forceCount = 1;
     emitters[2].forces = &swirl;
     emitters[2].forceCount = 1;
+    static const mvfxForce turbulence = {.kind = mvfx_forceTurbulence,
+                                         .strength = 2.5f,
+                                         .noise = {.frequency = 0.4f,
+                                                   .octaves = 3,
+                                                   .lacunarity = 2.0f,
+                                                   .gain = 0.5f,
+                                                   .scroll = {0.5f, 0.0f, 0.25f},
+                                                   .seed = 12345u}};
+    emitters[1].forces = &turbulence;
+    emitters[1].forceCount = 1;
     emitters[2].capacity = 7;
     emitters[2].rate = 0.7f;
     emitters[2].lifetime = mvfxRangeSource(5.0f, 9.0f);
@@ -234,6 +244,21 @@ static inline void BuildScene(mvfxContext* context)
     meshEmitters[2].lifetime =
         (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {0.5f, 1.0f}, .parameter = 0};
     meshEmitters[0].motion.angularDrag = 0.75f;
+    static const mvfxForce meshSwirl = {
+        .kind = mvfx_forceTurbulence,
+        .space = mvfx_spaceLocal,
+        .strength = 1.5f,
+        .fieldMode = mvfx_fieldVelocity,
+        .tightness = 3.0f,
+        .noise = {.frequency = 1.25f,
+                  .octaves = 2,
+                  .lacunarity = 3.0f,
+                  .gain = 0.75f,
+                  .seed = 9u,
+                  .seedPerInstance = true},
+        .falloff = {.kind = mvfx_falloffSphere, .radius = 6.0f, .exponent = 1.0f}};
+    meshEmitters[0].forces = &meshSwirl;
+    meshEmitters[0].forceCount = 1;
     meshEmitters[1].motion.gravity[0] = 1.0f;
     meshEmitters[0].ratePerDistance = 1.5f;
     meshEmitters[0].inheritVelocity = 0.25f;

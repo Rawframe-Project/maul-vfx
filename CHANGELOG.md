@@ -83,3 +83,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   an attractor, a vortex), each in the world's or the emitter's space,
   with an optional falloff (sphere, tube, cone) and a strength that may
   come from a parameter. Wind acts as exact drag toward its velocity.
+- Turbulence: a force of curl noise (three improved gradient noises with
+  analytic gradients, octaves, a scroll over time, a seed that may be
+  mixed per instance), acting as an acceleration or, like wind, as a
+  velocity particles are pulled toward.

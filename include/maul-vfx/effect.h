@@ -154,7 +154,55 @@ extern "C"
         // About the axis (vector) through point: strength along the turn the
         // right hand gives the axis, and pull toward the axis.
         mvfx_forceVortex = 3,
+        // Turbulence: strength times the curl of a noise potential (noise),
+        // a field without divergence, so particles swirl without bunching.
+        mvfx_forceTurbulence = 4,
     };
+
+    // How a field (turbulence) acts.
+    typedef uint8_t mvfxFieldMode;
+    enum
+    {
+        // As an acceleration: strength times the field.
+        mvfx_fieldAcceleration = 0,
+        // As a velocity particles are pulled toward, strength times the
+        // field, tightness of the difference going a second, exactly as
+        // wind's.
+        mvfx_fieldVelocity = 1,
+    };
+
+// The most octaves of a noise.
+#define MVFX_MAX_OCTAVES 8
+
+// The highest frequency of a noise, in cycles a unit.
+#define MVFX_MAX_FREQUENCY 1e4f
+
+    // A noise potential: three of Perlin's improved gradient noises
+    // (Perlin, "Improving Noise", SIGGRAPH 2002), their gradients picked by
+    // pcg4d of the lattice point and the seed, summed over octaves, each
+    // divided by its frequency so the curl's size does not grow with it
+    // (Bridson, Hourihan and Nordenstam, "Curl-Noise for Procedural Fluid
+    // Flow", SIGGRAPH 2007). Places are taken in the force's space, in
+    // binary64, so the field is the same however far from the world's
+    // origin.
+    typedef struct mvfxNoise
+    {
+        // The first octave's frequency, above 0 and at most
+        // MVFX_MAX_FREQUENCY.
+        float frequency;
+        // From 1 to MVFX_MAX_OCTAVES.
+        int32_t octaves;
+        // Each octave's frequency over the last's, from 1 to 4.
+        float lacunarity;
+        // Each octave's weight over the last's, from 0 to 1.
+        float gain;
+        // How the field moves a second, in the force's space, each value
+        // finite and at most MVFX_MAX_EXTENT in size.
+        float scroll[3];
+        uint32_t seed;
+        // Whether each instance's seed is mixed in, so instances differ.
+        bool seedPerInstance;
+    } mvfxNoise;
 
     // A force on an emitter's particles. Its vectors, points and lengths
     // are in its space, the world's or the emitter's (turning and scaling
@@ -180,6 +228,12 @@ extern "C"
         bool strengthFromParameter;
         int32_t parameter;
         mvfxFalloff falloff;
+        // A field's mode and, as a velocity, its tightness, from 0 to
+        // MVFX_MAX_DRAG.
+        mvfxFieldMode fieldMode;
+        float tightness;
+        // The turbulence's noise.
+        mvfxNoise noise;
     } mvfxForce;
 
     // How an emitter's particles move: each step moves them exactly under

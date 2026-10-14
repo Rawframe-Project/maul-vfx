@@ -9,6 +9,7 @@
 
 #include "context.h"
 #include "instance.h"
+#include "noise.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -361,6 +362,89 @@ static void TestScaledAndWindy(void)
     mvfxDestroyContext(scene.context);
 }
 
+static const mvfxNoise s_noise = {.frequency = 0.5f,
+                                  .octaves = 2,
+                                  .lacunarity = 2.0f,
+                                  .gain = 0.5f,
+                                  .scroll = {1.0f, 0.0f, -2.0f},
+                                  .seed = 77u};
+
+static void TestTurbulence(void)
+{
+    // A world turbulence of strength 3 on a world emitter far out (the
+    // anchor rebased): strength times the curl where the particle is in
+    // the world, at the step's start.
+    mvfxForce force = {.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
+    mvfxEmitterDef emitter = Held(&force, 1);
+    Scene scene = NewScene(&emitter, 0);
+    static const double far[3] = {123456.0, -7000.0, 9.0};
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, far,
+                                    (const float[4]){0, 0, 0, 1}, 1.0f, true) == mvfx_success,
+          "placed");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    static const double place[3] = {123456.5, -6999.25, 9.75};
+    float a[3];
+    double time = (double)scene.live->clock / MVFX_TICKS_PER_SECOND;
+    AccelerationIn(&scene, place, a);
+    float curl[3];
+    mvfxCurlNoise(&s_noise, 77u, place, time, curl);
+    CHECK(Is(a, 3.0f * curl[0], 3.0f * curl[1], 3.0f * curl[2]), "the curl in the world");
+    CHECK(fabsf(curl[0]) + fabsf(curl[1]) + fabsf(curl[2]) > 0.1f, "a field, not nothing");
+    mvfxDestroyContext(scene.context);
+
+    // In the emitter's space under a turned, scaled instance: sampled at
+    // the instance's own place, turned and scaled back out.
+    static const double origin[3] = {10.0, 0.0, 0.0};
+    static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    force.space = mvfx_spaceLocal;
+    emitter = Held(&force, 1);
+    scene = NewScene(&emitter, 0);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
+              mvfx_success,
+          "placed");
+    static const double world[3] = {9.0, 3.0, 1.0};
+    AccelerationIn(&scene, world, a);
+    // (-1, 3, 1) from the origin, turned back a quarter (3, 1, 1), halved.
+    const double local[3] = {1.5, 0.5, 0.5};
+    mvfxCurlNoise(&s_noise, 77u, local, 0.0, curl);
+    CHECK(Is(a, -6.0f * curl[1], 6.0f * curl[0], 6.0f * curl[2]), "the curl in the emitter's");
+    mvfxDestroyContext(scene.context);
+
+    // As a velocity, tightness 2: drag 2 toward strength times the curl.
+    force = (mvfxForce){.kind = mvfx_forceTurbulence,
+                        .strength = 3.0f,
+                        .noise = s_noise,
+                        .fieldMode = mvfx_fieldVelocity,
+                        .tightness = 2.0f};
+    emitter = Held(&force, 1);
+    scene = NewScene(&emitter, 0);
+    static const double home[3] = {0.5, 0.25, 0.125};
+    AccelerationIn(&scene, home, a);
+    mvfxCurlNoise(&s_noise, 77u, home, 0.0, curl);
+    float carry = (float)((1.0 - exp(-2.0 / 1024.0)) * 1024.0 / 2.0);
+    CHECK(Is(a, 6.0f * carry * curl[0], 6.0f * carry * curl[1], 6.0f * carry * curl[2]),
+          "a velocity pulled toward");
+    mvfxDestroyContext(scene.context);
+
+    // A seed per instance: two instances differ, else they agree.
+    for (int32_t per = 0; per < 2; ++per)
+    {
+        force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 1.0f, .noise = s_noise};
+        force.noise.seedPerInstance = per != 0;
+        emitter = Held(&force, 1);
+        Scene first = NewScene(&emitter, 0);
+        Scene second = NewScene(&emitter, 0);
+        second.live->seed += 1;
+        float b[3];
+        AccelerationIn(&first, home, a);
+        AccelerationIn(&second, home, b);
+        bool same = a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+        CHECK(same == (per == 0), per != 0 ? "instances differ" : "instances agree");
+        mvfxDestroyContext(first.context);
+        mvfxDestroyContext(second.context);
+    }
+}
+
 static void TestParameters(void)
 {
     // A constant's strength from parameter 0, then held; a wind's to 0 and
@@ -406,7 +490,7 @@ static void TestRefusals(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    for (int32_t field = 0; field < 16; ++field)
+    for (int32_t field = 0; field < 28; ++field)
     {
         mvfxForce force = {.kind = mvfx_forceAttractor, .softening = 1.0f};
         mvfxEmitterDef bad = Held(&force, 1);
@@ -459,9 +543,55 @@ static void TestRefusals(void)
             force.falloff = (mvfxFalloff){
                 .kind = mvfx_falloffCone, .axis = {0, 0, 1}, .radius = 1.0f, .angle = 1.6f};
             break;
-        default:
+        case 15:
             bad.forceCount = MVFX_MAX_FORCES + 1;
             break;
+        case 16:
+            force.fieldMode = 2;
+            break;
+        case 17:
+            force.tightness = -1.0f;
+            break;
+        case 18:
+            force.tightness = 2.0f * MVFX_MAX_DRAG;
+            break;
+        case 19:
+            force.kind = 5;
+            break;
+        default:
+        {
+            // Turbulence's noise, each field out of range in turn.
+            force = (mvfxForce){.kind = mvfx_forceTurbulence, .noise = s_noise};
+            mvfxNoise* n = &force.noise;
+            switch (field)
+            {
+            case 20:
+                n->frequency = 0.0f;
+                break;
+            case 21:
+                n->frequency = 2.0f * MVFX_MAX_FREQUENCY;
+                break;
+            case 22:
+                n->octaves = 0;
+                break;
+            case 23:
+                n->octaves = MVFX_MAX_OCTAVES + 1;
+                break;
+            case 24:
+                n->lacunarity = 0.5f;
+                break;
+            case 25:
+                n->lacunarity = 5.0f;
+                break;
+            case 26:
+                n->gain = 1.5f;
+                break;
+            default:
+                n->scroll[1] = (float)NAN;
+                break;
+            }
+            break;
+        }
         }
         mvfxEffectDef effectDef = mvfxDefaultEffectDef();
         effectDef.emitters = &bad;
@@ -485,6 +615,7 @@ int main(void)
     TestFalloffs();
     TestSpaces();
     TestScaledAndWindy();
+    TestTurbulence();
     TestParameters();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;

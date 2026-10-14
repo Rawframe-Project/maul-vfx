@@ -61,6 +61,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/instance_api.c
     src/mesh.c
     src/mesh_api.c
+    src/noise.c
     src/shape.c
     src/slots.c
     src/spawn.c
@@ -95,6 +96,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(integrate WHITEBOX)
     maul_add_test(instance)
     maul_add_test(mesh WHITEBOX)
+    maul_add_test(noise WHITEBOX)
     maul_add_test(motion WHITEBOX)
     maul_add_test(half_sweep WHITEBOX MANUAL)
     maul_add_test(random WHITEBOX)

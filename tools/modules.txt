@@ -6,6 +6,7 @@ float_mode:
 half:
 hash:
 random:
+noise: random
 tasks: float_mode
 slots: allocator
 direction: elementary random
@@ -27,6 +28,6 @@ instance_api: context effect_api instance mesh mesh_api slots spawn
 step: context effect emitter_step float_mode instance instance_api tasks
 curve:
 curve_integral: curve
-force: direction elementary
+force: direction elementary noise
 gradient:
 elementary:
