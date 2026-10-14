@@ -126,6 +126,19 @@ static inline void BuildScene(mvfxContext* context)
     emitters[1].forces = &turbulence;
     emitters[1].forceCount = 1;
     emitters[2].capacity = 7;
+    // Velocity modules: an orbit slowing over the life and a speed limit
+    // on the first; half the motion and a radial push on the second.
+    static const mvfxCurveKey slowing[2] = {
+        {.time = 0.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
+    emitters[0].velocityModules.orbitAxis[1] = 1.0f;
+    emitters[0].velocityModules.orbitRate =
+        (mvfxLifeCurve){.value = 2.0f, .curve = {.keys = slowing, .keyCount = 2}};
+    emitters[0].velocityModules.limitSpeed = true;
+    emitters[0].velocityModules.speedLimit.value = 3.0f;
+    emitters[0].velocityModules.limitDampen = 5.0f;
+    emitters[1].velocityModules.motionScale.value = 0.5f;
+    emitters[1].velocityModules.radialSpeed.value = 1.25f;
     // Seven a second, so it spawns within the scene's 1.4 seconds and
     // fills.
     emitters[2].rate = 7.0f;

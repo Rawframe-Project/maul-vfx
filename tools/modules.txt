@@ -14,8 +14,10 @@ mesh: allocator direction random
 shape: direction elementary mesh random
 velocity: direction elementary shape
 value: curve gradient random
-effect: allocator curve curve_integral force shape value velocity
-integrate: direction effect elementary force instance
+life: curve value
+velocity_modules: direction elementary life
+effect: allocator curve curve_integral force shape value velocity velocity_modules
+integrate: direction effect elementary force instance velocity_modules
 instance: allocator effect force
 death_heap:
 spawn: instance random

@@ -55,6 +55,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/grid.c
     src/grid_api.c
     src/integrate.c
+    src/life.c
     src/emitter_step.c
     src/float_mode.c
     src/gradient.c
@@ -70,7 +71,8 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/step.c
     src/tasks.c
     src/value.c
-    src/velocity.c)
+    src/velocity.c
+    src/velocity_modules.c)
 maul_configure_library(maul-vfx)
 # sqrt, floor, ceil and the other exactly rounded functions the library
 # takes from libm (mvfx-0001); the tests' oracles use more of it.
@@ -108,6 +110,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(spawn WHITEBOX)
     maul_add_test(step)
     maul_add_test(value WHITEBOX)
+    maul_add_test(velocity_modules WHITEBOX)
     maul_add_test(tasks WHITEBOX)
     # The web build has no threads; the twins need four.
     if(NOT EMSCRIPTEN)

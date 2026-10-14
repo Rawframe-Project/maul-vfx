@@ -232,45 +232,112 @@ static mvfxSpaceMap SpaceMapOf(const mvfxInstance* instance, int32_t emitter,
 }
 
 // Moves particles from first to end over seconds.
-static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
-                      double time, double seconds)
+// What a range of particles moves by over a span.
+typedef struct Range
 {
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    float a[3];
-    GravityOf(instance, compiled, a);
+    mvfxInstance* instance;
+    int32_t emitter;
+    const mvfxCompiledEmitter* compiled;
     float* p[3];
     float* v[3];
+    float gravity[3];
+    const float* dragScales;
+    const mvfxResolvedForce* forces;
+    float sharedDrag;
+    mvfxDragFactors shared;
+    const mvfxResolvedVelocityModules* modules;
+    float limitDecay;
+    const uint32_t* birthLow;
+    const uint32_t* birthHigh;
+    const float* inverseLife;
+    // The tick and time the span starts at, and its seconds.
+    int64_t tick;
+    double time;
+    double seconds;
+} Range;
+
+// Particle i's normalized age at the span's start, held to [0, 1].
+static float AgeOf(const Range* r, int32_t i)
+{
+    int64_t birth = (int64_t)(((uint64_t)r->birthHigh[i] << 32u) | r->birthLow[i]);
+    float age =
+        (float)((double)(r->tick - birth) / (double)MVFX_TICKS_PER_SECOND) * r->inverseLife[i];
+    return fminf(fmaxf(age, 0.0f), 1.0f);
+}
+
+// Moves particle i: its speed held to the limit, its motion under gravity,
+// drag and forces, then the velocity modules' moves.
+static void MoveParticle(const Range* r, int32_t i)
+{
+    float start[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
+    float age = AgeOf(r, i);
+    float acceleration[3] = {r->gravity[0], r->gravity[1], r->gravity[2]};
+    float wind = 0.0f;
+    mvfxForcesAt(r->forces, r->compiled->forceCount, start, r->time, acceleration, &wind);
+    float drag = r->compiled->drag + wind;
+    mvfxDragFactors f = r->shared;
+    if (r->dragScales != nullptr)
+    {
+        f = mvfxDragFactorsOf(ParticleDrag(r->compiled, r->dragScales[i]) + (double)wind,
+                              r->seconds);
+    }
+    else if (drag != r->sharedDrag)
+    {
+        f = mvfxDragFactorsOf((double)drag, r->seconds);
+    }
+    float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
+    mvfxLimitSpeed(r->modules, age, r->limitDecay, velocity);
     for (int32_t k = 0; k < 3; ++k)
     {
-        p[k] = mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributePositionX + k));
-        v[k] = mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+        r->v[k][i] = velocity[k];
     }
-    bool perParticle = (compiled->plan.present & ((uint64_t)1 << mvfx_attributeDrag)) != 0;
-    const float* scales =
-        perParticle ? mvfxAttributeArray(instance, emitter, mvfx_attributeDrag) : nullptr;
-    const mvfxResolvedForce* forces = instance->emitters[emitter].forces;
-    int32_t forceCount = compiled->forceCount;
+    MoveLinear(r->p, r->v, i, acceleration, f);
+    float place[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
+    mvfxMoveByModules(r->modules, age, r->seconds, start, place);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        r->p[k][i] = place[k];
+    }
+}
+
+// Moves particles from first to end over seconds from tick.
+static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
+                      int64_t tick, double seconds)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    Range r = {
+        .instance = instance,
+        .emitter = emitter,
+        .compiled = compiled,
+        .forces = instance->emitters[emitter].forces,
+        .modules = &instance->emitters[emitter].velocityModules,
+        .birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow),
+        .birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh),
+        .inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife),
+        .tick = tick,
+        .time = (double)tick / (double)MVFX_TICKS_PER_SECOND,
+        .seconds = seconds,
+    };
+    GravityOf(instance, compiled, r.gravity);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        r.p[k] =
+            mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributePositionX + k));
+        r.v[k] =
+            mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+    }
+    if ((compiled->plan.present & ((uint64_t)1 << mvfx_attributeDrag)) != 0)
+    {
+        r.dragScales = mvfxAttributeArray(instance, emitter, mvfx_attributeDrag);
+    }
     // The drag every particle has when its winds weigh as at no falloff:
     // its factors serve each particle whose drag comes to the same.
-    float sharedDrag = compiled->drag + SharedWind(forces, forceCount);
-    mvfxDragFactors shared = mvfxDragFactorsOf((double)sharedDrag, seconds);
+    r.sharedDrag = compiled->drag + SharedWind(r.forces, compiled->forceCount);
+    r.shared = mvfxDragFactorsOf((double)r.sharedDrag, seconds);
+    r.limitDecay = mvfxDragFactorsOf((double)compiled->velocityModules.limitDampen, seconds).decay;
     for (int32_t i = first; i < end; ++i)
     {
-        float x[3] = {p[0][i], p[1][i], p[2][i]};
-        float acceleration[3] = {a[0], a[1], a[2]};
-        float wind = 0.0f;
-        mvfxForcesAt(forces, forceCount, x, time, acceleration, &wind);
-        float drag = compiled->drag + wind;
-        mvfxDragFactors f = shared;
-        if (perParticle)
-        {
-            f = mvfxDragFactorsOf(ParticleDrag(compiled, scales[i]) + (double)wind, seconds);
-        }
-        else if (drag != sharedDrag)
-        {
-            f = mvfxDragFactorsOf((double)drag, seconds);
-        }
-        MoveLinear(p, v, i, acceleration, f);
+        MoveParticle(&r, i);
     }
     uint64_t rotating =
         ((uint64_t)1 << mvfx_attributeAngle) | ((uint64_t)1 << mvfx_attributeOrientationX);
@@ -282,6 +349,22 @@ static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, in
             MoveAngular(instance, emitter, i, angular);
         }
     }
+}
+
+// Resolves the emitter's velocity modules for the step: their centers,
+// axes and directions from the emitter's space to the particles'.
+static void ResolveVelocityModules(mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledVelocityModules* compiled =
+        &instance->effect->emitters[emitter].velocityModules;
+    mvfxResolvedVelocityModules* out = &instance->emitters[emitter].velocityModules;
+    mvfxSpaceMap map = SpaceMapOf(instance, emitter, mvfx_spaceLocal);
+    out->compiled = compiled;
+    out->sigma = map.sigma;
+    mvfxMapVector(&map, compiled->addedDirection, 1.0f, out->addedDirection);
+    mvfxMapVector(&map, compiled->orbitAxis, 1.0f, out->orbitAxis);
+    mvfxMapPoint(&map, compiled->orbitCenter, out->orbitCenter);
+    mvfxMapPoint(&map, compiled->radialCenter, out->radialCenter);
 }
 
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
@@ -297,8 +380,9 @@ void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
     }
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
-    double start = (double)instance->stepStart / (double)MVFX_TICKS_PER_SECOND;
-    MoveRange(instance, emitter, 0, instance->emitters[emitter].count, start, seconds);
+    ResolveVelocityModules(instance, emitter);
+    MoveRange(instance, emitter, 0, instance->emitters[emitter].count, instance->stepStart,
+              seconds);
 }
 
 void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick)
@@ -306,7 +390,6 @@ void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, i
     double seconds = (double)(instance->clock - birthTick) / (double)MVFX_TICKS_PER_SECOND;
     if (seconds > 0.0)
     {
-        double birth = (double)birthTick / (double)MVFX_TICKS_PER_SECOND;
-        MoveRange(instance, emitter, at, at + 1, birth, seconds);
+        MoveRange(instance, emitter, at, at + 1, birthTick, seconds);
     }
 }

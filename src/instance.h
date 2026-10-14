@@ -68,6 +68,8 @@ typedef struct mvfxEmitterState
     double anchor[3];
     // The emitter's forces as resolved for the step being taken.
     struct mvfxResolvedForce* forces;
+    // Its velocity modules as resolved for the step.
+    mvfxResolvedVelocityModules velocityModules;
     // The particles the host queued for the next step.
     mvfxHostBirth* hostQueue;
     int32_t hostCount;

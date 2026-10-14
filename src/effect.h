@@ -15,6 +15,7 @@
 #include "shape.h"
 #include "value.h"
 #include "velocity.h"
+#include "velocity_modules.h"
 
 #include "maul-vfx/effect.h"
 
@@ -156,6 +157,7 @@ typedef struct mvfxCompiledEmitter
     int32_t forceCount;
     // The grid each vector field reads, which the effect counts a user of.
     struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
+    mvfxCompiledVelocityModules velocityModules;
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

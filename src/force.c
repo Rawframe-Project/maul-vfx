@@ -132,7 +132,7 @@ mvfxForce mvfxCompileForce(const mvfxForce* force)
     return out;
 }
 
-static void MapPoint(const mvfxSpaceMap* map, const float p[3], float out[3])
+void mvfxMapPoint(const mvfxSpaceMap* map, const float p[3], float out[3])
 {
     float local[3];
     for (int32_t k = 0; k < 3; ++k)
@@ -147,7 +147,7 @@ static void MapPoint(const mvfxSpaceMap* map, const float p[3], float out[3])
     }
 }
 
-static void MapVector(const mvfxSpaceMap* map, const float v[3], float sigma, float out[3])
+void mvfxMapVector(const mvfxSpaceMap* map, const float v[3], float sigma, float out[3])
 {
     float scaled[3] = {v[0] * sigma, v[1] * sigma, v[2] * sigma};
     mvfxRotate(map->rotation, scaled, out);
@@ -199,10 +199,10 @@ mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* m
     default:
         break;
     }
-    MapVector(map, force->vector, force->kind == mvfx_forceVortex ? 1.0f : sigma, out.vector);
-    MapPoint(map, force->point, out.point);
-    MapPoint(map, force->falloff.center, out.center);
-    MapVector(map, force->falloff.axis, 1.0f, out.axis);
+    mvfxMapVector(map, force->vector, force->kind == mvfx_forceVortex ? 1.0f : sigma, out.vector);
+    mvfxMapPoint(map, force->point, out.point);
+    mvfxMapPoint(map, force->falloff.center, out.center);
+    mvfxMapVector(map, force->falloff.axis, 1.0f, out.axis);
     if (force->falloff.kind == mvfx_falloffCone)
     {
         float sine = 0.0f;
@@ -383,7 +383,7 @@ static void Field(const mvfxResolvedForce* force, const float x[3], double time,
         return;
     }
     float field[3];
-    MapVector(&force->map, value, force->map.sigma * force->strength, field);
+    mvfxMapVector(&force->map, value, force->map.sigma * force->strength, field);
     float scale = weight;
     if (force->fieldMode == mvfx_fieldVelocity)
     {

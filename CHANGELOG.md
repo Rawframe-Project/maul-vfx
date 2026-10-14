@@ -93,3 +93,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   limit. A vector field force samples a grid of three components in a
   turned box, trilinearly, with a none, clamp or repeat border, as an
   acceleration or a velocity pulled toward.
+- Velocity modules: an emitter def gains `velocityModules` (a new
+  header, `maul-vfx/modules.h`): a scale of each particle's motion, an
+  added velocity, an orbit exact on its circle, radial velocity and a
+  speed limit whose excess decays independently of the steps, each a
+  value times a curve over the particle's normalized age.

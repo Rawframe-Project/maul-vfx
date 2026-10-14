@@ -27,6 +27,10 @@ typedef struct mvfxSpaceMap
     float sigma;
 } mvfxSpaceMap;
 
+// Maps a point, and a vector scaled by sigma, by a map.
+void mvfxMapPoint(const mvfxSpaceMap* map, const float p[3], float out[3]);
+void mvfxMapVector(const mvfxSpaceMap* map, const float v[3], float sigma, float out[3]);
+
 struct mvfxGrid;
 
 // A force resolved for a step, in the particles' space, its strength

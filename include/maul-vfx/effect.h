@@ -11,6 +11,7 @@
 #include "maul-vfx/context.h"
 #include "maul-vfx/curve.h"
 #include "maul-vfx/grid.h"
+#include "maul-vfx/modules.h"
 #include "maul-vfx/shape.h"
 #include "maul-vfx/value.h"
 
@@ -346,6 +347,8 @@ extern "C"
         // NULL when forceCount is 0.
         const mvfxForce* forces;
         int32_t forceCount;
+        // Their velocity modules.
+        mvfxVelocityModules velocityModules;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second
@@ -377,7 +380,8 @@ extern "C"
     /// second without end from the instance's start, none by distance, no
     /// bursts, each living one second, born at the emitter's origin at rest (a point shape,
     /// unturned, whole arcs, along the shape's normal at a speed of 0), with
-    /// no gravity and no drag.
+    /// no gravity, no drag, no forces, and velocity modules that leave the
+    /// motion as it is (a motion scale of 1, nothing added, no limit).
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

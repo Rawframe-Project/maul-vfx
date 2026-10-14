@@ -26,6 +26,7 @@ mvfxEmitterDef mvfxDefaultEmitterDef(void)
                 .arc = 6.28318530717958647692f,
             },
         .velocity = {.mode = mvfx_directionShapeNormal, .direction = {0.0f, 0.0f, 1.0f}},
+        .velocityModules = {.motionScale = {.value = 1.0f}},
     };
 }
 
@@ -196,6 +197,10 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
             return false;
         }
     }
+    if (!mvfxAreVelocityModulesValid(&def->velocityModules))
+    {
+        return false;
+    }
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         const mvfxCustomAttribute* custom = &def->custom[i];
@@ -291,7 +296,8 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
     const mvfxVectorSource* vectors[4] = {&def->size, &def->color, &def->orientation,
                                           &def->angularVelocity};
     *curves += mvfxScalarCurves(&def->lifetime) + mvfxScalarCurves(&def->angle) +
-               mvfxScalarCurves(&def->spin) + mvfxScalarCurves(&def->motion.dragScale);
+               mvfxScalarCurves(&def->spin) + mvfxScalarCurves(&def->motion.dragScale) +
+               mvfxVelocityModuleCurves(&def->velocityModules);
     for (int32_t v = 0; v < 4; ++v)
     {
         *curves += mvfxVectorCurves(vectors[v]);
@@ -322,6 +328,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->gravitySpace = def->motion.gravitySpace;
     out->drag = def->motion.drag;
     out->angularDrag = def->motion.angularDrag;
+    mvfxCompileVelocityModules(&def->velocityModules, space, &out->velocityModules);
     out->forceCount = def->forceCount;
     for (int32_t f = 0; f < def->forceCount; ++f)
     {

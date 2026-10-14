@@ -53,7 +53,7 @@ Effects: what an effect's emitters spawn and how their particles live, stated on
 ```c
 mvfxEmitterDef mvfxDefaultEmitterDef(void);
 ```
-Returns the default emitter def: 1,024 particles in world space, 64 a second without end from the instance's start, none by distance, no bursts, each living one second, born at the emitter's origin at rest (a point shape, unturned, whole arcs, along the shape's normal at a speed of 0), with no gravity and no drag.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default emitter def: 1,024 particles in world space, 64 a second without end from the instance's start, none by distance, no bursts, each living one second, born at the emitter's origin at rest (a point shape, unturned, whole arcs, along the shape's normal at a speed of 0), with no gravity, no drag, no forces, and velocity modules that leave the motion as it is (a motion scale of 1, nothing added, no limit).  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ```c
 mvfxEffectDef mvfxDefaultEffectDef(void);
@@ -228,4 +228,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-39 functions across 9 headers.
+39 functions across 10 headers.
