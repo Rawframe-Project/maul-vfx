@@ -84,7 +84,8 @@ static void BuildGrid(mvfxInstance* instance, int32_t emitter, float cell)
 static bool Sees(const mvfxNeighborQuery* q, const float d[3], float square, const float h[3])
 {
     float heading = h[0] * h[0] + h[1] * h[1] + h[2] * h[2];
-    if (q->viewCosine <= -1.0f || heading == 0.0f)
+    // A particle at rest sees all: 0 against 0.
+    if (q->viewCosine <= -1.0f)
     {
         return true;
     }

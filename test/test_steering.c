@@ -65,6 +65,7 @@ static mvfxEmitterDef Emitter(bool neighbors)
 
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
+static double s_origin;
 
 // Spawns particles at places with velocities, steps a tick (their births)
 // then a step whose start the module sees.
@@ -82,6 +83,7 @@ static void Run(const mvfxEmitterDef* emitter, const double* places, const float
     CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
+    instanceDef.origin[0] = s_origin;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
     mvfxSpawnRequest request = {.count = count, .positions = places, .velocities = velocities};
     CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "spawned");
@@ -184,6 +186,52 @@ static void TestView(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestViewEdges(void)
+{
+    // A view of 0 sees only straight ahead: the neighbor on the heading's
+    // line, not the one a little off it. A view of pi sees the one exactly
+    // behind. At rest, a narrow view sees all.
+    mvfxEmitterDef emitter = Emitter(true);
+    emitter.steering.cohesion = 1.0f;
+    emitter.steering.cohesionRadius = 4.0f;
+    emitter.steering.viewAngle = 0.0f;
+    static const double places[9] = {0, 0, 0, 2, 0, 0, 2, 0.5, 0};
+    static const float ahead[9] = {1, 0, 0, 1, 0, 0, 1, 0, 0};
+    Run(&emitter, places, ahead, 3, 0, NULL);
+    const double one[3] = {(double)s_seen.place[1][0] - (double)s_seen.place[0][0], 0, 0};
+    CHECK(Moved(0, ahead, one), "a view of 0, straight ahead");
+    mvfxDestroyContext(s_context);
+    emitter.steering.viewAngle = 3.14159274f;
+    static const double behind[6] = {0, 0, 0, -2, 0, 0};
+    Run(&emitter, behind, ahead, 2, 0, NULL);
+    const double back[3] = {(double)s_seen.place[1][0] - (double)s_seen.place[0][0], 0, 0};
+    CHECK(Moved(0, ahead, back), "a view of pi, behind too");
+    mvfxDestroyContext(s_context);
+    emitter.steering.viewAngle = 0.5f;
+    static const float rest[6] = {0};
+    Run(&emitter, behind, rest, 2, 0, NULL);
+    const double resting[3] = {-2.0, 0, 0};
+    CHECK(Moved(0, rest, resting), "at rest, all");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestRuleEdges(void)
+{
+    // Exactly the cohesion radius away: left out. At the same place:
+    // separation has no direction, and adds nothing.
+    mvfxEmitterDef emitter = Emitter(true);
+    emitter.steering.cohesion = 1.0f;
+    emitter.steering.cohesionRadius = 2.0f;
+    emitter.steering.separation = 1.0f;
+    emitter.steering.separationRadius = 2.0f;
+    static const double places[9] = {0, 0, 0, 2, 0, 0, 0, 0, 0};
+    static const float rest[9] = {0};
+    Run(&emitter, places, rest, 3, 0, NULL);
+    const double none[3] = {0, 0, 0};
+    CHECK(Moved(0, rest, none) && Moved(2, rest, none), "the radius exclusive; no direction");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestPoints(void)
 {
     // Seeking (5, 0, 0) at 2 with a weight of 3 from rest and moving; one
@@ -218,19 +266,29 @@ static void TestPoints(void)
 
 static void TestForceAndParameter(void)
 {
-    // A target from a parameter in the world, the instance at the origin;
-    // the summed steering held to a force of 0.5.
+    // A target from a parameter in the world, the instance at x = 100; the
+    // summed steering held to a force of 0.5.
     mvfxEmitterDef emitter = Emitter(false);
     emitter.steering.cruiseSpeed = 10.0f;
     emitter.steering.maxForce = 0.5f;
     emitter.steering.seek = (mvfxSteerPoint){
         .weight = 100.0f, .space = mvfx_spaceWorld, .fromParameter = true, .parameter = 0};
-    static const float parameter[4] = {0, 0, -7, 0};
-    static const double place[3] = {0, 0, 0};
+    static const float parameter[4] = {100, 0, -7, 0};
+    static const double place[3] = {100, 0, 0};
     static const float rest[3] = {0, 0, 0};
+    s_origin = 100.0;
     Run(&emitter, place, rest, 1, 1, parameter);
+    s_origin = 0.0;
     const double held[3] = {0, 0, -0.5};
     CHECK(Moved(0, rest, held), "toward the parameter, held to the force");
+    mvfxDestroyContext(s_context);
+    // Fleeing with no radius: everywhere.
+    emitter.steering.seek = (mvfxSteerPoint){0};
+    emitter.steering.maxForce = 0.0f;
+    emitter.steering.flee = (mvfxSteerPoint){.weight = 1.0f, .point = {0, -1000, 0}};
+    Run(&emitter, s_places, rest, 1, 0, NULL);
+    const double away[3] = {0, 10.0, 0};
+    CHECK(Moved(0, rest, away), "fleeing everywhere");
     mvfxDestroyContext(s_context);
 }
 
@@ -278,6 +336,42 @@ static void TestPath(void)
     double l = sqrt(d[0] * d[0] + d[1] * d[1]);
     const double acc[3] = {2.0 * d[0] / l, 2.0 * d[1] / l + 1.0, 0};
     CHECK(Moved(0, down, acc), "round a closed path");
+    mvfxDestroyContext(s_context);
+    // At the square's center at rest, every side is 2 away: the first, so
+    // it seeks (2, 0).
+    static const double center[3] = {2, 2, 0};
+    static const float rest[3] = {0, 0, 0};
+    Run(&emitter, center, rest, 1, 0, NULL);
+    const double first[3] = {0, -2.0, 0};
+    CHECK(Moved(0, rest, first), "the first nearest side");
+    mvfxDestroyContext(s_context);
+    // On by 30 round a path of 16: the predicted place (5, 1) is nearest
+    // (4, 1) on the second side, and 30 less 16 is 14 on: 3 to (4, 4), 4
+    // to (0, 4), 4 to (0, 0), 3 to (3, 0).
+    emitter.steering.path.lookahead = 0.1f;
+    emitter.steering.path.radius = 0.0f;
+    static const double side[3] = {5, -29, 0};
+    static const float up[3] = {0, 300, 0};
+    Run(&emitter, side, up, 1, 0, NULL);
+    const float* w = s_seen.place[0];
+    double dw[3] = {3.0 - (double)w[0], -(double)w[1], 0};
+    double lw = sqrt(dw[0] * dw[0] + dw[1] * dw[1]);
+    const double round[3] = {2.0 * dw[0] / lw, 2.0 * dw[1] / lw - 300.0, 0};
+    CHECK(Moved(0, up, round), "on by more than the whole path");
+    mvfxDestroyContext(s_context);
+    // An open path of two sides ends at its last point: on past it, the
+    // target stays there.
+    static const float bend[9] = {0, 0, 0, 10, 0, 0, 10, 10, 0};
+    emitter.steering.path = (mvfxSteerPath){
+        .weight = 1.0f, .points = bend, .pointCount = 3, .radius = 0.5f, .lookahead = 2.0f};
+    static const double end[3] = {13, 9, 0};
+    static const float north[3] = {0, 1, 0};
+    Run(&emitter, end, north, 1, 0, NULL);
+    const float* e2 = s_seen.place[0];
+    double de[3] = {10.0 - (double)e2[0], 10.0 - (double)e2[1], 0};
+    double le = sqrt(de[0] * de[0] + de[1] * de[1]);
+    const double last[3] = {2.0 * de[0] / le, 2.0 * de[1] / le - 1.0, 0};
+    CHECK(Moved(0, north, last), "an open path's end");
     mvfxDestroyContext(s_context);
 }
 
@@ -372,6 +466,8 @@ int main(void)
 {
     TestRules();
     TestView();
+    TestViewEdges();
+    TestRuleEdges();
     TestPoints();
     TestForceAndParameter();
     TestPath();
