@@ -377,6 +377,34 @@ extern "C"
         mvfxSteerPath path;
     } mvfxSteeringDef;
 
+// The most projection passes particle contacts take a step.
+#define MVFX_MAX_CONTACT_ITERATIONS 16
+
+    // Particles of an emitter kept apart (position-based, Macklin et al.
+    // 2014): after motion each step, pairs closer than their radii's sum
+    // are moved apart along the line between them, each by half the
+    // overlap averaged over its contacts, for a set number of Jacobi
+    // passes; then each pair still touching and closing gets an impulse
+    // from restitution and friction, also averaged. The projection itself
+    // changes no velocity.
+    typedef struct mvfxContactDef
+    {
+        bool enabled;
+        // A particle's radius is its size's X times this (this alone for an
+        // emitter that stores no size); above 0, at most MVFX_MAX_EXTENT.
+        float radiusScale;
+        // From 1 to MVFX_MAX_CONTACT_ITERATIONS.
+        int32_t iterations;
+        // The most contacts one particle takes in a pass, from 1 to
+        // MVFX_MAX_NEIGHBORS, in the grid's order; a particle with more is
+        // counted (mvfxEmitterStats.contactsCapped).
+        int32_t maxContacts;
+        // The share of the closing speed a contact sends back, and the share
+        // of the sliding speed it takes, each 0 to 1.
+        float restitution;
+        float friction;
+    } mvfxContactDef;
+
     // An event: what happened, to which particle, when and where.
     typedef struct mvfxEvent
     {

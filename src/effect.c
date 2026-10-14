@@ -404,8 +404,8 @@ static bool IsBeamValid(const mvfxEmitterDef* def, int32_t parameterCount)
     }
     bool alone = def->rate == 0.0f && def->burstCount == 0 && def->ratePerDistance == 0.0f &&
                  !def->eventSpawn.enabled && def->hostSpawnCapacity == 0 &&
-                 !def->collision.enabled && def->forceCount == 0 &&
-                 (def->events & mvfx_eventMaskBirth) == 0;
+                 !def->collision.enabled && def->forceCount == 0 && !def->contacts.enabled &&
+                 !def->steering.enabled && (def->events & mvfx_eventMaskBirth) == 0;
     return shape && alone && def->ribbon.ids == mvfx_ribbonOne && !def->ribbon.pinHead;
 }
 
@@ -456,6 +456,17 @@ static bool IsFlockRuleValid(const mvfxEmitterDef* def, float weight, float radi
     return IsWithin(weight, 0.0f, MVFX_MAX_EXTENT) &&
            (weight == 0.0f ||
             (def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius));
+}
+
+// Whether an emitter's particle contacts are valid.
+static bool AreContactsValid(const mvfxContactDef* contacts)
+{
+    return !contacts->enabled ||
+           (contacts->radiusScale > 0.0f && contacts->radiusScale <= MVFX_MAX_EXTENT &&
+            contacts->iterations >= 1 && contacts->iterations <= MVFX_MAX_CONTACT_ITERATIONS &&
+            contacts->maxContacts >= 1 && contacts->maxContacts <= MVFX_MAX_NEIGHBORS &&
+            IsWithin(contacts->restitution, 0.0f, 1.0f) &&
+            IsWithin(contacts->friction, 0.0f, 1.0f));
 }
 
 // Whether an emitter's steering is valid.
@@ -589,6 +600,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
             !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
             !AreNeighborsValid(def, i) ||
             !IsSteeringValid(&def->emitters[i], def->parameterCount) ||
+            !AreContactsValid(&def->emitters[i].contacts) ||
             !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
@@ -714,6 +726,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->events = def->events;
     out->eventSpawn = def->eventSpawn;
     CopySteering(def, out);
+    out->contacts = def->contacts.enabled ? def->contacts : (mvfxContactDef){0};
     out->drawPriority = def->drawPriority;
     out->fixedBounds = def->fixedBounds;
     for (int32_t k = 0; k < 3; ++k)

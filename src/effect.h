@@ -214,6 +214,7 @@ typedef struct mvfxCompiledEmitter
     // Its steering, the path's points copied.
     mvfxSteeringDef steering;
     float pathPoints[MVFX_MAX_PATH_POINTS][3];
+    mvfxContactDef contacts;
     int32_t drawPriority;
     bool fixedBounds;
     float boundsMin[3];

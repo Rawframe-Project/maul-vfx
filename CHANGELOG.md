@@ -203,3 +203,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and cohesion from its neighbors within a view cone; seeking with
   arrival, fleeing within a radius, following an open or closed path;
   the sum held to a maximum force).
+- Particle contacts: an emitter's `contacts` (radii from sizes,
+  position-based Jacobi passes averaged over each particle's contacts,
+  then impulses with restitution and friction; capped contacts counted
+  in `contactsCapped`).

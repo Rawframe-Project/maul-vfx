@@ -68,6 +68,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/emitter_step.c
     src/event.c
     src/neighbor.c
+    src/contact.c
     src/steer.c
     src/event_spawn.c
     src/float_mode.c
@@ -109,6 +110,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(bounds)
     maul_add_test(collide WHITEBOX)
     maul_add_test(collide_grid WHITEBOX)
+    maul_add_test(contact)
     maul_add_test(context)
     maul_add_test(curve WHITEBOX)
     maul_add_test(curve_integral WHITEBOX)

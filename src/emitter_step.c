@@ -9,6 +9,7 @@
 #include "beam.h"
 #include "birth.h"
 #include "bounds.h"
+#include "contact.h"
 #include "death_heap.h"
 #include "event.h"
 #include "event_spawn.h"
@@ -393,6 +394,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     {
         BirthsInTickOrder(instance, emitter);
     }
+    mvfxSolveContacts(instance, emitter);
     mvfxRunHostModules(instance, emitter, mvfx_stageAfterMotion);
     RemoveKilled(instance, emitter);
     StrikeBeam(instance, emitter);

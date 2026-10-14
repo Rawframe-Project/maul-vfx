@@ -9,52 +9,21 @@
 #include "neighbor.h"
 
 #include "elementary.h"
-#include "random.h"
 
 #include <math.h>
 #include <string.h>
 
-// The salt that sets grid keys apart from any other hash.
-#define GRID_SALT 0x4E474244u
-
-// The greatest cell coordinate in size: places farther out share the
-// outermost cells.
-#define MAX_CELL 0x1p30
-
-static int32_t CellOf(float x, float inverseCell)
+void mvfxBuildNeighborGrid(mvfxNeighborGrid* grid, const float* const p[3], const float* const v[3],
+                           int32_t n, float cell)
 {
-    double c = floor((double)x * (double)inverseCell);
-    c = !(c >= -MAX_CELL) ? -MAX_CELL : c > MAX_CELL ? MAX_CELL : c;
-    return (int32_t)c;
-}
-
-static uint32_t KeyOf(const int32_t cell[3], uint32_t mask)
-{
-    mvfxWords4 h =
-        mvfxPcg4d((mvfxWords4){(uint32_t)cell[0], (uint32_t)cell[1], (uint32_t)cell[2], GRID_SALT});
-    return h.x & mask;
-}
-
-static void BuildGrid(mvfxInstance* instance, int32_t emitter, float cell)
-{
-    mvfxEmitterState* state = &instance->emitters[emitter];
-    mvfxNeighborGrid* grid = &state->grid;
-    const float* p[3];
-    const float* v[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        p[k] = mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributePositionX + k));
-        v[k] = mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
-    }
     float inverse = 1.0f / cell;
     uint32_t size = grid->mask + 1u;
-    int32_t n = state->count;
     memset(grid->table, 0, ((size_t)size + 1u) * sizeof(int32_t));
     for (int32_t i = 0; i < n; ++i)
     {
-        int32_t c[3] = {CellOf(p[0][i], inverse), CellOf(p[1][i], inverse),
-                        CellOf(p[2][i], inverse)};
-        grid->keys[i] = KeyOf(c, grid->mask);
+        const int32_t c[3] = {mvfxGridCell(p[0][i], inverse), mvfxGridCell(p[1][i], inverse),
+                              mvfxGridCell(p[2][i], inverse)};
+        grid->keys[i] = mvfxCellKey(c, grid->mask);
         grid->table[grid->keys[i]] += 1;
     }
     // Each key's end, then from the last particle down each takes the slot
@@ -71,12 +40,25 @@ static void BuildGrid(mvfxInstance* instance, int32_t emitter, float cell)
     {
         int32_t j = --grid->table[grid->keys[i]];
         grid->index[j] = i;
-        for (int32_t k = 0; k < 3; ++k)
+        for (int32_t k = 0; grid->values != nullptr && k < 3; ++k)
         {
             grid->values[(size_t)k * stride + (size_t)j] = p[k][i];
             grid->values[(size_t)(3 + k) * stride + (size_t)j] = v[k][i];
         }
     }
+}
+
+static void BuildGrid(mvfxInstance* instance, int32_t emitter, float cell)
+{
+    const float* p[3];
+    const float* v[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        p[k] = mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributePositionX + k));
+        v[k] = mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+    }
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    mvfxBuildNeighborGrid(&state->grid, p, v, state->count, cell);
 }
 
 // Whether a neighbor an offset d away (its squared length square) lies in
@@ -177,7 +159,7 @@ mvfxNeighborSums mvfxSearchNeighbors(const mvfxNeighborQuery* query, int32_t par
     int32_t cell[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        cell[k] = CellOf(place[k], query->inverseCell);
+        cell[k] = mvfxGridCell(place[k], query->inverseCell);
     }
     uint32_t visited[27];
     int32_t visits = 0;
@@ -187,7 +169,7 @@ mvfxNeighborSums mvfxSearchNeighbors(const mvfxNeighborQuery* query, int32_t par
     for (int32_t n = 0; n < 27; ++n)
     {
         int32_t around[3] = {cell[0] + n % 3 - 1, cell[1] + n / 3 % 3 - 1, cell[2] + n / 9 - 1};
-        uint32_t key = KeyOf(around, query->grid->mask);
+        uint32_t key = mvfxCellKey(around, query->grid->mask);
         bool seen = false;
         for (int32_t v = 0; v < visits; ++v)
         {

@@ -424,8 +424,9 @@ extern "C"
     // each step along a curve from start to end with noise across it, and
     // struck again when they die, with new noise. A beam is drawn as one
     // ribbon; its points are placed, not moved, so it takes no rate,
-    // bursts, distance rate, events in, host spawns, forces, collisions or
-    // birth events, its ribbon ids are mvfx_ribbonOne without a pinned
+    // bursts, distance rate, events in, host spawns, forces, collisions,
+    // steering, contacts or birth events, its ribbon ids are
+    // mvfx_ribbonOne without a pinned
     // head, and its capacity holds its points.
     typedef struct mvfxBeamDef
     {
@@ -600,6 +601,8 @@ extern "C"
         mvfxNeighborDef neighbors;
         // Flocking and steering.
         mvfxSteeringDef steering;
+        // Its particles kept apart.
+        mvfxContactDef contacts;
         // The lights its particles carry (mvfxInstance_WriteLights).
         mvfxLightDef light;
         // Its ribbons (mvfxInstance_WriteRibbons).

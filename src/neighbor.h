@@ -8,6 +8,37 @@
 #define MVFX_NEIGHBOR_H
 
 #include "instance.h"
+#include "random.h"
+
+#include <math.h>
+
+// The salt that sets grid keys apart from any other hash.
+#define MVFX_GRID_SALT 0x4E474244u
+
+// The greatest cell coordinate in size: places farther out share the
+// outermost cells.
+#define MVFX_MAX_CELL 0x1p30
+
+// A coordinate's cell for cells of one over inverseCell.
+static inline int32_t mvfxGridCell(float x, float inverseCell)
+{
+    double c = floor((double)x * (double)inverseCell);
+    c = !(c >= -MVFX_MAX_CELL) ? -MVFX_MAX_CELL : c > MVFX_MAX_CELL ? MVFX_MAX_CELL : c;
+    return (int32_t)c;
+}
+
+// A cell's key: pcg4d of its coordinates masked to a table.
+static inline uint32_t mvfxCellKey(const int32_t cell[3], uint32_t mask)
+{
+    mvfxWords4 h = mvfxPcg4d(
+        (mvfxWords4){(uint32_t)cell[0], (uint32_t)cell[1], (uint32_t)cell[2], MVFX_GRID_SALT});
+    return h.x & mask;
+}
+
+// Builds a grid of n places in cells of a size, copying the places and
+// velocities when the grid keeps values (v may be NULL when it does not).
+void mvfxBuildNeighborGrid(mvfxNeighborGrid* grid, const float* const p[3], const float* const v[3],
+                           int32_t n, float cell);
 
 // A query of an emitter's source grid from places in the emitter's space,
 // which is the source's: emitters of one space in an instance share their

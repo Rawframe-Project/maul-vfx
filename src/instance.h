@@ -78,6 +78,18 @@ typedef struct mvfxNeighborGrid
     uint32_t mask;
 } mvfxNeighborGrid;
 
+// An emitter's room for its particle contacts: a grid of its places after
+// motion (keeping no values), those places, a pass's new places (then
+// the impulses), and each particle's radius; three arrays of the capacity
+// each for places.
+typedef struct mvfxContactRoom
+{
+    mvfxNeighborGrid grid;
+    float* built;
+    float* moved;
+    float* radii;
+} mvfxContactRoom;
+
 typedef struct mvfxEmitterState
 {
     unsigned char* particles;
@@ -125,6 +137,9 @@ typedef struct mvfxEmitterState
     // Its grid (for an emitter queried), and the queries that were capped.
     mvfxNeighborGrid grid;
     uint64_t neighborsCapped;
+    // Its contacts' room, and the particles whose contacts were capped.
+    mvfxContactRoom contacts;
+    uint64_t contactsCapped;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

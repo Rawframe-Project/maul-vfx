@@ -30,6 +30,11 @@ typedef struct EmitterAt
     size_t gridIndex;
     size_t gridValues;
     uint32_t gridMask;
+    size_t contactTable;
+    size_t contactKeys;
+    size_t contactIndex;
+    size_t contactPlaces;
+    uint32_t contactMask;
 } EmitterAt;
 
 // The entries of a grid's table at a capacity: a power of two at least
@@ -114,6 +119,24 @@ int64_t mvfxParticlesAt(const mvfxEffect* effect, int32_t quality)
     return particles;
 }
 
+// Adds an emitter's contact room to the block, for one whose particles
+// keep apart: its grid, then the places built from, the places moved and
+// the radii, seven arrays of the capacity.
+static void AddContacts(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
+                        EmitterAt* at)
+{
+    if (!compiled->contacts.enabled)
+    {
+        return;
+    }
+    uint32_t size = GridTableSize(capacity);
+    at->contactMask = size - 1u;
+    at->contactTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
+    at->contactKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
+    at->contactIndex = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(int32_t), alignof(int32_t));
+    at->contactPlaces = mvfxLayoutAdd(layout, 7u * (size_t)capacity, sizeof(float), alignof(float));
+}
+
 // Points each emitter's state at its parts of the block, with its
 // capacity at the instance's level.
 static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstCursor* bursts,
@@ -146,6 +169,21 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
                     .mask = at[e].gridMask,
                 },
         };
+        float* places = (float*)(block + at[e].contactPlaces);
+        size_t stride = (size_t)capacities[e];
+        instance->emitters[e].contacts = (mvfxContactRoom){
+            .grid =
+                {
+                    .table = (int32_t*)(block + at[e].contactTable),
+                    .keys = (uint32_t*)(block + at[e].contactKeys),
+                    .index = (int32_t*)(block + at[e].contactIndex),
+                    .capacity = capacities[e],
+                    .mask = at[e].contactMask,
+                },
+            .built = places,
+            .moved = places + 3u * stride,
+            .radii = places + 6u * stride,
+        };
     }
 }
 
@@ -176,6 +214,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     {
         at[e] = AddEmitter(&layout, &effect->emitters[e]);
         AddGrid(&layout, &effect->emitters[e], capacities[e], &at[e]);
+        AddContacts(&layout, &effect->emitters[e], capacities[e], &at[e]);
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -247,6 +286,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->eventCount = 0;
         state->eventsDropped = 0;
         state->neighborsCapped = 0;
+        state->contactsCapped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;
         state->beamStrike = instance->effect->emitters[e].delay;
@@ -302,6 +342,7 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->owed, (int32_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
         hash = mvfxHash64(hash, &state->neighborsCapped, (int32_t)sizeof state->neighborsCapped);
+        hash = mvfxHash64(hash, &state->contactsCapped, (int32_t)sizeof state->contactsCapped);
         hash = HashEvents(state, hash);
         hash = mvfxHash64(hash, &state->ribbonCounter, (int32_t)sizeof state->ribbonCounter);
         hash = mvfxHash64(hash, &state->beamStrike, (int32_t)sizeof state->beamStrike);

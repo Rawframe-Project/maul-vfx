@@ -317,6 +317,13 @@ static inline void BuildScene(mvfxContext* context)
         (mvfxNeighborDef){.enabled = true, .source = 1, .radius = 3.0f, .maxNeighbors = 4};
     emitters[1].neighbors =
         (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.5f, .maxNeighbors = 4};
+    // The second keeps its particles apart, a tenth of their size each.
+    emitters[1].contacts = (mvfxContactDef){.enabled = true,
+                                            .radiusScale = 0.1f,
+                                            .iterations = 3,
+                                            .maxContacts = 2,
+                                            .restitution = 0.3f,
+                                            .friction = 0.2f};
     // The second flocks, seeks parameter 0 in the world, flees a point of
     // its own and follows a closed square round the instance.
     static const float squarePath[12] = {-2, 0, -2, 2, 0, -2, 2, 0, 2, -2, 0, 2};
