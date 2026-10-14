@@ -405,6 +405,48 @@ extern "C"
         mvfxGradient color;
     } mvfxRibbonDef;
 
+// The most segments a beam has.
+#define MVFX_MAX_BEAM_SEGMENTS 1024
+
+    // A point of a beam's curve in the instance's space: fixed, or an
+    // instance parameter's x, y and z (so the host aims the beam).
+    typedef struct mvfxBeamPoint
+    {
+        // Finite, at most MVFX_MAX_EXTENT in size.
+        float point[3];
+        bool fromParameter;
+        // From 0 below the effect's parameter count.
+        int32_t parameter;
+    } mvfxBeamPoint;
+
+    // An emitter whose particles are the points of a beam: struck as
+    // segments + 1 points at once (all with the first's lifetime), placed
+    // each step along a curve from start to end with noise across it, and
+    // struck again when they die, with new noise. A beam is drawn as one
+    // ribbon; its points are placed, not moved, so it takes no rate,
+    // bursts, distance rate, events in, host spawns, forces, collisions or
+    // birth events, its ribbon ids are mvfx_ribbonOne without a pinned
+    // head, and its capacity holds its points.
+    typedef struct mvfxBeamDef
+    {
+        bool enabled;
+        // From 1 to MVFX_MAX_BEAM_SEGMENTS.
+        int32_t segments;
+        mvfxBeamPoint start;
+        mvfxBeamPoint end;
+        // 0 for a line, 1 for a quadratic and 2 for a cubic Bezier curve
+        // through the controls.
+        int32_t controlCount;
+        mvfxBeamPoint controls[2];
+        // Noise displacing each point across the beam, faded to 0 at both
+        // ends: its size in the instance's space (from 0 to
+        // MVFX_MAX_EXTENT), its cycles over the beam (from 0 to 1,000) and
+        // a second (finite, at most 1,000 in size).
+        float noiseAmplitude;
+        float noiseFrequency;
+        float noiseSpeed;
+    } mvfxBeamDef;
+
 // The most meshes an emitter's particles choose from.
 #define MVFX_MAX_MESH_INDEX 65536
 
@@ -514,6 +556,8 @@ extern "C"
         mvfxLightDef light;
         // Its ribbons (mvfxInstance_WriteRibbons).
         mvfxRibbonDef ribbon;
+        // A beam through its particles.
+        mvfxBeamDef beam;
         // The order its records are written in, and what a sort by place
         // measures; equal keys keep the pool's order.
         mvfxSortMode sortMode;

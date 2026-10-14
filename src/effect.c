@@ -370,6 +370,43 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
     return true;
 }
 
+// Whether a beam's point is finite and in range, its parameter one of the
+// effect's.
+static bool IsBeamPointValid(const mvfxBeamPoint* point, int32_t parameterCount)
+{
+    return IsWithin(point->point[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           IsWithin(point->point[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           IsWithin(point->point[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           (!point->fromParameter || (point->parameter >= 0 && point->parameter < parameterCount));
+}
+
+// Whether a beam is valid: its shape in range, and nothing that would
+// spawn or move its points but the beam.
+static bool IsBeamValid(const mvfxEmitterDef* def, int32_t parameterCount)
+{
+    const mvfxBeamDef* beam = &def->beam;
+    if (!beam->enabled)
+    {
+        return true;
+    }
+    bool shape = beam->segments >= 1 && beam->segments <= MVFX_MAX_BEAM_SEGMENTS &&
+                 def->capacity >= beam->segments + 1 && beam->controlCount >= 0 &&
+                 beam->controlCount <= 2 && IsBeamPointValid(&beam->start, parameterCount) &&
+                 IsBeamPointValid(&beam->end, parameterCount) &&
+                 IsWithin(beam->noiseAmplitude, 0.0f, MVFX_MAX_EXTENT) &&
+                 IsWithin(beam->noiseFrequency, 0.0f, 1000.0f) &&
+                 IsWithin(beam->noiseSpeed, -1000.0f, 1000.0f);
+    for (int32_t c = 0; shape && c < beam->controlCount; ++c)
+    {
+        shape = IsBeamPointValid(&beam->controls[c], parameterCount);
+    }
+    bool alone = def->rate == 0.0f && def->burstCount == 0 && def->ratePerDistance == 0.0f &&
+                 !def->eventSpawn.enabled && def->hostSpawnCapacity == 0 &&
+                 !def->collision.enabled && def->forceCount == 0 &&
+                 (def->events & mvfx_eventMaskBirth) == 0;
+    return shape && alone && def->ribbon.ids == mvfx_ribbonOne && !def->ribbon.pinHead;
+}
+
 // Whether an emitter's spawning from events is valid against its effect:
 // a source not its own that writes the kind, counts and a share in range.
 static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
@@ -437,7 +474,8 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         if (!IsEmitterDefValid(&def->emitters[i]) ||
-            !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i))
+            !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
+            !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
         }
@@ -585,6 +623,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     out->sortMode = def->sortMode;
     out->sortMeasure = def->sortMeasure;
     out->ribbonIds = def->ribbon.ids;
+    out->beam = def->beam;
     CompileRibbonShape(&def->ribbon, out);
     mvfxCompileLife(&def->ribbon.width, space, &out->ribbonWidth);
     out->ribbonColor = nullptr;

@@ -160,6 +160,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->eventsDropped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;
+        state->beamStrike = instance->effect->emitters[e].delay;
         state->distanceCarry = 0.0;
         state->distanceDelta = 0.0;
         state->distanceSkip = 0.0;
@@ -213,6 +214,7 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
         hash = HashEvents(state, hash);
         hash = mvfxHash64(hash, &state->ribbonCounter, (int32_t)sizeof state->ribbonCounter);
+        hash = mvfxHash64(hash, &state->beamStrike, (int32_t)sizeof state->beamStrike);
         if (state->hasBounds)
         {
             hash = mvfxHash64(hash, state->boundsMin, (int32_t)sizeof state->boundsMin);

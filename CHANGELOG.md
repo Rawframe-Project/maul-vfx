@@ -173,3 +173,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Trails: a ribbon counter per emitter that `mvfxInstance_BreakRibbons`,
   a teleport and `ribbon.breakDistance` advance, so trails end and
   begin; `ribbon.pinHead` pins the current ribbon's head to its source.
+- Beams: an emitter's `beam` strikes `segments + 1` points along a line
+  or a quadratic or cubic Bezier curve between points fixed or from
+  instance parameters, with noise across it faded at both ends, struck
+  again when a strike's lifetime ends; drawn as a ribbon.

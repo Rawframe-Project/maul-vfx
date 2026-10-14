@@ -219,6 +219,7 @@ typedef struct mvfxCompiledEmitter
     mvfxRibbonFacing ribbonFacing;
     float ribbonBreakDistance;
     bool ribbonPinHead;
+    mvfxBeamDef beam;
     float ribbonNormal[3];
     mvfxCompiledLife ribbonWidth;
     // NULL for white.

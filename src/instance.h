@@ -104,6 +104,8 @@ typedef struct mvfxEmitterState
     uint64_t eventsDropped;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
+    // A beam's next strike: the tick its points die at.
+    int64_t beamStrike;
     // Its particles' box in their space at the step's end, grown by their
     // largest size; empty with none (or fixed bounds).
     float boundsMin[3];

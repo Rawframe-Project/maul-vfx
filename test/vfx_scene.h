@@ -65,8 +65,27 @@ static inline void BuildScene(mvfxContext* context)
     gridDef.values = fieldValues;
     mvfxGridId fieldGrid = {0};
     CHECK(mvfxCreateGrid(context, &gridDef, &fieldGrid) == mvfx_success, "scene grid");
-    mvfxEmitterDef emitters[4] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
-                                  mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    mvfxEmitterDef emitters[5] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                  mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                  mvfxDefaultEmitterDef()};
+    // The fifth is a beam aimed by parameter 0, bent through a control,
+    // its noise moving, struck again every 0.3 seconds.
+    emitters[4].rate = 0.0f;
+    emitters[4].capacity = 7;
+    emitters[4].lifetime = mvfxRangeSource(0.3f, 0.3f);
+    emitters[4].color = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.5f, 0.7f, 1.0f, 1.0f}, .max = {0.7f, 0.9f, 1.0f, 1.0f}};
+    emitters[4].ribbon.ids = mvfx_ribbonOne;
+    emitters[4].ribbon.texture = mvfx_ribbonTileByDistance;
+    emitters[4].beam = (mvfxBeamDef){.enabled = true,
+                                     .segments = 6,
+                                     .start = {.point = {0.0f, 0.0f, 0.5f}},
+                                     .end = {.fromParameter = true, .parameter = 0},
+                                     .controlCount = 1,
+                                     .controls = {{.point = {1.0f, 2.0f, 0.0f}}},
+                                     .noiseAmplitude = 0.4f,
+                                     .noiseFrequency = 2.0f,
+                                     .noiseSpeed = 1.5f};
     emitters[0].capacity = 100;
     emitters[0].light = (mvfxLightDef){.enabled = true,
                                        .every = 2,
@@ -327,7 +346,10 @@ static inline void BuildScene(mvfxContext* context)
         .enabled = true, .source = 3, .kind = mvfx_eventDeath, .maxCount = 1, .capacity = 8};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
-    def.emitterCount = 4;
+    def.emitterCount = 5;
+    static const float beamEnd[4] = {3.0f, 1.0f, 2.0f, 0.0f};
+    def.parameters = beamEnd;
+    def.parameterCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "scene effect");
     // An effect of emitter lives: a rate curve over loops, delayed and
@@ -647,6 +669,12 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
         CHECK(mvfxInstance_SetTransform(context, id, origin, turns[step % 2],
                                         step % 3 == 0 ? 1.5f : 1.0f, step == 10) == mvfx_success,
               "scene moved");
+        if (step == 5 &&
+            ((const mvfxInstance*)context->instances.slots[i].object)->effect->emitterCount == 5)
+        {
+            static const float aimed[4] = {-2.0f, 3.0f, 1.0f, 0.0f};
+            CHECK(mvfxInstance_SetParameter(context, id, 0, aimed) == mvfx_success, "scene aim");
+        }
         if (step == 6)
         {
             CHECK(mvfxInstance_BreakRibbons(context, id, -1) == mvfx_success, "scene break");

@@ -47,8 +47,9 @@ deaths and collisions the host reads after a step), emitters spawning
 from other emitters' events, output (particle records in layouts the
 host defines, mesh indices and lights, sorted for a view), ribbons
 through particles (tessellated, textured, facing the camera or a
-normal) and trails pinned to their sources, bounds and the draw order
-are in place, and beams come next.
+normal), trails pinned to their sources and beams struck along curves,
+bounds and the draw order are in place, and the expansion helper comes
+next.
 It has 56 public functions.
 
 ## Building

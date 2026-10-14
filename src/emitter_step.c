@@ -6,6 +6,7 @@
 
 #include "emitter_step.h"
 
+#include "beam.h"
 #include "birth.h"
 #include "bounds.h"
 #include "death_heap.h"
@@ -128,6 +129,40 @@ static void AppendEventBirthsBy(mvfxInstance* instance, int32_t emitter, int64_t
         {
             mvfxBirth birth = {k, tick, 0, 1, -1, *next + 1};
             mvfxAppendBirth(instance, emitter, &birth, inverseLife);
+        }
+    }
+}
+
+// A beam's strikes by the step's end: each at the tick the last one's
+// points die (its first at the emitter's start), while the instance has
+// not stopped; a strike's points all take its first's lifetime, and one
+// that dies within the step is skipped, its serials still owed.
+static void StrikeBeam(mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (!compiled->beam.enabled)
+    {
+        return;
+    }
+    int32_t points = compiled->beam.segments + 1;
+    while (state->count == 0 && state->beamStrike <= instance->clock &&
+           state->beamStrike < instance->stopTick)
+    {
+        int64_t tick = state->beamStrike;
+        uint64_t first = state->owed;
+        float inverseLife = mvfxInverseLifeOf(instance, emitter, first, tick);
+        int64_t death = mvfxDeathTick(tick, inverseLife);
+        state->beamStrike = death;
+        for (int32_t i = 0; i < points; ++i)
+        {
+            uint64_t k = state->owed;
+            state->owed = mvfxSaturatingAdd(state->owed, 1);
+            if (death > instance->clock)
+            {
+                mvfxBirth birth = {k, tick, i, points, -1, 0};
+                mvfxAppendBirth(instance, emitter, &birth, inverseLife);
+            }
         }
     }
 }
@@ -335,6 +370,8 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     }
     mvfxRunHostModules(instance, emitter, mvfx_stageAfterMotion);
     RemoveKilled(instance, emitter);
+    StrikeBeam(instance, emitter);
+    mvfxPlaceBeam(instance, emitter);
     mvfxWriteSceneQueries(instance, emitter);
     mvfxMeasureBounds(instance, emitter);
     mvfxEndDistance(instance, emitter);
