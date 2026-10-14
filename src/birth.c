@@ -192,6 +192,10 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
         }
         StoreWord(instance, emitter, mvfx_attributeFrame, at, frame);
     }
+    if (Has(compiled, mvfx_attributeCollisions))
+    {
+        StoreWord(instance, emitter, mvfx_attributeCollisions, at, 0);
+    }
     for (int32_t i = 0; i < compiled->customCount; ++i)
     {
         mvfxDrawVector(&compiled->custom[i], age, parameters,

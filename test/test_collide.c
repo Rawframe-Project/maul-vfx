@@ -283,6 +283,26 @@ static void TestLifeAndCount(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestCountAtBirth(void)
+{
+    // A particle collides and ends; one born in its slot after starts at
+    // no collisions.
+    static const mvfxCollider floor = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+    mvfxEmitterDef emitter = Held(&floor, 1, 4);
+    emitter.lifetime = mvfxRangeSource(1.5f, 1.5f);
+    Scene scene = NewScene(&emitter);
+    Place(&scene, 0, 1, 0, 0, -2, 0);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
+    CHECK(count[0] == 1, "one collision");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    CHECK(scene.live->emitters[0].count == 0, "ended");
+    Place(&scene, 0, 50, 0, 0, 0, 0);
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    CHECK(scene.live->emitters[0].count == 1 && count[0] == 0, "born at no collisions");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestHostAndSpaces(void)
 {
     // The instance's colliders, for an emitter that takes them; not for
@@ -522,6 +542,7 @@ int main(void)
     TestBounce();
     TestManyContacts();
     TestLifeAndCount();
+    TestCountAtBirth();
     TestHostAndSpaces();
     TestShapes();
     TestRefusals();
