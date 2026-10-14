@@ -236,12 +236,18 @@ static void SampleBoxVolume(const float h[3], mvfxWords4 words, float position[3
     normal[axis] = position[axis] < 0.0f ? -1.0f : 1.0f;
 }
 
-// The axis of the slab a draw chooses, by the slabs' weights.
+// The axis of the slab a draw chooses, by the slabs' weights; should the
+// product round onto the total, the heaviest axis rather than an empty one.
 static int32_t ChooseSlab(const float weights[3], float total, uint32_t word)
 {
     float pick = mvfxUnitFloat(word) * total;
     int32_t axis = pick < weights[0] ? 0 : (pick < weights[0] + weights[1] ? 1 : 2);
-    return weights[axis] > 0.0f ? axis : 2;
+    if (weights[axis] > 0.0f)
+    {
+        return axis;
+    }
+    int32_t heaviest = weights[1] > weights[0] ? 1 : 0;
+    return weights[2] > weights[heaviest] ? 2 : heaviest;
 }
 
 // A box's surface or shell: one of six slabs chosen by volume (by area on

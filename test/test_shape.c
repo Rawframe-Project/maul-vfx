@@ -100,6 +100,10 @@ static void TestSphere(void)
             {
                 normals = normals && fabs((double)s.normal[k] - (double)s.position[k] / r) <= 1e-5;
             }
+            for (int32_t k = 0; k < 3 && thicknesses[t] == 0.0f; ++k)
+            {
+                inside = inside && s.position[k] == 2.0f * s.normal[k];
+            }
             sumRadius += r;
             sumZ += (double)s.position[2];
             octants[(s.position[0] < 0.0f ? 1 : 0) + (s.position[1] < 0.0f ? 2 : 0) +
@@ -241,6 +245,14 @@ static void TestBox(void)
         faces[face < 0 ? 0 : face] += 1;
     }
     CHECK(onFace, "on the face its normal names");
+    int64_t negative = 0;
+    for (uint32_t i = 0; i < SAMPLES; ++i)
+    {
+        mvfxShapeSample s = Sample(&compiled, i);
+        negative += s.normal[0] + s.normal[1] + s.normal[2] < 0.0f ? 1 : 0;
+    }
+    CHECK(fabs((double)negative - SAMPLES * 0.5) <= 5.0 * sqrt(SAMPLES * 0.25),
+          "either side of the box alike");
     static const double areas[3] = {6.0 / 11.0, 3.0 / 11.0, 2.0 / 11.0};
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -300,6 +312,23 @@ static void TestCone(void)
     }
     CHECK(rim, "the rim leans by the angle");
 
+    // Over the whole base: the lean in proportion to the distance from the
+    // axis.
+    cone.thickness = 1.0f;
+    compiled = Compile(&cone);
+    bool leans = true;
+    for (uint32_t i = 0; i < 2000; ++i)
+    {
+        mvfxShapeSample s = Sample(&compiled, i);
+        double ring = Length(s.position);
+        leans = leans && fabs(atan2(sqrt((double)s.normal[0] * (double)s.normal[0] +
+                                         (double)s.normal[1] * (double)s.normal[1]),
+                                    (double)s.normal[2]) -
+                              atan(ring * tan(0.5))) <= 1e-4;
+    }
+    CHECK(leans, "the lean grows with the distance from the axis");
+    cone.thickness = 0.0f;
+
     // From an apex: within the angle, a uniform cosine over the cap.
     cone.radius = 0.0f;
     compiled = Compile(&cone);
@@ -350,6 +379,16 @@ static void TestCone(void)
     }
     CHECK(inFrustum, "within the frustum");
     CHECK(NearMean(sumHeight / SAMPLES, meanHeight, deviation), "heights by cross section");
+
+    // A cylinder (an angle of 0): heights uniform.
+    cone.angle = 0.0f;
+    compiled = Compile(&cone);
+    sumHeight = 0.0;
+    for (uint32_t i = 0; i < SAMPLES; ++i)
+    {
+        sumHeight += (double)Sample(&compiled, i).position[2];
+    }
+    CHECK(NearMean(sumHeight / SAMPLES, 1.0, 2.0 / sqrt(12.0)), "a cylinder's heights uniform");
 }
 
 static void TestTurnAndOffset(void)
@@ -383,6 +422,25 @@ static void TestTurnAndOffset(void)
                 fabsf(q.local[0] + p.local[1]) <= 1e-5f;
     }
     CHECK(agree, "turned and moved");
+
+    // A quaternion 0.09 % long turns as its unit one does.
+    mvfxShape longer = turned;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        longer.rotation[k] *= 1.0009f;
+    }
+    mvfxCompiledShape c = Compile(&longer);
+    bool same = true;
+    for (uint32_t i = 0; i < 1000; ++i)
+    {
+        mvfxShapeSample p = Sample(&b, i);
+        mvfxShapeSample q = Sample(&c, i);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && fabsf(p.position[k] - q.position[k]) <= 1e-5f;
+        }
+    }
+    CHECK(same, "the rotation normalized");
 }
 
 static void TestArcModes(void)
@@ -475,6 +533,24 @@ static void TestVelocities(void)
           "a uniform cosine about the axis");
     CHECK(NearMean(sums[1] / SAMPLES, 0.0, 0.3) && NearMean(sums[2] / SAMPLES, 0.0, 0.3),
           "no lean aside");
+
+    // About an axis leaning down, where the basis takes its other sign.
+    mvfxVelocity down = {.mode = mvfx_directionCone,
+                         .direction = {0.3f, 0.0f, -1.0f},
+                         .coneAngle = 0.2f,
+                         .speed = {1.0f, 1.0f}};
+    compiled = CompileVelocity(&down);
+    double axisLength = sqrt(0.09 + 1.0);
+    bool aboutDown = true;
+    for (uint32_t i = 0; i < 2000; ++i)
+    {
+        mvfxShapeSample s = Sample(&shape, i);
+        float v[3];
+        mvfxDrawVelocity(&compiled, &s, Words(i, 9u), v);
+        double reach = (0.3 * (double)v[0] - (double)v[2]) / axisLength;
+        aboutDown = aboutDown && reach >= cos(0.2) - 1e-5 && fabs(Length(v) - 1.0) <= 1e-5;
+    }
+    CHECK(aboutDown, "a cone about a downward axis");
 
     // From the center and along the normal: parallel to where the particle
     // is born on the sphere, the offset aside.

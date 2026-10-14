@@ -349,7 +349,7 @@ static void TestShapeAndVelocityRefused(void)
 {
     mvfxContext* context = NewContext(NULL, 8);
     uint64_t misuse = mvfxContext_GetMisuse(context);
-    for (int32_t field = 0; field < 27; ++field)
+    for (int32_t field = 0; field < 28; ++field)
     {
         mvfxEmitterDef bad = mvfxDefaultEmitterDef();
         mvfxShape* shape = &bad.shape;
@@ -430,6 +430,12 @@ static void TestShapeAndVelocityRefused(void)
         case 18:
             velocity->mode = 4;
             break;
+        case 27:
+            // The base's radius alone takes the top past the largest extent.
+            shape->kind = mvfx_shapeCone;
+            shape->radius = MVFX_MAX_EXTENT;
+            shape->length = 1.0f;
+            break;
         case 19:
             velocity->mode = mvfx_directionFixed;
             velocity->direction[0] = 0.0f;
@@ -455,8 +461,10 @@ static void TestShapeAndVelocityRefused(void)
         case 25:
             velocity->speed = (mvfxRange){0.0f, MVFX_MAX_EXTENT * 2.0f};
             break;
-        default:
+        case 26:
             velocity->direction[0] = INFINITY;
+            break;
+        default:
             break;
         }
         mvfxEffectDef def = OneEmitter(&bad);
