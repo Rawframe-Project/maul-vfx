@@ -84,7 +84,7 @@ static void TestHostAllocatorHoldsEverything(void)
     def.allocator = CountingAllocatorFor(&counter);
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "creates on the host allocator");
-    CHECK(counter.blocks == 1, "one block while alive");
+    CHECK(counter.blocks == 2, "the context and its effect table while alive");
     mvfxDestroyContext(context);
     CHECK(counter.blocks == 0 && counter.bytes == 0, "everything returned");
 }

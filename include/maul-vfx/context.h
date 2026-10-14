@@ -34,6 +34,13 @@ extern "C"
     // Waits until every range of the work behind userTask has run.
     typedef void mvfxFinishTaskFn(void* userTask, void* userContext);
 
+    // The named limits of a context. A creation past one is refused.
+    typedef struct mvfxContextLimits
+    {
+        // Effects that exist at once, from 1 to 65,536.
+        int32_t effects;
+    } mvfxContextLimits;
+
     // How a context is made. Build it with mvfxDefaultContextDef.
     typedef struct mvfxContextDef
     {
@@ -50,14 +57,15 @@ extern "C"
         mvfxFinishTaskFn* finishTask;
         // Passed to enqueueTask and finishTask as their userContext.
         void* userTaskContext;
+        mvfxContextLimits limits;
     } mvfxContextDef;
 
 // The cookie of a context def, which its default sets and
 // mvfxCreateContext checks.
 #define MVFX_CONTEXT_DEF_COOKIE 0x6D766378u
 
-    /// Returns the default context def: the C library's allocator and
-    /// serial work.
+    /// Returns the default context def: the C library's allocator, serial
+    /// work and 256 effects.
     ///
     /// The default is built in the program from the headers it includes,
     /// so the version it stamps is the program's.
@@ -74,6 +82,7 @@ extern "C"
 #endif
         def.cookie = MVFX_CONTEXT_DEF_COOKIE;
         def.version = MVFX_ABI_VERSION;
+        def.limits.effects = 256;
         return def;
     }
 
@@ -85,7 +94,8 @@ extern "C"
     ///         another major or minor version than the library's, checked
     ///         before anything else of it; `mvfx_errorInvalid` for a NULL
     ///         argument, a def without its cookie, an allocator with one
-    ///         function or a task system with one hook;
+    ///         function, a task system with one hook or a limit out of its
+    ///         range;
     ///         `mvfx_errorCapacity` when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread.

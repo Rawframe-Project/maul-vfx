@@ -32,8 +32,9 @@ stepping allocates nothing.
 
 ## Status
 
-Not released. The design is decided; the context is in place, and the
-math and random numbers come next. It has 7 public functions.
+Not released. The design is decided; the context, the library's own
+math and random numbers, curves and effects are in place, and the
+particles' step comes next. It has 12 public functions.
 
 ## Building
 

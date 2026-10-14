@@ -29,12 +29,12 @@ The root of Maul VFX: a context holds the host's allocator and task hooks, and o
 ```c
 static inline mvfxContextDef mvfxDefaultContextDef(void);
 ```
-Returns the default context def: the C library's allocator and serial work.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
+Returns the default context def: the C library's allocator, serial work and 256 effects.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut);
 ```
-Creates a context.  @param def         The def, from mvfxDefaultContextDef. @param contextOut  Receives the context; set to NULL on failure. @return `mvfx_success`; `mvfx_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, an allocator with one function or a task system with one hook; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a context.  @param def         The def, from mvfxDefaultContextDef. @param contextOut  Receives the context; set to NULL on failure. @return `mvfx_success`; `mvfx_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, an allocator with one function, a task system with one hook or a limit out of its range; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void mvfxDestroyContext(mvfxContext* context);
@@ -46,6 +46,35 @@ uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
 ```
 Returns how many calls the context refused as misuse: invalid arguments against it. Stale ids are not misuse.  @param context  The context. @return The count since the context was created. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+## `effect.h`
+
+Effects: what an effect's emitters spawn and how their particles live, stated once in a def and compiled when the effect is created. An effect never changes after; instances of it play it.
+
+```c
+mvfxEmitterDef mvfxDefaultEmitterDef(void);
+```
+Returns the default emitter def: 1,024 particles, 64 a second, each living one second, born at the emitter's origin.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+mvfxEffectDef mvfxDefaultEffectDef(void);
+```
+Returns the default effect def, with no emitters yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut);
+```
+Creates an effect from a def: checks every field of it and of its emitters, then compiles it, allocating its compiled form in one block from the context's allocator.  @param context    The context that owns the effect. @param def        The def, from mvfxDefaultEffectDef. @param effectOut  Receives the effect's id; the null id on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def or an emitter def without its cookie, or a field out of its range, which counts as misuse when the context is given; `mvfx_errorLimit` when the context holds its limit of effects; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect);
+```
+Destroys an effect and returns its memory to the context's allocator.  @param context  The context that owns the effect. @param effect   The effect. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live effect (the null id included); `mvfx_errorInvalid` for a NULL context. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+bool mvfxEffect_IsValid(const mvfxContext* context, mvfxEffectId effect);
+```
+Returns whether an id names a live effect of the context. A stale id is not misuse.  @param context  The context. @param effect   Any id. @return Whether the effect is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ---
 
-7 functions across 3 headers.
+12 functions across 4 headers.

@@ -7,7 +7,10 @@ half:
 hash:
 random:
 tasks: float_mode
-context: allocator tasks
+slots: allocator
+effect: allocator
+context: allocator effect slots tasks
+effect_api: context effect float_mode slots
 curve:
 curve_integral: curve
 gradient:

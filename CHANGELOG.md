@@ -22,3 +22,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Curves and gradients as effects state them (`maul-vfx/curve.h`): keys
   with constant, linear or cubic segments, tangents given, smooth or
   monotone, and color and alpha keys.
+- Effects (`maul-vfx/effect.h`): `mvfxCreateEffect` checks an effect def
+  and its emitter defs (capacity, spawn rate, lifetime) and compiles them
+  into one block, `mvfxDestroyEffect` and `mvfxEffect_IsValid` take its
+  generation-checked id; the context's def gains a limit of effects.
