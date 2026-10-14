@@ -426,6 +426,31 @@ static void TestTurbulence(void)
           "a velocity pulled toward");
     mvfxDestroyContext(scene.context);
 
+    // A particle in its second step: the field scrolled to that step's
+    // start, sampled where the particle was then.
+    force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
+    emitter = Held(&force, 1);
+    scene = NewScene(&emitter, 0);
+    AccelerationIn(&scene, home, a);
+    float before[3];
+    double start[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        before[k] = Array(&scene, (mvfxAttribute)(mvfx_attributeVelocityX + k))[0];
+        start[k] = (double)Array(&scene, (mvfxAttribute)(mvfx_attributePositionX + k))[0];
+    }
+    double startTime = (double)scene.live->clock / MVFX_TICKS_PER_SECOND;
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success,
+          "step");
+    mvfxCurlNoise(&s_noise, 77u, start, startTime, curl);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        a[k] =
+            1024.0f * (Array(&scene, (mvfxAttribute)(mvfx_attributeVelocityX + k))[0] - before[k]);
+    }
+    CHECK(Is(a, 3.0f * curl[0], 3.0f * curl[1], 3.0f * curl[2]), "scrolled to the step's start");
+    mvfxDestroyContext(scene.context);
+
     // A seed per instance: two instances differ, else they agree.
     for (int32_t per = 0; per < 2; ++per)
     {
