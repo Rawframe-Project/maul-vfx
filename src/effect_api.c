@@ -42,6 +42,45 @@ static mvfxResult FindGrids(mvfxContext* context, const mvfxEffectDef* def,
     return mvfx_success;
 }
 
+// Finds the grid of each grid collider of a valid def, as
+// mvfxFindColliderGrid.
+static mvfxResult FindColliderGrids(mvfxContext* context, const mvfxEffectDef* def,
+                                    mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_COLLIDERS])
+{
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        for (int32_t c = 0; c < def->emitters[i].colliderCount; ++c)
+        {
+            mvfxResult found =
+                mvfxFindColliderGrid(context, &def->emitters[i].colliders[c], &grids[i][c]);
+            if (found != mvfx_success)
+            {
+                return found;
+            }
+        }
+    }
+    return mvfx_success;
+}
+
+// Holds an effect's grids, or lets them go (by -1).
+static void HoldGrids(mvfxEffect* effect, int32_t by)
+{
+    for (int32_t i = 0; i < effect->emitterCount; ++i)
+    {
+        mvfxCompiledEmitter* emitter = &effect->emitters[i];
+        for (int32_t f = 0; f < emitter->forceCount; ++f)
+        {
+            mvfxGrid* grid = emitter->forceGrids[f];
+            grid != nullptr ? (void)(grid->users += by) : (void)0;
+        }
+        for (int32_t c = 0; c < emitter->colliderCount; ++c)
+        {
+            mvfxGrid* grid = emitter->colliderGrids[c];
+            grid != nullptr ? (void)(grid->users += by) : (void)0;
+        }
+    }
+}
+
 mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
 {
     if (effectOut == nullptr || context == nullptr)
@@ -78,7 +117,9 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
         }
     }
     mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_FORCES] = {{0}};
+    mvfxGrid* colliderGrids[MVFX_MAX_EMITTERS][MVFX_MAX_COLLIDERS] = {{0}};
     mvfxResult found = FindGrids(context, def, grids);
+    found = found == mvfx_success ? FindColliderGrids(context, def, colliderGrids) : found;
     if (found != mvfx_success)
     {
         return found;
@@ -100,9 +141,13 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
         for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
         {
             effect->emitters[i].forceGrids[f] = grids[i][f];
-            grids[i][f] != nullptr ? (void)(grids[i][f]->users += 1) : (void)0;
+        }
+        for (int32_t c = 0; c < def->emitters[i].colliderCount; ++c)
+        {
+            effect->emitters[i].colliderGrids[c] = colliderGrids[i][c];
         }
     }
+    HoldGrids(effect, 1);
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->effects, effect, &generation);
     *effectOut = (mvfxEffectId){index1, generation};
@@ -131,12 +176,8 @@ mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)
         {
             mesh->users -= 1;
         }
-        for (int32_t f = 0; f < compiled->emitters[i].forceCount; ++f)
-        {
-            mvfxGrid* grid = compiled->emitters[i].forceGrids[f];
-            grid != nullptr ? (void)(grid->users -= 1) : (void)0;
-        }
     }
+    HoldGrids(compiled, -1);
     mvfxReleaseEffect(compiled, &context->allocator);
     mvfxFreeSlot(&context->effects, effect.index1);
     return mvfx_success;

@@ -169,6 +169,9 @@ typedef struct mvfxCompiledEmitter
     mvfxCollision collision;
     mvfxCollider colliders[MVFX_MAX_COLLIDERS];
     int32_t colliderCount;
+    // The grids of its heightfields and distance grids (NULL for the
+    // primitives), held while the effect lives.
+    struct mvfxGrid* colliderGrids[MVFX_MAX_COLLIDERS];
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

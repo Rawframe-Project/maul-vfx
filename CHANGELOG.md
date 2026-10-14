@@ -118,3 +118,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   world's or the emitter's space), `mvfxInstance_SetColliders` sets an
   instance's own, a kill rule kills at a collision count, and host
   modules see the count.
+- Collision with grids: colliders gain heightfields and distance grids (a
+  `grid` of one component spanning a turned box), sampled along each
+  step every half cell; effects and instances hold their grids.

@@ -141,8 +141,9 @@ typedef struct mvfxInstance
     // Whether each particle of the emitter being stepped was killed this
     // step.
     uint8_t* killScratch;
-    // The colliders the host set, compiled.
+    // The colliders the host set, compiled, and their grids, held.
     mvfxCollider hostColliders[MVFX_MAX_COLLIDERS];
+    struct mvfxGrid* hostColliderGrids[MVFX_MAX_COLLIDERS];
     int32_t hostColliderCount;
     size_t blockBytes;
 } mvfxInstance;

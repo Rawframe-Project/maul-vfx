@@ -18,7 +18,7 @@ life: curve value
 velocity_modules: direction elementary life
 over_life: gradient life value
 kill: direction force
-collide: direction force
+collide: direction force grid
 effect: allocator collide curve curve_integral force kill over_life shape value velocity velocity_modules
 integrate: collide direction effect elementary force instance kill velocity_modules
 host_module: effect instance random
@@ -32,7 +32,7 @@ context: allocator effect grid instance mesh slots tasks
 effect_api: context effect float_mode grid grid_api mesh mesh_api slots
 mesh_api: context mesh slots
 grid_api: context grid slots
-instance_api: collide context effect_api instance mesh mesh_api slots spawn
+instance_api: collide context effect_api grid_api instance mesh mesh_api slots spawn
 step: context effect emitter_step float_mode instance instance_api tasks
 curve:
 curve_integral: curve

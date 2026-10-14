@@ -4,6 +4,7 @@
 #include "collide.h"
 
 #include "direction.h"
+#include "grid.h"
 
 #include <math.h>
 
@@ -50,8 +51,12 @@ bool mvfxIsColliderValid(const mvfxCollider* c)
     case mvfx_colliderSphere:
         return IsPositive(c->radius);
     case mvfx_colliderBox:
+    case mvfx_colliderDistance:
         return IsPositive(c->halfExtents[0]) && IsPositive(c->halfExtents[1]) &&
                IsPositive(c->halfExtents[2]) && IsRotation(c->rotation);
+    case mvfx_colliderHeightfield:
+        return IsPositive(c->halfExtents[0]) && IsPositive(c->halfExtents[2]) &&
+               IsRotation(c->rotation);
     default:
         return false;
     }
@@ -72,7 +77,7 @@ mvfxCollider mvfxCompileCollider(const mvfxCollider* collider)
     {
         (void)mvfxNormalize(out.normal);
     }
-    if (out.kind == mvfx_colliderBox)
+    if (out.kind >= mvfx_colliderBox)
     {
         double square = 0.0;
         for (int32_t k = 0; k < 4; ++k)
@@ -88,10 +93,28 @@ mvfxCollider mvfxCompileCollider(const mvfxCollider* collider)
     return out;
 }
 
-mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const mvfxSpaceMap* map,
-                                         float radius)
+mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const struct mvfxGrid* grid,
+                                         const mvfxSpaceMap* map, float radius)
 {
     float sigma = map->sigma;
+    if (grid != nullptr)
+    {
+        // A grid keeps its box; the radius is kept off in its field.
+        mvfxResolvedCollider out = {
+            .kind = collider->kind,
+            .inside = collider->inside,
+            .grid = grid,
+            .scale = sigma,
+            .grow = radius,
+        };
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out.halfExtents[k] = collider->halfExtents[k] * sigma;
+        }
+        mvfxMapPoint(map, collider->center, out.center);
+        mvfxMultiplyRotations(map->rotation, collider->rotation, out.rotation);
+        return out;
+    }
     // Growing by the radius: a plane moves out along its normal, a sphere
     // outside grows and one inside shrinks (never below 0), a box grows
     // or shrinks by it on every axis.
@@ -346,6 +369,217 @@ static bool HitBoxLocal(const float h[3], bool inside, const float a[3], const f
     return true;
 }
 
+// The most samples a grid collider takes along a segment, and the
+// halvings that find a crossing between two.
+#define FIELD_SAMPLES  256
+#define FIELD_HALVINGS 10
+
+// A grid collider's field at a place in its box's frame: at or above 0 on
+// the allowed side; above 0 (allowed) outside its box.
+static float FieldAt(const mvfxResolvedCollider* c, const float local[3])
+{
+    float u[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        u[k] = local[k] / (2.0f * c->halfExtents[k]) + 0.5f;
+    }
+    bool height = c->kind == mvfx_colliderHeightfield;
+    if (height)
+    {
+        u[1] = 0.5f;
+    }
+    float value[4];
+    if (!mvfxSampleGrid(c->grid, u, mvfx_borderNone, value))
+    {
+        return INFINITY;
+    }
+    float v = height ? local[1] - value[0] * c->scale : value[0] * c->scale;
+    return (c->inside ? -v : v) - c->grow;
+}
+
+// The span between a grid's points along the axes it varies on, the least
+// of them; 0 for a grid of one point.
+static float CellOf(const mvfxResolvedCollider* c)
+{
+    float cell = INFINITY;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int32_t n = c->grid->size[k];
+        cell = n > 1 ? fminf(cell, 2.0f * c->halfExtents[k] / (float)(n - 1)) : cell;
+    }
+    return cell < INFINITY ? cell : 0.0f;
+}
+
+// The field's gradient at a local place, unit length, toward the allowed
+// side; the box's up (or down, inside) where it is flat.
+static void GradientAt(const mvfxResolvedCollider* c, const float local[3], float out[3])
+{
+    float cell = CellOf(c);
+    float h = cell > 0.0f ? 0.5f * cell : 0.5f * c->halfExtents[0];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float a[3] = {local[0], local[1], local[2]};
+        float b[3] = {local[0], local[1], local[2]};
+        a[k] += h;
+        b[k] -= h;
+        float fa = FieldAt(c, a);
+        float fb = FieldAt(c, b);
+        // At the box's edge one side is outside: a one-sided difference.
+        float f0 = FieldAt(c, local);
+        out[k] = fa < INFINITY && fb < INFINITY ? (fa - fb) / (2.0f * h)
+                 : fa < INFINITY                ? (fa - f0) / h
+                 : fb < INFINITY                ? (f0 - fb) / h
+                                                : 0.0f;
+    }
+    if (!mvfxNormalize(out))
+    {
+        out[0] = 0.0f;
+        out[1] = c->inside && c->kind == mvfx_colliderHeightfield ? -1.0f : 1.0f;
+        out[2] = 0.0f;
+    }
+}
+
+// Puts a local place on the wrong side back on the surface: straight up
+// or down onto a heightfield, along the gradient out of a distance grid.
+static void PushOutOfField(const mvfxResolvedCollider* c, float local[3])
+{
+    for (int32_t pass = 0; pass < 4; ++pass)
+    {
+        float f = FieldAt(c, local);
+        if (!(f < 0.0f))
+        {
+            return;
+        }
+        if (c->kind == mvfx_colliderHeightfield)
+        {
+            local[1] += c->inside ? f : -f;
+            continue;
+        }
+        float g[3];
+        GradientAt(c, local, g);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            local[k] -= f * g[k];
+        }
+    }
+}
+
+// The part [low, high] of the local segment a to b within the grid's box
+// (a heightfield's X and Z); false when it misses it.
+static bool ClipToBox(const mvfxResolvedCollider* c, const float a[3], const float b[3], float* low,
+                      float* high)
+{
+    *low = 0.0f;
+    *high = 1.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        if (k == 1 && c->kind == mvfx_colliderHeightfield)
+        {
+            continue;
+        }
+        float h = c->halfExtents[k];
+        float d = b[k] - a[k];
+        if (d == 0.0f)
+        {
+            if (fabsf(a[k]) > h)
+            {
+                return false;
+            }
+            continue;
+        }
+        float t1 = (-h - a[k]) / d;
+        float t2 = (h - a[k]) / d;
+        *low = fmaxf(*low, fminf(t1, t2));
+        *high = fminf(*high, fmaxf(t1, t2));
+    }
+    return *low <= *high;
+}
+
+// The local segment's first crossing into a grid's wrong side, sampled
+// every half cell: its share of the segment, on the allowed side.
+static bool CrossField(const mvfxResolvedCollider* c, const float a[3], const float b[3], float* t)
+{
+    float low = 0.0f;
+    float high = 1.0f;
+    if (!ClipToBox(c, a, b, &low, &high))
+    {
+        return false;
+    }
+    float d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    float length = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) * (high - low);
+    float cell = CellOf(c);
+    float wanted = cell > 0.0f ? ceilf(length / (0.5f * cell)) : 1.0f;
+    int32_t n = (int32_t)fminf(fmaxf(wanted, 1.0f), (float)FIELD_SAMPLES);
+    float before = low;
+    for (int32_t i = 0; i <= n; ++i)
+    {
+        float at = low + (high - low) * (float)i / (float)n;
+        float p[3];
+        PointAt(a, b, at, p);
+        if (!(FieldAt(c, p) < 0.0f))
+        {
+            before = at;
+            continue;
+        }
+        // Halve [before, at] toward the crossing, keeping the allowed end.
+        for (int32_t halving = 0; halving < FIELD_HALVINGS && i > 0; ++halving)
+        {
+            float middle = 0.5f * (before + at);
+            PointAt(a, b, middle, p);
+            if (FieldAt(c, p) < 0.0f)
+            {
+                at = middle;
+            }
+            else
+            {
+                before = middle;
+            }
+        }
+        *t = before;
+        return true;
+    }
+    return false;
+}
+
+static bool HitField(const mvfxResolvedCollider* c, const float s[3], const float e[3], Hit* hit)
+{
+    const float* q = c->rotation;
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    float ds[3] = {s[0] - c->center[0], s[1] - c->center[1], s[2] - c->center[2]};
+    float de[3] = {e[0] - c->center[0], e[1] - c->center[1], e[2] - c->center[2]};
+    float a[3];
+    float b[3];
+    mvfxRotate(inverse, ds, a);
+    mvfxRotate(inverse, de, b);
+    float local[3];
+    if (FieldAt(c, a) < 0.0f)
+    {
+        hit->t = 0.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            local[k] = a[k];
+        }
+        PushOutOfField(c, local);
+    }
+    else if (CrossField(c, a, b, &hit->t))
+    {
+        PointAt(a, b, hit->t, local);
+    }
+    else
+    {
+        return false;
+    }
+    float normal[3];
+    GradientAt(c, local, normal);
+    mvfxRotate(q, local, hit->point);
+    mvfxRotate(q, normal, hit->normal);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        hit->point[k] += c->center[k];
+    }
+    return true;
+}
+
 // The segment's earliest contact with any collider.
 static bool FirstHit(const mvfxResolvedCollider* colliders, int32_t count, const float s[3],
                      const float e[3], Hit* best)
@@ -357,7 +591,8 @@ static bool FirstHit(const mvfxResolvedCollider* colliders, int32_t count, const
         const mvfxResolvedCollider* c = &colliders[i];
         bool met = c->kind == mvfx_colliderPlane    ? HitPlane(c, s, e, &hit)
                    : c->kind == mvfx_colliderSphere ? HitSphere(c, s, e, &hit)
-                                                    : HitBox(c, s, e, &hit);
+                   : c->kind == mvfx_colliderBox    ? HitBox(c, s, e, &hit)
+                                                    : HitField(c, s, e, &hit);
         if (met && (!found || hit.t < best->t))
         {
             *best = hit;

@@ -11,6 +11,7 @@
 #define MAUL_VFX_MODULES_H
 
 #include "maul-vfx/curve.h"
+#include "maul-vfx/grid.h"
 
 #include <stdbool.h>
 
@@ -216,14 +217,28 @@ extern "C"
         mvfx_colliderSphere = 1,
         // A box of halfExtents about center, turned by rotation.
         mvfx_colliderBox = 2,
+        // A grid of heights over a box's X and Z (halfExtents[0] and [2],
+        // about center, turned by rotation): a grid of one component and
+        // one point along Y, its values heights along the box's Y above
+        // center. Particles keep above it (below it, inside); outside the
+        // box's X and Z it does nothing.
+        mvfx_colliderHeightfield = 3,
+        // A grid of signed distances spanning a box (halfExtents about
+        // center, turned by rotation), one component, negative within the
+        // solid. Particles keep where it is positive (negative, inside);
+        // outside the box it does nothing.
+        mvfx_colliderDistance = 4,
     };
 
     // A collider. Its places and lengths are in its space, the world's or the
     // emitter's (turning and scaling with the instance); each value finite
     // and at most MVFX_MAX_EXTENT in size, fields its kind does not read not
     // checked. A particle's step is tested as the segment it covered, so it
-    // never passes through a collider however long the step; one that
-    // starts a step on the wrong side is put back on its surface.
+    // never passes through a primitive however long the step; a grid is
+    // sampled along the segment every half cell (at most 256 times within
+    // its box, more coarsely past that), so nothing thicker than a cell is
+    // passed through. One that starts a step on the wrong side is put back
+    // on the surface (a grid's: along its gradient).
     typedef struct mvfxCollider
     {
         mvfxColliderKind kind;
@@ -236,10 +251,14 @@ extern "C"
         float normal[3];
         // A sphere's radius, above 0.
         float radius;
-        // A box's half sizes, each above 0, and its rotation, a unit
-        // quaternion within 0.001.
+        // A box's or a grid's half sizes, each above 0 (a heightfield's Y not
+        // read), and its rotation, a unit quaternion within 0.001.
         float halfExtents[3];
         float rotation[4];
+        // A heightfield's or a distance grid's grid, its points spread over
+        // the box from face to face; values in the collider's space. It may
+        // not be destroyed while an effect or an instance holds it.
+        mvfxGridId grid;
     } mvfxCollider;
 
     // How an emitter's particles collide.

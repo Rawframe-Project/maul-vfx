@@ -8,6 +8,7 @@
 #include "collide.h"
 #include "context.h"
 #include "effect_api.h"
+#include "grid_api.h"
 #include "instance.h"
 #include "mesh.h"
 #include "mesh_api.h"
@@ -136,6 +137,16 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
     return mvfx_success;
 }
 
+// Holds the grids of an instance's own colliders, or lets them go (by -1).
+static void HoldHostGrids(mvfxInstance* instance, int32_t by)
+{
+    for (int32_t c = 0; c < instance->hostColliderCount; ++c)
+    {
+        mvfxGrid* grid = instance->hostColliderGrids[c];
+        grid != nullptr ? (void)(grid->users += by) : (void)0;
+    }
+}
+
 mvfxResult mvfxDestroyInstance(mvfxContext* context, mvfxInstanceId instance)
 {
     if (context == nullptr)
@@ -153,6 +164,7 @@ mvfxResult mvfxDestroyInstance(mvfxContext* context, mvfxInstanceId instance)
         mvfxMesh* mesh = live->emitters[e].mesh;
         mesh != nullptr ? (void)(mesh->users -= 1) : (void)0;
     }
+    HoldHostGrids(live, -1);
     mvfxReleaseInstance(live, &context->allocator);
     mvfxFreeSlot(&context->instances, instance.index1);
     return mvfx_success;
@@ -429,11 +441,23 @@ mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instan
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
+    mvfxGrid* grids[MVFX_MAX_COLLIDERS] = {0};
+    for (int32_t c = 0; c < count; ++c)
+    {
+        mvfxResult found = mvfxFindColliderGrid(context, &colliders[c], &grids[c]);
+        if (found != mvfx_success)
+        {
+            return found;
+        }
+    }
+    HoldHostGrids(live, -1);
     for (int32_t c = 0; c < count; ++c)
     {
         live->hostColliders[c] = mvfxCompileCollider(&colliders[c]);
+        live->hostColliderGrids[c] = grids[c];
     }
     live->hostColliderCount = count;
+    HoldHostGrids(live, 1);
     return mvfx_success;
 }
 

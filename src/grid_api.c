@@ -100,3 +100,25 @@ mvfxGrid* mvfxContextGrid(const mvfxContext* context, mvfxGridId grid)
 {
     return mvfxSlotObject(&context->grids, grid.index1, grid.generation);
 }
+
+mvfxResult mvfxFindColliderGrid(mvfxContext* context, const mvfxCollider* collider,
+                                mvfxGrid** gridOut)
+{
+    *gridOut = nullptr;
+    if (collider->kind != mvfx_colliderHeightfield && collider->kind != mvfx_colliderDistance)
+    {
+        return mvfx_success;
+    }
+    mvfxGrid* grid = mvfxContextGrid(context, collider->grid);
+    if (grid == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (grid->components != 1 || (collider->kind == mvfx_colliderHeightfield && grid->size[1] != 1))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    *gridOut = grid;
+    return mvfx_success;
+}

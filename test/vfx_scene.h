@@ -17,6 +17,8 @@
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
 
+#include <math.h>
+
 // The steps of the scene, in ticks: uneven, as a host's frames are.
 static const int64_t s_sceneSteps[] = {17476, 17477, 16000, 1,     40000, 17476, 3,
                                        99999, 17476, 17476, 8192,  65536, 17477, 1048576,
@@ -177,12 +179,55 @@ static inline void BuildScene(mvfxContext* context)
     static const mvfxHostModule kick = {.stage = mvfx_stageBeforeMotion, .function = SceneKick};
     emitters[1].hostModules = &kick;
     emitters[1].hostModuleCount = 1;
-    // The first falls onto a floor in its own space, bouncing, sliding and
-    // losing life, and meets the walls its instances set.
-    static const mvfxCollider floor = {.kind = mvfx_colliderPlane,
-                                       .space = mvfx_spaceLocal,
-                                       .center = {0, -1.2f, 0},
-                                       .normal = {0, 1, 0}};
+    // The first falls onto a floor and a bumpy heightfield in its own
+    // space, bouncing, sliding and losing life, and meets the walls its
+    // instances set.
+    static const float bumps[16] = {-1.0f, -0.7f, -0.9f,  -0.5f, -0.6f, -0.4f, -0.8f, -0.9f,
+                                    -0.9f, -0.5f, -0.45f, -0.7f, -0.4f, -0.8f, -0.6f, -1.0f};
+    mvfxGridDef bumpDef = mvfxDefaultGridDef();
+    bumpDef.size[0] = 4;
+    bumpDef.size[1] = 1;
+    bumpDef.size[2] = 4;
+    bumpDef.values = bumps;
+    mvfxGridId bumpGrid = {0};
+    CHECK(mvfxCreateGrid(context, &bumpDef, &bumpGrid) == mvfx_success, "scene heights");
+    const mvfxCollider ground[2] = {
+        {.kind = mvfx_colliderPlane,
+         .space = mvfx_spaceLocal,
+         .center = {0, -1.2f, 0},
+         .normal = {0, 1, 0}},
+        {.kind = mvfx_colliderHeightfield,
+         .space = mvfx_spaceLocal,
+         .halfExtents = {1.5f, 0, 1.5f},
+         .rotation = {0, 0.38268343f, 0, 0.92387953f},
+         .grid = bumpGrid},
+    };
+    // The second keeps out of a ball of distances, five points a side.
+    float ballDistances[125];
+    for (int32_t k = 0; k < 125; ++k)
+    {
+        float x = (float)(k % 5) * 0.5f - 1.0f;
+        float y = (float)(k / 5 % 5) * 0.5f - 1.0f;
+        float z = (float)(k / 25) * 0.5f - 1.0f;
+        ballDistances[k] = sqrtf(x * x + y * y + z * z) - 0.5f;
+    }
+    mvfxGridDef ballDef = mvfxDefaultGridDef();
+    ballDef.size[0] = 5;
+    ballDef.size[1] = 5;
+    ballDef.size[2] = 5;
+    ballDef.format = mvfx_gridFloat16;
+    ballDef.values = ballDistances;
+    mvfxGridId ballGrid = {0};
+    CHECK(mvfxCreateGrid(context, &ballDef, &ballGrid) == mvfx_success, "scene ball");
+    const mvfxCollider ball = {.kind = mvfx_colliderDistance,
+                               .space = mvfx_spaceLocal,
+                               .center = {0, 0, 0.6f},
+                               .halfExtents = {1, 1, 1},
+                               .rotation = {0, 0, 0, 1},
+                               .grid = ballGrid};
+    emitters[1].collision = (mvfxCollision){.enabled = true, .restitution = 0.3f};
+    emitters[1].colliders = &ball;
+    emitters[1].colliderCount = 1;
     emitters[0].collision = (mvfxCollision){.enabled = true,
                                             .hostColliders = true,
                                             .restitution = 0.6f,
@@ -190,8 +235,8 @@ static inline void BuildScene(mvfxContext* context)
                                             .lifeLoss = 0.1f,
                                             .restSpeed = 1.0f,
                                             .radius = 0.05f};
-    emitters[0].colliders = &floor;
-    emitters[0].colliderCount = 1;
+    emitters[0].colliders = ground;
+    emitters[0].colliderCount = 2;
     // Seven a second, so it spawns within the scene's 1.4 seconds and
     // fills.
     emitters[2].rate = 7.0f;

@@ -469,11 +469,15 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
     int32_t hosts = compiled->collision.hostColliders ? instance->hostColliderCount : 0;
     for (int32_t c = 0; c < compiled->colliderCount + hosts; ++c)
     {
-        const mvfxCollider* collider = c < compiled->colliderCount
-                                           ? &compiled->colliders[c]
-                                           : &instance->hostColliders[c - compiled->colliderCount];
+        bool own = c < compiled->colliderCount;
+        int32_t host = c - compiled->colliderCount;
+        const mvfxCollider* collider =
+            own ? &compiled->colliders[c] : &instance->hostColliders[host];
+        const struct mvfxGrid* grid =
+            own ? compiled->colliderGrids[c] : instance->hostColliderGrids[host];
         mvfxSpaceMap map = SpaceMapOf(instance, emitter, (mvfxSimulationSpace)collider->space);
-        state->colliders[state->colliderCount++] = mvfxResolveCollider(collider, &map, radius);
+        state->colliders[state->colliderCount++] =
+            mvfxResolveCollider(collider, grid, &map, radius);
     }
 }
 
