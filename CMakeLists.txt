@@ -54,6 +54,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/depth.c
     src/direction.c
     src/effect.c
+    src/effect_parts.c
     src/effect_api.c
     src/elementary.c
     src/expand.c
@@ -70,6 +71,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/neighbor.c
     src/contact.c
     src/plexus.c
+    src/unit.c
     src/steer.c
     src/event_spawn.c
     src/float_mode.c
@@ -108,6 +110,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(allocator WHITEBOX)
     maul_add_test(base)
     maul_add_test(beam)
+    maul_add_test(chain)
     maul_add_test(bounds)
     maul_add_test(collide WHITEBOX)
     maul_add_test(collide_grid WHITEBOX)

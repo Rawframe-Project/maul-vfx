@@ -410,122 +410,6 @@ static bool IsBeamValid(const mvfxEmitterDef* def, int32_t parameterCount)
     return shape && alone && def->ribbon.ids == mvfx_ribbonOne && !def->ribbon.pinHead;
 }
 
-// Whether a steer point is valid: a weight, a point or parameter, a
-// space and a radius in range.
-static bool IsSteerPointValid(const mvfxSteerPoint* point, int32_t parameterCount)
-{
-    return IsWithin(point->weight, 0.0f, MVFX_MAX_EXTENT) && point->space <= mvfx_spaceLocal &&
-           IsWithin(point->radius, 0.0f, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           (!point->fromParameter || (point->parameter >= 0 && point->parameter < parameterCount));
-}
-
-// Whether a steering path is valid: none (weight 0), or its points, space,
-// radius and lookahead in range.
-static bool IsSteerPathValid(const mvfxSteerPath* path)
-{
-    if (!IsWithin(path->weight, 0.0f, MVFX_MAX_EXTENT))
-    {
-        return false;
-    }
-    if (path->weight == 0.0f)
-    {
-        return true;
-    }
-    if (path->points == nullptr || path->pointCount < 2 ||
-        path->pointCount > MVFX_MAX_PATH_POINTS || path->space > mvfx_spaceLocal ||
-        !IsWithin(path->radius, 0.0f, MVFX_MAX_EXTENT) || !IsWithin(path->lookahead, 0.0f, 10.0f))
-    {
-        return false;
-    }
-    for (int32_t i = 0; i < 3 * path->pointCount; ++i)
-    {
-        if (!IsWithin(path->points[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Whether a flocking rule is valid: no weight, or a weight with neighbors
-// and a radius within theirs.
-static bool IsFlockRuleValid(const mvfxEmitterDef* def, float weight, float radius)
-{
-    return IsWithin(weight, 0.0f, MVFX_MAX_EXTENT) &&
-           (weight == 0.0f ||
-            (def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius));
-}
-
-// Whether an emitter's pair force is valid: a radius within its
-// neighbors', a strength in range.
-static bool IsPairForceValid(const mvfxEmitterDef* def)
-{
-    const mvfxPairForceDef* pair = &def->pairForce;
-    return !pair->enabled ||
-           (def->neighbors.enabled && pair->radius > 0.0f &&
-            pair->radius <= def->neighbors.radius && mvfxIsLifeCurveValid(&pair->strength) &&
-            IsWithin(pair->strength.value, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
-}
-
-// Whether an emitter's plexus links are valid.
-static bool IsPlexusValid(const mvfxPlexusDef* plexus)
-{
-    return !plexus->enabled ||
-           (IsWithin(plexus->distance, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS) &&
-            plexus->maxLinks >= 1 && plexus->maxLinks <= MVFX_MAX_PLEXUS_LINKS &&
-            plexus->maxPerParticle >= 1 && plexus->maxPerParticle <= MVFX_MAX_NEIGHBORS &&
-            IsWithin(plexus->width, 0.0f, MVFX_MAX_EXTENT));
-}
-
-// Whether an emitter's particle contacts are valid.
-static bool AreContactsValid(const mvfxContactDef* contacts)
-{
-    return !contacts->enabled ||
-           (contacts->radiusScale > 0.0f && contacts->radiusScale <= MVFX_MAX_EXTENT &&
-            contacts->iterations >= 1 && contacts->iterations <= MVFX_MAX_CONTACT_ITERATIONS &&
-            contacts->maxContacts >= 1 && contacts->maxContacts <= MVFX_MAX_NEIGHBORS &&
-            IsWithin(contacts->restitution, 0.0f, 1.0f) &&
-            IsWithin(contacts->friction, 0.0f, 1.0f));
-}
-
-// Whether an emitter's steering is valid.
-static bool IsSteeringValid(const mvfxEmitterDef* def, int32_t parameterCount)
-{
-    const mvfxSteeringDef* s = &def->steering;
-    if (!s->enabled)
-    {
-        return true;
-    }
-    return IsFlockRuleValid(def, s->separation, s->separationRadius) &&
-           IsFlockRuleValid(def, s->alignment, s->alignmentRadius) &&
-           IsFlockRuleValid(def, s->cohesion, s->cohesionRadius) &&
-           IsWithin(s->viewAngle, 0.0f, 3.14159274f) &&
-           IsWithin(s->cruiseSpeed, 0.0f, MVFX_MAX_EXTENT) &&
-           IsWithin(s->maxForce, 0.0f, MVFX_MAX_EXTENT) &&
-           IsSteerPointValid(&s->seek, parameterCount) &&
-           IsSteerPointValid(&s->flee, parameterCount) && IsSteerPathValid(&s->path);
-}
-
-// Whether an emitter's neighbor queries are valid against its effect: a
-// source of its own or in its space, a radius and a cap in range.
-static bool AreNeighborsValid(const mvfxEffectDef* def, int32_t i)
-{
-    const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
-    if (!neighbors->enabled)
-    {
-        return true;
-    }
-    int32_t source = neighbors->source;
-    bool sourceValid = source == -1 || (source >= 0 && source < def->emitterCount &&
-                                        def->emitters[source].space == def->emitters[i].space);
-    return sourceValid &&
-           IsWithin(neighbors->radius, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS) &&
-           neighbors->maxNeighbors >= 1 && neighbors->maxNeighbors <= MVFX_MAX_NEIGHBORS;
-}
-
 // Whether an emitter's spawning from events is valid against its effect:
 // a source not its own that writes the kind, counts and a share in range.
 static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
@@ -620,10 +504,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     {
         if (!IsEmitterDefValid(&def->emitters[i]) ||
             !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
-            !AreNeighborsValid(def, i) ||
-            !IsSteeringValid(&def->emitters[i], def->parameterCount) ||
-            !AreContactsValid(&def->emitters[i].contacts) || !IsPairForceValid(&def->emitters[i]) ||
-            !IsPlexusValid(&def->emitters[i].plexus) ||
+
             !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
@@ -664,6 +545,8 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
     Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
     Store(plan, def->neighbors.enabled, mvfx_attributeNeighborCount, 7);
+    Store(plan, def->unit.kind != mvfx_unitParticle && def->unit.pinFirst, mvfx_attributeAnchorX,
+          3);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
           6);
     for (int32_t i = 0; i < def->customCount; ++i)
@@ -711,22 +594,6 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
     *gradients += IsWhite(&def->ribbon.color) ? 0 : 1;
 }
 
-// Copies an emitter's steering, its path's points into the compiled
-// emitter so nothing of the host's is kept.
-static void CopySteering(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
-{
-    out->steering = def->steering.enabled ? def->steering : (mvfxSteeringDef){0};
-    const mvfxSteerPath* path = &out->steering.path;
-    for (int32_t i = 0; path->weight > 0.0f && i < path->pointCount; ++i)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            out->pathPoints[i][k] = def->steering.path.points[3 * i + k];
-        }
-    }
-    out->steering.path.points = nullptr;
-}
-
 // Compiles an emitter's pair force, its strength's table into space.
 static void CompilePairForce(const mvfxPairForceDef* pair, mvfxTableSpace* space,
                              mvfxCompiledEmitter* out)
@@ -761,9 +628,6 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     mvfxCompileOverLife(&def->overLife, def->custom, def->customCount, space, &out->overLife);
     out->events = def->events;
     out->eventSpawn = def->eventSpawn;
-    CopySteering(def, out);
-    out->plexus = def->plexus.enabled ? def->plexus : (mvfxPlexusDef){0};
-    out->contacts = def->contacts.enabled ? def->contacts : (mvfxContactDef){0};
     out->drawPriority = def->drawPriority;
     out->fixedBounds = def->fixedBounds;
     for (int32_t k = 0; k < 3; ++k)
@@ -890,29 +754,6 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
                             : seconds * (double)source->rate;
 }
 
-// Resolves each emitter's neighbor source to an index, and sizes each
-// grid's cells by the largest radius that queries it.
-static void ResolveNeighbors(const mvfxEffectDef* def, mvfxEffect* effect)
-{
-    for (int32_t i = 0; i < def->emitterCount; ++i)
-    {
-        effect->emitters[i].gridCell = 0.0f;
-        effect->emitters[i].neighbors = (mvfxNeighborDef){0};
-    }
-    for (int32_t i = 0; i < def->emitterCount; ++i)
-    {
-        mvfxNeighborDef neighbors = def->emitters[i].neighbors;
-        if (!neighbors.enabled)
-        {
-            continue;
-        }
-        neighbors.source = neighbors.source < 0 ? i : neighbors.source;
-        effect->emitters[i].neighbors = neighbors;
-        float* cell = &effect->emitters[neighbors.source].gridCell;
-        *cell = neighbors.radius > *cell ? neighbors.radius : *cell;
-    }
-}
-
 mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
                               const mvfxAllocator* allocator)
 {
@@ -982,7 +823,6 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
     {
         CompileEmitter(&def->emitters[i], meshes[i], &emitterSpace, &effect->emitters[i]);
     }
-    ResolveNeighbors(def, effect);
     (void)OrderEmitters(def, effect->stepOrder);
     return effect;
 }

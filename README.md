@@ -52,8 +52,8 @@ sprites and ribbons expanded into quads and strips for renderers that
 cannot instance, bounds and the draw order, quality levels, the
 context's particle budget, off-screen policies and the neighbor grid
 with its neighbor attributes, flocking, steering, particle contacts,
-forces between particles and plexus links are in place, and the XPBD
-solver comes next.
+forces between particles, plexus links and chains by XPBD are in place,
+and cloth sheets come next.
 It has 64 public functions.
 
 ## Building

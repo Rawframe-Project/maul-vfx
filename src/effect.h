@@ -87,10 +87,13 @@ enum
     mvfx_attributeNeighborCount = 70,
     mvfx_attributeNeighborCenterX = 71,
     mvfx_attributeNeighborVelocityX = 74,
+    // A unit's point's birth place in the particles' space, where a pinned
+    // first point stays.
+    mvfx_attributeAnchorX = 77,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeNeighborVelocityX + 3)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeAnchorX + 3)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.
@@ -216,6 +219,10 @@ typedef struct mvfxCompiledEmitter
     float pathPoints[MVFX_MAX_PATH_POINTS][3];
     mvfxContactDef contacts;
     mvfxPlexusDef plexus;
+    // Its units: the def, the direction normalized; points 1 for a
+    // particle.
+    mvfxUnitDef unit;
+    int32_t unitPoints;
     // Its pair force: the radius (0 for none) and the strength over the
     // distance.
     float pairRadius;

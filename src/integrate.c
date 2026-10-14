@@ -388,8 +388,8 @@ static void MoveParticle(const Range* r, int32_t i)
 }
 
 // Moves particles from first to end over seconds from tick.
-static void MoveRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
-                      int64_t tick, double seconds)
+void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
+                        int64_t tick, double seconds)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     Range r = {
@@ -521,13 +521,13 @@ void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
 {
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
-    MoveRange(instance, emitter, 0, instance->emitters[emitter].count, instance->stepStart,
-              seconds);
+    mvfxIntegrateRange(instance, emitter, 0, instance->emitters[emitter].count, instance->stepStart,
+                       seconds);
 }
 
 void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick)
 {
     // Even one born at the step's end, so the kill rules test where it is.
     double seconds = (double)(instance->clock - birthTick) / (double)MVFX_TICKS_PER_SECOND;
-    MoveRange(instance, emitter, at, at + 1, birthTick, seconds);
+    mvfxIntegrateRange(instance, emitter, at, at + 1, birthTick, seconds);
 }

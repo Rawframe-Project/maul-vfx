@@ -280,7 +280,9 @@ void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
     {
         return;
     }
-    double capacity = (double)instance->emitters[emitter].capacity;
+    // The room in units.
+    int32_t units = instance->emitters[emitter].capacity / compiled->unitPoints;
+    double capacity = (double)units;
     double take = owed < capacity ? owed : capacity;
     state->distanceTake = (uint64_t)take;
     state->distanceSkip = owed - take;

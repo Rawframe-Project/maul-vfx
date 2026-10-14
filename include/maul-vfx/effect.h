@@ -405,6 +405,59 @@ extern "C"
         mvfxGradient color;
     } mvfxRibbonDef;
 
+// The most points of a chain, and the most substeps a step of an
+// emitter of units takes.
+#define MVFX_MAX_CHAIN_POINTS 256
+#define MVFX_MAX_SUBSTEPS     32
+
+    // What one birth of an emitter is.
+    typedef uint8_t mvfxUnitKind;
+    enum
+    {
+        // A particle.
+        mvfx_unitParticle = 0,
+        // A chain (a rope, a tail): points particles in a line, each joined
+        // to the next and the one after by constraints.
+        mvfx_unitChain = 1,
+    };
+
+    // The units an emitter's births are, solved by XPBD (Macklin et al.
+    // 2016) in substeps (Macklin et al. 2019): each substep moves every
+    // point as a particle (gravity, drag, forces, velocity modules,
+    // collisions), then projects each constraint once, set by set, and
+    // takes the velocities from the places. A unit's points are born
+    // together with its root's place, velocity, life and values, the
+    // place of point j its root's plus j spacings along direction; they
+    // die together, a kill of one kills the unit. Counts (owed, refused,
+    // capacities of host spawns and event spawns) are in units; the
+    // emitter's capacity is in points, a multiple of the unit's.
+    typedef struct mvfxUnitDef
+    {
+        mvfxUnitKind kind;
+        // A chain's points, from 2 to MVFX_MAX_CHAIN_POINTS.
+        int32_t points;
+        // The rest distance between neighbors, above 0 and at most
+        // MVFX_MAX_EXTENT, in the emitter's space (scaling with the
+        // instance).
+        float spacing;
+        // From each point to the next at birth, in the emitter's space; not
+        // of length 0 (normalized).
+        float direction[3];
+        // From 1 to MVFX_MAX_SUBSTEPS.
+        int32_t substeps;
+        // The compliance (inverse stiffness, 0 rigid) of the distance between
+        // neighbors and of that between points two apart (bending), each
+        // from 0 to MVFX_MAX_EXTENT.
+        float stretchCompliance;
+        float bendCompliance;
+        // The relative speed along each constraint lost as
+        // 1 - e^(-damping t), from 0 to MVFX_MAX_DRAG.
+        float damping;
+        // Whether a unit's first point stays at its birth place in the
+        // emitter's space (moving with a local emitter's instance).
+        bool pinFirst;
+    } mvfxUnitDef;
+
 // The most plexus links an emitter keeps a step.
 #define MVFX_MAX_PLEXUS_LINKS (1 << 20)
 
@@ -638,6 +691,8 @@ extern "C"
         mvfxRibbonDef ribbon;
         // Its plexus links.
         mvfxPlexusDef plexus;
+        // What each of its births is: a particle, or a unit of them.
+        mvfxUnitDef unit;
         // A beam through its particles.
         mvfxBeamDef beam;
         // How its particles expand into quads.

@@ -4,8 +4,8 @@
 // Neighbor grids: cell keys hashed into a table, a stable counting sort,
 // queries over the 27 cells around a place.
 
-#ifndef MVFX_NEIGHBOR_H
-#define MVFX_NEIGHBOR_H
+#ifndef MAUL_VFX_SRC_NEIGHBOR_H
+#define MAUL_VFX_SRC_NEIGHBOR_H
 
 #include "instance.h"
 #include "life.h"

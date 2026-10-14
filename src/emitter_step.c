@@ -20,6 +20,7 @@
 #include "scene_query.h"
 #include "spawn.h"
 #include "steer.h"
+#include "unit.h"
 
 #include <math.h>
 
@@ -94,11 +95,35 @@ int64_t mvfxDeathTick(int64_t birth, float inverseLife)
     return tick;
 }
 
-// Whether the step's births fit beside the live particles: they are
-// counted on a copy of the cursors, up to the room there is.
+// The units an emitter holds at most, and those alive: its particles for
+// an emitter of particles.
+static int64_t UnitCapacity(const mvfxInstance* instance, int32_t emitter)
+{
+    return instance->emitters[emitter].capacity / instance->effect->emitters[emitter].unitPoints;
+}
+
+static int64_t LiveUnits(const mvfxInstance* instance, int32_t emitter)
+{
+    return instance->emitters[emitter].count / instance->effect->emitters[emitter].unitPoints;
+}
+
+// Moves the particles alive at the step's start: as units by XPBD, or each
+// as a particle.
+static void MoveLive(mvfxInstance* instance, int32_t emitter)
+{
+    if (instance->effect->emitters[emitter].unitPoints > 1)
+    {
+        mvfxStepUnits(instance, emitter);
+        return;
+    }
+    mvfxIntegrateEmitter(instance, emitter);
+}
+
+// Whether the step's births fit beside the live units: they are counted
+// on a copy of the cursors, up to the room there is.
 static bool BirthsFit(const mvfxInstance* instance, int32_t emitter)
 {
-    int64_t room = instance->emitters[emitter].capacity - instance->emitters[emitter].count;
+    int64_t room = UnitCapacity(instance, emitter) - LiveUnits(instance, emitter);
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int64_t tick = 0;
@@ -237,7 +262,7 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
         (void)mvfxPopDeathsBy(heap, tick);
         uint64_t k = state->owed;
         state->owed = mvfxSaturatingAdd(state->owed, 1);
-        if (heap->count >= instance->emitters[emitter].capacity)
+        if (heap->count >= UnitCapacity(instance, emitter))
         {
             state->refused = mvfxSaturatingAdd(state->refused, 1);
             continue;
@@ -262,11 +287,14 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     const uint32_t* birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow);
     const uint32_t* birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh);
     const float* inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife);
-    mvfxDeathHeap heap = {instance->deathScratch, state->count};
-    for (int32_t i = 0; i < state->count; ++i)
+    // A unit's death, its first point's (all of its points die together).
+    int32_t points = instance->effect->emitters[emitter].unitPoints;
+    mvfxDeathHeap heap = {instance->deathScratch, (int32_t)LiveUnits(instance, emitter)};
+    for (int32_t u = 0; u < heap.count; ++u)
     {
+        int32_t i = u * points;
         int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
-        heap.ticks[i] = mvfxDeathTick(birth, inverseLife[i]);
+        heap.ticks[u] = mvfxDeathTick(birth, inverseLife[i]);
     }
     mvfxBuildDeathHeap(&heap);
     int32_t accepted = 0;
@@ -277,7 +305,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     {
         uint64_t k = state->owed;
         state->owed = mvfxSaturatingAdd(state->owed, 1);
-        if (heap.count >= instance->emitters[emitter].capacity)
+        if (heap.count >= UnitCapacity(instance, emitter))
         {
             state->refused = mvfxSaturatingAdd(state->refused, 1);
             continue;
@@ -299,7 +327,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     {
         AcceptEventBirthsBy(instance, emitter, &heap, tick, &next, &accepted);
         (void)mvfxPopDeathsBy(&heap, tick);
-        int64_t room = instance->emitters[emitter].capacity - heap.count;
+        int64_t room = UnitCapacity(instance, emitter) - heap.count;
         int64_t taken = count < room ? count : room;
         for (int64_t i = 0; i < taken; ++i)
         {
@@ -321,7 +349,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     mvfxFindNeighbors(instance, emitter);
     mvfxSteerEmitter(instance, emitter);
     mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
-    mvfxIntegrateEmitter(instance, emitter);
+    MoveLive(instance, emitter);
     for (int32_t i = 0; i < accepted; ++i)
     {
         const mvfxBirth* birth = &instance->acceptedScratch[i];
@@ -335,7 +363,21 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
 static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
-    const uint8_t* killed = instance->killScratch;
+    uint8_t* killed = instance->killScratch;
+    // A unit dies whole: a kill of any of its points kills it.
+    int32_t points = instance->effect->emitters[emitter].unitPoints;
+    for (int32_t u = 0; points > 1 && u < state->count / points; ++u)
+    {
+        uint8_t any = 0;
+        for (int32_t j = 0; j < points; ++j)
+        {
+            any |= killed[u * points + j];
+        }
+        for (int32_t j = 0; j < points; ++j)
+        {
+            killed[u * points + j] = any;
+        }
+    }
     const mvfxAttributePlan* plan = &instance->effect->emitters[emitter].plan;
     int32_t kept = 0;
     for (int32_t i = 0; i < state->count; ++i)
@@ -388,7 +430,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
         mvfxFindNeighbors(instance, emitter);
         mvfxSteerEmitter(instance, emitter);
         mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
-        mvfxIntegrateEmitter(instance, emitter);
+        MoveLive(instance, emitter);
         BirthsWithRoom(instance, emitter);
     }
     else

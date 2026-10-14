@@ -626,6 +626,68 @@ static inline void BuildScene(mvfxContext* context)
     mvfxInstanceId meshInstance = {0};
     CHECK(mvfxCreateInstance(context, &meshInstanceDef, &meshInstance) == mvfx_success,
           "mesh instance");
+    // Chains: pinned ropes in the world, two every 0.4 seconds, and loose
+    // local tails falling with drag toward an attractor, which pulls their
+    // points apart.
+    mvfxEmitterDef chainEmitters[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    static const mvfxBurst ropes = {.time = 0.0f,
+                                    .minCount = 2,
+                                    .maxCount = 2,
+                                    .cycles = 0,
+                                    .interval = 0.4f,
+                                    .probability = 1.0f};
+    chainEmitters[0].rate = 0.0f;
+    chainEmitters[0].bursts = &ropes;
+    chainEmitters[0].burstCount = 1;
+    chainEmitters[0].capacity = 6 * 8;
+    chainEmitters[0].lifetime = mvfxRangeSource(1.2f, 1.2f);
+    chainEmitters[0].shape.kind = mvfx_shapeSphere;
+    chainEmitters[0].shape.radius = 1.0f;
+    chainEmitters[0].motion.gravity[1] = -9.81f;
+    chainEmitters[0].ribbon.ids = mvfx_ribbonOne;
+    chainEmitters[0].unit = (mvfxUnitDef){.kind = mvfx_unitChain,
+                                          .points = 6,
+                                          .spacing = 0.3f,
+                                          .direction = {1, -1, 0},
+                                          .substeps = 4,
+                                          .stretchCompliance = 1e-4f,
+                                          .bendCompliance = 1e-2f,
+                                          .damping = 1.5f,
+                                          .pinFirst = true};
+    chainEmitters[1].space = mvfx_spaceLocal;
+    chainEmitters[1].rate = 3.0f;
+    chainEmitters[1].capacity = 4 * 6;
+    chainEmitters[1].lifetime = mvfxRangeSource(0.8f, 1.6f);
+    chainEmitters[1].velocity.speed = (mvfxRange){1.0f, 3.0f};
+    chainEmitters[1].motion.gravity[1] = -4.0f;
+    chainEmitters[1].motion.drag = 0.6f;
+    static const mvfxForce push = {.kind = mvfx_forceAttractor,
+                                   .space = mvfx_spaceLocal,
+                                   .point = {0, -1, 0.5f},
+                                   .strength = 3.0f,
+                                   .softening = 0.25f};
+    chainEmitters[1].forces = &push;
+    chainEmitters[1].forceCount = 1;
+    chainEmitters[1].unit = (mvfxUnitDef){.kind = mvfx_unitChain,
+                                          .points = 4,
+                                          .spacing = 0.2f,
+                                          .direction = {0, 0, 1},
+                                          .substeps = 3,
+                                          .stretchCompliance = 1e-3f,
+                                          .bendCompliance = 0.1f,
+                                          .damping = 0.5f};
+    mvfxEffectDef chainEffectDef = mvfxDefaultEffectDef();
+    chainEffectDef.emitters = chainEmitters;
+    chainEffectDef.emitterCount = 2;
+    mvfxEffectId chainEffect = {0};
+    CHECK(mvfxCreateEffect(context, &chainEffectDef, &chainEffect) == mvfx_success, "chain effect");
+    mvfxInstanceDef chainInstanceDef = mvfxDefaultInstanceDef();
+    chainInstanceDef.effect = chainEffect;
+    chainInstanceDef.origin[0] = 1495.0;
+    chainInstanceDef.seed = 0xC4A1u;
+    mvfxInstanceId chainInstance = {0};
+    CHECK(mvfxCreateInstance(context, &chainInstanceDef, &chainInstance) == mvfx_success,
+          "chain instance");
     for (int32_t i = 0; i < 4; ++i)
     {
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();

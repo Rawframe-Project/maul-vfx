@@ -40,6 +40,7 @@ typedef struct EmitterAt
     size_t plexusIndex;
     size_t plexusLinks;
     uint32_t plexusMask;
+    size_t unitPrevious;
 } EmitterAt;
 
 // The entries of a grid's table at a capacity: a power of two at least
@@ -110,8 +111,11 @@ int32_t mvfxCapacityAt(const mvfxEffect* effect, int32_t emitter, int32_t qualit
     {
         return compiled->capacity;
     }
-    int32_t scaled = (int32_t)floor((double)compiled->capacity * (double)level->capacityScale);
-    return scaled > 1 ? scaled : 1;
+    // Whole units: a multiple of the unit's points, at least one unit.
+    int32_t points = compiled->unitPoints;
+    int32_t whole = compiled->capacity / points;
+    int32_t units = (int32_t)floor((double)whole * (double)level->capacityScale);
+    return (units > 1 ? units : 1) * points;
 }
 
 int64_t mvfxParticlesAt(const mvfxEffect* effect, int32_t quality)
@@ -218,6 +222,7 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
                 },
             .links = (int32_t*)(block + at[e].plexusLinks),
         };
+        instance->emitters[e].unitPrevious = (float*)(block + at[e].unitPrevious);
     }
 }
 
@@ -250,6 +255,8 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         AddGrid(&layout, &effect->emitters[e], capacities[e], &at[e]);
         AddContacts(&layout, &effect->emitters[e], capacities[e], &at[e]);
         AddPlexus(&layout, &effect->emitters[e], capacities[e], &at[e]);
+        size_t previous = effect->emitters[e].unitPoints > 1 ? 3u * (size_t)capacities[e] : 0;
+        at[e].unitPrevious = mvfxLayoutAdd(&layout, previous, sizeof(float), alignof(float));
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {

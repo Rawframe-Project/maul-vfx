@@ -184,6 +184,11 @@ static uint32_t AssignRibbon(mvfxInstance* instance, int32_t emitter, const mvfx
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
+    if (compiled->unitPoints > 1)
+    {
+        // A unit is a ribbon: its first point's serial.
+        return (uint32_t)(birth->serial * (uint64_t)compiled->unitPoints);
+    }
     if (compiled->ribbonIds == mvfx_ribbonPerBatch)
     {
         return (uint32_t)(birth->serial - (uint64_t)birth->batchIndex);
@@ -429,11 +434,84 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
     }
 }
 
+// The step from one point of a unit to the next at birth, in the
+// particles' space: along the direction by the spacing, turned and scaled
+// with the instance for a world-space emitter.
+static void UnitStep(const mvfxInstance* instance, int32_t emitter, int64_t tick, float out[3])
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    float step[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        step[k] = compiled->unit.direction[k] * compiled->unit.spacing;
+        out[k] = step[k];
+    }
+    if (compiled->space == mvfx_spaceWorld)
+    {
+        mvfxTransform transform;
+        mvfxTransformAt(instance, tick, &transform);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            step[k] *= transform.scale;
+        }
+        mvfxRotate(transform.rotation, step, out);
+    }
+}
+
+// Appends point j of a birth at a place with a velocity.
+static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
+                        float inverseLife, int32_t j, const float position[3],
+                        const float velocity[3])
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    int32_t at = instance->emitters[emitter].count;
+    const mvfxHostBirth* given = GivenOf(instance, emitter, birth);
+    StoreVector(instance, emitter, mvfx_attributePositionX, 3, at, position);
+    StoreVector(instance, emitter, mvfx_attributeVelocityX, 3, at, velocity);
+    if (Has(compiled, mvfx_attributeAnchorX))
+    {
+        StoreVector(instance, emitter, mvfx_attributeAnchorX, 3, at, position);
+    }
+    StoreWord(instance, emitter, mvfx_attributeBirthLow, at,
+              (uint32_t)((uint64_t)birth->tick & 0xFFFFFFFFu));
+    StoreWord(instance, emitter, mvfx_attributeBirthHigh, at,
+              (uint32_t)((uint64_t)birth->tick >> 32u));
+    Store(instance, emitter, mvfx_attributeInverseLife, at, inverseLife);
+    StoreWord(instance, emitter, mvfx_attributeSerial, at,
+              (uint32_t)(birth->serial * (uint64_t)compiled->unitPoints + (uint64_t)j));
+    AppendValues(instance, emitter, birth, at);
+    if (given != nullptr)
+    {
+        const mvfxHostBirth* host = given;
+        if ((host->given & mvfx_givenColor) != 0)
+        {
+            StoreVector(instance, emitter, mvfx_attributeColorR, 4, at, host->color);
+        }
+        if ((host->given & mvfx_givenSize) != 0)
+        {
+            StoreVector(instance, emitter, mvfx_attributeSizeX, 3, at, host->size);
+        }
+    }
+    instance->emitters[emitter].count = at + 1;
+    mvfxRecordEvent(instance, emitter,
+                    &(mvfxEventFact){.kind = mvfx_eventBirth,
+                                     .particle = at,
+                                     .tick = birth->tick,
+                                     .placeTick = birth->tick});
+    mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
+    if (j == 0 && Has(compiled, mvfx_attributeAnchorX))
+    {
+        // A pinned first point stays where it was born.
+        static const float still[3] = {0.0f, 0.0f, 0.0f};
+        StoreVector(instance, emitter, mvfx_attributePositionX, 3, at, position);
+        StoreVector(instance, emitter, mvfx_attributeVelocityX, 3, at, still);
+    }
+}
+
 void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
                      float inverseLife)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    int32_t at = instance->emitters[emitter].count;
     float position[3];
     float velocity[3];
     const mvfxHostBirth* given = GivenOf(instance, emitter, birth);
@@ -461,36 +539,16 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
             PlaceInWorld(instance, emitter, birth->tick, position, velocity);
         }
     }
-    Store(instance, emitter, mvfx_attributePositionX, at, position[0]);
-    Store(instance, emitter, mvfx_attributePositionY, at, position[1]);
-    Store(instance, emitter, mvfx_attributePositionZ, at, position[2]);
-    Store(instance, emitter, mvfx_attributeVelocityX, at, velocity[0]);
-    Store(instance, emitter, mvfx_attributeVelocityY, at, velocity[1]);
-    Store(instance, emitter, mvfx_attributeVelocityZ, at, velocity[2]);
-    StoreWord(instance, emitter, mvfx_attributeBirthLow, at,
-              (uint32_t)((uint64_t)birth->tick & 0xFFFFFFFFu));
-    StoreWord(instance, emitter, mvfx_attributeBirthHigh, at,
-              (uint32_t)((uint64_t)birth->tick >> 32u));
-    Store(instance, emitter, mvfx_attributeInverseLife, at, inverseLife);
-    StoreWord(instance, emitter, mvfx_attributeSerial, at, (uint32_t)birth->serial);
-    AppendValues(instance, emitter, birth, at);
-    if (given != nullptr)
+    float step[3] = {0.0f, 0.0f, 0.0f};
+    if (compiled->unitPoints > 1)
     {
-        const mvfxHostBirth* host = given;
-        if ((host->given & mvfx_givenColor) != 0)
-        {
-            StoreVector(instance, emitter, mvfx_attributeColorR, 4, at, host->color);
-        }
-        if ((host->given & mvfx_givenSize) != 0)
-        {
-            StoreVector(instance, emitter, mvfx_attributeSizeX, 3, at, host->size);
-        }
+        UnitStep(instance, emitter, birth->tick, step);
     }
-    instance->emitters[emitter].count = at + 1;
-    mvfxRecordEvent(instance, emitter,
-                    &(mvfxEventFact){.kind = mvfx_eventBirth,
-                                     .particle = at,
-                                     .tick = birth->tick,
-                                     .placeTick = birth->tick});
-    mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
+    // A unit's points along its step from its root, in order.
+    for (int32_t j = 0; j < compiled->unitPoints; ++j)
+    {
+        const float place[3] = {position[0] + step[0] * (float)j, position[1] + step[1] * (float)j,
+                                position[2] + step[2] * (float)j};
+        AppendPoint(instance, emitter, birth, inverseLife, j, place, velocity);
+    }
 }

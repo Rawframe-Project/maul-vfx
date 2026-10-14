@@ -3,8 +3,8 @@
 //
 // Particle contacts: position-based projections, then impulses.
 
-#ifndef MVFX_CONTACT_H
-#define MVFX_CONTACT_H
+#ifndef MAUL_VFX_SRC_CONTACT_H
+#define MAUL_VFX_SRC_CONTACT_H
 
 #include "instance.h"
 

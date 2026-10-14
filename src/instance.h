@@ -153,6 +153,9 @@ typedef struct mvfxEmitterState
     // Its plexus links, and those dropped.
     mvfxPlexusRoom plexus;
     uint64_t linksDropped;
+    // For an emitter of units, its points' places the integrator predicts
+    // in a substep, three arrays of the capacity.
+    float* unitPrevious;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

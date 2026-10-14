@@ -38,6 +38,11 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter);
 // at its start, once the ended ones are gone), marking those killed.
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter);
 
+// Moves particles first to end, from a tick on the instance's clock, over
+// seconds, marking those killed: a substep of an emitter of units.
+void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
+                        int64_t tick, double seconds);
+
 // Moves a particle born within the step from its birth to the step's end,
 // marking it if killed.
 void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick);

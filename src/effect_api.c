@@ -7,6 +7,7 @@
 
 #include "context.h"
 #include "effect.h"
+#include "effect_parts.h"
 #include "float_mode.h"
 #include "grid_api.h"
 #include "mesh_api.h"
@@ -92,7 +93,7 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
         return mvfx_errorInvalid;
     }
     *effectOut = (mvfxEffectId){0};
-    if (!mvfxIsEffectDefValid(def))
+    if (!mvfxIsEffectDefValid(def) || !mvfxAreEffectPartsValid(def))
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
@@ -130,6 +131,10 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
     }
     mvfxFloatMode mode = mvfxEnterFloatMode();
     mvfxEffect* effect = mvfxCompileEffect(def, meshes, &context->allocator);
+    if (effect != nullptr)
+    {
+        mvfxCompileEffectParts(def, effect);
+    }
     mvfxLeaveFloatMode(mode);
     if (effect == nullptr)
     {

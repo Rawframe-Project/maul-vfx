@@ -3,8 +3,8 @@
 //
 // Flocking and steering: accelerations from neighbors, points and a path.
 
-#ifndef MVFX_STEER_H
-#define MVFX_STEER_H
+#ifndef MAUL_VFX_SRC_STEER_H
+#define MAUL_VFX_SRC_STEER_H
 
 #include "instance.h"
 

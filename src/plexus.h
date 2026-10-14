@@ -3,8 +3,8 @@
 //
 // Plexus links: pairs of an emitter's particles closer than a distance.
 
-#ifndef MVFX_PLEXUS_H
-#define MVFX_PLEXUS_H
+#ifndef MAUL_VFX_SRC_PLEXUS_H
+#define MAUL_VFX_SRC_PLEXUS_H
 
 #include "instance.h"
 

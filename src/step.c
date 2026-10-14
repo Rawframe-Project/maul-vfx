@@ -51,6 +51,16 @@ static void Rebase(mvfxInstance* instance, int32_t emitter)
         {
             positions[i] += shift;
         }
+        if (mvfxHasAttribute(&instance->effect->emitters[emitter].plan, mvfx_attributeAnchorX))
+        {
+            // Pinned points' anchors move with them.
+            float* anchors =
+                mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeAnchorX + k));
+            for (int32_t i = 0; i < state->count; ++i)
+            {
+                anchors[i] += shift;
+            }
+        }
         if (mvfxHasAttribute(&instance->effect->emitters[emitter].plan, mvfx_attributeScenePointX))
         {
             // Contact planes move with them.

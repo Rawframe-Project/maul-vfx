@@ -215,3 +215,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `linksDropped`, a width and a fade by length), written as two-point
   ribbons by `mvfxInstance_WritePlexus` and as strips by
   `mvfxInstance_ExpandPlexus`.
+- Chains by XPBD: an emitter's `unit` (each birth a chain of points
+  along a direction at a spacing, counted in units), solved in substeps
+  with stretch and bending compliance, damping along each constraint
+  and an optional pinned first point; each chain a ribbon.
