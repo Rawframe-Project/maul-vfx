@@ -47,6 +47,11 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/hash.c
     src/tasks.c)
 maul_configure_library(maul-vfx)
+# sqrt, floor, ceil and the other exactly rounded functions the library
+# takes from libm (mvfx-0001); the tests' oracles use more of it.
+if(NOT WIN32 AND NOT APPLE)
+    target_link_libraries(maul-vfx PUBLIC m)
+endif()
 
 if(MAUL_VFX_BUILD_TESTS)
     enable_testing()
