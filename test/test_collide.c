@@ -349,12 +349,107 @@ static void TestHostAndSpaces(void)
     mvfxDestroyContext(scene.context);
 }
 
+// One particle against one collider for a second: its place, velocity and
+// collisions after.
+typedef struct After
+{
+    float p[3];
+    float v[3];
+    uint32_t collisions;
+    int32_t live;
+} After;
+
+static After Run(const mvfxCollider* collider, float radius, double x, double y, double z, float vx,
+                 float vy, float vz)
+{
+    mvfxEmitterDef emitter = Held(collider, 1, 4);
+    emitter.collision.radius = radius;
+    Scene scene = NewScene(&emitter);
+    Place(&scene, x, y, z, vx, vy, vz);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    After after = {.live = scene.live->emitters[0].count};
+    if (after.live > 0)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            after.p[k] = At(&scene, (mvfxAttribute)(mvfx_attributePositionX + k), 0);
+            after.v[k] = At(&scene, (mvfxAttribute)(mvfx_attributeVelocityX + k), 0);
+        }
+        after.collisions =
+            ((const uint32_t*)mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions))[0];
+    }
+    mvfxDestroyContext(scene.context);
+    return after;
+}
+
+static bool Near(float a, float b)
+{
+    return fabsf(a - b) <= 1e-4f;
+}
+
+static void TestShapes(void)
+{
+    static const mvfxCollider ball = {.kind = mvfx_colliderSphere, .radius = 2.0f};
+    // Born inside a sphere it keeps out of: put on its surface, along the
+    // way from its center.
+    After a = Run(&ball, 0, 0, 0.5, 0, 0, 0, 0);
+    CHECK(Near(a.p[1], 2.0f) && a.collisions == 1, "put out of a sphere");
+    // At its very center: put on its top.
+    a = Run(&ball, 0, 0, 0, 0, 0, 0, 0);
+    CHECK(Near(a.p[2], 2.0f) && Near(a.p[0], 0.0f), "from the center, to the top");
+    // Moving away from a sphere behind it: no contact.
+    a = Run(&ball, 0, 3, 0, 0, 1, 0, 0);
+    CHECK(Near(a.p[0], 4.0f) && a.collisions == 0, "a sphere behind");
+
+    // Inside a sphere of radius 5, from its center at 10 along X: off x = 5
+    // halfway, back to the center, its velocity reversed.
+    static const mvfxCollider room = {.kind = mvfx_colliderSphere, .inside = true, .radius = 5.0f};
+    a = Run(&room, 0, 0, 0, 0, 10, 0, 0);
+    CHECK(Near(a.p[0], 0.0f) && Near(a.v[0], -10.0f) && a.collisions == 1,
+          "off the inside of a sphere");
+    // A radius wider than the room leaves it a point: the particle stays at
+    // its center.
+    a = Run(&room, 6.0f, 1, 0, 0, 0, 0, 0);
+    CHECK(Near(a.p[0], 0.0f), "a room narrower than the particle");
+
+    // Ending exactly on a plane is no contact: its velocity holds.
+    static const mvfxCollider floor = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+    a = Run(&floor, 0, 0, 1, 0, 0, -1, 0);
+    CHECK(Near(a.p[1], 0.0f) && a.v[1] == -1.0f && a.collisions == 0, "ending on the plane");
+    // A normal of length 2 acts as the unit one: half the speed back at
+    // restitution 1 is all of it.
+    static const mvfxCollider longNormal = {.kind = mvfx_colliderPlane, .normal = {0, 2, 0}};
+    a = Run(&longNormal, 0, 0, 1, 0, 0, -2, 0);
+    CHECK(Near(a.v[1], 2.0f) && Near(a.p[1], 1.0f), "a normal not of unit length");
+    a = Run(&longNormal, 0, 0, -3, 0, 0, 0, 0);
+    CHECK(Near(a.p[1], 0.0f), "put back onto a plane with a long normal");
+
+    // Far outside a box it keeps in, off its corner: one push, inside.
+    static const mvfxCollider box = {.kind = mvfx_colliderBox,
+                                     .inside = true,
+                                     .halfExtents = {1, 1, 1},
+                                     .rotation = {0, 0, 0, 1}};
+    a = Run(&box, 0, 10, 10, 0, 0, 0, 0);
+    CHECK(a.collisions == 1 && Near(a.p[0], 1.0f) && Near(a.p[1], 1.0f),
+          "pushed into a box at once");
+    // A box turned 30 degrees about Z by a rotation 0.0009 longer than unit:
+    // a particle at rest just inside its end stays where it is.
+    const float s15 = 0.25881905f * 1.0009f;
+    const float c15 = 0.96592583f * 1.0009f;
+    mvfxCollider turned = {.kind = mvfx_colliderBox,
+                           .inside = true,
+                           .halfExtents = {2, 0.5f, 0.5f},
+                           .rotation = {0, 0, s15, c15}};
+    a = Run(&turned, 0, 1.9998 * 0.86602540, 1.9998 * 0.5, 0, 0, 0, 0);
+    CHECK(a.collisions == 0, "a near-unit rotation");
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    for (int32_t field = 0; field < 14; ++field)
+    for (int32_t field = 0; field < 15; ++field)
     {
         mvfxCollider collider = {.kind = mvfx_colliderSphere, .radius = 1.0f};
         mvfxEmitterDef bad = Held(&collider, 1, 4);
@@ -405,8 +500,11 @@ static void TestRefusals(void)
             bad.killRules = &rule;
             bad.killRuleCount = 1;
             break;
-        default:
+        case 13:
             collider.center[1] = (float)INFINITY;
+            break;
+        default:
+            collider.radius = 2.0f * MVFX_MAX_EXTENT;
             break;
         }
         mvfxEffectDef effectDef = mvfxDefaultEffectDef();
@@ -425,6 +523,7 @@ int main(void)
     TestManyContacts();
     TestLifeAndCount();
     TestHostAndSpaces();
+    TestShapes();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
