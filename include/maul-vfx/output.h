@@ -59,7 +59,8 @@ extern "C"
         // uint32 or binary32.
         mvfx_recordMesh = 10,
         // A ribbon point's unit tangent in the world toward the younger
-        // end, 3 (0 in a particle's record).
+        // end, a sheet vertex's across its sheet, 3 (0 in a particle's
+        // record).
         mvfx_recordTangent = 11,
         // Its width: its size's X in the world times the ribbon's width
         // over length (a particle's record: its size's X).
@@ -70,19 +71,24 @@ extern "C"
         // Its texture coordinate along its ribbon (0 in a particle's
         // record).
         mvfx_recordAlong = 14,
-        // Its ribbon's index in the ribbon list: uint32 or binary32 (0 in a
-        // particle's record).
+        // Its ribbon's index in the ribbon list, a sheet vertex's sheet's
+        // among the emitter's: uint32 or binary32 (0 in a particle's
+        // record).
         mvfx_recordRibbon = 15,
         // Its unit side across the ribbon, toward which its width spans:
         // the tangent crossed with the way to the eye or with the facing
-        // normal, 3 (0 in a particle's record or where they are parallel).
+        // normal; a sheet vertex's down its sheet, 3 (0 in a particle's
+        // record or where they are parallel).
         mvfx_recordSide = 16,
-        // The unit normal of its face, the side crossed with the tangent, 3
-        // (0 in a particle's record).
+        // The unit normal of its face, the side crossed with the tangent; a
+        // sheet vertex's, the tangent crossed with the side, 3 (0 in a
+        // particle's record).
         mvfx_recordFaceNormal = 17,
         // An expanded vertex's texture coordinate, 2: a sprite's corner, from
         // (0, 0) at its left bottom to (1, 1) at its right top; a ribbon's
-        // coordinate along and 0 or 1 across (0 elsewhere).
+        // coordinate along and 0 or 1 across; a sheet vertex's place across
+        // and row over the last of each, from (0, 0) at its first point to
+        // (1, 1) (0 elsewhere).
         mvfx_recordCorner = 18,
         // Its count of neighbors (0 where it finds none): uint32 or
         // binary32.
@@ -456,6 +462,39 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ExpandPlexus(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+        const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+        int64_t* indexCountOut);
+
+    /// Expands an emitter's sheets (mvfx_unitSheet) into meshes, oldest
+    /// first: each sheet a vertex a point, row after row (records of the
+    /// layout with their tangent across, side down and face normal from
+    /// the neighboring points, their corner the place across and row over
+    /// the last of each, their ribbon the sheet's index), and each quad
+    /// between rows six indices (two triangles, counterclockwise seen from
+    /// the face normal's side). Buffers too small take the first whole
+    /// sheets that fit both; the counts are always all of them, 0 for an
+    /// emitter of other units. Scratch is not used.
+    ///
+    /// @param context         The context that owns the instance and the
+    ///                        layout.
+    /// @param instance        The instance.
+    /// @param emitter         The emitter's index in the effect's def.
+    /// @param layout          The vertices' layout.
+    /// @param view            The view.
+    /// @param buffers         The buffers.
+    /// @param vertexCountOut  Receives the vertices there are.
+    /// @param indexCountOut   Receives the indices there are.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
+    ///         that names nothing live; `mvfx_errorInvalid` for a NULL
+    ///         context, view, buffers or count, a view out of range, an
+    ///         emitter out of range, a negative size or a NULL or misaligned
+    ///         buffer with a size, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ExpandSheets(
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
         const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
         int64_t* indexCountOut);

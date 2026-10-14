@@ -219,10 +219,15 @@ typedef struct mvfxCompiledEmitter
     float pathPoints[MVFX_MAX_PATH_POINTS][3];
     mvfxContactDef contacts;
     mvfxPlexusDef plexus;
-    // Its units: the def, the direction normalized; points 1 for a
-    // particle.
+    // Its units: the def, the directions normalized (what its kind does not
+    // read cleared); its points, 1 for a particle; its points across, a
+    // chain's all of them; its rest lengths before the instance's scale,
+    // across, down, along the diagonal across and down and along the other
+    // (a sheet's last three).
     mvfxUnitDef unit;
     int32_t unitPoints;
+    int32_t unitWidth;
+    float unitRests[4];
     // Its pair force: the radius (0 for none) and the strength over the
     // distance.
     float pairRadius;
@@ -297,6 +302,14 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def);
 // block's size does not fit in size_t.
 mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
                               const mvfxAllocator* allocator);
+
+// Whether a unit's point (its index in its unit) is pinned: a pinned first
+// point, or one of a pinned first row.
+static inline bool mvfxIsPinnedPoint(const mvfxCompiledEmitter* emitter, int32_t point)
+{
+    return (emitter->unit.pinFirst && point == 0) ||
+           (emitter->unit.pinFirstRow && point < emitter->unitWidth);
+}
 
 // Returns a compiled effect's block.
 void mvfxReleaseEffect(mvfxEffect* effect, const mvfxAllocator* allocator);

@@ -554,8 +554,10 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
     Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
     Store(plan, def->neighbors.enabled, mvfx_attributeNeighborCount, 7);
-    Store(plan, def->unit.kind != mvfx_unitParticle && def->unit.pinFirst, mvfx_attributeAnchorX,
-          3);
+    bool pinned =
+        def->unit.kind != mvfx_unitParticle &&
+        (def->unit.pinFirst || (def->unit.kind == mvfx_unitSheet && def->unit.pinFirstRow));
+    Store(plan, pinned, mvfx_attributeAnchorX, 3);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
           6);
     for (int32_t i = 0; i < def->customCount; ++i)
@@ -740,6 +742,7 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
         .capacity = source->capacity,
         // A particle a birth until mvfxCompileEffectParts says otherwise.
         .unitPoints = 1,
+        .unitWidth = 1,
         .paddedCapacity = padded,
         .rate = source->rate,
         .rateCurve = curve,

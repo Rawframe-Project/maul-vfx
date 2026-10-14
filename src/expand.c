@@ -260,3 +260,129 @@ mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId insta
     *countOut = count;
     return mvfx_success;
 }
+
+// A sheet's frame at its vertex in row r, place c: the tangent across and
+// the side down from its neighbors either way (one-sided at the edges),
+// and the face normal their cross product, each unit or 0.
+static void SheetFrame(const mvfxRecordSource* source, int32_t first, int32_t width, int32_t rows,
+                       int32_t r, int32_t c, mvfxRibbonPoint* out)
+{
+    double ends[4][3];
+    mvfxWorldPlaceOf(source, first + r * width + (c + 1 < width ? c + 1 : c), ends[0]);
+    mvfxWorldPlaceOf(source, first + r * width + (c > 0 ? c - 1 : c), ends[1]);
+    mvfxWorldPlaceOf(source, first + (r + 1 < rows ? r + 1 : r) * width + c, ends[2]);
+    mvfxWorldPlaceOf(source, first + (r > 0 ? r - 1 : r) * width + c, ends[3]);
+    double across[3];
+    double down[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        across[k] = ends[0][k] - ends[1][k];
+        down[k] = ends[2][k] - ends[3][k];
+    }
+    double normal[3];
+    Cross(across, down, normal);
+    Normalize(across);
+    Normalize(down);
+    Normalize(normal);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->tangent[k] = (float)across[k];
+        out->side[k] = (float)down[k];
+        out->faceNormal[k] = (float)normal[k];
+    }
+}
+
+// Writes sheet u's vertices from record, and its quads' indices from
+// those vertices' first, base.
+static void WriteSheet(const mvfxRecordSource* source, const mvfxOutputLayout* layout, int32_t u,
+                       unsigned char* record, uint32_t* indices, uint32_t base)
+{
+    const mvfxCompiledEmitter* compiled = &source->instance->effect->emitters[source->emitter];
+    int32_t width = compiled->unitWidth;
+    int32_t rows = compiled->unitPoints / width;
+    int32_t first = u * compiled->unitPoints;
+    for (int32_t r = 0; r < rows; ++r)
+    {
+        for (int32_t c = 0; c < width; ++c)
+        {
+            mvfxRibbonPoint point = {
+                .width = 1.0f,
+                .color = {1.0f, 1.0f, 1.0f, 1.0f},
+                .ribbon = (uint32_t)u,
+                .corner = {(float)c / (float)(width - 1), (float)r / (float)(rows - 1)}};
+            SheetFrame(source, first, width, rows, r, c, &point);
+            int64_t at = (int64_t)r * width + c;
+            mvfxWriteRecord(source, layout, first + (int32_t)at, &point,
+                            record + at * (int64_t)layout->stride);
+        }
+    }
+    for (int32_t r = 0; r + 1 < rows; ++r)
+    {
+        for (int32_t c = 0; c + 1 < width; ++c)
+        {
+            uint32_t v = base + (uint32_t)(r * width + c);
+            uint32_t below = v + (uint32_t)width;
+            const uint32_t quad[6] = {v, v + 1, below, below, v + 1, below + 1};
+            for (int32_t k = 0; k < 6; ++k)
+            {
+                indices[k] = quad[k];
+            }
+            indices += 6;
+        }
+    }
+}
+
+mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                     mvfxLayoutId layout, const mvfxView* view,
+                                     const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                                     int64_t* indexCountOut)
+{
+    if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
+        indexCountOut == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    *vertexCountOut = 0;
+    *indexCountOut = 0;
+    mvfxInstance* live = nullptr;
+    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
+    if (found != mvfx_success)
+    {
+        return found;
+    }
+    const mvfxOutputLayout* format = mvfxContextLayout(context, layout);
+    if (format == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (!mvfxIsViewValid(view) || !AreBuffersValid(buffers))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
+    if (compiled->unit.kind != mvfx_unitSheet)
+    {
+        return mvfx_success;
+    }
+    int64_t points = compiled->unitPoints;
+    int64_t quads = (int64_t)(compiled->unitWidth - 1) * (points / compiled->unitWidth - 1);
+    int64_t sheets = live->emitters[emitter].count / points;
+    int64_t fits = buffers->vertexCapacity / points < buffers->indexCapacity / (6 * quads)
+                       ? buffers->vertexCapacity / points
+                       : buffers->indexCapacity / (6 * quads);
+    mvfxRecordSource source = mvfxOpenRecordSource(live, emitter, view->origin);
+    for (int64_t u = 0; u < sheets && u < fits; ++u)
+    {
+        WriteSheet(&source, format, (int32_t)u,
+                   (unsigned char*)buffers->vertices + u * points * (int64_t)format->stride,
+                   buffers->indices + 6 * quads * u, (uint32_t)(points * u));
+    }
+    *vertexCountOut = sheets * points;
+    *indexCountOut = sheets * 6 * quads;
+    return mvfx_success;
+}

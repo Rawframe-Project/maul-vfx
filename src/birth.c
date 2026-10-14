@@ -434,16 +434,17 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
     }
 }
 
-// The step from one point of a unit to the next at birth, in the
-// particles' space: along the direction by the spacing, turned and scaled
-// with the instance for a world-space emitter.
-static void UnitStep(const mvfxInstance* instance, int32_t emitter, int64_t tick, float out[3])
+// The step from one point of a unit to the next along a direction at
+// birth, in the particles' space: along it by the spacing, turned and
+// scaled with the instance for a world-space emitter.
+static void UnitStep(const mvfxInstance* instance, int32_t emitter, int64_t tick,
+                     const float direction[3], float out[3])
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     float step[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        step[k] = compiled->unit.direction[k] * compiled->unit.spacing;
+        step[k] = direction[k] * compiled->unit.spacing;
         out[k] = step[k];
     }
     if (compiled->space == mvfx_spaceWorld)
@@ -499,9 +500,9 @@ static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth
                                      .tick = birth->tick,
                                      .placeTick = birth->tick});
     mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
-    if (j == 0 && Has(compiled, mvfx_attributeAnchorX))
+    if (mvfxIsPinnedPoint(compiled, j))
     {
-        // A pinned first point stays where it was born.
+        // A pinned point stays where it was born.
         static const float still[3] = {0.0f, 0.0f, 0.0f};
         StoreVector(instance, emitter, mvfx_attributePositionX, 3, at, position);
         StoreVector(instance, emitter, mvfx_attributeVelocityX, 3, at, still);
@@ -539,16 +540,24 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
             PlaceInWorld(instance, emitter, birth->tick, position, velocity);
         }
     }
-    float step[3] = {0.0f, 0.0f, 0.0f};
+    float across[3] = {0.0f, 0.0f, 0.0f};
+    float down[3] = {0.0f, 0.0f, 0.0f};
     if (compiled->unitPoints > 1)
     {
-        UnitStep(instance, emitter, birth->tick, step);
+        UnitStep(instance, emitter, birth->tick, compiled->unit.direction, across);
+        UnitStep(instance, emitter, birth->tick, compiled->unit.downDirection, down);
     }
-    // A unit's points along its step from its root, in order.
+    // A unit's points from its root, across each row, row after row.
     for (int32_t j = 0; j < compiled->unitPoints; ++j)
     {
-        const float place[3] = {position[0] + step[0] * (float)j, position[1] + step[1] * (float)j,
-                                position[2] + step[2] * (float)j};
+        int32_t row = j / compiled->unitWidth;
+        float c = (float)(j % compiled->unitWidth);
+        float r = (float)row;
+        float place[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            place[k] = position[k] + across[k] * c + down[k] * r;
+        }
         AppendPoint(instance, emitter, birth, inverseLife, j, place, velocity);
     }
 }

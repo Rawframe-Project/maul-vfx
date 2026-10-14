@@ -12,10 +12,14 @@
 // each constraint a substep, its multiplier starting at 0, so a
 // constraint's step is -C / (w1 + w2 + compliance / h^2). Constraints are
 // solved set by set, no two in a set sharing a point (Fratarcangeli and
-// Pellacini 2015): a chain's neighbors in two sets by the first point's
-// parity, its bending pairs in four by the first point modulo 4. Units
-// lie whole and in order in the arrays, so a constraint's points are found
-// from its unit's first.
+// Pellacini 2015). A chain is a sheet of one row; a sheet's constraints
+// come in six families, each in sets by its first point's place across or
+// its row: stretch across in two sets by the place's parity and down in
+// two by the row's, shear along each diagonal in two by the row's, and
+// bending (the distance across two edges, Provot 1995's flexion springs,
+// cheaper than a dihedral angle) across in four by the place modulo 4 and
+// down in four by the row modulo 4. Units lie whole and in order in the arrays, so a constraint's
+// points are found from its unit's first.
 
 #include "unit.h"
 
@@ -25,22 +29,25 @@
 #include <math.h>
 #include <string.h>
 
-// A substep's view of the points: places, velocities and their weights'
-// source.
+// A substep's view of the points: places, velocities, anchors, the units'
+// shape and which points are pinned.
 typedef struct Points
 {
     float* x[3];
     float* v[3];
     const float* anchor[3];
+    const mvfxCompiledEmitter* emitter;
     bool pinned;
     int32_t perUnit;
+    int32_t width;
+    int32_t rows;
     int32_t units;
 } Points;
 
-// A point's inverse mass: 0 for a pinned first point, else 1.
+// A point's inverse mass: 0 for a pinned point, else 1.
 static float WeightOf(const Points* p, int32_t i)
 {
-    return p->pinned && i % p->perUnit == 0 ? 0.0f : 1.0f;
+    return p->pinned && mvfxIsPinnedPoint(p->emitter, i % p->perUnit) ? 0.0f : 1.0f;
 }
 
 // Projects the distance between points a and b toward rest.
@@ -102,54 +109,94 @@ static void Damp(const Points* p, int32_t a, int32_t b, float share)
     }
 }
 
-// The constraints of a chain, set by set: each calls one of the above.
+// What a pass does to each constraint.
 typedef enum Pass
 {
     PASS_PROJECT,
     PASS_DAMP,
 } Pass;
 
-static void ChainSets(const Points* p, Pass pass, float rest, float stretch, float bend,
-                      float share)
+// A family of constraints: from the point at (c + c0, r + r0) to that at
+// (c + c1, r + r1) for each place c across and row r where both lie in the
+// unit, in sets of the place's (byColumn) or the row's remainder by sets;
+// its rest length and compliance.
+typedef struct Family
 {
-    int32_t n = p->perUnit;
-    // Neighbors: first points of one parity, then the other.
-    for (int32_t set = 0; set < 2; ++set)
+    int8_t c0;
+    int8_t r0;
+    int8_t c1;
+    int8_t r1;
+    int8_t sets;
+    bool byColumn;
+    float rest;
+    float compliance;
+} Family;
+
+// One set of a family over every unit.
+static void SolveSet(const Points* p, const Family* f, int32_t set, Pass pass, float share)
+{
+    int32_t columns = p->width - (f->c0 > f->c1 ? f->c0 : f->c1);
+    int32_t rows = p->rows - (f->r0 > f->r1 ? f->r0 : f->r1);
+    int32_t cStep = f->byColumn ? f->sets : 1;
+    int32_t rStep = f->byColumn ? 1 : f->sets;
+    for (int32_t u = 0; u < p->units; ++u)
     {
-        for (int32_t u = 0; u < p->units; ++u)
+        int32_t first = u * p->perUnit;
+        for (int32_t r = f->byColumn ? 0 : set; r < rows; r += rStep)
         {
-            for (int32_t j = set; j + 1 < n; j += 2)
+            for (int32_t c = f->byColumn ? set : 0; c < columns; c += cStep)
             {
-                int32_t a = u * n + j;
-                pass == PASS_PROJECT ? Project(p, a, a + 1, rest, stretch)
-                                     : Damp(p, a, a + 1, share);
-            }
-        }
-    }
-    // Bending, points two apart: first points by their remainder by 4.
-    for (int32_t set = 0; set < 4; ++set)
-    {
-        for (int32_t u = 0; u < p->units; ++u)
-        {
-            for (int32_t j = set; j + 2 < n; j += 4)
-            {
-                int32_t a = u * n + j;
-                pass == PASS_PROJECT ? Project(p, a, a + 2, 2.0f * rest, bend)
-                                     : Damp(p, a, a + 2, share);
+                int32_t a = first + (r + f->r0) * p->width + c + f->c0;
+                int32_t b = first + (r + f->r1) * p->width + c + f->c1;
+                pass == PASS_PROJECT ? Project(p, a, b, f->rest, f->compliance)
+                                     : Damp(p, a, b, share);
             }
         }
     }
 }
 
-// Holds each pinned first point at its anchor, at rest.
+// The six families, their rests in the particles' space and their
+// compliances over h^2.
+static void FamiliesOf(const mvfxCompiledEmitter* compiled, float scale, float inverseSquare,
+                       Family out[6])
+{
+    const mvfxUnitDef* unit = &compiled->unit;
+    const float* rests = compiled->unitRests;
+    float stretch = unit->stretchCompliance * inverseSquare;
+    float shear = unit->shearCompliance * inverseSquare;
+    float bend = unit->bendCompliance * inverseSquare;
+    out[0] = (Family){0, 0, 1, 0, 2, true, rests[0] * scale, stretch};
+    out[1] = (Family){0, 0, 0, 1, 2, false, rests[1] * scale, stretch};
+    out[2] = (Family){0, 0, 1, 1, 2, false, rests[2] * scale, shear};
+    out[3] = (Family){1, 0, 0, 1, 2, false, rests[3] * scale, shear};
+    out[4] = (Family){0, 0, 2, 0, 4, true, 2.0f * rests[0] * scale, bend};
+    out[5] = (Family){0, 0, 0, 2, 4, false, 2.0f * rests[1] * scale, bend};
+}
+
+// Every constraint, family by family and set by set.
+static void SolveAll(const Points* p, const Family families[6], Pass pass, float share)
+{
+    for (int32_t f = 0; f < 6; ++f)
+    {
+        for (int32_t set = 0; set < families[f].sets; ++set)
+        {
+            SolveSet(p, &families[f], set, pass, share);
+        }
+    }
+}
+
+// Holds each pinned point at its anchor.
 static void Pin(const Points* p)
 {
-    for (int32_t u = 0; p->pinned && u < p->units; ++u)
+    int32_t count = p->units * p->perUnit;
+    for (int32_t i = 0; p->pinned && i < count; ++i)
     {
-        int32_t i = u * p->perUnit;
-        for (int32_t k = 0; k < 3; ++k)
+        if (WeightOf(p, i) == 0.0f)
         {
-            p->x[k][i] = p->anchor[k][i];
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                p->x[k][i] = p->anchor[k][i];
+            }
         }
     }
 }
@@ -157,8 +204,11 @@ static void Pin(const Points* p)
 static Points PointsOf(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    Points p = {.pinned = compiled->unit.pinFirst,
+    Points p = {.emitter = compiled,
+                .pinned = mvfxHasAttribute(&compiled->plan, mvfx_attributeAnchorX),
                 .perUnit = compiled->unitPoints,
+                .width = compiled->unitWidth,
+                .rows = compiled->unitPoints / compiled->unitWidth,
                 .units = instance->emitters[emitter].count / compiled->unitPoints};
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -181,9 +231,9 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
     Points p = PointsOf(instance, emitter);
     int32_t count = state->count;
     size_t stride = (size_t)state->capacity;
-    // The rest length in the particles' space: a world-space emitter's
-    // scales with its instance.
-    float rest = unit->spacing * (compiled->space == mvfx_spaceWorld ? instance->to.scale : 1.0f);
+    // Rest lengths in the particles' space: a world-space emitter's scale
+    // with its instance.
+    float scale = compiled->space == mvfx_spaceWorld ? instance->to.scale : 1.0f;
     int64_t ticks = instance->clock - instance->stepStart;
     int32_t substeps = unit->substeps;
     for (int32_t s = 0; s < substeps; ++s)
@@ -203,9 +253,9 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
             memcpy(state->unitPrevious + (size_t)k * stride, p.x[k], (size_t)count * sizeof(float));
         }
         Pin(&p);
-        float inverseSquare = 1.0f / (h * h);
-        ChainSets(&p, PASS_PROJECT, rest, unit->stretchCompliance * inverseSquare,
-                  unit->bendCompliance * inverseSquare, 0.0f);
+        Family families[6];
+        FamiliesOf(compiled, scale, 1.0f / (h * h), families);
+        SolveAll(&p, families, PASS_PROJECT, 0.0f);
         // The integrator's velocity (exact under gravity and drag) and the
         // constraints' correction over the substep; a pinned point at rest.
         for (int32_t k = 0; k < 3; ++k)
@@ -220,7 +270,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
         float share = 1.0f - mvfxExp(-unit->damping * h);
         if (share > 0.0f)
         {
-            ChainSets(&p, PASS_DAMP, rest, 0.0f, 0.0f, share);
+            SolveAll(&p, families, PASS_DAMP, share);
         }
     }
 }

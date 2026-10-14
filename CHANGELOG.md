@@ -219,3 +219,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   along a direction at a spacing, counted in units), solved in substeps
   with stretch and bending compliance, damping along each constraint
   and an optional pinned first point; each chain a ribbon.
+- Cloth sheets by XPBD: `mvfx_unitSheet` units of points across by rows
+  on two directions, with stretch, shear and bending compliance and an
+  optional pinned first row; `mvfxInstance_ExpandSheets` writes each
+  sheet as a mesh (normals, tangents and texture coordinates from the
+  grid, two counterclockwise triangles a quad).

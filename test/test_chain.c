@@ -433,7 +433,7 @@ static void TestChecks(void)
             emitter.hostSpawnCapacity = 5;
             break;
         case 12:
-            u->kind = 2;
+            u->kind = 3;
             break;
         case 13:
             u->spacing = 2.0f * MVFX_MAX_EXTENT;

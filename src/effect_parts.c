@@ -9,6 +9,8 @@
 #include "direction.h"
 #include "life.h"
 
+#include <math.h>
+
 // Whether low <= x <= high; false for NaN.
 static bool IsWithin(float x, float low, float high)
 {
@@ -75,8 +77,48 @@ static bool IsPairForceValid(const mvfxEmitterDef* def)
             IsWithin(pair->strength.value, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
 }
 
-// Whether an emitter's units are valid: a particle, or a chain in range
-// whose capacities hold whole units.
+// Whether a direction is in range and of a length that normalizes; out
+// the direction normalized.
+static bool IsDirectionValid(const float v[3], float out[3])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = v[k];
+    }
+    return IsWithin(v[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           IsWithin(v[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
+           IsWithin(v[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) && mvfxNormalize(out);
+}
+
+// Whether a unit's shape is valid: a chain's points, or a sheet's sides
+// and two directions at least 3 degrees apart (the cosine between them
+// at most cos 3 degrees either way).
+static bool IsUnitShapeValid(const mvfxUnitDef* unit)
+{
+    float across[3];
+    if (!IsDirectionValid(unit->direction, across) || !(unit->spacing > 0.0f) ||
+        !(unit->spacing <= MVFX_MAX_EXTENT))
+    {
+        return false;
+    }
+    if (unit->kind == mvfx_unitChain)
+    {
+        return unit->points >= 2 && unit->points <= MVFX_MAX_CHAIN_POINTS;
+    }
+    float down[3];
+    bool sides = unit->points >= 2 && unit->points <= MVFX_MAX_SHEET_SIDE && unit->rows >= 2 &&
+                 unit->rows <= MVFX_MAX_SHEET_SIDE;
+    if (unit->kind != mvfx_unitSheet || !sides || !IsDirectionValid(unit->downDirection, down))
+    {
+        return false;
+    }
+    float cosine = across[0] * down[0] + across[1] * down[1] + across[2] * down[2];
+    return fabsf(cosine) <= 0.99863f && IsWithin(unit->shearCompliance, 0.0f, MVFX_MAX_EXTENT);
+}
+
+// Whether an emitter's units are valid: a particle, or a chain or sheet in
+// range whose capacities hold whole units, not on a beam nor (a sheet)
+// drawn as ribbons.
 static bool IsUnitValid(const mvfxEmitterDef* def)
 {
     const mvfxUnitDef* unit = &def->unit;
@@ -84,34 +126,64 @@ static bool IsUnitValid(const mvfxEmitterDef* def)
     {
         return true;
     }
-    float direction[3] = {unit->direction[0], unit->direction[1], unit->direction[2]};
-    bool direct = IsWithin(direction[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-                  IsWithin(direction[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-                  IsWithin(direction[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-                  mvfxNormalize(direction);
-    bool shape = unit->kind == mvfx_unitChain && unit->points >= 2 &&
-                 unit->points <= MVFX_MAX_CHAIN_POINTS && unit->spacing > 0.0f &&
-                 unit->spacing <= MVFX_MAX_EXTENT && direct;
+    bool shape = IsUnitShapeValid(unit);
     bool solve = unit->substeps >= 1 && unit->substeps <= MVFX_MAX_SUBSTEPS &&
                  IsWithin(unit->stretchCompliance, 0.0f, MVFX_MAX_EXTENT) &&
                  IsWithin(unit->bendCompliance, 0.0f, MVFX_MAX_EXTENT) &&
                  IsWithin(unit->damping, 0.0f, MVFX_MAX_DRAG);
-    int32_t units = shape ? def->capacity / unit->points : 0;
-    bool whole = shape && def->capacity % unit->points == 0 && def->hostSpawnCapacity <= units &&
+    bool sheet = unit->kind == mvfx_unitSheet;
+    int32_t points = sheet ? unit->points * unit->rows : unit->points;
+    int32_t units = shape ? def->capacity / points : 0;
+    bool whole = shape && def->capacity % points == 0 && def->hostSpawnCapacity <= units &&
                  (!def->eventSpawn.enabled || def->eventSpawn.capacity <= units);
-    return shape && solve && whole && !def->beam.enabled;
+    bool drawn = !def->beam.enabled && !(sheet && def->ribbon.ids != mvfx_ribbonNone);
+    return shape && solve && whole && drawn;
 }
 
-// Compiles an emitter's units, the direction normalized.
+// The length of a + sign b.
+static float LengthOf(const float a[3], const float b[3], float sign)
+{
+    float square = 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float d = a[k] + sign * b[k];
+        square += d * d;
+    }
+    return sqrtf(square);
+}
+
+// Compiles an emitter's units: the directions normalized and what its
+// kind does not read cleared; its points, width and rest lengths.
 static void CompileUnit(const mvfxUnitDef* unit, mvfxCompiledEmitter* out)
 {
     out->unit = *unit;
     out->unitPoints = 1;
+    out->unitWidth = 1;
+    if (unit->kind == mvfx_unitParticle)
+    {
+        return;
+    }
+    mvfxUnitDef* u = &out->unit;
+    (void)mvfxNormalize(u->direction);
+    out->unitWidth = unit->points;
+    out->unitPoints = unit->points;
+    out->unitRests[0] = unit->spacing;
     if (unit->kind == mvfx_unitChain)
     {
-        out->unitPoints = unit->points;
-        (void)mvfxNormalize(out->unit.direction);
+        u->rows = 1;
+        u->shearCompliance = 0.0f;
+        u->pinFirstRow = false;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            u->downDirection[k] = 0.0f;
+        }
+        return;
     }
+    (void)mvfxNormalize(u->downDirection);
+    out->unitPoints = unit->points * unit->rows;
+    out->unitRests[1] = unit->spacing;
+    out->unitRests[2] = unit->spacing * LengthOf(u->direction, u->downDirection, 1.0f);
+    out->unitRests[3] = unit->spacing * LengthOf(u->direction, u->downDirection, -1.0f);
 }
 
 // Whether an emitter's plexus links are valid.

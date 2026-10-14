@@ -626,10 +626,11 @@ static inline void BuildScene(mvfxContext* context)
     mvfxInstanceId meshInstance = {0};
     CHECK(mvfxCreateInstance(context, &meshInstanceDef, &meshInstance) == mvfx_success,
           "mesh instance");
-    // Chains: pinned ropes in the world, two every 0.4 seconds, and loose
-    // local tails falling with drag toward an attractor, which pulls their
-    // points apart.
-    mvfxEmitterDef chainEmitters[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    // Chains and sheets: pinned ropes in the world, two every 0.4 seconds,
+    // loose local tails falling with drag toward an attractor, which pulls
+    // their points apart, and banners.
+    mvfxEmitterDef chainEmitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                       mvfxDefaultEmitterDef()};
     static const mvfxBurst ropes = {.time = 0.0f,
                                     .minCount = 2,
                                     .maxCount = 2,
@@ -676,9 +677,43 @@ static inline void BuildScene(mvfxContext* context)
                                           .stretchCompliance = 1e-3f,
                                           .bendCompliance = 0.1f,
                                           .damping = 0.5f};
+    // Banners: sheets pinned by their first row, sheared by a gusting wind.
+    static const mvfxBurst banners = {.time = 0.1f,
+                                      .minCount = 1,
+                                      .maxCount = 1,
+                                      .cycles = 0,
+                                      .interval = 0.6f,
+                                      .probability = 1.0f};
+    chainEmitters[2].rate = 0.0f;
+    chainEmitters[2].bursts = &banners;
+    chainEmitters[2].burstCount = 1;
+    chainEmitters[2].capacity = 3 * 5 * 4;
+    chainEmitters[2].lifetime = mvfxRangeSource(1.5f, 1.5f);
+    chainEmitters[2].motion.gravity[1] = -9.81f;
+    chainEmitters[2].motion.drag = 0.8f;
+    static const mvfxForce gust = {
+        .kind = mvfx_forceTurbulence,
+        .strength = 4.0f,
+        .fieldMode = mvfx_fieldVelocity,
+        .tightness = 2.0f,
+        .noise = {.frequency = 0.7f, .octaves = 1, .lacunarity = 2.0f, .gain = 0.5f, .seed = 21u}};
+    chainEmitters[2].forces = &gust;
+    chainEmitters[2].forceCount = 1;
+    chainEmitters[2].unit = (mvfxUnitDef){.kind = mvfx_unitSheet,
+                                          .points = 5,
+                                          .rows = 4,
+                                          .spacing = 0.25f,
+                                          .direction = {1, 0, 0},
+                                          .downDirection = {0, -0.5f, 1},
+                                          .substeps = 4,
+                                          .stretchCompliance = 1e-4f,
+                                          .shearCompliance = 1e-3f,
+                                          .bendCompliance = 0.05f,
+                                          .damping = 1.0f,
+                                          .pinFirstRow = true};
     mvfxEffectDef chainEffectDef = mvfxDefaultEffectDef();
     chainEffectDef.emitters = chainEmitters;
-    chainEffectDef.emitterCount = 2;
+    chainEffectDef.emitterCount = 3;
     mvfxEffectId chainEffect = {0};
     CHECK(mvfxCreateEffect(context, &chainEffectDef, &chainEffect) == mvfx_success, "chain effect");
     mvfxInstanceDef chainInstanceDef = mvfxDefaultInstanceDef();
