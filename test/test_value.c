@@ -82,6 +82,16 @@ static void TestScalarKinds(void)
     mvfxCompileScalar(&inSeconds, false, &secondsSpace, &compiled);
     CHECK(fabsf(mvfxDrawScalar(&compiled, 3.0f, parameters, Words(9)) - 0.5f) <= 1e-6f,
           "a curve in seconds over its keys' span");
+    // Baked over its keys' span, not from 0: a peak at 100.5 s of a curve
+    // from 100 s to 101 s keeps its height.
+    static const mvfxCurveKey peak[3] = {{100.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+                                         {100.5f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+                                         {101.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    inSeconds.curve = (mvfxCurve){peak, 3, mvfx_tangentsGiven};
+    secondsSpace = (mvfxTableSpace){.curves = curves};
+    mvfxCompileScalar(&inSeconds, false, &secondsSpace, &compiled);
+    CHECK(fabsf(mvfxDrawScalar(&compiled, 100.5f, parameters, Words(9)) - 1.0f) <= 0.01f,
+          "a peak far from 0 kept");
     static const mvfxScalarSource bad[4] = {
         {.kind = 6, .range = {0.0f, 1.0f}},
         {.kind = mvfx_sourceRange, .range = {2.0f, 1.0f}},
