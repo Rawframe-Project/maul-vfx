@@ -113,12 +113,16 @@ static void TestPair(void)
               "pulled or pushed, momentum kept, the attributes stored");
         mvfxDestroyContext(s_context);
     }
-    // Beyond the pair radius, within the neighbors': nothing. At one
-    // place: no line, nothing.
+    // Beyond the pair radius, or exactly at it, within the neighbors':
+    // nothing. At one place: no line, nothing.
     mvfxEmitterDef emitter = Emitter(3.0f);
     static const double far[6] = {0, 0, 0, 3, 0, 0};
     Run(&emitter, far, rest, 2);
     CHECK(s_seen.velocity[0][0] == 0.0f && s_seen.neighbors[0] == 1.0f, "beyond the radius");
+    mvfxDestroyContext(s_context);
+    static const double at[6] = {0, 0, 0, 2, 0, 0};
+    Run(&emitter, at, rest, 2);
+    CHECK(s_seen.velocity[0][0] == 0.0f && s_seen.neighbors[0] == 1.0f, "at the radius");
     mvfxDestroyContext(s_context);
     static const double same[6] = {1, 1, 1, 1, 1, 1};
     Run(&emitter, same, rest, 2);
