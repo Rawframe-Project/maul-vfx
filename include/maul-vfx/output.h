@@ -84,6 +84,15 @@ extern "C"
         // (0, 0) at its left bottom to (1, 1) at its right top; a ribbon's
         // coordinate along and 0 or 1 across (0 elsewhere).
         mvfx_recordCorner = 18,
+        // Its count of neighbors (0 where it finds none): uint32 or
+        // binary32.
+        mvfx_recordNeighborCount = 19,
+        // The offset from it to its neighbors' mean place in the world, 1 to
+        // 3 (0 where none).
+        mvfx_recordNeighborCenter = 20,
+        // The offset from its velocity to its neighbors' mean velocity in
+        // the world, 1 to 3 (0 where none).
+        mvfx_recordNeighborVelocity = 21,
     };
 
     // How a field's components are written.

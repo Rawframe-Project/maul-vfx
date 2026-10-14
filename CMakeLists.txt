@@ -67,6 +67,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/life.c
     src/emitter_step.c
     src/event.c
+    src/neighbor.c
     src/event_spawn.c
     src/float_mode.c
     src/gradient.c
@@ -137,6 +138,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(over_life WHITEBOX)
     maul_add_test(motion WHITEBOX)
     maul_add_test(half_sweep WHITEBOX MANUAL)
+    maul_add_test(neighbor)
     maul_add_test(offscreen)
     maul_add_test(quality)
     maul_add_test(random WHITEBOX)

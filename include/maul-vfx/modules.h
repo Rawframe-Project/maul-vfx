@@ -268,6 +268,37 @@ extern "C"
         int32_t capacity;
     } mvfxEventSpawn;
 
+// The most neighbors one particle's query counts.
+#define MVFX_MAX_NEIGHBORS 256
+
+    // How an emitter's particles find their neighbors: the particles of its
+    // source within a radius, in a grid of hashed cells built once a step
+    // from the source's particles alive at the step's start. Each particle
+    // gets the count of its neighbors and the offsets from it to their mean
+    // place and mean velocity, read at the step's start (host modules and
+    // output records read them).
+    typedef struct mvfxNeighborDef
+    {
+        bool enabled;
+        // The emitter whose particles are the neighbors: -1 or its own index
+        // for its own (a particle is never its own neighbor), else another
+        // of the effect in the same space, which steps first (a cycle with
+        // event spawning is refused).
+        int32_t source;
+        // Neighbors are closer than this, from MVFX_MIN_NEIGHBOR_RADIUS to
+        // MVFX_MAX_NEIGHBOR_RADIUS, in the emitter's space; the source's
+        // grid cells are the largest radius that queries it.
+        float radius;
+        // The most a query counts, from 1 to MVFX_MAX_NEIGHBORS, in the
+        // grid's order; a query that finds more stops there, counted
+        // (mvfxEmitterStats.neighborsCapped).
+        int32_t maxNeighbors;
+    } mvfxNeighborDef;
+
+// The least and greatest neighbor radius.
+#define MVFX_MIN_NEIGHBOR_RADIUS 1e-4f
+#define MVFX_MAX_NEIGHBOR_RADIUS 1e6f
+
     // An event: what happened, to which particle, when and where.
     typedef struct mvfxEvent
     {
@@ -434,6 +465,12 @@ extern "C"
         const float* inverseLife;
         // Each particle's collisions so far, for an emitter that collides.
         uint32_t* collisions;
+        // Read only, for an emitter that finds neighbors: each particle's
+        // count of them, and the offsets from it to their mean place and
+        // mean velocity (0 for none), at the step's start.
+        const float* neighborCount;
+        const float* neighborCenter[3];
+        const float* neighborVelocity[3];
         // After motion: set a particle's byte to 1 to kill it (it is counted
         // killed); NULL before motion.
         uint8_t* kill;

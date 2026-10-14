@@ -308,6 +308,15 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].colliderCount = 2;
     // It tells of every birth, death and collision, up to 12 a step.
     emitters[0].events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
+    // Its own neighbors within 2.5, at most 3; the second's own within 0.5,
+    // at most 4; emitter 2 finds the second's within 3 (so the second's
+    // grid's cells are 3), at most 4.
+    emitters[0].neighbors =
+        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 2.5f, .maxNeighbors = 3};
+    emitters[2].neighbors =
+        (mvfxNeighborDef){.enabled = true, .source = 1, .radius = 3.0f, .maxNeighbors = 4};
+    emitters[1].neighbors =
+        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.5f, .maxNeighbors = 4};
     emitters[0].eventCapacity = 12;
     // The third collides with the depth image each instance carries.
     emitters[2].collision = (mvfxCollision){.enabled = true,
@@ -713,7 +722,7 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
 
 // A record of every field, in many formats: what the scene's output
 // writes for a view.
-static const mvfxLayoutField s_sceneFields[19] = {
+static const mvfxLayoutField s_sceneFields[22] = {
     {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3, .offset = 0},
     {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 12},
     {.field = mvfx_recordColor,
@@ -737,8 +746,20 @@ static const mvfxLayoutField s_sceneFields[19] = {
     {.field = mvfx_recordSide, .format = mvfx_formatSnorm16, .components = 3, .offset = 84},
     {.field = mvfx_recordFaceNormal, .format = mvfx_formatFloat32, .components = 3, .offset = 92},
     {.field = mvfx_recordCorner, .format = mvfx_formatUnorm16, .components = 2, .offset = 104},
+    {.field = mvfx_recordNeighborCount,
+     .format = mvfx_formatUint32,
+     .components = 1,
+     .offset = 108},
+    {.field = mvfx_recordNeighborCenter,
+     .format = mvfx_formatFloat32,
+     .components = 3,
+     .offset = 112},
+    {.field = mvfx_recordNeighborVelocity,
+     .format = mvfx_formatFloat16,
+     .components = 3,
+     .offset = 124},
 };
-#define SCENE_RECORD_BYTES 108
+#define SCENE_RECORD_BYTES 132
 #define SCENE_RECORDS      128
 
 // Hashes an emitter's ribbons for a view: their points and list.
@@ -825,7 +846,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
 {
     mvfxLayoutDef def = mvfxDefaultLayoutDef();
     def.fields = s_sceneFields;
-    def.fieldCount = 19;
+    def.fieldCount = 22;
     def.stride = SCENE_RECORD_BYTES;
     mvfxLayoutId layout = {1, 1};
     if (!mvfxLayout_IsValid(context, layout))

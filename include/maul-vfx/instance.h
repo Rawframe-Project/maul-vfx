@@ -562,6 +562,8 @@ extern "C"
         uint64_t queriesDropped;
         // Events its capacity of them dropped.
         uint64_t eventsDropped;
+        // Neighbor queries that reached their most neighbors.
+        uint64_t neighborsCapped;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

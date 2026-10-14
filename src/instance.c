@@ -25,7 +25,40 @@ typedef struct EmitterAt
     size_t queries;
     size_t events;
     size_t eventQueue;
+    size_t gridTable;
+    size_t gridKeys;
+    size_t gridIndex;
+    size_t gridValues;
+    uint32_t gridMask;
 } EmitterAt;
+
+// The entries of a grid's table at a capacity: a power of two at least
+// twice it.
+static uint32_t GridTableSize(int32_t capacity)
+{
+    uint32_t size = 2;
+    while (size < 2u * (uint32_t)capacity)
+    {
+        size *= 2u;
+    }
+    return size;
+}
+
+// Adds an emitter's neighbor grid to the block, for one queried.
+static void AddGrid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
+                    EmitterAt* at)
+{
+    if (!(compiled->gridCell > 0.0f))
+    {
+        return;
+    }
+    uint32_t size = GridTableSize(capacity);
+    at->gridMask = size - 1u;
+    at->gridTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
+    at->gridKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
+    at->gridIndex = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(int32_t), alignof(int32_t));
+    at->gridValues = mvfxLayoutAdd(layout, 6u * (size_t)capacity, sizeof(float), alignof(float));
+}
 
 static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compiled)
 {
@@ -103,6 +136,15 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
             .queries = (mvfxSceneQuery*)(block + at[e].queries),
             .events = (mvfxEvent*)(block + at[e].events),
             .eventQueue = (mvfxHostBirth*)(block + at[e].eventQueue),
+            .grid =
+                {
+                    .table = (int32_t*)(block + at[e].gridTable),
+                    .keys = (uint32_t*)(block + at[e].gridKeys),
+                    .index = (int32_t*)(block + at[e].gridIndex),
+                    .values = (float*)(block + at[e].gridValues),
+                    .capacity = capacities[e],
+                    .mask = at[e].gridMask,
+                },
         };
     }
 }
@@ -133,6 +175,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
         at[e] = AddEmitter(&layout, &effect->emitters[e]);
+        AddGrid(&layout, &effect->emitters[e], capacities[e], &at[e]);
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -203,6 +246,8 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->queriesDropped = 0;
         state->eventCount = 0;
         state->eventsDropped = 0;
+        state->grid.count = 0;
+        state->neighborsCapped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;
         state->beamStrike = instance->effect->emitters[e].delay;
@@ -257,6 +302,7 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->count, (int32_t)sizeof state->count);
         hash = mvfxHash64(hash, &state->owed, (int32_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
+        hash = mvfxHash64(hash, &state->neighborsCapped, (int32_t)sizeof state->neighborsCapped);
         hash = HashEvents(state, hash);
         hash = mvfxHash64(hash, &state->ribbonCounter, (int32_t)sizeof state->ribbonCounter);
         hash = mvfxHash64(hash, &state->beamStrike, (int32_t)sizeof state->beamStrike);

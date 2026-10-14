@@ -193,3 +193,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   simulate, throttle (every n-th unseen step by the summed length, in
   the seed's phase) or pause (`mvfxInstanceDef.offscreen`,
   `mvfxInstance_SetOffscreen`).
+- The neighbor grid: an emitter's `neighbors` (its own particles or
+  another emitter's, a radius, a cap counted in `neighborsCapped`),
+  hashed cells and a stable counting sort; each particle's neighbor
+  count and offsets to their mean place and velocity, for host modules
+  and the records `mvfx_recordNeighborCount`, `mvfx_recordNeighborCenter`
+  and `mvfx_recordNeighborVelocity`.

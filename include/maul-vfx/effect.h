@@ -596,6 +596,8 @@ extern "C"
         int32_t eventCapacity;
         // Spawning from another emitter's events.
         mvfxEventSpawn eventSpawn;
+        // Finding its neighbors.
+        mvfxNeighborDef neighbors;
         // The lights its particles carry (mvfxInstance_WriteLights).
         mvfxLightDef light;
         // Its ribbons (mvfxInstance_WriteRibbons).

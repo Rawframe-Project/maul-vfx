@@ -306,6 +306,11 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
         // No contact plane yet.
         Store(instance, emitter, (mvfxAttribute)(mvfx_attributeScenePointX + k), at, 0.0f);
     }
+    for (int32_t k = 0; Has(compiled, mvfx_attributeNeighborCount) && k < 7; ++k)
+    {
+        // No neighbors until the next step's query.
+        Store(instance, emitter, (mvfxAttribute)(mvfx_attributeNeighborCount + k), at, 0.0f);
+    }
     for (int32_t i = 0; i < compiled->customCount; ++i)
     {
         mvfxDrawVector(&compiled->custom[i], age, parameters,

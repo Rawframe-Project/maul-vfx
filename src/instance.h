@@ -62,6 +62,23 @@ enum
 // One emitter's particles, counts and cursors. Live particles are [0,
 // count) of each attribute array, oldest first; owed is also the serial
 // of the next birth.
+//
+// An emitter's neighbor grid: its particles alive at the step's start,
+// sorted by their cells' hashed keys (stable, so in their order within a
+// key), with their places and velocities copied in that order; entry j's
+// key k has table[k] <= j < table[k + 1].
+typedef struct mvfxNeighborGrid
+{
+    int32_t* table;
+    uint32_t* keys;
+    int32_t* index;
+    // Six arrays of the capacity: places x, y, z, then velocities.
+    float* values;
+    int32_t capacity;
+    uint32_t mask;
+    int32_t count;
+} mvfxNeighborGrid;
+
 typedef struct mvfxEmitterState
 {
     unsigned char* particles;
@@ -106,6 +123,9 @@ typedef struct mvfxEmitterState
     struct mvfxEvent* events;
     int32_t eventCount;
     uint64_t eventsDropped;
+    // Its grid (for an emitter queried), and the queries that were capped.
+    mvfxNeighborGrid grid;
+    uint64_t neighborsCapped;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

@@ -104,12 +104,35 @@ static void RibbonValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, 
     }
 }
 
+// A neighbor field's values: the count, or an offset in the world (0
+// where the emitter finds no neighbors).
+static void NeighborValuesOf(const mvfxRecordSource* s, mvfxField field, int32_t i, float v[4],
+                             uint32_t w[4])
+{
+    if (!mvfxHasAttribute(s->plan, mvfx_attributeNeighborCount))
+    {
+        return;
+    }
+    if (field == mvfx_recordNeighborCount)
+    {
+        v[0] = FloatOf(s, mvfx_attributeNeighborCount, i);
+        w[0] = (uint32_t)v[0];
+        return;
+    }
+    float p[3];
+    VectorOf(s,
+             field == mvfx_recordNeighborCenter ? mvfx_attributeNeighborCenterX
+                                                : mvfx_attributeNeighborVelocityX,
+             i, p);
+    mvfxUnmapVector(&s->map, p, v);
+}
+
 // Particle i's values for a field: floats, or words for the word fields;
 // a ribbon point's where point is given.
 static void ValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, int32_t i,
                      const mvfxRibbonPoint* point, float v[4], uint32_t w[4])
 {
-    if (f->field >= mvfx_recordTangent)
+    if (f->field >= mvfx_recordTangent && f->field <= mvfx_recordCorner)
     {
         RibbonValuesOf(s, f, i, point, v, w);
         return;
@@ -165,6 +188,11 @@ static void ValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, int32_
         w[0] = WordOf(s, mvfx_attributeMesh, i);
         v[0] = (float)w[0];
         break;
+    case mvfx_recordNeighborCount:
+    case mvfx_recordNeighborCenter:
+    case mvfx_recordNeighborVelocity:
+        NeighborValuesOf(s, f->field, i, v, w);
+        break;
     default:
         w[0] = WordOf(s, mvfx_attributeSerial, i);
         break;
@@ -207,7 +235,7 @@ void mvfxWriteRecord(const mvfxRecordSource* source, const mvfxOutputLayout* lay
 static bool IsCounted(mvfxField field)
 {
     return field == mvfx_recordFrame || field == mvfx_recordSerial || field == mvfx_recordMesh ||
-           field == mvfx_recordRibbon;
+           field == mvfx_recordRibbon || field == mvfx_recordNeighborCount;
 }
 
 // Values a fraction of the way from a to b, an orientation's along the

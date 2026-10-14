@@ -28,15 +28,17 @@ static uint32_t FormatBytes(mvfxFormat format)
 // The components a field may have, from low to high.
 static void ComponentRange(mvfxField field, uint8_t* low, uint8_t* high)
 {
-    static const uint8_t lows[19] = {1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2};
-    static const uint8_t highs[19] = {3, 3, 4, 1, 4, 3, 1, 1, 4, 1, 1, 3, 1, 1, 1, 1, 3, 3, 2};
+    static const uint8_t lows[22] = {1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1,
+                                     1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1};
+    static const uint8_t highs[22] = {3, 3, 4, 1, 4, 3, 1, 1, 4, 1, 1,
+                                      3, 1, 1, 1, 1, 3, 3, 2, 1, 3, 3};
     *low = lows[field];
     *high = highs[field];
 }
 
 static bool IsFieldValid(const mvfxLayoutField* f, uint32_t stride)
 {
-    if (f->field > mvfx_recordCorner || f->format > mvfx_formatUint32)
+    if (f->field > mvfx_recordNeighborVelocity || f->format > mvfx_formatUint32)
     {
         return false;
     }
@@ -48,7 +50,7 @@ static bool IsFieldValid(const mvfxLayoutField* f, uint32_t stride)
     bool word = f->format == mvfx_formatUint32;
     bool formatFits = f->field == mvfx_recordSerial ? word
                       : (f->field == mvfx_recordFrame || f->field == mvfx_recordMesh ||
-                         f->field == mvfx_recordRibbon)
+                         f->field == mvfx_recordRibbon || f->field == mvfx_recordNeighborCount)
                           ? word || f->format == mvfx_formatFloat32
                           : !word;
     uint32_t bytes = FormatBytes(f->format);

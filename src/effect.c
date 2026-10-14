@@ -409,6 +409,23 @@ static bool IsBeamValid(const mvfxEmitterDef* def, int32_t parameterCount)
     return shape && alone && def->ribbon.ids == mvfx_ribbonOne && !def->ribbon.pinHead;
 }
 
+// Whether an emitter's neighbor queries are valid against its effect: a
+// source of its own or in its space, a radius and a cap in range.
+static bool AreNeighborsValid(const mvfxEffectDef* def, int32_t i)
+{
+    const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
+    if (!neighbors->enabled)
+    {
+        return true;
+    }
+    int32_t source = neighbors->source;
+    bool sourceValid = source == -1 || (source >= 0 && source < def->emitterCount &&
+                                        def->emitters[source].space == def->emitters[i].space);
+    return sourceValid &&
+           IsWithin(neighbors->radius, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS) &&
+           neighbors->maxNeighbors >= 1 && neighbors->maxNeighbors <= MVFX_MAX_NEIGHBORS;
+}
+
 // Whether an emitter's spawning from events is valid against its effect:
 // a source not its own that writes the kind, counts and a share in range.
 static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
@@ -441,7 +458,10 @@ static bool OrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITT
         for (int32_t i = 0; next < 0 && i < def->emitterCount; ++i)
         {
             const mvfxEventSpawn* spawn = &def->emitters[i].eventSpawn;
-            bool ready = !spawn->enabled || placed[spawn->source];
+            const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
+            bool ready = (!spawn->enabled || placed[spawn->source]) &&
+                         (!neighbors->enabled || neighbors->source < 0 || neighbors->source == i ||
+                          placed[neighbors->source]);
             next = !placed[i] && ready ? i : next;
         }
         if (next < 0)
@@ -500,7 +520,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     {
         if (!IsEmitterDefValid(&def->emitters[i]) ||
             !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
-            !IsBeamValid(&def->emitters[i], def->parameterCount))
+            !AreNeighborsValid(def, i) || !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
         }
@@ -539,6 +559,7 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
           mvfx_attributeRibbonDistance, 1);
     Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
     Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
+    Store(plan, def->neighbors.enabled, mvfx_attributeNeighborCount, 7);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
           6);
     for (int32_t i = 0; i < def->customCount; ++i)
@@ -732,6 +753,29 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
                             : seconds * (double)source->rate;
 }
 
+// Resolves each emitter's neighbor source to an index, and sizes each
+// grid's cells by the largest radius that queries it.
+static void ResolveNeighbors(const mvfxEffectDef* def, mvfxEffect* effect)
+{
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        effect->emitters[i].gridCell = 0.0f;
+        effect->emitters[i].neighbors = (mvfxNeighborDef){0};
+    }
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        mvfxNeighborDef neighbors = def->emitters[i].neighbors;
+        if (!neighbors.enabled)
+        {
+            continue;
+        }
+        neighbors.source = neighbors.source < 0 ? i : neighbors.source;
+        effect->emitters[i].neighbors = neighbors;
+        float* cell = &effect->emitters[neighbors.source].gridCell;
+        *cell = neighbors.radius > *cell ? neighbors.radius : *cell;
+    }
+}
+
 mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
                               const mvfxAllocator* allocator)
 {
@@ -801,6 +845,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
     {
         CompileEmitter(&def->emitters[i], meshes[i], &emitterSpace, &effect->emitters[i]);
     }
+    ResolveNeighbors(def, effect);
     (void)OrderEmitters(def, effect->stepOrder);
     return effect;
 }

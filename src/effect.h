@@ -82,10 +82,15 @@ enum
     // The ribbon's distance at its birth in the particles' space, from its
     // ribbon's point before.
     mvfx_attributeRibbonDistance = 69,
+    // A particle's count of neighbors, and the offsets to their mean place
+    // and velocity.
+    mvfx_attributeNeighborCount = 70,
+    mvfx_attributeNeighborCenterX = 71,
+    mvfx_attributeNeighborVelocityX = 74,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeRibbonDistance + 1)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeNeighborVelocityX + 3)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.
@@ -202,6 +207,10 @@ typedef struct mvfxCompiledEmitter
     uint8_t events;
     int32_t eventCapacity;
     mvfxEventSpawn eventSpawn;
+    // Its neighbor queries, the source resolved to an index; and the cell of
+    // its own grid, the largest radius querying it (0 for no grid).
+    mvfxNeighborDef neighbors;
+    float gridCell;
     int32_t drawPriority;
     bool fixedBounds;
     float boundsMin[3];

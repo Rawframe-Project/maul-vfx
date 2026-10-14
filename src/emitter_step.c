@@ -14,6 +14,7 @@
 #include "event_spawn.h"
 #include "host_module.h"
 #include "integrate.h"
+#include "neighbor.h"
 #include "scene_query.h"
 #include "spawn.h"
 
@@ -314,6 +315,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     AcceptEventBirthsBy(instance, emitter, &heap, instance->clock, &next, &accepted);
     mvfxSaveBirths(instance, &births);
     RemoveEnded(instance, emitter);
+    mvfxFindNeighbors(instance, emitter);
     mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
     mvfxIntegrateEmitter(instance, emitter);
     for (int32_t i = 0; i < accepted; ++i)
@@ -379,6 +381,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     if (BirthsFit(instance, emitter))
     {
         RemoveEnded(instance, emitter);
+        mvfxFindNeighbors(instance, emitter);
         mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
         mvfxIntegrateEmitter(instance, emitter);
         BirthsWithRoom(instance, emitter);

@@ -49,6 +49,14 @@ static mvfxParticleArrays ArraysOf(mvfxInstance* instance, int32_t emitter, bool
     Fill(instance, emitter, mvfx_attributeSizeX, 3, arrays.size);
     Fill(instance, emitter, mvfx_attributeOrientationX, 4, arrays.orientation);
     Fill(instance, emitter, mvfx_attributeAngularX, 3, arrays.angularVelocity);
+    arrays.neighborCount = ArrayOf(instance, emitter, mvfx_attributeNeighborCount);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        arrays.neighborCenter[k] =
+            ArrayOf(instance, emitter, (mvfxAttribute)(mvfx_attributeNeighborCenterX + k));
+        arrays.neighborVelocity[k] =
+            ArrayOf(instance, emitter, (mvfxAttribute)(mvfx_attributeNeighborVelocityX + k));
+    }
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
     {
         Fill(instance, emitter, mvfx_attributeCustom + 4 * i, 4, arrays.custom[i]);
