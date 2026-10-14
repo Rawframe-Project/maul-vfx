@@ -223,6 +223,57 @@ static void TestDirectional(void)
     mvfxDestroyContext(scene.context);
 }
 
+// A quad's right and up edges in x and y.
+static void Edges(const Written* w, float right[2], float up[2])
+{
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        right[k] = w->vertices[1].position[k] - w->vertices[0].position[k];
+        up[k] = w->vertices[2].position[k] - w->vertices[0].position[k];
+    }
+}
+
+static void TestTurned(void)
+{
+    // A local emitter turned a quarter about Z: a fixed quad of no turn of
+    // its own has right +y and up -x; a directional one moving along local
+    // x moves along the world's y, so its up is +y and its right +x.
+    mvfxEmitterDef emitter = Sprites(mvfx_billboardFixed);
+    emitter.space = mvfx_spaceLocal;
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    static const double origin[3] = {0, 0, 0};
+    static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    static const double places[3] = {0, 0, 0};
+    static const float along[3] = {3, 0, 0};
+    mvfxView above = s_view;
+    above.eye[0] = 0.0;
+    above.eye[1] = 0.0;
+    float right[2];
+    float up[2];
+    Scene scene = NewScene(&emitter);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 1.0f, true) ==
+              mvfx_success,
+          "turned");
+    Spawn(&scene, places, along, 1);
+    Written w = Expand(&scene, &above, 16, 24);
+    Edges(&w, right, up);
+    CHECK(Near(right[0], 0.0f) && Near(right[1], 2.0f) && Near(up[0], -4.0f) && Near(up[1], 0.0f),
+          "a fixed quad turned with the instance");
+    mvfxDestroyContext(scene.context);
+    emitter.sprite.billboard = mvfx_billboardDirectional;
+    scene = NewScene(&emitter);
+    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 1.0f, true) ==
+              mvfx_success,
+          "turned");
+    Spawn(&scene, places, along, 1);
+    w = Expand(&scene, &above, 16, 24);
+    Edges(&w, right, up);
+    CHECK(Near(right[0], 2.0f) && Near(right[1], 0.0f) && Near(up[0], 0.0f) && Near(up[1], 4.0f),
+          "moving along the world's y");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestSortedAndLocal(void)
 {
     // Back to front from the eye: the far one's quad first. A local
@@ -352,6 +403,7 @@ int main(void)
     TestAxisY();
     TestFixed();
     TestDirectional();
+    TestTurned();
     TestSortedAndLocal();
     TestChecks();
     TestRefusals();
