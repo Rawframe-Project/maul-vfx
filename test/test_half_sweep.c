@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// binary32 to binary16 for every float, against the oracles of
+// binary32 to binary16 for every float, against the oracle of
 // half_reference.h. A few minutes in an optimized build: built, and run
 // by hand and on a schedule, not by the default test set.
 

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The oracles binary32 to binary16 conversion is checked against: rounding
-// done in double, which holds every float exactly, and the compiler's
-// _Float16 where it has one.
+// The oracle binary32 to binary16 conversion is checked against: rounding
+// done in double, which holds every float exactly. (The compiler's
+// _Float16 agreed on every float under GCC 14; it is not linked here, as
+// Clang's needs compiler-rt.)
 
 #ifndef MAUL_VFX_TEST_HALF_REFERENCE_H
 #define MAUL_VFX_TEST_HALF_REFERENCE_H
@@ -64,17 +65,7 @@ static inline void CheckBits(uint32_t bits)
     if (got != ReferenceHalf(value))
     {
         CHECK(false, "matches the double reference");
-        return;
     }
-#ifdef __FLT16_MAX__
-    if (!isnan(value))
-    {
-        _Float16 half = (_Float16)value;
-        uint16_t compiler = 0;
-        memcpy(&compiler, &half, sizeof compiler);
-        CHECK(got == compiler, "matches the compiler's _Float16");
-    }
-#endif
 }
 
 #endif

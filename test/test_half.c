@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// binary32 to binary16 against the oracles of half_reference.h, on a
+// binary32 to binary16 against the oracle of half_reference.h, on a
 // prime stride of floats and every float near a half's value or halfway
 // between two; test_half_sweep checks every float.
 
