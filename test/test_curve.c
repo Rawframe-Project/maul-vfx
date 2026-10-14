@@ -151,6 +151,27 @@ static void TestMonotoneNeverOvershoots(void)
     CHECK(mvfxCurveValueAt(&monotone, 1.5) <= 1.0, "the monotone rule does not");
 }
 
+static void TestMonotoneIsSmoothAtKeys(void)
+{
+    // One tangent per key serves both segments around it, so the slope
+    // does not jump at an interior key, peaks and flats included.
+    mvfxCurveKey keys[6] = {
+        {0.0f, 0.0f, 0, 0, mvfx_interpolationCubic}, {1.0f, 1.0f, 0, 0, mvfx_interpolationCubic},
+        {1.2f, 0.1f, 0, 0, mvfx_interpolationCubic}, {2.0f, 0.1f, 0, 0, mvfx_interpolationCubic},
+        {2.5f, 3.0f, 0, 0, mvfx_interpolationCubic}, {4.0f, 3.5f, 0, 0, mvfx_interpolationCubic}};
+    mvfxCurve curve = {keys, 6, mvfx_tangentsMonotone};
+    double h = 1e-7;
+    for (int32_t i = 1; i < 5; ++i)
+    {
+        double t = (double)keys[i].time;
+        double left = (mvfxCurveValueAt(&curve, t) - mvfxCurveValueAt(&curve, t - h)) / h;
+        double right = (mvfxCurveValueAt(&curve, t + h) - mvfxCurveValueAt(&curve, t)) / h;
+        CHECK(fabs(left - right) < 1e-4 * (1.0 + fabs(left)), "the slope is continuous at a key");
+    }
+    CHECK(fabs((mvfxCurveValueAt(&curve, 1.0 + 1e-7) - 1.0) / 1e-7) < 1e-4,
+          "a peak has a flat tangent");
+}
+
 static void TestBakingIsWithinItsBound(void)
 {
     // A smooth cubic over [0, 1]: the baked table differs from it by at most
@@ -203,6 +224,7 @@ int main(void)
     TestInterpolations();
     TestSmoothKeepsALineStraight();
     TestMonotoneNeverOvershoots();
+    TestMonotoneIsSmoothAtKeys();
     TestBakingIsWithinItsBound();
     return s_failures == 0 ? 0 : 1;
 }

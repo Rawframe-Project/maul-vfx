@@ -63,38 +63,47 @@ static double SmoothTangent(const mvfxCurve* curve, int32_t i)
     return Secant(&curve->keys[before], &curve->keys[after]);
 }
 
-// The tangents Fritsch and Carlson's rule gives the two ends of the
-// segment from key i: the mean of the secants either side of each key
-// (0 where they differ in sign), then both scaled into the circle of
-// radius 3 that keeps the segment monotone.
-static void MonotoneTangents(const mvfxCurve* curve, int32_t i, double* startOut, double* endOut)
+// The tangents Fritsch and Carlson's rule gives every key, one per key
+// for both segments around it: each key's the mean of the secants either
+// side (0 where they differ in sign, the end keys their one secant); then,
+// segment by segment in order, both ends 0 on a flat segment, and both
+// scaled into the circle of radius 3 that keeps the segment monotone.
+static void MonotoneTangents(const mvfxCurve* curve, double* tangentsOut)
 {
     const mvfxCurveKey* keys = curve->keys;
     int32_t last = curve->keyCount - 1;
-    double here = Secant(&keys[i], &keys[i + 1]);
-    double before = i > 0 ? Secant(&keys[i - 1], &keys[i]) : here;
-    double after = i + 1 < last ? Secant(&keys[i + 1], &keys[i + 2]) : here;
-    double start = before * here <= 0.0 ? 0.0 : (before + here) / 2.0;
-    double end = here * after <= 0.0 ? 0.0 : (here + after) / 2.0;
-    if (here == 0.0)
+    double secants[MVFX_CURVE_MAX_KEYS] = {0};
+    for (int32_t k = 0; k < last; ++k)
     {
-        start = 0.0;
-        end = 0.0;
+        secants[k] = Secant(&keys[k], &keys[k + 1]);
     }
-    else
+    tangentsOut[0] = secants[0];
+    tangentsOut[last] = last > 0 ? secants[last - 1] : 0.0;
+    for (int32_t k = 1; k < last; ++k)
     {
-        double alpha = start / here;
-        double beta = end / here;
+        double before = secants[k - 1];
+        double after = secants[k];
+        tangentsOut[k] = before * after <= 0.0 ? 0.0 : (before + after) / 2.0;
+    }
+    for (int32_t k = 0; k < last; ++k)
+    {
+        double here = secants[k];
+        if (here == 0.0)
+        {
+            tangentsOut[k] = 0.0;
+            tangentsOut[k + 1] = 0.0;
+            continue;
+        }
+        double alpha = tangentsOut[k] / here;
+        double beta = tangentsOut[k + 1] / here;
         double radius = alpha * alpha + beta * beta;
         if (radius > 9.0)
         {
             double tau = 3.0 / sqrt(radius);
-            start = tau * alpha * here;
-            end = tau * beta * here;
+            tangentsOut[k] = tau * alpha * here;
+            tangentsOut[k + 1] = tau * beta * here;
         }
     }
-    *startOut = start;
-    *endOut = end;
 }
 
 // The cubic Hermite segment from key i to key i + 1 at fraction u.
@@ -112,7 +121,10 @@ static double CubicAt(const mvfxCurve* curve, int32_t i, double u)
     }
     else if (curve->tangents == mvfx_tangentsMonotone)
     {
-        MonotoneTangents(curve, i, &start, &end);
+        double tangents[MVFX_CURVE_MAX_KEYS] = {0};
+        MonotoneTangents(curve, tangents);
+        start = tangents[i];
+        end = tangents[i + 1];
     }
     double u2 = u * u;
     double u3 = u2 * u;
