@@ -245,6 +245,45 @@ static void TestPoints(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestOwnSettings(void)
+{
+    // Exactly the distance apart: no link.
+    static const double apart[6] = {0, 0, 0, 1, 0, 0};
+    mvfxEmitterDef emitter = Emitter(1.0f);
+    Scene scene = Run(&emitter, apart, 2);
+    WriteLinks(&scene, 4096, 2048);
+    CHECK(s_links.linkCount == 0, "the distance exclusive");
+    mvfxDestroyContext(scene.context);
+    // Ribbons cut in four, tiled per segment, scrolling, three times as
+    // wide and facing up: the links are their own, straight, along 0 to 1,
+    // a quarter wide, facing the eye.
+    static const double pair[6] = {0, 0, 0, 0.5, 0, 0};
+    emitter.ribbon.ids = mvfx_ribbonOne;
+    emitter.ribbon.pieces = 4;
+    emitter.ribbon.texture = mvfx_ribbonTilePerSegment;
+    emitter.ribbon.scroll = 2.0f;
+    emitter.ribbon.facing = mvfx_ribbonFaceNormal;
+    emitter.ribbon.normal[1] = 1.0f;
+    emitter.ribbon.width.value = 3.0f;
+    scene = Run(&emitter, pair, 2);
+    WriteLinks(&scene, 4096, 2048);
+    CHECK(s_links.pointCount == 2 && s_links.points[1].along == 1.0f &&
+              s_links.points[0].width == 0.25f,
+          "straight, along, width");
+    static Record vertices[8];
+    static uint32_t indices[12];
+    mvfxExpandBuffers buffers = {
+        .vertices = vertices, .vertexCapacity = 8, .indices = indices, .indexCapacity = 12};
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    CHECK(mvfxInstance_ExpandPlexus(scene.context, scene.instance, 0, scene.layout, &s_view,
+                                    &buffers, &vertexCount, &indexCount) == mvfx_success &&
+              vertexCount == 4 && fabsf(vertices[0].position[1] - 0.125f) <= 1e-6f &&
+              vertices[0].position[2] == 0.0f,
+          "facing the eye");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -331,6 +370,7 @@ int main(void)
     TestBruteForce();
     TestCaps();
     TestPoints();
+    TestOwnSettings();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

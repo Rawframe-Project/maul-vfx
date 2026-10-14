@@ -543,6 +543,8 @@ static Totals WriteLinks(const mvfxInstance* instance, int32_t emitter, const mv
             float d = p[k][particles[1]] - p[k][particles[0]];
             square += d * d;
         }
+        // At least 0: a link is shorter than the distance, and the square
+        // root is correctly rounded.
         float fade = 1.0f - sqrtf(square) / compiled->plexus.distance;
         Chain chain = {.source = &source,
                        .compiled = compiled,
@@ -551,9 +553,7 @@ static Totals WriteLinks(const mvfxInstance* instance, int32_t emitter, const mv
                        .particleCount = 2,
                        .count = 2,
                        .link = true,
-                       .fade = !compiled->plexus.fade ? 1.0f
-                               : fade > 0.0f          ? fade
-                                                      : 0.0f};
+                       .fade = compiled->plexus.fade ? fade : 1.0f};
         MeasureChain(&chain);
         TakeChain(&chain, (uint32_t)l, sink, &totals);
     }
