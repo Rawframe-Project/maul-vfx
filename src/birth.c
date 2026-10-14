@@ -7,6 +7,7 @@
 
 #include "direction.h"
 #include "elementary.h"
+#include "integrate.h"
 #include "random.h"
 #include "shape.h"
 #include "value.h"
@@ -24,6 +25,7 @@
 #define ANGULAR_SALT     0x414E4755u
 #define FRAME_SALT       0x46524D45u
 #define CUSTOM_SALT      0x43555354u
+#define DRAG_SALT        0x44524147u
 
 #define TWO_PI 6.28318530717958647692f
 
@@ -172,6 +174,12 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
         mvfxDrawVector(&compiled->angularVelocity, age, parameters,
                        Draw(instance, emitter, ANGULAR_SALT, serial), values);
         StoreVector(instance, emitter, mvfx_attributeAngularX, 3, at, values);
+    }
+    if (Has(compiled, mvfx_attributeDrag))
+    {
+        Store(instance, emitter, mvfx_attributeDrag, at,
+              mvfxDrawScalar(&compiled->dragScale, age, parameters,
+                             Draw(instance, emitter, DRAG_SALT, serial)));
     }
     if (Has(compiled, mvfx_attributeFrame))
     {
@@ -344,4 +352,5 @@ void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* b
         }
     }
     instance->emitters[emitter].count = at + 1;
+    mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
 }

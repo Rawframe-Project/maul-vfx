@@ -136,6 +136,11 @@ static double ExpDouble(double x)
     return ldexp(ExpReduced(r), (int)k);
 }
 
+double mvfxExpDouble(double x)
+{
+    return ExpDouble(x);
+}
+
 float mvfxExp(float x)
 {
     if (IsNan(x))

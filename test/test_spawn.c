@@ -611,14 +611,17 @@ static void TestShapesThroughTheStep(void)
     const float* vx = mvfxAttributeArray(instance, 0, mvfx_attributeVelocityX);
     const float* vy = mvfxAttributeArray(instance, 0, mvfx_attributeVelocityY);
     const uint32_t* serial = mvfxAttributeArray(instance, 0, mvfx_attributeSerial);
+    const uint32_t* birth = mvfxAttributeArray(instance, 0, mvfx_attributeBirthLow);
     bool spread = true;
     for (int32_t k = 0; k < 8; ++k)
     {
         double angle = 2.0 * 3.14159265358979323846 * k / 8.0;
+        // Where each was born: its place less its flight since.
+        double age = (double)(instance->clock - (int64_t)birth[k]) / MVFX_TICKS_PER_SECOND;
         spread = spread && serial[k] == (uint32_t)k &&
-                 fabs((double)x[k] - 2.0 * cos(angle)) <= 1e-5 &&
-                 fabs((double)y[k] - 2.0 * sin(angle)) <= 1e-5 && z[k] == 1.0f &&
-                 fabs((double)vx[k] - 3.0 * cos(angle)) <= 1e-5 &&
+                 fabs((double)x[k] - (double)vx[k] * age - 2.0 * cos(angle)) <= 1e-5 &&
+                 fabs((double)y[k] - (double)vy[k] * age - 2.0 * sin(angle)) <= 1e-5 &&
+                 z[k] == 1.0f && fabs((double)vx[k] - 3.0 * cos(angle)) <= 1e-5 &&
                  fabs((double)vy[k] - 3.0 * sin(angle)) <= 1e-5;
     }
     CHECK(spread, "spread evenly on the ring, outward at 3");

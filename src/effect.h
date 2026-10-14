@@ -63,12 +63,14 @@ enum
     mvfx_attributeAngularZ = 25,
     // A uint32 frame index.
     mvfx_attributeFrame = 26,
-    // Custom attribute i's component c at 27 + 4 i + c.
-    mvfx_attributeCustom = 27,
+    // A particle's drag multiplier.
+    mvfx_attributeDrag = 27,
+    // Custom attribute i's component c at 28 + 4 i + c.
+    mvfx_attributeCustom = 28,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (27 + 4 * MVFX_MAX_CUSTOM_ATTRIBUTES)
+#define MVFX_ATTRIBUTE_COUNT (28 + 4 * MVFX_MAX_CUSTOM_ATTRIBUTES)
 
 // The alignment of every attribute array, a cache line.
 #define MVFX_ATTRIBUTE_ALIGNMENT 64
@@ -142,6 +144,13 @@ typedef struct mvfxCompiledEmitter
     mvfxCompiledVector color;
     mvfxCompiledScalar angle;
     mvfxCompiledScalar spin;
+    // How particles move; dragScale is drawn when the drag attribute is
+    // stored.
+    float gravity[3];
+    mvfxSimulationSpace gravitySpace;
+    float drag;
+    float angularDrag;
+    mvfxCompiledScalar dragScale;
     mvfxOrientationMode orientationMode;
     mvfxCompiledVector orientation;
     mvfxCompiledVector angularVelocity;

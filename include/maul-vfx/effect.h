@@ -88,6 +88,30 @@ extern "C"
 // The most particles an emitter may spawn a unit of distance.
 #define MVFX_MAX_DISTANCE_RATE 1e4f
 
+// The most drag an emitter or a particle may have, a second.
+#define MVFX_MAX_DRAG 1000.0f
+
+    // How an emitter's particles move: each step moves them exactly under
+    // their gravity and drag (an exponential integrator), whatever the
+    // steps' lengths, with the forces that vary held for the step.
+    typedef struct mvfxMotion
+    {
+        // A constant acceleration, each component finite and at most
+        // MVFX_MAX_EXTENT in size, in units a second squared.
+        float gravity[3];
+        // The space gravity is given in: the world's, or the emitter's (it
+        // turns and scales with the instance).
+        mvfxSimulationSpace gravitySpace;
+        // Linear drag a second, from 0 to MVFX_MAX_DRAG: the share of its
+        // velocity a particle loses is 1 - e^(-drag t).
+        float drag;
+        // Optional, a multiplier of drag drawn for each particle; the
+        // product is held to 0 and MVFX_MAX_DRAG.
+        mvfxScalarSource dragScale;
+        // Angular drag a second likewise, slowing spin and angular velocity.
+        float angularDrag;
+    } mvfxMotion;
+
     // How an emitter is made. Build it with mvfxDefaultEmitterDef.
     //
     // Times are rounded once to ticks of 2^-20 seconds when the effect is
@@ -144,6 +168,8 @@ extern "C"
         mvfxShape shape;
         // How they set off.
         mvfxVelocity velocity;
+        // How they move.
+        mvfxMotion motion;
         // The optional initial values, each stored only when its source is
         // set: size per axis (X, Y, Z), linear color (red, green, blue,
         // alpha), a sprite's angle in radians and spin in radians a second
@@ -153,7 +179,8 @@ extern "C"
         mvfxScalarSource angle;
         mvfxScalarSource spin;
         // A mesh particle's orientation (a quaternion) and angular velocity
-        // in radians a second (either sets both, the other identity or 0);
+        // in radians a second in the emitter's space (either sets both, the
+        // other identity or 0);
         // orientation reads Euler angles in radians in the euler mode.
         mvfxOrientationMode orientationMode;
         mvfxVectorSource orientation;
@@ -173,7 +200,8 @@ extern "C"
     /// Returns the default emitter def: 1,024 particles in world space, 64 a
     /// second without end from the instance's start, none by distance, no
     /// bursts, each living one second, born at the emitter's origin at rest (a point shape,
-    /// unturned, whole arcs, along the shape's normal at a speed of 0).
+    /// unturned, whole arcs, along the shape's normal at a speed of 0), with
+    /// no gravity and no drag.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

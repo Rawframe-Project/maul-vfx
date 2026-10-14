@@ -91,10 +91,13 @@ static void TestWorldSpawns(void)
     for (int32_t i = 0; i < 3; ++i)
     {
         const double* p = &places[3 * (i < 2 ? i : 0)];
-        placed =
-            placed &&
-            fabs((double)Array(&scene, mvfx_attributePositionX)[i] + anchor[0] - p[0]) <= 1e-4 &&
-            fabs((double)Array(&scene, mvfx_attributePositionY)[i] + anchor[1] - p[1]) <= 1e-4;
+        // Born at the step's start, they flew the whole step since.
+        double h = 1.0 / 16.0;
+        double x = (double)Array(&scene, mvfx_attributePositionX)[i] -
+                   (double)Array(&scene, mvfx_attributeVelocityX)[i] * h;
+        double y = (double)Array(&scene, mvfx_attributePositionY)[i] -
+                   (double)Array(&scene, mvfx_attributeVelocityY)[i] * h;
+        placed = placed && fabs(x + anchor[0] - p[0]) <= 1e-4 && fabs(y + anchor[1] - p[1]) <= 1e-4;
     }
     CHECK(placed, "where the host put them");
     CHECK(Array(&scene, mvfx_attributeVelocityZ)[0] == 9.0f &&
@@ -169,7 +172,9 @@ static void TestEdges(void)
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "queued");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
     CHECK(scene.live->emitters[0].count == 1, "born");
-    CHECK(Array(&scene, mvfx_attributePositionX)[0] == 0.0f, "an offset from the moved anchor");
+    CHECK(fabsf(Array(&scene, mvfx_attributePositionX)[0] -
+                0.5f * Array(&scene, mvfx_attributeVelocityX)[0]) <= 1e-5f,
+          "an offset from the moved anchor, then half a second's flight");
     float vx = Array(&scene, mvfx_attributeVelocityX)[0] - 8.0f;
     float vy = Array(&scene, mvfx_attributeVelocityY)[0];
     float vz = Array(&scene, mvfx_attributeVelocityZ)[0];

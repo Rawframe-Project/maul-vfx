@@ -9,15 +9,16 @@
 
 // The attributes each emitter below stores: the always present 0 to 9;
 // size 10 to 12; color 13 to 16; angle and spin 17 and 18; orientation and
-// angular velocity 19 to 25; frame 26; custom from 27.
+// angular velocity 19 to 25; frame 26; a drag multiplier 27; custom from
+// 28.
 static const uint64_t s_expected[6] = {
     0x3FFu,
     0x3FFu | 0x1C00u,
     0x3FFu | 0x1E000u | 0x60000u,
     0x3FFu | 0x3F80000u | 0x4000000u,
-    0x3FFu | ((uint64_t)0x7u << 27u) | ((uint64_t)0x1u << 31u),
-    0x3FFu | 0x1C00u | 0x1E000u | 0x60000u | 0x3F80000u | 0x4000000u | ((uint64_t)0x7u << 27u) |
-        ((uint64_t)0x1u << 31u),
+    0x3FFu | ((uint64_t)0x7u << 28u) | ((uint64_t)0x1u << 32u),
+    0x3FFu | 0x1C00u | 0x1E000u | 0x60000u | 0x3F80000u | 0x4000000u | ((uint64_t)0x1u << 27u) |
+        ((uint64_t)0x7u << 28u) | ((uint64_t)0x1u << 32u),
 };
 
 static void TestPlans(void)
@@ -34,8 +35,8 @@ static void TestPlans(void)
     // Each optional value stored only when set: none on the first; size on
     // the second; color and a sprite's spin (with its angle) on the third;
     // an angular velocity (with its orientation) and a frame on the fourth;
-    // two custom attributes of 3 and 1 on the fifth; everything on the
-    // last.
+    // two custom attributes of 3 and 1 on the fifth; everything, with a
+    // drag multiplier, on the last.
     mvfxVectorSource set = {.kind = mvfx_sourceRange};
     mvfxCustomAttribute custom[2] = {{.components = 3}, {.components = 1, .initial = set}};
     emitters[1].size = set;
@@ -50,6 +51,7 @@ static void TestPlans(void)
     emitters[5].angle = mvfxRangeSource(0.0f, 1.0f);
     emitters[5].orientationMode = mvfx_orientationRandom;
     emitters[5].frame = (mvfxFrameStart){mvfx_frameRandom, 2, 9};
+    emitters[5].motion.dragScale = mvfxRangeSource(0.5f, 2.0f);
     emitters[5].custom = custom;
     emitters[5].customCount = 2;
     mvfxEffectDef def = mvfxDefaultEffectDef();

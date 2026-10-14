@@ -109,6 +109,20 @@ static double BurstRate(const mvfxEmitterDef* def)
     return total;
 }
 
+// Whether a motion's gravity, space and drags are in range.
+static bool IsMotionValid(const mvfxMotion* motion)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        if (!(fabsf(motion->gravity[k]) <= MVFX_MAX_EXTENT))
+        {
+            return false;
+        }
+    }
+    return motion->gravitySpace <= mvfx_spaceLocal && IsWithin(motion->drag, 0.0f, MVFX_MAX_DRAG) &&
+           IsWithin(motion->angularDrag, 0.0f, MVFX_MAX_DRAG);
+}
+
 static bool IsEmitterDefValid(const mvfxEmitterDef* def)
 {
     if (def->cookie != MVFX_EMITTER_DEF_COOKIE || def->capacity < 1 ||
@@ -117,7 +131,7 @@ static bool IsEmitterDefValid(const mvfxEmitterDef* def)
         !IsWithin(def->startDelay, 0.0f, MVFX_MAX_LIFETIME) ||
         !(def->duration == 0.0f || IsWithin(def->duration, MVFX_MIN_DURATION, MVFX_MAX_LIFETIME)) ||
         def->loops < 0 || def->burstCount < 0 || def->burstCount > MVFX_MAX_BURSTS ||
-        def->space > mvfx_spaceLocal ||
+        def->space > mvfx_spaceLocal || !IsMotionValid(&def->motion) ||
         !IsWithin(def->ratePerDistance, 0.0f, MVFX_MAX_DISTANCE_RATE) ||
         !IsWithin(def->inheritVelocity, -10.0f, 10.0f) ||
         (def->space == mvfx_spaceLocal && def->inheritVelocity != 0.0f) ||
@@ -160,6 +174,7 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
         !mvfxIsVectorSourceValid(&def->color, 4, d, parameterCount) ||
         !mvfxIsScalarSourceValid(&def->angle, true, d, parameterCount) ||
         !mvfxIsScalarSourceValid(&def->spin, true, d, parameterCount) ||
+        !mvfxIsScalarSourceValid(&def->motion.dragScale, true, d, parameterCount) ||
         def->orientationMode > mvfx_orientationRandom ||
         (def->orientationMode == mvfx_orientationEuler &&
          def->orientation.kind == mvfx_sourceNone) ||
@@ -234,6 +249,8 @@ static uint64_t PresentAttributes(const mvfxEmitterDef* def)
                 def->angularVelocity.kind != mvfx_sourceNone;
     present |= mesh ? (uint64_t)127 << mvfx_attributeOrientationX : 0;
     present |= def->frame.mode != mvfx_frameNone ? (uint64_t)1 << mvfx_attributeFrame : 0;
+    present |=
+        def->motion.dragScale.kind != mvfx_sourceNone ? (uint64_t)1 << mvfx_attributeDrag : 0;
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         uint64_t components = ((uint64_t)1 << def->custom[i].components) - 1;
@@ -265,7 +282,7 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
     const mvfxVectorSource* vectors[4] = {&def->size, &def->color, &def->orientation,
                                           &def->angularVelocity};
     *curves += mvfxScalarCurves(&def->lifetime) + mvfxScalarCurves(&def->angle) +
-               mvfxScalarCurves(&def->spin);
+               mvfxScalarCurves(&def->spin) + mvfxScalarCurves(&def->motion.dragScale);
     for (int32_t v = 0; v < 4; ++v)
     {
         *curves += mvfxVectorCurves(vectors[v]);
@@ -288,6 +305,14 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     mvfxCompileVector(&def->color, 4, d, space, &out->color);
     mvfxCompileScalar(&def->angle, d, space, &out->angle);
     mvfxCompileScalar(&def->spin, d, space, &out->spin);
+    mvfxCompileScalar(&def->motion.dragScale, d, space, &out->dragScale);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->gravity[k] = def->motion.gravity[k];
+    }
+    out->gravitySpace = def->motion.gravitySpace;
+    out->drag = def->motion.drag;
+    out->angularDrag = def->motion.angularDrag;
     out->orientationMode = def->orientationMode;
     mvfxCompileVector(&def->orientation, 3, d, space, &out->orientation);
     mvfxCompileVector(&def->angularVelocity, 3, d, space, &out->angularVelocity);

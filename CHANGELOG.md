@@ -74,3 +74,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   queue each instance reserves (`hostSpawnCapacity`), born first at the
   next step's start; `mvfxInstance_Prewarm` steps one instance in steps
   of a given length, at most a number a call, returning the span left.
+- The integrator: an emitter def gains `motion` (gravity in the world's
+  or the emitter's space, linear drag with an optional multiplier per
+  particle, angular drag). Each step moves particles exactly under
+  gravity and drag, births from their own ticks, and turns sprites and
+  mesh particles by their spin and angular velocity.

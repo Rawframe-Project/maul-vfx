@@ -58,6 +58,15 @@ static inline void BuildScene(mvfxContext* context)
     emitters[2].shape.offset[1] = 3.0f;
     emitters[2].velocity.mode = mvfx_directionFromCenter;
     emitters[2].velocity.speed = (mvfxRange){0.5f, 0.5f};
+    // Motion: gravity and drag, gravity in the emitter's space with a drag
+    // per particle, and drag alone.
+    emitters[0].motion.gravity[1] = -9.75f;
+    emitters[0].motion.drag = 0.4f;
+    emitters[1].motion.gravity[2] = 3.0f;
+    emitters[1].motion.gravitySpace = mvfx_spaceLocal;
+    emitters[1].motion.drag = 1.5f;
+    emitters[1].motion.dragScale = mvfxRangeSource(0.25f, 2.0f);
+    emitters[2].motion.drag = 30.0f;
     emitters[2].capacity = 7;
     emitters[2].rate = 0.7f;
     emitters[2].lifetime = mvfxRangeSource(5.0f, 9.0f);
@@ -204,6 +213,8 @@ static inline void BuildScene(mvfxContext* context)
     meshEmitters[2].customCount = 2;
     meshEmitters[2].lifetime =
         (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {0.5f, 1.0f}, .parameter = 0};
+    meshEmitters[0].motion.angularDrag = 0.75f;
+    meshEmitters[1].motion.gravity[0] = 1.0f;
     meshEmitters[0].ratePerDistance = 1.5f;
     meshEmitters[0].inheritVelocity = 0.25f;
     meshEmitters[1].space = mvfx_spaceLocal;

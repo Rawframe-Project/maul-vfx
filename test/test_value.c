@@ -271,7 +271,8 @@ static void TestValuesThroughTheStep(void)
             ok = ok && size[k][i] >= (float)(k + 1) && size[k][i] <= (float)(2 * (k + 1));
         }
         ok = ok && fabsf(r[i] + b[i] - 1.0f) <= 1e-6f;
-        ok = ok && angle[i] == 0.0f && spin[i] >= -1.0f && spin[i] <= 1.0f;
+        // Born at angle 0, turned by its spin since, within the half second.
+        ok = ok && fabsf(angle[i]) <= 0.5f * fabsf(spin[i]) && spin[i] >= -1.0f && spin[i] <= 1.0f;
         double length = 0.0;
         for (int32_t k = 0; k < 4; ++k)
         {

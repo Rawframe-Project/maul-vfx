@@ -8,6 +8,7 @@
 
 #include "birth.h"
 #include "death_heap.h"
+#include "integrate.h"
 #include "spawn.h"
 
 #include <math.h>
@@ -212,6 +213,9 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
 {
     mvfxPlanDistance(instance, emitter);
+    // The particles alive at the step's start move first; births are
+    // moved from their ticks as they are appended.
+    mvfxIntegrateEmitter(instance, emitter);
     if (BirthsFit(instance, emitter))
     {
         RemoveEnded(instance, emitter);

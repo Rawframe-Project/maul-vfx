@@ -51,6 +51,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/effect.c
     src/effect_api.c
     src/elementary.c
+    src/integrate.c
     src/emitter_step.c
     src/float_mode.c
     src/gradient.c
@@ -89,6 +90,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(gradient WHITEBOX)
     maul_add_test(half WHITEBOX)
     maul_add_test(host WHITEBOX)
+    maul_add_test(integrate WHITEBOX)
     maul_add_test(instance)
     maul_add_test(mesh WHITEBOX)
     maul_add_test(motion WHITEBOX)

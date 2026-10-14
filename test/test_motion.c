@@ -103,10 +103,15 @@ static void TestTurnAndScale(void)
           "teleported");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
     bool turned = scene.live->emitters[0].count == 16;
+    const uint32_t* birth = mvfxAttributeArray(scene.live, 0, mvfx_attributeBirthLow);
     for (int32_t k = 0; k < scene.live->emitters[0].count; ++k)
     {
+        // Where each was born: its place less its flight since.
+        float age = (float)(scene.live->clock - (int64_t)birth[k]) / (float)MVFX_TICKS_PER_SECOND;
+        float y = Array(&scene, mvfx_attributePositionY)[k] -
+                  Array(&scene, mvfx_attributeVelocityY)[k] * age;
         turned = turned && fabsf(Array(&scene, mvfx_attributePositionX)[k] - 5.0f) <= 1e-5f &&
-                 fabsf(Array(&scene, mvfx_attributePositionY)[k] - 2.0f) <= 1e-5f &&
+                 fabsf(y - 2.0f) <= 1e-5f &&
                  fabsf(Array(&scene, mvfx_attributeVelocityX)[k]) <= 1e-5f &&
                  fabsf(Array(&scene, mvfx_attributeVelocityY)[k] - 2.0f) <= 1e-5f;
     }
