@@ -2,10 +2,12 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Convex polytopes meeting: boxes apart at their exact distance and
-// nearest points, square and turned; boxes overlapping by their depth;
+// nearest points, square and turned; boxes overlapping by their depth,
+// concentric ones too, unit and of dust's size;
 // a point's nearest point, outside and inside; a turned box on a box met
 // at its overlap's eight corners, edges crossing at one point, and a box
-// just apart within the margin at four; lopsided hulls overlapping at
+// just apart within the margin at four; points' nearest distances to a
+// ball's hull of 60 vertices by its features; lopsided hulls overlapping at
 // many poses by the depth the separating axes give.
 
 #include "convex.h"
@@ -77,6 +79,31 @@ static void TestOverlap(void)
     CHECK(fabsf(d - 1.5f) <= 1e-5f && Near(near, 0.5f, 0.2f, 0.1f, 1e-5f), "nearest outside");
     d = mvfxPolytopeNearest(&a, inside, near);
     CHECK(d == 0.0f && Near(near, 0.1f, 0.2f, -0.3f, 0.0f), "nearest inside");
+}
+
+static void TestConcentric(void)
+{
+    // Boxes about one center, unit and of half size 1e-4 (dust): they
+    // overlap by their whole width along an axis, the simplex grown from
+    // the one point GJK starts and ends at.
+    static const float origin[3] = {0, 0, 0};
+    static const float halves[2] = {0.5f, 1e-4f};
+    bool parted = true;
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        const float half[3] = {halves[i], halves[i], halves[i]};
+        mvfxPolytope a;
+        mvfxPolytope b;
+        mvfxBoxPolytope(origin, s_identity, half, &a);
+        mvfxBoxPolytope(origin, s_identity, half, &b);
+        mvfxConvexMeet meet;
+        bool met = mvfxConvexMeets(&a, &b, 0.0f, &meet);
+        float axis =
+            fmaxf(fmaxf(fabsf(meet.normal[0]), fabsf(meet.normal[1])), fabsf(meet.normal[2]));
+        parted = parted && met && fabsf(meet.distance + 2.0f * halves[i]) <= 1e-4f * halves[i] &&
+                 fabsf(axis - 1.0f) <= 1e-5f;
+    }
+    CHECK(parted, "concentric boxes at every scale");
 }
 
 static void TestManifolds(void)
@@ -217,6 +244,98 @@ static float LeastOverlap(const mvfxPolytope* a, const mvfxPolytope* b)
     return least;
 }
 
+// The distance from p to segment u v, in double.
+static double SegmentDistance(const float u[3], const float v[3], const double p[3])
+{
+    double e[3];
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        e[k] = (double)v[k] - (double)u[k];
+        d[k] = p[k] - (double)u[k];
+    }
+    double length = e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
+    double s = (d[0] * e[0] + d[1] * e[1] + d[2] * e[2]) / length;
+    s = s < 0.0 ? 0.0 : (s > 1.0 ? 1.0 : s);
+    double sum = 0.0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double g = d[k] - s * e[k];
+        sum += g * g;
+    }
+    return sqrt(sum);
+}
+
+// The distance from p outside polytope a by its features: each face's
+// plane where p lies over the face, else its edges (and so its corners).
+static double FeatureDistance(const mvfxPolytope* a, const double p[3])
+{
+    double least = (double)INFINITY;
+    for (int32_t f = 0; f < a->faceCount; ++f)
+    {
+        const float* n = a->planes[f];
+        double above =
+            (double)n[0] * p[0] + (double)n[1] * p[1] + (double)n[2] * p[2] - (double)n[3];
+        int32_t first = a->faceStart[f];
+        int32_t corners = a->faceStart[f + 1] - first;
+        bool over = true;
+        for (int32_t j = 0; j < corners; ++j)
+        {
+            const float* u = a->vertices[a->loop[first + j]];
+            const float* v = a->vertices[a->loop[first + (j + 1) % corners]];
+            least = fmin(least, SegmentDistance(u, v, p));
+            // Inward across the edge: the normal crossed with it.
+            double e[3] = {(double)v[0] - (double)u[0], (double)v[1] - (double)u[1],
+                           (double)v[2] - (double)u[2]};
+            double in[3] = {(double)n[1] * e[2] - (double)n[2] * e[1],
+                            (double)n[2] * e[0] - (double)n[0] * e[2],
+                            (double)n[0] * e[1] - (double)n[1] * e[0]};
+            over = over && in[0] * (p[0] - (double)u[0]) + in[1] * (p[1] - (double)u[1]) +
+                                   in[2] * (p[2] - (double)u[2]) >=
+                               0.0;
+        }
+        least = over && above >= 0.0 ? fmin(least, above) : least;
+    }
+    return least;
+}
+
+static void TestNearestOnBall(void)
+{
+    // The hull of 60 points on a unit ball (a Fibonacci sphere) and 200
+    // points about it 1.2 to 3 from its center: each nearest distance is
+    // the one its faces, edges and corners give.
+    float ball[3 * 60];
+    for (int32_t i = 0; i < 60; ++i)
+    {
+        float z = 1.0f - (2.0f * (float)i + 1.0f) / 60.0f;
+        float r = sqrtf(1.0f - z * z);
+        float angle = 2.3999632f * (float)i;
+        ball[3 * i] = r * cosf(angle);
+        ball[3 * i + 1] = r * sinf(angle);
+        ball[3 * i + 2] = z;
+    }
+    mvfxHull hull;
+    CHECK(mvfxBuildHull(ball, 60, &(mvfxAllocator){0}, &hull) == mvfx_success, "a ball's hull");
+    static const float unit[3] = {1, 1, 1};
+    static const float origin[3] = {0, 0, 0};
+    mvfxPolytope a;
+    mvfxHullPolytope(&hull, unit, origin, s_identity, &a);
+    double worst = 0.0;
+    for (int32_t i = 0; i < 200; ++i)
+    {
+        float t = (float)i;
+        float d[3] = {sinf(1.7f * t + 0.3f), cosf(2.9f * t), sinf(0.61f * t + 2.0f)};
+        float length = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        float reach = 1.2f + 1.8f * (0.5f + 0.5f * sinf(3.7f * t));
+        const float p[3] = {reach * d[0] / length, reach * d[1] / length, reach * d[2] / length};
+        const double q[3] = {(double)p[0], (double)p[1], (double)p[2]};
+        float near[3];
+        float distance = mvfxPolytopeNearest(&a, p, near);
+        worst = fmax(worst, fabs((double)distance - FeatureDistance(&a, q)));
+    }
+    CHECK(worst <= 2e-6, "nearest on a ball's hull");
+}
+
 static void TestDepths(void)
 {
     // A lopsided hull against another at 40 turns and offsets: where they
@@ -259,7 +378,9 @@ int main(void)
 {
     TestApart();
     TestOverlap();
+    TestConcentric();
     TestManifolds();
+    TestNearestOnBall();
     TestDepths();
     return s_failures == 0 ? 0 : 1;
 }

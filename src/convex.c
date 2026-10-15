@@ -441,9 +441,35 @@ static bool AddTriangle(Epa* e, int32_t i, int32_t j, int32_t k)
     return true;
 }
 
+// How far w is from the simplex's span: its point, line or plane.
+static double OffSpan(const Simplex* s, const double w[3])
+{
+    double d[3];
+    double ab[3];
+    double n[3];
+    Sub(w, s->p[0].w, d);
+    if (s->count == 1)
+    {
+        return sqrt(Dot(d, d));
+    }
+    Sub(s->p[1].w, s->p[0].w, ab);
+    if (s->count == 2)
+    {
+        Cross(ab, d, n);
+        double length = Dot(ab, ab);
+        return length > 0.0 ? sqrt(Dot(n, n) / length) : 0.0;
+    }
+    double ac[3];
+    Sub(s->p[2].w, s->p[0].w, ac);
+    Cross(ab, ac, n);
+    double area = sqrt(Dot(n, n));
+    return area > 0.0 ? fabs(Dot(d, n)) / area : 0.0;
+}
+
 // Grows a simplex holding the origin to a tetrahedron by points of the
-// difference along the axes and across what it has; false when the
-// difference is flat.
+// difference along the axes and across what it has, each new when off
+// its span by a millionth of the difference's reach (a length, so at
+// every scale); false when the difference is flat.
 static bool Blow(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s)
 {
     static const double axes[6][3] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
@@ -470,25 +496,12 @@ static bool Blow(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s)
         for (int32_t w = 0; w < wayCount && !grown; ++w)
         {
             Point p = Support(a, b, ways[w]);
-            // New when off the simplex's span.
-            double off = 0.0;
-            if (s->count == 1 || s->count == 3)
+            double reach = sqrt(Dot(p.w, p.w));
+            for (int32_t i = 0; i < s->count; ++i)
             {
-                double d[3];
-                Sub(p.w, s->p[0].w, d);
-                off = s->count == 1 ? Dot(d, d) : fabs(Dot(d, ways[0]));
+                reach = fmax(reach, sqrt(Dot(s->p[i].w, s->p[i].w)));
             }
-            else
-            {
-                double ab[3];
-                double d[3];
-                double across[3];
-                Sub(s->p[1].w, s->p[0].w, ab);
-                Sub(p.w, s->p[0].w, d);
-                Cross(ab, d, across);
-                off = Dot(across, across);
-            }
-            if (off > 1e-12)
+            if (OffSpan(s, p.w) > 1e-6 * reach)
             {
                 s->p[s->count++] = p;
                 grown = true;

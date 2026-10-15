@@ -225,6 +225,21 @@ static void TestHeights(void)
                             fabsf(top.items[i].body[2]) <= 1e-6f && top.items[i].depth < 0.0f);
     }
     CHECK(four && center, "a hull on heights by its corners and its face over a bump");
+    // A ball of radius 0.1 whose center the cube's hull swallows 0.2 in
+    // from its +X face: pushed back out through that face, 0.3 deep, the
+    // face's point against the ball's.
+    const mvfxResolvedCollider ball = {
+        .kind = mvfx_colliderSphere, .center = {0.3f, 0.05f, -0.1f}, .radius = 0.1f};
+    const mvfxBodyPose around = {.q = {0, 0, 0, 1}};
+    mvfxBodyContacts swallowed = Gather(&ball, &around, &hull, unit);
+    bool out = swallowed.count == 1;
+    if (out)
+    {
+        const mvfxBodyContact* contact = &swallowed.items[0];
+        out = fabsf(contact->depth + 0.3f) <= 1e-5f && fabsf(contact->normal[0] + 1.0f) <= 1e-6f &&
+              fabsf(contact->surface[0] - 0.2f) <= 1e-5f && fabsf(contact->body[0] - 0.5f) <= 1e-5f;
+    }
+    CHECK(out, "a ball's center inside a hull");
     mvfxDestroyContext(context);
 }
 
