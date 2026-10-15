@@ -10,8 +10,8 @@
 // world box staying; an instance with a gas finishing once stopped and
 // empty, cleared at once by stopping and clearing, and emptied by
 // restarting; an instance's bounds holding its gases' boxes; sources
-// pouring into exactly the cells they hold, and a field of negative
-// values carried; the reading's refusals.
+// pouring into exactly the cells they hold, their edges on cells' centers
+// too, and a field of negative values carried; the reading's refusals.
 
 #include "gas_lattice.h"
 #include "gas_step.h"
@@ -545,6 +545,53 @@ static void TestSourceCells(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestSourceEdges(void)
+{
+    // Boxes of half size 0.25 stepped by 0.05 along X and Y across a 2D
+    // gas of 32 by 24 cells of 0.1, so that their edges fall on cells'
+    // centers again and again: each pours into exactly the cells its own
+    // test holds, those on its edge too.
+    bool right = true;
+    for (int32_t g = 0; g < 5; ++g)
+    {
+        mvfxGasSource boxes[MVFX_MAX_GAS_SOURCES];
+        for (int32_t s = 0; s < MVFX_MAX_GAS_SOURCES; ++s)
+        {
+            int32_t j = g * MVFX_MAX_GAS_SOURCES + s;
+            boxes[s] = (mvfxGasSource){
+                .shape = mvfx_gasBox,
+                .center = {-1.4f + 0.05f * (float)j, -1.0f + 0.05f * (float)(j % 7), 0},
+                .halfExtents = {0.25f, 0.25f, 1},
+                .density = 64};
+        }
+        mvfxGasDef gas = mvfxDefaultGasDef();
+        gas.size[0] = 32;
+        gas.size[1] = 24;
+        gas.pressureCycles = 0;
+        gas.sources = boxes;
+        gas.sourceCount = MVFX_MAX_GAS_SOURCES;
+        Open(&gas);
+        Steps(1);
+        Read(mvfx_gasDensity, 768);
+        for (int32_t i = 0; i < 768; ++i)
+        {
+            const int32_t at[2] = {i % 32, i / 32};
+            float x = ((float)at[0] + 0.5f - 16.0f) * 0.1f;
+            float y = ((float)at[1] + 0.5f - 12.0f) * 0.1f;
+            float expected = 0.0f;
+            for (int32_t s = 0; s < MVFX_MAX_GAS_SOURCES; ++s)
+            {
+                bool holds = fabsf(x - boxes[s].center[0]) <= 0.25f &&
+                             fabsf(y - boxes[s].center[1]) <= 0.25f;
+                expected += holds ? 1.0f : 0.0f;
+            }
+            right = right && fabsf(s_field[i] - expected) <= 1e-5f;
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(right, "sources' edges on cells' centers");
+}
+
 static void TestReadRefusals(void)
 {
     mvfxGasDef gas = mvfxDefaultGasDef();
@@ -583,6 +630,7 @@ int main(void)
     TestPlaces();
     TestFinish();
     TestSourceCells();
+    TestSourceEdges();
     TestReadRefusals();
     return s_failures;
 }

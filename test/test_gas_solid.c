@@ -10,7 +10,8 @@
 // placed through a moved, turned and scaled instance, in a world gas and
 // a local one; a turning box giving its faces its turn's
 // velocity; a local gas moving past a still box in the world seeing it
-// move; nothing within a solid reaching the solve, and a sealed gas's
+// move; nothing within a solid reaching the solve, a 3D gas projected
+// around a solid, and a sealed gas's
 // expansion kept less its open cells' mean; an obstacle's grid held by its
 // effect; the obstacles' refusals.
 
@@ -465,6 +466,58 @@ static void TestBuried(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestBuried3D(void)
+{
+    // A 3D gas of 16 by 12 by 10 cells, open walls, a still sphere marked
+    // solid by a step: noise for a velocity projected by 8 cycles leaves
+    // its open cells' divergence at most 2e-3 (the noise's is up to 6).
+    const mvfxCollider ball = Collider(mvfx_colliderSphere, 0.1f, -0.05f, mvfx_spaceWorld);
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 16;
+    def.size[1] = 12;
+    def.size[2] = 10;
+    def.pressureCycles = 8;
+    def.obstacles = &ball;
+    def.obstacleCount = 1;
+    const mvfxCompiledGas* gas = NULL;
+    mvfxGasState* state = Open(&def, &gas);
+    Steps(1);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        for (int64_t f = 0; f < gas->faces[k]; ++f)
+        {
+            state->velocity[k][state->current][f] = Noise((uint32_t)(f * 3 + k));
+        }
+    }
+    memset(state->levels[0].pressure, 0, sizeof(float) * (size_t)gas->cells);
+    mvfxProjectGas(gas, state, NULL);
+    const int32_t* n = def.size;
+    float* const v[3] = {state->velocity[0][state->current], state->velocity[1][state->current],
+                         state->velocity[2][state->current]};
+    float most = 0.0f;
+    int32_t solids = 0;
+    for (int32_t z = 0; z < n[2]; ++z)
+    {
+        for (int32_t y = 0; y < n[1]; ++y)
+        {
+            for (int32_t x = 0; x < n[0]; ++x)
+            {
+                int64_t i = ((int64_t)z * n[1] + y) * n[0] + x;
+                float d = v[0][((int64_t)z * n[1] + y) * (n[0] + 1) + x + 1] -
+                          v[0][((int64_t)z * n[1] + y) * (n[0] + 1) + x] +
+                          v[1][((int64_t)z * (n[1] + 1) + y + 1) * n[0] + x] -
+                          v[1][((int64_t)z * (n[1] + 1) + y) * n[0] + x] +
+                          v[2][((int64_t)(z + 1) * n[1] + y) * n[0] + x] -
+                          v[2][((int64_t)z * n[1] + y) * n[0] + x];
+                solids += state->solid[i] != 0 ? 1 : 0;
+                most = state->solid[i] == 0 ? fmaxf(most, fabsf(d)) : most;
+            }
+        }
+    }
+    CHECK(solids > 0 && most <= 2e-3f, "a 3D gas projected around a solid");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestSealedSolid(void)
 {
     // The same box in a sealed gas, still, asked to expand by 1 in four
@@ -615,6 +668,7 @@ int main(void)
     TestPassing();
     TestBuried();
     TestSealedSolid();
+    TestBuried3D();
     TestHeld();
     TestRefusals();
     return s_failures;
