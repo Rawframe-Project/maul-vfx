@@ -11,7 +11,8 @@
 // empty, cleared at once by stopping and clearing, and emptied by
 // restarting; an instance's bounds holding its gases' boxes; sources
 // pouring into exactly the cells they hold, their edges on cells' centers
-// too, and a field of negative values carried; the reading's refusals.
+// too, and a field of negative values carried; a gas prewarmed as stepped
+// with its context; the reading's refusals.
 
 #include "gas_lattice.h"
 #include "gas_step.h"
@@ -468,8 +469,9 @@ static void TestPlaces(void)
 static void TestFinish(void)
 {
     // A gas alone keeps its instance going until it stops; stopped, until
-    // its density decays away (rate 50); stopped and cleared, it is done
-    // at once; restarted, it is empty and runs again.
+    // its density decays away (rate 50), and then its gas stays as it is;
+    // stopped and cleared, it is done at once; restarted, it is empty and
+    // runs again.
     mvfxGasDef gas = Puff();
     gas.sourceCount = 1;
     gas.densityDecay = 50.0f;
@@ -481,6 +483,21 @@ static void TestFinish(void)
     bool fading = !mvfxInstance_IsFinished(s_scene.context, s_scene.instance);
     Steps(64);
     bool done = mvfxInstance_IsFinished(s_scene.context, s_scene.instance);
+    // Nothing happens to a finished instance's gas: a velocity left in it
+    // stays as it was.
+    mvfxGasState* state = &mvfxContextInstance(s_scene.context, s_scene.instance)->gases[0];
+    float* faces = state->velocity[1][state->current];
+    for (int32_t f = 0; f < 16 * 9; ++f)
+    {
+        faces[f] = (float)(f % 5) - 2.0f;
+    }
+    Steps(2);
+    faces = state->velocity[1][state->current];
+    bool still = true;
+    for (int32_t f = 0; f < 16 * 9; ++f)
+    {
+        still = still && faces[f] == (float)(f % 5) - 2.0f;
+    }
     CHECK(mvfxInstance_Restart(s_scene.context, s_scene.instance) == mvfx_success, "restart");
     Read(mvfx_gasDensity, 128);
     bool emptied = s_field[3 * 16 + 4] == 0.0f;
@@ -490,7 +507,8 @@ static void TestFinish(void)
     Read(mvfx_gasDensity, 128);
     bool cleared =
         s_field[3 * 16 + 4] == 0.0f && mvfxInstance_IsFinished(s_scene.context, s_scene.instance);
-    CHECK(going && fading && done && emptied && again && cleared, "a gas finishes when empty");
+    CHECK(going && fading && done && still && emptied && again && cleared,
+          "a gas finishes when empty");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -592,6 +610,31 @@ static void TestSourceEdges(void)
     CHECK(right, "sources' edges on cells' centers");
 }
 
+static void TestPrewarm(void)
+{
+    // A puff prewarmed, five steps of 1/64 s in one call, holds the
+    // same bits as one stepped with its context five times: each step's
+    // gas runs before the next step, and the last one's before the call
+    // returns.
+    static float prewarmed[128];
+    const mvfxGasDef gas = Puff();
+    Open(&gas);
+    double remaining = 1.0;
+    CHECK(mvfxInstance_Prewarm(s_scene.context, s_scene.instance, 5.0 / 64.0, 1.0 / 64.0, 10,
+                               &remaining) == mvfx_success &&
+              remaining == 0.0,
+          "prewarmed");
+    Read(mvfx_gasDensity, 128);
+    memcpy(prewarmed, s_field, sizeof prewarmed);
+    mvfxDestroyContext(s_scene.context);
+    Open(&gas);
+    Steps(5);
+    Read(mvfx_gasDensity, 128);
+    CHECK(memcmp(prewarmed, s_field, sizeof prewarmed) == 0,
+          "a gas prewarmed as stepped with its context");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestReadRefusals(void)
 {
     mvfxGasDef gas = mvfxDefaultGasDef();
@@ -631,6 +674,7 @@ int main(void)
     TestFinish();
     TestSourceCells();
     TestSourceEdges();
+    TestPrewarm();
     TestReadRefusals();
     return s_failures;
 }
