@@ -80,6 +80,15 @@ bool mvfxEffect_IsValid(const mvfxContext* context, mvfxEffectId effect);
 ```
 Returns whether an id names a live effect of the context. A stale id is not misuse.  @param context  The context. @param effect   Any id. @return Whether the effect is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+## `gas.h`
+
+Gases: smoke and fire on a grid in a box, by Stam's stable fluids. An effect's gas is a box of cells holding a velocity (at the cells' faces) and density, temperature and fuel (at their centers), stepped with its instance: sources add to it, its velocity carries it and itself, and each field may decay. A host reads its fields to draw them (ray marching, a flipbook bake): the library draws no volume.
+
+```c
+mvfxGasDef mvfxDefaultGasDef(void);
+```
+Returns the default gas def: a 2D gas of 64 by 64 cells of 0.1, in local space, one substep, nothing decaying, no sources.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
 ## `grid.h`
 
 Grids: values the host gives at the points of a regular 3D lattice, one to four components each, sampled trilinearly. A vector field force reads a grid of three components spanning a box; the host may give a grid new values between steps, as an animated field.
@@ -258,6 +267,16 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_StepTicks(mvfxContext* context, i
 ```
 Advances every instance of the context by a number of ticks, as mvfxContext_Step does without the rounding.  @param context  The context. @param ticks    The span in ticks, from 0 to MVFX_MAX_STEP_SECONDS seconds' worth. @return `mvfx_success`, or `mvfx_errorInvalid` for a NULL context or a span out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time. Its work runs on the host's task hooks when the context has them.
 
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId instance, int32_t gas, mvfxGasInfo* infoOut);
+```
+Reads what a gas of an instance is now.  @param context  The context that owns the instance. @param instance The instance. @param gas      The gas's index in its effect's def. @param infoOut  Receives the gas's info; zeroed on failure. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or a gas index out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas, mvfxGasField field, float* out, int64_t count);
+```
+Copies a field of a gas of an instance at its cells' centers, X fastest, then Y, then Z; a velocity's component the mean of the two faces' about the center.  @param context  The context that owns the instance. @param instance The instance. @param gas      The gas's index in its effect's def. @param field    The field. @param out      Receives count values. @param count    How many: the gas's cells. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, a gas index or field out of range or a count not the gas's cells, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ## `mesh.h`
 
 Meshes to spawn from: vertices, triangles and tetrahedra the host gives. A mesh shape samples its vertices, its edges by length, its surface by area or its volume (the tetrahedra) by volume. A skinned mesh is given new positions between steps.
@@ -374,7 +393,7 @@ Writes the lights an emitter's particles carry (mvfxLightDef: every n-th particl
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxBounds* boundsOut);
 ```
-Reads an emitter's bounds in the world after the last step: its fixed box through the instance's transform, or the box of its live particles (measured at the step's end, grown on every side by their largest size component); with emitter -1, the box around every emitter's.  @param context    The context that owns the instance. @param instance   The instance. @param emitter    The emitter's index in the effect's def, or -1. @param boundsOut  Receives the bounds. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
+Reads an emitter's bounds in the world after the last step: its fixed box through the instance's transform, or the box of its live particles (measured at the step's end, grown on every side by their largest size component); with emitter -1, the box around every emitter's and every gas's box.  @param context    The context that owns the instance. @param instance   The instance. @param emitter    The emitter's index in the effect's def, or -1. @param boundsOut  Receives the bounds. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3], const mvfxFrustum* frustum, mvfxDrawItem* items, int64_t capacity, int64_t* countOut);
@@ -392,4 +411,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-71 functions across 11 headers.
+74 functions across 12 headers.

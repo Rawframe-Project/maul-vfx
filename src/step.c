@@ -8,6 +8,7 @@
 #include "emitter_step.h"
 #include "event.h"
 #include "float_mode.h"
+#include "gas_step.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "tasks.h"
@@ -132,6 +133,11 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
             continue;
         }
         mvfxStepEmitter(instance, e);
+    }
+    for (int32_t g = 0; g < instance->effect->gasCount && !finished; ++g)
+    {
+        mvfxStepGas(&instance->effect->gases[g], &instance->gases[g], instance->stepStart,
+                    instance->clock, instance->stopTick);
     }
     EndStep(instance);
 }

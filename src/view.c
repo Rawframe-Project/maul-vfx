@@ -5,6 +5,7 @@
 
 #include "bounds.h"
 #include "context.h"
+#include "gas_api.h"
 #include "instance.h"
 #include "instance_api.h"
 
@@ -42,15 +43,10 @@ mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance,
     }
     *boundsOut = (mvfxBounds){.empty = true};
     mvfxInstance* live = nullptr;
-    mvfxResult found = mvfxFindEmitter(context, instance, emitter < 0 ? 0 : emitter, &live);
+    mvfxResult found = mvfxFindEmitters(context, instance, emitter, &live);
     if (found != mvfx_success)
     {
         return found;
-    }
-    if (emitter < -1)
-    {
-        mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
     }
     for (int32_t e = 0; e < live->effect->emitterCount; ++e)
     {
@@ -58,6 +54,11 @@ mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance,
         {
             *boundsOut = Join(*boundsOut, mvfxBoundsOf(live, e));
         }
+    }
+    // The instance's bounds hold its gases' boxes.
+    for (int32_t g = 0; emitter == -1 && g < live->effect->gasCount; ++g)
+    {
+        *boundsOut = Join(*boundsOut, mvfxGasBounds(live, g));
     }
     return mvfx_success;
 }

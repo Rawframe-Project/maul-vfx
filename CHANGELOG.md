@@ -280,6 +280,16 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   overlaps by EPA, touching faces clipped into contacts.
 - `mvfxMesh_HullVertexCount` counts a mesh's hull's vertices past the
   64 a rigid hull takes, for an editor to say how much to simplify.
+- Gases (`maul-vfx/gas.h`): smoke and fire on a grid in a box, by
+  Stam's stable fluids. `mvfxEffectDef` gains `gases` (at most
+  `MVFX_MAX_GASES`), and an effect may hold gases and no emitters. A gas
+  is a box of cells in 2D or 3D, local to its instance or left in the
+  world, with velocities at the cells' faces and density, temperature
+  and fuel at their centers; spheres and boxes pour into it and may set
+  its velocity, it carries itself semi-Lagrangian (traced back by the
+  midpoint rule), and each field may decay. `mvfxInstance_GetGasInfo`
+  and `mvfxInstance_ReadGas` read it; an instance's bounds hold its
+  gases' boxes, and it finishes once stopped and its gases are empty.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

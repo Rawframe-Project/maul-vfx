@@ -10,6 +10,7 @@
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/curve.h"
+#include "maul-vfx/gas.h"
 #include "maul-vfx/grid.h"
 #include "maul-vfx/modules.h"
 #include "maul-vfx/shape.h"
@@ -968,9 +969,10 @@ extern "C"
     typedef struct mvfxEffectDef
     {
         uint32_t cookie;
-        // Its emitters, from 1 to MVFX_MAX_EMITTERS, each from
-        // mvfxDefaultEmitterDef. The effect copies what it needs: the array
-        // may be released once the effect is created.
+        // Its emitters, from 0 to MVFX_MAX_EMITTERS, each from
+        // mvfxDefaultEmitterDef, NULL when emitterCount is 0. The effect
+        // copies what it needs: the array may be released once the effect
+        // is created.
         const mvfxEmitterDef* emitters;
         int32_t emitterCount;
         // The defaults of its instances' parameters, four floats each, finite;
@@ -984,6 +986,11 @@ extern "C"
         // its creation (mvfxInstanceDef.quality and the context's budget).
         const mvfxQualityLevel* qualityLevels;
         int32_t qualityLevelCount;
+        // Its gases, from 0 to MVFX_MAX_GASES, each from mvfxDefaultGasDef,
+        // NULL when gasCount is 0; an effect has at least one emitter or
+        // one gas. The effect copies them.
+        const mvfxGasDef* gases;
+        int32_t gasCount;
     } mvfxEffectDef;
 
 // The cookie of an effect def, which its default sets and

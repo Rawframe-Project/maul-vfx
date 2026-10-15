@@ -12,6 +12,7 @@
 
 #include "curve.h"
 #include "curve_integral.h"
+#include "gas.h"
 #include "over_life.h"
 #include "shape.h"
 #include "value.h"
@@ -318,6 +319,9 @@ typedef struct mvfxEffect
     // The order its emitters step in: each source before the emitters
     // spawning from its events, otherwise by index.
     int32_t stepOrder[MVFX_MAX_EMITTERS];
+    // Its gases.
+    mvfxCompiledGas gases[MVFX_MAX_GASES];
+    int32_t gasCount;
 } mvfxEffect;
 
 // Whether a def and every emitter def in it are valid.

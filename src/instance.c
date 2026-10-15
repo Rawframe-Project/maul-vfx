@@ -378,6 +378,11 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         particlesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].plan.arrayCount,
                                        mvfxArrayBytes(capacities[e]), MVFX_ATTRIBUTE_ALIGNMENT);
     }
+    size_t gasesAt[MVFX_MAX_GASES][6];
+    for (int32_t g = 0; g < effect->gasCount; ++g)
+    {
+        mvfxAddGasLayout(&layout, &effect->gases[g], gasesAt[g]);
+    }
     if (layout.overflow)
     {
         return nullptr;
@@ -413,6 +418,10 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         }
     }
     StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, capacities);
+    for (int32_t g = 0; g < effect->gasCount; ++g)
+    {
+        mvfxStartGas(&instance->gases[g], &effect->gases[g], block, gasesAt[g]);
+    }
     mvfxResetInstance(instance);
     return instance;
 }
@@ -466,6 +475,21 @@ void mvfxResetInstance(mvfxInstance* instance)
         {
             state->bursts[b] = (mvfxBurstCursor){0};
         }
+    }
+    for (int32_t g = 0; g < instance->effect->gasCount; ++g)
+    {
+        mvfxGasState* gas = &instance->gases[g];
+        mvfxClearGas(gas, &instance->effect->gases[g]);
+        // A world gas's box stays where the instance starts.
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            gas->origin[k] = instance->to.origin[k];
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            gas->rotation[k] = instance->to.rotation[k];
+        }
+        gas->scale = instance->to.scale;
     }
 }
 
@@ -536,6 +560,18 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
                 hash = mvfxHash64(hash, mvfxAttributeArray(instance, e, a),
                                   state->count * (int32_t)sizeof(float));
             }
+        }
+    }
+    for (int32_t g = 0; g < instance->effect->gasCount; ++g)
+    {
+        const mvfxCompiledGas* compiled = &instance->effect->gases[g];
+        const mvfxGasState* gas = &instance->gases[g];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            hash = mvfxHash64(hash, gas->velocity[k][gas->current],
+                              (int32_t)(compiled->faces[k] * (int64_t)sizeof(float)));
+            hash = mvfxHash64(hash, gas->scalars[k][gas->current],
+                              (int32_t)(compiled->cells * (int64_t)sizeof(float)));
         }
     }
     return hash;

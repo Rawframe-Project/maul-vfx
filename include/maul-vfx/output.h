@@ -599,7 +599,7 @@ extern "C"
     /// fixed box through the instance's transform, or the box of its live
     /// particles (measured at the step's end, grown on every side by their
     /// largest size component); with emitter -1, the box around every
-    /// emitter's.
+    /// emitter's and every gas's box.
     ///
     /// @param context    The context that owns the instance.
     /// @param instance   The instance.

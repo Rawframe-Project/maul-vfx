@@ -281,6 +281,15 @@ bool mvfxIsInstanceFinished(const mvfxInstance* instance)
             return false;
         }
     }
+    // A gas runs until its instance stops, and then until it holds
+    // nothing.
+    for (int32_t g = 0; g < instance->effect->gasCount; ++g)
+    {
+        if (instance->clock < instance->stopTick || instance->gases[g].holds)
+        {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -313,6 +322,10 @@ mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfx
         for (int32_t e = 0; e < live->effect->emitterCount; ++e)
         {
             live->emitters[e].count = 0;
+        }
+        for (int32_t g = 0; g < live->effect->gasCount; ++g)
+        {
+            mvfxClearGas(&live->gases[g], &live->effect->gases[g]);
         }
     }
     return mvfx_success;
@@ -805,6 +818,17 @@ mvfxResult mvfxFindEmitter(mvfxContext* context, mvfxInstanceId instance, int32_
     return mvfx_success;
 }
 
+mvfxResult mvfxFindEmitters(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                            mvfxInstance** liveOut)
+{
+    if (emitter != -1)
+    {
+        return mvfxFindEmitter(context, instance, emitter, liveOut);
+    }
+    *liveOut = mvfxContextInstance(context, instance);
+    return *liveOut != nullptr ? mvfx_success : mvfx_errorStale;
+}
+
 mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter)
 {
     if (context == nullptr)
@@ -812,15 +836,10 @@ mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instan
         return mvfx_errorInvalid;
     }
     mvfxInstance* live = nullptr;
-    mvfxResult found = mvfxFindEmitter(context, instance, emitter < 0 ? 0 : emitter, &live);
+    mvfxResult found = mvfxFindEmitters(context, instance, emitter, &live);
     if (found != mvfx_success)
     {
         return found;
-    }
-    if (emitter < -1)
-    {
-        mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
     }
     BreakRibbons(live, emitter);
     return mvfx_success;

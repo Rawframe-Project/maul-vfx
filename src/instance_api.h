@@ -22,4 +22,9 @@ bool mvfxIsInstanceFinished(const mvfxInstance* instance);
 mvfxResult mvfxFindEmitter(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                            mvfxInstance** liveOut);
 
+// As mvfxFindEmitter, with -1 naming every emitter (none for an effect of
+// gases alone).
+mvfxResult mvfxFindEmitters(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                            mvfxInstance** liveOut);
+
 #endif

@@ -284,6 +284,8 @@ typedef struct mvfxInstance
     // Its parameters, from the effect's defaults until the host sets them.
     float parameters[MVFX_MAX_PARAMETERS][4];
     mvfxEmitterState* emitters;
+    // Its gases' states, their fields in its block.
+    mvfxGasState gases[MVFX_MAX_GASES];
     // Scratch for a step that may reach an emitter's capacity, sized for
     // the largest emitter: its death ticks, and the particles it accepts
     // that live past the step.

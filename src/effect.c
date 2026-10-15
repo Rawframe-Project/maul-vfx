@@ -497,10 +497,20 @@ static bool AreQualityLevelsValid(const mvfxEffectDef* def)
 
 bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
 {
-    if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE || def->emitters == nullptr ||
-        def->emitterCount < 1 || def->emitterCount > MVFX_MAX_EMITTERS)
+    if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE ||
+        (def->emitterCount > 0 && def->emitters == nullptr) || def->emitterCount < 0 ||
+        def->emitterCount > MVFX_MAX_EMITTERS || def->gasCount < 0 ||
+        def->gasCount > MVFX_MAX_GASES || (def->gasCount > 0 && def->gases == nullptr) ||
+        def->emitterCount + def->gasCount < 1)
     {
         return false;
+    }
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        if (!mvfxIsGasDefValid(&def->gases[g]))
+        {
+            return false;
+        }
     }
     if (def->parameterCount < 0 || def->parameterCount > MVFX_MAX_PARAMETERS ||
         (def->parameterCount > 0 && def->parameters == nullptr) || !AreQualityLevelsValid(def))
@@ -853,6 +863,11 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         CompileEmitter(&def->emitters[i], meshes[i], &emitterSpace, &effect->emitters[i]);
     }
     (void)OrderEmitters(def, effect->stepOrder);
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        effect->gases[g] = mvfxCompileGas(&def->gases[g]);
+    }
+    effect->gasCount = def->gasCount;
     return effect;
 }
 

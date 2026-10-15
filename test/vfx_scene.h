@@ -4,8 +4,9 @@
 // The scene the determinism tests step: an effect of three endless
 // emitters over four instances, with full and churning emitters among
 // them, and an effect of emitter lives (a rate curve, looping bursts,
-// delays) over two, and an effect of mesh emitters over one; a fixed
-// sequence of steps, and a hash of every instance's state.
+// delays) over two, and an effect of mesh emitters over one, rigid
+// particles, and gases; a fixed sequence of steps, and a hash of every
+// instance's state.
 
 #ifndef MAUL_VFX_TEST_VFX_SCENE_H
 #define MAUL_VFX_TEST_VFX_SCENE_H
@@ -235,6 +236,60 @@ static inline void BuildRigidScene(mvfxContext* context)
     mvfxInstanceId instance = {0};
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "rigid instance");
     CHECK(mvfxInstance_SetColliders(context, instance, &room, 1) == mvfx_success, "rigid room");
+}
+
+// Gases: a 2D gas in the world, poured into by a sphere of density,
+// heat and fuel and blown across by a box of diagonal wind, decaying, in
+// two substeps; a 3D gas moving with its instance, a jet rising from a box
+// near its floor. Their velocities are not whole cells a step.
+static inline void BuildGasScene(mvfxContext* context)
+{
+    static const mvfxGasSource flat[2] = {
+        {.shape = mvfx_gasSphere,
+         .center = {-0.6f, -0.3f, 0},
+         .radius = 0.25f,
+         .density = 3,
+         .temperature = 40,
+         .fuel = 0.5f},
+        {.shape = mvfx_gasBox,
+         .center = {-0.4f, 0, 0},
+         .halfExtents = {0.3f, 0.6f, 1},
+         .setsVelocity = true,
+         .velocity = {1.3f, 0.45f, 0}},
+    };
+    static const mvfxGasSource jet = {.shape = mvfx_gasBox,
+                                      .center = {0.1f, -0.35f, 0},
+                                      .halfExtents = {0.15f, 0.08f, 0.15f},
+                                      .density = 5,
+                                      .temperature = 10,
+                                      .setsVelocity = true,
+                                      .velocity = {0.2f, 1.7f, -0.3f}};
+    mvfxGasDef gases[2] = {mvfxDefaultGasDef(), mvfxDefaultGasDef()};
+    gases[0].size[0] = 24;
+    gases[0].size[1] = 16;
+    gases[0].space = mvfx_gasWorld;
+    gases[0].substeps = 2;
+    gases[0].densityDecay = 0.4f;
+    gases[0].temperatureDecay = 1.5f;
+    gases[0].sources = flat;
+    gases[0].sourceCount = 2;
+    gases[1].size[0] = 12;
+    gases[1].size[1] = 10;
+    gases[1].size[2] = 6;
+    gases[1].center[1] = 0.5f;
+    gases[1].velocityDecay = 0.2f;
+    gases[1].sources = &jet;
+    gases[1].sourceCount = 1;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.gases = gases;
+    def.gasCount = 2;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "gas effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.origin[2] = -310.0;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "gas instance");
 }
 
 static inline void BuildScene(mvfxContext* context)
@@ -1004,6 +1059,7 @@ static inline void BuildScene(mvfxContext* context)
               "scene walls");
     }
     BuildRigidScene(context);
+    BuildGasScene(context);
 }
 
 // Moves every instance of the context before a step: along a fixed path

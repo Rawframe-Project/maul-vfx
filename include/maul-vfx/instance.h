@@ -774,6 +774,53 @@ extern "C"
     /// work runs on the host's task hooks when the context has them.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks);
 
+    // What a gas is now: its cells and their edge, and its box's center
+    // and orientation (x, y, z, w) in the world.
+    typedef struct mvfxGasInfo
+    {
+        int32_t size[3];
+        float cellSize;
+        double center[3];
+        float rotation[4];
+    } mvfxGasInfo;
+
+    /// Reads what a gas of an instance is now.
+    ///
+    /// @param context  The context that owns the instance.
+    /// @param instance The instance.
+    /// @param gas      The gas's index in its effect's def.
+    /// @param infoOut  Receives the gas's info; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument or a gas
+    ///         index out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context,
+                                                               mvfxInstanceId instance, int32_t gas,
+                                                               mvfxGasInfo* infoOut);
+
+    /// Copies a field of a gas of an instance at its cells' centers, X
+    /// fastest, then Y, then Z; a velocity's component the mean of the two
+    /// faces' about the center.
+    ///
+    /// @param context  The context that owns the instance.
+    /// @param instance The instance.
+    /// @param gas      The gas's index in its effect's def.
+    /// @param field    The field.
+    /// @param out      Receives count values.
+    /// @param count    How many: the gas's cells.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas index
+    ///         or field out of range or a count not the gas's cells, which
+    ///         counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGas(const mvfxContext* context,
+                                                            mvfxInstanceId instance, int32_t gas,
+                                                            mvfxGasField field, float* out,
+                                                            int64_t count);
+
 #ifdef __cplusplus
 }
 #endif
