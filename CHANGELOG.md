@@ -302,7 +302,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   their forces change, when a collider they touch or come to touch
   changes or the depth image is set again, or by
   `mvfxInstance_WakeBodies`; `mvfxEmitterStats.asleep`
-  counts them.
+  counts them. Sleeping is on by default: a host whose bodies must
+  never sleep sets `sleepSpeed` to 0, and one relying on that sees
+  different statistics and state hashes once bodies come to rest.
 - Changed: a body coming within reach of a sleeping one wakes it, and
   the sleepers it touches in turn, before that step's solve, so a
   landing meets a sleeping pile as it would an awake one, not as
