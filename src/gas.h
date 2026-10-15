@@ -31,7 +31,20 @@ typedef struct mvfxCompiledGas
     // more than one cell keeps at least 2).
     int32_t levelCount;
     int32_t levels[MVFX_GAS_LEVELS][3];
+    // The floats of its work buffer: the largest of its curl's (when it
+    // confines vorticity), a faces array (with MacCormack) and its cells
+    // (when burning expands it); 0 for none.
+    int64_t work;
 } mvfxCompiledGas;
+
+// A gas's lattice: its cells along each axis and their edge, and a
+// substep's span.
+typedef struct mvfxGasLattice
+{
+    int32_t n[3];
+    float cell;
+    float h;
+} mvfxGasLattice;
 
 // Where a gas's buffers lie in an instance's block.
 typedef struct mvfxGasAt
@@ -39,6 +52,7 @@ typedef struct mvfxGasAt
     size_t velocity[3];
     size_t scalars[3];
     size_t levels[MVFX_GAS_LEVELS];
+    size_t work;
 } mvfxGasAt;
 
 // A level of a gas's multigrid: its pressure, the right-hand side it
@@ -63,6 +77,9 @@ typedef struct mvfxGasState
     // Its pressure solve's levels; the first's pressure is kept from one
     // substep to the next, the solve's start.
     mvfxGasLevel levels[MVFX_GAS_LEVELS];
+    // Its work buffer (NULL for none), written before it is read in
+    // each use.
+    float* work;
     double origin[3];
     float rotation[4];
     float scale;

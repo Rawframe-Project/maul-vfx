@@ -13,4 +13,8 @@
 // The box in the world around a gas's box now.
 mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas);
 
+// A gas's gravity in its box's frame now: given there, or the world's
+// turned into it and over its scale.
+void mvfxGasGravity(const mvfxInstance* instance, int32_t gas, float out[3]);
+
 #endif

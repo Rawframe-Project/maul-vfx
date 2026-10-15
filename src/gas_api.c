@@ -95,6 +95,32 @@ mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas)
     return out;
 }
 
+void mvfxGasGravity(const mvfxInstance* instance, int32_t gas, float out[3])
+{
+    const mvfxGasDef* def = &instance->effect->gases[gas].def;
+    if (def->gravitySpace == mvfx_gasLocal)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[k] = def->gravity[k];
+        }
+        return;
+    }
+    double center[3];
+    float rotation[4];
+    float cell = 0.0f;
+    Place(instance, gas, center, rotation, &cell);
+    const float back[4] = {-rotation[0], -rotation[1], -rotation[2], rotation[3]};
+    float turned[3];
+    mvfxRotate(back, def->gravity, turned);
+    // The box's lengths are the world's over its scale.
+    float scale = cell / def->cellSize;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = turned[k] / scale;
+    }
+}
+
 mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                                    mvfxGasInfo* infoOut)
 {

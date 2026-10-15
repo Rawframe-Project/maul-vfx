@@ -67,11 +67,12 @@ effect_api: allocator context effect effect_parts float_mode grid grid_api hull 
 mesh_api: allocator context hull mesh slots
 grid_api: context grid slots
 gas: allocator
+gas_forces: elementary gas
 gas_pressure: gas
-gas_step: elementary gas gas_pressure
+gas_step: elementary gas gas_forces gas_pressure
 gas_api: context direction gas instance instance_api
 instance_api: collide context depth effect_api gas grid_api instance mesh mesh_api rigid_wake slots spawn
-step: context effect emitter_step event float_mode gas_step instance instance_api tasks
+step: context effect emitter_step event float_mode gas_api gas_step instance instance_api tasks
 curve:
 curve_integral: curve
 grid: allocator half

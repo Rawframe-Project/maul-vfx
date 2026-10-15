@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A gas's step: in substeps, its sources, then its velocity and scalars
-// carried by its velocity (semi-Lagrangian, traced back by the midpoint
-// rule), each decaying.
+// A gas's step: in substeps, its sources and forces, then its velocity and
+// scalars carried by its velocity (semi-Lagrangian, traced back by the
+// midpoint rule, or with MacCormack's correction), each decaying; its
+// fuel burning; its pressure projection.
 
 #ifndef MAUL_VFX_SRC_GAS_STEP_H
 #define MAUL_VFX_SRC_GAS_STEP_H
@@ -11,15 +12,6 @@
 #include "gas.h"
 
 #include <stdint.h>
-
-// A gas's lattice: its cells along each axis and their edge, and a
-// substep's span.
-typedef struct mvfxGasLattice
-{
-    int32_t n[3];
-    float cell;
-    float h;
-} mvfxGasLattice;
 
 // An array of a lattice's values at place p, in cells (a cell's center at
 // its index plus one half): the cells' for axis -1, else the faces'
@@ -32,8 +24,9 @@ void mvfxGasTraceBack(float* const velocity[3], const mvfxGasLattice* l, const f
                       float out[3]);
 
 // Steps a gas over the ticks from to, its sources pouring at the substeps
-// that start before stopTick; then whether it holds anything.
-void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, int64_t from, int64_t to,
-                 int64_t stopTick);
+// that start before stopTick, gravity in the box's frame; then whether it
+// holds anything.
+void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float gravity[3],
+                 int64_t from, int64_t to, int64_t stopTick);
 
 #endif

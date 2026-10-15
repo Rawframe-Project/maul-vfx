@@ -23,7 +23,9 @@ void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3]);
 
 // Projects a gas's current velocity: its closed walls' faces set to 0,
 // then (with pressure cycles) its divergence removed by the solve, which
-// starts from the pressure the last solve left.
-void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state);
+// starts from the pressure the last solve left. expansion, when not NULL,
+// is the divergence each cell keeps (in a box closed on every side, less
+// its mean).
+void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float* expansion);
 
 #endif

@@ -17,6 +17,8 @@ mvfxGasDef mvfxDefaultGasDef(void)
         .space = mvfx_gasLocal,
         .substeps = 1,
         .pressureCycles = 4,
+        .gravity = {0.0f, -9.81f, 0.0f},
+        .gravitySpace = mvfx_gasWorld,
     };
 }
 
@@ -64,6 +66,28 @@ static bool IsSizeValid(const int32_t size[3])
     return cells <= MVFX_MAX_GAS_CELLS;
 }
 
+// Whether a gas's place, advection, buoyancy, confinement and combustion
+// are in range.
+static bool AreForcesValid(const mvfxGasDef* def)
+{
+    const float weights[7] = {def->densityWeight, def->heatLift,  def->vorticity,    def->burnRate,
+                              def->burnHeat,      def->burnSmoke, def->burnExpansion};
+    bool valid =
+        (def->advection == mvfx_gasSemiLagrangian || def->advection == mvfx_gasMacCormack) &&
+        (def->gravitySpace == mvfx_gasLocal || def->gravitySpace == mvfx_gasWorld) &&
+        IsWithin(def->ignitionTemperature, MVFX_MAX_EXTENT);
+    for (int32_t i = 0; valid && i < 7; ++i)
+    {
+        valid = weights[i] >= 0.0f && weights[i] <= MVFX_MAX_EXTENT;
+    }
+    for (int32_t k = 0; valid && k < 3; ++k)
+    {
+        valid =
+            IsWithin(def->center[k], MVFX_MAX_EXTENT) && IsWithin(def->gravity[k], MVFX_MAX_EXTENT);
+    }
+    return valid;
+}
+
 bool mvfxIsGasDefValid(const mvfxGasDef* def)
 {
     if (def->cookie != MVFX_GAS_DEF_COOKIE || !IsSizeValid(def->size) ||
@@ -85,12 +109,9 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def)
             return false;
         }
     }
-    for (int32_t k = 0; k < 3; ++k)
+    if (!AreForcesValid(def))
     {
-        if (!IsWithin(def->center[k], MVFX_MAX_EXTENT))
-        {
-            return false;
-        }
+        return false;
     }
     for (int32_t s = 0; s < def->sourceCount; ++s)
     {
@@ -141,6 +162,17 @@ mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
         }
         gas.levelCount += 1;
     }
+    int64_t curl = def->vorticity > 0.0f ? (def->size[2] > 1 ? 3 : 1) * gas.cells : 0;
+    // MacCormack's work holds one carried array at a time: the largest
+    // faces array of the axes a gas carries.
+    int64_t faces = 0;
+    for (int32_t k = 0; k < (def->size[2] > 1 ? 3 : 2) && def->advection == mvfx_gasMacCormack; ++k)
+    {
+        faces = faces > gas.faces[k] ? faces : gas.faces[k];
+    }
+    int64_t expansion = def->burnExpansion > 0.0f && def->burnRate > 0.0f ? gas.cells : 0;
+    gas.work = curl > faces ? curl : faces;
+    gas.work = gas.work > expansion ? gas.work : expansion;
     return gas;
 }
 
@@ -158,6 +190,7 @@ void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt*
         at->levels[l] = mvfxLayoutAdd(layout, 3u * (size_t)mvfxGasLevelCells(gas, l), sizeof(float),
                                       alignof(float));
     }
+    at->work = mvfxLayoutAdd(layout, (size_t)gas->work, sizeof(float), alignof(float));
 }
 
 void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char* block,
@@ -179,6 +212,7 @@ void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char
         int64_t cells = mvfxGasLevelCells(gas, l);
         state->levels[l] = (mvfxGasLevel){level, level + cells, level + 2 * cells};
     }
+    state->work = gas->work > 0 ? (float*)(block + at->work) : nullptr;
     mvfxClearGas(state, gas);
 }
 

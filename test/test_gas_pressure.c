@@ -192,7 +192,7 @@ static void TestDirect(void)
             }
         }
         Solve(a, b, 35);
-        mvfxProjectGas(gas, state);
+        mvfxProjectGas(gas, state, nullptr);
         double most = 0.0;
         double error = 0.0;
         for (int32_t i = 0; i < 35; ++i)
@@ -230,13 +230,13 @@ static void TestDivergence(void)
             float after[9];
             cycles->pressureCycles = 0;
             Fill(gas, state);
-            mvfxProjectGas(gas, state);
+            mvfxProjectGas(gas, state, nullptr);
             after[0] = MaxDivergence(gas, state);
             for (int32_t c = 1; c <= 8; ++c)
             {
                 cycles->pressureCycles = c;
                 Fill(gas, state);
-                mvfxProjectGas(gas, state);
+                mvfxProjectGas(gas, state, nullptr);
                 after[c] = MaxDivergence(gas, state);
                 right = right && (c < 2 || c > 4 || after[c] <= 0.4f * after[c - 1]);
             }
@@ -258,7 +258,7 @@ static void TestWalls(void)
     const mvfxCompiledGas* gas = NULL;
     mvfxGasState* state = Open(&def, &gas);
     Fill(gas, state);
-    mvfxProjectGas(gas, state);
+    mvfxProjectGas(gas, state, nullptr);
     float* const* v =
         (float* const[3]){state->velocity[0][state->current], state->velocity[1][state->current],
                           state->velocity[2][state->current]};

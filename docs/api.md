@@ -87,7 +87,7 @@ Gases: smoke and fire on a grid in a box, by Stam's stable fluids. An effect's g
 ```c
 mvfxGasDef mvfxDefaultGasDef(void);
 ```
-Returns the default gas def: a 2D gas of 64 by 64 cells of 0.1, in local space, one substep, nothing decaying, no sources, its walls open, 4 V cycles of pressure.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default gas def: a 2D gas of 64 by 64 cells of 0.1, in local space, one substep, nothing decaying, no sources, its walls open, 4 V cycles of pressure, semi-Lagrangian; gravity (0, -9.81, 0) in the world, with no buoyancy, no confinement and inert fuel.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ## `grid.h`
 

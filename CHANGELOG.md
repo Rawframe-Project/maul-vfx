@@ -295,6 +295,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   4 by default, of weighted Jacobi) removes its velocity's divergence.
   Its box's walls (`closedWalls`, `mvfxGasWalls`) are each closed, the gas
   sliding along it, or open, the gas flowing through it.
+- A gas has forces, combustion and a sharper advection: buoyancy
+  (`gravity` in `gravitySpace`, `densityWeight`, `heatLift`; temperature
+  is the excess over the surroundings), vorticity confinement
+  (`vorticity`), fuel burning where hot enough (`ignitionTemperature`,
+  `burnRate`, `burnHeat`, `burnSmoke`, `burnExpansion`, whose expansion
+  the projection keeps), and MacCormack's advection (`advection`,
+  `mvfxGasAdvection`). A work buffer is added to the instance's block
+  only for the features that use one.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

@@ -240,9 +240,11 @@ static inline void BuildRigidScene(mvfxContext* context)
 
 // Gases: a 2D gas in the world, poured into by a sphere of density,
 // heat and fuel and blown across by a box of diagonal wind, decaying, in
-// two substeps, closed below and on its left; a 3D gas moving with its
-// instance, a jet rising from a box near its closed floor, 3 V cycles of
-// pressure. Their velocities are not whole cells a step.
+// two substeps, closed below and on its left, buoyant, confined, its fuel
+// burning and expanding; a 3D gas moving with its turning instance, a jet
+// rising from a box near its closed floor, 3 V cycles of pressure,
+// MacCormack's advection, buoyant in the world's gravity and confined.
+// Their velocities are not whole cells a step.
 static inline void BuildGasScene(mvfxContext* context)
 {
     static const mvfxGasSource flat[2] = {
@@ -274,6 +276,14 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[0].temperatureDecay = 1.5f;
     gases[0].sources = flat;
     gases[0].closedWalls = mvfx_gasWallMinX | mvfx_gasWallMinY;
+    gases[0].heatLift = 0.05f;
+    gases[0].densityWeight = 0.02f;
+    gases[0].vorticity = 1.5f;
+    gases[0].ignitionTemperature = 0.5f;
+    gases[0].burnRate = 2.0f;
+    gases[0].burnHeat = 3.0f;
+    gases[0].burnSmoke = 0.5f;
+    gases[0].burnExpansion = 0.1f;
     gases[0].sourceCount = 2;
     gases[1].size[0] = 12;
     gases[1].size[1] = 10;
@@ -283,6 +293,9 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[1].sources = &jet;
     gases[1].closedWalls = mvfx_gasWallMinY;
     gases[1].pressureCycles = 3;
+    gases[1].advection = mvfx_gasMacCormack;
+    gases[1].heatLift = 0.02f;
+    gases[1].vorticity = 0.8f;
     gases[1].sourceCount = 1;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.gases = gases;

@@ -318,7 +318,41 @@ static void Correct(const mvfxCompiledGas* gas, const float* p, float* const vel
     }
 }
 
-void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state)
+// Whether every wall a gas meets is closed.
+static bool IsSealed(const mvfxCompiledGas* gas)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        if (gas->def.size[k] > 1 && (gas->def.closedWalls & (3u << (2 * k))) != (3u << (2 * k)))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The divergence the expansion asks for taken from each cell's, so the
+// solve leaves it there; in a sealed box, less its mean (which has nowhere
+// to go), summed in the cells' order.
+static void Expand(const mvfxCompiledGas* gas, const float* expansion, float* rhs)
+{
+    float mean = 0.0f;
+    if (IsSealed(gas))
+    {
+        double sum = 0.0;
+        for (int64_t i = 0; i < gas->cells; ++i)
+        {
+            sum += (double)expansion[i];
+        }
+        mean = (float)(sum / (double)gas->cells);
+    }
+    for (int64_t i = 0; i < gas->cells; ++i)
+    {
+        rhs[i] -= expansion[i] - mean;
+    }
+}
+
+void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float* expansion)
 {
     float* velocity[3] = {state->velocity[0][state->current], state->velocity[1][state->current],
                           state->velocity[2][state->current]};
@@ -331,6 +365,10 @@ void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state)
     // (Briggs, Henson and McCormick 2000).
     float omega = gas->def.size[2] > 1 ? 6.0f / 7.0f : 4.0f / 5.0f;
     Divergence(gas, velocity, state->levels[0].rhs);
+    if (expansion != nullptr)
+    {
+        Expand(gas, expansion, state->levels[0].rhs);
+    }
     for (int32_t c = 0; c < gas->def.pressureCycles; ++c)
     {
         Cycle(gas, state, 0, omega);

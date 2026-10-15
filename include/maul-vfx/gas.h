@@ -79,6 +79,20 @@ extern "C"
         mvfx_gasVelocityZ = 5,
     };
 
+    // How a gas carries its fields.
+    typedef uint8_t mvfxGasAdvection;
+    enum
+    {
+        // Each point traced back over the substep and the field sampled
+        // there: stable at any step, smoothing small detail.
+        mvfx_gasSemiLagrangian = 0,
+        // MacCormack's correction (Selle et al. 2008): the trace forward
+        // from the result estimates its error, half of which is taken back,
+        // falling back to the plain sample where that leaves the values it
+        // was sampled from. Sharper, for three traces instead of one.
+        mvfx_gasMacCormack = 1,
+    };
+
     // A source's shape.
     typedef uint8_t mvfxGasShape;
     enum
@@ -145,6 +159,34 @@ extern "C"
         // for the same bits on every platform), from 0 (no projection) to
         // MVFX_MAX_GAS_CYCLES.
         int32_t pressureCycles;
+        mvfxGasAdvection advection;
+        // Buoyancy: each face sped by gravity times (densityWeight density -
+        // heatLift temperature), its temperature the excess over the
+        // surroundings (so dense smoke sinks and heat rises), each weight
+        // from 0 to MVFX_MAX_EXTENT. gravity, each component finite and at
+        // most MVFX_MAX_EXTENT in size, is in gravitySpace: mvfx_gasWorld
+        // for the world's, turned into the box's frame as the box turns, or
+        // mvfx_gasLocal for the box's own.
+        float gravity[3];
+        mvfxGasSpace gravitySpace;
+        float densityWeight;
+        float heatLift;
+        // Vorticity confinement's strength a second, from 0 to
+        // MVFX_MAX_EXTENT: it restores the small swirls the advection
+        // smooths away.
+        float vorticity;
+        // Combustion: where the temperature is at least
+        // ignitionTemperature (finite, at most MVFX_MAX_EXTENT in size), a
+        // share 1 - exp(-burnRate h) of the fuel burns each substep of h,
+        // each unit adding burnHeat to the temperature and burnSmoke to the
+        // density, and growing its cell by burnExpansion of its volume
+        // (the gas pushed out of a flame's front). Each rate from 0 to
+        // MVFX_MAX_EXTENT.
+        float ignitionTemperature;
+        float burnRate;
+        float burnHeat;
+        float burnSmoke;
+        float burnExpansion;
     } mvfxGasDef;
 
 // The cookie of a gas def, which its default sets and mvfxCreateEffect
@@ -153,7 +195,8 @@ extern "C"
 
     /// Returns the default gas def: a 2D gas of 64 by 64 cells of 0.1, in
     /// local space, one substep, nothing decaying, no sources, its walls
-    /// open, 4 V cycles of pressure.
+    /// open, 4 V cycles of pressure, semi-Lagrangian; gravity (0, -9.81, 0)
+    /// in the world, with no buoyancy, no confinement and inert fuel.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

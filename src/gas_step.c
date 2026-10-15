@@ -4,6 +4,7 @@
 #include "gas_step.h"
 
 #include "elementary.h"
+#include "gas_forces.h"
 #include "gas_pressure.h"
 
 #include "maul-vfx/effect.h"
@@ -20,7 +21,10 @@ static void PointsOf(const mvfxGasLattice* l, int32_t axis, int32_t out[3])
     }
 }
 
-float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, const float p[3])
+// An array's trilinear sample at place p (see mvfxGasSample), and the
+// least and the most of the points it weighed.
+static float SampleRange(const float* values, const mvfxGasLattice* l, int32_t axis,
+                         const float p[3], float range[2])
 {
     int32_t m[3];
     PointsOf(l, axis, m);
@@ -37,6 +41,8 @@ float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, 
         t[k] = c - base;
     }
     float sum = 0.0f;
+    range[0] = INFINITY;
+    range[1] = -INFINITY;
     for (int32_t corner = 0; corner < 8; ++corner)
     {
         int32_t at[3];
@@ -47,9 +53,18 @@ float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, 
             at[k] = up ? high[k] : low[k];
             weight *= up ? t[k] : 1.0f - t[k];
         }
-        sum += weight * values[((int64_t)at[2] * m[1] + at[1]) * m[0] + at[0]];
+        float value = values[((int64_t)at[2] * m[1] + at[1]) * m[0] + at[0]];
+        sum += weight * value;
+        range[0] = fminf(range[0], value);
+        range[1] = fmaxf(range[1], value);
     }
     return sum;
+}
+
+float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, const float p[3])
+{
+    float range[2];
+    return SampleRange(values, l, axis, p, range);
 }
 
 // The velocity at place p, in cells a second.
@@ -79,11 +94,24 @@ void mvfxGasTraceBack(float* const velocity[3], const mvfxGasLattice* l, const f
     }
 }
 
-// Carries an array (the cells', or the faces' across axis) from one
-// buffer to the other by the velocity, each value times keep.
-static void Advect(float* const velocity[3], const mvfxGasLattice* l, int32_t axis,
-                   const float* from, float* to, float keep)
+// A point's place in cells: a cell's center, or (across axis) a face's.
+static void PlaceOf(int32_t axis, const int32_t at[3], float out[3])
 {
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = (float)at[k] + (k == axis ? 0.0f : 0.5f);
+    }
+}
+
+// Carries an array (the cells', or the faces' across axis) from one
+// buffer to the other by the velocity, each value times keep:
+// semi-Lagrangian, each point traced over the substep (back, or with
+// ahead forward) and sampled there.
+static void Advect(float* const velocity[3], const mvfxGasLattice* l, int32_t axis,
+                   const float* from, float* to, float keep, bool ahead)
+{
+    mvfxGasLattice turned = *l;
+    turned.h = ahead ? -l->h : l->h;
     int32_t m[3];
     PointsOf(l, axis, m);
     int64_t i = 0;
@@ -95,16 +123,58 @@ static void Advect(float* const velocity[3], const mvfxGasLattice* l, int32_t ax
             {
                 const int32_t at[3] = {x, y, z};
                 float p[3];
-                for (int32_t k = 0; k < 3; ++k)
-                {
-                    p[k] = (float)at[k] + (k == axis ? 0.0f : 0.5f);
-                }
+                PlaceOf(axis, at, p);
                 float back[3];
-                mvfxGasTraceBack(velocity, l, p, back);
+                mvfxGasTraceBack(velocity, &turned, p, back);
                 to[i++] = keep * mvfxGasSample(from, l, axis, back);
             }
         }
     }
+}
+
+// MacCormack's correction of an array carried semi-Lagrangian into to,
+// its trace forward from there in work: half the error taken back, the
+// plain value kept where the result leaves the points sampled from; each
+// value times keep.
+static void Correct(float* const velocity[3], const mvfxGasLattice* l, int32_t axis,
+                    const float* from, float* to, const float* work, float keep)
+{
+    int32_t m[3];
+    PointsOf(l, axis, m);
+    int64_t i = 0;
+    for (int32_t z = 0; z < m[2]; ++z)
+    {
+        for (int32_t y = 0; y < m[1]; ++y)
+        {
+            for (int32_t x = 0; x < m[0]; ++x, ++i)
+            {
+                const int32_t at[3] = {x, y, z};
+                float p[3];
+                PlaceOf(axis, at, p);
+                float back[3];
+                mvfxGasTraceBack(velocity, l, p, back);
+                float range[2];
+                float plain = SampleRange(from, l, axis, back, range);
+                float sharp = plain + 0.5f * (from[i] - work[i]);
+                to[i] = keep * (sharp >= range[0] && sharp <= range[1] ? sharp : plain);
+            }
+        }
+    }
+}
+
+// Carries an array by the gas's advection: semi-Lagrangian, or that
+// traced forward again into work and corrected.
+static void Carry(const mvfxCompiledGas* gas, float* const velocity[3], const mvfxGasLattice* l,
+                  int32_t axis, const float* from, float* to, float* work, float keep)
+{
+    if (gas->def.advection != mvfx_gasMacCormack)
+    {
+        Advect(velocity, l, axis, from, to, keep, false);
+        return;
+    }
+    Advect(velocity, l, axis, from, to, 1.0f, false);
+    Advect(velocity, l, axis, to, work, 1.0f, true);
+    Correct(velocity, l, axis, from, to, work, keep);
 }
 
 // Whether a source holds a place in the box's frame.
@@ -179,17 +249,13 @@ static void PourFaces(const mvfxGasSource* source, const mvfxGasLattice* l, int3
     }
 }
 
-// One substep: the sources (while the instance emits), then the velocity
-// and the scalars carried by the velocity as it was, each decaying.
-static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxGasLattice* l,
-                    bool pours)
+// A substep's sources (while the instance emits) into the current
+// buffers.
+static void Pour(const mvfxCompiledGas* gas, const mvfxGasLattice* l, float* const velocity[3],
+                 float* const scalars[3])
 {
-    int32_t now = state->current;
-    float* velocity[3] = {state->velocity[0][now], state->velocity[1][now],
-                          state->velocity[2][now]};
-    float* scalars[3] = {state->scalars[0][now], state->scalars[1][now], state->scalars[2][now]};
     int32_t axes = l->n[2] > 1 ? 3 : 2;
-    for (int32_t s = 0; pours && s < gas->def.sourceCount; ++s)
+    for (int32_t s = 0; s < gas->def.sourceCount; ++s)
     {
         PourCells(&gas->sources[s], l, scalars);
         for (int32_t k = 0; k < axes && gas->sources[s].setsVelocity; ++k)
@@ -197,18 +263,42 @@ static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxG
             PourFaces(&gas->sources[s], l, k, velocity[k]);
         }
     }
+}
+
+// One substep: the sources (while the instance emits), the forces, then
+// the velocity and the scalars carried by the velocity as it was, each
+// decaying; the fuel burning; the projection.
+static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxGasLattice* l,
+                    const float gravity[3], bool pours)
+{
+    int32_t now = state->current;
+    float* velocity[3] = {state->velocity[0][now], state->velocity[1][now],
+                          state->velocity[2][now]};
+    float* scalars[3] = {state->scalars[0][now], state->scalars[1][now], state->scalars[2][now]};
+    if (pours)
+    {
+        Pour(gas, l, velocity, scalars);
+    }
+    mvfxGasBuoyancy(gas, l, gravity, velocity, scalars);
+    mvfxGasConfine(gas, l, velocity, state->work);
     const float decays[3] = {gas->def.densityDecay, gas->def.temperatureDecay, gas->def.fuelDecay};
     float keep = mvfxExp(-gas->def.velocityDecay * l->h);
+    int32_t axes = l->n[2] > 1 ? 3 : 2;
     for (int32_t k = 0; k < axes; ++k)
     {
-        Advect(velocity, l, k, velocity[k], state->velocity[k][1 - now], keep);
+        Carry(gas, velocity, l, k, velocity[k], state->velocity[k][1 - now], state->work, keep);
     }
+    float* carried[3];
     for (int32_t f = 0; f < 3; ++f)
     {
-        Advect(velocity, l, -1, scalars[f], state->scalars[f][1 - now], mvfxExp(-decays[f] * l->h));
+        carried[f] = state->scalars[f][1 - now];
+        Carry(gas, velocity, l, -1, scalars[f], carried[f], state->work,
+              mvfxExp(-decays[f] * l->h));
     }
     state->current = 1 - now;
-    mvfxProjectGas(gas, state);
+    bool expands = gas->def.burnExpansion > 0.0f && gas->def.burnRate > 0.0f;
+    mvfxGasBurn(gas, l, carried, expands ? state->work : nullptr);
+    mvfxProjectGas(gas, state, expands ? state->work : nullptr);
 }
 
 // Whether any scalar holds more than nothing.
@@ -228,8 +318,8 @@ static bool HoldsAny(const mvfxCompiledGas* gas, const mvfxGasState* state)
     return false;
 }
 
-void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, int64_t from, int64_t to,
-                 int64_t stopTick)
+void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float gravity[3],
+                 int64_t from, int64_t to, int64_t stopTick)
 {
     int32_t substeps = gas->def.substeps;
     mvfxGasLattice l = {.cell = gas->def.cellSize};
@@ -246,7 +336,7 @@ void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, int64_t from, 
             continue;
         }
         l.h = (float)((double)(end - start) / (double)MVFX_TICKS_PER_SECOND);
-        Substep(gas, state, &l, start < stopTick);
+        Substep(gas, state, &l, gravity, start < stopTick);
     }
     state->holds = HoldsAny(gas, state);
 }
