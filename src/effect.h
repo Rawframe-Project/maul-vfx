@@ -323,6 +323,15 @@ static inline bool mvfxIsPinnedPoint(const mvfxCompiledEmitter* emitter, int32_t
            (emitter->unit.pinFirstRow && point < emitter->unitWidth);
 }
 
+// Whether the quad from a unit's point q across and down, in a unit of a
+// width, is whole: none of its four edges torn (bit 0 of a point's torn
+// edges its edge across, bit 1 its edge down).
+static inline bool mvfxIsQuadWhole(const uint32_t* torn, int32_t q, int32_t width)
+{
+    return torn == nullptr ||
+           (((torn[q] | torn[q + width]) & 1u) == 0 && ((torn[q] | torn[q + 1]) & 2u) == 0);
+}
+
 // Returns a compiled effect's block.
 void mvfxReleaseEffect(mvfxEffect* effect, const mvfxAllocator* allocator);
 

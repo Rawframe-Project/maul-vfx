@@ -695,7 +695,8 @@ static inline void BuildScene(mvfxContext* context)
                                                    .maxCount = 2,
                                                    .inheritVelocity = 0.5f,
                                                    .capacity = 8};
-    // Banners: sheets pinned by their first row, sheared by a gusting wind.
+    // Banners: sheets pinned by their first row, sheared by a gusting wind
+    // that also moves the air their triangles meet.
     static const mvfxBurst banners = {.time = 0.1f,
                                       .minCount = 1,
                                       .maxCount = 1,
@@ -729,6 +730,8 @@ static inline void BuildScene(mvfxContext* context)
                                           .shearCompliance = 1e-3f,
                                           .bendCompliance = 0.05f,
                                           .damping = 1.0f,
+                                          .normalDrag = 0.8f,
+                                          .tangentDrag = 0.05f,
                                           .pinFirstRow = true,
                                           .attach = mvfx_attachHost,
                                           .attachFrameCapacity = 2};

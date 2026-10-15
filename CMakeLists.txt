@@ -41,6 +41,7 @@ else()
 endif()
 add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/allocator.c
+    src/aero.c
     src/appearance.c
     src/attach.c
     src/beam.c
@@ -108,6 +109,7 @@ endif()
 
 if(MAUL_VFX_BUILD_TESTS)
     enable_testing()
+    maul_add_test(aero WHITEBOX)
     maul_add_test(allocator WHITEBOX)
     maul_add_test(attach WHITEBOX)
     maul_add_test(base)

@@ -23,6 +23,7 @@
 
 #include "unit.h"
 
+#include "aero.h"
 #include "attach.h"
 #include "elementary.h"
 #include "event.h"
@@ -382,6 +383,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
         }
         double seconds = (double)(to - from) / (double)MVFX_TICKS_PER_SECOND;
         float h = (float)seconds;
+        mvfxBlowSheets(instance, emitter, from, h, state->unitPrevious);
         mvfxIntegrateRange(instance, emitter, 0, count, from, seconds);
         // The places the integrator predicts, before the constraints.
         for (int32_t k = 0; k < 3; ++k)

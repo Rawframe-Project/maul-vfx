@@ -508,6 +508,19 @@ extern "C"
         // instance).
         bool pinFirst;
         bool pinFirstRow;
+        // A sheet's aerodynamics (read only for a sheet; 0 for none, each up
+        // to MVFX_MAX_EXTENT): each whole triangle of its quads (as
+        // mvfxInstance_ExpandSheets draws them) pushes its three points by
+        // -normalDrag A (v.n)|v.n| n - tangentDrag A |v_t| v_t, shared among
+        // them, A its area, n its normal, v its points' mean velocity less
+        // the air's at its middle and v_t that less its part along n. The
+        // air moves as the emitter's winds and velocity fields pull: their
+        // targets' mean weighted by their pulls, still where none reaches.
+        // Each coefficient is half the air's density times the plate's drag
+        // coefficient over a point's mass; a tilted sheet so takes lift. A
+        // triangle takes at most a sixth of its relative speed a substep.
+        float normalDrag;
+        float tangentDrag;
         // How far a stretch constraint (between neighbors across or down) may
         // stretch before it tears for good: it tears when, after a substep's
         // projections, it is longer than its rest times 1 + tearStrain. A

@@ -113,7 +113,9 @@ static bool IsUnitShapeValid(const mvfxUnitDef* unit)
         return false;
     }
     float cosine = across[0] * down[0] + across[1] * down[1] + across[2] * down[2];
-    return fabsf(cosine) <= 0.99863f && IsWithin(unit->shearCompliance, 0.0f, MVFX_MAX_EXTENT);
+    return fabsf(cosine) <= 0.99863f && IsWithin(unit->shearCompliance, 0.0f, MVFX_MAX_EXTENT) &&
+           IsWithin(unit->normalDrag, 0.0f, MVFX_MAX_EXTENT) &&
+           IsWithin(unit->tangentDrag, 0.0f, MVFX_MAX_EXTENT);
 }
 
 // Whether an emitter's units are valid: a particle, or a chain or sheet in
@@ -175,6 +177,8 @@ static void CompileUnit(const mvfxUnitDef* unit, mvfxCompiledEmitter* out)
     {
         u->rows = 1;
         u->shearCompliance = 0.0f;
+        u->normalDrag = 0.0f;
+        u->tangentDrag = 0.0f;
         u->pinFirstRow = false;
         for (int32_t k = 0; k < 3; ++k)
         {

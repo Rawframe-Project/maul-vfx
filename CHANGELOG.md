@@ -234,3 +234,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   the bending and shear across them; sheets' meshes drop torn quads,
   torn chains split into ribbons, `mvfx_eventTear` events and
   `mvfxEmitterStats.torn` report each tear.
+- Sheets' aerodynamics: `normalDrag` and `tangentDrag` push each whole
+  triangle against the air the emitter's winds and velocity fields move,
+  so tilted sheets take lift.
