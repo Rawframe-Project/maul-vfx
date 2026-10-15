@@ -7,7 +7,9 @@
 // on an edge toppling onto a face; a box held on a slope by static
 // friction and sliding down a steeper one; bodies kept inside and outside
 // spheres; a capsule lying down; collisions counted only as strikes, and
-// killing; contacts capped and counted; a box spun about its middle axis
+// killing; contacts capped and counted, the deepest kept; a box pushed
+// off a sphere inside it through its nearest face; several strikes a step
+// writing one event on the surface; a box spun about its middle axis
 // flipping by the gyroscopic term while its momentum and energy hold; the
 // checks.
 
@@ -320,6 +322,75 @@ static void TestCapped(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestDeepest(void)
+{
+    // A box 0.01 into a floor, 0.05 into a wall along z and 0.5 into one
+    // along x, in one substep and no gravity: twelve contacts, the eight
+    // deepest kept, so it comes out of the walls and not yet the floor.
+    static const mvfxCollider walls[3] = {
+        {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}},
+        {.kind = mvfx_colliderPlane, .normal = {1, 0, 0}},
+        {.kind = mvfx_colliderPlane, .normal = {0, 0, 1}},
+    };
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.rigid.substeps = 1;
+    emitter.colliders = walls;
+    emitter.colliderCount = 3;
+    static const double place[3] = {0, 0.49, 0.45};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    Steps(1);
+    CHECK(fabsf(X(1) - 0.49f) <= 1e-6f && X(2) >= 0.495f && X(0) >= 0.5f, "the deepest kept");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestInsideBox(void)
+{
+    // A small sphere at the origin inside a box of 2 centered 0.7 above
+    // it: pushed out through the nearest face, the bottom, to rest just
+    // above the sphere.
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 2, 2, 2);
+    emitter.motion.gravity[1] = 0.0f;
+    s_colliders[0] = (mvfxCollider){.kind = mvfx_colliderSphere, .radius = 0.1f};
+    static const double place[3] = {0, 0.7, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    Steps(10);
+    CHECK(fabsf(X(1) - 1.1f) <= 0.01f && fabsf(X(0)) <= 1e-4f && Speed() <= 1e-3f,
+          "out by its nearest face");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestStrikeEvents(void)
+{
+    // A ball bouncing fast between planes 0.2 apart strikes several times a
+    // step but writes one event, on a surface.
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1, 1, 1);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.rigid.restitution = 1.0f;
+    emitter.events = mvfx_eventMaskCollision;
+    emitter.eventCapacity = 16;
+    s_colliders[1] =
+        (mvfxCollider){.kind = mvfx_colliderPlane, .center = {0, 1.2f, 0}, .normal = {0, -1, 0}};
+    emitter.colliderCount = 2;
+    static const double place[3] = {0, 0.6, 0};
+    static const float fast[3] = {0, 60, 0};
+    Open(&emitter, place, fast);
+    Steps(2);
+    const uint32_t* count = (const uint32_t*)Array(mvfx_attributeCollisions);
+    uint32_t before = count[0];
+    Steps(1);
+    const mvfxEvent* events = NULL;
+    int32_t n = 0;
+    CHECK(mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0, &events, &n) == mvfx_success,
+          "events");
+    bool onSurface =
+        n == 1 && (fabs(events[0].place[1]) <= 1e-4 || fabs(events[0].place[1] - 1.2) <= 1e-4);
+    CHECK(count[0] >= before + 2u && onSurface, "strikes counted, one event a step");
+    mvfxDestroyContext(s_scene.context);
+}
+
 // The body's angular momentum and twice its energy over its mass.
 static void MomentumOf(const float inertia[3], float* momentum, float* energy)
 {
@@ -447,6 +518,9 @@ int main(void)
     TestCapsule();
     TestStrikes();
     TestCapped();
+    TestDeepest();
+    TestInsideBox();
+    TestStrikeEvents();
     TestGyroscopic();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
