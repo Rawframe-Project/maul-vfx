@@ -272,12 +272,17 @@ static void TestSplatExact(void)
     // the box), pouring 2 of density a second and pulling by a drag of 10;
     // one at (-0.025, 0), half a cell outside the box, pouring nothing.
     // The 4 cells about the first take 2/64 times their weights (0.04,
-    // 0.16, 0.16, 0.64), the 4 X faces about it 2 (1 - e^(-10/64)) times
-    // theirs (0.14, 0.06, 0.56, 0.24), nothing else anything.
+    // 0.16, 0.16, 0.64); the X faces, all at 0.5, the 4 about it go
+    // toward 2 by (2 - 0.5) (1 - e^(-10/64)) times theirs (0.14, 0.06,
+    // 0.56, 0.24); nothing else changes.
     static float cells[3][48];
     static float faces[3][64];
     memset(cells, 0, sizeof cells);
     memset(faces, 0, sizeof faces);
+    for (int32_t f = 0; f < 9 * 6; ++f)
+    {
+        faces[0][f] = 0.5f;
+    }
     const mvfxGasLattice l = {.n = {8, 6, 1}, .cell = 0.1f, .h = 1.0f / 64.0f};
     const float px[2] = {0.065f, -0.425f};
     const float py[2] = {-0.035f, 0.0f};
@@ -307,15 +312,15 @@ static void TestSplatExact(void)
     right = right && fabsf(total - 2.0f / 64.0f) <= 1e-7f;
     const int32_t faceAt[4] = {1 * 9 + 5, 1 * 9 + 6, 2 * 9 + 5, 2 * 9 + 6};
     const float faceWeight[4] = {0.14f, 0.06f, 0.56f, 0.24f};
-    float pull = 2.0f * (1.0f - expf(-10.0f / 64.0f));
+    float pull = 1.5f * (1.0f - expf(-10.0f / 64.0f));
     float faceTotal = 0.0f;
     for (int32_t f = 0; f < 9 * 6; ++f)
     {
-        faceTotal += faces[0][f];
+        faceTotal += faces[0][f] - 0.5f;
     }
     for (int32_t c = 0; c < 4; ++c)
     {
-        right = right && fabsf(faces[0][faceAt[c]] - faceWeight[c] * pull) <= 1e-6f;
+        right = right && fabsf(faces[0][faceAt[c]] - 0.5f - faceWeight[c] * pull) <= 1e-6f;
     }
     right = right && fabsf(faceTotal - pull) <= 1e-6f;
     for (int32_t f = 0; f < 8 * 7; ++f)
