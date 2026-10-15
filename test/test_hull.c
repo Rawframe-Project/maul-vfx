@@ -3,8 +3,8 @@
 //
 // Hulls of point sets: a cube's corners amid inner points and repeats
 // giving eight vertices, six square faces, its volume and moments; a
-// tetrahedron off the origin giving its centroid and its moments by the
-// closed form; points of a ball's hull all inside every face, each face's
+// tetrahedron of unequal legs off the origin giving its centroid and its
+// moments by the closed form; points of a ball's hull all inside every face, each face's
 // corners on its plane and in order; points spanning no volume, and a
 // hull of more than the most vertices, refused.
 
@@ -59,25 +59,28 @@ static void TestCube(void)
 
 static void TestTetrahedron(void)
 {
-    // The corner tetrahedron of edge 1 from (5, -1, 2): volume a sixth,
-    // centroid a quarter in, and about its corner the integrals of x x a
-    // sixtieth and of x y a hundred-twentieth.
-    const float points[12] = {5, -1, 2, 6, -1, 2, 5, 0, 2, 5, -1, 3};
+    // The corner tetrahedron of legs 1, 2 and 3 along x, y and z from (5,
+    // -1, 2): volume 1, centroid a quarter along each leg, and about it
+    // moments V a a 3/80 along each axis and -V a b / 80 across (from the
+    // integrals V a a / 10 and V a b / 20 about the corner).
+    const float points[12] = {5, -1, 2, 6, -1, 2, 5, 1, 2, 5, -1, 5};
     mvfxHull hull;
     CHECK(mvfxBuildHull(points, 4, &s_allocator, &hull) == mvfx_success, "a tetrahedron's hull");
-    double v = 1.0 / 6.0;
-    double c = 0.25;
-    double xx = 1.0 / 60.0 - v * c * c;
-    double xy = 1.0 / 120.0 - v * c * c;
+    const double legs[3] = {1.0, 2.0, 3.0};
+    double v = 1.0;
+    static const int32_t rows[3] = {0, 0, 1};
+    static const int32_t columns[3] = {1, 2, 2};
     bool moments = true;
     for (int32_t k = 0; k < 3; ++k)
     {
-        moments = moments && fabs((double)hull.moments[k] - xx) <= 1e-6 &&
-                  fabs((double)hull.moments[3 + k] - xy) <= 1e-6;
+        double along = v * legs[k] * legs[k] * 3.0 / 80.0;
+        double across = -v * legs[rows[k]] * legs[columns[k]] / 80.0;
+        moments = moments && fabs((double)hull.moments[k] - along) <= 1e-5 &&
+                  fabs((double)hull.moments[3 + k] - across) <= 1e-5;
     }
-    CHECK(hull.vertexCount == 4 && hull.faceCount == 4 && fabs((double)hull.volume - v) <= 1e-6 &&
+    CHECK(hull.vertexCount == 4 && hull.faceCount == 4 && fabs((double)hull.volume - v) <= 1e-5 &&
               moments && fabsf(hull.centroid[0] - 5.25f) <= 1e-5f &&
-              fabsf(hull.centroid[1] + 0.75f) <= 1e-5f && fabsf(hull.centroid[2] - 2.25f) <= 1e-5f,
+              fabsf(hull.centroid[1] + 0.5f) <= 1e-5f && fabsf(hull.centroid[2] - 2.75f) <= 1e-5f,
           "a tetrahedron's mass");
 }
 
