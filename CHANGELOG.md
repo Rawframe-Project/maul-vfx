@@ -290,6 +290,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   midpoint rule), and each field may decay. `mvfxInstance_GetGasInfo`
   and `mvfxInstance_ReadGas` read it; an instance's bounds hold its
   gases' boxes, and it finishes once stopped and its gases are empty.
+- A gas keeps from compressing: each substep after it is carried, a
+  pressure projection by geometric multigrid (`pressureCycles` V cycles,
+  4 by default, of weighted Jacobi) removes its velocity's divergence.
+  Its box's walls (`closedWalls`, `mvfxGasWalls`) are each closed, the gas
+  sliding along it, or open, the gas flowing through it.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

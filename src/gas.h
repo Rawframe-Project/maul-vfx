@@ -14,6 +14,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+// The most levels of a gas's multigrid: from 512 cells along an axis
+// halved to 2.
+#define MVFX_GAS_LEVELS 10
+
 // A gas's def as compiled: its sources copied in.
 typedef struct mvfxCompiledGas
 {
@@ -22,7 +26,29 @@ typedef struct mvfxCompiledGas
     // Its cells, and along each axis its faces across that axis.
     int64_t cells;
     int64_t faces[3];
+    // Its multigrid's levels, the first its own cells: each level's cells
+    // along each axis (an axis halved, rounding up, while every axis of
+    // more than one cell keeps at least 2).
+    int32_t levelCount;
+    int32_t levels[MVFX_GAS_LEVELS][3];
 } mvfxCompiledGas;
+
+// Where a gas's buffers lie in an instance's block.
+typedef struct mvfxGasAt
+{
+    size_t velocity[3];
+    size_t scalars[3];
+    size_t levels[MVFX_GAS_LEVELS];
+} mvfxGasAt;
+
+// A level of a gas's multigrid: its pressure, the right-hand side it
+// solves for and a buffer the smoothing writes, each over its cells.
+typedef struct mvfxGasLevel
+{
+    float* pressure;
+    float* rhs;
+    float* scratch;
+} mvfxGasLevel;
 
 // A gas's state in an instance: its velocity's components at the faces
 // across their axes and its density, temperature and fuel at the cells'
@@ -34,6 +60,9 @@ typedef struct mvfxGasState
     float* velocity[3][2];
     float* scalars[3][2];
     int32_t current;
+    // Its pressure solve's levels; the first's pressure is kept from one
+    // substep to the next, the solve's start.
+    mvfxGasLevel levels[MVFX_GAS_LEVELS];
     double origin[3];
     float rotation[4];
     float scale;
@@ -49,13 +78,19 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def);
 // A valid gas def compiled.
 mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def);
 
-// Places a gas's buffers in a layout: at[0..2] its velocity's components',
-// at[3..5] its scalars' (each two buffers in a row).
-void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, size_t at[6]);
+// Places a gas's buffers in a layout: its velocity's components' and its
+// scalars' (each two buffers in a row), its levels' (three in a row).
+void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt* at);
 
 // Points a gas's state at its buffers in block, all zero.
 void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char* block,
-                  const size_t at[6]);
+                  const mvfxGasAt* at);
+
+// A level's cells.
+static inline int64_t mvfxGasLevelCells(const mvfxCompiledGas* gas, int32_t level)
+{
+    return (int64_t)gas->levels[level][0] * gas->levels[level][1] * gas->levels[level][2];
+}
 
 // Zeroes a gas's fields.
 void mvfxClearGas(mvfxGasState* state, const mvfxCompiledGas* gas);

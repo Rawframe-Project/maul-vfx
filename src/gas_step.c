@@ -4,6 +4,7 @@
 #include "gas_step.h"
 
 #include "elementary.h"
+#include "gas_pressure.h"
 
 #include "maul-vfx/effect.h"
 
@@ -207,6 +208,7 @@ static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxG
         Advect(velocity, l, -1, scalars[f], state->scalars[f][1 - now], mvfxExp(-decays[f] * l->h));
     }
     state->current = 1 - now;
+    mvfxProjectGas(gas, state);
 }
 
 // Whether any scalar holds more than nothing.

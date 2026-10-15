@@ -240,8 +240,9 @@ static inline void BuildRigidScene(mvfxContext* context)
 
 // Gases: a 2D gas in the world, poured into by a sphere of density,
 // heat and fuel and blown across by a box of diagonal wind, decaying, in
-// two substeps; a 3D gas moving with its instance, a jet rising from a box
-// near its floor. Their velocities are not whole cells a step.
+// two substeps, closed below and on its left; a 3D gas moving with its
+// instance, a jet rising from a box near its closed floor, 3 V cycles of
+// pressure. Their velocities are not whole cells a step.
 static inline void BuildGasScene(mvfxContext* context)
 {
     static const mvfxGasSource flat[2] = {
@@ -272,6 +273,7 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[0].densityDecay = 0.4f;
     gases[0].temperatureDecay = 1.5f;
     gases[0].sources = flat;
+    gases[0].closedWalls = mvfx_gasWallMinX | mvfx_gasWallMinY;
     gases[0].sourceCount = 2;
     gases[1].size[0] = 12;
     gases[1].size[1] = 10;
@@ -279,6 +281,8 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[1].center[1] = 0.5f;
     gases[1].velocityDecay = 0.2f;
     gases[1].sources = &jet;
+    gases[1].closedWalls = mvfx_gasWallMinY;
+    gases[1].pressureCycles = 3;
     gases[1].sourceCount = 1;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.gases = gases;

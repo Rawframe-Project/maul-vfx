@@ -16,6 +16,7 @@ mvfxGasDef mvfxDefaultGasDef(void)
         .cellSize = 0.1f,
         .space = mvfx_gasLocal,
         .substeps = 1,
+        .pressureCycles = 4,
     };
 }
 
@@ -70,7 +71,8 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def)
         (def->space != mvfx_gasLocal && def->space != mvfx_gasWorld) || def->substeps < 1 ||
         def->substeps > MVFX_MAX_GAS_SUBSTEPS || def->sourceCount < 0 ||
         def->sourceCount > MVFX_MAX_GAS_SOURCES ||
-        (def->sourceCount > 0 && def->sources == nullptr))
+        (def->sourceCount > 0 && def->sources == nullptr) || def->closedWalls > 63 ||
+        def->pressureCycles < 0 || def->pressureCycles > MVFX_MAX_GAS_CYCLES)
     {
         return false;
     }
@@ -100,6 +102,22 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def)
     return true;
 }
 
+// Whether a level can be halved: every axis of more than one cell keeps
+// at least 2.
+static bool Coarsens(const int32_t n[3])
+{
+    bool any = false;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        if (n[k] > 1 && n[k] < 4)
+        {
+            return false;
+        }
+        any = any || n[k] > 1;
+    }
+    return any;
+}
+
 mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
 {
     mvfxCompiledGas gas = {.def = *def};
@@ -112,37 +130,54 @@ mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
     for (int32_t k = 0; k < 3; ++k)
     {
         gas.faces[k] = gas.cells / def->size[k] * (def->size[k] + 1);
+        gas.levels[0][k] = def->size[k];
+    }
+    gas.levelCount = 1;
+    while (gas.levelCount < MVFX_GAS_LEVELS && Coarsens(gas.levels[gas.levelCount - 1]))
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            gas.levels[gas.levelCount][k] = (gas.levels[gas.levelCount - 1][k] + 1) / 2;
+        }
+        gas.levelCount += 1;
     }
     return gas;
 }
 
-void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, size_t at[6])
+void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt* at)
 {
     for (int32_t k = 0; k < 3; ++k)
     {
-        at[k] = mvfxLayoutAdd(layout, 2u * (size_t)gas->faces[k], sizeof(float), alignof(float));
+        at->velocity[k] =
+            mvfxLayoutAdd(layout, 2u * (size_t)gas->faces[k], sizeof(float), alignof(float));
+        at->scalars[k] =
+            mvfxLayoutAdd(layout, 2u * (size_t)gas->cells, sizeof(float), alignof(float));
     }
-    for (int32_t f = 0; f < 3; ++f)
+    for (int32_t l = 0; l < gas->levelCount; ++l)
     {
-        at[3 + f] = mvfxLayoutAdd(layout, 2u * (size_t)gas->cells, sizeof(float), alignof(float));
+        at->levels[l] = mvfxLayoutAdd(layout, 3u * (size_t)mvfxGasLevelCells(gas, l), sizeof(float),
+                                      alignof(float));
     }
 }
 
 void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char* block,
-                  const size_t at[6])
+                  const mvfxGasAt* at)
 {
     *state = (mvfxGasState){.rotation = {0.0f, 0.0f, 0.0f, 1.0f}, .scale = 1.0f};
     for (int32_t k = 0; k < 3; ++k)
     {
-        float* faces = (float*)(block + at[k]);
+        float* faces = (float*)(block + at->velocity[k]);
         state->velocity[k][0] = faces;
         state->velocity[k][1] = faces + gas->faces[k];
+        float* cells = (float*)(block + at->scalars[k]);
+        state->scalars[k][0] = cells;
+        state->scalars[k][1] = cells + gas->cells;
     }
-    for (int32_t f = 0; f < 3; ++f)
+    for (int32_t l = 0; l < gas->levelCount; ++l)
     {
-        float* cells = (float*)(block + at[3 + f]);
-        state->scalars[f][0] = cells;
-        state->scalars[f][1] = cells + gas->cells;
+        float* level = (float*)(block + at->levels[l]);
+        int64_t cells = mvfxGasLevelCells(gas, l);
+        state->levels[l] = (mvfxGasLevel){level, level + cells, level + 2 * cells};
     }
     mvfxClearGas(state, gas);
 }
@@ -159,6 +194,11 @@ void mvfxClearGas(mvfxGasState* state, const mvfxCompiledGas* gas)
         {
             memset(state->scalars[f][b], 0, (size_t)gas->cells * sizeof(float));
         }
+    }
+    for (int32_t l = 0; l < gas->levelCount; ++l)
+    {
+        memset(state->levels[l].pressure, 0,
+               3u * (size_t)mvfxGasLevelCells(gas, l) * sizeof(float));
     }
     state->current = 0;
     state->holds = false;

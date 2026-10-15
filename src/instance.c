@@ -378,10 +378,10 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         particlesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].plan.arrayCount,
                                        mvfxArrayBytes(capacities[e]), MVFX_ATTRIBUTE_ALIGNMENT);
     }
-    size_t gasesAt[MVFX_MAX_GASES][6];
+    mvfxGasAt gasesAt[MVFX_MAX_GASES];
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
-        mvfxAddGasLayout(&layout, &effect->gases[g], gasesAt[g]);
+        mvfxAddGasLayout(&layout, &effect->gases[g], &gasesAt[g]);
     }
     if (layout.overflow)
     {
@@ -420,7 +420,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, capacities);
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
-        mvfxStartGas(&instance->gases[g], &effect->gases[g], block, gasesAt[g]);
+        mvfxStartGas(&instance->gases[g], &effect->gases[g], block, &gasesAt[g]);
     }
     mvfxResetInstance(instance);
     return instance;
@@ -573,6 +573,8 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
             hash = mvfxHash64(hash, gas->scalars[k][gas->current],
                               (int32_t)(compiled->cells * (int64_t)sizeof(float)));
         }
+        hash = mvfxHash64(hash, gas->levels[0].pressure,
+                          (int32_t)(compiled->cells * (int64_t)sizeof(float)));
     }
     return hash;
 }

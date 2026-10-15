@@ -80,6 +80,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/float_mode.c
     src/gas.c
     src/gas_api.c
+    src/gas_pressure.c
     src/gas_step.c
     src/gradient.c
     src/hash.c
@@ -144,6 +145,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(effect_plan WHITEBOX)
     maul_add_test(force WHITEBOX)
     maul_add_test(gas WHITEBOX)
+    maul_add_test(gas_pressure WHITEBOX)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)
     maul_add_test(event WHITEBOX)

@@ -36,6 +36,23 @@ extern "C"
 // The most substeps a gas takes in a step.
 #define MVFX_MAX_GAS_SUBSTEPS 8
 
+// The most V cycles a gas's pressure solve takes a substep.
+#define MVFX_MAX_GAS_CYCLES 16
+
+    // A gas box's walls, as bits: each closed (nothing passes it, the gas
+    // slides along it) or, its bit clear, open (the gas flows in and out
+    // freely, the pressure outside 0).
+    typedef uint8_t mvfxGasWalls;
+    enum
+    {
+        mvfx_gasWallMinX = 1,
+        mvfx_gasWallMaxX = 2,
+        mvfx_gasWallMinY = 4,
+        mvfx_gasWallMaxY = 8,
+        mvfx_gasWallMinZ = 16,
+        mvfx_gasWallMaxZ = 32,
+    };
+
     // Where a gas's box is.
     typedef uint8_t mvfxGasSpace;
     enum
@@ -119,6 +136,15 @@ extern "C"
         // sourceCount is 0. The effect copies them.
         const mvfxGasSource* sources;
         int32_t sourceCount;
+        // Its closed walls (mvfxGasWalls); the walls of a 2D gas's Z are
+        // never met.
+        mvfxGasWalls closedWalls;
+        // The pressure projection that keeps it from compressing, each
+        // substep after it is carried: a Poisson solve by geometric
+        // multigrid, this many V cycles (Jacobi smoothing, a fixed count
+        // for the same bits on every platform), from 0 (no projection) to
+        // MVFX_MAX_GAS_CYCLES.
+        int32_t pressureCycles;
     } mvfxGasDef;
 
 // The cookie of a gas def, which its default sets and mvfxCreateEffect
@@ -126,7 +152,8 @@ extern "C"
 #define MVFX_GAS_DEF_COOKIE 0x6D766761u
 
     /// Returns the default gas def: a 2D gas of 64 by 64 cells of 0.1, in
-    /// local space, one substep, nothing decaying, no sources.
+    /// local space, one substep, nothing decaying, no sources, its walls
+    /// open, 4 V cycles of pressure.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
