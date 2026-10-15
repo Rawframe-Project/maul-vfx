@@ -7,7 +7,9 @@
 // without body contacts; three boxes stacked and still with their creep
 // bounded; one large body among a thousand small ones examining a few
 // cells each; a box landing aside slowed by every impulse of its
-// impacts; a heavy box landing on a light one without rebound; a capsule lying
+// impacts; a heavy box landing on a light one without rebound; mixed
+// spheres' overlapping pairs all found, and the same bits whatever the
+// grid's layout; a capsule lying
 // across another; a box dropped on a box, and a sphere on a sphere
 // rolling off; a box sliding to a stop on a wider
 // one by friction, the one below held; a pile of spheres in a box settled
@@ -253,6 +255,129 @@ static void TestOneLarge(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Sixty spheres of radii 0.05 to 0.8 (a hash's) about a box 3 wide,
+// still, no gravity.
+enum
+{
+    MIXED = 60
+};
+
+static void Mixed(double places[3 * MIXED], float sizes[3 * MIXED])
+{
+    for (uint32_t i = 0; i < MIXED; ++i)
+    {
+        uint32_t h = (i + 1u) * 2654435761u;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            h ^= h >> 13;
+            h *= 2246822519u;
+            places[3 * i + (uint32_t)k] = 3.0 * (double)(h & 0xFFFFu) / 65536.0 - 1.5;
+        }
+        h ^= h >> 15;
+        float radius = 0.05f + 0.75f * (float)(h & 0xFFFFu) / 65536.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            sizes[3 * i + (uint32_t)k] = 2.0f * radius;
+        }
+    }
+}
+
+static void TestPairsFound(void)
+{
+    // Mixed spheres overlapping where they lie: every pair overlapping is
+    // in the pool, whatever the levels of the two (by brute force over
+    // all pairs).
+    static double places[3 * MIXED];
+    static float sizes[3 * MIXED];
+    static float still[3 * MIXED];
+    Mixed(places, sizes);
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidSphere, false);
+    emitter.capacity = MIXED;
+    emitter.hostSpawnCapacity = MIXED;
+    emitter.rigid.substeps = 1;
+    emitter.rigid.bodyContacts = 64;
+    Open(&emitter, places, still, sizes, MIXED);
+    Steps(1);
+    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
+    static float x[3 * MIXED];
+    for (int32_t i = 0; i < MIXED; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            x[3 * i + k] = Array((mvfxAttribute)(mvfx_attributePositionX + k))[i];
+        }
+    }
+    const float* size = Array(mvfx_attributeSizeX);
+    Steps(1);
+    const mvfxEmitterState* state = &live->emitters[0];
+    bool found = state->rigidPairCount > 0;
+    int32_t overlapping = 0;
+    for (int32_t i = 0; i < MIXED; ++i)
+    {
+        for (int32_t j = i + 1; j < MIXED; ++j)
+        {
+            float d = 0.0f;
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                float g = x[3 * i + k] - x[3 * j + k];
+                d += g * g;
+            }
+            float reach = 0.5f * (size[i] + size[j]);
+            if (!(sqrtf(d) < 0.98f * reach))
+            {
+                continue;
+            }
+            overlapping += 1;
+            bool met = false;
+            for (int32_t c = 0; c < state->rigidPairCount && !met; ++c)
+            {
+                met = state->rigidPairs[c].a == i && state->rigidPairs[c].b == j;
+            }
+            found = found && met;
+        }
+    }
+    CHECK(found && overlapping >= 20, "every overlapping pair found");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestLayoutFree(void)
+{
+    // The mixed spheres falling onto the ground, with room for 60 and for
+    // 4000 (tables of other sizes, the grid's keys laid out otherwise):
+    // the same bits a second on, pairs met in the bodies' order.
+    static double places[3 * MIXED];
+    static float sizes[3 * MIXED];
+    static float still[3 * MIXED];
+    Mixed(places, sizes);
+    static float after[2][3 * MIXED];
+    for (int32_t room = 0; room < 2; ++room)
+    {
+        mvfxEmitterDef emitter = Bodies(mvfx_rigidSphere, true);
+        emitter.capacity = room == 0 ? MIXED : 4000;
+        emitter.hostSpawnCapacity = MIXED;
+        emitter.rigid.bodyContacts = 16;
+        for (int32_t i = 0; i < MIXED; ++i)
+        {
+            places[3 * i + 1] += 2.0;
+        }
+        Open(&emitter, places, still, sizes, MIXED);
+        for (int32_t i = 0; i < MIXED; ++i)
+        {
+            places[3 * i + 1] -= 2.0;
+        }
+        Steps(60);
+        for (int32_t i = 0; i < MIXED; ++i)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                after[room][3 * i + k] = X((uint32_t)i, k);
+            }
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(memcmp(after[0], after[1], sizeof after[0]) == 0, "the same whatever the grid's layout");
+}
+
 static void TestLandings(void)
 {
     // A box landing at 3 aside from 0.3 up, restitution 0.5, friction 0.4:
@@ -444,6 +569,8 @@ int main(void)
     TestStack();
     TestOneLarge();
     TestLandings();
+    TestPairsFound();
+    TestLayoutFree();
     TestCapsules();
     TestDropped();
     TestSliding();
