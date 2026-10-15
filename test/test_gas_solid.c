@@ -5,7 +5,10 @@
 // many as its area holds; flow past a still box kept free of divergence,
 // the box's faces still; a host's sphere moving at a known speed giving
 // the faces beside it that speed from the second step (none at the first
-// or after a teleport); a turning box giving its faces its turn's
+// or after a teleport), in steps of either length; a plane moving its
+// faces along its normal alone; an obstacle in the instance's frame
+// placed through a moved, turned and scaled instance, in a world gas and
+// a local one; a turning box giving its faces its turn's
 // velocity; a local gas moving past a still box in the world seeing it
 // move; an obstacle's grid held by its effect; the obstacles' refusals.
 
@@ -43,13 +46,20 @@ static mvfxGasState* Open(const mvfxGasDef* gas, const mvfxCompiledGas** compile
     return &live->gases[0];
 }
 
-// Steps the context by n steps of 1/64 s.
-static void Steps(int32_t n)
+// Steps the context by n steps of 1 / rate s.
+static void StepsOf(int32_t n, int32_t rate)
 {
     for (int32_t i = 0; i < n; ++i)
     {
-        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success, "step");
+        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / rate) == mvfx_success,
+              "step");
     }
+}
+
+// Steps the context by n steps of 1/64 s.
+static void Steps(int32_t n)
+{
+    StepsOf(n, 64);
 }
 
 // A collider of a kind about a center in a space, unturned.
@@ -189,7 +199,51 @@ static void TestMoving(void)
     // A 2D gas of 32 by 32 with no pressure, its host's sphere set at x =
     // -0.5 + 0.75 t each step: at the first step its faces are still (no
     // step before); from the second, its X faces move at 0.75 and its Y
-    // faces not at all; after a teleport, still again for a step.
+    // faces not at all; after a teleport, still again for a step. The same
+    // in steps of 1/64 s and of 1/32 s.
+    bool right = true;
+    for (int32_t rate = 32; rate <= 64; rate += 32)
+    {
+        mvfxGasDef def = mvfxDefaultGasDef();
+        def.size[0] = 32;
+        def.size[1] = 32;
+        def.pressureCycles = 0;
+        def.hostObstacles = true;
+        const mvfxCompiledGas* gas = NULL;
+        mvfxGasState* state = Open(&def, &gas);
+        for (int32_t i = 0; i < 6; ++i)
+        {
+            mvfxCollider sphere = Collider(
+                mvfx_colliderSphere, -0.5f + 0.75f * (float)i / (float)rate, 0, mvfx_spaceWorld);
+            CHECK(mvfxInstance_SetColliders(s_context, s_instance, &sphere, 1) == mvfx_success,
+                  "colliders");
+            if (i == 4)
+            {
+                const double origin[3] = {0, 0, 0};
+                const float rotation[4] = {0, 0, 0, 1};
+                CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, rotation, 1.0f,
+                                                true) == mvfx_success,
+                      "teleport");
+            }
+            StepsOf(1, rate);
+            float across[2];
+            float up[2];
+            SolidFaces(gas, state, 0, across);
+            SolidFaces(gas, state, 1, up);
+            float speed = i == 0 || i == 4 ? 0.0f : 0.75f;
+            right = right && fabsf(across[0] - speed) <= 1e-3f &&
+                    fabsf(across[1] - speed) <= 1e-3f && up[0] == 0.0f && up[1] == 0.0f;
+        }
+        mvfxDestroyContext(s_context);
+    }
+    CHECK(right, "a moving sphere's faces move with it");
+}
+
+static void TestPlane(void)
+{
+    // A host's floor plane rising at 0.5 a second while sliding along X at
+    // 0.3 in a 2D gas of 32 by 32: the faces beside it rise with it, the
+    // slide along the plane moves none of them.
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 32;
     def.size[1] = 32;
@@ -198,31 +252,66 @@ static void TestMoving(void)
     const mvfxCompiledGas* gas = NULL;
     mvfxGasState* state = Open(&def, &gas);
     bool right = true;
-    for (int32_t i = 0; i < 6; ++i)
+    for (int32_t i = 0; i < 3; ++i)
     {
-        mvfxCollider sphere =
-            Collider(mvfx_colliderSphere, -0.5f + 0.75f * (float)i / 64.0f, 0, mvfx_spaceWorld);
-        CHECK(mvfxInstance_SetColliders(s_context, s_instance, &sphere, 1) == mvfx_success,
+        mvfxCollider floor = Collider(mvfx_colliderPlane, 0.3f * (float)i / 64.0f,
+                                      -0.5f + 0.5f * (float)i / 64.0f, mvfx_spaceWorld);
+        CHECK(mvfxInstance_SetColliders(s_context, s_instance, &floor, 1) == mvfx_success,
               "colliders");
-        if (i == 4)
-        {
-            const double origin[3] = {0, 0, 0};
-            const float rotation[4] = {0, 0, 0, 1};
-            CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, rotation, 1.0f, true) ==
-                      mvfx_success,
-                  "teleport");
-        }
         Steps(1);
         float across[2];
         float up[2];
         SolidFaces(gas, state, 0, across);
         SolidFaces(gas, state, 1, up);
-        float speed = i == 0 || i == 4 ? 0.0f : 0.75f;
-        right = right && fabsf(across[0] - speed) <= 1e-3f && fabsf(across[1] - speed) <= 1e-3f &&
-                up[0] == 0.0f && up[1] == 0.0f;
+        float rise = i == 0 ? 0.0f : 0.5f;
+        right = right && fabsf(up[0] - rise) <= 1e-3f && fabsf(up[1] - rise) <= 1e-3f &&
+                across[0] == 0.0f && across[1] == 0.0f;
     }
-    CHECK(right, "a moving sphere's faces move with it");
+    CHECK(right, "a plane moves along its normal");
     mvfxDestroyContext(s_context);
+}
+
+static void TestInstanceFrame(void)
+{
+    // A sphere of radius 0.3 at (0.2, 0, 0) in the instance's frame, the
+    // instance moved to (0.5, 0, 0), turned a quarter about Z and scaled
+    // by 1.5. In a world gas (its box where the instance began, at the
+    // origin) it is a sphere of 0.45 at (0.5, 0.3); in a local gas centered
+    // at (0.3, 0, 0) in the instance's frame, one of 0.3 at (-0.1, 0) in
+    // the box's own. Its cells are solid exactly where those hold them.
+    const float quarter[4] = {0, 0, 0.70710678f, 0.70710678f};
+    const double origin[3] = {0.5, 0, 0};
+    bool right = true;
+    for (int32_t world = 0; world < 2; ++world)
+    {
+        mvfxCollider ball = Collider(mvfx_colliderSphere, 0.2f, 0, mvfx_spaceLocal);
+        ball.radius = 0.3f;
+        mvfxGasDef def = mvfxDefaultGasDef();
+        def.size[0] = 32;
+        def.size[1] = 32;
+        def.space = world != 0 ? mvfx_gasWorld : mvfx_gasLocal;
+        def.center[0] = world != 0 ? 0.0f : 0.3f;
+        def.obstacles = &ball;
+        def.obstacleCount = 1;
+        const mvfxCompiledGas* gas = NULL;
+        mvfxGasState* state = Open(&def, &gas);
+        CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, quarter, 1.5f, false) ==
+                  mvfx_success,
+              "moved");
+        Steps(1);
+        const float center[2] = {world != 0 ? 0.5f : -0.1f, world != 0 ? 0.3f : 0.0f};
+        float radius = world != 0 ? 0.45f : 0.3f;
+        for (int32_t i = 0; i < 1024; ++i)
+        {
+            float x = ((float)(i % 32) + 0.5f - 16.0f) * 0.1f - center[0];
+            float y = ((float)(i / 32) + 0.5f - 16.0f) * 0.1f - center[1];
+            float gap = sqrtf(x * x + y * y) - radius;
+            // Cells within float's rounding of the surface are not judged.
+            right = right && (fabsf(gap) < 1e-4f || (state->solid[i] != 0) == (gap < 0.0f));
+        }
+        mvfxDestroyContext(s_context);
+    }
+    CHECK(right, "an obstacle in the instance's frame");
 }
 
 static void TestTurning(void)
@@ -404,6 +493,8 @@ int main(void)
     TestStill();
     TestFlowPast();
     TestMoving();
+    TestPlane();
+    TestInstanceFrame();
     TestTurning();
     TestPassing();
     TestHeld();
