@@ -10,6 +10,7 @@
 #include "event.h"
 #include "force.h"
 #include "kill.h"
+#include "rigid_wake.h"
 #include "space.h"
 
 #include <math.h>
@@ -485,8 +486,8 @@ static bool DepthMoved(const mvfxInstance* instance, const mvfxEmitterState* sta
 }
 
 // Resolves the emitter's colliders, then the instance's when it takes
-// them, grown by the particles' radius; notes whether any changed since
-// the step before (for sleeping bodies).
+// them, grown by the particles' radius; sleeping bodies near those that
+// changed since the step before wake.
 static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -495,7 +496,6 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
     bool had = state->hasDepth;
     const mvfxSpaceMap seen = state->depth.map;
     state->colliderCount = 0;
-    state->worldMoved = false;
     if (!compiled->collision.enabled)
     {
         return;
@@ -525,12 +525,24 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
             own ? compiled->colliderGrids[c] : instance->hostColliderGrids[host];
         mvfxSpaceMap map = SpaceMapOf(instance, emitter, (mvfxSimulationSpace)collider->space);
         mvfxResolvedCollider resolved = mvfxResolveCollider(collider, grid, &map, radius);
-        state->worldMoved =
-            state->worldMoved || c >= before || !mvfxSameCollider(&state->colliders[c], &resolved);
+        const mvfxResolvedCollider* was = c < before ? &state->colliders[c] : nullptr;
+        if (was == nullptr || !mvfxSameCollider(was, &resolved))
+        {
+            mvfxWakeNear(instance, emitter, was, &resolved);
+        }
         state->colliders[state->colliderCount++] = resolved;
     }
-    state->worldMoved = state->worldMoved || state->colliderCount != before ||
-                        DepthMoved(instance, state, had, &seen);
+    // Those gone still lie past the count.
+    for (int32_t c = state->colliderCount; c < before; ++c)
+    {
+        mvfxWakeNear(instance, emitter, &state->colliders[c], nullptr);
+    }
+    // What changed in a depth image is not known: all wake.
+    if (DepthMoved(instance, state, had, &seen))
+    {
+        static const float anywhere[3] = {0.0f, 0.0f, 0.0f};
+        mvfxWakeWithin(instance, emitter, anywhere, INFINITY);
+    }
     state->depthSerial = instance->depthSerial;
 }
 

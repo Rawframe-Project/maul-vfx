@@ -651,9 +651,9 @@ extern "C"
         // pose and meets nothing (it still ages and dies), and is
         // immovable to the bodies meeting it; it wakes when an awake body
         // meets it, when its forces change by more than sleepSpeed over
-        // sleepTime, when the emitter's colliders or depth image change,
-        // or by mvfxInstance_WakeBodies. mvfxDefaultEmitterDef sets 0.05
-        // and 0.5.
+        // sleepTime, when a collider it touches or comes to touch changes
+        // or its depth image is set again, or by mvfxInstance_WakeBodies.
+        // mvfxDefaultEmitterDef sets 0.05 and 0.5.
         float sleepSpeed;
         float sleepTime;
     } mvfxRigidDef;

@@ -36,11 +36,11 @@ rigid: appearance collide depth direction instance integrate rigid_body rigid_co
 rigid_body: direction event instance rigid_shape
 rigid_pair: appearance direction neighbor rigid_body rigid_contact rigid_sleep
 rigid_sleep: effect rigid_body rigid_wake
-rigid_wake: appearance effect instance rigid_shape
+rigid_wake: appearance collide effect instance rigid_shape
 rigid_box: collide direction rigid_shape
 rigid_contact: collide convex depth direction rigid_box rigid_shape
 rigid_shape: hull
-integrate: collide depth direction effect elementary event force instance kill space velocity_modules
+integrate: collide depth direction effect elementary event force instance kill rigid_wake space velocity_modules
 host_module: effect instance random
 hull: allocator
 appearance: effect gradient instance life over_life

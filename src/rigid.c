@@ -618,10 +618,6 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
     int32_t count = state->count;
     mvfxRigidSolve s = SolveOf(instance, emitter);
     memset(state->rigidFlags, 0, (size_t)count);
-    if (s.sleep != nullptr && state->worldMoved)
-    {
-        mvfxWakeAll(&s, count);
-    }
     for (int32_t k = 0; k < s.rigid->substeps; ++k)
     {
         int64_t from = SubstepTick(instance, s.rigid->substeps, k);

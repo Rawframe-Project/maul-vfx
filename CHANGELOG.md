@@ -282,6 +282,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and 0.5 in `mvfxDefaultEmitterDef`): bodies joined by contacts sleep
   together once all have been still, keep their pose and meet nothing
   while they still age, and wake when an awake body meets them, when
-  their forces change, when the emitter's colliders or depth image
-  change, or by `mvfxInstance_WakeBodies`; `mvfxEmitterStats.asleep`
+  their forces change, when a collider they touch or come to touch
+  changes or the depth image is set again, or by
+  `mvfxInstance_WakeBodies`; `mvfxEmitterStats.asleep`
   counts them.

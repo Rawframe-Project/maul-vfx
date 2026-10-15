@@ -8,7 +8,8 @@
 // which slides; moving ends a still time; a sleeper holds as ground
 // under a heavier box landing on it; a box spinning in place stays
 // awake; a host table set again unchanged leaves a box asleep, moved
-// wakes it to fall; a depth image set again wakes a box; the host wakes
+// wakes it to fall; changed colliders wake only the bodies near them; a
+// depth image set again wakes a box; the host wakes
 // bodies within a sphere; no sleep speed, no sleeping; the checks.
 
 #include "instance.h"
@@ -274,6 +275,57 @@ static void TestSleeperHolds(void)
 // Far depth everywhere, from a camera at (0, 0, 10) looking down -Z.
 static const float s_far[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
+// The emitter's sleeping bodies' still times: whether particle i sleeps.
+static bool Asleep(int32_t i)
+{
+    return At(i, mvfx_attributeSleep) < 0.0f;
+}
+
+static void TestWorldNear(void)
+{
+    // Boxes asleep on two host tables 6 apart: a table lowered wakes the
+    // box on it alone; a ball added far off wakes none; the other table
+    // and the ball taken away wake the box that stood on it alone.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.colliders = NULL;
+    boxes.colliderCount = 0;
+    boxes.collision.hostColliders = true;
+    Play(&boxes);
+    mvfxCollider set[3] = {{.kind = mvfx_colliderBox,
+                            .center = {-3, -0.5f, 0},
+                            .halfExtents = {1, 0.5f, 1},
+                            .rotation = {0, 0, 0, 1}},
+                           {.kind = mvfx_colliderBox,
+                            .center = {3, -0.5f, 0},
+                            .halfExtents = {1, 0.5f, 1},
+                            .rotation = {0, 0, 0, 1}},
+                           {.kind = mvfx_colliderSphere, .center = {0, 3, 0}, .radius = 0.5f}};
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, set, 2) == mvfx_success,
+          "tables");
+    static const double places[6] = {-3, 0.5, 0, 3, 0.5, 0};
+    Spawn(places, 2);
+    Steps(60);
+    bool slept = Asleep(0) && Asleep(1);
+    set[0].center[1] = -0.8f;
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, set, 2) == mvfx_success,
+          "one lowered");
+    Steps(1);
+    bool lowered = !Asleep(0) && Asleep(1);
+    Steps(60);
+    bool settled = Asleep(0) && Asleep(1);
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, set, 3) == mvfx_success,
+          "a ball");
+    Steps(1);
+    bool far = Asleep(0) && Asleep(1);
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, set, 1) == mvfx_success,
+          "one table");
+    Steps(1);
+    bool removed = Asleep(0) && !Asleep(1);
+    CHECK(slept && lowered && settled && far && removed, "the world wakes the bodies near it");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestDepthWakes(void)
 {
     // A box asleep on the ground by an empty depth image: the image set
@@ -459,6 +511,7 @@ int main(void)
     TestSleeperHolds();
     TestSpinning();
     TestWorldWakes();
+    TestWorldNear();
     TestDepthWakes();
     TestWakeWithin();
     TestNeverSleeps();

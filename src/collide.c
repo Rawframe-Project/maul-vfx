@@ -726,3 +726,47 @@ bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider*
            SameFloats(a->rotation, b->rotation, 4) && SameFloats(&a->scale, &b->scale, 1) &&
            SameFloats(&a->grow, &b->grow, 1);
 }
+
+// A point's signed distance to a box at the origin of half sizes half,
+// below 0 inside.
+static float BoxDistance(const float local[3], const float half[3])
+{
+    float outside = 0.0f;
+    float inside = -INFINITY;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float d = fabsf(local[k]) - half[k];
+        outside += d > 0.0f ? d * d : 0.0f;
+        inside = fmaxf(inside, d);
+    }
+    return inside > 0.0f ? sqrtf(outside) : inside;
+}
+
+float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3])
+{
+    const float d[3] = {point[0] - c->center[0], point[1] - c->center[1], point[2] - c->center[2]};
+    float gap = 0.0f;
+    if (c->kind == mvfx_colliderPlane)
+    {
+        gap = d[0] * c->normal[0] + d[1] * c->normal[1] + d[2] * c->normal[2];
+    }
+    else if (c->kind == mvfx_colliderSphere)
+    {
+        gap = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) - c->radius;
+        gap = c->inside ? -gap : gap;
+    }
+    else if (c->kind == mvfx_colliderBox)
+    {
+        const float back[4] = {-c->rotation[0], -c->rotation[1], -c->rotation[2], c->rotation[3]};
+        float local[3];
+        mvfxRotate(back, d, local);
+        gap = BoxDistance(local, c->halfExtents);
+        gap = c->inside ? -gap : gap;
+    }
+    else
+    {
+        float normal[3];
+        gap = mvfxFieldDistance(c, point, normal);
+    }
+    return gap;
+}

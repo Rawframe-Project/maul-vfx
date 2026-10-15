@@ -49,6 +49,12 @@ mvfxCollider mvfxCompileCollider(const mvfxCollider* collider);
 mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const struct mvfxGrid* grid,
                                          const mvfxSpaceMap* map, float radius);
 
+// A point's signed distance to a resolved collider's surface, positive on
+// its allowed side: above a plane, outside a sphere or a box (inside one
+// that keeps particles inside), a grid's field (INFINITY outside its
+// box).
+float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3]);
+
 // Whether two resolved colliders are the same, field by field.
 bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b);
 

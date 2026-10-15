@@ -20,9 +20,6 @@ static inline bool mvfxBodyAsleep(const mvfxRigidSolve* s, int32_t i)
 // its pose and velocities put back.
 void mvfxHoldSleeping(const mvfxRigidSolve* s, int32_t first, int32_t end);
 
-// Wakes every sleeping body of the first count.
-void mvfxWakeAll(const mvfxRigidSolve* s, int32_t count);
-
 // At a step's end, over seconds: the first count bodies' still times, then
 // their islands by the last substep's contacts between them, each asleep
 // when all its bodies have been still the sleep time, else awake.

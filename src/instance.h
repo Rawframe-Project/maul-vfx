@@ -189,11 +189,8 @@ typedef struct mvfxEmitterState
     mvfxPairContact* rigidPairs;
     int32_t rigidPairCount;
     // For sleeping rigid particles: each one's island (an array of the
-    // capacity), how many sleep, whether its colliders or its depth image
-    // changed as the step resolved them, and the depth image it saw.
+    // capacity), and the depth image it saw.
     int32_t* rigidIslands;
-    int32_t asleep;
-    bool worldMoved;
     uint32_t depthSerial;
     float* selfStart;
     int32_t* selfPairs;

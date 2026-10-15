@@ -55,14 +55,6 @@ void mvfxHoldSleeping(const mvfxRigidSolve* s, int32_t first, int32_t end)
     }
 }
 
-void mvfxWakeAll(const mvfxRigidSolve* s, int32_t count)
-{
-    for (int32_t i = 0; i < count; ++i)
-    {
-        s->sleep[i] = mvfxBodyAsleep(s, i) ? 0.0f : s->sleep[i];
-    }
-}
-
 // Union-find by path halving, the lower index the root: the same islands
 // whatever order the pairs join in.
 static int32_t Root(int32_t* parent, int32_t i)
