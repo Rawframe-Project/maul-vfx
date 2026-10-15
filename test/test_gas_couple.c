@@ -6,8 +6,12 @@
 // the world's turn of a turned local gas, and not outside its box;
 // particles pouring density, temperature and fuel into a gas, all of it
 // kept, and pulling its faces toward their velocity, nothing from outside
-// its box; the refusals of forces and splats naming no gas.
+// its box; a splat's exact trilinear weights and pull; a splat landing
+// where its particle is, an anchor moved; a particle reading the gas where
+// it is through a moved, scaled, offset box; the refusals of forces and
+// splats naming no gas.
 
+#include "gas_splat.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "test_harness.h"
@@ -20,6 +24,7 @@
 
 static mvfxContext* s_context;
 static mvfxInstance* s_live;
+static mvfxInstanceId s_instance;
 
 // Opens an instance, turned by rotation, of an effect of one emitter and
 // one 2D gas of 32 by 32 cells with no pressure.
@@ -37,9 +42,8 @@ static void Open(const mvfxEmitterDef* emitter, const mvfxGasDef* gas, const flo
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);
-    mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(s_context, &instanceDef, &instance) == mvfx_success, "instance");
-    s_live = mvfxContextInstance(s_context, instance);
+    CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
+    s_live = mvfxContextInstance(s_context, s_instance);
 }
 
 static const float s_unturned[4] = {0, 0, 0, 1};
@@ -260,6 +264,158 @@ static void TestSplatOutside(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestSplatExact(void)
+{
+    // Two particles poured straight into a 2D lattice of 8 by 6 cells of
+    // 0.1 over a substep of 1/64 s, through a map scaling by 2: one at
+    // (0.065, -0.035), at (5.3, 2.3) in cells, moving at (1, 0, 0) (2 in
+    // the box), pouring 2 of density a second and pulling by a drag of 10;
+    // one at (-0.025, 0), half a cell outside the box, pouring nothing.
+    // The 4 cells about the first take 2/64 times their weights (0.04,
+    // 0.16, 0.16, 0.64), the 4 X faces about it 2 (1 - e^(-10/64)) times
+    // theirs (0.14, 0.06, 0.56, 0.24), nothing else anything.
+    static float cells[3][48];
+    static float faces[3][64];
+    memset(cells, 0, sizeof cells);
+    memset(faces, 0, sizeof faces);
+    const mvfxGasLattice l = {.n = {8, 6, 1}, .cell = 0.1f, .h = 1.0f / 64.0f};
+    const float px[2] = {0.065f, -0.425f};
+    const float py[2] = {-0.035f, 0.0f};
+    const float zero[2] = {0, 0};
+    const float one[2] = {1, 1};
+    const mvfxGasSplat splat = {.enabled = true, .density = 2.0f, .drag = 10.0f};
+    const mvfxGasPour pour = {.position = {px, py, zero},
+                              .velocity = {one, zero, zero},
+                              .count = 2,
+                              .map = {.rotation = {0, 0, 0, 1}, .sigma = 2.0f},
+                              .splat = &splat};
+    float* velocity[3] = {faces[0], faces[1], faces[2]};
+    float* scalars[3] = {cells[0], cells[1], cells[2]};
+    mvfxGasSplatInto(&l, &pour, velocity, scalars);
+    const int32_t at[4] = {1 * 8 + 4, 1 * 8 + 5, 2 * 8 + 4, 2 * 8 + 5};
+    const float weight[4] = {0.04f, 0.16f, 0.16f, 0.64f};
+    bool right = true;
+    float total = 0.0f;
+    for (int32_t i = 0; i < 48; ++i)
+    {
+        total += cells[0][i];
+    }
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        right = right && fabsf(cells[0][at[c]] - weight[c] * 2.0f / 64.0f) <= 1e-7f;
+    }
+    right = right && fabsf(total - 2.0f / 64.0f) <= 1e-7f;
+    const int32_t faceAt[4] = {1 * 9 + 5, 1 * 9 + 6, 2 * 9 + 5, 2 * 9 + 6};
+    const float faceWeight[4] = {0.14f, 0.06f, 0.56f, 0.24f};
+    float pull = 2.0f * (1.0f - expf(-10.0f / 64.0f));
+    float faceTotal = 0.0f;
+    for (int32_t f = 0; f < 9 * 6; ++f)
+    {
+        faceTotal += faces[0][f];
+    }
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        right = right && fabsf(faces[0][faceAt[c]] - faceWeight[c] * pull) <= 1e-6f;
+    }
+    right = right && fabsf(faceTotal - pull) <= 1e-6f;
+    for (int32_t f = 0; f < 8 * 7; ++f)
+    {
+        right = right && faces[1][f] == 0.0f;
+    }
+    CHECK(right, "a splat's weights exact");
+}
+
+// One particle born at the effect's start, at rest at offset (x, y) from
+// the emitter, in the world.
+static mvfxEmitterDef One(float x, float y)
+{
+    static const mvfxBurst once = {
+        .time = 0.0f, .minCount = 1, .maxCount = 1, .cycles = 1, .probability = 1.0f};
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.bursts = &once;
+    emitter.burstCount = 1;
+    emitter.shape.offset[0] = x;
+    emitter.shape.offset[1] = y;
+    return emitter;
+}
+
+// Opens as Open, the instance at origin and of scale.
+static void OpenAt(const mvfxEmitterDef* emitter, const mvfxGasDef* gas, const double origin[3],
+                   float scale)
+{
+    Open(emitter, gas, s_unturned);
+    CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, s_unturned, scale, true) ==
+              mvfx_success,
+          "placed");
+}
+
+static void TestSplatPlace(void)
+{
+    // One particle poured from a world-space emitter of an instance moved
+    // to (2000, 0, 0), past the distance that moves the emitter's anchor
+    // (its places offsets from it), into its local gas: at (0.13, -0.07) from the box's
+    // middle, cells (16.8, 14.8) less a half, its density after a step is
+    // 2/64 times the weights 0.04, 0.16, 0.16, 0.64 about cell (16, 14).
+    mvfxEmitterDef emitter = One(0.13f, -0.07f);
+    emitter.gasSplat = (mvfxGasSplat){.enabled = true, .density = 2.0f};
+    mvfxGasDef gas = Still();
+    const double origin[3] = {2000, 0, 0};
+    OpenAt(&emitter, &gas, origin, 1.0f);
+    Steps(1);
+    const float* density = s_live->gases[0].scalars[0][s_live->gases[0].current];
+    const int32_t at[4] = {14 * 32 + 16, 14 * 32 + 17, 15 * 32 + 16, 15 * 32 + 17};
+    const float weight[4] = {0.04f, 0.16f, 0.16f, 0.64f};
+    bool right = s_live->emitters[0].count == 1 && s_live->emitters[0].anchor[0] != 0.0;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        right = right && fabsf(density[at[c]] - weight[c] * 2.0f / 64.0f) <= 1e-6f;
+    }
+    CHECK(right, "a splat lands where the particle is");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestFollowPlace(void)
+{
+    // A local gas centered at (0.5, 0, 0) in an instance at (1, 0, 0) of
+    // scale 2, its X faces' velocity their index along X (in its box's
+    // lengths a second): a world particle born 0.8 along X from the
+    // emitter in the instance's frame, at (2.6, 0, 0), 0.3 from
+    // the box's middle in its lengths, at 19 cells, reads 19 there, 38 in
+    // the world. As an acceleration of strength 1 it is moving at 38/64
+    // after a step; as a velocity field of tightness 8, at 38 (1 -
+    // e^(-8/64)).
+    bool right = true;
+    for (int32_t mode = 0; mode < 2; ++mode)
+    {
+        const mvfxForce follow = {.kind = mvfx_forceGas,
+                                  .strength = 1.0f,
+                                  .fieldMode =
+                                      mode == 0 ? mvfx_fieldAcceleration : mvfx_fieldVelocity,
+                                  .tightness = 8.0f};
+        mvfxEmitterDef emitter = One(0.8f, 0.0f);
+        emitter.forces = &follow;
+        emitter.forceCount = 1;
+        mvfxGasDef gas = Still();
+        gas.center[0] = 0.5f;
+        const double origin[3] = {1, 0, 0};
+        OpenAt(&emitter, &gas, origin, 2.0f);
+        mvfxGasState* state = &s_live->gases[0];
+        for (int32_t f = 0; f < 33 * 32; ++f)
+        {
+            state->velocity[0][state->current][f] = (float)(f % 33);
+        }
+        Steps(1);
+        float v[3];
+        VelocityOf(0, v);
+        float expected = mode == 0 ? 38.0f / 64.0f : 38.0f * (1.0f - expf(-8.0f / 64.0f));
+        right = right && s_live->emitters[0].count == 1 && fabsf(v[0] - expected) <= 1e-3f &&
+                v[1] == 0.0f;
+        mvfxDestroyContext(s_context);
+    }
+    CHECK(right, "a particle follows the gas where it is");
+}
+
 static void TestRefusals(void)
 {
     // A force following gas 1 of an effect of one gas, a gas's force
@@ -302,6 +458,9 @@ int main(void)
     TestSplat();
     TestSplatDrag();
     TestSplatOutside();
+    TestSplatExact();
+    TestSplatPlace();
+    TestFollowPlace();
     TestRefusals();
     return s_failures;
 }
