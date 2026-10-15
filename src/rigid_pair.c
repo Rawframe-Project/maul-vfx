@@ -420,6 +420,70 @@ static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* 
     return true;
 }
 
+// The start-pose places of a pair's contacts' mean point on each body,
+// a's less b's.
+static void StartApart(const mvfxBody* a, const mvfxBody* b, const float onA[3], const float onB[3],
+                       float out[3])
+{
+    float ra[3];
+    float rb[3];
+    mvfxRotate(a->q0, onA, ra);
+    mvfxRotate(b->q0, onB, rb);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = a->x0[k] + ra[k] - b->x0[k] - rb[k];
+    }
+}
+
+// Holds a pair's contacts from first to end where post-stabilization
+// found them, apart before by `before` (StartApart): its pushes out of
+// the start's depth turn the bodies about their centers, which slid the
+// contacts across each other at the start pose unseen by friction (the
+// pose moved alike), and a box held on another walked down a slope and
+// was turned back each time it began to tip. The slide across the mean
+// normal is pushed back at the contacts' mean point, start pose and pose
+// alike.
+static void HoldStabilized(mvfxBody* a, mvfxBody* b, const mvfxPairContact* pairs, int32_t first,
+                           int32_t end, const float onA[3], const float onB[3],
+                           const float before[3])
+{
+    float after[3];
+    StartApart(a, b, onA, onB, after);
+    float n[3] = {0.0f, 0.0f, 0.0f};
+    for (int32_t i = first; i < end; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            n[k] += pairs[i].normal[k];
+        }
+    }
+    if (!mvfxNormalize(n))
+    {
+        return;
+    }
+    float slide[3] = {after[0] - before[0], after[1] - before[1], after[2] - before[2]};
+    float along = Dot(slide, n);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        slide[k] -= along * n[k];
+    }
+    float slid = sqrtf(Dot(slide, slide));
+    if (!(slid > 0.0f))
+    {
+        return;
+    }
+    const float u[3] = {slide[0] / slid, slide[1] / slid, slide[2] / slid};
+    float ra[3];
+    float rb[3];
+    mvfxRotate(a->q0, onA, ra);
+    mvfxRotate(b->q0, onB, rb);
+    float lambda = slid / (mvfxBodyWeight(a, ra, u) + mvfxBodyWeight(b, rb, u));
+    const float p[3] = {-lambda * u[0], -lambda * u[1], -lambda * u[2]};
+    const float back[3] = {-p[0], -p[1], -p[2]};
+    mvfxBodyPush(a, ra, p, true);
+    mvfxBodyPush(b, rb, back, true);
+}
+
 // A pass over a pair's contacts from first to end: their start poses
 // pushed out of the depth there with their poses (post-stabilization, as
 // the world's contacts) when start, else their poses pushed apart, then
@@ -430,6 +494,18 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
     mvfxPairContact* pairs = s->instance->emitters[s->emitter].rigidPairs;
     mvfxBody a = mvfxLoadBody(s, pairs[first].a);
     mvfxBody b = mvfxLoadBody(s, pairs[first].b);
+    float onA[3] = {0.0f, 0.0f, 0.0f};
+    float onB[3] = {0.0f, 0.0f, 0.0f};
+    for (int32_t i = first; i < end; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            onA[k] += pairs[i].onA[k] / (float)(end - first);
+            onB[k] += pairs[i].onB[k] / (float)(end - first);
+        }
+    }
+    float before[3];
+    StartApart(&a, &b, onA, onB, before);
     for (int32_t step = first; step < end; ++step)
     {
         mvfxPairContact* c = &pairs[mvfxPassIndex(first, end, step, backward)];
@@ -447,6 +523,10 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
         const float back[3] = {-p[0], -p[1], -p[2]};
         mvfxBodyPush(&a, ra, p, start);
         mvfxBodyPush(&b, rb, back, start);
+    }
+    if (start)
+    {
+        HoldStabilized(&a, &b, pairs, first, end, onA, onB, before);
     }
     PairPatch patch;
     if (friction && PatchOf(s, &a, &b, first, end, &patch))

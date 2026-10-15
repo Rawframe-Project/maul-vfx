@@ -313,6 +313,13 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   most steps keeps the pair as touching, where it answered them apart
   and an overlapping pair could be missed for the substep;
   `mvfxEmitterStats.rigidSearchesCapped` counts the searches stopped.
+- A rigid body resting on another no longer creeps down a slope it
+  holds on, nor stands well past its tipping angle: pushing a pair out
+  of the depth left at a substep's start turned the bodies and slid
+  their contacts across each other unseen by friction; the slide is
+  now pushed back. A 0.4 by 0.6 box on a wide one crept 13 mm in 3 s at
+  30 degrees; now it holds, and it tips between 35 and 37 degrees
+  (33.7 by the statics).
 - GJK stops once a step comes no nearer, where some hulls about a
   millimeter apart cycled between faces until its most steps.
 - `mvfxGrid_SetValuesIn` gives new values to a box of a grid's points.

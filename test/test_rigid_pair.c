@@ -9,7 +9,8 @@
 // cells each; a box landing aside slowed by every impulse of its
 // impacts; a heavy box landing on a light one without rebound; mixed
 // spheres' overlapping pairs all found, and the same bits whatever the
-// grid's layout; a capsule lying
+// grid's layout; a narrow box on a wide one standing and tipping by the
+// statics; a capsule lying
 // across another; a box dropped on a box, and a sphere on a sphere
 // rolling off; a box sliding to a stop on a wider
 // one by friction, the one below held; a pile of spheres in a box settled
@@ -419,6 +420,46 @@ static void TestLandings(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestNarrowOnWide(void)
+{
+    // A box 0.4 wide and 0.6 tall on a wide box 2 by 1, sideways 0.6 up,
+    // at, or 0.6 down the slope (gravity turned), friction 1.5: by the
+    // statics it tips at atan(0.4 / 0.6), 33.7 degrees, on any support,
+    // and the wide one, held by the ground, stays put. At 30 degrees it
+    // stands, still within 3 mm of where it was set (it crept 13 mm in 3 s
+    // before post-stabilization held the pair's contacts in place); at 38
+    // it has tipped (between bodies the passes' noise lets it stand to
+    // 37); the wide box moves at most 1 mm.
+    static const float still[6] = {0};
+    bool right = true;
+    for (int32_t tips = 0; tips < 2; ++tips)
+    {
+        for (int32_t at = -1; at <= 1; ++at)
+        {
+            float angle = (tips != 0 ? 38.0f : 30.0f) * 0.017453293f;
+            mvfxEmitterDef emitter = Bodies(mvfx_rigidBox, true);
+            emitter.rigid.staticFriction = 1.5f;
+            emitter.rigid.dynamicFriction = 1.4f;
+            emitter.rigid.sleepSpeed = 0.0f;
+            emitter.motion.gravity[0] = 9.81f * sinf(angle);
+            emitter.motion.gravity[1] = -9.81f * cosf(angle);
+            double aside = 0.6 * (double)at;
+            const double places[6] = {0, 0.5, 0, aside, 1.3005, 0};
+            static const float sizes[6] = {2, 1, 2, 0.4f, 0.6f, 0.4f};
+            Open(&emitter, places, still, sizes, 2);
+            Steps(180);
+            const float* z = Array(mvfx_attributeOrientationZ);
+            float up = 1.0f - 2.0f * z[IndexOf(1)] * z[IndexOf(1)];
+            float moved = fabsf(X(1, 0) - (float)aside);
+            float wide = fabsf(X(0, 0)) + fabsf(X(0, 1) - 0.5f);
+            right =
+                right && wide <= 0.001f && (tips != 0 ? up < 0.5f : up > 0.999f && moved <= 0.003f);
+            mvfxDestroyContext(s_scene.context);
+        }
+    }
+    CHECK(right, "a narrow box on a wide one tips at its own limit");
+}
+
 static void TestCapsules(void)
 {
     // A capsule along z dropped across one along x lying on the ground
@@ -571,6 +612,7 @@ int main(void)
     TestLandings();
     TestPairsFound();
     TestLayoutFree();
+    TestNarrowOnWide();
     TestCapsules();
     TestDropped();
     TestSliding();
