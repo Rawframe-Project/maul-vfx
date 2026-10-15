@@ -59,7 +59,7 @@ units' self-collision, ribbons drawn as tubes, and rigid particles
 (spheres, capsules, boxes and convex hulls of a mesh by XPBD meeting
 every collider, scene queries, depth images and each other, sleeping in
 islands at rest) are in place, and the grid gas comes next.
-It has 74 public functions.
+It has 76 public functions.
 
 ## Building
 

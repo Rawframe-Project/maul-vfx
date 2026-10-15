@@ -617,6 +617,74 @@ extern "C"
                                                               int32_t emitter,
                                                               mvfxBounds* boundsOut);
 
+    // How a gas's field is read out: over a box of cells (first, then size
+    // along each axis, within the gas), in a format, a row of cells from
+    // rowBytes to the next and a layer from layerBytes (0 for packed, else
+    // at least the packed size). float32 and float16 take the values as
+    // they are; unorm8 and unorm16 map low to 0 and high to 1, snorm8 and
+    // snorm16 to -1 and 1, clamped and rounded as a layout's fields are
+    // (low and high finite, high above low). A velocity's component is the
+    // mean of the two faces' about each center.
+    typedef struct mvfxGasRead
+    {
+        mvfxGasField field;
+        mvfxFormat format;
+        int32_t first[3];
+        int32_t size[3];
+        float low;
+        float high;
+        uint32_t rowBytes;
+        uint32_t layerBytes;
+    } mvfxGasRead;
+
+    /// Writes a field of a gas of an instance over a box of its cells in a
+    /// format, as the last step left it, X fastest, then Y, then Z: for a
+    /// volume texture, or a region of one.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param gas       The gas's index in its effect's def.
+    /// @param read      What to read and how.
+    /// @param out       Receives the values.
+    /// @param bytes     out's size in bytes: at least the last value's end.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas
+    ///         index, field, format, box, range or pitch out of range, or
+    ///         bytes too few, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context,
+                                                              mvfxInstanceId instance, int32_t gas,
+                                                              const mvfxGasRead* read, void* out,
+                                                              int64_t bytes);
+
+    /// Samples a field of a gas of an instance at points in the world, as
+    /// the last step left it: trilinear, as particles following the gas
+    /// read it, 0 outside its box (a 2D gas's reaching along its Z without
+    /// end); a velocity's component along the box's axis.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param gas       The gas's index in its effect's def.
+    /// @param field     The field.
+    /// @param points    count points, x, y and z each, finite.
+    /// @param count     How many, from 0; points and out may be NULL for 0.
+    /// @param out       Receives count values.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas index
+    ///         or field out of range, a negative count or a point not
+    ///         finite, which counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SampleGas(const mvfxContext* context,
+                                                              mvfxInstanceId instance, int32_t gas,
+                                                              mvfxGasField field,
+                                                              const double* points, int64_t count,
+                                                              float* out);
+
 // The most planes a frustum has.
 #define MVFX_MAX_FRUSTUM_PLANES 8
 

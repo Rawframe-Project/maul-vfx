@@ -70,6 +70,7 @@ gas: allocator collide force gas_lattice
 gas_lattice:
 gas_forces: elementary force gas
 gas_pressure: gas
+gas_read: context gas gas_api gas_lattice instance instance_api layout
 gas_solid: collide direction gas gas_pressure
 gas_splat: elementary force gas gas_lattice
 gas_step: elementary force gas gas_forces gas_lattice gas_pressure gas_solid gas_splat

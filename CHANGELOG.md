@@ -321,6 +321,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A gas steps several times faster, bit for bit the same: 4.8 to 5.9
   times for a 2D gas of 256 by 256, 3.2 times for a 3D one of 64 cubed.
   `bench/bench_main.c` times gases.
+- A gas reads out in formats and at points: `mvfxInstance_ReadGasAs`
+  (`mvfxGasRead`) writes a field over a box of cells as float32,
+  float16, or unorm and snorm of 8 and 16 bits over a range, at the
+  host's row and layer pitch; `mvfxInstance_SampleGas` samples a field
+  at points in the world.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

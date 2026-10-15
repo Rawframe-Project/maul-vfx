@@ -17,8 +17,8 @@
 
 // The live instance and its gas's index, or NULL with the reason: a NULL
 // context or a gas out of range (misuse), or a stale id.
-static const mvfxInstance* GasOwner(const mvfxContext* context, mvfxInstanceId instance,
-                                    int32_t gas, mvfxResult* result)
+const mvfxInstance* mvfxFindGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                mvfxResult* result)
 {
     *result = mvfx_errorInvalid;
     if (context == nullptr)
@@ -232,7 +232,7 @@ mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId in
     }
     *infoOut = (mvfxGasInfo){0};
     mvfxResult result = mvfx_success;
-    const mvfxInstance* live = GasOwner(context, instance, gas, &result);
+    const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
     if (live == nullptr)
     {
         return result;
@@ -275,7 +275,7 @@ mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId insta
                                 mvfxGasField field, float* out, int64_t count)
 {
     mvfxResult result = mvfx_success;
-    const mvfxInstance* live = GasOwner(context, instance, gas, &result);
+    const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
     if (live == nullptr)
     {
         return result;

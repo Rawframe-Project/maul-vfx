@@ -11,6 +11,12 @@
 
 #include "maul-vfx/output.h"
 
+// The live instance an id names, with a gas of that index: NULL and
+// result stale for an id naming none, invalid (misuse counted) for a gas
+// index out of range or a NULL context.
+const mvfxInstance* mvfxFindGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                mvfxResult* result);
+
 // The box in the world around a gas's box now.
 mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas);
 
