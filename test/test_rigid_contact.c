@@ -6,7 +6,10 @@
 // smaller box's face meeting it at the eight corners of their overlap; a
 // box's face on a turned box's edge meeting it there, on the collider's
 // face toward the body; a capsule over a box's corner meeting it by its
-// deepest point.
+// deepest point; boxes stacked face to face meeting at their four corners
+// once each, square or a little turned; a box just above a plane met
+// within the margin and not past it; capsules crossed meeting at their
+// crossing, and side by side at both ends.
 
 #include "grid_api.h"
 #include "rigid_contact.h"
@@ -199,6 +202,94 @@ static void TestHeights(void)
     mvfxDestroyContext(context);
 }
 
+static void TestFaceToFace(void)
+{
+    // A unit box 0.001 into the top of another, square or turned 1e-4
+    // about x or z: four contacts, at four distinct corners.
+    static const float unit[3] = {1, 1, 1};
+    float inverseMass = 0.0f;
+    float inverseInertia[3];
+    mvfxBodyShape shape = mvfxBodyShapeOf(&s_box, unit, &inverseMass, inverseInertia);
+    bool four = true;
+    for (int32_t turn = 0; turn < 3; ++turn)
+    {
+        const mvfxBodyPose lower = {.x = {0, 0.5f, 0}, .q = {0, 0, 0, 1}};
+        mvfxBodyPose upper = {.x = {0, 1.499f, 0}};
+        TurnAbout(turn == 2 ? 2 : 0, turn == 0 ? 0.0f : 1e-4f, upper.q);
+        mvfxBodyContacts list = {.count = 0};
+        mvfxGatherPairContacts(&lower, &shape, &upper, &shape, &list);
+        four = four && list.count == 4;
+        for (int32_t i = 0; four && i < list.count; ++i)
+        {
+            for (int32_t j = 0; j < i; ++j)
+            {
+                float dx = list.items[i].body[0] - list.items[j].body[0];
+                float dz = list.items[i].body[2] - list.items[j].body[2];
+                four = four && dx * dx + dz * dz > 0.5f;
+            }
+        }
+    }
+    CHECK(four, "faces meet at four corners once each");
+}
+
+static void TestMargin(void)
+{
+    // A unit box 0.005 above a plane is met at its four lower corners (the
+    // margin 0.02 of its reach is 0.017), not 0.05 above.
+    const mvfxResolvedCollider plane = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+    static const float unit[3] = {1, 1, 1};
+    const mvfxBodyPose near = {.x = {0, 0.505f, 0}, .q = {0, 0, 0, 1}};
+    const mvfxBodyPose far = {.x = {0, 0.55f, 0}, .q = {0, 0, 0, 1}};
+    mvfxBodyContacts met = Gather(&plane, &near, &s_box, unit);
+    mvfxBodyContacts none = Gather(&plane, &far, &s_box, unit);
+    bool corners = met.count == 4;
+    for (int32_t i = 0; corners && i < met.count; ++i)
+    {
+        corners = fabsf(met.items[i].depth - 0.005f) <= 1e-5f;
+    }
+    CHECK(corners && none.count == 0, "met within the margin");
+}
+
+static void TestCapsulePairs(void)
+{
+    // Capsules of radius 0.25 and core 1.5: one along x, one along z over
+    // it 0.01 into it meeting at the crossing; two along x side by side
+    // 0.01 into each other meeting at both ends.
+    static const mvfxRigidDef capsule = {
+        .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
+    static const float rod[3] = {0.5f, 2, 0.5f};
+    float inverseMass = 0.0f;
+    float inverseInertia[3];
+    mvfxBodyShape shape = mvfxBodyShapeOf(&capsule, rod, &inverseMass, inverseInertia);
+    mvfxBodyPose lower = {.x = {0, 0, 0}};
+    TurnAbout(2, 1.5707963f, lower.q);
+    mvfxBodyPose over = {.x = {0, 0.49f, 0}};
+    TurnAbout(0, 1.5707963f, over.q);
+    mvfxBodyContacts crossed = {.count = 0};
+    mvfxGatherPairContacts(&over, &shape, &lower, &shape, &crossed);
+    float deepest = 0.0f;
+    int32_t inside = 0;
+    for (int32_t i = 0; i < crossed.count; ++i)
+    {
+        deepest = fminf(deepest, crossed.items[i].depth);
+        inside += crossed.items[i].depth < 0.0f ? 1 : 0;
+    }
+    CHECK(inside == 1 && fabsf(deepest + 0.01f) <= 1e-4f &&
+              fabsf(crossed.items[0].normal[1] - 1.0f) <= 1e-4f,
+          "crossed capsules at the crossing");
+    mvfxBodyPose beside = {.x = {0, 0, 0.49f}};
+    TurnAbout(2, 1.5707963f, beside.q);
+    mvfxBodyContacts parallel = {.count = 0};
+    mvfxGatherPairContacts(&beside, &shape, &lower, &shape, &parallel);
+    int32_t ends = 0;
+    for (int32_t i = 0; i < parallel.count; ++i)
+    {
+        bool end = fabsf(fabsf(parallel.items[i].surface[0]) - 0.75f) <= 1e-3f;
+        ends += end && fabsf(parallel.items[i].depth + 0.01f) <= 1e-4f ? 1 : 0;
+    }
+    CHECK(ends == 2, "capsules side by side at both ends");
+}
+
 int main(void)
 {
     TestHeights();
@@ -206,5 +297,8 @@ int main(void)
     TestOverlap();
     TestFaceOnEdge();
     TestCapsuleCorner();
+    TestFaceToFace();
+    TestMargin();
+    TestCapsulePairs();
     return s_failures == 0 ? 0 : 1;
 }

@@ -10,8 +10,10 @@
 // killing; contacts capped and counted, the deepest kept; a box pushed
 // off a sphere inside it through its nearest face; several strikes a step
 // writing one event on the surface; a box spun about its middle axis
-// flipping by the gyroscopic term while its momentum and energy hold; the
-// checks.
+// flipping by the gyroscopic term while its momentum and energy hold; a
+// box spun on a plane stopped by its friction at the rate its contacts'
+// spread gives; a tall box tipping over on a slope a short one stands on;
+// the checks.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -827,13 +829,59 @@ static void TestDepth(void)
     }
 }
 
+static void TestTwist(void)
+{
+    // A unit box spun at 5 about y on a plane, dynamic friction 0.4: its
+    // corners' mean reach 0.71 and inertia a sixth slow it at 16.6, so it
+    // spins at 2.2 after a sixth of a second and stops by 0.3, in place.
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+    emitter.angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 5, 0}, .max = {0, 5, 0}};
+    static const double place[3] = {0, 0.5, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    Steps(10);
+    CHECK(fabsf(W(1) - 2.22f) <= 0.15f, "slowing by its corners' reach");
+    Steps(50);
+    CHECK(fabsf(W(1)) <= 1e-3f && fabsf(X(0)) <= 1e-3f && fabsf(X(2)) <= 1e-3f,
+          "stopped spinning in place");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestTipping(void)
+{
+    // On a slope of 0.35 (tan 0.37, held from sliding by 0.6), a box 0.4
+    // wide and 0.6 tall stands (it would tip past tan 0.67); one 2 tall
+    // tips over (past tan 0.2).
+    float angle = 0.35f;
+    static const float still[3] = {0, 0, 0};
+    for (int32_t tall = 0; tall < 2; ++tall)
+    {
+        float height = tall == 1 ? 2.0f : 0.6f;
+        mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 0.4f, height, 0.4f);
+        Tilt(&emitter, angle);
+        s_colliders[0].normal[0] = -sinf(angle);
+        s_colliders[0].normal[1] = cosf(angle);
+        double place[3] = {-0.5 * (double)height * sin((double)angle),
+                           0.5 * (double)height * cos((double)angle), 0};
+        Open(&emitter, place, still);
+        Steps(120);
+        float axis[3];
+        Axis(1, axis);
+        float up = axis[0] * s_colliders[0].normal[0] + axis[1] * s_colliders[0].normal[1];
+        CHECK(tall == 1 ? fabsf(up) < 0.5f : up > 0.9999f,
+              tall == 1 ? "a tall box tipped over" : "a short box stands");
+        mvfxDestroyContext(s_scene.context);
+    }
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = nullptr;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     int32_t refused = 0;
-    for (int32_t c = 0; c < 7; ++c)
+    for (int32_t c = 0; c < 9; ++c)
     {
         mvfxEmitterDef bad = Rigid(mvfx_rigidBox, 1, 1, 1);
         switch (c)
@@ -854,6 +902,12 @@ static void TestChecks(void)
             bad.rigid.staticFriction = 0.1f;
             break;
         case 5:
+            bad.rigid.bodyContacts = MVFX_MAX_BODY_CONTACTS + 1;
+            break;
+        case 6:
+            bad.rigid.bodyContacts = -1;
+            break;
+        case 7:
             bad.unit = (mvfxUnitDef){.kind = mvfx_unitChain,
                                      .points = 2,
                                      .spacing = 1,
@@ -870,7 +924,7 @@ static void TestChecks(void)
         mvfxEffectId effect = {0};
         refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid ? 1 : 0;
     }
-    CHECK(refused == 7, "the checks");
+    CHECK(refused == 9, "the checks");
     mvfxEmitterDef good = Rigid(mvfx_rigidBox, 1, 1, 1);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &good;
@@ -902,6 +956,8 @@ int main(void)
     TestSceneQueries();
     TestDepth();
     TestGyroscopic();
+    TestTwist();
+    TestTipping();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }
