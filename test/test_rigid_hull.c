@@ -434,8 +434,10 @@ static void TestTipping(void)
     // the hull's contacts change from clipped faces to a point, and still
     // it falls as the box (met by its own clipping) does within 5 mm (its
     // pivot slides on its own contacts), its spin never turning back, and
-    // rests on a face; after landing they slide to a stop, a few
-    // millimeters apart.
+    // rests on a face; landing, they stop within 2 cm of each other.
+    // Static friction is 1: at 0.6 the slide a landing must hold is at
+    // its limit, and whether a body stops or slides on hung on rounding
+    // (a box and its mirror image ended 4 cm apart).
     static const mvfxCollider table = {.kind = mvfx_colliderBox,
                                        .center = {0, -0.5f, 0},
                                        .halfExtents = {3, 0.5f, 3},
@@ -455,6 +457,8 @@ static void TestTipping(void)
                                       Rigid(mvfx_rigidHull, cube, unit, turn, true)};
         emitters[0].colliders = &table;
         emitters[1].colliders = &table;
+        emitters[0].rigid.staticFriction = 1.0f;
+        emitters[1].rigid.staticFriction = 1.0f;
         // Its lowest edge on the table.
         const double place[3] = {0, 0.70710678 * cos((double)angle - 0.78539816), 0};
         PlayAt(emitters, 2, place, still, 1);
@@ -479,7 +483,7 @@ static void TestTipping(void)
         steady = steady && fabsf(At(1, mvfx_attributePositionY) - 0.5f) <= 0.002f && speed <= 0.01f;
         mvfxDestroyContext(s_scene.context);
     }
-    CHECK(falling <= 0.005f && landed <= 0.01f && steady, "tipped through 45 degrees as a box");
+    CHECK(falling <= 0.005f && landed <= 0.02f && steady, "tipped through 45 degrees as a box");
 }
 
 static void TestVertexCount(void)

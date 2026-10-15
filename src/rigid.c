@@ -57,8 +57,8 @@ static float DepthOf(const mvfxBody* b, const mvfxBodyContact* c, float r[3])
 // A body's patch of contacts with the collider of contact first: their
 // center on the body (in its frame) and normal weighted by their normal
 // multipliers, the multipliers' sum and their normal impulses' over the
-// substep of length h, the patch's radius and its spread (its loaded
-// contacts' offsets from its center, in the world); false when none
+// substep of length h, the patch's radius and its spread (its contacts'
+// offsets from the body's center, in the world); false when none
 // pushed.
 typedef struct Patch
 {
@@ -131,11 +131,9 @@ static bool PatchOf(const mvfxBodyContact* items, int32_t count, int32_t first, 
     for (int32_t i = first; i < count && patch->spread.count < MVFX_MAX_RIGID_CONTACTS; ++i)
     {
         const mvfxBodyContact* c = &items[i];
-        if (c->collider == collider && c->lambda > 0.0f)
+        if (c->collider == collider)
         {
-            const float d[3] = {c->body[0] - point[0], c->body[1] - point[1],
-                                c->body[2] - point[2]};
-            mvfxRotate(q, d, patch->spread.offsets[patch->spread.count++]);
+            mvfxRotate(q, c->body, patch->spread.offsets[patch->spread.count++]);
         }
     }
     return true;
@@ -166,7 +164,7 @@ static void Rub(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, in
             mvfxRotate(b->q, patch.point, r);
             mvfxRotate(b->q0, patch.point, r0);
             mvfxRubPatch(s, b, r, r0, nullptr, nullptr, nullptr, patch.n, patch.load, &patch.spread,
-                         &items[i].rubbed);
+                         nullptr, &items[i].rubbed);
             mvfxTwistPatch(s, b, nullptr, patch.n, patch.load * patch.radius, &items[i].twisted);
         }
     }
@@ -182,7 +180,7 @@ static void Slow(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, i
         {
             float r[3];
             mvfxRotate(b->q, patch.point, r);
-            mvfxSlowPatch(b, r, nullptr, nullptr, patch.n, patch.pressed, &patch.spread,
+            mvfxSlowPatch(b, r, nullptr, nullptr, patch.n, patch.pressed, &patch.spread, nullptr,
                           s->rigid->dynamicFriction, &items[i].slowed);
             mvfxUnspinPatch(b, nullptr, patch.n,
                             s->rigid->dynamicFriction * patch.pressed * patch.radius,

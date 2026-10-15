@@ -11,7 +11,8 @@
 // within the margin and not past it; capsules crossed meeting at their
 // crossing, and side by side at both ends; a box's and a hull's edge laid
 // across a heightfield's crest meeting it there; passes alternating their
-// order; a twist held by static friction while it can.
+// order; a twist held by static friction while it can; two bodies on a
+// patch each tipping the way friction pushes it.
 
 #include "grid_api.h"
 #include "hull.h"
@@ -338,7 +339,8 @@ static void TestCrest(void)
     // in z), and a unit box and a cube's hull turned an eighth about z, the
     // edge below along z laid across the ridge 0.01 into its crest, its
     // corners 0.29 above the flat on either side: met at the crest by the
-    // edge's middle, not left to sink until a corner meets the flat.
+    // edge's middle, not left to sink until a corner meets the flat; and
+    // with the crest under a quarter of the edge, there.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = nullptr;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -368,9 +370,11 @@ static void TestCrest(void)
     static const mvfxRigidDef hull = {.enabled = true, .shape = mvfx_rigidHull, .density = 1.0f};
     const mvfxRigidDef* shapes[2] = {&s_box, &hull};
     bool met = true;
-    for (int32_t i = 0; i < 2; ++i)
+    // The edge across the crest at its middle, then at a quarter along.
+    for (int32_t i = 0; i < 4; ++i)
     {
-        mvfxBodyContacts list = Gather(&ridge, &across, shapes[i], unit);
+        across.x[2] = i < 2 ? 0.0f : 0.25f;
+        mvfxBodyContacts list = Gather(&ridge, &across, shapes[i % 2], unit);
         bool crest = false;
         for (int32_t c = 0; c < list.count; ++c)
         {
@@ -417,6 +421,34 @@ static void TestSolverRules(void)
         }
     }
     CHECK(held && kept, "a twist held while friction can");
+    // A patch between two bodies, its loaded contacts 0.5 along the slide
+    // from their centers and 0.1 against it, its load 1, the upper body slid
+    // 0.6 aside over it (held: 0.3 by their masses): each tips the way it
+    // is pushed, the upper along the slide, balanced by the 0.5 side, and
+    // does not turn; the lower against it, past the 0.1 side's balance,
+    // and turns.
+    const mvfxRigidDef rubbing = {.enabled = true, .staticFriction = 1.0f};
+    const mvfxRigidSolve slide = {.rigid = &rubbing, .h = 1.0f / 480.0f};
+    mvfxBody upper = {.x = {0.6f, 0, 0},
+                      .q = {0, 0, 0, 1},
+                      .q0 = {0, 0, 0, 1},
+                      .inverseMass = 1.0f,
+                      .inverseInertia = {6, 6, 6, 0, 0, 0}};
+    mvfxBody lower = {.q = {0, 0, 0, 1},
+                      .q0 = {0, 0, 0, 1},
+                      .inverseMass = 1.0f,
+                      .inverseInertia = {6, 6, 6, 0, 0, 0}};
+    static const float below[3] = {0, -0.5f, 0};
+    static const float above[3] = {0, 0.5f, 0};
+    const mvfxPatchSpread spreadUpper = {.count = 2,
+                                         .offsets = {{0.5f, -0.5f, 0}, {-0.1f, -0.5f, 0}}};
+    const mvfxPatchSpread spreadLower = {.count = 2,
+                                         .offsets = {{0.5f, 0.5f, 0}, {-0.1f, 0.5f, 0}}};
+    float rubbed = 0.0f;
+    mvfxRubPatch(&slide, &upper, below, below, &lower, above, above, up, 1.0f, &spreadUpper,
+                 &spreadLower, &rubbed);
+    CHECK(fabsf(rubbed - 0.3f) <= 1e-6f && fabsf(upper.q[2]) <= 1e-7f && fabsf(lower.q[2]) > 1e-4f,
+          "each body tips the way it is pushed");
 }
 
 int main(void)

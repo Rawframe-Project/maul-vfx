@@ -83,8 +83,8 @@ void mvfxBodyKick(mvfxBody* b, const float r[3], const float j[3]);
 // The velocity of the body's point at offset r.
 void mvfxBodyPointVelocity(const mvfxBody* b, const float r[3], float out[3]);
 
-// A patch's loaded contacts as offsets from its center (on the first
-// body, in the world): how far it reaches toward a side its body tips to.
+// A patch's contacts as offsets from a body's center, in the world: how
+// far its support reaches toward the side the body tips to.
 typedef struct mvfxPatchSpread
 {
     int32_t count;
@@ -108,19 +108,25 @@ typedef struct mvfxPatchSpread
 // slope tipped over its front edge each substep, fell back and crept down
 // it. While the loads can balance the tipping (the friction times the
 // center's height at most the load times the patch's reach toward the
-// side the body tips to: its loaded contacts' farthest that way, as the
-// load all moves to that edge), the friction acts level with the body's
-// center, and a box is held untipped; past that it acts at the patch, the
-// contacts' pushes alone resisting, and a tall body tips. Across 10% of
-// the balance about it, it moves from one to the other: switched whole, a
-// body held at the limit could flip between them each pass. A sphere (no
-// spread) rolls. Sharing the friction between the two by the balance
-// counted the loads' resistance twice, and a tall box stood on a slope it
-// tips on; by the contacts' mean distance (the corners' for a square
-// patch) a box tipped 8 degrees late.
+// side the body tips to: its contacts' farthest that way from the body's
+// center, where the load all moves as it starts to tip), the friction
+// acts level with the body's center, and a box is held untipped; past
+// that it acts at the patch, the contacts' pushes alone resisting, and a
+// tall body tips. Across 10% of the balance about it, it moves from one
+// to the other: switched whole, a body held at the limit could flip
+// between them each pass. A sphere (no spread) rolls. Sharing the
+// friction between the two by the balance counted the loads' resistance
+// twice, and a tall box stood on a slope it tips on; by the contacts'
+// mean distance (the corners' for a square patch) a box tipped 8 degrees
+// late; from the patch's center (weighted by the loads, which move to the
+// edge as the body leans) the reach shrank as friction loaded it, and a
+// box well below the limit crept; by the contacts loaded in a pass alone,
+// a cube landing on a face slid 4 cm farther than its mirror image. The
+// passes' friction and loads are noisy, so within a tenth of the limit a
+// box creeps a few millimeters a second, until it sleeps.
 void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const float ra0[3],
                   mvfxBody* b, const float rb[3], const float rb0[3], const float n[3], float load,
-                  const mvfxPatchSpread* spread, float* rubbed);
+                  const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB, float* rubbed);
 
 // Its dynamic part by velocity, as Muller's, in the restitution's passes:
 // the patch's sliding speed cut by impulses summing (slowed) to at most
@@ -130,7 +136,8 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
 // body rocking as it slid, the restitution taking back what the pushes
 // gave too much.
 void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3], const float n[3],
-                   float pressed, const mvfxPatchSpread* spread, float coefficient, float* slowed);
+                   float pressed, const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB,
+                   float coefficient, float* slowed);
 
 // The patch's friction against turning about its normal, which friction
 // at its center alone does not resist (a box spun on a floor spun on, and

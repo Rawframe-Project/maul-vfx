@@ -194,7 +194,7 @@ static float Reach(const mvfxPatchSpread* spread, const float u[3], float sign)
 
 void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const float ra0[3],
                   mvfxBody* b, const float rb[3], const float rb0[3], const float n[3], float load,
-                  const mvfxPatchSpread* spread, float* rubbed)
+                  const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB, float* rubbed)
 {
     float slide[3];
     PatchSlide(a, ra, ra0, b, rb, rb0, slide);
@@ -226,10 +226,10 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
     float la[3];
     float lb[3] = {0.0f, 0.0f, 0.0f};
     // Each tips the way it is pushed: a along its slide, b against it.
-    Lever(ra, n, load * Reach(spread, u, 1.0f), *rubbed, la);
+    Lever(ra, n, load * Reach(spreadA, u, 1.0f), *rubbed, la);
     if (b != nullptr)
     {
-        Lever(rb, n, load * Reach(spread, u, -1.0f), *rubbed, lb);
+        Lever(rb, n, load * Reach(spreadB, u, -1.0f), *rubbed, lb);
     }
     float lambda = slid / PatchWeight(a, la, b, lb, u);
     const float p[3] = {-lambda * u[0], -lambda * u[1], -lambda * u[2]};
@@ -242,7 +242,8 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
 }
 
 void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3], const float n[3],
-                   float pressed, const mvfxPatchSpread* spread, float coefficient, float* slowed)
+                   float pressed, const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB,
+                   float coefficient, float* slowed)
 {
     float v[3];
     mvfxBodyPointVelocity(a, ra, v);
@@ -269,10 +270,10 @@ void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3
     float limit = coefficient * pressed;
     float la[3];
     float lb[3] = {0.0f, 0.0f, 0.0f};
-    Lever(ra, n, pressed * Reach(spread, u, 1.0f), limit, la);
+    Lever(ra, n, pressed * Reach(spreadA, u, 1.0f), limit, la);
     if (b != nullptr)
     {
-        Lever(rb, n, pressed * Reach(spread, u, -1.0f), limit, lb);
+        Lever(rb, n, pressed * Reach(spreadB, u, -1.0f), limit, lb);
     }
     float stop = speed / PatchWeight(a, la, b, lb, u);
     float j = fminf(stop, fmaxf(limit - *slowed, 0.0f));
