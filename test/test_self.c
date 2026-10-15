@@ -248,6 +248,30 @@ static void TestChain(void)
     }
 }
 
+static void TestSheetAtRest(void)
+{
+    // A sheet at rest with a thickness of 0.6, more than its spacing:
+    // neighbors across and down are filtered out, diagonals already clear,
+    // so nothing moves.
+    static const double root[3] = {0, 0, 0};
+    static Kick none;
+    none = (Kick){.first = 1000};
+    mvfxEmitterDef emitter = Sheets(0.6f, &none);
+    emitter.capacity = 16;
+    emitter.hostSpawnCapacity = 1;
+    Open(&emitter, root, 1);
+    Steps(10);
+    Read();
+    bool still = s_scene.count == 16;
+    for (int32_t i = 0; still && i < 16; ++i)
+    {
+        still = fabsf(s_scene.records[i].position[0] - 0.5f * (float)(i % 4)) <= 1e-5f &&
+                fabsf(s_scene.records[i].position[2] - 0.5f * (float)(i / 4)) <= 1e-5f;
+    }
+    CHECK(still, "a sheet's neighbors filtered out");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestCapped(void)
 {
     // One candidate a point: the sheets' points near more are counted.
@@ -328,6 +352,7 @@ int main(void)
 {
     TestSheets();
     TestChain();
+    TestSheetAtRest();
     TestCapped();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
