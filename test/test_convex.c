@@ -3,7 +3,7 @@
 //
 // Convex polytopes meeting: boxes apart at their exact distance and
 // nearest points, square and turned; boxes overlapping by their depth,
-// concentric ones too, unit and of dust's size;
+// concentric ones too, at scales from 1000 to 1e-7;
 // a point's nearest point, outside and inside; a turned box on a box met
 // at its overlap's eight corners, edges crossing at one point, and a box
 // just apart within the margin at four; points' nearest distances to a
@@ -83,13 +83,13 @@ static void TestOverlap(void)
 
 static void TestConcentric(void)
 {
-    // Boxes about one center, unit and of half size 1e-4 (dust): they
+    // Boxes about one center, of half size 1000 down to 1e-7: they
     // overlap by their whole width along an axis, the simplex grown from
     // the one point GJK starts and ends at.
     static const float origin[3] = {0, 0, 0};
-    static const float halves[2] = {0.5f, 1e-4f};
+    static const float halves[4] = {1e3f, 0.5f, 1e-4f, 1e-7f};
     bool parted = true;
-    for (int32_t i = 0; i < 2; ++i)
+    for (int32_t i = 0; i < 4; ++i)
     {
         const float half[3] = {halves[i], halves[i], halves[i]};
         mvfxPolytope a;
