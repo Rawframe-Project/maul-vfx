@@ -10,6 +10,7 @@
 // finishing once stopped and empty, cleared at once by stopping and clearing, and emptied by
 // restarting; an instance's bounds holding its gases' boxes; the reading's refusals.
 
+#include "gas_lattice.h"
 #include "gas_step.h"
 #include "instance.h"
 #include "instance_api.h"

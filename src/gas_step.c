@@ -5,68 +5,13 @@
 
 #include "elementary.h"
 #include "gas_forces.h"
+#include "gas_lattice.h"
 #include "gas_pressure.h"
 #include "gas_solid.h"
 
 #include "maul-vfx/effect.h"
 
 #include <math.h>
-
-// An array's points along each axis: the cells', or the faces' across
-// axis (0 to 2) for -1 the cells.
-static void PointsOf(const mvfxGasLattice* l, int32_t axis, int32_t out[3])
-{
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out[k] = l->n[k] + (k == axis ? 1 : 0);
-    }
-}
-
-// An array's trilinear sample at place p (see mvfxGasSample), and the
-// least and the most of the points it weighed.
-static float SampleRange(const float* values, const mvfxGasLattice* l, int32_t axis,
-                         const float p[3], float range[2])
-{
-    int32_t m[3];
-    PointsOf(l, axis, m);
-    int32_t low[3];
-    int32_t high[3];
-    float t[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        float c = p[k] - (k == axis ? 0.0f : 0.5f);
-        c = fminf(fmaxf(c, 0.0f), (float)(m[k] - 1));
-        float base = floorf(c);
-        low[k] = (int32_t)base;
-        high[k] = low[k] + 1 < m[k] ? low[k] + 1 : low[k];
-        t[k] = c - base;
-    }
-    float sum = 0.0f;
-    range[0] = INFINITY;
-    range[1] = -INFINITY;
-    for (int32_t corner = 0; corner < 8; ++corner)
-    {
-        int32_t at[3];
-        float weight = 1.0f;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            bool up = (corner >> k & 1) != 0;
-            at[k] = up ? high[k] : low[k];
-            weight *= up ? t[k] : 1.0f - t[k];
-        }
-        float value = values[((int64_t)at[2] * m[1] + at[1]) * m[0] + at[0]];
-        sum += weight * value;
-        range[0] = fminf(range[0], value);
-        range[1] = fmaxf(range[1], value);
-    }
-    return sum;
-}
-
-float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, const float p[3])
-{
-    float range[2];
-    return SampleRange(values, l, axis, p, range);
-}
 
 // The velocity at place p, in cells a second.
 static void VelocityAt(float* const velocity[3], const mvfxGasLattice* l, const float p[3],
@@ -114,7 +59,7 @@ static void Advect(float* const velocity[3], const mvfxGasLattice* l, int32_t ax
     mvfxGasLattice turned = *l;
     turned.h = ahead ? -l->h : l->h;
     int32_t m[3];
-    PointsOf(l, axis, m);
+    mvfxGasPoints(l, axis, m);
     int64_t i = 0;
     for (int32_t z = 0; z < m[2]; ++z)
     {
@@ -141,7 +86,7 @@ static void Correct(float* const velocity[3], const mvfxGasLattice* l, int32_t a
                     const float* from, float* to, const float* work, float keep)
 {
     int32_t m[3];
-    PointsOf(l, axis, m);
+    mvfxGasPoints(l, axis, m);
     int64_t i = 0;
     for (int32_t z = 0; z < m[2]; ++z)
     {
@@ -155,7 +100,7 @@ static void Correct(float* const velocity[3], const mvfxGasLattice* l, int32_t a
                 float back[3];
                 mvfxGasTraceBack(velocity, l, p, back);
                 float range[2];
-                float plain = SampleRange(from, l, axis, back, range);
+                float plain = mvfxGasSampleRange(from, l, axis, back, range);
                 float sharp = plain + 0.5f * (from[i] - work[i]);
                 to[i] = keep * (sharp >= range[0] && sharp <= range[1] ? sharp : plain);
             }
@@ -233,7 +178,7 @@ static void PourFaces(const mvfxGasSource* source, const mvfxGasLattice* l, int3
                       float* faces)
 {
     int32_t m[3];
-    PointsOf(l, axis, m);
+    mvfxGasPoints(l, axis, m);
     int64_t i = 0;
     for (int32_t z = 0; z < m[2]; ++z)
     {
@@ -279,6 +224,10 @@ static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxG
     if (pours)
     {
         Pour(gas, l, velocity, scalars);
+    }
+    for (int32_t p = 0; p < drive->pourCount; ++p)
+    {
+        mvfxGasSplatInto(l, &drive->pours[p], velocity, scalars);
     }
     mvfxGasBuoyancy(gas, l, drive->gravity, velocity, scalars);
     mvfxGasPush(l, drive->forces, drive->forceCount, (double)start / (double)MVFX_TICKS_PER_SECOND,

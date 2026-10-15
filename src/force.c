@@ -77,7 +77,7 @@ static bool IsBoxValid(const mvfxForce* force)
 
 bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
 {
-    if (force->kind > mvfx_forceVectorField || force->space > mvfx_spaceLocal ||
+    if (force->kind > mvfx_forceGas || force->space > mvfx_spaceLocal ||
         force->fieldMode > mvfx_fieldVelocity || !IsWithin(force->tightness, 0.0f, MVFX_MAX_DRAG) ||
         !IsVectorWithin(force->vector, MVFX_MAX_EXTENT) ||
         !IsVectorWithin(force->point, MVFX_MAX_EXTENT) ||
@@ -101,6 +101,8 @@ bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
         return IsNoiseValid(&force->noise);
     case mvfx_forceVectorField:
         return IsBoxValid(force);
+    case mvfx_forceGas:
+        return force->gas >= 0 && force->gas < MVFX_MAX_GASES;
     default:
         return true;
     }
@@ -301,7 +303,8 @@ float mvfxForceDrag(const mvfxResolvedForce* force)
     {
         return force->strength;
     }
-    bool field = force->kind == mvfx_forceTurbulence || force->kind == mvfx_forceVectorField;
+    bool field = force->kind == mvfx_forceTurbulence || force->kind == mvfx_forceVectorField ||
+                 force->kind == mvfx_forceGas;
     return field && force->fieldMode == mvfx_fieldVelocity ? force->tightness : 0.0f;
 }
 
@@ -353,6 +356,27 @@ static bool SampleBox(const mvfxResolvedForce* force, const double place[3], flo
     return true;
 }
 
+// A gas's velocity at a place in its box's frame, false outside the box
+// (a 2D gas's reaches along its Z without end).
+static bool SampleGas(const mvfxResolvedForce* force, const double place[3], float out[3])
+{
+    const mvfxGasLattice* l = &force->gasLattice;
+    float p[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        p[k] = (float)(place[k] / (double)l->cell) + 0.5f * (float)l->n[k];
+        if (l->n[k] > 1 && !(p[k] >= 0.0f && p[k] <= (float)l->n[k]))
+        {
+            return false;
+        }
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = l->n[k] > 1 ? mvfxGasSample(force->gasVelocity[k], l, k, p) : 0.0f;
+    }
+    return true;
+}
+
 // A field's vector at x: its acceleration added to a, or, as a velocity,
 // its pull and its drag.
 static void Field(const mvfxResolvedForce* force, const float x[3], double time, float weight,
@@ -365,7 +389,8 @@ static void Field(const mvfxResolvedForce* force, const float x[3], double time,
     {
         mvfxCurlNoise(&force->source->noise, force->seed, place, time, value);
     }
-    else if (!SampleBox(force, place, value))
+    else if (force->kind == mvfx_forceGas ? !SampleGas(force, place, value)
+                                          : !SampleBox(force, place, value))
     {
         return;
     }
@@ -414,6 +439,7 @@ void mvfxForcesAt(const mvfxResolvedForce* forces, int32_t count, const float x[
             break;
         case mvfx_forceTurbulence:
         case mvfx_forceVectorField:
+        case mvfx_forceGas:
             Field(force, x, time, weight, a, drag);
             break;
         default:

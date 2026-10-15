@@ -12,6 +12,7 @@
 #include "depth.h"
 #include "effect.h"
 #include "force.h"
+#include "gas_splat.h"
 #include "rigid_shape.h"
 
 #include "maul-vfx/instance.h"
@@ -283,6 +284,11 @@ typedef struct mvfxInstance
     int64_t stopTick;
     // Its parameters, from the effect's defaults until the host sets them.
     float parameters[MVFX_MAX_PARAMETERS][4];
+    // What the gas being stepped is driven by: its forces resolved and the
+    // emitters pouring into it (kept here, not on the stack, which is small
+    // on some targets).
+    mvfxResolvedForce gasForces[MVFX_MAX_FORCES];
+    mvfxGasPour gasPours[MVFX_MAX_EMITTERS];
     mvfxEmitterState* emitters;
     // Its gases' states, their fields in its block.
     mvfxGasState gases[MVFX_MAX_GASES];

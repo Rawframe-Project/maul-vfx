@@ -246,7 +246,8 @@ static inline void BuildRigidScene(mvfxContext* context)
 // MacCormack's advection, buoyant in the world's gravity and confined.
 // The 2D gas flows past a still sphere, stirred by turbulence; the 3D gas
 // past a turned box shelf and a host's sphere moving through it, spun by a
-// vortex in the instance's frame.
+// vortex in the instance's frame; world-space motes follow it and pour
+// smoke into it.
 // Their velocities are not whole cells a step.
 static inline void BuildGasScene(mvfxContext* context)
 {
@@ -336,7 +337,25 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[1].forces = &spin;
     gases[1].forceCount = 1;
     gases[1].sourceCount = 1;
+    // Motes in the world following the 3D gas and pouring smoke into it.
+    static const mvfxForce follow = {.kind = mvfx_forceGas,
+                                     .strength = 1.0f,
+                                     .fieldMode = mvfx_fieldVelocity,
+                                     .tightness = 3.0f,
+                                     .gas = 1};
+    mvfxEmitterDef motes = mvfxDefaultEmitterDef();
+    motes.capacity = 64;
+    motes.rate = 40.0f;
+    motes.lifetime = mvfxRangeSource(0.4f, 0.6f);
+    motes.shape.kind = mvfx_shapeSphere;
+    motes.shape.radius = 0.2f;
+    motes.shape.offset[1] = 0.4f;
+    motes.forces = &follow;
+    motes.forceCount = 1;
+    motes.gasSplat = (mvfxGasSplat){.enabled = true, .gas = 1, .density = 1.5f, .drag = 2.0f};
     mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &motes;
+    def.emitterCount = 1;
     def.gases = gases;
     def.gasCount = 2;
     mvfxEffectId effect = {0};

@@ -296,6 +296,8 @@ typedef struct mvfxCompiledEmitter
     mvfxCompiledVector custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
     int32_t customCount;
     mvfxAttributePlan plan;
+    // How its particles pour into a gas.
+    mvfxGasSplat gasSplat;
 } mvfxCompiledEmitter;
 
 // A compiled effect, in one block: this header, its emitters, their rate

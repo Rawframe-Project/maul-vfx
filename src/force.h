@@ -8,6 +8,8 @@
 #ifndef MAUL_VFX_SRC_FORCE_H
 #define MAUL_VFX_SRC_FORCE_H
 
+#include "gas_lattice.h"
+
 #include "maul-vfx/effect.h"
 
 // Whether a force is valid for an effect of parameterCount parameters.
@@ -68,6 +70,10 @@ typedef struct mvfxResolvedForce
     const mvfxForce* source;
     const struct mvfxGrid* grid;
     uint32_t seed;
+    // A gas force's gas: its velocity's faces and its lattice; map is then
+    // from the gas's box to the particles' space.
+    const float* gasVelocity[3];
+    mvfxGasLattice gasLattice;
 } mvfxResolvedForce;
 
 // Resolves a compiled force with the map, the instance's parameters and

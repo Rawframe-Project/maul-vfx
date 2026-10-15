@@ -81,8 +81,10 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/gas.c
     src/gas_api.c
     src/gas_forces.c
+    src/gas_lattice.c
     src/gas_pressure.c
     src/gas_solid.c
+    src/gas_splat.c
     src/gas_step.c
     src/gradient.c
     src/hash.c
@@ -151,6 +153,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(gas_forces WHITEBOX)
     maul_add_test(gas_solid WHITEBOX)
     maul_add_test(gas_push WHITEBOX)
+    maul_add_test(gas_couple WHITEBOX)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)
     maul_add_test(event WHITEBOX)

@@ -157,6 +157,46 @@ mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulatio
     return map;
 }
 
+mvfxSpaceMap mvfxGasToSpace(const mvfxInstance* instance, int32_t gas,
+                            const mvfxSpaceMap* fromWorld)
+{
+    double center[3];
+    float rotation[4];
+    float scale = 0.0f;
+    Place(instance, gas, center, rotation, &scale);
+    // A box point x is the world's C + R s x, which fromWorld takes to
+    // turn(q, sigma (C + R s x - before)) + after: turn(q R, sigma s (x -
+    // before')) + after, before' = -R^-1 (C - before) / s.
+    mvfxSpaceMap map = {.sigma = fromWorld->sigma * scale};
+    mvfxMultiplyRotations(fromWorld->rotation, rotation, map.rotation);
+    const float back[4] = {-rotation[0], -rotation[1], -rotation[2], rotation[3]};
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = (center[k] - fromWorld->before[k]) / (double)scale;
+        map.after[k] = fromWorld->after[k];
+    }
+    double turned[3];
+    mvfxRotateDouble(back, d, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        map.before[k] = -turned[k];
+    }
+    return map;
+}
+
+void mvfxGasFollow(const mvfxInstance* instance, int32_t gas, mvfxResolvedForce* force)
+{
+    const mvfxCompiledGas* compiled = &instance->effect->gases[gas];
+    const mvfxGasState* state = &instance->gases[gas];
+    force->gasLattice = (mvfxGasLattice){.cell = compiled->def.cellSize};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        force->gasLattice.n[k] = compiled->def.size[k];
+        force->gasVelocity[k] = state->velocity[k][state->current];
+    }
+}
+
 void mvfxResolveGasObstacles(mvfxInstance* instance, int32_t gas)
 {
     const mvfxCompiledGas* compiled = &instance->effect->gases[gas];

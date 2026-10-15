@@ -117,6 +117,39 @@ static void EndStep(mvfxInstance* instance)
     instance->stepDistance = 0.0;
 }
 
+// The emitters whose live particles pour into gas g, as the step left
+// them: their arrays and the map from their space into the gas's box.
+static int32_t PoursInto(mvfxInstance* instance, int32_t g, mvfxGasPour pours[MVFX_MAX_EMITTERS])
+{
+    int32_t count = 0;
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        const mvfxCompiledEmitter* emitter = &instance->effect->emitters[e];
+        const mvfxEmitterState* state = &instance->emitters[e];
+        if (!emitter->gasSplat.enabled || emitter->gasSplat.gas != g || state->count == 0)
+        {
+            continue;
+        }
+        bool world = emitter->space == mvfx_spaceWorld;
+        mvfxGasPour* pour = &pours[count++];
+        *pour = (mvfxGasPour){
+            .count = state->count,
+            .map = mvfxGasMap(instance, g, world ? mvfx_spaceWorld : mvfx_spaceLocal),
+            .splat = &emitter->gasSplat,
+        };
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            pour->position[k] =
+                mvfxAttributeArray(instance, e, (mvfxAttribute)(mvfx_attributePositionX + k));
+            pour->velocity[k] =
+                mvfxAttributeArray(instance, e, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+            // A world-space emitter's places are offsets from its anchor.
+            pour->map.before[k] -= world ? state->anchor[k] : 0.0;
+        }
+    }
+    return count;
+}
+
 void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
 {
     // A finished instance holds nothing and spawns nothing; whether it is
@@ -139,8 +172,10 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
     for (int32_t g = 0; g < instance->effect->gasCount && !finished; ++g)
     {
         const mvfxCompiledGas* gas = &instance->effect->gases[g];
-        mvfxResolvedForce forces[MVFX_MAX_FORCES];
-        mvfxGasDrive drive = {.forces = forces, .forceCount = gas->def.forceCount};
+        mvfxResolvedForce* forces = instance->gasForces;
+        mvfxGasDrive drive = {
+            .forces = forces, .forceCount = gas->def.forceCount, .pours = instance->gasPours};
+        drive.pourCount = PoursInto(instance, g, instance->gasPours);
         mvfxGasGravity(instance, g, drive.gravity);
         for (int32_t f = 0; f < gas->def.forceCount; ++f)
         {

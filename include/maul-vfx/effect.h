@@ -163,6 +163,12 @@ extern "C"
         // A vector field: strength times a grid of three components spanning
         // a box centered on point, sampled trilinearly.
         mvfx_forceVectorField = 5,
+        // A gas's velocity: strength times the velocity of the effect's gas
+        // gas where the particle is, as the step before left it, sampled
+        // trilinearly; nothing outside its box (a 2D gas's reaches along its
+        // Z without end). Its space is the gas's box. Only an emitter's
+        // particles follow a gas.
+        mvfx_forceGas = 6,
     };
 
     // Where a vector field reads past its box.
@@ -267,6 +273,8 @@ extern "C"
         float boxSize[3];
         float boxRotation[4];
         mvfxGridBorder border;
+        // The gas a gas force follows: its index in the effect's def.
+        int32_t gas;
     } mvfxForce;
 
     // How an emitter's particles move: each step moves them exactly under
@@ -802,6 +810,24 @@ extern "C"
         float radiusBySize;
     } mvfxLightDef;
 
+    // How an emitter's live particles pour into a gas of the effect: each
+    // adds density, temperature and fuel a second (each finite and at most
+    // MVFX_MAX_EXTENT in size) to the 8 cells nearest it, and pulls the 8
+    // faces across each axis nearest it toward its velocity by drag a
+    // second (0 to MVFX_MAX_DRAG), each by trilinear weights, in the
+    // particles' order, every substep of the gas; nothing from one outside
+    // the gas's box (a 2D gas's reaches along its Z without end).
+    typedef struct mvfxGasSplat
+    {
+        bool enabled;
+        // The gas: its index in the effect's def.
+        int32_t gas;
+        float density;
+        float temperature;
+        float fuel;
+        float drag;
+    } mvfxGasSplat;
+
     typedef struct mvfxEmitterDef
     {
         uint32_t cookie;
@@ -858,6 +884,8 @@ extern "C"
         // NULL when forceCount is 0.
         const mvfxForce* forces;
         int32_t forceCount;
+        // How they pour into a gas.
+        mvfxGasSplat gasSplat;
         // Their velocity modules.
         mvfxVelocityModules velocityModules;
         // The values over life they show.

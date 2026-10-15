@@ -9,6 +9,7 @@
 #include "elementary.h"
 #include "event.h"
 #include "force.h"
+#include "gas_api.h"
 #include "kill.h"
 #include "rigid_wake.h"
 #include "space.h"
@@ -554,8 +555,18 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
     {
         const mvfxForce* force = &compiled->forces[f];
         mvfxSpaceMap map = SpaceMapOf(instance, emitter, force->space);
+        if (force->kind == mvfx_forceGas)
+        {
+            // Its space is the gas's box.
+            mvfxSpaceMap world = SpaceMapOf(instance, emitter, mvfx_spaceWorld);
+            map = mvfxGasToSpace(instance, force->gas, &world);
+        }
         state->forces[f] = mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters,
                                             instance->seed, compiled->forceGrids[f]);
+        if (force->kind == mvfx_forceGas)
+        {
+            mvfxGasFollow(instance, force->gas, &state->forces[f]);
+        }
     }
     for (int32_t r = 0; r < compiled->killRuleCount; ++r)
     {

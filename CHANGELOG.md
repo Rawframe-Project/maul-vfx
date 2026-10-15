@@ -313,6 +313,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   (constant, wind, attractor, vortex, turbulence, vector field) in the
   world or the instance's frame, taken at each face, a wind's or a
   velocity field's pull exact over a substep.
+- Particles and gases couple: the force kind `mvfx_forceGas` makes an
+  emitter's particles follow a gas of the effect (`gas`), as a velocity
+  field or an acceleration; an emitter's `gasSplat` (`mvfxGasSplat`) pours
+  its live particles' density, temperature and fuel into a gas and pulls
+  its faces toward their velocity, in the particles' order.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

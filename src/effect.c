@@ -495,6 +495,59 @@ static bool AreQualityLevelsValid(const mvfxEffectDef* def)
     return true;
 }
 
+// Whether an emitter's splat into a gas is in range for an effect of
+// gasCount gases.
+static bool IsSplatValid(const mvfxGasSplat* splat, int32_t gasCount)
+{
+    if (!splat->enabled)
+    {
+        return true;
+    }
+    const float rates[3] = {splat->density, splat->temperature, splat->fuel};
+    bool valid =
+        splat->gas >= 0 && splat->gas < gasCount && IsWithin(splat->drag, 0.0f, MVFX_MAX_DRAG);
+    for (int32_t k = 0; valid && k < 3; ++k)
+    {
+        valid = IsWithin(rates[k], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
+    }
+    return valid;
+}
+
+// Whether every gas an emitter's forces follow or it splats into is one
+// of the effect's, and no gas's force follows a gas.
+static bool AreGasLinksValid(const mvfxEffectDef* def)
+{
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
+        {
+            const mvfxForce* force = &def->emitters[i].forces[f];
+            if (force->kind == mvfx_forceGas && force->gas >= def->gasCount)
+            {
+                return false;
+            }
+        }
+    }
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
+        {
+            if (def->gases[g].forces[f].kind == mvfx_forceGas)
+            {
+                return false;
+            }
+        }
+    }
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        if (!IsSplatValid(&def->emitters[i].gasSplat, def->gasCount))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whether a gas's forces are in range for the effect's parameters.
 static bool AreGasForcesValid(const mvfxGasDef* gas, const mvfxEffectDef* def)
 {
@@ -554,6 +607,10 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
         {
             return false;
         }
+    }
+    if (!AreGasLinksValid(def))
+    {
+        return false;
     }
     int32_t order[MVFX_MAX_EMITTERS];
     return OrderEmitters(def, order);
@@ -709,6 +766,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     {
         out->killRules[r] = mvfxCompileKillRule(&def->killRules[r]);
     }
+    out->gasSplat = def->gasSplat;
     out->forceCount = def->forceCount;
     for (int32_t f = 0; f < def->forceCount; ++f)
     {

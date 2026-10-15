@@ -18,6 +18,14 @@ mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas);
 // box's frame now.
 mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulationSpace space);
 
+// The map from a gas box's frame now into a space, given the map from the
+// world into it.
+mvfxSpaceMap mvfxGasToSpace(const mvfxInstance* instance, int32_t gas,
+                            const mvfxSpaceMap* fromWorld);
+
+// Points a gas force at its gas's velocity as it is now, and its lattice.
+void mvfxGasFollow(const mvfxInstance* instance, int32_t gas, mvfxResolvedForce* force);
+
 // Resolves a gas's obstacles (its own, then with hostObstacles the
 // instance's colliders) into its box's frame as the step leaves them,
 // keeping the step before's.

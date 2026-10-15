@@ -10,6 +10,7 @@
 #include "allocator.h"
 #include "collide.h"
 #include "force.h"
+#include "gas_lattice.h"
 
 #include "maul-vfx/gas.h"
 
@@ -50,15 +51,6 @@ typedef struct mvfxCompiledGas
 
 // The most obstacles a gas meets: its own and the host's.
 #define MVFX_GAS_OBSTACLES (2 * MVFX_MAX_COLLIDERS)
-
-// A gas's lattice: its cells along each axis and their edge, and a
-// substep's span.
-typedef struct mvfxGasLattice
-{
-    int32_t n[3];
-    float cell;
-    float h;
-} mvfxGasLattice;
 
 // Where a gas's buffers lie in an instance's block.
 typedef struct mvfxGasAt

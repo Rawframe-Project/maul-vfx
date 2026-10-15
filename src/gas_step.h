@@ -11,26 +11,25 @@
 
 #include "force.h"
 #include "gas.h"
+#include "gas_splat.h"
 
 #include <stdint.h>
-
-// An array of a lattice's values at place p, in cells (a cell's center at
-// its index plus one half): the cells' for axis -1, else the faces'
-// across axis; by trilinear weights, p held within the array's points.
-float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, const float p[3]);
 
 // Where the gas at place p was a substep before, by the faces' velocities:
 // traced back by the midpoint rule.
 void mvfxGasTraceBack(float* const velocity[3], const mvfxGasLattice* l, const float p[3],
                       float out[3]);
 
-// What drives a gas over a step, in its box's frame: gravity, and its
-// forces resolved.
+// What drives a gas over a step, in its box's frame: gravity, its forces
+// resolved, and the particles pouring into it.
 typedef struct mvfxGasDrive
 {
     float gravity[3];
     const mvfxResolvedForce* forces;
     int32_t forceCount;
+    // The emitters whose particles pour into it.
+    const mvfxGasPour* pours;
+    int32_t pourCount;
 } mvfxGasDrive;
 
 // Steps a gas over the ticks from to, its sources pouring at the substeps
