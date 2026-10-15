@@ -5,8 +5,12 @@
 // the middle along the edge, the freed point falling; a chain pulled
 // apart splitting into two ribbons; a sheet pulled apart across, its
 // across edges torn and its mesh's quads gone, sparks spawned at each
-// tear; no tear below the strain; the checks.
+// tear; no tear below the strain; torn edges set by hand against the
+// mesh's quads and a hanging sheet's motion; a sheet born again whole in
+// the slots of a torn one; a restart's count; the checks.
 
+#include "instance.h"
+#include "instance_api.h"
 #include "test_harness.h"
 
 #include "maul-vfx/output.h"
@@ -279,6 +283,117 @@ static void TestSheet(void)
     }
 }
 
+// Emitter 0's torn edges.
+static uint32_t* Torn(void)
+{
+    return mvfxAttributeArray(mvfxContextInstance(s_scene.context, s_scene.instance), 0,
+                              mvfx_attributeTorn);
+}
+
+static mvfxEmitterDef Sheet(int32_t rows)
+{
+    mvfxEmitterDef emitter = Chain(3);
+    emitter.unit.kind = mvfx_unitSheet;
+    emitter.unit.points = 2 + (rows == 3 ? 1 : 0);
+    emitter.unit.rows = rows;
+    emitter.unit.direction[0] = 1.0f;
+    emitter.unit.direction[1] = 0.0f;
+    emitter.unit.downDirection[2] = 1.0f;
+    emitter.unit.pinFirst = false;
+    emitter.unit.tearStrain = 50.0f;
+    emitter.events = 0;
+    emitter.capacity = emitter.unit.points * rows;
+    return emitter;
+}
+
+static int64_t Indices(void)
+{
+    static Record vertices[MOST];
+    static uint32_t indices[MOST];
+    mvfxExpandBuffers buffers = {
+        .vertices = vertices, .vertexCapacity = MOST, .indices = indices, .indexCapacity = MOST};
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    CHECK(mvfxInstance_ExpandSheets(s_scene.context, s_scene.instance, 0, s_scene.layout, &s_view,
+                                    &buffers, &vertexCount, &indexCount) == mvfx_success,
+          "expanded");
+    return indexCount;
+}
+
+static void TestTornBits(void)
+{
+    // Three by three: the edge down from point 1 takes the quads either
+    // side of it; alone, the edge across from point 3 (row 1) those above
+    // and below it; both leave one quad.
+    mvfxEmitterDef emitter = Sheet(3);
+    Open(&emitter, 1);
+    Steps(1);
+    CHECK(Indices() == 24, "whole");
+    Torn()[1] |= 2u;
+    CHECK(Indices() == 12, "an edge down");
+    Torn()[1] = 0u;
+    Torn()[3] |= 1u;
+    CHECK(Indices() == 12, "an edge across");
+    Torn()[1] |= 2u;
+    CHECK(Indices() == 6, "both");
+    mvfxDestroyContext(s_scene.context);
+    // Two by four hanging from its first row, rigid: the edges down from
+    // row 1 cut, rows 2 and 3 fall away (no stretch, shear or bending
+    // across the cut holds them) while rows 0 and 1 hang.
+    emitter = Sheet(4);
+    emitter.unit.downDirection[1] = -1.0f;
+    emitter.unit.downDirection[2] = 0.0f;
+    emitter.unit.shearCompliance = 0.0f;
+    emitter.unit.bendCompliance = 0.0f;
+    emitter.unit.pinFirstRow = true;
+    emitter.motion.gravity[1] = -9.81f;
+    Open(&emitter, 1);
+    Steps(1);
+    Torn()[2] |= 2u;
+    Torn()[3] |= 2u;
+    Steps(30);
+    Read(0);
+    CHECK(fabsf(s_scene.records[2].position[1] + 0.5f) <= 0.01f &&
+              s_scene.records[4].position[1] < -2.0f && s_scene.records[7].position[1] < -2.5f,
+          "cut away");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestReborn(void)
+{
+    // A sheet with every edge torn dies; one born in its slots is whole. A
+    // restart clears the count.
+    mvfxEmitterDef emitter = Sheet(3);
+    emitter.lifetime = mvfxRangeSource(0.1f, 0.1f);
+    emitter.hostSpawnCapacity = 1;
+    Open(&emitter, 1);
+    Steps(1);
+    for (int32_t i = 0; i < 9; ++i)
+    {
+        Torn()[i] = 3u;
+    }
+    CHECK(Indices() == 0, "all torn");
+    Steps(10);
+    static const double root[3] = {0, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = root};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+          "again");
+    Steps(1);
+    CHECK(Stats(0).live == 9 && Indices() == 24, "born whole");
+    mvfxDestroyContext(s_scene.context);
+    // A torn count, and a restart.
+    mvfxEmitterDef chain = Chain(2);
+    chain.motion.gravity[1] = -9.81f;
+    chain.unit.stretchCompliance = 0.05f;
+    Open(&chain, 1);
+    Steps(60);
+    CHECK(Stats(0).torn == 1 &&
+              mvfxInstance_Restart(s_scene.context, s_scene.instance) == mvfx_success &&
+              Stats(0).torn == 0,
+          "a restart's count");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -344,6 +459,8 @@ int main(void)
     TestGravity();
     TestRibbons();
     TestSheet();
+    TestTornBits();
+    TestReborn();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

@@ -161,7 +161,7 @@ static bool IsBroken(const Points* p, int32_t kind, int32_t q)
         return (t[q] & 2u) != 0;
     case 2:
     case 3:
-        return ((t[q] | t[q + w]) & 1u) != 0 || ((t[q] | t[q + 1]) & 2u) != 0;
+        return !mvfxIsQuadWhole(t, q, w);
     case 4:
         return ((t[q] | t[q + 1]) & 1u) != 0;
     default:

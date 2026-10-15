@@ -10,6 +10,7 @@
 #include "instance_api.h"
 #include "layout_api.h"
 #include "output.h"
+#include "unit.h"
 
 #include <math.h>
 
@@ -301,14 +302,6 @@ static const uint32_t* TornOf(const mvfxRecordSource* source)
                : nullptr;
 }
 
-// Whether the quad from point q down and across in a sheet of a width is
-// whole: none of its four edges torn.
-static bool IsQuadWhole(const uint32_t* torn, int32_t q, int32_t width)
-{
-    return torn == nullptr ||
-           (((torn[q] | torn[q + width]) & 1u) == 0 && ((torn[q] | torn[q + 1]) & 2u) == 0);
-}
-
 // The indices of sheet u's whole quads.
 static int64_t IndicesOf(const mvfxRecordSource* source, int32_t u)
 {
@@ -322,7 +315,7 @@ static int64_t IndicesOf(const mvfxRecordSource* source, int32_t u)
     {
         for (int32_t c = 0; c + 1 < width; ++c)
         {
-            whole += IsQuadWhole(torn, first + r * width + c, width) ? 1 : 0;
+            whole += mvfxIsQuadWhole(torn, first + r * width + c, width) ? 1 : 0;
         }
     }
     return 6 * whole;
@@ -357,7 +350,7 @@ static void WriteSheet(const mvfxRecordSource* source, const mvfxOutputLayout* l
     {
         for (int32_t c = 0; c + 1 < width; ++c)
         {
-            if (!IsQuadWhole(torn, first + r * width + c, width))
+            if (!mvfxIsQuadWhole(torn, first + r * width + c, width))
             {
                 continue;
             }
