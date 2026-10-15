@@ -5,9 +5,11 @@
 // bit for bit and still dies at the end of its life; a sleeping stack
 // stays asleep while a box falls past it and wakes as one when it lands,
 // then sleeps again stacked; gravity turned by the instance wakes a box,
-// which slides; a host table set again unchanged leaves a box asleep,
-// moved wakes it to fall; the host wakes bodies within a sphere; no
-// sleep speed, no sleeping; the checks.
+// which slides; moving ends a still time; a sleeper holds as ground
+// under a heavier box landing on it; a box spinning in place stays
+// awake; a host table set again unchanged leaves a box asleep, moved
+// wakes it to fall; a depth image set again wakes a box; the host wakes
+// bodies within a sphere; no sleep speed, no sleeping; the checks.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -211,6 +213,123 @@ static void TestForcesWake(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestStillResets(void)
+{
+    // A box still 0.4 s of a 2 s sleep time, then tilted to slide: its
+    // still time starts again from 0.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    static const mvfxCollider ground = {
+        .kind = mvfx_colliderPlane, .space = mvfx_spaceLocal, .normal = {0, 1, 0}};
+    boxes.space = mvfx_spaceLocal;
+    boxes.motion.gravitySpace = mvfx_spaceWorld;
+    boxes.colliders = &ground;
+    boxes.rigid.sleepTime = 2.0f;
+    Play(&boxes);
+    static const double place[3] = {0, 0.5, 0};
+    Spawn(place, 1);
+    Steps(24);
+    bool still = At(0, mvfx_attributeSleep) >= 0.3f;
+    static const double origin[3] = {0, 0, 0};
+    const float tilt[4] = {0, 0, sinf(0.3490659f), cosf(0.3490659f)};
+    CHECK(mvfxInstance_SetTransform(s_scene.context, s_scene.instance, origin, tilt, 1.0f, true) ==
+              mvfx_success,
+          "tilted");
+    Steps(3);
+    CHECK(still && At(0, mvfx_attributeSleep) == 0.0f, "moving ends a still time");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestSleeperHolds(void)
+{
+    // A box twice the size (eight times the mass) dropped from 3 m onto a
+    // sleeping box: the sleeper, meeting no ground while asleep, holds as
+    // ground for the landing step instead of being driven into the floor.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.rigid.bodyContacts = 8;
+    Play(&boxes);
+    static const double low[3] = {0, 0.5, 0};
+    static const float unit[3] = {1, 1, 1};
+    mvfxSpawnRequest first = {.count = 1, .positions = low, .sizes = unit};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &first) == mvfx_success,
+          "first");
+    Steps(60);
+    bool slept = Stats().asleep == 1;
+    static const double high[3] = {0, 4.0, 0};
+    static const float big[3] = {2, 2, 2};
+    mvfxSpawnRequest second = {.count = 1, .positions = high, .sizes = big};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &second) == mvfx_success,
+          "second");
+    float lowest = INFINITY;
+    for (int32_t i = 0; i < 90; ++i)
+    {
+        Steps(1);
+        lowest = fminf(lowest, At(0, mvfx_attributePositionY));
+    }
+    CHECK(slept && lowest >= 0.499f, "a sleeper holds a landing");
+    mvfxDestroyContext(s_scene.context);
+}
+
+// Far depth everywhere, from a camera at (0, 0, 10) looking down -Z.
+static const float s_far[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+static void TestDepthWakes(void)
+{
+    // A box asleep on the ground by an empty depth image: the image set
+    // again wakes it (its pixels may have changed).
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.collision.depthImage = true;
+    boxes.collision.depthThickness = 0.5f;
+    boxes.collision.depthSamples = 4;
+    Play(&boxes);
+    const float a = 100.0f / (0.1f - 100.0f);
+    const mvfxDepthImage image = {
+        .pixels = s_far,
+        .byteCount = (int64_t)sizeof s_far,
+        .width = 4,
+        .height = 4,
+        .stride = 16,
+        .format = mvfx_depthFloat32,
+        .projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, a, -1, 0, 0, a * 0.1f, 0},
+        .origin = {0, 0, 10},
+        .rotation = {0, 0, 0, 1},
+    };
+    CHECK(mvfxInstance_SetDepthImage(s_scene.context, s_scene.instance, &image) == mvfx_success,
+          "depth");
+    static const double place[3] = {0, 0.5, 0};
+    Spawn(place, 1);
+    Steps(60);
+    bool slept = Stats().asleep == 1;
+    CHECK(mvfxInstance_SetDepthImage(s_scene.context, s_scene.instance, &image) == mvfx_success,
+          "depth again");
+    Steps(1);
+    CHECK(slept && Stats().asleep == 0, "a depth image set again wakes a box");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestSpinning(void)
+{
+    // A box spinning in place at 1 radian a second with no gravity or
+    // ground: its center still, its corners not, it never sleeps.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.motion.gravity[1] = 0.0f;
+    boxes.collision.enabled = false;
+    boxes.colliders = NULL;
+    boxes.colliderCount = 0;
+    boxes.angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 1, 0}, .max = {0, 1, 0}};
+    Play(&boxes);
+    static const double place[3] = {0, 2, 0};
+    Spawn(place, 1);
+    Steps(120);
+    CHECK(Stats().asleep == 0 && fabsf(At(0, mvfx_attributeAngularY) - 1.0f) <= 1e-3f,
+          "a spinning box stays awake");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestWorldWakes(void)
 {
     // A box asleep on the host's table; the same table set again leaves it
@@ -336,7 +455,11 @@ int main(void)
     TestFallsAsleep();
     TestPileWakes();
     TestForcesWake();
+    TestStillResets();
+    TestSleeperHolds();
+    TestSpinning();
     TestWorldWakes();
+    TestDepthWakes();
     TestWakeWithin();
     TestNeverSleeps();
     TestChecks();
