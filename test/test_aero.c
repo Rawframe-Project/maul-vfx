@@ -167,7 +167,8 @@ static void TestLift(void)
 {
     // At 45 degrees (normal (1, 1, 0) / sqrt 2) in a wind of 10 along x,
     // no gravity: pushed along its normal, as much up (lift) as along the
-    // wind (drag). The wind's own pull is a millionth: it moves the air.
+    // wind (drag). The wind's own pull is a millionth: it moves the air. A
+    // constant push along z moves no air.
     mvfxEmitterDef emitter = Sheet(0.5f, 0.0f);
     emitter.motion.gravity[1] = 0.0f;
     emitter.unit.direction[0] = 0.0f;
@@ -175,15 +176,17 @@ static void TestLift(void)
     emitter.unit.downDirection[0] = 1.0f;
     emitter.unit.downDirection[1] = -1.0f;
     emitter.unit.downDirection[2] = 0.0f;
-    static const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {10, 0, 0}, .strength = 1e-6f};
-    emitter.forces = &wind;
-    emitter.forceCount = 1;
+    static const mvfxForce forces[2] = {
+        {.kind = mvfx_forceWind, .vector = {10, 0, 0}, .strength = 1e-6f},
+        {.kind = mvfx_forceConstant, .vector = {0, 0, 1}, .strength = 0.3f}};
+    emitter.forces = forces;
+    emitter.forceCount = 2;
     Open(&emitter, NULL);
     Steps(20);
     double mean[3];
     Mean(mean);
     CHECK(mean[0] > 0.5 && fabs(mean[1] - mean[0]) <= 0.01 * mean[0] &&
-              fabs(mean[2]) <= 0.01 * mean[0],
+              fabs(mean[2] - 0.3 * 20.0 / 60.0) <= 0.01,
           "pushed along its normal");
     mvfxDestroyContext(s_scene.context);
 }
