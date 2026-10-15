@@ -391,6 +391,177 @@ static void TestStrikeEvents(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// A box collider of half sizes about center, turned by angle about axis
+// x (0) or z (2).
+static mvfxCollider Box(float x, float y, float z, const float center[3], int32_t axis, float angle)
+{
+    mvfxCollider box = {.kind = mvfx_colliderBox,
+                        .center = {center[0], center[1], center[2]},
+                        .halfExtents = {x, y, z},
+                        .rotation = {0, 0, 0, 1}};
+    box.rotation[axis] = sinf(0.5f * angle);
+    box.rotation[3] = cosf(0.5f * angle);
+    return box;
+}
+
+// The lowest y of the unit body box.
+static float Lowest(void)
+{
+    float lowest = INFINITY;
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        float y = X(1);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float axis[3];
+            Axis(k, axis);
+            y += ((i >> k & 1) != 0 ? 0.5f : -0.5f) * axis[1];
+        }
+        lowest = fminf(lowest, y);
+    }
+    return lowest;
+}
+
+static void TestTable(void)
+{
+    // A box on a table of 4 by 1 by 4 rests flat on it; one hanging past
+    // its edge by more than half tips off it.
+    static const float origin[3] = {0, 0, 0};
+    for (int32_t over = 0; over < 2; ++over)
+    {
+        mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+        s_colliders[0] = Box(2, 0.5f, 2, origin, 0, 0.0f);
+        double place[3] = {over == 1 ? 2.2 : 0.5, 1.5, 0};
+        static const float still[3] = {0, 0, 0};
+        Open(&emitter, place, still);
+        Steps(over == 1 ? 120 : 90);
+        if (over == 1)
+        {
+            CHECK(X(1) < 0.0f, "tipped off the edge");
+        }
+        else
+        {
+            CHECK(fabsf(X(1) - 1.0f) <= 0.01f && Upright() >= 0.9999f && Speed() <= 0.02f &&
+                      fabsf(X(0) - 0.5f) <= 0.01f,
+                  "resting on a table");
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+}
+
+static void TestEdges(void)
+{
+    // A beam along x turned onto an edge, and a box turned onto an edge
+    // along z dropped across it: edge on edge, never through it.
+    static const float origin[3] = {0, 0, 0};
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+    emitter.rigid.staticFriction = 0.0f;
+    emitter.rigid.dynamicFriction = 0.0f;
+    Tilt(&emitter, 0.785398f);
+    s_colliders[0] = Box(3, 0.2f, 0.2f, origin, 0, 0.785398f);
+    static const double place[3] = {0, 1.2, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    float top = 0.2f * 1.41421356f;
+    float worst = INFINITY;
+    for (int32_t i = 0; i < 20; ++i)
+    {
+        Steps(1);
+        worst = fminf(worst, Lowest() - top);
+    }
+    CHECK(worst >= -0.02f && X(1) < 1.1f, "edge on edge");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestBeam(void)
+{
+    // A capsule of length 2 lying across a block 0.6 wide rests on it, its
+    // ends in the air; a sphere rests on a beam 0.2 wide.
+    static const float origin[3] = {0, 0, 0};
+    for (int32_t sphere = 0; sphere < 2; ++sphere)
+    {
+        mvfxEmitterDef emitter = sphere == 1 ? Rigid(mvfx_rigidSphere, 0.5f, 0.5f, 0.5f)
+                                             : Rigid(mvfx_rigidCapsule, 0.5f, 2.0f, 0.5f);
+        Tilt(&emitter, 1.5707963f);
+        s_colliders[0] = Box(sphere == 1 ? 0.1f : 0.3f, 0.1f, 3, origin, 0, 0.0f);
+        static const double place[3] = {0, 0.6, 0};
+        static const float still[3] = {0, 0, 0};
+        Open(&emitter, place, still);
+        Steps(90);
+        CHECK(fabsf(X(1) - 0.35f) <= 0.01f && Speed() <= 0.02f,
+              sphere == 1 ? "a sphere on a beam" : "a capsule across a beam");
+        mvfxDestroyContext(s_scene.context);
+    }
+}
+
+static void TestInsideBoxes(void)
+{
+    // A box thrown about inside a box of 3 by 2 by 2 turned about z,
+    // without gravity or friction, bouncing whole: every corner kept
+    // inside, its energy never above what it was thrown with (corners
+    // struck at once share the bounce) and most of it kept. The same box as
+    // the host's collider.
+    static const float origin[3] = {0, 0, 0};
+    for (int32_t host = 0; host < 2; ++host)
+    {
+        mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+        emitter.motion.gravity[1] = 0.0f;
+        emitter.rigid.restitution = 1.0f;
+        emitter.rigid.staticFriction = 0.0f;
+        emitter.rigid.dynamicFriction = 0.0f;
+        mvfxCollider room = Box(1.5f, 1, 1, origin, 2, 0.4f);
+        room.inside = true;
+        s_colliders[0] = room;
+        if (host == 1)
+        {
+            emitter.colliders = NULL;
+            emitter.colliderCount = 0;
+            emitter.collision.hostColliders = true;
+        }
+        static const double place[3] = {0, 0, 0};
+        static const float thrown[3] = {4, 3, 2};
+        Open(&emitter, place, thrown);
+        if (host == 1)
+        {
+            CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, &room, 1) ==
+                      mvfx_success,
+                  "host collider");
+        }
+        float worst = 0.0f;
+        float most = 0.0f;
+        float energy = 0.0f;
+        for (int32_t i = 0; i < 120; ++i)
+        {
+            Steps(1);
+            // A unit cube's, over its mass: its inertia a sixth.
+            energy = 0.5f * Speed() * Speed() + (W(0) * W(0) + W(1) * W(1) + W(2) * W(2)) / 12.0f;
+            most = fmaxf(most, energy);
+            for (int32_t c = 0; c < 8; ++c)
+            {
+                float corner[3] = {X(0), X(1), X(2)};
+                for (int32_t k = 0; k < 3; ++k)
+                {
+                    float axis[3];
+                    Axis(k, axis);
+                    for (int32_t j = 0; j < 3; ++j)
+                    {
+                        corner[j] += ((c >> k & 1) != 0 ? 0.5f : -0.5f) * axis[j];
+                    }
+                }
+                float s = sinf(-0.4f);
+                float co = cosf(-0.4f);
+                float local[3] = {co * corner[0] - s * corner[1], s * corner[0] + co * corner[1],
+                                  corner[2]};
+                worst = fmaxf(worst, fmaxf(fabsf(local[0]) - 1.5f,
+                                           fmaxf(fabsf(local[1]) - 1.0f, fabsf(local[2]) - 1.0f)));
+            }
+        }
+        CHECK(worst <= 0.02f && most <= 14.5f * 1.02f && energy >= 14.5f * 0.85f,
+              host == 1 ? "a host's box" : "kept in a box, its energy kept");
+        mvfxDestroyContext(s_scene.context);
+    }
+}
+
 // The body's angular momentum and twice its energy over its mass.
 static void MomentumOf(const float inertia[3], float* momentum, float* energy)
 {
@@ -455,8 +626,17 @@ static void TestChecks(void)
     for (int32_t c = 0; c < 9; ++c)
     {
         mvfxEmitterDef bad = Rigid(mvfx_rigidBox, 1, 1, 1);
-        static const mvfxCollider grid = {
-            .kind = mvfx_colliderBox, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}};
+        static const float heights[4] = {0, 0, 0, 0};
+        mvfxGridDef flat = mvfxDefaultGridDef();
+        flat.size[0] = 2;
+        flat.size[2] = 2;
+        flat.values = heights;
+        mvfxGridId field = {0};
+        CHECK(c != 6 || mvfxCreateGrid(context, &flat, &field) == mvfx_success, "a grid");
+        const mvfxCollider grid = {.kind = mvfx_colliderHeightfield,
+                                   .halfExtents = {1, 1, 1},
+                                   .rotation = {0, 0, 0, 1},
+                                   .grid = field};
         switch (c)
         {
         case 0:
@@ -521,6 +701,10 @@ int main(void)
     TestDeepest();
     TestInsideBox();
     TestStrikeEvents();
+    TestTable();
+    TestEdges();
+    TestBeam();
+    TestInsideBoxes();
     TestGyroscopic();
     TestChecks();
     return s_failures == 0 ? 0 : 1;

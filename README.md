@@ -56,8 +56,8 @@ forces between particles, plexus links, and chains and cloth sheets by
 XPBD with sheets expanded into meshes and units held to the instance,
 the host's frames or other particles, tearing, sheets' aerodynamics and
 units' self-collision, ribbons drawn as tubes, and rigid particles
-(spheres, capsules and boxes by XPBD meeting planes and spheres) are in
-place, and rigid particles meeting each other come next.
+(spheres, capsules and boxes by XPBD meeting planes, spheres and boxes)
+are in place, and rigid particles meeting grids come next.
 It has 67 public functions.
 
 ## Building

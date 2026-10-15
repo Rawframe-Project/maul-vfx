@@ -89,6 +89,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/over_life.c
     src/ribbon.c
     src/rigid.c
+    src/rigid_contact.c
     src/scene_query.c
     src/self.c
     src/shape.c

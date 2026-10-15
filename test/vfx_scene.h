@@ -47,9 +47,10 @@ static inline void SceneKick(const mvfxModuleCall* call, void* user)
 
 // Creates the scene's effects and instances on a context.
 // Rigid particles: boxes of mixed sizes in the world thrown onto a
-// tilted plane and a sphere moving with the instance, losing life as they
-// strike; capsules in the emitter's space
-// bouncing inside a sphere; spheres killed by their second strike.
+// tilted plane, a sphere and a turned box moving with the instance and
+// kept in the host's room, losing life as they strike; capsules in the emitter's space
+// bouncing inside a sphere around a block; spheres killed by their second
+// strike.
 static inline void BuildRigidScene(mvfxContext* context)
 {
     static const mvfxBurst throws = {.time = 0.0f,
@@ -58,7 +59,7 @@ static inline void BuildRigidScene(mvfxContext* context)
                                      .cycles = 0,
                                      .interval = 0.3f,
                                      .probability = 1.0f};
-    static const mvfxCollider ground[2] = {
+    static const mvfxCollider ground[3] = {
         {.kind = mvfx_colliderPlane,
          .space = mvfx_spaceLocal,
          .center = {0, -1, 0},
@@ -67,9 +68,25 @@ static inline void BuildRigidScene(mvfxContext* context)
          .space = mvfx_spaceLocal,
          .center = {1, -0.6f, 0},
          .radius = 0.6f},
+        {.kind = mvfx_colliderBox,
+         .space = mvfx_spaceLocal,
+         .center = {-0.8f, -0.7f, 0},
+         .halfExtents = {0.4f, 0.3f, 0.4f},
+         .rotation = {0, 0.38268343f, 0, 0.92387953f}},
     };
-    static const mvfxCollider bowl = {
-        .kind = mvfx_colliderSphere, .space = mvfx_spaceLocal, .radius = 2.0f, .inside = true};
+    static const mvfxCollider bowl[2] = {
+        {.kind = mvfx_colliderSphere, .space = mvfx_spaceLocal, .radius = 2.0f, .inside = true},
+        {.kind = mvfx_colliderBox,
+         .space = mvfx_spaceLocal,
+         .center = {0.3f, -1.4f, 0},
+         .halfExtents = {0.5f, 0.2f, 0.3f},
+         .rotation = {0, 0, 0.19509032f, 0.98078528f}},
+    };
+    static const mvfxCollider room = {.kind = mvfx_colliderBox,
+                                      .space = mvfx_spaceLocal,
+                                      .inside = true,
+                                      .halfExtents = {1.6f, 3, 1.2f},
+                                      .rotation = {0, 0, 0, 1}};
     static const mvfxKillRule secondStrike = {.kind = mvfx_killCollisions, .collisions = 2};
     mvfxEmitterDef emitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef()};
@@ -99,7 +116,7 @@ static inline void BuildRigidScene(mvfxContext* context)
                                         .dynamicFriction = 0.3f};
         emitter->collision.enabled = true;
         emitter->colliders = ground;
-        emitter->colliderCount = 2;
+        emitter->colliderCount = 3;
     }
     emitters[0].rigid.shape = mvfx_rigidBox;
     emitters[0].collision.lifeLoss = 0.2f;
@@ -108,8 +125,9 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[1].rigid.restitution = 0.8f;
     emitters[1].size.min[1] = 0.6f;
     emitters[1].size.max[1] = 0.9f;
-    emitters[1].colliders = &bowl;
-    emitters[1].colliderCount = 1;
+    emitters[0].collision.hostColliders = true;
+    emitters[1].colliders = bowl;
+    emitters[1].colliderCount = 2;
     emitters[2].rigid.shape = mvfx_rigidSphere;
     emitters[2].killRules = &secondStrike;
     emitters[2].killRuleCount = 1;
@@ -124,6 +142,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     instanceDef.seed = 0x816Du;
     mvfxInstanceId instance = {0};
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "rigid instance");
+    CHECK(mvfxInstance_SetColliders(context, instance, &room, 1) == mvfx_success, "rigid room");
 }
 
 static inline void BuildScene(mvfxContext* context)

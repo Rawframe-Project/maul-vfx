@@ -250,3 +250,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   evented by strikes; `mvfxEmitterStats.rigidContactsCapped`.
 - Fix: a kill in any of a unit emitter's substeps now holds (only the
   last substep's counted before).
+- Rigid particles meet box colliders, outside (face, edge and corner
+  contacts) and inside, the emitter's and the host's; restitution of
+  contacts struck at once is shared, and depth from a moving collider is
+  pushed out without becoming velocity.

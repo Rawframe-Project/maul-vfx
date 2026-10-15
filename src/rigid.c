@@ -8,6 +8,7 @@
 #include "direction.h"
 #include "event.h"
 #include "integrate.h"
+#include "rigid_contact.h"
 
 #include <math.h>
 #include <string.h>
@@ -26,43 +27,6 @@ typedef struct Body
     float inverseMass;
     float inverseInertia[3];
 } Body;
-
-// A body's shape as spheres about points in its frame (a sphere's center,
-// a capsule's two ends, a box's eight corners at radius 0), with a box's
-// half sizes and a capsule's half length.
-typedef struct Shape
-{
-    mvfxRigidShape kind;
-    float points[8][3];
-    int32_t count;
-    float radius;
-    float half[3];
-    float reach;
-} Shape;
-
-// A contact: the body's point in its frame, the surface point it meets
-// and the surface's normal (toward the body's side), its depth when found,
-// the multiplier its normal corrections summed and its normal speed then.
-typedef struct Contact
-{
-    float body[3];
-    float surface[3];
-    float normal[3];
-    float depth;
-    float lambda;
-    float speed;
-    // The collider it meets, by its index.
-    int32_t collider;
-} Contact;
-
-typedef struct Contacts
-{
-    Contact items[MVFX_MAX_RIGID_CONTACTS];
-    int32_t count;
-    int32_t capped;
-    // The collider the contacts being added meet.
-    int32_t collider;
-} Contacts;
 
 // An emitter's rigid particles in a substep.
 typedef struct Solve
@@ -131,14 +95,10 @@ static float WeightAt(const Body* b, const float r[3], const float n[3])
     return b->inverseMass + Dot(c, turned);
 }
 
-// Moves a pose of the body (x, q) by a positional impulse p at offset r:
-// its place by p over its mass, its orientation by half the turn it gives.
-static void PushPose(const Body* b, float x[3], float q[4], const float r[3], const float p[3])
+// Turns q by a turn vector to first order (q + [turn, 0] q / 2),
+// normalized.
+static void TurnBy(float q[4], const float turn[3])
 {
-    float c[3];
-    float turn[3];
-    Cross(r, p, c);
-    InverseInertiaAt(b, q, c, turn);
     const float spin[4] = {turn[0], turn[1], turn[2], 0.0f};
     float dq[4];
     mvfxMultiplyRotations(spin, q, dq);
@@ -153,15 +113,28 @@ static void PushPose(const Body* b, float x[3], float q[4], const float r[3], co
     {
         q[k] /= length;
     }
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        x[k] += p[k] * b->inverseMass;
-    }
 }
 
-static void Push(Body* b, const float r[3], const float p[3])
+// Moves the body by a positional impulse p at offset r: its place by p
+// over its mass, its orientation by the turn it gives. With both, its
+// start pose by the very same step too, so the change between them (its
+// velocity to be) is left as it was.
+static void Push(Body* b, const float r[3], const float p[3], bool both)
 {
-    PushPose(b, b->x, b->q, r, p);
+    float c[3];
+    float turn[3];
+    Cross(r, p, c);
+    InverseInertiaTimes(b, c, turn);
+    TurnBy(b->q, turn);
+    if (both)
+    {
+        TurnBy(b->q0, turn);
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        b->x[k] += p[k] * b->inverseMass;
+        b->x0[k] += both ? p[k] * b->inverseMass : 0.0f;
+    }
 }
 
 // Changes the body's velocities by an impulse j at offset r.
@@ -178,263 +151,10 @@ static void Kick(Body* b, const float r[3], const float j[3])
     }
 }
 
-// The shape a size gives (in the particles' space): spheres about its
-// points, and its mass and inertias from the density.
-static Shape ShapeOf(const mvfxRigidDef* rigid, const float size[3], Body* body)
+// A contact's depth at the body's start pose.
+static float StartDepthOf(const Body* b, const mvfxBodyContact* c)
 {
-    Shape s = {.kind = rigid->shape, .radius = 0.5f * fabsf(size[0])};
-    double r = (double)s.radius;
-    double pi = 3.14159265358979;
-    double mass = (double)rigid->density * 4.0 / 3.0 * pi * r * r * r;
-    double inertia[3] = {0.4 * mass * r * r, 0.4 * mass * r * r, 0.4 * mass * r * r};
-    s.count = 1;
-    if (s.kind == mvfx_rigidCapsule)
-    {
-        double length = fmax((double)fabsf(size[1]) - 2.0 * r, 0.0);
-        double tube = (double)rigid->density * pi * r * r * length;
-        double ends = mass;
-        mass = tube + ends;
-        inertia[1] = tube * r * r / 2.0 + ends * 0.4 * r * r;
-        inertia[0] = tube * (length * length / 12.0 + r * r / 4.0) +
-                     ends * (0.4 * r * r + length * length / 4.0 + 3.0 * length * r / 8.0);
-        inertia[2] = inertia[0];
-        s.half[1] = (float)(0.5 * length);
-        s.points[0][1] = s.half[1];
-        s.points[1][1] = -s.half[1];
-        s.count = 2;
-    }
-    else if (s.kind == mvfx_rigidBox)
-    {
-        double a = (double)fabsf(size[0]);
-        double b = (double)fabsf(size[1]);
-        double c = (double)fabsf(size[2]);
-        mass = (double)rigid->density * a * b * c;
-        inertia[0] = mass * (b * b + c * c) / 12.0;
-        inertia[1] = mass * (a * a + c * c) / 12.0;
-        inertia[2] = mass * (a * a + b * b) / 12.0;
-        s.radius = 0.0f;
-        s.count = 8;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            s.half[k] = 0.5f * fabsf(size[k]);
-        }
-        for (int32_t i = 0; i < 8; ++i)
-        {
-            for (int32_t k = 0; k < 3; ++k)
-            {
-                s.points[i][k] = (i >> k & 1) != 0 ? s.half[k] : -s.half[k];
-            }
-        }
-    }
-    // A shape of no volume is a point of unit mass that does not turn.
-    body->inverseMass = mass > 0.0 ? (float)(1.0 / mass) : 1.0f;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        body->inverseInertia[k] = inertia[k] > 0.0 ? (float)(1.0 / inertia[k]) : 0.0f;
-    }
-    return s;
-}
-
-// Adds a contact deeper than 0; past the cap the shallowest is dropped
-// and counted.
-static void Add(Contacts* list, const Contact* c)
-{
-    if (!(c->depth < 0.0f))
-    {
-        return;
-    }
-    Contact added = *c;
-    added.collider = list->collider;
-    if (list->count < MVFX_MAX_RIGID_CONTACTS)
-    {
-        list->items[list->count++] = added;
-        return;
-    }
-    list->capped += 1;
-    int32_t shallow = 0;
-    for (int32_t j = 1; j < list->count; ++j)
-    {
-        shallow = list->items[j].depth > list->items[shallow].depth ? j : shallow;
-    }
-    if (c->depth < list->items[shallow].depth)
-    {
-        list->items[shallow] = added;
-    }
-}
-
-// A contact of the body's point (in its frame, its place world) meeting
-// a surface along unit n at depth.
-static Contact ContactAt(const float point[3], const float world[3], const float n[3], float depth)
-{
-    Contact c = {.depth = depth};
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        c.body[k] = point[k];
-        c.normal[k] = n[k];
-        c.surface[k] = world[k] - depth * n[k];
-    }
-    return c;
-}
-
-// The world place of the body's point at the shape's surface along way
-// (a sphere's point out by its radius).
-static void SurfacePoint(const Body* b, const Shape* s, const float point[3], const float way[3],
-                         float body[3], float world[3])
-{
-    float turned[3];
-    mvfxRotate(b->q, point, turned);
-    float local[3];
-    ToBody(b->q, way, local);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        world[k] = b->x[k] + turned[k] + s->radius * way[k];
-        body[k] = point[k] + s->radius * local[k];
-    }
-}
-
-static void PlaneContacts(const Body* b, const Shape* s, const mvfxResolvedCollider* c,
-                          Contacts* list)
-{
-    const float down[3] = {-c->normal[0], -c->normal[1], -c->normal[2]};
-    for (int32_t i = 0; i < s->count; ++i)
-    {
-        float body[3];
-        float world[3];
-        SurfacePoint(b, s, s->points[i], down, body, world);
-        float gap[3] = {world[0] - c->center[0], world[1] - c->center[1], world[2] - c->center[2]};
-        Contact contact = ContactAt(body, world, c->normal, Dot(gap, c->normal));
-        Add(list, &contact);
-    }
-}
-
-// The unit way from a to b, or up where they meet; and their distance.
-static float WayFrom(const float a[3], const float b[3], float out[3])
-{
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out[k] = b[k] - a[k];
-    }
-    float distance = sqrtf(Dot(out, out));
-    if (!(distance > 0.0f))
-    {
-        out[0] = 0.0f;
-        out[1] = 1.0f;
-        out[2] = 0.0f;
-        return 0.0f;
-    }
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out[k] /= distance;
-    }
-    return distance;
-}
-
-// Keeping the shape's points within a sphere.
-static void InsideContacts(const Body* b, const Shape* s, const mvfxResolvedCollider* c,
-                           Contacts* list)
-{
-    for (int32_t i = 0; i < s->count; ++i)
-    {
-        float turned[3];
-        mvfxRotate(b->q, s->points[i], turned);
-        float center[3] = {b->x[0] + turned[0], b->x[1] + turned[1], b->x[2] + turned[2]};
-        float out[3];
-        float distance = WayFrom(c->center, center, out);
-        float body[3];
-        float world[3];
-        SurfacePoint(b, s, s->points[i], out, body, world);
-        const float in[3] = {-out[0], -out[1], -out[2]};
-        Contact contact = ContactAt(body, world, in, c->radius - distance - s->radius);
-        Add(list, &contact);
-    }
-}
-
-// The box's point nearest a sphere's center (in its frame) and the way out
-// it is pushed; for a center inside, the nearest face's.
-static float BoxNearest(const Shape* s, const float center[3], float point[3], float way[3])
-{
-    bool inside = true;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        point[k] = fminf(fmaxf(center[k], -s->half[k]), s->half[k]);
-        inside = inside && point[k] == center[k];
-    }
-    if (!inside)
-    {
-        return WayFrom(center, point, way);
-    }
-    int32_t face = 0;
-    for (int32_t k = 1; k < 3; ++k)
-    {
-        face = s->half[k] - fabsf(center[k]) < s->half[face] - fabsf(center[face]) ? k : face;
-    }
-    float side = center[face] >= 0.0f ? 1.0f : -1.0f;
-    point[face] = side * s->half[face];
-    way[0] = 0.0f;
-    way[1] = 0.0f;
-    way[2] = 0.0f;
-    way[face] = -side;
-    return -(s->half[face] - fabsf(center[face]));
-}
-
-// Keeping the shape out of a sphere: by the nearest point of a box, or of
-// a sphere's or a capsule's core.
-static void OutsideContacts(const Body* b, const Shape* s, const mvfxResolvedCollider* c,
-                            Contacts* list)
-{
-    float gap[3] = {c->center[0] - b->x[0], c->center[1] - b->x[1], c->center[2] - b->x[2]};
-    float center[3];
-    ToBody(b->q, gap, center);
-    float point[3] = {0.0f, 0.0f, 0.0f};
-    float local[3];
-    float distance = 0.0f;
-    if (s->kind == mvfx_rigidBox)
-    {
-        distance = BoxNearest(s, center, point, local);
-    }
-    else
-    {
-        point[1] = fminf(fmaxf(center[1], -s->half[1]), s->half[1]);
-        distance = WayFrom(center, point, local) - s->radius;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            point[k] -= s->radius * local[k];
-        }
-    }
-    float n[3];
-    float turned[3];
-    mvfxRotate(b->q, local, n);
-    mvfxRotate(b->q, point, turned);
-    float world[3] = {b->x[0] + turned[0], b->x[1] + turned[1], b->x[2] + turned[2]};
-    Contact contact = ContactAt(point, world, n, distance - c->radius);
-    Add(list, &contact);
-}
-
-static void Gather(const mvfxEmitterState* state, const Body* b, const Shape* s, Contacts* list)
-{
-    for (int32_t i = 0; i < state->colliderCount; ++i)
-    {
-        const mvfxResolvedCollider* c = &state->colliders[i];
-        list->collider = i;
-        if (c->kind == mvfx_colliderPlane)
-        {
-            PlaneContacts(b, s, c, list);
-        }
-        else if (c->kind == mvfx_colliderSphere && c->inside)
-        {
-            InsideContacts(b, s, c, list);
-        }
-        else if (c->kind == mvfx_colliderSphere)
-        {
-            OutsideContacts(b, s, c, list);
-        }
-    }
-}
-
-// A contact's offset from the body's center at its start pose, and its
-// depth there.
-static float StartDepthOf(const Body* b, const Contact* c, float r[3])
-{
+    float r[3];
     mvfxRotate(b->q0, c->body, r);
     float gap[3] = {b->x0[0] + r[0] - c->surface[0], b->x0[1] + r[1] - c->surface[1],
                     b->x0[2] + r[2] - c->surface[2]};
@@ -443,7 +163,7 @@ static float StartDepthOf(const Body* b, const Contact* c, float r[3])
 
 // A contact's offset from the body's center in the world, and its depth
 // at the body's pose.
-static float DepthOf(const Body* b, const Contact* c, float r[3])
+static float DepthOf(const Body* b, const mvfxBodyContact* c, float r[3])
 {
     mvfxRotate(b->q, c->body, r);
     float gap[3] = {b->x[0] + r[0] - c->surface[0], b->x[1] + r[1] - c->surface[1],
@@ -457,14 +177,14 @@ static float DepthOf(const Body* b, const Contact* c, float r[3])
 // substep is cancelled while static friction holds it (the correction at
 // most the static coefficient times the load), else slowed by the dynamic
 // coefficient times the load.
-static void Rub(Body* b, const Contacts* list, int32_t collider, const mvfxRigidDef* rigid)
+static void Rub(Body* b, const mvfxBodyContacts* list, int32_t collider, const mvfxRigidDef* rigid)
 {
     float load = 0.0f;
     float point[3] = {0.0f, 0.0f, 0.0f};
     float n[3] = {0.0f, 0.0f, 0.0f};
     for (int32_t i = 0; i < list->count; ++i)
     {
-        const Contact* c = &list->items[i];
+        const mvfxBodyContact* c = &list->items[i];
         float lambda = c->collider == collider && c->lambda > 0.0f ? c->lambda : 0.0f;
         load += lambda;
         for (int32_t k = 0; k < 3; ++k)
@@ -509,37 +229,34 @@ static void Rub(Body* b, const Contacts* list, int32_t collider, const mvfxRigid
                            ? needed
                            : fminf(needed, rigid->dynamicFriction * load);
     const float p[3] = {-correction * t[0], -correction * t[1], -correction * t[2]};
-    Push(b, r, p);
+    Push(b, r, p, false);
 }
 
-static void SolvePositions(Body* b, Contacts* list, const mvfxRigidDef* rigid)
+static void SolvePositions(Body* b, mvfxBodyContacts* list, const mvfxRigidDef* rigid)
 {
     for (int32_t i = 0; i < list->count; ++i)
     {
-        Contact* c = &list->items[i];
+        mvfxBodyContact* c = &list->items[i];
         float r[3];
         float depth = DepthOf(b, c, r);
         if (depth < 0.0f)
         {
             float lambda = -depth / WeightAt(b, r, c->normal);
             c->lambda += lambda;
-            // The share of the depth there at the substep's start moves its
-            // start pose as well, so pushing out of it gives no velocity
-            // (post-stabilization, Cline and Pai 2003): left over from
-            // before, or born into, it does not pop out however short the
-            // substep.
-            float r0[3];
-            float before = fmaxf(fminf(StartDepthOf(b, c, r0), 0.0f), depth);
-            if (before < 0.0f)
-            {
-                float share = lambda * before / depth;
-                const float p0[3] = {share * c->normal[0], share * c->normal[1],
-                                     share * c->normal[2]};
-                PushPose(b, b->x0, b->q0, r0, p0);
-            }
-            const float p[3] = {lambda * c->normal[0], lambda * c->normal[1],
-                                lambda * c->normal[2]};
-            Push(b, r, p);
+            // The share of the depth there at the substep's start moves the
+            // start pose by the same step, so pushing out of it gives no
+            // velocity (post-stabilization, Cline and Pai 2003): left over
+            // from before, born into or met by a moving collider, it does
+            // not pop out however short the substep.
+            float before = fmaxf(fminf(StartDepthOf(b, c), 0.0f), depth);
+            float share = before < 0.0f ? before / depth : 0.0f;
+            const float old[3] = {share * lambda * c->normal[0], share * lambda * c->normal[1],
+                                  share * lambda * c->normal[2]};
+            const float fresh[3] = {(1.0f - share) * lambda * c->normal[0],
+                                    (1.0f - share) * lambda * c->normal[1],
+                                    (1.0f - share) * lambda * c->normal[2]};
+            Push(b, r, old, true);
+            Push(b, r, fresh, false);
         }
     }
     // Each collider's patch once, in the order first met.
@@ -567,27 +284,37 @@ static void PointVelocity(const Body* b, const float r[3], float out[3])
     }
 }
 
+// Passes of the restitution's sequential impulses.
+#define RESTITUTION_PASSES 4
+
 // Restitution, for each contact its positions pushed: its speed into the
-// surface turned back at the share, none below still.
-static void SolveVelocities(Body* b, const Contacts* list, const Solve* s)
+// surface turned back at the share, none below still. By sequential
+// impulses (Catto, "Iterative Dynamics with Temporal Coherence", GDC
+// 2005): each contact's impulses summed and held to 0 or more over the
+// passes, so contacts struck at once (an edge, a face) share the bounce
+// rather than each raising the others' past their own.
+static void SolveVelocities(Body* b, const mvfxBodyContacts* list, const Solve* s)
 {
-    for (int32_t i = 0; i < list->count; ++i)
+    float applied[MVFX_MAX_RIGID_CONTACTS] = {0.0f};
+    for (int32_t pass = 0; pass < RESTITUTION_PASSES; ++pass)
     {
-        const Contact* c = &list->items[i];
-        if (!(c->lambda > 0.0f))
+        for (int32_t i = 0; i < list->count; ++i)
         {
-            continue;
-        }
-        float r[3];
-        float v[3];
-        mvfxRotate(b->q, c->body, r);
-        PointVelocity(b, r, v);
-        float normal = Dot(v, c->normal);
-        float bounce = c->speed < -s->still ? s->rigid->restitution : 0.0f;
-        float target = -bounce * fminf(c->speed, 0.0f);
-        if (normal < target)
-        {
-            float j = (target - normal) / WeightAt(b, r, c->normal);
+            const mvfxBodyContact* c = &list->items[i];
+            if (!(c->lambda > 0.0f))
+            {
+                continue;
+            }
+            float r[3];
+            float v[3];
+            mvfxRotate(b->q, c->body, r);
+            PointVelocity(b, r, v);
+            float normal = Dot(v, c->normal);
+            float bounce = c->speed < -s->still ? s->rigid->restitution : 0.0f;
+            float target = -bounce * fminf(c->speed, 0.0f);
+            float total = fmaxf(applied[i] + (target - normal) / WeightAt(b, r, c->normal), 0.0f);
+            float j = total - applied[i];
+            applied[i] = total;
             const float impulse[3] = {j * c->normal[0], j * c->normal[1], j * c->normal[2]};
             Kick(b, r, impulse);
         }
@@ -595,11 +322,11 @@ static void SolveVelocities(Body* b, const Contacts* list, const Solve* s)
 }
 
 // Each contact's normal speed at the predicted pose, before it is met.
-static void SpeedsOf(const Body* b, Contacts* list)
+static void SpeedsOf(const Body* b, mvfxBodyContacts* list)
 {
     for (int32_t i = 0; i < list->count; ++i)
     {
-        Contact* c = &list->items[i];
+        mvfxBodyContact* c = &list->items[i];
         float r[3];
         float v[3];
         mvfxRotate(b->q, c->body, r);
@@ -671,7 +398,7 @@ static bool LoseLife(const Solve* s, int32_t i, float loss)
 
 // A body that struck a surface (a contact met, faster into it than
 // still): counted, its step's event, its kills and life loss.
-static void Strike(const Solve* s, int32_t i, const Contacts* list)
+static void Strike(const Solve* s, int32_t i, const mvfxBodyContacts* list)
 {
     int32_t first = -1;
     for (int32_t j = 0; first < 0 && j < list->count; ++j)
@@ -690,7 +417,7 @@ static void Strike(const Solve* s, int32_t i, const Contacts* list)
     if (state->rigidTouched[i] == 0)
     {
         state->rigidTouched[i] = 1;
-        const Contact* c = &list->items[first];
+        const mvfxBodyContact* c = &list->items[first];
         mvfxRecordEvent(instance, s->emitter,
                         &(mvfxEventFact){.kind = mvfx_eventCollision,
                                          .particle = i,
@@ -712,9 +439,11 @@ static void SolveBody(const Solve* s, int32_t i)
     Body b = Load(s, i);
     float size[3];
     mvfxSizeOf(instance, s->emitter, i, size);
-    Shape shape = ShapeOf(s->rigid, size, &b);
-    Contacts list = {.count = 0};
-    Gather(state, &b, &shape, &list);
+    mvfxBodyShape shape = mvfxBodyShapeOf(s->rigid, size, &b.inverseMass, b.inverseInertia);
+    mvfxBodyContacts list = {.count = 0};
+    const mvfxBodyPose pose = {.x = {b.x[0], b.x[1], b.x[2]},
+                               .q = {b.q[0], b.q[1], b.q[2], b.q[3]}};
+    mvfxGatherBodyContacts(state->colliders, state->colliderCount, &pose, &shape, &list);
     state->rigidContactsCapped += (uint64_t)list.capped;
     if (list.count == 0)
     {
@@ -737,7 +466,7 @@ static void Spin(const Solve* s, int32_t first, int32_t end)
         Body b = Load(s, i);
         float size[3];
         mvfxSizeOf(s->instance, s->emitter, i, size);
-        (void)ShapeOf(s->rigid, size, &b);
+        (void)mvfxBodyShapeOf(s->rigid, size, &b.inverseMass, b.inverseInertia);
         float w[3];
         ToBody(b.q, b.w, w);
         float momentum[3];

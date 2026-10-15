@@ -578,14 +578,16 @@ extern "C"
     // shape and a density; its orientation and angular velocity (stored for
     // it) turn by the gyroscopic term and the angular drag. Each substep a
     // body is moved as a particle is, then meets its contacts at its
-    // predicted pose: planes and spheres of its emitter and, with
-    // hostColliders, the instance's (its other kinds not met), outside or
-    // inside, at the shape's surface. Contacts push it out; friction holds
-    // or slows each patch of contacts with one collider (at their center,
-    // PhysX's patch friction); its velocities are its pose's change, then
-    // turned back by restitution. A depth there at a substep's start is
-    // pushed out without becoming velocity, so bodies born into a surface or
-    // stepped by a single tick do not pop. A newborn takes what is left of
+    // predicted pose: planes, spheres and boxes of its emitter and, with
+    // hostColliders, the instance's (its grids not met), outside or inside,
+    // at the shape's surface (a box on a box face to face, edge to edge or
+    // on an edge). Contacts push it out; friction holds or slows each patch
+    // of contacts with one collider or one face of a box kept inside (at
+    // their center, PhysX's patch friction); its velocities are its pose's
+    // change, then turned back by restitution, which contacts struck at once
+    // share. A depth there at a substep's start is pushed out without
+    // becoming velocity, so bodies born into a surface, met by a moving
+    // collider or stepped by a single tick do not pop. A newborn takes what is left of
     // its step's substeps. The collision def says whether it collides and
     // with what, its kills, life loss and events, each for a strike (a
     // contact met faster into the surface than twice gravity's speed over a
