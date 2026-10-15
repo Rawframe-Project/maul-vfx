@@ -240,3 +240,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Self-collision: `selfThickness` keeps a unit emitter's points apart
   (within a unit, those apart at rest), with `selfFriction`, candidates
   found once a step and parted each substep, capped by `selfContacts`.
+- Tubes: `mvfxInstance_ExpandTubes` draws an emitter's ribbons (chains,
+  trails, beams) as tubes of rings turned by rotation-minimizing frames,
+  with optional caps.

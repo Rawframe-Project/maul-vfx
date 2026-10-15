@@ -97,6 +97,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/spawn.c
     src/step.c
     src/tasks.c
+    src/tube.c
     src/value.c
     src/velocity.c
     src/velocity_modules.c
@@ -169,6 +170,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(tear WHITEBOX)
     maul_add_test(steering)
     maul_add_test(trail)
+    maul_add_test(tube)
     maul_add_test(value WHITEBOX)
     maul_add_test(velocity_modules WHITEBOX)
     maul_add_test(tasks WHITEBOX)

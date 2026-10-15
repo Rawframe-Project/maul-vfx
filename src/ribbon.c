@@ -12,6 +12,7 @@
 #include "output.h"
 #include "sort.h"
 #include "spawn.h"
+#include "tube.h"
 
 #include <math.h>
 
@@ -330,6 +331,9 @@ typedef struct Sink
 {
     const mvfxOutputLayout* layout;
     bool strips;
+    // Tubes of so many sides (0 for points or strips), with caps or not.
+    int32_t sides;
+    bool caps;
     unsigned char* records;
     int64_t recordCapacity;
     mvfxRibbon* ribbons;
@@ -352,11 +356,50 @@ typedef struct Totals
     bool full;
 } Totals;
 
+// A tube's records and indices for a chain of points.
+static int64_t TubeRecords(const Sink* sink, int64_t points)
+{
+    return points * (sink->sides + 1) + (sink->caps ? 2 * (sink->sides + 2) : 0);
+}
+
+static int64_t TubeIndices(const Sink* sink, int64_t points)
+{
+    return (points - 1) * sink->sides * 6 + (sink->caps ? 2 * sink->sides * 3 : 0);
+}
+
+// A tube's point g: its ring and, but for the last, the quads to the
+// next; at either end its cap after all the rings.
+static void WriteTubePoint(const Chain* chain, const Sink* sink, const mvfxTubeFrame* frame,
+                           const mvfxTubePoint* point, int64_t g, const Totals* at)
+{
+    const mvfxTubeSink tube = {
+        .source = chain->source, .layout = sink->layout, .sides = sink->sides};
+    int64_t stride = (int64_t)sink->layout->stride;
+    int64_t ring = at->recordsWritten + g * (sink->sides + 1);
+    mvfxWriteTubeRing(&tube, frame, point, sink->records + ring * stride);
+    if (g + 1 < chain->points)
+    {
+        mvfxTubeSideIndices(sink->sides, (uint32_t)ring, (uint32_t)(ring + sink->sides + 1),
+                            sink->indices + at->indicesWritten + g * sink->sides * 6);
+    }
+    bool last = g + 1 == chain->points;
+    if (sink->caps && (g == 0 || last))
+    {
+        int64_t cap =
+            at->recordsWritten + chain->points * (sink->sides + 1) + (last ? sink->sides + 2 : 0);
+        mvfxWriteTubeCap(&tube, frame, point, last, sink->records + cap * stride);
+        mvfxTubeCapIndices(sink->sides, (uint32_t)cap, last,
+                           sink->indices + at->indicesWritten +
+                               (chain->points - 1) * sink->sides * 6 +
+                               (last ? sink->sides * 3 : 0));
+    }
+}
+
 // A point's record, or in a strip its two vertices across its width (0
 // on the side's back, 1 on it) and from all but the last the indices of
-// the two triangles to the next.
+// the two triangles to the next; or a tube's ring.
 static void WritePoint(const Chain* chain, const Sink* sink, const Walk* walk, const double here[3],
-                       mvfxRibbonPoint* point, int64_t g, const Totals* at)
+                       mvfxRibbonPoint* point, int64_t g, const Totals* at, mvfxTubeFrame* frame)
 {
     const mvfxRecordSource* source = chain->source;
     int32_t first = ParticleAt(chain, walk->s);
@@ -375,6 +418,18 @@ static void WritePoint(const Chain* chain, const Sink* sink, const Walk* walk, c
     mvfxSizeOf(source->instance, source->emitter, second, b);
     double half =
         0.5 * (double)((a[0] + (b[0] - a[0]) * fraction) / source->map.sigma * point->width);
+    if (sink->sides > 0)
+    {
+        mvfxAdvanceTubeFrame(frame, here, point->tangent);
+        const mvfxTubePoint tube = {.first = first,
+                                    .second = second,
+                                    .fraction = fraction,
+                                    .here = here,
+                                    .half = half,
+                                    .values = point};
+        WriteTubePoint(chain, sink, frame, &tube, g, at);
+        return;
+    }
     int64_t base = at->recordsWritten + 2 * g;
     for (int32_t v = 0; v < 2; ++v)
     {
@@ -415,6 +470,7 @@ static void WriteChain(const Chain* chain, const Sink* sink, const Totals* at)
         before[k] = here[k];
     }
     double walked = 0.0;
+    mvfxTubeFrame frame = {.started = false};
     for (int64_t g = 0; g < chain->points; ++g)
     {
         walked += Distance(before, here);
@@ -432,7 +488,7 @@ static void WriteChain(const Chain* chain, const Sink* sink, const Totals* at)
         {
             mvfxGradientTableAt(compiled->ribbonColor, t, point.color);
         }
-        WritePoint(chain, sink, &walk, here, &point, g, at);
+        WritePoint(chain, sink, &walk, here, &point, g, at, &frame);
         walk = ahead;
         Advance(chain, &ahead);
         for (int32_t k = 0; k < 3; ++k)
@@ -450,8 +506,12 @@ static void WriteChain(const Chain* chain, const Sink* sink, const Totals* at)
 // Counts a chain and writes it where it fits whole after those written.
 static void TakeChain(const Chain* chain, uint32_t id, const Sink* sink, Totals* totals)
 {
-    int64_t records = sink->strips ? 2 * chain->points : chain->points;
-    int64_t indices = sink->strips ? 6 * (chain->points - 1) : 0;
+    int64_t records = sink->sides > 0 ? TubeRecords(sink, chain->points)
+                      : sink->strips  ? 2 * chain->points
+                                      : chain->points;
+    int64_t indices = sink->sides > 0 ? TubeIndices(sink, chain->points)
+                      : sink->strips  ? 6 * (chain->points - 1)
+                                      : 0;
     bool fits = !totals->full && totals->recordsWritten + records <= sink->recordCapacity &&
                 totals->indicesWritten + indices <= sink->indexCapacity &&
                 (sink->strips || totals->ribbonsWritten < sink->ribbonCapacity);
@@ -664,14 +724,17 @@ static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int
     return mvfx_success;
 }
 
-// The ribbons or plexus links of an emitter as strips.
+// The ribbons or plexus links of an emitter as strips, or as tubes of
+// tube's sides (0 for strips).
 static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                               mvfxLayoutId layout, const mvfxView* view,
                               const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
-                              int64_t* indexCountOut, bool plexus)
+                              int64_t* indexCountOut, bool plexus, const mvfxTubeDef* tube)
 {
+    bool tubed = tube == nullptr || tube->sides == 0 ||
+                 (tube->sides >= 3 && tube->sides <= MVFX_MAX_TUBE_SIDES);
     if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
-        indexCountOut == nullptr)
+        indexCountOut == nullptr || !tubed)
     {
         if (context != nullptr)
         {
@@ -695,6 +758,8 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
     }
     const Sink sink = {.layout = format,
                        .strips = true,
+                       .sides = tube != nullptr ? tube->sides : 0,
+                       .caps = tube != nullptr && tube->caps,
                        .records = buffers->vertices,
                        .recordCapacity = buffers->vertexCapacity,
                        .indices = buffers->indices,
@@ -722,7 +787,24 @@ mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId insta
                                       int64_t* indexCountOut)
 {
     return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
-                       indexCountOut, false);
+                       indexCountOut, false, nullptr);
+}
+
+mvfxResult mvfxInstance_ExpandTubes(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    mvfxLayoutId layout, const mvfxView* view,
+                                    const mvfxTubeDef* tube, const mvfxExpandBuffers* buffers,
+                                    int64_t* vertexCountOut, int64_t* indexCountOut)
+{
+    if (tube == nullptr || tube->sides == 0)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
+                       indexCountOut, false, tube);
 }
 
 mvfxResult mvfxInstance_WritePlexus(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
@@ -740,5 +822,5 @@ mvfxResult mvfxInstance_ExpandPlexus(mvfxContext* context, mvfxInstanceId instan
                                      int64_t* indexCountOut)
 {
     return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
-                       indexCountOut, true);
+                       indexCountOut, true, nullptr);
 }

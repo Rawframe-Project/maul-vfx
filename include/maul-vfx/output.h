@@ -410,6 +410,54 @@ extern "C"
         const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
         int64_t* indexCountOut);
 
+// The most sides of a tube.
+#define MVFX_MAX_TUBE_SIDES 64
+
+    // How ribbons are drawn as tubes: the sides of each ring (3 to
+    // MVFX_MAX_TUBE_SIDES), and whether each tube's ends are capped.
+    typedef struct mvfxTubeDef
+    {
+        int32_t sides;
+        bool caps;
+    } mvfxTubeDef;
+
+    /// Expands an emitter's ribbons for a view into tubes, for chains and
+    /// trails drawn round: each point (as mvfxInstance_WriteRibbons makes
+    /// them, tessellated) a ring of sides + 1 vertices at half its width
+    /// about it (the last at the first's place, so the texture's seam
+    /// closes), turned along the ribbon by rotation-minimizing frames (Wang
+    /// et al. 2008) from a normal across its first tangent, the face normal
+    /// outward, the side around, the corner the coordinate along and the
+    /// share around; each segment sides quads, six indices each,
+    /// counterclockwise seen from outside. With caps, after a ribbon's
+    /// rings, its start and end each a center and a ring (sides + 2
+    /// vertices facing back along and along the tangent, corners a disc's)
+    /// and sides triangles. Buffers too small take the first whole ribbons
+    /// that fit both; the counts are always all of them, 0 for an emitter
+    /// not drawn as ribbons.
+    ///
+    /// @param context         The context that owns the instance and the
+    ///                        layout.
+    /// @param instance        The instance.
+    /// @param emitter         The emitter's index in the effect's def.
+    /// @param layout          The vertices' layout.
+    /// @param view            The view.
+    /// @param tube            The tubes' sides and caps.
+    /// @param buffers         The buffers; scratch as for
+    ///                        mvfxInstance_WriteRibbons.
+    /// @param vertexCountOut  Receives the vertices there are.
+    /// @param indexCountOut   Receives the indices there are.
+    /// @return As mvfxInstance_ExpandRibbons; `mvfx_errorInvalid` too for a
+    ///         NULL tube or its sides out of range.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once, each with
+    /// its own scratch.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ExpandTubes(
+        mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+        const mvfxView* view, const mvfxTubeDef* tube, const mvfxExpandBuffers* buffers,
+        int64_t* vertexCountOut, int64_t* indexCountOut);
+
     /// Writes an emitter's plexus links for a view, as two-point ribbons:
     /// each link the step found (the order it found them) is a ribbon of
     /// its two particles' records, owner first, its ribbon fields filled as

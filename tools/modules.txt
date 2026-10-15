@@ -1,6 +1,7 @@
 expand: appearance context direction elementary instance_api layout_api output
 beam: direction elementary instance noise
-ribbon: appearance context direction gradient instance instance_api layout_api output sort spawn
+tube: elementary output
+ribbon: appearance context direction gradient instance instance_api layout_api output sort spawn tube
 sort:
 bounds: appearance direction instance ribbon space
 view: bounds context instance instance_api

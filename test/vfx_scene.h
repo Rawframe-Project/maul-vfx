@@ -1044,6 +1044,35 @@ static inline uint64_t HashQuads(mvfxContext* context, mvfxInstanceId id, int32_
 }
 
 // Hashes an emitter's ribbons expanded into strips for a view.
+// Ribbons as capped tubes of three sides.
+static inline uint64_t HashTubes(mvfxContext* context, mvfxInstanceId id, int32_t emitter,
+                                 mvfxLayoutId layout, const mvfxView* view, uint32_t* scratch,
+                                 uint64_t hash)
+{
+    enum
+    {
+        VERTICES = 4 * SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES + 10 * SCENE_RECORDS,
+        INDICES = 18 * SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES + 18 * SCENE_RECORDS
+    };
+    static unsigned char vertices[VERTICES * SCENE_RECORD_BYTES];
+    static uint32_t indices[INDICES];
+    mvfxExpandBuffers buffers = {.vertices = vertices,
+                                 .vertexCapacity = VERTICES,
+                                 .indices = indices,
+                                 .indexCapacity = INDICES,
+                                 .scratch = scratch,
+                                 .scratchBytes = SCENE_RECORDS * 16};
+    static const mvfxTubeDef tube = {.sides = 3, .caps = true};
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    CHECK(mvfxInstance_ExpandTubes(context, id, emitter, layout, view, &tube, &buffers,
+                                   &vertexCount, &indexCount) == mvfx_success &&
+              vertexCount <= VERTICES && indexCount <= INDICES,
+          "scene tubes");
+    hash = mvfxHash64(hash, vertices, (int32_t)vertexCount * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, (int32_t)(indexCount * (int64_t)sizeof indices[0]));
+}
+
 static inline uint64_t HashStrips(mvfxContext* context, mvfxInstanceId id, int32_t emitter,
                                   mvfxLayoutId layout, const mvfxView* view, uint32_t* scratch,
                                   uint64_t hash)
@@ -1136,6 +1165,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
         hash = HashRibbons(context, id, e, layout, &view, scratch, hash);
         hash = HashQuads(context, id, e, layout, &view, scratch, hash);
         hash = HashStrips(context, id, e, layout, &view, scratch, hash);
+        hash = HashTubes(context, id, e, layout, &view, scratch, hash);
         hash = HashPlexus(context, id, e, layout, &view, hash);
         static mvfxLight lights[SCENE_RECORDS];
         CHECK(mvfxInstance_WriteLights(context, id, e, &view, lights, SCENE_RECORDS, &count) ==
