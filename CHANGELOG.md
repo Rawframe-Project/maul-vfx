@@ -280,6 +280,21 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   overlaps by EPA, touching faces clipped into contacts.
 - `mvfxMesh_HullVertexCount` counts a mesh's hull's vertices past the
   64 a rigid hull takes, for an editor to say how much to simplify.
+- Rigid pairs are found by a grid of levels (each body in cells at
+  least twice its reach), so one large body among many small ones no
+  longer makes every cell large, and they are met in body order, so
+  results do not depend on the grid's layout or the emitter's capacity.
+- GJK and EPA stop at `MVFX_CONVEX_STEPS`; a capped call answers apart
+  with an upper bound on the distance, or with a lower bound on the
+  depth.
+- Box and hull edges meet grids and the depth image along their length,
+  so an edge laid across a crest is held there instead of sinking until
+  a corner meets.
+- Changed: friction tips a body where its center passes over its
+  support's edge (a 0.4 by 0.6 box on a slope at 33.7 degrees; it
+  tipped near 41.5), the switch blended across 10% of the balance;
+  within a tenth of the limit a held box can creep a few millimeters a
+  second until it sleeps. The golden state hashes change with it.
 - Rigid particles sleep (`mvfxRigidDef.sleepSpeed`, `sleepTime`; 0.05
   and 0.5 in `mvfxDefaultEmitterDef`): bodies joined by contacts sleep
   together once all have been still, keep their pose and meet nothing
