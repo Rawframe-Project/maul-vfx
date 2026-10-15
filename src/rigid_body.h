@@ -11,12 +11,14 @@
 #include "rigid_shape.h"
 
 // A body's flags in its emitter's rigidFlags: its collision event written
-// this step; in contact this substep; struck this substep.
+// this step; in contact this substep; struck this substep; woken by a
+// body meeting it this substep.
 enum
 {
     MVFX_RIGID_EVENTED = 1,
     MVFX_RIGID_TOUCHED = 2,
     MVFX_RIGID_STRUCK = 4,
+    MVFX_RIGID_WOKEN = 8,
 };
 
 // A body: its pose and velocities, the pose it started the substep at,

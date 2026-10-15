@@ -341,7 +341,7 @@ static void Prepare(const mvfxRigidSolve* s, int32_t i)
         s->mass[(size_t)(1 + k) * s->stride + (size_t)i] = mass.inverseInertia[k];
     }
     s->mass[MVFX_RIGID_REACH * s->stride + (size_t)i] = mvfxBodyReach(&shape);
-    s->flags[i] &= (uint8_t)~(MVFX_RIGID_TOUCHED | MVFX_RIGID_STRUCK);
+    s->flags[i] &= (uint8_t)~(MVFX_RIGID_TOUCHED | MVFX_RIGID_STRUCK | MVFX_RIGID_WOKEN);
     mvfxBody b = mvfxLoadBody(s, i);
     const mvfxCollision* collision = &instance->effect->emitters[s->emitter].collision;
     if (state->hasDepth && collision->killOutsideView && !mvfxDepthSees(&state->depth, b.x))
@@ -446,6 +446,18 @@ static void Meet(const mvfxRigidSolve* s, int32_t first, int32_t end, bool pairs
     }
     mvfxEmitterState* state = &s->instance->emitters[s->emitter];
     state->rigidPairCount = 0;
+    // Bodies woken by a body meeting them are prepared again, with their
+    // mass and their contacts with the world.
+    if (pairs && mvfxWakeTouching(s, end))
+    {
+        for (int32_t i = first; i < end; ++i)
+        {
+            if ((s->flags[i] & MVFX_RIGID_WOKEN) != 0)
+            {
+                Prepare(s, i);
+            }
+        }
+    }
     if (pairs)
     {
         mvfxFindBodyPairs(s, end);

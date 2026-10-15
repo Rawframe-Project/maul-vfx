@@ -5,13 +5,14 @@
 // bit for bit and still dies at the end of its life; a sleeping stack
 // stays asleep while a box falls past it and wakes as one when it lands,
 // then sleeps again stacked; gravity turned by the instance wakes a box,
-// which slides; moving ends a still time; a sleeper holds as ground
-// under a heavier box landing on it; a box spinning in place stays
-// awake; a host table set again unchanged leaves a box asleep, moved
-// wakes it to fall; changed colliders wake only the bodies near them; a
-// heightfield's values changed wake a box, and one taken away and
-// destroyed is never read; a depth image set again wakes a box; the host wakes
-// bodies within a sphere; no sleep speed, no sleeping; the checks.
+// which slides; moving ends a still time; a heavy box landing on a
+// sleeper and a box rebounding off a sleeping stack as on awake ones; a
+// box spinning in place stays awake; a host table set again unchanged
+// leaves a box asleep, moved wakes it to fall; changed colliders wake
+// only the bodies near them; a heightfield's values changed wake a box,
+// and one taken away and destroyed is never read; a depth image set
+// again wakes a box; the host wakes bodies within a sphere; no sleep
+// speed, no sleeping; the checks.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -242,35 +243,61 @@ static void TestStillResets(void)
     mvfxDestroyContext(s_scene.context);
 }
 
-static void TestSleeperHolds(void)
+// A body of size `big` dropped from 4 m with restitution `bounce` onto
+// the boxes at `places`, which sleep first or never: the lowest the
+// first box goes, and the dropped body's fastest rise once it lands.
+static void Landing(int32_t count, const double* places, float big, float bounce, bool sleeps,
+                    float* lowest, float* rise)
 {
-    // A box twice the size (eight times the mass) dropped from 3 m onto a
-    // sleeping box: the sleeper, meeting no ground while asleep, holds as
-    // ground for the landing step instead of being driven into the floor.
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
     boxes.rigid.bodyContacts = 8;
+    boxes.rigid.restitution = bounce;
+    boxes.rigid.sleepSpeed = sleeps ? boxes.rigid.sleepSpeed : 0.0f;
     Play(&boxes);
-    static const double low[3] = {0, 0.5, 0};
-    static const float unit[3] = {1, 1, 1};
-    mvfxSpawnRequest first = {.count = 1, .positions = low, .sizes = unit};
-    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &first) == mvfx_success,
-          "first");
-    Steps(60);
-    bool slept = Stats().asleep == 1;
+    Spawn(places, count);
+    Steps(120);
+    CHECK(Stats().asleep == (sleeps ? count : 0), "asleep as asked");
     static const double high[3] = {0, 4.0, 0};
-    static const float big[3] = {2, 2, 2};
-    mvfxSpawnRequest second = {.count = 1, .positions = high, .sizes = big};
-    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &second) == mvfx_success,
-          "second");
-    float lowest = INFINITY;
+    const float sizes[3] = {big, big, big};
+    mvfxSpawnRequest dropped = {.count = 1, .positions = high, .sizes = sizes};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &dropped) == mvfx_success,
+          "dropped");
+    *lowest = INFINITY;
+    *rise = 0.0f;
     for (int32_t i = 0; i < 90; ++i)
     {
         Steps(1);
-        lowest = fminf(lowest, At(0, mvfx_attributePositionY));
+        *lowest = fminf(*lowest, At(0, mvfx_attributePositionY));
+        *rise = fmaxf(*rise, At(count, mvfx_attributeVelocityY));
     }
-    CHECK(slept && lowest >= 0.499f, "a sleeper holds a landing");
     mvfxDestroyContext(s_scene.context);
+}
+
+static void TestSleeperMeets(void)
+{
+    // A box twice the size (eight times the mass) dropped onto a box, and
+    // a box at restitution 0.5 dropped onto a stack of two: on sleeping
+    // boxes as on awake ones. A sleeper is woken, with its whole pile,
+    // before the step its toucher meets it, so it is never met as
+    // immovable ground: woken after, the dropped box rebounded off the
+    // stack at 2.16 m/s where off an awake one at 1.49.
+    static const double low[3] = {0, 0.5, 0};
+    static const double stack[6] = {0, 0.5, 0, 0, 1.501, 0};
+    float lowest[2];
+    float rise[2];
+    for (int32_t sleeps = 0; sleeps < 2; ++sleeps)
+    {
+        Landing(1, low, 2.0f, 0.0f, sleeps != 0, &lowest[sleeps], &rise[sleeps]);
+    }
+    CHECK(fabsf(lowest[1] - lowest[0]) <= 1e-4f && lowest[1] >= 0.498f,
+          "a heavy landing on a sleeper as on an awake box");
+    for (int32_t sleeps = 0; sleeps < 2; ++sleeps)
+    {
+        Landing(2, stack, 1.0f, 0.5f, sleeps != 0, &lowest[sleeps], &rise[sleeps]);
+    }
+    CHECK(fabsf(rise[1] - rise[0]) <= 0.01f && rise[0] > 1.0f,
+          "a rebound off a sleeping stack as off an awake one");
 }
 
 // Far depth everywhere, from a camera at (0, 0, 10) looking down -Z.
@@ -551,7 +578,7 @@ int main(void)
     TestPileWakes();
     TestForcesWake();
     TestStillResets();
-    TestSleeperHolds();
+    TestSleeperMeets();
     TestSpinning();
     TestWorldWakes();
     TestWorldNear();

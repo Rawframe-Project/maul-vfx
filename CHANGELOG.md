@@ -303,3 +303,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   changes or the depth image is set again, or by
   `mvfxInstance_WakeBodies`; `mvfxEmitterStats.asleep`
   counts them.
+- Changed: a body coming within reach of a sleeping one wakes it, and
+  the sleepers it touches in turn, before that step's solve, so a
+  landing meets a sleeping pile as it would an awake one, not as
+  immovable ground.

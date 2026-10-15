@@ -165,11 +165,19 @@ typedef struct Levels
     uint32_t present;
 } Levels;
 
+// Whether a pair is wanted: not two sleeping bodies, which stay as they
+// lie; waking, only an awake body with a sleeping one.
+static bool Wanted(const mvfxRigidSolve* s, int32_t a, int32_t b, bool waking)
+{
+    bool asleep = mvfxBodyAsleep(s, a);
+    return waking ? asleep != mvfxBodyAsleep(s, b) : !asleep || !mvfxBodyAsleep(s, b);
+}
+
 // Body a's candidates at one level of the grid: its bodies within reach
 // whose pair with a is a's to find (those of a's level after it, all of
-// a higher one), appended from at.
+// a higher one) and wanted, appended from at.
 static int32_t CandidatesAt(const mvfxRigidSolve* s, int32_t a, int32_t level, const Levels* levels,
-                            int32_t at)
+                            bool waking, int32_t at)
 {
     mvfxEmitterState* state = &s->instance->emitters[s->emitter];
     const mvfxNeighborGrid* grid = &state->rigidGrid;
@@ -205,10 +213,9 @@ static int32_t CandidatesAt(const mvfxRigidSolve* s, int32_t a, int32_t level, c
                 square += d * d;
             }
             // Of this level (keys of others may share the slot), a's to
-            // find, and not two sleeping bodies, which stay as they lie.
+            // find.
             bool mine = LevelOf(ReachOf(s, b), levels->base) == level && (level > own || b > a);
-            bool resting = mvfxBodyAsleep(s, a) && mvfxBodyAsleep(s, b);
-            if (mine && !resting && square < reach * reach)
+            if (mine && Wanted(s, a, b, waking) && square < reach * reach)
             {
                 state->rigidCandidates[at++] = b;
             }
@@ -217,20 +224,27 @@ static int32_t CandidatesAt(const mvfxRigidSolve* s, int32_t a, int32_t level, c
     return at;
 }
 
+// Body a's candidates at every level from its own.
+static int32_t CandidatesOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels, bool waking)
+{
+    int32_t count = 0;
+    for (int32_t level = LevelOf(ReachOf(s, a), levels->base); level < MOST_LEVELS; ++level)
+    {
+        if ((levels->present >> level & 1u) != 0u)
+        {
+            count = CandidatesAt(s, a, level, levels, waking, count);
+        }
+    }
+    return count;
+}
+
 // Body a's pairs to find, met in the order of the other body's index
 // (whatever the grid's layout), each as its lower index against its
 // higher.
 static void PairsOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels)
 {
     mvfxEmitterState* state = &s->instance->emitters[s->emitter];
-    int32_t count = 0;
-    for (int32_t level = LevelOf(ReachOf(s, a), levels->base); level < MOST_LEVELS; ++level)
-    {
-        if ((levels->present >> level & 1u) != 0u)
-        {
-            count = CandidatesAt(s, a, level, levels, count);
-        }
-    }
+    int32_t count = CandidatesOf(s, a, levels, false);
     SortIndexes(state->rigidCandidates, count);
     for (int32_t c = 0; c < count; ++c)
     {
@@ -248,16 +262,12 @@ static void PairsOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels)
     }
 }
 
-void mvfxFindBodyPairs(const mvfxRigidSolve* s, int32_t count)
+// The pair grid of the first count bodies at their poses: a hierarchical
+// grid (Mirtich 1996), each body in the cells of its reach's level, so
+// one large body does not make every cell large.
+static Levels BuildLevels(const mvfxRigidSolve* s, int32_t count)
 {
     mvfxEmitterState* state = &s->instance->emitters[s->emitter];
-    state->rigidPairCount = 0;
-    if (s->rigid->bodyContacts == 0 || count < 2)
-    {
-        return;
-    }
-    // A hierarchical grid (Mirtich 1996): each body in the cells of its
-    // reach's level, so one large body does not make every cell large.
     Levels levels = {.base = INFINITY};
     float widest = 0.0f;
     for (int32_t i = 0; i < count; ++i)
@@ -280,10 +290,64 @@ void mvfxFindBodyPairs(const mvfxRigidSolve* s, int32_t count)
         levels.present |= 1u << level;
     }
     mvfxBuildKeyedGrid(grid, count);
+    return levels;
+}
+
+void mvfxFindBodyPairs(const mvfxRigidSolve* s, int32_t count)
+{
+    mvfxEmitterState* state = &s->instance->emitters[s->emitter];
+    state->rigidPairCount = 0;
+    if (s->rigid->bodyContacts == 0 || count < 2)
+    {
+        return;
+    }
+    Levels levels = BuildLevels(s, count);
     for (int32_t a = 0; a < count; ++a)
     {
         PairsOf(s, a, &levels);
     }
+}
+
+bool mvfxWakeTouching(const mvfxRigidSolve* s, int32_t count)
+{
+    int32_t asleep = 0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        asleep += mvfxBodyAsleep(s, i) ? 1 : 0;
+    }
+    if (s->rigid->bodyContacts == 0 || asleep == 0 || asleep == count)
+    {
+        return false;
+    }
+    mvfxEmitterState* state = &s->instance->emitters[s->emitter];
+    Levels levels = BuildLevels(s, count);
+    // Sweeps until one wakes none: a body woken in a sweep wakes the
+    // sleepers it meets later in it and in the next, so a whole pile
+    // wakes whatever its bodies' order.
+    bool woke = false;
+    for (bool sweep = true; sweep;)
+    {
+        sweep = false;
+        for (int32_t a = 0; a < count; ++a)
+        {
+            int32_t found = CandidatesOf(s, a, &levels, true);
+            for (int32_t c = 0; c < found; ++c)
+            {
+                int32_t b = state->rigidCandidates[c];
+                int32_t sleeper = mvfxBodyAsleep(s, a) ? a : b;
+                // A sleeper met by a body woken earlier in this sweep is
+                // no longer one.
+                if (mvfxBodyAsleep(s, sleeper))
+                {
+                    s->sleep[sleeper] = 0.0f;
+                    s->flags[sleeper] |= MVFX_RIGID_WOKEN;
+                    sweep = true;
+                }
+            }
+        }
+        woke = woke || sweep;
+    }
+    return woke;
 }
 
 // A pair's patch of contacts from first to end: their centers on each
