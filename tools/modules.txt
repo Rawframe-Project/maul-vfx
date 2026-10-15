@@ -48,7 +48,8 @@ contact: appearance instance neighbor
 plexus: instance neighbor
 attach: direction force instance space
 aero: force instance
-unit: aero attach elementary event instance integrate
+self: attach instance neighbor
+unit: aero attach elementary event instance integrate self
 emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate neighbor plexus scene_query spawn steer unit
 context: allocator effect grid instance layout mesh slots tasks
 effect_api: context effect effect_parts float_mode grid grid_api mesh mesh_api slots

@@ -521,6 +521,22 @@ extern "C"
         // triangle takes at most a sixth of its relative speed a substep.
         float normalDrag;
         float tangentDrag;
+        // Self-collision (selfThickness 0 for none, else up to
+        // MVFX_MAX_EXTENT, in the emitter's space, scaling with the instance
+        // as the spacing does): the emitter's units' points are kept
+        // selfThickness apart, those of different units always, those of one
+        // unit where their rest distance is at least the thickness (so
+        // neighbors are left to their constraints). A point's candidates are
+        // found once a step, those within the thickness plus twice the
+        // farthest a point goes in the step at its speed and gravity, at most
+        // selfContacts of them (1 to MVFX_MAX_NEIGHBORS; a point with more is
+        // counted, mvfxEmitterStats.selfContactsCapped); each pair closer
+        // than the thickness is parted in each substep after the
+        // constraints, and its sliding over the substep slowed by up to
+        // selfFriction (0 to 1) times its overlap.
+        float selfThickness;
+        float selfFriction;
+        int32_t selfContacts;
         // How far a stretch constraint (between neighbors across or down) may
         // stretch before it tears for good: it tears when, after a substep's
         // projections, it is longer than its rest times 1 + tearStrain. A

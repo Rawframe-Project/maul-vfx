@@ -656,6 +656,9 @@ static inline void BuildScene(mvfxContext* context)
                                           .bendCompliance = 1e-2f,
                                           .damping = 1.5f,
                                           .pinFirst = true,
+                                          .selfThickness = 0.5f,
+                                          .selfFriction = 0.3f,
+                                          .selfContacts = 6,
                                           .attach = mvfx_attachInstance};
     chainEmitters[1].space = mvfx_spaceLocal;
     chainEmitters[1].rate = 3.0f;

@@ -43,7 +43,26 @@ typedef struct EmitterAt
     size_t unitPrevious;
     size_t attachFrames;
     size_t attachTargets;
+    size_t selfTable;
+    size_t selfKeys;
+    size_t selfIndex;
+    uint32_t selfMask;
+    size_t selfStart;
+    size_t selfPairs;
+    size_t selfCounts;
 } EmitterAt;
+
+// The entries of a grid's table at a capacity: a power of two at least
+// twice it.
+static uint32_t GridTableSize(int32_t capacity)
+{
+    uint32_t size = 2;
+    while (size < 2u * (uint32_t)capacity)
+    {
+        size *= 2u;
+    }
+    return size;
+}
 
 // Adds an emitter of units' room: the places the integrator predicts, and
 // for units held to frames the host's frames and each unit's frame at the
@@ -61,18 +80,18 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     bool framed = kind == mvfx_attachHost || kind == mvfx_attachParticles;
     size_t units = framed ? (size_t)(capacities[e] / compiled->unitPoints) : 0;
     at->attachTargets = mvfxLayoutAdd(layout, 7u * units, sizeof(float), alignof(float));
-}
-
-// The entries of a grid's table at a capacity: a power of two at least
-// twice it.
-static uint32_t GridTableSize(int32_t capacity)
-{
-    uint32_t size = 2;
-    while (size < 2u * (uint32_t)capacity)
-    {
-        size *= 2u;
-    }
-    return size;
+    bool self = compiled->unitPoints > 1 && compiled->unit.selfThickness > 0.0f;
+    size_t capacity = self ? (size_t)capacities[e] : 0;
+    uint32_t size = self ? GridTableSize(capacities[e]) : 0u;
+    at->selfMask = self ? size - 1u : 0u;
+    at->selfTable =
+        mvfxLayoutAdd(layout, self ? (size_t)size + 1u : 0u, sizeof(int32_t), alignof(int32_t));
+    at->selfKeys = mvfxLayoutAdd(layout, capacity, sizeof(uint32_t), alignof(uint32_t));
+    at->selfIndex = mvfxLayoutAdd(layout, capacity, sizeof(int32_t), alignof(int32_t));
+    at->selfStart = mvfxLayoutAdd(layout, 3u * capacity, sizeof(float), alignof(float));
+    size_t most = self ? (size_t)compiled->unit.selfContacts : 0u;
+    at->selfPairs = mvfxLayoutAdd(layout, most * capacity, sizeof(int32_t), alignof(int32_t));
+    at->selfCounts = mvfxLayoutAdd(layout, capacity, sizeof(int32_t), alignof(int32_t));
 }
 
 // Adds an emitter's neighbor grid to the block, for one queried.
@@ -245,6 +264,16 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].unitPrevious = (float*)(block + at[e].unitPrevious);
         instance->emitters[e].attachFrames = (mvfxAttachFrame*)(block + at[e].attachFrames);
         instance->emitters[e].attachTargets = (float*)(block + at[e].attachTargets);
+        instance->emitters[e].selfGrid = (mvfxNeighborGrid){
+            .table = (int32_t*)(block + at[e].selfTable),
+            .keys = (uint32_t*)(block + at[e].selfKeys),
+            .index = (int32_t*)(block + at[e].selfIndex),
+            .capacity = capacities[e],
+            .mask = at[e].selfMask,
+        };
+        instance->emitters[e].selfStart = (float*)(block + at[e].selfStart);
+        instance->emitters[e].selfPairs = (int32_t*)(block + at[e].selfPairs);
+        instance->emitters[e].selfCounts = (int32_t*)(block + at[e].selfCounts);
     }
 }
 
@@ -353,6 +382,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->plexus.linkCount = 0;
         state->linksDropped = 0;
         state->torn = 0;
+        state->selfContactsCapped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;
         state->beamStrike = instance->effect->emitters[e].delay;
@@ -411,6 +441,8 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->contactsCapped, (int32_t)sizeof state->contactsCapped);
         hash = mvfxHash64(hash, &state->linksDropped, (int32_t)sizeof state->linksDropped);
         hash = mvfxHash64(hash, &state->torn, (int32_t)sizeof state->torn);
+        hash =
+            mvfxHash64(hash, &state->selfContactsCapped, (int32_t)sizeof state->selfContactsCapped);
         hash = mvfxHash64(hash, &state->plexus.linkCount, (int32_t)sizeof state->plexus.linkCount);
         if (state->plexus.linkCount > 0)
         {

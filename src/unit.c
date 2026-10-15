@@ -28,6 +28,7 @@
 #include "elementary.h"
 #include "event.h"
 #include "integrate.h"
+#include "self.h"
 
 #include <math.h>
 #include <string.h>
@@ -54,10 +55,7 @@ typedef struct Points
 // 1.
 static float WeightOf(const Points* p, int32_t i)
 {
-    int32_t point = i % p->perUnit;
-    bool held = p->pinned && mvfxIsPinnedPoint(p->emitter, point) &&
-                (p->flags == nullptr || (p->flags[i - point] & MVFX_ATTACH_LET_GO) == 0);
-    return held ? 0.0f : 1.0f;
+    return mvfxPointWeight(p->emitter, p->flags, p->pinned, i);
 }
 
 // Projects the distance between points a and b toward rest.
@@ -373,6 +371,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
     int64_t ticks = instance->clock - instance->stepStart;
     int32_t substeps = unit->substeps;
     mvfxBeginAttachments(instance, emitter);
+    mvfxFindSelfContacts(instance, emitter, (double)ticks / (double)MVFX_TICKS_PER_SECOND);
     for (int32_t s = 0; s < substeps; ++s)
     {
         int64_t from = instance->stepStart + ticks * s / substeps;
@@ -383,6 +382,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
         }
         double seconds = (double)(to - from) / (double)MVFX_TICKS_PER_SECOND;
         float h = (float)seconds;
+        mvfxSaveSelfStart(instance, emitter);
         mvfxBlowSheets(instance, emitter, from, h, state->unitPrevious);
         mvfxIntegrateRange(instance, emitter, 0, count, from, seconds);
         // The places the integrator predicts, before the constraints.
@@ -396,6 +396,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
         Family families[6];
         FamiliesOf(compiled, scale, 1.0f / (h * h), families);
         SolveAll(&p, families, PASS_PROJECT, 0.0f);
+        mvfxSolveSelfContacts(instance, emitter);
         Tear(instance, emitter, &p, families, to);
         // The integrator's velocity (exact under gravity and drag) and the
         // constraints' correction over the substep; a pinned point's its

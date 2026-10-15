@@ -607,6 +607,9 @@ extern "C"
         uint64_t linksDropped;
         // Units' stretch constraints torn.
         uint64_t torn;
+        // Points of units with more self-collision candidates than
+        // selfContacts, once a step each.
+        uint64_t selfContactsCapped;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

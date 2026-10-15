@@ -166,6 +166,16 @@ typedef struct mvfxEmitterState
     float* attachTargets;
     // Its units' stretch constraints torn.
     uint64_t torn;
+    // Its units' self-collision room: a grid of the places at the step's
+    // start (keeping no values), the places at a substep's start (three
+    // arrays of the capacity), each point's candidates (selfContacts each,
+    // of later points) and their count; and the points whose candidates
+    // were capped.
+    mvfxNeighborGrid selfGrid;
+    float* selfStart;
+    int32_t* selfPairs;
+    int32_t* selfCounts;
+    uint64_t selfContactsCapped;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

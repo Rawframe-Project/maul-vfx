@@ -237,3 +237,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Sheets' aerodynamics: `normalDrag` and `tangentDrag` push each whole
   triangle against the air the emitter's winds and velocity fields move,
   so tilted sheets take lift.
+- Self-collision: `selfThickness` keeps a unit emitter's points apart
+  (within a unit, those apart at rest), with `selfFriction`, candidates
+  found once a step and parted each substep, capped by `selfContacts`.

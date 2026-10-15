@@ -19,6 +19,18 @@
 #define MVFX_ATTACH_HELD   4u
 #define MVFX_ATTACH_LET_GO 8u
 
+// A unit's point's inverse mass, i its particle: 0 for a pinned point
+// (pinned: the emitter stores anchors) of a unit not let go (flags NULL
+// for an emitter whose units are not held to frames), else 1.
+static inline float mvfxPointWeight(const mvfxCompiledEmitter* emitter, const uint32_t* flags,
+                                    bool pinned, int32_t i)
+{
+    int32_t point = i % emitter->unitPoints;
+    bool held = pinned && mvfxIsPinnedPoint(emitter, point) &&
+                (flags == nullptr || (flags[i - point] & MVFX_ATTACH_LET_GO) == 0);
+    return held ? 0.0f : 1.0f;
+}
+
 // Where a substep's tick finds the frames: the instance's space's map into
 // the particles' for mvfx_attachInstance; else how far each unit's frame
 // has gone from the step's start toward its end.

@@ -133,7 +133,11 @@ static bool IsUnitValid(const mvfxEmitterDef* def)
                  IsWithin(unit->stretchCompliance, 0.0f, MVFX_MAX_EXTENT) &&
                  IsWithin(unit->bendCompliance, 0.0f, MVFX_MAX_EXTENT) &&
                  IsWithin(unit->damping, 0.0f, MVFX_MAX_DRAG) &&
-                 IsWithin(unit->tearStrain, 0.0f, MVFX_MAX_EXTENT);
+                 IsWithin(unit->tearStrain, 0.0f, MVFX_MAX_EXTENT) &&
+                 IsWithin(unit->selfThickness, 0.0f, MVFX_MAX_EXTENT) &&
+                 (unit->selfThickness == 0.0f ||
+                  (IsWithin(unit->selfFriction, 0.0f, 1.0f) && unit->selfContacts >= 1 &&
+                   unit->selfContacts <= MVFX_MAX_NEIGHBORS));
     bool sheet = unit->kind == mvfx_unitSheet;
     int32_t points = sheet ? unit->points * unit->rows : unit->points;
     int32_t units = shape ? def->capacity / points : 0;

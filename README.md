@@ -54,8 +54,8 @@ context's particle budget, off-screen policies and the neighbor grid
 with its neighbor attributes, flocking, steering, particle contacts,
 forces between particles, plexus links, and chains and cloth sheets by
 XPBD with sheets expanded into meshes and units held to the instance,
-the host's frames or other particles, tearing and sheets' aerodynamics
-are in place, and sheets' self-collision comes next.
+the host's frames or other particles, tearing, sheets' aerodynamics and
+units' self-collision are in place, and chains drawn as tubes come next.
 It has 66 public functions.
 
 ## Building

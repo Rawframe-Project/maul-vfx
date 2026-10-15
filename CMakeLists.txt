@@ -89,6 +89,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/over_life.c
     src/ribbon.c
     src/scene_query.c
+    src/self.c
     src/shape.c
     src/slots.c
     src/sort.c
@@ -115,6 +116,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(base)
     maul_add_test(beam)
     maul_add_test(chain)
+    maul_add_test(self WHITEBOX)
     maul_add_test(sheet)
     maul_add_test(bounds)
     maul_add_test(collide WHITEBOX)
