@@ -152,9 +152,11 @@ static float Swirl(const mvfxGasLattice* l, const float* work, const int32_t at[
     return sqrtf(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
 }
 
-// Vorticity confinement's force at a cell: epsilon h (N x w), N the unit
-// gradient of the curl's size (none where that gradient is below 1e-12 of
-// its scale, the largest size it was taken from over the cell's edge).
+// Vorticity confinement's force at a cell: epsilon h (N x w), N the
+// gradient of the curl's size over the larger of its own size and 1e-4 of
+// its scale (the largest size it was taken from over the cell's edge): a
+// unit vector where the curl's size changes, tapering to nothing where it
+// is even, rather than float's noise there made a unit.
 static void ConfineAt(const mvfxGasLattice* l, const float* work, float epsilon,
                       const int32_t at[3], float out[3])
 {
@@ -179,7 +181,8 @@ static void ConfineAt(const mvfxGasLattice* l, const float* work, float epsilon,
         sqrtf(gradient[0] * gradient[0] + gradient[1] * gradient[1] + gradient[2] * gradient[2]);
     float w[3];
     CurlAt(l, work, ((int64_t)at[2] * l->n[1] + at[1]) * l->n[0] + at[0], w);
-    float scale = size > 1e-12f * peak / l->cell ? epsilon * l->cell / size : 0.0f;
+    float floor = 1e-4f * peak / l->cell;
+    float scale = peak > 0.0f ? epsilon * l->cell / fmaxf(size, floor) : 0.0f;
     out[0] = scale * (gradient[1] * w[2] - gradient[2] * w[1]);
     out[1] = scale * (gradient[2] * w[0] - gradient[0] * w[2]);
     out[2] = scale * (gradient[0] * w[1] - gradient[1] * w[0]);
