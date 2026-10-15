@@ -21,6 +21,8 @@ typedef struct Level
     const int32_t* fine;
     int32_t span;
     float* const* areas;
+    float* const* coefficients;
+    float* weights;
 } Level;
 
 // The fine cells a level cell spans along axis k.
@@ -71,20 +73,20 @@ static float Neighbors(const Level* l, const float* p, const int32_t at[3], floa
         }
         // Along k the faces across it lie as the cells do.
         int64_t low = FaceAt(l->n, k, at);
-        int64_t step = stride[k];
-        float below = l->areas[k][low] / Distance(l, k, at[k]);
-        float above = l->areas[k][low + step] / Distance(l, k, at[k] + 1);
+        float below = l->coefficients[k][low];
+        float above = l->coefficients[k][low + stride[k]];
         sum += at[k] > 0 ? below * p[i - stride[k]] : 0.0f;
         sum += at[k] + 1 < l->n[k] ? above * p[i + stride[k]] : 0.0f;
-        *weight += below + above;
     }
+    *weight = l->weights[i];
     return sum;
 }
 
-// One pass of weighted Jacobi on (weighted sum - weight p) = rhs, from one
-// buffer into the other.
-static void Jacobi(const Level* l, const float* from, float* to, const float* rhs, float omega)
+// A level's faces' coefficients from their areas, and its cells' sums of
+// them, by the operations and in the order the passes once used.
+static void LevelCoefficients(const Level* l)
 {
+    const int64_t stride[3] = {1, l->n[0], (int64_t)l->n[0] * l->n[1]};
     int64_t i = 0;
     for (int32_t z = 0; z < l->n[2]; ++z)
     {
@@ -94,8 +96,108 @@ static void Jacobi(const Level* l, const float* from, float* to, const float* rh
             {
                 const int32_t at[3] = {x, y, z};
                 float weight = 0.0f;
-                float sum = Neighbors(l, from, at, &weight);
-                float solved = weight > 0.0f ? (sum - rhs[i]) / weight : 0.0f;
+                for (int32_t k = 0; k < 3; ++k)
+                {
+                    if (l->n[k] == 1)
+                    {
+                        continue;
+                    }
+                    int64_t low = FaceAt(l->n, k, at);
+                    float below = l->areas[k][low] / Distance(l, k, at[k]);
+                    float above = l->areas[k][low + stride[k]] / Distance(l, k, at[k] + 1);
+                    l->coefficients[k][low] = below;
+                    l->coefficients[k][low + stride[k]] = above;
+                    weight += below + above;
+                }
+                l->weights[i] = weight;
+            }
+        }
+    }
+}
+
+// Whether row (y, z) of a level is inside it along Y and Z, so that its
+// cells but the first and the last have every neighbor.
+static bool IsInnerRow(const Level* l, int32_t y, int32_t z)
+{
+    return l->n[0] > 2 && y > 0 && y + 1 < l->n[1] && (l->n[2] == 1 || (z > 0 && z + 1 < l->n[2]));
+}
+
+// The neighbors' weighted sums of an inner row's cells but its first and
+// its last, into sums by x: the terms of Neighbors, in its order, every
+// neighbor there.
+static void InnerSums(const Level* l, const float* p, int32_t y, int32_t z, float* sums)
+{
+    const int32_t* n = l->n;
+    int64_t row = ((int64_t)z * n[1] + y) * n[0];
+    const float* xLow = l->coefficients[0] + ((int64_t)z * n[1] + y) * (n[0] + 1);
+    const float* yLow = l->coefficients[1] + ((int64_t)z * (n[1] + 1) + y) * n[0];
+    const float* yHigh = yLow + n[0];
+    const float* q = p + row;
+    if (n[2] == 1)
+    {
+        for (int32_t x = 1; x + 1 < n[0]; ++x)
+        {
+            float sum = 0.0f;
+            sum += xLow[x] * q[x - 1];
+            sum += xLow[x + 1] * q[x + 1];
+            sum += yLow[x] * q[x - n[0]];
+            sum += yHigh[x] * q[x + n[0]];
+            sums[x] = sum;
+        }
+        return;
+    }
+    int64_t layer = (int64_t)n[0] * n[1];
+    const float* zLow = l->coefficients[2] + row;
+    const float* zHigh = zLow + layer;
+    for (int32_t x = 1; x + 1 < n[0]; ++x)
+    {
+        float sum = 0.0f;
+        sum += xLow[x] * q[x - 1];
+        sum += xLow[x + 1] * q[x + 1];
+        sum += yLow[x] * q[x - n[0]];
+        sum += yHigh[x] * q[x + n[0]];
+        sum += zLow[x] * q[x - layer];
+        sum += zHigh[x] * q[x + layer];
+        sums[x] = sum;
+    }
+}
+
+// The neighbors' weighted sums of row (y, z) into sums by x.
+static void RowSums(const Level* l, const float* p, int32_t y, int32_t z, float* sums)
+{
+    int32_t first = 0;
+    int32_t last = l->n[0];
+    if (IsInnerRow(l, y, z))
+    {
+        InnerSums(l, p, y, z, sums);
+        first = l->n[0] - 1;
+        float weight = 0.0f;
+        const int32_t at[3] = {0, y, z};
+        sums[0] = Neighbors(l, p, at, &weight);
+    }
+    for (int32_t x = first; x < last; ++x)
+    {
+        const int32_t at[3] = {x, y, z};
+        float weight = 0.0f;
+        sums[x] = Neighbors(l, p, at, &weight);
+    }
+}
+
+// One pass of weighted Jacobi on (weighted sum - weight p) = rhs, from one
+// buffer into the other.
+static void Jacobi(const Level* l, const float* from, float* to, const float* rhs, float omega)
+{
+    float sums[MVFX_MAX_GAS_SIZE] = {0};
+    int64_t i = 0;
+    for (int32_t z = 0; z < l->n[2]; ++z)
+    {
+        for (int32_t y = 0; y < l->n[1]; ++y)
+        {
+            RowSums(l, from, y, z, sums);
+            for (int32_t x = 0; x < l->n[0]; ++x, ++i)
+            {
+                float weight = l->weights[i];
+                float solved = weight > 0.0f ? (sums[x] - rhs[i]) / weight : 0.0f;
                 to[i] = (1.0f - omega) * from[i] + omega * solved;
             }
         }
@@ -115,17 +217,16 @@ static void Smooth(const Level* l, mvfxGasLevel* v, int32_t passes, float omega)
 // The residual rhs - (weighted sum - weight p), into the scratch buffer.
 static void Residual(const Level* l, mvfxGasLevel* v)
 {
+    float sums[MVFX_MAX_GAS_SIZE] = {0};
     int64_t i = 0;
     for (int32_t z = 0; z < l->n[2]; ++z)
     {
         for (int32_t y = 0; y < l->n[1]; ++y)
         {
+            RowSums(l, v->pressure, y, z, sums);
             for (int32_t x = 0; x < l->n[0]; ++x, ++i)
             {
-                const int32_t at[3] = {x, y, z};
-                float weight = 0.0f;
-                float sum = Neighbors(l, v->pressure, at, &weight);
-                v->scratch[i] = v->rhs[i] - (sum - weight * v->pressure[i]);
+                v->scratch[i] = v->rhs[i] - (sums[x] - l->weights[i] * v->pressure[i]);
             }
         }
     }
@@ -205,7 +306,8 @@ static void Prolong(const Level* coarse, const float* e, const Level* fine, floa
 // A V cycle from level l down.
 static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, float omega)
 {
-    const Level here = {gas->levels[l], gas->def.size, 1 << l, state->areas[l]};
+    const Level here = {gas->levels[l],  gas->def.size,          1 << l,
+                        state->areas[l], state->coefficients[l], state->weights[l]};
     mvfxGasLevel* v = &state->levels[l];
     if (l + 1 == gas->levelCount)
     {
@@ -214,7 +316,9 @@ static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, fl
     }
     Smooth(&here, v, SMOOTH_PASSES, omega);
     Residual(&here, v);
-    const Level below = {gas->levels[l + 1], gas->def.size, 2 << l, state->areas[l + 1]};
+    const Level below = {
+        gas->levels[l + 1],         gas->def.size,        2 << l, state->areas[l + 1],
+        state->coefficients[l + 1], state->weights[l + 1]};
     Restrict(&here, v->scratch, &below, &state->levels[l + 1]);
     Cycle(gas, state, l + 1, omega);
     Prolong(&below, state->levels[l + 1].pressure, &here, v->pressure);
@@ -480,5 +584,8 @@ void mvfxGasAreas(const mvfxCompiledGas* gas, mvfxGasState* state)
                 LevelAreas(gas, state, l, k);
             }
         }
+        const Level level = {gas->levels[l],  gas->def.size,          1 << l,
+                             state->areas[l], state->coefficients[l], state->weights[l]};
+        LevelCoefficients(&level);
     }
 }

@@ -217,6 +217,10 @@ void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt*
     {
         at->areas[l] = mvfxLayoutAdd(layout, (size_t)mvfxGasLevelFaces(gas, l, 3), sizeof(float),
                                      alignof(float));
+        at->coefficients[l] = mvfxLayoutAdd(layout, (size_t)mvfxGasLevelFaces(gas, l, 3),
+                                            sizeof(float), alignof(float));
+        at->weights[l] =
+            mvfxLayoutAdd(layout, (size_t)mvfxGasLevelCells(gas, l), sizeof(float), alignof(float));
     }
     at->solid = mvfxLayoutAdd(layout, gas->hasObstacles ? (size_t)gas->cells : 0, 1, 1);
     at->work = mvfxLayoutAdd(layout, (size_t)gas->work, sizeof(float), alignof(float));
@@ -245,12 +249,16 @@ void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char
     for (int32_t l = 0; l < gas->levelCount; ++l)
     {
         float* areas = (float*)(block + at->areas[l]);
+        float* coefficients = (float*)(block + at->coefficients[l]);
         for (int32_t k = 0; k < 3; ++k)
         {
             int64_t faces = mvfxGasLevelFaces(gas, l, k + 1) - mvfxGasLevelFaces(gas, l, k);
             state->areas[l][k] = faces > 0 ? areas : nullptr;
+            state->coefficients[l][k] = faces > 0 ? coefficients : nullptr;
             areas += faces;
+            coefficients += faces;
         }
+        state->weights[l] = (float*)(block + at->weights[l]);
     }
     state->solid = gas->hasObstacles ? block + at->solid : nullptr;
     mvfxClearGas(state, gas);

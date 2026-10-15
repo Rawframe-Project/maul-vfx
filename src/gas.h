@@ -59,6 +59,8 @@ typedef struct mvfxGasAt
     size_t scalars[3];
     size_t levels[MVFX_GAS_LEVELS];
     size_t areas[MVFX_GAS_LEVELS];
+    size_t coefficients[MVFX_GAS_LEVELS];
+    size_t weights[MVFX_GAS_LEVELS];
     size_t solid;
     size_t work;
 } mvfxGasAt;
@@ -93,6 +95,10 @@ typedef struct mvfxGasState
     // 3D, 0 for a closed wall or a solid), NULL across an axis of one
     // cell.
     float* areas[MVFX_GAS_LEVELS][3];
+    // Each level's faces' coefficients in the solve (open area over the
+    // distance between the centers) and each cell's sum of its faces'.
+    float* coefficients[MVFX_GAS_LEVELS][3];
+    float* weights[MVFX_GAS_LEVELS];
     // With obstacles: each cell's solid, 0 for none, else 1 more than the
     // index of the obstacle it is within; the obstacles resolved in the
     // box's frame at the end of this step and of the one before

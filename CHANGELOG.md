@@ -318,6 +318,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   field or an acceleration; an emitter's `gasSplat` (`mvfxGasSplat`) pours
   its live particles' density, temperature and fuel into a gas and pulls
   its faces toward their velocity, in the particles' order.
+- A gas steps several times faster, bit for bit the same: 4.8 to 5.9
+  times for a 2D gas of 256 by 256, 3.2 times for a 3D one of 64 cubed.
+  `bench/bench_main.c` times gases.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so
