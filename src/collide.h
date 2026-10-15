@@ -70,7 +70,9 @@ bool mvfxSameColliderShape(const mvfxResolvedCollider* a, const mvfxResolvedColl
 
 // Whether a grid collider seen as before is now after with only its
 // grid's values changed, each change since among the points the live
-// grid knows changed (either NULL: false).
+// grid knows changed (either NULL: false). Colliders are resolved every
+// step, so the last two hold whenever the values changed; they guard
+// the rule should that ever not be so.
 bool mvfxOnlyPointsChanged(const mvfxResolvedCollider* before, const mvfxResolvedCollider* after);
 
 // A point's distance outside the part of a grid collider's box its grid's

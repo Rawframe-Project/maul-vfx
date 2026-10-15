@@ -765,21 +765,23 @@ float mvfxChangedGap(const mvfxResolvedCollider* c, const float point[3])
     float inside = -INFINITY;
     for (int32_t k = 0; k < 3; ++k)
     {
+        // A heightfield's heights reach any height.
+        if (k == 1 && c->kind == mvfx_colliderHeightfield)
+        {
+            continue;
+        }
         float h = c->halfExtents[k];
         int32_t n = c->grid->size[k];
-        bool whole = n == 1 || (k == 1 && c->kind == mvfx_colliderHeightfield);
         // Point i lies at (i / (n - 1) - 1/2) 2h; the cells on either side
         // of the changed points change with them.
         float low =
-            whole ? -h
-                  : fmaxf(((float)(c->grid->first[k] - 1) / (float)(n - 1) - 0.5f) * 2.0f * h, -h);
+            n == 1 ? -h
+                   : fmaxf(((float)(c->grid->first[k] - 1) / (float)(n - 1) - 0.5f) * 2.0f * h, -h);
         float high =
-            whole ? h : fminf(((float)c->grid->end[k] / (float)(n - 1) - 0.5f) * 2.0f * h, h);
-        float below = low - local[k];
-        float above = local[k] - high;
-        float e = fmaxf(below, above);
+            n == 1 ? h : fminf(((float)c->grid->end[k] / (float)(n - 1) - 0.5f) * 2.0f * h, h);
+        float e = fmaxf(low - local[k], local[k] - high);
         outside += e > 0.0f ? e * e : 0.0f;
-        inside = fmaxf(inside, (k == 1 && c->kind == mvfx_colliderHeightfield) ? -INFINITY : e);
+        inside = fmaxf(inside, e);
     }
     return inside > 0.0f ? sqrtf(outside) : inside;
 }

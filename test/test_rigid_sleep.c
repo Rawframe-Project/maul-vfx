@@ -12,8 +12,9 @@
 // fall; changed colliders wake only the bodies near them; a
 // heightfield's values changed wake a box, and one taken away and
 // destroyed is never read; a heightfield's points changed wake only the
-// boxes near them; a depth image set again wakes a box; the host
-// wakes bodies within a sphere; no sleep speed, no sleeping; the checks.
+// boxes near them, at any height; a depth image set again wakes a box;
+// the host wakes bodies within a sphere; no sleep speed, no sleeping; the
+// checks.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -454,9 +455,12 @@ static void TestGridRegions(void)
     // under the second (points 6 to 8 along X, 3 to 5 along Z, so the
     // cells from x = 1 to the edge and z = -2 to 2) wake it alone, which
     // settles lower; a corner far from both lowered wakes neither; heights
-    // lowered under the second and then, after a step that met nothing
-    // (no time), at that corner wake it, the first change not lost; new
-    // heights everywhere wake both.
+    // lowered under the second before a step of no time and at that
+    // corner after it wake it, the step of no time meeting the first; a
+    // point at x = -2 or at x = -4 lowered wakes the first, the cells on
+    // either side of a point changing with it; new heights everywhere
+    // wake both. A sleeper's height above the heightfield never keeps it
+    // asleep: its heights may rise to any.
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
     boxes.colliders = NULL;
@@ -497,11 +501,63 @@ static void TestGridRegions(void)
     Steps(1);
     bool kept = Asleep(0) && !Asleep(1);
     Steps(60);
+    bool sides = true;
+    for (int32_t x = 2; x >= 0; x -= 2)
+    {
+        sides = sides && Asleep(0);
+        Dig(grid, x, 4, 1, 0.05f);
+        Steps(1);
+        sides = sides && !Asleep(0);
+        Steps(60);
+    }
     CHECK(mvfxGrid_SetValues(s_scene.context, grid, s_heights, 81) == mvfx_success, "all");
     Steps(1);
     bool both = !Asleep(0) && !Asleep(1);
-    CHECK(slept && one && settled && neither && kept && both,
+    CHECK(slept && one && settled && neither && kept && sides && both,
           "a heightfield's changed points wake the bodies near them");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestGridRises(void)
+{
+    // A box asleep on a host table 2 m above a heightfield, 0.5 m aside
+    // from the cells a point raised 2.5 m changes: it wakes, as the
+    // heights may rise to it; measured with the height too, its gap was
+    // 2.6 m and it slept on.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.colliders = NULL;
+    boxes.colliderCount = 0;
+    boxes.collision.hostColliders = true;
+    Play(&boxes);
+    for (int32_t i = 0; i < 81; ++i)
+    {
+        s_heights[i] = 0.0f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 9;
+    def.size[2] = 9;
+    def.values = s_heights;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(s_scene.context, &def, &grid) == mvfx_success, "heights");
+    const mvfxCollider colliders[2] = {{.kind = mvfx_colliderHeightfield,
+                                        .halfExtents = {4, 0, 4},
+                                        .rotation = {0, 0, 0, 1},
+                                        .grid = grid},
+                                       {.kind = mvfx_colliderBox,
+                                        .center = {-3.5f, 1.5f, 0},
+                                        .halfExtents = {1, 0.5f, 1},
+                                        .rotation = {0, 0, 0, 1}}};
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, colliders, 2) ==
+              mvfx_success,
+          "field and table");
+    static const double place[3] = {-3.5, 2.5, 0};
+    Spawn(place, 1);
+    Steps(60);
+    bool slept = Asleep(0);
+    Dig(grid, 2, 4, 1, -2.5f);
+    Steps(1);
+    CHECK(slept && !Asleep(0), "heights rising to a sleeper wake it");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -694,6 +750,7 @@ int main(void)
     TestWorldNear();
     TestGridChanges();
     TestGridRegions();
+    TestGridRises();
     TestDepthWakes();
     TestWakeWithin();
     TestNeverSleeps();
