@@ -4,9 +4,9 @@
 // Forces on a gas: a constant force in the world turned into a turned
 // box's frame and over a scaled box's scale, one in the instance's frame
 // not; a wind's pull exact over the step; a vortex turning the gas about
-// its axis; a strength from a parameter; turbulence the same for the
-// same seed and different for another; a vector field's grid held and
-// its field taken; the forces' refusals.
+// its axis (of any length); a strength from a parameter; turbulence the
+// same for the same seed and different for another, and scrolling; a
+// vector field's grid held and its field taken; the forces' refusals.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -148,22 +148,30 @@ static void TestVortex(void)
 {
     // A vortex about Z through the box's middle at a strength of 2: a step
     // later the Y faces right of the middle rise and those left of it
-    // fall, along the row through it.
-    Context();
-    const mvfxForce vortex = {.kind = mvfx_forceVortex, .vector = {0, 0, 1}, .strength = 2.0f};
-    mvfxGasDef def = Pushed(&vortex, 1);
-    mvfxInstanceId instance = {0};
-    mvfxGasState* state = OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
-    Steps(1);
-    const float* v = state->velocity[1][state->current];
+    // fall, along the row through it; an axis of (0, 0, 2) is the same
+    // axis, bit for bit.
+    static float kept[16 * 13];
     bool right = true;
-    for (int32_t x = 0; x < 16; ++x)
+    for (int32_t r = 0; r < 2; ++r)
     {
-        float value = v[6 * 16 + x];
-        right = right && (x < 8 ? value < 0.0f : value > 0.0f);
+        Context();
+        const mvfxForce vortex = {
+            .kind = mvfx_forceVortex, .vector = {0, 0, r == 0 ? 1.0f : 2.0f}, .strength = 2.0f};
+        mvfxGasDef def = Pushed(&vortex, 1);
+        mvfxInstanceId instance = {0};
+        mvfxGasState* state = OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
+        Steps(1);
+        const float* v = state->velocity[1][state->current];
+        for (int32_t x = 0; x < 16; ++x)
+        {
+            float value = v[6 * 16 + x];
+            right = right && (x < 8 ? value < 0.0f : value > 0.0f);
+        }
+        right = right && (r == 0 || memcmp(kept, v, sizeof kept) == 0);
+        memcpy(kept, v, sizeof kept);
+        mvfxDestroyContext(s_context);
     }
     CHECK(right, "a vortex turns the gas");
-    mvfxDestroyContext(s_context);
 }
 
 static void TestParameter(void)
@@ -220,6 +228,20 @@ static void TestTurbulence(void)
     bool other = memcmp(u[0], u[2], bytes) != 0;
     bool stirred = !AllNear(u[0], 17 * 12, 0.0f, 1e-6f);
     CHECK(same && other && stirred, "turbulence by its seed");
+    mvfxDestroyContext(s_context);
+    // Scrolling at (1, 0, 0) a second, the same turbulence parts from the
+    // still one by the second step, the noise taken at each substep's time.
+    Context();
+    mvfxForce scrolled = turbulence;
+    scrolled.noise.scroll[0] = 1.0f;
+    mvfxGasDef moved = Pushed(&scrolled, 1);
+    mvfxInstanceId instance = {0};
+    mvfxGasState* still = OpenWith(&def, NULL, 0, s_unturned, 1.0f, 7, &instance);
+    mvfxGasState* moving = OpenWith(&moved, NULL, 0, s_unturned, 1.0f, 7, &instance);
+    Steps(2);
+    CHECK(memcmp(still->velocity[0][still->current], moving->velocity[0][moving->current], bytes) !=
+              0,
+          "turbulence scrolls in time");
     mvfxDestroyContext(s_context);
 }
 
