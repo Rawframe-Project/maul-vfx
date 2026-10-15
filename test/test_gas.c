@@ -5,10 +5,13 @@
 // filling the cells it holds and nothing else; a puff carried one cell a
 // step by a uniform velocity, its mass kept, in 2D and in 3D; decay at
 // its rate, of the scalars and the velocity; a linear field sampled
-// exactly from each array; tracing back by the midpoint rule; velocities read at the cells'
-// centers; a local box following its instance and a world box staying; an instance with a gas
-// finishing once stopped and empty, cleared at once by stopping and clearing, and emptied by
-// restarting; an instance's bounds holding its gases' boxes; the reading's refusals.
+// exactly from each array; tracing back by the midpoint rule; velocities
+// read at the cells' centers; a local box following its instance and a
+// world box staying; an instance with a gas finishing once stopped and
+// empty, cleared at once by stopping and clearing, and emptied by
+// restarting; an instance's bounds holding its gases' boxes; sources
+// pouring into exactly the cells they hold, and a field of negative
+// values carried; the reading's refusals.
 
 #include "gas_lattice.h"
 #include "gas_step.h"
@@ -491,6 +494,57 @@ static void TestFinish(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestSourceCells(void)
+{
+    // Sources at places across a 2D gas of 32 by 24 cells, still, three
+    // steps of 1/64 s: a sphere of 0.37 at (0.41, -0.23) and a box of
+    // half sizes (0.26, 0.5) at (-1.1, 0.7), reaching past the box's edge,
+    // pour into exactly the cells whose centers they hold (2 a second, 3
+    // steps); a third pouring -1 a second into a sphere of 0.3 at (-0.5,
+    // -0.6) leaves a field of its own negative values carried, not
+    // dropped as empty.
+    static const mvfxGasSource sources[2] = {
+        {.shape = mvfx_gasSphere, .center = {0.41f, -0.23f, 0}, .radius = 0.37f, .density = 2},
+        {.shape = mvfx_gasBox,
+         .center = {-1.1f, 0.7f, 0},
+         .halfExtents = {0.26f, 0.5f, 1},
+         .density = 2,
+         .fuel = 0},
+    };
+    static const mvfxGasSource drain = {
+        .shape = mvfx_gasSphere, .center = {-0.5f, -0.6f, 0}, .radius = 0.3f, .temperature = -1};
+    mvfxGasSource all[3] = {sources[0], sources[1], drain};
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = 32;
+    gas.size[1] = 24;
+    gas.pressureCycles = 0;
+    gas.sources = all;
+    gas.sourceCount = 3;
+    Open(&gas);
+    Steps(3);
+    Read(mvfx_gasDensity, 768);
+    bool right = true;
+    for (int32_t i = 0; i < 768; ++i)
+    {
+        float x = ((float)(i % 32) + 0.5f - 16.0f) * 0.1f;
+        float y = ((float)(i / 32) + 0.5f - 12.0f) * 0.1f;
+        float dx = x - 0.41f;
+        float dy = y + 0.23f;
+        bool sphere = dx * dx + dy * dy <= 0.37f * 0.37f;
+        bool box = fabsf(x + 1.1f) <= 0.26f && fabsf(y - 0.7f) <= 0.5f;
+        float expected = (sphere ? 6.0f / 64.0f : 0.0f) + (box ? 6.0f / 64.0f : 0.0f);
+        right = right && fabsf(s_field[i] - expected) <= 1e-6f;
+    }
+    Read(mvfx_gasTemperature, 768);
+    float least = 0.0f;
+    for (int32_t i = 0; i < 768; ++i)
+    {
+        least = fminf(least, s_field[i]);
+    }
+    CHECK(right && fabsf(least + 3.0f / 64.0f) <= 1e-6f, "sources pour into their cells");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestReadRefusals(void)
 {
     mvfxGasDef gas = mvfxDefaultGasDef();
@@ -528,6 +582,7 @@ int main(void)
     TestTraceBack();
     TestPlaces();
     TestFinish();
+    TestSourceCells();
     TestReadRefusals();
     return s_failures;
 }
