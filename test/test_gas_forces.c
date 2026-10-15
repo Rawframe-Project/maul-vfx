@@ -5,7 +5,8 @@
 // in the world's gravity (its instance turned and scaled) and in the
 // box's own; vorticity confinement strengthening a vortex about its peak,
 // in proportion to its strength, the same whatever the cells' size, about
-// each axis in 3D, and nothing in an even curl; fuel burning where it is
+// each axis in 3D, and nothing in an even curl; the curl at the cells'
+// centers; a wall face's force its one cell's; fuel burning where it is
 // hot enough (at the ignition temperature too), to
 // heat, smoke and expansion; the projection keeping the expansion's
 // divergence (less its mean in a sealed box); MacCormack's advection
@@ -346,6 +347,83 @@ static void TestEvenCurl(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestCurl(void)
+{
+    // A 2D gas of 12 by 10 cells of 0.1 with u = 2 X Y (X and Y from its
+    // corner), v = 0: after confinement its work holds the curl at each
+    // cell's center, -dU/dy = -2 X there (the faces' mean placed at the
+    // center, half a cell from its low face), one-sided at the edges and
+    // as exact.
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 12;
+    def.size[1] = 10;
+    def.vorticity = 1.0f;
+    const mvfxCompiledGas* gas = NULL;
+    mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
+    float* u = state->velocity[0][state->current];
+    for (int32_t y = 0; y < 10; ++y)
+    {
+        for (int32_t x = 0; x <= 12; ++x)
+        {
+            u[y * 13 + x] = 2.0f * ((float)x * 0.1f) * (((float)y + 0.5f) * 0.1f);
+        }
+    }
+    const mvfxGasLattice l = {.n = {12, 10, 1}, .cell = 0.1f, .h = 1.0f / 64.0f};
+    float* velocity[3] = {u, state->velocity[1][state->current],
+                          state->velocity[2][state->current]};
+    mvfxGasConfine(gas, &l, velocity, state->work);
+    bool right = true;
+    for (int32_t i = 0; i < 120; ++i)
+    {
+        float center = ((float)(i % 12) + 0.5f) * 0.1f;
+        right = right && fabsf(state->work[i] + 2.0f * center) <= 1e-5f;
+    }
+    CHECK(right, "the curl at the cells' centers");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestColumns(void)
+{
+    // A 2D gas of 12 by 10 cells with v = X + X^2 / 2 (X from its
+    // corner), u = 0, open walls: its curl, 1 + X, grows along X alone, so
+    // each cell's force is its column's, along -Y. Every Y face of a
+    // column changes alike, the wall faces (their one cell's force) as the
+    // faces between two cells (their mean), and by something.
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 12;
+    def.size[1] = 10;
+    def.vorticity = 2.0f;
+    const mvfxCompiledGas* gas = NULL;
+    mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
+    float* v = state->velocity[1][state->current];
+    for (int32_t y = 0; y <= 10; ++y)
+    {
+        for (int32_t x = 0; x < 12; ++x)
+        {
+            float place = ((float)x + 0.5f) * 0.1f;
+            v[y * 12 + x] = place + 0.5f * place * place;
+        }
+    }
+    static float before[12 * 11];
+    memcpy(before, v, sizeof before);
+    const mvfxGasLattice l = {.n = {12, 10, 1}, .cell = 0.1f, .h = 1.0f / 64.0f};
+    float* velocity[3] = {state->velocity[0][state->current], v,
+                          state->velocity[2][state->current]};
+    mvfxGasConfine(gas, &l, velocity, state->work);
+    bool right = true;
+    for (int32_t x = 0; x < 12; ++x)
+    {
+        float change = v[x] - before[x];
+        right = right && change < 0.0f;
+        for (int32_t y = 1; y <= 10; ++y)
+        {
+            right = right && v[y * 12 + x] - before[y * 12 + x] == change;
+        }
+    }
+    CHECK(right, "a wall face's force its cell's");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestBurn(void)
 {
     // Two cells of fuel 2, one at 5 degrees and one at 3, ignition at 4,
@@ -597,6 +675,8 @@ int main(void)
     TestConfinement();
     TestConfinement3D();
     TestEvenCurl();
+    TestCurl();
+    TestColumns();
     TestBurn();
     TestExpansion();
     TestMacCormack();
