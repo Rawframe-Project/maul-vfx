@@ -8,6 +8,7 @@
 #define MAUL_VFX_SRC_RIGID_BODY_H
 
 #include "instance.h"
+#include "rigid_shape.h"
 
 // A body's flags in its emitter's rigidFlags: its collision event written
 // this step; in contact this substep; struck this substep.
@@ -19,7 +20,8 @@ enum
 };
 
 // A body: its pose and velocities, the pose it started the substep at,
-// its inverse mass and its inverse inertias about its own axes.
+// its inverse mass and its inverse inertia in its frame (xx, yy, zz, xy,
+// xz, yz: a hull's is not along its axes).
 typedef struct mvfxBody
 {
     float x[3];
@@ -29,17 +31,18 @@ typedef struct mvfxBody
     float x0[3];
     float q0[4];
     float inverseMass;
-    float inverseInertia[3];
+    float inverseInertia[6];
 } mvfxBody;
 
 // An emitter's rigid particles in a substep: their attributes, their
-// start poses (seven arrays of the stride) and mass (inverse mass,
-// inverse inertias and reach, five arrays).
+// start poses (seven arrays of the stride) and mass (its arrays), and
+// their hull, for hulls.
 typedef struct mvfxRigidSolve
 {
     mvfxInstance* instance;
     int32_t emitter;
     const mvfxRigidDef* rigid;
+    const mvfxHull* hull;
     float* x[3];
     float* v[3];
     float* q[4];

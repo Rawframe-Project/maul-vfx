@@ -60,7 +60,9 @@ static void PlaneContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
     {
         float body[3];
         float world[3];
-        SurfacePoint(b, s, s->points[i], down, body, world);
+        float point[3];
+        mvfxShapePoint(s, i, point);
+        SurfacePoint(b, s, point, down, body, world);
         float gap[3] = {world[0] - c->center[0], world[1] - c->center[1], world[2] - c->center[2]};
         mvfxBodyContact contact = ContactAt(body, world, c->normal, Dot(gap, c->normal));
         mvfxAddContact(list, &contact);
@@ -95,14 +97,16 @@ static void InsideContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
 {
     for (int32_t i = 0; i < s->count; ++i)
     {
+        float point[3];
         float turned[3];
-        mvfxRotate(b->q, s->points[i], turned);
+        mvfxShapePoint(s, i, point);
+        mvfxRotate(b->q, point, turned);
         float center[3] = {b->x[0] + turned[0], b->x[1] + turned[1], b->x[2] + turned[2]};
         float out[3];
         float distance = WayFrom(c->center, center, out);
         float body[3];
         float world[3];
-        SurfacePoint(b, s, s->points[i], out, body, world);
+        SurfacePoint(b, s, point, out, body, world);
         const float in[3] = {-out[0], -out[1], -out[2]};
         mvfxBodyContact contact = ContactAt(body, world, in, c->radius - distance - s->radius);
         mvfxAddContact(list, &contact);
@@ -333,13 +337,13 @@ static void OutsideContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
 }
 
 // The most points a shape is sampled at against a grid or a depth image.
-#define MOST_SAMPLES 14
+#define MOST_SAMPLES (MVFX_MAX_HULL_VERTICES + MVFX_MAX_HULL_FACES)
 
 // The points (in its frame) a shape meets a grid or a depth image by, as
 // spheres of its radius: a sphere's center; a capsule's core, its points
 // at most its radius apart (at most nine); a box's eight corners (bit k
 // of i set for +X, +Y, +Z), then its faces' centers (8 + 2k for +k, 9 +
-// 2k for -k).
+// 2k for -k); a hull's vertices, then its faces' centers.
 static int32_t BoxSamples(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
 {
     for (int32_t i = 0; i < 14; ++i)
@@ -354,11 +358,42 @@ static int32_t BoxSamples(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
     return 14;
 }
 
+static int32_t HullSamples(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
+{
+    const mvfxHull* hull = s->hull;
+    int32_t n = 0;
+    for (int32_t i = 0; i < hull->vertexCount; ++i)
+    {
+        mvfxShapePoint(s, i, out[n++]);
+    }
+    for (int32_t f = 0; f < hull->faceCount; ++f)
+    {
+        int32_t first = hull->faceStart[f];
+        int32_t corners = hull->faceStart[f + 1] - first;
+        float center[3] = {0.0f, 0.0f, 0.0f};
+        for (int32_t j = 0; j < corners; ++j)
+        {
+            float corner[3];
+            mvfxShapePoint(s, hull->loop[first + j], corner);
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                center[k] += corner[k] / (float)corners;
+            }
+        }
+        memcpy(out[n++], center, sizeof center);
+    }
+    return n;
+}
+
 static int32_t SamplesOf(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
 {
     if (s->kind == mvfx_rigidBox)
     {
         return BoxSamples(s, out);
+    }
+    if (s->kind == mvfx_rigidHull)
+    {
+        return HullSamples(s, out);
     }
     int32_t spans = s->kind == mvfx_rigidCapsule && s->radius > 0.0f
                         ? (int32_t)ceilf(fminf(2.0f * s->half[1] / s->radius, 8.0f))
@@ -394,27 +429,44 @@ static mvfxBodyContact SampleContact(const mvfxBodyPose* b, const mvfxBodyShape*
     return ContactAt(body, place, n, distance - s->radius);
 }
 
-// Adds the samples' contacts that are met: all but a box's faces'
+// Whether sample i is met, found: all but a box's or a hull's faces'
 // centers, each met only where the surface bulges under it, deeper than
 // each corner of its face. On a flat surface the corners carry a face; a
 // fifth contact amid them shifts the load the one pass gives each and
 // unsettled a box held on a slope.
+static bool CenterMet(const mvfxBodyShape* s, const mvfxBodyContact* contacts, const bool* found,
+                      int32_t i)
+{
+    bool met = true;
+    if (s->kind == mvfx_rigidBox && i >= 8)
+    {
+        int32_t k = (i - 8) / 2;
+        int32_t side = (i - 8) % 2 == 0 ? 1 : 0;
+        for (int32_t c = 0; met && c < 8; ++c)
+        {
+            bool onFace = (c >> k & 1) == side;
+            met = !onFace || !found[c] || contacts[i].depth < contacts[c].depth;
+        }
+    }
+    else if (s->kind == mvfx_rigidHull && i >= s->hull->vertexCount)
+    {
+        const mvfxHull* hull = s->hull;
+        int32_t f = i - hull->vertexCount;
+        for (int32_t j = hull->faceStart[f]; met && j < hull->faceStart[f + 1]; ++j)
+        {
+            int32_t c = hull->loop[j];
+            met = !found[c] || contacts[i].depth < contacts[c].depth;
+        }
+    }
+    return met;
+}
+
 static void AddSamples(const mvfxBodyShape* s, const mvfxBodyContact* contacts, const bool* found,
                        int32_t count, mvfxBodyContacts* list)
 {
     for (int32_t i = 0; i < count; ++i)
     {
-        bool met = found[i];
-        if (s->kind == mvfx_rigidBox && i >= 8)
-        {
-            int32_t k = (i - 8) / 2;
-            int32_t side = (i - 8) % 2 == 0 ? 1 : 0;
-            for (int32_t c = 0; met && c < 8; ++c)
-            {
-                bool onFace = (c >> k & 1) == side;
-                met = !onFace || !found[c] || contacts[i].depth < contacts[c].depth;
-            }
-        }
+        bool met = found[i] && CenterMet(s, contacts, found, i);
         if (met)
         {
             mvfxAddContact(list, &contacts[i]);

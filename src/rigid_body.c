@@ -29,6 +29,9 @@ mvfxBody mvfxLoadBody(const mvfxRigidSolve* s, int32_t i)
         b.v[k] = s->v[k][i];
         b.w[k] = s->w[k][i];
         b.x0[k] = s->start[(size_t)k * s->stride + (size_t)i];
+    }
+    for (int32_t k = 0; k < 6; ++k)
+    {
         b.inverseInertia[k] = s->mass[(size_t)(1 + k) * s->stride + (size_t)i];
     }
     for (int32_t k = 0; k < 4; ++k)
@@ -62,11 +65,11 @@ static void InverseInertiaTimes(const mvfxBody* b, const float v[3], float out[3
     const float inverse[4] = {-b->q[0], -b->q[1], -b->q[2], b->q[3]};
     float local[3];
     mvfxRotate(inverse, v, local);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        local[k] *= b->inverseInertia[k];
-    }
-    mvfxRotate(b->q, local, out);
+    const float* m = b->inverseInertia;
+    const float turned[3] = {m[0] * local[0] + m[3] * local[1] + m[4] * local[2],
+                             m[3] * local[0] + m[1] * local[1] + m[5] * local[2],
+                             m[4] * local[0] + m[5] * local[1] + m[2] * local[2]};
+    mvfxRotate(b->q, turned, out);
 }
 
 float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3])

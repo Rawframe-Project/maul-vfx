@@ -12,6 +12,7 @@
 // crossing, and side by side at both ends.
 
 #include "grid_api.h"
+#include "hull.h"
 #include "rigid_contact.h"
 #include "test_harness.h"
 
@@ -39,12 +40,14 @@ static mvfxResolvedCollider BoxCollider(float x, float y, float z, const float r
     return c;
 }
 
+// A hull for hull shapes, set by the test that uses them.
+static mvfxHull s_hull;
+
 static mvfxBodyContacts Gather(const mvfxResolvedCollider* c, const mvfxBodyPose* pose,
                                const mvfxRigidDef* rigid, const float size[3])
 {
-    float inverseMass = 0.0f;
-    float inverseInertia[3];
-    mvfxBodyShape shape = mvfxBodyShapeOf(rigid, size, &inverseMass, inverseInertia);
+    mvfxBodyMass mass;
+    mvfxBodyShape shape = mvfxBodyShapeOf(rigid, &s_hull, size, &mass);
     mvfxBodyContacts list = {.count = 0};
     const mvfxBodySurfaces surfaces = {.colliders = c, .count = 1};
     mvfxGatherBodyContacts(&surfaces, pose, &shape, &list);
@@ -199,6 +202,29 @@ static void TestHeights(void)
         deepest = fminf(deepest, core.items[i].depth);
     }
     CHECK(fabsf(deepest + 0.01f) <= 2e-3f, "a capsule on a bump by its middle");
+    // A cube's hull scaled as the box meets them likewise, at its four
+    // lower corners; over the bump by its bottom face's center as well.
+    static const float cube[24] = {-0.5f, -0.5f, -0.5f, 0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,
+                                   -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
+                                   -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
+    CHECK(mvfxBuildHull(cube, 8, &(mvfxAllocator){0}, &s_hull) == mvfx_success, "a cube's hull");
+    static const mvfxRigidDef hull = {.enabled = true, .shape = mvfx_rigidHull, .density = 1.0f};
+    mvfxBodyContacts hullCorners = Gather(&flat, &level, &hull, unit);
+    bool four = hullCorners.count == 4;
+    for (int32_t i = 0; four && i < hullCorners.count; ++i)
+    {
+        four = fabsf(hullCorners.items[i].depth + 0.01f) <= 1e-4f &&
+               fabsf(hullCorners.items[i].body[1] + 0.5f) <= 1e-6f;
+    }
+    const mvfxBodyPose perched = {.x = {0, 0.79f, 0}, .q = {0, 0, 0, 1}};
+    mvfxBodyContacts top = Gather(&bump, &perched, &hull, unit);
+    bool center = false;
+    for (int32_t i = 0; i < top.count; ++i)
+    {
+        center = center || (fabsf(top.items[i].body[0]) <= 1e-6f &&
+                            fabsf(top.items[i].body[2]) <= 1e-6f && top.items[i].depth < 0.0f);
+    }
+    CHECK(four && center, "a hull on heights by its corners and its face over a bump");
     mvfxDestroyContext(context);
 }
 
@@ -207,9 +233,8 @@ static void TestFaceToFace(void)
     // A unit box 0.001 into the top of another, square or turned 1e-4
     // about x or z: four contacts, at four distinct corners.
     static const float unit[3] = {1, 1, 1};
-    float inverseMass = 0.0f;
-    float inverseInertia[3];
-    mvfxBodyShape shape = mvfxBodyShapeOf(&s_box, unit, &inverseMass, inverseInertia);
+    mvfxBodyMass mass;
+    mvfxBodyShape shape = mvfxBodyShapeOf(&s_box, nullptr, unit, &mass);
     bool four = true;
     for (int32_t turn = 0; turn < 3; ++turn)
     {
@@ -258,9 +283,8 @@ static void TestCapsulePairs(void)
     static const mvfxRigidDef capsule = {
         .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
     static const float rod[3] = {0.5f, 2, 0.5f};
-    float inverseMass = 0.0f;
-    float inverseInertia[3];
-    mvfxBodyShape shape = mvfxBodyShapeOf(&capsule, rod, &inverseMass, inverseInertia);
+    mvfxBodyMass mass;
+    mvfxBodyShape shape = mvfxBodyShapeOf(&capsule, nullptr, rod, &mass);
     mvfxBodyPose lower = {.x = {0, 0, 0}};
     TurnAbout(2, 1.5707963f, lower.q);
     mvfxBodyPose over = {.x = {0, 0.49f, 0}};

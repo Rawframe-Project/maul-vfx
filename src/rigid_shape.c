@@ -10,16 +10,74 @@ static float Dot(const float a[3], const float b[3])
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
-mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const float size[3], float* inverseMass,
-                              float inverseInertia[3])
+void mvfxShapePoint(const mvfxBodyShape* s, int32_t i, float out[3])
 {
-    mvfxBodyShape s = {.kind = rigid->shape, .radius = 0.5f * fabsf(size[0])};
-    double r = (double)s.radius;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        if (s->kind == mvfx_rigidHull)
+        {
+            out[k] = s->hull->vertices[i][k] * s->scale[k];
+        }
+        else if (s->kind == mvfx_rigidBox)
+        {
+            out[k] = (i >> k & 1) != 0 ? s->half[k] : -s->half[k];
+        }
+        else
+        {
+            out[k] =
+                k == 1 && s->kind == mvfx_rigidCapsule ? (i == 0 ? s->half[1] : -s->half[1]) : 0.0f;
+        }
+    }
+}
+
+// The inverse of a symmetric matrix (xx, yy, zz, xy, xz, yz); zero when it
+// has none.
+static void Invert(const double m[6], double out[6])
+{
+    double c[6] = {m[1] * m[2] - m[5] * m[5], m[0] * m[2] - m[4] * m[4], m[0] * m[1] - m[3] * m[3],
+                   m[4] * m[5] - m[3] * m[2], m[3] * m[5] - m[4] * m[1], m[3] * m[4] - m[0] * m[5]};
+    double det = m[0] * c[0] + m[3] * c[3] + m[4] * c[4];
+    for (int32_t k = 0; k < 6; ++k)
+    {
+        out[k] = det > 0.0 ? c[k] / det : 0.0;
+    }
+}
+
+// A hull's mass and inertia scaled by size along its axes: its second
+// moments scaled by the size's product and by each axis' size twice.
+static double HullInertia(const mvfxHull* hull, const float size[3], double density,
+                          double inertia[6])
+{
+    double s[3] = {fabs((double)size[0]), fabs((double)size[1]), fabs((double)size[2])};
+    double volume = s[0] * s[1] * s[2];
+    static const int32_t rows[6] = {0, 1, 2, 0, 0, 1};
+    static const int32_t columns[6] = {0, 1, 2, 1, 2, 2};
+    double c[6];
+    for (int32_t k = 0; k < 6; ++k)
+    {
+        c[k] = density * volume * s[rows[k]] * s[columns[k]] * (double)hull->moments[k];
+    }
+    inertia[0] = c[1] + c[2];
+    inertia[1] = c[0] + c[2];
+    inertia[2] = c[0] + c[1];
+    inertia[3] = -c[3];
+    inertia[4] = -c[4];
+    inertia[5] = -c[5];
+    return density * volume * (double)hull->volume;
+}
+
+// A primitive's mass and its inertias about its axes.
+static double PrimitiveInertia(const mvfxRigidDef* rigid, const float size[3], mvfxBodyShape* s,
+                               double inertia[6])
+{
+    double r = (double)s->radius;
     double pi = 3.14159265358979;
     double mass = (double)rigid->density * 4.0 / 3.0 * pi * r * r * r;
-    double inertia[3] = {0.4 * mass * r * r, 0.4 * mass * r * r, 0.4 * mass * r * r};
-    s.count = 1;
-    if (s.kind == mvfx_rigidCapsule)
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        inertia[k] = 0.4 * mass * r * r;
+    }
+    if (s->kind == mvfx_rigidCapsule)
     {
         double length = fmax((double)fabsf(size[1]) - 2.0 * r, 0.0);
         double tube = (double)rigid->density * pi * r * r * length;
@@ -29,12 +87,10 @@ mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const float size[3], fl
         inertia[0] = tube * (length * length / 12.0 + r * r / 4.0) +
                      ends * (0.4 * r * r + length * length / 4.0 + 3.0 * length * r / 8.0);
         inertia[2] = inertia[0];
-        s.half[1] = (float)(0.5 * length);
-        s.points[0][1] = s.half[1];
-        s.points[1][1] = -s.half[1];
-        s.count = 2;
+        s->half[1] = (float)(0.5 * length);
+        s->count = 2;
     }
-    else if (s.kind == mvfx_rigidBox)
+    else if (s->kind == mvfx_rigidBox)
     {
         double a = (double)fabsf(size[0]);
         double b = (double)fabsf(size[1]);
@@ -43,25 +99,45 @@ mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const float size[3], fl
         inertia[0] = mass * (b * b + c * c) / 12.0;
         inertia[1] = mass * (a * a + c * c) / 12.0;
         inertia[2] = mass * (a * a + b * b) / 12.0;
-        s.radius = 0.0f;
-        s.count = 8;
+        s->radius = 0.0f;
+        s->count = 8;
         for (int32_t k = 0; k < 3; ++k)
         {
-            s.half[k] = 0.5f * fabsf(size[k]);
-        }
-        for (int32_t i = 0; i < 8; ++i)
-        {
-            for (int32_t k = 0; k < 3; ++k)
-            {
-                s.points[i][k] = (i >> k & 1) != 0 ? s.half[k] : -s.half[k];
-            }
+            s->half[k] = 0.5f * fabsf(size[k]);
         }
     }
-    // A shape of no volume is a point of unit mass that does not turn.
-    *inverseMass = mass > 0.0 ? (float)(1.0 / mass) : 1.0f;
-    for (int32_t k = 0; k < 3; ++k)
+    return mass;
+}
+
+mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3],
+                              mvfxBodyMass* mass)
+{
+    mvfxBodyShape s = {.kind = rigid->shape, .count = 1, .radius = 0.5f * fabsf(size[0])};
+    double inertia[6] = {0.0};
+    double m = 0.0;
+    if (s.kind == mvfx_rigidHull)
     {
-        inverseInertia[k] = inertia[k] > 0.0 ? (float)(1.0 / inertia[k]) : 0.0f;
+        s.radius = 0.0f;
+        s.hull = hull;
+        s.count = hull->vertexCount;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            s.scale[k] = fabsf(size[k]);
+        }
+        m = HullInertia(hull, size, (double)rigid->density, inertia);
+    }
+    else
+    {
+        m = PrimitiveInertia(rigid, size, &s, inertia);
+    }
+    // A shape of no volume is a point of unit mass that does not turn.
+    double inverse[6];
+    Invert(inertia, inverse);
+    mass->inverseMass = m > 0.0 ? (float)(1.0 / m) : 1.0f;
+    for (int32_t k = 0; k < 6; ++k)
+    {
+        mass->inertia[k] = m > 0.0 ? (float)inertia[k] : 0.0f;
+        mass->inverseInertia[k] = m > 0.0 ? (float)inverse[k] : 0.0f;
     }
     return s;
 }
@@ -106,6 +182,17 @@ void mvfxAddBodyContact(mvfxBodyContacts* list, const float point[3], const floa
 
 float mvfxBodyReach(const mvfxBodyShape* s)
 {
+    if (s->kind == mvfx_rigidHull)
+    {
+        float reach = 0.0f;
+        for (int32_t i = 0; i < s->count; ++i)
+        {
+            float p[3];
+            mvfxShapePoint(s, i, p);
+            reach = fmaxf(reach, Dot(p, p));
+        }
+        return sqrtf(reach);
+    }
     if (s->kind == mvfx_rigidBox)
     {
         return sqrtf(Dot(s->half, s->half));

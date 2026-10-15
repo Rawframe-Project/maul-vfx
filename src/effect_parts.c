@@ -225,6 +225,25 @@ static bool IsAttachValid(const mvfxEffectDef* def, int32_t i)
     }
 }
 
+// Whether a hull emitter meets only what it meets by its vertices: planes,
+// the insides of spheres and boxes, grids, scene answers and the depth
+// image; not yet outsides of spheres and boxes, the host's colliders or
+// each other.
+static bool IsHullMetByPoints(const mvfxEmitterDef* def)
+{
+    if (def->rigid.shape != mvfx_rigidHull)
+    {
+        return true;
+    }
+    bool met = def->rigid.bodyContacts == 0 && !def->collision.hostColliders;
+    for (int32_t i = 0; i < def->colliderCount && met; ++i)
+    {
+        const mvfxCollider* c = &def->colliders[i];
+        met = c->inside || (c->kind != mvfx_colliderSphere && c->kind != mvfx_colliderBox);
+    }
+    return met;
+}
+
 // Whether an emitter's rigid particles are valid: a shape, a density,
 // substeps, restitution and friction in range; particles, not units nor a
 // beam.
@@ -235,13 +254,14 @@ static bool IsRigidValid(const mvfxEmitterDef* def)
     {
         return true;
     }
-    bool body = rigid->shape <= mvfx_rigidBox && rigid->density > 0.0f &&
+    bool body = rigid->shape <= mvfx_rigidHull && rigid->density > 0.0f &&
                 rigid->density <= MVFX_MAX_EXTENT && rigid->substeps >= 1 &&
                 rigid->substeps <= MVFX_MAX_SUBSTEPS && IsWithin(rigid->restitution, 0.0f, 1.0f) &&
                 IsWithin(rigid->dynamicFriction, 0.0f, MVFX_MAX_DRAG) &&
                 IsWithin(rigid->staticFriction, rigid->dynamicFriction, MVFX_MAX_DRAG) &&
                 rigid->bodyContacts >= 0 && rigid->bodyContacts <= MVFX_MAX_BODY_CONTACTS;
-    return body && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
+    return body && IsHullMetByPoints(def) && def->unit.kind == mvfx_unitParticle &&
+           !def->beam.enabled;
 }
 
 // Whether an emitter's plexus links are valid.

@@ -126,6 +126,25 @@ extern "C"
                                                              const float* normals,
                                                              int32_t vertexCount);
 
+    /// Gives the centroid of the convex hull of a mesh's vertices, the
+    /// place of a rigid hull particle (mvfx_rigidHull) in the mesh's frame:
+    /// a host draws the mesh at the particle's pose, scaled by its size and
+    /// moved by minus this centroid scaled likewise.
+    ///
+    /// @param context    The context that owns the mesh.
+    /// @param mesh       The mesh.
+    /// @param centerOut  Receives x, y and z.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         mesh; `mvfx_errorInvalid` for a NULL argument or vertices that
+    ///         span no volume or whose hull has more than
+    ///         MVFX_MAX_HULL_VERTICES vertices, which counts as misuse when
+    ///         the context is given; `mvfx_errorCapacity` when the allocator
+    ///         fails.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh,
+                                                           float centerOut[3]);
+
 #ifdef __cplusplus
 }
 #endif

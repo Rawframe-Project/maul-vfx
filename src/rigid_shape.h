@@ -7,6 +7,8 @@
 #ifndef MAUL_VFX_SRC_RIGID_SHAPE_H
 #define MAUL_VFX_SRC_RIGID_SHAPE_H
 
+#include "hull.h"
+
 #include "maul-vfx/effect.h"
 
 // A body's place and orientation (a unit quaternion) in the particles'
@@ -17,17 +19,39 @@ typedef struct mvfxBodyPose
     float q[4];
 } mvfxBodyPose;
 
-// A body's shape as spheres about points in its frame (a sphere's center,
-// a capsule's two ends, a box's eight corners at radius 0), with a box's
-// half sizes and a capsule's half length.
+// A body's shape as count spheres about points in its frame (a sphere's
+// center, a capsule's two ends, a box's eight corners and a hull's
+// vertices at radius 0, by mvfxShapePoint), with a box's half sizes, a
+// capsule's half length, and a hull and its scale.
 typedef struct mvfxBodyShape
 {
     mvfxRigidShape kind;
-    float points[8][3];
     int32_t count;
     float radius;
     float half[3];
+    const mvfxHull* hull;
+    float scale[3];
 } mvfxBodyShape;
+
+// A shape's point i (a box's corner i: bit k set for +k).
+void mvfxShapePoint(const mvfxBodyShape* s, int32_t i, float out[3]);
+
+// A body's mass arrays, each of the stride: its inverse mass, its inverse
+// inertia's six, its reach.
+enum
+{
+    MVFX_RIGID_MASS_ARRAYS = 8,
+    MVFX_RIGID_REACH = 7,
+};
+
+// A body's inverse mass, and its inertia and inverse inertia about its
+// center in its frame (xx, yy, zz, xy, xz, yz).
+typedef struct mvfxBodyMass
+{
+    float inverseMass;
+    float inertia[6];
+    float inverseInertia[6];
+} mvfxBodyMass;
 
 // A contact: the body's point in its frame, the surface point it meets
 // and the surface's normal (toward the body's side), its depth when found,
@@ -93,11 +117,11 @@ typedef struct mvfxPairContact
     float spun;
 } mvfxPairContact;
 
-// The shape a size gives (in the particles' space), and its inverse mass
-// and inverse inertias about its own axes from the density (a shape of no
-// volume a point of unit mass that does not turn).
-mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const float size[3], float* inverseMass,
-                              float inverseInertia[3]);
+// The shape a size gives (in the particles' space; a hull's from hull),
+// and its mass from the density (a shape of no volume a point of unit
+// mass that does not turn).
+mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3],
+                              mvfxBodyMass* mass);
 
 struct mvfxResolvedDepth;
 

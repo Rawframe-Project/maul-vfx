@@ -887,7 +887,7 @@ static void TestChecks(void)
         switch (c)
         {
         case 0:
-            bad.rigid.shape = 3;
+            bad.rigid.shape = 4;
             break;
         case 1:
             bad.rigid.density = 0.0f;

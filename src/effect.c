@@ -11,6 +11,7 @@
 #include "collide.h"
 #include "elementary.h"
 #include "force.h"
+#include "hull.h"
 #include "kill.h"
 
 #include <math.h>
@@ -855,5 +856,9 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
 
 void mvfxReleaseEffect(mvfxEffect* effect, const mvfxAllocator* allocator)
 {
+    for (int32_t i = 0; i < effect->emitterCount; ++i)
+    {
+        mvfxRelease(allocator, effect->emitters[i].hull, sizeof(mvfxHull), alignof(mvfxHull));
+    }
     mvfxRelease(allocator, effect, effect->blockBytes, effect->blockAlignment);
 }

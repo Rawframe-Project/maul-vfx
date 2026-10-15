@@ -19,6 +19,7 @@
 #include "maul-vfx/output.h"
 
 #include <math.h>
+#include <string.h>
 
 // The steps of the scene, in ticks: uneven, as a host's frames are.
 static const int64_t s_sceneSteps[] = {17476, 17477, 16000, 1,     40000, 17476, 3,
@@ -132,9 +133,17 @@ static inline void BuildRigidScene(mvfxContext* context)
                                       .halfExtents = {1.6f, 3, 1.2f},
                                       .rotation = {0, 0, 0, 1}};
     static const mvfxKillRule secondStrike = {.kind = mvfx_killCollisions, .collisions = 2};
-    mvfxEmitterDef emitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
-                                  mvfxDefaultEmitterDef()};
-    for (int32_t e = 0; e < 3; ++e)
+    // A lopsided hull: a wedge with a spike, its inertia across its axes.
+    static const float lopsided[21] = {0,    0, 0,    1, 0, 0,    0, 0.6f, 0,    0,   0,
+                                       0.3f, 1, 0.1f, 0, 0, 0.4f, 0, 0.7f, 0.8f, 1.1f};
+    mvfxMeshDef hullDef = mvfxDefaultMeshDef();
+    hullDef.positions = lopsided;
+    hullDef.vertexCount = 7;
+    mvfxMeshId hullMesh = {0};
+    CHECK(mvfxCreateMesh(context, &hullDef, &hullMesh) == mvfx_success, "rigid hull");
+    mvfxEmitterDef emitters[4] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                  mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    for (int32_t e = 0; e < 4; ++e)
     {
         mvfxEmitterDef* emitter = &emitters[e];
         emitter->rate = 0.0f;
@@ -158,7 +167,8 @@ static inline void BuildRigidScene(mvfxContext* context)
                                         .restitution = 0.3f,
                                         .staticFriction = 0.5f,
                                         .dynamicFriction = 0.3f,
-                                        .bodyContacts = 8};
+                                        .bodyContacts = e < 3 ? 8 : 0,
+                                        .hull = hullMesh};
         emitter->collision.enabled = true;
         emitter->colliders = ground;
         emitter->colliderCount = 3;
@@ -184,9 +194,13 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[2].collision.sceneQueries = true;
     emitters[2].collision.queryCapacity = 8;
     emitters[2].collision.lookahead = 0.2f;
+    emitters[3].colliders = hills;
+    emitters[3].colliderCount = 2;
+    emitters[3].size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.4f, 0.3f, 0.4f}, .max = {0.7f, 0.5f, 0.6f}};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
-    def.emitterCount = 3;
+    def.emitterCount = 4;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "rigid effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -1267,12 +1281,18 @@ static inline uint64_t HashPlexus(mvfxContext* context, mvfxInstanceId id, int32
         .points = points, .pointCapacity = 2 * LINKS, .ribbons = ribbons, .ribbonCapacity = LINKS};
     int64_t pointCount = 0;
     int64_t linkCount = 0;
+    // The layout writes its fields only: the bytes between them are the
+    // buffer's, cleared so the hash is of what this call wrote (left from
+    // earlier calls they differed by platform).
+    memset(points, 0, sizeof points);
+    memset(ribbons, 0, sizeof ribbons);
     CHECK(mvfxInstance_WritePlexus(context, id, emitter, layout, view, &buffers, &pointCount,
                                    &linkCount) == mvfx_success &&
               linkCount <= LINKS,
           "scene plexus");
     hash = mvfxHash64(hash, points, (int32_t)pointCount * SCENE_RECORD_BYTES);
     hash = mvfxHash64(hash, ribbons, (int32_t)(linkCount * (int64_t)sizeof ribbons[0]));
+    memset(points, 0, sizeof points);
     mvfxExpandBuffers strips = {.vertices = points,
                                 .vertexCapacity = 4 * LINKS,
                                 .indices = indices,

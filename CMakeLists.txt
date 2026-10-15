@@ -80,6 +80,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/gradient.c
     src/hash.c
     src/host_module.c
+    src/hull.c
     src/instance.c
     src/instance_api.c
     src/mesh.c
@@ -177,6 +178,8 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(rigid WHITEBOX)
     maul_add_test(rigid_contact WHITEBOX)
     maul_add_test(rigid_pair WHITEBOX)
+    maul_add_test(hull WHITEBOX)
+    maul_add_test(rigid_hull WHITEBOX)
     maul_add_test(steering)
     maul_add_test(trail)
     maul_add_test(tube)

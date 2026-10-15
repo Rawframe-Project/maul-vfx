@@ -277,6 +277,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_SetPositions(mvfxContext* context, m
 ```
 Gives a mesh new positions (and normals) for the same vertices, as a skinned mesh moves, and rebuilds what is drawn from them. Steps after spawn from the new positions.  @param context      The context that owns the mesh. @param mesh         The mesh. @param positions    x, y and z for each vertex, as in the mesh def. @param normals      Unit normals for each vertex, or NULL to compute them. @param vertexCount  The mesh's count of vertices. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live mesh; `mvfx_errorInvalid` for a NULL context or positions, a count not the mesh's or a value out of range, which counts as misuse when the context is given (the mesh is then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, float centerOut[3]);
+```
+Gives the centroid of the convex hull of a mesh's vertices, the place of a rigid hull particle (mvfx_rigidHull) in the mesh's frame: a host draws the mesh at the particle's pose, scaled by its size and moved by minus this centroid scaled likewise.  @param context    The context that owns the mesh. @param mesh       The mesh. @param centerOut  Receives x, y and z. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live mesh; `mvfx_errorInvalid` for a NULL argument or vertices that span no volume or whose hull has more than MVFX_MAX_HULL_VERTICES vertices, which counts as misuse when the context is given; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ## `output.h`
 
 Output: what the host draws, as data in its own layout. The library draws nothing; after a step the host asks, per view and per emitter, for records written into its buffers.
@@ -372,4 +377,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-67 functions across 11 headers.
+68 functions across 11 headers.

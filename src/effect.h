@@ -237,8 +237,10 @@ typedef struct mvfxCompiledEmitter
     // across, down, along the diagonal across and down and along the other
     // (a sheet's last three).
     mvfxUnitDef unit;
-    // Its rigid particles' def (zero when they are not).
+    // Its rigid particles' def (zero when they are not), and a hull's hull,
+    // built from its mesh and owned by the effect (NULL for the others).
     mvfxRigidDef rigid;
+    struct mvfxHull* hull;
     int32_t unitPoints;
     int32_t unitWidth;
     float unitRests[4];

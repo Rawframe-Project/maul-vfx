@@ -573,7 +573,15 @@ extern "C"
         mvfx_rigidCapsule = 1,
         // A box of size X by Y by Z.
         mvfx_rigidBox = 2,
+        // The convex hull of a mesh's vertices (mvfxRigidDef.hull) scaled by
+        // size along the mesh's axes, at most MVFX_MAX_HULL_VERTICES
+        // vertices. Its place is its centroid: a host draws its mesh moved
+        // by the scaled mvfxMesh_HullCenter from the particle.
+        mvfx_rigidHull = 3,
     };
+
+// The most vertices a rigid particle's hull has.
+#define MVFX_MAX_HULL_VERTICES 64
 
     // Rigid particles, by XPBD rigid bodies (Muller, Macklin, Chentanez,
     // Jeschke and Kim, "Detailed Rigid Body Simulation with Extended
@@ -628,6 +636,9 @@ extern "C"
         // (mvfxEmitterStats.rigidContactsCapped). A body born in a step
         // meets the others from its next.
         int32_t bodyContacts;
+        // A hull's mesh, its hull taken from its vertices when the effect is
+        // created (the effect does not follow its later positions).
+        mvfxMeshId hull;
     } mvfxRigidDef;
 
 // The most plexus links an emitter keeps a step.

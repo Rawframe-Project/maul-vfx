@@ -269,3 +269,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   within a small margin, solved in alternating order, and box faces
   clipped edge to edge no longer meet at the same corner twice. A box
   held on a gentle slope no longer creeps, and stacks rest.
+- Rigid hulls: `mvfx_rigidHull` makes rigid particles the convex hull
+  (Quickhull, at most `MVFX_MAX_HULL_VERTICES`) of a mesh's vertices
+  (`mvfxRigidDef.hull`), scaled by size along the mesh's axes, their mass
+  and full inertia from the hull's volume integrals, placed at its
+  centroid (`mvfxMesh_HullCenter`); they meet planes, grids, the insides
+  of spheres and boxes, scene answers and the depth image.

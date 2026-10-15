@@ -19,8 +19,7 @@ static float Dot(const float a[3], const float b[3])
 static mvfxBodyShape ShapeAt(const mvfxRigidSolve* s, int32_t i, mvfxBodyPose* pose)
 {
     float size[3];
-    float inverseMass = 0.0f;
-    float inverseInertia[3];
+    mvfxBodyMass mass;
     mvfxSizeOf(s->instance, s->emitter, i, size);
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -30,7 +29,7 @@ static mvfxBodyShape ShapeAt(const mvfxRigidSolve* s, int32_t i, mvfxBodyPose* p
     {
         pose->q[k] = s->q[k][i];
     }
-    return mvfxBodyShapeOf(s->rigid, size, &inverseMass, inverseInertia);
+    return mvfxBodyShapeOf(s->rigid, s->hull, size, &mass);
 }
 
 // A contact's offsets from both bodies' centers and its depth, at the
@@ -107,7 +106,7 @@ static void PairsOf(const mvfxRigidSolve* s, int32_t a, float cell)
     }
     mvfxBodyPose poseA;
     mvfxBodyShape shapeA = ShapeAt(s, a, &poseA);
-    float reachA = s->mass[4 * s->stride + (size_t)a];
+    float reachA = s->mass[MVFX_RIGID_REACH * s->stride + (size_t)a];
     uint32_t visited[27];
     int32_t visits = 0;
     for (int32_t n = 0; n < 27; ++n)
@@ -124,7 +123,7 @@ static void PairsOf(const mvfxRigidSolve* s, int32_t a, float cell)
         for (int32_t e = seen ? 0 : grid->table[key]; !seen && e < grid->table[key + 1u]; ++e)
         {
             int32_t b = grid->index[e];
-            float reach = reachA + s->mass[4 * s->stride + (size_t)b];
+            float reach = reachA + s->mass[MVFX_RIGID_REACH * s->stride + (size_t)b];
             float square = 0.0f;
             for (int32_t k = 0; k < 3; ++k)
             {
@@ -158,7 +157,7 @@ void mvfxFindBodyPairs(const mvfxRigidSolve* s, int32_t count)
     float widest = 0.0f;
     for (int32_t i = 0; i < count; ++i)
     {
-        widest = fmaxf(widest, s->mass[4 * s->stride + (size_t)i]);
+        widest = fmaxf(widest, s->mass[MVFX_RIGID_REACH * s->stride + (size_t)i]);
     }
     float cell = fmaxf(2.0f * widest, 1e-6f);
     const float* x[3] = {s->x[0], s->x[1], s->x[2]};

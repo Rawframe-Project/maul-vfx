@@ -113,7 +113,8 @@ static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, in
     size_t rigid = compiled->rigid.enabled ? (size_t)capacity : 0u;
     size_t met = compiled->collision.enabled ? rigid : 0u;
     at->rigidStart = mvfxLayoutAdd(layout, 7u * rigid, sizeof(float), alignof(float));
-    at->rigidMass = mvfxLayoutAdd(layout, 5u * rigid, sizeof(float), alignof(float));
+    at->rigidMass = mvfxLayoutAdd(layout, (size_t)MVFX_RIGID_MASS_ARRAYS * rigid, sizeof(float),
+                                  alignof(float));
     at->rigidFlags = mvfxLayoutAdd(layout, rigid, sizeof(uint8_t), alignof(uint8_t));
     at->rigidContacts = mvfxLayoutAdd(layout, (size_t)MVFX_MAX_RIGID_CONTACTS * met,
                                       sizeof(mvfxBodyContact), alignof(mvfxBodyContact));

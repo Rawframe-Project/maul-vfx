@@ -313,16 +313,15 @@ static void Prepare(const mvfxRigidSolve* s, int32_t i)
     mvfxInstance* instance = s->instance;
     mvfxEmitterState* state = &instance->emitters[s->emitter];
     float size[3];
-    float inverseMass = 0.0f;
-    float inverseInertia[3];
+    mvfxBodyMass mass;
     mvfxSizeOf(instance, s->emitter, i, size);
-    mvfxBodyShape shape = mvfxBodyShapeOf(s->rigid, size, &inverseMass, inverseInertia);
-    s->mass[i] = inverseMass;
-    for (int32_t k = 0; k < 3; ++k)
+    mvfxBodyShape shape = mvfxBodyShapeOf(s->rigid, s->hull, size, &mass);
+    s->mass[i] = mass.inverseMass;
+    for (int32_t k = 0; k < 6; ++k)
     {
-        s->mass[(size_t)(1 + k) * s->stride + (size_t)i] = inverseInertia[k];
+        s->mass[(size_t)(1 + k) * s->stride + (size_t)i] = mass.inverseInertia[k];
     }
-    s->mass[4 * s->stride + (size_t)i] = mvfxBodyReach(&shape);
+    s->mass[MVFX_RIGID_REACH * s->stride + (size_t)i] = mvfxBodyReach(&shape);
     s->flags[i] &= (uint8_t)~(MVFX_RIGID_TOUCHED | MVFX_RIGID_STRUCK);
     mvfxBody b = mvfxLoadBody(s, i);
     const mvfxCollision* collision = &instance->effect->emitters[s->emitter].collision;
@@ -467,6 +466,14 @@ static void Meet(const mvfxRigidSolve* s, int32_t first, int32_t end, bool pairs
     mvfxStrikePairs(s);
 }
 
+// A symmetric matrix (xx, yy, zz, xy, xz, yz) times v.
+static void Times(const float m[6], const float v[3], float out[3])
+{
+    out[0] = m[0] * v[0] + m[3] * v[1] + m[4] * v[2];
+    out[1] = m[3] * v[0] + m[1] * v[1] + m[5] * v[2];
+    out[2] = m[4] * v[0] + m[5] * v[1] + m[2] * v[2];
+}
+
 // Turns each body's angular velocity by the gyroscopic term over h, about
 // its own axes: w += h I^-1 (I w x w).
 static void Spin(const mvfxRigidSolve* s, int32_t first, int32_t end)
@@ -474,27 +481,25 @@ static void Spin(const mvfxRigidSolve* s, int32_t first, int32_t end)
     for (int32_t i = first; i < end; ++i)
     {
         float size[3];
-        float inverseMass = 0.0f;
-        float inverseInertia[3];
+        mvfxBodyMass mass;
         mvfxSizeOf(s->instance, s->emitter, i, size);
-        (void)mvfxBodyShapeOf(s->rigid, size, &inverseMass, inverseInertia);
+        (void)mvfxBodyShapeOf(s->rigid, s->hull, size, &mass);
         float q[4] = {s->q[0][i], s->q[1][i], s->q[2][i], s->q[3][i]};
         const float world[3] = {s->w[0][i], s->w[1][i], s->w[2][i]};
         float w[3];
         ToBody(q, world, w);
         float momentum[3];
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            momentum[k] = inverseInertia[k] > 0.0f ? w[k] / inverseInertia[k] : 0.0f;
-        }
+        Times(mass.inertia, w, momentum);
         float torque[3];
         Cross(momentum, w, torque);
         float before = sqrtf(Dot(momentum, momentum));
+        float turn[3];
+        Times(mass.inverseInertia, torque, turn);
         for (int32_t k = 0; k < 3; ++k)
         {
-            w[k] += s->h * inverseInertia[k] * torque[k];
-            momentum[k] = inverseInertia[k] > 0.0f ? w[k] / inverseInertia[k] : 0.0f;
+            w[k] += s->h * turn[k];
         }
+        Times(mass.inertia, w, momentum);
         // The term turns the momentum without changing its size: held to
         // it, the explicit step cannot grow however fast the spin.
         float after = sqrtf(Dot(momentum, momentum));
@@ -518,6 +523,7 @@ static mvfxRigidSolve SolveOf(mvfxInstance* instance, int32_t emitter)
     mvfxRigidSolve s = {.instance = instance,
                         .emitter = emitter,
                         .rigid = &compiled->rigid,
+                        .hull = compiled->hull,
                         .start = state->rigidStart,
                         .mass = state->rigidMass,
                         .flags = state->rigidFlags,

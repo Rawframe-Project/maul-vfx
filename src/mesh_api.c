@@ -5,7 +5,9 @@
 
 #include "mesh_api.h"
 
+#include "allocator.h"
 #include "context.h"
+#include "hull.h"
 #include "mesh.h"
 #include "slots.h"
 
@@ -94,6 +96,31 @@ mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const fl
     }
     mvfxMoveMesh(live, positions, normals);
     return mvfx_success;
+}
+
+mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, float centerOut[3])
+{
+    if (context == nullptr || centerOut == nullptr)
+    {
+        context != nullptr ? mvfxCountMisuse(context) : (void)0;
+        return mvfx_errorInvalid;
+    }
+    const mvfxMesh* live = mvfxContextMesh(context, mesh);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    mvfxHull* hull = mvfxAllocate(&context->allocator, sizeof(mvfxHull), alignof(mvfxHull));
+    mvfxResult built = hull == nullptr ? mvfx_errorCapacity
+                                       : mvfxBuildHull(live->positions, live->vertexCount,
+                                                       &context->allocator, hull);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        centerOut[k] = built == mvfx_success ? hull->centroid[k] : 0.0f;
+    }
+    built == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
+    mvfxRelease(&context->allocator, hull, sizeof(mvfxHull), alignof(mvfxHull));
+    return built;
 }
 
 mvfxMesh* mvfxContextMesh(const mvfxContext* context, mvfxMeshId mesh)
