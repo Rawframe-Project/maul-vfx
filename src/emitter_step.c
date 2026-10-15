@@ -24,6 +24,7 @@
 #include "unit.h"
 
 #include <math.h>
+#include <string.h>
 
 // The seconds in a tick, exact.
 #define SECONDS_PER_TICK 0x1p-20
@@ -418,6 +419,8 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
         state->hostCount = 0;
         return;
     }
+    // No kill yet: the integrator and the host modules mark them.
+    memset(instance->killScratch, 0, (size_t)state->capacity);
     mvfxBeginEvents(instance, emitter);
     mvfxPlanDistance(instance, emitter);
     mvfxResolveEmitter(instance, emitter);

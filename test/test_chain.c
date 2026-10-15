@@ -379,6 +379,30 @@ static void TestQuality(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestKillInSubsteps(void)
+{
+    // At 60 along x through a kill sphere (radius 0.2 at x = 0.5) in four
+    // substeps: the second and third cross it, the last is past it, and
+    // the chain dies.
+    mvfxEmitterDef emitter = Chain(2);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.unit.pinFirst = false;
+    emitter.unit.substeps = 4;
+    static const mvfxKillRule sphere = {
+        .kind = mvfx_killInsideSphere, .center = {0.5f, 0, 0}, .radius = 0.2f};
+    emitter.killRules = &sphere;
+    emitter.killRuleCount = 1;
+    Open(&emitter, NULL, 0);
+    static const double root[3] = {-1, 0, 0};
+    static const float fast[3] = {60, 0, 0};
+    Spawn(1, root, fast);
+    Steps(1, MVFX_TICKS_PER_SECOND / 60);
+    CHECK(Stats().live == 2, "short of it");
+    Steps(1, MVFX_TICKS_PER_SECOND / 60);
+    CHECK(Stats().live == 0 && Stats().killed == 2, "killed in a substep");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestParticlesUnread(void)
 {
     // A particle emitter's unit is not read: a stray pin leaves its
@@ -492,6 +516,7 @@ int main(void)
     TestKill();
     TestRebaseAndRibbons();
     TestQuality();
+    TestKillInSubsteps();
     TestParticlesUnread();
     TestChecks();
     return s_failures == 0 ? 0 : 1;

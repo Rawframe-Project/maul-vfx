@@ -384,7 +384,8 @@ static void MoveParticle(const Range* r, int32_t i)
     {
         r->p[k][i] = place[k];
     }
-    r->instance->killScratch[i] = collisionKills || IsKilled(r, i, start, place) ? 1 : 0;
+    // Kept over a step's substeps: a kill in any of them holds.
+    r->instance->killScratch[i] |= collisionKills || IsKilled(r, i, start, place) ? 1 : 0;
 }
 
 // Moves particles from first to end over seconds from tick.
