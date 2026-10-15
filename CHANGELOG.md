@@ -303,6 +303,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   the projection keeps), and MacCormack's advection (`advection`,
   `mvfxGasAdvection`). A work buffer is added to the instance's block
   only for the features that use one.
+- A gas flows around obstacles: `obstacles` (colliders of any kind, in
+  the world or the instance's frame, their grids held by the effect) and
+  `hostObstacles` (the instance's colliders). Cells within them are solid
+  and hold nothing, and the faces beside them take the obstacle's
+  velocity from its motion since the step before, so a moving door
+  pushes smoke. The pressure solve's weights are now stored per face.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

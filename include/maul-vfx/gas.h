@@ -12,6 +12,7 @@
 #define MAUL_VFX_GAS_H
 
 #include "maul-vfx/context.h"
+#include "maul-vfx/modules.h"
 #include "maul-vfx/shape.h"
 
 #include <stdbool.h>
@@ -187,6 +188,17 @@ extern "C"
         float burnHeat;
         float burnSmoke;
         float burnExpansion;
+        // Its obstacles, from 0 to MVFX_MAX_COLLIDERS colliders (NULL when
+        // obstacleCount is 0), in the world or the instance's frame, and
+        // with hostObstacles the instance's colliders
+        // (mvfxInstance_SetColliders) too. A cell whose center is on a
+        // collider's wrong side (as a particle would be) is solid: it holds
+        // nothing, and the faces beside it take the obstacle's velocity
+        // across them, the obstacle's motion since the step before, and let
+        // nothing through. The effect copies them and holds their grids.
+        const mvfxCollider* obstacles;
+        int32_t obstacleCount;
+        bool hostObstacles;
     } mvfxGasDef;
 
 // The cookie of a gas def, which its default sets and mvfxCreateEffect

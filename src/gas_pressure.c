@@ -10,17 +10,17 @@
 #define COARSEST_PASSES 64
 
 // A level of the solve: its cells along each axis, the fine cells along
-// each axis and how many a level cell spans (2 to the level), and the
-// box's closed walls. Each level is a finite-volume form of the same box:
-// a cell spans its fine cells within the box (the last along an axis may
-// span fewer), and two cells meet across a face of their shared extent
-// over the distance between their centers.
+// each axis and how many a level cell spans (2 to the level), and its
+// faces' open areas across each axis. Each level is a finite-volume form
+// of the same box: a cell spans its fine cells within the box (the last
+// along an axis may span fewer), and two cells meet across a face of its
+// open area over the distance between their centers.
 typedef struct Level
 {
     const int32_t* n;
     const int32_t* fine;
     int32_t span;
-    mvfxGasWalls closed;
+    float* const* areas;
 } Level;
 
 // The fine cells a level cell spans along axis k.
@@ -35,11 +35,28 @@ static float Width(const Level* l, int32_t k, int32_t i)
     return (float)(end - i * l->span);
 }
 
+// The distance between the centers across face i along k (0 to n[k]):
+// half of each cell's width beside it, a wall face's one cell's.
+static float Distance(const Level* l, int32_t k, int32_t i)
+{
+    float below = i > 0 ? Width(l, k, i - 1) : 0.0f;
+    float above = i < l->n[k] ? Width(l, k, i) : 0.0f;
+    return 0.5f * (below + above);
+}
+
+// The index of the face across k before cell at, among a level of n
+// cells' faces across k.
+static int64_t FaceAt(const int32_t n[3], int32_t k, const int32_t at[3])
+{
+    const int32_t m[3] = {n[0] + (k == 0 ? 1 : 0), n[1] + (k == 1 ? 1 : 0),
+                          n[2] + (k == 2 ? 1 : 0)};
+    return ((int64_t)at[2] * m[1] + at[1]) * m[0] + at[0];
+}
+
 // The pressure's neighbors about cell at, weighted by their faces'
-// coefficients (a face's extent over the distance between the centers),
-// and the coefficients' sum: a cell across each side inside the box, none
-// across a closed wall, across an open one a pressure of 0 on the wall
-// (half the cell's width away).
+// coefficients (a face's open area over the distance between the
+// centers), and the coefficients' sum: across a wall's open face a
+// pressure of 0 on the wall, half the cell's width away.
 static float Neighbors(const Level* l, const float* p, const int32_t at[3], float* weight)
 {
     const int64_t stride[3] = {1, l->n[0], (int64_t)l->n[0] * l->n[1]};
@@ -52,19 +69,14 @@ static float Neighbors(const Level* l, const float* p, const int32_t at[3], floa
         {
             continue;
         }
-        float extent =
-            Width(l, (k + 1) % 3, at[(k + 1) % 3]) * Width(l, (k + 2) % 3, at[(k + 2) % 3]);
-        float own = Width(l, k, at[k]);
-        for (int32_t side = 0; side < 2; ++side)
-        {
-            int32_t next = at[k] + (side == 0 ? -1 : 1);
-            bool inside = next >= 0 && next < l->n[k];
-            bool open = (l->closed & ((1u + (uint32_t)side) << (2 * k))) == 0;
-            float c = inside ? extent / (0.5f * (own + Width(l, k, next)))
-                             : (open ? extent / (0.5f * own) : 0.0f);
-            sum += inside ? c * p[i + (side == 0 ? -stride[k] : stride[k])] : 0.0f;
-            *weight += c;
-        }
+        // Along k the faces across it lie as the cells do.
+        int64_t low = FaceAt(l->n, k, at);
+        int64_t step = stride[k];
+        float below = l->areas[k][low] / Distance(l, k, at[k]);
+        float above = l->areas[k][low + step] / Distance(l, k, at[k] + 1);
+        sum += at[k] > 0 ? below * p[i - stride[k]] : 0.0f;
+        sum += at[k] + 1 < l->n[k] ? above * p[i + stride[k]] : 0.0f;
+        *weight += below + above;
     }
     return sum;
 }
@@ -193,7 +205,7 @@ static void Prolong(const Level* coarse, const float* e, const Level* fine, floa
 // A V cycle from level l down.
 static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, float omega)
 {
-    const Level here = {gas->levels[l], gas->def.size, 1 << l, gas->def.closedWalls};
+    const Level here = {gas->levels[l], gas->def.size, 1 << l, state->areas[l]};
     mvfxGasLevel* v = &state->levels[l];
     if (l + 1 == gas->levelCount)
     {
@@ -202,20 +214,11 @@ static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, fl
     }
     Smooth(&here, v, SMOOTH_PASSES, omega);
     Residual(&here, v);
-    const Level below = {gas->levels[l + 1], gas->def.size, 2 << l, gas->def.closedWalls};
+    const Level below = {gas->levels[l + 1], gas->def.size, 2 << l, state->areas[l + 1]};
     Restrict(&here, v->scratch, &below, &state->levels[l + 1]);
     Cycle(gas, state, l + 1, omega);
     Prolong(&below, state->levels[l + 1].pressure, &here, v->pressure);
     Smooth(&here, v, SMOOTH_PASSES, omega);
-}
-
-// The faces' array index of the face across axis k before cell at (k's
-// face at the cell's low side) in a box of n cells.
-static int64_t FaceAt(const int32_t n[3], int32_t k, const int32_t at[3])
-{
-    const int32_t m[3] = {n[0] + (k == 0 ? 1 : 0), n[1] + (k == 1 ? 1 : 0),
-                          n[2] + (k == 2 ? 1 : 0)};
-    return ((int64_t)at[2] * m[1] + at[1]) * m[0] + at[0];
 }
 
 void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3])
@@ -245,9 +248,27 @@ void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3])
     }
 }
 
-// The divergence of each cell: its faces' outflow, into the first level's
-// right-hand side.
-static void Divergence(const mvfxCompiledGas* gas, float* const velocity[3], float* rhs)
+// Whether a cell has a face that lets the gas through (a solid's have
+// none).
+static bool IsOpen(const mvfxGasState* state, const int32_t n[3], const int32_t at[3])
+{
+    const int64_t stride[3] = {1, n[0], (int64_t)n[0] * n[1]};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int64_t low = n[k] > 1 ? FaceAt(n, k, at) : 0;
+        if (n[k] > 1 &&
+            (state->areas[0][k][low] > 0.0f || state->areas[0][k][low + stride[k]] > 0.0f))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The divergence of each open cell, its faces' outflow, into the first
+// level's right-hand side; 0 for a cell nothing passes into.
+static void Divergence(const mvfxCompiledGas* gas, const mvfxGasState* state,
+                       float* const velocity[3], float* rhs)
 {
     const int32_t* n = gas->def.size;
     int64_t i = 0;
@@ -266,31 +287,33 @@ static void Divergence(const mvfxCompiledGas* gas, float* const velocity[3], flo
                     out += n[k] > 1 ? velocity[k][FaceAt(n, k, at)] - velocity[k][low] : 0.0f;
                     at[k] -= 1;
                 }
-                rhs[i] = out;
+                rhs[i] = IsOpen(state, n, at) ? out : 0.0f;
             }
         }
     }
 }
 
 // A face's velocity less the pressure's rise across it over the distance
-// between the centers, the face across axis k before the cell at index
-// cell (at[k] its place along k): across an open wall the pressure is 0
-// on the wall, half a cell away; a closed wall's face stays 0.
-static float Corrected(const mvfxCompiledGas* gas, const float* p, int32_t k, int32_t at,
-                       int64_t cell, int64_t stride, float velocity)
+// between the centers, the face f across axis k before the cell at index
+// cell (at its place along k): across an open wall the pressure is 0 on
+// the wall, half a cell away; a closed face (a closed wall's, a solid's)
+// keeps its velocity.
+static float Corrected(const mvfxCompiledGas* gas, const mvfxGasState* state, int32_t k, int64_t f,
+                       int32_t at, int64_t cell, int64_t stride, float velocity)
 {
+    if (state->areas[0][k][f] == 0.0f)
+    {
+        return velocity;
+    }
     bool low = at == 0;
     bool high = at == gas->def.size[k];
-    bool closed = (low && (gas->def.closedWalls & (1u << (2 * k))) != 0) ||
-                  (high && (gas->def.closedWalls & (2u << (2 * k))) != 0);
-    float before = low ? 0.0f : p[cell - stride];
-    float after = high ? 0.0f : p[cell];
-    float rise = (low || high ? 2.0f : 1.0f) * (after - before);
-    return closed ? 0.0f : velocity - rise;
+    float before = low ? 0.0f : state->levels[0].pressure[cell - stride];
+    float after = high ? 0.0f : state->levels[0].pressure[cell];
+    return velocity - (low || high ? 2.0f : 1.0f) * (after - before);
 }
 
 // Each face's velocity corrected by the pressure.
-static void Correct(const mvfxCompiledGas* gas, const float* p, float* const velocity[3])
+static void Correct(const mvfxCompiledGas* gas, const mvfxGasState* state, float* const velocity[3])
 {
     const int32_t* n = gas->def.size;
     const int64_t stride[3] = {1, n[0], (int64_t)n[0] * n[1]};
@@ -311,7 +334,8 @@ static void Correct(const mvfxCompiledGas* gas, const float* p, float* const vel
                 {
                     const int32_t at[3] = {x, y, z};
                     int64_t cell = z * stride[2] + y * stride[1] + x;
-                    velocity[k][f] = Corrected(gas, p, k, at[k], cell, stride[k], velocity[k][f]);
+                    velocity[k][f] =
+                        Corrected(gas, state, k, f, at[k], cell, stride[k], velocity[k][f]);
                 }
             }
         }
@@ -331,24 +355,30 @@ static bool IsSealed(const mvfxCompiledGas* gas)
     return true;
 }
 
-// The divergence the expansion asks for taken from each cell's, so the
-// solve leaves it there; in a sealed box, less its mean (which has nowhere
-// to go), summed in the cells' order.
-static void Expand(const mvfxCompiledGas* gas, const float* expansion, float* rhs)
+// The divergence the expansion asks for taken from each open cell's, so
+// the solve leaves it there; in a sealed box, less its mean over the open
+// cells (it has nowhere to go), summed in the cells' order.
+static void Expand(const mvfxCompiledGas* gas, const mvfxGasState* state, const float* expansion,
+                   float* rhs)
 {
-    float mean = 0.0f;
-    if (IsSealed(gas))
+    const int32_t* n = gas->def.size;
+    bool sealed = IsSealed(gas);
+    double sum = 0.0;
+    int64_t open = 0;
+    for (int64_t i = 0; sealed && i < gas->cells; ++i)
     {
-        double sum = 0.0;
-        for (int64_t i = 0; i < gas->cells; ++i)
-        {
-            sum += (double)expansion[i];
-        }
-        mean = (float)(sum / (double)gas->cells);
+        const int32_t at[3] = {(int32_t)(i % n[0]), (int32_t)(i / n[0] % n[1]),
+                               (int32_t)(i / ((int64_t)n[0] * n[1]))};
+        bool counts = IsOpen(state, n, at);
+        sum += counts ? (double)expansion[i] : 0.0;
+        open += counts ? 1 : 0;
     }
+    float mean = open > 0 ? (float)(sum / (double)open) : 0.0f;
     for (int64_t i = 0; i < gas->cells; ++i)
     {
-        rhs[i] -= expansion[i] - mean;
+        const int32_t at[3] = {(int32_t)(i % n[0]), (int32_t)(i / n[0] % n[1]),
+                               (int32_t)(i / ((int64_t)n[0] * n[1]))};
+        rhs[i] -= IsOpen(state, n, at) ? expansion[i] - mean : 0.0f;
     }
 }
 
@@ -364,14 +394,91 @@ void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float
     // Jacobi's best smoothing weights for the 5 and 7-point Laplacians
     // (Briggs, Henson and McCormick 2000).
     float omega = gas->def.size[2] > 1 ? 6.0f / 7.0f : 4.0f / 5.0f;
-    Divergence(gas, velocity, state->levels[0].rhs);
+    Divergence(gas, state, velocity, state->levels[0].rhs);
     if (expansion != nullptr)
     {
-        Expand(gas, expansion, state->levels[0].rhs);
+        Expand(gas, state, expansion, state->levels[0].rhs);
     }
     for (int32_t c = 0; c < gas->def.pressureCycles; ++c)
     {
         Cycle(gas, state, 0, omega);
     }
-    Correct(gas, state->levels[0].pressure, velocity);
+    Correct(gas, state, velocity);
+}
+
+// A finest face's open area across k at at (at[k] from 0 to n[k]): 0 on a
+// closed wall or beside a solid cell, else 1.
+static float FineArea(const mvfxCompiledGas* gas, const uint8_t* solid, int32_t k,
+                      const int32_t at[3])
+{
+    const int32_t* n = gas->def.size;
+    const int64_t stride[3] = {1, n[0], (int64_t)n[0] * n[1]};
+    bool low = at[k] == 0;
+    bool high = at[k] == n[k];
+    bool closed = (low && (gas->def.closedWalls & (1u << (2 * k))) != 0) ||
+                  (high && (gas->def.closedWalls & (2u << (2 * k))) != 0);
+    int64_t cell = at[2] * stride[2] + at[1] * stride[1] + at[0];
+    bool below = !low && solid != nullptr && solid[cell - stride[k]] != 0;
+    bool above = !high && solid != nullptr && solid[cell] != 0;
+    return closed || below || above ? 0.0f : 1.0f;
+}
+
+// A coarser face's open area across k at at, on level l: the sum of the
+// finer faces' on its plane within the box.
+static float CoarseArea(const mvfxCompiledGas* gas, const mvfxGasState* state, int32_t l, int32_t k,
+                        const int32_t at[3])
+{
+    const int32_t* fine = gas->levels[l - 1];
+    int32_t a = (k + 1) % 3;
+    int32_t b = (k + 2) % 3;
+    int32_t child[3];
+    child[k] = 2 * at[k] < fine[k] ? 2 * at[k] : fine[k];
+    float sum = 0.0f;
+    for (int32_t j = 0; j < 2; ++j)
+    {
+        for (int32_t i = 0; i < 2; ++i)
+        {
+            child[a] = 2 * at[a] + i;
+            child[b] = 2 * at[b] + j;
+            bool within = child[a] < fine[a] && child[b] < fine[b];
+            sum += within ? state->areas[l - 1][k][FaceAt(fine, k, child)] : 0.0f;
+        }
+    }
+    return sum;
+}
+
+// A level's open areas across k.
+static void LevelAreas(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, int32_t k)
+{
+    const int32_t* n = gas->levels[l];
+    const int32_t m[3] = {n[0] + (k == 0 ? 1 : 0), n[1] + (k == 1 ? 1 : 0),
+                          n[2] + (k == 2 ? 1 : 0)};
+    float* areas = state->areas[l][k];
+    int64_t f = 0;
+    for (int32_t z = 0; z < m[2]; ++z)
+    {
+        for (int32_t y = 0; y < m[1]; ++y)
+        {
+            for (int32_t x = 0; x < m[0]; ++x, ++f)
+            {
+                const int32_t at[3] = {x, y, z};
+                areas[f] =
+                    l == 0 ? FineArea(gas, state->solid, k, at) : CoarseArea(gas, state, l, k, at);
+            }
+        }
+    }
+}
+
+void mvfxGasAreas(const mvfxCompiledGas* gas, mvfxGasState* state)
+{
+    for (int32_t l = 0; l < gas->levelCount; ++l)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            if (gas->levels[l][k] > 1)
+            {
+                LevelAreas(gas, state, l, k);
+            }
+        }
+    }
 }

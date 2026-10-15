@@ -6,6 +6,7 @@
 #include "elementary.h"
 #include "gas_forces.h"
 #include "gas_pressure.h"
+#include "gas_solid.h"
 
 #include "maul-vfx/effect.h"
 
@@ -269,7 +270,7 @@ static void Pour(const mvfxCompiledGas* gas, const mvfxGasLattice* l, float* con
 // the velocity and the scalars carried by the velocity as it was, each
 // decaying; the fuel burning; the projection.
 static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxGasLattice* l,
-                    const float gravity[3], bool pours)
+                    const float gravity[3], double seconds, bool pours)
 {
     int32_t now = state->current;
     float* velocity[3] = {state->velocity[0][now], state->velocity[1][now],
@@ -296,8 +297,18 @@ static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxG
               mvfxExp(-decays[f] * l->h));
     }
     state->current = 1 - now;
+    if (state->solid != nullptr)
+    {
+        mvfxEmptyGasSolids(gas, state, carried);
+    }
     bool expands = gas->def.burnExpansion > 0.0f && gas->def.burnRate > 0.0f;
     mvfxGasBurn(gas, l, carried, expands ? state->work : nullptr);
+    if (state->solid != nullptr)
+    {
+        float* moved[3] = {state->velocity[0][1 - now], state->velocity[1][1 - now],
+                           state->velocity[2][1 - now]};
+        mvfxMoveGasSolids(gas, state, seconds, moved);
+    }
     mvfxProjectGas(gas, state, expands ? state->work : nullptr);
 }
 
@@ -327,6 +338,11 @@ void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float gr
     {
         l.n[k] = gas->def.size[k];
     }
+    double seconds = (double)(to - from) / (double)MVFX_TICKS_PER_SECOND;
+    if (state->solid != nullptr)
+    {
+        mvfxMarkGasSolids(gas, state);
+    }
     for (int32_t s = 0; s < substeps; ++s)
     {
         int64_t start = from + (to - from) * s / substeps;
@@ -336,7 +352,7 @@ void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float gr
             continue;
         }
         l.h = (float)((double)(end - start) / (double)MVFX_TICKS_PER_SECOND);
-        Substep(gas, state, &l, gravity, start < stopTick);
+        Substep(gas, state, &l, gravity, seconds, start < stopTick);
     }
     state->holds = HoldsAny(gas, state);
 }

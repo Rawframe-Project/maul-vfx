@@ -8,6 +8,7 @@
 #define MAUL_VFX_SRC_GAS_H
 
 #include "allocator.h"
+#include "collide.h"
 
 #include "maul-vfx/gas.h"
 
@@ -35,7 +36,15 @@ typedef struct mvfxCompiledGas
     // confines vorticity), a faces array (with MacCormack) and its cells
     // (when burning expands it); 0 for none.
     int64_t work;
+    // Its obstacles, compiled, and their grids (NULL for a primitive),
+    // which the effect holds; whether it has any (its own or the host's).
+    mvfxCollider obstacles[MVFX_MAX_COLLIDERS];
+    struct mvfxGrid* obstacleGrids[MVFX_MAX_COLLIDERS];
+    bool hasObstacles;
 } mvfxCompiledGas;
+
+// The most obstacles a gas meets: its own and the host's.
+#define MVFX_GAS_OBSTACLES (2 * MVFX_MAX_COLLIDERS)
 
 // A gas's lattice: its cells along each axis and their edge, and a
 // substep's span.
@@ -52,6 +61,8 @@ typedef struct mvfxGasAt
     size_t velocity[3];
     size_t scalars[3];
     size_t levels[MVFX_GAS_LEVELS];
+    size_t areas[MVFX_GAS_LEVELS];
+    size_t solid;
     size_t work;
 } mvfxGasAt;
 
@@ -80,6 +91,23 @@ typedef struct mvfxGasState
     // Its work buffer (NULL for none), written before it is read in
     // each use.
     float* work;
+    // Each level's faces' open areas across each axis (in its finest
+    // cells' faces: a face between two whole cells of level l has 4^l in
+    // 3D, 0 for a closed wall or a solid), NULL across an axis of one
+    // cell.
+    float* areas[MVFX_GAS_LEVELS][3];
+    // With obstacles: each cell's solid, 0 for none, else 1 more than the
+    // index of the obstacle it is within; the obstacles resolved in the
+    // box's frame at the end of this step and of the one before
+    // (obstaclesNow the index of this step's), and whether the one before
+    // is known (not at the first step or after a teleport).
+    uint8_t* solid;
+    mvfxResolvedCollider obstacles[2][MVFX_GAS_OBSTACLES];
+    int32_t obstacleCount[2];
+    int32_t obstaclesNow;
+    bool obstaclesKnown;
+    // Whether its obstacles were resolved since its start or a teleport.
+    bool obstaclesResolved;
     double origin[3];
     float rotation[4];
     float scale;
@@ -109,7 +137,21 @@ static inline int64_t mvfxGasLevelCells(const mvfxCompiledGas* gas, int32_t leve
     return (int64_t)gas->levels[level][0] * gas->levels[level][1] * gas->levels[level][2];
 }
 
-// Zeroes a gas's fields.
+// A level's faces across its axes below k (0 to 3), counting none across
+// an axis of one cell.
+static inline int64_t mvfxGasLevelFaces(const mvfxCompiledGas* gas, int32_t level, int32_t k)
+{
+    int64_t cells = mvfxGasLevelCells(gas, level);
+    int64_t faces = 0;
+    for (int32_t a = 0; a < k; ++a)
+    {
+        int32_t n = gas->levels[level][a];
+        faces += n > 1 ? cells / n * (n + 1) : 0;
+    }
+    return faces;
+}
+
+// Zeroes a gas's fields and forgets its obstacles.
 void mvfxClearGas(mvfxGasState* state, const mvfxCompiledGas* gas);
 
 #endif

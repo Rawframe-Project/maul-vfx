@@ -387,6 +387,11 @@ mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instan
     {
         live->from = live->to;
         BreakRibbons(live, -1);
+        // Gases' obstacles seen across the jump did not move.
+        for (int32_t g = 0; g < live->effect->gasCount; ++g)
+        {
+            live->gases[g].obstaclesResolved = false;
+        }
     }
     return mvfx_success;
 }

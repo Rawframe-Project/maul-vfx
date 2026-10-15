@@ -244,6 +244,8 @@ static inline void BuildRigidScene(mvfxContext* context)
 // burning and expanding; a 3D gas moving with its turning instance, a jet
 // rising from a box near its closed floor, 3 V cycles of pressure,
 // MacCormack's advection, buoyant in the world's gravity and confined.
+// The 2D gas flows past a still sphere; the 3D gas past a turned box
+// shelf and a host's sphere moving through it.
 // Their velocities are not whole cells a step.
 static inline void BuildGasScene(mvfxContext* context)
 {
@@ -267,6 +269,17 @@ static inline void BuildGasScene(mvfxContext* context)
                                       .temperature = 10,
                                       .setsVelocity = true,
                                       .velocity = {0.2f, 1.7f, -0.3f}};
+    // A still sphere in the world in the 2D gas's plume; a box in the
+    // instance's frame in the 3D gas's corner.
+    static const mvfxCollider rock = {.kind = mvfx_colliderSphere,
+                                      .space = mvfx_spaceWorld,
+                                      .center = {0.3f, 0.2f, -310.0f},
+                                      .radius = 0.2f};
+    static const mvfxCollider shelf = {.kind = mvfx_colliderBox,
+                                       .space = mvfx_spaceLocal,
+                                       .center = {0.35f, 0.75f, 0},
+                                       .halfExtents = {0.2f, 0.06f, 0.3f},
+                                       .rotation = {0, 0, 0.19509032f, 0.98078528f}};
     mvfxGasDef gases[2] = {mvfxDefaultGasDef(), mvfxDefaultGasDef()};
     gases[0].size[0] = 24;
     gases[0].size[1] = 16;
@@ -284,6 +297,8 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[0].burnHeat = 3.0f;
     gases[0].burnSmoke = 0.5f;
     gases[0].burnExpansion = 0.1f;
+    gases[0].obstacles = &rock;
+    gases[0].obstacleCount = 1;
     gases[0].sourceCount = 2;
     gases[1].size[0] = 12;
     gases[1].size[1] = 10;
@@ -296,6 +311,9 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[1].advection = mvfx_gasMacCormack;
     gases[1].heatLift = 0.02f;
     gases[1].vorticity = 0.8f;
+    gases[1].obstacles = &shelf;
+    gases[1].obstacleCount = 1;
+    gases[1].hostObstacles = true;
     gases[1].sourceCount = 1;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.gases = gases;
@@ -1172,6 +1190,16 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
               "scene moved");
         const mvfxEffect* effect =
             ((const mvfxInstance*)context->instances.slots[i].object)->effect;
+        // The gases' host obstacle: a sphere in the instance's frame
+        // crossing the 3D gas, so it moves through the box.
+        if (effect->gasCount > 0)
+        {
+            const mvfxCollider ball = {.kind = mvfx_colliderSphere,
+                                       .space = mvfx_spaceLocal,
+                                       .center = {-0.3f + 0.04f * (float)step, 0.45f, 0.05f},
+                                       .radius = 0.15f};
+            CHECK(mvfxInstance_SetColliders(context, id, &ball, 1) == mvfx_success, "gas ball");
+        }
         if (step == 5 && effect->emitterCount == 5 && effect->parameterCount > 0)
         {
             static const float aimed[4] = {-2.0f, 3.0f, 1.0f, 0.0f};

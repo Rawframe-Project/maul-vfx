@@ -21,6 +21,10 @@
 // Sets the faces on a gas's closed walls (and a 2D gas's Z faces) to 0.
 void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3]);
 
+// Builds each level's faces' open areas from the box's walls and its
+// cells' solids: the solve's weights.
+void mvfxGasAreas(const mvfxCompiledGas* gas, mvfxGasState* state);
+
 // Projects a gas's current velocity: its closed walls' faces set to 0,
 // then (with pressure cycles) its divergence removed by the solve, which
 // starts from the pressure the last solve left. expansion, when not NULL,

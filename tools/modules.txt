@@ -44,7 +44,7 @@ integrate: collide depth direction effect elementary event force instance kill r
 host_module: effect instance random
 hull: allocator
 appearance: effect gradient instance life over_life
-instance: allocator collide depth effect force gas kill rigid_shape
+instance: allocator collide depth effect force gas gas_pressure kill rigid_shape
 death_heap:
 spawn: instance random
 space: force instance
@@ -66,11 +66,12 @@ convex: direction hull
 effect_api: allocator context effect effect_parts float_mode grid grid_api hull mesh mesh_api slots
 mesh_api: allocator context hull mesh slots
 grid_api: context grid slots
-gas: allocator
+gas: allocator collide
 gas_forces: elementary gas
 gas_pressure: gas
-gas_step: elementary gas gas_forces gas_pressure
-gas_api: context direction gas instance instance_api
+gas_solid: collide direction gas gas_pressure
+gas_step: elementary gas gas_forces gas_pressure gas_solid
+gas_api: collide context direction force gas instance instance_api
 instance_api: collide context depth effect_api gas grid_api instance mesh mesh_api rigid_wake slots spawn
 step: context effect emitter_step event float_mode gas_api gas_step instance instance_api tasks
 curve:

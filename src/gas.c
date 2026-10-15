@@ -120,6 +120,18 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def)
             return false;
         }
     }
+    if (def->obstacleCount < 0 || def->obstacleCount > MVFX_MAX_COLLIDERS ||
+        (def->obstacleCount > 0 && def->obstacles == nullptr))
+    {
+        return false;
+    }
+    for (int32_t c = 0; c < def->obstacleCount; ++c)
+    {
+        if (!mvfxIsColliderValid(&def->obstacles[c]))
+        {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -143,10 +155,16 @@ mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
 {
     mvfxCompiledGas gas = {.def = *def};
     gas.def.sources = nullptr;
+    gas.def.obstacles = nullptr;
     for (int32_t s = 0; s < def->sourceCount; ++s)
     {
         gas.sources[s] = def->sources[s];
     }
+    for (int32_t c = 0; c < def->obstacleCount; ++c)
+    {
+        gas.obstacles[c] = mvfxCompileCollider(&def->obstacles[c]);
+    }
+    gas.hasObstacles = def->obstacleCount > 0 || def->hostObstacles;
     gas.cells = (int64_t)def->size[0] * def->size[1] * def->size[2];
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -190,6 +208,12 @@ void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt*
         at->levels[l] = mvfxLayoutAdd(layout, 3u * (size_t)mvfxGasLevelCells(gas, l), sizeof(float),
                                       alignof(float));
     }
+    for (int32_t l = 0; l < gas->levelCount; ++l)
+    {
+        at->areas[l] = mvfxLayoutAdd(layout, (size_t)mvfxGasLevelFaces(gas, l, 3), sizeof(float),
+                                     alignof(float));
+    }
+    at->solid = mvfxLayoutAdd(layout, gas->hasObstacles ? (size_t)gas->cells : 0, 1, 1);
     at->work = mvfxLayoutAdd(layout, (size_t)gas->work, sizeof(float), alignof(float));
 }
 
@@ -213,6 +237,17 @@ void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char
         state->levels[l] = (mvfxGasLevel){level, level + cells, level + 2 * cells};
     }
     state->work = gas->work > 0 ? (float*)(block + at->work) : nullptr;
+    for (int32_t l = 0; l < gas->levelCount; ++l)
+    {
+        float* areas = (float*)(block + at->areas[l]);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            int64_t faces = mvfxGasLevelFaces(gas, l, k + 1) - mvfxGasLevelFaces(gas, l, k);
+            state->areas[l][k] = faces > 0 ? areas : nullptr;
+            areas += faces;
+        }
+    }
+    state->solid = gas->hasObstacles ? block + at->solid : nullptr;
     mvfxClearGas(state, gas);
 }
 
@@ -234,6 +269,14 @@ void mvfxClearGas(mvfxGasState* state, const mvfxCompiledGas* gas)
         memset(state->levels[l].pressure, 0,
                3u * (size_t)mvfxGasLevelCells(gas, l) * sizeof(float));
     }
+    if (state->solid != nullptr)
+    {
+        memset(state->solid, 0, (size_t)gas->cells);
+    }
+    state->obstacleCount[0] = 0;
+    state->obstacleCount[1] = 0;
+    state->obstaclesKnown = false;
+    state->obstaclesResolved = false;
     state->current = 0;
     state->holds = false;
 }

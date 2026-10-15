@@ -9,6 +9,7 @@
 #include "allocator.h"
 #include "collide.h"
 #include "force.h"
+#include "gas_pressure.h"
 #include "kill.h"
 
 #include <math.h>
@@ -421,6 +422,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
         mvfxStartGas(&instance->gases[g], &effect->gases[g], block, &gasesAt[g]);
+        mvfxGasAreas(&effect->gases[g], &instance->gases[g]);
     }
     mvfxResetInstance(instance);
     return instance;

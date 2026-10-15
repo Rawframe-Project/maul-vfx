@@ -41,9 +41,9 @@ static const mvfxInstance* GasOwner(const mvfxContext* context, mvfxInstanceId i
 }
 
 // Where a gas's box is now: its center and orientation in the world,
-// and its cells' edge.
+// and its scale (the world's lengths in its).
 static void Place(const mvfxInstance* live, int32_t gas, double center[3], float rotation[4],
-                  float* cellSize)
+                  float* scaleOut)
 {
     const mvfxCompiledGas* compiled = &live->effect->gases[gas];
     const mvfxGasState* state = &live->gases[gas];
@@ -64,15 +64,16 @@ static void Place(const mvfxInstance* live, int32_t gas, double center[3], float
     {
         rotation[k] = turn[k];
     }
-    *cellSize = scale * compiled->def.cellSize;
+    *scaleOut = scale;
 }
 
 mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas)
 {
     double center[3];
     float rotation[4];
-    float cell = 0.0f;
-    Place(instance, gas, center, rotation, &cell);
+    float scale = 0.0f;
+    Place(instance, gas, center, rotation, &scale);
+    float cell = scale * instance->effect->gases[gas].def.cellSize;
     mvfxBounds out = {.empty = false};
     // Each world axis's reach of the box's turned half sizes.
     float reach[3] = {0.0f, 0.0f, 0.0f};
@@ -108,17 +109,74 @@ void mvfxGasGravity(const mvfxInstance* instance, int32_t gas, float out[3])
     }
     double center[3];
     float rotation[4];
-    float cell = 0.0f;
-    Place(instance, gas, center, rotation, &cell);
+    float scale = 0.0f;
+    Place(instance, gas, center, rotation, &scale);
     const float back[4] = {-rotation[0], -rotation[1], -rotation[2], rotation[3]};
     float turned[3];
     mvfxRotate(back, def->gravity, turned);
     // The box's lengths are the world's over its scale.
-    float scale = cell / def->cellSize;
     for (int32_t k = 0; k < 3; ++k)
     {
         out[k] = turned[k] / scale;
     }
+}
+
+mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulationSpace space)
+{
+    double center[3];
+    float rotation[4];
+    float scale = 0.0f;
+    Place(instance, gas, center, rotation, &scale);
+    const float back[4] = {-rotation[0], -rotation[1], -rotation[2], rotation[3]};
+    mvfxSpaceMap map = {.sigma = 1.0f / scale};
+    if (space == mvfx_spaceWorld)
+    {
+        // Moved to the box's center, turned back, over its scale.
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            map.rotation[k] = back[k];
+        }
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            map.before[k] = center[k];
+        }
+        return map;
+    }
+    // From the instance's frame: scaled and turned into the world, then
+    // turned back into the box's, the instance's origin's offset from the
+    // box's center added in binary64.
+    const mvfxTransform* now = &instance->to;
+    mvfxMultiplyRotations(back, now->rotation, map.rotation);
+    map.sigma = now->scale / scale;
+    double offset[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        offset[k] = (now->origin[k] - center[k]) / (double)scale;
+    }
+    mvfxRotateDouble(back, offset, map.after);
+    return map;
+}
+
+void mvfxResolveGasObstacles(mvfxInstance* instance, int32_t gas)
+{
+    const mvfxCompiledGas* compiled = &instance->effect->gases[gas];
+    mvfxGasState* state = &instance->gases[gas];
+    state->obstaclesKnown = state->obstaclesResolved;
+    state->obstaclesResolved = true;
+    state->obstaclesNow = 1 - state->obstaclesNow;
+    mvfxResolvedCollider* out = state->obstacles[state->obstaclesNow];
+    int32_t own = compiled->def.obstacleCount;
+    int32_t hosts = compiled->def.hostObstacles ? instance->hostColliderCount : 0;
+    for (int32_t c = 0; c < own + hosts; ++c)
+    {
+        const mvfxCollider* collider =
+            c < own ? &compiled->obstacles[c] : &instance->hostColliders[c - own];
+        const struct mvfxGrid* grid =
+            c < own ? compiled->obstacleGrids[c] : instance->hostColliderGrids[c - own];
+        mvfxSpaceMap map = mvfxGasMap(instance, gas, (mvfxSimulationSpace)collider->space);
+        out[c] = mvfxResolveCollider(collider, grid, &map, 0.0f);
+    }
+    state->obstacleCount[state->obstaclesNow] = own + hosts;
 }
 
 mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
@@ -139,7 +197,9 @@ mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId in
     {
         return result;
     }
-    Place(live, gas, infoOut->center, infoOut->rotation, &infoOut->cellSize);
+    float scale = 0.0f;
+    Place(live, gas, infoOut->center, infoOut->rotation, &scale);
+    infoOut->cellSize = scale * live->effect->gases[gas].def.cellSize;
     for (int32_t k = 0; k < 3; ++k)
     {
         infoOut->size[k] = live->effect->gases[gas].def.size[k];

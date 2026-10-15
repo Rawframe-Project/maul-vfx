@@ -139,6 +139,10 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
     {
         float gravity[3];
         mvfxGasGravity(instance, g, gravity);
+        if (instance->effect->gases[g].hasObstacles)
+        {
+            mvfxResolveGasObstacles(instance, g);
+        }
         mvfxStepGas(&instance->effect->gases[g], &instance->gases[g], gravity, instance->stepStart,
                     instance->clock, instance->stopTick);
     }
