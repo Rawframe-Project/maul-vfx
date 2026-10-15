@@ -11,6 +11,8 @@
 // restarting; an instance's bounds holding its gases' boxes; the reading's refusals.
 
 #include "gas_step.h"
+#include "instance.h"
+#include "instance_api.h"
 #include "test_harness.h"
 
 #include "maul-vfx/effect.h"
@@ -254,6 +256,45 @@ static void TestCarried(void)
     }
 }
 
+static void TestReadVelocity(void)
+{
+    // A 2D gas a few steps after a box of wind blew through part of it,
+    // its velocity uneven: each cell's component read is the mean of its
+    // two faces' across it.
+    static const mvfxGasSource sources[2] = {
+        {.shape = mvfx_gasSphere, .center = {-0.35f, -0.05f, 0}, .radius = 0.12f, .density = 64},
+        {.shape = mvfx_gasBox,
+         .center = {-0.2f, 0.1f, 0},
+         .halfExtents = {0.3f, 0.2f, 1},
+         .setsVelocity = true,
+         .velocity = {1.3f, 0.45f, 0}},
+    };
+    mvfxGasDef gas = Puff();
+    gas.sources = sources;
+    Open(&gas);
+    Steps(5);
+    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
+    const mvfxGasState* state = &live->gases[0];
+    bool right = true;
+    bool uneven = false;
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        Read((mvfxGasField)(mvfx_gasVelocityX + k), 128);
+        const float* faces = state->velocity[k][state->current];
+        for (int32_t i = 0; i < 128; ++i)
+        {
+            int32_t x = i % 16;
+            int32_t y = i / 16;
+            int32_t at = k == 0 ? y * 17 + x : y * 16 + x;
+            float mean = 0.5f * (faces[at] + faces[at + (k == 0 ? 1 : 16)]);
+            right = right && s_field[i] == mean;
+            uneven = uneven || faces[at] != faces[at + (k == 0 ? 1 : 16)];
+        }
+    }
+    CHECK(right && uneven, "velocities read at the cells' centers");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestDecay(void)
 {
     // Density decaying at 3 a second: after a step of pouring, 20 steps
@@ -381,6 +422,7 @@ static void TestPlaces(void)
     {
         mvfxGasDef gas = mvfxDefaultGasDef();
         gas.center[0] = 1.0f;
+        gas.size[1] = 32;
         gas.space = world != 0 ? mvfx_gasWorld : mvfx_gasLocal;
         Open(&gas);
         static const double origin[3] = {10, 0, 0};
@@ -392,7 +434,7 @@ static void TestPlaces(void)
         mvfxGasInfo info;
         CHECK(mvfxInstance_GetGasInfo(s_scene.context, s_scene.instance, 0, &info) == mvfx_success,
               "info");
-        bool right = info.size[0] == 64 && info.size[1] == 64 && info.size[2] == 1;
+        bool right = info.size[0] == 64 && info.size[1] == 32 && info.size[2] == 1;
         if (world != 0)
         {
             right = right && info.center[0] == 1.0 && info.center[1] == 0.0 &&
@@ -404,15 +446,16 @@ static void TestPlaces(void)
                     fabs(info.center[1] - 2.0) <= 1e-5 && info.rotation[2] == turn[2] &&
                     fabsf(info.cellSize - 0.2f) <= 1e-7f;
         }
-        // Its bounds hold its box: unturned, 6.4 by 6.4 by 0.1 about its
-        // center; scaled by 2 and turned a quarter, 12.8 by 12.8.
+        // Its bounds hold its box: unturned, 6.4 by 3.2 by 0.1 about its
+        // center; scaled by 2 and turned a quarter, 6.4 by 12.8.
         mvfxBounds bounds;
         CHECK(mvfxInstance_GetBounds(s_scene.context, s_scene.instance, -1, &bounds) ==
                   mvfx_success,
               "bounds");
-        double half = world != 0 ? 3.2 : 6.4;
-        right = right && !bounds.empty && fabs(bounds.min[0] - (info.center[0] - half)) <= 1e-4 &&
-                fabs(bounds.max[1] - (info.center[1] + half)) <= 1e-4;
+        double across = 3.2;
+        double up = world != 0 ? 1.6 : 6.4;
+        right = right && !bounds.empty && fabs(bounds.min[0] - (info.center[0] - across)) <= 1e-4 &&
+                fabs(bounds.max[1] - (info.center[1] + up)) <= 1e-4;
         CHECK(right, "a gas's box placed");
         mvfxDestroyContext(s_scene.context);
     }
@@ -479,6 +522,7 @@ int main(void)
     TestFill();
     TestCarried();
     TestDecay();
+    TestReadVelocity();
     TestSampling();
     TestTraceBack();
     TestPlaces();
