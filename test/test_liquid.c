@@ -6,7 +6,9 @@
 // column in a box under gravity settling, its density within its bound,
 // its compression rising with depth, its height held once settled and no
 // particle out of the box; a dam break's front against Martin and Moyce's
-// measurements.
+// measurements; the refusals, the instance's scale, the neighbor cap's
+// count, XSPH, confinement, a 3D liquid, the tensile correction's size and
+// a planar liquid's Z.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -680,6 +682,62 @@ static void TestDeep(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestTensile(void)
+{
+    // Two particles 0.01 apart (below rest density, so their multipliers
+    // are 0), tensile 0.1 of power 4 at 0.2 of the radius, one substep of
+    // one iteration: each moves away from the other by the tensile
+    // correction times the gradient over the rest density.
+    const double places[6] = {0, 0, 0, 0.01, 0, 0};
+    mvfxEmitterDef emitter = Emitter(0.05f);
+    emitter.liquid.substeps = 1;
+    emitter.liquid.iterations = 1;
+    emitter.liquid.viscosity = 0.0f;
+    emitter.liquid.tensile = 0.1f;
+    CHECK(OpenScaled(&emitter, places, 2, 1.0f), "opened");
+    const float before[2] = {Places(0)[0], Places(0)[1]};
+    Steps(1);
+    mvfxLiquidKernel kernel = mvfxLiquidKernelOf(&emitter.liquid, 1.0f);
+    const float offset[3] = {before[0] - before[1], 0.0f, 0.0f};
+    float length = fabsf(offset[0]);
+    float g[3];
+    mvfxLiquidSpiky(&kernel, offset, length, g);
+    float ratio = mvfxLiquidPoly6(&kernel, length * length) * kernel.tensileInverse;
+    float tensile = -kernel.tensileScale * ratio * ratio * ratio * ratio;
+    float expected = before[0] + tensile * g[0] * kernel.restInverse;
+    float moved = Places(0)[0];
+    CHECK(fabsf(moved - expected) <= 1e-7f && moved < before[0] &&
+              fabsf((Places(0)[1] - before[1]) + (moved - before[0])) <= 1e-7f,
+          "the tensile correction parts a close pair");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestPlanar(void)
+{
+    // A planar lattice at 0.04, closer than its rest spacing of 0.05, its
+    // particles at Z 0 and 0.01 by turns: a step parts them along X and Y
+    // and leaves every Z as it was.
+    static double places[8 * 8 * 3];
+    for (int32_t i = 0; i < 64; ++i)
+    {
+        places[3 * i] = 0.04 * (double)(i % 8);
+        places[3 * i + 1] = 0.04 * (double)(i / 8);
+        places[3 * i + 2] = (i + i / 8) % 2 == 0 ? 0.0 : 0.01;
+    }
+    mvfxEmitterDef emitter = Emitter(0.05f);
+    CHECK(OpenScaled(&emitter, places, 64, 1.0f), "opened");
+    Steps(1);
+    bool kept = true;
+    float spread = 0.0f;
+    for (int32_t i = 0; i < Count(); ++i)
+    {
+        kept = kept && Places(2)[i] == (float)places[3 * i + 2];
+        spread = fmaxf(spread, fabsf(Places(0)[i] - (float)places[3 * i]));
+    }
+    CHECK(kept && spread > 1e-3f, "a planar liquid keeps its Z");
+    mvfxDestroyContext(s_context);
+}
+
 int main(void)
 {
     TestKernel();
@@ -689,6 +747,8 @@ int main(void)
     TestViscosity();
     TestVorticity();
     TestDeep();
+    TestTensile();
+    TestPlanar();
     TestRest();
     TestColumn();
     TestDamBreak();
