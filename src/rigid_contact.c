@@ -3,6 +3,7 @@
 
 #include "rigid_contact.h"
 
+#include "convex.h"
 #include "depth.h"
 #include "direction.h"
 #include "rigid_box.h"
@@ -336,73 +337,89 @@ static void OutsideContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
     mvfxAddContact(list, &contact);
 }
 
-// The most points a shape is sampled at against a grid or a depth image.
-#define MOST_SAMPLES (MVFX_MAX_HULL_VERTICES + MVFX_MAX_HULL_FACES)
-
-// The points (in its frame) a shape meets a grid or a depth image by, as
-// spheres of its radius: a sphere's center; a capsule's core, its points
-// at most its radius apart (at most nine); a box's eight corners (bit k
-// of i set for +X, +Y, +Z), then its faces' centers (8 + 2k for +k, 9 +
-// 2k for -k); a hull's vertices, then its faces' centers.
-static int32_t BoxSamples(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
+// A capsule's spans between its core's samples, at most its radius long
+// (at most eight); none for a sphere.
+static int32_t CoreSpans(const mvfxBodyShape* s)
 {
-    for (int32_t i = 0; i < 14; ++i)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            float corner = (i >> k & 1) != 0 ? s->half[k] : -s->half[k];
-            float side = (i - 8) % 2 == 0 ? s->half[k] : -s->half[k];
-            out[i][k] = i < 8 ? corner : ((i - 8) / 2 == k ? side : 0.0f);
-        }
-    }
-    return 14;
+    return s->kind == mvfx_rigidCapsule && s->radius > 0.0f
+               ? (int32_t)ceilf(fminf(2.0f * s->half[1] / s->radius, 8.0f))
+               : 0;
 }
 
-static int32_t HullSamples(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
+// How many points (in its frame) a shape meets a grid or a depth image by,
+// as spheres of its radius, and how many of them are corners, met plainly:
+// a sphere's center; a capsule's core, its points at most its radius
+// apart; a box's eight corners, then its faces' six centers; a hull's
+// vertices, then its faces' centers.
+static int32_t SampleCount(const mvfxBodyShape* s, int32_t* corners)
+{
+    int32_t count = CoreSpans(s) + 1;
+    *corners = count;
+    if (s->kind == mvfx_rigidBox)
+    {
+        *corners = 8;
+        count = 14;
+    }
+    else if (s->kind == mvfx_rigidHull)
+    {
+        *corners = s->hull->vertexCount;
+        count = s->hull->vertexCount + s->hull->faceCount;
+    }
+    return count;
+}
+
+// A box's sample i: its corners (bit k of i set for +X, +Y, +Z), then its
+// faces' centers (8 + 2k for +k, 9 + 2k for -k).
+static void BoxSample(const mvfxBodyShape* s, int32_t i, float out[3])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float corner = (i >> k & 1) != 0 ? s->half[k] : -s->half[k];
+        float side = (i - 8) % 2 == 0 ? s->half[k] : -s->half[k];
+        out[k] = i < 8 ? corner : ((i - 8) / 2 == k ? side : 0.0f);
+    }
+}
+
+// A hull's sample i: its vertices, then its faces' centers.
+static void HullSample(const mvfxBodyShape* s, int32_t i, float out[3])
 {
     const mvfxHull* hull = s->hull;
-    int32_t n = 0;
-    for (int32_t i = 0; i < hull->vertexCount; ++i)
+    if (i < hull->vertexCount)
     {
-        mvfxShapePoint(s, i, out[n++]);
+        mvfxShapePoint(s, i, out);
+        return;
     }
-    for (int32_t f = 0; f < hull->faceCount; ++f)
+    int32_t f = i - hull->vertexCount;
+    int32_t first = hull->faceStart[f];
+    int32_t corners = hull->faceStart[f + 1] - first;
+    float center[3] = {0.0f, 0.0f, 0.0f};
+    for (int32_t j = 0; j < corners; ++j)
     {
-        int32_t first = hull->faceStart[f];
-        int32_t corners = hull->faceStart[f + 1] - first;
-        float center[3] = {0.0f, 0.0f, 0.0f};
-        for (int32_t j = 0; j < corners; ++j)
+        float corner[3];
+        mvfxShapePoint(s, hull->loop[first + j], corner);
+        for (int32_t k = 0; k < 3; ++k)
         {
-            float corner[3];
-            mvfxShapePoint(s, hull->loop[first + j], corner);
-            for (int32_t k = 0; k < 3; ++k)
-            {
-                center[k] += corner[k] / (float)corners;
-            }
+            center[k] += corner[k] / (float)corners;
         }
-        memcpy(out[n++], center, sizeof center);
     }
-    return n;
+    memcpy(out, center, sizeof center);
 }
 
-static int32_t SamplesOf(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
+static void SampleOf(const mvfxBodyShape* s, int32_t i, float out[3])
 {
     if (s->kind == mvfx_rigidBox)
     {
-        return BoxSamples(s, out);
+        BoxSample(s, i, out);
     }
-    if (s->kind == mvfx_rigidHull)
+    else if (s->kind == mvfx_rigidHull)
     {
-        return HullSamples(s, out);
+        HullSample(s, i, out);
     }
-    int32_t spans = s->kind == mvfx_rigidCapsule && s->radius > 0.0f
-                        ? (int32_t)ceilf(fminf(2.0f * s->half[1] / s->radius, 8.0f))
-                        : 0;
-    for (int32_t i = 0; i <= spans; ++i)
+    else
     {
-        CoreAt(s, spans > 0 ? (float)i / (float)spans : 0.5f, out[i]);
+        int32_t spans = CoreSpans(s);
+        CoreAt(s, spans > 0 ? (float)i / (float)spans : 0.5f, out);
     }
-    return spans + 1;
 }
 
 // A sample's place in the world.
@@ -429,47 +446,100 @@ static mvfxBodyContact SampleContact(const mvfxBodyPose* b, const mvfxBodyShape*
     return ContactAt(body, place, n, distance - s->radius);
 }
 
-// Whether sample i is met, found: all but a box's or a hull's faces'
-// centers, each met only where the surface bulges under it, deeper than
-// each corner of its face. On a flat surface the corners carry a face; a
-// fifth contact amid them shifts the load the one pass gives each and
-// unsettled a box held on a slope.
-static bool CenterMet(const mvfxBodyShape* s, const mvfxBodyContact* contacts, const bool* found,
-                      int32_t i)
+// Whether face center i, at depth, is met: only where the surface bulges
+// under it, deeper than each corner of its face found. On a flat surface
+// the corners carry a face; a fifth contact amid them shifts the load the
+// one pass gives each and unsettled a box held on a slope.
+static bool CenterMet(const mvfxBodyShape* s, const float* depths, const bool* found, int32_t i,
+                      float depth)
 {
     bool met = true;
-    if (s->kind == mvfx_rigidBox && i >= 8)
+    if (s->kind == mvfx_rigidBox)
     {
         int32_t k = (i - 8) / 2;
         int32_t side = (i - 8) % 2 == 0 ? 1 : 0;
         for (int32_t c = 0; met && c < 8; ++c)
         {
             bool onFace = (c >> k & 1) == side;
-            met = !onFace || !found[c] || contacts[i].depth < contacts[c].depth;
+            met = !onFace || !found[c] || depth < depths[c];
         }
     }
-    else if (s->kind == mvfx_rigidHull && i >= s->hull->vertexCount)
+    else
     {
         const mvfxHull* hull = s->hull;
         int32_t f = i - hull->vertexCount;
         for (int32_t j = hull->faceStart[f]; met && j < hull->faceStart[f + 1]; ++j)
         {
             int32_t c = hull->loop[j];
-            met = !found[c] || contacts[i].depth < contacts[c].depth;
+            met = !found[c] || depth < depths[c];
         }
     }
     return met;
 }
 
-static void AddSamples(const mvfxBodyShape* s, const mvfxBodyContact* contacts, const bool* found,
-                       int32_t count, mvfxBodyContacts* list)
+// What samples meet: a grid's field, or the depth image seen from the
+// pose at the substep's start.
+typedef struct Probe
 {
+    const mvfxResolvedCollider* grid;
+    const mvfxResolvedDepth* depth;
+    const mvfxBodyPose* from;
+} Probe;
+
+// Whether a sample meets the probe's surface, and its contact.
+static bool ProbeSample(const Probe* p, const mvfxBodyPose* b, const mvfxBodyShape* s,
+                        const float sample[3], mvfxBodyContact* out)
+{
+    float world[3];
+    SampleAt(b, sample, world);
+    if (p->grid != nullptr)
+    {
+        float n[3];
+        float distance = mvfxFieldDistance(p->grid, world, n);
+        bool found = distance < INFINITY;
+        if (found)
+        {
+            *out = SampleContact(b, s, sample, world, n, distance);
+        }
+        return found;
+    }
+    float from[3];
+    float t = 0.0f;
+    float point[3] = {0.0f, 0.0f, 0.0f};
+    float n[3] = {0.0f, 1.0f, 0.0f};
+    SampleAt(p->from, sample, from);
+    bool found = mvfxDepthHit(p->depth, from, world, &t, point, n);
+    if (found)
+    {
+        const float gap[3] = {world[0] - point[0], world[1] - point[1], world[2] - point[2]};
+        *out = SampleContact(b, s, sample, world, n, Dot(gap, n) + p->depth->radius);
+    }
+    return found;
+}
+
+// Adds the samples meeting the probe's surface in order, corners first:
+// only the corners' depths are kept, for their faces' centers.
+static void SampleContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBodyShape* s,
+                           mvfxBodyContacts* list)
+{
+    float depths[MVFX_MAX_HULL_VERTICES];
+    bool found[MVFX_MAX_HULL_VERTICES];
+    int32_t corners = 0;
+    int32_t count = SampleCount(s, &corners);
     for (int32_t i = 0; i < count; ++i)
     {
-        bool met = found[i] && CenterMet(s, contacts, found, i);
-        if (met)
+        float sample[3];
+        mvfxBodyContact contact;
+        SampleOf(s, i, sample);
+        bool hit = ProbeSample(p, b, s, sample, &contact);
+        if (i < corners)
         {
-            mvfxAddContact(list, &contacts[i]);
+            found[i] = hit;
+            depths[i] = hit ? contact.depth : INFINITY;
+        }
+        if (hit && (i < corners || CenterMet(s, depths, found, i, contact.depth)))
+        {
+            mvfxAddContact(list, &contact);
         }
     }
 }
@@ -478,21 +548,8 @@ static void AddSamples(const mvfxBodyShape* s, const mvfxBodyContact* contacts, 
 static void GridContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
                          const mvfxResolvedCollider* c, mvfxBodyContacts* list)
 {
-    float samples[MOST_SAMPLES][3];
-    mvfxBodyContact contacts[MOST_SAMPLES];
-    bool found[MOST_SAMPLES];
-    int32_t count = SamplesOf(s, samples);
-    for (int32_t i = 0; i < count; ++i)
-    {
-        float world[3];
-        float n[3];
-        SampleAt(b, samples[i], world);
-        float distance = mvfxFieldDistance(c, world, n);
-        found[i] = distance < INFINITY;
-        contacts[i] = found[i] ? SampleContact(b, s, samples[i], world, n, distance)
-                               : (mvfxBodyContact){.depth = INFINITY};
-    }
-    AddSamples(s, contacts, found, count, list);
+    const Probe probe = {.grid = c};
+    SampleContacts(&probe, b, s, list);
 }
 
 // The depth image, by each sample's way over the substep: its first place
@@ -507,26 +564,85 @@ static void DepthContacts(const mvfxBodySurfaces* surfaces, const mvfxBodyPose* 
 {
     mvfxResolvedDepth depth = *surfaces->depth;
     depth.radius = 2.0f * s->radius;
-    float samples[MOST_SAMPLES][3];
-    mvfxBodyContact contacts[MOST_SAMPLES];
-    bool found[MOST_SAMPLES];
-    int32_t count = SamplesOf(s, samples);
+    const Probe probe = {.depth = &depth, .from = surfaces->from};
+    SampleContacts(&probe, b, s, list);
+}
+
+// Adds a's points meeting b by the manifold of polytopes a (the body's)
+// and b.
+static void PolytopeContacts(const mvfxBodyPose* body, const mvfxPolytope* a, const mvfxPolytope* b,
+                             mvfxBodyContacts* list)
+{
+    mvfxConvexMeet meet;
+    if (!mvfxConvexMeets(a, b, list->margin, &meet))
+    {
+        return;
+    }
+    float n[3];
+    mvfxConvexPoint points[MVFX_MAX_MANIFOLD_POINTS];
+    int32_t count = mvfxConvexManifold(a, b, &meet, list->margin, n, points);
     for (int32_t i = 0; i < count; ++i)
     {
-        float from[3];
-        float world[3];
-        float t = 0.0f;
-        float point[3] = {0.0f, 0.0f, 0.0f};
-        float n[3] = {0.0f, 1.0f, 0.0f};
-        SampleAt(surfaces->from, samples[i], from);
-        SampleAt(b, samples[i], world);
-        found[i] = mvfxDepthHit(&depth, from, world, &t, point, n);
-        const float gap[3] = {world[0] - point[0], world[1] - point[1], world[2] - point[2]};
-        contacts[i] = found[i]
-                          ? SampleContact(b, s, samples[i], world, n, Dot(gap, n) + depth.radius)
-                          : (mvfxBodyContact){.depth = INFINITY};
+        const float offset[3] = {points[i].onA[0] - body->x[0], points[i].onA[1] - body->x[1],
+                                 points[i].onA[2] - body->x[2]};
+        float point[3];
+        ToBody(body->q, offset, point);
+        mvfxAddBodyContact(list, point, points[i].onA, n, points[i].depth);
     }
-    AddSamples(s, contacts, found, count, list);
+}
+
+// A hull outside a sphere: its point nearest the center, or for a center
+// inside it its face nearest the center.
+static void HullSphereContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
+                               const mvfxResolvedCollider* c, mvfxBodyContacts* list)
+{
+    mvfxPolytope hull;
+    mvfxHullPolytope(s->hull, s->scale, b->x, b->q, &hull);
+    float near[3];
+    float distance = mvfxPolytopeNearest(&hull, c->center, near);
+    float n[3] = {0.0f, 1.0f, 0.0f};
+    float depth = distance - c->radius;
+    if (distance > 0.0f)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            n[k] = (near[k] - c->center[k]) / distance;
+        }
+    }
+    else
+    {
+        // Pushed out through the face the center is nearest, against its
+        // normal.
+        int32_t face = 0;
+        float above = -INFINITY;
+        for (int32_t f = 0; f < hull.faceCount; ++f)
+        {
+            float off = Dot(hull.planes[f], c->center) - hull.planes[f][3];
+            face = off > above ? f : face;
+            above = fmaxf(above, off);
+        }
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            n[k] = -hull.planes[face][k];
+            near[k] = c->center[k] - above * hull.planes[face][k];
+        }
+        depth = above - c->radius;
+    }
+    const float offset[3] = {near[0] - b->x[0], near[1] - b->x[1], near[2] - b->x[2]};
+    float point[3];
+    ToBody(b->q, offset, point);
+    mvfxAddBodyContact(list, point, near, n, depth);
+}
+
+// A hull outside a box, as two polytopes.
+static void HullBoxContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
+                            const mvfxResolvedCollider* c, mvfxBodyContacts* list)
+{
+    mvfxPolytope hull;
+    mvfxPolytope box;
+    mvfxHullPolytope(s->hull, s->scale, b->x, b->q, &hull);
+    mvfxBoxPolytope(c->center, c->rotation, c->halfExtents, &box);
+    PolytopeContacts(b, &hull, &box, list);
 }
 
 // Patches by collider, eight apart for a box's faces.
@@ -541,6 +657,10 @@ static void ColliderContacts(const mvfxResolvedCollider* c, const mvfxBodyPose* 
     {
         InsideContacts(b, s, c, list);
     }
+    else if (c->kind == mvfx_colliderSphere && s->kind == mvfx_rigidHull)
+    {
+        HullSphereContacts(b, s, c, list);
+    }
     else if (c->kind == mvfx_colliderSphere)
     {
         OutsideContacts(b, s, c, list);
@@ -552,6 +672,10 @@ static void ColliderContacts(const mvfxResolvedCollider* c, const mvfxBodyPose* 
     else if (c->kind == mvfx_colliderBox && s->kind == mvfx_rigidBox)
     {
         mvfxBoxBoxContacts(b, s, c, list);
+    }
+    else if (c->kind == mvfx_colliderBox && s->kind == mvfx_rigidHull)
+    {
+        HullBoxContacts(b, s, c, list);
     }
     else if (c->kind == mvfx_colliderBox)
     {
@@ -709,6 +833,15 @@ void mvfxGatherPairContacts(const mvfxBodyPose* a, const mvfxBodyShape* sa, cons
                             const mvfxBodyShape* sb, mvfxBodyContacts* list)
 {
     list->margin = MVFX_CONTACT_MARGIN * fminf(mvfxBodyReach(sa), mvfxBodyReach(sb));
+    if (sb->kind == mvfx_rigidHull)
+    {
+        mvfxPolytope pa;
+        mvfxPolytope pb;
+        mvfxHullPolytope(sa->hull, sa->scale, a->x, a->q, &pa);
+        mvfxHullPolytope(sb->hull, sb->scale, b->x, b->q, &pb);
+        PolytopeContacts(a, &pa, &pb, list);
+        return;
+    }
     if (sb->kind == mvfx_rigidCapsule)
     {
         CapsulePair(a, sa, b, sb, list);

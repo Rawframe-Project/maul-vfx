@@ -50,6 +50,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/base.c
     src/birth.c
     src/context.c
+    src/convex.c
     src/curve.c
     src/curve_integral.c
     src/death_heap.c
@@ -179,6 +180,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(rigid_contact WHITEBOX)
     maul_add_test(rigid_pair WHITEBOX)
     maul_add_test(hull WHITEBOX)
+    maul_add_test(convex WHITEBOX)
     maul_add_test(rigid_hull WHITEBOX)
     maul_add_test(steering)
     maul_add_test(trail)

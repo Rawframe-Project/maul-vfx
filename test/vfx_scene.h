@@ -167,7 +167,7 @@ static inline void BuildRigidScene(mvfxContext* context)
                                         .restitution = 0.3f,
                                         .staticFriction = 0.5f,
                                         .dynamicFriction = 0.3f,
-                                        .bodyContacts = e < 3 ? 8 : 0,
+                                        .bodyContacts = 8,
                                         .hull = hullMesh};
         emitter->collision.enabled = true;
         emitter->colliders = ground;
@@ -194,8 +194,8 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[2].collision.sceneQueries = true;
     emitters[2].collision.queryCapacity = 8;
     emitters[2].collision.lookahead = 0.2f;
-    emitters[3].colliders = hills;
-    emitters[3].colliderCount = 2;
+    emitters[3].colliders = bowl;
+    emitters[3].colliderCount = 3;
     emitters[3].size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.4f, 0.3f, 0.4f}, .max = {0.7f, 0.5f, 0.6f}};
     mvfxEffectDef def = mvfxDefaultEffectDef();

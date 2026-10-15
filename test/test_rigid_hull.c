@@ -5,8 +5,11 @@
 // toppling as that box does; a tetrahedron off its mesh's origin, its
 // hull's center given, coming to rest on a face at that face's distance;
 // a lopsided hull spun freely keeping its angular momentum and energy,
-// its inertia not along its axes; the checks.
+// its inertia not along its axes; hulls resting on a box collider and a
+// sphere's top as boxes do; hulls stacked, meeting head on, and piled in
+// a box without deep overlaps; the checks.
 
+#include "convex.h"
 #include "hull.h"
 #include "instance.h"
 #include "instance_api.h"
@@ -257,6 +260,171 @@ static void TestFreeSpin(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Plays emitters at places (one body each), each with its colliders.
+static void PlayAt(const mvfxEmitterDef* emitters, int32_t count, const double* places,
+                   const float* velocities, int32_t bodies)
+{
+    mvfxEffectId effect = {0};
+    CHECK(EffectOf(emitters, count, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+          "instance");
+    for (int32_t e = 0; e < count; ++e)
+    {
+        mvfxSpawnRequest request = {.count = bodies, .positions = places, .velocities = velocities};
+        CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, e, &request) == mvfx_success,
+              "spawned");
+    }
+}
+
+static void TestOnColliders(void)
+{
+    // A cube's hull and a box, each dropped turned onto a box collider (a
+    // table), and square onto a big sphere's top: at rest where the box
+    // rests (turned, both roll off the sphere alike).
+    static const mvfxCollider table = {.kind = mvfx_colliderBox,
+                                       .center = {0, -0.5f, 0},
+                                       .halfExtents = {2, 0.5f, 2},
+                                       .rotation = {0, 0, 0, 1}};
+    static const mvfxCollider ball = {
+        .kind = mvfx_colliderSphere, .center = {0, -3, 0}, .radius = 3.0f};
+    static const float unit[3] = {1, 1, 1};
+    static const float turn[3] = {0.2f, 0.3f, 0.1f};
+    static const double place[3] = {0, 1.2, 0};
+    static const float still[3] = {0, 0, 0};
+    for (int32_t on = 0; on < 2; ++on)
+    {
+        OpenContext();
+        mvfxMeshId cube = MeshOf(s_cube, 8);
+        static const float square[3] = {0, 0, 0};
+        const float* tilt = on == 0 ? turn : square;
+        mvfxEmitterDef emitters[2] = {Rigid(mvfx_rigidBox, (mvfxMeshId){0}, unit, tilt, true),
+                                      Rigid(mvfx_rigidHull, cube, unit, tilt, true)};
+        for (int32_t e = 0; e < 2; ++e)
+        {
+            emitters[e].colliders = on == 0 ? &table : &ball;
+        }
+        PlayAt(emitters, 2, place, still, 1);
+        Steps(180);
+        float speed = fabsf(At(1, mvfx_attributeVelocityX)) +
+                      fabsf(At(1, mvfx_attributeVelocityY)) + fabsf(At(1, mvfx_attributeVelocityZ));
+        CHECK(fabsf(At(0, mvfx_attributePositionY) - At(1, mvfx_attributePositionY)) <= 0.005f &&
+                  At(1, mvfx_attributePositionY) >= 0.45f && speed <= 0.02f,
+              on == 0 ? "on a table as a box" : "on a ball as a box");
+        mvfxDestroyContext(s_scene.context);
+    }
+}
+
+static void TestMeeting(void)
+{
+    // Three cube hulls stacked on the ground stay stacked and still; two
+    // meeting head on at restitution 1 trade their speeds.
+    static const float unit[3] = {1, 1, 1};
+    static const float turn[3] = {0, 0, 0};
+    OpenContext();
+    mvfxMeshId cube = MeshOf(s_cube, 8);
+    mvfxEmitterDef stack = Rigid(mvfx_rigidHull, cube, unit, turn, true);
+    stack.rigid.bodyContacts = 8;
+    static const double stacked[9] = {0, 0.5, 0, 0, 1.501, 0, 0, 2.502, 0};
+    PlayAt(&stack, 1, stacked, NULL, 3);
+    Steps(180);
+    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
+    const float* y = mvfxAttributeArray(live, 0, mvfx_attributePositionY);
+    const float* x = mvfxAttributeArray(live, 0, mvfx_attributePositionX);
+    const uint32_t* serial = mvfxAttributeArray(live, 0, mvfx_attributeSerial);
+    bool still = live->emitters[0].count == 3;
+    for (int32_t i = 0; still && i < 3; ++i)
+    {
+        still = fabsf(y[i] - (0.5f + (float)serial[i])) <= 0.02f && fabsf(x[i]) <= 0.01f;
+    }
+    CHECK(still, "a stack of hulls");
+    mvfxDestroyContext(s_scene.context);
+    OpenContext();
+    cube = MeshOf(s_cube, 8);
+    mvfxEmitterDef pair = Rigid(mvfx_rigidHull, cube, unit, turn, false);
+    pair.rigid.bodyContacts = 8;
+    pair.rigid.restitution = 1.0f;
+    pair.collision.enabled = true;
+    static const double apart[6] = {-1.5, 0, 0, 0, 0, 0};
+    static const float toward[6] = {2, 0, 0, 0, 0, 0};
+    PlayAt(&pair, 1, apart, toward, 2);
+    Steps(60);
+    live = mvfxContextInstance(s_scene.context, s_scene.instance);
+    const float* v = mvfxAttributeArray(live, 0, mvfx_attributeVelocityX);
+    serial = mvfxAttributeArray(live, 0, mvfx_attributeSerial);
+    int32_t first = serial[0] == 0 ? 0 : 1;
+    CHECK(fabsf(v[first]) <= 0.02f && fabsf(v[1 - first] - 2.0f) <= 0.02f, "hulls trade speeds");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestPile(void)
+{
+    // Six lopsided hulls dropped into a box settle in it, still, none
+    // overlapping another by more than 0.01.
+    OpenContext();
+    mvfxMeshId lopsided = MeshOf(s_lopsided, 7);
+    static const float size[3] = {0.5f, 0.5f, 0.5f};
+    static const float turn[3] = {0.7f, 0.4f, 1.3f};
+    static const mvfxCollider box = {.kind = mvfx_colliderBox,
+                                     .center = {0, 2, 0},
+                                     .halfExtents = {0.6f, 2, 0.6f},
+                                     .rotation = {0, 0, 0, 1},
+                                     .inside = true};
+    mvfxEmitterDef pile = Rigid(mvfx_rigidHull, lopsided, size, turn, true);
+    pile.capacity = 8;
+    pile.hostSpawnCapacity = 8;
+    pile.rigid.bodyContacts = 8;
+    pile.colliders = &box;
+    double places[18];
+    for (int32_t i = 0; i < 6; ++i)
+    {
+        places[3 * i] = 0.06 * (double)(i % 3) - 0.06;
+        places[3 * i + 1] = 0.4 + 0.6 * (double)i;
+        places[3 * i + 2] = 0.05 * (double)(i % 2) - 0.025;
+    }
+    PlayAt(&pile, 1, places, NULL, 6);
+    Steps(300);
+    mvfxHull hull;
+    CHECK(mvfxBuildHull(s_lopsided, 7, &(mvfxAllocator){0}, &hull) == mvfx_success, "built");
+    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
+    mvfxPolytope bodies[6];
+    float fastest = 0.0f;
+    for (int32_t i = 0; i < 6; ++i)
+    {
+        float x[3];
+        float q[4];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            x[k] = ((const float*)mvfxAttributeArray(
+                live, 0, (mvfxAttribute)(mvfx_attributePositionX + k)))[i];
+            float v = ((const float*)mvfxAttributeArray(
+                live, 0, (mvfxAttribute)(mvfx_attributeVelocityX + k)))[i];
+            fastest = fmaxf(fastest, fabsf(v));
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            q[k] = ((const float*)mvfxAttributeArray(
+                live, 0, (mvfxAttribute)(mvfx_attributeOrientationX + k)))[i];
+        }
+        mvfxHullPolytope(&hull, size, x, q, &bodies[i]);
+    }
+    float deepest = 0.0f;
+    for (int32_t i = 0; i < 6; ++i)
+    {
+        for (int32_t j = i + 1; j < 6; ++j)
+        {
+            mvfxConvexMeet meet;
+            if (mvfxConvexMeets(&bodies[i], &bodies[j], 0.0f, &meet))
+            {
+                deepest = fminf(deepest, meet.distance);
+            }
+        }
+    }
+    CHECK(live->emitters[0].count == 6 && deepest >= -0.01f && fastest <= 0.05f, "a pile of hulls");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     OpenContext();
@@ -288,21 +456,7 @@ static void TestChecks(void)
                        ? 1
                        : 0;
     }
-    // Not yet: outsides of spheres and boxes, the host's colliders, each
-    // other.
-    static const mvfxCollider ball1 = {.kind = mvfx_colliderSphere, .radius = 1.0f};
-    static const mvfxCollider box1 = {
-        .kind = mvfx_colliderBox, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}};
-    for (int32_t c = 0; c < 4; ++c)
-    {
-        mvfxEmitterDef emitter = Rigid(mvfx_rigidHull, cube, unit, turn, true);
-        emitter.colliders = c == 0 ? &ball1 : c == 1 ? &box1 : emitter.colliders;
-        emitter.collision.hostColliders = c == 2;
-        emitter.rigid.bodyContacts = c == 3 ? 4 : 0;
-        mvfxEffectId effect = {0};
-        refused += EffectOf(&emitter, 1, &effect) == mvfx_errorInvalid ? 1 : 0;
-    }
-    CHECK(refused == 7, "the checks");
+    CHECK(refused == 3, "the checks");
     mvfxEmitterDef inside = Rigid(mvfx_rigidHull, cube, unit, turn, true);
     static const mvfxCollider room = {.kind = mvfx_colliderBox,
                                       .halfExtents = {3, 3, 3},
@@ -319,6 +473,9 @@ int main(void)
     TestLikeABox();
     TestOffCenter();
     TestFreeSpin();
+    TestOnColliders();
+    TestMeeting();
+    TestPile();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

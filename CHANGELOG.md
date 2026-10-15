@@ -275,3 +275,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and full inertia from the hull's volume integrals, placed at its
   centroid (`mvfxMesh_HullCenter`); they meet planes, grids, the insides
   of spheres and boxes, scene answers and the depth image.
+- Rigid hulls meet the outsides of spheres and boxes, the host's
+  colliders and each other (`bodyContacts`): nearest points by GJK,
+  overlaps by EPA, touching faces clipped into contacts.
