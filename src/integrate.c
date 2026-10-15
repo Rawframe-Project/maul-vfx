@@ -232,26 +232,38 @@ static float AgeOf(const Range* r, int32_t i)
     return fminf(fmaxf(age, 0.0f), 1.0f);
 }
 
-// Particle i's contact plane from the scene, grown by its radius, as a
-// plane collider; false when it has none.
-static bool ScenePlaneOf(const Range* r, int32_t i, mvfxResolvedCollider* out)
+// Particle i's contact plane from the scene, grown by its radius times
+// sigma, as a plane collider; false when it has none.
+static bool ScenePlaneOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float sigma,
+                         mvfxResolvedCollider* out)
 {
-    if (!mvfxHasAttribute(&r->compiled->plan, mvfx_attributeScenePointX))
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    if (!mvfxHasAttribute(&compiled->plan, mvfx_attributeScenePointX))
     {
         return false;
     }
-    float radius = r->compiled->collision.radius * r->modules->sigma;
+    float radius = compiled->collision.radius * sigma;
     *out = (mvfxResolvedCollider){.kind = mvfx_colliderPlane};
     for (int32_t k = 0; k < 3; ++k)
     {
-        const float* point = mvfxAttributeArray(r->instance, r->emitter,
-                                                (mvfxAttribute)(mvfx_attributeScenePointX + k));
-        const float* normal = mvfxAttributeArray(r->instance, r->emitter,
-                                                 (mvfxAttribute)(mvfx_attributeSceneNormalX + k));
+        const float* point =
+            mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeScenePointX + k));
+        const float* normal =
+            mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeSceneNormalX + k));
         out->normal[k] = normal[i];
         out->center[k] = point[i] + radius * normal[i];
     }
     return out->normal[0] != 0.0f || out->normal[1] != 0.0f || out->normal[2] != 0.0f;
+}
+
+mvfxOwnColliders mvfxOwnCollidersOf(const mvfxInstance* instance, int32_t emitter, int32_t i,
+                                    float sigma, mvfxResolvedCollider* plane)
+{
+    const mvfxEmitterState* state = &instance->emitters[emitter];
+    return (mvfxOwnColliders){
+        .plane = ScenePlaneOf(instance, emitter, i, sigma, plane) ? plane : nullptr,
+        .depth = state->hasDepth ? &state->depth : nullptr,
+    };
 }
 
 // Collides particle i, gone from start to place: its place and velocity
@@ -264,10 +276,8 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
     float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
     float restSpeed = collision->restSpeed * r->modules->sigma;
     mvfxResolvedCollider plane;
-    mvfxOwnColliders own = {
-        .plane = ScenePlaneOf(r, i, &plane) ? &plane : nullptr,
-        .depth = state->hasDepth ? &state->depth : nullptr,
-    };
+    mvfxOwnColliders own =
+        mvfxOwnCollidersOf(r->instance, r->emitter, i, r->modules->sigma, &plane);
     mvfxContact first = {0};
     int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, &own, collision,
                                    restSpeed, start, place, velocity, &first);

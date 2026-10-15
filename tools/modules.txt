@@ -25,6 +25,7 @@ shape: direction elementary mesh random
 velocity: direction elementary shape
 value: curve gradient random
 life: curve value
+liquid: collide instance integrate neighbor
 velocity_modules: direction elementary life
 over_life: gradient life value
 kill: direction force
@@ -60,7 +61,7 @@ attach: direction force instance space
 aero: force instance
 self: attach instance neighbor
 unit: aero attach elementary event instance integrate self
-emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate neighbor plexus rigid scene_query spawn steer unit
+emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate liquid neighbor plexus rigid scene_query spawn steer unit
 context: allocator effect grid instance layout mesh slots tasks
 convex: direction hull
 effect_api: allocator context effect effect_parts float_mode grid grid_api hull mesh mesh_api slots

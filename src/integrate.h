@@ -14,6 +14,7 @@
 #ifndef MAUL_VFX_SRC_INTEGRATE_H
 #define MAUL_VFX_SRC_INTEGRATE_H
 
+#include "collide.h"
 #include "force.h"
 #include "instance.h"
 
@@ -36,6 +37,12 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter);
 
 // The emitter's gravity in its particles' space.
 void mvfxGravityOf(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter, float out[3]);
+
+// Particle i's own colliders over a step of its emitter: its contact
+// plane from the scene (into plane), grown by its radius times sigma (the
+// particles' space's scale), and its instance's depth image.
+mvfxOwnColliders mvfxOwnCollidersOf(const mvfxInstance* instance, int32_t emitter, int32_t i,
+                                    float sigma, mvfxResolvedCollider* plane);
 
 // Moves the particles the emitter holds over the whole step (those alive
 // at its start, once the ended ones are gone), marking those killed.

@@ -247,6 +247,32 @@ static bool IsRigidValid(const mvfxEmitterDef* def)
     return body && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
 }
 
+// Whether an emitter's liquid is valid: each parameter in range, the
+// kernel radius within the neighbor radii; particles, not units, rigid
+// bodies nor a beam.
+static bool IsLiquidValid(const mvfxEmitterDef* def)
+{
+    const mvfxLiquidDef* liquid = &def->liquid;
+    if (!liquid->enabled)
+    {
+        return true;
+    }
+    bool kernel = IsWithin(liquid->kernelScale, MVFX_MIN_LIQUID_KERNEL, MVFX_MAX_LIQUID_KERNEL) &&
+                  IsWithin(liquid->spacing, MVFX_MIN_NEIGHBOR_RADIUS,
+                           MVFX_MAX_NEIGHBOR_RADIUS / liquid->kernelScale);
+    bool solve = liquid->substeps >= 1 && liquid->substeps <= MVFX_MAX_SUBSTEPS &&
+                 liquid->iterations >= 1 && liquid->iterations <= MVFX_MAX_LIQUID_ITERATIONS &&
+                 liquid->relaxation > 0.0f && liquid->relaxation <= 1.0f &&
+                 liquid->maxNeighbors >= 1 && liquid->maxNeighbors <= MVFX_MAX_NEIGHBORS;
+    bool terms = IsWithin(liquid->tensile, 0.0f, 1.0f) && liquid->tensileDistance > 0.0f &&
+                 liquid->tensileDistance < 1.0f && liquid->tensilePower >= 1 &&
+                 liquid->tensilePower <= MVFX_MAX_LIQUID_TENSILE_POWER &&
+                 IsWithin(liquid->viscosity, 0.0f, 1.0f) &&
+                 IsWithin(liquid->vorticity, 0.0f, MVFX_MAX_EXTENT);
+    return kernel && solve && terms && def->unit.kind == mvfx_unitParticle && !def->rigid.enabled &&
+           !def->beam.enabled;
+}
+
 // Whether an emitter's plexus links are valid.
 static bool IsPlexusValid(const mvfxPlexusDef* plexus)
 {
@@ -309,7 +335,7 @@ static bool AreEmitterPartsValid(const mvfxEffectDef* def, int32_t i)
     return AreNeighborsValid(def, i) && IsSteeringValid(emitter, def->parameterCount) &&
            AreContactsValid(&emitter->contacts) && IsPairForceValid(emitter) &&
            IsPlexusValid(&emitter->plexus) && IsUnitValid(emitter) && IsAttachValid(def, i) &&
-           IsRigidValid(emitter);
+           IsRigidValid(emitter) && IsLiquidValid(emitter);
 }
 
 // Copies an emitter's steering, its path's points into the compiled
@@ -332,6 +358,7 @@ static void CompileEmitterParts(const mvfxEmitterDef* def, mvfxCompiledEmitter* 
 {
     CopySteering(def, out);
     out->rigid = def->rigid.enabled ? def->rigid : (mvfxRigidDef){0};
+    out->liquid = def->liquid.enabled ? def->liquid : (mvfxLiquidDef){0};
     out->plexus = def->plexus.enabled ? def->plexus : (mvfxPlexusDef){0};
     CompileUnit(&def->unit, out);
     out->contacts = def->contacts.enabled ? def->contacts : (mvfxContactDef){0};

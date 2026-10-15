@@ -252,6 +252,8 @@ typedef struct mvfxCompiledEmitter
     // built from its mesh and owned by the effect (NULL for the others).
     mvfxRigidDef rigid;
     struct mvfxHull* hull;
+    // Its liquid's def (zero when its particles are not one).
+    mvfxLiquidDef liquid;
     int32_t unitPoints;
     int32_t unitWidth;
     float unitRests[4];

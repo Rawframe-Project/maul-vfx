@@ -82,6 +82,20 @@ typedef struct mvfxNeighborGrid
     uint32_t mask;
 } mvfxNeighborGrid;
 
+// An emitter's room for its liquid: a grid of the predicted places
+// (keeping no values); the predicted places, the places an iteration
+// moves to, each particle's multiplier, a velocity pass's output and its
+// swirl, thirteen arrays of the capacity, the last twelve as three each.
+typedef struct mvfxLiquidRoom
+{
+    mvfxNeighborGrid grid;
+    float* predicted;
+    float* moved;
+    float* multipliers;
+    float* velocities;
+    float* swirls;
+} mvfxLiquidRoom;
+
 // An emitter's room for its particle contacts: a grid of its places after
 // motion (keeping no values), those places, a pass's new places (then
 // the impulses), and each particle's radius; three arrays of the capacity
@@ -203,6 +217,8 @@ typedef struct mvfxEmitterState
     uint64_t selfContactsCapped;
     uint64_t rigidContactsCapped;
     uint64_t rigidSearchesCapped;
+    // Its liquid's room.
+    mvfxLiquidRoom liquid;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

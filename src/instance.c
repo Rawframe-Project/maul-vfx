@@ -63,6 +63,11 @@ typedef struct EmitterAt
     size_t rigidIndex;
     uint32_t rigidMask;
     size_t rigidPairs;
+    size_t liquidTable;
+    size_t liquidKeys;
+    size_t liquidIndex;
+    size_t liquidArrays;
+    uint32_t liquidMask;
 } EmitterAt;
 
 // The entries of a grid's table at a capacity: a power of two at least
@@ -135,6 +140,23 @@ static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, in
     at->rigidCandidates = mvfxLayoutAdd(layout, grid, sizeof(int32_t), alignof(int32_t));
     at->rigidPairs =
         mvfxLayoutAdd(layout, pairs, sizeof(mvfxPairContact), alignof(mvfxPairContact));
+}
+
+// Adds an emitter's liquid room to the block, for one whose particles are
+// a liquid: its grid and thirteen arrays of the capacity.
+static void AddLiquid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
+                      EmitterAt* at)
+{
+    if (!compiled->liquid.enabled)
+    {
+        return;
+    }
+    uint32_t size = GridTableSize(capacity);
+    at->liquidMask = size - 1u;
+    at->liquidTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
+    at->liquidKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
+    at->liquidIndex = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(int32_t), alignof(int32_t));
+    at->liquidArrays = mvfxLayoutAdd(layout, 13u * (size_t)capacity, sizeof(float), alignof(float));
 }
 
 // Adds an emitter's neighbor grid to the block, for one queried.
@@ -269,6 +291,28 @@ static void StartRigid(mvfxEmitterState* state, unsigned char* block, const Emit
     state->rigidPairs = (mvfxPairContact*)(block + at->rigidPairs);
 }
 
+static void StartLiquid(mvfxEmitterState* state, unsigned char* block, const EmitterAt* at,
+                        int32_t capacity)
+{
+    float* arrays = (float*)(block + at->liquidArrays);
+    size_t stride = (size_t)capacity;
+    state->liquid = (mvfxLiquidRoom){
+        .grid =
+            {
+                .table = (int32_t*)(block + at->liquidTable),
+                .keys = (uint32_t*)(block + at->liquidKeys),
+                .index = (int32_t*)(block + at->liquidIndex),
+                .capacity = capacity,
+                .mask = at->liquidMask,
+            },
+        .predicted = arrays,
+        .moved = arrays + 3u * stride,
+        .multipliers = arrays + 6u * stride,
+        .velocities = arrays + 7u * stride,
+        .swirls = arrays + 10u * stride,
+    };
+}
+
 static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstCursor* bursts,
                         const size_t particlesAt[], const EmitterAt at[],
                         const int32_t capacities[])
@@ -339,7 +383,24 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].selfPairs = (int32_t*)(block + at[e].selfPairs);
         instance->emitters[e].selfCounts = (int32_t*)(block + at[e].selfCounts);
         StartRigid(&instance->emitters[e], block, &at[e], capacities[e]);
+        StartLiquid(&instance->emitters[e], block, &at[e], capacities[e]);
     }
+}
+
+// Adds an emitter's rooms to the block: its queues and resolved parts,
+// then the rooms of what its particles do.
+static EmitterAt AddEmitterRooms(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
+                                 const int32_t capacities[])
+{
+    const mvfxCompiledEmitter* compiled = &effect->emitters[e];
+    EmitterAt at = AddEmitter(layout, compiled);
+    AddGrid(layout, compiled, capacities[e], &at);
+    AddContacts(layout, compiled, capacities[e], &at);
+    AddPlexus(layout, compiled, capacities[e], &at);
+    AddUnits(layout, effect, e, capacities, &at);
+    AddRigid(layout, compiled, capacities[e], &at);
+    AddLiquid(layout, compiled, capacities[e], &at);
+    return at;
 }
 
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
@@ -367,12 +428,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     EmitterAt at[MVFX_MAX_EMITTERS] = {0};
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
-        at[e] = AddEmitter(&layout, &effect->emitters[e]);
-        AddGrid(&layout, &effect->emitters[e], capacities[e], &at[e]);
-        AddContacts(&layout, &effect->emitters[e], capacities[e], &at[e]);
-        AddPlexus(&layout, &effect->emitters[e], capacities[e], &at[e]);
-        AddUnits(&layout, effect, e, capacities, &at[e]);
-        AddRigid(&layout, &effect->emitters[e], capacities[e], &at[e]);
+        at[e] = AddEmitterRooms(&layout, effect, e, capacities);
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {

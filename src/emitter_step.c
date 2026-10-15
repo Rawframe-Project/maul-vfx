@@ -16,6 +16,7 @@
 #include "event_spawn.h"
 #include "host_module.h"
 #include "integrate.h"
+#include "liquid.h"
 #include "neighbor.h"
 #include "plexus.h"
 #include "rigid.h"
@@ -110,8 +111,8 @@ static int64_t LiveUnits(const mvfxInstance* instance, int32_t emitter)
     return instance->emitters[emitter].count / instance->effect->emitters[emitter].unitPoints;
 }
 
-// Moves the particles alive at the step's start: as units by XPBD, or each
-// as a particle.
+// Moves the particles alive at the step's start: as units by XPBD, as
+// rigid bodies, as a liquid, or each as a particle.
 static void MoveLive(mvfxInstance* instance, int32_t emitter)
 {
     if (instance->effect->emitters[emitter].unitPoints > 1)
@@ -122,6 +123,11 @@ static void MoveLive(mvfxInstance* instance, int32_t emitter)
     if (instance->effect->emitters[emitter].rigid.enabled)
     {
         mvfxStepRigid(instance, emitter);
+        return;
+    }
+    if (instance->effect->emitters[emitter].liquid.enabled)
+    {
+        mvfxStepLiquid(instance, emitter);
         return;
     }
     mvfxIntegrateEmitter(instance, emitter);

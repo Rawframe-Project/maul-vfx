@@ -675,6 +675,75 @@ extern "C"
         float sleepTime;
     } mvfxRigidDef;
 
+// The most density iterations a liquid's substep takes.
+#define MVFX_MAX_LIQUID_ITERATIONS 32
+
+// The least and the most a liquid's kernel radius is of its spacing.
+#define MVFX_MIN_LIQUID_KERNEL 1.5f
+#define MVFX_MAX_LIQUID_KERNEL 4.0f
+
+// The most a liquid's tensile correction is raised to.
+#define MVFX_MAX_LIQUID_TENSILE_POWER 8
+
+    // A liquid, by position-based fluids (Macklin and Muller, "Position
+    // Based Fluids", SIGGRAPH 2013): the emitter's particles keep their
+    // rest density. Each substep they are moved as particles are (forces,
+    // drag, collision), then a fixed number of iterations corrects their
+    // places where their density is above 1 (the constraint only parts
+    // particles, as Macklin et al. 2014's fluids do, so a free surface does
+    // not clump), each particle's density the poly6 kernel's sum over its
+    // neighbors within the kernel radius over the same sum in an ideal
+    // lattice at the rest spacing (cubic, or square for a planar liquid),
+    // its correction by the spiky kernel's gradient; each
+    // correction's way is followed with the colliders, so it slides along
+    // them rather than crossing. The velocity gains the correction over the
+    // substep; then XSPH viscosity blends it toward the neighbors', and
+    // vorticity confinement restores swirls. Particles born in a step join
+    // the liquid from the next. Lengths are in the particles' space (a
+    // world-space emitter's scale with its instance). A particle counts at
+    // most maxNeighbors neighbors in the grid's order, those past it
+    // counted (mvfxEmitterStats.neighborsCapped, once a step).
+    // mvfxDefaultEmitterDef sets a spacing of 0.1, a kernel of 2, a
+    // relaxation of 0.01, viscosity of 0.01 and 64 neighbors.
+    typedef struct mvfxLiquidDef
+    {
+        bool enabled;
+        // Whether it moves in its emitter's XY plane, its corrections and
+        // swirls along Z 0.
+        bool planar;
+        // The particles' distance apart at rest, from
+        // MVFX_MIN_NEIGHBOR_RADIUS to MVFX_MAX_NEIGHBOR_RADIUS over
+        // kernelScale.
+        float spacing;
+        // The kernel radius over the spacing, from MVFX_MIN_LIQUID_KERNEL to
+        // MVFX_MAX_LIQUID_KERNEL.
+        float kernelScale;
+        // From 1 to MVFX_MAX_SUBSTEPS, and 1 to MVFX_MAX_LIQUID_ITERATIONS (4
+        // and 3 by default: a column 24 particles tall then settles within
+        // 1.3% of its rest density).
+        int32_t substeps;
+        int32_t iterations;
+        // The constraint's softening, a share of its denominator in a full
+        // lattice, above 0, at most 1: larger is softer and steadier.
+        float relaxation;
+        // The tensile correction, an artificial pressure parting close pairs
+        // (the paper's -k (W(r) / W(dq))^n, weighing as a density excess of
+        // its strength would): its strength from 0 (none, the default) to
+        // 1, its reference distance a share of the kernel radius above 0
+        // and below 1, and its power from 1 to
+        // MVFX_MAX_LIQUID_TENSILE_POWER (0.2 and 4 by default).
+        float tensile;
+        float tensileDistance;
+        int32_t tensilePower;
+        // XSPH viscosity's share of the neighbors' velocity, 0 to 1.
+        float viscosity;
+        // Vorticity confinement's strength a second, from 0 to
+        // MVFX_MAX_EXTENT, as a gas's.
+        float vorticity;
+        // From 1 to MVFX_MAX_NEIGHBORS.
+        int32_t maxNeighbors;
+    } mvfxLiquidDef;
+
 // The most plexus links an emitter keeps a step.
 #define MVFX_MAX_PLEXUS_LINKS (1 << 20)
 
@@ -933,6 +1002,9 @@ extern "C"
         mvfxUnitDef unit;
         // Whether its particles are rigid bodies (particles, not units).
         mvfxRigidDef rigid;
+        // Whether its particles are a liquid (particles, not units nor
+        // rigid bodies).
+        mvfxLiquidDef liquid;
         // A beam through its particles.
         mvfxBeamDef beam;
         // How its particles expand into quads.

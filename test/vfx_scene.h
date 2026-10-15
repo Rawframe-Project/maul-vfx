@@ -5,8 +5,8 @@
 // emitters over four instances, with full and churning emitters among
 // them, and an effect of emitter lives (a rate curve, looping bursts,
 // delays) over two, and an effect of mesh emitters over one, rigid
-// particles, and gases; a fixed sequence of steps, and a hash of every
-// instance's state.
+// particles, gases and liquids; a fixed sequence of steps, and a hash of
+// every instance's state.
 
 #ifndef MAUL_VFX_TEST_VFX_SCENE_H
 #define MAUL_VFX_TEST_VFX_SCENE_H
@@ -365,6 +365,67 @@ static inline void BuildGasScene(mvfxContext* context)
     instanceDef.origin[2] = -310.0;
     mvfxInstanceId instance = {0};
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "gas instance");
+}
+
+// Liquids: a planar liquid in the world poured from a box above a box it
+// keeps inside, with viscosity, confinement and the tensile correction,
+// under gravity; and a 3D liquid of its turning instance's space in a
+// box of that space, poured from a sphere. Their particles die and are
+// born again, joining the liquid a step after their birth.
+static inline void BuildLiquidScene(mvfxContext* context)
+{
+    static const mvfxCollider tank = {.kind = mvfx_colliderBox,
+                                      .inside = true,
+                                      .center = {0.0f, 0.5f, 0.0f},
+                                      .halfExtents = {0.5f, 0.5f, 1.0f},
+                                      .rotation = {0, 0, 0, 1}};
+    static const mvfxCollider cup = {.kind = mvfx_colliderBox,
+                                     .space = mvfx_spaceLocal,
+                                     .inside = true,
+                                     .center = {0.0f, 0.3f, 0.0f},
+                                     .halfExtents = {0.3f, 0.3f, 0.3f},
+                                     .rotation = {0, 0, 0, 1}};
+    mvfxEmitterDef liquids[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        mvfxEmitterDef* liquid = &liquids[e];
+        liquid->capacity = e == 0 ? 96 : 64;
+        liquid->rate = 60.0f;
+        liquid->lifetime = mvfxRangeSource(1.2f, 1.6f);
+        liquid->velocity.speed = (mvfxRange){0.2f, 0.6f};
+        liquid->motion.gravity[1] = -9.81f;
+        liquid->collision.enabled = true;
+        liquid->liquid.enabled = true;
+        liquid->liquid.spacing = 0.08f;
+    }
+    liquids[0].shape.kind = mvfx_shapeBox;
+    liquids[0].shape.offset[1] = 0.8f;
+    liquids[0].shape.halfExtents[0] = 0.2f;
+    liquids[0].shape.halfExtents[1] = 0.1f;
+    liquids[0].colliders = &tank;
+    liquids[0].colliderCount = 1;
+    liquids[0].liquid.planar = true;
+    liquids[0].liquid.viscosity = 0.05f;
+    liquids[0].liquid.vorticity = 2.0f;
+    liquids[0].liquid.tensile = 0.1f;
+    liquids[1].space = mvfx_spaceLocal;
+    liquids[1].shape.kind = mvfx_shapeSphere;
+    liquids[1].shape.radius = 0.1f;
+    liquids[1].shape.offset[1] = 0.45f;
+    liquids[1].colliders = &cup;
+    liquids[1].colliderCount = 1;
+    liquids[1].liquid.substeps = 2;
+    liquids[1].liquid.iterations = 2;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = liquids;
+    def.emitterCount = 2;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "liquid effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.origin[2] = -360.0;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "liquid instance");
 }
 
 static inline void BuildScene(mvfxContext* context)
@@ -1135,6 +1196,7 @@ static inline void BuildScene(mvfxContext* context)
     }
     BuildRigidScene(context);
     BuildGasScene(context);
+    BuildLiquidScene(context);
 }
 
 // Moves every instance of the context before a step: along a fixed path

@@ -121,8 +121,8 @@ static void TestTwinsAgree(void)
 {
     static Host host = {.random = 12345u};
     // More slots than instances, so ranges hold empty slots too.
-    mvfxContext* serial = NewContext(NULL, 64);
-    mvfxContext* parallel = NewContext(&host, 64);
+    mvfxContext* serial = NewContext(NULL, 80);
+    mvfxContext* parallel = NewContext(&host, 80);
     for (int32_t copy = 0; copy < 6; ++copy)
     {
         BuildScene(serial);
