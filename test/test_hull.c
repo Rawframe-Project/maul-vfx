@@ -5,7 +5,10 @@
 // giving eight vertices, six square faces, its volume and moments; a
 // tetrahedron of unequal legs off the origin giving its centroid and its
 // moments by the closed form; points of a ball's hull all inside every face, each face's
-// corners on its plane and in order; points spanning no volume, and a
+// corners on its plane and in order; a fan of nearly coplanar triangles
+// merged by one plane, its faces sound and its volume exact; a hull of
+// near-degenerate points hashed the same on every platform; points
+// spanning no volume, and a
 // hull of more than the most vertices, refused.
 
 #include "hull.h"
@@ -149,6 +152,138 @@ static void TestConvex(void)
     CHECK(inside && corners, "a convex hull");
 }
 
+static void TestFan(void)
+{
+    // A strip bulging gently over an arc of radius 10, 3e-4 radians a
+    // column, two rows at y = -1 and 1, closed below at z = -1: each
+    // triangle within the merging tolerance of its neighbors, its ends 20
+    // tolerances apart. Faces merge against one plane, not along a chain:
+    // the top several faces, every face's corners on its plane, each face
+    // convex with every point inside, and the volume the exact one (the
+    // shoelace area of the arc's section times the depth 2).
+    float points[3 * 22];
+    double section[11][2];
+    int32_t n = 0;
+    for (int32_t i = 0; i < 9; ++i)
+    {
+        double angle = 3e-4 * (double)i;
+        double x = 10.0 * sin(angle);
+        double z = 10.0 * (cos(angle) - 1.0);
+        section[i][0] = (double)(float)x;
+        section[i][1] = (double)(float)z;
+        for (int32_t row = 0; row < 2; ++row)
+        {
+            points[3 * n] = (float)x;
+            points[3 * n + 1] = row == 0 ? -1.0f : 1.0f;
+            points[3 * n + 2] = (float)z;
+            ++n;
+        }
+    }
+    section[9][0] = section[8][0];
+    section[9][1] = -1.0;
+    section[10][0] = 0.0;
+    section[10][1] = -1.0;
+    for (int32_t corner = 0; corner < 4; ++corner)
+    {
+        points[3 * n] = corner < 2 ? 0.0f : (float)section[8][0];
+        points[3 * n + 1] = corner % 2 == 0 ? -1.0f : 1.0f;
+        points[3 * n + 2] = -1.0f;
+        ++n;
+    }
+    double area = 0.0;
+    for (int32_t i = 0; i < 11; ++i)
+    {
+        const double* p = section[i];
+        const double* q = section[(i + 1) % 11];
+        area += p[0] * q[1] - q[0] * p[1];
+    }
+    double volume = 2.0 * fabs(0.5 * area);
+    mvfxHull hull;
+    CHECK(mvfxBuildHull(points, n, &s_allocator, &hull) == mvfx_success, "a fan's hull");
+    bool sound = true;
+    for (int32_t f = 0; f < hull.faceCount; ++f)
+    {
+        const float* plane = hull.planes[f];
+        for (int32_t i = 0; i < n; ++i)
+        {
+            float d = 0.0f;
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                d += plane[k] * (points[3 * i + k] - hull.centroid[k]);
+            }
+            sound = sound && d - plane[3] <= 2e-6f;
+        }
+        int32_t first = hull.faceStart[f];
+        int32_t count = hull.faceStart[f + 1] - first;
+        for (int32_t j = 0; j < count; ++j)
+        {
+            const float* a = hull.vertices[hull.loop[first + j]];
+            const float* b = hull.vertices[hull.loop[first + (j + 1) % count]];
+            const float* c = hull.vertices[hull.loop[first + (j + 2) % count]];
+            float e1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+            float e2[3] = {c[0] - b[0], c[1] - b[1], c[2] - b[2]};
+            float turn = plane[0] * (e1[1] * e2[2] - e1[2] * e2[1]) +
+                         plane[1] * (e1[2] * e2[0] - e1[0] * e2[2]) +
+                         plane[2] * (e1[0] * e2[1] - e1[1] * e2[0]);
+            float on = plane[0] * a[0] + plane[1] * a[1] + plane[2] * a[2] - plane[3];
+            sound = sound && fabsf(on) <= 2e-6f && turn >= -1e-9f;
+        }
+    }
+    // Chained, the whole top would be one face; by one plane it is several.
+    int32_t tops = 0;
+    for (int32_t f = 0; f < hull.faceCount; ++f)
+    {
+        tops += hull.planes[f][2] > 0.99f ? 1 : 0;
+    }
+    CHECK(sound && tops >= 3 && fabs((double)hull.volume - volume) <= 1e-5 * volume,
+          "a fan merged by one plane");
+}
+
+// The hash of everything a hull holds.
+static uint64_t HashHull(const mvfxHull* hull)
+{
+    uint64_t h = mvfxHash64(0u, &hull->vertexCount, (int32_t)sizeof hull->vertexCount);
+    h = mvfxHash64(h, &hull->faceCount, (int32_t)sizeof hull->faceCount);
+    h = mvfxHash64(h, hull->vertices,
+                   (int32_t)(sizeof hull->vertices[0] * (size_t)hull->vertexCount));
+    h = mvfxHash64(h, hull->planes, (int32_t)(sizeof hull->planes[0] * (size_t)hull->faceCount));
+    h = mvfxHash64(h, hull->faceStart,
+                   (int32_t)(sizeof hull->faceStart[0] * (size_t)(hull->faceCount + 1)));
+    h = mvfxHash64(h, hull->loop,
+                   (int32_t)(sizeof hull->loop[0] * (size_t)hull->faceStart[hull->faceCount]));
+    h = mvfxHash64(h, &hull->volume, (int32_t)sizeof hull->volume);
+    h = mvfxHash64(h, hull->centroid, (int32_t)sizeof hull->centroid);
+    return mvfxHash64(h, hull->moments, (int32_t)sizeof hull->moments);
+}
+
+static void TestNearDegenerate(void)
+{
+    // Five points within 1e-6 of each of a unit cube's corners and twenty
+    // within 3e-7 of its top face, near the tolerance everywhere: the hull
+    // decides its ties and near-coplanar points the same on every
+    // platform, its hash fixed.
+    float points[3 * 60];
+    int32_t n = 0;
+    for (uint32_t i = 0; i < 40; ++i, ++n)
+    {
+        for (uint32_t k = 0; k < 3; ++k)
+        {
+            float corner = (i >> k & 1u) != 0u ? 0.5f : -0.5f;
+            points[3 * n + (int32_t)k] = corner + 1e-6f * Hashed(1000u + 3u * i + k);
+        }
+    }
+    for (uint32_t i = 0; i < 20; ++i, ++n)
+    {
+        points[3 * n] = 0.45f * Hashed(2000u + 3u * i);
+        points[3 * n + 1] = 0.45f * Hashed(2001u + 3u * i);
+        points[3 * n + 2] = 0.5f + 3e-7f * Hashed(2002u + 3u * i);
+    }
+    mvfxHull hull;
+    CHECK(mvfxBuildHull(points, n, &s_allocator, &hull) == mvfx_success, "a near-degenerate hull");
+    CHECK(hull.vertexCount == 12 && hull.faceCount == 8 && HashHull(&hull) == 0xA4B089E4BC1A4BABu,
+          "a near-degenerate hull, the same everywhere");
+}
+
 static void TestRefused(void)
 {
     // A square's corners and its center, a line, one point repeated; 200
@@ -181,6 +316,8 @@ int main(void)
     TestCube();
     TestTetrahedron();
     TestConvex();
+    TestFan();
+    TestNearDegenerate();
     TestRefused();
     return s_failures == 0 ? 0 : 1;
 }

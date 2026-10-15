@@ -43,9 +43,28 @@ typedef struct mvfxConvexMeet
     float onB[3];
 } mvfxConvexMeet;
 
+// The most steps GJK and EPA each take: a fixed bound keeps every
+// platform's steps the same (the same bits).
+#define MVFX_CONVEX_STEPS 64
+
 // Whether a and b are nearer than margin, and how they meet.
 bool mvfxConvexMeets(const mvfxPolytope* a, const mvfxPolytope* b, float margin,
                      mvfxConvexMeet* out);
+
+// The steps a meeting took: GJK's, and EPA's where they overlapped.
+typedef struct mvfxConvexSteps
+{
+    int32_t gjk;
+    int32_t epa;
+} mvfxConvexSteps;
+
+// mvfxConvexMeets with each search held to most steps (at most
+// MVFX_CONVEX_STEPS), counting them. A search stopped there answers with
+// what it has: GJK the last simplex's point, apart, at a distance at least
+// the true one; EPA the nearest face it found, at a depth at most the
+// true one.
+bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float margin, int32_t most,
+                           mvfxConvexMeet* out, mvfxConvexSteps* steps);
 
 // The point of a polytope nearest p (p itself inside it) and their
 // distance (0 inside).

@@ -196,6 +196,18 @@ if(MAUL_VFX_BUILD_TESTS)
         maul_add_test(twins WHITEBOX POSIX)
     endif()
     maul_add_header_tests()
+    # The library keeps within WebAssembly's default 64 KiB stack: on the
+    # web its tests run with that stack, every frame checked against it,
+    # so a change that overflows it fails them.
+    if(EMSCRIPTEN)
+        get_property(targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(target IN LISTS targets)
+            if(target MATCHES "^test_")
+                target_link_options(${target} PRIVATE -sSTACK_SIZE=65536
+                                    -sSTACK_OVERFLOW_CHECK=2)
+            endif()
+        endforeach()
+    endif()
 endif()
 
 if(MAUL_VFX_BUILD_BENCH AND EXISTS ${PROJECT_SOURCE_DIR}/bench/bench_main.c)

@@ -8,9 +8,7 @@
 #include <math.h>
 #include <string.h>
 
-// Each search's most steps: a fixed bound keeps every platform's steps
-// the same (the same bits).
-#define MOST_STEPS 64
+#define MOST_STEPS MVFX_CONVEX_STEPS
 
 // The most vertices and faces EPA's polytope grows to.
 #define EPA_VERTICES (4 + MOST_STEPS)
@@ -337,7 +335,10 @@ static bool Nearest(Simplex* s, double v[3])
 
 // GJK: the simplex nearest the origin of a's and b's difference and its
 // nearest point v; false when they overlap (the simplex holds the origin).
-static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s, double v[3])
+// At most most steps, counted in steps; stopped there, the last simplex's
+// point, apart (its distance is at least the true one).
+static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s, double v[3], int32_t most,
+                int32_t* steps)
 {
     const double start[3] = {(double)(a->vertices[0][0] - b->vertices[0][0]),
                              (double)(a->vertices[0][1] - b->vertices[0][1]),
@@ -347,7 +348,7 @@ static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s, double
     s->count = 1;
     memcpy(v, s->p[0].w, 3 * sizeof(double));
     double reach = Dot(v, v);
-    for (int32_t step = 0; step < MOST_STEPS; ++step)
+    for (*steps = 0; *steps < most; ++*steps)
     {
         double vv = Dot(v, v);
         if (vv <= 1e-18 * reach)
@@ -606,9 +607,11 @@ static bool Expand(Epa* e, const Point* p)
 
 // EPA (van den Bergen 2003): of the difference holding the origin, the
 // face nearest it, grown until its distance holds; how far a must move
-// against its normal to part them, the normal and the witnesses.
+// against its normal to part them, the normal and the witnesses. At most
+// most steps, counted in steps; stopped there, the nearest face found
+// (its depth at most the true one).
 static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s,
-                        mvfxConvexMeet* out)
+                        mvfxConvexMeet* out, int32_t most, int32_t* steps)
 {
     Epa e;
     *out = (mvfxConvexMeet){.normal = {0.0f, 1.0f, 0.0f}};
@@ -618,7 +621,7 @@ static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s
         return;
     }
     int32_t f = NearestFace(&e);
-    for (int32_t step = 0; step < MOST_STEPS; ++step)
+    for (*steps = 0; *steps < most; ++*steps)
     {
         Point p = Support(a, b, e.normals[f]);
         double gain = Dot(e.normals[f], p.w) - e.distances[f];
@@ -644,14 +647,16 @@ static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s
     out->distance = (float)-e.distances[f];
 }
 
-bool mvfxConvexMeets(const mvfxPolytope* a, const mvfxPolytope* b, float margin,
-                     mvfxConvexMeet* out)
+bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float margin, int32_t most,
+                           mvfxConvexMeet* out, mvfxConvexSteps* steps)
 {
     Simplex s;
     double v[3];
-    if (!Gjk(a, b, &s, v))
+    most = most < MOST_STEPS ? most : MOST_STEPS;
+    *steps = (mvfxConvexSteps){0};
+    if (!Gjk(a, b, &s, v, most, &steps->gjk))
     {
-        Penetration(a, b, &s, out);
+        Penetration(a, b, &s, out, most, &steps->epa);
         return true;
     }
     double distance = sqrt(Dot(v, v));
@@ -668,13 +673,21 @@ bool mvfxConvexMeets(const mvfxPolytope* a, const mvfxPolytope* b, float margin,
     return true;
 }
 
+bool mvfxConvexMeets(const mvfxPolytope* a, const mvfxPolytope* b, float margin,
+                     mvfxConvexMeet* out)
+{
+    mvfxConvexSteps steps;
+    return mvfxConvexMeetsWithin(a, b, margin, MOST_STEPS, out, &steps);
+}
+
 float mvfxPolytopeNearest(const mvfxPolytope* a, const float p[3], float out[3])
 {
     mvfxPolytope point = {.vertexCount = 1};
     memcpy(point.vertices[0], p, 3 * sizeof(float));
     Simplex s;
     double v[3];
-    if (!Gjk(a, &point, &s, v))
+    int32_t steps = 0;
+    if (!Gjk(a, &point, &s, v, MOST_STEPS, &steps))
     {
         memcpy(out, p, 3 * sizeof(float));
         return 0.0f;

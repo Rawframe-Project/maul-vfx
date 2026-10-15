@@ -7,7 +7,8 @@
 // a lopsided hull spun freely keeping its angular momentum and energy,
 // its inertia not along its axes; hulls resting on a box collider and a
 // sphere's top as boxes do; hulls stacked, meeting head on, and piled in
-// a box without deep overlaps; the checks.
+// a box without deep overlaps; a hull tipped through 45 degrees, where
+// its contacts change from faces to a point, following a box; the checks.
 
 #include "convex.h"
 #include "hull.h"
@@ -425,6 +426,60 @@ static void TestPile(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestTipping(void)
+{
+    // A cube's hull and a box on a table, each balanced on an edge and
+    // tipped 1 degree past it either way: as they fall through 45 degrees
+    // the hull's contacts change from clipped faces to a point, and still
+    // it falls as the box (met by its own clipping) does, its spin never
+    // turning back, and rests on a face; after landing they slide to a
+    // stop by their own faces' contacts, a few millimeters apart.
+    static const mvfxCollider table = {.kind = mvfx_colliderBox,
+                                       .center = {0, -0.5f, 0},
+                                       .halfExtents = {3, 0.5f, 3},
+                                       .rotation = {0, 0, 0, 1}};
+    static const float unit[3] = {1, 1, 1};
+    static const float still[3] = {0, 0, 0};
+    float falling = 0.0f;
+    float landed = 0.0f;
+    bool steady = true;
+    for (int32_t side = 0; side < 2; ++side)
+    {
+        float angle = (side == 0 ? 44.0f : 46.0f) * 0.017453293f;
+        const float turn[3] = {0, 0, angle};
+        OpenContext();
+        mvfxMeshId cube = MeshOf(s_cube, 8);
+        mvfxEmitterDef emitters[2] = {Rigid(mvfx_rigidBox, (mvfxMeshId){0}, unit, turn, true),
+                                      Rigid(mvfx_rigidHull, cube, unit, turn, true)};
+        emitters[0].colliders = &table;
+        emitters[1].colliders = &table;
+        // Its lowest edge on the table.
+        const double place[3] = {0, 0.70710678 * cos((double)angle - 0.78539816), 0};
+        PlayAt(emitters, 2, place, still, 1);
+        float spun = 0.0f;
+        for (int32_t i = 0; i < 240; ++i)
+        {
+            Steps(1);
+            bool down = At(1, mvfx_attributePositionY) <= 0.501f;
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                mvfxAttribute x = (mvfxAttribute)(mvfx_attributePositionX + k);
+                float d = fabsf(At(0, x) - At(1, x));
+                falling = down ? falling : fmaxf(falling, d);
+                landed = fmaxf(landed, d);
+            }
+            float w = At(1, mvfx_attributeAngularZ);
+            steady = steady && (down || spun * w >= 0.0f);
+            spun = fabsf(w) > 0.05f ? w : spun;
+        }
+        float speed = fabsf(At(1, mvfx_attributeVelocityX)) +
+                      fabsf(At(1, mvfx_attributeVelocityY)) + fabsf(At(1, mvfx_attributeAngularZ));
+        steady = steady && fabsf(At(1, mvfx_attributePositionY) - 0.5f) <= 0.002f && speed <= 0.01f;
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(falling <= 0.001f && landed <= 0.01f && steady, "tipped through 45 degrees as a box");
+}
+
 static void TestChecks(void)
 {
     OpenContext();
@@ -476,6 +531,7 @@ int main(void)
     TestOnColliders();
     TestMeeting();
     TestPile();
+    TestTipping();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

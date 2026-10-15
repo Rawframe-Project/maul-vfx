@@ -7,7 +7,9 @@
 // a point's nearest point, outside and inside; a turned box on a box met
 // at its overlap's eight corners, edges crossing at one point, and a box
 // just apart within the margin at four; points' nearest distances to a
-// ball's hull of 60 vertices by its features; lopsided hulls overlapping at
+// ball's hull of 60 vertices by its features; thin slabs nearly parallel
+// met in few steps, and searches held to one step answering with bounds;
+// lopsided hulls overlapping at
 // many poses by the depth the separating axes give.
 
 #include "convex.h"
@@ -374,6 +376,65 @@ static void TestDepths(void)
     CHECK(overlapping >= 20 && agree, "depths by the separating axes");
 }
 
+static void TestSteps(void)
+{
+    // Slabs 0.001 thick, the upper tilted by 1e-5 to 1e-3 about x, 1e-3
+    // apart and 1e-4 into each other: answered as the separating axes say,
+    // in fewer than half the steps.
+    mvfxPolytope a;
+    mvfxPolytope b;
+    static const float origin[3] = {0, 0, 0};
+    static const float slab[3] = {1, 0.0005f, 1};
+    mvfxBoxPolytope(origin, s_identity, slab, &a);
+    bool accurate = true;
+    int32_t most = 0;
+    for (int32_t i = 0; i < 20; ++i)
+    {
+        float tilt[4];
+        TurnAbout(0, 1e-5f * (float)(1 + 5 * i), tilt);
+        for (int32_t overlap = 0; overlap < 2; ++overlap)
+        {
+            const float place[3] = {0.1f, overlap != 0 ? 0.0009f : 0.002f, -0.2f};
+            mvfxBoxPolytope(place, tilt, slab, &b);
+            float lowest = INFINITY;
+            for (int32_t v = 0; v < b.vertexCount; ++v)
+            {
+                lowest = fminf(lowest, b.vertices[v][1]);
+            }
+            mvfxConvexMeet meet;
+            mvfxConvexSteps steps;
+            bool met = mvfxConvexMeetsWithin(&b, &a, 1.0f, MVFX_CONVEX_STEPS, &meet, &steps);
+            float expected = overlap != 0 ? -LeastOverlap(&b, &a) : lowest - 0.0005f;
+            accurate = accurate && met && fabsf(meet.distance - expected) <= 2e-6f;
+            most = steps.gjk > most ? steps.gjk : most;
+            most = steps.epa > most ? steps.epa : most;
+        }
+    }
+    CHECK(accurate && most < MVFX_CONVEX_STEPS / 2, "thin slabs nearly parallel");
+    // Held to one step: GJK's distance at least the true one, EPA's depth
+    // at most the true one.
+    static const float unit[3] = {1, 1, 1};
+    mvfxBoxPolytope(origin, s_identity, unit, &a);
+    float turn[4];
+    TurnAbout(1, 0.6f, turn);
+    bool bounded = true;
+    for (int32_t overlap = 0; overlap < 2; ++overlap)
+    {
+        const float place[3] = {overlap != 0 ? 0.8f : 1.7f, 0.3f, 0.2f};
+        mvfxBoxPolytope(place, turn, unit, &b);
+        mvfxConvexMeet full;
+        mvfxConvexMeet held;
+        mvfxConvexSteps steps;
+        bool met = mvfxConvexMeetsWithin(&b, &a, 10.0f, MVFX_CONVEX_STEPS, &full, &steps);
+        bool heldMet = mvfxConvexMeetsWithin(&b, &a, 10.0f, 1, &held, &steps);
+        // Apart, the distance an upper bound; overlapping, the depth a
+        // lower one: either way never less than the full answer.
+        bounded = bounded && met && heldMet && steps.gjk <= 1 && steps.epa <= 1 &&
+                  held.distance >= full.distance - 1e-6f;
+    }
+    CHECK(bounded, "searches held to their steps");
+}
+
 int main(void)
 {
     TestApart();
@@ -382,5 +443,6 @@ int main(void)
     TestManifolds();
     TestNearestOnBall();
     TestDepths();
+    TestSteps();
     return s_failures == 0 ? 0 : 1;
 }
