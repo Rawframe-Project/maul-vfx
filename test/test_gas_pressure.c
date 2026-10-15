@@ -6,7 +6,9 @@
 // 8 V cycles, and its fall in the early cycles, over 2D and 3D boxes of even and
 // odd sizes with open, closed and mixed walls; closed walls' faces held
 // at 0; the Taylor-Green vortex in a closed box kept free of divergence,
-// its energy falling every step and by under a tenth in a second.
+// its energy falling every step and by under a tenth in a second; an
+// open-walled gas projected as it is stepped; a restarted gas the same,
+// bit for bit, as a fresh one.
 
 #include "gas_pressure.h"
 #include "instance.h"
@@ -342,11 +344,90 @@ static void TestTaylorGreen(void)
     mvfxDestroyContext(s_context);
 }
 
+// Steps a context by n steps of 1/64 s.
+static void Steps(int32_t n)
+{
+    for (int32_t i = 0; i < n; ++i)
+    {
+        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success, "step");
+    }
+}
+
+// A 2D gas of 32 by 24 cells, every wall open, a box inside blowing up
+// and to the right.
+static mvfxGasDef Blown(int32_t cycles)
+{
+    static const mvfxGasSource wind = {.shape = mvfx_gasBox,
+                                       .center = {-0.3f, -0.2f, 0},
+                                       .halfExtents = {0.4f, 0.3f, 1},
+                                       .density = 1,
+                                       .setsVelocity = true,
+                                       .velocity = {1.5f, 2.0f, 0}};
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 32;
+    def.size[1] = 24;
+    def.pressureCycles = cycles;
+    def.sources = &wind;
+    def.sourceCount = 1;
+    return def;
+}
+
+static void TestStepped(void)
+{
+    // The blown gas stepped 3 times with 4 V cycles, its walls all open:
+    // its divergence at most a hundredth of the same gas's without them.
+    float most[2];
+    for (int32_t r = 0; r < 2; ++r)
+    {
+        mvfxGasDef def = Blown(r == 0 ? 0 : 4);
+        const mvfxCompiledGas* gas = NULL;
+        mvfxGasState* state = Open(&def, &gas);
+        Steps(3);
+        most[r] = MaxDivergence(gas, state);
+        mvfxDestroyContext(s_context);
+    }
+    CHECK(most[0] > 0.0f && most[1] <= 0.01f * most[0], "a stepped gas projected");
+}
+
+static void TestRestart(void)
+{
+    // The blown gas stepped 5 times, restarted and stepped 5 more: its
+    // velocity and pressure bit for bit a fresh gas's after 5, the last
+    // solve's pressure not carried past the restart.
+    mvfxGasDef def = Blown(2);
+    const mvfxCompiledGas* gas = NULL;
+    mvfxGasState* state = Open(&def, &gas);
+    Steps(5);
+    static float fresh[33 * 24 + 32 * 25 + 32 * 24];
+    float* to = fresh;
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        memcpy(to, state->velocity[k][state->current], (size_t)gas->faces[k] * sizeof(float));
+        to += gas->faces[k];
+    }
+    memcpy(to, state->levels[0].pressure, (size_t)gas->cells * sizeof(float));
+    CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success, "restart");
+    Steps(5);
+    bool same = true;
+    const float* from = fresh;
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        same = same && memcmp(from, state->velocity[k][state->current],
+                              (size_t)gas->faces[k] * sizeof(float)) == 0;
+        from += gas->faces[k];
+    }
+    same = same && memcmp(from, state->levels[0].pressure, (size_t)gas->cells * sizeof(float)) == 0;
+    CHECK(same, "a restarted gas a fresh one");
+    mvfxDestroyContext(s_context);
+}
+
 int main(void)
 {
     TestDirect();
     TestDivergence();
     TestWalls();
     TestTaylorGreen();
+    TestStepped();
+    TestRestart();
     return s_failures;
 }
