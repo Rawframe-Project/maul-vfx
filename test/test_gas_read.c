@@ -164,7 +164,8 @@ static void TestRefusals(void)
 {
     // A uint32 format; a box past the gas; a range not above its low for a
     // normalized format; a row pitch below the packed row; too few bytes;
-    // NULLs; a sample's point not finite and a negative count.
+    // NULLs; a sample's point NaN or infinite, a negative count, NULL
+    // points.
     Open(s_origin, s_unturned);
     static float out[64];
     bool right = true;
@@ -183,6 +184,11 @@ static void TestRefusals(void)
     right = right && mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, bad, 1,
                                             out) == mvfx_errorInvalid;
     right = right && mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, bad, -1,
+                                            out) == mvfx_errorInvalid;
+    const double far[3] = {(double)INFINITY, 0, 0};
+    right = right && mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, far, 1,
+                                            out) == mvfx_errorInvalid;
+    right = right && mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, NULL, 1,
                                             out) == mvfx_errorInvalid;
     right = right && mvfxInstance_SampleGas(s_context, s_instance, 1, mvfx_gasDensity, bad, 0,
                                             out) == mvfx_errorInvalid;
