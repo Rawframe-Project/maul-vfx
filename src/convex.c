@@ -336,7 +336,8 @@ static bool Nearest(Simplex* s, double v[3])
 // GJK: the simplex nearest the origin of a's and b's difference and its
 // nearest point v; false when they overlap (the simplex holds the origin).
 // At most most steps, counted in steps; stopped there, the last simplex's
-// point, apart (its distance is at least the true one).
+// point, apart (its distance is at least the true one). Each step comes
+// nearer or ends it.
 static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s, double v[3], int32_t most,
                 int32_t* steps)
 {
@@ -375,6 +376,12 @@ static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s, double
         if (!Nearest(s, v))
         {
             return false;
+        }
+        // No nearer than before: as near as rounding allows (a simplex
+        // can otherwise cycle between faces about as near, to the cap).
+        if (!(Dot(v, v) < vv))
+        {
+            return true;
         }
     }
     return true;

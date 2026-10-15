@@ -363,7 +363,9 @@ static void TestMeeting(void)
 static void TestPile(void)
 {
     // Six lopsided hulls dropped into a box settle in it, still, none
-    // overlapping another by more than 0.01.
+    // overlapping another by more than 0.01, no search stopped at its
+    // steps (GJK cycled between faces about as near, 226 times, until it
+    // stopped where it came no nearer).
     OpenContext();
     mvfxMeshId lopsided = MeshOf(s_lopsided, 7);
     static const float size[3] = {0.5f, 0.5f, 0.5f};
@@ -423,7 +425,13 @@ static void TestPile(void)
             }
         }
     }
-    CHECK(live->emitters[0].count == 6 && deepest >= -0.01f && fastest <= 0.05f, "a pile of hulls");
+    mvfxEmitterStats stats;
+    CHECK(mvfxInstance_GetEmitterStats(s_scene.context, s_scene.instance, 0, &stats) ==
+              mvfx_success,
+          "stats");
+    CHECK(live->emitters[0].count == 6 && deepest >= -0.01f && fastest <= 0.05f &&
+              stats.rigidSearchesCapped == 0,
+          "a pile of hulls");
     mvfxDestroyContext(s_scene.context);
 }
 

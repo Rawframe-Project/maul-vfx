@@ -313,6 +313,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   most steps keeps the pair as touching, where it answered them apart
   and an overlapping pair could be missed for the substep;
   `mvfxEmitterStats.rigidSearchesCapped` counts the searches stopped.
+- GJK stops once a step comes no nearer, where some hulls about a
+  millimeter apart cycled between faces until its most steps.
 - `mvfxGrid_SetValuesIn` gives new values to a box of a grid's points.
   Sleeping rigid particles on a grid collider then wake only within
   reach of the cells those points change, where new values for the
