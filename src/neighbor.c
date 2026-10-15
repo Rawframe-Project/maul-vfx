@@ -13,17 +13,14 @@
 #include <math.h>
 #include <string.h>
 
-void mvfxBuildNeighborGrid(mvfxNeighborGrid* grid, const float* const p[3], const float* const v[3],
-                           int32_t n, float cell)
+// Counts each key's entries from the grid's keys, then places them.
+static void PlaceKeys(mvfxNeighborGrid* grid, const float* const p[3], const float* const v[3],
+                      int32_t n)
 {
-    float inverse = 1.0f / cell;
     uint32_t size = grid->mask + 1u;
     memset(grid->table, 0, ((size_t)size + 1u) * sizeof(int32_t));
     for (int32_t i = 0; i < n; ++i)
     {
-        const int32_t c[3] = {mvfxGridCell(p[0][i], inverse), mvfxGridCell(p[1][i], inverse),
-                              mvfxGridCell(p[2][i], inverse)};
-        grid->keys[i] = mvfxCellKey(c, grid->mask);
         grid->table[grid->keys[i]] += 1;
     }
     // Each key's end, then from the last particle down each takes the slot
@@ -46,6 +43,24 @@ void mvfxBuildNeighborGrid(mvfxNeighborGrid* grid, const float* const p[3], cons
             grid->values[(size_t)(3 + k) * stride + (size_t)j] = v[k][i];
         }
     }
+}
+
+void mvfxBuildNeighborGrid(mvfxNeighborGrid* grid, const float* const p[3], const float* const v[3],
+                           int32_t n, float cell)
+{
+    float inverse = 1.0f / cell;
+    for (int32_t i = 0; i < n; ++i)
+    {
+        const int32_t c[3] = {mvfxGridCell(p[0][i], inverse), mvfxGridCell(p[1][i], inverse),
+                              mvfxGridCell(p[2][i], inverse)};
+        grid->keys[i] = mvfxCellKey(c, grid->mask);
+    }
+    PlaceKeys(grid, p, v, n);
+}
+
+void mvfxBuildKeyedGrid(mvfxNeighborGrid* grid, int32_t n)
+{
+    PlaceKeys(grid, nullptr, nullptr, n);
 }
 
 static void BuildGrid(mvfxInstance* instance, int32_t emitter, float cell)

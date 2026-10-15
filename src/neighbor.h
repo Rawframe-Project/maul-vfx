@@ -36,10 +36,21 @@ static inline uint32_t mvfxCellKey(const int32_t cell[3], uint32_t mask)
     return h.x & mask;
 }
 
+// A cell's key at a level of a hierarchical grid.
+static inline uint32_t mvfxLevelKey(const int32_t cell[3], int32_t level, uint32_t mask)
+{
+    mvfxWords4 h = mvfxPcg4d((mvfxWords4){(uint32_t)cell[0], (uint32_t)cell[1], (uint32_t)cell[2],
+                                          MVFX_GRID_SALT + (uint32_t)level});
+    return h.x & mask;
+}
+
 // Builds a grid of n places in cells of a size, copying the places and
 // velocities when the grid keeps values (v may be NULL when it does not).
 void mvfxBuildNeighborGrid(mvfxNeighborGrid* grid, const float* const p[3], const float* const v[3],
                            int32_t n, float cell);
+
+// Builds a grid keeping no values from keys already in grid->keys.
+void mvfxBuildKeyedGrid(mvfxNeighborGrid* grid, int32_t n);
 
 // A query of an emitter's source grid from places in the emitter's space,
 // which is the source's: emitters of one space in an instance share their

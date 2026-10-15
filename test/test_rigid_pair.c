@@ -4,7 +4,9 @@
 // Rigid particles meeting each other: equal spheres trading their speeds
 // at restitution 1, and moving on together at 0; spheres of eight times
 // the mass bouncing as momentum says; bodies passing through each other
-// without body contacts; three boxes stacked and still; a capsule lying
+// without body contacts; three boxes stacked and still with their creep
+// bounded; one large body among a thousand small ones examining a few
+// cells each; a capsule lying
 // across another; a box dropped on a box, and a sphere on a sphere
 // rolling off; a box sliding to a stop on a wider
 // one by friction, the one below held; a pile of spheres in a box settled
@@ -189,20 +191,64 @@ static void TestThrough(void)
 
 static void TestStack(void)
 {
-    // Three unit boxes stacked on the ground stay stacked and still.
+    // Three unit boxes stacked on the ground stay stacked and still, with
+    // sleeping off: the solver's own creep (2.6 mm/s at the top, 6 mm
+    // aside in 3 s when measured) bounded, so that sleeping never hides a
+    // regression in it.
     static const double places[9] = {0, 0.5, 0, 0, 1.501, 0, 0, 2.502, 0};
     mvfxEmitterDef emitter = Bodies(mvfx_rigidBox, true);
     emitter.rigid.staticFriction = 0.6f;
     emitter.rigid.dynamicFriction = 0.4f;
+    CHECK(emitter.rigid.sleepSpeed == 0.0f, "sleeping off");
     Open(&emitter, places, NULL, NULL, 3);
     Steps(180);
     bool still = true;
     for (uint32_t i = 0; i < 3; ++i)
     {
-        still = still && fabsf(X(i, 1) - (0.5f + (float)i)) <= 0.02f && fabsf(X(i, 0)) <= 0.01f &&
-                Speed(i) <= 0.02f;
+        float aside = sqrtf(X(i, 0) * X(i, 0) + X(i, 2) * X(i, 2));
+        still = still && fabsf(X(i, 1) - (0.5f + (float)i)) <= 0.001f && aside <= 0.009f &&
+                Speed(i) <= 0.004f;
     }
     CHECK(still, "a stack of three");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestOneLarge(void)
+{
+    // A thousand small spheres (radius 0.05) 0.2 apart and one of radius
+    // 3 beside them, no gravity, one substep a step: by its own level each looks
+    // at a few cells, not at every body as one grid as wide as the large
+    // one's reach would make it (about a million entries).
+    enum
+    {
+        SMALL = 1000,
+        ALL = SMALL + 1
+    };
+    static double places[3 * ALL];
+    static float sizes[3 * ALL];
+    static float still[3 * ALL];
+    for (int32_t i = 0; i < SMALL; ++i)
+    {
+        places[3 * i] = 0.2 * (double)(i % 10);
+        places[3 * i + 1] = 0.2 * (double)(i / 10 % 10);
+        places[3 * i + 2] = 0.2 * (double)(i / 100);
+        sizes[3 * i] = sizes[3 * i + 1] = sizes[3 * i + 2] = 0.1f;
+    }
+    places[3 * SMALL] = -4.0;
+    places[3 * SMALL + 1] = 0.9;
+    places[3 * SMALL + 2] = 0.9;
+    sizes[3 * SMALL] = sizes[3 * SMALL + 1] = sizes[3 * SMALL + 2] = 6.0f;
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidSphere, false);
+    emitter.capacity = ALL;
+    emitter.hostSpawnCapacity = ALL;
+    emitter.rigid.substeps = 1;
+    Open(&emitter, places, still, sizes, ALL);
+    // Born in the first step, they meet each other in the second.
+    Steps(2);
+    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
+    uint64_t examined = live->emitters[0].rigidExamined;
+    CHECK(live->emitters[0].count == ALL && examined > 0u && examined <= 60u * ALL,
+          "one large body among a thousand");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -354,6 +400,7 @@ int main(void)
     TestMasses();
     TestThrough();
     TestStack();
+    TestOneLarge();
     TestCapsules();
     TestDropped();
     TestSliding();

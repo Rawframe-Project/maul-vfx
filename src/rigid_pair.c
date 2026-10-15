@@ -94,26 +94,98 @@ static void AddPair(const mvfxRigidSolve* s, int32_t a, int32_t b, const mvfxBod
     s->flags[b] |= list->count > 0 ? MVFX_RIGID_TOUCHED : 0;
 }
 
-// Body a's later neighbors within reach, met.
-static void PairsOf(const mvfxRigidSolve* s, int32_t a, float cell)
+// The most levels of the pair grid: bodies' reaches from the smallest to
+// 2^23 times it each have their own.
+#define MOST_LEVELS 24
+
+// Body i's reach.
+static float ReachOf(const mvfxRigidSolve* s, int32_t i)
+{
+    return s->mass[MVFX_RIGID_REACH * s->stride + (size_t)i];
+}
+
+// The level of a reach: the least L with reach at most base 2^L, its cells
+// 2 base 2^L wide (so two bodies of it or below that meet are in
+// neighboring cells).
+static int32_t LevelOf(float reach, float base)
+{
+    int32_t level = 0;
+    float bound = base;
+    while (reach > bound && level < MOST_LEVELS - 1)
+    {
+        bound *= 2.0f;
+        level += 1;
+    }
+    return level;
+}
+
+// Moves v[root] down the heap of v[0, end) to its place.
+static void SiftDown(int32_t* v, int32_t root, int32_t end)
+{
+    for (int32_t child = 2 * root + 1; child < end; child = 2 * root + 1)
+    {
+        child += child + 1 < end && v[child + 1] > v[child] ? 1 : 0;
+        if (v[root] >= v[child])
+        {
+            return;
+        }
+        int32_t swap = v[root];
+        v[root] = v[child];
+        v[child] = swap;
+        root = child;
+    }
+}
+
+// Sorts n indexes ascending by heapsort.
+static void SortIndexes(int32_t* v, int32_t n)
+{
+    for (int32_t start = n / 2 - 1; start >= 0; --start)
+    {
+        SiftDown(v, start, n);
+    }
+    for (int32_t end = n - 1; end > 0; --end)
+    {
+        int32_t top = v[0];
+        v[0] = v[end];
+        v[end] = top;
+        SiftDown(v, 0, end);
+    }
+}
+
+// A level's cell width: twice the base times 2^level.
+static float CellOf(float base, int32_t level)
+{
+    return (float)ldexp(2.0 * (double)base, level);
+}
+
+// The pair grid: its smallest reach and its levels with bodies.
+typedef struct Levels
+{
+    float base;
+    uint32_t present;
+} Levels;
+
+// Body a's candidates at one level of the grid: its bodies within reach
+// whose pair with a is a's to find (those of a's level after it, all of
+// a higher one), appended from at.
+static int32_t CandidatesAt(const mvfxRigidSolve* s, int32_t a, int32_t level, const Levels* levels,
+                            int32_t at)
 {
     mvfxEmitterState* state = &s->instance->emitters[s->emitter];
     const mvfxNeighborGrid* grid = &state->rigidGrid;
-    float inverseCell = 1.0f / cell;
-    int32_t at[3];
+    float inverseCell = 1.0f / CellOf(levels->base, level);
+    int32_t own = LevelOf(ReachOf(s, a), levels->base);
+    int32_t cell[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        at[k] = mvfxGridCell(s->x[k][a], inverseCell);
+        cell[k] = mvfxGridCell(s->x[k][a], inverseCell);
     }
-    mvfxBodyPose poseA;
-    mvfxBodyShape shapeA = ShapeAt(s, a, &poseA);
-    float reachA = s->mass[MVFX_RIGID_REACH * s->stride + (size_t)a];
     uint32_t visited[27];
     int32_t visits = 0;
     for (int32_t n = 0; n < 27; ++n)
     {
-        int32_t around[3] = {at[0] + n % 3 - 1, at[1] + n / 3 % 3 - 1, at[2] + n / 9 - 1};
-        uint32_t key = mvfxCellKey(around, grid->mask);
+        int32_t around[3] = {cell[0] + n % 3 - 1, cell[1] + n / 3 % 3 - 1, cell[2] + n / 9 - 1};
+        uint32_t key = mvfxLevelKey(around, level, grid->mask);
         bool seen = false;
         for (int32_t v = 0; v < visits; ++v)
         {
@@ -124,26 +196,55 @@ static void PairsOf(const mvfxRigidSolve* s, int32_t a, float cell)
         for (int32_t e = seen ? 0 : grid->table[key]; !seen && e < grid->table[key + 1u]; ++e)
         {
             int32_t b = grid->index[e];
-            float reach = reachA + s->mass[MVFX_RIGID_REACH * s->stride + (size_t)b];
+            state->rigidExamined += 1u;
+            float reach = ReachOf(s, a) + ReachOf(s, b);
             float square = 0.0f;
             for (int32_t k = 0; k < 3; ++k)
             {
                 float d = s->x[k][a] - s->x[k][b];
                 square += d * d;
             }
-            // Two sleeping bodies stay as they lie.
+            // Of this level (keys of others may share the slot), a's to
+            // find, and not two sleeping bodies, which stay as they lie.
+            bool mine = LevelOf(ReachOf(s, b), levels->base) == level && (level > own || b > a);
             bool resting = mvfxBodyAsleep(s, a) && mvfxBodyAsleep(s, b);
-            if (b <= a || resting || !(square < reach * reach))
+            if (mine && !resting && square < reach * reach)
             {
-                continue;
+                state->rigidCandidates[at++] = b;
             }
-            mvfxBodyPose poseB;
-            mvfxBodyShape shapeB = ShapeAt(s, b, &poseB);
-            mvfxBodyContacts list = {.count = 0};
-            mvfxGatherPairContacts(&poseA, &shapeA, &poseB, &shapeB, &list);
-            state->rigidContactsCapped += (uint64_t)list.capped;
-            AddPair(s, a, b, &list);
         }
+    }
+    return at;
+}
+
+// Body a's pairs to find, met in the order of the other body's index
+// (whatever the grid's layout), each as its lower index against its
+// higher.
+static void PairsOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels)
+{
+    mvfxEmitterState* state = &s->instance->emitters[s->emitter];
+    int32_t count = 0;
+    for (int32_t level = LevelOf(ReachOf(s, a), levels->base); level < MOST_LEVELS; ++level)
+    {
+        if ((levels->present >> level & 1u) != 0u)
+        {
+            count = CandidatesAt(s, a, level, levels, count);
+        }
+    }
+    SortIndexes(state->rigidCandidates, count);
+    for (int32_t c = 0; c < count; ++c)
+    {
+        int32_t b = state->rigidCandidates[c];
+        int32_t low = a < b ? a : b;
+        int32_t high = a < b ? b : a;
+        mvfxBodyPose poseLow;
+        mvfxBodyPose poseHigh;
+        mvfxBodyShape shapeLow = ShapeAt(s, low, &poseLow);
+        mvfxBodyShape shapeHigh = ShapeAt(s, high, &poseHigh);
+        mvfxBodyContacts list = {.count = 0};
+        mvfxGatherPairContacts(&poseLow, &shapeLow, &poseHigh, &shapeHigh, &list);
+        state->rigidContactsCapped += (uint64_t)list.capped;
+        AddPair(s, low, high, &list);
     }
 }
 
@@ -155,19 +256,33 @@ void mvfxFindBodyPairs(const mvfxRigidSolve* s, int32_t count)
     {
         return;
     }
-    // Cells as wide as the widest pair can reach, so a pair is always in
-    // neighboring cells.
+    // A hierarchical grid (Mirtich 1996): each body in the cells of its
+    // reach's level, so one large body does not make every cell large.
+    Levels levels = {.base = INFINITY};
     float widest = 0.0f;
     for (int32_t i = 0; i < count; ++i)
     {
-        widest = fmaxf(widest, s->mass[MVFX_RIGID_REACH * s->stride + (size_t)i]);
+        levels.base = fminf(levels.base, ReachOf(s, i));
+        widest = fmaxf(widest, ReachOf(s, i));
     }
-    float cell = fmaxf(2.0f * widest, 1e-6f);
-    const float* x[3] = {s->x[0], s->x[1], s->x[2]};
-    mvfxBuildNeighborGrid(&state->rigidGrid, x, nullptr, count, cell);
+    levels.base = fmaxf(levels.base, fmaxf((float)ldexp((double)widest, 1 - MOST_LEVELS), 1e-6f));
+    mvfxNeighborGrid* grid = &state->rigidGrid;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        int32_t level = LevelOf(ReachOf(s, i), levels.base);
+        float inverseCell = 1.0f / CellOf(levels.base, level);
+        int32_t cell[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            cell[k] = mvfxGridCell(s->x[k][i], inverseCell);
+        }
+        grid->keys[i] = mvfxLevelKey(cell, level, grid->mask);
+        levels.present |= 1u << level;
+    }
+    mvfxBuildKeyedGrid(grid, count);
     for (int32_t a = 0; a < count; ++a)
     {
-        PairsOf(s, a, cell);
+        PairsOf(s, a, &levels);
     }
 }
 

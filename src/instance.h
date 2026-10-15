@@ -188,6 +188,10 @@ typedef struct mvfxEmitterState
     mvfxNeighborGrid rigidGrid;
     mvfxPairContact* rigidPairs;
     int32_t rigidPairCount;
+    // A body's candidates for pairs as the grid finds them (an array of
+    // the capacity), and the grid's entries the search has examined.
+    int32_t* rigidCandidates;
+    uint64_t rigidExamined;
     // For sleeping rigid particles: each one's island (an array of the
     // capacity), and the depth image it saw.
     int32_t* rigidIslands;

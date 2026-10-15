@@ -54,6 +54,7 @@ typedef struct EmitterAt
     size_t rigidMass;
     size_t rigidFlags;
     size_t rigidIslands;
+    size_t rigidCandidates;
     size_t rigidContacts;
     size_t rigidCounts;
     size_t rigidTable;
@@ -130,6 +131,7 @@ static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, in
                                    alignof(int32_t));
     at->rigidKeys = mvfxLayoutAdd(layout, grid, sizeof(uint32_t), alignof(uint32_t));
     at->rigidIndex = mvfxLayoutAdd(layout, grid, sizeof(int32_t), alignof(int32_t));
+    at->rigidCandidates = mvfxLayoutAdd(layout, grid, sizeof(int32_t), alignof(int32_t));
     at->rigidPairs =
         mvfxLayoutAdd(layout, pairs, sizeof(mvfxPairContact), alignof(mvfxPairContact));
 }
@@ -245,6 +247,27 @@ static void AddPlexus(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, i
 
 // Points each emitter's state at its parts of the block, with its
 // capacity at the instance's level.
+// Points an emitter's state at its rigid particles' room in the block.
+static void StartRigid(mvfxEmitterState* state, unsigned char* block, const EmitterAt* at,
+                       int32_t capacity)
+{
+    state->rigidStart = (float*)(block + at->rigidStart);
+    state->rigidMass = (float*)(block + at->rigidMass);
+    state->rigidFlags = (uint8_t*)(block + at->rigidFlags);
+    state->rigidIslands = (int32_t*)(block + at->rigidIslands);
+    state->rigidCandidates = (int32_t*)(block + at->rigidCandidates);
+    state->rigidContacts = (mvfxBodyContact*)(block + at->rigidContacts);
+    state->rigidCounts = (int32_t*)(block + at->rigidCounts);
+    state->rigidGrid = (mvfxNeighborGrid){
+        .table = (int32_t*)(block + at->rigidTable),
+        .keys = (uint32_t*)(block + at->rigidKeys),
+        .index = (int32_t*)(block + at->rigidIndex),
+        .capacity = capacity,
+        .mask = at->rigidMask,
+    };
+    state->rigidPairs = (mvfxPairContact*)(block + at->rigidPairs);
+}
+
 static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstCursor* bursts,
                         const size_t particlesAt[], const EmitterAt at[],
                         const int32_t capacities[])
@@ -314,20 +337,7 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].selfStart = (float*)(block + at[e].selfStart);
         instance->emitters[e].selfPairs = (int32_t*)(block + at[e].selfPairs);
         instance->emitters[e].selfCounts = (int32_t*)(block + at[e].selfCounts);
-        instance->emitters[e].rigidStart = (float*)(block + at[e].rigidStart);
-        instance->emitters[e].rigidMass = (float*)(block + at[e].rigidMass);
-        instance->emitters[e].rigidFlags = (uint8_t*)(block + at[e].rigidFlags);
-        instance->emitters[e].rigidIslands = (int32_t*)(block + at[e].rigidIslands);
-        instance->emitters[e].rigidContacts = (mvfxBodyContact*)(block + at[e].rigidContacts);
-        instance->emitters[e].rigidCounts = (int32_t*)(block + at[e].rigidCounts);
-        instance->emitters[e].rigidGrid = (mvfxNeighborGrid){
-            .table = (int32_t*)(block + at[e].rigidTable),
-            .keys = (uint32_t*)(block + at[e].rigidKeys),
-            .index = (int32_t*)(block + at[e].rigidIndex),
-            .capacity = capacities[e],
-            .mask = at[e].rigidMask,
-        };
-        instance->emitters[e].rigidPairs = (mvfxPairContact*)(block + at[e].rigidPairs);
+        StartRigid(&instance->emitters[e], block, &at[e], capacities[e]);
     }
 }
 
