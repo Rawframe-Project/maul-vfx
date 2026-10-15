@@ -7,49 +7,13 @@
 #include "collide.h"
 #include "depth.h"
 #include "direction.h"
-#include "event.h"
 #include "integrate.h"
+#include "rigid_body.h"
 #include "rigid_contact.h"
+#include "rigid_pair.h"
 
 #include <math.h>
 #include <string.h>
-
-// A body as a substep solves it: its pose and velocities, the pose it
-// started the substep at, its inverse mass and its inverse inertias about
-// its own axes.
-typedef struct Body
-{
-    float x[3];
-    float q[4];
-    float v[3];
-    float w[3];
-    float x0[3];
-    float q0[4];
-    float inverseMass;
-    float inverseInertia[3];
-} Body;
-
-// An emitter's rigid particles in a substep.
-typedef struct Solve
-{
-    mvfxInstance* instance;
-    int32_t emitter;
-    const mvfxRigidDef* rigid;
-    float* x[3];
-    float* v[3];
-    float* q[4];
-    float* w[3];
-    float* start;
-    size_t stride;
-    // Whether they collide, and gravity's size.
-    bool collides;
-    float gravity;
-    float h;
-    // Below this speed into a surface a contact does not bounce (twice
-    // gravity's speed over a substep).
-    float still;
-    int64_t tick;
-} Solve;
 
 static float Dot(const float a[3], const float b[3])
 {
@@ -69,91 +33,8 @@ static void ToBody(const float q[4], const float v[3], float out[3])
     mvfxRotate(inverse, v, out);
 }
 
-// The inverse inertia of the body turned by q times v, in the world.
-static void InverseInertiaAt(const Body* b, const float q[4], const float v[3], float out[3])
-{
-    float local[3];
-    ToBody(q, v, local);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        local[k] *= b->inverseInertia[k];
-    }
-    mvfxRotate(q, local, out);
-}
-
-static void InverseInertiaTimes(const Body* b, const float v[3], float out[3])
-{
-    InverseInertiaAt(b, b->q, v, out);
-}
-
-// The generalized inverse mass at offset r along unit n.
-static float WeightAt(const Body* b, const float r[3], const float n[3])
-{
-    float c[3];
-    float turned[3];
-    Cross(r, n, c);
-    InverseInertiaTimes(b, c, turned);
-    return b->inverseMass + Dot(c, turned);
-}
-
-// Turns q by a turn vector to first order (q + [turn, 0] q / 2),
-// normalized.
-static void TurnBy(float q[4], const float turn[3])
-{
-    const float spin[4] = {turn[0], turn[1], turn[2], 0.0f};
-    float dq[4];
-    mvfxMultiplyRotations(spin, q, dq);
-    float length = 0.0f;
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        q[k] += 0.5f * dq[k];
-        length += q[k] * q[k];
-    }
-    length = sqrtf(length);
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        q[k] /= length;
-    }
-}
-
-// Moves the body by a positional impulse p at offset r: its place by p
-// over its mass, its orientation by the turn it gives. With both, its
-// start pose by the very same step too, so the change between them (its
-// velocity to be) is left as it was.
-static void Push(Body* b, const float r[3], const float p[3], bool both)
-{
-    float c[3];
-    float turn[3];
-    Cross(r, p, c);
-    InverseInertiaTimes(b, c, turn);
-    TurnBy(b->q, turn);
-    if (both)
-    {
-        TurnBy(b->q0, turn);
-    }
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        b->x[k] += p[k] * b->inverseMass;
-        b->x0[k] += both ? p[k] * b->inverseMass : 0.0f;
-    }
-}
-
-// Changes the body's velocities by an impulse j at offset r.
-static void Kick(Body* b, const float r[3], const float j[3])
-{
-    float c[3];
-    float turn[3];
-    Cross(r, j, c);
-    InverseInertiaTimes(b, c, turn);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        b->v[k] += j[k] * b->inverseMass;
-        b->w[k] += turn[k];
-    }
-}
-
 // A contact's depth at the body's start pose.
-static float StartDepthOf(const Body* b, const mvfxBodyContact* c)
+static float StartDepthOf(const mvfxBody* b, const mvfxBodyContact* c)
 {
     float r[3];
     mvfxRotate(b->q0, c->body, r);
@@ -164,7 +45,7 @@ static float StartDepthOf(const Body* b, const mvfxBodyContact* c)
 
 // A contact's offset from the body's center in the world, and its depth
 // at the body's pose.
-static float DepthOf(const Body* b, const mvfxBodyContact* c, float r[3])
+static float DepthOf(const mvfxBody* b, const mvfxBodyContact* c, float r[3])
 {
     mvfxRotate(b->q, c->body, r);
     float gap[3] = {b->x[0] + r[0] - c->surface[0], b->x[1] + r[1] - c->surface[1],
@@ -172,269 +53,241 @@ static float DepthOf(const Body* b, const mvfxBodyContact* c, float r[3])
     return Dot(gap, c->normal);
 }
 
-// The friction of a body's patch of contacts with one collider (PhysX's
-// patch friction): at the contacts' center weighted by their normal
-// corrections, along their weighted normal, the patch's slide over the
-// substep is cancelled while static friction holds it (the correction at
-// most the static coefficient times the load), else slowed by the dynamic
-// coefficient times the load.
-static void Rub(Body* b, const mvfxBodyContacts* list, int32_t collider, const mvfxRigidDef* rigid)
+// A body's patch of contacts with the collider of contact first: their
+// center on the body (in its frame) and normal weighted by their normal
+// multipliers, the multipliers' sum and their normal impulses' over the
+// substep of length h, and the patch's radius; false when none pushed.
+typedef struct Patch
 {
-    float load = 0.0f;
-    float point[3] = {0.0f, 0.0f, 0.0f};
-    float n[3] = {0.0f, 0.0f, 0.0f};
-    for (int32_t i = 0; i < list->count; ++i)
+    float point[3];
+    float n[3];
+    float load;
+    float pressed;
+    float radius;
+} Patch;
+
+// The contacts' mean distance from the patch's center across its normal,
+// weighted by their multipliers, the body at orientation q.
+static float RadiusOf(const mvfxBodyContact* items, int32_t count, int32_t first,
+                      const Patch* patch, const float q[4])
+{
+    float n[3];
+    ToBody(q, patch->n, n);
+    float radius = 0.0f;
+    for (int32_t i = first; i < count; ++i)
     {
-        const mvfxBodyContact* c = &list->items[i];
+        const mvfxBodyContact* c = &items[i];
+        float lambda = c->collider == items[first].collider && c->lambda > 0.0f ? c->lambda : 0.0f;
+        float d[3] = {c->body[0] - patch->point[0], c->body[1] - patch->point[1],
+                      c->body[2] - patch->point[2]};
+        float along = Dot(d, n);
+        float across = Dot(d, d) - along * along;
+        radius += lambda * sqrtf(fmaxf(across, 0.0f));
+    }
+    return radius / patch->load;
+}
+
+static bool PatchOf(const mvfxBodyContact* items, int32_t count, int32_t first, float h,
+                    const float q[4], Patch* patch)
+{
+    float* point = patch->point;
+    float* n = patch->n;
+    float* load = &patch->load;
+    float* pressed = &patch->pressed;
+    int32_t collider = items[first].collider;
+    *load = 0.0f;
+    *pressed = 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        point[k] = 0.0f;
+        n[k] = 0.0f;
+    }
+    for (int32_t i = first; i < count; ++i)
+    {
+        const mvfxBodyContact* c = &items[i];
         float lambda = c->collider == collider && c->lambda > 0.0f ? c->lambda : 0.0f;
-        load += lambda;
+        *load += lambda;
+        *pressed += lambda > 0.0f ? lambda / h + c->applied : 0.0f;
         for (int32_t k = 0; k < 3; ++k)
         {
             point[k] += lambda * c->body[k];
             n[k] += lambda * c->normal[k];
         }
     }
-    if (!(load > 0.0f) || !mvfxNormalize(n))
+    if (!(*load > 0.0f) || !mvfxNormalize(n))
     {
-        return;
-    }
-    float r[3];
-    float before[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        point[k] /= load;
-    }
-    mvfxRotate(b->q, point, r);
-    mvfxRotate(b->q0, point, before);
-    float t[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        t[k] = b->x[k] + r[k] - (b->x0[k] + before[k]);
-    }
-    float along = Dot(t, n);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        t[k] -= along * n[k];
-    }
-    float length = sqrtf(Dot(t, t));
-    if (!(length > 0.0f))
-    {
-        return;
+        return false;
     }
     for (int32_t k = 0; k < 3; ++k)
     {
-        t[k] /= length;
+        point[k] /= *load;
     }
-    float needed = length / WeightAt(b, r, t);
-    float correction = needed <= rigid->staticFriction * load
-                           ? needed
-                           : fminf(needed, rigid->dynamicFriction * load);
-    const float p[3] = {-correction * t[0], -correction * t[1], -correction * t[2]};
-    Push(b, r, p, false);
+    patch->radius = RadiusOf(items, count, first, patch, q);
+    return true;
 }
 
-static void SolvePositions(Body* b, mvfxBodyContacts* list, const mvfxRigidDef* rigid)
+// Whether contact i is the first of its collider's.
+static bool FirstOf(const mvfxBodyContact* items, int32_t i)
 {
-    for (int32_t i = 0; i < list->count; ++i)
+    bool first = true;
+    for (int32_t j = 0; first && j < i; ++j)
     {
-        mvfxBodyContact* c = &list->items[i];
+        first = items[j].collider != items[i].collider;
+    }
+    return first;
+}
+
+// The static friction of each of the body's patches, in the order first
+// met.
+static void Rub(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, int32_t count)
+{
+    for (int32_t i = 0; i < count; ++i)
+    {
+        Patch patch;
+        if (FirstOf(items, i) && PatchOf(items, count, i, s->h, b->q, &patch))
+        {
+            float r[3];
+            float r0[3];
+            mvfxRotate(b->q, patch.point, r);
+            mvfxRotate(b->q0, patch.point, r0);
+            mvfxRubPatch(s, b, r, r0, nullptr, nullptr, nullptr, patch.n, patch.load, patch.radius,
+                         &items[i].rubbed);
+            mvfxTwistPatch(s, b, nullptr, patch.n, patch.load * patch.radius, &items[i].twisted);
+        }
+    }
+}
+
+// The dynamic friction of each of the body's patches.
+static void Slow(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, int32_t count)
+{
+    for (int32_t i = 0; i < count; ++i)
+    {
+        Patch patch;
+        if (FirstOf(items, i) && PatchOf(items, count, i, s->h, b->q, &patch))
+        {
+            float r[3];
+            mvfxRotate(b->q, patch.point, r);
+            mvfxSlowPatch(b, r, nullptr, nullptr, patch.n, patch.pressed, patch.radius,
+                          s->rigid->dynamicFriction, &items[i].slowed);
+            mvfxUnspinPatch(b, nullptr, patch.n,
+                            s->rigid->dynamicFriction * patch.pressed * patch.radius,
+                            &items[i].spun);
+        }
+    }
+}
+
+// Pushes the body's start pose out of the depth its contacts had there,
+// moving its pose by the very same steps, so pushing out of it gives no
+// velocity (post-stabilization, Cline and Pai 2003): left over from
+// before, born into or met by a moving collider, it does not pop out
+// however short the substep. What is left to push out is the substep's
+// own, the contacts' impulses.
+static void Stabilize(mvfxBody* b, const mvfxBodyContact* items, int32_t count, bool backward)
+{
+    for (int32_t step = 0; step < count; ++step)
+    {
+        const mvfxBodyContact* c = &items[mvfxPassIndex(0, count, step, backward)];
+        float depth = StartDepthOf(b, c);
+        if (depth < 0.0f)
+        {
+            float r[3];
+            mvfxRotate(b->q0, c->body, r);
+            float lambda = -depth / mvfxBodyWeight(b, r, c->normal);
+            const float p[3] = {lambda * c->normal[0], lambda * c->normal[1],
+                                lambda * c->normal[2]};
+            mvfxBodyPush(b, r, p, true);
+        }
+    }
+}
+
+// A pass pushing the body out of its contacts, then with friction each
+// collider's patch's static friction, in the order first met.
+static void SolvePositions(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items,
+                           int32_t count, bool friction, bool backward)
+{
+    for (int32_t step = 0; step < count; ++step)
+    {
+        mvfxBodyContact* c = &items[mvfxPassIndex(0, count, step, backward)];
         float r[3];
         float depth = DepthOf(b, c, r);
         if (depth < 0.0f)
         {
-            float lambda = -depth / WeightAt(b, r, c->normal);
+            float lambda = -depth / mvfxBodyWeight(b, r, c->normal);
             c->lambda += lambda;
-            // The share of the depth there at the substep's start moves the
-            // start pose by the same step, so pushing out of it gives no
-            // velocity (post-stabilization, Cline and Pai 2003): left over
-            // from before, born into or met by a moving collider, it does
-            // not pop out however short the substep.
-            float before = fmaxf(fminf(StartDepthOf(b, c), 0.0f), depth);
-            float share = before < 0.0f ? before / depth : 0.0f;
-            const float old[3] = {share * lambda * c->normal[0], share * lambda * c->normal[1],
-                                  share * lambda * c->normal[2]};
-            const float fresh[3] = {(1.0f - share) * lambda * c->normal[0],
-                                    (1.0f - share) * lambda * c->normal[1],
-                                    (1.0f - share) * lambda * c->normal[2]};
-            Push(b, r, old, true);
-            Push(b, r, fresh, false);
+            const float p[3] = {lambda * c->normal[0], lambda * c->normal[1],
+                                lambda * c->normal[2]};
+            mvfxBodyPush(b, r, p, false);
         }
     }
-    // Each collider's patch once, in the order first met.
-    for (int32_t i = 0; i < list->count; ++i)
+    if (friction)
     {
-        bool first = true;
-        for (int32_t j = 0; first && j < i; ++j)
-        {
-            first = list->items[j].collider != list->items[i].collider;
-        }
-        if (first)
-        {
-            Rub(b, list, list->items[i].collider, rigid);
-        }
-    }
-}
-
-// The velocity of the body's point at offset r.
-static void PointVelocity(const Body* b, const float r[3], float out[3])
-{
-    Cross(b->w, r, out);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out[k] += b->v[k];
+        Rub(s, b, items, count);
     }
 }
 
 // Passes of the restitution's sequential impulses.
-#define RESTITUTION_PASSES 4
+#define RESTITUTION_PASSES 8
 
-// Restitution, for each contact its positions pushed: its speed into the
-// surface turned back at the share, none below still. By sequential
-// impulses (Catto, "Iterative Dynamics with Temporal Coherence", GDC
-// 2005): each contact's impulses summed and held to 0 or more over the
-// passes, so contacts struck at once (an edge, a face) share the bounce
-// rather than each raising the others' past their own.
-static void SolveVelocities(Body* b, const mvfxBodyContacts* list, const Solve* s)
+// Passes of the contacts by position: the first finds their loads, the
+// rest add the static friction, so its test (holding the slide at most
+// the static coefficient times the load) is of the whole load. Tested on
+// the first pass's share of it, a box held on a heightfield's slope slid.
+#define POSITION_PASSES 3
+
+// One pass of restitution, for each contact its positions pushed: its
+// speed into the surface turned back at the share, none below still; then
+// the patches' dynamic friction. By sequential impulses (Catto, "Iterative
+// Dynamics with Temporal Coherence", GDC 2005): each contact's impulses
+// summed over the passes, so contacts struck at once (an edge, a face, a
+// body on another) share the bounce rather than each raising the others'
+// past their own, and with its push's (its multiplier over h) held to 0 or
+// more: a contact cannot pull, but the restitution can take back what the
+// push gave too much. Held to 0 alone, that was left as the speed of a
+// corner pushed out, and a box at rest on a slope rocked between its edge
+// and its face, creeping down it.
+static void SolveVelocities(mvfxBody* b, mvfxBodyContact* items, int32_t count,
+                            const mvfxRigidSolve* s, bool backward)
 {
-    float applied[MVFX_MAX_RIGID_CONTACTS] = {0.0f};
-    for (int32_t pass = 0; pass < RESTITUTION_PASSES; ++pass)
+    for (int32_t step = 0; step < count; ++step)
     {
-        for (int32_t i = 0; i < list->count; ++i)
+        mvfxBodyContact* c = &items[mvfxPassIndex(0, count, step, backward)];
+        if (!(c->lambda > 0.0f))
         {
-            const mvfxBodyContact* c = &list->items[i];
-            if (!(c->lambda > 0.0f))
-            {
-                continue;
-            }
-            float r[3];
-            float v[3];
-            mvfxRotate(b->q, c->body, r);
-            PointVelocity(b, r, v);
-            float normal = Dot(v, c->normal);
-            float bounce = c->speed < -s->still ? s->rigid->restitution : 0.0f;
-            float target = -bounce * fminf(c->speed, 0.0f);
-            float total = fmaxf(applied[i] + (target - normal) / WeightAt(b, r, c->normal), 0.0f);
-            float j = total - applied[i];
-            applied[i] = total;
-            const float impulse[3] = {j * c->normal[0], j * c->normal[1], j * c->normal[2]};
-            Kick(b, r, impulse);
+            continue;
         }
-    }
-}
-
-// Each contact's normal speed at the predicted pose, before it is met.
-static void SpeedsOf(const Body* b, mvfxBodyContacts* list)
-{
-    for (int32_t i = 0; i < list->count; ++i)
-    {
-        mvfxBodyContact* c = &list->items[i];
         float r[3];
         float v[3];
         mvfxRotate(b->q, c->body, r);
-        PointVelocity(b, r, v);
+        mvfxBodyPointVelocity(b, r, v);
+        float normal = Dot(v, c->normal);
+        float target = mvfxBounceTarget(s, c->speed);
+        float total = fmaxf(c->applied + (target - normal) / mvfxBodyWeight(b, r, c->normal),
+                            -c->lambda / s->h);
+        float j = total - c->applied;
+        c->applied = total;
+        const float impulse[3] = {j * c->normal[0], j * c->normal[1], j * c->normal[2]};
+        mvfxBodyKick(b, r, impulse);
+    }
+    Slow(s, b, items, count);
+}
+
+// Each contact's normal speed at the predicted pose, before it is met.
+static void SpeedsOf(const mvfxBody* b, mvfxBodyContact* items, int32_t count)
+{
+    for (int32_t i = 0; i < count; ++i)
+    {
+        mvfxBodyContact* c = &items[i];
+        float r[3];
+        float v[3];
+        mvfxRotate(b->q, c->body, r);
+        mvfxBodyPointVelocity(b, r, v);
         c->speed = Dot(v, c->normal);
     }
 }
 
-// A body in contact's velocities from its pose's change over the
-// substep, so one held still is still.
-static void Correct(Body* b, float h)
-{
-    const float inverse[4] = {-b->q0[0], -b->q0[1], -b->q0[2], b->q0[3]};
-    float dq[4];
-    mvfxMultiplyRotations(b->q, inverse, dq);
-    float sign = dq[3] < 0.0f ? -1.0f : 1.0f;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        b->v[k] = (b->x[k] - b->x0[k]) / h;
-        b->w[k] = sign * 2.0f * dq[k] / h;
-    }
-}
-
-static Body Load(const Solve* s, int32_t i)
-{
-    Body b = {0};
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        b.x[k] = s->x[k][i];
-        b.v[k] = s->v[k][i];
-        b.w[k] = s->w[k][i];
-        b.x0[k] = s->start[(size_t)k * s->stride + (size_t)i];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        b.q[k] = s->q[k][i];
-        b.q0[k] = s->start[(size_t)(3 + k) * s->stride + (size_t)i];
-    }
-    return b;
-}
-
-static void Store(const Solve* s, int32_t i, const Body* b)
-{
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        s->x[k][i] = b->x[k];
-        s->v[k][i] = b->v[k];
-        s->w[k][i] = b->w[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        s->q[k][i] = b->q[k];
-    }
-}
-
-// The life a collision takes: its share of the life left, the particle
-// killed past its age.
-static bool LoseLife(const Solve* s, int32_t i, float loss)
-{
-    mvfxInstance* instance = s->instance;
-    float* inverseLife = mvfxAttributeArray(instance, s->emitter, mvfx_attributeInverseLife);
-    const uint32_t* low = mvfxAttributeArray(instance, s->emitter, mvfx_attributeBirthLow);
-    const uint32_t* high = mvfxAttributeArray(instance, s->emitter, mvfx_attributeBirthHigh);
-    inverseLife[i] /= 1.0f - loss;
-    int64_t birth = (int64_t)(((uint64_t)high[i] << 32u) | low[i]);
-    double age = (double)(s->tick - birth) / (double)MVFX_TICKS_PER_SECOND;
-    return age * (double)inverseLife[i] >= 1.0;
-}
-
-// A body that struck a surface (a contact met, faster into it than
-// still): counted, its step's event, its kills and life loss.
-static void Strike(const Solve* s, int32_t i, const mvfxBodyContacts* list)
-{
-    int32_t first = -1;
-    for (int32_t j = 0; first < 0 && j < list->count; ++j)
-    {
-        first = list->items[j].lambda > 0.0f && list->items[j].speed < -s->still ? j : -1;
-    }
-    if (first < 0)
-    {
-        return;
-    }
-    mvfxInstance* instance = s->instance;
-    mvfxEmitterState* state = &instance->emitters[s->emitter];
-    const mvfxCollision* collision = &instance->effect->emitters[s->emitter].collision;
-    uint32_t* count = mvfxAttributeArray(instance, s->emitter, mvfx_attributeCollisions);
-    count[i] = count[i] == UINT32_MAX ? UINT32_MAX : count[i] + 1u;
-    if (state->rigidTouched[i] == 0)
-    {
-        state->rigidTouched[i] = 1;
-        const mvfxBodyContact* c = &list->items[first];
-        mvfxRecordEvent(instance, s->emitter,
-                        &(mvfxEventFact){.kind = mvfx_eventCollision,
-                                         .particle = i,
-                                         .tick = s->tick,
-                                         .placeTick = s->tick,
-                                         .point = c->surface,
-                                         .normal = c->normal});
-    }
-    bool killed = collision->killOnCollision || collision->lifeLoss >= 1.0f ||
-                  (collision->lifeLoss > 0.0f && LoseLife(s, i, collision->lifeLoss));
-    instance->killScratch[i] |= killed ? 1 : 0;
-}
-
 // Body i's scene plane, the host's last answer to its query; false for
 // none.
-static bool ScenePlaneOf(const Solve* s, int32_t i, mvfxResolvedCollider* out)
+static bool ScenePlaneOf(const mvfxRigidSolve* s, int32_t i, mvfxResolvedCollider* out)
 {
     mvfxInstance* instance = s->instance;
     if (!mvfxHasAttribute(&instance->effect->emitters[s->emitter].plan, mvfx_attributeScenePointX))
@@ -452,22 +305,31 @@ static bool ScenePlaneOf(const Solve* s, int32_t i, mvfxResolvedCollider* out)
     return out->normal[0] != 0.0f || out->normal[1] != 0.0f || out->normal[2] != 0.0f;
 }
 
-// Meets body i's contacts at its predicted pose; outside the depth image
-// it is killed when the collision def says.
-static void SolveBody(const Solve* s, int32_t i)
+// Body i's mass from its shape, its contacts with the world at its
+// predicted pose and their speeds; outside the depth image it is killed
+// when the collision def says.
+static void Prepare(const mvfxRigidSolve* s, int32_t i)
 {
     mvfxInstance* instance = s->instance;
     mvfxEmitterState* state = &instance->emitters[s->emitter];
-    Body b = Load(s, i);
+    float size[3];
+    float inverseMass = 0.0f;
+    float inverseInertia[3];
+    mvfxSizeOf(instance, s->emitter, i, size);
+    mvfxBodyShape shape = mvfxBodyShapeOf(s->rigid, size, &inverseMass, inverseInertia);
+    s->mass[i] = inverseMass;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        s->mass[(size_t)(1 + k) * s->stride + (size_t)i] = inverseInertia[k];
+    }
+    s->mass[4 * s->stride + (size_t)i] = mvfxBodyReach(&shape);
+    s->flags[i] &= (uint8_t)~(MVFX_RIGID_TOUCHED | MVFX_RIGID_STRUCK);
+    mvfxBody b = mvfxLoadBody(s, i);
     const mvfxCollision* collision = &instance->effect->emitters[s->emitter].collision;
     if (state->hasDepth && collision->killOutsideView && !mvfxDepthSees(&state->depth, b.x))
     {
         instance->killScratch[i] = 1;
     }
-    float size[3];
-    mvfxSizeOf(instance, s->emitter, i, size);
-    mvfxBodyShape shape = mvfxBodyShapeOf(s->rigid, size, &b.inverseMass, b.inverseInertia);
-    mvfxBodyContacts list = {.count = 0};
     const mvfxBodyPose pose = {.x = {b.x[0], b.x[1], b.x[2]},
                                .q = {b.q[0], b.q[1], b.q[2], b.q[3]}};
     const mvfxBodyPose from = {.x = {b.x0[0], b.x0[1], b.x0[2]},
@@ -480,44 +342,158 @@ static void SolveBody(const Solve* s, int32_t i)
         .depth = state->hasDepth ? &state->depth : nullptr,
         .from = &from,
     };
+    mvfxBodyContacts list = {.count = 0};
     mvfxGatherBodyContacts(&surfaces, &pose, &shape, &list);
     state->rigidContactsCapped += (uint64_t)list.capped;
-    if (list.count == 0)
+    SpeedsOf(&b, list.items, list.count);
+    mvfxBodyContact* items = state->rigidContacts + (size_t)i * MVFX_MAX_RIGID_CONTACTS;
+    memcpy(items, list.items, (size_t)list.count * sizeof list.items[0]);
+    state->rigidCounts[i] = list.count;
+    s->flags[i] |= list.count > 0 ? MVFX_RIGID_TOUCHED : 0;
+}
+
+// Body i's contacts with the world and their count.
+static mvfxBodyContact* WorldOf(const mvfxRigidSolve* s, int32_t i, int32_t* count)
+{
+    mvfxEmitterState* state = &s->instance->emitters[s->emitter];
+    *count = state->rigidCounts[i];
+    return state->rigidContacts + (size_t)i * MVFX_MAX_RIGID_CONTACTS;
+}
+
+// A pass of a stage over bodies first to end's contacts with the world.
+static void WorldPass(const mvfxRigidSolve* s, int32_t first, int32_t end, mvfxContactStage stage,
+                      bool backward)
+{
+    for (int32_t step = first; step < end; ++step)
     {
-        return;
+        int32_t i = mvfxPassIndex(first, end, step, backward);
+        int32_t count = 0;
+        mvfxBodyContact* items = WorldOf(s, i, &count);
+        if (count == 0)
+        {
+            continue;
+        }
+        mvfxBody b = mvfxLoadBody(s, i);
+        if (stage == mvfx_stageStabilize)
+        {
+            Stabilize(&b, items, count, backward);
+        }
+        else if (stage == mvfx_stageBounce)
+        {
+            SolveVelocities(&b, items, count, s, backward);
+        }
+        else
+        {
+            SolvePositions(s, &b, items, count, stage == mvfx_stagePush, backward);
+        }
+        mvfxStoreBody(s, i, &b);
     }
-    SpeedsOf(&b, &list);
-    SolvePositions(&b, &list, s->rigid);
-    Correct(&b, s->h);
-    SolveVelocities(&b, &list, s);
-    Store(s, i, &b);
-    Strike(s, i, &list);
+}
+
+// The passes of a stage over the world's contacts and the pairs', the
+// world's first in forward passes and last in backward ones. Pressing,
+// the passes after the first add the static friction.
+static void Passes(const mvfxRigidSolve* s, int32_t first, int32_t end, mvfxContactStage stage,
+                   int32_t passes)
+{
+    for (int32_t pass = 0; pass < passes; ++pass)
+    {
+        bool backward = pass % 2 == 1;
+        mvfxContactStage now = stage == mvfx_stagePress && pass > 0 ? mvfx_stagePush : stage;
+        if (!backward)
+        {
+            WorldPass(s, first, end, now, false);
+        }
+        mvfxPairPass(s, now, backward);
+        if (backward)
+        {
+            WorldPass(s, first, end, now, true);
+        }
+    }
+}
+
+// Meets the bodies' contacts at their predicted poses: the world's and
+// each other's by position, velocities from the poses' change for those
+// touched, then restitution, then strikes.
+static void Meet(const mvfxRigidSolve* s, int32_t first, int32_t end, bool pairs)
+{
+    for (int32_t i = first; i < end; ++i)
+    {
+        Prepare(s, i);
+    }
+    mvfxEmitterState* state = &s->instance->emitters[s->emitter];
+    state->rigidPairCount = 0;
+    if (pairs)
+    {
+        mvfxFindBodyPairs(s, end);
+    }
+    // A touched body's prediction as symplectic Euler's (Muller's): its
+    // place its start's plus its velocity times h. The integrator's exact
+    // place is a half acceleration short of it, and velocities from the
+    // pose's change then lost half of each substep's gain (a body could
+    // not start sliding down a slope) and multipliers half their impulse.
+    for (int32_t i = first; i < end; ++i)
+    {
+        for (int32_t k = 0; k < 3 && (s->flags[i] & MVFX_RIGID_TOUCHED) != 0; ++k)
+        {
+            s->x[k][i] = s->start[(size_t)k * s->stride + (size_t)i] + s->v[k][i] * s->h;
+        }
+    }
+    Passes(s, first, end, mvfx_stageStabilize, POSITION_PASSES);
+    Passes(s, first, end, mvfx_stagePress, POSITION_PASSES);
+    for (int32_t i = first; i < end; ++i)
+    {
+        if ((s->flags[i] & MVFX_RIGID_TOUCHED) != 0)
+        {
+            mvfxBody b = mvfxLoadBody(s, i);
+            mvfxCorrectBody(&b, s->h);
+            mvfxStoreBody(s, i, &b);
+        }
+    }
+    Passes(s, first, end, mvfx_stageBounce, RESTITUTION_PASSES);
+    for (int32_t i = first; i < end; ++i)
+    {
+        int32_t count = 0;
+        const mvfxBodyContact* items = WorldOf(s, i, &count);
+        for (int32_t j = 0; j < count; ++j)
+        {
+            if (items[j].lambda > 0.0f && items[j].speed < -s->still)
+            {
+                mvfxStrikeBody(s, i, items[j].surface, items[j].normal);
+                break;
+            }
+        }
+    }
+    mvfxStrikePairs(s);
 }
 
 // Turns each body's angular velocity by the gyroscopic term over h, about
 // its own axes: w += h I^-1 (I w x w).
-static void Spin(const Solve* s, int32_t first, int32_t end)
+static void Spin(const mvfxRigidSolve* s, int32_t first, int32_t end)
 {
     for (int32_t i = first; i < end; ++i)
     {
-        Body b = Load(s, i);
         float size[3];
+        float inverseMass = 0.0f;
+        float inverseInertia[3];
         mvfxSizeOf(s->instance, s->emitter, i, size);
-        (void)mvfxBodyShapeOf(s->rigid, size, &b.inverseMass, b.inverseInertia);
+        (void)mvfxBodyShapeOf(s->rigid, size, &inverseMass, inverseInertia);
+        float q[4] = {s->q[0][i], s->q[1][i], s->q[2][i], s->q[3][i]};
+        const float world[3] = {s->w[0][i], s->w[1][i], s->w[2][i]};
         float w[3];
-        ToBody(b.q, b.w, w);
+        ToBody(q, world, w);
         float momentum[3];
         for (int32_t k = 0; k < 3; ++k)
         {
-            momentum[k] = b.inverseInertia[k] > 0.0f ? w[k] / b.inverseInertia[k] : 0.0f;
+            momentum[k] = inverseInertia[k] > 0.0f ? w[k] / inverseInertia[k] : 0.0f;
         }
         float torque[3];
         Cross(momentum, w, torque);
         float before = sqrtf(Dot(momentum, momentum));
         for (int32_t k = 0; k < 3; ++k)
         {
-            w[k] += s->h * b.inverseInertia[k] * torque[k];
-            momentum[k] = b.inverseInertia[k] > 0.0f ? w[k] / b.inverseInertia[k] : 0.0f;
+            w[k] += s->h * inverseInertia[k] * torque[k];
+            momentum[k] = inverseInertia[k] > 0.0f ? w[k] / inverseInertia[k] : 0.0f;
         }
         // The term turns the momentum without changing its size: held to
         // it, the explicit step cannot grow however fast the spin.
@@ -527,7 +503,7 @@ static void Spin(const Solve* s, int32_t first, int32_t end)
             w[k] *= before / after;
         }
         float turned[3];
-        mvfxRotate(b.q, w, turned);
+        mvfxRotate(q, w, turned);
         for (int32_t k = 0; k < 3; ++k)
         {
             s->w[k][i] = turned[k];
@@ -535,16 +511,18 @@ static void Spin(const Solve* s, int32_t first, int32_t end)
     }
 }
 
-static Solve SolveOf(mvfxInstance* instance, int32_t emitter)
+static mvfxRigidSolve SolveOf(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
-    Solve s = {.instance = instance,
-               .emitter = emitter,
-               .rigid = &compiled->rigid,
-               .start = state->rigidStart,
-               .stride = (size_t)state->capacity,
-               .collides = compiled->collision.enabled};
+    mvfxRigidSolve s = {.instance = instance,
+                        .emitter = emitter,
+                        .rigid = &compiled->rigid,
+                        .start = state->rigidStart,
+                        .mass = state->rigidMass,
+                        .flags = state->rigidFlags,
+                        .stride = (size_t)state->capacity,
+                        .collides = compiled->collision.enabled};
     float gravity[3];
     mvfxGravityOf(instance, compiled, gravity);
     s.gravity = sqrtf(Dot(gravity, gravity));
@@ -564,8 +542,10 @@ static Solve SolveOf(mvfxInstance* instance, int32_t emitter)
     return s;
 }
 
-// Moves bodies first to end over a substep from tick from to to.
-static void Substep(Solve* s, int32_t first, int32_t end, int64_t from, int64_t to)
+// Moves bodies first to end over a substep from tick from to to, meeting
+// each other when pairs.
+static void Substep(mvfxRigidSolve* s, int32_t first, int32_t end, int64_t from, int64_t to,
+                    bool pairs)
 {
     double seconds = (double)(to - from) / (double)MVFX_TICKS_PER_SECOND;
     s->h = (float)seconds;
@@ -584,9 +564,9 @@ static void Substep(Solve* s, int32_t first, int32_t end, int64_t from, int64_t 
     }
     Spin(s, first, end);
     mvfxIntegrateRange(s->instance, s->emitter, first, end, from, seconds);
-    for (int32_t i = first; s->collides && i < end; ++i)
+    if (s->collides)
     {
-        SolveBody(s, i);
+        Meet(s, first, end, pairs);
     }
 }
 
@@ -601,15 +581,15 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
     int32_t count = state->count;
-    Solve s = SolveOf(instance, emitter);
-    memset(state->rigidTouched, 0, (size_t)count);
+    mvfxRigidSolve s = SolveOf(instance, emitter);
+    memset(state->rigidFlags, 0, (size_t)count);
     for (int32_t k = 0; k < s.rigid->substeps; ++k)
     {
         int64_t from = SubstepTick(instance, s.rigid->substeps, k);
         int64_t to = SubstepTick(instance, s.rigid->substeps, k + 1);
         if (to > from)
         {
-            Substep(&s, 0, count, from, to);
+            Substep(&s, 0, count, from, to, true);
         }
     }
 }
@@ -617,8 +597,8 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
 void mvfxIntegrateRigidNewborn(mvfxInstance* instance, int32_t emitter, int32_t at,
                                int64_t birthTick)
 {
-    instance->emitters[emitter].rigidTouched[at] = 0;
-    Solve s = SolveOf(instance, emitter);
+    instance->emitters[emitter].rigidFlags[at] = 0;
+    mvfxRigidSolve s = SolveOf(instance, emitter);
     bool moved = false;
     for (int32_t k = 0; k < s.rigid->substeps; ++k)
     {
@@ -627,7 +607,7 @@ void mvfxIntegrateRigidNewborn(mvfxInstance* instance, int32_t emitter, int32_t 
         from = from > birthTick ? from : birthTick;
         if (to > from)
         {
-            Substep(&s, at, at + 1, from, to);
+            Substep(&s, at, at + 1, from, to, false);
             moved = true;
         }
     }

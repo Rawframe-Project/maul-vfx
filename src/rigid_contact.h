@@ -8,60 +8,7 @@
 #define MAUL_VFX_SRC_RIGID_CONTACT_H
 
 #include "collide.h"
-
-#include "maul-vfx/effect.h"
-
-// A body's place and orientation (a unit quaternion) in the particles'
-// space.
-typedef struct mvfxBodyPose
-{
-    float x[3];
-    float q[4];
-} mvfxBodyPose;
-
-// A body's shape as spheres about points in its frame (a sphere's center,
-// a capsule's two ends, a box's eight corners at radius 0), with a box's
-// half sizes and a capsule's half length.
-typedef struct mvfxBodyShape
-{
-    mvfxRigidShape kind;
-    float points[8][3];
-    int32_t count;
-    float radius;
-    float half[3];
-} mvfxBodyShape;
-
-// A contact: the body's point in its frame, the surface point it meets
-// and the surface's normal (toward the body's side), its depth when found,
-// the multiplier its normal corrections summed and its normal speed then.
-typedef struct mvfxBodyContact
-{
-    float body[3];
-    float surface[3];
-    float normal[3];
-    float depth;
-    float lambda;
-    float speed;
-    // The collider it meets, by its index.
-    int32_t collider;
-} mvfxBodyContact;
-
-typedef struct mvfxBodyContacts
-{
-    mvfxBodyContact items[MVFX_MAX_RIGID_CONTACTS];
-    int32_t count;
-    int32_t capped;
-    // The collider the contacts being added meet.
-    int32_t collider;
-} mvfxBodyContacts;
-
-// The shape a size gives (in the particles' space), and its inverse mass
-// and inverse inertias about its own axes from the density (a shape of no
-// volume a point of unit mass that does not turn).
-mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const float size[3], float* inverseMass,
-                              float inverseInertia[3]);
-
-struct mvfxResolvedDepth;
+#include "rigid_shape.h"
 
 // What a body meets: colliders, its own scene plane (NULL for none) and
 // a depth image (NULL for none) with the body's pose at the substep's
@@ -81,5 +28,13 @@ typedef struct mvfxBodySurfaces
 // apart (a box kept inside one a face), then the plane's and the image's.
 void mvfxGatherBodyContacts(const mvfxBodySurfaces* surfaces, const mvfxBodyPose* b,
                             const mvfxBodyShape* s, mvfxBodyContacts* list);
+
+// Adds the contacts of body a with body b of the same kind (an emitter's
+// bodies share one) to a list as a's with b's surface: each its point on
+// a (in a's frame), b's surface point (in the particles' space) and the
+// normal from b toward a. Spheres and boxes meet as a body meets a sphere
+// or a box collider; capsules by their cores.
+void mvfxGatherPairContacts(const mvfxBodyPose* a, const mvfxBodyShape* sa, const mvfxBodyPose* b,
+                            const mvfxBodyShape* sb, mvfxBodyContacts* list);
 
 #endif

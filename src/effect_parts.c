@@ -239,7 +239,8 @@ static bool IsRigidValid(const mvfxEmitterDef* def)
                 rigid->density <= MVFX_MAX_EXTENT && rigid->substeps >= 1 &&
                 rigid->substeps <= MVFX_MAX_SUBSTEPS && IsWithin(rigid->restitution, 0.0f, 1.0f) &&
                 IsWithin(rigid->dynamicFriction, 0.0f, MVFX_MAX_DRAG) &&
-                IsWithin(rigid->staticFriction, rigid->dynamicFriction, MVFX_MAX_DRAG);
+                IsWithin(rigid->staticFriction, rigid->dynamicFriction, MVFX_MAX_DRAG) &&
+                rigid->bodyContacts >= 0 && rigid->bodyContacts <= MVFX_MAX_BODY_CONTACTS;
     return body && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
 }
 

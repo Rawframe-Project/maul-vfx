@@ -32,12 +32,16 @@ depth: direction force
 collide: depth direction force grid
 effect_parts: direction effect life
 effect: allocator collide curve curve_integral elementary force kill over_life shape value velocity velocity_modules
-rigid: appearance collide depth direction event instance integrate rigid_contact
-rigid_contact: collide depth direction
+rigid: appearance collide depth direction instance integrate rigid_body rigid_contact rigid_pair
+rigid_body: direction event instance
+rigid_pair: appearance direction neighbor rigid_body rigid_contact
+rigid_box: collide direction rigid_shape
+rigid_contact: collide depth direction rigid_box rigid_shape
+rigid_shape:
 integrate: collide depth direction effect elementary event force instance kill space velocity_modules
 host_module: effect instance random
 appearance: effect gradient instance life over_life
-instance: allocator collide depth effect force kill
+instance: allocator collide depth effect force kill rigid_shape
 death_heap:
 spawn: instance random
 space: force instance

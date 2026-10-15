@@ -157,7 +157,8 @@ static inline void BuildRigidScene(mvfxContext* context)
                                         .substeps = 4,
                                         .restitution = 0.3f,
                                         .staticFriction = 0.5f,
-                                        .dynamicFriction = 0.3f};
+                                        .dynamicFriction = 0.3f,
+                                        .bodyContacts = 8};
         emitter->collision.enabled = true;
         emitter->colliders = ground;
         emitter->colliderCount = 3;

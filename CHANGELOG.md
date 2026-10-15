@@ -257,3 +257,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Rigid particles meet heightfields and distance grids (sampled), the
   host's scene answers and the depth image, killed outside its view
   with `killOutsideView`.
+- Rigid particles meet each other: `bodyContacts` (up to
+  `MVFX_MAX_BODY_CONTACTS`) pools an emitter's contacts between its
+  bodies, found by the neighbor grid, solved with both bodies' masses;
+  past the pool counted in `rigidContactsCapped`.
+- Rigid friction holds: friction resists a patch's turning about its
+  normal (a spun box stops), its static test is of the bodies' slide by
+  their masses and the whole load, dynamic friction is taken by velocity
+  from the net normal impulse, and friction acts level with a body's
+  center while its contacts can balance its tipping; contacts are kept
+  within a small margin, solved in alternating order, and box faces
+  clipped edge to edge no longer meet at the same corner twice. A box
+  held on a gentle slope no longer creeps, and stacks rest.

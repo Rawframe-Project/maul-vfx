@@ -51,7 +51,15 @@ typedef struct EmitterAt
     size_t selfPairs;
     size_t selfCounts;
     size_t rigidStart;
-    size_t rigidTouched;
+    size_t rigidMass;
+    size_t rigidFlags;
+    size_t rigidContacts;
+    size_t rigidCounts;
+    size_t rigidTable;
+    size_t rigidKeys;
+    size_t rigidIndex;
+    uint32_t rigidMask;
+    size_t rigidPairs;
 } EmitterAt;
 
 // The entries of a grid's table at a capacity: a power of two at least
@@ -94,9 +102,32 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     size_t most = self ? (size_t)compiled->unit.selfContacts : 0u;
     at->selfPairs = mvfxLayoutAdd(layout, most * capacity, sizeof(int32_t), alignof(int32_t));
     at->selfCounts = mvfxLayoutAdd(layout, capacity, sizeof(int32_t), alignof(int32_t));
-    size_t rigid = compiled->rigid.enabled ? (size_t)capacities[e] : 0u;
+}
+
+// Adds an emitter of rigid particles' room: start poses, mass, flags,
+// contacts with the world, and for bodies meeting each other their grid
+// and pool.
+static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
+                     EmitterAt* at)
+{
+    size_t rigid = compiled->rigid.enabled ? (size_t)capacity : 0u;
+    size_t met = compiled->collision.enabled ? rigid : 0u;
     at->rigidStart = mvfxLayoutAdd(layout, 7u * rigid, sizeof(float), alignof(float));
-    at->rigidTouched = mvfxLayoutAdd(layout, rigid, sizeof(uint8_t), alignof(uint8_t));
+    at->rigidMass = mvfxLayoutAdd(layout, 5u * rigid, sizeof(float), alignof(float));
+    at->rigidFlags = mvfxLayoutAdd(layout, rigid, sizeof(uint8_t), alignof(uint8_t));
+    at->rigidContacts = mvfxLayoutAdd(layout, (size_t)MVFX_MAX_RIGID_CONTACTS * met,
+                                      sizeof(mvfxBodyContact), alignof(mvfxBodyContact));
+    at->rigidCounts = mvfxLayoutAdd(layout, met, sizeof(int32_t), alignof(int32_t));
+    size_t pairs = met > 0u ? (size_t)compiled->rigid.bodyContacts * met : 0u;
+    size_t grid = pairs > 0u ? met : 0u;
+    uint32_t size = grid > 0u ? GridTableSize(capacity) : 0u;
+    at->rigidMask = grid > 0u ? size - 1u : 0u;
+    at->rigidTable = mvfxLayoutAdd(layout, grid > 0u ? (size_t)size + 1u : 0u, sizeof(int32_t),
+                                   alignof(int32_t));
+    at->rigidKeys = mvfxLayoutAdd(layout, grid, sizeof(uint32_t), alignof(uint32_t));
+    at->rigidIndex = mvfxLayoutAdd(layout, grid, sizeof(int32_t), alignof(int32_t));
+    at->rigidPairs =
+        mvfxLayoutAdd(layout, pairs, sizeof(mvfxPairContact), alignof(mvfxPairContact));
 }
 
 // Adds an emitter's neighbor grid to the block, for one queried.
@@ -280,7 +311,18 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].selfPairs = (int32_t*)(block + at[e].selfPairs);
         instance->emitters[e].selfCounts = (int32_t*)(block + at[e].selfCounts);
         instance->emitters[e].rigidStart = (float*)(block + at[e].rigidStart);
-        instance->emitters[e].rigidTouched = (uint8_t*)(block + at[e].rigidTouched);
+        instance->emitters[e].rigidMass = (float*)(block + at[e].rigidMass);
+        instance->emitters[e].rigidFlags = (uint8_t*)(block + at[e].rigidFlags);
+        instance->emitters[e].rigidContacts = (mvfxBodyContact*)(block + at[e].rigidContacts);
+        instance->emitters[e].rigidCounts = (int32_t*)(block + at[e].rigidCounts);
+        instance->emitters[e].rigidGrid = (mvfxNeighborGrid){
+            .table = (int32_t*)(block + at[e].rigidTable),
+            .keys = (uint32_t*)(block + at[e].rigidKeys),
+            .index = (int32_t*)(block + at[e].rigidIndex),
+            .capacity = capacities[e],
+            .mask = at[e].rigidMask,
+        };
+        instance->emitters[e].rigidPairs = (mvfxPairContact*)(block + at[e].rigidPairs);
     }
 }
 
@@ -314,6 +356,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         AddContacts(&layout, &effect->emitters[e], capacities[e], &at[e]);
         AddPlexus(&layout, &effect->emitters[e], capacities[e], &at[e]);
         AddUnits(&layout, effect, e, capacities, &at[e]);
+        AddRigid(&layout, &effect->emitters[e], capacities[e], &at[e]);
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {

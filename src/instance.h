@@ -12,6 +12,7 @@
 #include "depth.h"
 #include "effect.h"
 #include "force.h"
+#include "rigid_shape.h"
 
 #include "maul-vfx/instance.h"
 
@@ -173,10 +174,20 @@ typedef struct mvfxEmitterState
     // were capped.
     mvfxNeighborGrid selfGrid;
     // For rigid particles: seven arrays of the capacity, their places and
-    // orientations at a substep's start, and whether each has had its
-    // collision event this step.
+    // orientations at a substep's start; five, their inverse masses,
+    // inverse inertias and reaches; each one's flags (MVFX_RIGID_*); its
+    // contacts with the world (MVFX_MAX_RIGID_CONTACTS each) and their
+    // count; and for bodies meeting each other, a grid of their places and
+    // a pool of the contacts between them (bodyContacts a body) with its
+    // count.
     float* rigidStart;
-    uint8_t* rigidTouched;
+    float* rigidMass;
+    uint8_t* rigidFlags;
+    mvfxBodyContact* rigidContacts;
+    int32_t* rigidCounts;
+    mvfxNeighborGrid rigidGrid;
+    mvfxPairContact* rigidPairs;
+    int32_t rigidPairCount;
     float* selfStart;
     int32_t* selfPairs;
     int32_t* selfCounts;

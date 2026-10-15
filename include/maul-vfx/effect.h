@@ -554,8 +554,12 @@ extern "C"
         int32_t attachFrameCapacity;
     } mvfxUnitDef;
 
-// The most contacts a rigid particle takes in a substep.
+// The most contacts a rigid particle takes with the world in a substep.
 #define MVFX_MAX_RIGID_CONTACTS 8
+
+// The most contacts with each other an emitter's rigid particles take a
+// substep, a body.
+#define MVFX_MAX_BODY_CONTACTS 64
 
     // A rigid particle's shape, sized by the particle's size in the
     // particles' space and turned by its orientation.
@@ -614,6 +618,16 @@ extern "C"
         float restitution;
         float staticFriction;
         float dynamicFriction;
+        // Whether its bodies meet each other, the most contacts between them
+        // a substep for each body (pooled over the emitter's live bodies),
+        // from 0 (they pass through each other) to MVFX_MAX_BODY_CONTACTS.
+        // Pairs are found by the neighbor grid at the predicted poses, each
+        // pair met as a body meets a sphere or a box (two capsules by their
+        // cores) and solved with both bodies' masses from their densities;
+        // those past the pool dropped and counted
+        // (mvfxEmitterStats.rigidContactsCapped). A body born in a step
+        // meets the others from its next.
+        int32_t bodyContacts;
     } mvfxRigidDef;
 
 // The most plexus links an emitter keeps a step.

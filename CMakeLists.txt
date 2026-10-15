@@ -89,7 +89,11 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/over_life.c
     src/ribbon.c
     src/rigid.c
+    src/rigid_body.c
+    src/rigid_box.c
     src/rigid_contact.c
+    src/rigid_pair.c
+    src/rigid_shape.c
     src/scene_query.c
     src/self.c
     src/shape.c
@@ -172,6 +176,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(tear WHITEBOX)
     maul_add_test(rigid WHITEBOX)
     maul_add_test(rigid_contact WHITEBOX)
+    maul_add_test(rigid_pair WHITEBOX)
     maul_add_test(steering)
     maul_add_test(trail)
     maul_add_test(tube)
