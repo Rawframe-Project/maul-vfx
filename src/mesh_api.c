@@ -123,6 +123,26 @@ mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, float cent
     return built;
 }
 
+mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
+{
+    if (context == nullptr || countOut == nullptr)
+    {
+        context != nullptr ? mvfxCountMisuse(context) : (void)0;
+        countOut != nullptr ? (void)(*countOut = 0) : (void)0;
+        return mvfx_errorInvalid;
+    }
+    *countOut = 0;
+    const mvfxMesh* live = mvfxContextMesh(context, mesh);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    mvfxResult counted =
+        mvfxCountHullVertices(live->positions, live->vertexCount, &context->allocator, countOut);
+    counted == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
+    return counted;
+}
+
 mvfxMesh* mvfxContextMesh(const mvfxContext* context, mvfxMeshId mesh)
 {
     return mvfxSlotObject(&context->meshes, mesh.index1, mesh.generation);

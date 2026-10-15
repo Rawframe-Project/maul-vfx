@@ -278,6 +278,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Rigid hulls meet the outsides of spheres and boxes, the host's
   colliders and each other (`bodyContacts`): nearest points by GJK,
   overlaps by EPA, touching faces clipped into contacts.
+- `mvfxMesh_HullVertexCount` counts a mesh's hull's vertices past the
+  64 a rigid hull takes, for an editor to say how much to simplify.
 - Rigid particles sleep (`mvfxRigidDef.sleepSpeed`, `sleepTime`; 0.05
   and 0.5 in `mvfxDefaultEmitterDef`): bodies joined by contacts sleep
   together once all have been still, keep their pose and meet nothing

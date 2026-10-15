@@ -432,7 +432,8 @@ static bool AddPoint(Build* b, int32_t first, int32_t eye)
 }
 
 // Builds the triangles of the hull of the points; mvfx_errorInvalid when
-// they span no volume or need more faces than a build keeps.
+// they span no volume, mvfx_errorLimit when they need more faces than a
+// build keeps.
 static mvfxResult Triangles(Build* b)
 {
     if (!Start(b))
@@ -443,7 +444,7 @@ static mvfxResult Triangles(Build* b)
     {
         if (!AddPoint(b, f, b->faces[f].far))
         {
-            return mvfx_errorInvalid;
+            return mvfx_errorLimit;
         }
     }
     return mvfx_success;
@@ -754,7 +755,46 @@ mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator
         b->count = count;
         b->owner = owner;
         result = Triangles(b);
+        // Past a build's faces, past the most vertices too.
+        result = result == mvfx_errorLimit ? mvfx_errorInvalid : result;
         result = result == mvfx_success ? Finish(b, out) : result;
+    }
+    mvfxRelease(allocator, owner, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
+    mvfxRelease(allocator, b, sizeof(Build), _Alignof(Build));
+    return result;
+}
+
+mvfxResult mvfxCountHullVertices(const float* points, int32_t count, const mvfxAllocator* allocator,
+                                 int32_t* out)
+{
+    *out = 0;
+    if (count < 4)
+    {
+        return mvfx_errorInvalid;
+    }
+    Build* b = mvfxAllocate(allocator, sizeof(Build), _Alignof(Build));
+    int32_t* owner = mvfxAllocate(allocator, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
+    mvfxResult result = mvfx_errorCapacity;
+    if (b != nullptr && owner != nullptr)
+    {
+        memset(b, 0, sizeof *b);
+        b->points = points;
+        b->count = count;
+        b->owner = owner;
+        result = Triangles(b);
+    }
+    // Each point a live triangle has, once: its owner no longer needed.
+    for (int32_t i = 0; result == mvfx_success && i < count; ++i)
+    {
+        owner[i] = 0;
+    }
+    for (int32_t f = 0; result == mvfx_success && f < b->faceCount; ++f)
+    {
+        for (int32_t k = 0; b->faces[f].alive && k < 3; ++k)
+        {
+            *out += owner[b->faces[f].v[k]] == 0 ? 1 : 0;
+            owner[b->faces[f].v[k]] = 1;
+        }
     }
     mvfxRelease(allocator, owner, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
     mvfxRelease(allocator, b, sizeof(Build), _Alignof(Build));

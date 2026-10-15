@@ -145,6 +145,27 @@ extern "C"
     MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh,
                                                            float centerOut[3]);
 
+// The most vertices of a hull mvfxMesh_HullVertexCount counts.
+#define MVFX_MAX_HULL_COUNT 500
+
+    /// Counts the vertices of the convex hull of a mesh's vertices, past
+    /// the MVFX_MAX_HULL_VERTICES a rigid hull particle takes: an editor
+    /// tells an artist by how much to simplify a mesh refused for one.
+    ///
+    /// @param context   The context that owns the mesh.
+    /// @param mesh      The mesh.
+    /// @param countOut  Receives the count; 0 on failure.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         mesh; `mvfx_errorInvalid` for a NULL argument or vertices that
+    ///         span no volume, which counts as misuse when the context is
+    ///         given; `mvfx_errorLimit` for a hull of more than
+    ///         MVFX_MAX_HULL_COUNT vertices (it may count somewhat more);
+    ///         `mvfx_errorCapacity` when the allocator fails.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context,
+                                                                mvfxMeshId mesh, int32_t* countOut);
+
 #ifdef __cplusplus
 }
 #endif

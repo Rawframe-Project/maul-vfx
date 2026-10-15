@@ -41,4 +41,11 @@ typedef struct mvfxHull
 mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator* allocator,
                          mvfxHull* out);
 
+// Counts the vertices of the hull of count points, however many up to a
+// build's room (at least MVFX_MAX_HULL_COUNT); mvfx_errorInvalid when they
+// span no volume, mvfx_errorLimit past the room, mvfx_errorCapacity when
+// the allocator fails (out then 0).
+mvfxResult mvfxCountHullVertices(const float* points, int32_t count, const mvfxAllocator* allocator,
+                                 int32_t* out);
+
 #endif

@@ -8,7 +8,8 @@
 // its inertia not along its axes; hulls resting on a box collider and a
 // sphere's top as boxes do; hulls stacked, meeting head on, and piled in
 // a box without deep overlaps; a hull tipped through 45 degrees, where
-// its contacts change from faces to a point, following a box; the checks.
+// its contacts change from faces to a point, following a box; a mesh's
+// hull counted past the most; the checks.
 
 #include "convex.h"
 #include "hull.h"
@@ -480,6 +481,35 @@ static void TestTipping(void)
     CHECK(falling <= 0.001f && landed <= 0.01f && steady, "tipped through 45 degrees as a box");
 }
 
+static void TestVertexCount(void)
+{
+    // A mesh of 100 points on a ball, refused as a hull, counted: 100 for
+    // its artist to bring under the most; arguments refused.
+    OpenContext();
+    static float ball[300];
+    for (int32_t i = 0; i < 100; ++i)
+    {
+        float z = 1.0f - (2.0f * (float)i + 1.0f) / 100.0f;
+        float r = sqrtf(1.0f - z * z);
+        float angle = 2.3999632f * (float)i;
+        ball[3 * i] = r * cosf(angle);
+        ball[3 * i + 1] = r * sinf(angle);
+        ball[3 * i + 2] = z;
+    }
+    mvfxMeshId mesh = MeshOf(ball, 100);
+    int32_t count = 0;
+    float center[3];
+    bool counted = mvfxMesh_HullVertexCount(s_scene.context, mesh, &count) == mvfx_success &&
+                   count == 100 &&
+                   mvfxMesh_HullCenter(s_scene.context, mesh, center) == mvfx_errorInvalid;
+    bool refused =
+        mvfxMesh_HullVertexCount(s_scene.context, mesh, NULL) == mvfx_errorInvalid &&
+        mvfxMesh_HullVertexCount(NULL, mesh, &count) == mvfx_errorInvalid && count == 0 &&
+        mvfxMesh_HullVertexCount(s_scene.context, (mvfxMeshId){0}, &count) == mvfx_errorStale;
+    CHECK(counted && refused, "a hull's vertices counted past the most");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     OpenContext();
@@ -532,6 +562,7 @@ int main(void)
     TestMeeting();
     TestPile();
     TestTipping();
+    TestVertexCount();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

@@ -287,6 +287,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvf
 ```
 Gives the centroid of the convex hull of a mesh's vertices, the place of a rigid hull particle (mvfx_rigidHull) in the mesh's frame: a host draws the mesh at the particle's pose, scaled by its size and moved by minus this centroid scaled likewise.  @param context    The context that owns the mesh. @param mesh       The mesh. @param centerOut  Receives x, y and z. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live mesh; `mvfx_errorInvalid` for a NULL argument or vertices that span no volume or whose hull has more than MVFX_MAX_HULL_VERTICES vertices, which counts as misuse when the context is given; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut);
+```
+Counts the vertices of the convex hull of a mesh's vertices, past the MVFX_MAX_HULL_VERTICES a rigid hull particle takes: an editor tells an artist by how much to simplify a mesh refused for one.  @param context   The context that owns the mesh. @param mesh      The mesh. @param countOut  Receives the count; 0 on failure. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live mesh; `mvfx_errorInvalid` for a NULL argument or vertices that span no volume, which counts as misuse when the context is given; `mvfx_errorLimit` for a hull of more than MVFX_MAX_HULL_COUNT vertices (it may count somewhat more); `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ## `output.h`
 
 Output: what the host draws, as data in its own layout. The library draws nothing; after a step the host asks, per view and per emitter, for records written into its buffers.
@@ -382,4 +387,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-69 functions across 11 headers.
+70 functions across 11 headers.

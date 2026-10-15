@@ -4,12 +4,12 @@
 // Hulls of point sets: a cube's corners amid inner points and repeats
 // giving eight vertices, six square faces, its volume and moments; a
 // tetrahedron of unequal legs off the origin giving its centroid and its
-// moments by the closed form; points of a ball's hull all inside every face, each face's
-// corners on its plane and in order; a fan of nearly coplanar triangles
-// merged by one plane, its faces sound and its volume exact; a hull of
-// near-degenerate points hashed the same on every platform; points
-// spanning no volume, and a
-// hull of more than the most vertices, refused.
+// moments by the closed form; points of a ball's hull all inside every
+// face, each face's corners on its plane and in order; a fan of nearly
+// coplanar triangles merged by one plane, its faces sound and its volume
+// exact; a hull of near-degenerate points hashed the same on every
+// platform; hulls of 200 and 500 points counted past the most; points
+// spanning no volume, and a hull of more than the most vertices, refused.
 
 #include "hull.h"
 #include "test_harness.h"
@@ -311,6 +311,36 @@ static void TestRefused(void)
           "refused");
 }
 
+static void TestCount(void)
+{
+    // Fibonacci spheres of 200 and 500 points (MVFX_MAX_HULL_COUNT): every
+    // point a vertex, counted past the most a hull keeps; a flat set
+    // refused.
+    static float ball[3 * MVFX_MAX_HULL_COUNT];
+    bool counted = true;
+    for (int32_t total = 200; total <= MVFX_MAX_HULL_COUNT; total += 300)
+    {
+        for (int32_t i = 0; i < total; ++i)
+        {
+            float z = 1.0f - (2.0f * (float)i + 1.0f) / (float)total;
+            float r = sqrtf(1.0f - z * z);
+            float angle = 2.3999632f * (float)i;
+            ball[3 * i] = r * cosf(angle);
+            ball[3 * i + 1] = r * sinf(angle);
+            ball[3 * i + 2] = z;
+        }
+        int32_t vertices = 0;
+        counted = counted &&
+                  mvfxCountHullVertices(ball, total, &s_allocator, &vertices) == mvfx_success &&
+                  vertices == total;
+    }
+    const float flat[15] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0.5f, 0.5f, 0};
+    int32_t none = -1;
+    bool refused =
+        mvfxCountHullVertices(flat, 5, &s_allocator, &none) == mvfx_errorInvalid && none == 0;
+    CHECK(counted && refused, "hull vertices counted");
+}
+
 int main(void)
 {
     TestCube();
@@ -318,6 +348,7 @@ int main(void)
     TestConvex();
     TestFan();
     TestNearDegenerate();
+    TestCount();
     TestRefused();
     return s_failures == 0 ? 0 : 1;
 }
