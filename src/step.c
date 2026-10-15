@@ -8,6 +8,7 @@
 #include "emitter_step.h"
 #include "event.h"
 #include "float_mode.h"
+#include "force.h"
 #include "gas_api.h"
 #include "gas_step.h"
 #include "instance.h"
@@ -137,14 +138,22 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
     }
     for (int32_t g = 0; g < instance->effect->gasCount && !finished; ++g)
     {
-        float gravity[3];
-        mvfxGasGravity(instance, g, gravity);
-        if (instance->effect->gases[g].hasObstacles)
+        const mvfxCompiledGas* gas = &instance->effect->gases[g];
+        mvfxResolvedForce forces[MVFX_MAX_FORCES];
+        mvfxGasDrive drive = {.forces = forces, .forceCount = gas->def.forceCount};
+        mvfxGasGravity(instance, g, drive.gravity);
+        for (int32_t f = 0; f < gas->def.forceCount; ++f)
+        {
+            mvfxSpaceMap map = mvfxGasMap(instance, g, (mvfxSimulationSpace)gas->forces[f].space);
+            forces[f] = mvfxResolveForce(&gas->forces[f], &map, instance->parameters,
+                                         instance->seed, gas->forceGrids[f]);
+        }
+        if (gas->hasObstacles)
         {
             mvfxResolveGasObstacles(instance, g);
         }
-        mvfxStepGas(&instance->effect->gases[g], &instance->gases[g], gravity, instance->stepStart,
-                    instance->clock, instance->stopTick);
+        mvfxStepGas(gas, &instance->gases[g], &drive, instance->stepStart, instance->clock,
+                    instance->stopTick);
     }
     EndStep(instance);
 }

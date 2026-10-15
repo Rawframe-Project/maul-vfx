@@ -245,6 +245,57 @@ void mvfxGasConfine(const mvfxCompiledGas* gas, const mvfxGasLattice* l, float* 
     }
 }
 
+// The place in the box's frame of the face across k at at.
+static void FacePlace(const mvfxGasLattice* l, int32_t k, const int32_t at[3], float out[3])
+{
+    for (int32_t j = 0; j < 3; ++j)
+    {
+        float place = (float)at[j] + (j == k ? 0.0f : 0.5f);
+        out[j] = (place - 0.5f * (float)l->n[j]) * l->cell;
+    }
+}
+
+// A face's velocity across k after the forces at its place p over a
+// substep of h: v e^(-dh) + a / d (1 - e^(-dh)) under a drag d, else
+// v + a h.
+static float Pushed(const mvfxResolvedForce* forces, int32_t count, const float p[3], double time,
+                    int32_t k, float h, float v)
+{
+    float a[3] = {0.0f, 0.0f, 0.0f};
+    float drag = 0.0f;
+    mvfxForcesAt(forces, count, p, time, a, &drag);
+    if (!(drag > 0.0f))
+    {
+        return v + a[k] * h;
+    }
+    float keep = mvfxExp(-drag * h);
+    return v * keep + a[k] / drag * (1.0f - keep);
+}
+
+void mvfxGasPush(const mvfxGasLattice* l, const mvfxResolvedForce* forces, int32_t count,
+                 double time, float* const velocity[3])
+{
+    for (int32_t k = 0; k < 3 && count > 0; ++k)
+    {
+        const int32_t m[3] = {l->n[0] + (k == 0 ? 1 : 0), l->n[1] + (k == 1 ? 1 : 0),
+                              l->n[2] + (k == 2 ? 1 : 0)};
+        int64_t f = 0;
+        for (int32_t z = 0; l->n[k] > 1 && z < m[2]; ++z)
+        {
+            for (int32_t y = 0; y < m[1]; ++y)
+            {
+                for (int32_t x = 0; x < m[0]; ++x, ++f)
+                {
+                    const int32_t at[3] = {x, y, z};
+                    float p[3];
+                    FacePlace(l, k, at, p);
+                    velocity[k][f] = Pushed(forces, count, p, time, k, l->h, velocity[k][f]);
+                }
+            }
+        }
+    }
+}
+
 void mvfxGasBurn(const mvfxCompiledGas* gas, const mvfxGasLattice* l, float* const scalars[3],
                  float* expansion)
 {

@@ -86,6 +86,36 @@ static mvfxResult FindObstacleGrids(mvfxContext* context, const mvfxEffectDef* d
     return mvfx_success;
 }
 
+// Finds the grid of each vector field on a valid def's gases: stale for
+// an id that names no live grid, invalid (misuse) for one not of three
+// components.
+static mvfxResult FindGasForceGrids(mvfxContext* context, const mvfxEffectDef* def,
+                                    mvfxGrid* grids[MVFX_MAX_GASES][MVFX_MAX_FORCES])
+{
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
+        {
+            const mvfxForce* force = &def->gases[g].forces[f];
+            if (force->kind != mvfx_forceVectorField)
+            {
+                continue;
+            }
+            grids[g][f] = mvfxContextGrid(context, force->grid);
+            if (grids[g][f] == nullptr)
+            {
+                return mvfx_errorStale;
+            }
+            if (grids[g][f]->components != 3)
+            {
+                mvfxCountMisuse(context);
+                return mvfx_errorInvalid;
+            }
+        }
+    }
+    return mvfx_success;
+}
+
 // Holds an effect's grids, or lets them go (by -1).
 static void HoldGrids(mvfxEffect* effect, int32_t by)
 {
@@ -108,6 +138,11 @@ static void HoldGrids(mvfxEffect* effect, int32_t by)
         for (int32_t c = 0; c < effect->gases[g].def.obstacleCount; ++c)
         {
             mvfxGrid* grid = effect->gases[g].obstacleGrids[c];
+            grid != nullptr ? (void)(grid->users += by) : (void)0;
+        }
+        for (int32_t f = 0; f < effect->gases[g].def.forceCount; ++f)
+        {
+            mvfxGrid* grid = effect->gases[g].forceGrids[f];
             grid != nullptr ? (void)(grid->users += by) : (void)0;
         }
     }
@@ -181,6 +216,52 @@ static mvfxResult BuildHulls(mvfxContext* context, const mvfxEffectDef* def,
     return mvfx_success;
 }
 
+// The grids an effect's def names, found.
+typedef struct EffectGrids
+{
+    mvfxGrid* forces[MVFX_MAX_EMITTERS][MVFX_MAX_FORCES];
+    mvfxGrid* colliders[MVFX_MAX_EMITTERS][MVFX_MAX_COLLIDERS];
+    mvfxGrid* obstacles[MVFX_MAX_GASES][MVFX_MAX_COLLIDERS];
+    mvfxGrid* gasForces[MVFX_MAX_GASES][MVFX_MAX_FORCES];
+} EffectGrids;
+
+// Finds every grid of a valid def, as the finders above.
+static mvfxResult FindEffectGrids(mvfxContext* context, const mvfxEffectDef* def,
+                                  EffectGrids* grids)
+{
+    mvfxResult found = FindGrids(context, def, grids->forces);
+    found = found == mvfx_success ? FindColliderGrids(context, def, grids->colliders) : found;
+    found = found == mvfx_success ? FindObstacleGrids(context, def, grids->obstacles) : found;
+    return found == mvfx_success ? FindGasForceGrids(context, def, grids->gasForces) : found;
+}
+
+// Gives a compiled effect the grids found for its def.
+static void AttachGrids(mvfxEffect* effect, const mvfxEffectDef* def, const EffectGrids* grids)
+{
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
+        {
+            effect->emitters[i].forceGrids[f] = grids->forces[i][f];
+        }
+        for (int32_t c = 0; c < def->emitters[i].colliderCount; ++c)
+        {
+            effect->emitters[i].colliderGrids[c] = grids->colliders[i][c];
+        }
+    }
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        for (int32_t c = 0; c < def->gases[g].obstacleCount; ++c)
+        {
+            effect->gases[g].obstacleGrids[c] = grids->obstacles[g][c];
+        }
+        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
+        {
+            effect->gases[g].forceGrids[f] = grids->gasForces[g][f];
+        }
+    }
+}
+
 mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
 {
     if (effectOut == nullptr || context == nullptr)
@@ -203,12 +284,8 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
     {
         return meshed;
     }
-    mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_FORCES] = {{0}};
-    mvfxGrid* colliderGrids[MVFX_MAX_EMITTERS][MVFX_MAX_COLLIDERS] = {{0}};
-    mvfxGrid* obstacleGrids[MVFX_MAX_GASES][MVFX_MAX_COLLIDERS] = {{0}};
-    mvfxResult found = FindGrids(context, def, grids);
-    found = found == mvfx_success ? FindColliderGrids(context, def, colliderGrids) : found;
-    found = found == mvfx_success ? FindObstacleGrids(context, def, obstacleGrids) : found;
+    EffectGrids grids = {0};
+    mvfxResult found = FindEffectGrids(context, def, &grids);
     if (found != mvfx_success)
     {
         return found;
@@ -239,22 +316,8 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
     {
         effect->emitters[i].hull = hulls[i];
         meshes[i] != nullptr ? (void)(meshes[i]->users += 1) : (void)0;
-        for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
-        {
-            effect->emitters[i].forceGrids[f] = grids[i][f];
-        }
-        for (int32_t c = 0; c < def->emitters[i].colliderCount; ++c)
-        {
-            effect->emitters[i].colliderGrids[c] = colliderGrids[i][c];
-        }
     }
-    for (int32_t g = 0; g < def->gasCount; ++g)
-    {
-        for (int32_t c = 0; c < def->gases[g].obstacleCount; ++c)
-        {
-            effect->gases[g].obstacleGrids[c] = obstacleGrids[g][c];
-        }
-    }
+    AttachGrids(effect, def, &grids);
     HoldGrids(effect, 1);
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->effects, effect, &generation);

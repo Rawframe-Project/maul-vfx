@@ -123,6 +123,9 @@ extern "C"
         float velocity[3];
     } mvfxGasSource;
 
+    // A force (maul-vfx/effect.h).
+    struct mvfxForce;
+
     // A gas. Build it with mvfxDefaultGasDef.
     typedef struct mvfxGasDef
     {
@@ -199,6 +202,14 @@ extern "C"
         const mvfxCollider* obstacles;
         int32_t obstacleCount;
         bool hostObstacles;
+        // The forces on it, from 0 to MVFX_MAX_FORCES (NULL when forceCount
+        // is 0), each as on an emitter's particles, in the world or the
+        // instance's frame: taken at each face, its acceleration across the
+        // face, a wind's or a velocity field's pull exact over a substep.
+        // An attractor's kill radius does nothing to a gas. The effect
+        // copies them and holds their grids.
+        const struct mvfxForce* forces;
+        int32_t forceCount;
     } mvfxGasDef;
 
 // The cookie of a gas def, which its default sets and mvfxCreateEffect

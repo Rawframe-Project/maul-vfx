@@ -270,7 +270,7 @@ static void Pour(const mvfxCompiledGas* gas, const mvfxGasLattice* l, float* con
 // the velocity and the scalars carried by the velocity as it was, each
 // decaying; the fuel burning; the projection.
 static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxGasLattice* l,
-                    const float gravity[3], double seconds, bool pours)
+                    const mvfxGasDrive* drive, int64_t start, double seconds, bool pours)
 {
     int32_t now = state->current;
     float* velocity[3] = {state->velocity[0][now], state->velocity[1][now],
@@ -280,7 +280,9 @@ static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxG
     {
         Pour(gas, l, velocity, scalars);
     }
-    mvfxGasBuoyancy(gas, l, gravity, velocity, scalars);
+    mvfxGasBuoyancy(gas, l, drive->gravity, velocity, scalars);
+    mvfxGasPush(l, drive->forces, drive->forceCount, (double)start / (double)MVFX_TICKS_PER_SECOND,
+                velocity);
     mvfxGasConfine(gas, l, velocity, state->work);
     const float decays[3] = {gas->def.densityDecay, gas->def.temperatureDecay, gas->def.fuelDecay};
     float keep = mvfxExp(-gas->def.velocityDecay * l->h);
@@ -329,7 +331,7 @@ static bool HoldsAny(const mvfxCompiledGas* gas, const mvfxGasState* state)
     return false;
 }
 
-void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float gravity[3],
+void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxGasDrive* drive,
                  int64_t from, int64_t to, int64_t stopTick)
 {
     int32_t substeps = gas->def.substeps;
@@ -352,7 +354,7 @@ void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float gr
             continue;
         }
         l.h = (float)((double)(end - start) / (double)MVFX_TICKS_PER_SECOND);
-        Substep(gas, state, &l, gravity, seconds, start < stopTick);
+        Substep(gas, state, &l, drive, start, seconds, start < stopTick);
     }
     state->holds = HoldsAny(gas, state);
 }

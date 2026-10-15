@@ -244,8 +244,9 @@ static inline void BuildRigidScene(mvfxContext* context)
 // burning and expanding; a 3D gas moving with its turning instance, a jet
 // rising from a box near its closed floor, 3 V cycles of pressure,
 // MacCormack's advection, buoyant in the world's gravity and confined.
-// The 2D gas flows past a still sphere; the 3D gas past a turned box
-// shelf and a host's sphere moving through it.
+// The 2D gas flows past a still sphere, stirred by turbulence; the 3D gas
+// past a turned box shelf and a host's sphere moving through it, spun by a
+// vortex in the instance's frame.
 // Their velocities are not whole cells a step.
 static inline void BuildGasScene(mvfxContext* context)
 {
@@ -280,6 +281,22 @@ static inline void BuildGasScene(mvfxContext* context)
                                        .center = {0.35f, 0.75f, 0},
                                        .halfExtents = {0.2f, 0.06f, 0.3f},
                                        .rotation = {0, 0, 0.19509032f, 0.98078528f}};
+    // Turbulence stirring the 2D gas, scrolling, its seed the instance's;
+    // a vortex about the 3D gas's Y in the instance's frame.
+    static const mvfxForce stir = {.kind = mvfx_forceTurbulence,
+                                   .strength = 1.5f,
+                                   .noise = {.frequency = 1.5f,
+                                             .octaves = 2,
+                                             .lacunarity = 2,
+                                             .gain = 0.5f,
+                                             .scroll = {0.2f, 0.1f, 0},
+                                             .seedPerInstance = true}};
+    static const mvfxForce spin = {.kind = mvfx_forceVortex,
+                                   .space = mvfx_spaceLocal,
+                                   .vector = {0, 1, 0},
+                                   .point = {0.05f, 0, 0.1f},
+                                   .strength = 0.7f,
+                                   .pull = 0.2f};
     mvfxGasDef gases[2] = {mvfxDefaultGasDef(), mvfxDefaultGasDef()};
     gases[0].size[0] = 24;
     gases[0].size[1] = 16;
@@ -298,6 +315,8 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[0].burnSmoke = 0.5f;
     gases[0].burnExpansion = 0.1f;
     gases[0].obstacles = &rock;
+    gases[0].forces = &stir;
+    gases[0].forceCount = 1;
     gases[0].obstacleCount = 1;
     gases[0].sourceCount = 2;
     gases[1].size[0] = 12;
@@ -314,6 +333,8 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[1].obstacles = &shelf;
     gases[1].obstacleCount = 1;
     gases[1].hostObstacles = true;
+    gases[1].forces = &spin;
+    gases[1].forceCount = 1;
     gases[1].sourceCount = 1;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.gases = gases;

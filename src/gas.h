@@ -9,6 +9,7 @@
 
 #include "allocator.h"
 #include "collide.h"
+#include "force.h"
 
 #include "maul-vfx/gas.h"
 
@@ -41,6 +42,10 @@ typedef struct mvfxCompiledGas
     mvfxCollider obstacles[MVFX_MAX_COLLIDERS];
     struct mvfxGrid* obstacleGrids[MVFX_MAX_COLLIDERS];
     bool hasObstacles;
+    // Its forces, compiled, and each vector field's grid (NULL for
+    // others), which the effect holds.
+    mvfxForce forces[MVFX_MAX_FORCES];
+    struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
 } mvfxCompiledGas;
 
 // The most obstacles a gas meets: its own and the host's.

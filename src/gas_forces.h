@@ -10,6 +10,7 @@
 #ifndef MAUL_VFX_SRC_GAS_FORCES_H
 #define MAUL_VFX_SRC_GAS_FORCES_H
 
+#include "force.h"
 #include "gas.h"
 
 // Speeds each face by gravity (in the box's frame) times (densityWeight
@@ -20,6 +21,12 @@ void mvfxGasBuoyancy(const mvfxCompiledGas* gas, const mvfxGasLattice* l, const 
 // Speeds each face by vorticity confinement, its curl kept in work.
 void mvfxGasConfine(const mvfxCompiledGas* gas, const mvfxGasLattice* l, float* const velocity[3],
                     float* work);
+
+// Speeds each face by the forces (resolved into the box's frame) taken at
+// its place at time seconds: its acceleration across the face, a wind's
+// or a velocity field's pull exact over the substep.
+void mvfxGasPush(const mvfxGasLattice* l, const mvfxResolvedForce* forces, int32_t count,
+                 double time, float* const velocity[3]);
 
 // Burns fuel where it is hot enough; with expansion, each cell's
 // divergence the burning asks for (in the projection's units: lengths a

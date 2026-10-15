@@ -156,6 +156,11 @@ mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
     mvfxCompiledGas gas = {.def = *def};
     gas.def.sources = nullptr;
     gas.def.obstacles = nullptr;
+    gas.def.forces = nullptr;
+    for (int32_t f = 0; f < def->forceCount; ++f)
+    {
+        gas.forces[f] = mvfxCompileForce(&def->forces[f]);
+    }
     for (int32_t s = 0; s < def->sourceCount; ++s)
     {
         gas.sources[s] = def->sources[s];

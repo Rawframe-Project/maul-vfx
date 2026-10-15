@@ -309,6 +309,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and hold nothing, and the faces beside them take the obstacle's
   velocity from its motion since the step before, so a moving door
   pushes smoke. The pressure solve's weights are now stored per face.
+- Forces act on a gas: `forces` takes an emitter's force kinds
+  (constant, wind, attractor, vortex, turbulence, vector field) in the
+  world or the instance's frame, taken at each face, a wind's or a
+  velocity field's pull exact over a substep.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

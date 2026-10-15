@@ -495,6 +495,27 @@ static bool AreQualityLevelsValid(const mvfxEffectDef* def)
     return true;
 }
 
+// Whether a gas's forces are in range for the effect's parameters.
+static bool AreGasForcesValid(const mvfxGasDef* gas, const mvfxEffectDef* def)
+{
+    if (gas->forceCount < 0 || gas->forceCount > MVFX_MAX_FORCES ||
+        (gas->forceCount > 0 && gas->forces == nullptr))
+    {
+        return false;
+    }
+    int32_t parameters = def->parameterCount >= 0 && def->parameterCount <= MVFX_MAX_PARAMETERS
+                             ? def->parameterCount
+                             : 0;
+    for (int32_t f = 0; f < gas->forceCount; ++f)
+    {
+        if (!mvfxIsForceValid(&gas->forces[f], parameters))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE ||
@@ -507,7 +528,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     }
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
-        if (!mvfxIsGasDefValid(&def->gases[g]))
+        if (!mvfxIsGasDefValid(&def->gases[g]) || !AreGasForcesValid(&def->gases[g], def))
         {
             return false;
         }

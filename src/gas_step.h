@@ -9,6 +9,7 @@
 #ifndef MAUL_VFX_SRC_GAS_STEP_H
 #define MAUL_VFX_SRC_GAS_STEP_H
 
+#include "force.h"
 #include "gas.h"
 
 #include <stdint.h>
@@ -23,10 +24,18 @@ float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, 
 void mvfxGasTraceBack(float* const velocity[3], const mvfxGasLattice* l, const float p[3],
                       float out[3]);
 
+// What drives a gas over a step, in its box's frame: gravity, and its
+// forces resolved.
+typedef struct mvfxGasDrive
+{
+    float gravity[3];
+    const mvfxResolvedForce* forces;
+    int32_t forceCount;
+} mvfxGasDrive;
+
 // Steps a gas over the ticks from to, its sources pouring at the substeps
-// that start before stopTick, gravity in the box's frame; then whether it
-// holds anything.
-void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float gravity[3],
+// that start before stopTick; then whether it holds anything.
+void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxGasDrive* drive,
                  int64_t from, int64_t to, int64_t stopTick);
 
 #endif
