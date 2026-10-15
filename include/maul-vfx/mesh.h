@@ -154,13 +154,16 @@ extern "C"
     ///
     /// @param context   The context that owns the mesh.
     /// @param mesh      The mesh.
-    /// @param countOut  Receives the count; 0 on failure.
+    /// @param countOut  Receives the count; 0 on failure, so an editor
+    ///                  given `mvfx_errorLimit` reports "more than
+    ///                  MVFX_MAX_HULL_COUNT", never the 0.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         mesh; `mvfx_errorInvalid` for a NULL argument or vertices that
     ///         span no volume, which counts as misuse when the context is
-    ///         given; `mvfx_errorLimit` for a hull of more than
-    ///         MVFX_MAX_HULL_COUNT vertices (it may count somewhat more);
-    ///         `mvfx_errorCapacity` when the allocator fails.
+    ///         given; `mvfx_errorLimit` for a hull past what a count holds,
+    ///         never fewer than MVFX_MAX_HULL_COUNT vertices (some hulls of
+    ///         a few more are still counted); `mvfx_errorCapacity` when the
+    ///         allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context,

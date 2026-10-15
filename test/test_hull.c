@@ -314,11 +314,12 @@ static void TestRefused(void)
 static void TestCount(void)
 {
     // Fibonacci spheres of 200 and 500 points (MVFX_MAX_HULL_COUNT): every
-    // point a vertex, counted past the most a hull keeps; a flat set
+    // point a vertex, counted past the most a hull keeps; one of 1,500
+    // past what a count holds, refused with a count of 0; a flat set
     // refused.
-    static float ball[3 * MVFX_MAX_HULL_COUNT];
+    static float ball[3 * 1500];
     bool counted = true;
-    for (int32_t total = 200; total <= MVFX_MAX_HULL_COUNT; total += 300)
+    for (int32_t total = 200; total <= 1500; total += total == 500 ? 1000 : 300)
     {
         for (int32_t i = 0; i < total; ++i)
         {
@@ -329,10 +330,11 @@ static void TestCount(void)
             ball[3 * i + 1] = r * sinf(angle);
             ball[3 * i + 2] = z;
         }
-        int32_t vertices = 0;
-        counted = counted &&
-                  mvfxCountHullVertices(ball, total, &s_allocator, &vertices) == mvfx_success &&
-                  vertices == total;
+        int32_t vertices = -1;
+        mvfxResult result = mvfxCountHullVertices(ball, total, &s_allocator, &vertices);
+        counted =
+            counted && (total > MVFX_MAX_HULL_COUNT ? result == mvfx_errorLimit && vertices == 0
+                                                    : result == mvfx_success && vertices == total);
     }
     const float flat[15] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0.5f, 0.5f, 0};
     int32_t none = -1;

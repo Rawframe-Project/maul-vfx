@@ -14,8 +14,8 @@
 // box spun on a plane stopped by its friction at the rate its contacts'
 // spread gives; a tall box tipping over on a slope a short one stands on;
 // a box tipping at its edge's angle, standing steady parked at it and
-// still below it, and turned on its upright tipping over a corner at the
-// diagonal's;
+// still below it, its creep near it bounded, and turned on its upright
+// tipping over a corner at the diagonal's;
 // the checks.
 
 #include "instance.h"
@@ -892,6 +892,29 @@ static void TestTippingAngle(void)
         float dx = X(0) - (float)place[0];
         float dy = X(1) - (float)place[1];
         right = right && sqrtf(dx * dx + dy * dy) <= (sleeps != 0 ? 0.005f : 0.0001f);
+        mvfxDestroyContext(s_scene.context);
+    }
+    // Held at 0.95 of its limit (tan at 0.95 of the edge's), sleeping off,
+    // it creeps, as the passes' friction and loads are noisy so near it:
+    // pinned at today's 22 mm in 3 s, and 36 mm turned 45 degrees on its
+    // upright, so the creep cannot grow unseen.
+    for (int32_t turned = 0; turned < 2; ++turned)
+    {
+        float angle = atanf(0.95f * (turned != 0 ? 0.28284271f : 0.2f) / 0.3f);
+        mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 0.4f, 0.6f, 0.4f);
+        Tilt(&emitter, angle);
+        emitter.orientation.min[1] = emitter.orientation.max[1] = turned != 0 ? 0.78539816f : 0.0f;
+        emitter.rigid.sleepSpeed = 0.0f;
+        s_colliders[0].normal[0] = -sinf(angle);
+        s_colliders[0].normal[1] = cosf(angle);
+        emitter.rigid.staticFriction = 1.5f;
+        emitter.rigid.dynamicFriction = 1.4f;
+        double place[3] = {-0.3 * sin((double)angle), 0.3 * cos((double)angle), 0};
+        Open(&emitter, place, still);
+        Steps(180);
+        float dx = X(0) - (float)place[0];
+        float dy = X(1) - (float)place[1];
+        right = right && sqrtf(dx * dx + dy * dy) <= (turned != 0 ? 0.04f : 0.025f);
         mvfxDestroyContext(s_scene.context);
     }
     // Turned 45 degrees about its upright, it tips over a corner instead,

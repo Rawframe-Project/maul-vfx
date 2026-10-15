@@ -625,7 +625,10 @@ extern "C"
         // its static and dynamic friction coefficients, each 0 to
         // MVFX_MAX_DRAG, the static at least the dynamic: a patch holds
         // still while what holds it is at most the static coefficient times
-        // what presses it, else is slowed by the dynamic times that.
+        // what presses it, else is slowed by the dynamic times that. A body
+        // tips where its center passes over its support's edge; held within
+        // about a tenth of that limit it creeps (a 0.4 by 0.6 box at 0.95
+        // of it, 22 mm in 3 s) until it sleeps.
         float restitution;
         float staticFriction;
         float dynamicFriction;
@@ -637,7 +640,11 @@ extern "C"
         // cores) and solved with both bodies' masses from their densities;
         // those past the pool dropped and counted
         // (mvfxEmitterStats.rigidContactsCapped). A body born in a step
-        // meets the others from its next.
+        // meets the others from its next. Mass ratios show: at rest a body
+        // under one N times heavier sinks about N / 50 mm into what holds
+        // it (0.5 mm at 27); the heavier landing presses it further for the
+        // impact's substeps (dropped 2 m, 1.2 mm at 8, 9 mm at 16, 22 mm at
+        // 27), pushed back out after.
         int32_t bodyContacts;
         // A hull's mesh, its hull taken from its vertices when the effect is
         // created (the effect does not follow its later positions).
@@ -648,11 +655,12 @@ extern "C"
         // MVFX_MAX_EXTENT; bodies joined by contacts sleep together once
         // all have been still sleepTime seconds, above 0 (when sleepSpeed
         // is) and at most MVFX_MAX_SLEEP_TIME. Asleep, a body keeps its
-        // pose and meets nothing (it still ages and dies), and is
-        // immovable to the bodies meeting it; it wakes when an awake body
-        // meets it, when its forces change by more than sleepSpeed over
-        // sleepTime, when a collider it touches or comes to touch changes
-        // or its depth image is set again, or by mvfxInstance_WakeBodies.
+        // pose and meets nothing (it still ages and dies). It wakes when an
+        // awake body comes within its reach (with the sleepers it touches
+        // in turn, before that substep's solve), when its forces change by
+        // more than sleepSpeed over sleepTime, when a collider it touches
+        // or comes to touch changes or its depth image is set again, or by
+        // mvfxInstance_WakeBodies.
         // mvfxDefaultEmitterDef sets 0.05 and 0.5.
         float sleepSpeed;
         float sleepTime;
