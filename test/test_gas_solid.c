@@ -10,8 +10,11 @@
 // placed through a moved, turned and scaled instance, in a world gas and
 // a local one; a turning box giving its faces its turn's
 // velocity; a local gas moving past a still box in the world seeing it
-// move; an obstacle's grid held by its effect; the obstacles' refusals.
+// move; nothing within a solid reaching the solve, and a sealed gas's
+// expansion kept less its open cells' mean; an obstacle's grid held by its
+// effect; the obstacles' refusals.
 
+#include "gas_pressure.h"
 #include "gas_solid.h"
 #include "instance.h"
 #include "instance_api.h"
@@ -395,6 +398,119 @@ static void TestPassing(void)
     mvfxDestroyContext(s_context);
 }
 
+// A hash's float in [-1, 1).
+static float Noise(uint32_t i)
+{
+    uint32_t h = (i + 1u) * 2654435761u;
+    h ^= h >> 15;
+    h *= 2246822519u;
+    h ^= h >> 13;
+    return (float)(h & 0xFFFFFFu) / 8388608.0f - 1.0f;
+}
+
+// Whether the face across k at index f lies between two solid cells.
+static bool Buried(const mvfxGasState* state, int32_t k, int32_t f)
+{
+    const int32_t m0 = 32 + (k == 0 ? 1 : 0);
+    const int32_t at[2] = {f % m0, f / m0};
+    const int32_t stride = k == 0 ? 1 : 32;
+    int32_t cell = at[1] * 32 + at[0];
+    return at[k] > 0 && at[k] < 32 && state->solid[cell - stride] != 0 && state->solid[cell] != 0;
+}
+
+static void TestBuried(void)
+{
+    // A 2D gas of 32 by 32, open walls, a still box marked solid by a step:
+    // noise for a velocity, projected by 8 cycles from 0 twice, once with
+    // the faces between two solid cells 0 and once with noise of 5 there.
+    // The faces any gas touches come out the same, bit for bit: nothing
+    // within a solid reaches the solve. Their cells' divergence is at most
+    // 2e-3 (the noise's is up to 4).
+    const mvfxCollider box = Collider(mvfx_colliderBox, 0, 0, mvfx_spaceWorld);
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 32;
+    def.size[1] = 32;
+    def.pressureCycles = 8;
+    def.obstacles = &box;
+    def.obstacleCount = 1;
+    const mvfxCompiledGas* gas = NULL;
+    mvfxGasState* state = Open(&def, &gas);
+    Steps(1);
+    static float kept[2][33 * 32];
+    bool right = true;
+    for (int32_t r = 0; r < 2; ++r)
+    {
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            for (int32_t f = 0; f < 33 * 32; ++f)
+            {
+                float noise = Noise((uint32_t)(f * 2 + k));
+                state->velocity[k][state->current][f] =
+                    Buried(state, k, f) ? (r == 0 ? 0.0f : 5.0f * noise) : noise;
+            }
+        }
+        memset(state->levels[0].pressure, 0, sizeof(float) * 1024);
+        mvfxProjectGas(gas, state, NULL);
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            for (int32_t f = 0; f < 33 * 32; ++f)
+            {
+                float value = state->velocity[k][state->current][f];
+                right = right && (r == 0 || Buried(state, k, f) || value == kept[k][f]);
+                kept[k][f] = value;
+            }
+        }
+    }
+    CHECK(right && MaxOpenDivergence(gas, state) <= 2e-3f, "nothing in a solid reaches the solve");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestSealedSolid(void)
+{
+    // The same box in a sealed gas, still, asked to expand by 1 in four
+    // open cells: 8 cycles leave each open cell's divergence its expansion
+    // less their mean over the open cells, within 1e-3.
+    const mvfxCollider box = Collider(mvfx_colliderBox, 0, 0, mvfx_spaceWorld);
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 32;
+    def.size[1] = 32;
+    def.pressureCycles = 8;
+    def.closedWalls = 63;
+    def.obstacles = &box;
+    def.obstacleCount = 1;
+    const mvfxCompiledGas* gas = NULL;
+    mvfxGasState* state = Open(&def, &gas);
+    Steps(1);
+    static float expansion[1024];
+    int32_t open = 0;
+    for (int32_t i = 0; i < 1024; ++i)
+    {
+        int32_t x = i % 32;
+        int32_t y = i / 32;
+        expansion[i] = (x == 3 || x == 4) && (y == 3 || y == 4) ? 1.0f : 0.0f;
+        open += state->solid[i] == 0 ? 1 : 0;
+    }
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        memset(state->velocity[k][state->current], 0, sizeof(float) * 33 * 32);
+    }
+    memset(state->levels[0].pressure, 0, sizeof(float) * 1024);
+    mvfxProjectGas(gas, state, expansion);
+    float mean = 4.0f / (float)open;
+    bool right = true;
+    const float* u = state->velocity[0][state->current];
+    const float* v = state->velocity[1][state->current];
+    for (int32_t i = 0; i < 1024; ++i)
+    {
+        int32_t x = i % 32;
+        int32_t y = i / 32;
+        float d = u[y * 33 + x + 1] - u[y * 33 + x] + v[(y + 1) * 32 + x] - v[y * 32 + x];
+        right = right && (state->solid[i] != 0 || fabsf(d - (expansion[i] - mean)) <= 1e-3f);
+    }
+    CHECK(right, "a sealed gas's expansion less its open cells' mean");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestHeld(void)
 {
     // A distance grid as an obstacle: its effect holds it (destroying it
@@ -497,6 +613,8 @@ int main(void)
     TestInstanceFrame();
     TestTurning();
     TestPassing();
+    TestBuried();
+    TestSealedSolid();
     TestHeld();
     TestRefusals();
     return s_failures;
