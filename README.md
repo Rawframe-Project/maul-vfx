@@ -57,9 +57,9 @@ XPBD with sheets expanded into meshes and units held to the instance,
 the host's frames or other particles, tearing, sheets' aerodynamics and
 units' self-collision, ribbons drawn as tubes, and rigid particles
 (spheres, capsules, boxes and convex hulls of a mesh by XPBD meeting
-every collider, scene queries, depth images and each other) are in
-place, and resting rigid particles sleeping comes next.
-It has 68 public functions.
+every collider, scene queries, depth images and each other, sleeping in
+islands at rest) are in place, and the grid gas comes next.
+It has 69 public functions.
 
 ## Building
 

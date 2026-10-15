@@ -102,10 +102,20 @@ enum
     // A unit's point's torn edges: bit 0 the one across to the next point,
     // bit 1 the one down to the point below.
     mvfx_attributeTorn = 89,
+    // A rigid particle's still time in seconds, and below 0 asleep
+    // (MVFX_SLEEP_NEW before its first sleeping substep, MVFX_SLEEP_HELD
+    // after); then the acceleration its forces gave it as it fell asleep.
+    mvfx_attributeSleep = 90,
+    mvfx_attributeRestX = 91,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeTorn + 1)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeRestX + 3)
+
+// A sleeping body's still time: before and after its first sleeping
+// substep.
+#define MVFX_SLEEP_NEW  (-1.0f)
+#define MVFX_SLEEP_HELD (-2.0f)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.

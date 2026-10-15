@@ -7,6 +7,7 @@
 #include "direction.h"
 #include "neighbor.h"
 #include "rigid_contact.h"
+#include "rigid_sleep.h"
 
 #include <math.h>
 
@@ -130,7 +131,9 @@ static void PairsOf(const mvfxRigidSolve* s, int32_t a, float cell)
                 float d = s->x[k][a] - s->x[k][b];
                 square += d * d;
             }
-            if (b <= a || !(square < reach * reach))
+            // Two sleeping bodies stay as they lie.
+            bool resting = mvfxBodyAsleep(s, a) && mvfxBodyAsleep(s, b);
+            if (b <= a || resting || !(square < reach * reach))
             {
                 continue;
             }

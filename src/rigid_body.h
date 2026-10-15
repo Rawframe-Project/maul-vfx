@@ -50,6 +50,10 @@ typedef struct mvfxRigidSolve
     float* start;
     float* mass;
     uint8_t* flags;
+    // For sleeping bodies, their still times and their forces'
+    // accelerations asleep (NULL when they never sleep).
+    float* sleep;
+    float* rest[3];
     size_t stride;
     // Whether they collide, and gravity's size.
     bool collides;

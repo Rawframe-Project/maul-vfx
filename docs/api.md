@@ -184,6 +184,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetDepthImage(mvfxContext* conte
 Sets the depth image an instance's emitters collide with when their collision asks for it, until it is set again or cleared (NULL). It is checked once, here; its pixels are borrowed, not copied, and must stay valid while it is set.  @param context   The context that owns the instance. @param instance  The instance. @param image     The image, or NULL for none. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL context or an image out of range (a size, a stride, a byte count short of its rows, a format, a projection not finite or not invertible, a place or a turn), which counts as misuse when the context is given (the image set before is then kept). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WakeBodies(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const float center[3], float radius);
+```
+Wakes an emitter's sleeping rigid particles (mvfxRigidDef.sleepSpeed) whose reach meets a sphere in its particles' space, now: for what the instance cannot see change (the host's scene answers, a depth image's pixels rewritten in place) or anything the host moved. The emitter's own colliders, the host's colliders and a depth image set again wake its bodies by themselves.  @param context   The context that owns the instance. @param instance  The instance. @param emitter   The emitter's index in the effect's def; an emitter whose particles never sleep is left as it is. @param center    The sphere's center, finite. @param radius    Its radius, 0 or more; INFINITY wakes them all. @return `mvfx_success`; `mvfx_errorStale` for an instance id that names no live instance; `mvfx_errorInvalid` for a NULL argument, an emitter index out of range, a center not finite or a radius below 0 or NaN, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEvents(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxEvent** eventsOut, int32_t* countOut);
 ```
 Reads the events an emitter of an instance wrote in the last step, in the order the step met them: deaths by age at its start, then as particles move (collisions) and are born (births, their collisions), then deaths by kills at its end. They stay until the next step or a restart; a finished instance's step clears them.  @param context    The context that owns the instance. @param instance   The instance. @param emitter    The emitter's index in the effect's def. @param eventsOut  Receives the events (NULL when there are none), the instance's own, read only. @param countOut   Receives how many. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -377,4 +382,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-68 functions across 11 headers.
+69 functions across 11 headers.

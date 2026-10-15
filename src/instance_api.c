@@ -12,6 +12,7 @@
 #include "instance.h"
 #include "mesh.h"
 #include "mesh_api.h"
+#include "rigid_wake.h"
 #include "slots.h"
 #include "spawn.h"
 
@@ -244,6 +245,7 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
     *statsOut = (mvfxEmitterStats){
         .status = mvfxEmitterStatusOf(live, emitter),
         .live = state->count,
+        .asleep = mvfxCountAsleep(live, emitter),
         .owed = state->owed,
         .refused = state->refused,
         .killed = state->killed,
@@ -636,6 +638,7 @@ mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId insta
     }
     if (image == nullptr)
     {
+        live->depthSerial += 1u;
         live->hasDepthView = false;
         return mvfx_success;
     }
@@ -645,8 +648,36 @@ mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId insta
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
+    live->depthSerial += 1u;
     live->depthView = view;
     live->hasDepthView = true;
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_WakeBodies(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                   const float center[3], float radius)
+{
+    bool valid = context != nullptr && center != nullptr && isfinite(center[0]) &&
+                 isfinite(center[1]) && isfinite(center[2]) && radius >= 0.0f;
+    if (!valid)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (emitter < 0 || emitter >= live->effect->emitterCount)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    mvfxWakeWithin(live, emitter, center, radius);
     return mvfx_success;
 }
 

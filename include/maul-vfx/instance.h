@@ -471,6 +471,31 @@ extern "C"
                                                                   mvfxInstanceId instance,
                                                                   const mvfxDepthImage* image);
 
+    /// Wakes an emitter's sleeping rigid particles (mvfxRigidDef.sleepSpeed)
+    /// whose reach meets a sphere in its particles' space, now: for what the
+    /// instance cannot see change (the host's scene answers, a depth
+    /// image's pixels rewritten in place) or anything the host moved. The
+    /// emitter's own colliders, the host's colliders and a depth image set
+    /// again wake its bodies by themselves.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in the effect's def; an emitter
+    ///                  whose particles never sleep is left as it is.
+    /// @param center    The sphere's center, finite.
+    /// @param radius    Its radius, 0 or more; INFINITY wakes them all.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance id that
+    ///         names no live instance; `mvfx_errorInvalid` for a NULL
+    ///         argument, an emitter index out of range, a center not finite
+    ///         or a radius below 0 or NaN, which counts as misuse when the
+    ///         context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WakeBodies(mvfxContext* context,
+                                                               mvfxInstanceId instance,
+                                                               int32_t emitter,
+                                                               const float center[3], float radius);
+
     /// Reads the events an emitter of an instance wrote in the last step,
     /// in the order the step met them: deaths by age at its start, then as
     /// particles move (collisions) and are born (births, their collisions),
@@ -585,8 +610,10 @@ extern "C"
     typedef struct mvfxEmitterStats
     {
         mvfxEmitterStatus status;
-        // Particles alive now.
+        // Particles alive now, and how many of them are rigid particles
+        // asleep.
         int32_t live;
+        int32_t asleep;
         // Particles it owed by now, from its rate and its bursts: spawned,
         // refused, and those whose life ended within the step they were
         // born in.

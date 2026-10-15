@@ -53,6 +53,7 @@ typedef struct EmitterAt
     size_t rigidStart;
     size_t rigidMass;
     size_t rigidFlags;
+    size_t rigidIslands;
     size_t rigidContacts;
     size_t rigidCounts;
     size_t rigidTable;
@@ -105,8 +106,8 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
 }
 
 // Adds an emitter of rigid particles' room: start poses, mass, flags,
-// contacts with the world, and for bodies meeting each other their grid
-// and pool.
+// islands for sleeping, contacts with the world, and for bodies meeting
+// each other their grid and pool.
 static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
                      EmitterAt* at)
 {
@@ -116,6 +117,8 @@ static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, in
     at->rigidMass = mvfxLayoutAdd(layout, (size_t)MVFX_RIGID_MASS_ARRAYS * rigid, sizeof(float),
                                   alignof(float));
     at->rigidFlags = mvfxLayoutAdd(layout, rigid, sizeof(uint8_t), alignof(uint8_t));
+    size_t sleeping = compiled->rigid.sleepSpeed > 0.0f ? rigid : 0u;
+    at->rigidIslands = mvfxLayoutAdd(layout, sleeping, sizeof(int32_t), alignof(int32_t));
     at->rigidContacts = mvfxLayoutAdd(layout, (size_t)MVFX_MAX_RIGID_CONTACTS * met,
                                       sizeof(mvfxBodyContact), alignof(mvfxBodyContact));
     at->rigidCounts = mvfxLayoutAdd(layout, met, sizeof(int32_t), alignof(int32_t));
@@ -314,6 +317,7 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].rigidStart = (float*)(block + at[e].rigidStart);
         instance->emitters[e].rigidMass = (float*)(block + at[e].rigidMass);
         instance->emitters[e].rigidFlags = (uint8_t*)(block + at[e].rigidFlags);
+        instance->emitters[e].rigidIslands = (int32_t*)(block + at[e].rigidIslands);
         instance->emitters[e].rigidContacts = (mvfxBodyContact*)(block + at[e].rigidContacts);
         instance->emitters[e].rigidCounts = (int32_t*)(block + at[e].rigidCounts);
         instance->emitters[e].rigidGrid = (mvfxNeighborGrid){

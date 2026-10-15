@@ -188,6 +188,13 @@ typedef struct mvfxEmitterState
     mvfxNeighborGrid rigidGrid;
     mvfxPairContact* rigidPairs;
     int32_t rigidPairCount;
+    // For sleeping rigid particles: each one's island (an array of the
+    // capacity), how many sleep, whether its colliders or its depth image
+    // changed as the step resolved them, and the depth image it saw.
+    int32_t* rigidIslands;
+    int32_t asleep;
+    bool worldMoved;
+    uint32_t depthSerial;
     float* selfStart;
     int32_t* selfPairs;
     int32_t* selfCounts;
@@ -286,6 +293,8 @@ typedef struct mvfxInstance
     // The depth image the host set, checked, its pixels borrowed.
     mvfxDepthView depthView;
     bool hasDepthView;
+    // Counts the depth images set (and cleared), for bodies asleep on one.
+    uint32_t depthSerial;
     // The colliders the host set, compiled, and their grids, held.
     mvfxCollider hostColliders[MVFX_MAX_COLLIDERS];
     struct mvfxGrid* hostColliderGrids[MVFX_MAX_COLLIDERS];

@@ -240,7 +240,10 @@ static bool IsRigidValid(const mvfxEmitterDef* def)
                 rigid->substeps <= MVFX_MAX_SUBSTEPS && IsWithin(rigid->restitution, 0.0f, 1.0f) &&
                 IsWithin(rigid->dynamicFriction, 0.0f, MVFX_MAX_DRAG) &&
                 IsWithin(rigid->staticFriction, rigid->dynamicFriction, MVFX_MAX_DRAG) &&
-                rigid->bodyContacts >= 0 && rigid->bodyContacts <= MVFX_MAX_BODY_CONTACTS;
+                rigid->bodyContacts >= 0 && rigid->bodyContacts <= MVFX_MAX_BODY_CONTACTS &&
+                IsWithin(rigid->sleepSpeed, 0.0f, MVFX_MAX_EXTENT) &&
+                (rigid->sleepSpeed == 0.0f ||
+                 (rigid->sleepTime > 0.0f && rigid->sleepTime <= MVFX_MAX_SLEEP_TIME));
     return body && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
 }
 

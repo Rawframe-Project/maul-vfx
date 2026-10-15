@@ -307,6 +307,10 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
               mvfxDrawScalar(&compiled->dragScale, age, parameters,
                              Draw(instance, emitter, DRAG_SALT, serial)));
     }
+    for (int32_t k = 0; Has(compiled, mvfx_attributeSleep) && k < 4; ++k)
+    {
+        Store(instance, emitter, (mvfxAttribute)(mvfx_attributeSleep + k), at, 0.0f);
+    }
     StoreWords(instance, emitter, birth, at);
     for (int32_t k = 0; Has(compiled, mvfx_attributeScenePointX) && k < 6; ++k)
     {

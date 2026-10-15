@@ -31,6 +31,7 @@ mvfxEmitterDef mvfxDefaultEmitterDef(void)
             },
         .velocity = {.mode = mvfx_directionShapeNormal, .direction = {0.0f, 0.0f, 1.0f}},
         .velocityModules = {.motionScale = {.value = 1.0f}},
+        .rigid = {.sleepSpeed = 0.05f, .sleepTime = 0.5f},
         .ribbon = {.pieces = 1,
                    .tileLength = 1.0f,
                    .normal = {0.0f, 0.0f, 1.0f},
@@ -573,6 +574,7 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
           mvfx_attributeTorn, 1);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
           6);
+    Store(plan, def->rigid.enabled && def->rigid.sleepSpeed > 0.0f, mvfx_attributeSleep, 4);
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         Store(plan, true, mvfx_attributeCustom + 4 * i, def->custom[i].components);

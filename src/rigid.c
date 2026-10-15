@@ -11,6 +11,7 @@
 #include "rigid_body.h"
 #include "rigid_contact.h"
 #include "rigid_pair.h"
+#include "rigid_sleep.h"
 
 #include <math.h>
 #include <string.h>
@@ -316,6 +317,12 @@ static void Prepare(const mvfxRigidSolve* s, int32_t i)
     mvfxBodyMass mass;
     mvfxSizeOf(instance, s->emitter, i, size);
     mvfxBodyShape shape = mvfxBodyShapeOf(s->rigid, s->hull, size, &mass);
+    // Asleep, immovable to the bodies meeting it, and meeting nothing.
+    bool asleep = mvfxBodyAsleep(s, i);
+    if (asleep)
+    {
+        mass = (mvfxBodyMass){0};
+    }
     s->mass[i] = mass.inverseMass;
     for (int32_t k = 0; k < 6; ++k)
     {
@@ -328,6 +335,11 @@ static void Prepare(const mvfxRigidSolve* s, int32_t i)
     if (state->hasDepth && collision->killOutsideView && !mvfxDepthSees(&state->depth, b.x))
     {
         instance->killScratch[i] = 1;
+    }
+    state->rigidCounts[i] = 0;
+    if (asleep)
+    {
+        return;
     }
     const mvfxBodyPose pose = {.x = {b.x[0], b.x[1], b.x[2]},
                                .q = {b.q[0], b.q[1], b.q[2], b.q[3]}};
@@ -480,6 +492,10 @@ static void Spin(const mvfxRigidSolve* s, int32_t first, int32_t end)
 {
     for (int32_t i = first; i < end; ++i)
     {
+        if (mvfxBodyAsleep(s, i))
+        {
+            continue;
+        }
         float size[3];
         mvfxBodyMass mass;
         mvfxSizeOf(s->instance, s->emitter, i, size);
@@ -545,6 +561,15 @@ static mvfxRigidSolve SolveOf(mvfxInstance* instance, int32_t emitter)
         s.q[k] =
             mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeOrientationX + k));
     }
+    if (mvfxHasAttribute(&compiled->plan, mvfx_attributeSleep))
+    {
+        s.sleep = mvfxAttributeArray(instance, emitter, mvfx_attributeSleep);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            s.rest[k] =
+                mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeRestX + k));
+        }
+    }
     return s;
 }
 
@@ -570,6 +595,10 @@ static void Substep(mvfxRigidSolve* s, int32_t first, int32_t end, int64_t from,
     }
     Spin(s, first, end);
     mvfxIntegrateRange(s->instance, s->emitter, first, end, from, seconds);
+    if (s->sleep != nullptr)
+    {
+        mvfxHoldSleeping(s, first, end);
+    }
     if (s->collides)
     {
         Meet(s, first, end, pairs);
@@ -589,6 +618,10 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
     int32_t count = state->count;
     mvfxRigidSolve s = SolveOf(instance, emitter);
     memset(state->rigidFlags, 0, (size_t)count);
+    if (s.sleep != nullptr && state->worldMoved)
+    {
+        mvfxWakeAll(&s, count);
+    }
     for (int32_t k = 0; k < s.rigid->substeps; ++k)
     {
         int64_t from = SubstepTick(instance, s.rigid->substeps, k);
@@ -597,6 +630,11 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
         {
             Substep(&s, 0, count, from, to, true);
         }
+    }
+    if (s.sleep != nullptr)
+    {
+        int64_t ticks = instance->clock - instance->stepStart;
+        mvfxSettleBodies(&s, count, (float)((double)ticks / (double)MVFX_TICKS_PER_SECOND));
     }
 }
 

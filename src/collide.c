@@ -706,3 +706,23 @@ int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
     }
     return contacts;
 }
+
+// Whether n floats are the same, value by value.
+static bool SameFloats(const float* a, const float* b, int32_t n)
+{
+    bool same = true;
+    for (int32_t k = 0; k < n; ++k)
+    {
+        same = same && a[k] == b[k];
+    }
+    return same;
+}
+
+bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b)
+{
+    return a->kind == b->kind && a->inside == b->inside && a->grid == b->grid &&
+           SameFloats(a->center, b->center, 3) && SameFloats(a->normal, b->normal, 3) &&
+           SameFloats(&a->radius, &b->radius, 1) && SameFloats(a->halfExtents, b->halfExtents, 3) &&
+           SameFloats(a->rotation, b->rotation, 4) && SameFloats(&a->scale, &b->scale, 1) &&
+           SameFloats(&a->grow, &b->grow, 1);
+}

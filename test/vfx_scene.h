@@ -141,8 +141,9 @@ static inline void BuildRigidScene(mvfxContext* context)
     hullDef.vertexCount = 7;
     mvfxMeshId hullMesh = {0};
     CHECK(mvfxCreateMesh(context, &hullDef, &hullMesh) == mvfx_success, "rigid hull");
-    mvfxEmitterDef emitters[4] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
-                                  mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    mvfxEmitterDef emitters[5] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                  mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                  mvfxDefaultEmitterDef()};
     for (int32_t e = 0; e < 4; ++e)
     {
         mvfxEmitterDef* emitter = &emitters[e];
@@ -198,9 +199,33 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[3].colliderCount = 3;
     emitters[3].size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.4f, 0.3f, 0.4f}, .max = {0.7f, 0.5f, 0.6f}};
+    // A box set down at rest on the world's floor, sleeping by the
+    // default's speed and time: asleep after the long step, then held.
+    static const mvfxBurst setDown = {.minCount = 1, .maxCount = 1, .cycles = 1, .probability = 1};
+    static const mvfxCollider floor = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+    mvfxEmitterDef* resting = &emitters[4];
+    resting->rate = 0.0f;
+    resting->bursts = &setDown;
+    resting->burstCount = 1;
+    resting->capacity = 2;
+    resting->lifetime = mvfxRangeSource(30.0f, 30.0f);
+    resting->shape.offset[1] = 0.25f;
+    resting->velocity.speed = (mvfxRange){0.0f, 0.0f};
+    resting->motion.gravity[1] = -9.81f;
+    resting->size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.5f, 0.5f, 0.5f}, .max = {0.5f, 0.5f, 0.5f}};
+    resting->rigid.enabled = true;
+    resting->rigid.shape = mvfx_rigidBox;
+    resting->rigid.density = 1.0f;
+    resting->rigid.substeps = 4;
+    resting->rigid.staticFriction = 0.6f;
+    resting->rigid.dynamicFriction = 0.4f;
+    resting->collision.enabled = true;
+    resting->colliders = &floor;
+    resting->colliderCount = 1;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
-    def.emitterCount = 4;
+    def.emitterCount = 5;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "rigid effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();

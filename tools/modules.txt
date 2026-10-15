@@ -32,9 +32,11 @@ depth: direction force
 collide: depth direction force grid
 effect_parts: direction effect life
 effect: allocator collide curve curve_integral elementary force hull kill over_life shape value velocity velocity_modules
-rigid: appearance collide depth direction instance integrate rigid_body rigid_contact rigid_pair
+rigid: appearance collide depth direction instance integrate rigid_body rigid_contact rigid_pair rigid_sleep
 rigid_body: direction event instance rigid_shape
-rigid_pair: appearance direction neighbor rigid_body rigid_contact
+rigid_pair: appearance direction neighbor rigid_body rigid_contact rigid_sleep
+rigid_sleep: effect rigid_body rigid_wake
+rigid_wake: appearance effect instance rigid_shape
 rigid_box: collide direction rigid_shape
 rigid_contact: collide convex depth direction rigid_box rigid_shape
 rigid_shape: hull
@@ -64,7 +66,7 @@ convex: direction hull
 effect_api: allocator context effect effect_parts float_mode grid grid_api hull mesh mesh_api slots
 mesh_api: allocator context hull mesh slots
 grid_api: context grid slots
-instance_api: collide context depth effect_api grid_api instance mesh mesh_api slots spawn
+instance_api: collide context depth effect_api grid_api instance mesh mesh_api rigid_wake slots spawn
 step: context effect emitter_step event float_mode instance instance_api tasks
 curve:
 curve_integral: curve

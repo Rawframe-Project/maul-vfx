@@ -561,6 +561,9 @@ extern "C"
 // substep, a body.
 #define MVFX_MAX_BODY_CONTACTS 64
 
+// The longest a rigid particle must be still before it sleeps, in seconds.
+#define MVFX_MAX_SLEEP_TIME 3600.0f
+
     // A rigid particle's shape, sized by the particle's size in the
     // particles' space and turned by its orientation.
     typedef uint8_t mvfxRigidShape;
@@ -639,6 +642,20 @@ extern "C"
         // A hull's mesh, its hull taken from its vertices when the effect is
         // created (the effect does not follow its later positions).
         mvfxMeshId hull;
+        // Sleeping: a body is still while its farthest point's speed (its
+        // speed plus its angular speed times its reach) is below sleepSpeed,
+        // in the particles' lengths a second, from 0 (never sleeps) to
+        // MVFX_MAX_EXTENT; bodies joined by contacts sleep together once
+        // all have been still sleepTime seconds, above 0 (when sleepSpeed
+        // is) and at most MVFX_MAX_SLEEP_TIME. Asleep, a body keeps its
+        // pose and meets nothing (it still ages and dies), and is
+        // immovable to the bodies meeting it; it wakes when an awake body
+        // meets it, when its forces change by more than sleepSpeed over
+        // sleepTime, when the emitter's colliders or depth image change,
+        // or by mvfxInstance_WakeBodies. mvfxDefaultEmitterDef sets 0.05
+        // and 0.5.
+        float sleepSpeed;
+        float sleepTime;
     } mvfxRigidDef;
 
 // The most plexus links an emitter keeps a step.

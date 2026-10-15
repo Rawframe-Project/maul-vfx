@@ -460,13 +460,42 @@ static void ResolveVelocityModules(mvfxInstance* instance, int32_t emitter)
     mvfxMapPoint(&map, compiled->radialCenter, out->radialCenter);
 }
 
+// Whether two maps are the same, value by value.
+static bool SameMap(const mvfxSpaceMap* a, const mvfxSpaceMap* b)
+{
+    bool same = a->sigma == b->sigma;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && a->before[k] == b->before[k] && a->after[k] == b->after[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && a->rotation[k] == b->rotation[k];
+    }
+    return same;
+}
+
+// Whether the depth image the emitter resolved changed since the step
+// before: another image set, or its map from the world.
+static bool DepthMoved(const mvfxInstance* instance, const mvfxEmitterState* state, bool had,
+                       const mvfxSpaceMap* map)
+{
+    return state->hasDepth != had || (had && (state->depthSerial != instance->depthSerial ||
+                                              !SameMap(map, &state->depth.map)));
+}
+
 // Resolves the emitter's colliders, then the instance's when it takes
-// them, grown by the particles' radius.
+// them, grown by the particles' radius; notes whether any changed since
+// the step before (for sleeping bodies).
 static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
+    int32_t before = state->colliderCount;
+    bool had = state->hasDepth;
+    const mvfxSpaceMap seen = state->depth.map;
     state->colliderCount = 0;
+    state->worldMoved = false;
     if (!compiled->collision.enabled)
     {
         return;
@@ -495,9 +524,14 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
         const struct mvfxGrid* grid =
             own ? compiled->colliderGrids[c] : instance->hostColliderGrids[host];
         mvfxSpaceMap map = SpaceMapOf(instance, emitter, (mvfxSimulationSpace)collider->space);
-        state->colliders[state->colliderCount++] =
-            mvfxResolveCollider(collider, grid, &map, radius);
+        mvfxResolvedCollider resolved = mvfxResolveCollider(collider, grid, &map, radius);
+        state->worldMoved =
+            state->worldMoved || c >= before || !mvfxSameCollider(&state->colliders[c], &resolved);
+        state->colliders[state->colliderCount++] = resolved;
     }
+    state->worldMoved = state->worldMoved || state->colliderCount != before ||
+                        DepthMoved(instance, state, had, &seen);
+    state->depthSerial = instance->depthSerial;
 }
 
 void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)

@@ -96,6 +96,8 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/rigid_contact.c
     src/rigid_pair.c
     src/rigid_shape.c
+    src/rigid_sleep.c
+    src/rigid_wake.c
     src/scene_query.c
     src/self.c
     src/shape.c
@@ -182,6 +184,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(hull WHITEBOX)
     maul_add_test(convex WHITEBOX)
     maul_add_test(rigid_hull WHITEBOX)
+    maul_add_test(rigid_sleep WHITEBOX)
     maul_add_test(steering)
     maul_add_test(trail)
     maul_add_test(tube)
