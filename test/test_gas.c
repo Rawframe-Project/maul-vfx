@@ -4,12 +4,13 @@
 // Gases: every refusal of a gas def, an effect of a gas alone; a source
 // filling the cells it holds and nothing else; a puff carried one cell a
 // step by a uniform velocity, its mass kept, in 2D and in 3D; decay at
-// its rate; velocities read at the cells' centers; a local box following
-// its instance and a world box staying; an instance with a gas finishing
-// once stopped and empty, cleared at once by stopping and clearing, and
-// emptied by restarting; an instance's bounds holding its gases' boxes;
-// the reading's refusals.
+// its rate, of the scalars and the velocity; a linear field sampled
+// exactly from each array; tracing back by the midpoint rule; velocities read at the cells'
+// centers; a local box following its instance and a world box staying; an instance with a gas
+// finishing once stopped and empty, cleared at once by stopping and clearing, and emptied by
+// restarting; an instance's bounds holding its gases' boxes; the reading's refusals.
 
+#include "gas_step.h"
 #include "test_harness.h"
 
 #include "maul-vfx/effect.h"
@@ -274,6 +275,102 @@ static void TestDecay(void)
     Mass(16, 128, &later, &place);
     CHECK(fabsf(later / sum - expf(-3.0f * 20.0f / 64.0f)) <= 1e-5f, "decay at its rate");
     mvfxDestroyContext(s_scene.context);
+    // The velocity decaying at 2 a second, its box stopped after a step:
+    // 10 steps later it is exp(-2 10 / 64) of itself.
+    gas = Puff();
+    gas.velocityDecay = 2.0f;
+    Open(&gas);
+    Steps(1);
+    Stop(mvfx_stopEmitting);
+    Read(mvfx_gasVelocityX, 128);
+    float before = s_field[40];
+    Steps(10);
+    Read(mvfx_gasVelocityX, 128);
+    CHECK(fabsf(s_field[40] / before - expf(-2.0f * 10.0f / 64.0f)) <= 1e-5f,
+          "the velocity decays at its rate");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestSampling(void)
+{
+    // A linear field over each array of a 5 by 4 by 3 lattice (the cells'
+    // and the faces' across each axis), sampled anywhere among its
+    // points: reproduced, as trilinear weights reproduce a linear field,
+    // each array's points in their own place (a face on its cell's side).
+    static float values[6 * 5 * 4];
+    const mvfxGasLattice l = {.n = {5, 4, 3}, .cell = 0.1f, .h = 0.1f};
+    bool right = true;
+    for (int32_t axis = -1; axis < 3; ++axis)
+    {
+        const int32_t m[3] = {5 + (axis == 0 ? 1 : 0), 4 + (axis == 1 ? 1 : 0),
+                              3 + (axis == 2 ? 1 : 0)};
+        int32_t i = 0;
+        for (int32_t z = 0; z < m[2]; ++z)
+        {
+            for (int32_t y = 0; y < m[1]; ++y)
+            {
+                for (int32_t x = 0; x < m[0]; ++x)
+                {
+                    values[i++] = 1.0f + 2.0f * (float)x + 3.0f * (float)y - 0.5f * (float)z;
+                }
+            }
+        }
+        for (int32_t s = 0; s < 40; ++s)
+        {
+            float c[3];
+            float p[3];
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                c[k] = (float)(m[k] - 1) * (float)((s * (7 + 3 * k)) % 41) / 40.0f;
+                p[k] = c[k] + (k == axis ? 0.0f : 0.5f);
+            }
+            float expected = 1.0f + 2.0f * c[0] + 3.0f * c[1] - 0.5f * c[2];
+            right = right && fabsf(mvfxGasSample(values, &l, axis, p) - expected) <= 1e-4f;
+        }
+    }
+    CHECK(right, "a linear field sampled");
+}
+
+static void TestTraceBack(void)
+{
+    // A 2D lattice of 16 by 16 cells of 0.1 turning at 2 radians a second
+    // about its middle: a place 2 cells off it traced back over 0.1 s by
+    // the midpoint rule, p - h v(p - h/2 v(p)), the velocity linear and so
+    // sampled exactly; Euler's p - h v(p) is 0.04 cells off it.
+    static float u[17 * 16];
+    static float v[16 * 17];
+    static float w[16 * 16 * 2];
+    const mvfxGasLattice l = {.n = {16, 16, 1}, .cell = 0.1f, .h = 0.1f};
+    const float omega = 2.0f;
+    for (int32_t y = 0; y < 16; ++y)
+    {
+        for (int32_t x = 0; x <= 16; ++x)
+        {
+            u[y * 17 + x] = -omega * ((float)y + 0.5f - 8.0f) * 0.1f;
+        }
+    }
+    for (int32_t y = 0; y <= 16; ++y)
+    {
+        for (int32_t x = 0; x < 16; ++x)
+        {
+            v[y * 16 + x] = omega * ((float)x + 0.5f - 8.0f) * 0.1f;
+        }
+    }
+    float* velocity[3] = {u, v, w};
+    const float p[3] = {10.0f, 8.0f, 0.5f};
+    float back[3];
+    mvfxGasTraceBack(velocity, &l, p, back);
+    double o = (double)omega;
+    double px = (double)p[0];
+    double py = (double)p[1];
+    // v(p) = omega (-(y - 8), x - 8); the midpoint p - h/2 v(p).
+    double mx = px + 0.05 * o * (py - 8.0);
+    double my = py - 0.05 * o * (px - 8.0);
+    double ex = px + 0.1 * o * (my - 8.0);
+    double ey = py - 0.1 * o * (mx - 8.0);
+    CHECK(fabs((double)back[0] - ex) <= 1e-5 && fabs((double)back[1] - ey) <= 1e-5 &&
+              back[2] == 0.5f,
+          "traced back by the midpoint rule");
 }
 
 static void TestPlaces(void)
@@ -382,6 +479,8 @@ int main(void)
     TestFill();
     TestCarried();
     TestDecay();
+    TestSampling();
+    TestTraceBack();
     TestPlaces();
     TestFinish();
     TestReadRefusals();

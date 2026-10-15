@@ -9,17 +9,9 @@
 
 #include <math.h>
 
-// A gas's lattice: its cells along each axis and a substep's span.
-typedef struct Lattice
-{
-    int32_t n[3];
-    float cell;
-    float h;
-} Lattice;
-
 // An array's points along each axis: the cells', or the faces' across
 // axis (0 to 2) for -1 the cells.
-static void PointsOf(const Lattice* l, int32_t axis, int32_t out[3])
+static void PointsOf(const mvfxGasLattice* l, int32_t axis, int32_t out[3])
 {
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -27,10 +19,7 @@ static void PointsOf(const Lattice* l, int32_t axis, int32_t out[3])
     }
 }
 
-// An array's value at place p (in cells, a cell's center at its index
-// plus one half), by trilinear weights, the place held within the array's
-// points.
-static float Sample(const float* values, const Lattice* l, int32_t axis, const float p[3])
+float mvfxGasSample(const float* values, const mvfxGasLattice* l, int32_t axis, const float p[3])
 {
     int32_t m[3];
     PointsOf(l, axis, m);
@@ -63,17 +52,17 @@ static float Sample(const float* values, const Lattice* l, int32_t axis, const f
 }
 
 // The velocity at place p, in cells a second.
-static void VelocityAt(float* const velocity[3], const Lattice* l, const float p[3], float out[3])
+static void VelocityAt(float* const velocity[3], const mvfxGasLattice* l, const float p[3],
+                       float out[3])
 {
     for (int32_t k = 0; k < 3; ++k)
     {
-        out[k] = l->n[k] > 1 || k < 2 ? Sample(velocity[k], l, k, p) / l->cell : 0.0f;
+        out[k] = l->n[k] > 1 || k < 2 ? mvfxGasSample(velocity[k], l, k, p) / l->cell : 0.0f;
     }
 }
 
-// Where the gas at place p was a substep before: traced back by the
-// midpoint rule.
-static void TraceBack(float* const velocity[3], const Lattice* l, const float p[3], float out[3])
+void mvfxGasTraceBack(float* const velocity[3], const mvfxGasLattice* l, const float p[3],
+                      float out[3])
 {
     float v[3];
     VelocityAt(velocity, l, p, v);
@@ -91,8 +80,8 @@ static void TraceBack(float* const velocity[3], const Lattice* l, const float p[
 
 // Carries an array (the cells', or the faces' across axis) from one
 // buffer to the other by the velocity, each value times keep.
-static void Advect(float* const velocity[3], const Lattice* l, int32_t axis, const float* from,
-                   float* to, float keep)
+static void Advect(float* const velocity[3], const mvfxGasLattice* l, int32_t axis,
+                   const float* from, float* to, float keep)
 {
     int32_t m[3];
     PointsOf(l, axis, m);
@@ -110,8 +99,8 @@ static void Advect(float* const velocity[3], const Lattice* l, int32_t axis, con
                     p[k] = (float)at[k] + (k == axis ? 0.0f : 0.5f);
                 }
                 float back[3];
-                TraceBack(velocity, l, p, back);
-                to[i++] = keep * Sample(from, l, axis, back);
+                mvfxGasTraceBack(velocity, l, p, back);
+                to[i++] = keep * mvfxGasSample(from, l, axis, back);
             }
         }
     }
@@ -134,7 +123,7 @@ static bool Holds(const mvfxGasSource* source, const float local[3])
 
 // A point's place in the box's frame, a cell's center or (across axis) a
 // face's.
-static void LocalOf(const Lattice* l, int32_t axis, const int32_t at[3], float out[3])
+static void LocalOf(const mvfxGasLattice* l, int32_t axis, const int32_t at[3], float out[3])
 {
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -144,7 +133,7 @@ static void LocalOf(const Lattice* l, int32_t axis, const int32_t at[3], float o
 }
 
 // A source's rates over a substep into the cells it holds.
-static void PourCells(const mvfxGasSource* source, const Lattice* l, float* const scalars[3])
+static void PourCells(const mvfxGasSource* source, const mvfxGasLattice* l, float* const scalars[3])
 {
     const float rates[3] = {source->density * l->h, source->temperature * l->h,
                             source->fuel * l->h};
@@ -168,7 +157,8 @@ static void PourCells(const mvfxGasSource* source, const Lattice* l, float* cons
 }
 
 // A source's velocity onto the faces across axis it holds.
-static void PourFaces(const mvfxGasSource* source, const Lattice* l, int32_t axis, float* faces)
+static void PourFaces(const mvfxGasSource* source, const mvfxGasLattice* l, int32_t axis,
+                      float* faces)
 {
     int32_t m[3];
     PointsOf(l, axis, m);
@@ -190,7 +180,8 @@ static void PourFaces(const mvfxGasSource* source, const Lattice* l, int32_t axi
 
 // One substep: the sources (while the instance emits), then the velocity
 // and the scalars carried by the velocity as it was, each decaying.
-static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const Lattice* l, bool pours)
+static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxGasLattice* l,
+                    bool pours)
 {
     int32_t now = state->current;
     float* velocity[3] = {state->velocity[0][now], state->velocity[1][now],
@@ -239,7 +230,7 @@ void mvfxStepGas(const mvfxCompiledGas* gas, mvfxGasState* state, int64_t from, 
                  int64_t stopTick)
 {
     int32_t substeps = gas->def.substeps;
-    Lattice l = {.cell = gas->def.cellSize};
+    mvfxGasLattice l = {.cell = gas->def.cellSize};
     for (int32_t k = 0; k < 3; ++k)
     {
         l.n[k] = gas->def.size[k];
