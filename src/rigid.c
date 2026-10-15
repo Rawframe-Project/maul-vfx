@@ -5,6 +5,7 @@
 
 #include "appearance.h"
 #include "collide.h"
+#include "depth.h"
 #include "direction.h"
 #include "event.h"
 #include "integrate.h"
@@ -431,19 +432,55 @@ static void Strike(const Solve* s, int32_t i, const mvfxBodyContacts* list)
     instance->killScratch[i] |= killed ? 1 : 0;
 }
 
-// Meets body i's contacts at its predicted pose.
+// Body i's scene plane, the host's last answer to its query; false for
+// none.
+static bool ScenePlaneOf(const Solve* s, int32_t i, mvfxResolvedCollider* out)
+{
+    mvfxInstance* instance = s->instance;
+    if (!mvfxHasAttribute(&instance->effect->emitters[s->emitter].plan, mvfx_attributeScenePointX))
+    {
+        return false;
+    }
+    *out = (mvfxResolvedCollider){.kind = mvfx_colliderPlane};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->center[k] = ((const float*)mvfxAttributeArray(
+            instance, s->emitter, (mvfxAttribute)(mvfx_attributeScenePointX + k)))[i];
+        out->normal[k] = ((const float*)mvfxAttributeArray(
+            instance, s->emitter, (mvfxAttribute)(mvfx_attributeSceneNormalX + k)))[i];
+    }
+    return out->normal[0] != 0.0f || out->normal[1] != 0.0f || out->normal[2] != 0.0f;
+}
+
+// Meets body i's contacts at its predicted pose; outside the depth image
+// it is killed when the collision def says.
 static void SolveBody(const Solve* s, int32_t i)
 {
     mvfxInstance* instance = s->instance;
     mvfxEmitterState* state = &instance->emitters[s->emitter];
     Body b = Load(s, i);
+    const mvfxCollision* collision = &instance->effect->emitters[s->emitter].collision;
+    if (state->hasDepth && collision->killOutsideView && !mvfxDepthSees(&state->depth, b.x))
+    {
+        instance->killScratch[i] = 1;
+    }
     float size[3];
     mvfxSizeOf(instance, s->emitter, i, size);
     mvfxBodyShape shape = mvfxBodyShapeOf(s->rigid, size, &b.inverseMass, b.inverseInertia);
     mvfxBodyContacts list = {.count = 0};
     const mvfxBodyPose pose = {.x = {b.x[0], b.x[1], b.x[2]},
                                .q = {b.q[0], b.q[1], b.q[2], b.q[3]}};
-    mvfxGatherBodyContacts(state->colliders, state->colliderCount, &pose, &shape, &list);
+    const mvfxBodyPose from = {.x = {b.x0[0], b.x0[1], b.x0[2]},
+                               .q = {b.q0[0], b.q0[1], b.q0[2], b.q0[3]}};
+    mvfxResolvedCollider plane;
+    const mvfxBodySurfaces surfaces = {
+        .colliders = state->colliders,
+        .count = state->colliderCount,
+        .plane = ScenePlaneOf(s, i, &plane) ? &plane : nullptr,
+        .depth = state->hasDepth ? &state->depth : nullptr,
+        .from = &from,
+    };
+    mvfxGatherBodyContacts(&surfaces, &pose, &shape, &list);
     state->rigidContactsCapped += (uint64_t)list.capped;
     if (list.count == 0)
     {

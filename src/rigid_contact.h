@@ -61,11 +61,25 @@ typedef struct mvfxBodyContacts
 mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const float size[3], float* inverseMass,
                               float inverseInertia[3]);
 
-// Adds the contacts of a body of a shape at a pose with colliders (planes,
-// spheres and boxes; other kinds met by none) to a list, each deeper than
-// 0, at most MVFX_MAX_RIGID_CONTACTS kept (the deepest) and those past
-// counted.
-void mvfxGatherBodyContacts(const mvfxResolvedCollider* colliders, int32_t count,
-                            const mvfxBodyPose* b, const mvfxBodyShape* s, mvfxBodyContacts* list);
+struct mvfxResolvedDepth;
+
+// What a body meets: colliders, its own scene plane (NULL for none) and
+// a depth image (NULL for none) with the body's pose at the substep's
+// start, which its samples' ways through the image run from.
+typedef struct mvfxBodySurfaces
+{
+    const mvfxResolvedCollider* colliders;
+    int32_t count;
+    const mvfxResolvedCollider* plane;
+    const struct mvfxResolvedDepth* depth;
+    const mvfxBodyPose* from;
+} mvfxBodySurfaces;
+
+// Adds the contacts of a body of a shape at a pose with its surfaces to a
+// list, each deeper than 0, at most MVFX_MAX_RIGID_CONTACTS kept (the
+// deepest) and those past counted. Each collider is its patches eight
+// apart (a box kept inside one a face), then the plane's and the image's.
+void mvfxGatherBodyContacts(const mvfxBodySurfaces* surfaces, const mvfxBodyPose* b,
+                            const mvfxBodyShape* s, mvfxBodyContacts* list);
 
 #endif

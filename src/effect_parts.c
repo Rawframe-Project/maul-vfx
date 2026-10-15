@@ -227,8 +227,7 @@ static bool IsAttachValid(const mvfxEffectDef* def, int32_t i)
 
 // Whether an emitter's rigid particles are valid: a shape, a density,
 // substeps, restitution and friction in range; particles, not units nor a
-// beam, meeting planes, spheres and boxes (no grids, scene queries nor
-// depth).
+// beam.
 static bool IsRigidValid(const mvfxEmitterDef* def)
 {
     const mvfxRigidDef* rigid = &def->rigid;
@@ -241,13 +240,7 @@ static bool IsRigidValid(const mvfxEmitterDef* def)
                 rigid->substeps <= MVFX_MAX_SUBSTEPS && IsWithin(rigid->restitution, 0.0f, 1.0f) &&
                 IsWithin(rigid->dynamicFriction, 0.0f, MVFX_MAX_DRAG) &&
                 IsWithin(rigid->staticFriction, rigid->dynamicFriction, MVFX_MAX_DRAG);
-    const mvfxCollision* collision = &def->collision;
-    bool met = !collision->enabled || (!collision->sceneQueries && !collision->depthImage);
-    for (int32_t c = 0; met && collision->enabled && c < def->colliderCount; ++c)
-    {
-        met = def->colliders[c].kind <= mvfx_colliderBox;
-    }
-    return body && met && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
+    return body && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
 }
 
 // Whether an emitter's plexus links are valid.

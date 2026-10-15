@@ -617,26 +617,222 @@ static void TestGyroscopic(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static bool s_bump;
+
+// A grid of heights over x and z from -2 to 2, three points a side:
+// flat, half of x, or a bump of 0.3 at the middle.
+static mvfxCollider Heights(mvfxContext* context, bool slope)
+{
+    static const float flat[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    static const float rising[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+    static const float bump[9] = {0, 0, 0, 0, 0.3f, 0, 0, 0, 0};
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 3;
+    def.size[2] = 3;
+    def.values = slope ? rising : (s_bump ? bump : flat);
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "heights");
+    return (mvfxCollider){.kind = mvfx_colliderHeightfield,
+                          .halfExtents = {2, 0, 2},
+                          .rotation = {0, 0, 0, 1},
+                          .grid = grid};
+}
+
+// The distance to a sphere of radius 1, over a box of half size 2, 17
+// points a side.
+static mvfxCollider Ball(mvfxContext* context)
+{
+    static float distances[17 * 17 * 17];
+    for (int32_t i = 0; i < 17 * 17 * 17; ++i)
+    {
+        float p[3] = {(float)(i % 17) * 0.25f - 2.0f, (float)(i / 17 % 17) * 0.25f - 2.0f,
+                      (float)(i / 289) * 0.25f - 2.0f};
+        distances[i] = sqrtf(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]) - 1.0f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 17;
+    def.size[1] = 17;
+    def.size[2] = 17;
+    def.values = distances;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "ball");
+    return (mvfxCollider){.kind = mvfx_colliderDistance,
+                          .halfExtents = {2, 2, 2},
+                          .rotation = {0, 0, 0, 1},
+                          .grid = grid};
+}
+
+// Opens a scene whose emitter meets one collider the context makes.
+static void OpenOn(mvfxEmitterDef* emitter, mvfxCollider (*make)(mvfxContext*, bool), bool flag,
+                   const double place[3], const float velocity[3])
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = nullptr;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    s_colliders[0] = make(context, flag);
+    emitter->colliderCount = 1;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    memset(&s_scene, 0, sizeof s_scene);
+    s_scene.context = context;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &s_scene.instance) == mvfx_success, "instance");
+    mvfxSpawnRequest request = {.count = 1, .positions = place, .velocities = velocity};
+    CHECK(mvfxInstance_Spawn(context, s_scene.instance, 0, &request) == mvfx_success, "spawned");
+}
+
+static mvfxCollider BallOf(mvfxContext* context, bool unused)
+{
+    (void)unused;
+    return Ball(context);
+}
+
+static void TestGrids(void)
+{
+    static const float still[3] = {0, 0, 0};
+    // A box on flat heights rests flat on them.
+    mvfxEmitterDef box = Rigid(mvfx_rigidBox, 1, 1, 1);
+    static const double above[3] = {0.3, 1.5, 0.2};
+    OpenOn(&box, Heights, false, above, still);
+    Steps(90);
+    CHECK(fabsf(X(1) - 0.5f) <= 0.01f && Upright() >= 0.9999f && Speed() <= 0.02f,
+          "a box on a heightfield");
+    mvfxDestroyContext(s_scene.context);
+    // A box over a bump rests on its top (by its bottom face's center,
+    // the corners in the air), not on its corners.
+    s_bump = true;
+    mvfxEmitterDef perched = Rigid(mvfx_rigidBox, 1, 1, 1);
+    static const double over[3] = {0, 0.81, 0};
+    OpenOn(&perched, Heights, false, over, still);
+    Steps(20);
+    CHECK(X(1) >= 0.79f, "a box on a bump");
+    mvfxDestroyContext(s_scene.context);
+    s_bump = false;
+    // A box on heights rising at a half, turned to lie on them, is held
+    // by friction 0.6, its center 0.5 across the slope from it.
+    float angle = atanf(0.5f);
+    mvfxEmitterDef held = Rigid(mvfx_rigidBox, 1, 1, 1);
+    Tilt(&held, angle);
+    double on[3] = {-0.5 * sin((double)angle), 0.5 * cos((double)angle), 0};
+    OpenOn(&held, Heights, true, on, still);
+    Steps(60);
+    float across = (X(1) - 0.5f * X(0)) * cosf(angle);
+    CHECK(fabsf(X(0) - (float)on[0]) <= 0.01f && fabsf(across - 0.5f) <= 0.01f,
+          "held on a sloped heightfield");
+    mvfxDestroyContext(s_scene.context);
+    // A sphere on a ball of distances rests on its top.
+    mvfxEmitterDef sphere = Rigid(mvfx_rigidSphere, 0.5f, 0.5f, 0.5f);
+    static const double atop[3] = {0, 1.8, 0};
+    OpenOn(&sphere, BallOf, false, atop, still);
+    Steps(90);
+    CHECK(fabsf(X(1) - 1.25f) <= 0.02f && fabsf(X(0)) <= 1e-3f && Speed() <= 0.02f,
+          "a sphere on a distance grid");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestSceneQueries(void)
+{
+    // A box falling with no colliders of its own, the host answering each
+    // query with the ground: it rests on it.
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+    emitter.colliders = NULL;
+    emitter.colliderCount = 0;
+    emitter.collision.sceneQueries = true;
+    emitter.collision.queryCapacity = 4;
+    emitter.collision.lookahead = 0.25f;
+    static const double above[3] = {0, 1.5, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, above, still);
+    for (int32_t i = 0; i < 90; ++i)
+    {
+        Steps(1);
+        const mvfxSceneQuery* queries = NULL;
+        int32_t count = 0;
+        CHECK(mvfxInstance_GetSceneQueries(s_scene.context, s_scene.instance, 0, &queries,
+                                           &count) == mvfx_success,
+              "queries");
+        static const mvfxSceneAnswer ground[4] = {{.hit = true, .normal = {0, 1, 0}},
+                                                  {.hit = true, .normal = {0, 1, 0}},
+                                                  {.hit = true, .normal = {0, 1, 0}},
+                                                  {.hit = true, .normal = {0, 1, 0}}};
+        CHECK(mvfxInstance_AnswerSceneQueries(s_scene.context, s_scene.instance, 0, ground,
+                                              count) == mvfx_success,
+              "answered");
+    }
+    CHECK(fabsf(X(1) - 0.5f) <= 0.01f && Upright() >= 0.9999f && Speed() <= 0.02f,
+          "resting on the host's ground");
+    mvfxDestroyContext(s_scene.context);
+}
+
+// A camera 6 along z looking down -z at a floor at z = 0, 90 degrees
+// wide, 32 pixels a side.
+static float s_depth[32 * 32];
+
+static mvfxDepthImage Floor(void)
+{
+    const float a = (float)(100.0 / (0.1 - 100.0));
+    for (int32_t i = 0; i < 32 * 32; ++i)
+    {
+        s_depth[i] = (a * -6.0f + a * 0.1f) / 6.0f;
+    }
+    return (mvfxDepthImage){.pixels = s_depth,
+                            .byteCount = (int64_t)sizeof s_depth,
+                            .width = 32,
+                            .height = 32,
+                            .stride = 32 * 4,
+                            .format = mvfx_depthFloat32,
+                            .projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, a, -1, 0, 0, a * 0.1f, 0},
+                            .origin = {0, 0, 6},
+                            .rotation = {0, 0, 0, 1}};
+}
+
+static void TestDepth(void)
+{
+    // A box falling down z onto the image's floor rests on it; one out of
+    // the image's view is killed.
+    for (int32_t outside = 0; outside < 2; ++outside)
+    {
+        mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+        emitter.motion.gravity[1] = 0.0f;
+        emitter.motion.gravity[2] = -9.81f;
+        emitter.colliders = NULL;
+        emitter.colliderCount = 0;
+        emitter.collision.depthImage = true;
+        emitter.collision.depthThickness = 0.5f;
+        emitter.collision.depthSamples = 4;
+        emitter.collision.killOutsideView = true;
+        double place[3] = {outside == 1 ? 20.0 : 0.5, 0.3, 1.5};
+        static const float still[3] = {0, 0, 0};
+        Open(&emitter, place, still);
+        const mvfxDepthImage image = Floor();
+        CHECK(mvfxInstance_SetDepthImage(s_scene.context, s_scene.instance, &image) == mvfx_success,
+              "depth image");
+        Steps(90);
+        if (outside == 1)
+        {
+            CHECK(Stats().live == 0, "killed outside the view");
+        }
+        else
+        {
+            CHECK(fabsf(X(2) - 0.5f) <= 0.02f && Speed() <= 0.05f, "resting on the image");
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = nullptr;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     int32_t refused = 0;
-    for (int32_t c = 0; c < 9; ++c)
+    for (int32_t c = 0; c < 7; ++c)
     {
         mvfxEmitterDef bad = Rigid(mvfx_rigidBox, 1, 1, 1);
-        static const float heights[4] = {0, 0, 0, 0};
-        mvfxGridDef flat = mvfxDefaultGridDef();
-        flat.size[0] = 2;
-        flat.size[2] = 2;
-        flat.values = heights;
-        mvfxGridId field = {0};
-        CHECK(c != 6 || mvfxCreateGrid(context, &flat, &field) == mvfx_success, "a grid");
-        const mvfxCollider grid = {.kind = mvfx_colliderHeightfield,
-                                   .halfExtents = {1, 1, 1},
-                                   .rotation = {0, 0, 0, 1},
-                                   .grid = field};
         switch (c)
         {
         case 0:
@@ -661,12 +857,6 @@ static void TestChecks(void)
                                      .direction = {1, 0, 0},
                                      .substeps = 1};
             break;
-        case 6:
-            bad.colliders = &grid;
-            break;
-        case 7:
-            bad.collision.sceneQueries = true;
-            break;
         default:
             bad.beam.enabled = true;
             break;
@@ -677,7 +867,7 @@ static void TestChecks(void)
         mvfxEffectId effect = {0};
         refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid ? 1 : 0;
     }
-    CHECK(refused == 9, "the checks");
+    CHECK(refused == 7, "the checks");
     mvfxEmitterDef good = Rigid(mvfx_rigidBox, 1, 1, 1);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &good;
@@ -705,6 +895,9 @@ int main(void)
     TestEdges();
     TestBeam();
     TestInsideBoxes();
+    TestGrids();
+    TestSceneQueries();
+    TestDepth();
     TestGyroscopic();
     TestChecks();
     return s_failures == 0 ? 0 : 1;

@@ -254,3 +254,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   contacts) and inside, the emitter's and the host's; restitution of
   contacts struck at once is shared, and depth from a moving collider is
   pushed out without becoming velocity.
+- Rigid particles meet heightfields and distance grids (sampled), the
+  host's scene answers and the depth image, killed outside its view
+  with `killOutsideView`.

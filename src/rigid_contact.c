@@ -3,6 +3,7 @@
 
 #include "rigid_contact.h"
 
+#include "depth.h"
 #include "direction.h"
 
 #include <math.h>
@@ -717,37 +718,196 @@ static void BoxBoxContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
     }
 }
 
-void mvfxGatherBodyContacts(const mvfxResolvedCollider* colliders, int32_t count,
-                            const mvfxBodyPose* b, const mvfxBodyShape* s, mvfxBodyContacts* list)
+// The most points a shape is sampled at against a grid or a depth image.
+#define MOST_SAMPLES 14
+
+// The points (in its frame) a shape meets a grid or a depth image by, as
+// spheres of its radius: a sphere's center; a capsule's core, its points
+// at most its radius apart (at most nine); a box's eight corners (bit k
+// of i set for +X, +Y, +Z), then its faces' centers (8 + 2k for +k, 9 +
+// 2k for -k).
+static int32_t BoxSamples(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
+{
+    for (int32_t i = 0; i < 14; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float corner = (i >> k & 1) != 0 ? s->half[k] : -s->half[k];
+            float side = (i - 8) % 2 == 0 ? s->half[k] : -s->half[k];
+            out[i][k] = i < 8 ? corner : ((i - 8) / 2 == k ? side : 0.0f);
+        }
+    }
+    return 14;
+}
+
+static int32_t SamplesOf(const mvfxBodyShape* s, float out[MOST_SAMPLES][3])
+{
+    if (s->kind == mvfx_rigidBox)
+    {
+        return BoxSamples(s, out);
+    }
+    int32_t spans = s->kind == mvfx_rigidCapsule && s->radius > 0.0f
+                        ? (int32_t)ceilf(fminf(2.0f * s->half[1] / s->radius, 8.0f))
+                        : 0;
+    for (int32_t i = 0; i <= spans; ++i)
+    {
+        CoreAt(s, spans > 0 ? (float)i / (float)spans : 0.5f, out[i]);
+    }
+    return spans + 1;
+}
+
+// A sample's place in the world.
+static void SampleAt(const mvfxBodyPose* b, const float point[3], float out[3])
+{
+    mvfxRotate(b->q, point, out);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] += b->x[k];
+    }
+}
+
+// The contact of a sample at world, of the shape's radius, with a surface
+// along unit n at the sample's center's distance.
+static mvfxBodyContact SampleContact(const mvfxBodyPose* b, const mvfxBodyShape* s,
+                                     const float point[3], const float world[3], const float n[3],
+                                     float distance)
+{
+    const float in[3] = {-s->radius * n[0], -s->radius * n[1], -s->radius * n[2]};
+    float down[3];
+    ToBody(b->q, in, down);
+    const float body[3] = {point[0] + down[0], point[1] + down[1], point[2] + down[2]};
+    const float place[3] = {world[0] + in[0], world[1] + in[1], world[2] + in[2]};
+    return ContactAt(body, place, n, distance - s->radius);
+}
+
+// Adds the samples' contacts that are met: all but a box's faces'
+// centers, each met only where the surface bulges under it, deeper than
+// each corner of its face. On a flat surface the corners carry a face; a
+// fifth contact amid them shifts the load the one pass gives each and
+// unsettled a box held on a slope.
+static void AddSamples(const mvfxBodyShape* s, const mvfxBodyContact* contacts, const bool* found,
+                       int32_t count, mvfxBodyContacts* list)
 {
     for (int32_t i = 0; i < count; ++i)
     {
-        const mvfxResolvedCollider* c = &colliders[i];
-        // Patches by collider, eight apart for a box's faces.
+        bool met = found[i];
+        if (s->kind == mvfx_rigidBox && i >= 8)
+        {
+            int32_t k = (i - 8) / 2;
+            int32_t side = (i - 8) % 2 == 0 ? 1 : 0;
+            for (int32_t c = 0; met && c < 8; ++c)
+            {
+                bool onFace = (c >> k & 1) == side;
+                met = !onFace || !found[c] || contacts[i].depth < contacts[c].depth;
+            }
+        }
+        if (met)
+        {
+            Add(list, &contacts[i]);
+        }
+    }
+}
+
+// A heightfield or a distance grid, by its field at the samples.
+static void GridContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
+                         const mvfxResolvedCollider* c, mvfxBodyContacts* list)
+{
+    float samples[MOST_SAMPLES][3];
+    mvfxBodyContact contacts[MOST_SAMPLES];
+    bool found[MOST_SAMPLES];
+    int32_t count = SamplesOf(s, samples);
+    for (int32_t i = 0; i < count; ++i)
+    {
+        float world[3];
+        float n[3];
+        SampleAt(b, samples[i], world);
+        float distance = mvfxFieldDistance(c, world, n);
+        found[i] = distance < INFINITY;
+        contacts[i] = found[i] ? SampleContact(b, s, samples[i], world, n, distance)
+                               : (mvfxBodyContact){.depth = INFINITY};
+    }
+    AddSamples(s, contacts, found, count, list);
+}
+
+// The depth image, by each sample's way over the substep: its first place
+// behind the surface (within the thickness), its depth there from the
+// surface grown by the shape's radius.
+static void DepthContacts(const mvfxBodySurfaces* surfaces, const mvfxBodyPose* b,
+                          const mvfxBodyShape* s, mvfxBodyContacts* list)
+{
+    mvfxResolvedDepth depth = *surfaces->depth;
+    depth.radius = s->radius;
+    float samples[MOST_SAMPLES][3];
+    mvfxBodyContact contacts[MOST_SAMPLES];
+    bool found[MOST_SAMPLES];
+    int32_t count = SamplesOf(s, samples);
+    for (int32_t i = 0; i < count; ++i)
+    {
+        float from[3];
+        float world[3];
+        float t = 0.0f;
+        float point[3] = {0.0f, 0.0f, 0.0f};
+        float n[3] = {0.0f, 1.0f, 0.0f};
+        SampleAt(surfaces->from, samples[i], from);
+        SampleAt(b, samples[i], world);
+        found[i] = mvfxDepthHit(&depth, from, world, &t, point, n);
+        const float gap[3] = {world[0] - point[0], world[1] - point[1], world[2] - point[2]};
+        contacts[i] = found[i] ? SampleContact(b, s, samples[i], world, n, Dot(gap, n) + s->radius)
+                               : (mvfxBodyContact){.depth = INFINITY};
+    }
+    AddSamples(s, contacts, found, count, list);
+}
+
+// Patches by collider, eight apart for a box's faces.
+static void ColliderContacts(const mvfxResolvedCollider* c, const mvfxBodyPose* b,
+                             const mvfxBodyShape* s, mvfxBodyContacts* list)
+{
+    if (c->kind == mvfx_colliderPlane)
+    {
+        PlaneContacts(b, s, c, list);
+    }
+    else if (c->kind == mvfx_colliderSphere && c->inside)
+    {
+        InsideContacts(b, s, c, list);
+    }
+    else if (c->kind == mvfx_colliderSphere)
+    {
+        OutsideContacts(b, s, c, list);
+    }
+    else if (c->kind == mvfx_colliderBox && c->inside)
+    {
+        InsideBoxContacts(b, s, c, list);
+    }
+    else if (c->kind == mvfx_colliderBox && s->kind == mvfx_rigidBox)
+    {
+        BoxBoxContacts(b, s, c, list);
+    }
+    else if (c->kind == mvfx_colliderBox)
+    {
+        CoreBoxContacts(b, s, c, list);
+    }
+    else
+    {
+        GridContacts(b, s, c, list);
+    }
+}
+
+void mvfxGatherBodyContacts(const mvfxBodySurfaces* surfaces, const mvfxBodyPose* b,
+                            const mvfxBodyShape* s, mvfxBodyContacts* list)
+{
+    for (int32_t i = 0; i < surfaces->count; ++i)
+    {
         list->collider = 8 * i;
-        if (c->kind == mvfx_colliderPlane)
-        {
-            PlaneContacts(b, s, c, list);
-        }
-        else if (c->kind == mvfx_colliderSphere && c->inside)
-        {
-            InsideContacts(b, s, c, list);
-        }
-        else if (c->kind == mvfx_colliderSphere)
-        {
-            OutsideContacts(b, s, c, list);
-        }
-        else if (c->kind == mvfx_colliderBox && c->inside)
-        {
-            InsideBoxContacts(b, s, c, list);
-        }
-        else if (c->kind == mvfx_colliderBox && s->kind == mvfx_rigidBox)
-        {
-            BoxBoxContacts(b, s, c, list);
-        }
-        else if (c->kind == mvfx_colliderBox)
-        {
-            CoreBoxContacts(b, s, c, list);
-        }
+        ColliderContacts(&surfaces->colliders[i], b, s, list);
+    }
+    list->collider = 8 * surfaces->count;
+    if (surfaces->plane != nullptr)
+    {
+        PlaneContacts(b, s, surfaces->plane, list);
+    }
+    list->collider = 8 * surfaces->count + 8;
+    if (surfaces->depth != nullptr)
+    {
+        DepthContacts(surfaces, b, s, list);
     }
 }

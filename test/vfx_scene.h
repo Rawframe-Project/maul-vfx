@@ -47,9 +47,11 @@ static inline void SceneKick(const mvfxModuleCall* call, void* user)
 
 // Creates the scene's effects and instances on a context.
 // Rigid particles: boxes of mixed sizes in the world thrown onto a
-// tilted plane, a sphere and a turned box moving with the instance and
-// kept in the host's room, losing life as they strike; capsules in the emitter's space
-// bouncing inside a sphere around a block; spheres killed by their second
+// tilted plane, a sphere and a turned box moving with the instance, kept
+// in the host's room and meeting the depth image, losing life as they
+// strike; capsules in the emitter's space bouncing inside a sphere around
+// a block and a ball of distances; spheres on a plane and a bump of
+// heights meeting the host's scene answers, killed by their second
 // strike.
 static inline void BuildRigidScene(mvfxContext* context)
 {
@@ -74,13 +76,55 @@ static inline void BuildRigidScene(mvfxContext* context)
          .halfExtents = {0.4f, 0.3f, 0.4f},
          .rotation = {0, 0.38268343f, 0, 0.92387953f}},
     };
-    static const mvfxCollider bowl[2] = {
+    // A bump of heights for the spheres and a ball of distances in the
+    // capsules' bowl.
+    static const float bump[9] = {0, 0.1f, 0, 0.1f, 0.4f, 0.2f, 0, 0.2f, 0};
+    mvfxGridDef bumpDef = mvfxDefaultGridDef();
+    bumpDef.size[0] = 3;
+    bumpDef.size[2] = 3;
+    bumpDef.values = bump;
+    mvfxGridId bumpGrid = {0};
+    CHECK(mvfxCreateGrid(context, &bumpDef, &bumpGrid) == mvfx_success, "rigid heights");
+    float distances[125];
+    for (int32_t k = 0; k < 125; ++k)
+    {
+        float x = (float)(k % 5) * 0.25f - 0.5f;
+        float y = (float)(k / 5 % 5) * 0.25f - 0.5f;
+        float z = (float)(k / 25) * 0.25f - 0.5f;
+        distances[k] = sqrtf(x * x + y * y + z * z) - 0.3f;
+    }
+    mvfxGridDef ballDef = mvfxDefaultGridDef();
+    ballDef.size[0] = 5;
+    ballDef.size[1] = 5;
+    ballDef.size[2] = 5;
+    ballDef.values = distances;
+    mvfxGridId ballGrid = {0};
+    CHECK(mvfxCreateGrid(context, &ballDef, &ballGrid) == mvfx_success, "rigid ball");
+    const mvfxCollider hills[2] = {
+        {.kind = mvfx_colliderPlane,
+         .space = mvfx_spaceLocal,
+         .center = {0, -1, 0},
+         .normal = {0.2f, 1, 0}},
+        {.kind = mvfx_colliderHeightfield,
+         .space = mvfx_spaceLocal,
+         .center = {0, -0.9f, 0},
+         .halfExtents = {1, 0, 1},
+         .rotation = {0, 0, 0, 1},
+         .grid = bumpGrid},
+    };
+    const mvfxCollider bowl[3] = {
         {.kind = mvfx_colliderSphere, .space = mvfx_spaceLocal, .radius = 2.0f, .inside = true},
         {.kind = mvfx_colliderBox,
          .space = mvfx_spaceLocal,
          .center = {0.3f, -1.4f, 0},
          .halfExtents = {0.5f, 0.2f, 0.3f},
          .rotation = {0, 0, 0.19509032f, 0.98078528f}},
+        {.kind = mvfx_colliderDistance,
+         .space = mvfx_spaceLocal,
+         .center = {-0.3f, -1.7f, -0.4f},
+         .halfExtents = {0.5f, 0.5f, 0.5f},
+         .rotation = {0, 0, 0, 1},
+         .grid = ballGrid},
     };
     static const mvfxCollider room = {.kind = mvfx_colliderBox,
                                       .space = mvfx_spaceLocal,
@@ -126,11 +170,19 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[1].size.min[1] = 0.6f;
     emitters[1].size.max[1] = 0.9f;
     emitters[0].collision.hostColliders = true;
+    emitters[0].collision.depthImage = true;
+    emitters[0].collision.depthThickness = 0.3f;
+    emitters[0].collision.depthSamples = 2;
     emitters[1].colliders = bowl;
-    emitters[1].colliderCount = 2;
+    emitters[1].colliderCount = 3;
     emitters[2].rigid.shape = mvfx_rigidSphere;
     emitters[2].killRules = &secondStrike;
     emitters[2].killRuleCount = 1;
+    emitters[2].colliders = hills;
+    emitters[2].colliderCount = 2;
+    emitters[2].collision.sceneQueries = true;
+    emitters[2].collision.queryCapacity = 8;
+    emitters[2].collision.lookahead = 0.2f;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 3;

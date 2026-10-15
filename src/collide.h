@@ -49,6 +49,12 @@ mvfxCollider mvfxCompileCollider(const mvfxCollider* collider);
 mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const struct mvfxGrid* grid,
                                          const mvfxSpaceMap* map, float radius);
 
+// A grid collider's signed distance at a point in the particles' space,
+// positive on its allowed side (a heightfield's across its surface, by
+// its slope), INFINITY outside its box; and the unit way toward the
+// allowed side there.
+float mvfxFieldDistance(const mvfxResolvedCollider* c, const float point[3], float normal[3]);
+
 // A step's first contact: its share of the segment, its place and the
 // surface's normal.
 typedef struct mvfxContact

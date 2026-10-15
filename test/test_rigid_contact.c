@@ -42,7 +42,8 @@ static mvfxBodyContacts Gather(const mvfxResolvedCollider* c, const mvfxBodyPose
     float inverseInertia[3];
     mvfxBodyShape shape = mvfxBodyShapeOf(rigid, size, &inverseMass, inverseInertia);
     mvfxBodyContacts list = {.count = 0};
-    mvfxGatherBodyContacts(c, 1, pose, &shape, &list);
+    const mvfxBodySurfaces surfaces = {.colliders = c, .count = 1};
+    mvfxGatherBodyContacts(&surfaces, pose, &shape, &list);
     return list;
 }
 

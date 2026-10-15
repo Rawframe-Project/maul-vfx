@@ -479,6 +479,26 @@ static void PushOutOfField(const mvfxResolvedCollider* c, float local[3])
     }
 }
 
+float mvfxFieldDistance(const mvfxResolvedCollider* c, const float point[3], float normal[3])
+{
+    const float* q = c->rotation;
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    const float d[3] = {point[0] - c->center[0], point[1] - c->center[1], point[2] - c->center[2]};
+    float local[3];
+    mvfxRotate(inverse, d, local);
+    float f = FieldAt(c, local);
+    if (!(f < INFINITY))
+    {
+        return INFINITY;
+    }
+    float g[3];
+    GradientAt(c, local, g);
+    mvfxRotate(q, g, normal);
+    // A heightfield's gap is along its Y: across the surface it is that
+    // times the slope's cosine.
+    return c->kind == mvfx_colliderHeightfield ? f * fabsf(g[1]) : f;
+}
+
 // The part [low, high] of the local segment a to b within the grid's box
 // (a heightfield's X and Z); false when it misses it.
 static bool ClipToBox(const mvfxResolvedCollider* c, const float a[3], const float b[3], float* low,
