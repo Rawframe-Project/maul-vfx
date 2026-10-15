@@ -35,6 +35,10 @@ typedef struct mvfxResolvedCollider
     const struct mvfxGrid* grid;
     float scale;
     float grow;
+    // The grid's values' serial as resolved: a collider kept from a step
+    // before is compared by it and never reads its grid, which the host
+    // may have changed or destroyed since.
+    uint64_t gridSerial;
 } mvfxResolvedCollider;
 
 bool mvfxIsColliderValid(const mvfxCollider* collider);
@@ -52,10 +56,12 @@ mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const str
 // A point's signed distance to a resolved collider's surface, positive on
 // its allowed side: above a plane, outside a sphere or a box (inside one
 // that keeps particles inside), a grid's field (INFINITY outside its
-// box).
-float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3]);
+// box). With bounds, a grid's distance outside its box instead (below 0
+// inside), not reading its grid.
+float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3], bool bounds);
 
-// Whether two resolved colliders are the same, field by field.
+// Whether two resolved colliders are the same, field by field (a grid's
+// by its serial too).
 bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b);
 
 // A grid collider's signed distance at a point in the particles' space,

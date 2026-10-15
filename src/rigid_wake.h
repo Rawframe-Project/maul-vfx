@@ -17,8 +17,8 @@ float mvfxReachOf(const mvfxInstance* instance, int32_t emitter, int32_t i);
 void mvfxWakeWithin(mvfxInstance* instance, int32_t emitter, const float center[3], float radius);
 
 // Wakes an emitter's sleeping bodies a collider's change reaches: those
-// whose reach (and contact margin) meets the collider as it was or as it
-// is, either NULL for one added or removed.
+// whose reach (and contact margin) meets the collider as it was (a grid
+// by its box) or as it is, either NULL for one added or removed.
 void mvfxWakeNear(mvfxInstance* instance, int32_t emitter, const mvfxResolvedCollider* before,
                   const mvfxResolvedCollider* after);
 

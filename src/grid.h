@@ -23,6 +23,10 @@ typedef struct mvfxGrid
     size_t blockBytes;
     // How many effects read it.
     int32_t users;
+    // Its values' serial, new from the context's count at its creation and
+    // at each change of its values: a grid's values seen before are told
+    // from new ones (and from another grid's at the same address).
+    uint64_t serial;
 } mvfxGrid;
 
 // Whether a grid def is valid.

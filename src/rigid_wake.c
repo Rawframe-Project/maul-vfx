@@ -69,8 +69,9 @@ void mvfxWakeNear(mvfxInstance* instance, int32_t emitter, const mvfxResolvedCol
         }
         const float p[3] = {x[0][i], x[1][i], x[2][i]};
         float gap = INFINITY;
-        gap = before != nullptr ? fminf(gap, mvfxColliderGap(before, p)) : gap;
-        gap = after != nullptr ? fminf(gap, mvfxColliderGap(after, p)) : gap;
+        // The collider as it was by its bounds: its grid may be gone.
+        gap = before != nullptr ? fminf(gap, mvfxColliderGap(before, p, true)) : gap;
+        gap = after != nullptr ? fminf(gap, mvfxColliderGap(after, p, false)) : gap;
         float reach = (1.0f + MVFX_CONTACT_MARGIN) * mvfxReachOf(instance, emitter, i);
         sleep[i] = gap <= reach ? 0.0f : sleep[i];
     }

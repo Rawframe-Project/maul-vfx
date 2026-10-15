@@ -43,6 +43,7 @@ mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGrid
     {
         return mvfx_errorCapacity;
     }
+    grid->serial = ++context->gridValues;
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->grids, grid, &generation);
     *gridOut = (mvfxGridId){index1, generation};
@@ -93,6 +94,7 @@ mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float
         return mvfx_errorInvalid;
     }
     mvfxStoreGridValues(live, values);
+    live->serial = ++context->gridValues;
     return mvfx_success;
 }
 

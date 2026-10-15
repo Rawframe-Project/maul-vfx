@@ -120,6 +120,7 @@ mvfxResolvedCollider mvfxResolveCollider(const mvfxCollider* collider, const str
             .grid = grid,
             .scale = sigma,
             .grow = radius,
+            .gridSerial = grid->serial,
         };
         for (int32_t k = 0; k < 3; ++k)
         {
@@ -721,8 +722,9 @@ static bool SameFloats(const float* a, const float* b, int32_t n)
 bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b)
 {
     return a->kind == b->kind && a->inside == b->inside && a->grid == b->grid &&
-           SameFloats(a->center, b->center, 3) && SameFloats(a->normal, b->normal, 3) &&
-           SameFloats(&a->radius, &b->radius, 1) && SameFloats(a->halfExtents, b->halfExtents, 3) &&
+           a->gridSerial == b->gridSerial && SameFloats(a->center, b->center, 3) &&
+           SameFloats(a->normal, b->normal, 3) && SameFloats(&a->radius, &b->radius, 1) &&
+           SameFloats(a->halfExtents, b->halfExtents, 3) &&
            SameFloats(a->rotation, b->rotation, 4) && SameFloats(&a->scale, &b->scale, 1) &&
            SameFloats(&a->grow, &b->grow, 1);
 }
@@ -742,7 +744,7 @@ static float BoxDistance(const float local[3], const float half[3])
     return inside > 0.0f ? sqrtf(outside) : inside;
 }
 
-float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3])
+float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3], bool bounds)
 {
     const float d[3] = {point[0] - c->center[0], point[1] - c->center[1], point[2] - c->center[2]};
     float gap = 0.0f;
@@ -755,13 +757,13 @@ float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3])
         gap = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) - c->radius;
         gap = c->inside ? -gap : gap;
     }
-    else if (c->kind == mvfx_colliderBox)
+    else if (c->kind == mvfx_colliderBox || bounds)
     {
         const float back[4] = {-c->rotation[0], -c->rotation[1], -c->rotation[2], c->rotation[3]};
         float local[3];
         mvfxRotate(back, d, local);
         gap = BoxDistance(local, c->halfExtents);
-        gap = c->inside ? -gap : gap;
+        gap = c->inside && c->kind == mvfx_colliderBox ? -gap : gap;
     }
     else
     {
