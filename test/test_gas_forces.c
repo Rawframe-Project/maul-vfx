@@ -494,7 +494,7 @@ static void TestExpansion(void)
             int32_t y = i / 16;
             expansion[i] = (x == 7 || x == 8) && (y == 7 || y == 8) ? 1.0f : 0.0f;
         }
-        mvfxProjectGas(gas, state, expansion);
+        mvfxProjectGas(gas, state, expansion, NULL);
         float mean = sealed != 0 ? 4.0f / 256.0f : 0.0f;
         for (int32_t i = 0; i < 256; ++i)
         {

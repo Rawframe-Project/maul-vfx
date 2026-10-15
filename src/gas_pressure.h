@@ -17,6 +17,7 @@
 #define MAUL_VFX_SRC_GAS_PRESSURE_H
 
 #include "gas.h"
+#include "tasks.h"
 
 // Sets the faces on a gas's closed walls (and a 2D gas's Z faces) to 0.
 void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3]);
@@ -29,7 +30,9 @@ void mvfxGasAreas(const mvfxCompiledGas* gas, mvfxGasState* state);
 // then (with pressure cycles) its divergence removed by the solve, which
 // starts from the pressure the last solve left. expansion, when not NULL,
 // is the divergence each cell keeps (in a box closed on every side, less
-// its mean).
-void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float* expansion);
+// its mean). The solve's passes are split over tasks, or run on this
+// thread for NULL; the results are the same bits either way.
+void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float* expansion,
+                    const mvfxTasks* tasks);
 
 #endif

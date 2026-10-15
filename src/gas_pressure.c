@@ -23,7 +23,29 @@ typedef struct Level
     float* const* areas;
     float* const* coefficients;
     float* weights;
+    const mvfxTasks* tasks;
 } Level;
+
+// The least rows a task's range takes: a small level is one range.
+#define ROW_RANGE 8
+
+// A pass over a level's rows, split over its tasks: what each range
+// reads and writes.
+typedef struct Pass
+{
+    const Level* l;
+    const Level* other;
+    const float* from;
+    float* to;
+    const float* rhs;
+    float omega;
+} Pass;
+
+// Runs a pass's range function over rows rows.
+static void Rows(const Level* l, mvfxTaskFn* range, int32_t rows, Pass* pass)
+{
+    mvfxRunTasks(l->tasks, range, rows, ROW_RANGE, pass);
+}
 
 // The fine cells a level cell spans along axis k.
 static float Width(const Level* l, int32_t k, int32_t i)
@@ -183,25 +205,32 @@ static void RowSums(const Level* l, const float* p, int32_t y, int32_t z, float*
     }
 }
 
+static void JacobiRows(int32_t start, int32_t end, void* context)
+{
+    const Pass* pass = context;
+    const Level* l = pass->l;
+    float sums[MVFX_MAX_GAS_SIZE] = {0};
+    for (int32_t r = start; r < end; ++r)
+    {
+        int32_t y = r % l->n[1];
+        int32_t z = r / l->n[1];
+        RowSums(l, pass->from, y, z, sums);
+        int64_t i = (int64_t)r * l->n[0];
+        for (int32_t x = 0; x < l->n[0]; ++x, ++i)
+        {
+            float weight = l->weights[i];
+            float solved = weight > 0.0f ? (sums[x] - pass->rhs[i]) / weight : 0.0f;
+            pass->to[i] = (1.0f - pass->omega) * pass->from[i] + pass->omega * solved;
+        }
+    }
+}
+
 // One pass of weighted Jacobi on (weighted sum - weight p) = rhs, from one
 // buffer into the other.
 static void Jacobi(const Level* l, const float* from, float* to, const float* rhs, float omega)
 {
-    float sums[MVFX_MAX_GAS_SIZE] = {0};
-    int64_t i = 0;
-    for (int32_t z = 0; z < l->n[2]; ++z)
-    {
-        for (int32_t y = 0; y < l->n[1]; ++y)
-        {
-            RowSums(l, from, y, z, sums);
-            for (int32_t x = 0; x < l->n[0]; ++x, ++i)
-            {
-                float weight = l->weights[i];
-                float solved = weight > 0.0f ? (sums[x] - rhs[i]) / weight : 0.0f;
-                to[i] = (1.0f - omega) * from[i] + omega * solved;
-            }
-        }
-    }
+    Pass pass = {.l = l, .from = from, .to = to, .rhs = rhs, .omega = omega};
+    Rows(l, JacobiRows, l->n[1] * l->n[2], &pass);
 }
 
 // passes passes of Jacobi on a level, its pressure left in its buffer.
@@ -214,20 +243,57 @@ static void Smooth(const Level* l, mvfxGasLevel* v, int32_t passes, float omega)
     }
 }
 
+static void ResidualRows(int32_t start, int32_t end, void* context)
+{
+    const Pass* pass = context;
+    const Level* l = pass->l;
+    float sums[MVFX_MAX_GAS_SIZE] = {0};
+    for (int32_t r = start; r < end; ++r)
+    {
+        RowSums(l, pass->from, r % l->n[1], r / l->n[1], sums);
+        int64_t i = (int64_t)r * l->n[0];
+        for (int32_t x = 0; x < l->n[0]; ++x, ++i)
+        {
+            pass->to[i] = pass->rhs[i] - (sums[x] - l->weights[i] * pass->from[i]);
+        }
+    }
+}
+
 // The residual rhs - (weighted sum - weight p), into the scratch buffer.
 static void Residual(const Level* l, mvfxGasLevel* v)
 {
-    float sums[MVFX_MAX_GAS_SIZE] = {0};
-    int64_t i = 0;
-    for (int32_t z = 0; z < l->n[2]; ++z)
+    Pass pass = {.l = l, .from = v->pressure, .to = v->scratch, .rhs = v->rhs};
+    Rows(l, ResidualRows, l->n[1] * l->n[2], &pass);
+}
+
+// The coarse rows' right-hand sides: each cell's children's residuals
+// added in the order of the fine cells (Z, then Y, then X), into to; and
+// their pressures 0, into from's buffer through rhs's owner.
+static void RestrictRows(int32_t start, int32_t end, void* context)
+{
+    const Pass* pass = context;
+    const int32_t* fine = pass->l->n;
+    const int32_t* n = pass->other->n;
+    for (int32_t r = start; r < end; ++r)
     {
-        for (int32_t y = 0; y < l->n[1]; ++y)
+        int32_t cy = r % n[1];
+        int32_t cz = r / n[1];
+        int64_t c = (int64_t)r * n[0];
+        for (int32_t cx = 0; cx < n[0]; ++cx, ++c)
         {
-            RowSums(l, v->pressure, y, z, sums);
-            for (int32_t x = 0; x < l->n[0]; ++x, ++i)
+            float sum = 0.0f;
+            for (int32_t z = 2 * cz; z < 2 * cz + 2 && z < fine[2]; ++z)
             {
-                v->scratch[i] = v->rhs[i] - (sums[x] - l->weights[i] * v->pressure[i]);
+                for (int32_t y = 2 * cy; y < 2 * cy + 2 && y < fine[1]; ++y)
+                {
+                    for (int32_t x = 2 * cx; x < 2 * cx + 2 && x < fine[0]; ++x)
+                    {
+                        sum += pass->from[((int64_t)z * fine[1] + y) * fine[0] + x];
+                    }
+                }
             }
+            pass->to[c] = sum;
+            ((float*)pass->rhs)[c] = 0.0f;
         }
     }
 }
@@ -237,24 +303,8 @@ static void Residual(const Level* l, mvfxGasLevel* v)
 // and its pressure 0.
 static void Restrict(const Level* fine, const float* residual, const Level* coarse, mvfxGasLevel* v)
 {
-    int64_t cells = (int64_t)coarse->n[0] * coarse->n[1] * coarse->n[2];
-    for (int64_t c = 0; c < cells; ++c)
-    {
-        v->rhs[c] = 0.0f;
-        v->pressure[c] = 0.0f;
-    }
-    int64_t i = 0;
-    for (int32_t z = 0; z < fine->n[2]; ++z)
-    {
-        for (int32_t y = 0; y < fine->n[1]; ++y)
-        {
-            for (int32_t x = 0; x < fine->n[0]; ++x, ++i)
-            {
-                int64_t c = ((int64_t)(z / 2) * coarse->n[1] + y / 2) * coarse->n[0] + x / 2;
-                v->rhs[c] += residual[i];
-            }
-        }
-    }
+    Pass pass = {.l = fine, .other = coarse, .from = residual, .to = v->rhs, .rhs = v->pressure};
+    Rows(fine, RestrictRows, coarse->n[1] * coarse->n[2], &pass);
 }
 
 // Along one axis, a fine cell's parent and the parent beside it toward
@@ -269,45 +319,54 @@ static void Parents(int32_t i, int32_t coarse, int32_t fine, int32_t at[2], floa
     weight[1] = fine > 1 ? 0.25f : 0.0f;
 }
 
-// Adds the coarse level's pressure, interpolated, to the fine level's.
-static void Prolong(const Level* coarse, const float* e, const Level* fine, float* p)
+static void ProlongRows(int32_t start, int32_t end, void* context)
 {
-    int64_t i = 0;
-    for (int32_t z = 0; z < fine->n[2]; ++z)
+    const Pass* pass = context;
+    const Level* coarse = pass->other;
+    const Level* fine = pass->l;
+    for (int32_t r = start; r < end; ++r)
     {
-        for (int32_t y = 0; y < fine->n[1]; ++y)
+        int32_t y = r % fine->n[1];
+        int32_t z = r / fine->n[1];
+        int32_t ay[2];
+        int32_t az[2];
+        float wy[2];
+        float wz[2];
+        Parents(y, coarse->n[1], fine->n[1], ay, wy);
+        Parents(z, coarse->n[2], fine->n[2], az, wz);
+        int64_t i = (int64_t)r * fine->n[0];
+        for (int32_t x = 0; x < fine->n[0]; ++x, ++i)
         {
-            for (int32_t x = 0; x < fine->n[0]; ++x, ++i)
+            int32_t ax[2];
+            float wx[2];
+            Parents(x, coarse->n[0], fine->n[0], ax, wx);
+            float sum = 0.0f;
+            for (int32_t corner = 0; corner < 8; ++corner)
             {
-                int32_t ax[2];
-                int32_t ay[2];
-                int32_t az[2];
-                float wx[2];
-                float wy[2];
-                float wz[2];
-                Parents(x, coarse->n[0], fine->n[0], ax, wx);
-                Parents(y, coarse->n[1], fine->n[1], ay, wy);
-                Parents(z, coarse->n[2], fine->n[2], az, wz);
-                float sum = 0.0f;
-                for (int32_t corner = 0; corner < 8; ++corner)
-                {
-                    int32_t a = corner & 1;
-                    int32_t b = corner >> 1 & 1;
-                    int32_t c = corner >> 2;
-                    int64_t at = ((int64_t)az[c] * coarse->n[1] + ay[b]) * coarse->n[0] + ax[a];
-                    sum += wx[a] * wy[b] * wz[c] * e[at];
-                }
-                p[i] += sum;
+                int32_t a = corner & 1;
+                int32_t b = corner >> 1 & 1;
+                int32_t c = corner >> 2;
+                int64_t at = ((int64_t)az[c] * coarse->n[1] + ay[b]) * coarse->n[0] + ax[a];
+                sum += wx[a] * wy[b] * wz[c] * pass->from[at];
             }
+            pass->to[i] += sum;
         }
     }
 }
 
-// A V cycle from level l down.
-static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, float omega)
+// Adds the coarse level's pressure, interpolated, to the fine level's.
+static void Prolong(const Level* coarse, const float* e, const Level* fine, float* p)
 {
-    const Level here = {gas->levels[l],  gas->def.size,          1 << l,
-                        state->areas[l], state->coefficients[l], state->weights[l]};
+    Pass pass = {.l = fine, .other = coarse, .from = e, .to = p};
+    Rows(fine, ProlongRows, fine->n[1] * fine->n[2], &pass);
+}
+
+// A V cycle from level l down.
+static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, float omega,
+                  const mvfxTasks* tasks)
+{
+    const Level here = {gas->levels[l],         gas->def.size,     1 << l, state->areas[l],
+                        state->coefficients[l], state->weights[l], tasks};
     mvfxGasLevel* v = &state->levels[l];
     if (l + 1 == gas->levelCount)
     {
@@ -317,10 +376,10 @@ static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, fl
     Smooth(&here, v, SMOOTH_PASSES, omega);
     Residual(&here, v);
     const Level below = {
-        gas->levels[l + 1],         gas->def.size,        2 << l, state->areas[l + 1],
-        state->coefficients[l + 1], state->weights[l + 1]};
+        gas->levels[l + 1],         gas->def.size,         2 << l, state->areas[l + 1],
+        state->coefficients[l + 1], state->weights[l + 1], tasks};
     Restrict(&here, v->scratch, &below, &state->levels[l + 1]);
-    Cycle(gas, state, l + 1, omega);
+    Cycle(gas, state, l + 1, omega, tasks);
     Prolong(&below, state->levels[l + 1].pressure, &here, v->pressure);
     Smooth(&here, v, SMOOTH_PASSES, omega);
 }
@@ -486,7 +545,8 @@ static void Expand(const mvfxCompiledGas* gas, const mvfxGasState* state, const 
     }
 }
 
-void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float* expansion)
+void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float* expansion,
+                    const mvfxTasks* tasks)
 {
     float* velocity[3] = {state->velocity[0][state->current], state->velocity[1][state->current],
                           state->velocity[2][state->current]};
@@ -505,7 +565,7 @@ void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float
     }
     for (int32_t c = 0; c < gas->def.pressureCycles; ++c)
     {
-        Cycle(gas, state, 0, omega);
+        Cycle(gas, state, 0, omega, tasks);
     }
     Correct(gas, state, velocity);
 }
@@ -584,8 +644,8 @@ void mvfxGasAreas(const mvfxCompiledGas* gas, mvfxGasState* state)
                 LevelAreas(gas, state, l, k);
             }
         }
-        const Level level = {gas->levels[l],  gas->def.size,          1 << l,
-                             state->areas[l], state->coefficients[l], state->weights[l]};
+        const Level level = {gas->levels[l],         gas->def.size,     1 << l, state->areas[l],
+                             state->coefficients[l], state->weights[l], nullptr};
         LevelCoefficients(&level);
     }
 }

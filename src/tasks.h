@@ -20,7 +20,8 @@ typedef struct mvfxTasks
 
 // Runs task over [0, itemCount) in ranges of at least minRange items and
 // returns when every range has run. The ranges may run on several threads
-// at once: task must write only what its own items own.
+// at once: task must write only what its own items own. NULL tasks run
+// it on this thread.
 void mvfxRunTasks(const mvfxTasks* tasks, mvfxTaskFn* task, int32_t itemCount, int32_t minRange,
                   void* taskContext);
 

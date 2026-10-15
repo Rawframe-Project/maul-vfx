@@ -31,7 +31,7 @@ void mvfxRunTasks(const mvfxTasks* tasks, mvfxTaskFn* task, int32_t itemCount, i
         return;
     }
     WrappedTask wrapped = {task, taskContext};
-    if (tasks->enqueueTask == nullptr || itemCount <= minRange)
+    if (tasks == nullptr || tasks->enqueueTask == nullptr || itemCount <= minRange)
     {
         RunInFloatMode(0, itemCount, &wrapped);
         return;

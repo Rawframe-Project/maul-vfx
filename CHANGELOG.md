@@ -326,6 +326,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   float16, or unorm and snorm of 8 and 16 bits over a range, at the
   host's row and layer pitch; `mvfxInstance_SampleGas` samples a field
   at points in the world.
+- A gas's step splits over the host's tasks, with the same bits however
+  it is split: the context steps gases once every instance's own step is
+  done, and each pass of the carry and the solve goes by rows (3 times
+  faster on 4 threads for a 2D gas of 256 by 256).
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

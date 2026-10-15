@@ -451,7 +451,7 @@ static void TestBuried(void)
             }
         }
         memset(state->levels[0].pressure, 0, sizeof(float) * 1024);
-        mvfxProjectGas(gas, state, NULL);
+        mvfxProjectGas(gas, state, NULL, NULL);
         for (int32_t k = 0; k < 2; ++k)
         {
             for (int32_t f = 0; f < 33 * 32; ++f)
@@ -490,7 +490,7 @@ static void TestBuried3D(void)
         }
     }
     memset(state->levels[0].pressure, 0, sizeof(float) * (size_t)gas->cells);
-    mvfxProjectGas(gas, state, NULL);
+    mvfxProjectGas(gas, state, NULL, NULL);
     const int32_t* n = def.size;
     float* const v[3] = {state->velocity[0][state->current], state->velocity[1][state->current],
                          state->velocity[2][state->current]};
@@ -548,7 +548,7 @@ static void TestSealedSolid(void)
         memset(state->velocity[k][state->current], 0, sizeof(float) * 33 * 32);
     }
     memset(state->levels[0].pressure, 0, sizeof(float) * 1024);
-    mvfxProjectGas(gas, state, expansion);
+    mvfxProjectGas(gas, state, expansion, NULL);
     float mean = 4.0f / (float)open;
     bool right = true;
     const float* u = state->velocity[0][state->current];

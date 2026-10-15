@@ -150,8 +150,45 @@ static int32_t PoursInto(mvfxInstance* instance, int32_t g, mvfxGasPour pours[MV
     return count;
 }
 
+// Steps an instance's due gases, each driven as the instance's last step
+// left it, their passes split over tasks.
+static void StepGases(mvfxInstance* instance, const mvfxTasks* tasks)
+{
+    for (int32_t g = 0; g < instance->effect->gasCount; ++g)
+    {
+        const mvfxCompiledGas* gas = &instance->effect->gases[g];
+        mvfxResolvedForce* forces = instance->gasForces;
+        mvfxGasDrive drive = {.forces = forces,
+                              .forceCount = gas->def.forceCount,
+                              .pours = instance->gasPours,
+                              .tasks = tasks};
+        drive.pourCount = PoursInto(instance, g, instance->gasPours);
+        mvfxGasGravity(instance, g, drive.gravity);
+        for (int32_t f = 0; f < gas->def.forceCount; ++f)
+        {
+            mvfxSpaceMap map = mvfxGasMap(instance, g, (mvfxSimulationSpace)gas->forces[f].space);
+            forces[f] = mvfxResolveForce(&gas->forces[f], &map, instance->parameters,
+                                         instance->seed, gas->forceGrids[f]);
+        }
+        if (gas->hasObstacles)
+        {
+            mvfxResolveGasObstacles(instance, g);
+        }
+        mvfxStepGas(gas, &instance->gases[g], &drive, instance->stepStart, instance->clock,
+                    instance->stopTick);
+    }
+    instance->gasesDue = false;
+}
+
 void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
 {
+    // A second step in one of the context's steps: the first's gases go
+    // now, serially, in this instance's task.
+    if (instance->gasesDue)
+    {
+        static const mvfxTasks serial = {0};
+        StepGases(instance, &serial);
+    }
     // A finished instance holds nothing and spawns nothing; whether it is
     // is known at the step's start, before births up to the new clock are
     // owed.
@@ -169,27 +206,7 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
         }
         mvfxStepEmitter(instance, e);
     }
-    for (int32_t g = 0; g < instance->effect->gasCount && !finished; ++g)
-    {
-        const mvfxCompiledGas* gas = &instance->effect->gases[g];
-        mvfxResolvedForce* forces = instance->gasForces;
-        mvfxGasDrive drive = {
-            .forces = forces, .forceCount = gas->def.forceCount, .pours = instance->gasPours};
-        drive.pourCount = PoursInto(instance, g, instance->gasPours);
-        mvfxGasGravity(instance, g, drive.gravity);
-        for (int32_t f = 0; f < gas->def.forceCount; ++f)
-        {
-            mvfxSpaceMap map = mvfxGasMap(instance, g, (mvfxSimulationSpace)gas->forces[f].space);
-            forces[f] = mvfxResolveForce(&gas->forces[f], &map, instance->parameters,
-                                         instance->seed, gas->forceGrids[f]);
-        }
-        if (gas->hasObstacles)
-        {
-            mvfxResolveGasObstacles(instance, g);
-        }
-        mvfxStepGas(gas, &instance->gases[g], &drive, instance->stepStart, instance->clock,
-                    instance->stopTick);
-    }
+    instance->gasesDue = !finished && instance->effect->gasCount > 0;
     EndStep(instance);
 }
 
@@ -266,6 +283,20 @@ void mvfxStepInstances(mvfxContext* context, int64_t ticks)
     StepWork work = {&context->instances, ticks};
     mvfxRunTasks(&context->tasks, StepRange, (int32_t)context->instances.capacity, STEP_MIN_RANGE,
                  &work);
+    mvfxStepDueGases(context);
+}
+
+void mvfxStepDueGases(mvfxContext* context)
+{
+    // Once every instance's task is done, the gases, in slot order.
+    for (uint32_t i = 0; i < context->instances.capacity; ++i)
+    {
+        mvfxInstance* instance = context->instances.slots[i].object;
+        if (instance != nullptr && instance->gasesDue)
+        {
+            StepGases(instance, &context->tasks);
+        }
+    }
 }
 
 mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks)
@@ -334,6 +365,10 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
         int64_t ticks = left < step ? left : step;
         mvfxStepInstance(live, ticks);
         left -= ticks;
+    }
+    if (live->gasesDue)
+    {
+        StepGases(live, &context->tasks);
     }
     mvfxLeaveFloatMode(mode);
     if (remainingOut != nullptr)

@@ -289,6 +289,9 @@ typedef struct mvfxInstance
     // on some targets).
     mvfxResolvedForce gasForces[MVFX_MAX_FORCES];
     mvfxGasPour gasPours[MVFX_MAX_EMITTERS];
+    // Whether its gases are due a step: its last step's, which the context
+    // steps once every instance's task has finished.
+    bool gasesDue;
     mvfxEmitterState* emitters;
     // Its gases' states, their fields in its block.
     mvfxGasState gases[MVFX_MAX_GASES];

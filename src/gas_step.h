@@ -12,6 +12,7 @@
 #include "force.h"
 #include "gas.h"
 #include "gas_splat.h"
+#include "tasks.h"
 
 #include <stdint.h>
 
@@ -30,6 +31,8 @@ typedef struct mvfxGasDrive
     // The emitters whose particles pour into it.
     const mvfxGasPour* pours;
     int32_t pourCount;
+    // The tasks its passes are split over.
+    const mvfxTasks* tasks;
 } mvfxGasDrive;
 
 // Steps a gas over the ticks from to, its sources pouring at the substeps
