@@ -7,12 +7,12 @@
 // then sleeps again stacked; gravity turned by the instance wakes a box,
 // which slides; moving ends a still time; a heavy box landing on a
 // sleeper and a box rebounding off a sleeping stack as on awake ones; a
-// box spinning in place stays awake; a host table set again unchanged
-// leaves a box asleep, moved wakes it to fall; changed colliders wake
-// only the bodies near them; a heightfield's values changed wake a box,
-// and one taken away and destroyed is never read; a depth image set
-// again wakes a box; the host wakes bodies within a sphere; no sleep
-// speed, no sleeping; the checks.
+// box spinning in place stays awake; a far sleeping pile sleeping on; a
+// host table set again unchanged leaves a box asleep, moved wakes it to
+// fall; changed colliders wake only the bodies near them; a
+// heightfield's values changed wake a box, and one taken away and
+// destroyed is never read; a depth image set again wakes a box; the host
+// wakes bodies within a sphere; no sleep speed, no sleeping; the checks.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -309,6 +309,35 @@ static bool Asleep(int32_t i)
     return At(i, mvfx_attributeSleep) < 0.0f;
 }
 
+static void TestFarPileSleeps(void)
+{
+    // Two sleeping stacks 4 m apart and a box dropped on one: only that
+    // one wakes, the other's sleepers, touching only each other, sleep on.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.capacity = 6;
+    boxes.hostSpawnCapacity = 6;
+    boxes.rigid.bodyContacts = 8;
+    Play(&boxes);
+    static const double stacks[12] = {0, 0.5, 0, 0, 1.501, 0, 4, 0.5, 0, 4, 1.501, 0};
+    Spawn(stacks, 4);
+    Steps(120);
+    bool slept = Stats().asleep == 4;
+    static const double above[3] = {0, 4.0, 0};
+    Spawn(above, 1);
+    bool far = true;
+    for (int32_t i = 0; i < 90; ++i)
+    {
+        Steps(1);
+        for (int32_t j = 0; j < 5; ++j)
+        {
+            far = far && (At(j, mvfx_attributePositionX) < 2.0f || Asleep(j));
+        }
+    }
+    CHECK(slept && far && Stats().asleep >= 2, "a far pile sleeps on");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestWorldNear(void)
 {
     // Boxes asleep on two host tables 6 apart: a table lowered wakes the
@@ -581,6 +610,7 @@ int main(void)
     TestSleeperMeets();
     TestSpinning();
     TestWorldWakes();
+    TestFarPileSleeps();
     TestWorldNear();
     TestGridChanges();
     TestDepthWakes();
