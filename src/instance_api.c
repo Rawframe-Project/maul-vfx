@@ -254,6 +254,7 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
         .linksDropped = state->linksDropped,
         .torn = state->torn,
         .selfContactsCapped = state->selfContactsCapped,
+        .rigidContactsCapped = state->rigidContactsCapped,
     };
     return mvfx_success;
 }

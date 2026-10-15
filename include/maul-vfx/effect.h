@@ -554,6 +554,64 @@ extern "C"
         int32_t attachFrameCapacity;
     } mvfxUnitDef;
 
+// The most contacts a rigid particle takes in a substep.
+#define MVFX_MAX_RIGID_CONTACTS 8
+
+    // A rigid particle's shape, sized by the particle's size in the
+    // particles' space and turned by its orientation.
+    typedef uint8_t mvfxRigidShape;
+    enum
+    {
+        // A sphere of diameter size X.
+        mvfx_rigidSphere = 0,
+        // A capsule along its Y of diameter size X and length size Y (end to
+        // end, at least its diameter).
+        mvfx_rigidCapsule = 1,
+        // A box of size X by Y by Z.
+        mvfx_rigidBox = 2,
+    };
+
+    // Rigid particles, by XPBD rigid bodies (Muller, Macklin, Chentanez,
+    // Jeschke and Kim, "Detailed Rigid Body Simulation with Extended
+    // Position Based Dynamics", SCA 2020) in substeps, so they tumble, roll
+    // and come to rest on an edge or a face. Each particle is a body of a
+    // shape and a density; its orientation and angular velocity (stored for
+    // it) turn by the gyroscopic term and the angular drag. Each substep a
+    // body is moved as a particle is, then meets its contacts at its
+    // predicted pose: planes and spheres of its emitter and, with
+    // hostColliders, the instance's (its other kinds not met), outside or
+    // inside, at the shape's surface. Contacts push it out; friction holds
+    // or slows each patch of contacts with one collider (at their center,
+    // PhysX's patch friction); its velocities are its pose's change, then
+    // turned back by restitution. A depth there at a substep's start is
+    // pushed out without becoming velocity, so bodies born into a surface or
+    // stepped by a single tick do not pop. A newborn takes what is left of
+    // its step's substeps. The collision def says whether it collides and
+    // with what, its kills, life loss and events, each for a strike (a
+    // contact met faster into the surface than twice gravity's speed over a
+    // substep), the event its first of a step; its restitution, friction,
+    // rest speed and radius are not read. A body takes at most
+    // MVFX_MAX_RIGID_CONTACTS contacts a substep, the shallowest past them
+    // dropped and counted (mvfxEmitterStats.rigidContactsCapped).
+    typedef struct mvfxRigidDef
+    {
+        bool enabled;
+        mvfxRigidShape shape;
+        // Mass a unit of volume, above 0, at most MVFX_MAX_EXTENT.
+        float density;
+        // From 1 to MVFX_MAX_SUBSTEPS.
+        int32_t substeps;
+        // The share of the speed into a surface it bounces back with (none
+        // below a strike's speed, so resting bodies do not jitter), 0 to 1;
+        // its static and dynamic friction coefficients, each 0 to
+        // MVFX_MAX_DRAG, the static at least the dynamic: a patch holds
+        // still while what holds it is at most the static coefficient times
+        // what presses it, else is slowed by the dynamic times that.
+        float restitution;
+        float staticFriction;
+        float dynamicFriction;
+    } mvfxRigidDef;
+
 // The most plexus links an emitter keeps a step.
 #define MVFX_MAX_PLEXUS_LINKS (1 << 20)
 
@@ -790,6 +848,8 @@ extern "C"
         mvfxPlexusDef plexus;
         // What each of its births is: a particle, or a unit of them.
         mvfxUnitDef unit;
+        // Whether its particles are rigid bodies (particles, not units).
+        mvfxRigidDef rigid;
         // A beam through its particles.
         mvfxBeamDef beam;
         // How its particles expand into quads.

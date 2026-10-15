@@ -172,10 +172,16 @@ typedef struct mvfxEmitterState
     // of later points) and their count; and the points whose candidates
     // were capped.
     mvfxNeighborGrid selfGrid;
+    // For rigid particles: seven arrays of the capacity, their places and
+    // orientations at a substep's start, and whether each has had its
+    // collision event this step.
+    float* rigidStart;
+    uint8_t* rigidTouched;
     float* selfStart;
     int32_t* selfPairs;
     int32_t* selfCounts;
     uint64_t selfContactsCapped;
+    uint64_t rigidContactsCapped;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

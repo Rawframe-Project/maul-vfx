@@ -50,6 +50,8 @@ typedef struct EmitterAt
     size_t selfStart;
     size_t selfPairs;
     size_t selfCounts;
+    size_t rigidStart;
+    size_t rigidTouched;
 } EmitterAt;
 
 // The entries of a grid's table at a capacity: a power of two at least
@@ -92,6 +94,9 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     size_t most = self ? (size_t)compiled->unit.selfContacts : 0u;
     at->selfPairs = mvfxLayoutAdd(layout, most * capacity, sizeof(int32_t), alignof(int32_t));
     at->selfCounts = mvfxLayoutAdd(layout, capacity, sizeof(int32_t), alignof(int32_t));
+    size_t rigid = compiled->rigid.enabled ? (size_t)capacities[e] : 0u;
+    at->rigidStart = mvfxLayoutAdd(layout, 7u * rigid, sizeof(float), alignof(float));
+    at->rigidTouched = mvfxLayoutAdd(layout, rigid, sizeof(uint8_t), alignof(uint8_t));
 }
 
 // Adds an emitter's neighbor grid to the block, for one queried.
@@ -274,6 +279,8 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].selfStart = (float*)(block + at[e].selfStart);
         instance->emitters[e].selfPairs = (int32_t*)(block + at[e].selfPairs);
         instance->emitters[e].selfCounts = (int32_t*)(block + at[e].selfCounts);
+        instance->emitters[e].rigidStart = (float*)(block + at[e].rigidStart);
+        instance->emitters[e].rigidTouched = (uint8_t*)(block + at[e].rigidTouched);
     }
 }
 
@@ -383,6 +390,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->linksDropped = 0;
         state->torn = 0;
         state->selfContactsCapped = 0;
+        state->rigidContactsCapped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;
         state->beamStrike = instance->effect->emitters[e].delay;
@@ -443,6 +451,8 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->torn, (int32_t)sizeof state->torn);
         hash =
             mvfxHash64(hash, &state->selfContactsCapped, (int32_t)sizeof state->selfContactsCapped);
+        hash = mvfxHash64(hash, &state->rigidContactsCapped,
+                          (int32_t)sizeof state->rigidContactsCapped);
         hash = mvfxHash64(hash, &state->plexus.linkCount, (int32_t)sizeof state->plexus.linkCount);
         if (state->plexus.linkCount > 0)
         {

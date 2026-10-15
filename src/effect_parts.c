@@ -225,6 +225,30 @@ static bool IsAttachValid(const mvfxEffectDef* def, int32_t i)
     }
 }
 
+// Whether an emitter's rigid particles are valid: a shape, a density,
+// substeps, restitution and friction in range; particles, not units nor a
+// beam, meeting planes and spheres (no grids, scene queries nor depth).
+static bool IsRigidValid(const mvfxEmitterDef* def)
+{
+    const mvfxRigidDef* rigid = &def->rigid;
+    if (!rigid->enabled)
+    {
+        return true;
+    }
+    bool body = rigid->shape <= mvfx_rigidBox && rigid->density > 0.0f &&
+                rigid->density <= MVFX_MAX_EXTENT && rigid->substeps >= 1 &&
+                rigid->substeps <= MVFX_MAX_SUBSTEPS && IsWithin(rigid->restitution, 0.0f, 1.0f) &&
+                IsWithin(rigid->dynamicFriction, 0.0f, MVFX_MAX_DRAG) &&
+                IsWithin(rigid->staticFriction, rigid->dynamicFriction, MVFX_MAX_DRAG);
+    const mvfxCollision* collision = &def->collision;
+    bool met = !collision->enabled || (!collision->sceneQueries && !collision->depthImage);
+    for (int32_t c = 0; met && collision->enabled && c < def->colliderCount; ++c)
+    {
+        met = def->colliders[c].kind <= mvfx_colliderSphere;
+    }
+    return body && met && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
+}
+
 // Whether an emitter's plexus links are valid.
 static bool IsPlexusValid(const mvfxPlexusDef* plexus)
 {
@@ -286,7 +310,8 @@ static bool AreEmitterPartsValid(const mvfxEffectDef* def, int32_t i)
     const mvfxEmitterDef* emitter = &def->emitters[i];
     return AreNeighborsValid(def, i) && IsSteeringValid(emitter, def->parameterCount) &&
            AreContactsValid(&emitter->contacts) && IsPairForceValid(emitter) &&
-           IsPlexusValid(&emitter->plexus) && IsUnitValid(emitter) && IsAttachValid(def, i);
+           IsPlexusValid(&emitter->plexus) && IsUnitValid(emitter) && IsAttachValid(def, i) &&
+           IsRigidValid(emitter);
 }
 
 // Copies an emitter's steering, its path's points into the compiled
@@ -308,6 +333,7 @@ static void CopySteering(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
 static void CompileEmitterParts(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
 {
     CopySteering(def, out);
+    out->rigid = def->rigid.enabled ? def->rigid : (mvfxRigidDef){0};
     out->plexus = def->plexus.enabled ? def->plexus : (mvfxPlexusDef){0};
     CompileUnit(&def->unit, out);
     out->contacts = def->contacts.enabled ? def->contacts : (mvfxContactDef){0};

@@ -610,6 +610,9 @@ extern "C"
         // Points of units with more self-collision candidates than
         // selfContacts, once a step each.
         uint64_t selfContactsCapped;
+        // Rigid particles' contacts past MVFX_MAX_RIGID_CONTACTS in a
+        // substep, the shallowest dropped.
+        uint64_t rigidContactsCapped;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

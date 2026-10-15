@@ -237,6 +237,8 @@ typedef struct mvfxCompiledEmitter
     // across, down, along the diagonal across and down and along the other
     // (a sheet's last three).
     mvfxUnitDef unit;
+    // Its rigid particles' def (zero when they are not).
+    mvfxRigidDef rigid;
     int32_t unitPoints;
     int32_t unitWidth;
     float unitRests[4];

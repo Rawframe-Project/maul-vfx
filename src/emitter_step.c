@@ -18,6 +18,7 @@
 #include "integrate.h"
 #include "neighbor.h"
 #include "plexus.h"
+#include "rigid.h"
 #include "scene_query.h"
 #include "spawn.h"
 #include "steer.h"
@@ -116,6 +117,11 @@ static void MoveLive(mvfxInstance* instance, int32_t emitter)
     if (instance->effect->emitters[emitter].unitPoints > 1)
     {
         mvfxStepUnits(instance, emitter);
+        return;
+    }
+    if (instance->effect->emitters[emitter].rigid.enabled)
+    {
+        mvfxStepRigid(instance, emitter);
         return;
     }
     mvfxIntegrateEmitter(instance, emitter);

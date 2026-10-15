@@ -243,3 +243,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Tubes: `mvfxInstance_ExpandTubes` draws an emitter's ribbons (chains,
   trails, beams) as tubes of rings turned by rotation-minimizing frames,
   with optional caps.
+- Rigid particles: `mvfxRigidDef` makes an emitter's particles rigid
+  spheres, capsules or boxes by XPBD rigid bodies in substeps, with the
+  gyroscopic term, meeting planes and spheres at their surfaces with
+  restitution and patch friction (static and dynamic), counted and
+  evented by strikes; `mvfxEmitterStats.rigidContactsCapped`.
+- Fix: a kill in any of a unit emitter's substeps now holds (only the
+  last substep's counted before).

@@ -11,6 +11,7 @@
 #include "event.h"
 #include "integrate.h"
 #include "random.h"
+#include "rigid.h"
 #include "shape.h"
 #include "value.h"
 #include "velocity.h"
@@ -508,7 +509,14 @@ static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth
                                      .particle = at,
                                      .tick = birth->tick,
                                      .placeTick = birth->tick});
-    mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
+    if (compiled->rigid.enabled)
+    {
+        mvfxIntegrateRigidNewborn(instance, emitter, at, birth->tick);
+    }
+    else
+    {
+        mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
+    }
     if (mvfxIsPinnedPoint(compiled, j))
     {
         // A pinned point stays where it was born.

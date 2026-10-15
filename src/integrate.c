@@ -53,8 +53,7 @@ mvfxDragFactors mvfxDragFactorsOf(double drag, double seconds)
 
 // The emitter's gravity in the space its particles are stored in, with
 // the instance's transform at the step's start.
-static void GravityOf(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter,
-                      float out[3])
+void mvfxGravityOf(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter, float out[3])
 {
     const mvfxTransform* transform = &instance->from;
     if (emitter->gravitySpace == emitter->space)
@@ -379,7 +378,10 @@ static void MoveParticle(const Range* r, int32_t i)
     MoveLinear(r->p, r->v, i, acceleration, f);
     float place[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
     mvfxMoveByModules(r->modules, age, r->seconds, start, place);
-    bool collisionKills = r->compiled->collision.enabled && Collide(r, i, start, place);
+    // Rigid particles meet the colliders at their shapes' surfaces, in their
+    // own solve.
+    bool collisionKills = r->compiled->collision.enabled && !r->compiled->rigid.enabled &&
+                          Collide(r, i, start, place);
     for (int32_t k = 0; k < 3; ++k)
     {
         r->p[k][i] = place[k];
@@ -406,7 +408,7 @@ void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, 
         .time = (double)tick / (double)MVFX_TICKS_PER_SECOND,
         .seconds = seconds,
     };
-    GravityOf(instance, compiled, r.gravity);
+    mvfxGravityOf(instance, compiled, r.gravity);
     for (int32_t k = 0; k < 3; ++k)
     {
         r.p[k] =
@@ -470,7 +472,8 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
         return;
     }
     mvfxSpaceMap local = SpaceMapOf(instance, emitter, mvfx_spaceLocal);
-    float radius = compiled->collision.radius * local.sigma;
+    // Rigid particles meet colliders at their shapes, not grown.
+    float radius = compiled->rigid.enabled ? 0.0f : compiled->collision.radius * local.sigma;
     state->hasDepth = compiled->collision.depthImage && instance->hasDepthView;
     if (state->hasDepth)
     {

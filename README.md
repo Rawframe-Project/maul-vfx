@@ -55,8 +55,9 @@ with its neighbor attributes, flocking, steering, particle contacts,
 forces between particles, plexus links, and chains and cloth sheets by
 XPBD with sheets expanded into meshes and units held to the instance,
 the host's frames or other particles, tearing, sheets' aerodynamics and
-units' self-collision, and ribbons drawn as tubes are in place, and
-rigid particles come next.
+units' self-collision, ribbons drawn as tubes, and rigid particles
+(spheres, capsules and boxes by XPBD meeting planes and spheres) are in
+place, and rigid particles meeting each other come next.
 It has 67 public functions.
 
 ## Building

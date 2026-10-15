@@ -34,6 +34,9 @@ mvfxDragFactors mvfxDragFactorsOf(double drag, double seconds);
 // step, from the instance's transform at its start.
 void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter);
 
+// The emitter's gravity in its particles' space.
+void mvfxGravityOf(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter, float out[3]);
+
 // Moves the particles the emitter holds over the whole step (those alive
 // at its start, once the ended ones are gone), marking those killed.
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter);

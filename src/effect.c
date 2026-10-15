@@ -546,7 +546,7 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     bool sprite = def->angle.kind != mvfx_sourceNone || def->spin.kind != mvfx_sourceNone;
     Store(plan, sprite, mvfx_attributeAngle, 2);
     bool mesh = def->orientationMode != mvfx_orientationNone ||
-                def->angularVelocity.kind != mvfx_sourceNone;
+                def->angularVelocity.kind != mvfx_sourceNone || def->rigid.enabled;
     Store(plan, mesh, mvfx_attributeOrientationX, 7);
     Store(plan, def->frame.mode != mvfx_frameNone, mvfx_attributeFrame, 1);
     Store(plan, def->meshIndex.mode != mvfx_frameNone, mvfx_attributeMesh, 1);

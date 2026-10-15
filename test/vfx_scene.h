@@ -46,6 +46,86 @@ static inline void SceneKick(const mvfxModuleCall* call, void* user)
 }
 
 // Creates the scene's effects and instances on a context.
+// Rigid particles: boxes of mixed sizes in the world thrown onto a
+// tilted plane and a sphere moving with the instance, losing life as they
+// strike; capsules in the emitter's space
+// bouncing inside a sphere; spheres killed by their second strike.
+static inline void BuildRigidScene(mvfxContext* context)
+{
+    static const mvfxBurst throws = {.time = 0.0f,
+                                     .minCount = 3,
+                                     .maxCount = 3,
+                                     .cycles = 0,
+                                     .interval = 0.3f,
+                                     .probability = 1.0f};
+    static const mvfxCollider ground[2] = {
+        {.kind = mvfx_colliderPlane,
+         .space = mvfx_spaceLocal,
+         .center = {0, -1, 0},
+         .normal = {0.2f, 1, 0}},
+        {.kind = mvfx_colliderSphere,
+         .space = mvfx_spaceLocal,
+         .center = {1, -0.6f, 0},
+         .radius = 0.6f},
+    };
+    static const mvfxCollider bowl = {
+        .kind = mvfx_colliderSphere, .space = mvfx_spaceLocal, .radius = 2.0f, .inside = true};
+    static const mvfxKillRule secondStrike = {.kind = mvfx_killCollisions, .collisions = 2};
+    mvfxEmitterDef emitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                  mvfxDefaultEmitterDef()};
+    for (int32_t e = 0; e < 3; ++e)
+    {
+        mvfxEmitterDef* emitter = &emitters[e];
+        emitter->rate = 0.0f;
+        emitter->bursts = &throws;
+        emitter->burstCount = 1;
+        emitter->capacity = 24;
+        emitter->lifetime = mvfxRangeSource(2.0f, 2.0f);
+        emitter->shape.kind = mvfx_shapeSphere;
+        emitter->shape.radius = 0.5f;
+        emitter->velocity.speed = (mvfxRange){1.0f, 3.0f};
+        emitter->motion.gravity[1] = -9.81f;
+        emitter->orientationMode = mvfx_orientationRandom;
+        emitter->angularVelocity =
+            (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, -3, -3}, .max = {3, 3, 3}};
+        emitter->size = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {0.2f, 0.3f, 0.2f}, .max = {0.5f, 0.6f, 0.4f}};
+        emitter->rigid = (mvfxRigidDef){.enabled = true,
+                                        .shape = (mvfxRigidShape)e,
+                                        .density = 1.0f + (float)e,
+                                        .substeps = 4,
+                                        .restitution = 0.3f,
+                                        .staticFriction = 0.5f,
+                                        .dynamicFriction = 0.3f};
+        emitter->collision.enabled = true;
+        emitter->colliders = ground;
+        emitter->colliderCount = 2;
+    }
+    emitters[0].rigid.shape = mvfx_rigidBox;
+    emitters[0].collision.lifeLoss = 0.2f;
+    emitters[1].rigid.shape = mvfx_rigidCapsule;
+    emitters[1].space = mvfx_spaceLocal;
+    emitters[1].rigid.restitution = 0.8f;
+    emitters[1].size.min[1] = 0.6f;
+    emitters[1].size.max[1] = 0.9f;
+    emitters[1].colliders = &bowl;
+    emitters[1].colliderCount = 1;
+    emitters[2].rigid.shape = mvfx_rigidSphere;
+    emitters[2].killRules = &secondStrike;
+    emitters[2].killRuleCount = 1;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 3;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "rigid effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.origin[0] = 1745.0;
+    instanceDef.seed = 0x816Du;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "rigid instance");
+}
+
 static inline void BuildScene(mvfxContext* context)
 {
     // A 3x2x2 field of binary16 vectors, made of exact small values.
@@ -812,6 +892,7 @@ static inline void BuildScene(mvfxContext* context)
         CHECK(mvfxInstance_SetColliders(context, instance, walls, wallCount) == mvfx_success,
               "scene walls");
     }
+    BuildRigidScene(context);
 }
 
 // Moves every instance of the context before a step: along a fixed path
