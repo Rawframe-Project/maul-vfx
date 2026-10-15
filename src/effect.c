@@ -281,9 +281,12 @@ static bool AreCollisionsValid(const mvfxEmitterDef* def)
             return false;
         }
     }
-    // Events of known kinds, collisions only where they collide.
+    // Events of known kinds, collisions only where they collide, tears
+    // only where units tear.
     bool collides = def->collision.enabled || (def->events & mvfx_eventMaskCollision) == 0;
-    return def->events <= 7u && collides &&
+    bool tears = (def->unit.kind != mvfx_unitParticle && def->unit.tearStrain > 0.0f) ||
+                 (def->events & mvfx_eventMaskTear) == 0;
+    return def->events <= 15u && collides && tears &&
            (def->events == 0 || (def->eventCapacity >= 1 && def->eventCapacity <= MVFX_MAX_EVENTS));
 }
 
@@ -420,7 +423,7 @@ static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
         return true;
     }
     if (spawn->source < 0 || spawn->source >= def->emitterCount || spawn->source == i ||
-        spawn->kind > mvfx_eventCollision)
+        spawn->kind > mvfx_eventTear)
     {
         return false;
     }
@@ -565,6 +568,8 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, framed, mvfx_attributeAttachRotationX, 4);
     Store(plan, framed, mvfx_attributeAttachSource, 1);
     Store(plan, attach != mvfx_attachNone, mvfx_attributeAttachFlags, 1);
+    Store(plan, def->unit.kind != mvfx_unitParticle && def->unit.tearStrain > 0.0f,
+          mvfx_attributeTorn, 1);
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
           6);
     for (int32_t i = 0; i < def->customCount; ++i)

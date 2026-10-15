@@ -494,6 +494,10 @@ static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth
             StoreVector(instance, emitter, mvfx_attributeSizeX, 3, at, host->size);
         }
     }
+    if (Has(compiled, mvfx_attributeTorn))
+    {
+        StoreWord(instance, emitter, mvfx_attributeTorn, at, 0u);
+    }
     if (j == 0 && Has(compiled, mvfx_attributeAttachFlags))
     {
         mvfxMarkNewUnit(instance, emitter, at, given, birth->event1 > 0);

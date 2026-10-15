@@ -99,10 +99,13 @@ enum
     mvfx_attributeAttachRotationX = 83,
     mvfx_attributeAttachSource = 87,
     mvfx_attributeAttachFlags = 88,
+    // A unit's point's torn edges: bit 0 the one across to the next point,
+    // bit 1 the one down to the point below.
+    mvfx_attributeTorn = 89,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeAttachFlags + 1)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeTorn + 1)
 
 // The words of an attribute plan's set, and room in them for every
 // attribute.

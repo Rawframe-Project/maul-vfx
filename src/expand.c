@@ -292,7 +292,43 @@ static void SheetFrame(const mvfxRecordSource* source, int32_t first, int32_t wi
     }
 }
 
-// Writes sheet u's vertices from record, and its quads' indices from
+// A sheet emitter's torn edges, or NULL for one that does not tear.
+static const uint32_t* TornOf(const mvfxRecordSource* source)
+{
+    const mvfxCompiledEmitter* compiled = &source->instance->effect->emitters[source->emitter];
+    return mvfxHasAttribute(&compiled->plan, mvfx_attributeTorn)
+               ? mvfxAttributeArray(source->instance, source->emitter, mvfx_attributeTorn)
+               : nullptr;
+}
+
+// Whether the quad from point q down and across in a sheet of a width is
+// whole: none of its four edges torn.
+static bool IsQuadWhole(const uint32_t* torn, int32_t q, int32_t width)
+{
+    return torn == nullptr ||
+           (((torn[q] | torn[q + width]) & 1u) == 0 && ((torn[q] | torn[q + 1]) & 2u) == 0);
+}
+
+// The indices of sheet u's whole quads.
+static int64_t IndicesOf(const mvfxRecordSource* source, int32_t u)
+{
+    const mvfxCompiledEmitter* compiled = &source->instance->effect->emitters[source->emitter];
+    int32_t width = compiled->unitWidth;
+    int32_t rows = compiled->unitPoints / width;
+    int32_t first = u * compiled->unitPoints;
+    const uint32_t* torn = TornOf(source);
+    int64_t whole = 0;
+    for (int32_t r = 0; r + 1 < rows; ++r)
+    {
+        for (int32_t c = 0; c + 1 < width; ++c)
+        {
+            whole += IsQuadWhole(torn, first + r * width + c, width) ? 1 : 0;
+        }
+    }
+    return 6 * whole;
+}
+
+// Writes sheet u's vertices from record, and its whole quads' indices from
 // those vertices' first, base.
 static void WriteSheet(const mvfxRecordSource* source, const mvfxOutputLayout* layout, int32_t u,
                        unsigned char* record, uint32_t* indices, uint32_t base)
@@ -316,10 +352,15 @@ static void WriteSheet(const mvfxRecordSource* source, const mvfxOutputLayout* l
                             record + at * (int64_t)layout->stride);
         }
     }
+    const uint32_t* torn = TornOf(source);
     for (int32_t r = 0; r + 1 < rows; ++r)
     {
         for (int32_t c = 0; c + 1 < width; ++c)
         {
+            if (!IsQuadWhole(torn, first + r * width + c, width))
+            {
+                continue;
+            }
             uint32_t v = base + (uint32_t)(r * width + c);
             uint32_t below = v + (uint32_t)width;
             const uint32_t quad[6] = {v, v + 1, below, below, v + 1, below + 1};
@@ -370,19 +411,25 @@ mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instan
         return mvfx_success;
     }
     int64_t points = compiled->unitPoints;
-    int64_t quads = (int64_t)(compiled->unitWidth - 1) * (points / compiled->unitWidth - 1);
     int64_t sheets = live->emitters[emitter].count / points;
-    int64_t fits = buffers->vertexCapacity / points < buffers->indexCapacity / (6 * quads)
-                       ? buffers->vertexCapacity / points
-                       : buffers->indexCapacity / (6 * quads);
     mvfxRecordSource source = mvfxOpenRecordSource(live, emitter, view->origin);
-    for (int64_t u = 0; u < sheets && u < fits; ++u)
+    // The first sheets that fit whole, then the counts of all of them.
+    int64_t indices = 0;
+    bool fitting = true;
+    for (int64_t u = 0; u < sheets; ++u)
     {
-        WriteSheet(&source, format, (int32_t)u,
-                   (unsigned char*)buffers->vertices + u * points * (int64_t)format->stride,
-                   buffers->indices + 6 * quads * u, (uint32_t)(points * u));
+        int64_t own = IndicesOf(&source, (int32_t)u);
+        fitting = fitting && (u + 1) * points <= buffers->vertexCapacity &&
+                  indices + own <= buffers->indexCapacity;
+        if (fitting)
+        {
+            WriteSheet(&source, format, (int32_t)u,
+                       (unsigned char*)buffers->vertices + u * points * (int64_t)format->stride,
+                       buffers->indices + indices, (uint32_t)(points * u));
+        }
+        indices += own;
     }
     *vertexCountOut = sheets * points;
-    *indexCountOut = sheets * 6 * quads;
+    *indexCountOut = indices;
     return mvfx_success;
 }

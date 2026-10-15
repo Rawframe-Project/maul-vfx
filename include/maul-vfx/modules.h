@@ -226,6 +226,9 @@ extern "C"
         mvfx_eventDeath = 1,
         // It collided, at its step's first contact.
         mvfx_eventCollision = 2,
+        // A unit's stretch constraint from it to its neighbor across or down
+        // tore (mvfxUnitDef.tearStrain), at a substep's end.
+        mvfx_eventTear = 3,
     };
 
     // The kinds an emitter writes, as a mask.
@@ -234,6 +237,7 @@ extern "C"
         mvfx_eventMaskBirth = 1u << mvfx_eventBirth,
         mvfx_eventMaskDeath = 1u << mvfx_eventDeath,
         mvfx_eventMaskCollision = 1u << mvfx_eventCollision,
+        mvfx_eventMaskTear = 1u << mvfx_eventTear,
     };
 
 // The most particles one event spawns.
@@ -433,9 +437,10 @@ extern "C"
         // death tick, a killed particle's step end, a contact's tick.
         int64_t tick;
         // In the world: its place (an age's death: where it was at the
-        // step's start, its last; a collision: the contact), its velocity
-        // (a collision's: after the contact), and a collision's surface
-        // normal (0 otherwise).
+        // step's start, its last; a collision: the contact; a tear: the torn
+        // edge's middle), its velocity (a collision's: after the contact),
+        // and a collision's surface normal or a tear's unit direction along
+        // the edge from the particle (0 otherwise).
         double place[3];
         float velocity[3];
         float normal[3];

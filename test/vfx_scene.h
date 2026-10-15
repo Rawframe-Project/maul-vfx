@@ -629,9 +629,9 @@ static inline void BuildScene(mvfxContext* context)
     // Chains and sheets: pinned ropes in the world, two every 0.4 seconds,
     // loose local tails falling with drag toward an attractor, which pulls
     // their points apart, and banners.
-    mvfxEmitterDef chainEmitters[5] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+    mvfxEmitterDef chainEmitters[6] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                        mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
-                                       mvfxDefaultEmitterDef()};
+                                       mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
     static const mvfxBurst ropes = {.time = 0.0f,
                                     .minCount = 2,
                                     .maxCount = 2,
@@ -678,7 +678,23 @@ static inline void BuildScene(mvfxContext* context)
                                           .substeps = 3,
                                           .stretchCompliance = 1e-3f,
                                           .bendCompliance = 0.1f,
-                                          .damping = 0.5f};
+                                          .damping = 0.5f,
+                                          .tearStrain = 0.02f};
+    chainEmitters[1].events = mvfx_eventMaskTear;
+    chainEmitters[1].eventCapacity = 16;
+    // Sparks where the tails tear.
+    chainEmitters[5].space = mvfx_spaceLocal;
+    chainEmitters[5].rate = 0.0f;
+    chainEmitters[5].capacity = 16;
+    chainEmitters[5].lifetime = mvfxRangeSource(0.3f, 0.5f);
+    chainEmitters[5].velocity.speed = (mvfxRange){0.5f, 1.5f};
+    chainEmitters[5].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                                   .source = 1,
+                                                   .kind = mvfx_eventTear,
+                                                   .minCount = 1,
+                                                   .maxCount = 2,
+                                                   .inheritVelocity = 0.5f,
+                                                   .capacity = 8};
     // Banners: sheets pinned by their first row, sheared by a gusting wind.
     static const mvfxBurst banners = {.time = 0.1f,
                                       .minCount = 1,
@@ -747,7 +763,7 @@ static inline void BuildScene(mvfxContext* context)
                                           .attach = mvfx_attachParticles};
     mvfxEffectDef chainEffectDef = mvfxDefaultEffectDef();
     chainEffectDef.emitters = chainEmitters;
-    chainEffectDef.emitterCount = 5;
+    chainEffectDef.emitterCount = 6;
     mvfxEffectId chainEffect = {0};
     CHECK(mvfxCreateEffect(context, &chainEffectDef, &chainEffect) == mvfx_success, "chain effect");
     mvfxInstanceDef chainInstanceDef = mvfxDefaultInstanceDef();

@@ -230,3 +230,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   substeps, let go when that particle dies.
 - Fixed: a stray pin on a particle emitter's unit no longer zeroes its
   particles' velocities at birth.
+- Tearing: a unit's stretch constraints tear past `tearStrain`, taking
+  the bending and shear across them; sheets' meshes drop torn quads,
+  torn chains split into ribbons, `mvfx_eventTear` events and
+  `mvfxEmitterStats.torn` report each tear.

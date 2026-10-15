@@ -25,6 +25,7 @@
 
 #include "attach.h"
 #include "elementary.h"
+#include "event.h"
 #include "integrate.h"
 
 #include <math.h>
@@ -37,6 +38,7 @@ typedef struct Points
     float* x[3];
     float* v[3];
     const uint32_t* flags;
+    uint32_t* torn;
     const mvfxInstance* instance;
     int32_t emitterIndex;
     const mvfxCompiledEmitter* emitter;
@@ -129,6 +131,7 @@ typedef enum Pass
 // its rest length and compliance.
 typedef struct Family
 {
+    int8_t kind;
     int8_t c0;
     int8_t r0;
     int8_t c1;
@@ -138,6 +141,33 @@ typedef struct Family
     float rest;
     float compliance;
 } Family;
+
+// Whether family kind's constraint from point q (at place c and row r) is
+// broken by a torn edge: a stretch constraint torn; a quad's diagonals
+// with any of its four edges; a bending pair with either edge it spans.
+static bool IsBroken(const Points* p, int32_t kind, int32_t q)
+{
+    if (p->torn == nullptr)
+    {
+        return false;
+    }
+    const uint32_t* t = p->torn;
+    int32_t w = p->width;
+    switch (kind)
+    {
+    case 0:
+        return (t[q] & 1u) != 0;
+    case 1:
+        return (t[q] & 2u) != 0;
+    case 2:
+    case 3:
+        return ((t[q] | t[q + w]) & 1u) != 0 || ((t[q] | t[q + 1]) & 2u) != 0;
+    case 4:
+        return ((t[q] | t[q + 1]) & 1u) != 0;
+    default:
+        return ((t[q] | t[q + w]) & 2u) != 0;
+    }
+}
 
 // One set of a family over every unit.
 static void SolveSet(const Points* p, const Family* f, int32_t set, Pass pass, float share)
@@ -155,6 +185,10 @@ static void SolveSet(const Points* p, const Family* f, int32_t set, Pass pass, f
             {
                 int32_t a = first + (r + f->r0) * p->width + c + f->c0;
                 int32_t b = first + (r + f->r1) * p->width + c + f->c1;
+                if (IsBroken(p, f->kind, first + r * p->width + c))
+                {
+                    continue;
+                }
                 pass == PASS_PROJECT ? Project(p, a, b, f->rest, f->compliance)
                                      : Damp(p, a, b, share);
             }
@@ -172,12 +206,12 @@ static void FamiliesOf(const mvfxCompiledEmitter* compiled, float scale, float i
     float stretch = unit->stretchCompliance * inverseSquare;
     float shear = unit->shearCompliance * inverseSquare;
     float bend = unit->bendCompliance * inverseSquare;
-    out[0] = (Family){0, 0, 1, 0, 2, true, rests[0] * scale, stretch};
-    out[1] = (Family){0, 0, 0, 1, 2, false, rests[1] * scale, stretch};
-    out[2] = (Family){0, 0, 1, 1, 2, false, rests[2] * scale, shear};
-    out[3] = (Family){1, 0, 0, 1, 2, false, rests[3] * scale, shear};
-    out[4] = (Family){0, 0, 2, 0, 4, true, 2.0f * rests[0] * scale, bend};
-    out[5] = (Family){0, 0, 0, 2, 4, false, 2.0f * rests[1] * scale, bend};
+    out[0] = (Family){0, 0, 0, 1, 0, 2, true, rests[0] * scale, stretch};
+    out[1] = (Family){1, 0, 0, 0, 1, 2, false, rests[1] * scale, stretch};
+    out[2] = (Family){2, 0, 0, 1, 1, 2, false, rests[2] * scale, shear};
+    out[3] = (Family){3, 1, 0, 0, 1, 2, false, rests[3] * scale, shear};
+    out[4] = (Family){4, 0, 0, 2, 0, 4, true, 2.0f * rests[0] * scale, bend};
+    out[5] = (Family){5, 0, 0, 0, 2, 4, false, 2.0f * rests[1] * scale, bend};
 }
 
 // Every constraint, family by family and set by set.
@@ -188,6 +222,89 @@ static void SolveAll(const Points* p, const Family families[6], Pass pass, float
         for (int32_t set = 0; set < families[f].sets; ++set)
         {
             SolveSet(p, &families[f], set, pass, share);
+        }
+    }
+}
+
+// Tears the edge from point a to point b (bit of a's torn edges) if it is
+// longer than rest: counted, and an event at its middle along it.
+static bool TearEdge(mvfxInstance* instance, int32_t emitter, const Points* p, int32_t a, int32_t b,
+                     uint32_t bit, float longest, int64_t tick)
+{
+    float d[3];
+    float square = 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = p->x[k][b] - p->x[k][a];
+        square += d[k] * d[k];
+    }
+    if ((p->torn[a] & bit) != 0 || !(square > longest * longest))
+    {
+        return false;
+    }
+    p->torn[a] |= bit;
+    instance->emitters[emitter].torn += 1u;
+    float length = sqrtf(square);
+    float middle[3];
+    float along[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        middle[k] = p->x[k][a] + 0.5f * d[k];
+        along[k] = d[k] / length;
+    }
+    mvfxRecordEvent(instance, emitter,
+                    &(mvfxEventFact){.kind = mvfx_eventTear,
+                                     .particle = a,
+                                     .tick = tick,
+                                     .placeTick = tick,
+                                     .point = middle,
+                                     .normal = along});
+    return true;
+}
+
+// A torn chain's ribbons: each piece's points take its first point's
+// serial as their ribbon's id.
+static void SplitRibbons(mvfxInstance* instance, int32_t emitter, const Points* p, int32_t first)
+{
+    uint32_t* ids = mvfxAttributeArray(instance, emitter, mvfx_attributeRibbon);
+    const uint32_t* serials = mvfxAttributeArray(instance, emitter, mvfx_attributeSerial);
+    for (int32_t j = 1; j < p->perUnit; ++j)
+    {
+        int32_t i = first + j;
+        ids[i] = (p->torn[i - 1] & 1u) != 0 ? serials[i] : ids[i - 1];
+    }
+}
+
+// Tears every edge across and down stretched past its rest times 1 +
+// tearStrain at a substep's end, unit by unit in place order.
+static void Tear(mvfxInstance* instance, int32_t emitter, const Points* p, const Family families[6],
+                 int64_t tick)
+{
+    if (p->torn == nullptr)
+    {
+        return;
+    }
+    const mvfxCompiledEmitter* compiled = p->emitter;
+    float stretch = 1.0f + compiled->unit.tearStrain;
+    bool ribbons = mvfxHasAttribute(&compiled->plan, mvfx_attributeRibbon);
+    for (int32_t u = 0; u < p->units; ++u)
+    {
+        int32_t first = u * p->perUnit;
+        bool tore = false;
+        for (int32_t r = 0; r < p->rows; ++r)
+        {
+            for (int32_t c = 0; c < p->width; ++c)
+            {
+                int32_t q = first + r * p->width + c;
+                tore |= c + 1 < p->width && TearEdge(instance, emitter, p, q, q + 1, 1u,
+                                                     families[0].rest * stretch, tick);
+                tore |= r + 1 < p->rows && TearEdge(instance, emitter, p, q, q + p->width, 2u,
+                                                    families[1].rest * stretch, tick);
+            }
+        }
+        if (tore && ribbons)
+        {
+            SplitRibbons(instance, emitter, p, first);
         }
     }
 }
@@ -219,6 +336,9 @@ static Points PointsOf(mvfxInstance* instance, int32_t emitter)
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     Points p = {.instance = instance,
                 .emitterIndex = emitter,
+                .torn = mvfxHasAttribute(&compiled->plan, mvfx_attributeTorn)
+                            ? mvfxAttributeArray(instance, emitter, mvfx_attributeTorn)
+                            : nullptr,
                 .flags = mvfxHasAttribute(&compiled->plan, mvfx_attributeAttachFlags)
                              ? mvfxAttributeArray(instance, emitter, mvfx_attributeAttachFlags)
                              : nullptr,
@@ -274,6 +394,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
         Family families[6];
         FamiliesOf(compiled, scale, 1.0f / (h * h), families);
         SolveAll(&p, families, PASS_PROJECT, 0.0f);
+        Tear(instance, emitter, &p, families, to);
         // The integrator's velocity (exact under gravity and drag) and the
         // constraints' correction over the substep; a pinned point's its
         // frame's.

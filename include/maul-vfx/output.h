@@ -471,8 +471,9 @@ extern "C"
     /// layout with their tangent across, side down and face normal from
     /// the neighboring points, their corner the place across and row over
     /// the last of each, their ribbon the sheet's index), and each quad
-    /// between rows six indices (two triangles, counterclockwise seen from
-    /// the face normal's side). Buffers too small take the first whole
+    /// between rows not torn (none of its edges, mvfxUnitDef.tearStrain)
+    /// six indices (two triangles, counterclockwise seen from the face
+    /// normal's side). Buffers too small take the first whole
     /// sheets that fit both; the counts are always all of them, 0 for an
     /// emitter of other units. Scratch is not used.
     ///

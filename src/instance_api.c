@@ -252,6 +252,7 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
         .neighborsCapped = state->neighborsCapped,
         .contactsCapped = state->contactsCapped,
         .linksDropped = state->linksDropped,
+        .torn = state->torn,
     };
     return mvfx_success;
 }

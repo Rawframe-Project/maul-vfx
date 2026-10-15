@@ -605,6 +605,8 @@ extern "C"
         uint64_t contactsCapped;
         // Plexus links past the most an emitter keeps or a particle owns.
         uint64_t linksDropped;
+        // Units' stretch constraints torn.
+        uint64_t torn;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

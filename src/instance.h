@@ -164,6 +164,8 @@ typedef struct mvfxEmitterState
     mvfxAttachFrame* attachFrames;
     int32_t attachFrameCount;
     float* attachTargets;
+    // Its units' stretch constraints torn.
+    uint64_t torn;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

@@ -508,6 +508,13 @@ extern "C"
         // instance).
         bool pinFirst;
         bool pinFirstRow;
+        // How far a stretch constraint (between neighbors across or down) may
+        // stretch before it tears for good: it tears when, after a substep's
+        // projections, it is longer than its rest times 1 + tearStrain. A
+        // torn edge takes the bending across it and its quads' shear with
+        // it: a chain drawn as ribbons splits there, a sheet's mesh drops
+        // those quads. 0 never tears, else up to MVFX_MAX_EXTENT.
+        float tearStrain;
         // What the pinned points are held to; any but mvfx_attachNone needs a
         // pinned point, mvfx_attachInstance a world-space emitter,
         // mvfx_attachParticles spawning from events of an emitter in the same
@@ -728,8 +735,9 @@ extern "C"
         const mvfxHostModule* hostModules;
         int32_t hostModuleCount;
         // The events its particles write each step, a mask of
-        // mvfx_eventMaskBirth, mvfx_eventMaskDeath and mvfx_eventMaskCollision
-        // (collisions only where they collide), at most eventCapacity a step
+        // mvfx_eventMaskBirth, mvfx_eventMaskDeath, mvfx_eventMaskCollision
+        // (collisions only where they collide) and mvfx_eventMaskTear (tears
+        // only of units that tear), at most eventCapacity a step
         // (from 1 to MVFX_MAX_EVENTS when any is asked; the rest counted
         // dropped). The host reads them after the step
         // (mvfxInstance_GetEvents).
