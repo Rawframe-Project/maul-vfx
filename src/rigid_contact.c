@@ -668,6 +668,7 @@ static void PolytopeContacts(const mvfxBodyPose* body, const mvfxPolytope* a, co
     {
         return;
     }
+    list->searchesCapped += meet.capped ? 1 : 0;
     float n[3];
     mvfxConvexPoint points[MVFX_MAX_MANIFOLD_POINTS];
     int32_t count = mvfxConvexManifold(a, b, &meet, list->margin, n, points);

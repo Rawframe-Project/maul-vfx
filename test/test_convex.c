@@ -412,7 +412,7 @@ static void TestSteps(void)
     }
     CHECK(accurate && most < MVFX_CONVEX_STEPS / 2, "thin slabs nearly parallel");
     // Held to one step: GJK's distance at least the true one, EPA's depth
-    // at most the true one.
+    // at most the true one, each marked capped.
     static const float unit[3] = {1, 1, 1};
     mvfxBoxPolytope(origin, s_identity, unit, &a);
     float turn[4];
@@ -420,7 +420,8 @@ static void TestSteps(void)
     bool bounded = true;
     for (int32_t overlap = 0; overlap < 2; ++overlap)
     {
-        const float place[3] = {overlap != 0 ? 0.8f : 1.7f, 0.3f, 0.2f};
+        // Apart by 0.31 (the turned box reaches 1.39 along x), or into it.
+        const float place[3] = {overlap != 0 ? 0.8f : 2.7f, 0.3f, 0.2f};
         mvfxBoxPolytope(place, turn, unit, &b);
         mvfxConvexMeet full;
         mvfxConvexMeet held;
@@ -430,7 +431,14 @@ static void TestSteps(void)
         // Apart, the distance an upper bound; overlapping, the depth a
         // lower one: either way never less than the full answer.
         bounded = bounded && met && heldMet && steps.gjk <= 1 && steps.epa <= 1 &&
-                  held.distance >= full.distance - 1e-6f;
+                  held.distance >= full.distance - 1e-6f && held.capped && !full.capped;
+        // A GJK stopped short is met whatever the margin: the pair may
+        // still touch, and is kept rather than missed (overlapping pairs
+        // held to one step were answered apart).
+        mvfxConvexMeet near;
+        bool kept = mvfxConvexMeetsWithin(&b, &a, 0.01f, 1, &near, &steps);
+        bool dropped = !mvfxConvexMeetsWithin(&b, &a, 0.01f, MVFX_CONVEX_STEPS, &near, &steps);
+        bounded = bounded && kept && (overlap != 0 || dropped);
     }
     CHECK(bounded, "searches held to their steps");
 }

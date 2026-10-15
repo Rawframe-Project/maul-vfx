@@ -258,6 +258,7 @@ static void PairsOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels)
         mvfxBodyContacts list = {.count = 0};
         mvfxGatherPairContacts(&poseLow, &shapeLow, &poseHigh, &shapeHigh, &list);
         state->rigidContactsCapped += (uint64_t)list.capped;
+        state->rigidSearchesCapped += (uint64_t)list.searchesCapped;
         AddPair(s, low, high, &list);
     }
 }

@@ -449,6 +449,7 @@ void mvfxResetInstance(mvfxInstance* instance)
         state->torn = 0;
         state->selfContactsCapped = 0;
         state->rigidContactsCapped = 0;
+        state->rigidSearchesCapped = 0;
         state->hasBounds = false;
         state->ribbonCounter = 0;
         state->beamStrike = instance->effect->emitters[e].delay;
@@ -511,6 +512,8 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
             mvfxHash64(hash, &state->selfContactsCapped, (int32_t)sizeof state->selfContactsCapped);
         hash = mvfxHash64(hash, &state->rigidContactsCapped,
                           (int32_t)sizeof state->rigidContactsCapped);
+        hash = mvfxHash64(hash, &state->rigidSearchesCapped,
+                          (int32_t)sizeof state->rigidSearchesCapped);
         hash = mvfxHash64(hash, &state->plexus.linkCount, (int32_t)sizeof state->plexus.linkCount);
         if (state->plexus.linkCount > 0)
         {

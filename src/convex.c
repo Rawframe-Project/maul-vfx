@@ -657,10 +657,12 @@ bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float m
     if (!Gjk(a, b, &s, v, most, &steps->gjk))
     {
         Penetration(a, b, &s, out, most, &steps->epa);
+        out->capped = steps->epa >= most;
         return true;
     }
     double distance = sqrt(Dot(v, v));
-    if (!(distance < (double)margin))
+    bool capped = steps->gjk >= most;
+    if (!(distance < (double)margin) && !capped)
     {
         return false;
     }
@@ -670,6 +672,7 @@ bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float m
         out->normal[k] = distance > 0.0 ? (float)(v[k] / distance) : (k == 1 ? 1.0f : 0.0f);
     }
     out->distance = (float)distance;
+    out->capped = capped;
     return true;
 }
 

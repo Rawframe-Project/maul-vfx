@@ -34,13 +34,15 @@ void mvfxHullPolytope(const mvfxHull* hull, const float scale[3], const float x[
 
 // How two polytopes a and b meet: the unit normal from b toward a, their
 // distance along it (below 0 where they overlap, by the least it takes to
-// part them) and the nearest or deepest points of each.
+// part them) and the nearest or deepest points of each; whether a search
+// stopped at its most steps.
 typedef struct mvfxConvexMeet
 {
     float normal[3];
     float distance;
     float onA[3];
     float onB[3];
+    bool capped;
 } mvfxConvexMeet;
 
 // The most steps GJK and EPA each take: a fixed bound keeps every
@@ -60,9 +62,11 @@ typedef struct mvfxConvexSteps
 
 // mvfxConvexMeets with each search held to most steps (at most
 // MVFX_CONVEX_STEPS), counting them. A search stopped there answers with
-// what it has: GJK the last simplex's point, apart, at a distance at least
-// the true one; EPA the nearest face it found, at a depth at most the
-// true one.
+// what it has, marked capped: GJK the last simplex's point at a distance
+// at least the true one, met whatever the margin (they may still touch,
+// so the pair is kept, its manifold measuring its points' depths, rather
+// than missed for the step); EPA the nearest face it found, at a depth at
+// most the true one.
 bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float margin, int32_t most,
                            mvfxConvexMeet* out, mvfxConvexSteps* steps);
 

@@ -201,6 +201,7 @@ typedef struct mvfxEmitterState
     int32_t* selfCounts;
     uint64_t selfContactsCapped;
     uint64_t rigidContactsCapped;
+    uint64_t rigidSearchesCapped;
     // The id of its current ribbon by the counter: breaks advance it.
     uint32_t ribbonCounter;
     // A beam's next strike: the tick its points die at.

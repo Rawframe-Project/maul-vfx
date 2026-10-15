@@ -82,6 +82,8 @@ typedef struct mvfxBodyContacts
     mvfxBodyContact items[MVFX_MAX_RIGID_CONTACTS];
     int32_t count;
     int32_t capped;
+    // Convex searches stopped at their most steps.
+    int32_t searchesCapped;
     // The collider the contacts being added meet.
     int32_t collider;
     // How far apart a point may be and still be a contact.

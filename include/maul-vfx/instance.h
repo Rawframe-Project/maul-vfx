@@ -640,6 +640,10 @@ extern "C"
         // Rigid particles' contacts past MVFX_MAX_RIGID_CONTACTS in a
         // substep, the shallowest dropped.
         uint64_t rigidContactsCapped;
+        // Rigid hulls' and boxes' nearest-point and depth searches (GJK
+        // and EPA) stopped at their most steps: the pair is kept as
+        // touching, its depth then at most the true one.
+        uint64_t rigidSearchesCapped;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

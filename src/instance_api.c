@@ -257,6 +257,7 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
         .torn = state->torn,
         .selfContactsCapped = state->selfContactsCapped,
         .rigidContactsCapped = state->rigidContactsCapped,
+        .rigidSearchesCapped = state->rigidSearchesCapped,
     };
     return mvfx_success;
 }

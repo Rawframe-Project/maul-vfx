@@ -309,6 +309,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   the sleepers it touches in turn, before that step's solve, so a
   landing meets a sleeping pile as it would an awake one, not as
   immovable ground.
+- Changed: a GJK search between rigid hulls or boxes stopped at its
+  most steps keeps the pair as touching, where it answered them apart
+  and an overlapping pair could be missed for the substep;
+  `mvfxEmitterStats.rigidSearchesCapped` counts the searches stopped.
 - `mvfxGrid_SetValuesIn` gives new values to a box of a grid's points.
   Sleeping rigid particles on a grid collider then wake only within
   reach of the cells those points change, where new values for the
