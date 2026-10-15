@@ -6,8 +6,10 @@
 // friction as computed by hand; a rest speed; a particle's radius; a
 // start on the wrong side put back; contacts several a step; kill on
 // collision, life lost, the count and its kill rule; the instance's own
-// colliders; a collider in the emitter's space; and the refusals.
+// colliders; a collider in the emitter's space; the refusals; and the
+// signed gaps to each kind of collider.
 
+#include "collide.h"
 #include "context.h"
 #include "instance.h"
 #include "random.h"
@@ -536,6 +538,47 @@ static void TestRefusals(void)
     mvfxDestroyContext(context);
 }
 
+static void TestGaps(void)
+{
+    // Signed gaps to resolved colliders: a plane's above and below; a
+    // sphere's outside and, kept in, its inside; a box turned about z,
+    // outside past a corner and inside, and kept in; a grid's box by its
+    // bounds alone, outside it whatever its flag.
+    const mvfxResolvedCollider plane = {
+        .kind = mvfx_colliderPlane, .center = {0, 1, 0}, .normal = {0, 1, 0}};
+    const float above[3] = {5, 3, 0};
+    const float below[3] = {5, 0.5f, 0};
+    bool planes = fabsf(mvfxColliderGap(&plane, above, false) - 2.0f) <= 1e-6f &&
+                  fabsf(mvfxColliderGap(&plane, below, false) + 0.5f) <= 1e-6f;
+    mvfxResolvedCollider ball = {.kind = mvfx_colliderSphere, .center = {1, 0, 0}, .radius = 2.0f};
+    const float out[3] = {1, 3, 0};
+    const float in[3] = {1, 0.5f, 0};
+    bool balls = fabsf(mvfxColliderGap(&ball, out, false) - 1.0f) <= 1e-6f &&
+                 fabsf(mvfxColliderGap(&ball, in, false) + 1.5f) <= 1e-6f;
+    ball.inside = true;
+    balls = balls && fabsf(mvfxColliderGap(&ball, in, false) - 1.5f) <= 1e-6f;
+    // Half sizes 2 by 1 by 1, turned 30 degrees about z: the points at
+    // (3, 2) and (0.5, 0.2) in its frame, 1 and 1 past its corner and 0.8
+    // within its nearest face.
+    mvfxResolvedCollider box = {.kind = mvfx_colliderBox,
+                                .halfExtents = {2, 1, 1},
+                                .rotation = {0, 0, 0.25881905f, 0.96592583f}};
+    const float corner[3] = {1.5980762f, 3.2320508f, 0};
+    const float within[3] = {0.3330127f, 0.4232051f, 0};
+    bool boxes = fabsf(mvfxColliderGap(&box, corner, false) - 1.4142136f) <= 1e-5f &&
+                 fabsf(mvfxColliderGap(&box, within, false) + 0.8f) <= 1e-5f;
+    box.inside = true;
+    boxes = boxes && fabsf(mvfxColliderGap(&box, within, false) - 0.8f) <= 1e-5f;
+    const mvfxResolvedCollider grid = {.kind = mvfx_colliderHeightfield,
+                                       .inside = true,
+                                       .center = {0, 0, 0},
+                                       .halfExtents = {2, 0, 2},
+                                       .rotation = {0, 0, 0, 1}};
+    const float over[3] = {1, 0.7f, 1};
+    bool grids = fabsf(mvfxColliderGap(&grid, over, true) - 0.7f) <= 1e-6f;
+    CHECK(planes && balls && boxes && grids, "gaps to colliders");
+}
+
 int main(void)
 {
     TestNoTunneling();
@@ -546,5 +589,6 @@ int main(void)
     TestHostAndSpaces();
     TestShapes();
     TestRefusals();
+    TestGaps();
     return s_failures == 0 ? 0 : 1;
 }
