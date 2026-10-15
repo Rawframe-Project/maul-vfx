@@ -92,6 +92,33 @@ void mvfxStoreGridValues(mvfxGrid* grid, const float* values)
     }
 }
 
+void mvfxStoreGridBox(mvfxGrid* grid, const int32_t first[3], const int32_t size[3],
+                      const float* values)
+{
+    int64_t c = grid->components;
+    int64_t row = c * size[0];
+    for (int64_t z = 0; z < size[2]; ++z)
+    {
+        for (int64_t y = 0; y < size[1]; ++y)
+        {
+            int64_t at =
+                (((first[2] + z) * grid->size[1] + first[1] + y) * grid->size[0] + first[0]) * c;
+            const float* from = values + (z * size[1] + y) * row;
+            for (int64_t i = 0; i < row; ++i)
+            {
+                if (grid->format == mvfx_gridFloat16)
+                {
+                    ((uint16_t*)grid->values)[at + i] = mvfxHalfFromFloat(from[i]);
+                }
+                else
+                {
+                    ((float*)grid->values)[at + i] = from[i];
+                }
+            }
+        }
+    }
+}
+
 // Value i of the grid.
 static float Fetch(const mvfxGrid* grid, int64_t i)
 {

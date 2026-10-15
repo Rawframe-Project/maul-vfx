@@ -721,10 +721,14 @@ static bool SameFloats(const float* a, const float* b, int32_t n)
 
 bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b)
 {
+    return a->gridSerial == b->gridSerial && mvfxSameColliderShape(a, b);
+}
+
+bool mvfxSameColliderShape(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b)
+{
     return a->kind == b->kind && a->inside == b->inside && a->grid == b->grid &&
-           a->gridSerial == b->gridSerial && SameFloats(a->center, b->center, 3) &&
-           SameFloats(a->normal, b->normal, 3) && SameFloats(&a->radius, &b->radius, 1) &&
-           SameFloats(a->halfExtents, b->halfExtents, 3) &&
+           SameFloats(a->center, b->center, 3) && SameFloats(a->normal, b->normal, 3) &&
+           SameFloats(&a->radius, &b->radius, 1) && SameFloats(a->halfExtents, b->halfExtents, 3) &&
            SameFloats(a->rotation, b->rotation, 4) && SameFloats(&a->scale, &b->scale, 1) &&
            SameFloats(&a->grow, &b->grow, 1);
 }
@@ -740,6 +744,42 @@ static float BoxDistance(const float local[3], const float half[3])
         float d = fabsf(local[k]) - half[k];
         outside += d > 0.0f ? d * d : 0.0f;
         inside = fmaxf(inside, d);
+    }
+    return inside > 0.0f ? sqrtf(outside) : inside;
+}
+
+bool mvfxOnlyPointsChanged(const mvfxResolvedCollider* before, const mvfxResolvedCollider* after)
+{
+    return before != nullptr && after != nullptr && after->grid != nullptr &&
+           mvfxSameColliderShape(before, after) && after->grid->since <= before->gridSerial &&
+           after->grid->first[0] < after->grid->end[0];
+}
+
+float mvfxChangedGap(const mvfxResolvedCollider* c, const float point[3])
+{
+    const float d[3] = {point[0] - c->center[0], point[1] - c->center[1], point[2] - c->center[2]};
+    const float back[4] = {-c->rotation[0], -c->rotation[1], -c->rotation[2], c->rotation[3]};
+    float local[3];
+    mvfxRotate(back, d, local);
+    float outside = 0.0f;
+    float inside = -INFINITY;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float h = c->halfExtents[k];
+        int32_t n = c->grid->size[k];
+        bool whole = n == 1 || (k == 1 && c->kind == mvfx_colliderHeightfield);
+        // Point i lies at (i / (n - 1) - 1/2) 2h; the cells on either side
+        // of the changed points change with them.
+        float low =
+            whole ? -h
+                  : fmaxf(((float)(c->grid->first[k] - 1) / (float)(n - 1) - 0.5f) * 2.0f * h, -h);
+        float high =
+            whole ? h : fminf(((float)c->grid->end[k] / (float)(n - 1) - 0.5f) * 2.0f * h, h);
+        float below = low - local[k];
+        float above = local[k] - high;
+        float e = fmaxf(below, above);
+        outside += e > 0.0f ? e * e : 0.0f;
+        inside = fmaxf(inside, (k == 1 && c->kind == mvfx_colliderHeightfield) ? -INFINITY : e);
     }
     return inside > 0.0f ? sqrtf(outside) : inside;
 }

@@ -64,6 +64,21 @@ float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3], bool 
 // by its serial too).
 bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b);
 
+// Whether two resolved colliders are the same but for their grid's
+// values.
+bool mvfxSameColliderShape(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b);
+
+// Whether a grid collider seen as before is now after with only its
+// grid's values changed, each change since among the points the live
+// grid knows changed (either NULL: false).
+bool mvfxOnlyPointsChanged(const mvfxResolvedCollider* before, const mvfxResolvedCollider* after);
+
+// A point's distance outside the part of a grid collider's box its grid's
+// changed points reach (the cells about them; all of a heightfield's
+// height), below 0 inside; reads the live grid's changed points, never
+// its values.
+float mvfxChangedGap(const mvfxResolvedCollider* c, const float point[3]);
+
 // A grid collider's signed distance at a point in the particles' space,
 // positive on its allowed side (a heightfield's across its surface, by
 // its slope), INFINITY outside its box; and the unit way toward the

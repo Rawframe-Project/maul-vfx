@@ -109,6 +109,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfx
 ```
 Gives a grid new values for the same points, as an animated field; steps after read them.  @param context  The context that owns the grid. @param grid     The grid. @param values   The values, as in the grid def. @param count    How many: the grid's points times its components. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live grid; `mvfx_errorInvalid` for a NULL context or values, a count not the grid's or a value out of range, which counts as misuse when the context is given (the grid is then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid, const int32_t first[3], const int32_t size[3], const float* values, int64_t count);
+```
+Gives new values to a box of a grid's points, as a terrain dug or built up in one place; steps after read them. Sleeping rigid particles on a grid collider wake only near the points so changed since the step before, where new values for all of them wake every one within the grid's box.  @param context  The context that owns the grid. @param grid     The grid. @param first    The box's first point along X, Y and Z. @param size     The box's points along X, Y and Z, each at least 1, within the grid from first. @param values   The box's values, components a point, X fastest, then Y, then Z, each as in the grid def. @param count    How many: the box's points times the components. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live grid; `mvfx_errorInvalid` for a NULL context, first, size or values, a box not within the grid, a count not the box's or a value out of range, which counts as misuse when the context is given (the grid is then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ## `instance.h`
 
 Instances: one playing of an effect, at a place, with a seed. A context's step advances every instance it owns.
@@ -387,4 +392,4 @@ Returns a scalar source uniform between min and max.  @param min  The least valu
 
 ---
 
-70 functions across 11 headers.
+71 functions across 11 headers.

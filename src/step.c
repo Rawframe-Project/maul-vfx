@@ -205,6 +205,7 @@ static void StepRange(int32_t startIndex, int32_t endIndex, void* taskContext)
 
 void mvfxStepInstances(mvfxContext* context, int64_t ticks)
 {
+    context->steps += 1;
     StepWork work = {&context->instances, ticks};
     mvfxRunTasks(&context->tasks, StepRange, (int32_t)context->instances.capacity, STEP_MIN_RANGE,
                  &work);

@@ -11,7 +11,8 @@
 // host table set again unchanged leaves a box asleep, moved wakes it to
 // fall; changed colliders wake only the bodies near them; a
 // heightfield's values changed wake a box, and one taken away and
-// destroyed is never read; a depth image set again wakes a box; the host
+// destroyed is never read; a heightfield's points changed wake only the
+// boxes near them; a depth image set again wakes a box; the host
 // wakes bodies within a sphere; no sleep speed, no sleeping; the checks.
 
 #include "instance.h"
@@ -425,6 +426,85 @@ static void TestGridChanges(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Heights for a 9 by 9 heightfield, 1 m apart from -4 to 4.
+static float s_heights[81];
+
+// Lowers the heights from point (x, z), n by n of them, by drop.
+static void Dig(mvfxGridId grid, int32_t x, int32_t z, int32_t n, float drop)
+{
+    float box[81];
+    for (int32_t j = 0; j < n; ++j)
+    {
+        for (int32_t i = 0; i < n; ++i)
+        {
+            s_heights[(z + j) * 9 + x + i] -= drop;
+            box[j * n + i] = s_heights[(z + j) * 9 + x + i];
+        }
+    }
+    const int32_t first[3] = {x, 0, z};
+    const int32_t size[3] = {n, 1, n};
+    CHECK(mvfxGrid_SetValuesIn(s_scene.context, grid, first, size, box, (int64_t)n * n) ==
+              mvfx_success,
+          "dug");
+}
+
+static void TestGridRegions(void)
+{
+    // Boxes asleep at x = -3 and 3 on a heightfield: the heights lowered
+    // under the second (points 6 to 8 along X, 3 to 5 along Z, so the
+    // cells from x = 1 to the edge and z = -2 to 2) wake it alone, which
+    // settles lower; a corner far from both lowered wakes neither; heights
+    // lowered under the second and then, after a step that met nothing
+    // (no time), at that corner wake it, the first change not lost; new
+    // heights everywhere wake both.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.colliders = NULL;
+    boxes.colliderCount = 0;
+    boxes.collision.hostColliders = true;
+    Play(&boxes);
+    for (int32_t i = 0; i < 81; ++i)
+    {
+        s_heights[i] = 0.0f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 9;
+    def.size[2] = 9;
+    def.values = s_heights;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(s_scene.context, &def, &grid) == mvfx_success, "heights");
+    const mvfxCollider field = {.kind = mvfx_colliderHeightfield,
+                                .halfExtents = {4, 0, 4},
+                                .rotation = {0, 0, 0, 1},
+                                .grid = grid};
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, &field, 1) == mvfx_success,
+          "field");
+    static const double places[6] = {-3, 0.5, 0, 3, 0.5, 0};
+    Spawn(places, 2);
+    Steps(60);
+    bool slept = Asleep(0) && Asleep(1);
+    Dig(grid, 6, 3, 3, 0.2f);
+    Steps(1);
+    bool one = Asleep(0) && !Asleep(1);
+    Steps(60);
+    bool settled = Asleep(1) && At(1, mvfx_attributePositionY) < 0.35f;
+    Dig(grid, 0, 7, 2, 0.2f);
+    Steps(1);
+    bool neither = Asleep(0) && Asleep(1);
+    Dig(grid, 6, 3, 3, 0.1f);
+    CHECK(mvfxContext_StepTicks(s_scene.context, 0) == mvfx_success, "no time");
+    Dig(grid, 0, 7, 2, 0.1f);
+    Steps(1);
+    bool kept = Asleep(0) && !Asleep(1);
+    Steps(60);
+    CHECK(mvfxGrid_SetValues(s_scene.context, grid, s_heights, 81) == mvfx_success, "all");
+    Steps(1);
+    bool both = !Asleep(0) && !Asleep(1);
+    CHECK(slept && one && settled && neither && kept && both,
+          "a heightfield's changed points wake the bodies near them");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestDepthWakes(void)
 {
     // A box asleep on the ground by an empty depth image: the image set
@@ -613,6 +693,7 @@ int main(void)
     TestFarPileSleeps();
     TestWorldNear();
     TestGridChanges();
+    TestGridRegions();
     TestDepthWakes();
     TestWakeWithin();
     TestNeverSleeps();

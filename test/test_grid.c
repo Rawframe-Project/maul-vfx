@@ -3,7 +3,8 @@
 //
 // Grids: their life on a context and every refusal, the limit, new values,
 // trilinear sampling that reproduces a linear field, each border, a
-// constant axis, binary16 storage, and an effect keeping its grid busy.
+// constant axis, binary16 storage, new values for a box of points and
+// the points changed since a step, and an effect keeping its grid busy.
 
 #include "context.h"
 #include "grid.h"
@@ -12,6 +13,7 @@
 #include "test_harness.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/instance.h"
 
 #include <math.h>
 
@@ -156,6 +158,117 @@ static void TestLife(void)
     mvfxDestroyContext(refused);
 }
 
+// The value at point (x, y, z) of a 4 by 3 by 2 grid of two components
+// before and after a box is set: 10 and 50 times its index, and the
+// component (exact in binary16).
+static float Before(int32_t i, int32_t c)
+{
+    return 10.0f * (float)i + (float)c;
+}
+
+static float After(int32_t i, int32_t c)
+{
+    return 50.0f * (float)i + (float)c;
+}
+
+static void TestSetValuesIn(void)
+{
+    // In both formats: the points from (1, 1, 0), 2 by 2 by 1 of them, set
+    // anew and the rest kept; the points so changed since the last step
+    // gathered (the union of two boxes set before a step, the first box
+    // set after one alone, all of them for new values everywhere); bad
+    // boxes, counts and values refused whole and counted.
+    for (int32_t format = 0; format < 2; ++format)
+    {
+        mvfxContext* context = NewContext(4);
+        static float values[48];
+        for (int32_t i = 0; i < 24; ++i)
+        {
+            values[2 * i] = Before(i, 0);
+            values[2 * i + 1] = Before(i, 1);
+        }
+        mvfxGridDef def = mvfxDefaultGridDef();
+        def.size[0] = 4;
+        def.size[1] = 3;
+        def.size[2] = 2;
+        def.components = 2;
+        def.format = (mvfxGridFormat)format;
+        def.values = values;
+        mvfxGridId id = {0};
+        CHECK(mvfxCreateGrid(context, &def, &id) == mvfx_success, "created");
+        const mvfxGrid* grid = mvfxContextGrid(context, id);
+        uint64_t created = grid->serial;
+        static const int32_t first[3] = {1, 1, 0};
+        static const int32_t size[3] = {2, 2, 1};
+        float box[8];
+        for (int32_t y = 0; y < 2; ++y)
+        {
+            for (int32_t x = 0; x < 2; ++x)
+            {
+                int32_t i = (1 + y) * 4 + 1 + x;
+                box[2 * (y * 2 + x)] = After(i, 0);
+                box[2 * (y * 2 + x) + 1] = After(i, 1);
+            }
+        }
+        CHECK(mvfxGrid_SetValuesIn(context, id, first, size, box, 8) == mvfx_success, "set");
+        bool right = true;
+        for (int32_t i = 0; i < 24; ++i)
+        {
+            int32_t x = i % 4;
+            int32_t y = i / 4 % 3;
+            int32_t z = i / 12;
+            bool inside = x >= 1 && x <= 2 && y >= 1 && y <= 2 && z == 0;
+            const float u[3] = {(float)x / 3.0f, (float)y / 2.0f, (float)z};
+            float out[4];
+            right = right && mvfxSampleGrid(grid, u, mvfx_borderNone, out) &&
+                    out[0] == (inside ? After(i, 0) : Before(i, 0)) &&
+                    out[1] == (inside ? After(i, 1) : Before(i, 1));
+        }
+        CHECK(right, "the box set, the rest kept");
+        static const int32_t corner[3] = {3, 0, 1};
+        static const int32_t one[3] = {1, 1, 1};
+        static const float two[2] = {1, 2};
+        CHECK(mvfxGrid_SetValuesIn(context, id, corner, one, two, 2) == mvfx_success, "a point");
+        CHECK(grid->since == created && grid->first[0] == 1 && grid->first[1] == 0 &&
+                  grid->first[2] == 0 && grid->end[0] == 4 && grid->end[1] == 3 &&
+                  grid->end[2] == 2 && grid->serial == created + 2,
+              "both boxes changed since the step");
+        CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success, "a step");
+        uint64_t seen = grid->serial;
+        CHECK(mvfxGrid_SetValuesIn(context, id, first, size, box, 8) == mvfx_success, "again");
+        CHECK(grid->since == seen && grid->first[0] == 1 && grid->first[1] == 1 &&
+                  grid->first[2] == 0 && grid->end[0] == 3 && grid->end[1] == 3 &&
+                  grid->end[2] == 1,
+              "after a step, the box alone");
+        CHECK(mvfxGrid_SetValues(context, id, values, 48) == mvfx_success, "all");
+        CHECK(grid->first[0] == 0 && grid->end[0] == 4 && grid->end[1] == 3 && grid->end[2] == 2,
+              "all of them");
+        uint64_t misuse = mvfxContext_GetMisuse(context);
+        static const int32_t before[3] = {-1, 0, 0};
+        static const int32_t past[3] = {3, 0, 0};
+        static const int32_t none[3] = {0, 1, 1};
+        float nan[8] = {0};
+        nan[5] = (float)NAN;
+        uint64_t serial = grid->serial;
+        bool refused =
+            mvfxGrid_SetValuesIn(context, id, before, size, box, 8) == mvfx_errorInvalid &&
+            mvfxGrid_SetValuesIn(context, id, past, size, box, 8) == mvfx_errorInvalid &&
+            mvfxGrid_SetValuesIn(context, id, first, none, box, 0) == mvfx_errorInvalid &&
+            mvfxGrid_SetValuesIn(context, id, first, size, box, 6) == mvfx_errorInvalid &&
+            mvfxGrid_SetValuesIn(context, id, first, size, nan, 8) == mvfx_errorInvalid &&
+            mvfxGrid_SetValuesIn(context, id, NULL, size, box, 8) == mvfx_errorInvalid &&
+            mvfxGrid_SetValuesIn(context, id, first, NULL, box, 8) == mvfx_errorInvalid &&
+            mvfxGrid_SetValuesIn(context, id, first, size, NULL, 8) == mvfx_errorInvalid;
+        CHECK(refused && mvfxContext_GetMisuse(context) == misuse + 8 && grid->serial == serial,
+              "bad boxes refused and counted");
+        CHECK(mvfxGrid_SetValuesIn(NULL, id, first, size, box, 8) == mvfx_errorInvalid,
+              "no context");
+        CHECK(mvfxDestroyGrid(context, id) == mvfx_success, "destroyed");
+        CHECK(mvfxGrid_SetValuesIn(context, id, first, size, box, 8) == mvfx_errorStale, "stale");
+        mvfxDestroyContext(context);
+    }
+}
+
 static void TestSampling(void)
 {
     mvfxContext* context = NewContext(4);
@@ -284,6 +397,7 @@ int main(void)
 {
     TestLife();
     TestSampling();
+    TestSetValuesIn();
     TestBusy();
     return s_failures == 0 ? 0 : 1;
 }

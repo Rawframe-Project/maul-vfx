@@ -56,6 +56,7 @@ void mvfxWakeNear(mvfxInstance* instance, int32_t emitter, const mvfxResolvedCol
         return;
     }
     float* sleep = mvfxAttributeArray(instance, emitter, mvfx_attributeSleep);
+    bool changed = mvfxOnlyPointsChanged(before, after);
     const float* x[3];
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -69,9 +70,16 @@ void mvfxWakeNear(mvfxInstance* instance, int32_t emitter, const mvfxResolvedCol
         }
         const float p[3] = {x[0][i], x[1][i], x[2][i]};
         float gap = INFINITY;
-        // The collider as it was by its bounds: its grid may be gone.
-        gap = before != nullptr ? fminf(gap, mvfxColliderGap(before, p, true)) : gap;
-        gap = after != nullptr ? fminf(gap, mvfxColliderGap(after, p, false)) : gap;
+        if (changed)
+        {
+            gap = mvfxChangedGap(after, p);
+        }
+        else
+        {
+            // The collider as it was by its bounds: its grid may be gone.
+            gap = before != nullptr ? fminf(gap, mvfxColliderGap(before, p, true)) : gap;
+            gap = after != nullptr ? fminf(gap, mvfxColliderGap(after, p, false)) : gap;
+        }
         float reach = (1.0f + MVFX_CONTACT_MARGIN) * mvfxReachOf(instance, emitter, i);
         sleep[i] = gap <= reach ? 0.0f : sleep[i];
     }

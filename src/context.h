@@ -27,6 +27,8 @@ struct mvfxContext
     uint64_t instancesCreated;
     // How many grids' values it has made or changed, their serials.
     uint64_t gridValues;
+    // How many steps it has taken.
+    uint64_t steps;
     // The particles its instances hold, against limits.particles (0 for no
     // budget).
     int64_t particlesHeld;

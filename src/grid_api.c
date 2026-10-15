@@ -44,6 +44,8 @@ mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGrid
         return mvfx_errorCapacity;
     }
     grid->serial = ++context->gridValues;
+    grid->step = context->steps;
+    grid->since = grid->serial;
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->grids, grid, &generation);
     *gridOut = (mvfxGridId){index1, generation};
@@ -75,6 +77,33 @@ bool mvfxGrid_IsValid(const mvfxContext* context, mvfxGridId grid)
     return context != nullptr && mvfxContextGrid(context, grid) != nullptr;
 }
 
+// A grid's values changed at the points from first, size along each axis:
+// a new serial, and the points among those changed since the context's
+// last step (the first change after a step starts them anew, from the
+// serial before it).
+static void Changed(mvfxContext* context, mvfxGrid* grid, const int32_t first[3],
+                    const int32_t size[3])
+{
+    if (grid->step != context->steps)
+    {
+        grid->step = context->steps;
+        grid->since = grid->serial;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            grid->first[k] = 0;
+            grid->end[k] = 0;
+        }
+    }
+    bool empty = !(grid->first[0] < grid->end[0]);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int32_t end = first[k] + size[k];
+        grid->first[k] = empty || first[k] < grid->first[k] ? first[k] : grid->first[k];
+        grid->end[k] = empty || end > grid->end[k] ? end : grid->end[k];
+    }
+    grid->serial = ++context->gridValues;
+}
+
 mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float* values,
                               int64_t count)
 {
@@ -94,7 +123,38 @@ mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float
         return mvfx_errorInvalid;
     }
     mvfxStoreGridValues(live, values);
-    live->serial = ++context->gridValues;
+    static const int32_t origin[3] = {0, 0, 0};
+    Changed(context, live, origin, live->size);
+    return mvfx_success;
+}
+
+mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid, const int32_t first[3],
+                                const int32_t size[3], const float* values, int64_t count)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxGrid* live = mvfxContextGrid(context, grid);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    bool fits = first != nullptr && size != nullptr;
+    int64_t points = 1;
+    for (int32_t k = 0; fits && k < 3; ++k)
+    {
+        fits = first[k] >= 0 && size[k] >= 1 && size[k] <= live->size[k] - first[k];
+        points *= fits ? size[k] : 1;
+    }
+    if (!fits || values == nullptr || count != points * live->components ||
+        !mvfxAreGridValuesValid(live->format, values, count))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    mvfxStoreGridBox(live, first, size, values);
+    Changed(context, live, first, size);
     return mvfx_success;
 }
 

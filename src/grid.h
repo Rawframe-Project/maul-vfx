@@ -27,6 +27,14 @@ typedef struct mvfxGrid
     // at each change of its values: a grid's values seen before are told
     // from new ones (and from another grid's at the same address).
     uint64_t serial;
+    // The points its values changed at since the context's step `step`
+    // (first to end, empty when first is not below end), every change
+    // after serial `since` among them: a collider seen at or after since
+    // changed only there.
+    uint64_t step;
+    uint64_t since;
+    int32_t first[3];
+    int32_t end[3];
 } mvfxGrid;
 
 // Whether a grid def is valid.
@@ -42,6 +50,11 @@ void mvfxReleaseGrid(mvfxGrid* grid, const mvfxAllocator* allocator);
 
 // Stores valid values for the grid's points.
 void mvfxStoreGridValues(mvfxGrid* grid, const float* values);
+
+// Stores new values for the points from first, size along each axis,
+// given as the grid's (X fastest), already checked.
+void mvfxStoreGridBox(mvfxGrid* grid, const int32_t first[3], const int32_t size[3],
+                      const float* values);
 
 // Samples the grid's components trilinearly at u, the box's own place with
 // [0, 1] from face to face, under a border; false (and nothing) outside
