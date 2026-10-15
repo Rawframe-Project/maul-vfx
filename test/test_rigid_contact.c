@@ -8,6 +8,7 @@
 // face toward the body; a capsule over a box's corner meeting it by its
 // deepest point.
 
+#include "grid_api.h"
 #include "rigid_contact.h"
 #include "test_harness.h"
 
@@ -143,8 +144,64 @@ static void TestCapsuleCorner(void)
     CHECK(list.count >= 1 && fabsf(deepest + 0.01f) <= 1e-3f, "a capsule over a corner");
 }
 
+// A heightfield of three points a side over x and z from -2 to 2: flat,
+// or a bump of 0.3 at its middle.
+static mvfxResolvedCollider Heights(mvfxContext* context, bool bump)
+{
+    static const float flat[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    static const float raised[9] = {0, 0, 0, 0, 0.3f, 0, 0, 0, 0};
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 3;
+    def.size[2] = 3;
+    def.values = bump ? raised : flat;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "heights");
+    return (mvfxResolvedCollider){.kind = mvfx_colliderHeightfield,
+                                  .halfExtents = {2, 0, 2},
+                                  .rotation = {0, 0, 0, 1},
+                                  .grid = mvfxContextGrid(context, grid),
+                                  .scale = 1.0f};
+}
+
+static void TestHeights(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = nullptr;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    // A box 0.01 into flat heights meets them at its four lower corners,
+    // its bottom face's center left out (no bulge under it).
+    mvfxResolvedCollider flat = Heights(context, false);
+    const mvfxBodyPose level = {.x = {0.3f, 0.49f, 0.2f}, .q = {0, 0, 0, 1}};
+    static const float unit[3] = {1, 1, 1};
+    mvfxBodyContacts box = Gather(&flat, &level, &s_box, unit);
+    bool corners = box.count == 4;
+    for (int32_t i = 0; corners && i < box.count; ++i)
+    {
+        corners = fabsf(box.items[i].depth + 0.01f) <= 1e-4f &&
+                  fabsf(fabsf(box.items[i].body[0]) - 0.5f) <= 1e-6f;
+    }
+    CHECK(corners, "flat heights by the corners");
+    // A capsule of length 2 lying along x, 0.01 into the bump's top by
+    // its core's middle, its ends above the slopes: met in the middle.
+    static const mvfxRigidDef capsule = {
+        .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
+    mvfxResolvedCollider bump = Heights(context, true);
+    mvfxBodyPose lying = {.x = {0, 0.3f + 0.25f - 0.01f, 0}};
+    TurnAbout(2, 1.5707963f, lying.q);
+    static const float rod[3] = {0.5f, 2, 0.5f};
+    mvfxBodyContacts core = Gather(&bump, &lying, &capsule, rod);
+    float deepest = 0.0f;
+    for (int32_t i = 0; i < core.count; ++i)
+    {
+        deepest = fminf(deepest, core.items[i].depth);
+    }
+    CHECK(fabsf(deepest + 0.01f) <= 2e-3f, "a capsule on a bump by its middle");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
+    TestHeights();
     TestCrossingEdges();
     TestOverlap();
     TestFaceOnEdge();

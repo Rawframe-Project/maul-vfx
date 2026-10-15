@@ -109,7 +109,7 @@ static inline void BuildRigidScene(mvfxContext* context)
          .space = mvfx_spaceLocal,
          .center = {0, -0.9f, 0},
          .halfExtents = {1, 0, 1},
-         .rotation = {0, 0, 0, 1},
+         .rotation = {0, 0.38268343f, 0, 0.92387953f},
          .grid = bumpGrid},
     };
     const mvfxCollider bowl[3] = {

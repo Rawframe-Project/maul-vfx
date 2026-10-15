@@ -830,13 +830,17 @@ static void GridContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
 }
 
 // The depth image, by each sample's way over the substep: its first place
-// behind the surface (within the thickness), its depth there from the
-// surface grown by the shape's radius.
+// within twice the shape's radius of the surface or behind it (within the
+// thickness), its depth then across the surface at its normal. The image
+// measures how far behind along the camera's ray, which off its axis is
+// longer than across the surface: by the radius alone a sphere sank 1.6
+// mm before it was seen. Twice it sees rays up to 60 degrees from the
+// normal, and samples not touching are dropped by their depth.
 static void DepthContacts(const mvfxBodySurfaces* surfaces, const mvfxBodyPose* b,
                           const mvfxBodyShape* s, mvfxBodyContacts* list)
 {
     mvfxResolvedDepth depth = *surfaces->depth;
-    depth.radius = s->radius;
+    depth.radius = 2.0f * s->radius;
     float samples[MOST_SAMPLES][3];
     mvfxBodyContact contacts[MOST_SAMPLES];
     bool found[MOST_SAMPLES];
@@ -852,8 +856,9 @@ static void DepthContacts(const mvfxBodySurfaces* surfaces, const mvfxBodyPose* 
         SampleAt(b, samples[i], world);
         found[i] = mvfxDepthHit(&depth, from, world, &t, point, n);
         const float gap[3] = {world[0] - point[0], world[1] - point[1], world[2] - point[2]};
-        contacts[i] = found[i] ? SampleContact(b, s, samples[i], world, n, Dot(gap, n) + s->radius)
-                               : (mvfxBodyContact){.depth = INFINITY};
+        contacts[i] = found[i]
+                          ? SampleContact(b, s, samples[i], world, n, Dot(gap, n) + depth.radius)
+                          : (mvfxBodyContact){.depth = INFINITY};
     }
     AddSamples(s, contacts, found, count, list);
 }

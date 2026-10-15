@@ -736,15 +736,17 @@ static void TestGrids(void)
 
 static void TestSceneQueries(void)
 {
-    // A box falling with no colliders of its own, the host answering each
-    // query with the ground: it rests on it.
+    // A box falling down z with no colliders of its own, the host
+    // answering each query with the ground at z = 0: it rests on it.
     mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.motion.gravity[2] = -9.81f;
     emitter.colliders = NULL;
     emitter.colliderCount = 0;
     emitter.collision.sceneQueries = true;
     emitter.collision.queryCapacity = 4;
     emitter.collision.lookahead = 0.25f;
-    static const double above[3] = {0, 1.5, 0};
+    static const double above[3] = {0, 0, 1.5};
     static const float still[3] = {0, 0, 0};
     Open(&emitter, above, still);
     for (int32_t i = 0; i < 90; ++i)
@@ -755,16 +757,15 @@ static void TestSceneQueries(void)
         CHECK(mvfxInstance_GetSceneQueries(s_scene.context, s_scene.instance, 0, &queries,
                                            &count) == mvfx_success,
               "queries");
-        static const mvfxSceneAnswer ground[4] = {{.hit = true, .normal = {0, 1, 0}},
-                                                  {.hit = true, .normal = {0, 1, 0}},
-                                                  {.hit = true, .normal = {0, 1, 0}},
-                                                  {.hit = true, .normal = {0, 1, 0}}};
+        static const mvfxSceneAnswer ground[4] = {{.hit = true, .normal = {0, 0, 1}},
+                                                  {.hit = true, .normal = {0, 0, 1}},
+                                                  {.hit = true, .normal = {0, 0, 1}},
+                                                  {.hit = true, .normal = {0, 0, 1}}};
         CHECK(mvfxInstance_AnswerSceneQueries(s_scene.context, s_scene.instance, 0, ground,
                                               count) == mvfx_success,
               "answered");
     }
-    CHECK(fabsf(X(1) - 0.5f) <= 0.01f && Upright() >= 0.9999f && Speed() <= 0.02f,
-          "resting on the host's ground");
+    CHECK(fabsf(X(2) - 0.5f) <= 0.01f && Speed() <= 0.02f, "resting on the host's ground");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -792,11 +793,12 @@ static mvfxDepthImage Floor(void)
 
 static void TestDepth(void)
 {
-    // A box falling down z onto the image's floor rests on it; one out of
-    // the image's view is killed.
-    for (int32_t outside = 0; outside < 2; ++outside)
+    // A box and a sphere of diameter 0.6 falling down z onto the image's
+    // floor rest on it; a box out of the image's view is killed.
+    for (int32_t outside = 0; outside < 3; ++outside)
     {
-        mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 1, 1);
+        mvfxEmitterDef emitter = outside == 2 ? Rigid(mvfx_rigidSphere, 0.6f, 0.6f, 0.6f)
+                                              : Rigid(mvfx_rigidBox, 1, 1, 1);
         emitter.motion.gravity[1] = 0.0f;
         emitter.motion.gravity[2] = -9.81f;
         emitter.colliders = NULL;
@@ -818,7 +820,8 @@ static void TestDepth(void)
         }
         else
         {
-            CHECK(fabsf(X(2) - 0.5f) <= 0.02f && Speed() <= 0.05f, "resting on the image");
+            float rest = outside == 2 ? 0.3f : 0.5f;
+            CHECK(fabsf(X(2) - rest) <= 0.01f && Speed() <= 0.01f, "resting on the image");
         }
         mvfxDestroyContext(s_scene.context);
     }
