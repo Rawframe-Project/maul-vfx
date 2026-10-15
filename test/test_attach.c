@@ -5,8 +5,11 @@
 // space with their velocities; on the host's frames (followed, held when
 // unset at birth or after, through a world rebase); on the particles that
 // spawned them, turning with their orientation and let go when they die;
-// the checks and the host's calls' misuse.
+// many sources found by their serials across the 32-bit wrap; the checks
+// and the host's calls' misuse.
 
+#include "instance.h"
+#include "instance_api.h"
 #include "test_harness.h"
 
 #include "maul-vfx/output.h"
@@ -269,6 +272,178 @@ static void TestParticles(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestShorterWay(void)
+{
+    // A frame turned a quarter about z, then given as the same turn's
+    // negative: nothing moves, the pin's velocity 0.
+    mvfxEmitterDef emitter = Chain(mvfx_attachHost);
+    emitter.motion.gravity[1] = 0.0f;
+    float half = sinf(0.785398163f);
+    mvfxAttachFrame frame = {.position = {0, 0, 0}, .rotation = {0, 0, half, half}};
+    Open(&emitter, 1);
+    CHECK(mvfxInstance_SetAttachFrames(s_scene.context, s_scene.instance, 0, &frame, 1) ==
+              mvfx_success,
+          "a frame");
+    static const double root[3] = {1, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = root};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+          "spawned");
+    Steps(2);
+    Read(0);
+    Record before[3] = {s_scene.records[0], s_scene.records[1], s_scene.records[2]};
+    frame.rotation[2] = -half;
+    frame.rotation[3] = -half;
+    CHECK(mvfxInstance_SetAttachFrames(s_scene.context, s_scene.instance, 0, &frame, 1) ==
+              mvfx_success,
+          "its negative");
+    Steps(1);
+    Read(0);
+    bool still = Near(s_scene.records[0].velocity, 0, 0, 0, 1e-4);
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        still = still && Near(s_scene.records[i].position, (double)before[i].position[0],
+                              (double)before[i].position[1], (double)before[i].position[2], 1e-5);
+    }
+    CHECK(still, "the shorter way");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestHostLocal(void)
+{
+    // A local emitter's root at (1, 0, 0) on a frame at the origin: the
+    // instance turned a quarter about z, the frame a quarter about y, the
+    // root is at (0, 0, -1) in the world. The frame unset and the
+    // instance moved to (0, 5, 0), it is held in the instance's space, at
+    // (0, 5, -1).
+    mvfxEmitterDef emitter = Chain(mvfx_attachHost);
+    emitter.space = mvfx_spaceLocal;
+    emitter.motion.gravity[1] = 0.0f;
+    Open(&emitter, 1);
+    mvfxAttachFrame frame = {.position = {0, 0, 0}, .rotation = {0, 0, 0, 1}};
+    CHECK(mvfxInstance_SetAttachFrames(s_scene.context, s_scene.instance, 0, &frame, 1) ==
+              mvfx_success,
+          "a frame");
+    static const double root[3] = {1, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = root};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+          "spawned");
+    Steps(1);
+    float half = sinf(0.785398163f);
+    const float aboutZ[4] = {0, 0, half, half};
+    static const double origin[3] = {0, 0, 0};
+    Move(origin, aboutZ, 1.0f, true);
+    frame.rotation[1] = half;
+    frame.rotation[3] = half;
+    CHECK(mvfxInstance_SetAttachFrames(s_scene.context, s_scene.instance, 0, &frame, 1) ==
+              mvfx_success,
+          "turned");
+    Steps(1);
+    Read(0);
+    CHECK(Near(s_scene.records[0].position, 0, 0, -1, 1e-4), "a local emitter's frame");
+    CHECK(mvfxInstance_SetAttachFrames(s_scene.context, s_scene.instance, 0, NULL, 0) ==
+              mvfx_success,
+          "unset");
+    static const double up[3] = {0, 5, 0};
+    Move(up, aboutZ, 1.0f, true);
+    Steps(2);
+    Read(0);
+    CHECK(Near(s_scene.records[0].position, 0, 5, -1, 1e-4), "held in the instance's space");
+    mvfxDestroyContext(s_scene.context);
+}
+
+// Kills every particle after motion.
+static void KillAll(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    for (int64_t i = 0; i < call->particles.count; ++i)
+    {
+        call->particles.kill[i] = 1;
+    }
+}
+
+static void TestSources(void)
+{
+    // Sources born at a rate and in bursts, their serials crossing 2^32,
+    // flying apart, some dying: each live one's chain is by it, the others'
+    // let go. A unit the host spawns is born of no event and stays where it
+    // is. A source killed in its birth's step lets its chain go at once.
+    mvfxEmitterDef emitters[3] = {mvfxDefaultEmitterDef(), Chain(mvfx_attachParticles),
+                                  mvfxDefaultEmitterDef()};
+    emitters[0].rate = 20.0f;
+    static const mvfxBurst burst = {
+        .time = 0.1f, .minCount = 3, .maxCount = 3, .cycles = 1, .probability = 1.0f};
+    emitters[0].bursts = &burst;
+    emitters[0].burstCount = 1;
+    emitters[0].capacity = 16;
+    emitters[0].lifetime = mvfxRangeSource(0.3f, 1.2f);
+    emitters[0].shape.kind = mvfx_shapeSphere;
+    emitters[0].shape.radius = 0.1f;
+    emitters[0].velocity.speed = (mvfxRange){3.0f, 3.0f};
+    emitters[0].events = mvfx_eventMaskBirth;
+    emitters[0].eventCapacity = 16;
+    static const mvfxEventSpawn fromZero = {.enabled = true,
+                                            .source = 0,
+                                            .kind = mvfx_eventBirth,
+                                            .minCount = 1,
+                                            .maxCount = 1,
+                                            .capacity = 16};
+    emitters[1].eventSpawn = fromZero;
+    emitters[1].capacity = 3 * 16;
+    emitters[1].motion.gravity[1] = -20.0f;
+    static const mvfxHostModule killer = {.stage = mvfx_stageAfterMotion, .function = KillAll};
+    emitters[2].rate = 0.0f;
+    emitters[2].hostSpawnCapacity = 1;
+    emitters[2].lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitters[2].events = mvfx_eventMaskBirth;
+    emitters[2].eventCapacity = 1;
+    emitters[2].hostModules = &killer;
+    emitters[2].hostModuleCount = 1;
+    mvfxEmitterDef chains[4] = {emitters[0], emitters[1], emitters[2], Chain(mvfx_attachParticles)};
+    chains[3].eventSpawn = fromZero;
+    chains[3].eventSpawn.source = 2;
+    chains[3].eventSpawn.capacity = 1;
+    Open(chains, 4);
+    mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
+    live->emitters[0].owed = 0xFFFFFFFAu;
+    static const double root[3] = {0, 50, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = root};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 1, &request) == mvfx_success &&
+              mvfxInstance_Spawn(s_scene.context, s_scene.instance, 2, &request) == mvfx_success,
+          "spawned");
+    Steps(36);
+    Read(0);
+    static Record sources[MOST];
+    int64_t sourceCount = s_scene.count;
+    memcpy(sources, s_scene.records, sizeof sources);
+    bool wrapped =
+        sourceCount >= 4 && sources[0].serial > 0xF0000000u && sources[sourceCount - 1].serial < 16;
+    Read(1);
+    int64_t units = s_scene.count / 3;
+    int64_t near = 0;
+    for (int64_t u = 1; u < units; ++u)
+    {
+        double best = 1e9;
+        for (int64_t i = 0; i < sourceCount; ++i)
+        {
+            double d = 0.0;
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                double e =
+                    (double)s_scene.records[3 * u].position[k] - (double)sources[i].position[k];
+                d += e * e;
+            }
+            best = d < best ? d : best;
+        }
+        near += sqrt(best) <= 0.06 ? 1 : 0;
+    }
+    CHECK(wrapped, "serials across the wrap");
+    CHECK(units > sourceCount + 1 && near == sourceCount, "each live source's chain by it");
+    CHECK(Near(s_scene.records[0].position, 0, 50, 0, 0), "a host's unit stays");
+    Read(3);
+    CHECK(s_scene.count == 3 && s_scene.records[0].position[1] < 49.0f, "let go at once");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -386,6 +561,9 @@ int main(void)
     TestInstance();
     TestHost();
     TestParticles();
+    TestHostLocal();
+    TestShorterWay();
+    TestSources();
     TestChecks();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;

@@ -114,7 +114,6 @@ static void MoveLive(mvfxInstance* instance, int32_t emitter)
 {
     if (instance->effect->emitters[emitter].unitPoints > 1)
     {
-        mvfxPrepareAttachments(instance, emitter);
         mvfxStepUnits(instance, emitter);
         return;
     }

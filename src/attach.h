@@ -37,10 +37,6 @@ typedef struct mvfxPinFrame
 void mvfxMarkNewUnit(mvfxInstance* instance, int32_t emitter, int32_t at,
                      const mvfxHostBirth* given, bool event);
 
-// Readies an emitter of units held to frames for its step: its event
-// source's serials sorted, for the lookups that follow.
-void mvfxPrepareAttachments(mvfxInstance* instance, int32_t emitter);
-
 // Each live unit's frame at the step's end, before its substeps; a unit
 // whose source is gone let go.
 void mvfxBeginAttachments(mvfxInstance* instance, int32_t emitter);

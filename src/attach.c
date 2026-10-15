@@ -4,7 +4,7 @@
 // A unit's frame is fixed when its birth's step ends, its pinned points'
 // places stored in it. Each step finds where the frame is at the step's
 // end (the host's frame mapped into the particles' space, or the source's
-// particle, found among its emitter's serials sorted by a radix sort) and
+// particle, found by its serial) and
 // eases it there over the substeps: its origin linearly, its orientation
 // by a normalized linear blend along the shorter way. The instance's
 // space needs no frame: its map at each substep's tick is exact.
@@ -12,7 +12,6 @@
 #include "attach.h"
 
 #include "direction.h"
-#include "sort.h"
 #include "space.h"
 
 #include <math.h>
@@ -73,38 +72,27 @@ void mvfxMarkNewUnit(mvfxInstance* instance, int32_t emitter, int32_t at,
     }
 }
 
-void mvfxPrepareAttachments(mvfxInstance* instance, int32_t emitter)
-{
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    if (compiled->unit.attach != mvfx_attachParticles)
-    {
-        return;
-    }
-    int32_t source = compiled->eventSpawn.source;
-    const mvfxEmitterState* from = &instance->emitters[source];
-    uint32_t* table = instance->emitters[emitter].sourceTable;
-    size_t stride = (size_t)from->capacity;
-    const uint32_t* serials = mvfxAttributeArray(instance, source, mvfx_attributeSerial);
-    for (int32_t i = 0; i < from->count; ++i)
-    {
-        table[i] = serials[i];
-        table[stride + (size_t)i] = (uint32_t)i;
-    }
-    mvfxRadixSort(table, table + stride, table + 2u * stride, table + 3u * stride, from->count);
-}
-
-// The particle of the event source with a serial, or -1.
+// The particle of the event source with a serial, or -1. Live particles
+// are stored in the order of their births, which take serials in order,
+// so their stored serials (the low 32 bits) ascend modulo 2^32 from the
+// oldest's: a binary search by the serials less the oldest's finds one.
 static int32_t FindSource(const mvfxInstance* instance, int32_t emitter, uint32_t serial)
 {
     int32_t source = instance->effect->emitters[emitter].eventSpawn.source;
-    const mvfxEmitterState* from = &instance->emitters[source];
-    const uint32_t* table = instance->emitters[emitter].sourceTable;
+    int32_t count = instance->emitters[source].count;
+    const uint32_t* serials = mvfxAttributeArray(instance, source, mvfx_attributeSerial);
+    if (count == 0)
+    {
+        return -1;
+    }
+    uint32_t base = serials[0];
+    uint32_t wanted = serial - base;
     int32_t low = 0;
-    int32_t high = from->count;
+    int32_t high = count;
     while (low < high)
     {
         int32_t middle = low + (high - low) / 2;
-        if (table[middle] < serial)
+        if (serials[middle] - base < wanted)
         {
             low = middle + 1;
         }
@@ -113,9 +101,7 @@ static int32_t FindSource(const mvfxInstance* instance, int32_t emitter, uint32_
             high = middle;
         }
     }
-    return low < from->count && table[low] == serial
-               ? (int32_t)table[(size_t)from->capacity + (size_t)low]
-               : -1;
+    return low < count && serials[low] == serial ? low : -1;
 }
 
 // The frame of the source's particle i: its place and, where its emitter
@@ -311,8 +297,9 @@ void mvfxEndAttachments(mvfxInstance* instance, int32_t emitter)
 }
 
 // A new unit's frame at the step's end, and its flags: held for one whose
-// host frame is not set or that was not born of an event, let go for one
-// whose source is gone.
+// host frame is not set or that was not born of an event. One whose source
+// is already gone keeps the identity frame; the next step's start lets it
+// go, before any substep holds it.
 static uint32_t NewFrame(const mvfxInstance* instance, int32_t emitter, int32_t first,
                          uint32_t flags, float out[7])
 {
@@ -335,11 +322,10 @@ static uint32_t NewFrame(const mvfxInstance* instance, int32_t emitter, int32_t 
         return flags | MVFX_ATTACH_HELD;
     }
     int32_t i = FindSource(instance, emitter, source[first]);
-    if (i < 0)
+    if (i >= 0)
     {
-        return flags | MVFX_ATTACH_LET_GO;
+        SourceFrame(instance, emitter, i, out);
     }
-    SourceFrame(instance, emitter, i, out);
     return flags;
 }
 

@@ -43,12 +43,11 @@ typedef struct EmitterAt
     size_t unitPrevious;
     size_t attachFrames;
     size_t attachTargets;
-    size_t sourceTable;
 } EmitterAt;
 
 // Adds an emitter of units' room: the places the integrator predicts, and
-// for units held to frames the host's frames, each unit's frame at the
-// step's end and its source's sorted serials.
+// for units held to frames the host's frames and each unit's frame at the
+// step's end.
 static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
                      const int32_t* capacities, EmitterAt* at)
 {
@@ -62,9 +61,6 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     bool framed = kind == mvfx_attachHost || kind == mvfx_attachParticles;
     size_t units = framed ? (size_t)(capacities[e] / compiled->unitPoints) : 0;
     at->attachTargets = mvfxLayoutAdd(layout, 7u * units, sizeof(float), alignof(float));
-    size_t sources =
-        kind == mvfx_attachParticles ? 4u * (size_t)capacities[compiled->eventSpawn.source] : 0;
-    at->sourceTable = mvfxLayoutAdd(layout, sources, sizeof(uint32_t), alignof(uint32_t));
 }
 
 // The entries of a grid's table at a capacity: a power of two at least
@@ -249,7 +245,6 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].unitPrevious = (float*)(block + at[e].unitPrevious);
         instance->emitters[e].attachFrames = (mvfxAttachFrame*)(block + at[e].attachFrames);
         instance->emitters[e].attachTargets = (float*)(block + at[e].attachTargets);
-        instance->emitters[e].sourceTable = (uint32_t*)(block + at[e].sourceTable);
     }
 }
 
