@@ -9,7 +9,8 @@
 // deepest point; boxes stacked face to face meeting at their four corners
 // once each, square or a little turned; a box just above a plane met
 // within the margin and not past it; capsules crossed meeting at their
-// crossing, and side by side at both ends.
+// crossing, and side by side at both ends; a box's and a hull's edge laid
+// across a heightfield's crest meeting it there.
 
 #include "grid_api.h"
 #include "hull.h"
@@ -329,6 +330,59 @@ static void TestCapsulePairs(void)
     CHECK(ends == 2, "capsules side by side at both ends");
 }
 
+static void TestCrest(void)
+{
+    // A ridge 0.3 high along x, 0.5 wide at its foot (heights 0.25 apart
+    // in z), and a unit box and a cube's hull turned an eighth about z, the
+    // edge below along z laid across the ridge 0.01 into its crest, its
+    // corners 0.29 above the flat on either side: met at the crest by the
+    // edge's middle, not left to sink until a corner meets the flat.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = nullptr;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    float heights[3 * 17] = {0};
+    for (int32_t x = 0; x < 3; ++x)
+    {
+        heights[8 * 3 + x] = 0.3f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 3;
+    def.size[2] = 17;
+    def.values = heights;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "ridge");
+    const mvfxResolvedCollider ridge = {.kind = mvfx_colliderHeightfield,
+                                        .halfExtents = {2, 0, 2},
+                                        .rotation = {0, 0, 0, 1},
+                                        .grid = mvfxContextGrid(context, grid),
+                                        .scale = 1.0f};
+    mvfxBodyPose across = {.x = {0, 0.29f + 0.70710678f, 0}};
+    TurnAbout(2, 0.78539816f, across.q);
+    static const float unit[3] = {1, 1, 1};
+    static const float cube[24] = {-0.5f, -0.5f, -0.5f, 0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,
+                                   -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
+                                   -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
+    CHECK(mvfxBuildHull(cube, 8, &(mvfxAllocator){0}, &s_hull) == mvfx_success, "a cube's hull");
+    static const mvfxRigidDef hull = {.enabled = true, .shape = mvfx_rigidHull, .density = 1.0f};
+    const mvfxRigidDef* shapes[2] = {&s_box, &hull};
+    bool met = true;
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        mvfxBodyContacts list = Gather(&ridge, &across, shapes[i], unit);
+        bool crest = false;
+        for (int32_t c = 0; c < list.count; ++c)
+        {
+            const mvfxBodyContact* contact = &list.items[c];
+            crest = crest || (fabsf(contact->depth + 0.01f) <= 1e-3f &&
+                              fabsf(contact->surface[2]) <= 0.01f &&
+                              fabsf(contact->surface[1] - 0.3f) <= 0.01f);
+        }
+        met = met && crest;
+    }
+    CHECK(met, "an edge across a crest");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestHeights();
@@ -339,5 +393,6 @@ int main(void)
     TestFaceToFace();
     TestMargin();
     TestCapsulePairs();
+    TestCrest();
     return s_failures == 0 ? 0 : 1;
 }

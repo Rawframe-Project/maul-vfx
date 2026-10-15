@@ -517,8 +517,94 @@ static bool ProbeSample(const Probe* p, const mvfxBodyPose* b, const mvfxBodySha
     return found;
 }
 
+// The most edges a shape has: a hull's, each in two of its faces' loops.
+#define MOST_EDGES (MVFX_MAX_HULL_LOOP / 2)
+
+// A box's or a hull's edges as pairs of its corners (its samples below
+// its corner count): a box's twelve, between corners differing in one
+// bit; a hull's from its faces' loops, each once, its lower corner first.
+static int32_t EdgesOf(const mvfxBodyShape* s, uint8_t edges[MOST_EDGES][2])
+{
+    int32_t count = 0;
+    if (s->kind == mvfx_rigidBox)
+    {
+        for (int32_t i = 0; i < 8; ++i)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                int32_t j = i | 1 << k;
+                if (j != i)
+                {
+                    edges[count][0] = (uint8_t)i;
+                    edges[count++][1] = (uint8_t)j;
+                }
+            }
+        }
+        return count;
+    }
+    const mvfxHull* hull = s->hull;
+    for (int32_t f = 0; f < hull->faceCount; ++f)
+    {
+        int32_t first = hull->faceStart[f];
+        int32_t corners = hull->faceStart[f + 1] - first;
+        for (int32_t j = 0; j < corners && count < MOST_EDGES; ++j)
+        {
+            uint8_t from = hull->loop[first + j];
+            uint8_t to = hull->loop[first + (j + 1) % corners];
+            if (from < to)
+            {
+                edges[count][0] = from;
+                edges[count++][1] = to;
+            }
+        }
+    }
+    return count;
+}
+
+// Adds each edge's deepest inner point (a quarter, a half and three
+// quarters along) where the surface bulges under it, deeper than each of
+// its corners found: an edge laid across a crest, its corners clear of
+// the ground on either side, rests on the crest. On a flat surface the
+// corners carry the edge, as they do the faces.
+static void EdgeContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBodyShape* s,
+                         const float* depths, const bool* found, mvfxBodyContacts* list)
+{
+    uint8_t edges[MOST_EDGES][2];
+    int32_t count = EdgesOf(s, edges);
+    for (int32_t e = 0; e < count; ++e)
+    {
+        float from[3];
+        float to[3];
+        SampleOf(s, edges[e][0], from);
+        SampleOf(s, edges[e][1], to);
+        mvfxBodyContact deepest = {.depth = INFINITY};
+        bool met = false;
+        for (int32_t q = 1; q <= 3; ++q)
+        {
+            float t = 0.25f * (float)q;
+            const float point[3] = {from[0] + t * (to[0] - from[0]),
+                                    from[1] + t * (to[1] - from[1]),
+                                    from[2] + t * (to[2] - from[2])};
+            mvfxBodyContact contact;
+            bool hit = ProbeSample(p, b, s, point, &contact) && contact.depth < deepest.depth;
+            deepest = hit ? contact : deepest;
+            met = met || hit;
+        }
+        for (int32_t k = 0; k < 2 && met; ++k)
+        {
+            int32_t c = edges[e][k];
+            met = !found[c] || deepest.depth < depths[c];
+        }
+        if (met)
+        {
+            mvfxAddContact(list, &deepest);
+        }
+    }
+}
+
 // Adds the samples meeting the probe's surface in order, corners first:
-// only the corners' depths are kept, for their faces' centers.
+// only the corners' depths are kept, for their faces' centers and their
+// edges.
 static void SampleContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBodyShape* s,
                            mvfxBodyContacts* list)
 {
@@ -541,6 +627,10 @@ static void SampleContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBody
         {
             mvfxAddContact(list, &contact);
         }
+    }
+    if (s->kind == mvfx_rigidBox || s->kind == mvfx_rigidHull)
+    {
+        EdgeContacts(p, b, s, depths, found, list);
     }
 }
 
