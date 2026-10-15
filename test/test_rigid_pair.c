@@ -6,7 +6,8 @@
 // the mass bouncing as momentum says; bodies passing through each other
 // without body contacts; three boxes stacked and still with their creep
 // bounded; one large body among a thousand small ones examining a few
-// cells each; a capsule lying
+// cells each; a box landing aside slowed by every impulse of its
+// impacts; a heavy box landing on a light one without rebound; a capsule lying
 // across another; a box dropped on a box, and a sphere on a sphere
 // rolling off; a box sliding to a stop on a wider
 // one by friction, the one below held; a pile of spheres in a box settled
@@ -252,6 +253,47 @@ static void TestOneLarge(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestLandings(void)
+{
+    // A box landing at 3 aside from 0.3 up, restitution 0.5, friction 0.4:
+    // each impact takes from its speed aside the friction times its normal
+    // impulse, the pushes' and the restitution's (by hand: 0.74 m falling,
+    // 0.38, 0.10 and 0.03 between bounces, little after), so it stops near
+    // 1.27 m; by the pushes alone it went 2.8.
+    static const float still[6] = {0};
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidBox, true);
+    emitter.rigid.staticFriction = 0.6f;
+    emitter.rigid.dynamicFriction = 0.4f;
+    emitter.rigid.restitution = 0.5f;
+    static const double high[3] = {0, 0.8, 0};
+    static const float aside[3] = {3, 0, 0};
+    Open(&emitter, high, aside, NULL, 1);
+    Steps(180);
+    CHECK(fabsf(X(0, 0) - 1.27f) <= 0.05f, "friction by every impulse of a landing");
+    mvfxDestroyContext(s_scene.context);
+    // A box of eight times the mass dropped 0.3 onto a unit box on the
+    // ground at restitution 0: the restitution takes back what the pushes
+    // gave too much, and neither rebounds faster than 0.08 (0.18 without).
+    emitter.rigid.restitution = 0.0f;
+    static const double stacked[6] = {0, 0.5, 0, 0, 2.3, 0};
+    static const float sizes[6] = {1, 1, 1, 2, 2, 2};
+    Open(&emitter, stacked, still, sizes, 2);
+    float up = 0.0f;
+    bool touched[2] = {false, false};
+    for (int32_t i = 0; i < 120; ++i)
+    {
+        Steps(1);
+        for (uint32_t b = 0; b < 2; ++b)
+        {
+            float v = V(b, 1);
+            touched[b] = touched[b] || (i > 5 && v > -0.5f);
+            up = touched[b] ? fmaxf(up, v) : up;
+        }
+    }
+    CHECK(up <= 0.08f, "a heavy landing without rebound");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestCapsules(void)
 {
     // A capsule along z dropped across one along x lying on the ground
@@ -401,6 +443,7 @@ int main(void)
     TestThrough();
     TestStack();
     TestOneLarge();
+    TestLandings();
     TestCapsules();
     TestDropped();
     TestSliding();

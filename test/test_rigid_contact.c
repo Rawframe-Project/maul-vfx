@@ -10,10 +10,12 @@
 // once each, square or a little turned; a box just above a plane met
 // within the margin and not past it; capsules crossed meeting at their
 // crossing, and side by side at both ends; a box's and a hull's edge laid
-// across a heightfield's crest meeting it there.
+// across a heightfield's crest meeting it there; passes alternating their
+// order; a twist held by static friction while it can.
 
 #include "grid_api.h"
 #include "hull.h"
+#include "rigid_body.h"
 #include "rigid_contact.h"
 #include "test_harness.h"
 
@@ -383,6 +385,40 @@ static void TestCrest(void)
     mvfxDestroyContext(context);
 }
 
+static void TestSolverRules(void)
+{
+    // Passes alternate: a backward pass visits first to end from its end.
+    bool order = mvfxPassIndex(2, 6, 2, true) == 5 && mvfxPassIndex(2, 6, 5, true) == 2 &&
+                 mvfxPassIndex(2, 6, 3, false) == 3;
+    CHECK(order, "passes alternate their order");
+    // A unit box turned 0.01 about y over a substep: a patch holding up to
+    // its static coefficient times the limit cancels the turn; one past it
+    // leaves it to dynamic friction.
+    const mvfxRigidDef rigid = {.enabled = true, .staticFriction = 0.6f};
+    const mvfxRigidSolve solve = {.rigid = &rigid, .h = 1.0f / 480.0f};
+    static const float up[3] = {0, 1, 0};
+    bool held = false;
+    bool kept = false;
+    for (int32_t strong = 0; strong < 2; ++strong)
+    {
+        mvfxBody body = {.q = {0, sinf(0.005f), 0, cosf(0.005f)},
+                         .q0 = {0, 0, 0, 1},
+                         .inverseMass = 1.0f,
+                         .inverseInertia = {6, 6, 6, 0, 0, 0}};
+        float twisted = 0.0f;
+        mvfxTwistPatch(&solve, &body, NULL, up, strong != 0 ? 100.0f : 1e-6f, &twisted);
+        if (strong != 0)
+        {
+            held = fabsf(body.q[1]) <= 1e-6f && twisted > 0.0f;
+        }
+        else
+        {
+            kept = fabsf(body.q[1] - sinf(0.005f)) <= 1e-7f && twisted == 0.0f;
+        }
+    }
+    CHECK(held && kept, "a twist held while friction can");
+}
+
 int main(void)
 {
     TestHeights();
@@ -394,5 +430,6 @@ int main(void)
     TestMargin();
     TestCapsulePairs();
     TestCrest();
+    TestSolverRules();
     return s_failures == 0 ? 0 : 1;
 }
