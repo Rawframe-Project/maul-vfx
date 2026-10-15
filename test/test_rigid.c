@@ -13,6 +13,7 @@
 // flipping by the gyroscopic term while its momentum and energy hold; a
 // box spun on a plane stopped by its friction at the rate its contacts'
 // spread gives; a tall box tipping over on a slope a short one stands on;
+// a box tipping at its edge's angle, and standing steady parked at it;
 // the checks.
 
 #include "instance.h"
@@ -829,6 +830,48 @@ static void TestDepth(void)
     }
 }
 
+static void TestTippingAngle(void)
+{
+    // A box 0.4 wide and 0.6 tall, held from sliding, tips where its
+    // center passes over its lower edge, at atan(0.4 / 0.6), 33.7 degrees:
+    // it stands at 32.5 and tips at 36; parked at 33.7 it stands steady,
+    // its spin never turning back and below 0.01 a radian a second.
+    static const float still[3] = {0, 0, 0};
+    static const float degrees[3] = {32.5f, 33.69f, 36.0f};
+    bool right = true;
+    for (int32_t d = 0; d < 3; ++d)
+    {
+        float angle = degrees[d] * 0.017453293f;
+        mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 0.4f, 0.6f, 0.4f);
+        Tilt(&emitter, angle);
+        s_colliders[0].normal[0] = -sinf(angle);
+        s_colliders[0].normal[1] = cosf(angle);
+        emitter.rigid.staticFriction = 1.5f;
+        emitter.rigid.dynamicFriction = 1.4f;
+        double place[3] = {-0.3 * sin((double)angle), 0.3 * cos((double)angle), 0};
+        Open(&emitter, place, still);
+        float lowest = 1.0f;
+        float spin = 0.0f;
+        float last = 0.0f;
+        int32_t turns = 0;
+        for (int32_t i = 0; i < 180; ++i)
+        {
+            Steps(1);
+            float axis[3];
+            Axis(1, axis);
+            lowest = fminf(lowest,
+                           axis[0] * s_colliders[0].normal[0] + axis[1] * s_colliders[0].normal[1]);
+            float w = W(2);
+            turns += fabsf(w) > 1e-3f && last * w < 0.0f ? 1 : 0;
+            last = fabsf(w) > 1e-3f ? w : last;
+            spin = i >= 60 ? fmaxf(spin, fabsf(w)) : spin;
+        }
+        right = right && (d == 2 ? lowest < 0.5f : lowest > 0.9999f && spin <= 0.01f && turns == 0);
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(right, "a box tips at its edge's angle");
+}
+
 static void TestTwist(void)
 {
     // A unit box spun at 5 about y on a plane, dynamic friction 0.4: its
@@ -958,6 +1001,7 @@ int main(void)
     TestGyroscopic();
     TestTwist();
     TestTipping();
+    TestTippingAngle();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

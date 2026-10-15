@@ -164,20 +164,37 @@ static float PatchWeight(const mvfxBody* a, const float ra[3], const mvfxBody* b
 // from its center to the patch's: level with the center while the
 // patch's normal loads can balance its tipping (it times the center's
 // height over the patch) with balance, their load times the patch's
-// radius; at the patch past that, the contacts' pushes alone resisting.
+// reach toward the side the body tips to; at the patch past that, the
+// contacts' pushes alone resisting; between, across 10% of the balance
+// about it, in proportion.
 static void Lever(const float r[3], const float n[3], float balance, float impulse, float out[3])
 {
     float along = Dot(r, n);
-    float level = impulse * fabsf(along) <= balance ? 1.0f : 0.0f;
+    float tipping = impulse * fabsf(along);
+    float level = balance > 0.0f
+                      ? fminf(fmaxf((1.05f * balance - tipping) / (0.1f * balance), 0.0f), 1.0f)
+                      : (tipping > 0.0f ? 0.0f : 1.0f);
     for (int32_t k = 0; k < 3; ++k)
     {
         out[k] = r[k] - level * along * n[k];
     }
 }
 
+// How far a patch reaches from its center along unit u times sign, 0 at
+// least.
+static float Reach(const mvfxPatchSpread* spread, const float u[3], float sign)
+{
+    float reach = 0.0f;
+    for (int32_t i = 0; i < spread->count; ++i)
+    {
+        reach = fmaxf(reach, sign * Dot(spread->offsets[i], u));
+    }
+    return reach;
+}
+
 void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const float ra0[3],
                   mvfxBody* b, const float rb[3], const float rb0[3], const float n[3], float load,
-                  float radius, float* rubbed)
+                  const mvfxPatchSpread* spread, float* rubbed)
 {
     float slide[3];
     PatchSlide(a, ra, ra0, b, rb, rb0, slide);
@@ -208,10 +225,11 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
     *rubbed += holding;
     float la[3];
     float lb[3] = {0.0f, 0.0f, 0.0f};
-    Lever(ra, n, load * radius, *rubbed, la);
+    // Each tips the way it is pushed: a along its slide, b against it.
+    Lever(ra, n, load * Reach(spread, u, 1.0f), *rubbed, la);
     if (b != nullptr)
     {
-        Lever(rb, n, load * radius, *rubbed, lb);
+        Lever(rb, n, load * Reach(spread, u, -1.0f), *rubbed, lb);
     }
     float lambda = slid / PatchWeight(a, la, b, lb, u);
     const float p[3] = {-lambda * u[0], -lambda * u[1], -lambda * u[2]};
@@ -224,7 +242,7 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
 }
 
 void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3], const float n[3],
-                   float pressed, float radius, float coefficient, float* slowed)
+                   float pressed, const mvfxPatchSpread* spread, float coefficient, float* slowed)
 {
     float v[3];
     mvfxBodyPointVelocity(a, ra, v);
@@ -251,10 +269,10 @@ void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3
     float limit = coefficient * pressed;
     float la[3];
     float lb[3] = {0.0f, 0.0f, 0.0f};
-    Lever(ra, n, pressed * radius, limit, la);
+    Lever(ra, n, pressed * Reach(spread, u, 1.0f), limit, la);
     if (b != nullptr)
     {
-        Lever(rb, n, pressed * radius, limit, lb);
+        Lever(rb, n, pressed * Reach(spread, u, -1.0f), limit, lb);
     }
     float stop = speed / PatchWeight(a, la, b, lb, u);
     float j = fminf(stop, fmaxf(limit - *slowed, 0.0f));

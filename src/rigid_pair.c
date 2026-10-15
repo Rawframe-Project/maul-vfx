@@ -300,6 +300,7 @@ typedef struct PairPatch
     float load;
     float pressed;
     float radius;
+    mvfxPatchSpread spread;
 } PairPatch;
 
 static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* b, int32_t first,
@@ -336,6 +337,7 @@ static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* 
     float n[3];
     const float inverse[4] = {-a->q[0], -a->q[1], -a->q[2], a->q[3]};
     mvfxRotate(inverse, patch.normal, n);
+    out->spread.count = 0;
     for (int32_t i = first; i < end; ++i)
     {
         float lambda = fmaxf(pairs[i].lambda, 0.0f);
@@ -343,6 +345,10 @@ static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* 
                       pairs[i].onA[2] - patch.onA[2]};
         float along = Dot(d, n);
         out->radius += lambda * sqrtf(fmaxf(Dot(d, d) - along * along, 0.0f));
+        if (lambda > 0.0f && out->spread.count < MVFX_MAX_RIGID_CONTACTS)
+        {
+            mvfxRotate(a->q, d, out->spread.offsets[out->spread.count++]);
+        }
     }
     out->radius /= out->load;
     return true;
@@ -380,7 +386,7 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
     if (friction && PatchOf(s, &a, &b, first, end, &patch))
     {
         mvfxRubPatch(s, &a, patch.ra, patch.ra0, &b, patch.rb, patch.rb0, patch.n, patch.load,
-                     patch.radius, &pairs[first].rubbed);
+                     &patch.spread, &pairs[first].rubbed);
         mvfxTwistPatch(s, &a, &b, patch.n, patch.load * patch.radius, &pairs[first].twisted);
     }
     mvfxStoreBody(s, pairs[first].a, &a);
@@ -418,7 +424,7 @@ static void BouncePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool
     PairPatch patch;
     if (PatchOf(s, &a, &b, first, end, &patch))
     {
-        mvfxSlowPatch(&a, patch.ra, &b, patch.rb, patch.n, patch.pressed, patch.radius,
+        mvfxSlowPatch(&a, patch.ra, &b, patch.rb, patch.n, patch.pressed, &patch.spread,
                       s->rigid->dynamicFriction, &pairs[first].slowed);
         mvfxUnspinPatch(&a, &b, patch.n, s->rigid->dynamicFriction * patch.pressed * patch.radius,
                         &pairs[first].spun);
