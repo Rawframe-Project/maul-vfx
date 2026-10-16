@@ -254,9 +254,15 @@ static bool IsDue(mvfxInstance* instance)
 
 // Steps an instance by ticks, in equal substeps when its liquid gases'
 // courant numbers ask for them: each substep the instance's whole step,
-// the gases of all but the last stepped in this task.
+// the gases of all but the last stepped in this task. Gases still due go
+// first, so the count reads the velocities they leave on every path.
 static void StepSplit(mvfxInstance* instance, int64_t ticks)
 {
+    if (instance->gasesDue)
+    {
+        static const mvfxTasks serial = {0};
+        StepGases(instance, &serial);
+    }
     int32_t count = mvfxLiquidSubsteps(instance, ticks);
     int64_t done = 0;
     for (int32_t k = 1; k <= count; ++k)

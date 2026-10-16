@@ -552,6 +552,96 @@ static void TestSubsteps(void)
     mvfxDestroyContext(s_context);
 }
 
+// A dam break's column in its own context, its instance of seed 1 seen or
+// throttled unseen every 64th step.
+typedef struct Twin
+{
+    mvfxContext* context;
+    mvfxInstanceId instance;
+} Twin;
+
+static Twin OpenTwin(bool throttled)
+{
+    mvfxGasDef gas = Gas(32, 16, 0.05f);
+    mvfxCollider box = BoxOf(&gas);
+    mvfxEmitterDef emitter = Emitter(0.025f, &box, 576);
+    emitter.motion.gravity[1] = -9.81f;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    Twin twin = {0};
+    CHECK(mvfxCreateContext(&contextDef, &twin.context) == mvfx_success, "context");
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    effectDef.gases = &gas;
+    effectDef.gasCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(twin.context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef def = mvfxDefaultInstanceDef();
+    def.effect = effect;
+    def.seed = 1u;
+    def.offscreen = throttled ? mvfx_offscreenThrottle : mvfx_offscreenSimulate;
+    def.offscreenInterval = 64;
+    CHECK(mvfxCreateInstance(twin.context, &def, &twin.instance) == mvfx_success, "twin");
+    s_context = twin.context;
+    s_instance = twin.instance;
+    // Born seen, then unseen: its held ticks from the next step.
+    Block(0.05f, 2, (const int32_t[2]){0, 0}, (const int32_t[2]){12, 12}, NULL);
+    CHECK(mvfxInstance_SetVisible(twin.context, twin.instance, !throttled) == mvfx_success, "seen");
+    return twin;
+}
+
+// Whether two twins' particles are where each other's are.
+static bool Alike(const Twin* a, const Twin* b)
+{
+    const mvfxInstance* x = mvfxContextInstance(a->context, a->instance);
+    const mvfxInstance* y = mvfxContextInstance(b->context, b->instance);
+    int32_t count = x->emitters[0].count;
+    bool alike = count == y->emitters[0].count && count > 0 && x->clock == y->clock;
+    int32_t moved = 0;
+    for (int32_t k = 0; alike && k < 2; ++k)
+    {
+        mvfxAttribute at = (mvfxAttribute)(mvfx_attributePositionX + k);
+        const float* p = mvfxAttributeArray(x, 0, at);
+        const float* q = mvfxAttributeArray(y, 0, at);
+        for (int32_t i = 0; i < count; ++i)
+        {
+            moved += p[i] != q[i];
+        }
+    }
+    return alike && moved == 0;
+}
+
+static void TestSubstepPaths(void)
+{
+    // A prewarm of a second in steps of 1/32 takes the substeps the
+    // context's steps take; so does a throttled instance stepping the
+    // second it held, against a seen one stepping a second at once.
+    Twin prewarmed = OpenTwin(false);
+    Twin stepped = OpenTwin(false);
+    CHECK(mvfxInstance_Prewarm(prewarmed.context, prewarmed.instance, 1.0, 1.0 / 32.0, 32, NULL) ==
+              mvfx_success,
+          "prewarmed");
+    for (int32_t s = 0; s < 32; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(stepped.context, MVFX_TICKS_PER_SECOND / 32) == mvfx_success,
+              "stepped");
+    }
+    CHECK(Alike(&prewarmed, &stepped), "a prewarm in substeps");
+    mvfxDestroyContext(prewarmed.context);
+    mvfxDestroyContext(stepped.context);
+    Twin held = OpenTwin(true);
+    Twin whole = OpenTwin(false);
+    for (int32_t s = 0; s < 33; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(held.context, MVFX_TICKS_PER_SECOND / 32) == mvfx_success,
+              "held");
+    }
+    CHECK(mvfxContext_StepTicks(whole.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "whole");
+    CHECK(Alike(&held, &whole), "held ticks in substeps");
+    mvfxDestroyContext(held.context);
+    mvfxDestroyContext(whole.context);
+}
+
 static void TestExpansion(void)
 {
     // A block of 2 by 2 cells of 0.1 filled four times over (4 by 4
@@ -744,5 +834,6 @@ int main(void)
     TestExpansion();
     TestDamBreak();
     TestSubsteps();
+    TestSubstepPaths();
     return s_failures;
 }
