@@ -389,7 +389,7 @@ static void TestChecks(void)
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
     int32_t refused = 0;
-    for (int32_t rule = 0; rule < 13; ++rule)
+    for (int32_t rule = 0; rule < 14; ++rule)
     {
         emitter = Sheet(4, 3);
         mvfxUnitDef* u = &emitter.unit;
@@ -435,13 +435,18 @@ static void TestChecks(void)
         case 11:
             u->downDirection[1] = NAN;
             break;
+        case 12:
+            // Sides whose product overflows, refused before it is taken.
+            u->points = 1 << 20;
+            u->rows = 1 << 20;
+            break;
         default:
             emitter.hostSpawnCapacity = 5;
             break;
         }
         refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
     }
-    CHECK(refused == 13, "every check");
+    CHECK(refused == 14, "every check");
     emitter = Sheet(MVFX_MAX_SHEET_SIDE, MVFX_MAX_SHEET_SIDE);
     emitter.capacity = MVFX_MAX_SHEET_SIDE * MVFX_MAX_SHEET_SIDE;
     emitter.hostSpawnCapacity = 1;

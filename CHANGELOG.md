@@ -428,6 +428,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   hashed and checked unit by unit, and a fault names the offset of its
   byte (`mvfxFileResult`); a name the table lacks is
   `mvfx_errorMissing`, a new status.
+- A sheet unit whose points times rows overflows is refused, where the
+  check computed the overflowing product first.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

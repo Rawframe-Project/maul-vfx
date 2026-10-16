@@ -22,6 +22,7 @@ option(MAUL_VFX_WERROR "Treat compiler warnings as errors" OFF)
 option(MAUL_VFX_SANITIZE "Instrument with AddressSanitizer and UBSan" OFF)
 option(MAUL_VFX_TSAN "Instrument with ThreadSanitizer" OFF)
 option(MAUL_VFX_COVERAGE "Instrument for gcov coverage" OFF)
+option(MAUL_VFX_FUZZ "Build the libFuzzer targets (Clang)" OFF)
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -249,6 +250,29 @@ if(MAUL_VFX_BUILD_TESTS)
             endif()
         endforeach()
     endif()
+endif()
+
+# The fuzz targets: test/fuzz_<area>.c, run as fuzz_<area> <corpus dir>,
+# over the bytes programs load and hand the library. test/corpus holds a
+# minimized seed corpus for each (fuzz_<area>.tar.gz); test_golden --seeds
+# <dir> writes the golden scene's effects as fuzz_file's first seeds.
+if(MAUL_VFX_FUZZ)
+    # The library is instrumented too: its coverage guides libFuzzer, and
+    # the sanitizers watch its code, not only the targets'. Undefined
+    # behaviour stops the run, as a failed check does.
+    target_compile_options(maul-vfx PRIVATE -fsanitize=fuzzer-no-link,address,undefined
+                                            -fno-sanitize-recover=all)
+    target_link_options(maul-vfx PUBLIC -fsanitize=address,undefined)
+    foreach(area file)
+        add_executable(fuzz_${area} test/fuzz_${area}.c)
+        target_link_libraries(fuzz_${area} PRIVATE maul-vfx)
+        # The targets reach the library's own functions.
+        target_include_directories(fuzz_${area} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        maul_apply_flags(fuzz_${area})
+        target_compile_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined
+                                                     -fno-sanitize-recover=all)
+        target_link_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined)
+    endforeach()
 endif()
 
 if(MAUL_VFX_BUILD_BENCH AND EXISTS ${PROJECT_SOURCE_DIR}/bench/bench_main.c)

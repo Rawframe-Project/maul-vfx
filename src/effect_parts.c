@@ -139,7 +139,8 @@ static bool IsUnitValid(const mvfxEmitterDef* def)
                   (IsWithin(unit->selfFriction, 0.0f, 1.0f) && unit->selfContacts >= 1 &&
                    unit->selfContacts <= MVFX_MAX_NEIGHBORS));
     bool sheet = unit->kind == mvfx_unitSheet;
-    int32_t points = sheet ? unit->points * unit->rows : unit->points;
+    // Counted only within the shape's bounds, where the product fits.
+    int32_t points = !shape ? 1 : sheet ? unit->points * unit->rows : unit->points;
     int32_t units = shape ? def->capacity / points : 0;
     bool whole = shape && def->capacity % points == 0 && def->hostSpawnCapacity <= units &&
                  (!def->eventSpawn.enabled || def->eventSpawn.capacity <= units);
