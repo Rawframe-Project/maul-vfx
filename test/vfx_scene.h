@@ -15,6 +15,7 @@
 #include "instance.h"
 #include "test_harness.h"
 
+#include "maul-vfx/file.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
 #include "maul-vfx/output.h"
@@ -28,6 +29,34 @@ static const int64_t s_sceneSteps[] = {17476, 17477, 16000, 1,     40000, 17476,
                                        5,     17476, 30000, 17476, 17476, 2};
 
 #define SCENE_STEP_COUNT ((int32_t)(sizeof s_sceneSteps / sizeof s_sceneSteps[0]))
+
+// How the scene creates its effects: from their defs, or as the file test
+// sets it, through effect files, the scene naming in s_sceneAssets each
+// grid, mesh and host module it makes.
+typedef mvfxResult SceneCreateFn(mvfxContext* context, const mvfxEffectDef* def,
+                                 mvfxEffectId* effectOut);
+static SceneCreateFn* s_sceneCreate = mvfxCreateEffect;
+static mvfxEffectAsset s_sceneAssets[16];
+static int32_t s_sceneAssetCount;
+
+// Names a grid, a mesh or a host module of the scene.
+static inline void SceneName(const mvfxEffectAsset* asset)
+{
+    CHECK(s_sceneAssetCount < 16, "room for the scene's names");
+    s_sceneAssets[s_sceneAssetCount++] = *asset;
+}
+
+static inline void SceneGrid(const char* name, mvfxGridId grid)
+{
+    SceneName(&(mvfxEffectAsset){
+        .kind = mvfx_assetGrid, .name = name, .nameLength = (int32_t)strlen(name), .grid = grid});
+}
+
+static inline void SceneMesh(const char* name, mvfxMeshId mesh)
+{
+    SceneName(&(mvfxEffectAsset){
+        .kind = mvfx_assetMesh, .name = name, .nameLength = (int32_t)strlen(name), .mesh = mesh});
+}
 
 // A host module of the scene: before motion, a kick of up to 0.5 a second
 // along each axis to every particle, drawn from the module's stream by
@@ -87,6 +116,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     bumpDef.values = bump;
     mvfxGridId bumpGrid = {0};
     CHECK(mvfxCreateGrid(context, &bumpDef, &bumpGrid) == mvfx_success, "rigid heights");
+    SceneGrid("rigid heights", bumpGrid);
     float distances[125];
     for (int32_t k = 0; k < 125; ++k)
     {
@@ -102,6 +132,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     ballDef.values = distances;
     mvfxGridId ballGrid = {0};
     CHECK(mvfxCreateGrid(context, &ballDef, &ballGrid) == mvfx_success, "rigid ball");
+    SceneGrid("rigid ball", ballGrid);
     const mvfxCollider hills[2] = {
         {.kind = mvfx_colliderPlane,
          .space = mvfx_spaceLocal,
@@ -142,6 +173,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     hullDef.vertexCount = 7;
     mvfxMeshId hullMesh = {0};
     CHECK(mvfxCreateMesh(context, &hullDef, &hullMesh) == mvfx_success, "rigid hull");
+    SceneMesh("rigid hull", hullMesh);
     mvfxEmitterDef emitters[5] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef()};
@@ -228,7 +260,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     def.emitters = emitters;
     def.emitterCount = 5;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "rigid effect");
+    CHECK(s_sceneCreate(context, &def, &effect) == mvfx_success, "rigid effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.origin[0] = 1745.0;
@@ -359,7 +391,7 @@ static inline void BuildGasScene(mvfxContext* context)
     def.gases = gases;
     def.gasCount = 2;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "gas effect");
+    CHECK(s_sceneCreate(context, &def, &effect) == mvfx_success, "gas effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.origin[2] = -310.0;
@@ -471,7 +503,7 @@ static inline void BuildLiquidScene(mvfxContext* context)
     def.gases = gases;
     def.gasCount = 3;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "liquid effect");
+    CHECK(s_sceneCreate(context, &def, &effect) == mvfx_success, "liquid effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.origin[2] = -360.0;
@@ -525,6 +557,7 @@ static inline void BuildWaterScene(mvfxContext* context)
     gridDef.values = slope;
     mvfxGridId grid = {0};
     CHECK(mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success, "water slope");
+    SceneGrid("water slope", grid);
     static const mvfxWaterSource spring = {
         .shape = mvfx_gasSphere, .center = {1.2f, 0.0f, 0.1f}, .radius = 0.25f, .rate = 0.3f};
     mvfxWaterDef waters[3] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};
@@ -567,7 +600,7 @@ static inline void BuildWaterScene(mvfxContext* context)
     def.waters = waters;
     def.waterCount = 3;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "water effect");
+    CHECK(s_sceneCreate(context, &def, &effect) == mvfx_success, "water effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.origin[2] = 360.0;
@@ -577,6 +610,7 @@ static inline void BuildWaterScene(mvfxContext* context)
 
 static inline void BuildScene(mvfxContext* context)
 {
+    s_sceneAssetCount = 0;
     // A 3x2x2 field of binary16 vectors, made of exact small values.
     static float fieldValues[36];
     for (int32_t i = 0; i < 12; ++i)
@@ -594,6 +628,7 @@ static inline void BuildScene(mvfxContext* context)
     gridDef.values = fieldValues;
     mvfxGridId fieldGrid = {0};
     CHECK(mvfxCreateGrid(context, &gridDef, &fieldGrid) == mvfx_success, "scene grid");
+    SceneGrid("scene grid", fieldGrid);
     mvfxEmitterDef emitters[5] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                                   mvfxDefaultEmitterDef()};
@@ -772,6 +807,8 @@ static inline void BuildScene(mvfxContext* context)
     emitters[1].killRules = &plane;
     emitters[1].killRuleCount = 1;
     static const mvfxHostModule kick = {.stage = mvfx_stageBeforeMotion, .function = SceneKick};
+    SceneName(&(mvfxEffectAsset){
+        .kind = mvfx_assetModule, .name = "kick", .nameLength = 4, .function = SceneKick});
     emitters[1].hostModules = &kick;
     emitters[1].hostModuleCount = 1;
     // The first falls onto a floor and a bumpy heightfield in its own
@@ -786,6 +823,7 @@ static inline void BuildScene(mvfxContext* context)
     bumpDef.values = bumps;
     mvfxGridId bumpGrid = {0};
     CHECK(mvfxCreateGrid(context, &bumpDef, &bumpGrid) == mvfx_success, "scene heights");
+    SceneGrid("scene heights", bumpGrid);
     const mvfxCollider ground[2] = {
         {.kind = mvfx_colliderPlane,
          .space = mvfx_spaceLocal,
@@ -814,6 +852,7 @@ static inline void BuildScene(mvfxContext* context)
     ballDef.values = ballDistances;
     mvfxGridId ballGrid = {0};
     CHECK(mvfxCreateGrid(context, &ballDef, &ballGrid) == mvfx_success, "scene ball");
+    SceneGrid("scene ball", ballGrid);
     const mvfxCollider ball = {.kind = mvfx_colliderDistance,
                                .space = mvfx_spaceLocal,
                                .center = {0, 0, 0.6f},
@@ -955,7 +994,7 @@ static inline void BuildScene(mvfxContext* context)
     def.qualityLevels = &lower;
     def.qualityLevelCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "scene effect");
+    CHECK(s_sceneCreate(context, &def, &effect) == mvfx_success, "scene effect");
     // An effect of emitter lives: a rate curve over loops, delayed and
     // looping bursts of random counts and chances, and a late constant rate.
     static const mvfxCurveKey rise[3] = {
@@ -1013,7 +1052,7 @@ static inline void BuildScene(mvfxContext* context)
     livesDef.emitters = lives;
     livesDef.emitterCount = 3;
     mvfxEffectId livesEffect = {0};
-    CHECK(mvfxCreateEffect(context, &livesDef, &livesEffect) == mvfx_success, "lives effect");
+    CHECK(s_sceneCreate(context, &livesDef, &livesEffect) == mvfx_success, "lives effect");
     for (int32_t i = 0; i < 2; ++i)
     {
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -1046,6 +1085,7 @@ static inline void BuildScene(mvfxContext* context)
     meshDef.tetrahedronCount = 8;
     mvfxMeshId mesh = {0};
     CHECK(mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success, "scene mesh");
+    SceneMesh("scene mesh", mesh);
     static const mvfxMeshMode modes[3] = {mvfx_meshSurface, mvfx_meshEdges, mvfx_meshVolume};
     mvfxEmitterDef meshEmitters[3];
     for (int32_t i = 0; i < 3; ++i)
@@ -1148,7 +1188,7 @@ static inline void BuildScene(mvfxContext* context)
     meshEffectDef.parameters = parameters;
     meshEffectDef.parameterCount = 2;
     mvfxEffectId meshEffect = {0};
-    CHECK(mvfxCreateEffect(context, &meshEffectDef, &meshEffect) == mvfx_success, "mesh effect");
+    CHECK(s_sceneCreate(context, &meshEffectDef, &meshEffect) == mvfx_success, "mesh effect");
     mvfxInstanceDef meshInstanceDef = mvfxDefaultInstanceDef();
     meshInstanceDef.effect = meshEffect;
     meshInstanceDef.seed = 0x3E5Bu;
@@ -1300,7 +1340,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEffectDef.emitters = chainEmitters;
     chainEffectDef.emitterCount = 6;
     mvfxEffectId chainEffect = {0};
-    CHECK(mvfxCreateEffect(context, &chainEffectDef, &chainEffect) == mvfx_success, "chain effect");
+    CHECK(s_sceneCreate(context, &chainEffectDef, &chainEffect) == mvfx_success, "chain effect");
     mvfxInstanceDef chainInstanceDef = mvfxDefaultInstanceDef();
     chainInstanceDef.effect = chainEffect;
     chainInstanceDef.origin[0] = 1495.0;

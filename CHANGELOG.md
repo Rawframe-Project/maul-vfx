@@ -419,6 +419,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   stepped, at the step's start, rather than where the instance is going.
 - `mvfxWaterInfo.volumePoured` counts the volume particles poured into
   shallow water, which no host push adds.
+- Effect files (`maul-vfx/file.h`): `mvfxWriteEffect` writes an effect
+  def as bytes, every field of every struct it reaches, the grids,
+  meshes and host modules it refers to named through a table of
+  `mvfxEffectAsset`, equal defs giving equal bytes; `mvfxReadEffect`
+  reads them back into a def in caller memory and
+  `mvfxCreateEffectFromBytes` creates an effect from them. A file is
+  hashed and checked unit by unit, and a fault names the offset of its
+  byte (`mvfxFileResult`); a name the table lacks is
+  `mvfx_errorMissing`, a new status.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

@@ -82,6 +82,9 @@ extern "C"
         mvfx_errorBusy = -6,
         // The call is not allowed in the object's current state.
         mvfx_errorState = -7,
+        // An object or a name the call needs is not in the table it was
+        // given.
+        mvfx_errorMissing = -8,
     };
 
     // The allocator an owner object takes in its def and keeps for its

@@ -30,6 +30,8 @@ const char* mvfxResultName(mvfxResult result)
         return "mvfx_errorBusy";
     case mvfx_errorState:
         return "mvfx_errorState";
+    case mvfx_errorMissing:
+        return "mvfx_errorMissing";
     default:
         return "unknown result";
     }

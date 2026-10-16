@@ -31,6 +31,8 @@ jobs:
         run: |
           clang-format --version
           clang-format --dry-run -Werror $(find include src test tools bench samples -name '*.[ch]' 2>/dev/null)
+      - name: The effect file's tables match the headers
+        run: CLANG_FORMAT=clang-format python3 tools/gen_file.py --check
       - name: Family checks
         run: |
           python3 tools/check_source.py

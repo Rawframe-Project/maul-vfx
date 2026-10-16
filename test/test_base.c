@@ -32,13 +32,14 @@ static void TestResultNames(void)
         {mvfx_errorStale, "mvfx_errorStale"},
         {mvfx_errorBusy, "mvfx_errorBusy"},
         {mvfx_errorState, "mvfx_errorState"},
+        {mvfx_errorMissing, "mvfx_errorMissing"},
     };
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; ++i)
     {
         CHECK(strcmp(mvfxResultName(cases[i].result), cases[i].name) == 0, cases[i].name);
     }
     CHECK(strcmp(mvfxResultName(12345), "unknown result") == 0, "unknown name");
-    CHECK(strcmp(mvfxResultName(-8), "unknown result") == 0, "one past the last error");
+    CHECK(strcmp(mvfxResultName(-9), "unknown result") == 0, "one past the last error");
 }
 
 static void TestHash64KnownValues(void)
