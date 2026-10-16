@@ -6,8 +6,13 @@
 // whose diagonal corners are alike is decided by its bilinear saddle (the
 // asymptotic decider: Nielson and Hamann, Visualization 1991), from the
 // face's four values alone, so the cubes sharing it agree; the cases come
-// from marching_table.c. Each sample owns the edges leaving it toward +X,
-// +Y and +Z; two layers of their vertices (rows, in 2D) live in the host's
+// from marching_table.c. A sample exactly at the level is outside, in
+// every cube; an edge from it to an inside sample meets the level at the
+// sample itself, whose one vertex every such edge takes, and a primitive
+// whose vertices are not all distinct is left out (its edges cancel in
+// pairs, so the mesh stays closed with no edge of zero length). Each
+// sample owns the edges leaving it toward +X, +Y and +Z and its own
+// vertex; two layers of their vertices (rows, in 2D) live in the host's
 // scratch.
 
 #include "context.h"
@@ -23,6 +28,14 @@
 
 // The most centers a cube's variant has.
 #define MAX_CENTERS 4
+
+// A sample's slots in a layer: its edges' vertices, then its own.
+#define SLOTS(axes) ((axes) + 1)
+
+// Each sample makes at most its three edges' vertices and its own, each
+// cube its centers: a vertex's index fits an int32_t, and a uint32_t.
+static_assert((int64_t)(4 + MAX_CENTERS) * MVFX_MAX_GAS_CELLS < INT32_MAX,
+              "a mesh's vertices fit its indices");
 
 // A walk over a surface's samples: the distance less the level, the box
 // into the world, the host's buffers and origin, the edges' vertices of
@@ -119,12 +132,43 @@ static int32_t Emit(Mesher* m, const float place[3], const float gradient[3])
     return (int32_t)i;
 }
 
-// The vertex on the edge from sample p along axis, made when first met.
-static int32_t EdgeVertex(Mesher* m, const int32_t p[3], int32_t axis)
+// Sample p's slot k in its layer.
+static int32_t* Slot(Mesher* m, const int32_t p[3], int32_t k)
 {
     int32_t* layer = m->layers[p[m->axes - 1] & 1];
     int64_t at = m->axes == 3 ? (int64_t)p[1] * m->n[0] + p[0] : p[0];
-    int32_t* id = &layer[at * m->axes + axis];
+    return &layer[at * SLOTS(m->axes) + k];
+}
+
+// Sample p's own vertex (it lies at the level), made when first met.
+static int32_t SampleVertex(Mesher* m, const int32_t p[3])
+{
+    int32_t* id = Slot(m, p, m->axes);
+    if (*id < 0)
+    {
+        float place[3];
+        float gradient[3];
+        GradientAt(m, p, gradient);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            place[k] = ((float)p[k] + 0.5f - 0.5f * (float)m->n[k]) * m->cell;
+        }
+        *id = Emit(m, place, gradient);
+    }
+    return *id;
+}
+
+// The vertex on the edge from sample p along axis, made when first met:
+// an end's own when it lies at the level.
+static int32_t EdgeVertex(Mesher* m, const int32_t p[3], int32_t axis)
+{
+    int32_t q[3] = {p[0], p[1], p[2]};
+    q[axis] += 1;
+    if (ValueAt(m, p) == 0.0f || ValueAt(m, q) == 0.0f)
+    {
+        return SampleVertex(m, ValueAt(m, p) == 0.0f ? p : q);
+    }
+    int32_t* id = Slot(m, p, axis);
     if (*id < 0)
     {
         float place[3];
@@ -152,9 +196,14 @@ static int32_t CubeEdge(const int32_t cube[3], int32_t e, int32_t p[3])
 }
 
 // Writes a triangle (segment) of count vertices when it and all before it
-// fit; counts it.
+// fit; counts it. One whose vertices are not all distinct (on samples at
+// the level) is left out.
 static void Primitive(Mesher* m, const int32_t* ids, int32_t count)
 {
+    if (ids[0] == ids[1] || (count == 3 && (ids[1] == ids[2] || ids[0] == ids[2])))
+    {
+        return;
+    }
     bool fits = !m->stopped && m->indices + count <= m->out->indexCapacity;
     for (int32_t i = 0; fits && i < count; ++i)
     {
@@ -295,7 +344,7 @@ static void MarchSquare(Mesher* m, int32_t x, int32_t y)
 static void ClearLayer(Mesher* m, int32_t s)
 {
     int64_t points = m->axes == 3 ? (int64_t)m->n[0] * m->n[1] : m->n[0];
-    memset(m->layers[s & 1], 0xFF, (size_t)(points * m->axes) * sizeof(int32_t));
+    memset(m->layers[s & 1], 0xFF, (size_t)(points * SLOTS(m->axes)) * sizeof(int32_t));
 }
 
 static void Walk(Mesher* m)
@@ -328,7 +377,9 @@ static void Walk(Mesher* m)
 static int64_t ScratchBytes(const mvfxCompiledGas* gas)
 {
     const int32_t* n = gas->def.size;
-    return n[2] > 1 ? 24 * (int64_t)n[0] * n[1] : 16 * (int64_t)n[0];
+    // Two layers (rows) of the samples' slots.
+    int64_t points = n[2] > 1 ? (int64_t)n[0] * n[1] : n[0];
+    return 2 * points * SLOTS(n[2] > 1 ? 3 : 2) * (int64_t)sizeof(int32_t);
 }
 
 // The live instance with a surface gas of that index, else NULL with the

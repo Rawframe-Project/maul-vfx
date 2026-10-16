@@ -831,8 +831,8 @@ extern "C"
         int64_t scratchBytes;
     } mvfxSurfaceMeshBuffers;
 
-    /// Returns the bytes of scratch a surface gas's mesh takes: 24 a cell of
-    /// a layer of its box (X by Y) in 3D, 16 a cell of a row in 2D.
+    /// Returns the bytes of scratch a surface gas's mesh takes: 32 a cell of
+    /// a layer of its box (X by Y) in 3D, 24 a cell of a row in 2D.
     ///
     /// @param context   The context that owns the instance.
     /// @param instance  The instance.
@@ -858,7 +858,11 @@ extern "C"
     /// are alike is decided by the asymptotic decider (Nielson and Hamann
     /// 1991), the same from either cube, so the mesh has no cracks; a cube
     /// whose loop no triangles can close off its faces takes a vertex
-    /// inside it. Triangles turn counterclockwise seen from outside; a 2D
+    /// inside it, at the mean of the loop's points, its normal the mean of
+    /// theirs. A sample exactly at the level is outside; the edges from it
+    /// take its own vertex there, and a primitive whose vertices are not
+    /// all distinct is left out, so no edge has zero length. A mesh has
+    /// fewer than 2^24 vertices. Triangles turn counterclockwise seen from outside; a 2D
     /// surface's segments have the outside on their right. Positions are
     /// in the world less origin. The mesh's first triangles (or segments)
     /// that fit both buffers are written; the counts are always the whole

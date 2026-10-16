@@ -260,7 +260,7 @@ static void TestRefusals(void)
     right =
         right &&
         mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) == mvfx_success &&
-        bytes == 24 * 64;
+        bytes == 32 * 64;
     for (int32_t c = 0; c < 11; ++c)
     {
         right = right && Spoiled(c, bytes) == (c == 4 ? mvfx_errorCapacity : mvfx_errorInvalid);
@@ -274,7 +274,7 @@ static void TestRefusals(void)
     right =
         right &&
         mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) == mvfx_success &&
-        bytes == 16 * 8;
+        bytes == 24 * 8;
     mvfxDestroyContext(s_context);
     CHECK(right, "a mesh's refusals");
 }
@@ -399,6 +399,82 @@ static void RandomField(int32_t n, int32_t depth, uint64_t* state)
         float u = (float)(*state >> 40) / 16777216.0f;
         phi[i] = border ? 1.0f : 2.0f * u - 1.0f;
     }
+}
+
+// Whether a mesh's primitives of count vertices close, at samples where
+// sheets (curves) meet too: each directed edge (a, b) as often as (b, a)
+// for triangles, each vertex as many segments' end as start for segments;
+// and none of zero length.
+static bool Balanced(int64_t vertices, int64_t indices, int32_t count)
+{
+    int64_t edges = count == 3 ? indices : indices / 2;
+    uint64_t* keys = malloc(sizeof(uint64_t) * (size_t)(2 * edges + 1));
+    int64_t* degrees = calloc((size_t)(vertices + 1), sizeof(int64_t));
+    if (keys == NULL || degrees == NULL)
+    {
+        free(keys);
+        free(degrees);
+        return false;
+    }
+    bool sized = true;
+    for (int64_t e = 0; e < edges; ++e)
+    {
+        int64_t first = count == 3 ? e : 2 * e;
+        int64_t second = count == 3 ? (e % 3 == 2 ? e - 2 : e + 1) : 2 * e + 1;
+        uint64_t a = s_indices[first];
+        uint64_t b = s_indices[second];
+        keys[e] = a << 32 | b;
+        keys[edges + e] = b << 32 | a;
+        degrees[a] += 1;
+        degrees[b] -= 1;
+        const float* p = &s_positions[3 * a];
+        const float* q = &s_positions[3 * b];
+        sized = sized && (p[0] != q[0] || p[1] != q[1] || p[2] != q[2]);
+    }
+    qsort(keys, (size_t)edges, sizeof(uint64_t), Compare);
+    qsort(keys + edges, (size_t)edges, sizeof(uint64_t), Compare);
+    bool closed = count == 2 || memcmp(keys, keys + edges, sizeof(uint64_t) * (size_t)edges) == 0;
+    for (int64_t v = 0; v < vertices; ++v)
+    {
+        closed = closed && degrees[v] == 0;
+    }
+    free(keys);
+    free(degrees);
+    return closed && sized;
+}
+
+static void TestTies(void)
+{
+    // Fields of -1, 0 and 1 at random, the border 1, at the level 0: ties
+    // everywhere. Samples at the level are outside, edges to them take
+    // their own vertex, primitives on them alone are left out: every mesh
+    // closes, none of its edges of zero length.
+    uint64_t state = 7u;
+    bool right = true;
+    int64_t total = 0;
+    for (int32_t c = 0; c < 40; ++c)
+    {
+        int32_t depth = c < 20 ? 10 : 1;
+        int32_t n = c < 20 ? 10 : 24;
+        CHECK(Open(n, depth, 0.05f, 0.25f, mvfx_gasSurface), "opened");
+        mvfxGasState* gas = &mvfxContextInstance(s_context, s_instance)->gases[0];
+        float* phi = gas->scalars[0][gas->current];
+        for (int64_t i = 0; i < (int64_t)n * n * depth; ++i)
+        {
+            int32_t at[3] = {(int32_t)(i % n), (int32_t)(i / n % n), (int32_t)(i / n / n)};
+            bool border = at[0] == 0 || at[0] == n - 1 || at[1] == 0 || at[1] == n - 1 ||
+                          (depth > 1 && (at[2] == 0 || at[2] == depth - 1));
+            state = state * 6364136223846793005u + 1442695040888963407u;
+            phi[i] = border ? 1.0f : (float)(int32_t)((state >> 33) % 3u) - 1.0f;
+        }
+        int64_t vertices = 0;
+        int64_t indices = 0;
+        Mesh(s_origin, &vertices, &indices);
+        right = right && Balanced(vertices, indices, depth > 1 ? 3 : 2);
+        total += indices;
+        mvfxDestroyContext(s_context);
+    }
+    CHECK(right && total > 0, "ties: closed, no edge of zero length");
 }
 
 static void TestRandomFields(void)
@@ -649,6 +725,7 @@ int main(void)
     TestEdgeNormals();
     TestDrops();
     TestRandomFields();
+    TestTies();
     TestCapacity();
     TestDecider();
     TestAtLevel();

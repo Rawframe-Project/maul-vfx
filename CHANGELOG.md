@@ -378,6 +378,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - Changed: a surface's default upper threshold is 2.0 (was 2.5), which
   keeps disks two spacings apart from joining in 2D as balls in 3D; a
   flat face sits about a tenth of a spacing inside.
+- A surface mesh's samples exactly at the level are outside, and the
+  edges from one take its own vertex, so ties leave no zero-length edge
+  (primitives on such vertices alone are left out); the scratch takes
+  32 bytes a cell of a layer in 3D and 24 a cell of a row in 2D.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so
