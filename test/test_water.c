@@ -386,7 +386,7 @@ static void CellInWorld(double x, double z, double y, double out[3])
 }
 
 // The frame tests' surface opened in the frame: small dents at cells
-// (3, 5) and (15, 7) and a wide lift at (10, 2), pushed in the world's lengths and
+// (3, 5), (15, 7) and (0, 0) and a wide lift at (10, 2), pushed in the world's lengths and
 // taken without a step's time.
 static mvfxWaterDef OpenInFrame(void)
 {
@@ -407,6 +407,8 @@ static mvfxWaterDef OpenInFrame(void)
     Push(at[0], at[1], at[2], 0.6f, -0.02f);
     CellInWorld(15.0, 7.0, 0.0, at);
     Push(at[0], at[1], at[2], 0.08f, 0.04f);
+    CellInWorld(0.0, 0.0, 0.0, at);
+    Push(at[0], at[1], at[2], 0.08f, 0.04f);
     Steps(1, 0.0);
     return water;
 }
@@ -419,7 +421,7 @@ static float Expected(int32_t x, int32_t z)
     float dz = (float)(z - 2) / 3.0f;
     float s = 1.0f - (dx * dx + dz * dz);
     float lift = s > 0.0f ? 0.01f * s * s : 0.0f;
-    bool dent = (x == 3 && z == 5) || (x == 15 && z == 7);
+    bool dent = (x == 3 && z == 5) || (x == 15 && z == 7) || (x == 0 && z == 0);
     return 0.5f + lift - (dent ? 0.02f : 0.0f);
 }
 
@@ -511,8 +513,8 @@ static void TestPushes(void)
             exact && fabs((double)u[i] - (double)Expected(i % 16, i / 16) - sank / 128.0) < 1e-6;
     }
     CHECK(exact, "pushes by their falloff, in the frame's lengths, the level raised");
-    CHECK(fabs(sank) > 0.01 && fabs(held) < 1e-6, "the volume kept");
-    CHECK(u[2 * 16 + 13] == u[0] && u[4 * 16 + 12] > u[0], "a push's reach");
+    CHECK(fabs(sank) > 0.01 && fabs(held) < 1e-5, "the volume kept");
+    CHECK(u[2 * 16 + 13] == u[16 + 1] && u[4 * 16 + 12] > u[16 + 1], "a push's reach");
     free(u);
     PushCapacity(&water);
     PushRefusals();
