@@ -91,7 +91,9 @@ extern "C"
     /// Reads a file into an effect def, its arrays in caller memory. Checks
     /// in order the header (its magic, its version, its size), the hash,
     /// the unit table, each unit alone, the bindings of the names it holds
-    /// through the asset table, and the def validator.
+    /// through the asset table, and the def validator. The bytes must not
+    /// change during the call: bytes that do are refused or read as some
+    /// valid def, but never read or laid past.
     ///
     /// @param bytes       The file.
     /// @param size        Its size in bytes, at least 0.

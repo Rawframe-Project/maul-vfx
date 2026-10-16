@@ -291,10 +291,17 @@ static mvfxFileResult ReadTable(const uint8_t* bytes, size_t size, Unit units[UN
     return Fault(mvfx_success, -1);
 }
 
-// The offset of a names unit's name after the one at at.
-static size_t NextName(const uint8_t* bytes, size_t at)
+// The length of the name at at in a unit ending at end, or -1 when it does
+// not fit there. Each walk after a unit's check reads lengths through it,
+// so none leaves the unit even if the bytes changed meanwhile.
+static int64_t NameLength(const uint8_t* bytes, size_t at, size_t end)
 {
-    return at + 4 + Get32(bytes, at);
+    if (end - at < 4)
+    {
+        return -1;
+    }
+    uint32_t length = Get32(bytes, at);
+    return length <= end - at - 4 ? (int64_t)length : -1;
 }
 
 // Checks a names unit alone: each name's length, its bytes UTF-8 and in
@@ -305,29 +312,27 @@ static mvfxFileResult ReadNames(const uint8_t* bytes, const Unit* unit)
     size_t at = unit->offset;
     for (uint32_t i = 0; i < unit->count; ++i)
     {
-        if (end - at < 4)
+        int64_t length = NameLength(bytes, at, end);
+        if (length < 1 || length > MVFX_MAX_ASSET_NAME)
         {
             return Fault(mvfx_errorInvalid, (int64_t)at);
         }
-        uint32_t length = Get32(bytes, at);
-        if (length < 1 || length > MVFX_MAX_ASSET_NAME || length > end - at - 4)
-        {
-            return Fault(mvfx_errorInvalid, (int64_t)at);
-        }
-        size_t bad = Utf8Fault(bytes + at + 4, length);
-        if (bad != length)
+        size_t bad = Utf8Fault(bytes + at + 4, (size_t)length);
+        if (bad != (size_t)length)
         {
             return Fault(mvfx_errorInvalid, (int64_t)(at + 4 + bad));
         }
-        for (size_t before = unit->offset; before < at; before = NextName(bytes, before))
+        for (size_t before = unit->offset; before < at;)
         {
-            if (SameName((const char*)bytes + before + 4, (int32_t)Get32(bytes, before),
-                         (const char*)bytes + at + 4, (int32_t)length))
+            int64_t earlier = NameLength(bytes, before, end);
+            if (earlier < 0 || SameName((const char*)bytes + before + 4, (int32_t)earlier,
+                                        (const char*)bytes + at + 4, (int32_t)length))
             {
                 return Fault(mvfx_errorInvalid, (int64_t)at);
             }
+            before += 4 + (size_t)earlier;
         }
-        at += 4 + length;
+        at += 4 + (size_t)length;
     }
     return Fault(at == end ? mvfx_success : mvfx_errorInvalid, at == end ? -1 : (int64_t)at);
 }
@@ -339,38 +344,45 @@ static mvfxFileResult Bind(const uint8_t* bytes, const Unit units[UNIT_COUNT],
     for (mvfxAssetKind kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
     {
         size_t at = units[kind].offset;
+        size_t end = at + units[kind].size;
         for (uint32_t i = 0; i < units[kind].count; ++i)
         {
+            int64_t length = NameLength(bytes, at, end);
+            if (length < 0)
+            {
+                return Fault(mvfx_errorInvalid, (int64_t)at);
+            }
             int32_t found = -1;
             for (int32_t a = 0; a < assetCount && found < 0; ++a)
             {
-                found = assets[a].kind == kind &&
-                                SameName(assets[a].name, assets[a].nameLength,
-                                         (const char*)bytes + at + 4, (int32_t)Get32(bytes, at))
-                            ? a
-                            : -1;
+                found =
+                    assets[a].kind == kind && SameName(assets[a].name, assets[a].nameLength,
+                                                       (const char*)bytes + at + 4, (int32_t)length)
+                        ? a
+                        : -1;
             }
             if (found < 0)
             {
                 return Fault(mvfx_errorMissing, (int64_t)at);
             }
             *names++ = found;
-            at = NextName(bytes, at);
+            at += 4 + (size_t)length;
         }
     }
     return Fault(mvfx_success, -1);
 }
 
 // Walks the effect unit: checking and measuring without a def, reading
-// into one with names bound, its arrays in memory of the bytes measured.
+// into one with names bound, its arrays in memory of capacity bytes.
 static mvfxFileResult ReadDef(const uint8_t* bytes, const Unit units[UNIT_COUNT],
                               const mvfxEffectAsset* assets, int32_t* names, uint8_t* memory,
-                              mvfxEffectDef* def, size_t* used)
+                              size_t capacity, mvfxEffectDef* def, size_t* used)
 {
     mvfxCodec codec = {.in = bytes,
                        .at = units[EFFECT_UNIT].offset,
                        .end = units[EFFECT_UNIT].offset + units[EFFECT_UNIT].size,
                        .memory = memory,
+                       .capacity = capacity,
                        .faultAt = -1,
                        .assets = assets};
     size_t first = 0;
@@ -394,9 +406,10 @@ static mvfxFileResult ReadDef(const uint8_t* bytes, const Unit units[UNIT_COUNT]
     for (int32_t kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
     {
         size_t at = units[kind].offset;
-        for (int32_t i = 0; i < codec.nameCount[kind]; ++i)
+        size_t end = at + units[kind].size;
+        for (int32_t i = 0; i < codec.nameCount[kind] && NameLength(bytes, at, end) >= 0; ++i)
         {
-            at = NextName(bytes, at);
+            at += 4 + (size_t)NameLength(bytes, at, end);
         }
         if (codec.nameCount[kind] != codec.nameCap[kind])
         {
@@ -423,7 +436,7 @@ static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEff
     }
     if (result.result == mvfx_success)
     {
-        result = ReadDef(bytes, units, assets, nullptr, nullptr, nullptr, needed);
+        result = ReadDef(bytes, units, assets, nullptr, nullptr, 0, nullptr, needed);
     }
     if (result.result == mvfx_success)
     {
@@ -464,7 +477,7 @@ mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size, const mvfxEffectA
     {
         return Fault(mvfx_errorCapacity, -1);
     }
-    result = ReadDef(bytes, units, assets, names, memory, defOut, &needed);
+    result = ReadDef(bytes, units, assets, names, memory, (size_t)capacity, defOut, &needed);
     if (result.result == mvfx_success &&
         (!mvfxIsEffectDefValid(defOut) || !mvfxAreEffectPartsValid(defOut)))
     {

@@ -9,6 +9,7 @@
 // needs; and effects created from bytes. The golden test runs the whole
 // scene through files.
 
+#include "file_codec.h"
 #include "file_fields.h"
 #include "test_harness.h"
 
@@ -704,6 +705,34 @@ static void TestMemory(void)
         "the same bytes again");
 }
 
+// A walk given less memory than it lays, as when the bytes change between
+// a read's measuring walk and its reading walk: refused, never laid past.
+static void TestMemoryGuard(void)
+{
+    Def def;
+    MakeDef(&def);
+    def.emitter.colliderCount = 0;
+    def.emitter.hostModuleCount = 0;
+    uint8_t bytes[4096];
+    int64_t size = Write(&def, bytes);
+    int64_t needed = 0;
+    mvfxEffectDef read;
+    CHECK(mvfxReadEffect(bytes, size, s_assets, 4, NULL, 0, &needed, &read).result ==
+              mvfx_errorCapacity,
+          "measured");
+    memset(s_memory, 0xAB, sizeof s_memory);
+    mvfxCodec codec = {.in = bytes,
+                       .at = 88,
+                       .end = (size_t)size,
+                       .memory = s_memory,
+                       .capacity = (size_t)needed - 1,
+                       .faultAt = -1};
+    mvfxEffectDef def2 = {0};
+    mvfxCodeStruct(&codec, mvfxFileEffectDef, (uint8_t*)&def2);
+    CHECK(codec.fault == mvfx_errorCapacity && s_memory[needed - 1] == 0xAB,
+          "nothing laid past the memory");
+}
+
 // Allocations of a test allocator, failing when told to.
 static bool s_failAllocations;
 static int32_t s_live;
@@ -817,6 +846,7 @@ int main(void)
     TestCuts();
     TestParts();
     TestMemory();
+    TestMemoryGuard();
     TestCreate();
     return s_failures == 0 ? 0 : 1;
 }

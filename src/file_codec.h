@@ -31,8 +31,9 @@ typedef struct mvfxCodec
     size_t at;
     size_t end;
     // Reading: the memory the def's arrays are laid in, NULL to measure
-    // it, and the bytes laid so far.
+    // it, its size and the bytes laid so far.
     uint8_t* memory;
+    size_t capacity;
     size_t used;
     // The first fault and the offset of its byte, -1 for none.
     mvfxResult fault;
