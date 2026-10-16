@@ -198,12 +198,13 @@ static void TestReads(void)
     CHECK(right, "a surface's distance read and sampled");
 }
 
-// Whether a lone particle at p gives, in a gas of 16 by 16 by depth cells
-// of cell and particles of radius and reach, |x - p| - radius within 2e-6
-// where x is within the reach of p and the reach beyond.
-static bool LoneParticle(int32_t depth, const double p[3], float cell, float radius, float reach)
+// Whether a lone particle at p gives, in a gas of n by n by depth cells
+// (depth n or 1) of cell and particles of radius and reach, |x - p| -
+// radius within 2e-6 where x is within the reach of p and the reach
+// beyond.
+static bool LoneParticle(int32_t n, int32_t depth, const double p[3], float cell, float radius,
+                         float reach)
 {
-    int32_t n = 16;
     mvfxGasDef gas = Surface(n, depth, cell, radius);
     gas.surface.reach = reach;
     gas.surface.smoothing = 0;
@@ -235,18 +236,87 @@ static bool LoneParticle(int32_t depth, const double p[3], float cell, float rad
 static void TestLoneParticle(void)
 {
     // A sphere and a circle; a reach of 3.3 radii (buckets of whole cells
-    // past it); a particle beyond the box's far X face, within reach of its
-    // cells; one exactly at the buckets' far Z edge, which counts for none
-    // (cells of 1/16, the reach 8 cells).
+    // past it), and of 3.9 (7.8 cells) in a box of 32 with the particle
+    // near a bucket's low end, a cell 7.6 cells off two buckets of 7 away;
+    // a particle beyond the box's far X face, within reach of its cells;
+    // one exactly at the buckets' far Z edge, which counts for none (cells
+    // of 1/16, the reach 8 cells).
     const double inside[3] = {0.013, -0.021, 0.007};
     const double flat[3] = {0.013, -0.021, 0.0};
+    const double low[3] = {-0.095, 0.013, 0.007};
     const double beyond[3] = {0.45, -0.021, 0.007};
     const double edge[3] = {0.0, 0.0, 1.0};
-    CHECK(LoneParticle(16, inside, 0.05f, 0.1f, 4.0f) && LoneParticle(1, flat, 0.05f, 0.1f, 4.0f) &&
-              LoneParticle(16, inside, 0.05f, 0.1f, 3.3f) &&
-              LoneParticle(16, beyond, 0.05f, 0.1f, 4.0f) &&
-              LoneParticle(16, edge, 0.0625f, 0.125f, 4.0f),
+    CHECK(LoneParticle(16, 16, inside, 0.05f, 0.1f, 4.0f) &&
+              LoneParticle(16, 1, flat, 0.05f, 0.1f, 4.0f) &&
+              LoneParticle(16, 16, inside, 0.05f, 0.1f, 3.3f) &&
+              LoneParticle(32, 32, low, 0.05f, 0.1f, 3.9f) &&
+              LoneParticle(16, 16, beyond, 0.05f, 0.1f, 4.0f) &&
+              LoneParticle(16, 16, edge, 0.0625f, 0.125f, 4.0f),
           "a lone particle's sphere and circle");
+}
+
+// The field of a lone particle in a gas of 16 by 16 by depth cells of
+// 0.05 after smoothing passes, read.
+static float* Smoothed(int32_t depth, int32_t passes)
+{
+    mvfxGasDef gas = Surface(16, depth, 0.05f, 0.1f);
+    gas.surface.smoothing = passes;
+    mvfxEmitterDef emitter = Emitter(4);
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    const double p[3] = {0.013, -0.021, depth > 1 ? 0.007 : 0.0};
+    Spawn(p, 1);
+    float* phi = Distance(16 * 16 * depth);
+    mvfxDestroyContext(s_context);
+    return phi;
+}
+
+// One smoothing pass as documented, in place: the mean of each cell and
+// its neighbors along the axes (an edge's cell for the one beyond), then
+// that mean again only where it is lower.
+static void SmoothOnce(float* phi, int32_t depth)
+{
+    int32_t axes = depth > 1 ? 3 : 2;
+    int64_t cells = 16 * 16 * (int64_t)depth;
+    float* other = malloc(sizeof(float) * (size_t)cells);
+    CHECK(other != NULL, "memory");
+    for (int32_t half = 0; half < 2; ++half)
+    {
+        const float* from = half == 0 ? phi : other;
+        float* to = half == 0 ? other : phi;
+        for (int64_t i = 0; i < cells; ++i)
+        {
+            const int32_t at[3] = {(int32_t)(i % 16), (int32_t)(i / 16 % 16), (int32_t)(i / 256)};
+            const int64_t step[3] = {1, 16, 256};
+            float sum = from[i];
+            for (int32_t k = 0; k < axes; ++k)
+            {
+                sum += from[at[k] > 0 ? i - step[k] : i];
+                sum += from[at[k] + 1 < 16 ? i + step[k] : i];
+            }
+            float mean = sum / (float)(1 + 2 * axes);
+            to[i] = half == 0 ? mean : fminf(mean, from[i]);
+        }
+    }
+    free(other);
+}
+
+static void TestSmoothing(void)
+{
+    // Two passes over a lone particle's field, in 3D and 2D, are the
+    // documented passes over the unsmoothed field, bit for bit.
+    bool same = true;
+    for (int32_t c = 0; c < 2; ++c)
+    {
+        int32_t depth = c == 0 ? 16 : 1;
+        float* expected = Smoothed(depth, 0);
+        SmoothOnce(expected, depth);
+        SmoothOnce(expected, depth);
+        float* phi = Smoothed(depth, 2);
+        same = same && memcmp(expected, phi, sizeof(float) * 256u * (size_t)depth) == 0;
+        free(expected);
+        free(phi);
+    }
+    CHECK(same, "smoothing passes as documented");
 }
 
 static void TestTinyReach(void)
@@ -496,6 +566,7 @@ int main(void)
     TestReads();
     TestLoneParticle();
     TestTinyReach();
+    TestSmoothing();
     TestEigenvalue();
     TestFlatFace();
     TestDrops();
