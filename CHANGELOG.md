@@ -388,6 +388,17 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   than `mvfxGasDef.courant` cells (1 by default) in a step, at most
   `MVFX_MAX_LIQUID_SUBSTEPS`: a dam break stepped at 30 a second keeps
   its volume within 4% (it lost 8% in one step a frame).
+- Shallow water (`mvfxWaterDef.model`, `mvfx_waterShallow`): depths over
+  a ground (a heightfield collider of the effect's or the host's, or a
+  flat floor) and velocities on the grid's faces, carried by Stelling and
+  Duinmeijer's momentum-conserving upwind form, accelerated by the
+  surface's fall and moving water by upwind fluxes so the volume is
+  exact in a closed basin and no depth falls below 0; a lake at rest
+  stays at rest over any ground; open walls drain; sources (disks and
+  boxes) pour while the instance plays; pushes move water from their
+  middle to their ring; `fillLevel`, `gravity` and `friction`; reads
+  gain `mvfx_waterDepth` and the flow along X and Z. A dam break on a dry
+  bed follows Ritter's depths within 7%.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

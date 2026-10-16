@@ -19,6 +19,7 @@
 #include "elementary.h"
 #include "water.h"
 #include "water_api.h"
+#include "water_shallow.h"
 
 #include <math.h>
 
@@ -115,13 +116,6 @@ static void OpenWalls(const Waves* w)
     }
 }
 
-// An index from a bound along an axis, held from lo to hi (a far push's
-// bounds beyond what an index holds).
-static int32_t Held(float bound, int32_t lo, int32_t hi)
-{
-    return (int32_t)fminf(fmaxf(bound, (float)lo), (float)hi);
-}
-
 // Lowers the cells within a push's reach by its depth times its falloff,
 // in the surface's frame; returns the sum of what they sank.
 static double Push(mvfxInstance* instance, int32_t index, const mvfxWaterPush* push)
@@ -141,14 +135,14 @@ static double Push(mvfxInstance* instance, int32_t index, const mvfxWaterPush* p
     float cx = local[0] / h + 0.5f * (float)n[0] - 0.5f;
     float cz = local[2] / h + 0.5f * (float)n[1] - 0.5f;
     float reach = radius / h;
-    int32_t x0 = Held(ceilf(cx - reach), 0, n[0]);
-    int32_t x1 = Held(floorf(cx + reach), -1, n[0] - 1);
-    int32_t z0 = Held(ceilf(cz - reach), 0, n[1]);
-    int32_t z1 = Held(floorf(cz + reach), -1, n[1] - 1);
+    int32_t xs[2];
+    int32_t zs[2];
+    mvfxWaterSpan(cx, reach, n[0], xs);
+    mvfxWaterSpan(cz, reach, n[1], zs);
     double sank = 0.0;
-    for (int32_t z = z0; z <= z1; ++z)
+    for (int32_t z = zs[0]; z <= zs[1]; ++z)
     {
-        for (int32_t x = x0; x <= x1; ++x)
+        for (int32_t x = xs[0]; x <= xs[1]; ++x)
         {
             float dx = ((float)x - cx) / reach;
             float dz = ((float)z - cz) / reach;
@@ -212,6 +206,11 @@ static void Settle(const mvfxCompiledWater* water, mvfxWaterState* state)
 
 void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
 {
+    if (instance->effect->waters[w].def.model == mvfx_waterShallow)
+    {
+        mvfxStepShallow(instance, w, tasks);
+        return;
+    }
     const mvfxCompiledWater* water = &instance->effect->waters[w];
     mvfxWaterState* state = &instance->waters[w];
     double sank = 0.0;

@@ -481,10 +481,41 @@ static inline void BuildLiquidScene(mvfxContext* context)
 
 // Water surfaces: a pond walled in, of the instance's frame, and a strip
 // of where the instance began, open along X, its waves fast enough that
-// the second-long step takes the most substeps.
+// the second-long step takes the most substeps; and shallow water over a
+// slope of the instance's frame, filled to its middle, a spring pouring
+// at its high end, its -Z wall open.
 static inline void BuildWaterScene(mvfxContext* context)
 {
-    mvfxWaterDef waters[2] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};
+    static float slope[17 * 9];
+    for (int32_t i = 0; i < 17 * 9; ++i)
+    {
+        slope[i] = -0.3f + 0.6f * (float)(i % 17) / 16.0f + 0.02f * (float)(i / 17 % 3);
+    }
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 17;
+    gridDef.size[1] = 1;
+    gridDef.size[2] = 9;
+    gridDef.values = slope;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success, "water slope");
+    static const mvfxWaterSource spring = {
+        .shape = mvfx_gasSphere, .center = {1.2f, 0.0f, 0.1f}, .radius = 0.25f, .rate = 0.3f};
+    mvfxWaterDef waters[3] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};
+    waters[2].model = mvfx_waterShallow;
+    waters[2].size[0] = 32;
+    waters[2].size[1] = 16;
+    waters[2].center[1] = -0.5f;
+    waters[2].closedWalls = (mvfxWaterWalls)(15 & ~mvfx_waterWallMinZ);
+    waters[2].friction = 0.5f;
+    waters[2].hasTerrain = true;
+    waters[2].terrain = (mvfxCollider){.kind = mvfx_colliderHeightfield,
+                                       .space = 1,
+                                       .center = {0.0f, -0.5f, 0.0f},
+                                       .halfExtents = {1.6f, 1.0f, 0.8f},
+                                       .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
+                                       .grid = grid};
+    waters[2].sources = &spring;
+    waters[2].sourceCount = 1;
     waters[0].size[0] = 48;
     waters[0].size[1] = 32;
     waters[0].cellSize = 0.05f;
@@ -499,7 +530,7 @@ static inline void BuildWaterScene(mvfxContext* context)
     waters[1].damping = 0.1f;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.waters = waters;
-    def.waterCount = 2;
+    def.waterCount = 3;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "water effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -1373,6 +1404,13 @@ static inline void PushSceneWater(mvfxContext* context, mvfxInstanceId id, const
         .depth = -0.01f};
     CHECK(mvfxInstance_PushWater(context, id, 1, &lift, step % 4 == 0 ? 1 : 0) == mvfx_success,
           "strip push");
+    // A paddle through the shallow water every third step.
+    const mvfxWaterPush paddle = {
+        .point = {origin[0] - 0.6 + 0.05 * step, origin[1] - 0.5, origin[2]},
+        .radius = 0.2f,
+        .depth = step % 2 == 0 ? 0.05f : -0.03f};
+    CHECK(mvfxInstance_PushWater(context, id, 2, &paddle, step % 3 == 0 ? 1 : 0) == mvfx_success,
+          "paddle push");
 }
 
 static inline void MoveScene(mvfxContext* context, int32_t step)
@@ -1710,7 +1748,19 @@ static inline uint64_t HashWater(mvfxContext* context, mvfxInstanceId id,
                                 .high = 0.01f};
     CHECK(mvfxInstance_ReadWater(context, id, 1, &read, normals, sizeof normals) == mvfx_success,
           "scene water read");
-    return mvfxHash64(hash, normals, (int32_t)sizeof normals);
+    hash = mvfxHash64(hash, normals, (int32_t)sizeof normals);
+    // The shallow water's depths and flow along X, as binary32.
+    static float depths[2][32 * 16];
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        const mvfxWaterRead shallow = {.field = k == 0 ? mvfx_waterDepth : mvfx_waterVelocityX,
+                                       .format = mvfx_formatFloat32,
+                                       .size = {32, 16}};
+        CHECK(mvfxInstance_ReadWater(context, id, 2, &shallow, depths[k], sizeof depths[k]) ==
+                  mvfx_success,
+              "scene shallow read");
+    }
+    return mvfxHash64(hash, depths, (int32_t)sizeof depths);
 }
 
 static inline uint64_t HashScene(mvfxContext* context)

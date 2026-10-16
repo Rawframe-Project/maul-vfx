@@ -62,16 +62,43 @@ mvfxBounds mvfxWaterBounds(const mvfxInstance* instance, int32_t w)
     return mvfxBoxBounds(&place, half);
 }
 
-// A field's value at cell (x, z), within the grid.
-static float At(const mvfxCompiledWater* water, const float* u, int32_t x, int32_t z)
+// The surface's height at cell (x, z), within the grid, over the grid's
+// center: waves' displacement, or shallow water's ground and depth.
+static float SurfaceAt(const mvfxCompiledWater* water, const mvfxWaterState* state, int32_t x,
+                       int32_t z)
 {
-    return u[(int64_t)z * water->def.size[0] + x];
+    int64_t i = (int64_t)z * water->def.size[0] + x;
+    float u = state->heights[state->current][i];
+    return state->ground != nullptr ? state->ground[i] + u : u;
+}
+
+// The surface's velocity at cell (x, z), within the grid: a wave's rate
+// along Y, or shallow water's flow along X and Z, the mean of the cell's
+// two faces' along each.
+static void VelocityAt(const mvfxCompiledWater* water, const mvfxWaterState* state, int32_t x,
+                       int32_t z, float out[3])
+{
+    int32_t n0 = water->def.size[0];
+    if (state->ground == nullptr)
+    {
+        out[0] = 0.0f;
+        out[1] = state->rates[(int64_t)z * n0 + x];
+        out[2] = 0.0f;
+        return;
+    }
+    const float* u = state->faces[0][state->faceCurrent];
+    const float* w = state->faces[1][state->faceCurrent];
+    int64_t across = (int64_t)z * (n0 + 1) + x;
+    int64_t along = (int64_t)z * n0 + x;
+    out[0] = 0.5f * (u[across] + u[across + 1]);
+    out[1] = 0.0f;
+    out[2] = 0.5f * (w[along] + w[along + n0]);
 }
 
 // The surface's unit normal at cell (x, z): its heights' central
 // differences, one-sided at the grid's edges.
-static void NormalAt(const mvfxCompiledWater* water, const float* u, int32_t x, int32_t z,
-                     float out[3])
+static void NormalAt(const mvfxCompiledWater* water, const mvfxWaterState* state, int32_t x,
+                     int32_t z, float out[3])
 {
     const int32_t* n = water->def.size;
     float h = water->def.cellSize;
@@ -79,8 +106,10 @@ static void NormalAt(const mvfxCompiledWater* water, const float* u, int32_t x, 
     int32_t x1 = x + 1 < n[0] ? x + 1 : x;
     int32_t z0 = z > 0 ? z - 1 : z;
     int32_t z1 = z + 1 < n[1] ? z + 1 : z;
-    float dx = (At(water, u, x1, z) - At(water, u, x0, z)) / ((float)(x1 - x0) * h);
-    float dz = (At(water, u, x, z1) - At(water, u, x, z0)) / ((float)(z1 - z0) * h);
+    float dx =
+        (SurfaceAt(water, state, x1, z) - SurfaceAt(water, state, x0, z)) / ((float)(x1 - x0) * h);
+    float dz =
+        (SurfaceAt(water, state, x, z1) - SurfaceAt(water, state, x, z0)) / ((float)(z1 - z0) * h);
     float length = sqrtf(dx * dx + 1.0f + dz * dz);
     out[0] = -dx / length;
     out[1] = 1.0f / length;
@@ -91,23 +120,25 @@ static void NormalAt(const mvfxCompiledWater* water, const float* u, int32_t x, 
 static float FieldAt(const mvfxCompiledWater* water, const mvfxWaterState* state,
                      mvfxWaterField field, int32_t x, int32_t z)
 {
-    const float* u = state->heights[state->current];
+    int64_t i = (int64_t)z * water->def.size[0] + x;
+    float vector[3];
     switch (field)
     {
     case mvfx_waterHeight:
-        return water->def.center[1] + At(water, u, x, z);
+        return water->def.center[1] + SurfaceAt(water, state, x, z);
+    case mvfx_waterVelocityX:
     case mvfx_waterVelocityY:
-        return At(water, state->rates, x, z);
+    case mvfx_waterVelocityZ:
+        VelocityAt(water, state, x, z, vector);
+        return vector[field - mvfx_waterVelocityX];
     case mvfx_waterNormalX:
     case mvfx_waterNormalY:
     case mvfx_waterNormalZ:
-    {
-        float normal[3];
-        NormalAt(water, u, x, z, normal);
-        return normal[field - mvfx_waterNormalX];
-    }
+        NormalAt(water, state, x, z, vector);
+        return vector[field - mvfx_waterNormalX];
     default:
-        return 0.0f;
+        // The depth: shallow water's, waves' 0.
+        return state->ground != nullptr ? state->heights[state->current][i] : 0.0f;
     }
 }
 
@@ -117,7 +148,7 @@ static bool IsReadValid(const mvfxWaterRead* read, const mvfxCompiledWater* wate
                         int64_t* end)
 {
     uint32_t bytes = mvfxReadFormatBytes(read->format);
-    bool valid = read->field <= mvfx_waterNormalZ && bytes > 0 &&
+    bool valid = read->field <= mvfx_waterDepth && bytes > 0 &&
                  (!mvfxIsReadNormalized(read->format) ||
                   (isfinite(read->low) && isfinite(read->high) && read->high > read->low));
     for (int32_t k = 0; valid && k < 2; ++k)
@@ -173,12 +204,12 @@ mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
-// The surface at a point of its frame (x, z): its displacement, rate and
-// normal, bilinear between the cells' centers and held at the outer
-// cells' within the grid's edge; whether the point is over the grid (if
-// not, none is written).
-static bool SurfaceAt(const mvfxCompiledWater* water, const mvfxWaterState* state,
-                      const float local[3], float* height, float* rate, float normal[3])
+// The surface at a point of its frame (x, z): its height over the grid's
+// center, velocity and normal, bilinear between the cells' centers and
+// held at the outer cells' within the grid's edge; whether the point is
+// over the grid (if not, none is written).
+static bool Under(const mvfxCompiledWater* water, const mvfxWaterState* state, const float local[3],
+                  float* height, float velocity[3], float normal[3])
 {
     const int32_t* n = water->def.size;
     float h = water->def.cellSize;
@@ -197,9 +228,7 @@ static bool SurfaceAt(const mvfxCompiledWater* water, const mvfxWaterState* stat
         lo[k] = (int32_t)c[k] < n[k] - 1 ? (int32_t)c[k] : n[k] - 2;
         t[k] = c[k] - (float)lo[k];
     }
-    const float* u = state->heights[state->current];
     *height = 0.0f;
-    *rate = 0.0f;
     float sum[3] = {0.0f, 0.0f, 0.0f};
     for (int32_t corner = 0; corner < 4; ++corner)
     {
@@ -207,13 +236,15 @@ static bool SurfaceAt(const mvfxCompiledWater* water, const mvfxWaterState* stat
         int32_t z = lo[1] + (corner >> 1);
         float w =
             ((corner & 1) != 0 ? t[0] : 1.0f - t[0]) * ((corner >> 1) != 0 ? t[1] : 1.0f - t[1]);
-        float corner_normal[3];
-        NormalAt(water, u, x, z, corner_normal);
-        *height += w * At(water, u, x, z);
-        *rate += w * At(water, state->rates, x, z);
+        float cornerNormal[3];
+        float cornerVelocity[3];
+        NormalAt(water, state, x, z, cornerNormal);
+        VelocityAt(water, state, x, z, cornerVelocity);
+        *height += w * SurfaceAt(water, state, x, z);
         for (int32_t k = 0; k < 3; ++k)
         {
-            sum[k] += w * corner_normal[k];
+            sum[k] += w * cornerNormal[k];
+            velocity[k] += w * cornerVelocity[k];
         }
     }
     float length = sqrtf(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
@@ -232,12 +263,11 @@ static void SampleOne(const mvfxInstance* live, int32_t water, const mvfxSpaceMa
     mvfxMapPointDouble(map, point, local);
     // Off the grid, the rest plane's, still.
     float height = 0.0f;
-    float rate = 0.0f;
+    float velocity[3] = {0.0f, 0.0f, 0.0f};
     float normal[3] = {0.0f, 1.0f, 0.0f};
-    out->inside = SurfaceAt(&live->effect->waters[water], &live->waters[water], local, &height,
-                            &rate, normal);
+    out->inside =
+        Under(&live->effect->waters[water], &live->waters[water], local, &height, velocity, normal);
     const float surface[3] = {local[0], height, local[2]};
-    const float velocity[3] = {0.0f, rate, 0.0f};
     mvfxUnmapPoint(map, surface, out->surface);
     // Directions turn back with the frame; a normal keeps its length.
     float turned[3];

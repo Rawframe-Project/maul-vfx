@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A water surface's step: its pushes, then substeps of its model.
+// A water surface's step: its pushes, then substeps of its model (waves
+// here, shallow water in water_shallow.c).
 
 #ifndef MAUL_VFX_SRC_WATER_STEP_H
 #define MAUL_VFX_SRC_WATER_STEP_H

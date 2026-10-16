@@ -14,11 +14,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// A water def as compiled: its cells.
+struct mvfxGrid;
+
+// A water def as compiled: its cells, its sources copied, its terrain
+// compiled and its grid (the effect's, held).
 typedef struct mvfxCompiledWater
 {
     mvfxWaterDef def;
     int64_t cells;
+    mvfxWaterSource sources[MVFX_MAX_WATER_SOURCES];
+    mvfxCollider terrain;
+    struct mvfxGrid* terrainGrid;
 } mvfxCompiledWater;
 
 // Where a water surface's buffers lie in an instance's block.
@@ -27,19 +33,30 @@ typedef struct mvfxWaterAt
     size_t heights;
     size_t rates;
     size_t pushes;
+    size_t faces;
+    size_t giving;
+    size_t ground;
 } mvfxWaterAt;
 
 // A water surface's state in an instance: each cell's displacement from
-// the rest level in two buffers (current the one now; a substep gathers
-// the neighbors' from it into the other) and its rate; the pushes for the
-// next step; where a world surface's grid was put (the instance's place at
-// its start); whether it moves at all (a rate, or a slope), and its
-// largest displacement's size.
+// the rest level (shallow water's depth) in two buffers (current the one
+// now; a substep gathers the neighbors' from it into the other) and its
+// rate; shallow water's velocities on its faces, along X ((n0 + 1) by n1)
+// and Z (n0 by (n1 + 1)) in two buffers each (faceCurrent the one now),
+// each cell's outflows' scale (giving), its ground's height, and whether it has been
+// filled; the pushes for the next step; where a world surface's grid was put (the
+// instance's place at its start); whether it moves at all (a rate, or a
+// slope), and its largest displacement's size (the surface's height).
 typedef struct mvfxWaterState
 {
     float* heights[2];
     int32_t current;
     float* rates;
+    float* faces[2][2];
+    int32_t faceCurrent;
+    float* giving;
+    float* ground;
+    bool filled;
     mvfxWaterPush* pushes;
     int32_t pushCount;
     double origin[3];
@@ -48,6 +65,12 @@ typedef struct mvfxWaterState
     bool holds;
     float reach;
 } mvfxWaterState;
+
+// Shallow water's faces along X and along Z for a grid of n cells.
+static inline int64_t mvfxWaterFaces(const int32_t n[2], int32_t axis)
+{
+    return axis == 0 ? (int64_t)(n[0] + 1) * n[1] : (int64_t)n[0] * (n[1] + 1);
+}
 
 // A rate, or a difference of displacements, at most this is still.
 #define MVFX_WATER_STILL 1e-6f
@@ -67,5 +90,11 @@ void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, unsig
 
 // Makes a water surface still at its rest level, its pushes dropped.
 void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water);
+
+// The cells along an axis of n whose centers lie within reach of center
+// (both in cells, center's 0 at the first cell's center): span[0] to
+// span[1], empty (span[1] below span[0]) when none, held within the grid
+// however far the center.
+void mvfxWaterSpan(float center, float reach, int32_t n, int32_t span[2]);
 
 #endif

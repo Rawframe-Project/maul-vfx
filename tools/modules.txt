@@ -74,9 +74,11 @@ gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance sp
 gas_surface: force gas gas_api instance tasks
 box: direction force instance
 read_format:
-water: allocator
+water: allocator collide
 water_api: box context force instance instance_api layout read_format water
-water_step: box elementary instance tasks water water_api
+water_step: box elementary instance tasks water water_api water_shallow
+water_shallow: elementary instance tasks water water_ground
+water_ground: box collide direction grid instance tasks water water_api
 marching_table:
 surface_mesh: context gas gas_api instance marching_table
 gas_forces: elementary force gas

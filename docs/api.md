@@ -456,7 +456,7 @@ Water surfaces: heights over a grid of cells across X and Z of an instance's fra
 ```c
 mvfxWaterDef mvfxDefaultWaterDef(void);
 ```
-Returns the default water def: 64 by 64 cells of 0.1 at the instance's origin, in local space, its walls closed, waves at 1 a second, damped at 0.5 a second.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default water def: 64 by 64 cells of 0.1 at the instance's origin, in local space, its walls closed, waves at 1 a second, damped at 0.5 a second; for shallow water, gravity 9.81, no friction, a flat floor, no sources, dry.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ---
 

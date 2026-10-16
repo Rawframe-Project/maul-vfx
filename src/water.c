@@ -3,6 +3,8 @@
 
 #include "water.h"
 
+#include "collide.h"
+
 #include "maul-vfx/effect.h"
 #include "maul-vfx/shape.h"
 
@@ -19,7 +21,47 @@ mvfxWaterDef mvfxDefaultWaterDef(void)
         .closedWalls = 15,
         .waveSpeed = 1.0f,
         .damping = 0.5f,
+        .gravity = 9.81f,
+        .terrain = {.kind = mvfx_colliderHeightfield, .rotation = {0.0f, 0.0f, 0.0f, 1.0f}},
     };
+}
+
+// Whether a shallow surface's source is in range.
+static bool IsSourceValid(const mvfxWaterSource* source)
+{
+    bool valid = (source->shape == mvfx_gasSphere || source->shape == mvfx_gasBox) &&
+                 source->rate > 0.0f && source->rate <= MVFX_MAX_EXTENT;
+    for (int32_t k = 0; valid && k < 3; ++k)
+    {
+        valid = isfinite(source->center[k]) && fabsf(source->center[k]) <= MVFX_MAX_EXTENT;
+    }
+    if (source->shape == mvfx_gasSphere)
+    {
+        return valid && source->radius > 0.0f && source->radius <= MVFX_MAX_EXTENT;
+    }
+    for (int32_t k = 0; valid && k < 3; k += 2)
+    {
+        valid = source->halfExtents[k] > 0.0f && source->halfExtents[k] <= MVFX_MAX_EXTENT;
+    }
+    return valid;
+}
+
+// Whether a def's shallow water fields are in range.
+static bool IsShallowValid(const mvfxWaterDef* def)
+{
+    bool valid =
+        def->model <= mvfx_waterShallow && def->gravity > 0.0f && def->gravity <= MVFX_MAX_EXTENT &&
+        def->friction >= 0.0f && def->friction <= MVFX_MAX_DRAG && isfinite(def->fillLevel) &&
+        fabsf(def->fillLevel) <= MVFX_MAX_EXTENT && def->sourceCount >= 0 &&
+        def->sourceCount <= MVFX_MAX_WATER_SOURCES &&
+        (def->sourceCount == 0 || def->sources != nullptr) &&
+        (!def->hasTerrain || (def->terrain.kind == mvfx_colliderHeightfield &&
+                              def->terrain.space <= 1 && mvfxIsColliderValid(&def->terrain)));
+    for (int32_t s = 0; valid && s < def->sourceCount; ++s)
+    {
+        valid = IsSourceValid(&def->sources[s]);
+    }
+    return valid;
 }
 
 bool mvfxIsWaterDefValid(const mvfxWaterDef* def)
@@ -35,12 +77,19 @@ bool mvfxIsWaterDefValid(const mvfxWaterDef* def)
     {
         valid = isfinite(def->center[k]) && fabsf(def->center[k]) <= MVFX_MAX_EXTENT;
     }
-    return valid;
+    return valid && IsShallowValid(def);
 }
 
 mvfxCompiledWater mvfxCompileWater(const mvfxWaterDef* def)
 {
-    return (mvfxCompiledWater){.def = *def, .cells = (int64_t)def->size[0] * def->size[1]};
+    mvfxCompiledWater water = {.def = *def, .cells = (int64_t)def->size[0] * def->size[1]};
+    for (int32_t s = 0; s < def->sourceCount; ++s)
+    {
+        water.sources[s] = def->sources[s];
+    }
+    water.def.sources = nullptr;
+    water.terrain = def->hasTerrain ? mvfxCompileCollider(&def->terrain) : def->terrain;
+    return water;
 }
 
 void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, mvfxWaterAt* at)
@@ -49,24 +98,60 @@ void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, mvfx
     at->rates = mvfxLayoutAdd(layout, (size_t)water->cells, sizeof(float), alignof(float));
     at->pushes =
         mvfxLayoutAdd(layout, MVFX_MAX_WATER_PUSHES, sizeof(mvfxWaterPush), alignof(mvfxWaterPush));
+    // Shallow water's faces (two buffers of each axis's), scale and ground.
+    bool shallow = water->def.model == mvfx_waterShallow;
+    size_t cells = shallow ? (size_t)water->cells : 0;
+    size_t faces =
+        shallow ? (size_t)(mvfxWaterFaces(water->def.size, 0) + mvfxWaterFaces(water->def.size, 1))
+                : 0;
+    at->faces = mvfxLayoutAdd(layout, 2u * faces, sizeof(float), alignof(float));
+    at->giving = mvfxLayoutAdd(layout, cells, sizeof(float), alignof(float));
+    at->ground = mvfxLayoutAdd(layout, cells, sizeof(float), alignof(float));
 }
 
 void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, unsigned char* block,
                     const mvfxWaterAt* at)
 {
     float* heights = (float*)(block + at->heights);
+    bool shallow = water->def.model == mvfx_waterShallow;
     *state = (mvfxWaterState){.heights = {heights, heights + water->cells},
                               .rates = (float*)(block + at->rates),
+                              .giving = shallow ? (float*)(block + at->giving) : nullptr,
+                              .ground = shallow ? (float*)(block + at->ground) : nullptr,
                               .pushes = (mvfxWaterPush*)(block + at->pushes),
                               .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
                               .scale = 1.0f};
+    // Each buffer holds both axes' faces, X's first.
+    float* faces = shallow ? (float*)(block + at->faces) : nullptr;
+    int64_t along = mvfxWaterFaces(water->def.size, 0);
+    int64_t both = along + mvfxWaterFaces(water->def.size, 1);
+    for (int32_t b = 0; shallow && b < 2; ++b)
+    {
+        state->faces[0][b] = faces + b * both;
+        state->faces[1][b] = faces + b * both + along;
+    }
     mvfxClearWater(state, water);
+}
+
+void mvfxWaterSpan(float center, float reach, int32_t n, int32_t span[2])
+{
+    span[0] = (int32_t)fminf(fmaxf(ceilf(center - reach), 0.0f), (float)n);
+    span[1] = (int32_t)fminf(fmaxf(floorf(center + reach), -1.0f), (float)(n - 1));
 }
 
 void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water)
 {
     memset(state->heights[0], 0, 2u * (size_t)water->cells * sizeof(float));
     memset(state->rates, 0, (size_t)water->cells * sizeof(float));
+    if (state->ground != nullptr)
+    {
+        int64_t faces = mvfxWaterFaces(water->def.size, 0) + mvfxWaterFaces(water->def.size, 1);
+        memset(state->faces[0][0], 0, 2u * (size_t)faces * sizeof(float));
+        memset(state->giving, 0, (size_t)water->cells * sizeof(float));
+        memset(state->ground, 0, (size_t)water->cells * sizeof(float));
+    }
+    state->faceCurrent = 0;
+    state->filled = false;
     state->current = 0;
     state->pushCount = 0;
     state->holds = false;

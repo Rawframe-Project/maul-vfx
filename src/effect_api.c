@@ -146,6 +146,11 @@ static void HoldGrids(mvfxEffect* effect, int32_t by)
             grid != nullptr ? (void)(grid->users += by) : (void)0;
         }
     }
+    for (int32_t w = 0; w < effect->waterCount; ++w)
+    {
+        mvfxGrid* grid = effect->waters[w].terrainGrid;
+        grid != nullptr ? (void)(grid->users += by) : (void)0;
+    }
 }
 
 // The mesh each mesh shape spawns from; mvfx_errorStale for one that is
@@ -223,7 +228,26 @@ typedef struct EffectGrids
     mvfxGrid* colliders[MVFX_MAX_EMITTERS][MVFX_MAX_COLLIDERS];
     mvfxGrid* obstacles[MVFX_MAX_GASES][MVFX_MAX_COLLIDERS];
     mvfxGrid* gasForces[MVFX_MAX_GASES][MVFX_MAX_FORCES];
+    mvfxGrid* terrains[MVFX_MAX_WATERS];
 } EffectGrids;
+
+// Finds the grid of each water surface's terrain, as
+// mvfxFindColliderGrid.
+static mvfxResult FindTerrainGrids(mvfxContext* context, const mvfxEffectDef* def,
+                                   mvfxGrid* grids[MVFX_MAX_WATERS])
+{
+    for (int32_t w = 0; w < def->waterCount; ++w)
+    {
+        mvfxResult found = def->waters[w].hasTerrain
+                               ? mvfxFindColliderGrid(context, &def->waters[w].terrain, &grids[w])
+                               : mvfx_success;
+        if (found != mvfx_success)
+        {
+            return found;
+        }
+    }
+    return mvfx_success;
+}
 
 // Finds every grid of a valid def, as the finders above.
 static mvfxResult FindEffectGrids(mvfxContext* context, const mvfxEffectDef* def,
@@ -232,7 +256,8 @@ static mvfxResult FindEffectGrids(mvfxContext* context, const mvfxEffectDef* def
     mvfxResult found = FindGrids(context, def, grids->forces);
     found = found == mvfx_success ? FindColliderGrids(context, def, grids->colliders) : found;
     found = found == mvfx_success ? FindObstacleGrids(context, def, grids->obstacles) : found;
-    return found == mvfx_success ? FindGasForceGrids(context, def, grids->gasForces) : found;
+    found = found == mvfx_success ? FindGasForceGrids(context, def, grids->gasForces) : found;
+    return found == mvfx_success ? FindTerrainGrids(context, def, grids->terrains) : found;
 }
 
 // Gives a compiled effect the grids found for its def.
@@ -259,6 +284,10 @@ static void AttachGrids(mvfxEffect* effect, const mvfxEffectDef* def, const Effe
         {
             effect->gases[g].forceGrids[f] = grids->gasForces[g][f];
         }
+    }
+    for (int32_t w = 0; w < def->waterCount; ++w)
+    {
+        effect->waters[w].terrainGrid = grids->terrains[w];
     }
 }
 

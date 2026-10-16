@@ -676,7 +676,7 @@ static void ReadRefusals(void)
     {
         bad[b] = good;
     }
-    bad[0].field = mvfx_waterNormalZ + 1;
+    bad[0].field = mvfx_waterDepth + 1;
     bad[1].format = 99;
     bad[2].first[0] = -1;
     bad[3].first[1] = 2;
