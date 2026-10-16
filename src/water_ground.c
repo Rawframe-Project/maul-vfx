@@ -254,12 +254,50 @@ static void Visit(const Spill* p, const int32_t* n, float* d, bool move, double 
     }
 }
 
+// Moves water by a push at (x, z) of the surface's frame of radius and
+// depth in its lengths.
+static void SpillAt(const mvfxCompiledWater* water, float* d, float x, float z, float radius,
+                    float depth)
+{
+    const int32_t* n = water->def.size;
+    float h = water->def.cellSize;
+    Spill p = {.c = {x / h + 0.5f * (float)n[0] - 0.5f, z / h + 0.5f * (float)n[1] - 0.5f},
+               .reach = radius / h,
+               .depth = depth};
+    mvfxWaterSpan(p.c[0], 2.0f * p.reach, n[0], p.xs);
+    mvfxWaterSpan(p.c[1], 2.0f * p.reach, n[1], p.zs);
+    double sums[3] = {0.0, 0.0, 0.0};
+    Visit(&p, n, d, false, sums);
+    // Nothing to take, or nowhere on the grid to land: no change.
+    if (sums[0] > 0.0 && sums[1] > 0.0 && sums[2] > 0.0)
+    {
+        Visit(&p, n, d, true, sums);
+    }
+}
+
+// Adds a volume at (x, z) of the surface's frame to the depths of the four
+// cells about it, bilinear.
+static void PourAt(const mvfxCompiledWater* water, float* d, float x, float z, float volume)
+{
+    int32_t lo[2];
+    float t[2];
+    // A crossing lies over the grid, between its move's ends.
+    if (!mvfxWaterCorners(water, x, z, lo, t))
+    {
+        return;
+    }
+    float h = water->def.cellSize;
+    for (int32_t corner = 0; corner < 4; ++corner)
+    {
+        int64_t i = (int64_t)(lo[1] + (corner >> 1)) * water->def.size[0] + lo[0] + (corner & 1);
+        d[i] += mvfxWaterShare(t, corner) * volume / (h * h);
+    }
+}
+
 void mvfxPushShallow(mvfxInstance* instance, int32_t w)
 {
     const mvfxCompiledWater* water = &instance->effect->waters[w];
     mvfxWaterState* state = &instance->waters[w];
-    const int32_t* n = water->def.size;
-    float h = water->def.cellSize;
     float* d = state->heights[state->current];
     mvfxBoxPlace place = mvfxWaterPlace(instance, w);
     mvfxSpaceMap map = mvfxBoxMap(instance, &place, mvfx_spaceWorld);
@@ -268,19 +306,15 @@ void mvfxPushShallow(mvfxInstance* instance, int32_t w)
         const mvfxWaterPush* push = &state->pushes[k];
         float local[3];
         mvfxMapPointDouble(&map, push->point, local);
-        Spill p = {.c = {local[0] / h + 0.5f * (float)n[0] - 0.5f,
-                         local[2] / h + 0.5f * (float)n[1] - 0.5f},
-                   .reach = push->radius * map.sigma / h,
-                   .depth = push->depth * map.sigma};
-        mvfxWaterSpan(p.c[0], 2.0f * p.reach, n[0], p.xs);
-        mvfxWaterSpan(p.c[1], 2.0f * p.reach, n[1], p.zs);
-        double sums[3] = {0.0, 0.0, 0.0};
-        Visit(&p, n, d, false, sums);
-        // Nothing to take, or nowhere on the grid to land: no change.
-        if (sums[0] > 0.0 && sums[1] > 0.0 && sums[2] > 0.0)
-        {
-            Visit(&p, n, d, true, sums);
-        }
+        SpillAt(water, d, local[0], local[2], push->radius * map.sigma, push->depth * map.sigma);
+    }
+    // Then the particles' crossings: each pushes, then pours.
+    for (int64_t c = 0; c < state->crossingCount; ++c)
+    {
+        const mvfxWaterCrossing* crossing = &state->crossings[c];
+        SpillAt(water, d, crossing->at[0], crossing->at[1], crossing->radius, crossing->depth);
+        PourAt(water, d, crossing->at[0], crossing->at[1], crossing->volume);
     }
     state->pushCount = 0;
+    state->crossingCount = 0;
 }

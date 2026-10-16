@@ -42,12 +42,18 @@ const mvfxInstance* mvfxFindGas(const mvfxContext* context, mvfxInstanceId insta
 }
 
 // Where a gas's box is now.
-static mvfxBoxPlace Place(const mvfxInstance* live, int32_t gas)
+// Where gas gas's box is with the instance at a transform.
+static mvfxBoxPlace PlaceAt(const mvfxInstance* live, int32_t gas, const mvfxTransform* at)
 {
     const mvfxCompiledGas* compiled = &live->effect->gases[gas];
     const mvfxGasState* state = &live->gases[gas];
-    return mvfxPlaceBox(live, compiled->def.space == mvfx_gasLocal, compiled->def.center,
+    return mvfxPlaceBox(at, compiled->def.space == mvfx_gasLocal, compiled->def.center,
                         state->origin, state->rotation, state->scale);
+}
+
+static mvfxBoxPlace Place(const mvfxInstance* live, int32_t gas)
+{
+    return PlaceAt(live, gas, &live->to);
 }
 
 mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas)
@@ -105,7 +111,8 @@ mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulatio
 mvfxSpaceMap mvfxGasToSpace(const mvfxInstance* instance, int32_t gas,
                             const mvfxSpaceMap* fromWorld)
 {
-    mvfxBoxPlace place = Place(instance, gas);
+    // Where the gas last stepped: with the instance where the step starts.
+    mvfxBoxPlace place = PlaceAt(instance, gas, &instance->from);
     return mvfxBoxToSpace(&place, fromWorld);
 }
 

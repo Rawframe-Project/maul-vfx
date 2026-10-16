@@ -919,6 +919,40 @@ extern "C"
         float drag;
     } mvfxGasSplat;
 
+    // How an emitter's particles meet a water surface of the effect, as
+    // the last water step left it. A particle is in the water where it is
+    // below the surface over it (on shallow water, above the ground too),
+    // over the grid: there it rises by buoyancy times its depth below the
+    // surface, up the surface's Y, and is drawn toward the water's velocity
+    // there by drag a second, so one at rest floats g / buoyancy deep. A
+    // particle whose step (each substep) goes from above the surface to
+    // below it, both ends over the grid, crosses it where its height over
+    // the surface, linear along the step, is 0, if there is water there (on
+    // shallow water, its ground below its surface), once a step at most: the
+    // surface's next step pushes it there, as mvfxInstance_PushWater would,
+    // with radius R, the larger of its radius and a cell, and depth push
+    // (radius / R)^2 (not counted against MVFX_MAX_WATER_PUSHES); with
+    // pour, on shallow water only, its volume, a sphere of its radius,
+    // joins the depth of the four cells about the crossing and it dies;
+    // with mvfx_eventMaskWater it writes an mvfx_eventWater event there.
+    // The memory for crossings is 20 bytes a particle of its capacity.
+    typedef struct mvfxWaterCoupling
+    {
+        bool enabled;
+        // The surface: its index in the effect's def.
+        int32_t water;
+        // Its particles' radius in its space, above 0 and at most
+        // MVFX_MAX_EXTENT.
+        float radius;
+        // From 0 to MVFX_MAX_EXTENT.
+        float push;
+        bool pour;
+        // From 0 to MVFX_MAX_EXTENT.
+        float buoyancy;
+        // From 0 to MVFX_MAX_DRAG.
+        float drag;
+    } mvfxWaterCoupling;
+
     typedef struct mvfxEmitterDef
     {
         uint32_t cookie;
@@ -977,6 +1011,8 @@ extern "C"
         int32_t forceCount;
         // How they pour into a gas.
         mvfxGasSplat gasSplat;
+        // How they meet a water surface.
+        mvfxWaterCoupling water;
         // Their velocity modules.
         mvfxVelocityModules velocityModules;
         // The values over life they show.
@@ -997,8 +1033,9 @@ extern "C"
         int32_t hostModuleCount;
         // The events its particles write each step, a mask of
         // mvfx_eventMaskBirth, mvfx_eventMaskDeath, mvfx_eventMaskCollision
-        // (collisions only where they collide) and mvfx_eventMaskTear (tears
-        // only of units that tear), at most eventCapacity a step
+        // (collisions only where they collide), mvfx_eventMaskTear (tears
+        // only of units that tear) and mvfx_eventMaskWater (crossings only
+        // where they meet a water surface), at most eventCapacity a step
         // (from 1 to MVFX_MAX_EVENTS when any is asked; the rest counted
         // dropped). The host reads them after the step
         // (mvfxInstance_GetEvents).

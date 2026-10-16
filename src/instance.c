@@ -403,6 +403,19 @@ static EmitterAt AddEmitterRooms(mvfxLayout* layout, const mvfxEffect* effect, i
     return at;
 }
 
+// The crossings water surface w holds at most: one a particle of each
+// emitter meeting it.
+static int64_t CrossingsOf(const mvfxEffect* effect, int32_t w, const int32_t* capacities)
+{
+    int64_t count = 0;
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        const mvfxWaterCoupling* coupling = &effect->emitters[e].water;
+        count += coupling->enabled && coupling->water == w ? capacities[e] : 0;
+    }
+    return count;
+}
+
 // Where an instance's gases' and water surfaces' buffers lie in its block.
 typedef struct FieldsAt
 {
@@ -422,7 +435,8 @@ static void AddFieldLayouts(mvfxLayout* layout, const mvfxEffect* effect, const 
     }
     for (int32_t w = 0; w < effect->waterCount; ++w)
     {
-        mvfxAddWaterLayout(layout, &effect->waters[w], &at->waters[w]);
+        mvfxAddWaterLayout(layout, &effect->waters[w], CrossingsOf(effect, w, capacities),
+                           &at->waters[w]);
     }
 }
 
@@ -441,7 +455,8 @@ static void StartFields(mvfxInstance* instance, unsigned char* block, const int3
     }
     for (int32_t w = 0; w < effect->waterCount; ++w)
     {
-        mvfxStartWater(&instance->waters[w], &effect->waters[w], block, &at->waters[w]);
+        mvfxStartWater(&instance->waters[w], &effect->waters[w], CrossingsOf(effect, w, capacities),
+                       block, &at->waters[w]);
     }
 }
 
@@ -464,7 +479,8 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     size_t deathsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
     size_t acceptedAt =
         mvfxLayoutAdd(&layout, (size_t)largest, sizeof(mvfxBirth), alignof(mvfxBirth));
-    size_t killsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(uint8_t), alignof(uint8_t));
+    size_t killsAt =
+        mvfxLayoutAdd(&layout, 2u * (size_t)largest, sizeof(uint8_t), alignof(uint8_t));
     size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
                                     alignof(mvfxBurstCursor));
     EmitterAt at[MVFX_MAX_EMITTERS] = {0};
@@ -504,6 +520,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         .deathScratch = (int64_t*)(block + deathsAt),
         .acceptedScratch = (mvfxBirth*)(block + acceptedAt),
         .killScratch = block + killsAt,
+        .crossScratch = block + killsAt + largest,
         .blockBytes = layout.size,
     };
     for (int32_t p = 0; p < effect->parameterCount; ++p)
@@ -694,6 +711,8 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, water->rates, cells);
         hash = mvfxHash64(hash, &water->stepsSlowed, (int32_t)sizeof water->stepsSlowed);
         hash = mvfxHash64(hash, &water->facesHeld, (int32_t)sizeof water->facesHeld);
+        // Crossings wait only within a context's step: their count.
+        hash = mvfxHash64(hash, &water->crossingCount, (int32_t)sizeof water->crossingCount);
         // Shallow water's faces now; its ground is read anew each step.
         for (int32_t k = 0; water->ground != nullptr && k < 2; ++k)
         {

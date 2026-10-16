@@ -22,8 +22,9 @@ typedef struct mvfxBoxPlace
 } mvfxBoxPlace;
 
 // A box centered at center in the instance's frame: where the instance is
-// now when local, else where it began (origin, rotation and scale).
-mvfxBoxPlace mvfxPlaceBox(const mvfxInstance* instance, bool local, const float center[3],
+// at a transform when local, else where it began (origin, rotation and
+// scale).
+mvfxBoxPlace mvfxPlaceBox(const mvfxTransform* at, bool local, const float center[3],
                           const double origin[3], const float rotation[4], float scale);
 
 // The map from a space (the world's, or the instance's frame) into a

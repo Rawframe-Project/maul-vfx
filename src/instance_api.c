@@ -290,11 +290,13 @@ bool mvfxIsInstanceFinished(const mvfxInstance* instance)
             return false;
         }
     }
-    // So does a water surface, and while it has pushes to take.
+    // So does a water surface, and while it has pushes or crossings to
+    // take.
     for (int32_t w = 0; w < instance->effect->waterCount; ++w)
     {
         const mvfxWaterState* water = &instance->waters[w];
-        if (instance->clock < instance->stopTick || water->holds || water->pushCount > 0)
+        if (instance->clock < instance->stopTick || water->holds || water->pushCount > 0 ||
+            water->crossingCount > 0)
         {
             return false;
         }

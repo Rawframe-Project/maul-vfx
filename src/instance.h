@@ -140,6 +140,8 @@ typedef struct mvfxEmitterState
     struct mvfxResolvedForce* forces;
     // Its velocity modules as resolved for the step.
     mvfxResolvedVelocityModules velocityModules;
+    // Its water surface as resolved for the step.
+    mvfxResolvedWater water;
     // Its kill rules as resolved for the step, and the particles they
     // killed.
     struct mvfxResolvedKillRule* killRules;
@@ -319,8 +321,9 @@ typedef struct mvfxInstance
     int64_t* deathScratch;
     mvfxBirth* acceptedScratch;
     // Whether each particle of the emitter being stepped was killed this
-    // step.
+    // step, and whether it crossed into a water surface.
     uint8_t* killScratch;
+    uint8_t* crossScratch;
     // The depth image the host set, checked, its pixels borrowed.
     mvfxDepthView depthView;
     bool hasDepthView;

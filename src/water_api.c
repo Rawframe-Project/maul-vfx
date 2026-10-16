@@ -43,12 +43,17 @@ static const mvfxInstance* FindWater(const mvfxContext* context, mvfxInstanceId 
     return live;
 }
 
-mvfxBoxPlace mvfxWaterPlace(const mvfxInstance* instance, int32_t w)
+mvfxBoxPlace mvfxWaterPlaceAt(const mvfxInstance* instance, int32_t w, const mvfxTransform* at)
 {
     const mvfxCompiledWater* water = &instance->effect->waters[w];
     const mvfxWaterState* state = &instance->waters[w];
-    return mvfxPlaceBox(instance, water->def.space == mvfx_gasLocal, water->def.center,
-                        state->origin, state->rotation, state->scale);
+    return mvfxPlaceBox(at, water->def.space == mvfx_gasLocal, water->def.center, state->origin,
+                        state->rotation, state->scale);
+}
+
+mvfxBoxPlace mvfxWaterPlace(const mvfxInstance* instance, int32_t w)
+{
+    return mvfxWaterPlaceAt(instance, w, &instance->to);
 }
 
 mvfxBounds mvfxWaterBounds(const mvfxInstance* instance, int32_t w)
@@ -204,47 +209,80 @@ mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
-// The surface at a point of its frame (x, z): its height over the grid's
-// center, velocity and normal, bilinear between the cells' centers and
-// held at the outer cells' within the grid's edge; whether the point is
-// over the grid (if not, none is written).
-static bool Under(const mvfxCompiledWater* water, const mvfxWaterState* state, const float local[3],
-                  float* height, float velocity[3], float normal[3])
+bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z, int32_t lo[2], float t[2])
 {
     const int32_t* n = water->def.size;
     float h = water->def.cellSize;
-    const float p[2] = {local[0] / h + 0.5f * (float)n[0], local[2] / h + 0.5f * (float)n[1]};
+    const float p[2] = {x / h + 0.5f * (float)n[0], z / h + 0.5f * (float)n[1]};
     bool inside = p[0] >= 0.0f && p[0] <= (float)n[0] && p[1] >= 0.0f && p[1] <= (float)n[1];
     if (!inside)
     {
         return false;
     }
-    float c[2];
-    int32_t lo[2];
-    float t[2];
     for (int32_t k = 0; k < 2; ++k)
     {
-        c[k] = fminf(fmaxf(p[k] - 0.5f, 0.0f), (float)(n[k] - 1));
-        lo[k] = (int32_t)c[k] < n[k] - 1 ? (int32_t)c[k] : n[k] - 2;
-        t[k] = c[k] - (float)lo[k];
+        float c = fminf(fmaxf(p[k] - 0.5f, 0.0f), (float)(n[k] - 1));
+        lo[k] = (int32_t)c < n[k] - 1 ? (int32_t)c : n[k] - 2;
+        t[k] = c - (float)lo[k];
+    }
+    return true;
+}
+
+bool mvfxWaterUnder(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
+                    float* height, float* ground, float velocity[3])
+{
+    int32_t lo[2];
+    float t[2];
+    if (!mvfxWaterCorners(water, x, z, lo, t))
+    {
+        return false;
     }
     *height = 0.0f;
+    *ground = state->ground != nullptr ? 0.0f : -INFINITY;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        velocity[k] = 0.0f;
+    }
+    for (int32_t corner = 0; corner < 4; ++corner)
+    {
+        int32_t cx = lo[0] + (corner & 1);
+        int32_t cz = lo[1] + (corner >> 1);
+        float w = mvfxWaterShare(t, corner);
+        float cornerVelocity[3];
+        VelocityAt(water, state, cx, cz, cornerVelocity);
+        *height += w * SurfaceAt(water, state, cx, cz);
+        *ground += state->ground != nullptr
+                       ? w * state->ground[(int64_t)cz * water->def.size[0] + cx]
+                       : 0.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            velocity[k] += w * cornerVelocity[k];
+        }
+    }
+    return true;
+}
+
+void mvfxWaterNormal(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
+                     float normal[3])
+{
+    int32_t lo[2];
+    float t[2];
+    if (!mvfxWaterCorners(water, x, z, lo, t))
+    {
+        // Off the grid, the rest plane's.
+        normal[0] = 0.0f;
+        normal[1] = 1.0f;
+        normal[2] = 0.0f;
+        return;
+    }
     float sum[3] = {0.0f, 0.0f, 0.0f};
     for (int32_t corner = 0; corner < 4; ++corner)
     {
-        int32_t x = lo[0] + (corner & 1);
-        int32_t z = lo[1] + (corner >> 1);
-        float w =
-            ((corner & 1) != 0 ? t[0] : 1.0f - t[0]) * ((corner >> 1) != 0 ? t[1] : 1.0f - t[1]);
         float cornerNormal[3];
-        float cornerVelocity[3];
-        NormalAt(water, state, x, z, cornerNormal);
-        VelocityAt(water, state, x, z, cornerVelocity);
-        *height += w * SurfaceAt(water, state, x, z);
+        NormalAt(water, state, lo[0] + (corner & 1), lo[1] + (corner >> 1), cornerNormal);
         for (int32_t k = 0; k < 3; ++k)
         {
-            sum[k] += w * cornerNormal[k];
-            velocity[k] += w * cornerVelocity[k];
+            sum[k] += mvfxWaterShare(t, corner) * cornerNormal[k];
         }
     }
     float length = sqrtf(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
@@ -252,7 +290,6 @@ static bool Under(const mvfxCompiledWater* water, const mvfxWaterState* state, c
     {
         normal[k] = sum[k] / length;
     }
-    return true;
 }
 
 // Samples one point: the surface along the frame's Y through it.
@@ -265,8 +302,14 @@ static void SampleOne(const mvfxInstance* live, int32_t water, const mvfxSpaceMa
     float height = 0.0f;
     float velocity[3] = {0.0f, 0.0f, 0.0f};
     float normal[3] = {0.0f, 1.0f, 0.0f};
-    out->inside =
-        Under(&live->effect->waters[water], &live->waters[water], local, &height, velocity, normal);
+    const mvfxCompiledWater* compiled = &live->effect->waters[water];
+    const mvfxWaterState* state = &live->waters[water];
+    float ground = 0.0f;
+    out->inside = mvfxWaterUnder(compiled, state, local[0], local[2], &height, &ground, velocity);
+    if (out->inside)
+    {
+        mvfxWaterNormal(compiled, state, local[0], local[2], normal);
+    }
     const float surface[3] = {local[0], height, local[2]};
     mvfxUnmapPoint(map, surface, out->surface);
     // Directions turn back with the frame; a normal keeps its length.

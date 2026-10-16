@@ -24,8 +24,10 @@ void mvfxFillWater(mvfxInstance* instance, int32_t w);
 // cover.
 void mvfxPourWaterSources(mvfxInstance* instance, int32_t w, double seconds);
 
-// Takes the pushes given for the step: each moves water between the
-// cells within its radius and the ring out to twice it, the volume kept.
+// Takes the pushes given for the step, then the particles' crossings:
+// each push moves water between the cells within its radius and the ring
+// out to twice it, the volume kept; a crossing pushes so and adds what it
+// pours to the four cells about it.
 void mvfxPushShallow(mvfxInstance* instance, int32_t w);
 
 #endif

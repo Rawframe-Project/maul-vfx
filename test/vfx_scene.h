@@ -479,11 +479,38 @@ static inline void BuildLiquidScene(mvfxContext* context)
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "liquid instance");
 }
 
+// Particles of the instance's frame falling at 2 a second from a box 0.6
+// above water surface water's center, born at rate, meeting it by
+// coupling.
+static inline mvfxEmitterDef WaterFall(int32_t water, float rate, float y,
+                                       const mvfxWaterCoupling* coupling)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.space = mvfx_spaceLocal;
+    emitter.capacity = 256;
+    emitter.rate = rate;
+    emitter.lifetime = mvfxRangeSource(3.0f, 4.0f);
+    emitter.shape = (mvfxShape){.kind = mvfx_shapeBox,
+                                .offset = {0.0f, y + 0.6f, 0.0f},
+                                .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
+                                .halfExtents = {0.9f, 0.05f, 0.5f},
+                                .thickness = 1.0f};
+    emitter.velocity = (mvfxVelocity){
+        .mode = mvfx_directionFixed, .direction = {0.0f, -1.0f, 0.0f}, .speed = {2.0f, 2.0f}};
+    emitter.motion.gravity[1] = -9.81f;
+    emitter.water = *coupling;
+    emitter.water.water = water;
+    emitter.events = mvfx_eventMaskWater;
+    emitter.eventCapacity = 64;
+    return emitter;
+}
+
 // Water surfaces: a pond walled in, of the instance's frame, and a strip
 // of where the instance began, open along X, its waves fast enough that
 // the second-long step takes the most substeps; and shallow water over a
 // slope of the instance's frame, filled to its middle, a spring pouring
-// at its high end, its -Z wall open.
+// at its high end, its -Z wall open. Rain falls into the pond, pushing
+// it and floating; drops pour into the shallow water.
 static inline void BuildWaterScene(mvfxContext* context)
 {
     static float slope[17 * 9];
@@ -528,7 +555,15 @@ static inline void BuildWaterScene(mvfxContext* context)
     waters[1].closedWalls = mvfx_waterWallMinZ | mvfx_waterWallMaxZ;
     waters[1].waveSpeed = 5.0f;
     waters[1].damping = 0.1f;
+    const mvfxWaterCoupling rain = {
+        .enabled = true, .radius = 0.03f, .push = 0.01f, .buoyancy = 15.0f, .drag = 1.0f};
+    const mvfxWaterCoupling drops = {
+        .enabled = true, .radius = 0.04f, .push = 0.005f, .pour = true};
+    const mvfxEmitterDef falls[2] = {WaterFall(0, 30.0f, 0.2f, &rain),
+                                     WaterFall(2, 12.0f, -0.5f, &drops)};
     mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = falls;
+    def.emitterCount = 2;
     def.waters = waters;
     def.waterCount = 3;
     mvfxEffectId effect = {0};

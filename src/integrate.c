@@ -13,6 +13,7 @@
 #include "kill.h"
 #include "rigid_wake.h"
 #include "space.h"
+#include "water_couple.h"
 
 #include <math.h>
 
@@ -217,6 +218,8 @@ typedef struct Range
     const uint32_t* birthLow;
     const uint32_t* birthHigh;
     const float* inverseLife;
+    // The emitter's water surface, NULL for none.
+    const mvfxResolvedWater* water;
     // The tick and time the span starts at, and its seconds.
     int64_t tick;
     double time;
@@ -370,6 +373,10 @@ static void MoveParticle(const Range* r, int32_t i)
     float acceleration[3] = {r->gravity[0], r->gravity[1], r->gravity[2]};
     float wind = 0.0f;
     mvfxForcesAt(r->forces, r->compiled->forceCount, start, r->time, acceleration, &wind);
+    if (r->water != nullptr)
+    {
+        mvfxWaterPull(r->water, start, acceleration, &wind);
+    }
     float drag = r->compiled->drag + wind;
     mvfxDragFactors f = r->shared;
     if (r->dragScales != nullptr)
@@ -398,6 +405,10 @@ static void MoveParticle(const Range* r, int32_t i)
     {
         r->p[k][i] = place[k];
     }
+    if (r->water != nullptr)
+    {
+        mvfxMeetWater(r->instance, r->emitter, i, start, place, r->tick, r->seconds);
+    }
     // Kept over a step's substeps: a kill in any of them holds.
     r->instance->killScratch[i] |= collisionKills || IsKilled(r, i, start, place) ? 1 : 0;
 }
@@ -416,6 +427,7 @@ void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, 
         .birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow),
         .birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh),
         .inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife),
+        .water = compiled->water.enabled ? &instance->emitters[emitter].water : nullptr,
         .tick = tick,
         .time = (double)tick / (double)MVFX_TICKS_PER_SECOND,
         .seconds = seconds,
@@ -586,6 +598,8 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
     }
     ResolveVelocityModules(instance, emitter);
     ResolveColliders(instance, emitter);
+    mvfxSpaceMap world = SpaceMapOf(instance, emitter, mvfx_spaceWorld);
+    mvfxResolveWaterCoupling(instance, emitter, &world);
 }
 
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)

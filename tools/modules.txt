@@ -42,7 +42,7 @@ rigid_wake: appearance collide effect instance rigid_shape
 rigid_box: collide direction rigid_shape
 rigid_contact: collide convex depth direction rigid_box rigid_shape
 rigid_shape: hull
-integrate: collide depth direction effect elementary event force gas_api instance kill rigid_wake space velocity_modules
+integrate: collide depth direction effect elementary event force gas_api instance kill rigid_wake space velocity_modules water_couple
 host_module: effect instance random
 hull: allocator
 appearance: effect gradient instance life over_life
@@ -74,11 +74,12 @@ gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance sp
 gas_surface: force gas gas_api instance tasks
 box: direction force instance
 read_format:
-water: allocator collide
+water: allocator collide force
 water_api: box context force instance instance_api layout read_format water
 water_step: box elementary instance tasks water water_api water_shallow
 water_shallow: elementary instance tasks water water_ground
 water_ground: box collide direction grid instance tasks water water_api
+water_couple: box event force instance water water_api
 marching_table:
 surface_mesh: context gas gas_api instance marching_table
 gas_forces: elementary force gas

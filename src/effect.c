@@ -294,11 +294,12 @@ static bool AreCollisionsValid(const mvfxEmitterDef* def)
         }
     }
     // Events of known kinds, collisions only where they collide, tears
-    // only where units tear.
+    // only where units tear, crossings only where they meet water.
     bool collides = def->collision.enabled || (def->events & mvfx_eventMaskCollision) == 0;
     bool tears = (def->unit.kind != mvfx_unitParticle && def->unit.tearStrain > 0.0f) ||
                  (def->events & mvfx_eventMaskTear) == 0;
-    return def->events <= 15u && collides && tears &&
+    bool crosses = def->water.enabled || (def->events & mvfx_eventMaskWater) == 0;
+    return def->events <= 31u && collides && tears && crosses &&
            (def->events == 0 || (def->eventCapacity >= 1 && def->eventCapacity <= MVFX_MAX_EVENTS));
 }
 
@@ -435,7 +436,7 @@ static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
         return true;
     }
     if (spawn->source < 0 || spawn->source >= def->emitterCount || spawn->source == i ||
-        spawn->kind > mvfx_eventTear)
+        spawn->kind > mvfx_eventWater)
     {
         return false;
     }
@@ -547,7 +548,8 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     {
         if (!IsEmitterDefValid(&def->emitters[i]) ||
             !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
-            !IsBeamValid(&def->emitters[i], def->parameterCount))
+            !IsBeamValid(&def->emitters[i], def->parameterCount) ||
+            !mvfxIsWaterCouplingValid(&def->emitters[i].water, def->waters, def->waterCount))
         {
             return false;
         }
@@ -713,6 +715,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
         out->killRules[r] = mvfxCompileKillRule(&def->killRules[r]);
     }
     out->gasSplat = def->gasSplat;
+    out->water = def->water;
     out->forceCount = def->forceCount;
     for (int32_t f = 0; f < def->forceCount; ++f)
     {

@@ -116,24 +116,17 @@ static void OpenWalls(const Waves* w)
     }
 }
 
-// Lowers the cells within a push's reach by its depth times its falloff,
-// in the surface's frame; returns the sum of what they sank.
-static double Push(mvfxInstance* instance, int32_t index, const mvfxWaterPush* push)
+// Lowers the cells within radius of a point (in the surface's frame, X
+// and Z) by depth times the falloff; returns the sum of what they sank.
+static double Sink(const mvfxCompiledWater* water, mvfxWaterState* state, const float at[2],
+                   float radius, float depth)
 {
-    const mvfxCompiledWater* water = &instance->effect->waters[index];
-    mvfxWaterState* state = &instance->waters[index];
-    mvfxBoxPlace place = mvfxWaterPlace(instance, index);
-    mvfxSpaceMap map = mvfxBoxMap(instance, &place, mvfx_spaceWorld);
-    float local[3];
-    mvfxMapPointDouble(&map, push->point, local);
     const int32_t* n = water->def.size;
     float h = water->def.cellSize;
-    float radius = push->radius * map.sigma;
-    float depth = push->depth * map.sigma;
     float* u = state->heights[state->current];
     // The cells' centers within the radius: along each axis, by index.
-    float cx = local[0] / h + 0.5f * (float)n[0] - 0.5f;
-    float cz = local[2] / h + 0.5f * (float)n[1] - 0.5f;
+    float cx = at[0] / h + 0.5f * (float)n[0] - 0.5f;
+    float cz = at[1] / h + 0.5f * (float)n[1] - 0.5f;
     float reach = radius / h;
     int32_t xs[2];
     int32_t zs[2];
@@ -213,16 +206,29 @@ void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
     }
     const mvfxCompiledWater* water = &instance->effect->waters[w];
     mvfxWaterState* state = &instance->waters[w];
+    // The host's pushes, then the particles' crossings.
+    mvfxBoxPlace place = mvfxWaterPlace(instance, w);
+    mvfxSpaceMap map = mvfxBoxMap(instance, &place, mvfx_spaceWorld);
     double sank = 0.0;
     for (int32_t p = 0; p < state->pushCount; ++p)
     {
-        sank += Push(instance, w, &state->pushes[p]);
+        const mvfxWaterPush* push = &state->pushes[p];
+        float local[3];
+        mvfxMapPointDouble(&map, push->point, local);
+        const float at[2] = {local[0], local[2]};
+        sank += Sink(water, state, at, push->radius * map.sigma, push->depth * map.sigma);
     }
-    if (state->pushCount > 0)
+    for (int64_t c = 0; c < state->crossingCount; ++c)
+    {
+        const mvfxWaterCrossing* crossing = &state->crossings[c];
+        sank += Sink(water, state, crossing->at, crossing->radius, crossing->depth);
+    }
+    if (state->pushCount > 0 || state->crossingCount > 0)
     {
         Displace(water, state, sank, tasks);
     }
     state->pushCount = 0;
+    state->crossingCount = 0;
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
     if (seconds <= 0.0)

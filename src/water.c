@@ -80,6 +80,25 @@ bool mvfxIsWaterDefValid(const mvfxWaterDef* def)
     return valid && IsShallowValid(def);
 }
 
+bool mvfxIsWaterCouplingValid(const mvfxWaterCoupling* coupling, const mvfxWaterDef* waters,
+                              int32_t count)
+{
+    if (!coupling->enabled)
+    {
+        return true;
+    }
+    if (coupling->water < 0 || coupling->water >= count)
+    {
+        return false;
+    }
+    bool shallow = waters[coupling->water].model == mvfx_waterShallow;
+    return coupling->radius > 0.0f && coupling->radius <= MVFX_MAX_EXTENT &&
+           coupling->push >= 0.0f && coupling->push <= MVFX_MAX_EXTENT &&
+           (!coupling->pour || shallow) && coupling->buoyancy >= 0.0f &&
+           coupling->buoyancy <= MVFX_MAX_EXTENT && coupling->drag >= 0.0f &&
+           coupling->drag <= MVFX_MAX_DRAG;
+}
+
 mvfxCompiledWater mvfxCompileWater(const mvfxWaterDef* def)
 {
     mvfxCompiledWater water = {.def = *def, .cells = (int64_t)def->size[0] * def->size[1]};
@@ -92,7 +111,8 @@ mvfxCompiledWater mvfxCompileWater(const mvfxWaterDef* def)
     return water;
 }
 
-void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, mvfxWaterAt* at)
+void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, int64_t crossings,
+                        mvfxWaterAt* at)
 {
     at->heights = mvfxLayoutAdd(layout, 2u * (size_t)water->cells, sizeof(float), alignof(float));
     at->rates = mvfxLayoutAdd(layout, (size_t)water->cells, sizeof(float), alignof(float));
@@ -110,10 +130,12 @@ void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, mvfx
     at->giving = mvfxLayoutAdd(layout, cells, sizeof(float), alignof(float));
     at->ground = mvfxLayoutAdd(layout, cells, sizeof(float), alignof(float));
     at->heldRows = mvfxLayoutAdd(layout, rows, sizeof(int32_t), alignof(int32_t));
+    at->crossings = mvfxLayoutAdd(layout, (size_t)crossings, sizeof(mvfxWaterCrossing),
+                                  alignof(mvfxWaterCrossing));
 }
 
-void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, unsigned char* block,
-                    const mvfxWaterAt* at)
+void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, int64_t crossings,
+                    unsigned char* block, const mvfxWaterAt* at)
 {
     float* heights = (float*)(block + at->heights);
     bool shallow = water->def.model == mvfx_waterShallow;
@@ -123,6 +145,8 @@ void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, unsig
                               .ground = shallow ? (float*)(block + at->ground) : nullptr,
                               .heldRows = shallow ? (int32_t*)(block + at->heldRows) : nullptr,
                               .pushes = (mvfxWaterPush*)(block + at->pushes),
+                              .crossings = (mvfxWaterCrossing*)(block + at->crossings),
+                              .crossingCapacity = crossings,
                               .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
                               .scale = 1.0f};
     // Each buffer holds both axes' faces, X's first.
@@ -158,6 +182,7 @@ void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water)
     state->filled = false;
     state->current = 0;
     state->pushCount = 0;
+    state->crossingCount = 0;
     state->holds = false;
     state->reach = 0.0f;
     state->stepsSlowed = 0;

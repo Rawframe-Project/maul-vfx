@@ -229,6 +229,9 @@ extern "C"
         // A unit's stretch constraint from it to its neighbor across or down
         // tore (mvfxUnitDef.tearStrain), at a substep's end.
         mvfx_eventTear = 3,
+        // It crossed down into a water surface (mvfxEmitterDef.water), at the
+        // crossing's tick.
+        mvfx_eventWater = 4,
     };
 
     // The kinds an emitter writes, as a mask.
@@ -238,6 +241,7 @@ extern "C"
         mvfx_eventMaskDeath = 1u << mvfx_eventDeath,
         mvfx_eventMaskCollision = 1u << mvfx_eventCollision,
         mvfx_eventMaskTear = 1u << mvfx_eventTear,
+        mvfx_eventMaskWater = 1u << mvfx_eventWater,
     };
 
 // The most particles one event spawns.
@@ -438,9 +442,10 @@ extern "C"
         int64_t tick;
         // In the world: its place (an age's death: where it was at the
         // step's start, its last; a collision: the contact; a tear: the torn
-        // edge's middle), its velocity (a collision's: after the contact),
-        // and a collision's surface normal or a tear's unit direction along
-        // the edge from the particle (0 otherwise).
+        // edge's middle; a crossing: where it met the surface), its velocity
+        // (a collision's: after the contact), and a collision's or a
+        // crossing's surface normal or a tear's unit direction along the
+        // edge from the particle (0 otherwise).
         double place[3];
         float velocity[3];
         float normal[3];

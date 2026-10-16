@@ -421,6 +421,38 @@ static void TestFollowPlace(void)
     CHECK(right, "a particle follows the gas where it is");
 }
 
+static void TestFollowMoving(void)
+{
+    // A local particle 0.8 along X in a local gas whose X faces' velocity
+    // is their index, its instance moving from the origin to (1, 0, 0) over
+    // the step: it reads the gas as it last stepped, where the step starts,
+    // face 24 under it (not face 14, where the box will be), so as an
+    // acceleration of strength 1 it moves at 24/64 after the step.
+    const mvfxForce follow = {
+        .kind = mvfx_forceGas, .strength = 1.0f, .fieldMode = mvfx_fieldAcceleration};
+    mvfxEmitterDef emitter = One(0.8f, 0.0f);
+    emitter.space = mvfx_spaceLocal;
+    emitter.forces = &follow;
+    emitter.forceCount = 1;
+    mvfxGasDef gas = Still();
+    Open(&emitter, &gas, s_unturned);
+    Steps(1);
+    mvfxGasState* state = &s_live->gases[0];
+    for (int32_t f = 0; f < 33 * 32; ++f)
+    {
+        state->velocity[0][state->current][f] = (float)(f % 33);
+    }
+    const double moved[3] = {1, 0, 0};
+    CHECK(mvfxInstance_SetTransform(s_context, s_instance, moved, s_unturned, 1.0f, false) ==
+              mvfx_success,
+          "moved");
+    Steps(1);
+    float v[3];
+    VelocityOf(0, v);
+    CHECK(fabsf(v[0] - 24.0f / 64.0f) <= 1e-4f, "a moving instance's gas read where it stepped");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestRefusals(void)
 {
     // A force following gas 1 of an effect of one gas, a gas's force
@@ -466,6 +498,7 @@ int main(void)
     TestSplatExact();
     TestSplatPlace();
     TestFollowPlace();
+    TestFollowMoving();
     TestRefusals();
     return s_failures;
 }

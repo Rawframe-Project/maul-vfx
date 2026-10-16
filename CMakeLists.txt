@@ -92,6 +92,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/water_step.c
     src/water_shallow.c
     src/water_ground.c
+    src/water_couple.c
     src/gas_surface.c
     src/marching_table.c
     src/surface_mesh.c
@@ -174,6 +175,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(gas_read WHITEBOX)
     maul_add_test(water)
     maul_add_test(water_shallow WHITEBOX)
+    maul_add_test(water_couple WHITEBOX)
     maul_add_test(liquid WHITEBOX)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)

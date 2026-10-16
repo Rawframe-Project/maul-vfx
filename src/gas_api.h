@@ -29,8 +29,9 @@ mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulatio
 // anchor.
 mvfxSpaceMap mvfxGasParticleMap(const mvfxInstance* instance, int32_t gas, int32_t emitter);
 
-// The map from a gas box's frame now into a space, given the map from the
-// world into it.
+// The map from a gas box's frame where it last stepped (the instance
+// where the step starts) into a space, given the map from the world into
+// it at the step's start.
 mvfxSpaceMap mvfxGasToSpace(const mvfxInstance* instance, int32_t gas,
                             const mvfxSpaceMap* fromWorld);
 

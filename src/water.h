@@ -8,7 +8,9 @@
 #define MAUL_VFX_SRC_WATER_H
 
 #include "allocator.h"
+#include "force.h"
 
+#include "maul-vfx/effect.h"
 #include "maul-vfx/water.h"
 
 #include <stdbool.h>
@@ -37,7 +39,19 @@ typedef struct mvfxWaterAt
     size_t giving;
     size_t ground;
     size_t heldRows;
+    size_t crossings;
 } mvfxWaterAt;
+
+// A particle's crossing into a water surface for its next step, in the
+// surface's frame: where (X and Z), its push's radius and depth, and the
+// volume it pours (0 for none).
+typedef struct mvfxWaterCrossing
+{
+    float at[2];
+    float radius;
+    float depth;
+    float volume;
+} mvfxWaterCrossing;
 
 // A water surface's state in an instance: each cell's displacement from
 // the rest level (shallow water's depth) in two buffers (current the one
@@ -45,11 +59,12 @@ typedef struct mvfxWaterAt
 // rate; shallow water's velocities on its faces, along X ((n0 + 1) by n1)
 // and Z (n0 by (n1 + 1)) in two buffers each (faceCurrent the one now),
 // each cell's outflows' scale (giving), its ground's height, each row's
-// faces held in a substep, and whether it has been filled; the pushes for
-// the next step; where a world surface's grid was put (the instance's
-// place at its start); whether it moves at all (a rate, or a slope), and
-// its largest displacement's size (the surface's height); the counts
-// mvfxWaterInfo reads.
+// faces held in a substep, and whether it has been filled; the pushes and
+// the particles' crossings (room for one a particle of the emitters that
+// meet it, each crossing once a step) for the next step; where a world
+// surface's grid was put (the instance's place at its start); whether it
+// moves at all (a rate, or a slope), and its largest displacement's size
+// (the surface's height); the counts mvfxWaterInfo reads.
 typedef struct mvfxWaterState
 {
     float* heights[2];
@@ -63,6 +78,9 @@ typedef struct mvfxWaterState
     bool filled;
     mvfxWaterPush* pushes;
     int32_t pushCount;
+    mvfxWaterCrossing* crossings;
+    int64_t crossingCount;
+    int64_t crossingCapacity;
     double origin[3];
     float rotation[4];
     float scale;
@@ -84,17 +102,38 @@ static inline int64_t mvfxWaterFaces(const int32_t n[2], int32_t axis)
 // Whether a water def is valid.
 bool mvfxIsWaterDefValid(const mvfxWaterDef* def);
 
+// Whether an emitter's coupling is valid against its effect's surfaces:
+// off, or naming one, its values in range, a pour only on shallow water.
+bool mvfxIsWaterCouplingValid(const mvfxWaterCoupling* coupling, const mvfxWaterDef* waters,
+                              int32_t count);
+
+// An emitter's water surface for a step (mvfxEmitterDef.water): its
+// coupling, the surface and its state as the last water step left them,
+// the map from the surface's frame into the particles' space, and their
+// radius in that frame; coupling NULL for none.
+typedef struct mvfxResolvedWater
+{
+    const mvfxWaterCoupling* coupling;
+    const mvfxCompiledWater* water;
+    mvfxWaterState* state;
+    mvfxSpaceMap map;
+    float radius;
+} mvfxResolvedWater;
+
 // A valid water def compiled.
 mvfxCompiledWater mvfxCompileWater(const mvfxWaterDef* def);
 
-// Places a water surface's buffers in a layout.
-void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, mvfxWaterAt* at);
+// Places a water surface's buffers in a layout, with room for crossings.
+void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, int64_t crossings,
+                        mvfxWaterAt* at);
 
-// Points a water surface's state at its buffers in block, still.
-void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, unsigned char* block,
-                    const mvfxWaterAt* at);
+// Points a water surface's state at its buffers in block, still, with
+// room for crossings.
+void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, int64_t crossings,
+                    unsigned char* block, const mvfxWaterAt* at);
 
-// Makes a water surface still at its rest level, its pushes dropped.
+// Makes a water surface still at its rest level, its pushes and crossings
+// dropped.
 void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water);
 
 // The cells along an axis of n whose centers lie within reach of center

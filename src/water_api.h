@@ -9,11 +9,37 @@
 #include "box.h"
 #include "instance.h"
 
-// Where water surface w's grid is now (its center at the rest level).
+// Where water surface w's grid is now (its center at the rest level), and
+// with the instance at a transform.
 mvfxBoxPlace mvfxWaterPlace(const mvfxInstance* instance, int32_t w);
+mvfxBoxPlace mvfxWaterPlaceAt(const mvfxInstance* instance, int32_t w, const mvfxTransform* at);
 
 // The box in the world around water surface w now: its grid, and along
 // its frame's Y its largest displacement.
 mvfxBounds mvfxWaterBounds(const mvfxInstance* instance, int32_t w);
+
+// The four cells about a point (x, z) of a surface's frame, bilinear
+// between the cells' centers and held at the outer cells' within the
+// grid's edge: corner k is cell (lo[0] + (k & 1), lo[1] + (k >> 1)) of
+// weight mvfxWaterShare(t, k), the weights summing to 1; false off the
+// grid.
+bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z, int32_t lo[2], float t[2]);
+
+static inline float mvfxWaterShare(const float t[2], int32_t corner)
+{
+    return ((corner & 1) != 0 ? t[0] : 1.0f - t[0]) * ((corner >> 1) != 0 ? t[1] : 1.0f - t[1]);
+}
+
+// The surface over a point (x, z) of its frame: its height over the
+// grid's center, its ground (shallow water's; waves have none, -infinity)
+// and its water's velocity, bilinear as mvfxWaterCorners weighs; false
+// off the grid (nothing written).
+bool mvfxWaterUnder(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
+                    float* height, float* ground, float velocity[3]);
+
+// The surface's unit normal over a point (x, z) of its frame: its cells'
+// normals, bilinear, normalized; off the grid, up.
+void mvfxWaterNormal(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
+                     float normal[3]);
 
 #endif

@@ -7,20 +7,20 @@
 
 #include <math.h>
 
-mvfxBoxPlace mvfxPlaceBox(const mvfxInstance* instance, bool local, const float center[3],
+mvfxBoxPlace mvfxPlaceBox(const mvfxTransform* at, bool local, const float center[3],
                           const double origin[3], const float rotation[4], float scale)
 {
-    // A local box is where the instance is now.
-    const double* at = local ? instance->to.origin : origin;
-    const float* turn = local ? instance->to.rotation : rotation;
-    float s = local ? instance->to.scale : scale;
+    // A local box is where the instance is at the transform.
+    const double* from = local ? at->origin : origin;
+    const float* turn = local ? at->rotation : rotation;
+    float s = local ? at->scale : scale;
     const float offset[3] = {s * center[0], s * center[1], s * center[2]};
     float turned[3];
     mvfxRotate(turn, offset, turned);
     mvfxBoxPlace place = {.scale = s};
     for (int32_t k = 0; k < 3; ++k)
     {
-        place.center[k] = at[k] + (double)turned[k];
+        place.center[k] = from[k] + (double)turned[k];
     }
     for (int32_t k = 0; k < 4; ++k)
     {
