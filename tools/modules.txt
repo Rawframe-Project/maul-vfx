@@ -70,7 +70,7 @@ mesh_api: allocator context hull mesh slots
 grid_api: context grid slots
 gas: allocator collide force gas_lattice
 gas_lattice:
-gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance tasks
+gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance space tasks
 gas_surface: force gas gas_api instance tasks
 box: direction force instance
 read_format:

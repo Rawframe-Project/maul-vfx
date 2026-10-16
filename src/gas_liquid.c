@@ -20,6 +20,7 @@
 #include "gas_lattice.h"
 #include "gas_pressure.h"
 #include "gas_solid.h"
+#include "space.h"
 
 #include <math.h>
 #include <string.h>
@@ -30,10 +31,6 @@
 
 // The layers the velocity is extended into the air.
 #define EXTEND_LAYERS 2
-
-// The time over which an over-full cell grows back to full, in seconds;
-// a step shorter grows it by its share.
-#define GROWTH_SECONDS (1.0f / 60.0f)
 
 // A liquid gas's step: the gas and its room, its lattice, the emitter's
 // particles and the map from their space into the box.
@@ -159,7 +156,7 @@ static void Sort(const Step* s)
 // The liquid cells of each level and each cell's filled share into the
 // density, the other scalars 0; volume is a particle's share of a cell.
 // A cell filled past full asks the projection to grow it back to full
-// over GROWTH_SECONDS, or over the step if longer, into expansion
+// over the gas's fill time, or over the step if longer, into expansion
 // (Losasso et al. 2008 correct a liquid's density through the divergence
 // the same way): particles bunch where the flow converges, and without it
 // a dam break's cells lost a quarter of their filled volume in a second.
@@ -181,7 +178,7 @@ static void Mark(const Step* s, float volume, float* expansion)
         liquid[c] = held > 0 && !solid ? 1 : 0;
         float fill = (float)held * volume;
         s->state->scalars[0][now][c] = fminf(fill, 1.0f);
-        float growth = fmaxf(s->lattice.h, GROWTH_SECONDS);
+        float growth = fmaxf(s->lattice.h, gas->def.fillTime);
         expansion[c] =
             liquid[c] != 0 && fill > 1.0f ? (fill - 1.0f) * s->lattice.cell / growth : 0.0f;
         s->state->scalars[1][now][c] = 0.0f;
@@ -511,6 +508,48 @@ static Step StepOf(mvfxInstance* instance, int32_t g, double seconds)
         at += gas->faces[k];
     }
     return s;
+}
+
+// The cells liquid gas g's fastest particle would cross in seconds.
+static float Crossing(const mvfxInstance* instance, int32_t g, float seconds)
+{
+    const mvfxCompiledGas* gas = &instance->effect->gases[g];
+    int32_t e = gas->emitter;
+    const float* v[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        v[k] = mvfxAttributeArray(instance, e, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+    }
+    float fastest = 0.0f;
+    for (int32_t i = 0; i < instance->emitters[e].count; ++i)
+    {
+        fastest = fmaxf(fastest, v[0][i] * v[0][i] + v[1][i] * v[1][i] + v[2][i] * v[2][i]);
+    }
+    const mvfxCompiledEmitter* emitter = &instance->effect->emitters[e];
+    const float* gravity = emitter->gravity;
+    mvfxSpaceMap pull = mvfxSpaceMapAt(instance, e, emitter->gravitySpace, &instance->to);
+    float g2 = gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2];
+    // Bridson's speed: the fastest particle's, and gravity's from rest over
+    // five cells, sqrt(5 h |g|), in the particles' lengths.
+    float toGas = mvfxGasParticleMap(instance, g, e).sigma;
+    float cell = gas->def.cellSize / toGas;
+    float speed = sqrtf(fastest) + sqrtf(5.0f * cell * sqrtf(g2) * pull.sigma);
+    return speed * seconds / cell;
+}
+
+int32_t mvfxLiquidSubsteps(const mvfxInstance* instance, int64_t ticks)
+{
+    float seconds = (float)((double)ticks / (double)MVFX_TICKS_PER_SECOND);
+    float most = 1.0f;
+    for (int32_t g = 0; g < instance->effect->gasCount; ++g)
+    {
+        const mvfxCompiledGas* gas = &instance->effect->gases[g];
+        if (gas->def.kind == mvfx_gasLiquid)
+        {
+            most = fmaxf(most, ceilf(Crossing(instance, g, seconds) / gas->def.courant));
+        }
+    }
+    return (int32_t)fminf(most, (float)MVFX_MAX_LIQUID_SUBSTEPS);
 }
 
 void mvfxStepLiquidGas(mvfxInstance* instance, int32_t g, const mvfxTasks* tasks)

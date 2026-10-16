@@ -8,6 +8,7 @@
 // Moyce's measurements and Ritter's frictionless speed, its volume kept.
 
 #include "gas.h"
+#include "gas_liquid.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "test_harness.h"
@@ -107,13 +108,19 @@ static void Spawn(const double* places, const float* velocities, int32_t count)
 }
 
 // Steps of 1/120 s.
-static void Steps(int32_t n)
+// Steps the context n times at rate steps a second.
+static void StepsAt(int32_t n, int32_t rate)
 {
     for (int32_t s = 0; s < n; ++s)
     {
-        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 120) == mvfx_success,
+        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / rate) == mvfx_success,
               "step");
     }
+}
+
+static void Steps(int32_t n)
+{
+    StepsAt(n, 120);
 }
 
 static float* Array(mvfxAttribute attribute)
@@ -480,6 +487,71 @@ static void TestShear(void)
     CHECK(worst[0] <= 1e-4f && worst[1] <= 1e-3f, "a shear is carried exactly");
 }
 
+// A block of 2 by 2 cells of 0.1 filled four times over, spawned in a
+// tick into a gas of a fill time: the worst of its cells' faces'
+// divergence over 3 / fillTime, less 1.
+static double Growth(float fillTime)
+{
+    mvfxGasDef gas = Gas(8, 8, 0.1f);
+    gas.fillTime = fillTime;
+    mvfxCollider box = BoxOf(&gas);
+    mvfxEmitterDef emitter = Emitter(0.05f, &box, 64);
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    Block(0.1f, 4, (const int32_t[2]){3, 3}, (const int32_t[2]){5, 5}, NULL);
+    const mvfxGasState* state = &mvfxContextInstance(s_context, s_instance)->gases[0];
+    const float* u = state->velocity[0][state->current];
+    const float* v = state->velocity[1][state->current];
+    double worst = 0.0;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        int32_t x = 3 + c % 2;
+        int32_t y = 3 + c / 2;
+        double out = (double)u[y * 9 + x + 1] - (double)u[y * 9 + x] + (double)v[(y + 1) * 8 + x] -
+                     (double)v[y * 8 + x];
+        worst = fmax(worst, fabs(out / 0.1 * (double)fillTime / 3.0 - 1.0));
+    }
+    mvfxDestroyContext(s_context);
+    return worst;
+}
+
+static void TestSubsteps(void)
+{
+    // One particle at 3 a second along X in cells of 0.05, no gravity: a
+    // step of 1/30 s crosses 2 cells, so 2 substeps at courant 1, 4 at 0.5,
+    // 1 at 2; at 300 a second, the most. With gravity 9.81, Bridson's
+    // sqrt(5 h g) = 1.566 more, 3.04 cells: 4 substeps at 1. A smoke gas
+    // asks none.
+    const float courants[4] = {1.0f, 0.5f, 2.0f, 1.0f};
+    const float speeds[5] = {3.0f, 3.0f, 3.0f, 300.0f, 3.0f};
+    const int32_t expected[5] = {2, 4, 1, MVFX_MAX_LIQUID_SUBSTEPS, 4};
+    int32_t wrong = 0;
+    for (int32_t c = 0; c < 5; ++c)
+    {
+        mvfxGasDef gas = Gas(32, 32, 0.05f);
+        gas.courant = courants[c % 4];
+        mvfxEmitterDef emitter = Emitter(0.025f, NULL, 4);
+        emitter.motion.gravity[1] = c == 4 ? -9.81f : 0.0f;
+        CHECK(Open(&emitter, 1, &gas, 1), "opened");
+        const double at[3] = {0.0, 0.0, 0.0};
+        const mvfxSpawnRequest request = {.count = 1, .positions = at};
+        CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "spawned");
+        CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "born");
+        mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
+        ((float*)mvfxAttributeArray(live, 0, mvfx_attributeVelocityX))[0] = speeds[c];
+        ((float*)mvfxAttributeArray(live, 0, mvfx_attributeVelocityY))[0] = 0.0f;
+        wrong += mvfxLiquidSubsteps(live, MVFX_TICKS_PER_SECOND / 30) != expected[c];
+        mvfxDestroyContext(s_context);
+    }
+    CHECK(wrong == 0, "a liquid's substeps by its courant number");
+    mvfxGasDef smoke = mvfxDefaultGasDef();
+    smoke.size[0] = 8;
+    smoke.size[1] = 8;
+    mvfxEmitterDef plain = mvfxDefaultEmitterDef();
+    CHECK(Open(&plain, 1, &smoke, 1), "opened");
+    CHECK(mvfxLiquidSubsteps(mvfxContextInstance(s_context, s_instance), 1 << 20) == 1, "none");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestExpansion(void)
 {
     // A block of 2 by 2 cells of 0.1 filled four times over (4 by 4
@@ -517,6 +589,7 @@ static void TestExpansion(void)
     CHECK(Count() == 64 && fastest < 3.0f && MaxSpeed() < 0.05f,
           "an over-full block spreads calmly");
     mvfxDestroyContext(s_context);
+    CHECK(Growth(0.05f) <= 0.05, "over the gas's fill time");
 }
 
 // The surge front of Martin and Moyce's square column (1952, part IV,
@@ -564,16 +637,34 @@ static double Volume(int64_t cells, float cell)
     return sum * (double)cell * (double)cell;
 }
 
-static void TestDamBreak(void)
+// A dam break's measures at a rate of steps a second: its front's worst
+// error against Martin and Moyce's to Z 3, its speed from their Z 3.22 to
+// 4.78 with theirs, its volume's worst error, and whether it was timed.
+typedef struct Dam
 {
-    // A square column of side a = 0.6 in the corner of a closed box 4.8 by
-    // 2, cells of 0.05 with 2 by 2 particles each, stepped at 120 a second:
-    // its front, timed as Martin and Moyce's were, is within 10% of theirs
-    // from Z 1.67 to 3; from their Z 3.22 to 4.78 it is no slower than
-    // theirs (their floor slowed their water) and no faster than Ritter's
-    // frictionless surge, 2 (g a)^(1/2), with 5% for the measure (Z gains
-    // at most 2.1 a unit of T); its volume, the cells' filled shares, is
-    // within 5% of the column's at every step.
+    double worst;
+    double speed;
+    double measured;
+    double volume;
+    bool timed;
+} Dam;
+
+// The front at time t from the stepped times and fronts (-1 past them).
+static double FrontAt(const double* times, const double* zs, int32_t steps, double t)
+{
+    for (int32_t k = 1; k < steps; ++k)
+    {
+        if (times[k - 1] <= t && times[k] >= t)
+        {
+            double share = (t - times[k - 1]) / (times[k] - times[k - 1]);
+            return zs[k - 1] + share * (zs[k] - zs[k - 1]);
+        }
+    }
+    return -1.0;
+}
+
+static Dam DamBreak(int32_t rate)
+{
     mvfxGasDef gas = Gas(96, 40, 0.05f);
     mvfxCollider box = BoxOf(&gas);
     mvfxEmitterDef emitter = Emitter(0.025f, &box, 576);
@@ -581,51 +672,63 @@ static void TestDamBreak(void)
     CHECK(Open(&emitter, 1, &gas, 1), "opened");
     Block(0.05f, 2, (const int32_t[2]){0, 0}, (const int32_t[2]){12, 12}, NULL);
     const double a = 0.6;
-    static double times[120];
-    static double zs[120];
+    static double times[240];
+    static double zs[240];
     double unit = sqrt(9.81 / a);
-    double worstVolume = 0.0;
-    for (int32_t s = 0; s < 120; ++s)
+    Dam dam = {0};
+    for (int32_t s = 0; s < rate; ++s)
     {
-        Steps(1);
-        times[s] = (double)(s + 1) / 120.0 * unit;
+        StepsAt(1, rate);
+        times[s] = (double)(s + 1) / (double)rate * unit;
         zs[s] = Front(a, 0.025);
-        worstVolume = fmax(worstVolume, fabs(Volume(96 * 40, 0.05f) / (a * a) - 1.0));
+        dam.volume = fmax(dam.volume, fabs(Volume(96 * 40, 0.05f) / (a * a) - 1.0));
     }
+    // Their times set so that Z is 1.44 at T 0.80: the shift that does.
     double shift = 0.0;
-    for (int32_t k = 1; k < 120; ++k)
+    for (int32_t k = 1; k < rate && shift == 0.0; ++k)
     {
-        if (zs[k - 1] < 1.44 && zs[k] >= 1.44)
-        {
-            double share = (1.44 - zs[k - 1]) / (zs[k] - zs[k - 1]);
-            shift = 0.80 - (times[k - 1] + share * (times[k] - times[k - 1]));
-            break;
-        }
+        double share = (1.44 - zs[k - 1]) / (zs[k] - zs[k - 1]);
+        bool crosses = zs[k - 1] < 1.44 && zs[k] >= 1.44;
+        shift = crosses ? 0.80 - (times[k - 1] + share * (times[k] - times[k - 1])) : 0.0;
     }
-    double worst = 0.0;
     double z[16];
     for (int32_t m = 0; m < 16; ++m)
     {
-        double t = s_damT[m] - shift;
-        z[m] = -1.0;
-        for (int32_t k = 1; k < 120; ++k)
-        {
-            if (times[k - 1] <= t && times[k] >= t)
-            {
-                double share = (t - times[k - 1]) / (times[k] - times[k - 1]);
-                z[m] = zs[k - 1] + share * (zs[k] - zs[k - 1]);
-                break;
-            }
-        }
-        worst = s_damZ[m] <= 3.0 ? fmax(worst, fabs(z[m] - s_damZ[m]) / s_damZ[m]) : worst;
+        z[m] = FrontAt(times, zs, rate, s_damT[m] - shift);
+        dam.worst =
+            s_damZ[m] <= 3.0 ? fmax(dam.worst, fabs(z[m] - s_damZ[m]) / s_damZ[m]) : dam.worst;
     }
     // From T 2.07 to 3.21 (their Z 3.22 to 4.78).
-    double speed = (z[14] - z[7]) / (s_damT[14] - s_damT[7]);
-    double measured = (s_damZ[14] - s_damZ[7]) / (s_damT[14] - s_damT[7]);
-    CHECK(shift != 0.0 && worst <= 0.10, "a grid dam break's front as Martin and Moyce measured");
-    CHECK(speed >= measured && speed <= 2.1, "a grid dam break's front within Ritter's speed");
-    CHECK(worstVolume <= 0.05, "a grid liquid keeps its volume");
+    dam.speed = (z[14] - z[7]) / (s_damT[14] - s_damT[7]);
+    dam.measured = (s_damZ[14] - s_damZ[7]) / (s_damT[14] - s_damT[7]);
+    dam.timed = shift != 0.0;
     mvfxDestroyContext(s_context);
+    return dam;
+}
+
+static void TestDamBreak(void)
+{
+    // A square column of side a = 0.6 in the corner of a closed box 4.8 by
+    // 2, cells of 0.05 with 2 by 2 particles each, stepped at 30, 60, 120
+    // and 240 a second (the slower in substeps by the courant number 1):
+    // its front, timed as Martin and Moyce's were, is within 11% of theirs
+    // from Z 1.67 to 3 (10.0, 9.6, 9.4 and 7.0%, measured: the scheme's
+    // error in time, first order); from their Z 3.22 to 4.78 it is no
+    // slower than theirs (their floor slowed their water) and no faster
+    // than Ritter's frictionless surge, 2 (g a)^(1/2), with 5% for the
+    // measure (Z gains at most 2.1 a unit of T); its volume, the cells'
+    // filled shares, is within 5% of the column's at every step (4.0, 4.0,
+    // 3.8 and 4.7%). Stepped at 30 a second in one step each, it lost 8%.
+    const int32_t rates[4] = {30, 60, 120, 240};
+    for (int32_t r = 0; r < 4; ++r)
+    {
+        Dam dam = DamBreak(rates[r]);
+        CHECK(dam.timed && dam.worst <= 0.11,
+              "a grid dam break's front as Martin and Moyce measured");
+        CHECK(dam.speed >= dam.measured && dam.speed <= 2.1,
+              "a grid dam break's front within Ritter's speed");
+        CHECK(dam.volume <= 0.05, "a grid liquid keeps its volume");
+    }
 }
 
 int main(void)
@@ -640,5 +743,6 @@ int main(void)
     TestShear();
     TestExpansion();
     TestDamBreak();
+    TestSubsteps();
     return s_failures;
 }

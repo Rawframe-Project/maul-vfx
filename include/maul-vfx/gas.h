@@ -25,6 +25,10 @@ extern "C"
 // The most gases an effect has.
 #define MVFX_MAX_GASES 4
 
+// The most substeps a liquid gas's instance takes in a step for its
+// courant number.
+#define MVFX_MAX_LIQUID_SUBSTEPS 16
+
 // The most cells a gas has along an axis.
 #define MVFX_MAX_GAS_SIZE 512
 
@@ -215,6 +219,16 @@ extern "C"
         mvfxGasSpace space;
         // Smoke (the default) or a liquid's grid.
         mvfxGasKind kind;
+        // A liquid gas's: the time over which a cell filled past full grows
+        // back to full (a step longer grows it over the step), above 0 and
+        // at most MVFX_MAX_STEP_SECONDS, in seconds.
+        float fillTime;
+        // A liquid gas's: the most cells its fastest particle crosses in a
+        // step, its speed and gravity's pull over the step taken together,
+        // above 0 and at most MVFX_MAX_GAS_SIZE; a longer step is taken in
+        // equal substeps (at most MVFX_MAX_LIQUID_SUBSTEPS), the instance's
+        // whole step each time.
+        float courant;
         // From 1 to MVFX_MAX_GAS_SUBSTEPS: each a share of the step.
         int32_t substeps;
         // Rates a second at which density, temperature, fuel and velocity
@@ -297,7 +311,8 @@ extern "C"
     /// open, 4 V cycles of pressure, semi-Lagrangian; gravity (0, -9.81, 0)
     /// in the world, with no buoyancy, no confinement and inert fuel; its
     /// surface of emitter 0's particles of radius 0.1, reach 4, thresholds
-    /// 0.4 and 2.0 and one smoothing pass.
+    /// 0.4 and 2.0 and one smoothing pass; a liquid's fill time 1/60 s and
+    /// courant number 1.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

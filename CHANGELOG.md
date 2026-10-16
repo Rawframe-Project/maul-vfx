@@ -382,6 +382,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   edges from one take its own vertex, so ties leave no zero-length edge
   (primitives on such vertices alone are left out); the scratch takes
   32 bytes a cell of a layer in 3D and 24 a cell of a row in 2D.
+- A liquid gas's fill time is a def field, `mvfxGasDef.fillTime` (1/60
+  s by default), and its instance steps in equal substeps when its
+  fastest particle, with Bridson's term for gravity, would cross more
+  than `mvfxGasDef.courant` cells (1 by default) in a step, at most
+  `MVFX_MAX_LIQUID_SUBSTEPS`: a dam break stepped at 30 a second keeps
+  its volume within 4% (it lost 8% in one step a frame).
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

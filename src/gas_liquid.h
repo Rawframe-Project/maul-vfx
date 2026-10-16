@@ -17,4 +17,10 @@
 // split over tasks.
 void mvfxStepLiquidGas(mvfxInstance* instance, int32_t g, const mvfxTasks* tasks);
 
+// The substeps an instance takes in a step of ticks for its liquid gases'
+// courant numbers: the cells each one's fastest particle would cross (its
+// speed now, with its gravity's pull over the step), over its number, at
+// least 1 and at most MVFX_MAX_LIQUID_SUBSTEPS.
+int32_t mvfxLiquidSubsteps(const mvfxInstance* instance, int64_t ticks);
+
 #endif

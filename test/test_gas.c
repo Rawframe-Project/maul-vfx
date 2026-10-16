@@ -84,7 +84,7 @@ static void TestDefs(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     static const mvfxGasSource sphere = {.shape = mvfx_gasSphere, .radius = 0.2f, .density = 1};
     bool refused = true;
-    for (int32_t c = 0; c < 18; ++c)
+    for (int32_t c = 0; c < 22; ++c)
     {
         mvfxGasDef gas = mvfxDefaultGasDef();
         mvfxGasSource source = sphere;
@@ -135,6 +135,18 @@ static void TestDefs(void)
             break;
         case 16:
             source.radius = 0.0f;
+            break;
+        case 17:
+            gas.fillTime = 0.0f;
+            break;
+        case 18:
+            gas.fillTime = 1.01f * (float)MVFX_MAX_STEP_SECONDS;
+            break;
+        case 19:
+            gas.courant = 0.0f;
+            break;
+        case 20:
+            gas.courant = (float)MVFX_MAX_GAS_SIZE + 1.0f;
             break;
         default:
             source.shape = mvfx_gasBox;

@@ -252,6 +252,21 @@ static bool IsDue(mvfxInstance* instance)
     return (instance->unseenSteps + instance->seed % interval) % interval == 0;
 }
 
+// Steps an instance by ticks, in equal substeps when its liquid gases'
+// courant numbers ask for them: each substep the instance's whole step,
+// the gases of all but the last stepped in this task.
+static void StepSplit(mvfxInstance* instance, int64_t ticks)
+{
+    int32_t count = mvfxLiquidSubsteps(instance, ticks);
+    int64_t done = 0;
+    for (int32_t k = 1; k <= count; ++k)
+    {
+        int64_t to = ticks * k / count;
+        mvfxStepInstance(instance, to - done);
+        done = to;
+    }
+}
+
 // Steps an instance by its policy: due, it steps the ticks it holds and
 // these; otherwise it holds them (a throttle) or lets them go (a pause).
 // A sum past the longest step steps what it holds first.
@@ -273,7 +288,7 @@ static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
     }
     if (instance->heldTicks + ticks > MAX_STEP_TICKS)
     {
-        mvfxStepInstance(instance, instance->heldTicks);
+        StepSplit(instance, instance->heldTicks);
         instance->heldTicks = 0;
     }
     instance->heldTicks += ticks;
@@ -281,7 +296,7 @@ static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
     {
         int64_t held = instance->heldTicks;
         instance->heldTicks = 0;
-        mvfxStepInstance(instance, held);
+        StepSplit(instance, held);
     }
 }
 
@@ -384,7 +399,7 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
     for (int32_t i = 0; i < maxSteps && left > 0; ++i)
     {
         int64_t ticks = left < step ? left : step;
-        mvfxStepInstance(live, ticks);
+        StepSplit(live, ticks);
         left -= ticks;
     }
     if (live->gasesDue)

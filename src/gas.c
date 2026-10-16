@@ -4,6 +4,7 @@
 #include "gas.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/instance.h"
 
 #include <math.h>
 #include <string.h>
@@ -14,6 +15,8 @@ mvfxGasDef mvfxDefaultGasDef(void)
         .cookie = MVFX_GAS_DEF_COOKIE,
         .size = {64, 64, 1},
         .cellSize = 0.1f,
+        .fillTime = 1.0f / 60.0f,
+        .courant = 1.0f,
         .space = mvfx_gasLocal,
         .substeps = 1,
         .pressureCycles = 4,
@@ -120,6 +123,8 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def)
         def->sourceCount > MVFX_MAX_GAS_SOURCES ||
         (def->sourceCount > 0 && def->sources == nullptr) || def->closedWalls > 63 ||
         def->pressureCycles < 0 || def->pressureCycles > MVFX_MAX_GAS_CYCLES ||
+        !(def->fillTime > 0.0f && def->fillTime <= (float)MVFX_MAX_STEP_SECONDS) ||
+        !(def->courant > 0.0f && def->courant <= (float)MVFX_MAX_GAS_SIZE) ||
         def->kind > mvfx_gasSurface || !IsKindValid(def))
     {
         return false;
