@@ -339,6 +339,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   (`mvfxLiquidDef.solver`, `mvfx_liquidGrid`) by APIC, with air cells
   at pressure 0 and each particle's affine velocity as attributes; its
   density reads as the share of each cell the liquid fills.
+- A grid liquid's over-full cells grow back to full over 1/60 s, or
+  over the step if longer, so a liquid spawned packed spreads calmly
+  instead of flying apart after its spawning tick.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

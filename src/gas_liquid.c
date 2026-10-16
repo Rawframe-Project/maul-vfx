@@ -31,6 +31,10 @@
 // The layers the velocity is extended into the air.
 #define EXTEND_LAYERS 2
 
+// The time over which an over-full cell grows back to full, in seconds;
+// a step shorter grows it by its share.
+#define GROWTH_SECONDS (1.0f / 60.0f)
+
 // A liquid gas's step: the gas and its room, its lattice, the emitter's
 // particles and the map from their space into the box.
 typedef struct Step
@@ -155,11 +159,13 @@ static void Sort(const Step* s)
 // The liquid cells of each level and each cell's filled share into the
 // density, the other scalars 0; volume is a particle's share of a cell.
 // A cell filled past full asks the projection to grow it back to full
-// over the step, into expansion (Losasso et al. 2008 correct a liquid's
-// density through the divergence the same way): particles bunch where
-// the flow converges, and without it a dam break's cells lost a quarter
-// of their filled volume in a second. A
-// coarse cell is liquid only when all its children are: counted liquid
+// over GROWTH_SECONDS, or over the step if longer, into expansion
+// (Losasso et al. 2008 correct a liquid's density through the divergence
+// the same way): particles bunch where the flow converges, and without it
+// a dam break's cells lost a quarter of their filled volume in a second.
+// The particles carry the growth through the next step, so a share of
+// the step alone would fling them after a short one (a spawning tick).
+// A coarse cell is liquid only when all its children are: counted liquid
 // when any child was, a coarse cell solved for air its children did not
 // hold, and the cycles diverged within ten steps of a dam break.
 static void Mark(const Step* s, float volume, float* expansion)
@@ -175,9 +181,9 @@ static void Mark(const Step* s, float volume, float* expansion)
         liquid[c] = held > 0 && !solid ? 1 : 0;
         float fill = (float)held * volume;
         s->state->scalars[0][now][c] = fminf(fill, 1.0f);
-        // An over-full cell grows back to full over the step.
+        float growth = fmaxf(s->lattice.h, GROWTH_SECONDS);
         expansion[c] =
-            liquid[c] != 0 && fill > 1.0f ? (fill - 1.0f) * s->lattice.cell / s->lattice.h : 0.0f;
+            liquid[c] != 0 && fill > 1.0f ? (fill - 1.0f) * s->lattice.cell / growth : 0.0f;
         s->state->scalars[1][now][c] = 0.0f;
         s->state->scalars[2][now][c] = 0.0f;
     }

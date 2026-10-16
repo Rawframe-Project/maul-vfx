@@ -264,13 +264,14 @@ static void ResidualRows(int32_t start, int32_t end, void* context)
         int64_t i = (int64_t)r * l->n[0];
         for (int32_t x = 0; x < l->n[0]; ++x, ++i)
         {
-            float residual = pass->rhs[i] - (sums[x] - l->weights[i] * pass->from[i]);
-            pass->to[i] = IsSolved(l, i) ? residual : 0.0f;
+            pass->to[i] = pass->rhs[i] - (sums[x] - l->weights[i] * pass->from[i]);
         }
     }
 }
 
-// The residual rhs - (weighted sum - weight p), into the scratch buffer.
+// The residual rhs - (weighted sum - weight p), into the scratch buffer;
+// an air cell's is read by no coarse cell, which is liquid only when all
+// its children are.
 static void Residual(const Level* l, mvfxGasLevel* v)
 {
     Pass pass = {.l = l, .from = v->pressure, .to = v->scratch, .rhs = v->rhs};

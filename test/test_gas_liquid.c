@@ -22,6 +22,9 @@
 
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
+// The next instance's origin and turn about Z (radians).
+static double s_origin[3];
+static float s_turn;
 
 // A 2D liquid gas of n0 by n1 cells of cell, its lower left corner at the
 // origin, closed on every side.
@@ -87,6 +90,9 @@ static bool Open(const mvfxEmitterDef* emitters, int32_t emitterCount, const mvf
     }
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
+    memcpy(instanceDef.origin, s_origin, sizeof s_origin);
+    instanceDef.rotation[2] = sinf(0.5f * s_turn);
+    instanceDef.rotation[3] = cosf(0.5f * s_turn);
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
     return true;
 }
@@ -154,22 +160,58 @@ static void TestRefusals(void)
 static void TestFill(void)
 {
     // Four particles in a cell of 0.1 at spacing 0.05 fill it (density 1);
-    // one fills a quarter; an empty cell is 0.
+    // one fills a quarter; eight fill a cell twice, read as 1; one on the
+    // box's far face is outside it; an empty cell is 0. The same with the
+    // instance far from the origin (a world emitter's places offsets from
+    // its anchor). Read as the spawning step marked them.
+    bool right = true;
+    for (int32_t c = 0; c < 2; ++c)
+    {
+        s_origin[0] = c == 1 ? 100.0 : 0.0;
+        s_origin[1] = c == 1 ? -50.0 : 0.0;
+        mvfxGasDef gas = Gas(4, 4, 0.1f);
+        mvfxEmitterDef emitter = Emitter(0.05f, NULL, 16);
+        CHECK(Open(&emitter, 1, &gas, 1), "opened");
+        double places[42] = {0.125, 0.125, 0, 0.175, 0.125, 0, 0.125, 0.175, 0,
+                             0.175, 0.175, 0, 0.25,  0.05,  0, 0.4,   0.05,  0};
+        for (int32_t i = 0; i < 8; ++i)
+        {
+            places[18 + 3 * i] = 0.31 + 0.01 * (double)i;
+            places[18 + 3 * i + 1] = 0.35;
+        }
+        for (int32_t i = 0; i < 14; ++i)
+        {
+            places[3 * i] += s_origin[0];
+            places[3 * i + 1] += s_origin[1];
+        }
+        Spawn(places, NULL, 14);
+        static float density[16];
+        CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, mvfx_gasDensity, density, 16) ==
+                  mvfx_success,
+              "read");
+        // Cells (1, 1), (2, 0), (3, 3), (3, 0), (0, 1) and (0, 0).
+        right = right && fabsf(density[5] - 1.0f) <= 1e-6f && fabsf(density[2] - 0.25f) <= 1e-6f &&
+                density[15] == 1.0f && density[3] == 0.0f && density[4] == 0.0f &&
+                density[0] == 0.0f;
+        mvfxDestroyContext(s_context);
+    }
+    s_origin[0] = s_origin[1] = 0.0;
+    CHECK(right, "a cell's filled share is its density");
+}
+
+static void TestOutside(void)
+{
+    // A particle beyond the box keeps its own velocity: the gas gives it
+    // none.
     mvfxGasDef gas = Gas(4, 4, 0.1f);
-    mvfxEmitterDef emitter = Emitter(0.05f, NULL, 16);
+    mvfxEmitterDef emitter = Emitter(0.05f, NULL, 4);
     CHECK(Open(&emitter, 1, &gas, 1), "opened");
-    const double places[15] = {0.125, 0.125, 0,     0.175, 0.125, 0,    0.125, 0.175,
-                               0,     0.175, 0.175, 0,     0.25,  0.05, 0};
-    Spawn(places, NULL, 5);
-    Steps(1);
-    static float density[16];
-    CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, mvfx_gasDensity, density, 16) ==
-              mvfx_success,
-          "read");
-    // Cells (1, 1), (2, 0) and (0, 0) after a step under no gravity.
-    CHECK(fabsf(density[5] - 1.0f) <= 1e-6f && fabsf(density[2] - 0.25f) <= 1e-6f &&
-              density[0] == 0.0f,
-          "a cell's filled share is its density");
+    const double places[6] = {0.125, 0.125, 0, 0.6, 0.2, 0};
+    const float velocities[6] = {0, 0, 0, 1, 0, 0};
+    Spawn(places, velocities, 2);
+    Steps(2);
+    CHECK(Array(mvfx_attributeVelocityX)[1] == 1.0f && Array(mvfx_attributeVelocityY)[1] == 0.0f,
+          "a particle beyond the box keeps its velocity");
     mvfxDestroyContext(s_context);
 }
 
@@ -186,16 +228,24 @@ static void Block(float cell, int32_t per, const int32_t from[2], const int32_t 
     float* velocities = malloc(sizeof(float) * 3u * (size_t)count);
     CHECK(places != NULL && velocities != NULL, "memory");
     double spacing = (double)cell / (double)per;
+    double c = cos((double)s_turn);
+    double s = sin((double)s_turn);
     for (int32_t i = 0; i < count; ++i)
     {
-        places[3 * i] = (double)from[0] * (double)cell + spacing * (0.5 + (double)(i % across));
-        places[3 * i + 1] = (double)from[1] * (double)cell + spacing * (0.5 + (double)(i / across));
-        places[3 * i + 2] = 0.0;
-        velocities[3 * i] = velocities[3 * i + 1] = velocities[3 * i + 2] = 0.0f;
+        double x = (double)from[0] * (double)cell + spacing * (0.5 + (double)(i % across));
+        double y = (double)from[1] * (double)cell + spacing * (0.5 + (double)(i / across));
+        float u[3] = {0.0f, 0.0f, 0.0f};
         if (velocity != NULL)
         {
-            velocity(&places[3 * i], &velocities[3 * i]);
+            velocity((const double[3]){x, y, 0.0}, u);
         }
+        // In the world: turned with the instance.
+        places[3 * i] = c * x - s * y;
+        places[3 * i + 1] = s * x + c * y;
+        places[3 * i + 2] = 0.0;
+        velocities[3 * i] = (float)(c * (double)u[0] - s * (double)u[1]);
+        velocities[3 * i + 1] = (float)(s * (double)u[0] + c * (double)u[1]);
+        velocities[3 * i + 2] = 0.0f;
     }
     Spawn(places, velocities, count);
     free(places);
@@ -262,14 +312,17 @@ static void Turning(const double* place, float* out)
     out[1] = (float)(2.0 * (place[0] - 0.6));
 }
 
-// The particles' angular momentum about (0.6, 0.6), per unit mass.
+// The particles' angular momentum about (0.6, 0.6) of the box, per unit
+// mass.
 static double AngularMomentum(void)
 {
+    double c = cos((double)s_turn);
+    double s = sin((double)s_turn);
     double sum = 0.0;
     for (int32_t i = 0; i < Count(); ++i)
     {
-        double x = (double)Array(mvfx_attributePositionX)[i] - 0.6;
-        double y = (double)Array(mvfx_attributePositionY)[i] - 0.6;
+        double x = (double)Array(mvfx_attributePositionX)[i] - (c - s) * 0.6;
+        double y = (double)Array(mvfx_attributePositionY)[i] - (s + c) * 0.6;
         sum += x * (double)Array(mvfx_attributeVelocityY)[i] -
                y * (double)Array(mvfx_attributeVelocityX)[i];
     }
@@ -304,6 +357,100 @@ static void TestTurning(void)
         mvfxDestroyContext(s_context);
     }
     CHECK(kept[0] >= 0.85 && kept[1] < kept[0], "APIC keeps a turn better than PIC");
+}
+
+static void TestTurnedBox(void)
+{
+    // The turning square of TestTurning, without walls, in an instance
+    // turned by 0 and by 0.5 about Z: the world's particles in a turned box
+    // keep the same share of their turn, within 0.5%.
+    double kept[2];
+    for (int32_t c = 0; c < 2; ++c)
+    {
+        s_turn = c == 1 ? 0.5f : 0.0f;
+        mvfxGasDef gas = Gas(24, 24, 0.05f);
+        mvfxEmitterDef emitter = Emitter(0.025f, NULL, 576);
+        CHECK(Open(&emitter, 1, &gas, 1), "opened");
+        Block(0.05f, 2, (const int32_t[2]){6, 6}, (const int32_t[2]){18, 18}, Turning);
+        double start = AngularMomentum();
+        Steps(120);
+        kept[c] = AngularMomentum() / start;
+        mvfxDestroyContext(s_context);
+    }
+    s_turn = 0.0f;
+    CHECK(kept[0] >= 0.85 && fabs(kept[1] - kept[0]) <= 0.005 * kept[0],
+          "a turned box keeps a turn as an upright one");
+}
+
+// A shear of 1 a second: X's velocity rising with Y from 0.4.
+static void Shear(const double* place, float* out)
+{
+    out[0] = (float)(place[1] - 0.4);
+}
+
+static void TestShear(void)
+{
+    // A block of 8 by 8 cells of 0.05 in shear, 2 by 2 particles a cell, no
+    // gravity: after a step, each particle 2 cells or more inside it has
+    // the shear's velocity at its place within 1e-4 (a linear field is
+    // carried exactly).
+    mvfxGasDef gas = Gas(16, 16, 0.05f);
+    mvfxEmitterDef emitter = Emitter(0.025f, NULL, 256);
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    Block(0.05f, 2, (const int32_t[2]){4, 4}, (const int32_t[2]){12, 12}, Shear);
+    Steps(1);
+    float worst = 0.0f;
+    for (int32_t i = 0; i < Count(); ++i)
+    {
+        float x = Array(mvfx_attributePositionX)[i];
+        float y = Array(mvfx_attributePositionY)[i];
+        if (x > 0.3f && x < 0.5f && y > 0.3f && y < 0.5f)
+        {
+            worst = fmaxf(worst, fabsf(Array(mvfx_attributeVelocityX)[i] - (y - 0.4f)));
+            worst = fmaxf(worst, fabsf(Array(mvfx_attributeVelocityY)[i]));
+        }
+    }
+    CHECK(worst <= 1e-4f, "a shear is carried exactly");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestExpansion(void)
+{
+    // A block of 2 by 2 cells of 0.1 filled four times over (4 by 4
+    // particles a cell at spacing 0.05), spawned in a tick: the projection
+    // grows each cell back to full over 1/60 s, its faces' divergence
+    // within 5% of 3 * 60. Then, in a closed box, it spreads without
+    // flying apart: none faster than 3, and none faster than 0.05 after
+    // 0.5 s.
+    mvfxGasDef gas = Gas(8, 8, 0.1f);
+    mvfxCollider box = BoxOf(&gas);
+    mvfxEmitterDef emitter = Emitter(0.05f, &box, 64);
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    Block(0.1f, 4, (const int32_t[2]){3, 3}, (const int32_t[2]){5, 5}, NULL);
+    const mvfxGasState* state = &mvfxContextInstance(s_context, s_instance)->gases[0];
+    const float* u = state->velocity[0][state->current];
+    const float* v = state->velocity[1][state->current];
+    bool grows = true;
+    for (int32_t y = 3; y < 5; ++y)
+    {
+        for (int32_t x = 3; x < 5; ++x)
+        {
+            double out = (double)u[y * 9 + x + 1] - (double)u[y * 9 + x] +
+                         (double)v[(y + 1) * 8 + x] - (double)v[y * 8 + x];
+            double divergence = out / 0.1;
+            grows = grows && fabs(divergence / 60.0 - 3.0) <= 0.15;
+        }
+    }
+    CHECK(grows, "an over-full cell grows back to full");
+    float fastest = 0.0f;
+    for (int32_t k = 0; k < 60; ++k)
+    {
+        Steps(1);
+        fastest = fmaxf(fastest, MaxSpeed());
+    }
+    CHECK(Count() == 64 && fastest < 3.0f && MaxSpeed() < 0.05f,
+          "an over-full block spreads calmly");
+    mvfxDestroyContext(s_context);
 }
 
 // The surge front of Martin and Moyce's square column (1952, part IV,
@@ -419,8 +566,12 @@ int main(void)
 {
     TestRefusals();
     TestFill();
+    TestOutside();
     TestPool();
     TestTurning();
+    TestTurnedBox();
+    TestShear();
+    TestExpansion();
     TestDamBreak();
     return s_failures;
 }
