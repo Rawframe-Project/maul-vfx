@@ -15,6 +15,7 @@
 #include "maul-vfx/modules.h"
 #include "maul-vfx/shape.h"
 #include "maul-vfx/value.h"
+#include "maul-vfx/water.h"
 
 #include <stdbool.h>
 
@@ -1108,10 +1109,15 @@ extern "C"
         const mvfxQualityLevel* qualityLevels;
         int32_t qualityLevelCount;
         // Its gases, from 0 to MVFX_MAX_GASES, each from mvfxDefaultGasDef,
-        // NULL when gasCount is 0; an effect has at least one emitter or
-        // one gas. The effect copies them.
+        // NULL when gasCount is 0; an effect has at least one emitter, gas
+        // or water surface. The effect copies them.
         const mvfxGasDef* gases;
         int32_t gasCount;
+        // Its water surfaces, from 0 to MVFX_MAX_WATERS, each from
+        // mvfxDefaultWaterDef, NULL when waterCount is 0. The effect copies
+        // them.
+        const mvfxWaterDef* waters;
+        int32_t waterCount;
     } mvfxEffectDef;
 
 // The cookie of an effect def, which its default sets and

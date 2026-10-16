@@ -822,6 +822,60 @@ extern "C"
                                                             mvfxGasField field, float* out,
                                                             int64_t count);
 
+    /// Pushes a water surface of an instance at the start of the instance's
+    /// next step, after the pushes already given for it (at most
+    /// MVFX_MAX_WATER_PUSHES in all); each push's cells sink by depth times
+    /// its falloff at their centers, and what they sank raises every cell
+    /// evenly (the water a body displaces lifts the level: the surface's
+    /// volume stays).
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param water     The surface's index in its effect's def.
+    /// @param pushes    count pushes; NULL for 0.
+    /// @param count     How many, from 0.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorCapacity` for more pushes than the step
+    ///         holds, with none of these taken; `mvfx_errorInvalid` for a
+    ///         NULL context or pushes with a count, a surface index out of
+    ///         range, a negative count or a push out of range, which counts
+    ///         as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_PushWater(mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              int32_t water,
+                                                              const mvfxWaterPush* pushes,
+                                                              int32_t count);
+
+    // What a water surface is now: its cells and their edge, and its grid's
+    // center and orientation (x, y, z, w) in the world, the frame whose Y
+    // its heights are along.
+    typedef struct mvfxWaterInfo
+    {
+        int32_t size[2];
+        float cellSize;
+        double center[3];
+        float rotation[4];
+    } mvfxWaterInfo;
+
+    /// Reads what a water surface of an instance is now.
+    ///
+    /// @param context  The context that owns the instance.
+    /// @param instance The instance.
+    /// @param water    The surface's index in its effect's def.
+    /// @param infoOut  Receives the surface's info; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument or a surface
+    ///         index out of range, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetWaterInfo(const mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 int32_t water,
+                                                                 mvfxWaterInfo* infoOut);
+
 #ifdef __cplusplus
 }
 #endif

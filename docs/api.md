@@ -277,6 +277,16 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGas(const mvfxContext* conte
 ```
 Copies a field of a gas of an instance at its cells' centers, X fastest, then Y, then Z; a velocity's component the mean of the two faces' about the center.  @param context  The context that owns the instance. @param instance The instance. @param gas      The gas's index in its effect's def. @param field    The field. @param out      Receives count values. @param count    How many: the gas's cells. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, a gas index or field out of range (a surface's only field its distance, which no other gas has) or a count not the gas's cells, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_PushWater(mvfxContext* context, mvfxInstanceId instance, int32_t water, const mvfxWaterPush* pushes, int32_t count);
+```
+Pushes a water surface of an instance at the start of the instance's next step, after the pushes already given for it (at most MVFX_MAX_WATER_PUSHES in all); each push's cells sink by depth times its falloff at their centers, and what they sank raises every cell evenly (the water a body displaces lifts the level: the surface's volume stays).  @param context   The context that owns the instance. @param instance  The instance. @param water     The surface's index in its effect's def. @param pushes    count pushes; NULL for 0. @param count     How many, from 0. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorCapacity` for more pushes than the step holds, with none of these taken; `mvfx_errorInvalid` for a NULL context or pushes with a count, a surface index out of range, a negative count or a push out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetWaterInfo(const mvfxContext* context, mvfxInstanceId instance, int32_t water, mvfxWaterInfo* infoOut);
+```
+Reads what a water surface of an instance is now.  @param context  The context that owns the instance. @param instance The instance. @param water    The surface's index in its effect's def. @param infoOut  Receives the surface's info; zeroed on failure. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument or a surface index out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
 ## `mesh.h`
 
 Meshes to spawn from: vertices, triangles and tetrahedra the host gives. A mesh shape samples its vertices, its edges by length, its surface by area or its volume (the tetrahedra) by volume. A skinned mesh is given new positions between steps.
@@ -403,7 +413,17 @@ Writes a field of a gas of an instance over a box of its cells in a format, as t
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas, mvfxGasField field, const double* points, int64_t count, float* out);
 ```
-Samples a field of a gas of an instance at points in the world, as the last step left it: trilinear, as particles following the gas read it, 0 outside its box (a surface's distance its reach; a 2D gas's reaching along its Z without end); a velocity's component along the box's axis.  @param context   The context that owns the instance. @param instance  The instance. @param gas       The gas's index in its effect's def. @param field     The field. @param points    count points, x, y and z each, finite. @param count     How many, from 0; points and out may be NULL for 0. @param out       Receives count values. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, a gas index or field out of range, a negative count or a point not finite, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
+Samples a field of a gas of an instance at points in the world, as the last step left it: trilinear, as particles following the gas read it, 0 outside its box (a surface's distance its reach; a 2D gas's reaching along its Z without end); a velocity's component along the box's axis.  @param context   The context that owns the instance. @param instance  The instance. @param gas       The gas's index in its effect's def. @param field     The field. @param points    count points, x, y and z each, finite. @param count     How many, from 0 to INT64_MAX / 3; points and out may be NULL for 0. @param out       Receives count values. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, a gas index or field out of range, a count out of range or a point not finite, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId instance, int32_t water, const mvfxWaterRead* read, void* out, int64_t bytes);
+```
+Writes a field of a water surface of an instance over a box of its cells in a format, as the last step left it.  @param context   The context that owns the instance. @param instance  The instance. @param water     The surface's index in its effect's def. @param read      The field, format, box, range and pitch. @param out       The buffer. @param bytes     Its bytes, at least the read's. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, a surface index, field, format, box, range or pitch out of range, or bytes too few, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId instance, int32_t water, const double* points, int64_t count, mvfxWaterSample* out);
+```
+Samples a water surface of an instance at points in the world, as the last step left it: its heights, rates and normals bilinear between the cells' centers, held at the outer cells' within the grid's edge.  @param context   The context that owns the instance. @param instance  The instance. @param water     The surface's index in its effect's def. @param points    count points, x, y and z each, finite. @param count     How many, from 0 to INT64_MAX / 3; points and out may be NULL for 0. @param out       Receives count samples. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live instance; `mvfx_errorInvalid` for a NULL argument, a surface index out of range, a count out of range or a point not finite, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3], const mvfxFrustum* frustum, mvfxDrawItem* items, int64_t capacity, int64_t* countOut);
@@ -429,6 +449,15 @@ static inline mvfxScalarSource mvfxRangeSource(float min, float max);
 ```
 Returns a scalar source uniform between min and max.  @param min  The least value. @param max  The greatest value. @return The source. @par Thread safety Safe from any thread.
 
+## `water.h`
+
+Water surfaces: heights over a grid of cells across X and Z of an instance's frame, along its Y, as heightfield colliders lie. A surface of waves (ripples, wakes, rain) carries each cell's displacement from its rest level and its rate: the wave equation, its waves at the def's speed. The host pushes it (instance.h), reads its fields into its own formats and samples it at points (output.h: floating things, cameras, sound); it draws the grid itself.
+
+```c
+mvfxWaterDef mvfxDefaultWaterDef(void);
+```
+Returns the default water def: 64 by 64 cells of 0.1 at the instance's origin, in local space, its walls closed, waves at 1 a second, damped at 0.5 a second.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
 ---
 
-78 functions across 12 headers.
+83 functions across 13 headers.

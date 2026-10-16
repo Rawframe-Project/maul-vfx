@@ -8,6 +8,7 @@
 #include "gas_api.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "water_api.h"
 
 #include <math.h>
 
@@ -55,10 +56,14 @@ mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance,
             *boundsOut = Join(*boundsOut, mvfxBoundsOf(live, e));
         }
     }
-    // The instance's bounds hold its gases' boxes.
+    // The instance's bounds hold its gases' boxes and its water surfaces'.
     for (int32_t g = 0; emitter == -1 && g < live->effect->gasCount; ++g)
     {
         *boundsOut = Join(*boundsOut, mvfxGasBounds(live, g));
+    }
+    for (int32_t w = 0; emitter == -1 && w < live->effect->waterCount; ++w)
+    {
+        *boundsOut = Join(*boundsOut, mvfxWaterBounds(live, w));
     }
     return mvfx_success;
 }

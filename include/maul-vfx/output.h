@@ -672,11 +672,12 @@ extern "C"
     /// @param gas       The gas's index in its effect's def.
     /// @param field     The field.
     /// @param points    count points, x, y and z each, finite.
-    /// @param count     How many, from 0; points and out may be NULL for 0.
+    /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
+    ///                  be NULL for 0.
     /// @param out       Receives count values.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas index
-    ///         or field out of range, a negative count or a point not
+    ///         or field out of range, a count out of range or a point not
     ///         finite, which counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
@@ -686,6 +687,84 @@ extern "C"
                                                               mvfxGasField field,
                                                               const double* points, int64_t count,
                                                               float* out);
+
+    // How a water surface's field is read out: over a box of cells (first,
+    // then size, along X and Z), in a format, a row of cells (along X) from
+    // rowBytes to the next (0 for packed, else at least the packed size).
+    // float32 and float16 take the values as they are; unorm8 and unorm16
+    // map low to 0 and high to 1, snorm8 and snorm16 to -1 and 1, clamped
+    // and rounded as a layout's fields are (low and high finite, high above
+    // low).
+    typedef struct mvfxWaterRead
+    {
+        mvfxWaterField field;
+        mvfxFormat format;
+        int32_t first[2];
+        int32_t size[2];
+        float low;
+        float high;
+        uint32_t rowBytes;
+    } mvfxWaterRead;
+
+    /// Writes a field of a water surface of an instance over a box of its
+    /// cells in a format, as the last step left it.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param water     The surface's index in its effect's def.
+    /// @param read      The field, format, box, range and pitch.
+    /// @param out       The buffer.
+    /// @param bytes     Its bytes, at least the read's.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, a surface
+    ///         index, field, format, box, range or pitch out of range, or
+    ///         bytes too few, which counts as misuse when the context is
+    ///         given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadWater(const mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              int32_t water,
+                                                              const mvfxWaterRead* read, void* out,
+                                                              int64_t bytes);
+
+    // A water surface at a point: the surface's point along its frame's Y
+    // through it (in the world), its unit normal and its velocity (in the
+    // world's directions), and whether the point is over the grid (else
+    // the rest plane, its normal the frame's Y, still).
+    typedef struct mvfxWaterSample
+    {
+        double surface[3];
+        float normal[3];
+        float velocity[3];
+        bool inside;
+    } mvfxWaterSample;
+
+    /// Samples a water surface of an instance at points in the world, as
+    /// the last step left it: its heights, rates and normals bilinear
+    /// between the cells' centers, held at the outer cells' within the
+    /// grid's edge.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param water     The surface's index in its effect's def.
+    /// @param points    count points, x, y and z each, finite.
+    /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
+    ///                  be NULL for 0.
+    /// @param out       Receives count samples.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, a surface
+    ///         index out of range, a count out of range or a point not
+    ///         finite, which counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SampleWater(const mvfxContext* context,
+                                                                mvfxInstanceId instance,
+                                                                int32_t water, const double* points,
+                                                                int64_t count,
+                                                                mvfxWaterSample* out);
 
 // The most planes a frustum has.
 #define MVFX_MAX_FRUSTUM_PLANES 8

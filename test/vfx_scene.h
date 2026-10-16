@@ -479,6 +479,36 @@ static inline void BuildLiquidScene(mvfxContext* context)
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "liquid instance");
 }
 
+// Water surfaces: a pond walled in, of the instance's frame, and a strip
+// of where the instance began, open along X, its waves fast enough that
+// the second-long step takes the most substeps.
+static inline void BuildWaterScene(mvfxContext* context)
+{
+    mvfxWaterDef waters[2] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};
+    waters[0].size[0] = 48;
+    waters[0].size[1] = 32;
+    waters[0].cellSize = 0.05f;
+    waters[0].center[1] = 0.2f;
+    waters[0].waveSpeed = 0.8f;
+    waters[0].damping = 0.3f;
+    waters[1].size[0] = 64;
+    waters[1].size[1] = 16;
+    waters[1].space = mvfx_gasWorld;
+    waters[1].closedWalls = mvfx_waterWallMinZ | mvfx_waterWallMaxZ;
+    waters[1].waveSpeed = 5.0f;
+    waters[1].damping = 0.1f;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.waters = waters;
+    def.waterCount = 2;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "water effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.origin[2] = 360.0;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "water instance");
+}
+
 static inline void BuildScene(mvfxContext* context)
 {
     // A 3x2x2 field of binary16 vectors, made of exact small values.
@@ -1248,6 +1278,7 @@ static inline void BuildScene(mvfxContext* context)
     BuildRigidScene(context);
     BuildGasScene(context);
     BuildLiquidScene(context);
+    BuildWaterScene(context);
 }
 
 // Moves every instance of the context before a step: along a fixed path
@@ -1325,6 +1356,25 @@ static inline void AnswerScene(mvfxContext* context, int32_t step)
     }
 }
 
+// The scene's water pushed: a dent crossing the pond, and a lift on the
+// strip where it was put every fourth step.
+static inline void PushSceneWater(mvfxContext* context, mvfxInstanceId id, const double origin[3],
+                                  int32_t step)
+{
+    const mvfxWaterPush dent = {.point = {origin[0] - 0.8 + 0.1 * step, origin[1], origin[2] + 0.2},
+                                .radius = 0.15f,
+                                .depth = 0.02f};
+    CHECK(mvfxInstance_PushWater(context, id, 0, &dent, 1) == mvfx_success, "pond push");
+    mvfxWaterInfo info = {0};
+    CHECK(mvfxInstance_GetWaterInfo(context, id, 1, &info) == mvfx_success, "strip info");
+    const mvfxWaterPush lift = {
+        .point = {info.center[0] + 1.5 - 0.25 * step, info.center[1], info.center[2]},
+        .radius = 0.4f,
+        .depth = -0.01f};
+    CHECK(mvfxInstance_PushWater(context, id, 1, &lift, step % 4 == 0 ? 1 : 0) == mvfx_success,
+          "strip push");
+}
+
 static inline void MoveScene(mvfxContext* context, int32_t step)
 {
     AnswerScene(context, step);
@@ -1352,6 +1402,10 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
                                        .center = {-0.3f + 0.04f * (float)step, 0.45f, 0.05f},
                                        .radius = 0.15f};
             CHECK(mvfxInstance_SetColliders(context, id, &ball, 1) == mvfx_success, "gas ball");
+        }
+        if (effect->waterCount > 0)
+        {
+            PushSceneWater(context, id, origin, step);
         }
         if (step == 5 && effect->emitterCount == 5 && effect->parameterCount > 0)
         {
@@ -1631,6 +1685,34 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
 
 // A hash of every live instance of the context, in slot order, and of
 // its output.
+// An instance's water surfaces as the host reads them: the pond sampled
+// across it and past its edge, and the strip's normals in unorm16.
+static inline uint64_t HashWater(mvfxContext* context, mvfxInstanceId id,
+                                 const mvfxInstance* instance, uint64_t hash)
+{
+    if (instance->effect->waterCount == 0)
+    {
+        return hash;
+    }
+    const double* at = instance->to.origin;
+    const double points[9] = {at[0] - 0.5,  at[1],       at[2] + 0.1, at[0] + 0.33, at[1],
+                              at[2] - 0.41, at[0] + 1.3, at[1],       at[2]};
+    mvfxWaterSample samples[3];
+    memset(samples, 0, sizeof samples);
+    CHECK(mvfxInstance_SampleWater(context, id, 0, points, 3, samples) == mvfx_success,
+          "scene water sampled");
+    hash = mvfxHash64(hash, samples, (int32_t)sizeof samples);
+    static uint16_t normals[64 * 16];
+    const mvfxWaterRead read = {.field = mvfx_waterNormalX,
+                                .format = mvfx_formatUnorm16,
+                                .size = {64, 16},
+                                .low = -0.01f,
+                                .high = 0.01f};
+    CHECK(mvfxInstance_ReadWater(context, id, 1, &read, normals, sizeof normals) == mvfx_success,
+          "scene water read");
+    return mvfxHash64(hash, normals, (int32_t)sizeof normals);
+}
+
 static inline uint64_t HashScene(mvfxContext* context)
 {
     uint64_t hash = MVFX_HASH_INIT;
@@ -1642,6 +1724,7 @@ static inline uint64_t HashScene(mvfxContext* context)
             hash = mvfxHashInstance(instance, hash);
             mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
             hash = HashOutput(context, id, instance, hash);
+            hash = HashWater(context, id, instance, hash);
             mvfxBounds bounds = {0};
             CHECK(mvfxInstance_GetBounds(context, id, -1, &bounds) == mvfx_success, "scene bounds");
             hash = mvfxHash64(hash, &bounds.empty, 1);

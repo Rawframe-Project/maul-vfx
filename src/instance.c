@@ -403,6 +403,48 @@ static EmitterAt AddEmitterRooms(mvfxLayout* layout, const mvfxEffect* effect, i
     return at;
 }
 
+// Where an instance's gases' and water surfaces' buffers lie in its block.
+typedef struct FieldsAt
+{
+    mvfxGasAt gases[MVFX_MAX_GASES];
+    mvfxWaterAt waters[MVFX_MAX_WATERS];
+} FieldsAt;
+
+// Places an instance's gases' and water surfaces' buffers in its layout,
+// a gas of an emitter's particles sized for its capacity.
+static void AddFieldLayouts(mvfxLayout* layout, const mvfxEffect* effect, const int32_t* capacities,
+                            FieldsAt* at)
+{
+    for (int32_t g = 0; g < effect->gasCount; ++g)
+    {
+        int32_t e = effect->gases[g].emitter;
+        mvfxAddGasLayout(layout, &effect->gases[g], e >= 0 ? capacities[e] : 0, &at->gases[g]);
+    }
+    for (int32_t w = 0; w < effect->waterCount; ++w)
+    {
+        mvfxAddWaterLayout(layout, &effect->waters[w], &at->waters[w]);
+    }
+}
+
+// Points an instance's gases' and water surfaces' states at their
+// buffers in its block.
+static void StartFields(mvfxInstance* instance, unsigned char* block, const int32_t* capacities,
+                        const FieldsAt* at)
+{
+    const mvfxEffect* effect = instance->effect;
+    for (int32_t g = 0; g < effect->gasCount; ++g)
+    {
+        int32_t e = effect->gases[g].emitter;
+        mvfxStartGas(&instance->gases[g], &effect->gases[g], e >= 0 ? capacities[e] : 0, block,
+                     &at->gases[g]);
+        mvfxGasAreas(&effect->gases[g], &instance->gases[g]);
+    }
+    for (int32_t w = 0; w < effect->waterCount; ++w)
+    {
+        mvfxStartWater(&instance->waters[w], &effect->waters[w], block, &at->waters[w]);
+    }
+}
+
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
                                       const mvfxTransform* transform, uint32_t seed,
                                       const mvfxAllocator* allocator)
@@ -435,12 +477,8 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         particlesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].plan.arrayCount,
                                        mvfxArrayBytes(capacities[e]), MVFX_ATTRIBUTE_ALIGNMENT);
     }
-    mvfxGasAt gasesAt[MVFX_MAX_GASES];
-    for (int32_t g = 0; g < effect->gasCount; ++g)
-    {
-        int32_t e = effect->gases[g].emitter;
-        mvfxAddGasLayout(&layout, &effect->gases[g], e >= 0 ? capacities[e] : 0, &gasesAt[g]);
-    }
+    FieldsAt fieldsAt;
+    AddFieldLayouts(&layout, effect, capacities, &fieldsAt);
     if (layout.overflow)
     {
         return nullptr;
@@ -476,13 +514,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         }
     }
     StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, capacities);
-    for (int32_t g = 0; g < effect->gasCount; ++g)
-    {
-        int32_t e = effect->gases[g].emitter;
-        mvfxStartGas(&instance->gases[g], &effect->gases[g], e >= 0 ? capacities[e] : 0, block,
-                     &gasesAt[g]);
-        mvfxGasAreas(&effect->gases[g], &instance->gases[g]);
-    }
+    StartFields(instance, block, capacities, &fieldsAt);
     mvfxResetInstance(instance);
     return instance;
 }
@@ -551,6 +583,21 @@ void mvfxResetInstance(mvfxInstance* instance)
             gas->rotation[k] = instance->to.rotation[k];
         }
         gas->scale = instance->to.scale;
+    }
+    for (int32_t w = 0; w < instance->effect->waterCount; ++w)
+    {
+        mvfxWaterState* water = &instance->waters[w];
+        mvfxClearWater(water, &instance->effect->waters[w]);
+        // A world surface's grid stays where the instance starts.
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            water->origin[k] = instance->to.origin[k];
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            water->rotation[k] = instance->to.rotation[k];
+        }
+        water->scale = instance->to.scale;
     }
 }
 
@@ -638,6 +685,13 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
             hash = mvfxHash64(hash, gas->scalars[k][gas->current], surface && k > 0 ? 0 : cells);
         }
         hash = surface ? hash : mvfxHash64(hash, gas->levels[0].pressure, cells);
+    }
+    for (int32_t w = 0; w < instance->effect->waterCount; ++w)
+    {
+        const mvfxWaterState* water = &instance->waters[w];
+        int32_t cells = (int32_t)(instance->effect->waters[w].cells * (int64_t)sizeof(float));
+        hash = mvfxHash64(hash, water->heights[water->current], cells);
+        hash = mvfxHash64(hash, water->rates, cells);
     }
     return hash;
 }

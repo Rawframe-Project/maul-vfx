@@ -290,6 +290,15 @@ bool mvfxIsInstanceFinished(const mvfxInstance* instance)
             return false;
         }
     }
+    // So does a water surface, and while it has pushes to take.
+    for (int32_t w = 0; w < instance->effect->waterCount; ++w)
+    {
+        const mvfxWaterState* water = &instance->waters[w];
+        if (instance->clock < instance->stopTick || water->holds || water->pushCount > 0)
+        {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -326,6 +335,10 @@ mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfx
         for (int32_t g = 0; g < live->effect->gasCount; ++g)
         {
             mvfxClearGas(&live->gases[g], &live->effect->gases[g]);
+        }
+        for (int32_t w = 0; w < live->effect->waterCount; ++w)
+        {
+            mvfxClearWater(&live->waters[w], &live->effect->waters[w]);
         }
     }
     return mvfx_success;

@@ -305,12 +305,14 @@ typedef struct mvfxInstance
     // on some targets).
     mvfxResolvedForce gasForces[MVFX_MAX_FORCES];
     mvfxGasPour gasPours[MVFX_MAX_EMITTERS];
-    // Whether its gases are due a step: its last step's, which the context
-    // steps once every instance's task has finished.
+    // Whether its gases and water surfaces are due a step: its last step's,
+    // which the context steps once every instance's task has finished.
     bool gasesDue;
     mvfxEmitterState* emitters;
     // Its gases' states, their fields in its block.
     mvfxGasState gases[MVFX_MAX_GASES];
+    // Its water surfaces' states, their buffers in its block.
+    mvfxWaterState waters[MVFX_MAX_WATERS];
     // Scratch for a step that may reach an emitter's capacity, sized for
     // the largest emitter: its death ticks, and the particles it accepts
     // that live past the step.

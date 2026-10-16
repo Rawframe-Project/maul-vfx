@@ -18,6 +18,7 @@
 #include "value.h"
 #include "velocity.h"
 #include "velocity_modules.h"
+#include "water.h"
 
 #include "maul-vfx/effect.h"
 
@@ -330,6 +331,9 @@ typedef struct mvfxEffect
     // Its gases.
     mvfxCompiledGas gases[MVFX_MAX_GASES];
     int32_t gasCount;
+    // Its water surfaces.
+    mvfxCompiledWater waters[MVFX_MAX_WATERS];
+    int32_t waterCount;
 } mvfxEffect;
 
 // Whether a def and every emitter def in it are valid.

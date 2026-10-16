@@ -10,6 +10,7 @@
 #include "instance.h"
 #include "instance_api.h"
 #include "layout.h"
+#include "read_format.h"
 
 #include "maul-vfx/output.h"
 
@@ -40,34 +41,15 @@ static float CellValue(const mvfxCompiledGas* gas, const mvfxGasState* state, mv
     return 0.5f * (faces[low] + faces[low + step[k]]);
 }
 
-// A format's bytes, 0 for one a gas is not read in.
-static uint32_t FormatBytes(mvfxFormat format)
-{
-    switch (format)
-    {
-    case mvfx_formatFloat32:
-        return 4;
-    case mvfx_formatFloat16:
-    case mvfx_formatUnorm16:
-    case mvfx_formatSnorm16:
-        return 2;
-    case mvfx_formatUnorm8:
-    case mvfx_formatSnorm8:
-        return 1;
-    default:
-        return 0;
-    }
-}
-
 // Whether a read is in range for a gas, its pitches resolved and the
 // bytes it reaches into end.
 static bool IsReadValid(const mvfxGasRead* read, const mvfxCompiledGas* gas, int64_t pitch[2],
                         int64_t* end)
 {
     const int32_t* n = gas->def.size;
-    uint32_t bytes = FormatBytes(read->format);
+    uint32_t bytes = mvfxReadFormatBytes(read->format);
     bool valid = mvfxIsGasFieldOf(gas, read->field) && bytes > 0;
-    bool normalized = read->format != mvfx_formatFloat32 && read->format != mvfx_formatFloat16;
+    bool normalized = mvfxIsReadNormalized(read->format);
     valid = valid && (!normalized ||
                       (isfinite(read->low) && isfinite(read->high) && read->high > read->low));
     for (int32_t k = 0; valid && k < 3; ++k)
@@ -84,23 +66,6 @@ static bool IsReadValid(const mvfxGasRead* read, const mvfxCompiledGas* gas, int
     pitch[1] = read->layerBytes == 0 ? layer : (int64_t)read->layerBytes;
     *end = pitch[1] * (read->size[2] - 1) + pitch[0] * (read->size[1] - 1) + row;
     return pitch[0] >= row && pitch[1] >= layer;
-}
-
-// A value mapped to what its format writes: a normalized format's range
-// to 0 to 1, or -1 to 1.
-static float Mapped(const mvfxGasRead* read, float value)
-{
-    switch (read->format)
-    {
-    case mvfx_formatUnorm8:
-    case mvfx_formatUnorm16:
-        return (value - read->low) / (read->high - read->low);
-    case mvfx_formatSnorm8:
-    case mvfx_formatSnorm16:
-        return 2.0f * (value - read->low) / (read->high - read->low) - 1.0f;
-    default:
-        return value;
-    }
 }
 
 mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
@@ -123,7 +88,7 @@ mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId ins
     }
     const mvfxGasState* state = &live->gases[gas];
     const mvfxLayoutField field = {.format = read->format, .components = 1};
-    uint32_t size = FormatBytes(read->format);
+    uint32_t size = mvfxReadFormatBytes(read->format);
     static const uint32_t words[4] = {0, 0, 0, 0};
     for (int32_t z = 0; z < read->size[2]; ++z)
     {
@@ -133,8 +98,10 @@ mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId ins
             for (int32_t x = 0; x < read->size[0]; ++x)
             {
                 const int32_t at[3] = {read->first[0] + x, read->first[1] + y, read->first[2] + z};
-                const float values[4] = {Mapped(read, CellValue(compiled, state, read->field, at)),
-                                         0.0f, 0.0f, 0.0f};
+                const float values[4] = {
+                    mvfxReadMapped(read->format, read->low, read->high,
+                                   CellValue(compiled, state, read->field, at)),
+                    0.0f, 0.0f, 0.0f};
                 mvfxWriteField(&field, values, words, row + (size_t)x * size);
             }
         }
@@ -178,7 +145,7 @@ mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId ins
         return result;
     }
     const mvfxCompiledGas* compiled = &live->effect->gases[gas];
-    bool valid = mvfxIsGasFieldOf(compiled, field) && count >= 0 &&
+    bool valid = mvfxIsGasFieldOf(compiled, field) && count >= 0 && count <= INT64_MAX / 3 &&
                  (count == 0 || (points != nullptr && out != nullptr));
     for (int64_t i = 0; valid && i < 3 * count; ++i)
     {

@@ -16,6 +16,7 @@
 #include "instance.h"
 #include "instance_api.h"
 #include "tasks.h"
+#include "water_step.h"
 
 #include <math.h>
 
@@ -152,7 +153,7 @@ static int32_t PoursInto(mvfxInstance* instance, int32_t g, mvfxGasPour pours[MV
     return count;
 }
 
-// Steps an instance's due gases, each driven as the instance's last step
+// Steps an instance's due gases and water surfaces, each driven as the instance's last step
 // left it, their passes split over tasks.
 static void StepGases(mvfxInstance* instance, const mvfxTasks* tasks)
 {
@@ -193,6 +194,10 @@ static void StepGases(mvfxInstance* instance, const mvfxTasks* tasks)
         mvfxStepGas(gas, &instance->gases[g], &drive, instance->stepStart, instance->clock,
                     instance->stopTick);
     }
+    for (int32_t w = 0; w < instance->effect->waterCount; ++w)
+    {
+        mvfxStepWater(instance, w, tasks);
+    }
     instance->gasesDue = false;
 }
 
@@ -222,7 +227,7 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
         }
         mvfxStepEmitter(instance, e);
     }
-    instance->gasesDue = !finished && instance->effect->gasCount > 0;
+    instance->gasesDue = !finished && instance->effect->gasCount + instance->effect->waterCount > 0;
     EndStep(instance);
 }
 

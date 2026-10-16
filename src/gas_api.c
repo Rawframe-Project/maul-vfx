@@ -5,6 +5,7 @@
 
 #include "gas_api.h"
 
+#include "box.h"
 #include "context.h"
 #include "direction.h"
 #include "gas.h"
@@ -40,60 +41,25 @@ const mvfxInstance* mvfxFindGas(const mvfxContext* context, mvfxInstanceId insta
     return live;
 }
 
-// Where a gas's box is now: its center and orientation in the world,
-// and its scale (the world's lengths in its).
-static void Place(const mvfxInstance* live, int32_t gas, double center[3], float rotation[4],
-                  float* scaleOut)
+// Where a gas's box is now.
+static mvfxBoxPlace Place(const mvfxInstance* live, int32_t gas)
 {
     const mvfxCompiledGas* compiled = &live->effect->gases[gas];
     const mvfxGasState* state = &live->gases[gas];
-    // A local gas's box is where the instance is now.
-    bool local = compiled->def.space == mvfx_gasLocal;
-    const double* origin = local ? live->to.origin : state->origin;
-    const float* turn = local ? live->to.rotation : state->rotation;
-    float scale = local ? live->to.scale : state->scale;
-    const float offset[3] = {scale * compiled->def.center[0], scale * compiled->def.center[1],
-                             scale * compiled->def.center[2]};
-    float turned[3];
-    mvfxRotate(turn, offset, turned);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        center[k] = origin[k] + (double)turned[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        rotation[k] = turn[k];
-    }
-    *scaleOut = scale;
+    return mvfxPlaceBox(live, compiled->def.space == mvfx_gasLocal, compiled->def.center,
+                        state->origin, state->rotation, state->scale);
 }
 
 mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas)
 {
-    double center[3];
-    float rotation[4];
-    float scale = 0.0f;
-    Place(instance, gas, center, rotation, &scale);
-    float cell = scale * instance->effect->gases[gas].def.cellSize;
-    mvfxBounds out = {.empty = false};
-    // Each world axis's reach of the box's turned half sizes.
-    float reach[3] = {0.0f, 0.0f, 0.0f};
+    mvfxBoxPlace place = Place(instance, gas);
+    float cell = place.scale * instance->effect->gases[gas].def.cellSize;
+    float half[3];
     for (int32_t a = 0; a < 3; ++a)
     {
-        float half[3] = {0.0f, 0.0f, 0.0f};
         half[a] = 0.5f * cell * (float)instance->effect->gases[gas].def.size[a];
-        float turned[3];
-        mvfxRotate(rotation, half, turned);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            reach[k] += fabsf(turned[k]);
-        }
     }
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out.min[k] = center[k] - (double)reach[k];
-        out.max[k] = center[k] + (double)reach[k];
-    }
-    return out;
+    return mvfxBoxBounds(&place, half);
 }
 
 void mvfxGasGravity(const mvfxInstance* instance, int32_t gas, float out[3])
@@ -107,17 +73,15 @@ void mvfxGasGravity(const mvfxInstance* instance, int32_t gas, float out[3])
         }
         return;
     }
-    double center[3];
-    float rotation[4];
-    float scale = 0.0f;
-    Place(instance, gas, center, rotation, &scale);
-    const float back[4] = {-rotation[0], -rotation[1], -rotation[2], rotation[3]};
+    mvfxBoxPlace place = Place(instance, gas);
+    const float back[4] = {-place.rotation[0], -place.rotation[1], -place.rotation[2],
+                           place.rotation[3]};
     float turned[3];
     mvfxRotate(back, def->gravity, turned);
     // The box's lengths are the world's over its scale.
     for (int32_t k = 0; k < 3; ++k)
     {
-        out[k] = turned[k] / scale;
+        out[k] = turned[k] / place.scale;
     }
 }
 
@@ -134,66 +98,15 @@ mvfxSpaceMap mvfxGasParticleMap(const mvfxInstance* instance, int32_t gas, int32
 
 mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulationSpace space)
 {
-    double center[3];
-    float rotation[4];
-    float scale = 0.0f;
-    Place(instance, gas, center, rotation, &scale);
-    const float back[4] = {-rotation[0], -rotation[1], -rotation[2], rotation[3]};
-    mvfxSpaceMap map = {.sigma = 1.0f / scale};
-    if (space == mvfx_spaceWorld)
-    {
-        // Moved to the box's center, turned back, over its scale.
-        for (int32_t k = 0; k < 4; ++k)
-        {
-            map.rotation[k] = back[k];
-        }
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            map.before[k] = center[k];
-        }
-        return map;
-    }
-    // From the instance's frame: scaled and turned into the world, then
-    // turned back into the box's, the instance's origin's offset from the
-    // box's center added in binary64.
-    const mvfxTransform* now = &instance->to;
-    mvfxMultiplyRotations(back, now->rotation, map.rotation);
-    map.sigma = now->scale / scale;
-    double offset[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        offset[k] = (now->origin[k] - center[k]) / (double)scale;
-    }
-    mvfxRotateDouble(back, offset, map.after);
-    return map;
+    mvfxBoxPlace place = Place(instance, gas);
+    return mvfxBoxMap(instance, &place, space);
 }
 
 mvfxSpaceMap mvfxGasToSpace(const mvfxInstance* instance, int32_t gas,
                             const mvfxSpaceMap* fromWorld)
 {
-    double center[3];
-    float rotation[4];
-    float scale = 0.0f;
-    Place(instance, gas, center, rotation, &scale);
-    // A box point x is the world's C + R s x, which fromWorld takes to
-    // turn(q, sigma (C + R s x - before)) + after: turn(q R, sigma s (x -
-    // before')) + after, before' = -R^-1 (C - before) / s.
-    mvfxSpaceMap map = {.sigma = fromWorld->sigma * scale};
-    mvfxMultiplyRotations(fromWorld->rotation, rotation, map.rotation);
-    const float back[4] = {-rotation[0], -rotation[1], -rotation[2], rotation[3]};
-    double d[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        d[k] = (center[k] - fromWorld->before[k]) / (double)scale;
-        map.after[k] = fromWorld->after[k];
-    }
-    double turned[3];
-    mvfxRotateDouble(back, d, turned);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        map.before[k] = -turned[k];
-    }
-    return map;
+    mvfxBoxPlace place = Place(instance, gas);
+    return mvfxBoxToSpace(&place, fromWorld);
 }
 
 void mvfxGasFollow(const mvfxInstance* instance, int32_t gas, mvfxResolvedForce* force)
@@ -248,9 +161,16 @@ mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId in
     {
         return result;
     }
-    float scale = 0.0f;
-    Place(live, gas, infoOut->center, infoOut->rotation, &scale);
-    infoOut->cellSize = scale * live->effect->gases[gas].def.cellSize;
+    mvfxBoxPlace place = Place(live, gas);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        infoOut->center[k] = place.center[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        infoOut->rotation[k] = place.rotation[k];
+    }
+    infoOut->cellSize = place.scale * live->effect->gases[gas].def.cellSize;
     for (int32_t k = 0; k < 3; ++k)
     {
         infoOut->size[k] = live->effect->gases[gas].def.size[k];

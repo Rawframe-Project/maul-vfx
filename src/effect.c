@@ -511,13 +511,22 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
         (def->emitterCount > 0 && def->emitters == nullptr) || def->emitterCount < 0 ||
         def->emitterCount > MVFX_MAX_EMITTERS || def->gasCount < 0 ||
         def->gasCount > MVFX_MAX_GASES || (def->gasCount > 0 && def->gases == nullptr) ||
-        def->emitterCount + def->gasCount < 1)
+        def->waterCount < 0 || def->waterCount > MVFX_MAX_WATERS ||
+        (def->waterCount > 0 && def->waters == nullptr) ||
+        def->emitterCount + def->gasCount + def->waterCount < 1)
     {
         return false;
     }
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
         if (!mvfxIsGasDefValid(&def->gases[g]))
+        {
+            return false;
+        }
+    }
+    for (int32_t w = 0; w < def->waterCount; ++w)
+    {
+        if (!mvfxIsWaterDefValid(&def->waters[w]))
         {
             return false;
         }
@@ -886,6 +895,11 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         effect->gases[g].emitter = surface ? def->gases[g].surface.emitter : mvfxLiquidOf(def, g);
     }
     effect->gasCount = def->gasCount;
+    for (int32_t w = 0; w < def->waterCount; ++w)
+    {
+        effect->waters[w] = mvfxCompileWater(&def->waters[w]);
+    }
+    effect->waterCount = def->waterCount;
     return effect;
 }
 
