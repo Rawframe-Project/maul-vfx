@@ -306,6 +306,103 @@ static void TestWalls(void)
     }
 }
 
+// A surface of open walls, nx by 240 cells of 0.1 centered at x, its waves
+// at 1 undamped, pushed at (13, 0, 0); in its own context.
+static mvfxInstanceId OpenWide(mvfxContext** context, int32_t nx, float x)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, context) == mvfx_success, "context");
+    mvfxWaterDef water = Water(nx, 240, 0.1f, 1.0f);
+    water.center[0] = x;
+    water.closedWalls = 0;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.waters = &water;
+    def.waterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(*context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    mvfxInstanceId id = {0};
+    CHECK(mvfxCreateInstance(*context, &instanceDef, &id) == mvfx_success, "instance");
+    const mvfxWaterPush push = {.point = {13.0, 0.0, 0.0}, .radius = 0.8f, .depth = 0.01f};
+    CHECK(mvfxInstance_PushWater(*context, id, 0, &push, 1) == mvfx_success, "pushed");
+    return id;
+}
+
+// The heights of a surface at three points.
+static void Heights(mvfxContext* context, mvfxInstanceId id, const double points[9], double out[3])
+{
+    mvfxWaterSample samples[3];
+    CHECK(mvfxInstance_SampleWater(context, id, 0, points, 3, samples) == mvfx_success, "sampled");
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = samples[k].surface[1];
+    }
+}
+
+// The most of a peak and a value at step s of 1/30, within the first
+// arrival after a path from the push (from 1 before to 1.5 after it).
+static void Peak(double* peak, double value, int32_t s, double path)
+{
+    bool first = s > (int32_t)(30.0 * (path - 1.0)) && s < (int32_t)(30.0 * (path + 1.5));
+    *peak = first ? fmax(*peak, value) : *peak;
+}
+
+static void TestOpenAngles(void)
+{
+    // A pulse 3 from an open wall, against the same pulse with the wall
+    // far: their difference is the reflection. At a probe whose
+    // reflection met the wall at 0, 30 and 60 degrees, its peak over the
+    // incident wave's after the same path, 6 / cos: Mur's first-order
+    // edge reflects (1 - cos) / (1 + cos), 0, 0.072 and 0.333 (measured
+    // at cells of 0.05: 0.018, 0.066, 0.374; at these cells of 0.1,
+    // 0.024, 0.061, 0.360).
+    mvfxContext* contexts[2];
+    mvfxInstanceId open = OpenWide(&contexts[0], 320, 0.0f);
+    mvfxInstanceId far = OpenWide(&contexts[1], 480, 8.0f);
+    const double tangents[3] = {0.0, 0.57735027, 1.7320508};
+    double probes[9];
+    double incident[9];
+    double paths[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        paths[k] = 6.0 * sqrt(1.0 + tangents[k] * tangents[k]);
+        const double probe[3] = {13.0, 0.0, 6.0 * tangents[k]};
+        const double back[3] = {13.0 - paths[k], 0.0, 0.0};
+        memcpy(&probes[3 * k], probe, sizeof probe);
+        memcpy(&incident[3 * k], back, sizeof back);
+    }
+    double reflected[3] = {0.0, 0.0, 0.0};
+    double arrived[3] = {0.0, 0.0, 0.0};
+    for (int32_t s = 1; s <= 30 * 14; ++s)
+    {
+        CHECK(mvfxContext_Step(contexts[0], 1.0 / 30.0) == mvfx_success, "stepped");
+        CHECK(mvfxContext_Step(contexts[1], 1.0 / 30.0) == mvfx_success, "stepped");
+        double a[3];
+        double b[3];
+        double c[3];
+        Heights(contexts[0], open, probes, a);
+        Heights(contexts[1], far, probes, b);
+        Heights(contexts[1], far, incident, c);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            Peak(&reflected[k], fabs(a[k] - b[k]), s, paths[k]);
+            Peak(&arrived[k], fabs(c[k]), s, paths[k]);
+        }
+    }
+    const double low[3] = {0.0, 0.03, 0.28};
+    const double high[3] = {0.04, 0.1, 0.45};
+    int32_t wrong = 0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double ratio = reflected[k] / arrived[k];
+        wrong += ratio < low[k] || ratio > high[k];
+    }
+    CHECK(wrong == 0, "an open wall reflects as Mur's edge does at each angle");
+    mvfxDestroyContext(contexts[0]);
+    mvfxDestroyContext(contexts[1]);
+}
+
 // A rough surface: single cells pushed up and down alike at random.
 static void Roughen(const mvfxWaterDef* water, uint32_t seed)
 {
@@ -856,6 +953,27 @@ static void FinishAgain(void)
     CHECK(mvfxInstance_IsFinished(s_context, s_instance), "its pushes dropped");
 }
 
+static void TestHighLevel(void)
+{
+    // A surface at a rest level of 1000 (its heights its displacement
+    // from it, not the level): still at last, read and sampled there.
+    mvfxWaterDef water = Water(16, 16, 0.1f, 1.0f);
+    water.center[1] = 1000.0f;
+    water.damping = 5.0f;
+    CHECK(Open(&water, 1), "opened");
+    Push(0.0, 1000.0, 0.0, 0.3f, 0.01f);
+    Steps(1, 1.0 / 60.0);
+    CHECK(mvfxInstance_Stop(s_context, s_instance, mvfx_stopEmitting) == mvfx_success, "stopped");
+    int32_t steps = StepsToFinish(600);
+    CHECK(steps > 60 && steps < 600, "still at a high level");
+    float* u = Read(&water, mvfx_waterHeight);
+    const double at[3] = {0.05, 0.0, 0.05};
+    mvfxWaterSample sample = Sample(at);
+    CHECK(u[8 * 16 + 8] == 1000.0f && fabs(sample.surface[1] - 1000.0) < 1e-6, "at its level");
+    free(u);
+    mvfxDestroyContext(s_context);
+}
+
 static void TestFinish(void)
 {
     mvfxWaterDef water = Water(16, 16, 0.1f, 1.0f);
@@ -884,6 +1002,7 @@ int main(void)
     TestPulse();
     TestEnergy();
     TestWalls();
+    TestOpenAngles();
     TestStability();
     TestPushes();
     TestReads();
@@ -891,5 +1010,6 @@ int main(void)
     TestInfo();
     TestBounds();
     TestFinish();
+    TestHighLevel();
     return s_failures;
 }

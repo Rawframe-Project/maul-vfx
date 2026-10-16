@@ -161,16 +161,34 @@ static double Push(mvfxInstance* instance, int32_t index, const mvfxWaterPush* p
     return sank;
 }
 
-// Raises every cell evenly by what the pushes sank: the water a body
-// displaces lifts the level, and the surface's volume stays.
-static void Displace(const mvfxCompiledWater* water, mvfxWaterState* state, double sank)
+// A lift of every cell: its rows' heights and the lift.
+typedef struct Lift
 {
-    float* u = state->heights[state->current];
-    float by = (float)(sank / (double)water->cells);
-    for (int64_t i = 0; i < water->cells; ++i)
+    float* u;
+    int32_t width;
+    float by;
+} Lift;
+
+static void LiftRows(int32_t start, int32_t end, void* context)
+{
+    const Lift* lift = context;
+    for (int64_t i = (int64_t)start * lift->width; i < (int64_t)end * lift->width; ++i)
     {
-        u[i] += by;
+        lift->u[i] += lift->by;
     }
+}
+
+// Raises every cell evenly by what the step's pushes sank, one pass for
+// them all: the water a body displaces lifts the level, and the
+// surface's volume stays. Kept in the heights rather than as a level
+// apart, their mean stays at the rest level however long a body pushes.
+static void Displace(const mvfxCompiledWater* water, mvfxWaterState* state, double sank,
+                     const mvfxTasks* tasks)
+{
+    Lift lift = {.u = state->heights[state->current],
+                 .width = water->def.size[0],
+                 .by = (float)(sank / (double)water->cells)};
+    mvfxRunTasks(tasks, LiftRows, water->def.size[1], ROW_RANGE, &lift);
 }
 
 // Whether the surface moves (a rate, or a slope that will make one: an
@@ -203,7 +221,7 @@ void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
     }
     if (state->pushCount > 0)
     {
-        Displace(water, state, sank);
+        Displace(water, state, sank, tasks);
     }
     state->pushCount = 0;
     double seconds =
