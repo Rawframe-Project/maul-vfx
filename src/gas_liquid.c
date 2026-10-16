@@ -489,11 +489,9 @@ static void ReadRange(int32_t start, int32_t end, void* context)
 static Step StepOf(mvfxInstance* instance, int32_t g, double seconds)
 {
     const mvfxCompiledGas* gas = &instance->effect->gases[g];
-    int32_t e = gas->liquid;
-    const mvfxCompiledEmitter* emitter = &instance->effect->emitters[e];
+    int32_t e = gas->emitter;
     mvfxEmitterState* emitterState = &instance->emitters[e];
     mvfxGasState* state = &instance->gases[g];
-    bool world = emitter->space == mvfx_spaceWorld;
     Step s = {.gas = gas,
               .state = state,
               .room = &state->room,
@@ -502,14 +500,12 @@ static Step StepOf(mvfxInstance* instance, int32_t g, double seconds)
                           .h = (float)seconds},
               .affine = mvfxAttributeArray(instance, e, mvfx_attributeAffine),
               .count = emitterState->count,
-              .map = mvfxGasMap(instance, g, world ? mvfx_spaceWorld : mvfx_spaceLocal)};
+              .map = mvfxGasParticleMap(instance, g, e)};
     int64_t at = 0;
     for (int32_t k = 0; k < 3; ++k)
     {
         s.x[k] = mvfxAttributeArray(instance, e, (mvfxAttribute)(mvfx_attributePositionX + k));
         s.v[k] = mvfxAttributeArray(instance, e, (mvfxAttribute)(mvfx_attributeVelocityX + k));
-        // A world-space emitter's places are offsets from its anchor.
-        s.map.before[k] -= world ? emitterState->anchor[k] : 0.0;
         s.faces[k] = state->velocity[k][state->current];
         s.validAt[k] = at;
         at += gas->faces[k];
@@ -526,7 +522,7 @@ void mvfxStepLiquidGas(mvfxInstance* instance, int32_t g, const mvfxTasks* tasks
         return;
     }
     Step s = StepOf(instance, g, seconds);
-    const mvfxCompiledEmitter* emitter = &instance->effect->emitters[s.gas->liquid];
+    const mvfxCompiledEmitter* emitter = &instance->effect->emitters[s.gas->emitter];
     mvfxRunTasks(tasks, MapRange, s.count, LIQUID_RANGE, &s);
     Sort(&s);
     // A particle's share of a cell: a cube, or a square, of its spacing

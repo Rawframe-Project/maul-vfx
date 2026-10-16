@@ -19,6 +19,7 @@ mvfxGasDef mvfxDefaultGasDef(void)
         .pressureCycles = 4,
         .gravity = {0.0f, -9.81f, 0.0f},
         .gravitySpace = mvfx_gasWorld,
+        .surface = {.radius = 0.1f, .reach = 4.0f, .low = 0.4f, .high = 2.5f, .smoothing = 1},
     };
 }
 
@@ -88,6 +89,28 @@ static bool AreForcesValid(const mvfxGasDef* def)
     return valid;
 }
 
+// Whether a liquid or surface gas keeps to what its kind has: no sources
+// or forces, one substep, and for a surface no obstacles and its
+// particles' radius, reach, thresholds and smoothing in range.
+static bool IsKindValid(const mvfxGasDef* def)
+{
+    if (def->kind == mvfx_gasSmoke)
+    {
+        return true;
+    }
+    if (def->sourceCount > 0 || def->forceCount > 0 || def->substeps != 1)
+    {
+        return false;
+    }
+    const mvfxGasSurface* s = &def->surface;
+    return def->kind == mvfx_gasLiquid ||
+           (def->obstacleCount == 0 && !def->hostObstacles && s->radius > 0.0f &&
+            s->radius <= MVFX_MAX_EXTENT && s->reach >= 1.0f &&
+            s->reach <= MVFX_MAX_SURFACE_REACH && s->low >= 0.0f && s->high >= 0.0f &&
+            IsWithin(s->low, MVFX_MAX_EXTENT) && IsWithin(s->high, MVFX_MAX_EXTENT) &&
+            s->smoothing >= 0 && s->smoothing <= MVFX_MAX_SURFACE_SMOOTHING);
+}
+
 bool mvfxIsGasDefValid(const mvfxGasDef* def)
 {
     if (def->cookie != MVFX_GAS_DEF_COOKIE || !IsSizeValid(def->size) ||
@@ -97,9 +120,7 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def)
         def->sourceCount > MVFX_MAX_GAS_SOURCES ||
         (def->sourceCount > 0 && def->sources == nullptr) || def->closedWalls > 63 ||
         def->pressureCycles < 0 || def->pressureCycles > MVFX_MAX_GAS_CYCLES ||
-        def->kind > mvfx_gasLiquid ||
-        (def->kind == mvfx_gasLiquid &&
-         (def->sourceCount > 0 || def->forceCount > 0 || def->substeps != 1)))
+        def->kind > mvfx_gasSurface || !IsKindValid(def))
     {
         return false;
     }
@@ -154,9 +175,28 @@ static bool Coarsens(const int32_t n[3])
     return any;
 }
 
+// A surface gas has no faces, levels or work, and buckets of whole cells
+// at least its reach on a side, one more beyond the box at each end of an
+// axis of more than one cell (the particles a box's cells reach).
+static void CompileSurface(mvfxCompiledGas* gas)
+{
+    float cells = ceilf(mvfxSurfaceReach(gas) / gas->def.cellSize);
+    gas->bucket = cells < (float)MVFX_MAX_GAS_SIZE ? (int32_t)cells : MVFX_MAX_GAS_SIZE;
+    gas->bucketCount = 1;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int32_t n = gas->def.size[k];
+        gas->faces[k] = 0;
+        gas->buckets[k] = n > 1 ? (n + gas->bucket - 1) / gas->bucket + 2 : 1;
+        gas->bucketCount *= gas->buckets[k];
+    }
+    gas->levelCount = 0;
+    gas->work = 0;
+}
+
 mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
 {
-    mvfxCompiledGas gas = {.def = *def, .liquid = -1};
+    mvfxCompiledGas gas = {.def = *def, .emitter = -1};
     gas.def.sources = nullptr;
     gas.def.obstacles = nullptr;
     gas.def.forces = nullptr;
@@ -199,18 +239,24 @@ mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
     int64_t expansion = def->burnExpansion > 0.0f && def->burnRate > 0.0f ? gas.cells : 0;
     gas.work = curl > faces ? curl : faces;
     gas.work = gas.work > expansion ? gas.work : expansion;
+    if (def->kind == mvfx_gasSurface)
+    {
+        CompileSurface(&gas);
+    }
     return gas;
 }
 
 void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, int32_t particles,
                       mvfxGasAt* at)
 {
+    bool surface = gas->def.kind == mvfx_gasSurface;
     for (int32_t k = 0; k < 3; ++k)
     {
         at->velocity[k] =
             mvfxLayoutAdd(layout, 2u * (size_t)gas->faces[k], sizeof(float), alignof(float));
-        at->scalars[k] =
-            mvfxLayoutAdd(layout, 2u * (size_t)gas->cells, sizeof(float), alignof(float));
+        // A surface holds its distance only.
+        size_t cells = surface && k > 0 ? 0u : (size_t)gas->cells;
+        at->scalars[k] = mvfxLayoutAdd(layout, 2u * cells, sizeof(float), alignof(float));
     }
     for (int32_t l = 0; l < gas->levelCount; ++l)
     {
@@ -229,11 +275,12 @@ void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, int32_t pa
     at->solid = mvfxLayoutAdd(layout, gas->hasObstacles ? (size_t)gas->cells : 0, 1, 1);
     at->work = mvfxLayoutAdd(layout, (size_t)gas->work, sizeof(float), alignof(float));
     bool liquid = gas->def.kind == mvfx_gasLiquid;
-    size_t cells = liquid ? (size_t)gas->cells + 1u : 0u;
-    size_t room = liquid ? (size_t)particles : 0u;
-    at->cellStart = mvfxLayoutAdd(layout, cells, sizeof(int32_t), alignof(int32_t));
+    size_t starts = liquid ? (size_t)gas->cells + 1u : 0u;
+    starts = surface ? (size_t)gas->bucketCount + 1u : starts;
+    size_t room = liquid || surface ? (size_t)particles : 0u;
+    at->cellStart = mvfxLayoutAdd(layout, starts, sizeof(int32_t), alignof(int32_t));
     at->order = mvfxLayoutAdd(layout, room, sizeof(int32_t), alignof(int32_t));
-    at->local = mvfxLayoutAdd(layout, 15u * room, sizeof(float), alignof(float));
+    at->local = mvfxLayoutAdd(layout, (surface ? 3u : 15u) * room, sizeof(float), alignof(float));
     size_t masks = 0;
     for (int32_t l = 0; liquid && l < gas->levelCount; ++l)
     {
@@ -244,11 +291,11 @@ void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, int32_t pa
     at->valid = mvfxLayoutAdd(layout, 2u * faces, 1, 1);
 }
 
-// Points a liquid gas's room into the block.
+// Points a liquid or surface gas's room into the block.
 static void StartRoom(mvfxGasState* state, const mvfxCompiledGas* gas, int32_t particles,
                       unsigned char* block, const mvfxGasAt* at)
 {
-    if (gas->def.kind != mvfx_gasLiquid)
+    if (gas->def.kind == mvfx_gasSmoke)
     {
         return;
     }
@@ -308,15 +355,21 @@ void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, int32_t parti
 
 void mvfxClearGas(mvfxGasState* state, const mvfxCompiledGas* gas)
 {
+    bool surface = gas->def.kind == mvfx_gasSurface;
     for (int32_t b = 0; b < 2; ++b)
     {
         for (int32_t k = 0; k < 3; ++k)
         {
             memset(state->velocity[k][b], 0, (size_t)gas->faces[k] * sizeof(float));
         }
-        for (int32_t f = 0; f < 3; ++f)
+        for (int32_t f = 0; f < (surface ? 1 : 3); ++f)
         {
             memset(state->scalars[f][b], 0, (size_t)gas->cells * sizeof(float));
+        }
+        // A surface without particles: its reach everywhere.
+        for (int64_t i = 0; surface && i < gas->cells; ++i)
+        {
+            state->scalars[0][b][i] = mvfxSurfaceReach(gas);
         }
     }
     for (int32_t l = 0; l < gas->levelCount; ++l)

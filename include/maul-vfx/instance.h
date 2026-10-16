@@ -812,8 +812,9 @@ extern "C"
     /// @param count    How many: the gas's cells.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas index
-    ///         or field out of range or a count not the gas's cells, which
-    ///         counts as misuse when the context is given.
+    ///         or field out of range (a surface's only field its distance,
+    ///         which no other gas has) or a count not the gas's cells,
+    ///         which counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGas(const mvfxContext* context,

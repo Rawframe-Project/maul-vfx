@@ -344,6 +344,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   instead of flying apart after its spawning tick.
 - A liquid gas's obstacles hold its liquid: their cells are solid, where
   before they were taken for air and the liquid drained toward them.
+- Surfaces: a surface gas (`mvfx_gasSurface`, `mvfxGasDef.surface`)
+  holds the signed distance to one emitter's particles' surface
+  (`mvfx_gasDistance`), Zhu and Bridson's field with Solenthaler et
+  al.'s correction for concavities and gaps, made anew each step and
+  smoothed; read and sampled as any gas's field, its reach outside the
+  box.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

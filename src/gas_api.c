@@ -121,6 +121,17 @@ void mvfxGasGravity(const mvfxInstance* instance, int32_t gas, float out[3])
     }
 }
 
+mvfxSpaceMap mvfxGasParticleMap(const mvfxInstance* instance, int32_t gas, int32_t emitter)
+{
+    bool world = instance->effect->emitters[emitter].space == mvfx_spaceWorld;
+    mvfxSpaceMap map = mvfxGasMap(instance, gas, world ? mvfx_spaceWorld : mvfx_spaceLocal);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        map.before[k] -= world ? instance->emitters[emitter].anchor[k] : 0.0;
+    }
+    return map;
+}
+
 mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulationSpace space)
 {
     double center[3];
@@ -281,19 +292,20 @@ mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId insta
         return result;
     }
     const mvfxCompiledGas* compiled = &live->effect->gases[gas];
-    if (out == nullptr || field > mvfx_gasVelocityZ || count != compiled->cells)
+    if (out == nullptr || !mvfxIsGasFieldOf(compiled, field) || count != compiled->cells)
     {
         mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
     const mvfxGasState* state = &live->gases[gas];
-    if (field >= mvfx_gasVelocityX)
+    if (field >= mvfx_gasVelocityX && field <= mvfx_gasVelocityZ)
     {
         int32_t k = field - mvfx_gasVelocityX;
         CopyVelocity(compiled, state->velocity[k][state->current], k, out);
         return mvfx_success;
     }
-    const float* values = state->scalars[field][state->current];
+    // A surface's distance is held as its first scalar.
+    const float* values = state->scalars[field == mvfx_gasDistance ? 0 : field][state->current];
     for (int64_t i = 0; i < count; ++i)
     {
         out[i] = values[i];

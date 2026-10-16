@@ -882,7 +882,8 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
         effect->gases[g] = mvfxCompileGas(&def->gases[g]);
-        effect->gases[g].liquid = mvfxLiquidOf(def, g);
+        bool surface = def->gases[g].kind == mvfx_gasSurface;
+        effect->gases[g].emitter = surface ? def->gases[g].surface.emitter : mvfxLiquidOf(def, g);
     }
     effect->gasCount = def->gasCount;
     return effect;

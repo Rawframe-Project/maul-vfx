@@ -15,16 +15,17 @@
 
 #include <math.h>
 
-// A field's value at a cell: a scalar's, or a velocity component's mean
-// of the two faces about the center.
+// A field's value at a cell: a scalar's (a surface's distance its
+// first), or a velocity component's mean of the two faces about the
+// center.
 static float CellValue(const mvfxCompiledGas* gas, const mvfxGasState* state, mvfxGasField field,
                        const int32_t at[3])
 {
     const int32_t* n = gas->def.size;
-    if (field < mvfx_gasVelocityX)
+    if (field < mvfx_gasVelocityX || field == mvfx_gasDistance)
     {
         int64_t i = ((int64_t)at[2] * n[1] + at[1]) * n[0] + at[0];
-        return state->scalars[field][state->current][i];
+        return state->scalars[field == mvfx_gasDistance ? 0 : field][state->current][i];
     }
     int32_t k = field - mvfx_gasVelocityX;
     if (n[k] == 1)
@@ -58,12 +59,14 @@ static uint32_t FormatBytes(mvfxFormat format)
     }
 }
 
-// Whether a read is in range for a gas of n cells, its pitches resolved
-// and the bytes it reaches into end.
-static bool IsReadValid(const mvfxGasRead* read, const int32_t n[3], int64_t pitch[2], int64_t* end)
+// Whether a read is in range for a gas, its pitches resolved and the
+// bytes it reaches into end.
+static bool IsReadValid(const mvfxGasRead* read, const mvfxCompiledGas* gas, int64_t pitch[2],
+                        int64_t* end)
 {
+    const int32_t* n = gas->def.size;
     uint32_t bytes = FormatBytes(read->format);
-    bool valid = read->field <= mvfx_gasVelocityZ && bytes > 0;
+    bool valid = mvfxIsGasFieldOf(gas, read->field) && bytes > 0;
     bool normalized = read->format != mvfx_formatFloat32 && read->format != mvfx_formatFloat16;
     valid = valid && (!normalized ||
                       (isfinite(read->low) && isfinite(read->high) && read->high > read->low));
@@ -112,7 +115,7 @@ mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId ins
     const mvfxCompiledGas* compiled = &live->effect->gases[gas];
     int64_t pitch[2] = {0, 0};
     int64_t end = 0;
-    if (read == nullptr || out == nullptr || !IsReadValid(read, compiled->def.size, pitch, &end) ||
+    if (read == nullptr || out == nullptr || !IsReadValid(read, compiled, pitch, &end) ||
         bytes < end)
     {
         mvfxCountMisuse((mvfxContext*)context);
@@ -139,25 +142,26 @@ mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
-// A field at a place in the box's frame, 0 outside the box (a 2D gas's
-// reaching along its Z without end).
+// A field at a place in the box's frame, 0 outside the box (a surface's
+// distance its reach), a 2D gas's reaching along its Z without end.
 static float SampleAt(const mvfxCompiledGas* gas, const mvfxGasState* state, mvfxGasField field,
                       const float local[3])
 {
     const mvfxGasLattice l = {.n = {gas->def.size[0], gas->def.size[1], gas->def.size[2]},
                               .cell = gas->def.cellSize};
+    bool distance = field == mvfx_gasDistance;
     float p[3];
     for (int32_t k = 0; k < 3; ++k)
     {
         p[k] = local[k] / l.cell + 0.5f * (float)l.n[k];
         if (l.n[k] > 1 && !(p[k] >= 0.0f && p[k] <= (float)l.n[k]))
         {
-            return 0.0f;
+            return distance ? mvfxSurfaceReach(gas) : 0.0f;
         }
     }
-    if (field < mvfx_gasVelocityX)
+    if (field < mvfx_gasVelocityX || distance)
     {
-        return mvfxGasSample(state->scalars[field][state->current], &l, -1, p);
+        return mvfxGasSample(state->scalars[distance ? 0 : field][state->current], &l, -1, p);
     }
     int32_t k = field - mvfx_gasVelocityX;
     return l.n[k] > 1 ? mvfxGasSample(state->velocity[k][state->current], &l, k, p) : 0.0f;
@@ -173,7 +177,8 @@ mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId ins
     {
         return result;
     }
-    bool valid = field <= mvfx_gasVelocityZ && count >= 0 &&
+    const mvfxCompiledGas* compiled = &live->effect->gases[gas];
+    bool valid = mvfxIsGasFieldOf(compiled, field) && count >= 0 &&
                  (count == 0 || (points != nullptr && out != nullptr));
     for (int64_t i = 0; valid && i < 3 * count; ++i)
     {
@@ -184,7 +189,6 @@ mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId ins
         mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
-    const mvfxCompiledGas* compiled = &live->effect->gases[gas];
     const mvfxGasState* state = &live->gases[gas];
     mvfxSpaceMap map = mvfxGasMap(live, gas, mvfx_spaceWorld);
     for (int64_t i = 0; i < count; ++i)

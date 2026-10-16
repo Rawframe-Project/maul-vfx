@@ -41,7 +41,8 @@ int32_t mvfxLiquidOf(const mvfxEffectDef* def, int32_t g)
 }
 
 // Whether every grid liquid names a liquid gas of the effect, each liquid
-// gas is named by exactly one, and no emitter splats into a liquid gas.
+// gas is named by exactly one, no emitter splats into a liquid or surface
+// gas, and each surface gas names an emitter of the effect.
 static bool AreLiquidGasesValid(const mvfxEffectDef* def)
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
@@ -54,14 +55,17 @@ static bool AreLiquidGasesValid(const mvfxEffectDef* def)
         {
             return false;
         }
-        if (emitter->gasSplat.enabled && def->gases[emitter->gasSplat.gas].kind == mvfx_gasLiquid)
+        if (emitter->gasSplat.enabled && def->gases[emitter->gasSplat.gas].kind != mvfx_gasSmoke)
         {
             return false;
         }
     }
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
-        if (def->gases[g].kind == mvfx_gasLiquid && mvfxLiquidOf(def, g) < 0)
+        const mvfxGasDef* gas = &def->gases[g];
+        if ((gas->kind == mvfx_gasLiquid && mvfxLiquidOf(def, g) < 0) ||
+            (gas->kind == mvfx_gasSurface &&
+             (gas->surface.emitter < 0 || gas->surface.emitter >= def->emitterCount)))
         {
             return false;
         }
@@ -70,7 +74,7 @@ static bool AreLiquidGasesValid(const mvfxEffectDef* def)
 }
 
 // Whether every gas an emitter's forces follow or it splats into is one
-// of the effect's, and no gas's force follows a gas.
+// of the effect's and none a surface, and no gas's force follows a gas.
 static bool AreGasLinksValid(const mvfxEffectDef* def)
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
@@ -78,7 +82,8 @@ static bool AreGasLinksValid(const mvfxEffectDef* def)
         for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
         {
             const mvfxForce* force = &def->emitters[i].forces[f];
-            if (force->kind == mvfx_forceGas && force->gas >= def->gasCount)
+            if (force->kind == mvfx_forceGas &&
+                (force->gas >= def->gasCount || def->gases[force->gas].kind == mvfx_gasSurface))
             {
                 return false;
             }

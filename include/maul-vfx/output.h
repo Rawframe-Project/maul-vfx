@@ -649,8 +649,9 @@ extern "C"
     /// @param bytes     out's size in bytes: at least the last value's end.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas
-    ///         index, field, format, box, range or pitch out of range, or
-    ///         bytes too few, which counts as misuse when the context is
+    ///         index, field, format, box, range or pitch out of range (a
+    ///         surface's only field its distance, which no other gas has),
+    ///         or bytes too few, which counts as misuse when the context is
     ///         given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
@@ -662,8 +663,9 @@ extern "C"
 
     /// Samples a field of a gas of an instance at points in the world, as
     /// the last step left it: trilinear, as particles following the gas
-    /// read it, 0 outside its box (a 2D gas's reaching along its Z without
-    /// end); a velocity's component along the box's axis.
+    /// read it, 0 outside its box (a surface's distance its reach; a 2D
+    /// gas's reaching along its Z without end); a velocity's component
+    /// along the box's axis.
     ///
     /// @param context   The context that owns the instance.
     /// @param instance  The instance.

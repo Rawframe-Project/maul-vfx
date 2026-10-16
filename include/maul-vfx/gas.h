@@ -40,6 +40,12 @@ extern "C"
 // The most V cycles a gas's pressure solve takes a substep.
 #define MVFX_MAX_GAS_CYCLES 16
 
+// The most a surface's kernel reaches, in its particles' radii.
+#define MVFX_MAX_SURFACE_REACH 8.0f
+
+// The most smoothing passes a surface takes.
+#define MVFX_MAX_SURFACE_SMOOTHING 8
+
     // A gas box's walls, as bits: each closed (nothing passes it, the gas
     // slides along it) or, its bit clear, open (the gas flows in and out
     // freely, the pressure outside 0).
@@ -72,6 +78,15 @@ extern "C"
         // no forces of its own (the particles carry gravity and forces) and
         // one substep; its advection and decays are not read.
         mvfx_gasLiquid = 1,
+        // A surface: its one field, mvfx_gasDistance, is the signed
+        // distance to the surface of one emitter's particles
+        // (mvfxGasDef.surface), negative inside, made anew each step (Zhu
+        // and Bridson, "Animating Sand as a Fluid", SIGGRAPH 2005, with
+        // Solenthaler, Schlafli and Pajarola's correction, CAVW 2007). Any
+        // emitter serves: a liquid of either solver, or plain particles.
+        // It has no sources, forces or obstacles, one substep, and no
+        // emitter splats into it or follows it.
+        mvfx_gasSurface = 2,
     };
 
     // Where a gas's box is.
@@ -98,6 +113,9 @@ extern "C"
         mvfx_gasVelocityX = 3,
         mvfx_gasVelocityY = 4,
         mvfx_gasVelocityZ = 5,
+        // A surface gas's signed distance, in the box's lengths; its one
+        // field, read from no other gas.
+        mvfx_gasDistance = 6,
     };
 
     // How a gas carries its fields.
@@ -145,6 +163,39 @@ extern "C"
 
     // A force (maul-vfx/effect.h).
     struct mvfxForce;
+
+    // A surface gas's particles and field: at a point x, phi(x) = |x - m| -
+    // radius f, m the mean of the particles within R = reach radius of x
+    // weighed by (1 - s^2)^3 (s their distance over R), and f 1 where the
+    // largest eigenvalue E of m's Jacobian (its symmetric part's) is below
+    // low, else g^3 - 3 g^2 + 3 g with g = (high - E) / (high - low),
+    // held within 0 and 1: where the mean moves faster than the point (a
+    // concavity, a gap between drops), the surface draws in. A cell
+    // without a particle within R, or farther than R, holds R; then each
+    // smoothing pass takes the mean of each cell and its neighbors along
+    // the box's axes, then that mean again only where it is lower. A
+    // liquid's spacing as the radius, reach 4, low 0.4 and high 2.5 put a
+    // jittered block's flat face within a tenth of a spacing of its place
+    // (inside it) and keep two balls a spacing apart from joining; in 2D,
+    // high 2.0 keeps disks as near apart.
+    typedef struct mvfxGasSurface
+    {
+        // The emitter whose particles it wraps, an index into the effect's
+        // emitters.
+        int32_t emitter;
+        // Each particle's radius, above 0 and at most MVFX_MAX_EXTENT, in
+        // the instance's lengths.
+        float radius;
+        // The kernel's reach over the radius, from 1 to
+        // MVFX_MAX_SURFACE_REACH.
+        float reach;
+        // The eigenvalue's thresholds, finite and at least 0; low at or
+        // above high turns the correction off (f 1 everywhere).
+        float low;
+        float high;
+        // From 0 to MVFX_MAX_SURFACE_SMOOTHING.
+        int32_t smoothing;
+    } mvfxGasSurface;
 
     // A gas. Build it with mvfxDefaultGasDef.
     typedef struct mvfxGasDef
@@ -232,6 +283,8 @@ extern "C"
         // copies them and holds their grids.
         const struct mvfxForce* forces;
         int32_t forceCount;
+        // A surface gas's particles and field; not read for another kind.
+        mvfxGasSurface surface;
     } mvfxGasDef;
 
 // The cookie of a gas def, which its default sets and mvfxCreateEffect
@@ -241,7 +294,9 @@ extern "C"
     /// Returns the default gas def: a 2D gas of 64 by 64 cells of 0.1, in
     /// local space, one substep, nothing decaying, no sources, its walls
     /// open, 4 V cycles of pressure, semi-Lagrangian; gravity (0, -9.81, 0)
-    /// in the world, with no buoyancy, no confinement and inert fuel.
+    /// in the world, with no buoyancy, no confinement and inert fuel; its
+    /// surface of emitter 0's particles of radius 0.1, reach 4, thresholds
+    /// 0.4 and 2.5 and one smoothing pass.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

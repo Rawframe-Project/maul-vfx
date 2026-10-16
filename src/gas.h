@@ -47,9 +47,14 @@ typedef struct mvfxCompiledGas
     // others), which the effect holds.
     mvfxForce forces[MVFX_MAX_FORCES];
     struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
-    // For a liquid gas, the emitter whose particles move on it; -1 for
-    // smoke.
-    int32_t liquid;
+    // For a liquid gas the emitter whose particles move on it, for a
+    // surface gas the one whose particles it wraps; -1 for smoke.
+    int32_t emitter;
+    // A surface gas's buckets: their cells along a side (enough to hold
+    // its reach), their count along each axis and in all.
+    int32_t bucket;
+    int32_t buckets[3];
+    int64_t bucketCount;
 } mvfxCompiledGas;
 
 // The most obstacles a gas meets: its own and the host's.
@@ -73,11 +78,12 @@ typedef struct mvfxGasAt
     size_t valid;
 } mvfxGasAt;
 
-// A liquid gas's room for its particles: each cell's first in the order
-// (and one past the last cell's last); the particles' indices by cell,
-// those outside the box left out; each particle's place in cells, its
-// velocity and its affine matrix in the box's frame (fifteen arrays of the
-// capacity); each level's liquid cells (1 liquid, 0 air); and each face's
+// A liquid or surface gas's room for its particles: each cell's (a
+// surface's bucket's) first in the order (and one past the last's last);
+// the particles' indices by cell, those outside the box left out; each
+// particle's place in cells, and a liquid's velocity and affine matrix,
+// in the box's frame (fifteen arrays of the capacity, a surface's three);
+// a liquid's levels' liquid cells (1 liquid, 0 air), and its faces'
 // validity in two buffers, across X, then Y, then Z.
 typedef struct mvfxLiquidGasRoom
 {
@@ -139,12 +145,27 @@ typedef struct mvfxGasState
     float rotation[4];
     float scale;
     bool holds;
-    // A liquid gas's room (all NULL for smoke).
+    // A liquid or surface gas's room (all NULL for smoke).
     mvfxLiquidGasRoom room;
 } mvfxGasState;
 
 // A scalar at most this is nothing.
 #define MVFX_GAS_EMPTY 1e-6f
+
+// Whether a gas has a field: a surface gas only its distance, held as its
+// first scalar; another, every field but the distance.
+static inline bool mvfxIsGasFieldOf(const mvfxCompiledGas* gas, mvfxGasField field)
+{
+    return gas->def.kind == mvfx_gasSurface ? field == mvfx_gasDistance
+                                            : field <= mvfx_gasVelocityZ;
+}
+
+// A surface gas's reach, R: the distance it holds where no particle is
+// near, in the box's lengths.
+static inline float mvfxSurfaceReach(const mvfxCompiledGas* gas)
+{
+    return gas->def.surface.reach * gas->def.surface.radius;
+}
 
 // Whether a gas def is valid.
 bool mvfxIsGasDefValid(const mvfxGasDef* def);

@@ -438,9 +438,8 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     mvfxGasAt gasesAt[MVFX_MAX_GASES];
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
-        int32_t liquid = effect->gases[g].liquid;
-        mvfxAddGasLayout(&layout, &effect->gases[g], liquid >= 0 ? capacities[liquid] : 0,
-                         &gasesAt[g]);
+        int32_t e = effect->gases[g].emitter;
+        mvfxAddGasLayout(&layout, &effect->gases[g], e >= 0 ? capacities[e] : 0, &gasesAt[g]);
     }
     if (layout.overflow)
     {
@@ -479,9 +478,9 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, capacities);
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
-        int32_t liquid = effect->gases[g].liquid;
-        mvfxStartGas(&instance->gases[g], &effect->gases[g], liquid >= 0 ? capacities[liquid] : 0,
-                     block, &gasesAt[g]);
+        int32_t e = effect->gases[g].emitter;
+        mvfxStartGas(&instance->gases[g], &effect->gases[g], e >= 0 ? capacities[e] : 0, block,
+                     &gasesAt[g]);
         mvfxGasAreas(&effect->gases[g], &instance->gases[g]);
     }
     mvfxResetInstance(instance);
@@ -628,15 +627,17 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
     {
         const mvfxCompiledGas* compiled = &instance->effect->gases[g];
         const mvfxGasState* gas = &instance->gases[g];
+        // A surface holds its distance only: no faces, levels or other
+        // scalars.
+        bool surface = compiled->def.kind == mvfx_gasSurface;
+        int32_t cells = (int32_t)(compiled->cells * (int64_t)sizeof(float));
         for (int32_t k = 0; k < 3; ++k)
         {
             hash = mvfxHash64(hash, gas->velocity[k][gas->current],
                               (int32_t)(compiled->faces[k] * (int64_t)sizeof(float)));
-            hash = mvfxHash64(hash, gas->scalars[k][gas->current],
-                              (int32_t)(compiled->cells * (int64_t)sizeof(float)));
+            hash = mvfxHash64(hash, gas->scalars[k][gas->current], surface && k > 0 ? 0 : cells);
         }
-        hash = mvfxHash64(hash, gas->levels[0].pressure,
-                          (int32_t)(compiled->cells * (int64_t)sizeof(float)));
+        hash = surface ? hash : mvfxHash64(hash, gas->levels[0].pressure, cells);
     }
     return hash;
 }

@@ -12,6 +12,7 @@
 #include "gas_api.h"
 #include "gas_liquid.h"
 #include "gas_step.h"
+#include "gas_surface.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "tasks.h"
@@ -165,6 +166,11 @@ static void StepGases(mvfxInstance* instance, const mvfxTasks* tasks)
                 mvfxResolveGasObstacles(instance, g);
             }
             mvfxStepLiquidGas(instance, g, tasks);
+            continue;
+        }
+        if (gas->def.kind == mvfx_gasSurface)
+        {
+            mvfxStepSurfaceGas(instance, g, tasks);
             continue;
         }
         mvfxResolvedForce* forces = instance->gasForces;

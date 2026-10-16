@@ -24,6 +24,11 @@ mvfxBounds mvfxGasBounds(const mvfxInstance* instance, int32_t gas);
 // box's frame now.
 mvfxSpaceMap mvfxGasMap(const mvfxInstance* instance, int32_t gas, mvfxSimulationSpace space);
 
+// The map from an emitter's particles' places into a gas box's frame now:
+// from its space, a world-space emitter's places being offsets from its
+// anchor.
+mvfxSpaceMap mvfxGasParticleMap(const mvfxInstance* instance, int32_t gas, int32_t emitter);
+
 // The map from a gas box's frame now into a space, given the map from the
 // world into it.
 mvfxSpaceMap mvfxGasToSpace(const mvfxInstance* instance, int32_t gas,

@@ -447,11 +447,29 @@ static inline void BuildLiquidScene(mvfxContext* context)
     basinGas.center[1] = 0.36f;
     basinGas.closedWalls = 63;
     basinGas.pressureCycles = 3;
+    // The grid liquid's surface over its basin, in cells half its gas's,
+    // and the cup's liquid's in 3D, a reach of 2 radii.
+    mvfxGasDef gases[3] = {basinGas, mvfxDefaultGasDef(), mvfxDefaultGasDef()};
+    gases[1].kind = mvfx_gasSurface;
+    gases[1].size[0] = 32;
+    gases[1].size[1] = 24;
+    gases[1].cellSize = 0.03f;
+    gases[1].center[1] = 0.36f;
+    gases[1].surface = (mvfxGasSurface){
+        .emitter = 2, .radius = 0.03f, .reach = 4.0f, .low = 0.4f, .high = 2.0f, .smoothing = 1};
+    gases[2].kind = mvfx_gasSurface;
+    gases[2].size[0] = 16;
+    gases[2].size[1] = 16;
+    gases[2].size[2] = 16;
+    gases[2].cellSize = 0.04f;
+    gases[2].center[1] = 0.3f;
+    gases[2].surface = (mvfxGasSurface){
+        .emitter = 1, .radius = 0.08f, .reach = 2.0f, .low = 0.4f, .high = 2.5f, .smoothing = 1};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = liquids;
     def.emitterCount = 3;
-    def.gases = &basinGas;
-    def.gasCount = 1;
+    def.gases = gases;
+    def.gasCount = 3;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "liquid effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
