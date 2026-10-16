@@ -491,8 +491,10 @@ static void TestOnce(void)
 // The crossing a world particle falling at 1 from 0.5 above a surface of
 // a model at (0.3, 0.1) records as the step it crosses in ends (the
 // instance's emitters stepped alone, the surface not yet), its instance
-// scaled 2 and turned by rotation; the step's crossing event.
-static mvfxWaterCrossing Recorded(mvfxWaterModel model, const float rotation[4], mvfxEvent* event)
+// scaled 2 and turned by rotation; the step's crossing event, and the
+// volume poured once the surface takes it.
+static mvfxWaterCrossing Recorded(mvfxWaterModel model, const float rotation[4], mvfxEvent* event,
+                                  double* poured)
 {
     mvfxWaterCoupling coupling = Coupling();
     coupling.push = 0.02f;
@@ -528,6 +530,10 @@ static mvfxWaterCrossing Recorded(mvfxWaterModel model, const float rotation[4],
         state->crossingCount == 1 ? state->crossings[0] : (mvfxWaterCrossing){0};
     const mvfxEvent* events[16];
     *event = Events(mvfx_eventWater, events) == 1 ? *events[0] : (mvfxEvent){0};
+    CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "taken");
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
+    *poured = info.volumePoured;
     Close();
     return crossing;
 }
@@ -537,21 +543,24 @@ static void TestRecorded(void)
     // In the surface's frame, half the world's lengths: the point (0.15,
     // 0.05), the particle's radius 0.025, so the push's radius a cell (0.1)
     // and its depth 0.01 (0.025 / 0.1)^2; a pour's volume a sphere of
-    // 0.025 (shallow water 0.1 deep there, its crossing 0.1 lower). Turned
+    // 0.025 (shallow water 0.1 deep there, its crossing 0.1 lower), counted
+    // in the world as a sphere of 0.05. Turned
     // a quarter about Z, the event's normal is the frame's Y in the world.
     static const float unturned[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
     mvfxEvent event;
-    mvfxWaterCrossing waves = Recorded(mvfx_waterWaves, unturned, &event);
+    double poured = 0.0;
+    mvfxWaterCrossing waves = Recorded(mvfx_waterWaves, unturned, &event, &poured);
     int32_t wrong = fabsf(waves.at[0] - 0.15f) > 1e-6f || fabsf(waves.at[1] - 0.05f) > 1e-6f;
     wrong += fabsf(waves.radius - 0.1f) > 1e-7f || fabsf(waves.depth - 0.000625f) > 1e-9f;
     wrong += waves.volume != 0.0f;
     wrong += llabs(event.tick - MVFX_TICKS_PER_SECOND / 2) > 1;
-    mvfxWaterCrossing shallow = Recorded(mvfx_waterShallow, unturned, &event);
+    mvfxWaterCrossing shallow = Recorded(mvfx_waterShallow, unturned, &event, &poured);
     float sphere = (float)(4.0 / 3.0 * 3.14159265358979323846 * 0.025 * 0.025 * 0.025);
     wrong += fabsf(shallow.volume / sphere - 1.0f) > 1e-6f;
+    wrong += fabs(poured / (4.0 / 3.0 * 3.14159265358979323846 * 0.05 * 0.05 * 0.05) - 1.0) > 1e-6;
     wrong += llabs(event.tick - 3 * MVFX_TICKS_PER_SECOND / 10) > 1;
-    (void)Recorded(mvfx_waterWaves, quarter, &event);
+    (void)Recorded(mvfx_waterWaves, quarter, &event, &poured);
     wrong += fabsf(event.normal[0] + 1.0f) > 1e-5f || fabsf(event.normal[1]) > 1e-5f;
     CHECK(wrong == 0, "a crossing recorded in the surface's frame");
 }
