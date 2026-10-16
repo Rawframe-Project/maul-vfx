@@ -405,15 +405,20 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   cliff), so a scene that leans on either is seen. A waves step due
   exactly the most substeps takes them at its own length.
 - Particles meet water surfaces (`mvfxEmitterDef.water`, a
-  `mvfxWaterCoupling`): in the water they rise by `buoyancy` times their
-  depth and are drawn toward its velocity by `drag` (one at rest floats
-  g / buoyancy deep); a step crossing down into it over water pushes the
+  `mvfxWaterCoupling`): `buoyancy`, the water's density over theirs (at
+  most `MVFX_MAX_BUOYANCY`), lifts them by that times gravity's strength
+  times their share under, and `drag` times that share draws them toward
+  the water's velocity, so one floats half under at 2 and sinks below 1,
+  stiff bands settling (the lift is solved with the step's move); a
+  step crossing down into it over water pushes the
   surface where it met it, with `pour` adds its sphere's volume to
   shallow water and dies, and writes `mvfx_eventWater`, which other
   emitters can spawn from. Every kind of particle meets it: plain,
   liquids', units' points and rigid particles at their centers.
 - A gas force on a moving instance reads its gas where the gas last
   stepped, at the step's start, rather than where the instance is going.
+- `mvfxWaterInfo.volumePoured` counts the volume particles poured into
+  shallow water, which no host push adds.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

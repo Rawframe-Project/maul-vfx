@@ -556,7 +556,7 @@ static inline void BuildWaterScene(mvfxContext* context)
     waters[1].waveSpeed = 5.0f;
     waters[1].damping = 0.1f;
     const mvfxWaterCoupling rain = {
-        .enabled = true, .radius = 0.03f, .push = 0.01f, .buoyancy = 15.0f, .drag = 1.0f};
+        .enabled = true, .radius = 0.03f, .push = 0.01f, .buoyancy = 2.0f, .drag = 1.0f};
     const mvfxWaterCoupling drops = {
         .enabled = true, .radius = 0.04f, .push = 0.005f, .pour = true};
     const mvfxEmitterDef falls[2] = {WaterFall(0, 30.0f, 0.2f, &rain),

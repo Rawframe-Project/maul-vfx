@@ -88,6 +88,7 @@ typedef struct mvfxWaterState
     float reach;
     uint64_t stepsSlowed;
     uint64_t facesHeld;
+    double volumePoured;
 } mvfxWaterState;
 
 // Shallow water's faces along X and along Z for a grid of n cells.
@@ -109,8 +110,9 @@ bool mvfxIsWaterCouplingValid(const mvfxWaterCoupling* coupling, const mvfxWater
 
 // An emitter's water surface for a step (mvfxEmitterDef.water): its
 // coupling, the surface and its state as the last water step left them,
-// the map from the surface's frame into the particles' space, and their
-// radius in that frame; coupling NULL for none.
+// the map from the surface's frame into the particles' space, and in that
+// frame the particles' radius and their gravity's strength; the frame's
+// Y in the particles' space; coupling NULL for none.
 typedef struct mvfxResolvedWater
 {
     const mvfxWaterCoupling* coupling;
@@ -118,6 +120,8 @@ typedef struct mvfxResolvedWater
     mvfxWaterState* state;
     mvfxSpaceMap map;
     float radius;
+    float strength;
+    float up[3];
 } mvfxResolvedWater;
 
 // A valid water def compiled.

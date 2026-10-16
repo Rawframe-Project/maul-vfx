@@ -308,12 +308,15 @@ void mvfxPushShallow(mvfxInstance* instance, int32_t w)
         mvfxMapPointDouble(&map, push->point, local);
         SpillAt(water, d, local[0], local[2], push->radius * map.sigma, push->depth * map.sigma);
     }
-    // Then the particles' crossings: each pushes, then pours.
+    // Then the particles' crossings: each pushes, then pours, counted in
+    // the world's lengths.
+    double cube = (double)place.scale * (double)place.scale * (double)place.scale;
     for (int64_t c = 0; c < state->crossingCount; ++c)
     {
         const mvfxWaterCrossing* crossing = &state->crossings[c];
         SpillAt(water, d, crossing->at[0], crossing->at[1], crossing->radius, crossing->depth);
         PourAt(water, d, crossing->at[0], crossing->at[1], crossing->volume);
+        state->volumePoured += (double)crossing->volume * cube;
     }
     state->pushCount = 0;
     state->crossingCount = 0;

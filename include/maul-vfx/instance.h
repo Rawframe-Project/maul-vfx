@@ -861,9 +861,13 @@ extern "C"
         // outran MVFX_MAX_WATER_SUBSTEPS substeps (the water slowed), and
         // shallow water's faces whose velocity the substep's bound, half a
         // cell, held (a fall off a cliff), summed over substeps. A scene
-        // that leans on either moves slower than its water would.
+        // that leans on either moves slower than its water would. And the
+        // volume particles poured into shallow water (mvfxEmitterDef.water),
+        // in the world's lengths cubed at each pour, which no host push
+        // adds.
         uint64_t stepsSlowed;
         uint64_t facesHeld;
+        double volumePoured;
     } mvfxWaterInfo;
 
     /// Reads what a water surface of an instance is now.

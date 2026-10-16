@@ -213,6 +213,9 @@ typedef struct Range
     const mvfxResolvedForce* forces;
     float sharedDrag;
     mvfxDragFactors shared;
+    // Likewise with the water's whole drag, of a particle fully under.
+    float wetDrag;
+    mvfxDragFactors wet;
     const mvfxResolvedVelocityModules* modules;
     float limitDecay;
     const uint32_t* birthLow;
@@ -373,9 +376,10 @@ static void MoveParticle(const Range* r, int32_t i)
     float acceleration[3] = {r->gravity[0], r->gravity[1], r->gravity[2]};
     float wind = 0.0f;
     mvfxForcesAt(r->forces, r->compiled->forceCount, start, r->time, acceleration, &wind);
+    mvfxWaterTouch touch = {0};
     if (r->water != nullptr)
     {
-        mvfxWaterPull(r->water, start, acceleration, &wind);
+        touch = mvfxWaterDrag(r->water, start, acceleration, &wind);
     }
     float drag = r->compiled->drag + wind;
     mvfxDragFactors f = r->shared;
@@ -383,6 +387,10 @@ static void MoveParticle(const Range* r, int32_t i)
     {
         f = mvfxDragFactorsOf(ParticleDrag(r->compiled, r->dragScales[i]) + (double)wind,
                               r->seconds);
+    }
+    else if (drag == r->wetDrag)
+    {
+        f = r->wet;
     }
     else if (drag != r->sharedDrag)
     {
@@ -393,6 +401,11 @@ static void MoveParticle(const Range* r, int32_t i)
     for (int32_t k = 0; k < 3; ++k)
     {
         r->v[k][i] = velocity[k];
+    }
+    // The water's lift last: solved with the move it makes.
+    if (r->water != nullptr)
+    {
+        mvfxWaterLift(r->water, &touch, velocity, f.carry, f.push, acceleration);
     }
     MoveLinear(r->p, r->v, i, acceleration, f);
     float place[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
@@ -407,7 +420,7 @@ static void MoveParticle(const Range* r, int32_t i)
     }
     if (r->water != nullptr)
     {
-        mvfxMeetWater(r->instance, r->emitter, i, start, place, r->tick, r->seconds);
+        mvfxMeetWater(r->instance, r->emitter, i, &touch, start, place, r->tick, r->seconds);
     }
     // Kept over a step's substeps: a kill in any of them holds.
     r->instance->killScratch[i] |= collisionKills || IsKilled(r, i, start, place) ? 1 : 0;
@@ -448,6 +461,10 @@ void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, 
     // its factors serve each particle whose drag comes to the same.
     r.sharedDrag = compiled->drag + SharedWind(r.forces, compiled->forceCount);
     r.shared = mvfxDragFactorsOf((double)r.sharedDrag, seconds);
+    // Summed as a particle's is: its winds, then the water's, then its own.
+    float winds = SharedWind(r.forces, compiled->forceCount);
+    r.wetDrag = r.water != nullptr ? compiled->drag + (winds + compiled->water.drag) : -1.0f;
+    r.wet = r.water != nullptr ? mvfxDragFactorsOf((double)r.wetDrag, seconds) : r.shared;
     r.limitDecay = mvfxDragFactorsOf((double)compiled->velocityModules.limitDampen, seconds).decay;
     for (int32_t i = first; i < end; ++i)
     {
@@ -599,7 +616,9 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
     ResolveVelocityModules(instance, emitter);
     ResolveColliders(instance, emitter);
     mvfxSpaceMap world = SpaceMapOf(instance, emitter, mvfx_spaceWorld);
-    mvfxResolveWaterCoupling(instance, emitter, &world);
+    float gravity[3];
+    mvfxGravityOf(instance, compiled, gravity);
+    mvfxResolveWaterCoupling(instance, emitter, &world, gravity);
 }
 
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)

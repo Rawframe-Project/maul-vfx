@@ -228,8 +228,8 @@ bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z, int32_t 
     return true;
 }
 
-bool mvfxWaterUnder(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
-                    float* height, float* ground, float velocity[3])
+bool mvfxWaterHeight(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
+                     float* height, float* ground)
 {
     int32_t lo[2];
     float t[2];
@@ -237,29 +237,59 @@ bool mvfxWaterUnder(const mvfxCompiledWater* water, const mvfxWaterState* state,
     {
         return false;
     }
+    mvfxWaterHeightOf(water, state, lo, t, height, ground);
+    return true;
+}
+
+void mvfxWaterHeightOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
+                       const int32_t lo[2], const float t[2], float* height, float* ground)
+{
     *height = 0.0f;
     *ground = state->ground != nullptr ? 0.0f : -INFINITY;
+    for (int32_t corner = 0; corner < 4; ++corner)
+    {
+        int32_t cx = lo[0] + (corner & 1);
+        int32_t cz = lo[1] + (corner >> 1);
+        float w = mvfxWaterShare(t, corner);
+        *height += w * SurfaceAt(water, state, cx, cz);
+        *ground += state->ground != nullptr
+                       ? w * state->ground[(int64_t)cz * water->def.size[0] + cx]
+                       : 0.0f;
+    }
+}
+
+void mvfxWaterVelocity(const mvfxCompiledWater* water, const mvfxWaterState* state, float x,
+                       float z, float velocity[3])
+{
+    int32_t lo[2];
+    float t[2];
+    if (!mvfxWaterCorners(water, x, z, lo, t))
+    {
+        velocity[0] = 0.0f;
+        velocity[1] = 0.0f;
+        velocity[2] = 0.0f;
+        return;
+    }
+    mvfxWaterVelocityOf(water, state, lo, t, velocity);
+}
+
+void mvfxWaterVelocityOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
+                         const int32_t lo[2], const float t[2], float velocity[3])
+{
     for (int32_t k = 0; k < 3; ++k)
     {
         velocity[k] = 0.0f;
     }
     for (int32_t corner = 0; corner < 4; ++corner)
     {
-        int32_t cx = lo[0] + (corner & 1);
-        int32_t cz = lo[1] + (corner >> 1);
         float w = mvfxWaterShare(t, corner);
         float cornerVelocity[3];
-        VelocityAt(water, state, cx, cz, cornerVelocity);
-        *height += w * SurfaceAt(water, state, cx, cz);
-        *ground += state->ground != nullptr
-                       ? w * state->ground[(int64_t)cz * water->def.size[0] + cx]
-                       : 0.0f;
+        VelocityAt(water, state, lo[0] + (corner & 1), lo[1] + (corner >> 1), cornerVelocity);
         for (int32_t k = 0; k < 3; ++k)
         {
             velocity[k] += w * cornerVelocity[k];
         }
     }
-    return true;
 }
 
 void mvfxWaterNormal(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
@@ -305,9 +335,10 @@ static void SampleOne(const mvfxInstance* live, int32_t water, const mvfxSpaceMa
     const mvfxCompiledWater* compiled = &live->effect->waters[water];
     const mvfxWaterState* state = &live->waters[water];
     float ground = 0.0f;
-    out->inside = mvfxWaterUnder(compiled, state, local[0], local[2], &height, &ground, velocity);
+    out->inside = mvfxWaterHeight(compiled, state, local[0], local[2], &height, &ground);
     if (out->inside)
     {
+        mvfxWaterVelocity(compiled, state, local[0], local[2], velocity);
         mvfxWaterNormal(compiled, state, local[0], local[2], normal);
     }
     const float surface[3] = {local[0], height, local[2]};
@@ -429,5 +460,6 @@ mvfxResult mvfxInstance_GetWaterInfo(const mvfxContext* context, mvfxInstanceId 
     infoOut->size[1] = live->effect->waters[water].def.size[1];
     infoOut->stepsSlowed = live->waters[water].stepsSlowed;
     infoOut->facesHeld = live->waters[water].facesHeld;
+    infoOut->volumePoured = live->waters[water].volumePoured;
     return mvfx_success;
 }

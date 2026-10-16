@@ -95,6 +95,10 @@ extern "C"
 // The most drag an emitter or a particle may have, a second.
 #define MVFX_MAX_DRAG 1000.0f
 
+// The most a particle's buoyancy is (mvfxWaterCoupling), the water's
+// density over its: an air bubble's in water is about 800.
+#define MVFX_MAX_BUOYANCY 1000.0f
+
 // The most forces an emitter has.
 #define MVFX_MAX_FORCES 8
 
@@ -920,12 +924,17 @@ extern "C"
     } mvfxGasSplat;
 
     // How an emitter's particles meet a water surface of the effect, as
-    // the last water step left it. A particle is in the water where it is
-    // below the surface over it (on shallow water, above the ground too),
-    // over the grid: there it rises by buoyancy times its depth below the
-    // surface, up the surface's Y, and is drawn toward the water's velocity
-    // there by drag a second, so one at rest floats g / buoyancy deep. A
-    // particle whose step (each substep) goes from above the surface to
+    // the last water step left it. A particle is in the water where some of
+    // it is under the surface over it, over the grid (on shallow water, its
+    // center above the ground): its share under runs from 0 with its center
+    // its radius r above the surface to 1 with it r below. There buoyancy,
+    // the water's density over the particle's, lifts it by buoyancy times
+    // gravity's strength times that share, up the surface's Y (taken
+    // implicitly over the step where the share is partial, so a stiff band
+    // settles), and it is drawn toward the water's velocity there by drag
+    // times its share a second: at rest it floats with its center r (2 /
+    // buoyancy - 1) below the surface (half under at 2), and below 1 it
+    // sinks. A particle whose step (each substep) goes from above the surface to
     // below it, both ends over the grid, crosses it where its height over
     // the surface, linear along the step, is 0, if there is water there (on
     // shallow water, its ground below its surface), once a step at most: the
@@ -947,7 +956,7 @@ extern "C"
         // From 0 to MVFX_MAX_EXTENT.
         float push;
         bool pour;
-        // From 0 to MVFX_MAX_EXTENT.
+        // From 0 to MVFX_MAX_BUOYANCY.
         float buoyancy;
         // From 0 to MVFX_MAX_DRAG.
         float drag;

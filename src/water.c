@@ -95,7 +95,7 @@ bool mvfxIsWaterCouplingValid(const mvfxWaterCoupling* coupling, const mvfxWater
     return coupling->radius > 0.0f && coupling->radius <= MVFX_MAX_EXTENT &&
            coupling->push >= 0.0f && coupling->push <= MVFX_MAX_EXTENT &&
            (!coupling->pour || shallow) && coupling->buoyancy >= 0.0f &&
-           coupling->buoyancy <= MVFX_MAX_EXTENT && coupling->drag >= 0.0f &&
+           coupling->buoyancy <= MVFX_MAX_BUOYANCY && coupling->drag >= 0.0f &&
            coupling->drag <= MVFX_MAX_DRAG;
 }
 
@@ -187,4 +187,5 @@ void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water)
     state->reach = 0.0f;
     state->stepsSlowed = 0;
     state->facesHeld = 0;
+    state->volumePoured = 0.0;
 }

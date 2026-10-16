@@ -31,11 +31,23 @@ static inline float mvfxWaterShare(const float t[2], int32_t corner)
 }
 
 // The surface over a point (x, z) of its frame: its height over the
-// grid's center, its ground (shallow water's; waves have none, -infinity)
-// and its water's velocity, bilinear as mvfxWaterCorners weighs; false
-// off the grid (nothing written).
-bool mvfxWaterUnder(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
-                    float* height, float* ground, float velocity[3]);
+// grid's center and its ground (shallow water's; waves have none,
+// -infinity), bilinear as mvfxWaterCorners weighs; false off the grid
+// (nothing written).
+bool mvfxWaterHeight(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
+                     float* height, float* ground);
+
+// The water's velocity over a point (x, z) of a surface's frame, bilinear
+// likewise; 0 off the grid.
+void mvfxWaterVelocity(const mvfxCompiledWater* water, const mvfxWaterState* state, float x,
+                       float z, float velocity[3]);
+
+// The surface's height and ground, and the water's velocity, at the
+// corners mvfxWaterCorners found for a point.
+void mvfxWaterHeightOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
+                       const int32_t lo[2], const float t[2], float* height, float* ground);
+void mvfxWaterVelocityOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
+                         const int32_t lo[2], const float t[2], float velocity[3]);
 
 // The surface's unit normal over a point (x, z) of its frame: its cells'
 // normals, bilinear, normalized; off the grid, up.

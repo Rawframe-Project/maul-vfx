@@ -6,13 +6,19 @@
 // blowing a jet into it, rising by its heat, stepped at 60 a second: by
 // default (one substep, 4 V cycles of pressure), with 2 cycles, and with
 // MacCormack's advection; and a 3D gas of 64 by 64 by 64 cells the same
-// way. Each prints its cells as a comment line, then its milliseconds a
-// step, the best of five runs of 50 steps after 10 to warm up.
+// way. Rain: a waves surface of 256 by 256 cells of 0.05 under rain of
+// 6,000 and 60,000 drops a second from a box above it, falling at 4,
+// each crossing pushing it, against the same rain not meeting it, the
+// heavier meeting it without pushing, and the surface alone. Each prints
+// what it steps as a comment line, then its milliseconds a step, the
+// best of five runs of 50 steps after 10 to warm up (rain: after 120, so
+// the drops fill their lives).
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
@@ -20,7 +26,6 @@
 enum
 {
     RUNS = 5,
-    WARM = 10,
     STEPS = 50
 };
 
@@ -62,22 +67,20 @@ static mvfxGasDef Gas(int32_t n, int32_t layers, int32_t cycles, mvfxGasAdvectio
     return gas;
 }
 
-// Prints a case's milliseconds a step, the best of its runs.
-static int Run(const char* name, const mvfxGasDef* gas)
+// Prints an effect's milliseconds a step, the best of its runs, after
+// warm steps.
+static int Run(const char* name, const mvfxEffectDef* def, int32_t warm)
 {
     double best = 1e30;
     for (int32_t r = 0; r < RUNS; ++r)
     {
         mvfxContextDef contextDef = mvfxDefaultContextDef();
         mvfxContext* context = NULL;
-        mvfxEffectDef def = mvfxDefaultEffectDef();
-        def.gases = gas;
-        def.gasCount = 1;
         mvfxEffectId effect = {0};
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
         mvfxInstanceId instance = {0};
         if (mvfxCreateContext(&contextDef, &context) != mvfx_success ||
-            mvfxCreateEffect(context, &def, &effect) != mvfx_success)
+            mvfxCreateEffect(context, def, &effect) != mvfx_success)
         {
             return 1;
         }
@@ -87,9 +90,9 @@ static int Run(const char* name, const mvfxGasDef* gas)
             return 1;
         }
         double start = 0.0;
-        for (int32_t s = 0; s < WARM + STEPS; ++s)
+        for (int32_t s = 0; s < warm + STEPS; ++s)
         {
-            start = s == WARM ? Now() : start;
+            start = s == warm ? Now() : start;
             if (mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) != mvfx_success)
             {
                 return 1;
@@ -99,9 +102,52 @@ static int Run(const char* name, const mvfxGasDef* gas)
         best = each < best ? each : best;
         mvfxDestroyContext(context);
     }
-    printf("# %s: %d by %d by %d cells\n", name, gas->size[0], gas->size[1], gas->size[2]);
     printf("%-32s %10.3f ms\n", name, 1e3 * best);
     return 0;
+}
+
+// Prints a gas case's cells and its milliseconds a step.
+static int RunGas(const char* name, const mvfxGasDef* gas)
+{
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.gases = gas;
+    def.gasCount = 1;
+    printf("# %s: %d by %d by %d cells\n", name, gas->size[0], gas->size[1], gas->size[2]);
+    return Run(name, &def, 10);
+}
+
+// Prints a rain case: a surface of 256 by 256 cells of 0.05, under rate
+// drops a second (none for 0) meeting it or not, pushing it or not.
+static int RunRain(const char* name, float rate, bool meets, bool pushes)
+{
+    mvfxWaterDef water = mvfxDefaultWaterDef();
+    water.size[0] = 256;
+    water.size[1] = 256;
+    water.cellSize = 0.05f;
+    mvfxEmitterDef rain = mvfxDefaultEmitterDef();
+    rain.capacity = (int32_t)(rate * 2.0f) + 1;
+    rain.rate = rate;
+    rain.lifetime = mvfxRangeSource(1.5f, 2.0f);
+    rain.shape = (mvfxShape){.kind = mvfx_shapeBox,
+                             .offset = {0.0f, 1.0f, 0.0f},
+                             .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
+                             .halfExtents = {6.0f, 0.1f, 6.0f},
+                             .thickness = 1.0f};
+    rain.velocity = (mvfxVelocity){
+        .mode = mvfx_directionFixed, .direction = {0.0f, -1.0f, 0.0f}, .speed = {4.0f, 4.0f}};
+    rain.water = (mvfxWaterCoupling){.enabled = meets,
+                                     .radius = 0.01f,
+                                     .push = pushes ? 0.002f : 0.0f,
+                                     .buoyancy = 0.5f,
+                                     .drag = 2.0f};
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &rain;
+    def.emitterCount = rate > 0.0f ? 1 : 0;
+    def.waters = &water;
+    def.waterCount = 1;
+    printf("# %s: 256 by 256 cells, %.0f drops a second%s\n", name, (double)rate,
+           meets ? (pushes ? ", meeting and pushing it" : ", meeting it") : "");
+    return Run(name, &def, 120);
 }
 
 int main(void)
@@ -110,9 +156,15 @@ int main(void)
     const mvfxGasDef light = Gas(256, 1, 2, mvfx_gasSemiLagrangian);
     const mvfxGasDef sharp = Gas(256, 1, 4, mvfx_gasMacCormack);
     const mvfxGasDef deep = Gas(64, 64, 4, mvfx_gasSemiLagrangian);
-    int failed = Run("gas 2D 256", &flat);
-    failed |= Run("gas 2D 256, 2 cycles", &light);
-    failed |= Run("gas 2D 256, MacCormack", &sharp);
-    failed |= Run("gas 3D 64", &deep);
+    int failed = RunGas("gas 2D 256", &flat);
+    failed |= RunGas("gas 2D 256, 2 cycles", &light);
+    failed |= RunGas("gas 2D 256, MacCormack", &sharp);
+    failed |= RunGas("gas 3D 64", &deep);
+    failed |= RunRain("water 256", 0.0f, false, false);
+    failed |= RunRain("water 256, rain 6k apart", 6000.0f, false, false);
+    failed |= RunRain("water 256, rain 6k", 6000.0f, true, true);
+    failed |= RunRain("water 256, rain 60k apart", 60000.0f, false, false);
+    failed |= RunRain("water 256, rain 60k, no push", 60000.0f, true, false);
+    failed |= RunRain("water 256, rain 60k", 60000.0f, true, true);
     return failed;
 }

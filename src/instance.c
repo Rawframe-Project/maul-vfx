@@ -711,6 +711,7 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, water->rates, cells);
         hash = mvfxHash64(hash, &water->stepsSlowed, (int32_t)sizeof water->stepsSlowed);
         hash = mvfxHash64(hash, &water->facesHeld, (int32_t)sizeof water->facesHeld);
+        hash = mvfxHash64(hash, &water->volumePoured, (int32_t)sizeof water->volumePoured);
         // Crossings wait only within a context's step: their count.
         hash = mvfxHash64(hash, &water->crossingCount, (int32_t)sizeof water->crossingCount);
         // Shallow water's faces now; its ground is read anew each step.

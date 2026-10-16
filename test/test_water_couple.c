@@ -229,10 +229,11 @@ static void TestRoom(void)
 
 static void TestFloat(void)
 {
-    // Under gravity and buoyancy 20, a particle let go at rest 0.1 below a
-    // still surface settles at g / 20 below it (drag 2 damps it).
+    // Under gravity at buoyancy 1.25, a particle of radius 0.05 let go at
+    // rest 0.1 below a still surface settles with its center r (2 / 1.25 -
+    // 1) = 0.03 below it (drag 2 damps it).
     mvfxWaterCoupling coupling = Coupling();
-    coupling.buoyancy = 20.0f;
+    coupling.buoyancy = 1.25f;
     coupling.drag = 2.0f;
     mvfxEmitterDef emitter = Coupled(&coupling);
     emitter.motion.gravity[1] = -9.81f;
@@ -244,7 +245,7 @@ static void TestFloat(void)
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
     float y = At(mvfx_attributePositionY, 0);
-    CHECK(fabsf(y + 9.81f / 20.0f) <= 1e-3f && fabsf(At(mvfx_attributeVelocityY, 0)) <= 1e-3f,
+    CHECK(fabsf(y + 0.03f) <= 1e-4f && fabsf(At(mvfx_attributeVelocityY, 0)) <= 1e-3f,
           "a particle floats at g / buoyancy");
     Close();
 }
@@ -255,7 +256,7 @@ static void TestMoving(void)
     // particle reads the surface as it last stepped, where each step
     // starts, so it floats as still.
     mvfxWaterCoupling coupling = Coupling();
-    coupling.buoyancy = 20.0f;
+    coupling.buoyancy = 1.25f;
     coupling.drag = 2.0f;
     mvfxEmitterDef emitter = Coupled(&coupling);
     emitter.space = mvfx_spaceLocal;
@@ -273,7 +274,7 @@ static void TestMoving(void)
               "moved");
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 9.81f / 20.0f) <= 1e-3f,
+    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 0.03f) <= 1e-4f,
           "a moving instance's particle floats");
     Close();
 }
@@ -281,9 +282,9 @@ static void TestMoving(void)
 static void TestScaled(void)
 {
     // The float as TestFloat's of a world particle, its instance scaled 2:
-    // g / buoyancy deep in the world, the surface's frame scaled away.
+    // 0.03 deep in the world, the surface's frame scaled away.
     mvfxWaterCoupling coupling = Coupling();
-    coupling.buoyancy = 20.0f;
+    coupling.buoyancy = 1.25f;
     coupling.drag = 2.0f;
     mvfxEmitterDef emitter = Coupled(&coupling);
     emitter.motion.gravity[1] = -9.81f;
@@ -299,18 +300,61 @@ static void TestScaled(void)
     {
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 9.81f / 20.0f) <= 1e-3f,
+    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 0.03f) <= 1e-4f,
           "a scaled instance's particle floats as deep");
     Close();
 }
 
+// A particle of radius r at buoyancy and drag under gravity, let go at
+// rest at y below a still surface: where it is after 10 s, and the
+// highest it rose.
+static float Settle(float r, float buoyancy, float drag, double y, float* top)
+{
+    mvfxWaterCoupling coupling = Coupling();
+    coupling.radius = r;
+    coupling.buoyancy = buoyancy;
+    coupling.drag = drag;
+    mvfxEmitterDef emitter = Coupled(&coupling);
+    emitter.motion.gravity[1] = -9.81f;
+    mvfxWaterDef waves = Surface(mvfx_waterWaves);
+    CHECK(Open(&emitter, 1, &waves), "opened");
+    Place(0.0, y, 0.0, 0.0f, 0.0f, 0.0f);
+    *top = -INFINITY;
+    for (int32_t s = 0; s < 600; ++s)
+    {
+        CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
+        *top = fmaxf(*top, At(mvfx_attributePositionY, 0));
+    }
+    float at = At(mvfx_attributePositionY, 0);
+    Close();
+    return at;
+}
+
+static void TestDeep(void)
+{
+    // At the largest buoyancy and drag, let go 5 deep, a particle rises
+    // and rests with its center r (1 - 2 / 1000) above the surface, never
+    // past it by r / 25 (1.4 mm, measured; it leapt 5 m when the lift was
+    // taken where the step starts); a small one (radius 0.001, its band's stiffness 9,810 times
+    // dt^2 = 2.7) at buoyancy 2 rests half under, at the surface, rather
+    // than ringing; at 0.5 one sinks.
+    float top = 0.0f;
+    float high = Settle(0.05f, MVFX_MAX_BUOYANCY, MVFX_MAX_DRAG, -5.0, &top);
+    float rest = 0.05f * (1.0f - 2.0f / MVFX_MAX_BUOYANCY);
+    CHECK(fabsf(high - rest) <= 1e-4f && top <= rest + 0.05f / 25.0f, "the stiffest float rests");
+    float small = Settle(0.001f, 2.0f, 2.0f, -0.1, &top);
+    CHECK(fabsf(small) <= 1e-5f, "a stiff band settles");
+    CHECK(Settle(0.05f, 0.5f, 2.0f, -0.1, &top) < -1.0f, "a particle too dense to float sinks");
+}
+
 static void TestUnderground(void)
 {
-    // Below shallow water's floor a particle is not in the water: at rest
-    // there, no buoyancy lifts it.
+    // Below shallow water's floor a particle is not in the water: let go
+    // at rest there, no buoyancy lifts it and it falls freely.
     mvfxWaterCoupling coupling = Coupling();
     coupling.buoyancy = 20.0f;
     mvfxEmitterDef emitter = Coupled(&coupling);
+    emitter.motion.gravity[1] = -9.81f;
     mvfxWaterDef shallow = Surface(mvfx_waterShallow);
     CHECK(Open(&emitter, 1, &shallow), "opened");
     CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "filled");
@@ -319,7 +363,8 @@ static void TestUnderground(void)
     {
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(At(mvfx_attributePositionY, 0) == -0.3f, "nothing lifts one below the floor");
+    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 0.3f + 0.5f * 9.81f * 0.25f) <= 1e-3f,
+          "nothing lifts one below the floor");
     Close();
 }
 
@@ -423,20 +468,21 @@ static void TestCrossings(void)
 
 static void TestOnce(void)
 {
-    // A liquid's particle let go just above a still surface with a stiff
-    // buoyancy bobs through it several times in a step of 32 substeps:
-    // its crossing is met once that step.
+    // A liquid's particle let go 0.3 above a still surface at buoyancy 4
+    // and no drag falls through it, is thrown back out (fully under it
+    // rises at 3 g) and falls through again within a second's step of 32
+    // substeps: its crossing is met once that step.
     mvfxWaterCoupling coupling = Coupling();
-    coupling.buoyancy = 4000.0f;
+    coupling.buoyancy = 4.0f;
     mvfxEmitterDef emitter = Coupled(&coupling);
     emitter.motion.gravity[1] = -9.81f;
     emitter.liquid.enabled = true;
     emitter.liquid.substeps = 32;
     mvfxWaterDef waves = Surface(mvfx_waterWaves);
     CHECK(Open(&emitter, 1, &waves), "opened");
-    Place(0.0, 0.02, 0.0, 0.0f, 0.0f, 0.0f);
+    Place(0.0, 0.3, 0.0, 0.0f, 0.0f, 0.0f);
     CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "born");
-    CHECK(mvfxContext_Step(s_context, 0.5) == mvfx_success, "stepped");
+    CHECK(mvfxContext_Step(s_context, 1.0) == mvfx_success, "stepped");
     const mvfxEvent* events[16];
     CHECK(Events(mvfx_eventWater, events) == 1, "one crossing a step");
     Close();
@@ -593,6 +639,14 @@ static void TestPour(void)
     double poured = 8.0 * 4.0 / 3.0 * 3.14159265358979323846 * 0.05 * 0.05 * 0.05;
     CHECK(s_live->emitters[0].count == 0 && deaths == 8 && kills == 8, "poured particles die");
     CHECK(fabs((Volume() - start) / poured - 1.0) <= 1e-4, "their volume joins the water");
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              fabs(info.volumePoured / poured - 1.0) <= 1e-6,
+          "the volume poured counted");
+    CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success &&
+              mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              info.volumePoured == 0.0,
+          "a restart clears it");
     Close();
 }
 
@@ -603,6 +657,7 @@ int main(void)
     TestFloat();
     TestMoving();
     TestScaled();
+    TestDeep();
     TestUnderground();
     TestDrag();
     TestFlow();
