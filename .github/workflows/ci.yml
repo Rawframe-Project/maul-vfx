@@ -33,6 +33,8 @@ jobs:
           clang-format --dry-run -Werror $(find include src test tools bench samples -name '*.[ch]' 2>/dev/null)
       - name: The effect file's tables match the headers
         run: CLANG_FORMAT=clang-format python3 tools/gen_file.py --check
+      - name: The effect fixtures' JSON and binary forms match
+        run: python3 tools/effect_json.py --check test/fixtures
       - name: Family checks
         run: |
           python3 tools/check_source.py
@@ -127,6 +129,12 @@ jobs:
           cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON \
             -D${PREFIX}_WERROR=ON -D${PREFIX}_BUILD_BENCH=OFF
           cmake --build build --target fuzz_file test_golden
+      - name: The library writes the golden scene's effects as the fixtures
+        run: |
+          mkdir -p seeds
+          build/test_golden --seeds seeds
+          [ "$(ls seeds | wc -l)" = "$(ls test/fixtures/*.mvfx | wc -l)" ]
+          for f in seeds/*.mvfx; do cmp "$f" "test/fixtures/$(basename $f)"; done
       - name: Run
         run: |
           mkdir -p corpus-fuzz_file

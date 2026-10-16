@@ -430,6 +430,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfx_errorMissing`, a new status.
 - A sheet unit whose points times rows overflows is refused, where the
   check computed the overflowing product first.
+- `tools/effect_json.py` converts effect files to a JSON form and back,
+  every field by its name, enums by their constants' names and floats
+  by the shortest decimal that reads back to their bits; the golden
+  scene's effects are committed in both forms as fixtures.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

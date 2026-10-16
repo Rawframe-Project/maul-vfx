@@ -58,7 +58,10 @@ the host's frames or other particles, tearing, sheets' aerodynamics and
 units' self-collision, ribbons drawn as tubes, and rigid particles
 (spheres, capsules, boxes and convex hulls of a mesh by XPBD meeting
 every collider, scene queries, depth images and each other, sleeping in
-islands at rest) are in place, and the grid gas comes next.
+islands at rest), gases (smoke and fire on grids) and grid liquids,
+water surfaces (waves and shallow water) that particles float in, push
+and pour into, and effect files are in place; the benchmarks and the GPU
+path come next.
 It has 86 public functions.
 
 ## Building
@@ -70,6 +73,15 @@ Requirements: CMake 3.25 and GCC 14 or Clang 19 or newer; on Windows,
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build
+```
+
+Effect files are binary (`maul-vfx/file.h`); `tools/effect_json.py`
+converts one to a JSON form and back (`to-json`, `to-binary`) for diffs,
+reviews and test fixtures, which the library never parses:
+
+```sh
+python3 tools/effect_json.py to-json effect.mvfx effect.json
+python3 tools/effect_json.py to-binary effect.json effect.mvfx
 ```
 
 ## Design
