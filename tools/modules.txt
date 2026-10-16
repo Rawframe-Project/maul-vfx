@@ -72,6 +72,8 @@ gas: allocator collide force gas_lattice
 gas_lattice:
 gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance tasks
 gas_surface: force gas gas_api instance tasks
+marching_table:
+surface_mesh: context gas gas_api instance marching_table
 gas_forces: elementary force gas
 gas_pressure: gas tasks
 gas_read: context gas gas_api gas_lattice instance instance_api layout

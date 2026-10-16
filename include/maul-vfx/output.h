@@ -735,6 +735,81 @@ extern "C"
     mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3], const mvfxFrustum* frustum,
                               mvfxDrawItem* items, int64_t capacity, int64_t* countOut);
 
+    // Where mvfxInstance_WriteSurfaceMesh writes: each vertex's position (3
+    // floats) and, unless normals is NULL, its unit normal (3 floats); the
+    // indices, 3 a triangle (2 a segment for a 2D surface); and scratch
+    // (aligned to 4 bytes, mvfxInstance_GetSurfaceMeshScratchBytes). Each
+    // buffer is aligned to 4 bytes; each pointer but normals may be NULL
+    // only when its size is 0.
+    typedef struct mvfxSurfaceMeshBuffers
+    {
+        float* positions;
+        float* normals;
+        int64_t vertexCapacity;
+        uint32_t* indices;
+        int64_t indexCapacity;
+        void* scratch;
+        int64_t scratchBytes;
+    } mvfxSurfaceMeshBuffers;
+
+    /// Returns the bytes of scratch a surface gas's mesh takes: 24 a cell of
+    /// a layer of its box (X by Y) in 3D, 16 a cell of a row in 2D.
+    ///
+    /// @param context   The context that owns the instance.
+    /// @param instance  The instance.
+    /// @param gas       The surface gas's index in its effect's def.
+    /// @param bytesOut  Receives the bytes.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
+    ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
+    ///         parameter, or a gas out of range or not a surface, which
+    ///         counts as misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(
+        mvfxContext* context, mvfxInstanceId instance, int32_t gas, int64_t* bytesOut);
+
+    /// Writes the mesh of a surface gas at a level of its distance (0 for
+    /// its surface), as the last step left it, by marching cubes (marching
+    /// squares for a 2D surface) between its cells' centers: a vertex on
+    /// each edge where the distance crosses the level, by linear
+    /// interpolation, shared by the cubes about it and numbered as the walk
+    /// (Z, then Y, then X) first meets it, and its normal the distance's
+    /// gradient there, out of the liquid; a face whose diagonal corners
+    /// are alike is decided by the asymptotic decider (Nielson and Hamann
+    /// 1991), the same from either cube, so the mesh has no cracks; a cube
+    /// whose loop no triangles can close off its faces takes a vertex
+    /// inside it. Triangles turn counterclockwise seen from outside; a 2D
+    /// surface's segments have the outside on their right. Positions are
+    /// in the world less origin. The mesh's first triangles (or segments)
+    /// that fit both buffers are written; the counts are always the whole
+    /// mesh's. The same state gives the same bytes on every platform.
+    ///
+    /// @param context         The context that owns the instance.
+    /// @param instance        The instance.
+    /// @param gas             The surface gas's index in its effect's def.
+    /// @param origin          Subtracted from positions (each coordinate at
+    ///                        most 2^52 in size).
+    /// @param level           The distance meshed, finite.
+    /// @param buffers         The buffers.
+    /// @param vertexCountOut  Receives the mesh's vertices.
+    /// @param indexCountOut   Receives the mesh's indices.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
+    ///         nothing live; `mvfx_errorCapacity` for scratch too small,
+    ///         with nothing written; `mvfx_errorInvalid` for a NULL context,
+    ///         origin, buffers or count, a gas out of range or not a
+    ///         surface, an origin or level out of range, a negative size or
+    ///         a NULL or misaligned buffer with a size, which counts as
+    ///         misuse when the context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time,
+    /// except that outputs may run on several threads at once, each with
+    /// its own scratch.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteSurfaceMesh(
+        mvfxContext* context, mvfxInstanceId instance, int32_t gas, const double origin[3],
+        float level, const mvfxSurfaceMeshBuffers* buffers, int64_t* vertexCountOut,
+        int64_t* indexCountOut);
+
 #ifdef __cplusplus
 }
 #endif

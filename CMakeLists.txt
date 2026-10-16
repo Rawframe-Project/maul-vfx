@@ -86,6 +86,8 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/gas_lattice.c
     src/gas_liquid.c
     src/gas_surface.c
+    src/marching_table.c
+    src/surface_mesh.c
     src/gas_pressure.c
     src/gas_read.c
     src/gas_solid.c
@@ -161,6 +163,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(gas_couple WHITEBOX)
     maul_add_test(gas_liquid WHITEBOX)
     maul_add_test(gas_surface WHITEBOX)
+    maul_add_test(surface_mesh WHITEBOX)
     maul_add_test(gas_read WHITEBOX)
     maul_add_test(liquid WHITEBOX)
     maul_add_test(elementary WHITEBOX)
