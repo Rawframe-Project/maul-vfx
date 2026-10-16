@@ -19,6 +19,10 @@
 // The least rows a task's range takes.
 #define ROW_RANGE 8
 
+// A terrain turned this near on edge, its up within this of level, has no
+// ground under a point: the floor's.
+#define ON_EDGE 1e-3f
+
 // A surface's ground being read: its terrain resolved into the box's
 // frame, its cells and their edge, and the heights it writes.
 typedef struct Ground
@@ -50,26 +54,57 @@ static const mvfxCollider* TerrainOf(const mvfxInstance* instance, int32_t w, co
     return water->def.hasTerrain ? &water->terrain : nullptr;
 }
 
+// The height along a vertical, from start along along in the field's
+// frame, where it meets the field's height under the point at at, taken
+// as level there; false where that point is outside the field's box.
+static bool Meet(const mvfxResolvedCollider* t, const float start[3], const float along[3],
+                 float at, float* height)
+{
+    const float point[2] = {start[0] + at * along[0], start[2] + at * along[2]};
+    const float u[3] = {point[0] / (2.0f * t->halfExtents[0]) + 0.5f, 0.5f,
+                        point[1] / (2.0f * t->halfExtents[2]) + 0.5f};
+    float value[4];
+    if (!mvfxSampleGrid(t->grid, u, mvfx_borderNone, value))
+    {
+        return false;
+    }
+    *height = (value[0] * t->scale - start[1]) / along[1];
+    return true;
+}
+
 // The ground's height under a point (x, z) of the box's frame: where its
-// vertical meets the field, through the point below it in the field's
-// frame; the floor (0) outside the field's box.
+// vertical meets the field. In the field's frame the vertical runs from
+// the point at height 0 along the field's up turned back. Meeting the
+// field's height under the point itself is exact for a level field
+// however turned, and for any field turned about Y alone (whose vertical
+// is its own); under a lean, a second meeting from the first's point
+// gives the meeting's drift along the slope, and the meeting is where that
+// drift runs out (Aitken's step, exact for a plane). The floor (0) where
+// the vertical meets the field outside its box, or runs along it.
 static float HeightAt(const mvfxResolvedCollider* t, float x, float z)
 {
     const float back[4] = {-t->rotation[0], -t->rotation[1], -t->rotation[2], t->rotation[3]};
     const float offset[3] = {x - t->center[0], -t->center[1], z - t->center[2]};
-    float local[3];
-    mvfxRotate(back, offset, local);
-    const float u[3] = {local[0] / (2.0f * t->halfExtents[0]) + 0.5f, 0.5f,
-                        local[2] / (2.0f * t->halfExtents[2]) + 0.5f};
-    float value[4];
-    if (!mvfxSampleGrid(t->grid, u, mvfx_borderNone, value))
+    static const float up[3] = {0.0f, 1.0f, 0.0f};
+    float start[3];
+    float along[3];
+    mvfxRotate(back, offset, start);
+    mvfxRotate(back, up, along);
+    float first = 0.0f;
+    if (fabsf(along[1]) < ON_EDGE || !Meet(t, start, along, 0.0f, &first))
     {
         return 0.0f;
     }
-    const float on[3] = {local[0], value[0] * t->scale, local[2]};
-    float turned[3];
-    mvfxRotate(t->rotation, on, turned);
-    return t->center[1] + turned[1];
+    float second = first;
+    if ((along[0] == 0.0f && along[2] == 0.0f) || first == 0.0f ||
+        !Meet(t, start, along, first, &second))
+    {
+        return first;
+    }
+    // The meeting moves by drift for each unit it moves: from 0 to first,
+    // then to second.
+    float drift = (second - first) / first;
+    return drift < 1.0f - ON_EDGE ? first / (1.0f - drift) : second;
 }
 
 static void GroundRows(int32_t start, int32_t end, void* context)
@@ -121,16 +156,13 @@ void mvfxFillWater(mvfxInstance* instance, int32_t w)
     state->filled = true;
 }
 
-// Whether a source's footprint covers the point (x, z) of the box's frame.
+// Whether a source's footprint covers the point (x, z) of the box's frame,
+// among the cells its span takes: a box's span is the box.
 static bool Covers(const mvfxWaterSource* source, float x, float z)
 {
     float dx = x - source->center[0];
     float dz = z - source->center[2];
-    if (source->shape == mvfx_gasSphere)
-    {
-        return dx * dx + dz * dz <= source->radius * source->radius;
-    }
-    return fabsf(dx) <= source->halfExtents[0] && fabsf(dz) <= source->halfExtents[2];
+    return source->shape != mvfx_gasSphere || dx * dx + dz * dz <= source->radius * source->radius;
 }
 
 void mvfxPourWaterSources(mvfxInstance* instance, int32_t w, double seconds)

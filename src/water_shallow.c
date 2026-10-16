@@ -185,8 +185,8 @@ static float Carried(const Flow* f, int32_t axis, int32_t x, int32_t z)
 
 // Face (x, z) of an axis carried with the flow and slowed by friction,
 // exp(-friction dt), then accelerated by the surface's fall across it and
-// held within 0.5 l / dt: 0 at a closed wall or dry, an open wall's only
-// outward.
+// held within 0.5 l / dt (a fall off a cliff outruns the substep's bound):
+// 0 at a closed wall or dry, an open wall's only outward.
 static float NextVelocity(const Flow* f, int32_t axis, int32_t x, int32_t z)
 {
     Face face = FaceAt(f, axis, x, z);

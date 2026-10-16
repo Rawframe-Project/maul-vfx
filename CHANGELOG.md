@@ -389,8 +389,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `MVFX_MAX_LIQUID_SUBSTEPS`: a dam break stepped at 30 a second keeps
   its volume within 4% (it lost 8% in one step a frame).
 - Shallow water (`mvfxWaterDef.model`, `mvfx_waterShallow`): depths over
-  a ground (a heightfield collider of the effect's or the host's, or a
-  flat floor) and velocities on the grid's faces, carried by Stelling and
+  a ground (a heightfield collider of the effect's or the host's, met by
+  the vertical however it is turned, or a flat floor) and velocities on the grid's faces, carried by Stelling and
   Duinmeijer's momentum-conserving upwind form, accelerated by the
   surface's fall and moving water by upwind fluxes so the volume is
   exact in a closed basin and no depth falls below 0; a lake at rest

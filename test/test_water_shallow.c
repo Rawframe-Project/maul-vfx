@@ -5,7 +5,9 @@
 // pushes and steps, sources adding exactly theirs while the instance
 // plays, an open wall draining; depths never below 0; a dam break on a
 // dry bed against Ritter's solution; a lake at rest still over a sloped
-// terrain, the effect's or the host's; reads and samples of a lake.
+// terrain, the effect's or the host's; a leaned terrain's ground; a fall
+// off a cliff as its mirror's; reads and samples of a lake; friction;
+// pushes at their edges; a stopped instance finishing once still.
 
 #include "instance.h"
 #include "instance_api.h"
@@ -95,7 +97,7 @@ static double Volume(const mvfxWaterDef* water, bool* dry)
     return sum * (double)water->cellSize * (double)water->cellSize;
 }
 
-// Spoils a valid shallow def by case c (none for 13).
+// Spoils a valid shallow def by case c (none for 14).
 static void Spoil(int32_t c, mvfxWaterDef* water, mvfxWaterSource* source)
 {
     switch (c)
@@ -142,6 +144,9 @@ static void Spoil(int32_t c, mvfxWaterDef* water, mvfxWaterSource* source)
     case 12:
         source->center[1] = INFINITY;
         break;
+    case 13:
+        water->gravity = 2e6f;
+        break;
     default:
         break;
     }
@@ -150,7 +155,7 @@ static void Spoil(int32_t c, mvfxWaterDef* water, mvfxWaterSource* source)
 static void TestRefusals(void)
 {
     bool right = true;
-    for (int32_t c = 0; c <= 13; ++c)
+    for (int32_t c = 0; c <= 14; ++c)
     {
         mvfxWaterDef water = Shallow(8, 8, 0.1f);
         mvfxWaterSource source = {.shape = mvfx_gasSphere, .radius = 0.1f, .rate = 1.0f};
@@ -158,7 +163,7 @@ static void TestRefusals(void)
         water.sourceCount = 1;
         Spoil(c, &water, &source);
         bool opened = Open(&water, 1);
-        right = right && opened == (c == 13);
+        right = right && opened == (c == 14);
         Close();
     }
     CHECK(right, "a spoiled shallow def refused, a valid one opened");
@@ -303,15 +308,15 @@ static void TestDamBreak(void)
     Close();
 }
 
-// A ground of 33 by 33 points over 4 by 4 about the origin, sloping from
-// -0.5 at -X to 0.5 at +X (and, turned, along Z), as a heightfield of the
-// instance's frame.
-static mvfxCollider Slope(const float rotation[4])
+// A heightfield of the instance's frame of 33 by 33 points over 4 by 4
+// about the origin, its height a x + b at x along its X, turned by
+// rotation.
+static mvfxCollider Field(float a, float b, const float rotation[4])
 {
     static float heights[33 * 33];
     for (int32_t i = 0; i < 33 * 33; ++i)
     {
-        heights[i] = -0.5f + (float)(i % 33) / 32.0f;
+        heights[i] = b + a * (-2.0f + (float)(i % 33) / 8.0f);
     }
     mvfxGridDef grid = mvfxDefaultGridDef();
     grid.size[0] = 33;
@@ -326,6 +331,12 @@ static mvfxCollider Slope(const float rotation[4])
                             .grid = id};
     memcpy(terrain.rotation, rotation, sizeof terrain.rotation);
     return terrain;
+}
+
+// A ground sloping from -0.5 at -X to 0.5 at +X (and, turned, along Z).
+static mvfxCollider Slope(const float rotation[4])
+{
+    return Field(0.25f, 0.0f, rotation);
 }
 
 // A lake filled to 0 over the slope (its -X half wet, up to 0.5 deep),
@@ -343,7 +354,11 @@ static bool StillLake(bool host, const float rotation[4], float* depths)
     CHECK(Open(&water, 1), "opened");
     if (host)
     {
-        CHECK(mvfxInstance_SetColliders(s_context, s_instance, &terrain, 1) == mvfx_success,
+        // The host's first heightfield, past a sphere.
+        const mvfxCollider colliders[2] = {
+            {.kind = mvfx_colliderSphere, .space = 1, .radius = 0.5f, .rotation = {0, 0, 0, 1}},
+            terrain};
+        CHECK(mvfxInstance_SetColliders(s_context, s_instance, colliders, 2) == mvfx_success,
               "host terrain");
     }
     Steps(1, 0.0);
@@ -398,6 +413,103 @@ static void TestLake(void)
     CHECK(wrong == 0, "filled to the level over the ground");
 }
 
+// The ground under a surface of 20 by 20 cells of 0.1 over a field of
+// height a x + b leaned 30 degrees about Z with its center 1 up: the
+// cells whose ground is off the field's plane by over 1e-4.
+static int32_t Leaned(float a, float b)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    mvfxWaterDef water = Shallow(20, 20, 0.1f);
+    static const float leaned[4] = {0.0f, 0.0f, 0.25881904f, 0.96592583f};
+    water.terrain = Field(a, b, leaned);
+    water.terrain.center[1] = 1.0f;
+    water.hasTerrain = true;
+    CHECK(Open(&water, 1), "opened");
+    Steps(1, 0.0);
+    const float* ground = State()->ground;
+    // Over the box's (X, Y) the field's frame is (c X + s Y, c Y - s X)
+    // from its center, so its plane y = a x + b is met at Y (c - a s) =
+    // X (s + a c) + b.
+    double c = sqrt(3.0) / 2.0;
+    double sn = 0.5;
+    int32_t wrong = 0;
+    for (int32_t i = 0; i < 400; ++i)
+    {
+        double x = ((double)(i % 20) + 0.5 - 10.0) * 0.1;
+        double y = 1.0 + (x * (sn + (double)a * c) + (double)b) / (c - (double)a * sn);
+        wrong += fabs((double)ground[i] - y) > 1e-4;
+    }
+    Close();
+    return wrong;
+}
+
+static void TestLeaned(void)
+{
+    // A level field and a sloped one, leaned, each met where the vertical
+    // meets its plane.
+    CHECK(Leaned(0.0f, 0.2f) == 0, "a leaned level ground");
+    CHECK(Leaned(0.25f, 0.0f) == 0, "a leaned sloped ground");
+}
+
+// A spring of 0.5 a second on a plateau 1 up over the +X half of a
+// channel of 32 by 4 cells of 0.05 (turned a half about Y, the -X half),
+// falling off its cliff for a second: the depths after.
+static void Cliff(bool turned, float depths[128])
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    // 65 by 2 points over 1.6 by 0.2: those at the cells' centers from
+    // the +X half's first on 1, the rest 0.
+    static float heights[65 * 2];
+    for (int32_t i = 0; i < 65 * 2; ++i)
+    {
+        heights[i] = i % 65 >= 33 ? 1.0f : 0.0f;
+    }
+    mvfxGridDef grid = mvfxDefaultGridDef();
+    grid.size[0] = 65;
+    grid.size[1] = 1;
+    grid.size[2] = 2;
+    grid.values = heights;
+    mvfxWaterDef water = Shallow(32, 4, 0.05f);
+    water.terrain =
+        (mvfxCollider){.kind = mvfx_colliderHeightfield,
+                       .space = 1,
+                       .halfExtents = {0.8f, 1.0f, 0.1f},
+                       .rotation = {0.0f, turned ? 1.0f : 0.0f, 0.0f, turned ? 0.0f : 1.0f}};
+    CHECK(mvfxCreateGrid(s_context, &grid, &water.terrain.grid) == mvfx_success, "grid");
+    water.hasTerrain = true;
+    mvfxWaterSource source = {
+        .shape = mvfx_gasSphere, .center = {turned ? -0.4f : 0.4f}, .radius = 0.1f, .rate = 0.5f};
+    water.sources = &source;
+    water.sourceCount = 1;
+    CHECK(Open(&water, 1), "opened");
+    Steps(60, 1.0 / 60.0);
+    const mvfxWaterState* state = State();
+    memcpy(depths, state->heights[state->current], 128 * sizeof(float));
+    Close();
+}
+
+static void TestCliff(void)
+{
+    // Water falling off a cliff toward -X as its mirror falls toward +X:
+    // each cell as its mirror's within a thousandth of the deepest.
+    static float off[128];
+    static float mirror[128];
+    Cliff(false, off);
+    Cliff(true, mirror);
+    float deepest = 0.0f;
+    float worst = 0.0f;
+    for (int32_t i = 0; i < 128; ++i)
+    {
+        int32_t x = i % 32;
+        int32_t z = i / 32;
+        deepest = fmaxf(deepest, off[i]);
+        worst = fmaxf(worst, fabsf(off[i] - mirror[(3 - z) * 32 + 31 - x]));
+    }
+    CHECK(deepest > 0.01f && worst <= 1e-3f * deepest, "a cliff's fall as its mirror's");
+}
+
 // Surface 0's field over its 40 by 40 cells, as binary32.
 static void ReadField(mvfxWaterField field, float out[1600])
 {
@@ -420,6 +532,8 @@ static void TestReads(void)
     water.terrain = Slope(upright);
     water.hasTerrain = true;
     CHECK(Open(&water, 1), "opened");
+    CHECK(mvfxDestroyGrid(s_context, water.terrain.grid) == mvfx_errorBusy,
+          "the effect holds its terrain's grid");
     Steps(2, 1.0 / 60.0);
     static float height[1600];
     static float depth[1600];
@@ -510,6 +624,68 @@ static void TestPushRing(void)
     CHECK(PushRing(true) && PushRing(false), "a push moves water between its middle and ring");
 }
 
+// Pushes once a surface of n by n cells of 0.1 filled to level: the
+// cells whose depth changed, whether the volume stayed (within 1e-6) and
+// every depth is at least 0; its middle cell's depth after.
+static int32_t PushOnce(int32_t n, float level, const mvfxWaterPush* push, bool* kept,
+                        float* middle)
+{
+    mvfxWaterDef water = Shallow(n, n, 0.1f);
+    water.fillLevel = level;
+    CHECK(Open(&water, 1), "opened");
+    Steps(1, 0.0);
+    bool dry = true;
+    double start = Volume(&water, &dry);
+    CHECK(mvfxInstance_PushWater(s_context, s_instance, 0, push, 1) == mvfx_success, "pushed");
+    Steps(1, 0.0);
+    const float* d = State()->heights[State()->current];
+    int32_t changed = 0;
+    for (int32_t i = 0; i < n * n; ++i)
+    {
+        changed += d[i] != level;
+    }
+    *middle = d[(n / 2) * n + n / 2];
+    *kept = fabs(Volume(&water, &dry) / start - 1.0) <= 1e-6 && dry;
+    Close();
+    return changed;
+}
+
+static void TestPushEdges(void)
+{
+    // A push deeper than the water takes what is there and no more; one
+    // with no cell inside it (a lift between cells' centers) or no ring on
+    // the grid (a sink over all of it) changes nothing.
+    bool kept = false;
+    float middle = 0.0f;
+    const mvfxWaterPush deep = {.point = {0.05, 0.0, 0.05}, .radius = 0.3f, .depth = 0.3f};
+    CHECK(PushOnce(32, 0.05f, &deep, &kept, &middle) > 0 && kept && middle == 0.0f,
+          "a push deeper than the water empties its middle");
+    const mvfxWaterPush between = {.point = {0.0, 0.0, 0.0}, .radius = 0.04f, .depth = -0.1f};
+    CHECK(PushOnce(32, 0.3f, &between, &kept, &middle) == 0 && kept,
+          "a lift between cells' centers changes nothing");
+    const mvfxWaterPush over = {.point = {0.0, 0.0, 0.0}, .radius = 1.0f, .depth = 0.1f};
+    CHECK(PushOnce(4, 0.3f, &over, &kept, &middle) == 0 && kept,
+          "a sink with no ring on the grid changes nothing");
+}
+
+static void TestFinish(void)
+{
+    // A stopped instance's surface still moving keeps it from finishing
+    // until friction has stilled it.
+    mvfxWaterDef water = Shallow(32, 32, 0.1f);
+    water.fillLevel = 0.3f;
+    water.friction = 2.0f;
+    CHECK(Open(&water, 1), "opened");
+    CHECK(mvfxInstance_Stop(s_context, s_instance, mvfx_stopEmitting) == mvfx_success, "stopped");
+    const mvfxWaterPush push = {.point = {0.0, 0.0, 0.0}, .radius = 0.5f, .depth = 0.2f};
+    CHECK(mvfxInstance_PushWater(s_context, s_instance, 0, &push, 1) == mvfx_success, "pushed");
+    Steps(1, 1.0 / 60.0);
+    bool moving = !mvfxInstance_IsFinished(s_context, s_instance);
+    Steps(1800, 1.0 / 60.0);
+    CHECK(moving && mvfxInstance_IsFinished(s_context, s_instance), "finished once still");
+    Close();
+}
+
 int main(void)
 {
     TestRefusals();
@@ -518,8 +694,12 @@ int main(void)
     TestDrain();
     TestDamBreak();
     TestLake();
+    TestLeaned();
+    TestCliff();
     TestReads();
     TestFriction();
     TestPushRing();
+    TestPushEdges();
+    TestFinish();
     return s_failures;
 }
