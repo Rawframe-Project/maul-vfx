@@ -295,8 +295,8 @@ static void CodeItems(mvfxCodec* codec, mvfxFieldKind kind, const mvfxFileType* 
     }
 }
 
-// Lays bytes aligned to alignment in the memory, zeroed; NULL for none,
-// when measuring, or when the memory is short.
+// Lays bytes aligned to alignment in the memory, zeroed; NULL for none or
+// when measuring. The memory holds what a measuring walk counted.
 static uint8_t* Lay(mvfxCodec* codec, size_t bytes, size_t alignment)
 {
     if (bytes == 0)
@@ -306,16 +306,10 @@ static uint8_t* Lay(mvfxCodec* codec, size_t bytes, size_t alignment)
     codec->used = (codec->used + alignment - 1) & ~(alignment - 1);
     uint8_t* place = codec->memory != nullptr ? codec->memory + codec->used : nullptr;
     codec->used += bytes;
-    if (place == nullptr)
+    if (place != nullptr)
     {
-        return nullptr;
+        memset(place, 0, bytes);
     }
-    if (codec->used > codec->capacity)
-    {
-        mvfxCodecFault(codec, mvfx_errorCapacity, -1);
-        return nullptr;
-    }
-    memset(place, 0, bytes);
     return place;
 }
 

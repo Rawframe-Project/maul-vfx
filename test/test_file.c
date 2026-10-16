@@ -196,11 +196,25 @@ static void TestAssetTables(void)
     MakeDef(&def);
     uint8_t bytes[4096];
     int64_t written = Write(&def, bytes);
-    static const uint8_t bad[][3] = {{0xC0, 0x80, 0},    {0xED, 0xA0, 0x80}, {0xF4, 0x90, 0x80},
-                                     {0xE0, 0x9F, 0xBF}, {0xF5, 0x80, 0x80}, {0x80, 0, 0}};
+    // Overlong, a surrogate, past U+10FFFF, overlong in three bytes, a
+    // lead past 0xF4, overlong in four bytes, cut short, a lone
+    // continuation, a bad third byte.
+    static const struct
+    {
+        uint8_t bytes[4];
+        int32_t length;
+    } bad[] = {{{0xC0, 0x80}, 2},
+               {{0xED, 0xA0, 0x80}, 3},
+               {{0xF4, 0x90, 0x80, 0x80}, 4},
+               {{0xE0, 0x9F, 0xBF}, 3},
+               {{0xF5, 0x80, 0x80, 0x80}, 4},
+               {{0xF0, 0x8F, 0xBF, 0xBF}, 4},
+               {{0xC3}, 1},
+               {{0x80}, 1},
+               {{0xE2, 0x82, 0x41}, 3}};
     char longName[MVFX_MAX_ASSET_NAME + 1];
     memset(longName, 'a', sizeof longName);
-    for (int32_t c = 0; c < 10; ++c)
+    for (int32_t c = 0; c < 5 + (int32_t)(sizeof bad / sizeof bad[0]); ++c)
     {
         mvfxEffectAsset table[4];
         memcpy(table, s_assets, sizeof table);
@@ -224,8 +238,8 @@ static void TestAssetTables(void)
             table[1].nameLength = 6;
             break;
         default:
-            table[1].name = (const char*)bad[c - 5];
-            table[1].nameLength = 3;
+            table[1].name = (const char*)bad[c - 5].bytes;
+            table[1].nameLength = bad[c - 5].length;
             break;
         }
         int64_t size = 0;
@@ -467,6 +481,171 @@ static void TestEffectUnit(void)
     Expect(bytes, size, refs[0], (uint32_t)-1, mvfx_errorInvalid, 88, "no name referred to");
 }
 
+// Arrays at their caps read back; a reference to the next name when every
+// name is taken; arrays of none read as NULL.
+static void TestCaps(void)
+{
+    Def def;
+    MakeDef(&def);
+    mvfxCollider planes[MVFX_MAX_COLLIDERS];
+    for (int32_t i = 0; i < MVFX_MAX_COLLIDERS; ++i)
+    {
+        planes[i] = (mvfxCollider){.kind = mvfx_colliderPlane,
+                                   .normal = {0, 1, 0},
+                                   .center = {0, (float)i, 0},
+                                   .rotation = {0, 0, 0, 1}};
+    }
+    def.emitter.colliders = planes;
+    def.emitter.colliderCount = MVFX_MAX_COLLIDERS;
+    uint8_t bytes[4096];
+    uint8_t again[4096];
+    int64_t size = Write(&def, bytes);
+    mvfxEffectDef read;
+    CHECK(Refused(Read(bytes, size, &read), mvfx_success, -1) &&
+              read.emitters[0].colliderCount == MVFX_MAX_COLLIDERS &&
+              read.emitters[0].colliders[MVFX_MAX_COLLIDERS - 1].center[1] == 7.0f,
+          "colliders at their cap");
+    int64_t rewritten = 0;
+    CHECK(mvfxWriteEffect(&read, s_assets, 4, again, 4096, &rewritten).result == mvfx_success &&
+              rewritten == size && memcmp(bytes, again, (size_t)size) == 0,
+          "the same bytes at the cap");
+    // Ball, ground, then a plane naming 2 when there are two names.
+    MakeDef(&def);
+    mvfxCollider three[3] = {def.colliders[0], def.colliders[1], planes[0]};
+    def.emitter.colliders = three;
+    def.emitter.colliderCount = 3;
+    size = Write(&def, bytes);
+    three[2].rotation[3] = -1.0f;
+    Write(&def, again);
+    int64_t plane = FirstDifference(bytes, again, size) + 1;
+    CHECK(Get32(bytes, plane) == (uint32_t)-1, "the plane's reference found");
+    Expect(bytes, size, plane, 2, mvfx_errorInvalid, plane, "a name past every name");
+    // No colliders, no modules: NULL arrays.
+    MakeDef(&def);
+    def.emitter.colliderCount = 0;
+    def.emitter.hostModuleCount = 0;
+    size = Write(&def, bytes);
+    CHECK(Refused(Read(bytes, size, &read), mvfx_success, -1) &&
+              read.emitters[0].colliders == NULL && read.emitters[0].hostModules == NULL &&
+              read.parameters == NULL,
+          "arrays of none are NULL");
+}
+
+// Assets of other kinds that match an object's other fields or share its
+// name are passed over; a mesh is named by its id whole.
+static void TestDecoys(void)
+{
+    Def def;
+    MakeDef(&def);
+    uint8_t bytes[4096];
+    uint8_t other[4096];
+    int64_t size = Write(&def, bytes);
+    mvfxEffectAsset table[7] = {
+        {.kind = mvfx_assetMesh, .name = "decoy", .nameLength = 5, .grid = {2, 1}, .mesh = {7, 7}},
+        {.kind = mvfx_assetMesh, .name = "ball", .nameLength = 4, .mesh = {8, 8}},
+        {.kind = mvfx_assetGrid, .name = "rock", .nameLength = 4, .grid = {3, 1}},
+    };
+    memcpy(table + 3, s_assets, sizeof s_assets);
+    int64_t written = 0;
+    CHECK(
+        Refused(mvfxWriteEffect(&def.effect, table, 7, other, 4096, &written), mvfx_success, -1) &&
+            written == size && memcmp(bytes, other, (size_t)size) == 0,
+        "decoys passed over in writing");
+    int64_t needed = 0;
+    mvfxEffectDef read;
+    CHECK(Refused(mvfxReadEffect(bytes, size, table, 7, s_memory, sizeof s_memory, &needed, &read),
+                  mvfx_success, -1) &&
+              read.emitters[0].colliders[0].grid.index1 == 2,
+          "decoys passed over in reading");
+    // A mesh shape: named by its whole id.
+    def.emitter.shape.kind = mvfx_shapeMesh;
+    def.emitter.shape.mesh = (mvfxMeshId){1, 1};
+    size = Write(&def, bytes);
+    CHECK(Get32(bytes, 24 + 16 + 12) == 1, "the mesh named");
+    CHECK(Refused(Read(bytes, size, &read), mvfx_success, -1) &&
+              read.emitters[0].shape.mesh.index1 == 1 &&
+              read.emitters[0].shape.mesh.generation == 1,
+          "the mesh bound");
+    def.emitter.shape.mesh.generation = 2;
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &written),
+                  mvfx_errorMissing, -1),
+          "a mesh of another generation missing");
+}
+
+// Files cut inside their header, their effect unit or a name's bytes;
+// counts and hashes off by what the first checks miss.
+static void TestCuts(void)
+{
+    Def def;
+    MakeDef(&def);
+    uint8_t bytes[4096];
+    int64_t size = Write(&def, bytes);
+    // A header alone, hashed: too short for its unit table.
+    uint8_t header[4096] = {0};
+    memcpy(header, bytes, 24);
+    Set32(header, 8, 24);
+    Rehash(header, 24);
+    mvfxEffectDef read;
+    CHECK(Refused(Read(header, 24, &read), mvfx_errorInvalid, 8), "a header alone");
+    // The effect unit a byte short.
+    uint8_t cut[4096];
+    memcpy(cut, bytes, (size_t)size);
+    Set32(cut, 8, (uint32_t)size - 1);
+    Set32(cut, 24 + 48 + 8, Get32(cut, 24 + 48 + 8) - 1);
+    Rehash(cut, size - 1);
+    CHECK(Refused(Read(cut, size - 1, &read), mvfx_errorInvalid, size - 1),
+          "the effect unit a byte short");
+    Expect(bytes, size, 24 + 48 + 12, 0, mvfx_errorInvalid, 84, "no effect");
+    memcpy(cut, bytes, (size_t)size);
+    cut[20] ^= 1;
+    CHECK(Refused(Read(cut, size, &read), mvfx_errorInvalid, 16), "the hash's high half");
+    // A name of the most bytes, then its length one more: it would end
+    // inside its unit.
+    static uint8_t longFile[8192];
+    static char longName[MVFX_MAX_ASSET_NAME];
+    memset(longName, 'a', sizeof longName);
+    mvfxEffectAsset table[4];
+    memcpy(table, s_assets, sizeof table);
+    table[1].name = longName;
+    table[1].nameLength = MVFX_MAX_ASSET_NAME;
+    int64_t longSize = 0;
+    CHECK(mvfxWriteEffect(&def.effect, table, 4, longFile, sizeof longFile, &longSize).result ==
+              mvfx_success,
+          "a name of the most bytes written");
+    int64_t needed = 0;
+    CHECK(mvfxReadEffect(longFile, longSize, table, 4, s_memory, sizeof s_memory, &needed, &read)
+                  .result == mvfx_success,
+          "and read");
+    Set32(longFile, 88, MVFX_MAX_ASSET_NAME + 1);
+    Rehash(longFile, longSize);
+    CHECK(Refused(mvfxReadEffect(longFile, longSize, table, 4, s_memory, sizeof s_memory, &needed,
+                                 &read),
+                  mvfx_errorInvalid, 88),
+          "a name a byte too long");
+}
+
+// A def its parts' validator refuses: plexus links of none.
+static void TestParts(void)
+{
+    Def def;
+    MakeDef(&def);
+    def.emitter.plexus = (mvfxPlexusDef){
+        .enabled = true, .distance = 0.5f, .maxLinks = 1, .maxPerParticle = 1, .width = 0.01f};
+    uint8_t bytes[4096];
+    uint8_t other[4096];
+    int64_t size = Write(&def, bytes);
+    def.emitter.plexus.maxLinks = 2;
+    Write(&def, other);
+    int64_t links = FirstDifference(bytes, other, size);
+    CHECK(links > 114 && Get32(bytes, links) == 1, "the links found");
+    Expect(bytes, size, links, 0, mvfx_errorInvalid, 114, "no plexus links");
+    def.emitter.plexus.maxLinks = 0;
+    int64_t written = 0;
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &written),
+                  mvfx_errorInvalid, -1),
+          "the writer refuses it too");
+}
+
 // Bytes after the def in its unit, and a def the validator refuses.
 static void TestTrailing(void)
 {
@@ -633,6 +812,10 @@ int main(void)
     TestNames();
     TestEffectUnit();
     TestTrailing();
+    TestCaps();
+    TestDecoys();
+    TestCuts();
+    TestParts();
     TestMemory();
     TestCreate();
     return s_failures == 0 ? 0 : 1;

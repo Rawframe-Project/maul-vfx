@@ -362,16 +362,15 @@ static mvfxFileResult Bind(const uint8_t* bytes, const Unit units[UNIT_COUNT],
 }
 
 // Walks the effect unit: checking and measuring without a def, reading
-// into one with names bound.
+// into one with names bound, its arrays in memory of the bytes measured.
 static mvfxFileResult ReadDef(const uint8_t* bytes, const Unit units[UNIT_COUNT],
                               const mvfxEffectAsset* assets, int32_t* names, uint8_t* memory,
-                              size_t capacity, mvfxEffectDef* def, size_t* used)
+                              mvfxEffectDef* def, size_t* used)
 {
     mvfxCodec codec = {.in = bytes,
                        .at = units[EFFECT_UNIT].offset,
                        .end = units[EFFECT_UNIT].offset + units[EFFECT_UNIT].size,
                        .memory = memory,
-                       .capacity = capacity,
                        .faultAt = -1,
                        .assets = assets};
     size_t first = 0;
@@ -424,7 +423,7 @@ static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEff
     }
     if (result.result == mvfx_success)
     {
-        result = ReadDef(bytes, units, assets, nullptr, nullptr, 0, nullptr, needed);
+        result = ReadDef(bytes, units, assets, nullptr, nullptr, nullptr, needed);
     }
     if (result.result == mvfx_success)
     {
@@ -465,7 +464,7 @@ mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size, const mvfxEffectA
     {
         return Fault(mvfx_errorCapacity, -1);
     }
-    result = ReadDef(bytes, units, assets, names, memory, (size_t)capacity, defOut, &needed);
+    result = ReadDef(bytes, units, assets, names, memory, defOut, &needed);
     if (result.result == mvfx_success &&
         (!mvfxIsEffectDefValid(defOut) || !mvfxAreEffectPartsValid(defOut)))
     {
