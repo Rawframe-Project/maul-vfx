@@ -551,10 +551,11 @@ static void TestCliff(void)
     CHECK(deepest > 0.01f && worst <= 1e-3f * deepest, "a cliff's fall as its mirror's");
 }
 
-// A column a cell wide and deep on a surface of 16 by 16 cells of 0.1,
-// on a dry floor or on a pinnacle 2 up, stepped half a second: whether
-// its volume stayed (to 1e-5) and every depth is at least 0.
-static bool Column(bool pinnacle, float deep)
+// A column a cell wide and deep at cell (8, row) of a surface of 16 by
+// 16 cells of 0.1, on a dry floor or on a pinnacle 2 up, stepped half a
+// second: whether its volume stayed (to 1e-5) and every depth is at
+// least 0, and whether a restart clears the faces held; those held.
+static bool Column(bool pinnacle, float deep, int32_t row, uint64_t* held)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
@@ -563,7 +564,7 @@ static bool Column(bool pinnacle, float deep)
     // (2 x + 1, 2 z + 1).
     static float heights[33 * 33];
     memset(heights, 0, sizeof heights);
-    heights[17 * 33 + 17] = pinnacle ? 2.0f : 0.0f;
+    heights[(2 * row + 1) * 33 + 17] = pinnacle ? 2.0f : 0.0f;
     mvfxGridDef grid = mvfxDefaultGridDef();
     grid.size[0] = 33;
     grid.size[1] = 1;
@@ -578,22 +579,33 @@ static bool Column(bool pinnacle, float deep)
     CHECK(Open(&water, 1), "opened");
     Steps(1, 0.0);
     mvfxWaterState* state = State();
-    state->heights[state->current][8 * 16 + 8] = deep;
+    state->heights[state->current][row * 16 + 8] = deep;
     Steps(30, 1.0 / 60.0);
     bool dry = true;
     double volume = Volume(&water, &dry);
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
+    *held = info.facesHeld;
+    CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success, "restarted");
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
     Close();
-    return fabs(volume / ((double)deep * 0.01) - 1.0) <= 1e-5 && dry;
+    return fabs(volume / ((double)deep * 0.01) - 1.0) <= 1e-5 && dry && info.facesHeld == 0;
 }
 
 static void TestColumn(void)
 {
     // A column spreading through its four faces at once: on a floor the
-    // substep's bound keeps each face within a quarter of its water; off a
-    // pinnacle each face's fall is held at the bound, half of its water,
-    // and the giver's scale keeps the volume.
-    CHECK(Column(false, 1.0f), "a spreading column keeps its volume");
-    CHECK(Column(true, 0.1f), "a column off a pinnacle keeps its volume");
+    // substep's bound keeps each face within a quarter of its water, none
+    // held; off a pinnacle each face's fall is held at the bound, half of
+    // its water, and the giver's scale keeps the volume. A pinnacle by the
+    // first row holds as many as its mirror by the last.
+    uint64_t held[3] = {0, 0, 0};
+    CHECK(Column(false, 1.0f, 8, &held[0]) && held[0] == 0, "a spreading column keeps its volume");
+    CHECK(Column(true, 0.1f, 8, &held[0]) && held[0] > 0,
+          "a column off a pinnacle keeps its volume");
+    CHECK(Column(true, 0.1f, 0, &held[1]) && Column(true, 0.1f, 15, &held[2]) && held[1] > 0 &&
+              held[1] == held[2],
+          "faces held counted in every row");
 }
 
 // Surface 0's field over its 40 by 40 cells, as binary32.
