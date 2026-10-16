@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Fuzzes the effect file reader: the bytes a program reads from disk or a
-// network and hands the library. The header's size and hash are set to
-// match first, so mutations reach the units rather than stopping at the
-// seal, whose refusals the unit tests cover. A file that reads must write
+// network and hands the library. Most inputs have the header's size and
+// hash set to match first, so mutations reach the units rather than
+// stopping at the seal; one in eight goes in as it is. A file that reads must write
 // back to the same bytes and is created as an effect on a context holding
 // the golden scene's grids, meshes and host module, which it names; a
 // refusal must be one the reader documents, at an offset in the file, and
@@ -116,7 +116,10 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     {
         memcpy(bytes, data, size);
     }
-    if (size >= 24)
+    // The low three bits of the hash's first byte, which sealing writes
+    // over, choose: one input in eight goes in unsealed, so the size and
+    // hash checks are fuzzed too.
+    if (size >= 24 && (data[16] & 7) != 0)
     {
         PutLittle(bytes + 8, size, 4);
         PutLittle(bytes + 16, mvfxHash64(MVFX_HASH_INIT, bytes + 24, (int32_t)(size - 24)), 8);

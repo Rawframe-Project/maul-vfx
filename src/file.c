@@ -171,9 +171,24 @@ static void WriteFrame(const mvfxCodec* codec, uint8_t* bytes, size_t size, size
     }
 }
 
+// The hash of everything after the header: mvfxHash64 with its words read
+// little-endian, as the file's are, so it is the same on every host
+// (mvfxHash64 itself reads the host's order).
 static uint64_t Hash(const uint8_t* bytes, size_t size)
 {
-    return mvfxHash64(MVFX_HASH_INIT, bytes + HEADER_BYTES, (int32_t)(size - HEADER_BYTES));
+    uint64_t hash = MVFX_HASH_INIT;
+    size_t i = HEADER_BYTES;
+    for (; i + 8 <= size; i += 8)
+    {
+        uint64_t word = (uint64_t)Get32(bytes, i) | (uint64_t)Get32(bytes, i + 4) << 32;
+        hash = (hash ^ word) * 0x9E3779B97F4A7C15ull;
+        hash ^= hash >> 32;
+    }
+    for (; i < size; ++i)
+    {
+        hash = (hash ^ bytes[i]) * 0x100000001B3ull;
+    }
+    return hash;
 }
 
 mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def, const mvfxEffectAsset* assets,

@@ -23,6 +23,7 @@ Usage: gen_file.py [--check]. With --check it writes nothing and fails
 when the file differs from what it would write.
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -263,9 +264,37 @@ def value(term):
     return result
 
 
+# Each format version's layout of the effect unit (layout()). A def whose
+# layout is none of these changed the bytes: bump MVFX_FILE_VERSION in
+# maul-vfx/file.h and record the new layout under it, so no file of one
+# layout is read as another (an older version is then mvfx_errorVersion).
+LAYOUTS = {
+    1: "a53afec9fc6a364b",
+}
+
+
+def layout(tables):
+    """A fingerprint of the bytes the tables lay down: each entry's kind,
+    elements, nested type and cap, the defines a count or a cap names
+    taken at their values, places and field names left out."""
+    wire = []
+    for line in tables:
+        line = re.sub(r"offsetof\([^)]*\)", "", line)
+        wire.append(re.sub(r"\bMVFX_\w+\b", lambda m: str(DEFINES.get(m.group(0), m.group(0))),
+                           line))
+    return hashlib.sha256("\n".join(wire).encode("utf-8")).hexdigest()[:16]
+
+
 def generate():
     typedefs, structs = parse()
     order = reachable(typedefs, structs, "mvfxEffectDef")
+    tables = []
+    for name in order:
+        tables += table(typedefs, structs, name)
+    version = DEFINES["MVFX_FILE_VERSION"]
+    if LAYOUTS.get(version) != layout(tables):
+        raise SystemExit(f"the effect unit's layout is {layout(tables)}, not format "
+                         f"{version}'s: bump MVFX_FILE_VERSION and record it in LAYOUTS")
     lines = [
         "// SPDX-License-Identifier: MIT",
         "// Copyright (c) 2026 Sirac Ozmen",
@@ -282,8 +311,7 @@ def generate():
         "#include <stddef.h>",
         "",
     ]
-    for name in order:
-        lines += table(typedefs, structs, name)
+    lines += tables
     sums = references(typedefs, structs, "mvfxEffectDef", {})
     lines += [
         "const mvfxFileType* const mvfxFileEffectDef = &s_mvfxEffectDef;",

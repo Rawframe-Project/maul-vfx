@@ -2,13 +2,13 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Effect files: an effect def as bytes to keep and ship, written and read
-// field by field in little-endian, checked by a hash and refused with the
-// offset of the first byte at fault. A file holds exactly a valid def:
-// every field of every struct the def reaches, its arrays counted, and
-// the names of the host's objects it refers to (its grids, its meshes,
-// its host modules), which the host binds through a table of assets when
-// it writes and when it reads. Equal defs with equal assets give equal
-// bytes.
+// field by field, every integer and every float's bits little-endian
+// whatever the host's order, checked by a hash of 64-bit words read
+// little-endian, and refused with the offset of the first byte at fault. A file holds exactly a
+// valid def: every field of every struct the def reaches, its arrays counted, and the names of the
+// host's objects it refers to (its grids, its meshes, its host modules), which the host binds
+// through a table of assets when it writes and when it reads. Equal defs with equal assets give
+// equal bytes.
 
 #ifndef MAUL_VFX_FILE_H
 #define MAUL_VFX_FILE_H
@@ -104,7 +104,10 @@ extern "C"
     /// @param capacity    Its size in bytes, at least 0.
     /// @param neededOut   Receives the bytes of memory the def needs, also
     ///                    when the capacity is too small; 0 on another
-    ///                    failure.
+    ///                    failure. The size is known before the def
+    ///                    validator runs, which needs the def in memory, so
+    ///                    a file measured may still be refused by the read
+    ///                    that follows: check its result.
     /// @param defOut      Receives the def, with its cookies; zeroed on
     ///                    failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument,

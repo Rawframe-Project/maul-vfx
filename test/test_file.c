@@ -277,6 +277,14 @@ static void TestLayout(void)
     MakeDef(&def);
     uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
+    // The bytes themselves, by a hash of one byte at a time (FNV-1a), the
+    // same on every host: a host of another byte order is held to them.
+    uint64_t fnv = 0xCBF29CE484222325ull;
+    for (int64_t i = 0; i < size; ++i)
+    {
+        fnv = (fnv ^ bytes[i]) * 0x100000001B3ull;
+    }
+    CHECK(fnv == 0x5E7AFA0B90468DE3ull && size == 1592, "the bytes as committed");
     CHECK(memcmp(bytes, "MVFX", 4) == 0, "the magic");
     CHECK(Get32(bytes, 4) == MVFX_FILE_VERSION && Get32(bytes, 8) == (uint32_t)size &&
               Get32(bytes, 12) == 4,
