@@ -369,8 +369,9 @@ static inline void BuildGasScene(mvfxContext* context)
 
 // Liquids: a planar liquid in the world poured from a box above a box it
 // keeps inside, with viscosity, confinement and the tensile correction,
-// under gravity; and a 3D liquid of its turning instance's space in a
-// box of that space, poured from a sphere. Their particles die and are
+// under gravity; a 3D liquid of its turning instance's space in a box of
+// that space, poured from a sphere; and a grid liquid of that space
+// poured into a liquid gas of the instance's frame. Their particles die and are
 // born again, joining the liquid a step after their birth.
 static inline void BuildLiquidScene(mvfxContext* context)
 {
@@ -385,8 +386,15 @@ static inline void BuildLiquidScene(mvfxContext* context)
                                      .center = {0.0f, 0.3f, 0.0f},
                                      .halfExtents = {0.3f, 0.3f, 0.3f},
                                      .rotation = {0, 0, 0, 1}};
-    mvfxEmitterDef liquids[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
-    for (int32_t e = 0; e < 2; ++e)
+    static const mvfxCollider basin = {.kind = mvfx_colliderBox,
+                                       .space = mvfx_spaceLocal,
+                                       .inside = true,
+                                       .center = {0.0f, 0.36f, 0.0f},
+                                       .halfExtents = {0.48f, 0.36f, 1.0f},
+                                       .rotation = {0, 0, 0, 1}};
+    mvfxEmitterDef liquids[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
+                                 mvfxDefaultEmitterDef()};
+    for (int32_t e = 0; e < 3; ++e)
     {
         mvfxEmitterDef* liquid = &liquids[e];
         liquid->capacity = e == 0 ? 96 : 64;
@@ -416,9 +424,34 @@ static inline void BuildLiquidScene(mvfxContext* context)
     liquids[1].colliderCount = 1;
     liquids[1].liquid.substeps = 2;
     liquids[1].liquid.iterations = 2;
+    // A grid liquid of the instance's space poured into its basin, a liquid
+    // gas of the instance's frame: both move and turn with it.
+    liquids[2].space = mvfx_spaceLocal;
+    liquids[2].capacity = 128;
+    liquids[2].rate = 80.0f;
+    liquids[2].shape.kind = mvfx_shapeBox;
+    liquids[2].shape.offset[1] = 0.6f;
+    liquids[2].shape.halfExtents[0] = 0.15f;
+    liquids[2].shape.halfExtents[1] = 0.05f;
+    liquids[2].colliders = &basin;
+    liquids[2].colliderCount = 1;
+    liquids[2].liquid.solver = mvfx_liquidGrid;
+    liquids[2].liquid.gas = 0;
+    liquids[2].liquid.spacing = 0.03f;
+    mvfxGasDef basinGas = mvfxDefaultGasDef();
+    basinGas.kind = mvfx_gasLiquid;
+    basinGas.size[0] = 16;
+    basinGas.size[1] = 12;
+    basinGas.size[2] = 1;
+    basinGas.cellSize = 0.06f;
+    basinGas.center[1] = 0.36f;
+    basinGas.closedWalls = 63;
+    basinGas.pressureCycles = 3;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = liquids;
-    def.emitterCount = 2;
+    def.emitterCount = 3;
+    def.gases = &basinGas;
+    def.gasCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "liquid effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();

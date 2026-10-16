@@ -438,7 +438,9 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     mvfxGasAt gasesAt[MVFX_MAX_GASES];
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
-        mvfxAddGasLayout(&layout, &effect->gases[g], &gasesAt[g]);
+        int32_t liquid = effect->gases[g].liquid;
+        mvfxAddGasLayout(&layout, &effect->gases[g], liquid >= 0 ? capacities[liquid] : 0,
+                         &gasesAt[g]);
     }
     if (layout.overflow)
     {
@@ -477,7 +479,9 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, capacities);
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
-        mvfxStartGas(&instance->gases[g], &effect->gases[g], block, &gasesAt[g]);
+        int32_t liquid = effect->gases[g].liquid;
+        mvfxStartGas(&instance->gases[g], &effect->gases[g], liquid >= 0 ? capacities[liquid] : 0,
+                     block, &gasesAt[g]);
         mvfxGasAreas(&effect->gases[g], &instance->gases[g]);
     }
     mvfxResetInstance(instance);

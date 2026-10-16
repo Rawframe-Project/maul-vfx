@@ -24,7 +24,16 @@ typedef struct Level
     float* const* coefficients;
     float* weights;
     const mvfxTasks* tasks;
+    // A liquid's cells (1 liquid, 0 air held at p = 0); NULL for smoke.
+    const uint8_t* liquid;
 } Level;
+
+// Whether cell i of a level is solved: every cell of smoke, a liquid's
+// liquid cells.
+static bool IsSolved(const Level* l, int64_t i)
+{
+    return l->liquid == nullptr || l->liquid[i] != 0;
+}
 
 // The least rows a task's range takes: a small level is one range.
 #define ROW_RANGE 8
@@ -220,7 +229,8 @@ static void JacobiRows(int32_t start, int32_t end, void* context)
         {
             float weight = l->weights[i];
             float solved = weight > 0.0f ? (sums[x] - pass->rhs[i]) / weight : 0.0f;
-            pass->to[i] = (1.0f - pass->omega) * pass->from[i] + pass->omega * solved;
+            float next = (1.0f - pass->omega) * pass->from[i] + pass->omega * solved;
+            pass->to[i] = IsSolved(l, i) ? next : 0.0f;
         }
     }
 }
@@ -254,7 +264,8 @@ static void ResidualRows(int32_t start, int32_t end, void* context)
         int64_t i = (int64_t)r * l->n[0];
         for (int32_t x = 0; x < l->n[0]; ++x, ++i)
         {
-            pass->to[i] = pass->rhs[i] - (sums[x] - l->weights[i] * pass->from[i]);
+            float residual = pass->rhs[i] - (sums[x] - l->weights[i] * pass->from[i]);
+            pass->to[i] = IsSolved(l, i) ? residual : 0.0f;
         }
     }
 }
@@ -349,7 +360,7 @@ static void ProlongRows(int32_t start, int32_t end, void* context)
                 int64_t at = ((int64_t)az[c] * coarse->n[1] + ay[b]) * coarse->n[0] + ax[a];
                 sum += wx[a] * wy[b] * wz[c] * pass->from[at];
             }
-            pass->to[i] += sum;
+            pass->to[i] += IsSolved(fine, i) ? sum : 0.0f;
         }
     }
 }
@@ -366,7 +377,7 @@ static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, fl
                   const mvfxTasks* tasks)
 {
     const Level here = {gas->levels[l],         gas->def.size,     1 << l, state->areas[l],
-                        state->coefficients[l], state->weights[l], tasks};
+                        state->coefficients[l], state->weights[l], tasks,  state->room.liquid[l]};
     mvfxGasLevel* v = &state->levels[l];
     if (l + 1 == gas->levelCount)
     {
@@ -377,7 +388,7 @@ static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, fl
     Residual(&here, v);
     const Level below = {
         gas->levels[l + 1],         gas->def.size,         2 << l, state->areas[l + 1],
-        state->coefficients[l + 1], state->weights[l + 1], tasks};
+        state->coefficients[l + 1], state->weights[l + 1], tasks,  state->room.liquid[l + 1]};
     Restrict(&here, v->scratch, &below, &state->levels[l + 1]);
     Cycle(gas, state, l + 1, omega, tasks);
     Prolong(&below, state->levels[l + 1].pressure, &here, v->pressure);
@@ -518,14 +529,32 @@ static bool IsSealed(const mvfxCompiledGas* gas)
     return true;
 }
 
+// Whether a liquid has an open air cell, which holds its pressure and
+// makes its system regular.
+static bool HasAir(const mvfxCompiledGas* gas, const mvfxGasState* state)
+{
+    const uint8_t* liquid = state->room.liquid[0];
+    const int32_t* n = gas->def.size;
+    for (int64_t i = 0; liquid != nullptr && i < gas->cells; ++i)
+    {
+        const int32_t at[3] = {(int32_t)(i % n[0]), (int32_t)(i / n[0] % n[1]),
+                               (int32_t)(i / ((int64_t)n[0] * n[1]))};
+        if (liquid[i] == 0 && IsOpen(state, n, at))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // The divergence the expansion asks for taken from each open cell's, so
-// the solve leaves it there; in a sealed box, less its mean over the open
-// cells (it has nowhere to go), summed in the cells' order.
+// the solve leaves it there; in a sealed box with no air, less its mean
+// over the open cells (it has nowhere to go), summed in the cells' order.
 static void Expand(const mvfxCompiledGas* gas, const mvfxGasState* state, const float* expansion,
                    float* rhs)
 {
     const int32_t* n = gas->def.size;
-    bool sealed = IsSealed(gas);
+    bool sealed = IsSealed(gas) && !HasAir(gas, state);
     double sum = 0.0;
     int64_t open = 0;
     for (int64_t i = 0; sealed && i < gas->cells; ++i)
@@ -562,6 +591,14 @@ void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float
     if (expansion != nullptr)
     {
         Expand(gas, state, expansion, state->levels[0].rhs);
+    }
+    // A liquid's air cells start at 0 too: the cells it left since the last
+    // solve are air now.
+    const uint8_t* liquid = state->room.liquid[0];
+    float* pressure = state->levels[0].pressure;
+    for (int64_t i = 0; liquid != nullptr && i < gas->cells; ++i)
+    {
+        pressure[i] = liquid[i] != 0 ? pressure[i] : 0.0f;
     }
     for (int32_t c = 0; c < gas->def.pressureCycles; ++c)
     {
@@ -644,8 +681,8 @@ void mvfxGasAreas(const mvfxCompiledGas* gas, mvfxGasState* state)
                 LevelAreas(gas, state, l, k);
             }
         }
-        const Level level = {gas->levels[l],         gas->def.size,     1 << l, state->areas[l],
-                             state->coefficients[l], state->weights[l], nullptr};
+        const Level level = {gas->levels[l],         gas->def.size,     1 << l,  state->areas[l],
+                             state->coefficients[l], state->weights[l], nullptr, nullptr};
         LevelCoefficients(&level);
     }
 }

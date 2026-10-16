@@ -311,6 +311,10 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
     {
         Store(instance, emitter, (mvfxAttribute)(mvfx_attributeSleep + k), at, 0.0f);
     }
+    for (int32_t k = 0; Has(compiled, mvfx_attributeAffine) && k < 9; ++k)
+    {
+        Store(instance, emitter, (mvfxAttribute)(mvfx_attributeAffine + k), at, 0.0f);
+    }
     StoreWords(instance, emitter, birth, at);
     for (int32_t k = 0; Has(compiled, mvfx_attributeScenePointX) && k < 6; ++k)
     {

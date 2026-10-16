@@ -334,6 +334,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxEmitterDef.liquid` (`mvfxLiquidDef`), by position-based fluids in
   substeps, 3D or planar, sliding along the colliders, with XSPH
   viscosity, vorticity confinement and an optional tensile correction.
+- Grid liquids: a liquid gas (`mvfxGasDef.kind`, `mvfx_gasLiquid`) moves
+  the particles of the emitter whose liquid names it
+  (`mvfxLiquidDef.solver`, `mvfx_liquidGrid`) by APIC, with air cells
+  at pressure 0 and each particle's affine velocity as attributes; its
+  density reads as the share of each cell the liquid fills.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

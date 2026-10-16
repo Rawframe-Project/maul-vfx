@@ -96,7 +96,10 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def)
         def->substeps > MVFX_MAX_GAS_SUBSTEPS || def->sourceCount < 0 ||
         def->sourceCount > MVFX_MAX_GAS_SOURCES ||
         (def->sourceCount > 0 && def->sources == nullptr) || def->closedWalls > 63 ||
-        def->pressureCycles < 0 || def->pressureCycles > MVFX_MAX_GAS_CYCLES)
+        def->pressureCycles < 0 || def->pressureCycles > MVFX_MAX_GAS_CYCLES ||
+        def->kind > mvfx_gasLiquid ||
+        (def->kind == mvfx_gasLiquid &&
+         (def->sourceCount > 0 || def->forceCount > 0 || def->substeps != 1)))
     {
         return false;
     }
@@ -153,7 +156,7 @@ static bool Coarsens(const int32_t n[3])
 
 mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
 {
-    mvfxCompiledGas gas = {.def = *def};
+    mvfxCompiledGas gas = {.def = *def, .liquid = -1};
     gas.def.sources = nullptr;
     gas.def.obstacles = nullptr;
     gas.def.forces = nullptr;
@@ -199,7 +202,8 @@ mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def)
     return gas;
 }
 
-void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt* at)
+void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, int32_t particles,
+                      mvfxGasAt* at)
 {
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -224,10 +228,47 @@ void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt*
     }
     at->solid = mvfxLayoutAdd(layout, gas->hasObstacles ? (size_t)gas->cells : 0, 1, 1);
     at->work = mvfxLayoutAdd(layout, (size_t)gas->work, sizeof(float), alignof(float));
+    bool liquid = gas->def.kind == mvfx_gasLiquid;
+    size_t cells = liquid ? (size_t)gas->cells + 1u : 0u;
+    size_t room = liquid ? (size_t)particles : 0u;
+    at->cellStart = mvfxLayoutAdd(layout, cells, sizeof(int32_t), alignof(int32_t));
+    at->order = mvfxLayoutAdd(layout, room, sizeof(int32_t), alignof(int32_t));
+    at->local = mvfxLayoutAdd(layout, 15u * room, sizeof(float), alignof(float));
+    size_t masks = 0;
+    for (int32_t l = 0; liquid && l < gas->levelCount; ++l)
+    {
+        masks += (size_t)mvfxGasLevelCells(gas, l);
+    }
+    at->masks = mvfxLayoutAdd(layout, masks, 1, 1);
+    size_t faces = liquid ? (size_t)(gas->faces[0] + gas->faces[1] + gas->faces[2]) : 0u;
+    at->valid = mvfxLayoutAdd(layout, 2u * faces, 1, 1);
 }
 
-void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char* block,
-                  const mvfxGasAt* at)
+// Points a liquid gas's room into the block.
+static void StartRoom(mvfxGasState* state, const mvfxCompiledGas* gas, int32_t particles,
+                      unsigned char* block, const mvfxGasAt* at)
+{
+    if (gas->def.kind != mvfx_gasLiquid)
+    {
+        return;
+    }
+    mvfxLiquidGasRoom* room = &state->room;
+    room->cellStart = (int32_t*)(block + at->cellStart);
+    room->order = (int32_t*)(block + at->order);
+    room->local = (float*)(block + at->local);
+    room->capacity = particles;
+    uint8_t* masks = block + at->masks;
+    for (int32_t l = 0; l < gas->levelCount; ++l)
+    {
+        room->liquid[l] = masks;
+        masks += mvfxGasLevelCells(gas, l);
+    }
+    room->valid[0] = block + at->valid;
+    room->valid[1] = room->valid[0] + (gas->faces[0] + gas->faces[1] + gas->faces[2]);
+}
+
+void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, int32_t particles,
+                  unsigned char* block, const mvfxGasAt* at)
 {
     *state = (mvfxGasState){.rotation = {0.0f, 0.0f, 0.0f, 1.0f}, .scale = 1.0f};
     for (int32_t k = 0; k < 3; ++k)
@@ -261,6 +302,7 @@ void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char
         state->weights[l] = (float*)(block + at->weights[l]);
     }
     state->solid = gas->hasObstacles ? block + at->solid : nullptr;
+    StartRoom(state, gas, particles, block, at);
     mvfxClearGas(state, gas);
 }
 

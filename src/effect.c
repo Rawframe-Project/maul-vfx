@@ -9,6 +9,7 @@
 
 #include "allocator.h"
 #include "collide.h"
+#include "effect_gas.h"
 #include "elementary.h"
 #include "force.h"
 #include "hull.h"
@@ -504,80 +505,6 @@ static bool AreQualityLevelsValid(const mvfxEffectDef* def)
     return true;
 }
 
-// Whether an emitter's splat into a gas is in range for an effect of
-// gasCount gases.
-static bool IsSplatValid(const mvfxGasSplat* splat, int32_t gasCount)
-{
-    if (!splat->enabled)
-    {
-        return true;
-    }
-    const float rates[3] = {splat->density, splat->temperature, splat->fuel};
-    bool valid =
-        splat->gas >= 0 && splat->gas < gasCount && IsWithin(splat->drag, 0.0f, MVFX_MAX_DRAG);
-    for (int32_t k = 0; valid && k < 3; ++k)
-    {
-        valid = IsWithin(rates[k], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
-    }
-    return valid;
-}
-
-// Whether every gas an emitter's forces follow or it splats into is one
-// of the effect's, and no gas's force follows a gas.
-static bool AreGasLinksValid(const mvfxEffectDef* def)
-{
-    for (int32_t i = 0; i < def->emitterCount; ++i)
-    {
-        for (int32_t f = 0; f < def->emitters[i].forceCount; ++f)
-        {
-            const mvfxForce* force = &def->emitters[i].forces[f];
-            if (force->kind == mvfx_forceGas && force->gas >= def->gasCount)
-            {
-                return false;
-            }
-        }
-    }
-    for (int32_t g = 0; g < def->gasCount; ++g)
-    {
-        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
-        {
-            if (def->gases[g].forces[f].kind == mvfx_forceGas)
-            {
-                return false;
-            }
-        }
-    }
-    for (int32_t i = 0; i < def->emitterCount; ++i)
-    {
-        if (!IsSplatValid(&def->emitters[i].gasSplat, def->gasCount))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Whether a gas's forces are in range for the effect's parameters.
-static bool AreGasForcesValid(const mvfxGasDef* gas, const mvfxEffectDef* def)
-{
-    if (gas->forceCount < 0 || gas->forceCount > MVFX_MAX_FORCES ||
-        (gas->forceCount > 0 && gas->forces == nullptr))
-    {
-        return false;
-    }
-    int32_t parameters = def->parameterCount >= 0 && def->parameterCount <= MVFX_MAX_PARAMETERS
-                             ? def->parameterCount
-                             : 0;
-    for (int32_t f = 0; f < gas->forceCount; ++f)
-    {
-        if (!mvfxIsForceValid(&gas->forces[f], parameters))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE ||
@@ -590,7 +517,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     }
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
-        if (!mvfxIsGasDefValid(&def->gases[g]) || !AreGasForcesValid(&def->gases[g], def))
+        if (!mvfxIsGasDefValid(&def->gases[g]))
         {
             return false;
         }
@@ -611,13 +538,12 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
     {
         if (!IsEmitterDefValid(&def->emitters[i]) ||
             !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
-
             !IsBeamValid(&def->emitters[i], def->parameterCount))
         {
             return false;
         }
     }
-    if (!AreGasLinksValid(def))
+    if (!mvfxAreEffectGasesValid(def))
     {
         return false;
     }
@@ -672,6 +598,8 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
           6);
     Store(plan, def->rigid.enabled && def->rigid.sleepSpeed > 0.0f, mvfx_attributeSleep, 4);
+    Store(plan, def->liquid.enabled && def->liquid.solver == mvfx_liquidGrid, mvfx_attributeAffine,
+          9);
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         Store(plan, true, mvfx_attributeCustom + 4 * i, def->custom[i].components);
@@ -954,6 +882,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
         effect->gases[g] = mvfxCompileGas(&def->gases[g]);
+        effect->gases[g].liquid = mvfxLiquidOf(def, g);
     }
     effect->gasCount = def->gasCount;
     return effect;

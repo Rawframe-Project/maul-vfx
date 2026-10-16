@@ -419,21 +419,14 @@ static void ThreeOf(float* base, size_t stride, float* out[3])
     }
 }
 
-// A substep of h after the integrator: the iterations, the velocities'
-// gain, then viscosity and confinement.
-static void Solve(mvfxInstance* instance, int32_t emitter, Liquid* l, float sigma, float spacing,
-                  float h, uint64_t* capped)
+// The density iterations on the places, the first's capped particles
+// counted into capped.
+static void Iterate(mvfxInstance* instance, int32_t emitter, Liquid* l, float sigma,
+                    uint64_t* capped)
 {
     mvfxLiquidRoom* room = &instance->emitters[emitter].liquid;
-    size_t stride = (size_t)room->grid.capacity;
-    float* predicted[3];
     float* moved[3];
-    float* velocities[3];
-    float* swirls[3];
-    ThreeOf(room->predicted, stride, predicted);
-    ThreeOf(room->moved, stride, moved);
-    ThreeOf(room->velocities, stride, velocities);
-    ThreeOf(room->swirls, stride, swirls);
+    ThreeOf(room->moved, (size_t)room->grid.capacity, moved);
     for (int32_t n = 0; n < l->def->iterations; ++n)
     {
         uint64_t over = 0;
@@ -442,6 +435,22 @@ static void Solve(mvfxInstance* instance, int32_t emitter, Liquid* l, float sigm
         Corrections(l, room->multipliers, moved);
         Slide(instance, emitter, l, sigma, moved);
     }
+}
+
+// A substep of h after the integrator: the iterations, the velocities'
+// gain, then viscosity and confinement.
+static void Solve(mvfxInstance* instance, int32_t emitter, Liquid* l, float sigma, float spacing,
+                  float h, uint64_t* capped)
+{
+    mvfxLiquidRoom* room = &instance->emitters[emitter].liquid;
+    size_t stride = (size_t)room->grid.capacity;
+    float* predicted[3];
+    float* velocities[3];
+    float* swirls[3];
+    ThreeOf(room->predicted, stride, predicted);
+    ThreeOf(room->velocities, stride, velocities);
+    ThreeOf(room->swirls, stride, swirls);
+    Iterate(instance, emitter, l, sigma, capped);
     for (int32_t k = 0; k < 3; ++k)
     {
         for (int32_t i = 0; i < l->count; ++i)
@@ -508,4 +517,45 @@ void mvfxStepLiquid(mvfxInstance* instance, int32_t emitter)
         capped += s == 0 ? over : 0u;
     }
     state->neighborsCapped += capped;
+}
+
+void mvfxMoveGridLiquid(mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    mvfxLiquidRoom* room = &state->liquid;
+    size_t stride = (size_t)room->grid.capacity;
+    float sigma = compiled->space == mvfx_spaceWorld ? instance->to.scale : 1.0f;
+    Liquid l = {.def = &compiled->liquid, .count = state->count};
+    float* start[3];
+    float* carried[3];
+    float* moved[3];
+    ThreeOf(room->predicted, stride, start);
+    ThreeOf(room->velocities, stride, carried);
+    ThreeOf(room->moved, stride, moved);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        l.x[k] =
+            mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributePositionX + k));
+        l.v[k] =
+            mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+    }
+    CopyThree(start, (const float* const*)l.x, l.count);
+    CopyThree(carried, (const float* const*)l.v, l.count);
+    // The integrator gives the velocity its forces, drag and bounces, and
+    // ages, kills and events, as for any particle.
+    mvfxIntegrateEmitter(instance, emitter);
+    // The places move by the velocity the gas gave, followed along the
+    // colliders.
+    float h =
+        (float)((double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        for (int32_t i = 0; i < l.count; ++i)
+        {
+            moved[k][i] = start[k][i] + carried[k][i] * h;
+        }
+    }
+    CopyThree(l.x, (const float* const*)start, l.count);
+    Slide(instance, emitter, &l, sigma, moved);
 }

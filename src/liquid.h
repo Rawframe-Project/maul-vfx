@@ -47,4 +47,12 @@ void mvfxLiquidSpiky(const mvfxLiquidKernel* kernel, const float offset[3], floa
 // in its substeps.
 void mvfxStepLiquid(mvfxInstance* instance, int32_t emitter);
 
+// Moves a grid liquid's particles alive at the step's start: their
+// velocities as the integrator gives any particle's (forces, drag,
+// bounces), for their gas to project; their places by the velocity the
+// gas gave them, followed along the colliders. With the integrator's
+// places, gravity's h^2 / 2 a step would escape the projection, and a
+// pool at rest would sink by it each step.
+void mvfxMoveGridLiquid(mvfxInstance* instance, int32_t emitter);
+
 #endif

@@ -125,7 +125,13 @@ static void MoveLive(mvfxInstance* instance, int32_t emitter)
         mvfxStepRigid(instance, emitter);
         return;
     }
-    if (instance->effect->emitters[emitter].liquid.enabled)
+    const mvfxLiquidDef* liquid = &instance->effect->emitters[emitter].liquid;
+    if (liquid->enabled && liquid->solver == mvfx_liquidGrid)
+    {
+        mvfxMoveGridLiquid(instance, emitter);
+        return;
+    }
+    if (liquid->enabled)
     {
         mvfxStepLiquid(instance, emitter);
         return;

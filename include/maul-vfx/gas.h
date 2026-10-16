@@ -54,6 +54,26 @@ extern "C"
         mvfx_gasWallMaxZ = 32,
     };
 
+    // What a gas is.
+    typedef uint8_t mvfxGasKind;
+    enum
+    {
+        // Smoke and fire: sources, advected scalars, buoyancy, combustion.
+        mvfx_gasSmoke = 0,
+        // A liquid's grid: the particles of the one emitter whose liquid
+        // names it (mvfxLiquidDef.gas, solver mvfx_liquidGrid) give it its
+        // velocity each step (APIC: Jiang et al., "The Affine
+        // Particle-In-Cell Method", SIGGRAPH 2015); cells holding a
+        // particle are liquid, the others air at pressure 0; the projected
+        // velocity, extended two cells into the air, goes back to the
+        // particles with each one's affine matrix. Its density is the share
+        // of each cell the particles fill (each a cube, or a square, of
+        // the liquid's spacing), its other scalars 0. It has no sources and
+        // no forces of its own (the particles carry gravity and forces) and
+        // one substep; its advection and decays are not read.
+        mvfx_gasLiquid = 1,
+    };
+
     // Where a gas's box is.
     typedef uint8_t mvfxGasSpace;
     enum
@@ -141,6 +161,8 @@ extern "C"
         // and at most MVFX_MAX_EXTENT in size.
         float center[3];
         mvfxGasSpace space;
+        // Smoke (the default) or a liquid's grid.
+        mvfxGasKind kind;
         // From 1 to MVFX_MAX_GAS_SUBSTEPS: each a share of the step.
         int32_t substeps;
         // Rates a second at which density, temperature, fuel and velocity

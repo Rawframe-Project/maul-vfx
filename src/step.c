@@ -10,6 +10,7 @@
 #include "float_mode.h"
 #include "force.h"
 #include "gas_api.h"
+#include "gas_liquid.h"
 #include "gas_step.h"
 #include "instance.h"
 #include "instance_api.h"
@@ -157,6 +158,15 @@ static void StepGases(mvfxInstance* instance, const mvfxTasks* tasks)
     for (int32_t g = 0; g < instance->effect->gasCount; ++g)
     {
         const mvfxCompiledGas* gas = &instance->effect->gases[g];
+        if (gas->def.kind == mvfx_gasLiquid)
+        {
+            if (gas->hasObstacles)
+            {
+                mvfxResolveGasObstacles(instance, g);
+            }
+            mvfxStepLiquidGas(instance, g, tasks);
+            continue;
+        }
         mvfxResolvedForce* forces = instance->gasForces;
         mvfxGasDrive drive = {.forces = forces,
                               .forceCount = gas->def.forceCount,

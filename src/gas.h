@@ -47,6 +47,9 @@ typedef struct mvfxCompiledGas
     // others), which the effect holds.
     mvfxForce forces[MVFX_MAX_FORCES];
     struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
+    // For a liquid gas, the emitter whose particles move on it; -1 for
+    // smoke.
+    int32_t liquid;
 } mvfxCompiledGas;
 
 // The most obstacles a gas meets: its own and the host's.
@@ -63,7 +66,28 @@ typedef struct mvfxGasAt
     size_t weights[MVFX_GAS_LEVELS];
     size_t solid;
     size_t work;
+    size_t cellStart;
+    size_t order;
+    size_t local;
+    size_t masks;
+    size_t valid;
 } mvfxGasAt;
+
+// A liquid gas's room for its particles: each cell's first in the order
+// (and one past the last cell's last); the particles' indices by cell,
+// those outside the box left out; each particle's place in cells, its
+// velocity and its affine matrix in the box's frame (fifteen arrays of the
+// capacity); each level's liquid cells (1 liquid, 0 air); and each face's
+// validity in two buffers, across X, then Y, then Z.
+typedef struct mvfxLiquidGasRoom
+{
+    int32_t* cellStart;
+    int32_t* order;
+    float* local;
+    uint8_t* liquid[MVFX_GAS_LEVELS];
+    uint8_t* valid[2];
+    int32_t capacity;
+} mvfxLiquidGasRoom;
 
 // A level of a gas's multigrid: its pressure, the right-hand side it
 // solves for and a buffer the smoothing writes, each over its cells.
@@ -115,6 +139,8 @@ typedef struct mvfxGasState
     float rotation[4];
     float scale;
     bool holds;
+    // A liquid gas's room (all NULL for smoke).
+    mvfxLiquidGasRoom room;
 } mvfxGasState;
 
 // A scalar at most this is nothing.
@@ -127,12 +153,14 @@ bool mvfxIsGasDefValid(const mvfxGasDef* def);
 mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def);
 
 // Places a gas's buffers in a layout: its velocity's components' and its
-// scalars' (each two buffers in a row), its levels' (three in a row).
-void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, mvfxGasAt* at);
+// scalars' (each two buffers in a row), its levels' (three in a row); for
+// a liquid gas, its room for particles of its emitter.
+void mvfxAddGasLayout(mvfxLayout* layout, const mvfxCompiledGas* gas, int32_t particles,
+                      mvfxGasAt* at);
 
 // Points a gas's state at its buffers in block, all zero.
-void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, unsigned char* block,
-                  const mvfxGasAt* at);
+void mvfxStartGas(mvfxGasState* state, const mvfxCompiledGas* gas, int32_t particles,
+                  unsigned char* block, const mvfxGasAt* at);
 
 // A level's cells.
 static inline int64_t mvfxGasLevelCells(const mvfxCompiledGas* gas, int32_t level)

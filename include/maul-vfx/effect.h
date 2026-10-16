@@ -705,9 +705,30 @@ extern "C"
     // counted (mvfxEmitterStats.neighborsCapped, once a step).
     // mvfxDefaultEmitterDef sets a spacing of 0.1, a kernel of 2, a
     // relaxation of 0.01, viscosity of 0.01 and 64 neighbors.
+    // How a liquid moves.
+    typedef uint8_t mvfxLiquidSolver;
+    enum
+    {
+        // Position-based fluids on its particles alone.
+        mvfx_liquidParticles = 0,
+        // APIC on a liquid gas (mvfx_gasLiquid): each step a particle's
+        // place moves by the velocity the gas gave it, followed along the
+        // colliders, while its velocity gains its forces, gravity and drag
+        // as any particle's does (bounces, kills, life and events too);
+        // then the gas, once every instance has stepped, makes that
+        // velocity incompressible and gives it back with each particle's
+        // affine matrix. Of this def only the spacing is read, as the
+        // particles' spacing at rest.
+        mvfx_liquidGrid = 1,
+    };
+
     typedef struct mvfxLiquidDef
     {
         bool enabled;
+        // Particles (the default) or a liquid gas, and for a grid the gas's
+        // index in the effect's def: a liquid gas no other emitter names.
+        mvfxLiquidSolver solver;
+        int32_t gas;
         // Whether it moves in its emitter's XY plane, its corrections and
         // swirls along Z 0.
         bool planar;

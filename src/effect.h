@@ -108,10 +108,14 @@ enum
     // after); then the acceleration its forces gave it as it fell asleep.
     mvfx_attributeSleep = 90,
     mvfx_attributeRestX = 91,
+    // A grid liquid's particle's affine velocity (APIC's C), row by row in
+    // the particles' space: the rise of its velocity's X along X, Y and Z,
+    // then its Y's, then its Z's.
+    mvfx_attributeAffine = 94,
 };
 
 // How many attributes exist.
-#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeRestX + 3)
+#define MVFX_ATTRIBUTE_COUNT (mvfx_attributeAffine + 9)
 
 // A sleeping body's still time: before and after its first sleeping
 // substep.

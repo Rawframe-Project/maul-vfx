@@ -31,8 +31,9 @@ over_life: gradient life value
 kill: direction force
 depth: direction force
 collide: depth direction force grid
+effect_gas: force
 effect_parts: direction effect life
-effect: allocator collide curve curve_integral elementary force gas hull kill over_life shape value velocity velocity_modules
+effect: allocator collide effect_gas curve curve_integral elementary force gas hull kill over_life shape value velocity velocity_modules
 rigid: appearance collide depth direction instance integrate rigid_body rigid_contact rigid_pair rigid_sleep
 rigid_body: direction event instance rigid_shape
 rigid_pair: appearance direction neighbor rigid_body rigid_contact rigid_sleep
@@ -69,6 +70,7 @@ mesh_api: allocator context hull mesh slots
 grid_api: context grid slots
 gas: allocator collide force gas_lattice
 gas_lattice:
+gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance tasks
 gas_forces: elementary force gas
 gas_pressure: gas tasks
 gas_read: context gas gas_api gas_lattice instance instance_api layout
@@ -77,7 +79,7 @@ gas_splat: elementary force gas gas_lattice
 gas_step: elementary force gas gas_forces gas_lattice gas_pressure gas_solid gas_splat tasks
 gas_api: collide context direction force gas instance instance_api
 instance_api: collide context depth effect_api gas grid_api instance mesh mesh_api rigid_wake slots spawn
-step: context effect emitter_step event float_mode force gas_api gas_splat gas_step instance instance_api tasks
+step: context effect emitter_step event float_mode force gas_api gas_liquid gas_splat gas_step instance instance_api tasks
 curve:
 curve_integral: curve
 grid: allocator half

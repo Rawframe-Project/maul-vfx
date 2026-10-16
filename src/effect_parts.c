@@ -269,8 +269,8 @@ static bool IsLiquidValid(const mvfxEmitterDef* def)
                  liquid->tensilePower <= MVFX_MAX_LIQUID_TENSILE_POWER &&
                  IsWithin(liquid->viscosity, 0.0f, 1.0f) &&
                  IsWithin(liquid->vorticity, 0.0f, MVFX_MAX_EXTENT);
-    return kernel && solve && terms && def->unit.kind == mvfx_unitParticle && !def->rigid.enabled &&
-           !def->beam.enabled;
+    return kernel && solve && terms && liquid->solver <= mvfx_liquidGrid &&
+           def->unit.kind == mvfx_unitParticle && !def->rigid.enabled && !def->beam.enabled;
 }
 
 // Whether an emitter's plexus links are valid.
