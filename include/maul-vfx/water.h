@@ -32,7 +32,7 @@ extern "C"
 
 // The most substeps a water surface takes in a step: a longer step (a
 // hitch) advances that many of the longest stable substep, the water
-// slowed rather than blown up.
+// slowed rather than blown up (counted in mvfxWaterInfo.stepsSlowed).
 #define MVFX_MAX_WATER_SUBSTEPS 64
 
 // The most pushes a water surface holds for an instance's next step.

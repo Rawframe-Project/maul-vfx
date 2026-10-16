@@ -98,15 +98,18 @@ void mvfxAddWaterLayout(mvfxLayout* layout, const mvfxCompiledWater* water, mvfx
     at->rates = mvfxLayoutAdd(layout, (size_t)water->cells, sizeof(float), alignof(float));
     at->pushes =
         mvfxLayoutAdd(layout, MVFX_MAX_WATER_PUSHES, sizeof(mvfxWaterPush), alignof(mvfxWaterPush));
-    // Shallow water's faces (two buffers of each axis's), scale and ground.
+    // Shallow water's faces (two buffers of each axis's), scale, ground and
+    // rows' held faces.
     bool shallow = water->def.model == mvfx_waterShallow;
     size_t cells = shallow ? (size_t)water->cells : 0;
+    size_t rows = shallow ? (size_t)water->def.size[1] : 0;
     size_t faces =
         shallow ? (size_t)(mvfxWaterFaces(water->def.size, 0) + mvfxWaterFaces(water->def.size, 1))
                 : 0;
     at->faces = mvfxLayoutAdd(layout, 2u * faces, sizeof(float), alignof(float));
     at->giving = mvfxLayoutAdd(layout, cells, sizeof(float), alignof(float));
     at->ground = mvfxLayoutAdd(layout, cells, sizeof(float), alignof(float));
+    at->heldRows = mvfxLayoutAdd(layout, rows, sizeof(int32_t), alignof(int32_t));
 }
 
 void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, unsigned char* block,
@@ -118,6 +121,7 @@ void mvfxStartWater(mvfxWaterState* state, const mvfxCompiledWater* water, unsig
                               .rates = (float*)(block + at->rates),
                               .giving = shallow ? (float*)(block + at->giving) : nullptr,
                               .ground = shallow ? (float*)(block + at->ground) : nullptr,
+                              .heldRows = shallow ? (int32_t*)(block + at->heldRows) : nullptr,
                               .pushes = (mvfxWaterPush*)(block + at->pushes),
                               .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
                               .scale = 1.0f};
@@ -156,4 +160,6 @@ void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water)
     state->pushCount = 0;
     state->holds = false;
     state->reach = 0.0f;
+    state->stepsSlowed = 0;
+    state->facesHeld = 0;
 }

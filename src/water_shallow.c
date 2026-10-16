@@ -35,8 +35,8 @@
 
 // A substep's view of a surface: its cells, its walls, the substep and
 // gravity, and its buffers: the depths it began with and the next, the
-// faces' velocities it began with and the next, the givers' scales and
-// the ground.
+// faces' velocities it began with and the next, the givers' scales, the
+// ground and each row's faces held.
 typedef struct Flow
 {
     const int32_t* n;
@@ -51,6 +51,7 @@ typedef struct Flow
     float* target[2];
     float* giving;
     const float* ground;
+    int32_t* heldRows;
 } Flow;
 
 // The surface's height at cell (x, z).
@@ -186,31 +187,35 @@ static float Carried(const Flow* f, int32_t axis, int32_t x, int32_t z)
 // Face (x, z) of an axis carried with the flow and slowed by friction,
 // exp(-friction dt), then accelerated by the surface's fall across it and
 // held within 0.5 l / dt (a fall off a cliff outruns the substep's bound):
-// 0 at a closed wall or dry, an open wall's only outward.
-static float NextVelocity(const Flow* f, int32_t axis, int32_t x, int32_t z)
+// 0 at a closed wall or dry, an open wall's only outward; whether the
+// bound held it.
+static float NextVelocity(const Flow* f, int32_t axis, int32_t x, int32_t z, bool* held)
 {
     Face face = FaceAt(f, axis, x, z);
     float h[2];
     float sill = 0.0f;
+    *held = false;
     if (!IsWet(f, axis, x, z, h, &sill))
     {
         return 0.0f;
     }
     float v = Carried(f, axis, x, z) * f->decay + f->dt * f->g * (h[0] - h[1]) / f->l;
     float most = 0.5f * f->l / f->dt;
+    *held = fabsf(v) > most;
     v = fminf(fmaxf(v, -most), most);
     // An open wall lets water out, never in: its outside is empty, so its
     // fall is outward, but a cell draining both ways can carry it inward.
     return face.lowWall ? fminf(v, 0.0f) : (face.highWall ? fmaxf(v, 0.0f) : v);
 }
 
-// Runs a face pass over rows of faces: row z of X faces, and of Z faces
-// (whose last row, n1, the last range takes too).
-static void EachFace(const Flow* f, int32_t start, int32_t end,
-                     float (*pass)(const Flow*, int32_t, int32_t, int32_t), float* out[2])
+// Steps rows of faces: row z of X faces, and of Z faces (whose last row,
+// n1, the last range takes too); each row's faces held into its count.
+static void FaceRows(int32_t start, int32_t end, void* context)
 {
+    const Flow* f = context;
     for (int32_t z = start; z < end; ++z)
     {
+        int32_t count = 0;
         for (int32_t axis = 0; axis < 2; ++axis)
         {
             int32_t w = f->n[0] + (axis == 0 ? 1 : 0);
@@ -219,17 +224,15 @@ static void EachFace(const Flow* f, int32_t start, int32_t end,
             {
                 for (int32_t x = 0; x < w; ++x)
                 {
-                    out[axis][(int64_t)(z + r) * w + x] = pass(f, axis, x, z + r);
+                    bool held = false;
+                    f->target[axis][(int64_t)(z + r) * w + x] =
+                        NextVelocity(f, axis, x, z + r, &held);
+                    count += held ? 1 : 0;
                 }
             }
         }
+        f->heldRows[z] = count;
     }
-}
-
-static void FaceRows(int32_t start, int32_t end, void* context)
-{
-    Flow* f = context;
-    EachFace(f, start, end, NextVelocity, f->target);
 }
 
 // The water a face carries a second before its giver's scale: its
@@ -348,7 +351,8 @@ static void Settle(const mvfxCompiledWater* water, mvfxWaterState* state)
 }
 
 // One substep of dt: the faces' velocities carried and accelerated into
-// the other buffer; the givers' scales; the depths.
+// the other buffer, the faces held counted; the givers' scales; the
+// depths.
 static void Substep(const mvfxCompiledWater* water, mvfxWaterState* state, float dt,
                     const mvfxTasks* tasks)
 {
@@ -364,8 +368,13 @@ static void Substep(const mvfxCompiledWater* water, mvfxWaterState* state, float
               .faces = {state->faces[0][now], state->faces[1][now]},
               .target = {state->faces[0][1 - now], state->faces[1][1 - now]},
               .giving = state->giving,
-              .ground = state->ground};
+              .ground = state->ground,
+              .heldRows = state->heldRows};
     mvfxRunTasks(tasks, FaceRows, water->def.size[1], ROW_RANGE, &f);
+    for (int32_t z = 0; z < water->def.size[1]; ++z)
+    {
+        state->facesHeld += (uint64_t)state->heldRows[z];
+    }
     mvfxRunTasks(tasks, GivingRows, water->def.size[1], ROW_RANGE, &f);
     mvfxRunTasks(tasks, DepthRows, water->def.size[1], ROW_RANGE, &f);
     state->current = 1 - state->current;
@@ -399,5 +408,6 @@ void mvfxStepShallow(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
         Substep(water, state, (float)dt, tasks);
         left -= dt;
     }
+    state->stepsSlowed += left > 0.0 ? 1u : 0u;
     Settle(water, state);
 }

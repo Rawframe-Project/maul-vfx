@@ -692,6 +692,8 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         int32_t cells = (int32_t)(instance->effect->waters[w].cells * (int64_t)sizeof(float));
         hash = mvfxHash64(hash, water->heights[water->current], cells);
         hash = mvfxHash64(hash, water->rates, cells);
+        hash = mvfxHash64(hash, &water->stepsSlowed, (int32_t)sizeof water->stepsSlowed);
+        hash = mvfxHash64(hash, &water->facesHeld, (int32_t)sizeof water->facesHeld);
         // Shallow water's faces now; its ground is read anew each step.
         for (int32_t k = 0; water->ground != nullptr && k < 2; ++k)
         {

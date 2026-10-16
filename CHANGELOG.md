@@ -399,6 +399,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   middle to their ring; `fillLevel`, `gravity` and `friction`; reads
   gain `mvfx_waterDepth` and the flow along X and Z. A dam break on a dry
   bed follows Ritter's depths within 7%.
+- `mvfxWaterInfo.stepsSlowed` and `mvfxWaterInfo.facesHeld` count a
+  water surface's steps that outran `MVFX_MAX_WATER_SUBSTEPS` and
+  shallow water's faces held at the substep's bound (a fall off a
+  cliff), so a scene that leans on either is seen. A waves step due
+  exactly the most substeps takes them at its own length.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

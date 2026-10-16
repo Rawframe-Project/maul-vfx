@@ -36,6 +36,7 @@ typedef struct mvfxWaterAt
     size_t faces;
     size_t giving;
     size_t ground;
+    size_t heldRows;
 } mvfxWaterAt;
 
 // A water surface's state in an instance: each cell's displacement from
@@ -43,10 +44,12 @@ typedef struct mvfxWaterAt
 // now; a substep gathers the neighbors' from it into the other) and its
 // rate; shallow water's velocities on its faces, along X ((n0 + 1) by n1)
 // and Z (n0 by (n1 + 1)) in two buffers each (faceCurrent the one now),
-// each cell's outflows' scale (giving), its ground's height, and whether it has been
-// filled; the pushes for the next step; where a world surface's grid was put (the
-// instance's place at its start); whether it moves at all (a rate, or a
-// slope), and its largest displacement's size (the surface's height).
+// each cell's outflows' scale (giving), its ground's height, each row's
+// faces held in a substep, and whether it has been filled; the pushes for
+// the next step; where a world surface's grid was put (the instance's
+// place at its start); whether it moves at all (a rate, or a slope), and
+// its largest displacement's size (the surface's height); the counts
+// mvfxWaterInfo reads.
 typedef struct mvfxWaterState
 {
     float* heights[2];
@@ -56,6 +59,7 @@ typedef struct mvfxWaterState
     int32_t faceCurrent;
     float* giving;
     float* ground;
+    int32_t* heldRows;
     bool filled;
     mvfxWaterPush* pushes;
     int32_t pushCount;
@@ -64,6 +68,8 @@ typedef struct mvfxWaterState
     float scale;
     bool holds;
     float reach;
+    uint64_t stepsSlowed;
+    uint64_t facesHeld;
 } mvfxWaterState;
 
 // Shallow water's faces along X and along Z for a grid of n cells.

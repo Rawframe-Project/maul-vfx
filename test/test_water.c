@@ -442,6 +442,11 @@ static void TestStability(void)
         high = fmax(high, Energy(&water, &volume));
     }
     CHECK(high < 1.5 * start, "stable at the bound");
+    // Each second's step outran the most substeps; the first did not.
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              info.stepsSlowed == 40 && info.facesHeld == 0,
+          "each long step slowed");
     mvfxDestroyContext(s_context);
 }
 

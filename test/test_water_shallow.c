@@ -367,7 +367,7 @@ static bool StillLake(bool host, const float rotation[4], float* depths)
     memcpy(filled, state->heights[state->current], sizeof filled);
     Steps(300, 1.0 / 60.0);
     const float* d = state->heights[state->current];
-    bool still = !state->holds;
+    bool still = !state->holds && state->facesHeld == 0;
     for (int32_t i = 0; i < 1600; ++i)
     {
         still = still && fabsf(d[i] - filled[i]) <= 1e-6f;
@@ -457,7 +457,7 @@ static void TestLeaned(void)
 {
     // A level field and a sloped one, leaned, each met where the vertical
     // meets its plane; a field on edge, the floor; past the field's box
-    // (the slope over 4 by 4 under 6 by 6), the floor.
+    // (the slope over 4 by 4 under 6 by 6, its center 0.5 up), the floor.
     CHECK(Leaned(0.0f, 0.2f) == 0, "a leaned level ground");
     CHECK(Leaned(0.25f, 0.0f) == 0, "a leaned sloped ground");
     static const float edge[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
@@ -469,21 +469,22 @@ static void TestLeaned(void)
     {
         wrong += ground[i] != 0.0f;
     }
-    ReadGround(0.25f, 0.0f, upright, 0.0f, 60, ground);
+    ReadGround(0.25f, 0.0f, upright, 0.5f, 60, ground);
     for (int32_t i = 0; i < 3600; ++i)
     {
         float x = ((float)(i % 60) + 0.5f - 30.0f) * 0.1f;
         float z = ((float)(i / 60) + 0.5f - 30.0f) * 0.1f;
         bool on = fabsf(x) < 2.0f && fabsf(z) < 2.0f;
-        wrong += fabsf(ground[i] - (on ? x / 4.0f : 0.0f)) > 1e-4f;
+        wrong += fabsf(ground[i] - (on ? 0.5f + x / 4.0f : 0.0f)) > 1e-4f;
     }
     CHECK(wrong == 0, "no ground on edge or past the field");
 }
 
 // A spring of 0.5 a second on a plateau 1 up over the +X half of a
 // channel of 32 by 4 cells of 0.05 (turned a half about Y, the -X half),
-// falling off its cliff for a second: the depths after, and the volume.
-static double Cliff(bool turned, float depths[128])
+// falling off its cliff for a second: the depths after, the faces held,
+// and the volume.
+static double Cliff(bool turned, float depths[128], uint64_t* held)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
@@ -515,6 +516,9 @@ static double Cliff(bool turned, float depths[128])
     Steps(60, 1.0 / 60.0);
     const mvfxWaterState* state = State();
     memcpy(depths, state->heights[state->current], 128 * sizeof(float));
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
+    *held = info.facesHeld;
     bool dry = true;
     double volume = Volume(&water, &dry);
     Close();
@@ -530,8 +534,10 @@ static void TestCliff(void)
     // measured, the depths' rounding).
     static float off[128];
     static float mirror[128];
-    double volume = Cliff(false, off);
-    Cliff(true, mirror);
+    uint64_t held[2] = {0, 0};
+    double volume = Cliff(false, off, &held[0]);
+    Cliff(true, mirror, &held[1]);
+    CHECK(held[0] > 0 && held[0] == held[1], "a cliff's fall held at the bound, counted");
     CHECK(fabs(volume / (12.0 * 0.05 * 0.05 * 0.5) - 1.0) <= 1e-4, "a cliff's volume the spring's");
     float deepest = 0.0f;
     float worst = 0.0f;
@@ -748,6 +754,30 @@ static void TestPushEdges(void)
           "a sink with no ring on the grid changes nothing");
 }
 
+static void TestSlowed(void)
+{
+    // A basin 3 deep, its waves 5.4 a second, stepped a second at once:
+    // 108 substeps of half a cell are due, the most are taken, and the step
+    // counts as slowed; a restart clears the count.
+    mvfxWaterDef water = Shallow(8, 8, 0.1f);
+    water.fillLevel = 3.0f;
+    CHECK(Open(&water, 1), "opened");
+    Steps(1, 1.0 / 60.0);
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              info.stepsSlowed == 0,
+          "a frame's step not slowed");
+    Steps(1, 1.0);
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              info.stepsSlowed == 1,
+          "a second's step slowed");
+    CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success, "restarted");
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              info.stepsSlowed == 0,
+          "a restart clears it");
+    Close();
+}
+
 static void TestFinish(void)
 {
     // A stopped instance's surface still moving keeps it from finishing
@@ -781,6 +811,7 @@ int main(void)
     TestFriction();
     TestPushRing();
     TestPushEdges();
+    TestSlowed();
     TestFinish();
     return s_failures;
 }

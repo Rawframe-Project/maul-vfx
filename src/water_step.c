@@ -235,9 +235,10 @@ void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
     // The longest stable substep, and the step's count of them.
     double longest = 0.9 * (double)h / ((double)c * sqrt(2.0));
     double count = ceil(seconds / longest);
-    int32_t substeps =
-        count < (double)MVFX_MAX_WATER_SUBSTEPS ? (int32_t)count : MVFX_MAX_WATER_SUBSTEPS;
-    float dt = (float)(count < (double)MVFX_MAX_WATER_SUBSTEPS ? seconds / count : longest);
+    bool slowed = count > (double)MVFX_MAX_WATER_SUBSTEPS;
+    int32_t substeps = slowed ? MVFX_MAX_WATER_SUBSTEPS : (int32_t)count;
+    float dt = (float)(slowed ? longest : seconds / count);
+    state->stepsSlowed += slowed ? 1u : 0u;
     Waves waves = {.n = water->def.size,
                    .stiffness = dt * c * c / (h * h),
                    .decay = mvfxExp(-water->def.damping * dt),

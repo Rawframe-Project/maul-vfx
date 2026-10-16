@@ -384,5 +384,7 @@ mvfxResult mvfxInstance_GetWaterInfo(const mvfxContext* context, mvfxInstanceId 
     infoOut->cellSize = place.scale * live->effect->waters[water].def.cellSize;
     infoOut->size[0] = live->effect->waters[water].def.size[0];
     infoOut->size[1] = live->effect->waters[water].def.size[1];
+    infoOut->stepsSlowed = live->waters[water].stepsSlowed;
+    infoOut->facesHeld = live->waters[water].facesHeld;
     return mvfx_success;
 }

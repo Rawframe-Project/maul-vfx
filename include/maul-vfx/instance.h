@@ -857,6 +857,13 @@ extern "C"
         float cellSize;
         double center[3];
         float rotation[4];
+        // Since the instance was made or restarted: the steps whose time
+        // outran MVFX_MAX_WATER_SUBSTEPS substeps (the water slowed), and
+        // shallow water's faces whose velocity the substep's bound, half a
+        // cell, held (a fall off a cliff), summed over substeps. A scene
+        // that leans on either moves slower than its water would.
+        uint64_t stepsSlowed;
+        uint64_t facesHeld;
     } mvfxWaterInfo;
 
     /// Reads what a water surface of an instance is now.
