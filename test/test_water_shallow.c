@@ -413,21 +413,31 @@ static void TestLake(void)
     CHECK(wrong == 0, "filled to the level over the ground");
 }
 
-// The ground under a surface of 20 by 20 cells of 0.1 over a field of
-// height a x + b leaned 30 degrees about Z with its center 1 up: the
-// cells whose ground is off the field's plane by over 1e-4.
-static int32_t Leaned(float a, float b)
+// The ground under a surface of n by n cells of 0.1 over a field of
+// height a x + b turned by rotation with its center up.
+static void ReadGround(float a, float b, const float rotation[4], float up, int32_t n,
+                       float* ground)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
-    mvfxWaterDef water = Shallow(20, 20, 0.1f);
-    static const float leaned[4] = {0.0f, 0.0f, 0.25881904f, 0.96592583f};
-    water.terrain = Field(a, b, leaned);
-    water.terrain.center[1] = 1.0f;
+    mvfxWaterDef water = Shallow(n, n, 0.1f);
+    water.terrain = Field(a, b, rotation);
+    water.terrain.center[1] = up;
     water.hasTerrain = true;
     CHECK(Open(&water, 1), "opened");
     Steps(1, 0.0);
-    const float* ground = State()->ground;
+    memcpy(ground, State()->ground, (size_t)n * (size_t)n * sizeof(float));
+    Close();
+}
+
+// The cells of a surface of 20 by 20 cells of 0.1 over a field of height
+// a x + b leaned 30 degrees about Z with its center 1 up whose ground is
+// off the field's plane by over 1e-4.
+static int32_t Leaned(float a, float b)
+{
+    static const float leaned[4] = {0.0f, 0.0f, 0.25881904f, 0.96592583f};
+    static float ground[400];
+    ReadGround(a, b, leaned, 1.0f, 20, ground);
     // Over the box's (X, Y) the field's frame is (c X + s Y, c Y - s X)
     // from its center, so its plane y = a x + b is met at Y (c - a s) =
     // X (s + a c) + b.
@@ -440,22 +450,40 @@ static int32_t Leaned(float a, float b)
         double y = 1.0 + (x * (sn + (double)a * c) + (double)b) / (c - (double)a * sn);
         wrong += fabs((double)ground[i] - y) > 1e-4;
     }
-    Close();
     return wrong;
 }
 
 static void TestLeaned(void)
 {
     // A level field and a sloped one, leaned, each met where the vertical
-    // meets its plane.
+    // meets its plane; a field on edge, the floor; past the field's box
+    // (the slope over 4 by 4 under 6 by 6), the floor.
     CHECK(Leaned(0.0f, 0.2f) == 0, "a leaned level ground");
     CHECK(Leaned(0.25f, 0.0f) == 0, "a leaned sloped ground");
+    static const float edge[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    static const float upright[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    static float ground[3600];
+    ReadGround(0.0f, 0.2f, edge, 0.0f, 20, ground);
+    int32_t wrong = 0;
+    for (int32_t i = 0; i < 400; ++i)
+    {
+        wrong += ground[i] != 0.0f;
+    }
+    ReadGround(0.25f, 0.0f, upright, 0.0f, 60, ground);
+    for (int32_t i = 0; i < 3600; ++i)
+    {
+        float x = ((float)(i % 60) + 0.5f - 30.0f) * 0.1f;
+        float z = ((float)(i / 60) + 0.5f - 30.0f) * 0.1f;
+        bool on = fabsf(x) < 2.0f && fabsf(z) < 2.0f;
+        wrong += fabsf(ground[i] - (on ? x / 4.0f : 0.0f)) > 1e-4f;
+    }
+    CHECK(wrong == 0, "no ground on edge or past the field");
 }
 
 // A spring of 0.5 a second on a plateau 1 up over the +X half of a
 // channel of 32 by 4 cells of 0.05 (turned a half about Y, the -X half),
-// falling off its cliff for a second: the depths after.
-static void Cliff(bool turned, float depths[128])
+// falling off its cliff for a second: the depths after, and the volume.
+static double Cliff(bool turned, float depths[128])
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
@@ -487,17 +515,24 @@ static void Cliff(bool turned, float depths[128])
     Steps(60, 1.0 / 60.0);
     const mvfxWaterState* state = State();
     memcpy(depths, state->heights[state->current], 128 * sizeof(float));
+    bool dry = true;
+    double volume = Volume(&water, &dry);
     Close();
+    return volume;
 }
 
 static void TestCliff(void)
 {
     // Water falling off a cliff toward -X as its mirror falls toward +X:
-    // each cell as its mirror's within a thousandth of the deepest.
+    // each cell as its mirror's within a thousandth of the deepest; the
+    // volume the spring's, 12 cells of 0.05 by 0.05 at 0.5 for a second,
+    // within 1e-4 (a thin fast fall takes all of a cell's water; 1.5e-5
+    // measured, the depths' rounding).
     static float off[128];
     static float mirror[128];
-    Cliff(false, off);
+    double volume = Cliff(false, off);
     Cliff(true, mirror);
+    CHECK(fabs(volume / (12.0 * 0.05 * 0.05 * 0.5) - 1.0) <= 1e-4, "a cliff's volume the spring's");
     float deepest = 0.0f;
     float worst = 0.0f;
     for (int32_t i = 0; i < 128; ++i)
@@ -508,6 +543,51 @@ static void TestCliff(void)
         worst = fmaxf(worst, fabsf(off[i] - mirror[(3 - z) * 32 + 31 - x]));
     }
     CHECK(deepest > 0.01f && worst <= 1e-3f * deepest, "a cliff's fall as its mirror's");
+}
+
+// A column a cell wide and deep on a surface of 16 by 16 cells of 0.1,
+// on a dry floor or on a pinnacle 2 up, stepped half a second: whether
+// its volume stayed (to 1e-5) and every depth is at least 0.
+static bool Column(bool pinnacle, float deep)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    mvfxWaterDef water = Shallow(16, 16, 0.1f);
+    // 33 by 33 points over the surface: cell (x, z)'s center on point
+    // (2 x + 1, 2 z + 1).
+    static float heights[33 * 33];
+    memset(heights, 0, sizeof heights);
+    heights[17 * 33 + 17] = pinnacle ? 2.0f : 0.0f;
+    mvfxGridDef grid = mvfxDefaultGridDef();
+    grid.size[0] = 33;
+    grid.size[1] = 1;
+    grid.size[2] = 33;
+    grid.values = heights;
+    water.terrain = (mvfxCollider){.kind = mvfx_colliderHeightfield,
+                                   .space = 1,
+                                   .halfExtents = {0.8f, 1.0f, 0.8f},
+                                   .rotation = {0.0f, 0.0f, 0.0f, 1.0f}};
+    CHECK(mvfxCreateGrid(s_context, &grid, &water.terrain.grid) == mvfx_success, "grid");
+    water.hasTerrain = true;
+    CHECK(Open(&water, 1), "opened");
+    Steps(1, 0.0);
+    mvfxWaterState* state = State();
+    state->heights[state->current][8 * 16 + 8] = deep;
+    Steps(30, 1.0 / 60.0);
+    bool dry = true;
+    double volume = Volume(&water, &dry);
+    Close();
+    return fabs(volume / ((double)deep * 0.01) - 1.0) <= 1e-5 && dry;
+}
+
+static void TestColumn(void)
+{
+    // A column spreading through its four faces at once: on a floor the
+    // substep's bound keeps each face within a quarter of its water; off a
+    // pinnacle each face's fall is held at the bound, half of its water,
+    // and the giver's scale keeps the volume.
+    CHECK(Column(false, 1.0f), "a spreading column keeps its volume");
+    CHECK(Column(true, 0.1f), "a column off a pinnacle keeps its volume");
 }
 
 // Surface 0's field over its 40 by 40 cells, as binary32.
@@ -696,6 +776,7 @@ int main(void)
     TestLake();
     TestLeaned();
     TestCliff();
+    TestColumn();
     TestReads();
     TestFriction();
     TestPushRing();

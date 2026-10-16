@@ -199,7 +199,8 @@ static float NextVelocity(const Flow* f, int32_t axis, int32_t x, int32_t z)
     float v = Carried(f, axis, x, z) * f->decay + f->dt * f->g * (h[0] - h[1]) / f->l;
     float most = 0.5f * f->l / f->dt;
     v = fminf(fmaxf(v, -most), most);
-    // An open wall lets water out, never in.
+    // An open wall lets water out, never in: its outside is empty, so its
+    // fall is outward, but a cell draining both ways can carry it inward.
     return face.lowWall ? fminf(v, 0.0f) : (face.highWall ? fmaxf(v, 0.0f) : v);
 }
 
