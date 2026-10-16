@@ -443,38 +443,106 @@ static bool Balanced(int64_t vertices, int64_t indices, int32_t count)
     return closed && sized;
 }
 
+// What a tie field's vertices lie on: on a sample, its count and how many
+// have a unit normal; and whether each lies at the level 0: a sample's
+// value 0 and its normal unit or 0, an edge's line through its two
+// samples 0 there (a tunnel's center, on neither, passes).
+typedef struct OnSamples
+{
+    int64_t count;
+    int64_t unit;
+} OnSamples;
+
+// Vertex v of a mesh over size samples of 0.05 in samples: the sample at
+// or below it along each axis, the axis it lies between samples along and
+// its share of the way there; how many axes it lies between samples on.
+static int32_t Between(int64_t v, const int32_t size[3], int32_t lo[3], int32_t* axis, float* share)
+{
+    int32_t off = 0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float g = s_positions[3 * v + k] / 0.05f + 0.5f * (float)(size[k] - 1);
+        bool whole = fabsf(g - roundf(g)) < 1e-3f;
+        lo[k] = (int32_t)(whole ? roundf(g) : floorf(g));
+        *share = whole ? *share : g - floorf(g);
+        *axis = whole ? *axis : k;
+        off += whole ? 0 : 1;
+    }
+    return off;
+}
+
+static bool AtLevel(const float* phi, int32_t n, int32_t depth, int64_t vertices, OnSamples* on)
+{
+    const int32_t size[3] = {n, n, depth};
+    bool right = true;
+    for (int64_t v = 0; v < vertices; ++v)
+    {
+        int32_t lo[3];
+        float share = 0.0f;
+        int32_t axis = -1;
+        int32_t off = Between(v, size, lo, &axis, &share);
+        int64_t at = ((int64_t)lo[2] * n + lo[1]) * n + lo[0];
+        const float* normal = &s_normals[3 * v];
+        float length = normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
+        if (off == 0)
+        {
+            on->count += 1;
+            on->unit += fabsf(length - 1.0f) <= 1e-5f ? 1 : 0;
+            right = right && phi[at] == 0.0f && (length == 0.0f || fabsf(length - 1.0f) <= 1e-5f);
+        }
+        if (off == 1)
+        {
+            int64_t step = axis == 0 ? 1 : (axis == 1 ? n : (int64_t)n * n);
+            float value = phi[at] + share * (phi[at + step] - phi[at]);
+            right = right && fabsf(value) <= 1e-4f;
+        }
+    }
+    return right;
+}
+
+// Writes a field of -1, 0 and 1 at random into a surface of n by n by
+// depth cells, its border 1; the field.
+static const float* TieField(int32_t n, int32_t depth, uint64_t* state)
+{
+    mvfxGasState* gas = &mvfxContextInstance(s_context, s_instance)->gases[0];
+    float* phi = gas->scalars[0][gas->current];
+    for (int64_t i = 0; i < (int64_t)n * n * depth; ++i)
+    {
+        int32_t at[3] = {(int32_t)(i % n), (int32_t)(i / n % n), (int32_t)(i / n / n)};
+        bool border = at[0] == 0 || at[0] == n - 1 || at[1] == 0 || at[1] == n - 1 ||
+                      (depth > 1 && (at[2] == 0 || at[2] == depth - 1));
+        *state = *state * 6364136223846793005u + 1442695040888963407u;
+        phi[i] = border ? 1.0f : (float)(int32_t)((*state >> 33) % 3u) - 1.0f;
+    }
+    return phi;
+}
+
 static void TestTies(void)
 {
     // Fields of -1, 0 and 1 at random, the border 1, at the level 0: ties
     // everywhere. Samples at the level are outside, edges to them take
     // their own vertex, primitives on them alone are left out: every mesh
-    // closes, none of its edges of zero length.
+    // closes, none of its edges of zero length, every vertex at the level.
     uint64_t state = 7u;
     bool right = true;
     int64_t total = 0;
+    OnSamples on = {0};
     for (int32_t c = 0; c < 40; ++c)
     {
         int32_t depth = c < 20 ? 10 : 1;
         int32_t n = c < 20 ? 10 : 24;
         CHECK(Open(n, depth, 0.05f, 0.25f, mvfx_gasSurface), "opened");
-        mvfxGasState* gas = &mvfxContextInstance(s_context, s_instance)->gases[0];
-        float* phi = gas->scalars[0][gas->current];
-        for (int64_t i = 0; i < (int64_t)n * n * depth; ++i)
-        {
-            int32_t at[3] = {(int32_t)(i % n), (int32_t)(i / n % n), (int32_t)(i / n / n)};
-            bool border = at[0] == 0 || at[0] == n - 1 || at[1] == 0 || at[1] == n - 1 ||
-                          (depth > 1 && (at[2] == 0 || at[2] == depth - 1));
-            state = state * 6364136223846793005u + 1442695040888963407u;
-            phi[i] = border ? 1.0f : (float)(int32_t)((state >> 33) % 3u) - 1.0f;
-        }
+        const float* phi = TieField(n, depth, &state);
         int64_t vertices = 0;
         int64_t indices = 0;
         Mesh(s_origin, &vertices, &indices);
-        right = right && Balanced(vertices, indices, depth > 1 ? 3 : 2);
+        right = right && Balanced(vertices, indices, depth > 1 ? 3 : 2) &&
+                AtLevel(phi, n, depth, vertices, &on);
         total += indices;
         mvfxDestroyContext(s_context);
     }
     CHECK(right && total > 0, "ties: closed, no edge of zero length");
+    CHECK(on.count > 0 && on.unit > 0, "ties: vertices on samples at the level");
 }
 
 static void TestRandomFields(void)
