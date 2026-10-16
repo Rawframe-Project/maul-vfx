@@ -121,15 +121,12 @@ void mvfxMeetWater(mvfxInstance* instance, int32_t emitter, int32_t i, const flo
         .volume = coupling->pour ? (float)(4.0 / 3.0 * 3.14159265358979323846) * r * r * r : 0.0f,
     };
     instance->killScratch[i] |= coupling->pour ? 1 : 0;
+    // The surface's normal turned into the particles' space, its length
+    // kept.
     float normal[3];
     float turned[3];
     mvfxWaterNormal(water->water, state, at[0], at[2], normal);
     mvfxMapVector(&water->map, normal, 1.0f, turned);
-    float length = sqrtf(turned[0] * turned[0] + turned[1] * turned[1] + turned[2] * turned[2]);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        turned[k] /= length;
-    }
     int64_t when = tick + (int64_t)floor((double)t * seconds * (double)MVFX_TICKS_PER_SECOND + 0.5);
     mvfxRecordEvent(instance, emitter,
                     &(mvfxEventFact){.kind = mvfx_eventWater,
