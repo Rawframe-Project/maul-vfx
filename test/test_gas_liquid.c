@@ -305,6 +305,48 @@ static void TestPool(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestObstacle(void)
+{
+    // The pool of TestPool around a ball of radius 0.25 on its floor, an
+    // obstacle of the gas and a collider of the particles: 2 s on, it
+    // stays nearly still (none faster than 0.2), none inside the ball.
+    mvfxGasDef gas = Gas(16, 12, 0.1f);
+    const mvfxCollider colliders[2] = {
+        BoxOf(&gas), {.kind = mvfx_colliderSphere, .center = {0.8f, 0.3f, 0.0f}, .radius = 0.25f}};
+    gas.obstacles = &colliders[1];
+    gas.obstacleCount = 1;
+    mvfxEmitterDef emitter = Emitter(0.05f, colliders, 512);
+    emitter.colliderCount = 2;
+    emitter.motion.gravity[1] = -9.81f;
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    static double places[3 * 512];
+    int32_t count = 0;
+    for (int32_t i = 0; i < 512; ++i)
+    {
+        double x = 0.025 + 0.05 * (double)(i % 32);
+        double y = 0.025 + 0.05 * (double)(i / 32);
+        if ((x - 0.8) * (x - 0.8) + (y - 0.3) * (y - 0.3) > 0.3 * 0.3)
+        {
+            places[3 * count] = x;
+            places[3 * count + 1] = y;
+            places[3 * count + 2] = 0.0;
+            ++count;
+        }
+    }
+    Spawn(places, NULL, count);
+    Steps(240);
+    float nearest = 1.0f;
+    for (int32_t i = 0; i < Count(); ++i)
+    {
+        float dx = Array(mvfx_attributePositionX)[i] - 0.8f;
+        float dy = Array(mvfx_attributePositionY)[i] - 0.3f;
+        nearest = fminf(nearest, sqrtf(dx * dx + dy * dy));
+    }
+    CHECK(Count() == count && MaxSpeed() < 0.2f && nearest >= 0.25f - 1e-4f,
+          "a pool stays still about an obstacle");
+    mvfxDestroyContext(s_context);
+}
+
 // A turn of 2 a second about (0.6, 0.6).
 static void Turning(const double* place, float* out)
 {
@@ -391,27 +433,51 @@ static void Shear(const double* place, float* out)
 static void TestShear(void)
 {
     // A block of 8 by 8 cells of 0.05 in shear, 2 by 2 particles a cell, no
-    // gravity: after a step, each particle 2 cells or more inside it has
-    // the shear's velocity at its place within 1e-4 (a linear field is
-    // carried exactly).
-    mvfxGasDef gas = Gas(16, 16, 0.05f);
-    mvfxEmitterDef emitter = Emitter(0.025f, NULL, 256);
-    CHECK(Open(&emitter, 1, &gas, 1), "opened");
-    Block(0.05f, 2, (const int32_t[2]){4, 4}, (const int32_t[2]){12, 12}, Shear);
-    Steps(1);
-    float worst = 0.0f;
-    for (int32_t i = 0; i < Count(); ++i)
+    // gravity, in an instance turned by 0 and by 0.5 about Z: after a step,
+    // each particle 2 cells or more inside it has the shear's velocity at
+    // its place within 1e-4 (a linear field is carried exactly), and as its
+    // affine matrix the shear's gradient in the world, R G R^T, within
+    // 1e-3.
+    float worst[2] = {0.0f, 0.0f};
+    for (int32_t c = 0; c < 2; ++c)
     {
-        float x = Array(mvfx_attributePositionX)[i];
-        float y = Array(mvfx_attributePositionY)[i];
-        if (x > 0.3f && x < 0.5f && y > 0.3f && y < 0.5f)
+        s_turn = c == 1 ? 0.5f : 0.0f;
+        float cs = cosf(s_turn);
+        float sn = sinf(s_turn);
+        // R G R^T for G with dvx/dy 1, row by row over X and Y.
+        const float gradient[4] = {-cs * sn, cs * cs, -sn * sn, sn * cs};
+        mvfxGasDef gas = Gas(16, 16, 0.05f);
+        mvfxEmitterDef emitter = Emitter(0.025f, NULL, 256);
+        CHECK(Open(&emitter, 1, &gas, 1), "opened");
+        Block(0.05f, 2, (const int32_t[2]){4, 4}, (const int32_t[2]){12, 12}, Shear);
+        Steps(1);
+        const float* affine = Array(mvfx_attributeAffine);
+        for (int32_t i = 0; i < Count(); ++i)
         {
-            worst = fmaxf(worst, fabsf(Array(mvfx_attributeVelocityX)[i] - (y - 0.4f)));
-            worst = fmaxf(worst, fabsf(Array(mvfx_attributeVelocityY)[i]));
+            float wx = Array(mvfx_attributePositionX)[i];
+            float wy = Array(mvfx_attributePositionY)[i];
+            float x = cs * wx + sn * wy;
+            float y = -sn * wx + cs * wy;
+            if (x > 0.3f && x < 0.5f && y > 0.3f && y < 0.5f)
+            {
+                float vx = Array(mvfx_attributeVelocityX)[i];
+                float vy = Array(mvfx_attributeVelocityY)[i];
+                worst[0] = fmaxf(worst[0], fabsf(cs * vx + sn * vy - (y - 0.4f)));
+                worst[0] = fmaxf(worst[0], fabsf(-sn * vx + cs * vy));
+                for (int32_t r = 0; r < 2; ++r)
+                {
+                    for (int32_t k = 0; k < 2; ++k)
+                    {
+                        float a = affine[9 * i + 3 * r + k];
+                        worst[1] = fmaxf(worst[1], fabsf(a - gradient[2 * r + k]));
+                    }
+                }
+            }
         }
+        mvfxDestroyContext(s_context);
     }
-    CHECK(worst <= 1e-4f, "a shear is carried exactly");
-    mvfxDestroyContext(s_context);
+    s_turn = 0.0f;
+    CHECK(worst[0] <= 1e-4f && worst[1] <= 1e-3f, "a shear is carried exactly");
 }
 
 static void TestExpansion(void)
@@ -568,6 +634,7 @@ int main(void)
     TestFill();
     TestOutside();
     TestPool();
+    TestObstacle();
     TestTurning();
     TestTurnedBox();
     TestShear();

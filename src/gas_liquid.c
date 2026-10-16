@@ -535,6 +535,10 @@ void mvfxStepLiquidGas(mvfxInstance* instance, int32_t g, const mvfxTasks* tasks
     float volume = s.lattice.n[2] > 1 ? spacing * spacing * spacing : spacing * spacing;
     // The finest level's scratch is free until the solve's cycles.
     float* expansion = s.state->levels[0].scratch;
+    if (s.state->solid != nullptr)
+    {
+        mvfxMarkGasSolids(s.gas, s.state);
+    }
     Mark(&s, volume, expansion);
     EachAxis(&s, GatherRows, tasks);
     if (s.state->solid != nullptr)

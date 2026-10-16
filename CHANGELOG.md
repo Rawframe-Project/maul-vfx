@@ -342,6 +342,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A grid liquid's over-full cells grow back to full over 1/60 s, or
   over the step if longer, so a liquid spawned packed spreads calmly
   instead of flying apart after its spawning tick.
+- A liquid gas's obstacles hold its liquid: their cells are solid, where
+  before they were taken for air and the liquid drained toward them.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so
