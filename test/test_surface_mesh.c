@@ -639,7 +639,7 @@ static void TestBits(void)
         hash = mvfxHash64(hash, s_indices, (int32_t)(4 * i));
         mvfxDestroyContext(s_context);
     }
-    CHECK(hash == 0x49BB75B441899370u, "a mesh's bytes as committed");
+    CHECK(hash == 0x5FC7FA883FE07A31u, "a mesh's bytes as committed");
 }
 
 int main(void)

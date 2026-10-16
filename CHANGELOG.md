@@ -372,6 +372,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   runs until they are still.
 - A gas's or water surface's sample of more than `INT64_MAX / 3` points
   is refused; the count's three coordinates overflowed before.
+- A surface's largest eigenvalue is found by cyclic Jacobi rotations,
+  within 1e-6 where eigenvalues repeat; Newton's method on the
+  characteristic cubic was off by up to 7% at a double largest one.
+- Changed: a surface's default upper threshold is 2.0 (was 2.5), which
+  keeps disks two spacings apart from joining in 2D as balls in 3D; a
+  flat face sits about a tenth of a spacing inside.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so

@@ -17,8 +17,9 @@ void mvfxStepSurfaceGas(mvfxInstance* instance, int32_t g, const mvfxTasks* task
 
 // The largest eigenvalue of a symmetric matrix (XX, YY, ZZ, XY, XZ, YZ;
 // for axes 2 its XY block alone), or, when it is below low, a bound on it
-// below low: in 2D in closed form, in 3D by Newton's method on its
-// characteristic cubic from Gershgorin's bound.
+// below low (Gershgorin's): in 2D in closed form, in 3D by cyclic Jacobi
+// rotations, accurate where eigenvalues repeat (a polynomial's repeated
+// root is not).
 float mvfxSurfaceEigenvalue(const float m[6], int32_t axes, float low);
 
 #endif

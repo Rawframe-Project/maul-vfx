@@ -174,10 +174,11 @@ extern "C"
     // without a particle within R holds R (phi is below R elsewhere); then
     // each smoothing pass takes the mean of each cell and its neighbors
     // along the box's axes, then that mean again only where it is lower. A
-    // liquid's spacing as the radius, reach 4, low 0.4 and high 2.5 put a
-    // jittered block's flat face within a tenth of a spacing of its place
-    // (inside it) and keep two balls a spacing apart from joining; in 2D,
-    // high 2.0 keeps disks as near apart.
+    // liquid's spacing as the radius, reach 4, low 0.4 and high 2.0
+    // (Solenthaler et al.'s) keep two balls, or disks in 2D, a spacing
+    // apart from joining and put a jittered block's flat face about a
+    // tenth of a spacing inside its place; high 2.5 sets the face nearer
+    // (0.06 in) but joins such disks.
     typedef struct mvfxGasSurface
     {
         // The emitter whose particles it wraps, an index into the effect's
@@ -296,7 +297,7 @@ extern "C"
     /// open, 4 V cycles of pressure, semi-Lagrangian; gravity (0, -9.81, 0)
     /// in the world, with no buoyancy, no confinement and inert fuel; its
     /// surface of emitter 0's particles of radius 0.1, reach 4, thresholds
-    /// 0.4 and 2.5 and one smoothing pass.
+    /// 0.4 and 2.0 and one smoothing pass.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety

@@ -19,7 +19,7 @@ mvfxGasDef mvfxDefaultGasDef(void)
         .pressureCycles = 4,
         .gravity = {0.0f, -9.81f, 0.0f},
         .gravitySpace = mvfx_gasWorld,
-        .surface = {.radius = 0.1f, .reach = 4.0f, .low = 0.4f, .high = 2.5f, .smoothing = 1},
+        .surface = {.radius = 0.1f, .reach = 4.0f, .low = 0.4f, .high = 2.0f, .smoothing = 1},
     };
 }
 
