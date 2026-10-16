@@ -188,7 +188,7 @@ static bool Closed(int64_t vertices, int64_t indices, int32_t per, int64_t* eule
 // The result of a mesh call spoiled by case c: a misaligned or NULL
 // positions buffer with a size, a NULL indices buffer with a size, a
 // negative capacity, scratch too small, a NULL or far origin, a level not
-// finite, NULL buffers, a NULL count.
+// finite, NULL buffers, positions misaligned by 2 bytes, a NULL count.
 static mvfxResult Spoiled(int32_t c, int64_t bytes)
 {
     static const double zero[3] = {0.0, 0.0, 0.0};
@@ -229,6 +229,9 @@ static mvfxResult Spoiled(int32_t c, int64_t bytes)
     case 8:
         buffers = NULL;
         break;
+    case 9:
+        b.positions = (float*)((char*)s_positions + 2);
+        break;
     default:
         count = NULL;
         break;
@@ -258,7 +261,7 @@ static void TestRefusals(void)
         right &&
         mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) == mvfx_success &&
         bytes == 24 * 64;
-    for (int32_t c = 0; c < 10; ++c)
+    for (int32_t c = 0; c < 11; ++c)
     {
         right = right && Spoiled(c, bytes) == (c == 4 ? mvfx_errorCapacity : mvfx_errorInvalid);
     }
@@ -327,6 +330,44 @@ static void TestSphere(void)
     CHECK(upright && turned, "a lone particle's sphere and circle");
 }
 
+static void TestEdgeNormals(void)
+{
+    // A sphere of 0.25 crossing the box's -X face (its center at -0.45,
+    // the samples' first plane at -0.575): its normals on that plane, from
+    // one-sided differences, stay within 8 degrees of radial (4.1
+    // measured; differences over the wrong span give 16).
+    CHECK(Open(24, 24, 0.05f, 0.25f, mvfx_gasSurface), "opened");
+    const double center[3] = {-0.45, 0.013, 0.007};
+    Spawn(center, 1);
+    int64_t vertices = 0;
+    int64_t indices = 0;
+    Mesh(s_origin, &vertices, &indices);
+    float cosine = 1.0f;
+    int32_t onface = 0;
+    for (int64_t v = 0; v < vertices; ++v)
+    {
+        double d[3];
+        double r2 = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            d[k] = (double)s_positions[3 * v + k] - center[k];
+            r2 += d[k] * d[k];
+        }
+        double along = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            along += (double)s_normals[3 * v + k] * d[k] / sqrt(r2);
+        }
+        if (fabsf(s_positions[3 * v] + 0.575f) < 1e-4f)
+        {
+            cosine = fminf(cosine, (float)along);
+            ++onface;
+        }
+    }
+    mvfxDestroyContext(s_context);
+    CHECK(onface > 20 && cosine >= cosf(8.0f * 3.14159265f / 180.0f), "normals at the box's face");
+}
+
 static void TestDrops(void)
 {
     // Two particles 0.9 apart (beyond each other's reach, 0.75), each a
@@ -363,7 +404,8 @@ static void RandomField(int32_t n, int32_t depth, uint64_t* state)
 static void TestRandomFields(void)
 {
     // 40 random fields of 12 cells a side and 40 of 32 by 32 in 2D: every
-    // mesh closed.
+    // mesh closed, its vertices within the samples' span, its normals unit
+    // (or 0 where the field is flat).
     uint64_t state = 2026u;
     bool closed = true;
     for (int32_t c = 0; c < 80; ++c)
@@ -377,16 +419,57 @@ static void TestRandomFields(void)
         Mesh(s_origin, &vertices, &indices);
         int64_t euler = 0;
         closed = closed && Closed(vertices, indices, depth > 1 ? 3 : 2, &euler) && indices > 0;
+        // Every vertex within the samples' span, its normal unit or 0.
+        float span = 0.5f * (float)(n - 1) * 0.05f + 1e-5f;
+        for (int64_t v = 0; v < vertices; ++v)
+        {
+            float length = 0.0f;
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                closed = closed && fabsf(s_positions[3 * v + k]) <= span;
+                length += s_normals[3 * v + k] * s_normals[3 * v + k];
+            }
+            closed = closed && (length == 0.0f || fabsf(length - 1.0f) <= 1e-5f);
+        }
         mvfxDestroyContext(s_context);
     }
     CHECK(closed, "random fields' meshes closed");
 }
 
+// Whether a mesh written into vertexCapacity vertices and indexCapacity
+// indices counts all of it and writes the first triangles of full that
+// fit both, and nothing after them.
+static bool WritesWithin(const uint32_t* full, int64_t vertices, int64_t indices,
+                         int64_t vertexCapacity, int64_t indexCapacity)
+{
+    memset(s_indices, 0xFF, sizeof s_indices);
+    mvfxSurfaceMeshBuffers b = Buffers();
+    b.vertexCapacity = vertexCapacity;
+    b.indexCapacity = indexCapacity;
+    int64_t v = 0;
+    int64_t i = 0;
+    bool right = mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, s_origin, 0.0f, &b, &v,
+                                               &i) == mvfx_success &&
+                 v == vertices && i == indices;
+    int64_t fit = 0;
+    while (fit + 3 <= indexCapacity && fit < indices && full[fit] < vertexCapacity &&
+           full[fit + 1] < vertexCapacity && full[fit + 2] < vertexCapacity)
+    {
+        fit += 3;
+    }
+    for (int64_t k = 0; k < indexCapacity; ++k)
+    {
+        right = right && s_indices[k] == (k < fit ? full[k] : 0xFFFFFFFFu);
+    }
+    return right && fit > 0;
+}
+
 static void TestCapacity(void)
 {
-    // A sphere into 50 vertices and 60 indices: the counts are all of it,
-    // the first triangles that fit are written, and no index reaches a
-    // vertex not written. NULL buffers of no size count it too.
+    // A sphere into 50 vertices and 60 indices; into exactly the vertices
+    // before the first triangle that needs one more; into 61 indices: the
+    // counts are all of it and the first triangles that fit are written,
+    // nothing after. NULL buffers of no size count it too.
     CHECK(Open(24, 24, 0.05f, 0.25f, mvfx_gasSurface), "opened");
     Spawn((const double[3]){0.013, -0.021, 0.007}, 1);
     int64_t vertices = 0;
@@ -394,31 +477,137 @@ static void TestCapacity(void)
     Mesh(s_origin, &vertices, &indices);
     static uint32_t full[INDICES];
     memcpy(full, s_indices, sizeof(uint32_t) * (size_t)indices);
-    memset(s_indices, 0xFF, sizeof s_indices);
-    mvfxSurfaceMeshBuffers b = Buffers();
-    b.vertexCapacity = 50;
-    b.indexCapacity = 60;
+    // The first triangle reaching vertex 50 or more: its largest vertex.
+    int64_t first = 0;
+    while (first < indices && full[first] < 50u && full[first + 1] < 50u && full[first + 2] < 50u)
+    {
+        first += 3;
+    }
+    uint32_t exact = full[first] > full[first + 1] ? full[first] : full[first + 1];
+    exact = exact > full[first + 2] ? exact : full[first + 2];
+    bool right = WritesWithin(full, vertices, indices, 50, 60) &&
+                 WritesWithin(full, vertices, indices, exact, 3000) &&
+                 WritesWithin(full, vertices, indices, VERTICES, 61);
+    mvfxSurfaceMeshBuffers none = {.scratch = s_scratch, .scratchBytes = (int64_t)sizeof s_scratch};
     int64_t v = 0;
     int64_t i = 0;
-    bool right = mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, s_origin, 0.0f, &b, &v,
-                                               &i) == mvfx_success &&
-                 v == vertices && i == indices;
-    int64_t written = 0;
-    while (written < 60 && s_indices[written] != 0xFFFFFFFFu)
-    {
-        right = right && s_indices[written] == full[written] && s_indices[written] < 50u;
-        ++written;
-    }
-    right = right && written % 3 == 0 && written > 0 &&
-            (written == 60 || full[written] >= 50u || full[written + 1] >= 50u ||
-             full[written + 2] >= 50u);
-    mvfxSurfaceMeshBuffers none = {.scratch = s_scratch, .scratchBytes = (int64_t)sizeof s_scratch};
     right = right &&
             mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, s_origin, 0.0f, &none, &v,
                                           &i) == mvfx_success &&
             v == vertices && i == indices;
     mvfxDestroyContext(s_context);
     CHECK(right, "a mesh's capacities");
+}
+
+// Sets a surface's field of n by n by depth cells to 1 everywhere, then
+// count values at places (x, y, z, value).
+static void SetField(int32_t n, int32_t depth, const float (*set)[4], int32_t count)
+{
+    mvfxGasState* gas = &mvfxContextInstance(s_context, s_instance)->gases[0];
+    float* phi = gas->scalars[0][gas->current];
+    for (int64_t i = 0; i < (int64_t)n * n * depth; ++i)
+    {
+        phi[i] = 1.0f;
+    }
+    for (int32_t c = 0; c < count; ++c)
+    {
+        int64_t at = ((int64_t)set[c][2] * n + (int64_t)set[c][1]) * n + (int64_t)set[c][0];
+        phi[at] = set[c][3];
+    }
+}
+
+// The loops of a closed curve: each segment's end is the next's start.
+static int32_t Loops(int64_t vertices, int64_t indices)
+{
+    int32_t* next = malloc(sizeof(int32_t) * (size_t)(vertices > 0 ? vertices : 1));
+    bool* seen = calloc((size_t)(vertices > 0 ? vertices : 1), sizeof(bool));
+    if (next == NULL || seen == NULL)
+    {
+        free(next);
+        free(seen);
+        return -1;
+    }
+    for (int64_t v = 0; v < vertices; ++v)
+    {
+        next[v] = (int32_t)v;
+    }
+    for (int64_t s = 0; s + 1 < indices; s += 2)
+    {
+        next[s_indices[s]] = (int32_t)s_indices[s + 1];
+    }
+    int32_t loops = 0;
+    for (int64_t v = 0; v < vertices; ++v)
+    {
+        loops += seen[v] ? 0 : 1;
+        for (int64_t w = v; !seen[w]; w = next[w])
+        {
+            seen[w] = true;
+        }
+    }
+    free(next);
+    free(seen);
+    return loops;
+}
+
+// The pieces a diagonal pair of samples of value a makes with the other
+// pair of b (on a face of a cube in 3D, a square in 2D), all else 1: loops
+// in 2D, and in 3D half the Euler characteristic.
+static int32_t Pieces(int32_t depth, bool diagonal, float a, float b)
+{
+    CHECK(Open(6, depth, 0.05f, 0.25f, mvfx_gasSurface), "opened");
+    int32_t z = depth > 1 ? 2 : 0;
+    const float set[4][4] = {{2, 2, (float)z, diagonal ? a : b},
+                             {3, 3, (float)z, diagonal ? a : b},
+                             {3, 2, (float)z, diagonal ? b : a},
+                             {2, 3, (float)z, diagonal ? b : a}};
+    SetField(6, depth, set, 4);
+    int64_t vertices = 0;
+    int64_t indices = 0;
+    Mesh(s_origin, &vertices, &indices);
+    int64_t euler = 0;
+    int32_t pieces = depth > 1
+                         ? (ClosedSurface(vertices, indices, &euler) ? (int32_t)euler / 2 : -1)
+                         : Loops(vertices, indices);
+    mvfxDestroyContext(s_context);
+    return pieces;
+}
+
+static void TestDecider(void)
+{
+    // Inside samples (-2) diagonal across a face, the others 1: the
+    // saddle is inside, one piece; inside -0.5 and outside 2: the saddle
+    // is outside, two; -1 and 1 tie: two. Both diagonals, in 2D and 3D.
+    bool right = true;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        int32_t depth = c < 2 ? 1 : 6;
+        bool diagonal = c % 2 == 0;
+        right = right && Pieces(depth, diagonal, -2.0f, 1.0f) == 1 &&
+                Pieces(depth, diagonal, -0.5f, 2.0f) == 2 &&
+                Pieces(depth, diagonal, -1.0f, 1.0f) == 2;
+    }
+    CHECK(right, "ambiguous faces by their saddle");
+}
+
+static void TestAtLevel(void)
+{
+    // A sample exactly at the level is outside: one inside sample beside
+    // it makes 4 vertices in 2D and 6 in 3D, one at the sample itself.
+    bool right = true;
+    for (int32_t c = 0; c < 2; ++c)
+    {
+        int32_t depth = c == 0 ? 1 : 5;
+        float z = c == 0 ? 0.0f : 2.0f;
+        CHECK(Open(5, depth, 0.05f, 0.25f, mvfx_gasSurface), "opened");
+        const float set[2][4] = {{2, 2, z, -1.0f}, {3, 2, z, 0.0f}};
+        SetField(5, depth, set, 2);
+        int64_t vertices = 0;
+        int64_t indices = 0;
+        Mesh(s_origin, &vertices, &indices);
+        mvfxDestroyContext(s_context);
+        right = right && vertices == (c == 0 ? 4 : 6);
+    }
+    CHECK(right, "a sample at the level is outside");
 }
 
 static void TestBits(void)
@@ -457,9 +646,12 @@ int main(void)
 {
     TestRefusals();
     TestSphere();
+    TestEdgeNormals();
     TestDrops();
     TestRandomFields();
     TestCapacity();
+    TestDecider();
+    TestAtLevel();
     TestBits();
     return s_failures;
 }
