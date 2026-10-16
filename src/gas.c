@@ -176,11 +176,12 @@ static bool Coarsens(const int32_t n[3])
 }
 
 // A surface gas has no faces, levels or work, and buckets of whole cells
-// at least its reach on a side, one more beyond the box at each end of an
-// axis of more than one cell (the particles a box's cells reach).
+// at least its reach on a side (at least one: a reach far below a cell
+// rounds to 0), one more beyond the box at each end of an axis of more
+// than one cell (the particles a box's cells reach).
 static void CompileSurface(mvfxCompiledGas* gas)
 {
-    float cells = ceilf(mvfxSurfaceReach(gas) / gas->def.cellSize);
+    float cells = fmaxf(ceilf(mvfxSurfaceReach(gas) / gas->def.cellSize), 1.0f);
     gas->bucket = cells < (float)MVFX_MAX_GAS_SIZE ? (int32_t)cells : MVFX_MAX_GAS_SIZE;
     gas->bucketCount = 1;
     for (int32_t k = 0; k < 3; ++k)

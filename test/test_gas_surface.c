@@ -198,20 +198,21 @@ static void TestReads(void)
     CHECK(right, "a surface's distance read and sampled");
 }
 
-// Checks a lone particle's field in a gas of n by n by depth cells of
-// 0.05: |x - p| - r within 2e-6 where x is within the reach, the reach
-// beyond.
-static bool LoneParticle(int32_t depth)
+// Whether a lone particle at p gives, in a gas of 16 by 16 by depth cells
+// of cell and particles of radius and reach, |x - p| - radius within 2e-6
+// where x is within the reach of p and the reach beyond.
+static bool LoneParticle(int32_t depth, const double p[3], float cell, float radius, float reach)
 {
     int32_t n = 16;
-    mvfxGasDef gas = Surface(n, depth, 0.05f, 0.1f);
+    mvfxGasDef gas = Surface(n, depth, cell, radius);
+    gas.surface.reach = reach;
     gas.surface.smoothing = 0;
     mvfxEmitterDef emitter = Emitter(4);
     CHECK(Open(&emitter, 1, &gas, 1), "opened");
-    const double p[3] = {0.013, -0.021, depth > 1 ? 0.007 : 0.0};
     Spawn(p, 1);
     int64_t cells = (int64_t)n * n * depth;
     float* phi = Distance(cells);
+    double r = (double)reach * (double)radius;
     float worst = 0.0f;
     for (int64_t i = 0; i < cells; ++i)
     {
@@ -219,11 +220,11 @@ static bool LoneParticle(int32_t depth)
         double d2 = 0.0;
         for (int32_t k = 0; k < (depth > 1 ? 3 : 2); ++k)
         {
-            double x = ((double)at[k] + 0.5 - 0.5 * (double)n) * 0.05;
+            double x = ((double)at[k] + 0.5 - 0.5 * (double)n) * (double)cell;
             d2 += (x - p[k]) * (x - p[k]);
         }
         double d = sqrt(d2);
-        double expected = d < 0.4 ? d - 0.1 : 0.4;
+        double expected = d < r ? d - (double)radius : r;
         worst = fmaxf(worst, (float)fabs((double)phi[i] - expected));
     }
     free(phi);
@@ -233,7 +234,39 @@ static bool LoneParticle(int32_t depth)
 
 static void TestLoneParticle(void)
 {
-    CHECK(LoneParticle(16) && LoneParticle(1), "a lone particle's sphere and circle");
+    // A sphere and a circle; a reach of 3.3 radii (buckets of whole cells
+    // past it); a particle beyond the box's far X face, within reach of its
+    // cells; one exactly at the buckets' far Z edge, which counts for none
+    // (cells of 1/16, the reach 8 cells).
+    const double inside[3] = {0.013, -0.021, 0.007};
+    const double flat[3] = {0.013, -0.021, 0.0};
+    const double beyond[3] = {0.45, -0.021, 0.007};
+    const double edge[3] = {0.0, 0.0, 1.0};
+    CHECK(LoneParticle(16, inside, 0.05f, 0.1f, 4.0f) && LoneParticle(1, flat, 0.05f, 0.1f, 4.0f) &&
+              LoneParticle(16, inside, 0.05f, 0.1f, 3.3f) &&
+              LoneParticle(16, beyond, 0.05f, 0.1f, 4.0f) &&
+              LoneParticle(16, edge, 0.0625f, 0.125f, 4.0f),
+          "a lone particle's sphere and circle");
+}
+
+static void TestTinyReach(void)
+{
+    // A radius so small its reach over a cell of a million rounds to 0: the
+    // surface still takes buckets of a cell, and holds its reach.
+    mvfxGasDef gas = Surface(8, 8, 1e6f, 1e-40f);
+    mvfxEmitterDef emitter = Emitter(4);
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    const double p[3] = {0.0, 0.0, 0.0};
+    Spawn(p, 1);
+    float* phi = Distance(512);
+    bool right = true;
+    for (int32_t i = 0; i < 512; ++i)
+    {
+        right = right && phi[i] == 4.0f * 1e-40f;
+    }
+    free(phi);
+    mvfxDestroyContext(s_context);
+    CHECK(right, "a reach below a cell");
 }
 
 // The largest eigenvalue of a symmetric 3 by 3 matrix by Jacobi's
@@ -462,6 +495,7 @@ int main(void)
     TestRefusals();
     TestReads();
     TestLoneParticle();
+    TestTinyReach();
     TestEigenvalue();
     TestFlatFace();
     TestDrops();

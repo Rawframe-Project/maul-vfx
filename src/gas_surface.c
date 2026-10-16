@@ -194,13 +194,10 @@ float mvfxSurfaceEigenvalue(const float m[6], int32_t axes, float low)
     return lambda;
 }
 
-// The distance at a point from its sums, in cells, held within the reach.
+// The distance at a point from its sums, a particle within its reach, in
+// cells.
 static float DistanceOf(const Surface* s, const Sums* sums)
 {
-    if (!(sums->weight > 0.0f))
-    {
-        return s->reach;
-    }
     float mean[3];
     for (int32_t j = 0; j < 3; ++j)
     {
@@ -225,8 +222,8 @@ static float DistanceOf(const Surface* s, const Sums* sums)
         float rest = 1.0f - g;
         f = largest < def->low ? 1.0f : fminf(fmaxf(1.0f - rest * rest * rest, 0.0f), 1.0f);
     }
-    float d = sqrtf(mean[0] * mean[0] + mean[1] * mean[1] + mean[2] * mean[2]) - s->radius * f;
-    return fminf(d, s->reach);
+    // Within the reach: the mean of particles within it is.
+    return sqrtf(mean[0] * mean[0] + mean[1] * mean[1] + mean[2] * mean[2]) - s->radius * f;
 }
 
 // The distance at the center of cell (x, y, z), in the box's lengths.
@@ -256,7 +253,10 @@ static float FieldAt(const Surface* s, int32_t x, int32_t y, int32_t z)
             }
         }
     }
-    return DistanceOf(s, &sums) * s->gas->def.cellSize;
+    // Without a particle within it, the reach, in lengths (in cells it may
+    // round to 0).
+    return sums.weight > 0.0f ? DistanceOf(s, &sums) * s->gas->def.cellSize
+                              : mvfxSurfaceReach(s->gas);
 }
 
 static void FieldRows(int32_t start, int32_t end, void* context)

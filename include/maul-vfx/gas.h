@@ -171,9 +171,9 @@ extern "C"
     // low, else g^3 - 3 g^2 + 3 g with g = (high - E) / (high - low),
     // held within 0 and 1: where the mean moves faster than the point (a
     // concavity, a gap between drops), the surface draws in. A cell
-    // without a particle within R, or farther than R, holds R; then each
-    // smoothing pass takes the mean of each cell and its neighbors along
-    // the box's axes, then that mean again only where it is lower. A
+    // without a particle within R holds R (phi is below R elsewhere); then
+    // each smoothing pass takes the mean of each cell and its neighbors
+    // along the box's axes, then that mean again only where it is lower. A
     // liquid's spacing as the radius, reach 4, low 0.4 and high 2.5 put a
     // jittered block's flat face within a tenth of a spacing of its place
     // (inside it) and keep two balls a spacing apart from joining; in 2D,
