@@ -185,6 +185,8 @@ static void TestRefusals(void)
                                             out) == mvfx_errorInvalid;
     right = right && mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, bad, -1,
                                             out) == mvfx_errorInvalid;
+    right = right && mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, bad,
+                                            INT64_MAX / 3 + 1, out) == mvfx_errorInvalid;
     const double far[3] = {(double)INFINITY, 0, 0};
     right = right && mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, far, 1,
                                             out) == mvfx_errorInvalid;

@@ -385,8 +385,8 @@ static void CellInWorld(double x, double z, double y, double out[3])
     ToWorld(p, out);
 }
 
-// The frame tests' surface opened in the frame: a small dent at cell
-// (3, 5) and a wide lift at (10, 2), pushed in the world's lengths and
+// The frame tests' surface opened in the frame: small dents at cells
+// (3, 5) and (15, 7) and a wide lift at (10, 2), pushed in the world's lengths and
 // taken without a step's time.
 static mvfxWaterDef OpenInFrame(void)
 {
@@ -405,6 +405,8 @@ static mvfxWaterDef OpenInFrame(void)
     Push(at[0], at[1], at[2], 0.08f, 0.04f);
     CellInWorld(10.0, 2.0, 7.0, at);
     Push(at[0], at[1], at[2], 0.6f, -0.02f);
+    CellInWorld(15.0, 7.0, 0.0, at);
+    Push(at[0], at[1], at[2], 0.08f, 0.04f);
     Steps(1, 0.0);
     return water;
 }
@@ -417,7 +419,8 @@ static float Expected(int32_t x, int32_t z)
     float dz = (float)(z - 2) / 3.0f;
     float s = 1.0f - (dx * dx + dz * dz);
     float lift = s > 0.0f ? 0.01f * s * s : 0.0f;
-    return 0.5f + lift - (x == 3 && z == 5 ? 0.02f : 0.0f);
+    bool dent = (x == 3 && z == 5) || (x == 15 && z == 7);
+    return 0.5f + lift - (dent ? 0.02f : 0.0f);
 }
 
 // The frame tests' instance's pushes: the most a step holds, a batch past
@@ -732,9 +735,12 @@ static void TestSamples(void)
     CellInWorld(10.5, 2.0, 0.0, at);
     CellInWorld(10.5, 2.0, 0.5 * ((double)u[2 * 16 + 10] + (double)u[2 * 16 + 11]), expected);
     CHECK(Near(Sample(at).surface, expected, 1e-5), "between cells");
-    CellInWorld(-0.3, 7.4, 0.0, at);
-    CellInWorld(-0.3, 7.4, (double)u[7 * 16], expected);
+    CellInWorld(15.4, 7.4, 0.0, at);
+    CellInWorld(15.4, 7.4, (double)u[7 * 16 + 15], expected);
     CHECK(Sample(at).inside && Near(Sample(at).surface, expected, 1e-5), "held at the edge");
+    CellInWorld(-0.3, -0.4, 0.0, at);
+    CellInWorld(-0.3, -0.4, (double)u[0], expected);
+    CHECK(Sample(at).inside && Near(Sample(at).surface, expected, 1e-5), "and the other edge");
     // Off the grid: the rest plane, its normal the frame's Y, still.
     CellInWorld(-0.6, 3.0, 9.0, at);
     sample = Sample(at);
@@ -835,6 +841,19 @@ static int32_t StepsToFinish(int32_t limit)
     return steps;
 }
 
+// A finished instance's surface pushed again: taken in a step of no time
+// it has no rate yet, but a slope that holds the instance; cleared, its
+// pushes not yet taken are dropped.
+static void FinishAgain(void)
+{
+    Push(0.0, 0.0, 0.0, 0.3f, 0.01f);
+    Steps(1, 0.0);
+    CHECK(!mvfxInstance_IsFinished(s_context, s_instance), "a slope holds it");
+    Push(0.0, 0.0, 0.0, 0.3f, 0.01f);
+    CHECK(mvfxInstance_Stop(s_context, s_instance, mvfx_stopAndClear) == mvfx_success, "cleared");
+    CHECK(mvfxInstance_IsFinished(s_context, s_instance), "its pushes dropped");
+}
+
 static void TestFinish(void)
 {
     mvfxWaterDef water = Water(16, 16, 0.1f, 1.0f);
@@ -853,6 +872,7 @@ static void TestFinish(void)
     CHECK(!mvfxInstance_IsFinished(s_context, s_instance), "its waves hold it");
     CHECK(mvfxInstance_Stop(s_context, s_instance, mvfx_stopAndClear) == mvfx_success, "cleared");
     CHECK(mvfxInstance_IsFinished(s_context, s_instance), "cleared, still");
+    FinishAgain();
     mvfxDestroyContext(s_context);
 }
 

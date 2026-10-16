@@ -62,13 +62,10 @@ mvfxBounds mvfxWaterBounds(const mvfxInstance* instance, int32_t w)
     return mvfxBoxBounds(&place, half);
 }
 
-// The displacement at cell (x, z), held within the grid.
+// A field's value at cell (x, z), within the grid.
 static float At(const mvfxCompiledWater* water, const float* u, int32_t x, int32_t z)
 {
-    const int32_t* n = water->def.size;
-    x = x < 0 ? 0 : (x >= n[0] ? n[0] - 1 : x);
-    z = z < 0 ? 0 : (z >= n[1] ? n[1] - 1 : z);
-    return u[(int64_t)z * n[0] + x];
+    return u[(int64_t)z * water->def.size[0] + x];
 }
 
 // The surface's unit normal at cell (x, z): its heights' central
@@ -178,7 +175,8 @@ mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId ins
 
 // The surface at a point of its frame (x, z): its displacement, rate and
 // normal, bilinear between the cells' centers and held at the outer
-// cells' within the grid's edge; whether the point is over the grid.
+// cells' within the grid's edge; whether the point is over the grid (if
+// not, none is written).
 static bool SurfaceAt(const mvfxCompiledWater* water, const mvfxWaterState* state,
                       const float local[3], float* height, float* rate, float normal[3])
 {
@@ -232,13 +230,14 @@ static void SampleOne(const mvfxInstance* live, int32_t water, const mvfxSpaceMa
 {
     float local[3];
     mvfxMapPointDouble(map, point, local);
+    // Off the grid, the rest plane's, still.
     float height = 0.0f;
     float rate = 0.0f;
     float normal[3] = {0.0f, 1.0f, 0.0f};
     out->inside = SurfaceAt(&live->effect->waters[water], &live->waters[water], local, &height,
                             &rate, normal);
-    const float surface[3] = {local[0], out->inside ? height : 0.0f, local[2]};
-    const float velocity[3] = {0.0f, out->inside ? rate : 0.0f, 0.0f};
+    const float surface[3] = {local[0], height, local[2]};
+    const float velocity[3] = {0.0f, rate, 0.0f};
     mvfxUnmapPoint(map, surface, out->surface);
     // Directions turn back with the frame; a normal keeps its length.
     float turned[3];

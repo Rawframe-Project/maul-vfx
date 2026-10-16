@@ -370,6 +370,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   (`mvfxInstance_SampleWater`) and reads their place
   (`mvfxInstance_GetWaterInfo`); an instance's bounds hold them, and it
   runs until they are still.
+- A gas's or water surface's sample of more than `INT64_MAX / 3` points
+  is refused; the count's three coordinates overflowed before.
 - Rigid pairs are found by a grid of levels (each body in cells at
   least twice its reach), so one large body among many small ones no
   longer makes every cell large, and they are met in body order, so
