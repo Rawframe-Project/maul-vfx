@@ -33,7 +33,9 @@
 
 // Cyclic Jacobi's sweeps toward the largest eigenvalue: three leave a
 // relative error below 1e-6 at random and repeated eigenvalues alike,
-// two leave 1%.
+// two leave 1%. The sweeps, their rotations' order and the skip of an
+// entry exactly 0 (never one merely small) do not hang on the data, so
+// the bits are the same on every platform.
 #define JACOBI_SWEEPS 3
 
 // A surface gas's step: the gas and its room, its emitter's places and

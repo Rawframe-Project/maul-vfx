@@ -423,6 +423,23 @@ static void Repeated(int32_t kind, float m[6], uint64_t* state)
     }
 }
 
+static void TestEigenvalueBits(void)
+{
+    // 64 near-degenerate matrices (three eigenvalues within 1e-3, turned):
+    // their largest eigenvalues' bits hash to what is committed, on every
+    // platform.
+    uint64_t state = 0x2545F4914F6CDD1Du;
+    float found[64];
+    for (int32_t c = 0; c < 64; ++c)
+    {
+        float m[6];
+        Repeated(3, m, &state);
+        found[c] = mvfxSurfaceEigenvalue(m, 3, 0.4f);
+    }
+    uint64_t hash = mvfxHash64(0u, found, (int32_t)sizeof found);
+    CHECK(hash == 0xF00EFE8D94E08F23u, "near-degenerate eigenvalues' bits as committed");
+}
+
 static void TestEigenvalue(void)
 {
     // Random symmetric matrices of entries within 3, three in four with
@@ -611,6 +628,7 @@ int main(void)
     TestTinyReach();
     TestSmoothing();
     TestEigenvalue();
+    TestEigenvalueBits();
     TestFlatFace();
     TestDrops();
     return s_failures;
