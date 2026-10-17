@@ -309,7 +309,7 @@ typedef struct mvfxCompiledEmitter
 } mvfxCompiledEmitter;
 
 // A compiled effect, in one block: this header, its emitters, their rate
-// curves and their bursts.
+// curves and their bursts, its gases and its water surfaces.
 typedef struct mvfxEffect
 {
     mvfxCompiledEmitter* emitters;
@@ -329,11 +329,10 @@ typedef struct mvfxEffect
     // The order its emitters step in: each source before the emitters
     // spawning from its events, otherwise by index.
     int32_t stepOrder[MVFX_MAX_EMITTERS];
-    // Its gases.
-    mvfxCompiledGas gases[MVFX_MAX_GASES];
+    // Its gases and its water surfaces, in its block.
+    mvfxCompiledGas* gases;
     int32_t gasCount;
-    // Its water surfaces.
-    mvfxCompiledWater waters[MVFX_MAX_WATERS];
+    mvfxCompiledWater* waters;
     int32_t waterCount;
 } mvfxEffect;
 

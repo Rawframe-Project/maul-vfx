@@ -122,7 +122,7 @@ static void EndStep(mvfxInstance* instance)
 
 // The emitters whose live particles pour into gas g, as the step left
 // them: their arrays and the map from their space into the gas's box.
-static int32_t PoursInto(mvfxInstance* instance, int32_t g, mvfxGasPour pours[MVFX_MAX_EMITTERS])
+static int32_t PoursInto(mvfxInstance* instance, int32_t g, mvfxGasPour* pours)
 {
     int32_t count = 0;
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)

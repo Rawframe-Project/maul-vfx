@@ -460,6 +460,38 @@ static void StartFields(mvfxInstance* instance, unsigned char* block, const int3
     }
 }
 
+// Where an instance's gas and water states lie in its block.
+typedef struct StatesAt
+{
+    size_t gases;
+    size_t waters;
+    size_t gasForces;
+    size_t pours;
+} StatesAt;
+
+// Places an instance's gas and water states in its layout, as many as its
+// effect has: its gases' and waters', room for the most forces a gas has,
+// and for every emitter's pour when it has a gas.
+static StatesAt AddFieldStates(mvfxLayout* layout, const mvfxEffect* effect)
+{
+    int32_t gasForces = 0;
+    for (int32_t g = 0; g < effect->gasCount; ++g)
+    {
+        int32_t forces = effect->gases[g].def.forceCount;
+        gasForces = forces > gasForces ? forces : gasForces;
+    }
+    StatesAt at;
+    at.gases = mvfxLayoutAdd(layout, (size_t)effect->gasCount, sizeof(mvfxGasState),
+                             alignof(mvfxGasState));
+    at.waters = mvfxLayoutAdd(layout, (size_t)effect->waterCount, sizeof(mvfxWaterState),
+                              alignof(mvfxWaterState));
+    at.gasForces = mvfxLayoutAdd(layout, (size_t)gasForces, sizeof(mvfxResolvedForce),
+                                 alignof(mvfxResolvedForce));
+    at.pours = mvfxLayoutAdd(layout, effect->gasCount > 0 ? (size_t)effect->emitterCount : 0,
+                             sizeof(mvfxGasPour), alignof(mvfxGasPour));
+    return at;
+}
+
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
                                       const mvfxTransform* transform, uint32_t seed,
                                       const mvfxAllocator* allocator)
@@ -493,6 +525,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         particlesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].plan.arrayCount,
                                        mvfxArrayBytes(capacities[e]), MVFX_ATTRIBUTE_ALIGNMENT);
     }
+    StatesAt statesOf = AddFieldStates(&layout, effect);
     FieldsAt fieldsAt;
     AddFieldLayouts(&layout, effect, capacities, &fieldsAt);
     if (layout.overflow)
@@ -521,6 +554,10 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         .acceptedScratch = (mvfxBirth*)(block + acceptedAt),
         .killScratch = block + killsAt,
         .crossScratch = block + killsAt + largest,
+        .gases = (mvfxGasState*)(block + statesOf.gases),
+        .waters = (mvfxWaterState*)(block + statesOf.waters),
+        .gasForces = (mvfxResolvedForce*)(block + statesOf.gasForces),
+        .gasPours = (mvfxGasPour*)(block + statesOf.pours),
         .blockBytes = layout.size,
     };
     for (int32_t p = 0; p < effect->parameterCount; ++p)

@@ -430,6 +430,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfx_errorMissing`, a new status.
 - A sheet unit whose points times rows overflows is refused, where the
   check computed the overflowing product first.
+- An instance holds room for its own effect's gases, water surfaces and
+  gas pours only, and a compiled effect for its own gases and water
+  surfaces: an instance of one sprite emitter holds 2.8 KiB besides its
+  particles rather than 29 KiB, its effect 12 KiB rather than 25 KiB.
 - An emitter without ribbons no longer turns its unchecked bend angle,
   where an angle past 2^24 overflowed a conversion; the library's sine
   and cosine give defined values for any argument.

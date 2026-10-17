@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Creating, destroying and reading instances, and the step's refusals.
+// Creating, destroying and reading instances, and the step's refusals;
+// the bytes an instance and its effect hold, sized by what the effect has.
 
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
 
 #include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 static mvfxContext* NewContext(int32_t instances)
 {
@@ -118,9 +121,69 @@ static void TestRefusals(void)
     CHECK(mvfxCreateContext(&contextDef, &none) == mvfx_errorInvalid, "too many instances");
 }
 
+// The bytes a counting allocator holds, each block's start kept before it.
+static int64_t s_held;
+
+static void* Allocate(size_t size, size_t alignment, void* context)
+{
+    (void)context;
+    size_t front = alignment > 16 ? alignment : 16;
+    unsigned char* block = malloc(size + front + alignment);
+    if (block == NULL)
+    {
+        return NULL;
+    }
+    uintptr_t start = ((uintptr_t)block + front + alignment - 1) & ~(uintptr_t)(alignment - 1);
+    ((void**)start)[-1] = block;
+    s_held += (int64_t)size;
+    return (void*)start;
+}
+
+static void Free(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    if (memory != NULL)
+    {
+        free(((void**)memory)[-1]);
+        s_held -= (int64_t)size;
+    }
+}
+
+// An effect of one plain emitter holds no gas or water room: its compiled
+// form and an instance of it are a few KiB, not the tens they were with
+// every gas's state inline.
+static void TestMemory(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    contextDef.allocator = (mvfxAllocator){.alloc = Allocate, .free = Free};
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context created");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = 16;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    int64_t before = s_held;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect created");
+    int64_t effectBytes = s_held - before;
+    CHECK(effectBytes > 0 && effectBytes <= 16384, "a plain effect within 16 KiB");
+    mvfxInstanceDef def = mvfxDefaultInstanceDef();
+    def.effect = effect;
+    mvfxInstanceId instance = {0};
+    before = s_held;
+    CHECK(mvfxCreateInstance(context, &def, &instance) == mvfx_success, "created");
+    int64_t instanceBytes = s_held - before;
+    CHECK(instanceBytes > 0 && instanceBytes <= 6144, "a plain instance of 16 within 6 KiB");
+    mvfxDestroyContext(context);
+    CHECK(s_held == 0, "everything given back");
+}
+
 int main(void)
 {
     TestLifecycle();
     TestRefusals();
+    TestMemory();
     return s_failures == 0 ? 0 : 1;
 }

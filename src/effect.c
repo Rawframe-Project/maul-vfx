@@ -824,6 +824,24 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
                             : seconds * (double)source->rate;
 }
 
+// Compiles an effect's gases and water surfaces into the room its block
+// holds for them.
+static void CompileFields(const mvfxEffectDef* def, mvfxEffect* effect)
+{
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        effect->gases[g] = mvfxCompileGas(&def->gases[g]);
+        bool surface = def->gases[g].kind == mvfx_gasSurface;
+        effect->gases[g].emitter = surface ? def->gases[g].surface.emitter : mvfxLiquidOf(def, g);
+    }
+    effect->gasCount = def->gasCount;
+    for (int32_t w = 0; w < def->waterCount; ++w)
+    {
+        effect->waters[w] = mvfxCompileWater(&def->waters[w]);
+    }
+    effect->waterCount = def->waterCount;
+}
+
 mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
                               const mvfxAllocator* allocator)
 {
@@ -849,6 +867,10 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
                                          alignof(mvfxCurveTable));
     size_t valueGradientsAt = mvfxLayoutAdd(&layout, (size_t)valueGradients,
                                             sizeof(mvfxGradientTable), alignof(mvfxGradientTable));
+    size_t gasesAt = mvfxLayoutAdd(&layout, (size_t)def->gasCount, sizeof(mvfxCompiledGas),
+                                   alignof(mvfxCompiledGas));
+    size_t watersAt = mvfxLayoutAdd(&layout, (size_t)def->waterCount, sizeof(mvfxCompiledWater),
+                                    alignof(mvfxCompiledWater));
     if (layout.overflow)
     {
         return nullptr;
@@ -863,6 +885,8 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         .emitters = (mvfxCompiledEmitter*)(block + emittersAt),
         .emitterCount = def->emitterCount,
         .burstCount = burstCount,
+        .gases = (mvfxCompiledGas*)(block + gasesAt),
+        .waters = (mvfxCompiledWater*)(block + watersAt),
         .blockBytes = layout.size,
         .blockAlignment = layout.alignment,
     };
@@ -894,18 +918,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         CompileEmitter(&def->emitters[i], meshes[i], &emitterSpace, &effect->emitters[i]);
     }
     (void)OrderEmitters(def, effect->stepOrder);
-    for (int32_t g = 0; g < def->gasCount; ++g)
-    {
-        effect->gases[g] = mvfxCompileGas(&def->gases[g]);
-        bool surface = def->gases[g].kind == mvfx_gasSurface;
-        effect->gases[g].emitter = surface ? def->gases[g].surface.emitter : mvfxLiquidOf(def, g);
-    }
-    effect->gasCount = def->gasCount;
-    for (int32_t w = 0; w < def->waterCount; ++w)
-    {
-        effect->waters[w] = mvfxCompileWater(&def->waters[w]);
-    }
-    effect->waterCount = def->waterCount;
+    CompileFields(def, effect);
     return effect;
 }
 

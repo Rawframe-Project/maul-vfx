@@ -302,19 +302,20 @@ typedef struct mvfxInstance
     int64_t stopTick;
     // Its parameters, from the effect's defaults until the host sets them.
     float parameters[MVFX_MAX_PARAMETERS][4];
-    // What the gas being stepped is driven by: its forces resolved and the
-    // emitters pouring into it (kept here, not on the stack, which is small
-    // on some targets).
-    mvfxResolvedForce gasForces[MVFX_MAX_FORCES];
-    mvfxGasPour gasPours[MVFX_MAX_EMITTERS];
+    // What the gas being stepped is driven by, in its block (not on the
+    // stack, which is small on some targets): its forces resolved, room for
+    // the most forces a gas of its effect has, and the emitters pouring
+    // into it, room for every emitter when the effect has a gas.
+    mvfxResolvedForce* gasForces;
+    mvfxGasPour* gasPours;
     // Whether its gases and water surfaces are due a step: its last step's,
     // which the context steps once every instance's task has finished.
     bool gasesDue;
     mvfxEmitterState* emitters;
-    // Its gases' states, their fields in its block.
-    mvfxGasState gases[MVFX_MAX_GASES];
-    // Its water surfaces' states, their buffers in its block.
-    mvfxWaterState waters[MVFX_MAX_WATERS];
+    // Its gases' states and its water surfaces', one for each of its
+    // effect's, in its block with their fields and buffers.
+    mvfxGasState* gases;
+    mvfxWaterState* waters;
     // Scratch for a step that may reach an emitter's capacity, sized for
     // the largest emitter: its death ticks, and the particles it accepts
     // that live past the step.
