@@ -14,6 +14,8 @@ module the name the asset table gives it, null for none; an enum the name
 of its constant when the value has one; a float or a double a number that
 reads back to its bits (non-finite ones as their bits in hex, "0x7FC00000").
 Every field is required and none unknown, so a fixture says all it means.
+The form's "format" is its own, apart from the binary form's version: a
+renamed field bumps it alone, a changed layout bumps both.
 
 Usage:
   effect_json.py to-json <file.mvfx> <file.json>
@@ -23,6 +25,7 @@ Usage:
   effect_json.py --write <dir>   writes each <name>.mvfx from its JSON
 """
 
+import hashlib
 import json
 import math
 import re
@@ -34,6 +37,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gen_file  # noqa: E402
 
 VERSION = 1
+
+# The JSON form's own format, which names fields where the binary form
+# places them: each format's names of every field (names()). Renaming a
+# field keeps the binary layout but not the JSON form: bump JSON_FORMAT
+# and record the new names under it. A change of the binary layout
+# changes the names' fingerprint too, so both move together then.
+JSON_FORMAT = 1
+NAMES = {
+    1: "74fbb09047c22002",
+}
 MAGIC = b"MVFX"
 HEADER = 24
 ENTRY = 16
@@ -266,7 +279,7 @@ def to_json(layout, data):
     effect = reader.struct("mvfxEffectDef")
     if reader.at != reader.end:
         raise FileError(f"bytes after the def at {reader.at}")
-    return {"format": VERSION, "effect": effect}
+    return {"format": JSON_FORMAT, "effect": effect}
 
 
 class Writer:
@@ -365,8 +378,8 @@ def to_binary(layout, form):
     """A JSON form's file bytes."""
     if not isinstance(form, dict) or list(form) != ["format", "effect"]:
         raise FileError('the form is {"format": 1, "effect": {...}}')
-    if form["format"] != VERSION:
-        raise FileError(f"format {form['format']!r}, not {VERSION}")
+    if form["format"] != JSON_FORMAT:
+        raise FileError(f"format {form['format']!r}, not {JSON_FORMAT}")
     writer = Writer(layout)
     writer.struct("mvfxEffectDef", form["effect"], "effect")
     units = []
@@ -430,8 +443,30 @@ def check(layout, folder, write):
     return good
 
 
+def names(layout):
+    """A fingerprint of the JSON form's shape: every struct the def
+    reaches, each field's name, what it is and its elements, in order."""
+    seen = []
+    order = ["mvfxEffectDef"]
+    while order:
+        name = order.pop(0)
+        if name in seen:
+            continue
+        seen.append(name)
+        for field, what, kind, count, extra in layout.fields(name):
+            seen.append(f"{field} {what} {kind} {count} {extra}")
+            inner = extra[3] if extra else what
+            if inner == "struct":
+                order.append(kind)
+    return hashlib.sha256("\n".join(seen).encode("utf-8")).hexdigest()[:16]
+
+
 def main(argv):
     layout = Layout()
+    if NAMES.get(JSON_FORMAT) != names(layout):
+        print(f"effect_json.py: the JSON form's names are {names(layout)}, not format "
+              f"{JSON_FORMAT}'s: bump JSON_FORMAT and record them in NAMES")
+        return 1
     try:
         if len(argv) == 3 and argv[0] == "to-json":
             text = json_text(layout, Path(argv[1]).read_bytes())
