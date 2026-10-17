@@ -421,33 +421,59 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
             "an emitter full every step");
 }
 
-// Bursts on ticks of exact quarters and eighths of a second, lives of a
-// quarter: deaths fall on batches' ticks.
+// Bursts on ticks of exact eighths of a second; lives of a quarter.
 static const mvfxBurst s_exact[3] = {
     {.time = 0.125f, .minCount = 40, .maxCount = 40, .cycles = 1, .probability = 1.0f},
     {.time = 0.375f, .minCount = 32, .maxCount = 32, .cycles = 1, .probability = 1.0f},
     {.time = 0.625f, .minCount = 32, .maxCount = 32, .cycles = 1, .probability = 1.0f}};
+// Bursts across two half-second plans: the second plan's first batch is all
+// refused, held out by the first plan's 32, and dies on its last batch's
+// tick.
+static const mvfxBurst s_shared[4] = {
+    {.time = 0.375f, .minCount = 32, .maxCount = 32, .cycles = 1, .probability = 1.0f},
+    {.time = 0.5625f, .minCount = 16, .maxCount = 16, .cycles = 1, .probability = 1.0f},
+    {.time = 0.625f, .minCount = 24, .maxCount = 24, .cycles = 1, .probability = 1.0f},
+    {.time = 0.8125f, .minCount = 16, .maxCount = 16, .cycles = 1, .probability = 1.0f}};
 
-static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
+// An emitter of 32, bursts only, lives of a quarter of a second.
+static mvfxEmitterDef Bursts(const mvfxBurst* bursts, int32_t burstCount)
 {
-    // Steps of half a second, an emitter of 32 lives of a quarter: the
-    // first burst's 40 leaves 8 refused, its 32 die within the plan at
-    // the second's tick and make it room; the second's die at the third's
-    // tick, in the next plan.
     mvfxEmitterDef emitter = Sprite();
     emitter.capacity = 32;
     emitter.rate = 0.0f;
-    emitter.bursts = s_exact;
-    emitter.burstCount = 3;
+    emitter.bursts = bursts;
+    emitter.burstCount = burstCount;
     emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
-    s_stepTicks = MVFX_TICKS_PER_SECOND / 2;
+    return emitter;
+}
+
+static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Steps of a quarter: each burst's 32 die at the next burst's tick in
+    // the next plan, making it room.
+    mvfxEmitterDef emitter = Bursts(s_exact, 3);
+    s_stepTicks = MVFX_TICKS_PER_SECOND / 4;
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 4, .least = 32},
-            "deaths on batches' ticks");
+            "live particles dying on a batch's tick");
+    // Steps of half a second: the first burst's 40 leaves 8 the plan
+    // refuses; its 32 die within the plan at the second's tick.
+    s_stepTicks = MVFX_TICKS_PER_SECOND / 2;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 2, .least = 32},
+            "births dying on a later batch's tick of their plan");
+    // The refused 16 die on the last batch's tick, where the 24 still live:
+    // they leave it room for 8, not 24.
+    emitter = Bursts(s_shared, 4);
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 2, .least = 32},
+            "refused births taking no room");
     s_stepTicks = STEP_TICKS;
-    // Lives past 2^32 ticks: deaths in two words.
+    // Lives of 4,096 seconds, 2^32 ticks: deaths whose low word falls
+    // within the plan, its high word 1; and longer ones.
     emitter = Sprite();
-    emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
     emitter.rate = 60.0f;
+    emitter.lifetime = mvfxRangeSource(4096.0f, 4096.0f);
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
+            "lives of 2^32 ticks");
+    emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
             "lives past 2^32 ticks");
 }
