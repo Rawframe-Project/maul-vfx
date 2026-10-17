@@ -1376,9 +1376,9 @@ static void TestTurns(Gpu* gpu, mvfxGpu* kernels)
 static void TestModules(Gpu* gpu, mvfxGpu* kernels)
 {
     // Velocity modules of every kind, each over life: the speed limited by
-    // a curve, the motion scaled by one, added and radial speeds and an
-    // orbit; in the instance's space and in the world's (scaled by a
-    // growing instance), under a moving instance.
+    // a curve (below most newborns' speeds), the motion scaled by one,
+    // added and radial speeds and an orbit; in the instance's space and in
+    // the world's (scaled by a growing instance), under a moving instance.
     static const mvfxCurveKey keys[3] = {
         {.time = 0, .value = 2, .interpolation = mvfx_interpolationLinear},
         {.time = 0.5f, .value = 0.5f, .interpolation = mvfx_interpolationLinear},
@@ -1397,7 +1397,7 @@ static void TestModules(Gpu* gpu, mvfxGpu* kernels)
                                   .radialCenter = {0, -0.5f, 0},
                                   .radialSpeed = {.value = 0.8f},
                                   .limitSpeed = true,
-                                  .speedLimit = {.value = 2, .curve = curve},
+                                  .speedLimit = {.value = 1.5f, .curve = curve},
                                   .limitDampen = 3};
     }
     emitters[1].space = mvfx_spaceWorld;
@@ -1459,6 +1459,29 @@ static void TestKillRules(Gpu* gpu, mvfxGpu* kernels)
                        .pace = 0.001,
                        .killing = true},
                 names[r]);
+    }
+    // Straight paths up from a tiny sphere and a wide one, the instance at
+    // rest: a sphere small enough that most paths cross it within a step
+    // and end past it, and a box beside the middle that paths with no
+    // motion along X meet only where they lie inside it along X.
+    const mvfxKillRule exact[2] = {
+        {.kind = mvfx_killInsideSphere, .center = {0, 0.3f, 0}, .radius = 0.012f},
+        {.kind = mvfx_killInsideBox,
+         .center = {0.25f, 0.3f, 0},
+         .halfExtents = {0.1f, 0.1f, 0.5f},
+         .rotation = {0, 0, 0, 1}}};
+    static const char* exactNames[2] = {"crossing a small sphere within a step",
+                                        "meeting a box along straight paths"};
+    for (int32_t r = 0; r < 2; ++r)
+    {
+        mvfxEmitterDef emitter = Sprite();
+        emitter.shape.radius = r == 0 ? 0.001f : 0.5f;
+        emitter.velocity.coneAngle = 0;
+        emitter.killRules = &exact[r];
+        emitter.killRuleCount = 1;
+        Compare(gpu, kernels,
+                &(Run){.emitters = &emitter, .emitterCount = 1, .least = 20, .killing = true},
+                exactNames[r]);
     }
 }
 
