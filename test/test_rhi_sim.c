@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A planned instance simulated on a real device (lavapipe on CI) beside the
-// same effect on the CPU path, compared after every step: the live count,
+// Planned instances simulated on a real device (lavapipe on CI) beside the
+// same effects on the CPU path, compared after every step (one emitter;
+// two, under a moving, turning instance, cleared at half time): the live count,
 // each particle's serial and its birth and death ticks equal, in the same
 // order; its place and velocity within a tolerance (the GPU's floats are
 // not the CPU's bits). Skips (77) without an adapter, unless
@@ -128,18 +129,22 @@ static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 static uint32_t s_words[MVFX_GPU_PARTICLE_WORDS * CAPACITY];
 static uint32_t s_counts[4];
 
-static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim)
+static int32_t s_capacity;
+
+static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
 {
     mvfxGpuParticles particles;
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     mrhiResourceId buffers[2] = {{0}, {0}};
     mrhiPassId pass = {0};
     mrhiRequestId reads[2] = {{0}, {0}};
-    if (mvfxGpuSim_GetParticles(sim, 0, &particles) != mvfx_success ||
+    if (mvfxGpuSim_GetParticles(sim, emitter, &particles) != mvfx_success ||
         mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
     }
+    s_capacity = particles.capacity;
+    uint64_t bytes = (uint64_t)s_capacity * MVFX_GPU_PARTICLE_WORDS * sizeof(uint32_t);
     bool recorded =
         mrhiImportBuffer(gpu->device, particles.particles, &buffers[0]) == mrhi_success &&
         mrhiImportBuffer(gpu->device, particles.counts, &buffers[1]) == mrhi_success;
@@ -153,8 +158,7 @@ static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim)
     recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
                mrhiCompileFrame(gpu->device) == mrhi_success &&
                mrhiBeginPass(gpu->device, pass) == mrhi_success &&
-               mrhiReadBuffer(gpu->device, pass, buffers[0], 0, sizeof s_words, &reads[0]) ==
-                   mrhi_success &&
+               mrhiReadBuffer(gpu->device, pass, buffers[0], 0, bytes, &reads[0]) == mrhi_success &&
                mrhiReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_counts, &reads[1]) ==
                    mrhi_success &&
                mrhiEndPass(gpu->device, pass) == mrhi_success;
@@ -168,15 +172,16 @@ static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim)
     return Finish(gpu) &&
            mrhiTakeReadback(gpu->device, reads[0], s_words, sizeof s_words, &taken) ==
                mrhi_success &&
+           taken == bytes &&
            mrhiTakeReadback(gpu->device, reads[1], s_counts, sizeof s_counts, &counted) ==
                mrhi_success &&
-           taken == sizeof s_words && counted == sizeof s_counts;
+           counted == sizeof s_counts;
 }
 
 // A word of particle i in the read-back arrays.
 static uint32_t Word(int32_t array, int32_t i)
 {
-    return s_words[array * CAPACITY + i];
+    return s_words[array * s_capacity + i];
 }
 
 static float FloatOf(int32_t array, int32_t i)
@@ -193,18 +198,18 @@ static float s_velocityError;
 
 // Whether the GPU's particles are the CPU path's: counts, serials and ticks
 // equal, in order, places and velocities within the tolerance.
-static bool SameAsCpu(const mvfxInstance* cpu)
+static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
 {
-    const mvfxEmitterState* state = &cpu->emitters[0];
+    const mvfxEmitterState* state = &cpu->emitters[e];
     if ((int32_t)s_counts[0] != state->count || s_counts[2] != 0)
     {
         printf("counts: GPU %u (refused %u), CPU %d\n", s_counts[0], s_counts[2], state->count);
         return false;
     }
-    const uint32_t* low = mvfxAttributeArray(cpu, 0, mvfx_attributeBirthLow);
-    const uint32_t* high = mvfxAttributeArray(cpu, 0, mvfx_attributeBirthHigh);
-    const uint32_t* serial = mvfxAttributeArray(cpu, 0, mvfx_attributeSerial);
-    const float* inverseLife = mvfxAttributeArray(cpu, 0, mvfx_attributeInverseLife);
+    const uint32_t* low = mvfxAttributeArray(cpu, e, mvfx_attributeBirthLow);
+    const uint32_t* high = mvfxAttributeArray(cpu, e, mvfx_attributeBirthHigh);
+    const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
+    const float* inverseLife = mvfxAttributeArray(cpu, e, mvfx_attributeInverseLife);
     static const mvfxAttribute places[3] = {mvfx_attributePositionX, mvfx_attributePositionY,
                                             mvfx_attributePositionZ};
     static const mvfxAttribute velocities[3] = {mvfx_attributeVelocityX, mvfx_attributeVelocityY,
@@ -218,13 +223,14 @@ static bool SameAsCpu(const mvfxInstance* cpu)
                Word(12, i) == lifeBits;
         for (int32_t k = 0; k < 3; ++k)
         {
-            const float* p = mvfxAttributeArray(cpu, 0, places[k]);
-            const float* v = mvfxAttributeArray(cpu, 0, velocities[k]);
-            float dp = fabsf(FloatOf(k, i) - p[i]);
-            float dv = fabsf(FloatOf(3 + k, i) - v[i]);
+            const float* p = mvfxAttributeArray(cpu, e, places[k]);
+            const float* v = mvfxAttributeArray(cpu, e, velocities[k]);
+            // Relative to the size, as places reach the rebase distance.
+            float dp = fabsf(FloatOf(k, i) - p[i]) / (1.0f + fabsf(p[i]));
+            float dv = fabsf(FloatOf(3 + k, i) - v[i]) / (1.0f + fabsf(v[i]));
             s_placeError = dp > s_placeError ? dp : s_placeError;
             s_velocityError = dv > s_velocityError ? dv : s_velocityError;
-            same = same && dp <= 1e-3f && dv <= 1e-3f;
+            same = same && dp <= 1e-4f && dv <= 1e-4f;
         }
         if (!same)
         {
@@ -237,11 +243,10 @@ static bool SameAsCpu(const mvfxInstance* cpu)
 static const mvfxBurst s_bursts[1] = {
     {.time = 0.1f, .minCount = 20, .maxCount = 20, .cycles = 1, .probability = 1.0f}};
 
-static void TestSprite(Gpu* gpu, mvfxGpu* kernels)
+// A sprite emitter: a sphere's shell, cone velocities, gravity and drag,
+// a burst; in the world.
+static mvfxEmitterDef Sprite(void)
 {
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = CAPACITY;
     emitter.rate = 600.0f;
@@ -253,14 +258,156 @@ static void TestSprite(Gpu* gpu, mvfxGpu* kernels)
         .mode = mvfx_directionCone, .direction = {0, 1, 0}, .coneAngle = 0.4f, .speed = {2, 4}};
     emitter.motion.gravity[1] = -9.8f;
     emitter.motion.drag = 0.5f;
+    return emitter;
+}
+
+// A run of an effect: a CPU instance and a planned one side by side, the
+// GPU's particles compared with the CPU path's after every step. The
+// instance moves and turns when moving, and is cleared and restarted at
+// half time when clearing.
+typedef struct Run
+{
+    const mvfxEmitterDef* emitters;
+    int32_t emitterCount;
+    bool moving;
+    bool clearing;
+} Run;
+
+static mvfxContext* s_context;
+static mvfxInstanceId s_cpu;
+static mvfxInstanceId s_planned;
+
+// Moves both instances to step s's place: along a line past the rebase
+// distance, turning about a tilted axis.
+static void Move(int32_t s)
+{
+    const double place[3] = {90.0 * s, 3.0 * s, -40.0 * s};
+    float angle = 0.03f * (float)s;
+    const float q[4] = {0.6f * sinf(angle), 0.8f * sinf(angle), 0.0f, cosf(angle)};
+    float scale = 1.0f + 0.01f * (float)s;
+    CHECK(mvfxInstance_SetTransform(s_context, s_cpu, place, q, scale, false) == mvfx_success &&
+              mvfxInstance_SetTransform(s_context, s_planned, place, q, scale, false) ==
+                  mvfx_success,
+          "moved");
+}
+
+// Clears and restarts both instances.
+static void Clear(void)
+{
+    mvfxInstanceId both[2] = {s_cpu, s_planned};
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        CHECK(mvfxInstance_Stop(s_context, both[i], mvfx_stopAndClear) == mvfx_success &&
+                  mvfxInstance_Restart(s_context, both[i]) == mvfx_success,
+              "cleared");
+    }
+}
+
+static mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = &emitter;
-    effectDef.emitterCount = 1;
+    effectDef.emitters = run->emitters;
+    effectDef.emitterCount = run->emitterCount;
+    CHECK(mvfxCreateEffect(s_context, &effectDef, effectOut) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = *effectOut;
+    instanceDef.seed = 11;
+    CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_cpu) == mvfx_success, "a CPU instance");
+    instanceDef.planned = true;
+    CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_planned) == mvfx_success, "planned");
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    simDef.gpu = kernels;
+    simDef.context = s_context;
+    simDef.effect = *effectOut;
+    simDef.instance = s_planned;
+    mvfxGpuSim* sim = NULL;
+    mvfxGpuRefusal refusal;
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_success && refusal.emitter == -1,
+          "the simulation");
+    return sim;
+}
+
+static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
+{
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
+    s_placeError = 0.0f;
+    s_velocityError = 0.0f;
+    bool same = sim != NULL;
+    int32_t most[2] = {0, 0};
+    for (int32_t s = 0; same && s < STEPS; ++s)
+    {
+        if (run->moving)
+        {
+            Move(s);
+        }
+        if (run->clearing && s == STEPS / 2)
+        {
+            Clear();
+        }
+        CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success, "stepped");
+        same = Simulate(gpu, sim);
+        for (int32_t e = 0; same && e < run->emitterCount; ++e)
+        {
+            same = ReadBack(gpu, sim, e) && SameAsCpu(mvfxContextInstance(s_context, s_cpu), e);
+            most[e] = (int32_t)s_counts[0] > most[e] ? (int32_t)s_counts[0] : most[e];
+        }
+    }
+    printf("%s: largest relative differences, place %g, velocity %g\n", what, (double)s_placeError,
+           (double)s_velocityError);
+    CHECK(same && most[0] > 100 && (run->emitterCount < 2 || most[1] > 50), what);
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(s_context);
+}
+
+static void TestSprite(Gpu* gpu, mvfxGpu* kernels)
+{
+    const mvfxEmitterDef sprite = Sprite();
+    Compare(gpu, kernels, &(Run){.emitters = &sprite, .emitterCount = 1},
+            "the CPU path's particles on the GPU, every step");
+}
+
+static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A world-space shell with a share of the instance's velocity and a
+    // strong drag, and a local-space emitter of 333 with world gravity and
+    // shape-normal velocities, under an instance moving past the rebase
+    // distance, turning and growing; cleared at half time.
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    emitters[0].shape.thickness = 0.4f;
+    emitters[0].inheritVelocity = 0.5f;
+    emitters[0].motion.drag = 30.0f;
+    emitters[1].capacity = 333;
+    emitters[1].space = mvfx_spaceLocal;
+    emitters[1].motion.gravitySpace = mvfx_spaceWorld;
+    emitters[1].velocity = (mvfxVelocity){.mode = mvfx_directionShapeNormal, .speed = {1, 2}};
+    emitters[1].burstCount = 0;
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .clearing = true},
+            "two emitters under a moving instance, cleared");
+}
+
+static void TestRefused(mvfxGpu* kernels)
+{
+    // An emitter it does not run, after one it does: refused, named.
+    static const mvfxForce force = {.kind = mvfx_forceConstant, .vector = {1, 0, 0}};
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    emitters[1].forces = &force;
+    emitters[1].forceCount = 1;
+    emitters[1].shape.kind = mvfx_shapeBox;
+    emitters[1].velocity.randomize = 0.5f;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = emitters;
+    effectDef.emitterCount = 2;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
-    instanceDef.seed = 11;
     mvfxInstanceId cpu = {0};
     CHECK(mvfxCreateInstance(context, &instanceDef, &cpu) == mvfx_success, "a CPU instance");
     instanceDef.planned = true;
@@ -271,23 +418,15 @@ static void TestSprite(Gpu* gpu, mvfxGpu* kernels)
     simDef.context = context;
     simDef.effect = effect;
     simDef.instance = planned;
-    mvfxGpuSim* sim = NULL;
+    mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
     mvfxGpuRefusal refusal;
-    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_success && refusal.emitter == -1,
-          "the simulation");
-    bool same = true;
-    int32_t most = 0;
-    for (int32_t s = 0; sim != NULL && same && s < STEPS; ++s)
-    {
-        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        same = Simulate(gpu, sim) && ReadBack(gpu, sim) &&
-               SameAsCpu(mvfxContextInstance(context, cpu));
-        most = (int32_t)s_counts[0] > most ? (int32_t)s_counts[0] : most;
-    }
-    printf("largest differences: place %g, velocity %g\n", (double)s_placeError,
-           (double)s_velocityError);
-    CHECK(same && most > 100, "the CPU path's particles on the GPU, every step");
-    mvfxDestroyGpuSim(sim);
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
+              refusal.emitter == 1 && refusal.features == MVFX_FEATURE_FORCES && refusal.shape &&
+              refusal.velocity,
+          "an emitter it does not run, named");
+    simDef.instance = cpu;
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorInvalid && refusal.emitter == -1,
+          "an instance that is not planned");
     mvfxDestroyContext(context);
 }
 
@@ -310,6 +449,8 @@ int main(void)
     mvfxGpu* kernels = NULL;
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     TestSprite(&gpu, kernels);
+    TestMoving(&gpu, kernels);
+    TestRefused(kernels);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;

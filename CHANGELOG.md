@@ -566,7 +566,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxGpuSim_AddPasses` adds its passes to the host's frame and
   `mvfxGpuSim_Record` records them, and `mvfxGpuSim_GetParticles` gives
   an emitter's particle and count buffers. It runs emitters of spheres
-  with cone, fixed or shape-normal velocities, gravity and drag: on
-  lavapipe, every step's particles are the CPU path's in count, order,
-  serials and ticks, their places and velocities within 4e-6.
+  with cone, fixed or shape-normal velocities, a share of the
+  instance's velocity, gravity and drag, in the world or the instance's
+  space: on lavapipe, every step's particles are the CPU path's in
+  count, order, serials and ticks, their places and velocities within
+  1e-5 of their size, under a moving, turning instance and a clear.
 - A plan also gives the instance's seed.

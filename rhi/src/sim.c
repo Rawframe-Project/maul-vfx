@@ -79,12 +79,15 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
     return (mvfxGpuSimDef){.cookie = MVFX_GPU_SIM_DEF_COOKIE};
 }
 
+// The features the part runs.
+#define RUN_FEATURES MVFX_FEATURE_INHERIT_VELOCITY
+
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     const mvfxVelocityView* v = &view->velocity;
     *refusal = (mvfxGpuRefusal){
-        .features = view->features,
+        .features = view->features & ~RUN_FEATURES,
         .shape = view->shape.kind != mvfx_shapeSphere,
         .velocity = (v->mode != mvfx_directionShapeNormal && v->mode != mvfx_directionCone &&
                      v->mode != mvfx_directionFixed) ||
@@ -132,8 +135,7 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
 static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 {
     uint64_t c = (uint64_t)emitter->capacity;
-    mrhiBufferUsage particles =
-        mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
+    mrhiBufferUsage particles = mrhi_bufferStorage | mrhi_bufferCopySource;
     mrhiBufferUsage written = mrhi_bufferStorage | mrhi_bufferCopyDestination;
     return CreateBuffer(sim, c * MVFX_GPU_PARTICLE_WORDS * 4u, particles, &emitter->particles[0]) &&
            CreateBuffer(sim, c * MVFX_GPU_PARTICLE_WORDS * 4u, particles, &emitter->particles[1]) &&
