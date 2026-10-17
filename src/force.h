@@ -53,9 +53,11 @@ static inline void mvfxUnmapPoint(const mvfxSpaceMap* map, const float x[3], dou
     const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
     double turned[3];
     mvfxRotateDouble(inverse, d, turned);
+    // A division by 1 is exact; skipped, as it is slow.
+    bool unscaled = map->sigma == 1.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
-        out[k] = turned[k] / (double)map->sigma + map->before[k];
+        out[k] = (unscaled ? turned[k] : turned[k] / (double)map->sigma) + map->before[k];
     }
 }
 
@@ -87,6 +89,11 @@ typedef struct mvfxResolvedForce
     // vector field's grid.
     const mvfxForce* source;
     const struct mvfxGrid* grid;
+    // Whether a vector field's box is unturned (its rotation's vector part
+    // zero), so its sampling skips the two turns, and whether the map is,
+    // so the place's turn back is skipped for it too.
+    bool unturned;
+    bool mapUnturned;
     uint32_t seed;
     // A gas force's gas: its velocity's faces and its lattice; map is then
     // from the gas's box to the particles' space.

@@ -3,7 +3,8 @@
 //
 // Grids: their life on a context and every refusal, the limit, new values,
 // trilinear sampling that reproduces a linear field, each border, a
-// constant axis, binary16 storage, new values for a box of points and
+// constant axis, binary16 storage, three components read with the
+// general loop's bits, new values for a box of points and
 // the points changed since a step, and an effect keeping its grid busy.
 
 #include "context.h"
@@ -16,6 +17,7 @@
 #include "maul-vfx/instance.h"
 
 #include <math.h>
+#include <string.h>
 
 static mvfxContext* NewContext(int32_t grids)
 {
@@ -354,6 +356,56 @@ static void TestSampling(void)
     mvfxDestroyContext(context);
 }
 
+// Three binary32 components (a vector field's) read by their own unrolled
+// sum: the same bits as the general loop gives them in a grid of four.
+static void TestThreeComponents(void)
+{
+    mvfxContext* context = NewContext(2);
+    static float three[3 * 60];
+    static float four[4 * 60];
+    for (uint32_t p = 0; p < 60; ++p)
+    {
+        for (uint32_t c = 0; c < 4; ++c)
+        {
+            uint32_t i = 4 * p + c;
+            float value = i % 7 == 0 ? 0.0f : (float)((i * 2654435761u) >> 8) * 0x1p-23f - 1.0f;
+            four[i] = value;
+            if (c < 3)
+            {
+                three[3 * p + c] = value;
+            }
+        }
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 5;
+    def.size[1] = 3;
+    def.size[2] = 4;
+    def.components = 3;
+    def.values = three;
+    mvfxGridId threeId = {0};
+    mvfxGridId fourId = {0};
+    CHECK(mvfxCreateGrid(context, &def, &threeId) == mvfx_success, "three components");
+    def.components = 4;
+    def.values = four;
+    CHECK(mvfxCreateGrid(context, &def, &fourId) == mvfx_success, "four components");
+    int32_t same = 0;
+    for (mvfxGridBorder border = 0; border <= mvfx_borderRepeat; ++border)
+    {
+        for (int32_t i = 0; i < 11 * 11 * 11; ++i)
+        {
+            const float u[3] = {(float)(i % 11) * 0.15f - 0.3f, (float)(i / 11 % 11) * 0.15f - 0.3f,
+                                (float)(i / 121) * 0.15f - 0.3f};
+            float a[4];
+            float b[4];
+            bool inA = mvfxSampleGrid(mvfxContextGrid(context, threeId), u, border, a);
+            bool inB = mvfxSampleGrid(mvfxContextGrid(context, fourId), u, border, b);
+            same += inA == inB && memcmp(a, b, 3 * sizeof a[0]) == 0;
+        }
+    }
+    CHECK(same == 3 * 11 * 11 * 11, "the general loop's bits");
+    mvfxDestroyContext(context);
+}
+
 static void TestBusy(void)
 {
     mvfxContext* context = NewContext(4);
@@ -397,6 +449,7 @@ int main(void)
 {
     TestLife();
     TestSampling();
+    TestThreeComponents();
     TestSetValuesIn();
     TestBusy();
     return s_failures == 0 ? 0 : 1;

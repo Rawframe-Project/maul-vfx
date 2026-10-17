@@ -180,6 +180,10 @@ mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* m
         .map = *map,
         .source = force,
         .grid = grid,
+        .unturned = force->boxRotation[0] == 0.0f && force->boxRotation[1] == 0.0f &&
+                    force->boxRotation[2] == 0.0f,
+        .mapUnturned =
+            map->rotation[0] == 0.0f && map->rotation[1] == 0.0f && map->rotation[2] == 0.0f,
         .seed = force->noise.seedPerInstance ? force->noise.seed + instanceSeed * 0x85EBCA6Bu
                                              : force->noise.seed,
     };
@@ -300,6 +304,32 @@ float mvfxForceDrag(const mvfxResolvedForce* force)
     return field && force->fieldMode == mvfx_fieldVelocity ? force->tightness : 0.0f;
 }
 
+// An unturned box's vector: the same bits as the turns would give. They
+// leave a finite offset as it is but a zero's sign, which u's + 0.5 drops;
+// an offset not finite on one axis makes every axis NaN, as the turn's
+// products do; and they leave the sample as it is, never -0, its sums
+// starting from +0.
+static bool SampleUnturned(const mvfxResolvedForce* force, const float d[3], float out[3])
+{
+    const mvfxForce* source = force->source;
+    bool finite = isfinite(d[0]) && isfinite(d[1]) && isfinite(d[2]);
+    float u[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        u[k] = finite ? d[k] / source->boxSize[k] + 0.5f : NAN;
+    }
+    float sample[4];
+    if (!mvfxSampleGrid(force->grid, u, source->border, sample))
+    {
+        return false;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = sample[k];
+    }
+    return true;
+}
+
 // A vector field's vector at a place in its force's space: the grid
 // sampled in the box's own space, turned out with the box; false outside
 // it under the none border.
@@ -311,6 +341,10 @@ static bool SampleBox(const mvfxResolvedForce* force, const double place[3], flo
     for (int32_t k = 0; k < 3; ++k)
     {
         d[k] = (float)(place[k] - (double)source->point[k]);
+    }
+    if (force->unturned)
+    {
+        return SampleUnturned(force, d, out);
     }
     const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
     float local[3];
@@ -350,13 +384,34 @@ static bool SampleGas(const mvfxResolvedForce* force, const double place[3], flo
     return true;
 }
 
+// mvfxUnmapPoint for an unturned map, without the turn: the same place
+// but a zero's sign, and but an axis not finite left alone where the turn
+// makes every axis NaN; an unturned box's sampling, its one reader, sees
+// neither (SampleUnturned).
+static void UnmapUnturned(const mvfxSpaceMap* map, const float x[3], double out[3])
+{
+    bool unscaled = map->sigma == 1.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double d = (double)x[k] - map->after[k];
+        out[k] = (unscaled ? d : d / (double)map->sigma) + map->before[k];
+    }
+}
+
 // A field's vector at x: its acceleration added to a, or, as a velocity,
 // its pull and its drag.
 static void Field(const mvfxResolvedForce* force, const float x[3], double time, float weight,
                   float a[3], float* drag)
 {
     double place[3];
-    mvfxUnmapPoint(&force->map, x, place);
+    if (force->kind == mvfx_forceVectorField && force->unturned && force->mapUnturned)
+    {
+        UnmapUnturned(&force->map, x, place);
+    }
+    else
+    {
+        mvfxUnmapPoint(&force->map, x, place);
+    }
     float value[3];
     if (force->kind == mvfx_forceTurbulence)
     {

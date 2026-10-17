@@ -5,9 +5,11 @@
 // rest, wind exact as drag is, the falloffs' weights, forces given in the
 // emitter's space or the world's under a turned, scaled instance, a
 // strength from a parameter and its hold, the order of several forces,
-// and the refusals.
+// an unturned box's and map's quick paths the general one's bits, and
+// the refusals.
 
 #include "context.h"
+#include "grid_api.h"
 #include "instance.h"
 #include "noise.h"
 #include "test_harness.h"
@@ -15,6 +17,7 @@
 #include "maul-vfx/instance.h"
 
 #include <math.h>
+#include <string.h>
 
 typedef struct Scene
 {
@@ -592,6 +595,86 @@ static void TestVectorField(void)
     mvfxDestroyContext(scene.context);
 }
 
+// A vector field's acceleration and drag at x, its quick paths for an
+// unturned box and map taken or not.
+static void FieldAt(mvfxResolvedForce force, bool quick, const float x[3], float out[4])
+{
+    force.unturned = force.unturned && quick;
+    force.mapUnturned = force.mapUnturned && quick;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out[k] = 0.0f;
+    }
+    mvfxForcesAt(&force, 1, x, 0.0, out, &out[3]);
+}
+
+static void TestUnturnedBits(void)
+{
+    // A 5x3x4 grid of three components, values of both signs and zeros.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static float values[3 * 60];
+    for (uint32_t i = 0; i < 3 * 60; ++i)
+    {
+        values[i] = i % 7 == 0 ? 0.0f : (float)((i * 2654435761u) >> 8) * 0x1p-23f - 1.0f;
+    }
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 5;
+    gridDef.size[1] = 3;
+    gridDef.size[2] = 4;
+    gridDef.components = 3;
+    gridDef.values = values;
+    mvfxGridId id = {0};
+    CHECK(mvfxCreateGrid(context, &gridDef, &id) == mvfx_success, "grid");
+    const mvfxGrid* grid = mvfxContextGrid(context, id);
+    // Maps: none, moved and scaled unturned, a quarter turn.
+    const mvfxSpaceMap maps[3] = {
+        {.rotation = {0, 0, 0, 1}, .sigma = 1.0f},
+        {.before = {1.5, -2, 0.25}, .after = {-3, 0.5, 7}, .rotation = {0, 0, 0, 1}, .sigma = 2.5f},
+        {.before = {0.5, 0, 0}, .rotation = {0, 0, 0.70710678f, 0.70710678f}, .sigma = 1.0f},
+    };
+    // Places: a lattice past the box's periods each way, its cells' edges,
+    // and places not finite or far.
+    static const float wild[7] = {INFINITY, -INFINITY, NAN, 1e30f, -3e38f, -0.0f, 0.0f};
+    static const float zero[1][4] = {{0}};
+    int32_t same = 0;
+    int32_t count = 0;
+    for (mvfxGridBorder border = 0; border <= mvfx_borderRepeat; ++border)
+    {
+        mvfxForce source = {.kind = mvfx_forceVectorField,
+                            .point = {0.25f, -1, 2},
+                            .strength = -1.5f,
+                            .boxSize = {2, 3, 1.5f},
+                            .boxRotation = {0, 0, 0, 1},
+                            .border = border};
+        mvfxForce compiled = mvfxCompileForce(&source);
+        for (int32_t m = 0; m < 3; ++m)
+        {
+            mvfxResolvedForce force = mvfxResolveForce(&compiled, &maps[m], zero, 0, grid);
+            CHECK(force.unturned && force.mapUnturned == (m < 2), "the quick paths chosen");
+            for (int32_t i = 0; i < 9 * 9 * 9 + 7 * 7 * 7; ++i)
+            {
+                float x[3];
+                bool lattice = i < 729;
+                for (int32_t k = 0, r = lattice ? i : i - 729; k < 3; ++k)
+                {
+                    x[k] = lattice ? (float)(r % 9) * 0.625f - 2.5f : wild[r % 7];
+                    r /= lattice ? 9 : 7;
+                }
+                float quick[4];
+                float general[4];
+                FieldAt(force, true, x, quick);
+                FieldAt(force, false, x, general);
+                same += memcmp(quick, general, sizeof quick) == 0;
+                ++count;
+            }
+        }
+    }
+    CHECK(same == count, "the quick paths the general one's bits");
+    mvfxDestroyContext(context);
+}
+
 static void TestParameters(void)
 {
     // A constant's strength from parameter 0, then held; a wind's to 0 and
@@ -790,6 +873,7 @@ int main(void)
     TestScaledAndWindy();
     TestTurbulence();
     TestVectorField();
+    TestUnturnedBits();
     TestParameters();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;

@@ -134,12 +134,17 @@ static void Locate(float u, int32_t n, mvfxGridBorder border, int32_t* low, int3
         if (fabs(g) < 0x1p52)
         {
             // In integers, the same: the floor of a binary64 below 2^52 is
-            // a whole int64_t, and its wrap the remainder put in [0, n).
+            // a whole int64_t, and its wrap the remainder put in [0, n),
+            // taken only for a cell outside it (a division is slow).
             int64_t whole = (int64_t)g;
             whole -= (double)whole > g ? 1 : 0;
             *share = (float)(g - (double)whole);
-            int64_t wrapped = whole % n;
-            wrapped += wrapped < 0 ? n : 0;
+            int64_t wrapped = whole;
+            if (wrapped < 0 || wrapped >= n)
+            {
+                wrapped %= n;
+                wrapped += wrapped < 0 ? n : 0;
+            }
             *low = (int32_t)wrapped;
             *high = *low + 1 == n ? 0 : *low + 1;
             return;
@@ -181,6 +186,28 @@ static void AddPoint(const mvfxGrid* grid, int64_t at, float weight, float out[4
     }
 }
 
+// The eight corners of three binary32 components a point (a vector
+// field's), each corner's weight and sums as the general loop takes them,
+// so the same bits, without its format and component count read a value.
+static void AddCorners3(const float* values, const int32_t low[3], const int32_t high[3],
+                        const float share[3], int64_t sy, int64_t sz, float out[4])
+{
+    for (uint32_t corner = 0; corner < 8; ++corner)
+    {
+        bool i = (corner & 1u) != 0;
+        bool j = (corner & 2u) != 0;
+        bool k = (corner & 4u) != 0;
+        float weight = (i ? share[0] : 1.0f - share[0]) * (j ? share[1] : 1.0f - share[1]) *
+                       (k ? share[2] : 1.0f - share[2]);
+        const float* v = values + (int64_t)(i ? high[0] : low[0]) * 3 +
+                         (int64_t)(j ? high[1] : low[1]) * sy +
+                         (int64_t)(k ? high[2] : low[2]) * sz;
+        out[0] += weight * v[0];
+        out[1] += weight * v[1];
+        out[2] += weight * v[2];
+    }
+}
+
 bool mvfxSampleGrid(const mvfxGrid* grid, const float u[3], mvfxGridBorder border, float out[4])
 {
     for (int32_t c = 0; c < 4; ++c)
@@ -207,6 +234,11 @@ bool mvfxSampleGrid(const mvfxGrid* grid, const float u[3], mvfxGridBorder borde
     int64_t sx = grid->components;
     int64_t sy = sx * grid->size[0];
     int64_t sz = sy * grid->size[1];
+    if (grid->format == mvfx_gridFloat32 && grid->components == 3)
+    {
+        AddCorners3(grid->values, low, high, share, sy, sz, out);
+        return true;
+    }
     for (uint32_t corner = 0; corner < 8; ++corner)
     {
         bool i = (corner & 1u) != 0;

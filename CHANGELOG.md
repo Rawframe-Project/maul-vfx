@@ -539,3 +539,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - `tools/gen_kernels.py` builds the part's kernels from WGSL into the
   containers Maul RHI loads (SPIR-V, DXIL and MSL), checked by
   spirv-val, as headers the part compiles in.
+- A vector field over an unturned box samples without the turns, its
+  grid of three binary32 components read in one unrolled sum, and a
+  repeat border's wrap divides only for a cell past the period: the
+  baked turbulence's update takes about 40% fewer instructions, with
+  the same results bit for bit.
