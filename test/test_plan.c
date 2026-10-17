@@ -7,16 +7,19 @@
 // capacity does not bind, by distance too, past 32 bits of serials and
 // ticks; a held throttle's steps gathered in one plan; the anchors before
 // and after; the plan's room at one tick and in a plan; finishing at the
-// latest death; clears; and the refusals.
+// latest death; clears; the forces resolved as the CPU path resolves
+// them; and the refusals.
 
 #include "context.h"
 #include "emitter_step.h"
+#include "force.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "test_harness.h"
 
 #include "maul-vfx/plan.h"
 
+#include <math.h>
 #include <string.h>
 
 #define STEPS      90
@@ -656,6 +659,99 @@ static void TestView(void)
     mvfxDestroyContext(context);
 }
 
+// A planned force as the CPU path's resolved one, field by field.
+static bool SameForce(const mvfxPlannedForce* p, const mvfxResolvedForce* r)
+{
+    bool same = p->kind == r->kind && p->falloff == r->falloff && p->fieldMode == r->fieldMode &&
+                p->strength == r->strength && p->softening == r->softening &&
+                p->killRadius == r->killRadius && p->pull == r->pull && p->radius == r->radius &&
+                p->cosine == r->cosine && p->exponent == r->exponent &&
+                p->tightness == r->tightness;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && p->vector[k] == r->vector[k] && p->point[k] == r->point[k] &&
+               p->center[k] == r->center[k] && p->axis[k] == r->axis[k];
+    }
+    return same;
+}
+
+static void TestForces(void)
+{
+    // Forces of every kind the plan carries, in both spaces, a falloff, a
+    // parameter's strength, under a moving, turning, growing instance: the
+    // plan's are the CPU instance's as resolved for each step.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxForce forces[4] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
+                           {.kind = mvfx_forceWind,
+                            .space = mvfx_spaceLocal,
+                            .vector = {0, 0, 3},
+                            .strength = 0.5f,
+                            .falloff = {.kind = mvfx_falloffCone,
+                                        .center = {0, 1, 0},
+                                        .axis = {0, 1, 0},
+                                        .radius = 4.0f,
+                                        .angle = 0.6f,
+                                        .exponent = 2.0f}},
+                           {.kind = mvfx_forceAttractor,
+                            .point = {0, 2, 0},
+                            .strength = 5.0f,
+                            .softening = 0.5f,
+                            .killRadius = 0.1f,
+                            .strengthFromParameter = true,
+                            .parameter = 0},
+                           {.kind = mvfx_forceVortex,
+                            .space = mvfx_spaceLocal,
+                            .vector = {0, 1, 0},
+                            .point = {1, 0, 0},
+                            .strength = 1.5f,
+                            .pull = 0.25f}};
+    mvfxEmitterDef emitter = Emitter(256);
+    emitter.forces = forces;
+    emitter.forceCount = 4;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    static const float defaults[4] = {1, 0, 0, 0};
+    def.parameters = defaults;
+    def.parameterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    bool same = true;
+    for (int32_t s = 0; s < 10 && same; ++s)
+    {
+        const double origin[3] = {1000.0 + 3.0 * s, 0.5 * s, -2.0};
+        const float rotation[4] = {0.0f, sinf(0.05f * (float)s), 0.0f, cosf(0.05f * (float)s)};
+        const float parameter[4] = {0.5f + 0.1f * (float)s, 0, 0, 0};
+        mvfxInstanceId both[2] = {cpu, planned};
+        for (int32_t i = 0; i < 2; ++i)
+        {
+            CHECK(mvfxInstance_SetTransform(context, both[i], origin, rotation,
+                                            1.0f + 0.05f * (float)s, false) == mvfx_success &&
+                      mvfxInstance_SetParameter(context, both[i], 0, parameter) == mvfx_success,
+                  "moved");
+        }
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        mvfxEmitterPlan plan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+        const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
+        same = plan.forceCount == 4;
+        for (int32_t f = 0; same && f < 4; ++f)
+        {
+            same = SameForce(&plan.forces[f], &state->forces[f]);
+        }
+    }
+    CHECK(same, "the plan's forces are the CPU path's");
+    mvfxEmitterView view;
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
+              view.forceKinds == 0xFu,
+          "the view's force kinds");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestBirths();
@@ -667,5 +763,6 @@ int main(void)
     TestRefusals();
     TestCannotBePlanned();
     TestView();
+    TestForces();
     return s_failures == 0 ? 0 : 1;
 }

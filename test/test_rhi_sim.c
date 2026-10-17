@@ -252,7 +252,8 @@ static mvfxInstanceId s_cpu;
 static mvfxInstanceId s_planned;
 
 // The largest difference of the bounds seen over the run, relative to
-// the size.
+// the box's size along its axis (as places, offsets from an anchor up to
+// that far, are compared relative to theirs).
 static double s_boundsError;
 
 // Whether the GPU's bounds, from its record, are the CPU path's.
@@ -271,8 +272,9 @@ static bool SameBounds(const mvfxGpuSim* sim, int32_t e)
     bool same = true;
     for (int32_t k = 0; !cpuBox.empty && k < 3; ++k)
     {
-        double low = fabs(gpuBox.min[k] - cpuBox.min[k]) / (1.0 + fabs(cpuBox.min[k]));
-        double high = fabs(gpuBox.max[k] - cpuBox.max[k]) / (1.0 + fabs(cpuBox.max[k]));
+        double size = 1.0 + (cpuBox.max[k] - cpuBox.min[k]);
+        double low = fabs(gpuBox.min[k] - cpuBox.min[k]) / size;
+        double high = fabs(gpuBox.max[k] - cpuBox.max[k]) / size;
         double most = low > high ? low : high;
         s_boundsError = most > s_boundsError ? most : s_boundsError;
         same = same && most <= 1e-4;
@@ -476,6 +478,57 @@ static const mvfxBurst s_turnoverLarge[3] = {
 // An emitter of 32, bursts only, lives of a quarter of a second.
 static mvfxEmitterDef Bursts(const mvfxBurst* bursts, int32_t burstCount);
 
+static void TestForces(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A constant force, a wind in a cone in the instance's space, an
+    // attractor with a kill radius the particles fly through, a vortex in
+    // the instance's space, under a moving, turning, growing instance;
+    // then a wind everywhere (the drag every particle shares), a constant
+    // force in a tube, an attractor in a sphere, in the world.
+    mvfxForce forces[4] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
+                           {.kind = mvfx_forceWind,
+                            .space = mvfx_spaceLocal,
+                            .vector = {0, 0, 3},
+                            .strength = 0.5f,
+                            .falloff = {.kind = mvfx_falloffCone,
+                                        .center = {0, -0.5f, 0},
+                                        .axis = {0, 1, 0},
+                                        .radius = 3.0f,
+                                        .angle = 0.6f,
+                                        .exponent = 2.0f}},
+                           {.kind = mvfx_forceAttractor,
+                            .point = {0, 1.5f, 0},
+                            .strength = 3.0f,
+                            .softening = 0.5f,
+                            .killRadius = 0.3f},
+                           {.kind = mvfx_forceVortex,
+                            .space = mvfx_spaceLocal,
+                            .vector = {0, 1, 0},
+                            .point = {0.5f, 0, 0},
+                            .strength = 1.5f,
+                            .pull = 0.25f}};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.forces = forces;
+    emitter.forceCount = 4;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true},
+            "forces of four kinds under a moving instance");
+    forces[0] = (mvfxForce){.kind = mvfx_forceWind, .vector = {2, 0, 0}, .strength = 1.5f};
+    forces[1] = (mvfxForce){
+        .kind = mvfx_forceConstant,
+        .vector = {0, 0, 1},
+        .strength = 4.0f,
+        .falloff = {.kind = mvfx_falloffTube, .axis = {0, 1, 0}, .radius = 0.4f, .exponent = 1.0f}};
+    forces[2] =
+        (mvfxForce){.kind = mvfx_forceAttractor,
+                    .point = {0.5f, 1.0f, 0},
+                    .strength = -2.0f,
+                    .softening = 0.25f,
+                    .falloff = {.kind = mvfx_falloffSphere, .center = {0, 1, 0}, .radius = 1.5f}};
+    emitter.forceCount = 3;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1},
+            "a wind everywhere, falloffs of a tube and a sphere");
+}
+
 static void TestFull(Gpu* gpu, mvfxGpu* kernels)
 {
     // An emitter of 64 owed about 180 at a time, and a burst of 150 at one
@@ -610,8 +663,12 @@ static void TestBoundsRefused(mvfxGpu* kernels)
 
 static void TestRefused(mvfxGpu* kernels)
 {
-    // An emitter it does not run, after one it does: refused, named.
-    static const mvfxForce force = {.kind = mvfx_forceConstant, .vector = {1, 0, 0}};
+    // An emitter it does not run, after one it does: refused, named; a
+    // kind of force it does not run yet refuses forces.
+    static const mvfxForce force = {
+        .kind = mvfx_forceTurbulence,
+        .strength = 1.0f,
+        .noise = {.frequency = 1.0f, .octaves = 1, .lacunarity = 2.0f, .gain = 0.5f}};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
     emitters[1].forces = &force;
     emitters[1].forceCount = 1;
@@ -682,6 +739,7 @@ int main(void)
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     TestSprite(&gpu, kernels);
     TestMoving(&gpu, kernels);
+    TestForces(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

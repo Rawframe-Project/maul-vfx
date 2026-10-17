@@ -26,6 +26,22 @@ const TWO_PI: f32 = 6.28318530717958647692;
 const SHAPE_SALT: u32 = 0x53484150u;
 const VELOCITY_SALT: u32 = 0x56454C4Fu;
 
+// A force as resolved for the step, in the particles' space.
+struct Force {
+    // its kind, its falloff's kind, its field mode, unused
+    modes: vec4<u32>,
+    // its vector (the constant's acceleration, the wind's velocity, the
+    // vortex's axis) and strength
+    vector: vec4<f32>,
+    // its point (the attractor's, the vortex's) and softening
+    point: vec4<f32>,
+    // its falloff's center and radius, axis and cone cosine
+    center: vec4<f32>,
+    axis: vec4<f32>,
+    // its kill radius, pull, falloff exponent and tightness
+    extra: vec4<f32>,
+}
+
 struct Step {
     // capacity, births, the plan's ticks, the instance's seed
     counts: vec4<u32>,
@@ -60,6 +76,10 @@ struct Step {
     toOrigin: vec4<f32>,
     toRotation: vec4<f32>,
     instanceVelocity: vec4<f32>,
+    // the forces' count, whether any kills, the drag every particle has
+    // (binary32 bits), unused
+    forceHead: vec4<u32>,
+    forces: array<Force, 8>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -163,8 +183,7 @@ fn rotate(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
 }
 
 // Drag factors over seconds: decay, carry, push (the integrator's exact form).
-fn factors(seconds: f32) -> vec3<f32> {
-    let drag = params.factors.w;
+fn factors(drag: f32, seconds: f32) -> vec3<f32> {
     let x = drag * seconds;
     if (x < 1e-4) {
         return vec3<f32>(1.0 - x, seconds * (1.0 - 0.5 * x), seconds * seconds * (0.5 - x / 6.0));
@@ -193,6 +212,132 @@ fn outlives(low: u32, high: u32) -> bool {
     return high > endHigh || (high == endHigh && low > endLow);
 }
 
+const FORCE_CONSTANT: u32 = 0u;
+const FORCE_WIND: u32 = 1u;
+const FORCE_ATTRACTOR: u32 = 2u;
+const FALLOFF_NONE: u32 = 0u;
+const FALLOFF_TUBE: u32 = 2u;
+const FALLOFF_CONE: u32 = 3u;
+
+// The weight (1 - share)^exponent, 0 at or past the edge.
+fn weightOf(share: f32, exponent: f32) -> f32 {
+    if (!(share < 1.0)) {
+        return 0.0;
+    }
+    return select(pow(1.0 - share, exponent), 1.0, exponent == 0.0);
+}
+
+// A force's falloff weight at x.
+fn falloffAt(f: Force, x: vec3<f32>) -> f32 {
+    let kind = f.modes.y;
+    if (kind == FALLOFF_NONE) {
+        return 1.0;
+    }
+    let d = x - f.center.xyz;
+    let distance = sqrt(dot(d, d));
+    let along = dot(d, f.axis.xyz);
+    if (kind == FALLOFF_TUBE) {
+        let across = d - along * f.axis.xyz;
+        return weightOf(sqrt(dot(across, across)) / f.center.w, f.extra.z);
+    }
+    var weight = weightOf(distance / f.center.w, f.extra.z);
+    if (kind == FALLOFF_CONE && distance > 0.0) {
+        // The angle's share by its cosine: 0 on the axis, 1 at the edge.
+        let share = (1.0 - along / distance) / (1.0 - f.axis.w);
+        weight *= weightOf(share, f.extra.z);
+    }
+    return weight;
+}
+
+// The attractor's acceleration at x.
+fn attract(f: Force, x: vec3<f32>, weight: f32) -> vec3<f32> {
+    let d = f.point.xyz - x;
+    let distance = sqrt(dot(d, d));
+    if (!(distance > 0.0)) {
+        return vec3<f32>(0.0);
+    }
+    let softening = f.point.w;
+    let ratio = softening / distance;
+    let magnitude = select(f.vector.w * ratio * ratio, f.vector.w / softening * distance,
+                           distance < softening);
+    return d * (weight * magnitude / distance);
+}
+
+// The vortex's acceleration at x.
+fn swirl(f: Force, x: vec3<f32>, weight: f32) -> vec3<f32> {
+    let u = f.vector.xyz;
+    let r = x - f.point.xyz;
+    let across = r - dot(r, u) * u;
+    let distance = sqrt(dot(across, across));
+    if (!(distance > 0.0)) {
+        return vec3<f32>(0.0);
+    }
+    let inverse = 1.0 / distance;
+    return weight * inverse * (f.vector.w * cross(u, across) - f.extra.y * across);
+}
+
+// The forces at x: gravity and their accelerations in order, and the
+// emitter's drag and what the winds add.
+fn forcesAt(x: vec3<f32>, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) {
+    *a = params.gravity.xyz;
+    *drag = params.factors.w;
+    for (var n = 0u; n < params.forceHead.x; n++) {
+        let f = params.forces[n];
+        let weight = falloffAt(f, x);
+        if (!(weight > 0.0)) {
+            continue;
+        }
+        switch f.modes.x {
+            case FORCE_CONSTANT: {
+                *a += weight * f.vector.w * f.vector.xyz;
+            }
+            case FORCE_WIND: {
+                *drag += weight * f.vector.w;
+                *a += weight * f.vector.w * f.vector.xyz;
+            }
+            case FORCE_ATTRACTOR: {
+                *a += attract(f, x, weight);
+            }
+            default: {
+                *a += swirl(f, x, weight);
+            }
+        }
+    }
+}
+
+// Whether a step from start to end passes within an attractor's kill
+// radius of its point.
+fn killed(start: vec3<f32>, end: vec3<f32>) -> bool {
+    if (params.forceHead.y == 0u) {
+        return false;
+    }
+    for (var n = 0u; n < params.forceHead.x; n++) {
+        let f = params.forces[n];
+        let r = f.extra.x;
+        if (f.modes.x != FORCE_ATTRACTOR || !(r > 0.0)) {
+            continue;
+        }
+        let d = end - start;
+        let e = start - f.point.xyz;
+        let length = dot(d, d);
+        let t = clamp(select(0.0, -dot(e, d) / length, length > 0.0), 0.0, 1.0);
+        let closest = e + t * d;
+        if (dot(closest, closest) <= r * r) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Drag factors over seconds for a particle's drag: the shared ones over
+// the plan when its drag is the shared drag, else its own.
+fn factorsFor(drag: f32, seconds: f32, whole: bool) -> vec3<f32> {
+    if (whole && drag == bitcast<f32>(params.forceHead.z)) {
+        return params.factors.xyz;
+    }
+    return factors(drag, seconds);
+}
+
 // Update: each live particle moved, the workgroups (at most a dispatch's
 // along one axis) striding over them.
 @compute @workgroup_size(64, 1, 1)
@@ -207,17 +352,21 @@ fn update(@builtin(global_invocation_id) id: vec3<u32>) {
 // it outlives the plan.
 fn moveLive(i: u32) {
     let c = params.counts.x;
-    let a = params.gravity.xyz;
-    let f = params.factors.xyz;
+    let start = readVector(0u, i, PLACE) + params.shift.xyz;
+    var a = vec3<f32>(0.0);
+    var drag = 0.0;
+    forcesAt(start, &a, &drag);
+    let f = factorsFor(drag, f32(params.counts.z) / TICKS_PER_SECOND, true);
     let v0 = readVector(0u, i, VELOCITY);
-    let p = readVector(0u, i, PLACE) + params.shift.xyz + v0 * f.y + a * f.z;
+    let p = start + v0 * f.y + a * f.z;
     let v = v0 * f.x + a * f.y;
     for (var k = 0u; k < 3u; k++) {
         source[(PLACE + k) * c + i] = bitcast<u32>(p[k]);
         source[(VELOCITY + k) * c + i] = bitcast<u32>(v[k]);
     }
     source[ALIVE * c + i] = select(0u, 1u, outlives(source[DEATH * c + i],
-                                                     source[(DEATH + 1u) * c + i]));
+                                                     source[(DEATH + 1u) * c + i]) &&
+                                               !killed(start, p));
 }
 
 // Adds keep's values of the workgroup in order: each invocation's sum of
@@ -323,30 +472,40 @@ fn placeAt(tick: u32, origin: ptr<function, vec3<f32>>, rotation: ptr<function, 
 }
 
 // A birth of the plan drawn, placed, and moved from its tick to the plan's
-// end, written to place at of the other buffer; its place.
-fn spawnAt(j: u32, at: u32) -> vec3<f32> {
-    let c = params.counts.x;
+// end under its forces at its birth place: its place and velocity then;
+// whether an attractor kills it on the way.
+fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> bool {
     let b0 = births[2u * j];
-    let b1 = births[2u * j + 1u];
     var normal = vec3<f32>(0.0);
     let shapeWords = draw(SHAPE_SALT, b0.x, b0.y);
     let local_place = turnByShape(sampleSphere(shapeWords, &normal));
-    let place = local_place + params.shapeOffset.xyz;
-    var velocity = drawVelocity(draw(VELOCITY_SALT, b0.x, b0.y), turnByShape(normal));
-    var p = place;
+    let drawn = local_place + params.shapeOffset.xyz;
+    var v = drawVelocity(draw(VELOCITY_SALT, b0.x, b0.y), turnByShape(normal));
+    var p = drawn;
     if (params.start.w == 0u) {
         var origin = vec3<f32>(0.0);
         var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         let scale = placeAt(b0.z, &origin, &rotation);
-        p = origin + rotate(rotation, place * scale);
-        velocity = rotate(rotation, velocity * scale) +
-                   params.shift.w * params.instanceVelocity.xyz;
+        p = origin + rotate(rotation, drawn * scale);
+        v = rotate(rotation, v * scale) + params.shift.w * params.instanceVelocity.xyz;
     }
-    let seconds = f32(params.counts.z - b0.z) / TICKS_PER_SECOND;
-    let f = factors(seconds);
-    let a = params.gravity.xyz;
-    let moved_place = p + velocity * f.y + a * f.z;
-    let moved_velocity = velocity * f.x + a * f.y;
+    var a = vec3<f32>(0.0);
+    var drag = 0.0;
+    forcesAt(p, &a, &drag);
+    let f = factorsFor(drag, f32(params.counts.z - b0.z) / TICKS_PER_SECOND, false);
+    *place = p + v * f.y + a * f.z;
+    *velocity = v * f.x + a * f.y;
+    return killed(p, *place);
+}
+
+// A birth written to place at of the other buffer; its place.
+fn spawnAt(j: u32, at: u32) -> vec3<f32> {
+    let c = params.counts.x;
+    let b0 = births[2u * j];
+    let b1 = births[2u * j + 1u];
+    var moved_place = vec3<f32>(0.0);
+    var moved_velocity = vec3<f32>(0.0);
+    _ = bornAt(j, &moved_place, &moved_velocity);
     // The birth and death ticks made absolute.
     let birthLow = params.start.x + b0.z;
     let birthHigh = params.start.y + select(0u, 1u, birthLow < params.start.x);
@@ -364,6 +523,25 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     moved[(DEATH + 1u) * c + at] = deathHigh;
     moved[INVERSE_LIFE * c + at] = b1.y;
     return moved_place;
+}
+
+// Kill births: each birth with room an attractor kills on its way to the
+// plan's end loses its room's mark (2), so the scan keeps it not; it
+// held its room for the step, as a killed particle does until the step's
+// end. The workgroups stride over the births as update's over the
+// particles.
+@compute @workgroup_size(64, 1, 1)
+fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (params.forceHead.y == 0u) {
+        return;
+    }
+    for (var j = id.x; j < params.counts.y; j += params.modes.z * 64u) {
+        var p = vec3<f32>(0.0);
+        var v = vec3<f32>(0.0);
+        if (accepted[j] == 1u && bornAt(j, &p, &v)) {
+            accepted[j] = 2u;
+        }
+    }
 }
 
 // The box around a box and a place, by comparisons that pass a NaN over.

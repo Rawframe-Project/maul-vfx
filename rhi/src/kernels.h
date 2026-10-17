@@ -34,6 +34,8 @@ typedef enum mvfxKernel
     mvfx_kernelOffsets = 4,
     mvfx_kernelScatter = 5,
     mvfx_kernelMeasure = 6,
+    // Which births with room an attractor kills in their first step.
+    mvfx_kernelKillBirths = 7,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

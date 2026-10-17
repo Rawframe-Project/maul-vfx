@@ -12,6 +12,7 @@
 
 #include "birth.h"
 #include "emitter_step.h"
+#include "integrate.h"
 #include "spawn.h"
 
 void mvfxBeginPlans(mvfxInstance* instance)
@@ -62,6 +63,8 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
         return;
     }
     mvfxPlanDistance(instance, emitter);
+    // The forces of the step, held over the plan.
+    mvfxResolveForces(instance, emitter);
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int64_t room = 2 * (int64_t)state->capacity;

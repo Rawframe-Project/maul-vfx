@@ -11,10 +11,11 @@
     {"name": "scatter", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 9216},
     {"name": "measure", "stage": "compute", "workgroup": [256, 1, 1],
-     "workgroup_storage_bytes": 8192}
+     "workgroup_storage_bytes": 8192},
+    {"name": "killBirths", "stage": "compute", "workgroup": [64, 1, 1]}
   ],
   "bindings": [
-    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 320},
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 1104},
     {"table": 0, "slot": 1, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 16},
     {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},

@@ -39,11 +39,12 @@ enum
     PASS_WRITE = 0,
     PASS_UPDATE = 1,
     PASS_ROOM = 2,
-    PASS_REDUCE = 3,
-    PASS_OFFSETS = 4,
-    PASS_SCATTER = 5,
-    PASS_MEASURE = 6,
-    PASS_COUNT = 7
+    PASS_KILL = 3,
+    PASS_REDUCE = 4,
+    PASS_OFFSETS = 5,
+    PASS_SCATTER = 6,
+    PASS_MEASURE = 7,
+    PASS_COUNT = 8
 };
 
 typedef struct Emitter
@@ -87,15 +88,18 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
     return (mvfxGpuSimDef){.cookie = MVFX_GPU_SIM_DEF_COOKIE};
 }
 
-// The features the part runs.
-#define RUN_FEATURES MVFX_FEATURE_INHERIT_VELOCITY
+// The features the part runs, and the kinds of force: constant, wind,
+// attractor, vortex.
+#define RUN_FEATURES (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES)
+#define RUN_FORCES   0xFu
 
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     const mvfxVelocityView* v = &view->velocity;
     *refusal = (mvfxGpuRefusal){
-        .features = view->features & ~RUN_FEATURES,
+        .features = (view->features & ~RUN_FEATURES) |
+                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0),
         .shape = view->shape.kind != mvfx_shapeSphere,
         .velocity = (v->mode != mvfx_directionShapeNormal && v->mode != mvfx_directionCone &&
                      v->mode != mvfx_directionFixed) ||
@@ -412,6 +416,7 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         bool recorded = RecordWrites(sim, emitter) &&
                         RecordKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
                         RecordKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
+                        RecordKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
                         RecordKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
                         RecordKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
                         RecordKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&

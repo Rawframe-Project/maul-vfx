@@ -746,7 +746,7 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
     state->depthSerial = instance->depthSerial;
 }
 
-void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
+void mvfxResolveForces(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
@@ -767,6 +767,13 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
             mvfxGasFollow(instance, force->gas, &state->forces[f]);
         }
     }
+}
+
+void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    mvfxResolveForces(instance, emitter);
     for (int32_t r = 0; r < compiled->killRuleCount; ++r)
     {
         const mvfxKillRule* rule = &compiled->killRules[r];

@@ -116,6 +116,10 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
         .drag = e->drag,
         .fixedBounds = e->fixedBounds,
     };
+    for (int32_t f = 0; f < e->forceCount; ++f)
+    {
+        viewOut->forceKinds |= 1u << e->forces[f].kind;
+    }
     for (int32_t k = 0; k < 9; ++k)
     {
         viewOut->shape.matrix[k] = s->matrix[k];

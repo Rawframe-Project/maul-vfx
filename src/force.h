@@ -12,6 +12,7 @@
 #include "gas_lattice.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/plan.h"
 
 // Whether a force is valid for an effect of parameterCount parameters.
 bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount);
@@ -107,6 +108,9 @@ typedef struct mvfxResolvedForce
 mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
                                    const float (*parameters)[4], uint32_t instanceSeed,
                                    const struct mvfxGrid* grid);
+
+// A resolved force as a plan hands it over.
+mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force);
 
 // The drag a resolved force adds at full weight: a wind's strength, a
 // velocity field's tightness, else 0.

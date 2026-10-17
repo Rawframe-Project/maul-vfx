@@ -52,6 +52,32 @@ extern "C"
         float scale;
     } mvfxPlanPlace;
 
+    // A force of an emitter as resolved for a plan's step, in the
+    // particles' space: its def's meaning (mvfxForce) with lengths scaled,
+    // points and vectors mapped, its strength taken from its parameter.
+    typedef struct mvfxPlannedForce
+    {
+        mvfxForceKind kind;
+        mvfxFalloffKind falloff;
+        mvfxFieldMode fieldMode;
+        // The constant's acceleration, the wind's velocity or the vortex's
+        // axis; the attractor's or the vortex's point.
+        float vector[3];
+        float point[3];
+        float strength;
+        float softening;
+        float killRadius;
+        float pull;
+        // The falloff's center, axis, radius, the cosine of its cone's
+        // half angle and its exponent.
+        float center[3];
+        float axis[3];
+        float radius;
+        float cosine;
+        float exponent;
+        float tightness;
+    } mvfxPlannedForce;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -85,6 +111,11 @@ extern "C"
         // mvfx_stopAndClear, restarted, or just created): the simulation
         // drops every particle it holds first.
         bool cleared;
+        // Its forces as resolved for the step (the last, when the plan
+        // covers several), held over the plan: each particle takes them
+        // at its place at the plan's start, each birth at its birth.
+        int32_t forceCount;
+        mvfxPlannedForce forces[MVFX_MAX_FORCES];
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
@@ -169,6 +200,9 @@ extern "C"
         float gravity[3];
         mvfxSimulationSpace gravitySpace;
         float drag;
+        // A bit for each kind of force it has (1 << mvfx_forceConstant
+        // and so on), for a simulation to refuse a kind it does not run.
+        uint32_t forceKinds;
         // Whether its bounds are a fixed box in the instance's space
         // rather than measured from its particles, and the box.
         bool fixedBounds;

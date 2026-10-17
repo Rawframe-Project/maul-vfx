@@ -587,3 +587,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   back any frames later to the bounds `mvfxInstance_GetBounds` gives
   the CPU path, fixed boxes included. The emitter view gains the fixed
   bounds.
+- A plan carries its emitter's forces as resolved for the step
+  (`mvfxPlannedForce`), and the emitter view the kinds of force it has.
+  The GPU part runs constant forces, winds, attractors (their kill
+  radius too) and vortices with their falloffs, in either space: on
+  lavapipe the particles are the CPU path's every step under a moving,
+  turning, growing instance.

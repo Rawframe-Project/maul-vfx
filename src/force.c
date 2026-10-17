@@ -502,3 +502,28 @@ void mvfxMapPointDouble(const mvfxSpaceMap* map, const double p[3], float out[3]
         out[k] = (float)(turned[k] + map->after[k]);
     }
 }
+
+mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force)
+{
+    mvfxPlannedForce out = {
+        .kind = force->kind,
+        .falloff = force->falloff,
+        .fieldMode = force->fieldMode,
+        .strength = force->strength,
+        .softening = force->softening,
+        .killRadius = force->killRadius,
+        .pull = force->pull,
+        .radius = force->radius,
+        .cosine = force->cosine,
+        .exponent = force->exponent,
+        .tightness = force->tightness,
+    };
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out.vector[k] = force->vector[k];
+        out.point[k] = force->point[k];
+        out.center[k] = force->center[k];
+        out.axis[k] = force->axis[k];
+    }
+    return out;
+}

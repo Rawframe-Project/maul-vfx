@@ -115,7 +115,7 @@ extern "C"
 
     /// Adds the passes of the context's last step to the frame the host
     /// builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer
-    /// pass and five compute passes an emitter. It reads the instance's
+    /// pass and seven compute passes an emitter. It reads the instance's
     /// plans, which must stay until mvfxGpuSim_Record.
     ///
     /// @param sim  The simulation.
@@ -129,7 +129,7 @@ extern "C"
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 320 an
+    /// when it added none. The bytes are the frame's uploads: 1,176 an
     /// emitter and 32 a planned birth (a plan holds at most twice the
     /// emitter's capacity), which the device's frameUploadBytes must
     /// hold.

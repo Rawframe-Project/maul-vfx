@@ -64,7 +64,7 @@ self: attach instance neighbor
 unit: aero attach elementary event instance integrate self
 emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate liquid neighbor plexus rigid scene_query spawn steer unit
 emitter_view: effect effect_api
-planner: birth emitter_step instance spawn
+planner: birth emitter_step instance integrate spawn
 context: allocator effect grid instance layout mesh slots tasks
 convex: direction hull
 effect_api: allocator context effect effect_parts float_mode grid grid_api hull mesh mesh_api slots
@@ -94,7 +94,7 @@ gas_solid: collide direction gas gas_pressure
 gas_splat: elementary force gas gas_lattice
 gas_step: elementary force gas gas_forces gas_lattice gas_pressure gas_solid gas_splat tasks
 gas_api: box collide context direction force gas instance instance_api
-instance_api: collide context depth effect_api gas grid_api instance mesh mesh_api rigid_wake slots spawn
+instance_api: collide context depth effect_api force gas grid_api instance mesh mesh_api rigid_wake slots spawn
 step: context effect emitter_step event float_mode force gas_api gas_liquid gas_splat gas_step gas_surface instance instance_api planner tasks water_step
 curve:
 curve_integral: curve

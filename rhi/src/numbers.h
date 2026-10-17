@@ -9,8 +9,9 @@
 
 #include "maul-vfx/plan.h"
 
-// The words the step's numbers take.
-#define MVFX_STEP_WORDS 80
+// The words the step's numbers take: 80 of the emitter and its plan, 4
+// of its forces' head, 24 a force for the most an emitter has.
+#define MVFX_STEP_WORDS (84 + 24 * MVFX_MAX_FORCES)
 
 // The workgroups of 64 update takes for a capacity, striding over the
 // particles: at most 65,535, the most a dispatch has along one axis on
@@ -24,8 +25,9 @@ uint32_t mvfxScanBlocks(int32_t capacity);
 
 // Writes emitter's step numbers: the plan's counts and ticks, the
 // emitter's shape, velocity and motion, the instance's places from the
-// plan's anchor after, gravity in the particles' space and the drag
-// factors over the plan.
+// plan's anchor after, gravity in the particles' space, the drag factors
+// over the plan for the drag every particle has (the emitter's and its
+// winds' and velocity fields' without a falloff), and its forces.
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      uint32_t words[MVFX_STEP_WORDS]);
 

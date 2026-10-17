@@ -101,6 +101,48 @@ uint32_t mvfxScanBlocks(int32_t capacity)
     return (3u * (uint32_t)capacity + 1023u) / 1024u;
 }
 
+// The drag every particle has: the emitter's and that of its winds and
+// velocity fields without a falloff, summed in the order the core sums a
+// particle's, so the two are equal where they should be.
+static float SharedDrag(const mvfxEmitterView* view, const mvfxEmitterPlan* plan)
+{
+    float wind = 0.0f;
+    for (int32_t f = 0; f < plan->forceCount; ++f)
+    {
+        const mvfxPlannedForce* force = &plan->forces[f];
+        bool field = force->kind == mvfx_forceTurbulence || force->kind == mvfx_forceVectorField;
+        float drag = force->kind == mvfx_forceWind                     ? force->strength
+                     : field && force->fieldMode == mvfx_fieldVelocity ? force->tightness
+                                                                       : 0.0f;
+        wind += force->falloff == mvfx_falloffNone ? 1.0f * drag : 0.0f;
+    }
+    return view->drag + wind;
+}
+
+// The forces: a head (their count, whether any kills, the shared drag)
+// then 24 words each.
+static void Forces(const mvfxEmitterPlan* plan, float sharedDrag, uint32_t* words)
+{
+    bool kills = false;
+    for (int32_t f = 0; f < plan->forceCount; ++f)
+    {
+        const mvfxPlannedForce* force = &plan->forces[f];
+        uint32_t* at = words + 4 + 24 * f;
+        at[0] = force->kind;
+        at[1] = force->falloff;
+        at[2] = force->fieldMode;
+        Floats(at + 4, force->vector[0], force->vector[1], force->vector[2], force->strength);
+        Floats(at + 8, force->point[0], force->point[1], force->point[2], force->softening);
+        Floats(at + 12, force->center[0], force->center[1], force->center[2], force->radius);
+        Floats(at + 16, force->axis[0], force->axis[1], force->axis[2], force->cosine);
+        Floats(at + 20, force->killRadius, force->pull, force->exponent, force->tightness);
+        kills = kills || (force->kind == mvfx_forceAttractor && force->killRadius > 0.0f);
+    }
+    words[0] = (uint32_t)plan->forceCount;
+    words[1] = kills ? 1u : 0u;
+    memcpy(&words[2], &sharedDrag, sizeof sharedDrag);
+}
+
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      uint32_t words[MVFX_STEP_WORDS])
 {
@@ -125,8 +167,9 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     const double* after = plan->anchorAfter;
     Floats(words + 12, (float)(before[0] - after[0]), (float)(before[1] - after[1]),
            (float)(before[2] - after[2]), view->inheritVelocity);
+    float sharedDrag = SharedDrag(view, plan);
     float factors[3];
-    DragFactors((double)view->drag, (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND, factors);
+    DragFactors((double)sharedDrag, (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND, factors);
     Floats(words + 16, factors[0], factors[1], factors[2], view->drag);
     float gravity[3];
     Gravity(view, &plan->from, gravity);
@@ -147,4 +190,5 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Place(words + 60, &plan->from, after);
     Place(words + 68, &plan->to, after);
     Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
+    Forces(plan, sharedDrag, words + 80);
 }

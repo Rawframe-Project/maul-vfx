@@ -32,9 +32,10 @@ typedef struct Kernel
 } Kernel;
 
 static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
-    {mvfx_containerPcg4d, "pcg"},   {mvfx_containerSim, "update"},  {mvfx_containerSim, "room"},
-    {mvfx_containerSim, "reduce"},  {mvfx_containerSim, "offsets"}, {mvfx_containerSim, "scatter"},
-    {mvfx_containerSim, "measure"},
+    {mvfx_containerPcg4d, "pcg"},   {mvfx_containerSim, "update"},
+    {mvfx_containerSim, "room"},    {mvfx_containerSim, "reduce"},
+    {mvfx_containerSim, "offsets"}, {mvfx_containerSim, "scatter"},
+    {mvfx_containerSim, "measure"}, {mvfx_containerSim, "killBirths"},
 };
 
 struct mvfxGpu
