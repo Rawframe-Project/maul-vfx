@@ -221,9 +221,9 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
 mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount)
 {
     return (mvfxStepSpans){
-        .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_SOURCES_FIRST - 92},
+        .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_SOURCES_FIRST - MVFX_VALUES_WORDS},
         .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)forceCount,
-                  56 + 32 * (uint32_t)colliderCount, 92},
+                  56 + 32 * (uint32_t)colliderCount, MVFX_VALUES_WORDS},
     };
 }
 
@@ -232,10 +232,22 @@ void mvfxSourcesOf(const mvfxEmitterView* view, mvfxSourceView sources[MVFX_GPU_
     memset(sources, 0, MVFX_GPU_SOURCES * sizeof sources[0]);
     sources[MVFX_SOURCE_SIZE] = view->size;
     sources[MVFX_SOURCE_COLOR] = view->color;
+    sources[MVFX_SOURCE_ANGLE] = view->angle;
+    sources[MVFX_SOURCE_SPIN] = view->spin;
+    sources[MVFX_SOURCE_ORIENTATION] = view->orientation;
+    sources[MVFX_SOURCE_ANGULAR] = view->angularVelocity;
+    sources[MVFX_SOURCE_DRAG] = view->dragScale;
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
     {
         sources[MVFX_SOURCE_CUSTOM + i] = view->custom[i];
     }
+    sources[MVFX_SOURCE_ROTATION] = (mvfxSourceView){
+        .kind = view->rotationCurve != nullptr ? mvfx_sourceCurve : mvfx_sourceRange,
+        .components = 1,
+        .min = {view->rotationScale},
+        .max = {view->rotationScale},
+        .curve = view->rotationCurve,
+    };
 }
 
 // An index's draw (sim.wgsl's draws): first, last, whether random.
@@ -247,8 +259,9 @@ static void IndexDraw(const mvfxIndexView* index, uint32_t* words)
     words[3] = 0u;
 }
 
-// The births' sources (sim.wgsl's Source, 16 words each), the frame's
-// and mesh index's draws, and the bounds' growth by size.
+// The sources (sim.wgsl's Source, 16 words each), the frame's and mesh
+// index's draws, the bounds' growth by size, and how particles turn: the
+// orientation's mode and the angular drag.
 static void Sources(const mvfxEmitterView* view, const uint32_t (*tables)[2], uint32_t* words)
 {
     mvfxSourceView sources[MVFX_GPU_SOURCES];
@@ -274,6 +287,9 @@ static void Sources(const mvfxEmitterView* view, const uint32_t (*tables)[2], ui
     const float growth[4] = {view->sizeBounds[0], view->sizeBounds[1], view->sizeBounds[2],
                              view->sizeMargin};
     memcpy(words + 16 * MVFX_GPU_SOURCES + 8, growth, sizeof growth);
+    uint32_t* turns = words + 16 * MVFX_GPU_SOURCES + 12;
+    turns[0] = view->orientationMode;
+    memcpy(&turns[1], &view->angularDrag, sizeof(float));
 }
 
 // A value's first word, or NONE (all ones) for one not stored.
@@ -366,8 +382,12 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
     Forces(plan, sharedDrag, forceGrids, words + 80);
     Colliders(plan, colliderGrids, normals, words + 84 + 132 * MVFX_MAX_FORCES);
-    uint32_t* at = words + MVFX_SOURCES_FIRST - 92;
+    uint32_t* at = words + MVFX_SOURCES_FIRST - MVFX_VALUES_WORDS;
     Words(&view->arrays, at);
     memcpy(at + 28, plan->parameters, sizeof plan->parameters);
+    float angular[3];
+    DragFactors((double)view->angularDrag, (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND,
+                angular);
+    Floats(at + 92, angular[0], angular[1], 0.0f, 0.0f);
     Sources(view, sourceTables, words + MVFX_SOURCES_FIRST);
 }

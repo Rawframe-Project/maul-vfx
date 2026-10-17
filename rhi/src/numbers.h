@@ -13,23 +13,36 @@
 // of its forces' head, 24 a force and 108 its field for the most forces
 // an emitter has, 8 of its collision's head and response, 48 of its depth
 // image, 32 a collider for the most it has, 28 of where a particle's
-// values are among its words, 64 of the instance's parameters, 16 a source
-// of the births' values, 8 of their frame's and mesh index's draws and 4
-// of the bounds' growth by size.
+// values are among its words, 64 of the instance's parameters, 4 of the
+// angular drag's factors over the plan, 16 a source, 8 of the frame's and
+// mesh index's draws, 4 of the bounds' growth by size and 4 of how
+// particles turn.
 #define MVFX_STEP_WORDS                                                                            \
-    (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS + 28 + 64 + 16 * MVFX_GPU_SOURCES + \
-     12)
+    (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS + 28 + 64 + 4 +                     \
+     16 * MVFX_GPU_SOURCES + 16)
 
-// The births' sources: size, colour, angle, spin, orientation, angular
-// velocity, drag scale, then the custom values.
-#define MVFX_GPU_SOURCES   15
-#define MVFX_SOURCE_SIZE   0
-#define MVFX_SOURCE_COLOR  1
-#define MVFX_SOURCE_CUSTOM 7
+// The sources: the births' size, colour, angle, spin, orientation,
+// angular velocity, drag scale and custom values, then the rotation speed
+// over life (its curve at the normalized age times its value).
+#define MVFX_GPU_SOURCES        16
+#define MVFX_SOURCE_SIZE        0
+#define MVFX_SOURCE_COLOR       1
+#define MVFX_SOURCE_ANGLE       2
+#define MVFX_SOURCE_SPIN        3
+#define MVFX_SOURCE_ORIENTATION 4
+#define MVFX_SOURCE_ANGULAR     5
+#define MVFX_SOURCE_DRAG        6
+#define MVFX_SOURCE_CUSTOM      7
+#define MVFX_SOURCE_ROTATION    15
 
-// The sources' block among the step's numbers, with the draws and the
-// growth: unchanged from step to step, uploaded once.
-#define MVFX_SOURCES_FIRST (MVFX_STEP_WORDS - 16 * MVFX_GPU_SOURCES - 12)
+// The sources' block among the step's numbers, with the draws, the
+// growth and the turns: unchanged from step to step, uploaded once.
+#define MVFX_SOURCES_FIRST (MVFX_STEP_WORDS - 16 * MVFX_GPU_SOURCES - 16)
+
+// The words of the step's numbers before the sources' block that change
+// from step to step: where a particle's values are, the instance's
+// parameters and the angular factors.
+#define MVFX_VALUES_WORDS 96
 
 // The words a particle of an emitter takes on the GPU: its arrays, the
 // death tick's two words and the step's word.
@@ -66,16 +79,18 @@ mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount);
 // winds' and velocity fields' without a falloff), its forces and its
 // colliders, each one's grid as forceGrids and colliderGrids give it, and
 // its depth image, its normals read from a texture when normals is set,
-// the instance's parameters, its births' sources, each one's curve and
-// gradient at the first words sourceTables gives (all ones for none), and
-// its bounds' growth by size.
+// the instance's parameters, the angular drag's factors over the plan,
+// its sources, each one's curve and gradient at the first words
+// sourceTables gives (all ones for none), its bounds' growth by size and
+// how its particles turn.
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
                      bool normals, const uint32_t (*sourceTables)[2],
                      uint32_t words[MVFX_STEP_WORDS]);
 
-// An emitter's sources in the view's order (MVFX_SOURCE_SIZE and so on),
-// a null one's kind none.
+// An emitter's sources (MVFX_SOURCE_SIZE and so on), a null one's kind
+// none; the rotation speed over life a curve's or a range's of one
+// component, its value both bounds.
 void mvfxSourcesOf(const mvfxEmitterView* view, mvfxSourceView sources[MVFX_GPU_SOURCES]);
 
 #endif

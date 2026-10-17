@@ -90,6 +90,19 @@ static mvfxSourceView SourceOf(const mvfxCompiledVector* source)
     return view;
 }
 
+// A scalar source as the view gives it: one component.
+static mvfxSourceView ScalarSourceOf(const mvfxCompiledScalar* source)
+{
+    return (mvfxSourceView){
+        .kind = source->kind,
+        .components = 1,
+        .min = {source->min},
+        .max = {source->max},
+        .parameter = source->parameter,
+        .curve = source->curve != nullptr ? source->curve->samples : nullptr,
+    };
+}
+
 // An index's draw at birth, as the view gives it.
 static mvfxIndexView IndexOf(const mvfxFrameStart* start)
 {
@@ -132,7 +145,7 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
 }
 
 // Where an emitter's particles keep their values, how its births draw
-// them, and how their sizes grow its bounds.
+// them, how their sizes grow its bounds and how they turn.
 static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
 {
     viewOut->arrays = ArraysOf(&e->plan);
@@ -144,6 +157,16 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     }
     viewOut->frame = IndexOf(&e->frame);
     viewOut->meshIndex = IndexOf(&e->meshIndex);
+    viewOut->angle = ScalarSourceOf(&e->angle);
+    viewOut->spin = ScalarSourceOf(&e->spin);
+    viewOut->orientationMode = e->orientationMode;
+    viewOut->orientation = SourceOf(&e->orientation);
+    viewOut->angularVelocity = SourceOf(&e->angularVelocity);
+    viewOut->dragScale = ScalarSourceOf(&e->dragScale);
+    viewOut->angularDrag = e->angularDrag;
+    const mvfxCompiledLife* rotation = &e->overLife.rotationScale;
+    viewOut->rotationScale = rotation->value;
+    viewOut->rotationCurve = rotation->curve != nullptr ? rotation->curve->samples : nullptr;
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];

@@ -645,3 +645,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   bounds (`sizeBounds`, `sizeMargin`). The GPU part draws those values
   at each birth from the effect's baked curves and gradients, uploaded
   once, and grows its bounds by size as the CPU path does.
+- The emitter view tells how births draw their angle, spin, orientation
+  (`orientationMode`), angular velocity and drag scale, and how
+  particles turn (`angularDrag`, `rotationScale`, `rotationCurve`). The
+  GPU part runs them: angles and orientations turned under the angular
+  drag with the rotation speed over life, each particle's drag scaled.
+  Its drag sums as the CPU path's does (the emitter's added to the
+  winds').

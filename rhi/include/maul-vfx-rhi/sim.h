@@ -183,10 +183,10 @@ extern "C"
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 1,768 an
-    /// emitter, 432 a force and 128 a collider it has (7,272 at most); 48 a
+    /// when it added none. The bytes are the frame's uploads: 1,784 an
+    /// emitter, 432 a force and 128 a collider it has (7,288 at most); 48 a
     /// planned birth (a plan holds at most twice the emitter's capacity);
-    /// at the first step, its sources' 1,008 and the effect's baked tables
+    /// at the first step, its sources' 1,088 and the effect's baked tables
     /// its values read (1,032 a curve, 4,096 a gradient); and the values
     /// of each grid its forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,

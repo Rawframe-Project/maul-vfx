@@ -454,7 +454,8 @@ static bool SameValue(const mvfxInstance* cpu, int32_t e, int32_t i, int16_t fir
     return same;
 }
 
-// Every value a birth draws of the GPU's particle i against the CPU path's.
+// Every value a birth draws, as moved since, of the GPU's particle i
+// against the CPU path's.
 static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t i)
 {
     const mvfxAttributeArrays* a = &s_arrays;
@@ -462,7 +463,12 @@ static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t i)
     bool same = SameValue(cpu, e, i, a->size, mvfx_attributeSizeX, 3, false) &&
                 SameValue(cpu, e, i, a->color, mvfx_attributeColorR, 4, false) &&
                 SameValue(cpu, e, i, a->frame, mvfx_attributeFrame, 1, true) &&
-                SameValue(cpu, e, i, a->mesh, mvfx_attributeMesh, 1, true);
+                SameValue(cpu, e, i, a->mesh, mvfx_attributeMesh, 1, true) &&
+                SameValue(cpu, e, i, a->angle, mvfx_attributeAngle, 1, false) &&
+                SameValue(cpu, e, i, a->spin, mvfx_attributeSpin, 1, false) &&
+                SameValue(cpu, e, i, a->orientation, mvfx_attributeOrientationX, 4, false) &&
+                SameValue(cpu, e, i, a->angular, mvfx_attributeAngularX, 3, false) &&
+                SameValue(cpu, e, i, a->drag, mvfx_attributeDrag, 1, false);
     for (int32_t c = 0; same && c < compiled->customCount; ++c)
     {
         same = SameValue(cpu, e, i, a->custom[c], mvfx_attributeCustom + 4 * c,
@@ -1299,6 +1305,60 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
             "every value a birth draws");
 }
 
+static void TestTurns(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Angles turned by spin and orientations by angular velocity under an
+    // angular drag, their speed scaled over life by a curve, the newborn
+    // turned for the rest of their step: Euler orientations from a range
+    // and spins from a curve over the loop; random orientations and
+    // angles from a parameter. Each particle's drag scaled by its own
+    // draw, with a wind everywhere and one in a sphere (a scale above the
+    // most drag is held to it, one below 0 gives none).
+    static const mvfxCurveKey keys[3] = {
+        {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
+        {.time = 0.5f, .value = 3, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = -0.5f, .interpolation = mvfx_interpolationLinear}};
+    const mvfxCurve curve = {.keys = keys, .keyCount = 3};
+    mvfxForce forces[2] = {
+        {.kind = mvfx_forceWind, .vector = {1, 0, 0}, .strength = 0.75f},
+        {.kind = mvfx_forceWind,
+         .vector = {0, 0, -2},
+         .strength = 1.5f,
+         .falloff = {.kind = mvfx_falloffSphere, .radius = 1.0f, .exponent = 1.0f}}};
+    static const float parameters[4] = {-1.5f, 0, 0, 0};
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    emitters[0].orientationMode = mvfx_orientationEuler;
+    emitters[0].orientation =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-1, 0, 0.5f}, .max = {1, 2, 3}};
+    emitters[0].angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-4, 1, 0}, .max = {4, 6, 2}};
+    emitters[0].spin =
+        (mvfxScalarSource){.kind = mvfx_sourceCurve, .curve = curve, .range = {2, 5}};
+    emitters[0].motion.angularDrag = 1.5f;
+    emitters[0].motion.dragScale = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {-1, 3}};
+    emitters[0].overLife.rotation =
+        (mvfxRotationOverLife){.enabled = true, .scale = {.value = 2, .curve = curve}};
+    emitters[0].forces = forces;
+    emitters[0].forceCount = 2;
+    emitters[1].orientationMode = mvfx_orientationRandom;
+    emitters[1].angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange, .max = {3, 0, -3}};
+    emitters[1].angle =
+        (mvfxScalarSource){.kind = mvfx_sourceParameter, .parameter = 0, .range = {1, 2}};
+    emitters[1].motion.angularDrag = 0.25f;
+    emitters[1].motion.drag = 400.0f;
+    emitters[1].motion.dragScale =
+        (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {0.001f, 4}};
+    emitters[1].overLife.rotation =
+        (mvfxRotationOverLife){.enabled = true, .scale = {.value = 0.5f}};
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters,
+                   .emitterCount = 2,
+                   .moving = true,
+                   .parameters = parameters,
+                   .parameterCount = 1},
+            "angles, orientations and drag scales");
+}
+
 // A depth image's pixels and normals, 64 a side.
 static float s_pixels[DEPTH_SIDE * DEPTH_SIDE];
 static float s_viewNormals[3 * DEPTH_SIDE * DEPTH_SIDE];
@@ -1801,16 +1861,24 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
     mvfxDestroyContext(s_context);
 }
 
+// A host module that leaves particles as they are.
+static void Untouched(const mvfxModuleCall* call, void* user)
+{
+    (void)call;
+    (void)user;
+}
+
 static void TestRefused(mvfxGpu* kernels)
 {
     // An emitter it does not run, after one it does: refused, named (a
-    // feature it does not run yet, angles).
+    // feature it does not run, the host's modules).
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    const mvfxScalarSource angle = {.kind = mvfx_sourceRange, .range = {0, 1}};
+    const mvfxHostModule module = {.stage = mvfx_stageAfterMotion, .function = Untouched};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
-    emitters[1].angle = angle;
+    emitters[1].hostModules = &module;
+    emitters[1].hostModuleCount = 1;
     emitters[1].shape.kind = mvfx_shapeBox;
     emitters[1].velocity.randomize = 0.5f;
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
@@ -1833,8 +1901,8 @@ static void TestRefused(mvfxGpu* kernels)
     mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
     mvfxGpuRefusal refusal;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
-              refusal.emitter == 1 && refusal.features == MVFX_FEATURE_ANGLE && refusal.shape &&
-              refusal.velocity,
+              refusal.emitter == 1 && refusal.features == MVFX_FEATURE_HOST_MODULES &&
+              refusal.shape && refusal.velocity,
           "an emitter it does not run, named");
     simDef.instance = cpu;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorInvalid && refusal.emitter == -1,
@@ -1842,14 +1910,15 @@ static void TestRefused(mvfxGpu* kernels)
 
     // A feature alone refuses it.
     emitters[1] = Sprite();
-    emitters[1].angle = angle;
+    emitters[1].hostModules = &module;
+    emitters[1].hostModuleCount = 1;
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "planned");
     simDef.effect = effect;
     simDef.instance = planned;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && refusal.emitter == 1 &&
-              refusal.features == MVFX_FEATURE_ANGLE && !refusal.shape && !refusal.velocity,
+              refusal.features == MVFX_FEATURE_HOST_MODULES && !refusal.shape && !refusal.velocity,
           "a feature alone refused");
     mvfxDestroyContext(context);
 }
@@ -1883,6 +1952,7 @@ int main(void)
     TestOldDeaths(&gpu, kernels);
     TestDepth(&gpu, kernels);
     TestValues(&gpu, kernels);
+    TestTurns(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

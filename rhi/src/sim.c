@@ -114,14 +114,14 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 }
 
 // The features the part runs (values over life are applied where
-// particles are read; the rotation's scale over life moves only angles and
-// orientations, which it does not run yet), the kinds of force (constant,
-// wind, attractor, vortex, turbulence, vector field) and of collider
-// (plane, sphere, box, heightfield, distance grid).
+// particles are read, but for the rotation's speed, which it runs), the
+// kinds of force (constant, wind, attractor, vortex, turbulence, vector
+// field) and of collider (plane, sphere, box, heightfield, distance grid).
 #define RUN_FEATURES                                                                               \
     (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES | MVFX_FEATURE_COLLISION |                \
      MVFX_FEATURE_SIZE | MVFX_FEATURE_COLOR | MVFX_FEATURE_CUSTOM | MVFX_FEATURE_FRAME |           \
-     MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE)
+     MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE | MVFX_FEATURE_ANGLE |                       \
+     MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 

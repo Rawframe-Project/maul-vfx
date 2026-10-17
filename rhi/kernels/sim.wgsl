@@ -25,6 +25,11 @@ const COLOR_SALT: u32 = 0x434F4C52u;
 const FRAME_SALT: u32 = 0x46524D45u;
 const CUSTOM_SALT: u32 = 0x43555354u;
 const MESH_SALT: u32 = 0x4D455348u;
+const ANGLE_SALT: u32 = 0x414E474Cu;
+const SPIN_SALT: u32 = 0x5350494Eu;
+const ORIENTATION_SALT: u32 = 0x4F524E54u;
+const ANGULAR_SALT: u32 = 0x414E4755u;
+const DRAG_SALT: u32 = 0x44524147u;
 
 // A force as resolved for the step, in the particles' space.
 struct Force {
@@ -182,14 +187,20 @@ struct Step {
     words: Words,
     // The instance's parameters.
     parameters: array<vec4<f32>, 16>,
-    // The births' sources: size, colour, then angle, spin, orientation,
-    // angular velocity and drag scale, then the custom values.
-    sources: array<Source, 15>,
+    // The angular drag's factors over the plan: decay, carry; unused.
+    angular: vec4<f32>,
+    // The sources: the births' size, colour, angle, spin, orientation,
+    // angular velocity, drag scale and custom values, then the rotation
+    // speed over life.
+    sources: array<Source, 16>,
     // The frame's and the mesh index's draws: first, last, whether random.
     draws: array<vec4<u32>, 2>,
     // The bounds' growth by size: the most the size over life scales each
     // axis; the margin for rounding.
     growth: vec4<f32>,
+    // How particles turn: the orientation's mode, the angular drag
+    // (binary32 bits); unused.
+    turns: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -241,7 +252,16 @@ fn pcg4d(start: vec4<u32>) -> vec4<u32> {
 
 const SOURCE_SIZE: u32 = 0u;
 const SOURCE_COLOR: u32 = 1u;
+const SOURCE_ANGLE: u32 = 2u;
+const SOURCE_SPIN: u32 = 3u;
+const SOURCE_ORIENTATION: u32 = 4u;
+const SOURCE_ANGULAR: u32 = 5u;
+const SOURCE_DRAG: u32 = 6u;
 const SOURCE_CUSTOM: u32 = 7u;
+const SOURCE_ROTATION: u32 = 15u;
+const ORIENTATION_EULER: u32 = 1u;
+const ORIENTATION_RANDOM: u32 = 2u;
+const MAX_DRAG: f32 = 1000.0;
 const SOURCE_CURVE: u32 = 2u;
 const SOURCE_PARAMETER: u32 = 3u;
 const SOURCE_GRADIENT: u32 = 4u;
@@ -687,11 +707,11 @@ fn fieldAt(n: u32, f: Force, x: vec3<f32>, seconds: f32, weight: f32,
 }
 
 // The forces at x, seconds after the plan's start: gravity and their
-// accelerations in order, and the emitter's drag and what the winds and
-// velocity fields add.
+// accelerations in order, and the drag the winds and velocity fields add
+// (the emitter's own added after, as the core sums them).
 fn forcesAt(x: vec3<f32>, seconds: f32, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) {
     *a = params.gravity.xyz;
-    *drag = params.factors.w;
+    *drag = 0.0;
     for (var n = 0u; n < params.forceHead.x; n++) {
         let f = params.forces[n];
         let weight = falloffAt(f, x);
@@ -743,9 +763,17 @@ fn killed(start: vec3<f32>, end: vec3<f32>) -> bool {
     return false;
 }
 
-// Drag factors over seconds for a particle's drag: the shared ones over
-// the plan when its drag is the shared drag, else its own.
-fn factorsFor(drag: f32, seconds: f32, whole: bool) -> vec3<f32> {
+// Drag factors over seconds for a particle with the winds' drag wind:
+// when the emitter scales drag, the emitter's times the particle's scale,
+// none unless above 0 and at most the most, as the core's ParticleDrag;
+// else the emitter's, the shared factors over the plan when it comes to
+// the shared drag.
+fn factorsFor(wind: f32, scale: f32, seconds: f32, whole: bool) -> vec3<f32> {
+    if (params.words.drag != NONE) {
+        let own = params.factors.w * scale;
+        return factors(select(0.0, min(own, MAX_DRAG), own > 0.0) + wind, seconds);
+    }
+    let drag = params.factors.w + wind;
     if (whole && drag == bitcast<f32>(params.forceHead.z)) {
         return params.factors.xyz;
     }
@@ -1432,9 +1460,13 @@ fn moveLive(i: u32) {
     let c = params.counts.x;
     let start = readVector(0u, i, params.words.place) + params.shift.xyz;
     var a = vec3<f32>(0.0);
-    var drag = 0.0;
-    forcesAt(start, 0.0, &a, &drag);
-    let f = factorsFor(drag, f32(params.counts.z) / TICKS_PER_SECOND, true);
+    var wind = 0.0;
+    forcesAt(start, 0.0, &a, &wind);
+    var scale = 1.0;
+    if (params.words.drag != NONE) {
+        scale = bitcast<f32>(source[params.words.drag * c + i]);
+    }
+    let f = factorsFor(wind, scale, f32(params.counts.z) / TICKS_PER_SECOND, true);
     let v0 = readVector(0u, i, params.words.velocity);
     var p = start + v0 * f.y + a * f.z;
     var v = v0 * f.x + a * f.y;
@@ -1452,6 +1484,8 @@ fn moveLive(i: u32) {
                                             count > 0xFFFFFFFFu - fate.contacts);
     }
     source[params.words.inverseLife * c + i] = bitcast<u32>(fate.inverseLife);
+    let rotation = drawVector(SOURCE_ROTATION, ageAt(birth, fate.inverseLife), vec4<u32>(0u)).x;
+    turn(0u, i, params.angular.xy, rotation);
     source[params.words.death * c + i] = fate.death.x;
     source[(params.words.death + 1u) * c + i] = fate.death.y;
     source[params.words.alive * c + i] = select(0u, 1u, outlives(fate.death.x, fate.death.y) &&
@@ -1591,9 +1625,9 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
         v = rotate(rotation, v * scale) + params.shift.w * params.instanceVelocity.xyz;
     }
     var a = vec3<f32>(0.0);
-    var drag = 0.0;
-    forcesAt(p, f32(b0.z) / TICKS_PER_SECOND, &a, &drag);
-    let f = factorsFor(drag, f32(params.counts.z - b0.z) / TICKS_PER_SECOND, false);
+    var wind = 0.0;
+    forcesAt(p, f32(b0.z) / TICKS_PER_SECOND, &a, &wind);
+    let f = factorsFor(wind, dragScaleOf(j), remainderOf(j), false);
     *place = p + v * f.y + a * f.z;
     *velocity = v * f.x + a * f.y;
     var birth = vec2<u32>(0u);
@@ -1629,7 +1663,99 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
         moved[params.words.collisions * c + at] = fate.contacts;
     }
     storeValues(j, at);
+    // Born at age 0, turned over the rest of the plan.
+    let angular = factors(bitcast<f32>(params.turns.y), remainderOf(j)).xy;
+    turn(1u, at, angular, drawVector(SOURCE_ROTATION, 0.0, vec4<u32>(0u)).x);
     return moved_place;
+}
+
+// The seconds from a birth of the plan to the plan's end.
+fn remainderOf(j: u32) -> f32 {
+    return f32(params.counts.z - births[3u * j].z) / TICKS_PER_SECOND;
+}
+
+// A birth's drag scale, as the core draws it (1 when the emitter has
+// none).
+fn dragScaleOf(j: u32) -> f32 {
+    if (params.words.drag == NONE) {
+        return 1.0;
+    }
+    let b0 = births[3u * j];
+    let age = bitcast<f32>(births[3u * j + 2u].x);
+    return drawVector(SOURCE_DRAG, age, draw(DRAG_SALT, b0.x, b0.y)).x;
+}
+
+// A live particle's normalized age at the plan's start, as the core's:
+// its seconds since birth times its inverse life, held to [0, 1].
+fn ageAt(birth: vec2<u32>, inverseLife: f32) -> f32 {
+    let low = params.start.x - birth.x;
+    let high = params.start.y - birth.y - select(0u, 1u, params.start.x < birth.x);
+    let seconds = f32(high) * 4096.0 + f32(low) / TICKS_PER_SECOND;
+    let age = seconds * inverseLife;
+    return select(min(age, 1.0), 0.0, !(age > 0.0));
+}
+
+// A word of buffer (0 the current, 1 the other) at an index, and its
+// write.
+fn wordIn(buffer: u32, at: u32) -> u32 {
+    if (buffer == 0u) {
+        return source[at];
+    }
+    return moved[at];
+}
+
+fn setWordIn(buffer: u32, at: u32, value: u32) {
+    if (buffer == 0u) {
+        source[at] = value;
+    } else {
+        moved[at] = value;
+    }
+}
+
+// Turns particle i of a buffer as the core's MoveAngular: its angle by
+// its spin and its orientation by its angular velocity, over the angular
+// factors (decay, carry), the carry scaled by the rotation speed; its
+// spin and angular velocity decayed.
+fn turn(buffer: u32, i: u32, f: vec2<f32>, scale: f32) {
+    let c = params.counts.x;
+    let w = params.words;
+    if (w.angle != NONE) {
+        let angle = bitcast<f32>(wordIn(buffer, w.angle * c + i));
+        let spin = bitcast<f32>(wordIn(buffer, w.spin * c + i));
+        setWordIn(buffer, w.angle * c + i, bitcast<u32>(angle + spin * (f.y * scale)));
+        setWordIn(buffer, w.spin * c + i, bitcast<u32>(spin * f.x));
+    }
+    if (w.orientation != NONE) {
+        var q = vec4<f32>(0.0);
+        for (var k = 0u; k < 4u; k++) {
+            q[k] = bitcast<f32>(wordIn(buffer, (w.orientation + k) * c + i));
+        }
+        let omega = readVector(buffer, i, w.angular);
+        q = turnBy(q, omega * (f.y * scale));
+        for (var k = 0u; k < 4u; k++) {
+            setWordIn(buffer, (w.orientation + k) * c + i, bitcast<u32>(q[k]));
+        }
+        for (var k = 0u; k < 3u; k++) {
+            setWordIn(buffer, (w.angular + k) * c + i, bitcast<u32>(omega[k] * f.x));
+        }
+    }
+}
+
+// A unit quaternion turned by a rotation vector (the turn's axis times
+// its angle) and normalized, as the core's TurnBy.
+fn turnBy(q: vec4<f32>, theta: vec3<f32>) -> vec4<f32> {
+    let angle = sqrt(theta.x * theta.x + theta.y * theta.y + theta.z * theta.z);
+    if (!(angle > 0.0)) {
+        return q;
+    }
+    let s = sin(0.5 * angle) / angle;
+    let r = vec4<f32>(theta * s, cos(0.5 * angle));
+    let out = vec4<f32>(r.w * q.x + r.x * q.w + r.y * q.z - r.z * q.y,
+                        r.w * q.y - r.x * q.z + r.y * q.w + r.z * q.x,
+                        r.w * q.z + r.x * q.y - r.y * q.x + r.z * q.w,
+                        r.w * q.w - r.x * q.x - r.y * q.y - r.z * q.z);
+    let length = sqrt(out.x * out.x + out.y * out.y + out.z * out.z + out.w * out.w);
+    return out / length;
 }
 
 // Writes a value's components (those it has, from its first word) at
@@ -1644,9 +1770,32 @@ fn storeValue(first: u32, components: u32, at: u32, value: vec4<f32>) {
     }
 }
 
+// A birth's orientation from its words, as the core draws it: random, by
+// Euler angles from its source (about X, then Y, then Z), or none.
+fn orientationOf(age: f32, words: vec4<u32>) -> vec4<f32> {
+    let mode = params.turns.x;
+    if (mode == ORIENTATION_RANDOM) {
+        let u = unitFloat(words.x);
+        let low = sqrt(1.0 - u);
+        let high = sqrt(u);
+        let a1 = TWO_PI * unitFloat(words.y);
+        let a2 = TWO_PI * unitFloat(words.z);
+        return vec4<f32>(low * sin(a1), low * cos(a1), high * sin(a2), high * cos(a2));
+    }
+    if (mode == ORIENTATION_EULER) {
+        let half = 0.5 * drawVector(SOURCE_ORIENTATION, age, words).xyz;
+        let s = sin(half);
+        let c = cos(half);
+        return vec4<f32>(s.x * c.y * c.z - c.x * s.y * s.z, c.x * s.y * c.z + s.x * c.y * s.z,
+                         c.x * c.y * s.z - s.x * s.y * c.z, c.x * c.y * c.z + s.x * s.y * s.z);
+    }
+    return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+}
+
 // A birth's drawn values, each the emitter stores, as the core's
-// AppendValues and StoreWords draw them: size, colour and custom values
-// over the birth's source age, frame and mesh index.
+// AppendValues and StoreWords draw them: size, colour, angle and spin,
+// orientation and angular velocity, drag scale and custom values over
+// the birth's source age, frame and mesh index.
 fn storeValues(j: u32, at: u32) {
     let c = params.counts.x;
     let b0 = births[3u * j];
@@ -1663,6 +1812,19 @@ fn storeValues(j: u32, at: u32) {
     }
     if (w.mesh != NONE) {
         moved[w.mesh * c + at] = drawIndex(params.draws[1], MESH_SALT, b0.x, b0.y);
+    }
+    if (w.angle != NONE) {
+        moved[w.angle * c + at] =
+            bitcast<u32>(drawVector(SOURCE_ANGLE, age, draw(ANGLE_SALT, b0.x, b0.y)).x);
+        moved[w.spin * c + at] =
+            bitcast<u32>(drawVector(SOURCE_SPIN, age, draw(SPIN_SALT, b0.x, b0.y)).x);
+    }
+    if (w.orientation != NONE) {
+        storeValue(w.orientation, 4u, at, orientationOf(age, draw(ORIENTATION_SALT, b0.x, b0.y)));
+        storeValue(w.angular, 3u, at, drawVector(SOURCE_ANGULAR, age, draw(ANGULAR_SALT, b0.x, b0.y)));
+    }
+    if (w.drag != NONE) {
+        moved[w.drag * c + at] = bitcast<u32>(dragScaleOf(j));
     }
     for (var i = 0u; i < 8u; i++) {
         let first = w.custom[i / 4u][i % 4u];

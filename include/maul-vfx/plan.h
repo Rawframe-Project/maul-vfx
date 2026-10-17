@@ -375,12 +375,27 @@ extern "C"
         // Where its particles keep their values.
         mvfxAttributeArrays arrays;
         // How its births draw their size, colour and custom values (one
-        // a custom attribute it has), frame and mesh index.
+        // a custom attribute it has), frame and mesh index; their angle
+        // and spin, orientation (by orientationMode: none, Euler angles
+        // from its source, or random) and angular velocity, and drag
+        // scale (a scalar's source has one component).
         mvfxSourceView size;
         mvfxSourceView color;
         mvfxSourceView custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
         mvfxIndexView frame;
         mvfxIndexView meshIndex;
+        mvfxSourceView angle;
+        mvfxSourceView spin;
+        mvfxOrientationMode orientationMode;
+        mvfxSourceView orientation;
+        mvfxSourceView angularVelocity;
+        mvfxSourceView dragScale;
+        // How its angles and orientations turn: the angular drag, and the
+        // rotation speed over life, its value times its curve at the
+        // normalized age (1 and NULL without one).
+        float angularDrag;
+        float rotationScale;
+        const float* rotationCurve;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.
