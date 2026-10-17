@@ -82,7 +82,9 @@ static double CosReduced(double r)
 
 void mvfxSinCos(float x, float* sineOut, float* cosineOut)
 {
-    double value = (double)x;
+    // Beyond 2^24 (and for NaN) the values are unspecified: those of 0,
+    // so k below stays small enough to convert.
+    double value = fabs((double)x) <= 0x1p24 ? (double)x : 0.0;
     // The nearest multiple of pi/2; a tie may go either way, as both
     // leave the remainder within pi/4 and a hair.
     double k = floor(value * TWO_OVER_PI + 0.5);

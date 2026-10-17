@@ -41,6 +41,16 @@ static void TestSinCosEdges(void)
     CHECK(s == 0.0f && c == 1.0f, "sin 0 and cos 0");
     mvfxSinCos(-0.0f, &s, &c);
     CHECK(s == 0.0f && c == 1.0f, "negative zero");
+    // Past 2^24 and for NaN, defined values (those of 0), never an
+    // overflowing conversion.
+    static const float wild[5] = {-6.3e27f, 3.0e38f, 0x1p25f, INFINITY, NAN};
+    for (int32_t i = 0; i < 5; ++i)
+    {
+        mvfxSinCos(wild[i], &s, &c);
+        CHECK(s == 0.0f && c == 1.0f, "an argument past 2^24");
+    }
+    mvfxSinCos(0x1p24f, &s, &c);
+    CHECK(fabsf(s * s + c * c - 1.0f) < 1e-6f, "2^24 itself still turned");
     Tally sines = {0};
     Tally cosines = {0};
     // The floats nearest each multiple of pi/4 up to 2^20, where the

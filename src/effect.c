@@ -208,13 +208,16 @@ static bool IsRibbonShapeValid(const mvfxRibbonDef* ribbon)
 static void CompileRibbonShape(const mvfxRibbonDef* ribbon, mvfxCompiledEmitter* out)
 {
     out->ribbonPieces = ribbon->pieces;
+    // A ribbon's fields are checked only when it is drawn: an emitter
+    // without one bends nothing, whatever its bend angle.
+    bool bends = ribbon->ids != mvfx_ribbonNone && ribbon->bendAngle > 0.0f;
     for (int32_t k = 1; k <= MVFX_MAX_RIBBON_PIECES; ++k)
     {
-        float turn = fminf(ribbon->bendAngle * (float)k, 3.14159265f);
+        float turn = bends ? fminf(ribbon->bendAngle * (float)k, 3.14159265f) : 0.0f;
         float sine = 0.0f;
         float cosine = 1.0f;
         mvfxSinCos(turn, &sine, &cosine);
-        out->ribbonCosLimits[k - 1] = ribbon->bendAngle > 0.0f ? cosine : -2.0f;
+        out->ribbonCosLimits[k - 1] = bends ? cosine : -2.0f;
     }
     out->ribbonTexture = ribbon->texture;
     out->ribbonTileLength = ribbon->tileLength;

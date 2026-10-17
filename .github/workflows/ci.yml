@@ -112,7 +112,8 @@ jobs:
 
   # Each fuzz target runs for one minute on every push, from the seed
   # corpus in test/corpus (minimized from local campaigns) and, for the
-  # effect file reader, the golden scene's effects written as files.
+  # effect file reader, the golden scene's effects written as files: the
+  # reader, and the step playing the effects fuzzed files make.
   fuzz:
     name: fuzz
     runs-on: ubuntu-24.04
@@ -128,7 +129,7 @@ jobs:
         run: |
           cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON \
             -D${PREFIX}_WERROR=ON -D${PREFIX}_BUILD_BENCH=OFF
-          cmake --build build --target fuzz_file test_golden
+          cmake --build build --target fuzz_file fuzz_step test_golden
       - name: The library writes the golden scene's effects as the fixtures
         run: |
           mkdir -p seeds

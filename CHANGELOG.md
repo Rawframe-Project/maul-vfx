@@ -430,6 +430,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfx_errorMissing`, a new status.
 - A sheet unit whose points times rows overflows is refused, where the
   check computed the overflowing product first.
+- An emitter without ribbons no longer turns its unchecked bend angle,
+  where an angle past 2^24 overflowed a conversion; the library's sine
+  and cosine give defined values for any argument.
 - `tools/effect_json.py` converts effect files to a JSON form and back,
   every field by its name, enums by their constants' names and floats
   by the shortest decimal that reads back to their bits; the golden

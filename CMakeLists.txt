@@ -255,7 +255,7 @@ endif()
 # The fuzz targets: test/fuzz_<area>.c, run as fuzz_<area> <corpus dir>,
 # over the bytes programs load and hand the library. test/corpus holds a
 # minimized seed corpus for each (fuzz_<area>.tar.gz); test_golden --seeds
-# <dir> writes the golden scene's effects as fuzz_file's first seeds.
+# <dir> writes the golden scene's effects as the targets' first seeds.
 if(MAUL_VFX_FUZZ)
     # The library is instrumented too: its coverage guides libFuzzer, and
     # the sanitizers watch its code, not only the targets'. Undefined
@@ -263,7 +263,7 @@ if(MAUL_VFX_FUZZ)
     target_compile_options(maul-vfx PRIVATE -fsanitize=fuzzer-no-link,address,undefined
                                             -fno-sanitize-recover=all)
     target_link_options(maul-vfx PUBLIC -fsanitize=address,undefined)
-    foreach(area file)
+    foreach(area file step)
         add_executable(fuzz_${area} test/fuzz_${area}.c)
         target_link_libraries(fuzz_${area} PRIVATE maul-vfx)
         # The targets reach the library's own functions.

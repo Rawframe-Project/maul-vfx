@@ -434,6 +434,9 @@ static void TestChecks(void)
     emitter = Ribbon(0);
     emitter.ribbon.ids = mvfx_ribbonNone;
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "ignored without ribbons");
+    // Unchecked without ribbons, a wild bend angle is never turned.
+    emitter.ribbon.bendAngle = -6.3e27f;
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a wild angle ignored");
     // A side and a face normal have 3 components.
     const mvfxLayoutField wide[2] = {
         {.field = mvfx_recordSide, .format = mvfx_formatFloat32, .components = 4},

@@ -14,7 +14,8 @@
 #define MAUL_VFX_SRC_ELEMENTARY_H
 
 // The sine and cosine of x, for |x| up to 2^24 (beyond it a float has no
-// fraction left to turn); larger arguments give unspecified values.
+// fraction left to turn); larger arguments and NaN give unspecified
+// values, never undefined behavior.
 void mvfxSinCos(float x, float* sineOut, float* cosineOut);
 
 // e to the x: infinity above about 88.72, 0 below about -103.97, NaN for
