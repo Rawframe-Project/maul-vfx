@@ -70,17 +70,34 @@ extern "C"
     // MVFX_GPU_STATISTICS_WORDS words of the last recorded step: the live
     // count first, then what the step uses and the bounds, which
     // mvfxGpuSim_BoundsOf reads. A world-space emitter's places are
-    // offsets from its anchor (its plan's anchor after).
+    // offsets from its anchor (its plan's anchor after). Its events of the
+    // step, when it writes any (a null buffer otherwise): from word
+    // eventFirst of the events buffer, MVFX_GPU_EVENT_WORDS words each, as
+    // many as the statistics record's word MVFX_GPU_EVENTS_WRITTEN (at
+    // most eventCapacity; those past it in the next word): kind | killed
+    // << 8, serial, tick (low, high word), place (binary32 offsets from the
+    // plan's anchor after, in the world), velocity, normal, colour, size,
+    // then four words the part uses; in the order the CPU path's
+    // mvfxInstance_GetEvents gives them.
     typedef struct mvfxGpuParticles
     {
         mrhiBufferId particles;
         mrhiBufferId statistics;
         int32_t capacity;
         int32_t words;
+        mrhiBufferId events;
+        uint32_t eventFirst;
+        int32_t eventCapacity;
     } mvfxGpuParticles;
 
+// The words of an event in an events buffer, and the statistics record's
+// word holding the step's count of events written (the next, those
+// dropped).
+#define MVFX_GPU_EVENT_WORDS    24
+#define MVFX_GPU_EVENTS_WRITTEN 28
+
 // The words of an emitter's statistics record.
-#define MVFX_GPU_STATISTICS_WORDS 28
+#define MVFX_GPU_STATISTICS_WORDS 34
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -93,7 +110,10 @@ extern "C"
     /// Makes a simulation of a planned instance: each emitter's buffers on
     /// the GPU object's device; an emitter that sorts its records by place
     /// keeps 16 bytes a particle of its capacity and 2,048 a block of 1,024
-    /// of them for the sort.
+    /// of them for the sort, one that writes events 36 bytes a particle of
+    /// its capacity, 16 a block of its scan (a block for 1,024 of three
+    /// times its capacity), 96 an event of its capacity of them and 1,952
+    /// for their numbers.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -165,7 +185,8 @@ extern "C"
 
     /// Adds the passes of the context's last step to the frame the host
     /// builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer
-    /// pass and seven compute passes an emitter. It reads the instance's
+    /// pass and seven compute passes an emitter, four more for one that
+    /// writes events (mvfxGpuParticles). It reads the instance's
     /// plans, which must stay until mvfxGpuSim_Record. A step whose
     /// instance's grids pass the room the def keeps adds no pass: the
     /// particles stay as they were, the step's plans unsimulated.

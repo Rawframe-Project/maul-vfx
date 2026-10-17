@@ -13,6 +13,7 @@
 #include "numbers.h"
 #include "record.h"
 #include "records.h"
+#include "sim_state.h"
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
@@ -20,108 +21,6 @@
 #include <math.h>
 #include <stdalign.h>
 #include <string.h>
-
-// The buffers of the step an emitter has: its numbers, its births, its
-// particles in the buffer they are in and the other, its statistics
-// record, which births have room, the scan's blocks with their boxes and
-// growths, the grids its forces read.
-enum
-{
-    BUFFER_STEP = 0,
-    BUFFER_BIRTHS = 1,
-    BUFFER_CURRENT = 2,
-    BUFFER_OTHER = 3,
-    BUFFER_STATISTICS = 4,
-    BUFFER_ACCEPTED = 5,
-    BUFFER_BLOCKS = 6,
-    BUFFER_GRIDS = 7,
-    BUFFER_COUNT = 8
-};
-
-// The passes of an emitter's step: the plan's bytes, then the kernels.
-enum
-{
-    PASS_WRITE = 0,
-    PASS_ROOM = 1,
-    PASS_UPDATE = 2,
-    PASS_KILL = 3,
-    PASS_REDUCE = 4,
-    PASS_OFFSETS = 5,
-    PASS_SCATTER = 6,
-    PASS_MEASURE = 7,
-    PASS_COUNT = 8
-};
-
-typedef struct Emitter
-{
-    // Its capacity, and how many particles its host queue holds.
-    int32_t capacity;
-    int32_t hostCapacity;
-    // The words a particle takes: its arrays and the GPU's own.
-    int32_t particleWords;
-    mrhiBufferId particles[2];
-    mrhiBufferId births;
-    mrhiBufferId step;
-    mrhiBufferId statistics;
-    mrhiBufferId accepted;
-    mrhiBufferId blocks;
-    mrhiBufferId grids;
-    mvfxGpuGrids gridLayout;
-    // The particle buffer the last recorded step left them in.
-    int32_t current;
-    // The step added and not yet recorded: its passes, the buffers as the
-    // frame has them, its numbers, its map for the record and the plan's
-    // births.
-    bool added;
-    mrhiPassId passes[PASS_COUNT];
-    mrhiResourceId resources[BUFFER_COUNT];
-    uint32_t words[MVFX_STEP_WORDS];
-    mvfxStepSpans spans;
-    // Where the baked tables are in the grids buffer, and whether the
-    // sources' block is uploaded.
-    mvfxStepTables tables;
-    bool sourcesWritten;
-    uint32_t map[MVFX_RECORD_MAP_WORDS];
-    const mvfxPlannedBirth* plannedBirths;
-    int32_t birthCount;
-    // Its record passes of the frame open, and its sort's keys and indices
-    // and digit counts when it sorts by place.
-    mvfxRecordPasses records;
-    mrhiBufferId sort;
-    mrhiBufferId digits;
-    // Its host births in the kernels' form, room for its host queue's.
-    uint32_t* hostWords;
-    int32_t hostCount;
-    bool cleared;
-} Emitter;
-
-struct mvfxGpuSim
-{
-    mvfxAllocator allocator;
-    mvfxGpu* gpu;
-    mrhiDevice* device;
-    const mvfxContext* context;
-    mvfxInstanceId instance;
-    int32_t emitterCount;
-    mvfxEmitterView views[MVFX_MAX_EMITTERS];
-    Emitter emitters[MVFX_MAX_EMITTERS];
-    // Its own 1-pixel depth and normal textures, bound where the host
-    // gives none; the host's for the frame open (null ids for none); the
-    // frame's ids of the two the step binds.
-    mrhiTextureId ownDepth;
-    mrhiTextureId ownNormals;
-    mrhiResourceId hostDepth;
-    mrhiResourceId hostNormals;
-    mrhiResourceId bound[2];
-    // The sRGB steps records write bytes by, and a word of its own a
-    // record pass's count goes to where the host asks for none; words of
-    // its own a record pass binds for the sort of an emitter that does
-    // not sort.
-    float srgb[MVFX_SRGB_STEPS];
-    mrhiBufferId ownCount;
-    mrhiBufferId ownSort;
-    mrhiBufferId ownDigits;
-};
 
 // The parts of the depth and normal textures the kernels read.
 static const mrhiTextureRange TEXTURE_RANGES[2] = {
@@ -143,7 +42,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE | MVFX_FEATURE_ANGLE |                       \
      MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE | MVFX_FEATURE_VELOCITY_MODULES |          \
      MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
-     MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT)
+     MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -245,6 +144,19 @@ static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emit
            CreateBuffer(sim, 2u * 256u * blocks * 4u, mrhi_bufferStorage, &emitter->digits);
 }
 
+// Creates an emitter's events buffer when it writes events.
+static bool CreateEventBuffer(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
+{
+    if (view->events == 0)
+    {
+        return true;
+    }
+    return CreateBuffer(sim, 4u * mvfxEventBufferWords(emitter->capacity, view->eventCapacity),
+                        mrhi_bufferStorage | mrhi_bufferCopySource, &emitter->events) &&
+           CreateBuffer(sim, MVFX_RECORD_WORDS * 4u,
+                        mrhi_bufferUniform | mrhi_bufferCopyDestination, &emitter->eventNumbers);
+}
+
 // Creates the simulation's own 1-pixel textures.
 static bool CreateTextures(mvfxGpuSim* sim)
 {
@@ -257,6 +169,9 @@ static bool CreateTextures(mvfxGpuSim* sim)
     def.format = mrhi_formatRgba32Float;
     return made && mrhiCreateTexture(sim->device, &def, &sim->ownNormals) == mrhi_success;
 }
+
+static_assert(MVFX_GPU_EVENT_WORDS == MVFX_EVENT_WORDS, "an event's words, as the kernel's");
+static_assert(MVFX_GPU_EVENTS_WRITTEN == MVFX_RECORD_EVENTS, "the events' count, as the record's");
 
 static_assert(MVFX_GPU_TABLES >= 2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES + 1 + MVFX_RECORD_LIVES,
               "room for every table");
@@ -319,7 +234,8 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
         (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
-         !CreateSortBuffers(sim, &sim->views[e], emitter)))
+         !CreateSortBuffers(sim, &sim->views[e], emitter) ||
+         !CreateEventBuffer(sim, &sim->views[e], emitter)))
     {
         result = mvfx_errorState;
     }
@@ -376,7 +292,8 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     if (result == mvfx_success &&
         (!CreateTextures(sim) || !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownCount) ||
          !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownSort) ||
-         !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownDigits)))
+         !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownDigits) ||
+         !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownEvents)))
     {
         result = mvfx_errorState;
     }
@@ -422,11 +339,14 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         mvfxDestroyRecordBuffers(sim->device, &emitter->records);
         DestroyBuffer(sim, emitter->sort);
         DestroyBuffer(sim, emitter->digits);
+        DestroyBuffer(sim, emitter->events);
+        DestroyBuffer(sim, emitter->eventNumbers);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
     }
     DestroyBuffer(sim, sim->ownCount);
     DestroyBuffer(sim, sim->ownSort);
     DestroyBuffer(sim, sim->ownDigits);
+    DestroyBuffer(sim, sim->ownEvents);
     mrhiTextureId textures[2] = {sim->ownDepth, sim->ownNormals};
     for (int32_t t = 0; t < 2; ++t)
     {
@@ -456,8 +376,77 @@ mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim, int32_t emitter,
         .statistics = e->statistics,
         .capacity = e->capacity,
         .words = e->particleWords,
+        .events = e->events,
+        .eventFirst = e->events.index1 != 0 ? mvfxEventFirst(e->capacity) : 0,
+        .eventCapacity = e->events.index1 != 0 ? sim->views[emitter].eventCapacity : 0,
     };
     return mvfx_success;
+}
+
+// An emitter's events buffer, or the simulation's word for one that
+// writes none.
+static mrhiBufferId EventsOf(const mvfxGpuSim* sim, const Emitter* emitter)
+{
+    return emitter->events.index1 != 0 ? emitter->events : sim->ownEvents;
+}
+
+// The numbers of an emitter's events' values over life: a record pass's
+// over its events, no field written, its workgroups striding over them.
+static void EventNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)
+{
+    Emitter* emitter = &sim->emitters[e];
+    if (emitter->events.index1 == 0)
+    {
+        return;
+    }
+    static const mvfxLayoutView none = {0};
+    mvfxGpuRecordsDef def = mvfxDefaultGpuRecordsDef();
+    def.emitter = e;
+    def.offset = 4u * mvfxEventFirst(emitter->capacity);
+    def.capacity = sim->views[e].eventCapacity;
+    mvfxRecordNumbers(&sim->views[e], plan, &none, &def, &emitter->tables, sim->srgb,
+                      emitter->eventWords);
+    uint32_t groups = ((uint32_t)def.capacity + 63u) / 64u;
+    emitter->eventWords[5] = groups < 65535u ? groups : 65535u;
+}
+
+// Imports what the pass giving an emitter's events their values over life
+// binds beside the step's buffers.
+static bool ImportEventValues(mvfxGpuSim* sim, Emitter* emitter)
+{
+    const mrhiBufferId own[4] = {emitter->eventNumbers, sim->ownCount, sim->ownSort,
+                                 sim->ownDigits};
+    bool imported = true;
+    for (int32_t b = 0; imported && b < 4; ++b)
+    {
+        imported =
+            mrhiImportBuffer(sim->device, own[b], &emitter->eventResources[b]) == mrhi_success;
+    }
+    return imported;
+}
+
+// Adds the pass giving an emitter's events their values over life, which
+// binds the records kernel's buffers: its numbers, the particles (unread),
+// the statistics, the grids, the events (as records), and the
+// simulation's words for a count and a sort.
+static bool AddEventValuesPass(mvfxGpuSim* sim, Emitter* emitter)
+{
+    const mrhiResourceId* r = emitter->resources;
+    const mrhiResourceId* o = emitter->eventResources;
+    const mrhiAccess used[8] = {{.resource = o[0], .kind = mrhi_accessUniform},
+                                {.resource = r[BUFFER_OTHER], .kind = mrhi_accessStorageRead},
+                                {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessStorageRead},
+                                {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessStorageRead},
+                                {.resource = r[BUFFER_EVENTS], .kind = mrhi_accessStorageReadWrite},
+                                {.resource = o[1], .kind = mrhi_accessStorageReadWrite},
+                                {.resource = o[2], .kind = mrhi_accessStorageReadWrite},
+                                {.resource = o[3], .kind = mrhi_accessStorageReadWrite}};
+    mrhiPassDef def = mrhiDefaultPassDef();
+    def.passClass = mrhi_passGraphics;
+    def.accesses = used;
+    def.accessCount = 8;
+    def.neverCull = true;
+    return mrhiAddPass(sim->device, &def, &emitter->passes[PASS_EVENT_VALUES]) == mrhi_success;
 }
 
 // Adds an emitter's passes: one writing the plan's bytes, one a kernel.
@@ -470,7 +459,8 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
                                                 emitter->statistics,
                                                 emitter->accepted,
                                                 emitter->blocks,
-                                                emitter->grids};
+                                                emitter->grids,
+                                                EventsOf(sim, emitter)};
     for (int32_t b = 0; b < BUFFER_COUNT; ++b)
     {
         if (mrhiImportBuffer(sim->device, buffers[b], &emitter->resources[b]) != mrhi_success)
@@ -478,12 +468,18 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
             return false;
         }
     }
+    bool events = emitter->events.index1 != 0;
+    if (events && !ImportEventValues(sim, emitter))
+    {
+        return false;
+    }
     const mrhiResourceId* r = emitter->resources;
-    const mrhiAccess written[4] = {
+    const mrhiAccess written[5] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination},
-        {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessCopyDestination}};
+        {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessCopyDestination},
+        {.resource = emitter->eventResources[0], .kind = mrhi_accessCopyDestination}};
     const mrhiAccess used[BUFFER_COUNT + 2] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessUniform},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessStorageRead},
@@ -493,14 +489,15 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = r[BUFFER_ACCEPTED], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_BLOCKS], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessStorageRead},
+        {.resource = r[BUFFER_EVENTS], .kind = mrhi_accessStorageReadWrite},
         {.resource = sim->bound[0], .kind = mrhi_accessSampled, .range = TEXTURE_RANGES[0]},
         {.resource = sim->bound[1], .kind = mrhi_accessSampled, .range = TEXTURE_RANGES[1]}};
-    for (int32_t p = 0; p < PASS_COUNT; ++p)
+    for (int32_t p = 0; p < (events ? PASS_EVENT_VALUES : PASS_EVENT_COUNT); ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
         def.passClass = p == PASS_WRITE ? mrhi_passTransfer : mrhi_passGraphics;
         def.accesses = p == PASS_WRITE ? written : used;
-        def.accessCount = p == PASS_WRITE ? 4 : BUFFER_COUNT + 2;
+        def.accessCount = p == PASS_WRITE ? (events ? 5 : 4) : BUFFER_COUNT + 2;
         // Its writes outlive the frame, read by the next step or the host.
         def.neverCull = true;
         if (mrhiAddPass(sim->device, &def, &emitter->passes[p]) != mrhi_success)
@@ -508,7 +505,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
             return false;
         }
     }
-    return true;
+    return !events || AddEventValuesPass(sim, emitter);
 }
 
 mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context, const mvfxCollider* colliders,
@@ -617,6 +614,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
                         &emitter->tables, emitter->words);
         emitter->spans = mvfxStepSpansOf(&plan);
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
+        EventNumbers(sim, e, &plan);
         emitter->plannedBirths = plan.births;
         emitter->birthCount = plan.birthCount;
         emitter->hostCount = plan.hostBirthCount;
@@ -680,7 +678,10 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
                         sizeof emitter->map) == mrhi_success &&
         (!emitter->cleared || mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS], 0, empty,
                                               sizeof empty) == mrhi_success) &&
-        mvfxWriteGrids(sim->device, pass, r[BUFFER_GRIDS], sim->context, &emitter->gridLayout);
+        mvfxWriteGrids(sim->device, pass, r[BUFFER_GRIDS], sim->context, &emitter->gridLayout) &&
+        (emitter->events.index1 == 0 ||
+         mrhiWriteBuffer(sim->device, pass, emitter->eventResources[0], 0, emitter->eventWords,
+                         sizeof emitter->eventWords) == mrhi_success);
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 
@@ -711,101 +712,38 @@ static bool RecordKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p, mvf
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 
-mvfxGpuRecordsDef mvfxDefaultGpuRecordsDef(void)
+// Records the pass giving an emitter's events their values over life.
+static bool RecordEventValues(mvfxGpuSim* sim, const Emitter* emitter)
 {
-    return (mvfxGpuRecordsDef){.cookie = MVFX_GPU_RECORDS_DEF_COOKIE};
+    mrhiPassId pass = emitter->passes[PASS_EVENT_VALUES];
+    const mrhiResourceId* r = emitter->resources;
+    const mrhiResourceId* o = emitter->eventResources;
+    const mrhiResourceId bound[8] = {
+        o[0], r[BUFFER_OTHER], r[BUFFER_STATISTICS], r[BUFFER_GRIDS], r[BUFFER_EVENTS], o[1], o[2],
+        o[3]};
+    mrhiBinding bindings[8];
+    for (int32_t b = 0; b < 8; ++b)
+    {
+        bindings[b] =
+            (mrhiBinding){.slot = (uint32_t)b, .resource = bound[b], .size = MRHI_WHOLE_SIZE};
+    }
+    bool recorded =
+        mrhiBeginPass(sim->device, pass) == mrhi_success &&
+        mrhiSetComputePipeline(sim->device, pass,
+                               mvfxGpuPipeline(sim->gpu, mvfx_kernelEventValues)) == mrhi_success &&
+        mrhiSetBindings(sim->device, pass, 0, bindings, 8) == mrhi_success &&
+        mrhiDispatch(sim->device, pass, emitter->eventWords[5], 1, 1) == mrhi_success;
+    return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 
-// Whether a records def is one a pass can be added from, past its layout.
-static bool IsRecordsDefValid(const mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
+// Records an emitter's events kernels, when it writes events.
+static bool RecordEvents(mvfxGpuSim* sim, const Emitter* emitter, uint32_t blocks)
 {
-    bool within = true;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        within = within && fabs(def->view.origin[k]) <= 0x1p52 &&
-                 fabs(def->view.eye[k]) <= 0x1p52 && isfinite(def->view.forward[k]) &&
-                 isfinite(def->view.up[k]);
-    }
-    return def->cookie == MVFX_GPU_RECORDS_DEF_COOKIE && def->emitter >= 0 &&
-           def->emitter < sim->emitterCount && def->records.index1 != 0 && def->offset % 4u == 0 &&
-           def->countOffset % 4u == 0 && def->capacity >= 0 && within;
-}
-
-// The frame's particles, statistics and grids of an emitter a record pass
-// reads: the step's of the frame, an earlier record pass's, or imported.
-static bool RecordInputs(mvfxGpuSim* sim, Emitter* emitter, mvfxRecordResources* out)
-{
-    if (emitter->added)
-    {
-        out->particles = emitter->resources[BUFFER_OTHER];
-        out->statistics = emitter->resources[BUFFER_STATISTICS];
-        out->grids = emitter->resources[BUFFER_GRIDS];
-        return true;
-    }
-    if (emitter->records.count > 0)
-    {
-        const mvfxRecordResources* earlier = &emitter->records.passes[0].resources;
-        out->particles = earlier->particles;
-        out->statistics = earlier->statistics;
-        out->grids = earlier->grids;
-        return true;
-    }
-    return mrhiImportBuffer(sim->device, emitter->particles[emitter->current], &out->particles) ==
-               mrhi_success &&
-           mrhiImportBuffer(sim->device, emitter->statistics, &out->statistics) == mrhi_success &&
-           mrhiImportBuffer(sim->device, emitter->grids, &out->grids) == mrhi_success;
-}
-
-mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
-{
-    if (sim == nullptr || def == nullptr || !IsRecordsDefValid(sim, def))
-    {
-        return mvfx_errorInvalid;
-    }
-    mvfxLayoutView layout;
-    mvfxResult result = mvfxLayout_GetView(sim->context, def->layout, &layout);
-    if (result != mvfx_success || !mvfxIsRecordLayout(&layout))
-    {
-        return result != mvfx_success ? result : mvfx_errorInvalid;
-    }
-    Emitter* emitter = &sim->emitters[def->emitter];
-    if (emitter->records.count == MVFX_GPU_RECORD_PASSES)
-    {
-        return mvfx_errorLimit;
-    }
-    mvfxEmitterPlan plan;
-    result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, &plan);
-    if (result != mvfx_success)
-    {
-        return result;
-    }
-    if (emitter->capacity == 0)
-    {
-        // No particles at the instance's quality level: a count of 0.
-        return def->count.index1 == 0 ||
-                       mvfxAddEmptyRecordPass(sim->device, &emitter->records, def->count,
-                                              (uint32_t)(def->countOffset / 4u))
-                   ? mvfx_success
-                   : mvfx_errorState;
-    }
-    mvfxRecordResources resources = {.records = def->records, .count = def->count};
-    bool sorts = emitter->sort.index1 != 0;
-    if (!RecordInputs(sim, emitter, &resources) ||
-        (def->count.index1 == 0 &&
-         mrhiImportBuffer(sim->device, sim->ownCount, &resources.count) != mrhi_success) ||
-        mrhiImportBuffer(sim->device, sorts ? emitter->sort : sim->ownSort, &resources.sort) !=
-            mrhi_success ||
-        mrhiImportBuffer(sim->device, sorts ? emitter->digits : sim->ownDigits,
-                         &resources.digits) != mrhi_success)
-    {
-        return mvfx_errorState;
-    }
-    uint32_t words[MVFX_RECORD_WORDS];
-    mvfxRecordNumbers(&sim->views[def->emitter], &plan, &layout, def, &emitter->tables, sim->srgb,
-                      words);
-    return mvfxAddRecordPass(sim->device, &emitter->records, &resources, words, def->capacity)
-               ? mvfx_success
-               : mvfx_errorState;
+    return emitter->events.index1 == 0 ||
+           (RecordKernel(sim, emitter, PASS_EVENT_COUNT, mvfx_kernelEventCount, blocks) &&
+            RecordKernel(sim, emitter, PASS_EVENT_OFFSETS, mvfx_kernelEventOffsets, 1) &&
+            RecordKernel(sim, emitter, PASS_EVENT_WRITE, mvfx_kernelEventWrite, blocks) &&
+            RecordEventValues(sim, emitter));
 }
 
 // Records an emitter's step passes, if added: the plan's writes and the
@@ -826,7 +764,8 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
                     RecordKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
                     RecordKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
                     RecordKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&
-                    RecordKernel(sim, emitter, PASS_MEASURE, mvfx_kernelMeasure, 1);
+                    RecordKernel(sim, emitter, PASS_MEASURE, mvfx_kernelMeasure, 1) &&
+                    RecordEvents(sim, emitter, blocks);
     emitter->current = recorded ? 1 - emitter->current : emitter->current;
     return recorded;
 }

@@ -45,6 +45,14 @@ typedef enum mvfxKernel
     mvfx_kernelKeys = 9,
     mvfx_kernelSortOffsets = 10,
     mvfx_kernelSortScatter = 11,
+    // An emitter's events (sim.wgsl): each block's count of each group's,
+    // their places, the events written.
+    mvfx_kernelEventCount = 12,
+    mvfx_kernelEventOffsets = 13,
+    mvfx_kernelEventWrite = 14,
+    // The events' colours and sizes with the values over life
+    // (records.wgsl).
+    mvfx_kernelEventValues = 15,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

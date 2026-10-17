@@ -32,7 +32,13 @@
 #include <string.h>
 #include <time.h>
 
-#define WAIT_NS 60000000000ull
+// The longest a frame is waited for: a device's first frame may compile
+// the kernels it dispatches (lavapipe does, without its shader cache, a
+// minute on a loaded machine).
+#define WAIT_NS 300000000000ull
+
+// The ticks a step of the run takes.
+static int64_t s_stepTicks = STEP_TICKS;
 
 static bool Open(Gpu* gpu)
 {
@@ -639,6 +645,144 @@ static bool ReadRecords(Gpu* gpu)
            taken == RECORD_BYTES && counted == sizeof s_gpuCount;
 }
 
+// A run's emitters' events read back from the GPU (each emitter's, as
+// its particles are, after its step), and the CPU path's count of those
+// dropped by the steps before.
+#define MOST_EVENTS 4096
+static uint32_t s_eventWords[MOST_EVENTS * MVFX_GPU_EVENT_WORDS];
+static uint64_t s_dropped[MVFX_MAX_EMITTERS];
+// The CPU path's events over the run.
+static uint64_t s_events;
+
+// Reads an emitter's events back, when it writes any.
+static bool ReadEvents(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
+{
+    mvfxGpuParticles particles;
+    if (mvfxGpuSim_GetParticles(sim, emitter, &particles) != mvfx_success ||
+        particles.eventCapacity > MOST_EVENTS)
+    {
+        return false;
+    }
+    if (particles.events.index1 == 0)
+    {
+        return true;
+    }
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    mrhiResourceId buffer = {0};
+    mrhiPassId pass = {0};
+    mrhiRequestId read = {0};
+    uint64_t bytes = (uint64_t)particles.eventCapacity * MVFX_GPU_EVENT_WORDS * sizeof(uint32_t);
+    if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+    {
+        return false;
+    }
+    bool recorded = mrhiImportBuffer(gpu->device, particles.events, &buffer) == mrhi_success;
+    const mrhiAccess reading[1] = {{.resource = buffer, .kind = mrhi_accessCopySource}};
+    mrhiPassDef def = mrhiDefaultPassDef();
+    def.passClass = mrhi_passTransfer;
+    def.accesses = reading;
+    def.accessCount = 1;
+    def.neverCull = true;
+    recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+               mrhiCompileFrame(gpu->device) == mrhi_success &&
+               mrhiBeginPass(gpu->device, pass) == mrhi_success &&
+               mrhiReadBuffer(gpu->device, pass, buffer, 4u * (uint64_t)particles.eventFirst, bytes,
+                              &read) == mrhi_success &&
+               mrhiEndPass(gpu->device, pass) == mrhi_success;
+    if (!recorded)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        return false;
+    }
+    size_t taken = 0;
+    return Finish(gpu) &&
+           mrhiTakeReadback(gpu->device, read, s_eventWords, sizeof s_eventWords, &taken) ==
+               mrhi_success &&
+           taken == bytes;
+}
+
+// Whether two floats agree within the run's tolerance, relative to the
+// CPU path's.
+static bool Near(float gpu, float cpu)
+{
+    return fabsf(gpu - cpu) <= s_tolerance * (1.0f + fabsf(cpu));
+}
+
+// Whether an event the GPU wrote (its words) is the CPU path's: words
+// equal, a collision's tick within a thousandth of the step's ticks (at
+// least one: its share of the move is a float of the GPU's, and a short
+// move's share is the least sure), the rest within the tolerance, the
+// place from the plan's anchor after.
+static bool SameEvent(const uint32_t* w, const mvfxEvent* cpu, const double anchor[3])
+{
+    uint64_t tick = ((uint64_t)w[3] << 32u) | w[2];
+    int64_t apart = (int64_t)tick - cpu->tick;
+    bool same = (w[0] & 0xFFu) == cpu->kind && ((w[0] >> 8u) != 0) == cpu->killed &&
+                w[1] == cpu->serial &&
+                (apart == 0 ||
+                 (cpu->kind == mvfx_eventCollision && llabs(apart) <= 1 + s_stepTicks / 1000));
+    float values[20];
+    memcpy(values, w + 4, sizeof values);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double place = anchor[k] + (double)values[k];
+        same = same && fabs(place - cpu->place[k]) <= (double)s_tolerance * (1.0 + fabs(place)) &&
+               Near(values[3 + k], cpu->velocity[k]) && Near(values[6 + k], cpu->normal[k]) &&
+               Near(values[13 + k], cpu->size[k]);
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && Near(values[9 + k], cpu->color[k]);
+    }
+    return same;
+}
+
+// An emitter's events of the step on the GPU against the CPU path's: as
+// many, as many dropped, each alike in the same order.
+static bool SameEvents(int32_t emitter)
+{
+    const mvfxEvent* events = NULL;
+    int32_t count = 0;
+    mvfxEmitterStats stats;
+    mvfxEmitterPlan plan;
+    if (mvfxInstance_GetEvents(s_context, s_cpu, emitter, &events, &count) != mvfx_success ||
+        mvfxInstance_GetEmitterStats(s_context, s_cpu, emitter, &stats) != mvfx_success ||
+        mvfxInstance_GetEmitterPlan(s_context, s_planned, emitter, &plan) != mvfx_success)
+    {
+        return false;
+    }
+    uint64_t dropped = stats.eventsDropped - s_dropped[emitter];
+    s_dropped[emitter] = stats.eventsDropped;
+    s_events += count;
+    bool same = (int32_t)s_record[MVFX_GPU_EVENTS_WRITTEN] == count &&
+                s_record[MVFX_GPU_EVENTS_WRITTEN + 1] == dropped;
+    for (int32_t e = 0; same && e < count; ++e)
+    {
+        same = SameEvent(s_eventWords + e * MVFX_GPU_EVENT_WORDS, &events[e], plan.anchorAfter);
+        if (!same)
+        {
+            const uint32_t* w = s_eventWords + e * MVFX_GPU_EVENT_WORDS;
+            float place[3];
+            memcpy(place, w + 4, sizeof place);
+            printf("event %d of %d differs: GPU kind %u killed %u serial %u tick %llu place "
+                   "(%g %g %g); CPU kind %u killed %d serial %u tick %lld place (%g %g %g)\n",
+                   e, count, w[0] & 0xFFu, w[0] >> 8u, w[1],
+                   (unsigned long long)(((uint64_t)w[3] << 32u) | w[2]),
+                   plan.anchorAfter[0] + (double)place[0], plan.anchorAfter[1] + (double)place[1],
+                   plan.anchorAfter[2] + (double)place[2], events[e].kind, events[e].killed,
+                   events[e].serial, (long long)events[e].tick, events[e].place[0],
+                   events[e].place[1], events[e].place[2]);
+        }
+    }
+    if (!same)
+    {
+        printf("events: GPU %u (dropped %u), CPU %d (dropped %llu)\n",
+               s_record[MVFX_GPU_EVENTS_WRITTEN], s_record[MVFX_GPU_EVENTS_WRITTEN + 1], count,
+               (unsigned long long)dropped);
+    }
+    return same;
+}
+
 // The records' bytes a field's component takes, and its value decoded; a
 // word for uint32.
 static uint32_t FieldBytes(mvfxFormat format)
@@ -933,9 +1077,6 @@ mvfxEmitterDef Sprite(void)
     return emitter;
 }
 
-// The ticks a step of the run takes.
-static int64_t s_stepTicks = STEP_TICKS;
-
 // Queues a run's host particles for both instances at step s: a little
 // further each step, about the instance's origin for a world-space
 // emitter.
@@ -1124,6 +1265,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_placeError = 0.0f;
     s_velocityError = 0.0f;
     s_contacts = 0;
+    s_events = 0;
+    memset(s_dropped, 0, sizeof s_dropped);
     if (run->hostColliders != NULL)
     {
         SetHostColliders(run->hostColliders, run->hostColliderCount);
@@ -1153,7 +1296,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     {
         PlaceFar();
     }
-    for (int32_t s = 0; same && s < steps; ++s)
+    int32_t s = 0;
+    for (; same && s < steps; ++s)
     {
         if (run->moving)
         {
@@ -1177,17 +1321,36 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         }
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         same = Simulate(gpu, sim);
+        if (!same)
+        {
+            printf("step %d: the simulation was not recorded and finished\n", s);
+        }
         for (int32_t e = 0; same && e < run->emitterCount; ++e)
         {
-            same = ReadBack(gpu, sim, e) && SameAsCpu(mvfxContextInstance(s_context, s_cpu), e) &&
-                   SameBounds(sim, e);
+            if (!ReadBack(gpu, sim, e))
+            {
+                printf("step %d: emitter %d not read back\n", s, e);
+                same = false;
+                break;
+            }
+            same = SameAsCpu(mvfxContextInstance(s_context, s_cpu), e) && SameBounds(sim, e) &&
+                   (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e)));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
         same = same && (run->layout == NULL || (ReadRecords(gpu) && SameRecords()));
     }
+    if (!same)
+    {
+        printf("  differs at step %d\n", s - 1);
+    }
     printf("%s: largest relative differences, place %g, velocity %g, bounds %g\n", what,
            (double)s_placeError, (double)s_velocityError, s_boundsError);
-    CHECK(same && most[0] >= (run->least > 0 ? run->least : 100) &&
+    bool eventful = run->emitters[0].events != 0;
+    if (eventful)
+    {
+        printf("  events: %llu\n", (unsigned long long)s_events);
+    }
+    CHECK(same && (!eventful || s_events > 0) && most[0] >= (run->least > 0 ? run->least : 100) &&
               (run->emitterCount < 2 || most[1] > 64),
           what);
     if (run->colliding)

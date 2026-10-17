@@ -93,6 +93,14 @@ typedef struct mvfxStepTables
 // An emitter's values over life records read, in the kernel's order.
 void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECORD_LIVES]);
 
+// An emitter's events buffer (sim.wgsl's events): EVENT_FACTS words a
+// particle of its capacity, four a block of its scan, then its events,
+// MVFX_EVENT_WORDS each; the events' first word, and the words in all.
+#define MVFX_EVENT_FACTS 9u
+#define MVFX_EVENT_WORDS 24u
+uint32_t mvfxEventFirst(int32_t capacity);
+uint64_t mvfxEventBufferWords(int32_t capacity, int32_t eventCapacity);
+
 // The words of a record pass's numbers (records.wgsl's Records).
 #define MVFX_RECORD_WORDS 488
 

@@ -675,3 +675,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   The GPU part writes records youngest first, and back to front or front
   to back by distance or depth through a radix sort of its own, its keys
   within units in the last place of the CPU path's.
+- The emitter view gives the events an emitter writes and their capacity
+  (`events`, `eventCapacity`). The GPU part writes births, deaths by age
+  and by kills, and collisions in the CPU path's order, bounded and
+  counted, with colours and sizes over life; `mvfxGpuParticles` gives an
+  emitter's events buffer (`events`, `eventFirst`, `eventCapacity`,
+  `MVFX_GPU_EVENT_WORDS`), the statistics record its count and those
+  dropped (`MVFX_GPU_EVENTS_WRITTEN`), now 34 words.

@@ -205,8 +205,10 @@ struct Step {
     // and the scale into the particles' space; the orbit's axis; its
     // center; the radial center.
     modules: array<vec4<f32>, 4>,
-    // The kill rules' count, unused; the rules.
-    killHead: vec4<u32>,
+    // The kill rules' count, the events the emitter writes (a mask of
+    // EVENT_ kinds), at most how many, the events' first word in the
+    // events buffer; the rules.
+    fateHead: vec4<u32>,
     kills: array<KillRule, 8>,
     // The sources: the births' size, colour, angle, spin, orientation,
     // angular velocity, drag scale and custom values.
@@ -239,8 +241,15 @@ struct Step {
 @group(0) @binding(7) var<storage, read> grids: array<u32>;
 // The host's depth image and its normals in the view's space, when the
 // step's depth is met and they are given (else the simulation's own).
-@group(0) @binding(8) var depthImage: texture_depth_2d;
-@group(0) @binding(9) var normalImage: texture_2d<f32>;
+@group(0) @binding(9) var depthImage: texture_depth_2d;
+@group(0) @binding(10) var normalImage: texture_2d<f32>;
+// An emitter's events (a word of the simulation's for one that writes
+// none): each live particle's facts of the step, EVENT_FACTS words (the
+// flags EVENT_ENDED and EVENT_CONTACT, the first contact's share, point
+// and normal, the inverse life it met); each block of the sequence's
+// counts of the four groups' events, then their first places; the
+// events, EVENT_WORDS each.
+@group(0) @binding(8) var<storage, read_write> events: array<u32>;
 // Each block of the sequence's count of kept elements, then its first
 // place; after them (blockCount() words on), each block's box of the
 // places scatter wrote: min then max, three binary32 words each; after
@@ -852,7 +861,7 @@ fn ruleKills(rule: KillRule, start: vec3<f32>, end: vec3<f32>, v: vec3<f32>, age
 // Whether any kill rule kills a particle.
 fn killedByRules(start: vec3<f32>, end: vec3<f32>, v: vec3<f32>, age: vec2<u32>,
                  collisions: u32) -> bool {
-    for (var r = 0u; r < params.killHead.x; r++) {
+    for (var r = 0u; r < params.fateHead.x; r++) {
         if (ruleKills(params.kills[r], start, end, v, age, collisions)) {
             return true;
         }
@@ -1479,11 +1488,14 @@ fn bounce(n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
 // A move from start to place met with the colliders: the place and the
 // velocity after its contacts (at most MAX_CONTACTS), which it returns.
 fn collide(start: vec3<f32>, place: ptr<function, vec3<f32>>,
-           velocity: ptr<function, vec3<f32>>) -> u32 {
+           velocity: ptr<function, vec3<f32>>, first: ptr<function, Hit>) -> u32 {
     var s = start;
     var contacts = 0u;
     var hit: Hit;
     while (contacts < MAX_CONTACTS && firstHit(s, *place, &hit)) {
+        if (contacts == 0u) {
+            *first = hit;
+        }
         contacts += 1u;
         var rest = (*place - s) * (1.0 - hit.t);
         *velocity = bounce(hit.normal, *velocity);
@@ -1534,17 +1546,25 @@ struct Fate {
     killed: bool,
     inverseLife: f32,
     death: vec2<u32>,
+    // Whether its contacts make an event (none when leaving the view
+    // kills it), the first of them.
+    contacted: bool,
+    first: Hit,
 }
 
 // A move from start met with the colliders, for a particle born at birth
 // with inverse life inverse, dying at death.
 fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>,
         birth: vec2<u32>, inverse: f32, death: vec2<u32>) -> Fate {
-    var fate = Fate(0u, false, inverse, death);
+    var fate = Fate(0u, false, inverse, death, false, Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0)));
     if (params.collisionHead.z == 0u) {
         return fate;
     }
-    fate.contacts = collide(start, place, velocity);
+    // Through a variable of its own: naga's SPIR-V of a pointer to a
+    // struct member passed on fails.
+    var first = Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0));
+    fate.contacts = collide(start, place, velocity, &first);
+    fate.first = first;
     var seen: Projected;
     if (params.depth.modes.y != 0u && !project(*place, &seen)) {
         // Out of the view, where leaving it kills.
@@ -1554,6 +1574,7 @@ fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<functio
     if (fate.contacts == 0u) {
         return fate;
     }
+    fate.contacted = true;
     if (params.collisionHead.y != 0u) {
         fate.killed = true;
         return fate;
@@ -1569,6 +1590,29 @@ fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<functio
     return fate;
 }
 
+// The words of a live particle's facts in the events buffer, and its
+// flags: its life ended within the plan; its contacts make an event.
+const EVENT_FACTS: u32 = 9u;
+const EVENT_ENDED: u32 = 1u;
+const EVENT_CONTACT: u32 = 2u;
+
+// Notes a live particle's facts of the step for its events, when the
+// emitter writes any: its flags, its first contact, the inverse life it
+// met it with.
+fn noteFacts(i: u32, flags: u32, first: Hit, inverse: f32) {
+    if (params.fateHead.y == 0u) {
+        return;
+    }
+    let at = EVENT_FACTS * i;
+    events[at] = flags;
+    events[at + 1u] = bitcast<u32>(first.t);
+    for (var k = 0u; k < 3u; k++) {
+        events[at + 2u + k] = bitcast<u32>(first.point[k]);
+        events[at + 5u + k] = bitcast<u32>(first.normal[k]);
+    }
+    events[at + 8u] = bitcast<u32>(inverse);
+}
+
 // Update: each live particle moved, the workgroups (at most a dispatch's
 // along one axis) striding over them.
 @compute @workgroup_size(64, 1, 1)
@@ -1580,9 +1624,16 @@ fn update(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 // A live particle shifted with the anchor and moved over the plan; whether
-// it outlives the plan.
+// it outlives the plan. One whose life ends within the plan is taken out
+// unmoved, as the CPU path takes the ended out before the moves: it dies
+// where the step found it.
 fn moveLive(i: u32) {
     let c = params.counts.x;
+    if (!outlives(source[params.words.death * c + i], source[(params.words.death + 1u) * c + i])) {
+        source[params.words.alive * c + i] = 0u;
+        noteFacts(i, EVENT_ENDED, Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0)), 0.0);
+        return;
+    }
     let start = readVector(0u, i, params.words.place) + params.shift.xyz;
     var a = vec3<f32>(0.0);
     var wind = 0.0;
@@ -1601,6 +1652,7 @@ fn moveLive(i: u32) {
     var p = moveByModules(start, start + v0 * f.y + a * f.z, age, seconds);
     var v = v0 * f.x + a * f.y;
     let fate = meet(start, &p, &v, birth, inverseLife, death);
+    noteFacts(i, select(0u, EVENT_CONTACT, fate.contacted), fate.first, inverseLife);
     for (var k = 0u; k < 3u; k++) {
         source[(params.words.place + k) * c + i] = bitcast<u32>(p[k]);
         source[(params.words.velocity + k) * c + i] = bitcast<u32>(v[k]);
@@ -1658,7 +1710,7 @@ fn keepAt(i: u32, live: u32) -> u32 {
     }
     let b0 = births[3u * j];
     let b1 = births[3u * j + 1u];
-    return select(0u, 1u, accepted[j] == 1u && (b1.x > 0u || b0.w > params.counts.z));
+    return select(0u, 1u, (accepted[j] & 3u) == 1u && (b1.x > 0u || b0.w > params.counts.z));
 }
 
 // The workgroups of the reduce and scatter entries: the sequence is at
@@ -1742,6 +1794,15 @@ fn birthTicks(b0: vec4<u32>, b1: vec4<u32>, birth: ptr<function, vec2<u32>>,
 // place and velocity then, and its fate, killed too when an attractor
 // kills it on the way.
 fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
+    var born = vec3<f32>(0.0);
+    var bornVelocity = vec3<f32>(0.0);
+    return bornFacts(j, &born, &bornVelocity, place, velocity);
+}
+
+// bornAt with the birth's place and velocity at its tick, before its
+// move, as its birth event gives them.
+fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function, vec3<f32>>,
+             place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
     let b0 = births[3u * j];
     let b1 = births[3u * j + 1u];
     var normal = vec3<f32>(0.0);
@@ -1763,6 +1824,8 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
         p = origin + rotate(rotation, drawn * scale);
         v = rotate(rotation, v * scale) + params.shift.w * params.instanceVelocity.xyz;
     }
+    *born = p;
+    *bornVelocity = v;
     var a = vec3<f32>(0.0);
     var wind = 0.0;
     forcesAt(p, f32(b0.z) / TICKS_PER_SECOND, &a, &wind);
@@ -2018,10 +2081,10 @@ fn storeValues(j: u32, at: u32) {
     let age = bitcast<f32>(births[3u * j + 2u].x);
     let w = params.words;
     if (w.size != NONE) {
-        storeValue(w.size, 3u, at, drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, b0.x, b0.y)));
+        storeValue(w.size, 3u, at, vec4<f32>(bornSize(j), 0.0));
     }
     if (w.color != NONE) {
-        storeValue(w.color, 4u, at, drawVector(SOURCE_COLOR, age, draw(COLOR_SALT, b0.x, b0.y)));
+        storeValue(w.color, 4u, at, bornColor(j));
     }
     if (w.frame != NONE) {
         moved[w.frame * c + at] = drawIndex(params.draws[0], FRAME_SALT, b0.x, b0.y);
@@ -2042,18 +2105,6 @@ fn storeValues(j: u32, at: u32) {
     if (w.drag != NONE) {
         moved[w.drag * c + at] = bitcast<u32>(dragScaleOf(j));
     }
-    // A host's particle's colour and size as it gives them.
-    let host = births[3u * j + 2u].y;
-    if (host != NONE) {
-        let record = hostBirthAt(host);
-        let given = bitcast<u32>(record.place.w);
-        if ((given & HOST_GIVES_COLOR) != 0u) {
-            storeValue(w.color, 4u, at, record.color);
-        }
-        if ((given & HOST_GIVES_SIZE) != 0u) {
-            storeValue(w.size, 3u, at, record.size);
-        }
-    }
     for (var i = 0u; i < 8u; i++) {
         let first = w.custom[i / 4u][i % 4u];
         if (first != NONE) {
@@ -2064,15 +2115,51 @@ fn storeValues(j: u32, at: u32) {
     }
 }
 
+// A birth's colour (ones where the emitter stores none): drawn, or a host
+// particle's as it gives it.
+fn bornColor(j: u32) -> vec4<f32> {
+    if (params.words.color == NONE) {
+        return vec4<f32>(1.0);
+    }
+    let host = births[3u * j + 2u].y;
+    if (host != NONE) {
+        let record = hostBirthAt(host);
+        if ((bitcast<u32>(record.place.w) & HOST_GIVES_COLOR) != 0u) {
+            return record.color;
+        }
+    }
+    let b0 = births[3u * j];
+    let age = bitcast<f32>(births[3u * j + 2u].x);
+    return drawVector(SOURCE_COLOR, age, draw(COLOR_SALT, b0.x, b0.y));
+}
+
+// A birth's size (ones where the emitter stores none), as its colour.
+fn bornSize(j: u32) -> vec3<f32> {
+    if (params.words.size == NONE) {
+        return vec3<f32>(1.0);
+    }
+    let host = births[3u * j + 2u].y;
+    if (host != NONE) {
+        let record = hostBirthAt(host);
+        if ((bitcast<u32>(record.place.w) & HOST_GIVES_SIZE) != 0u) {
+            return record.size.xyz;
+        }
+    }
+    let b0 = births[3u * j];
+    let age = bitcast<f32>(births[3u * j + 2u].x);
+    return drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, b0.x, b0.y)).xyz;
+}
+
 // Kill births: each birth with room killed on its way to the plan's end
 // (a kill rule, an attractor's kill radius, a contact that kills, a
 // contact's life loss that ends its life within the plan) loses its
 // room's mark (2), so the scan keeps it not; it held its room for the
-// step, as a killed particle does until the step's end. The workgroups
-// stride over the births as update's over the particles.
+// step, as a killed particle does until the step's end. One whose
+// contacts make an event is marked so too. The workgroups stride over
+// the births as update's over the particles.
 @compute @workgroup_size(64, 1, 1)
 fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (params.forceHead.y == 0u && params.collisionHead.z == 0u && params.killHead.x == 0u) {
+    if (params.forceHead.y == 0u && params.collisionHead.z == 0u && params.fateHead.x == 0u) {
         return;
     }
     for (var j = id.x; j < params.counts.y; j += params.modes.z * 64u) {
@@ -2082,11 +2169,18 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         var p = vec3<f32>(0.0);
         var v = vec3<f32>(0.0);
         let fate = bornAt(j, &p, &v);
+        var mark = 1u;
         if (fate.killed || !outlives(fate.death.x, fate.death.y)) {
-            accepted[j] = 2u;
+            mark = 2u;
         }
+        // Its contacts make an event (BIRTH_CONTACT), for the events'
+        // count.
+        accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted);
     }
 }
+
+// A birth's mark beside its room's: its contacts make an event.
+const BIRTH_CONTACT: u32 = 4u;
 
 // The box around a box and a place, by comparisons that pass a NaN over.
 fn lowerOf(low: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
@@ -2296,5 +2390,350 @@ fn room(@builtin(local_invocation_index) local: u32) {
         }
         storageBarrier();
         workgroupBarrier();
+    }
+}
+
+// Events: what the step's particles did, written in the CPU path's order
+// (ended deaths, the live particles' collisions, the births with their
+// birth and collision events, the killed), at most the emitter's capacity
+// of them, the rest dropped. Each element of the step's sequence (live
+// particles, then births) counts its events in four groups; a scan of
+// each group gives an event's place after the groups before it.
+const EVENT_BIRTH: u32 = 0u;
+const EVENT_DEATH: u32 = 1u;
+const EVENT_COLLISION: u32 = 2u;
+// An event's words: kind | killed << 8, serial, tick (two words), place
+// (an offset from the plan's anchor after, in the world), velocity,
+// normal, colour, size; then the particle's birth tick (two words),
+// inverse life and speed in the particles' space, for the values over
+// life the records kernel applies.
+const EVENT_WORDS: u32 = 24u;
+
+fn writes(kind: u32) -> bool {
+    return (params.fateHead.y & (1u << kind)) != 0u;
+}
+
+// Where the blocks' counts of the four groups are in the events buffer.
+fn eventBlocks() -> u32 {
+    return EVENT_FACTS * params.counts.x;
+}
+
+// Whether birth j joins the particles: it had room and outlives the plan
+// unmet (it may be killed on its way).
+fn appended(j: u32) -> bool {
+    let mark = accepted[j] & 3u;
+    let b0 = births[3u * j];
+    let b1 = births[3u * j + 1u];
+    return (mark == 1u || mark == 2u) && (b1.x > 0u || b0.w > params.counts.z);
+}
+
+// Element e's events in each group, of live particles alive at the
+// step's start: ended deaths; collisions; births and their collisions;
+// kills.
+fn eventCounts(e: u32, live: u32) -> vec4<u32> {
+    var g = vec4<u32>(0u);
+    let c = params.counts.x;
+    if (e < live) {
+        let flags = events[EVENT_FACTS * e];
+        if ((flags & EVENT_ENDED) != 0u) {
+            g.x = select(0u, 1u, writes(EVENT_DEATH));
+            return g;
+        }
+        g.y = select(0u, 1u, writes(EVENT_COLLISION) && (flags & EVENT_CONTACT) != 0u);
+        g.w = select(0u, 1u, writes(EVENT_DEATH) && source[params.words.alive * c + e] == 0u);
+        return g;
+    }
+    let j = e - live;
+    if (j >= params.counts.y || !appended(j)) {
+        return g;
+    }
+    let mark = accepted[j];
+    g.z = select(0u, 1u, writes(EVENT_BIRTH)) +
+          select(0u, 1u, writes(EVENT_COLLISION) && (mark & BIRTH_CONTACT) != 0u);
+    g.w = select(0u, 1u, writes(EVENT_DEATH) && (mark & 3u) == 2u);
+    return g;
+}
+
+// Event count: each block's events in each group.
+@compute @workgroup_size(256, 1, 1)
+fn eventCount(@builtin(local_invocation_index) local: u32,
+              @builtin(workgroup_id) group: vec3<u32>) {
+    if (params.fateHead.y == 0u) {
+        return;
+    }
+    let live = counts[1];
+    let first = group.x * BLOCK + local * ITEMS;
+    var mine = vec4<u32>(0u);
+    for (var k = 0u; k < ITEMS; k++) {
+        mine += eventCounts(first + k, live);
+    }
+    for (var g = 0u; g < 4u; g++) {
+        let before = exclusiveScan(local, mine[g]);
+        if (local == CHUNK - 1u) {
+            events[eventBlocks() + 4u * group.x + g] = before + mine[g];
+        }
+    }
+}
+
+// Event offsets, in one workgroup: each group's blocks' counts made each
+// block's first place in the group, in order; the groups' first places
+// (statistics words 30 to 33), the events written (word 28, at most the
+// capacity) and those dropped (word 29).
+@compute @workgroup_size(256, 1, 1)
+fn eventOffsets(@builtin(local_invocation_index) local: u32) {
+    if (params.fateHead.y == 0u) {
+        return;
+    }
+    let n = blockCount();
+    var base = 0u;
+    for (var g = 0u; g < 4u; g++) {
+        if (local == 0u) {
+            carried = 0u;
+        }
+        workgroupBarrier();
+        for (var start = 0u; start < n; start += CHUNK) {
+            let k = start + local;
+            var count = 0u;
+            if (k < n) {
+                count = events[eventBlocks() + 4u * k + g];
+            }
+            let before = exclusiveScan(local, count);
+            if (k < n) {
+                events[eventBlocks() + 4u * k + g] = carried + before;
+            }
+            workgroupBarrier();
+            if (local == CHUNK - 1u) {
+                carried += before + count;
+            }
+            workgroupBarrier();
+        }
+        if (local == 0u) {
+            counts[30u + g] = base;
+        }
+        base += workgroupUniformLoad(&carried);
+    }
+    if (local == 0u) {
+        let written = min(base, params.fateHead.z);
+        counts[28] = written;
+        counts[29] = base - written;
+    }
+}
+
+// A place, velocity or normal of the particles' space at a tick of the
+// plan in the world, from the plan's anchor after: a world-space
+// emitter's as they are, a local one's by the instance's place then.
+fn worldPlace(p: vec3<f32>, tick: u32) -> vec3<f32> {
+    if (params.start.w == 0u) {
+        return p;
+    }
+    var origin = vec3<f32>(0.0);
+    var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    let scale = placeAt(tick, &origin, &rotation);
+    return origin + rotate(rotation, p * scale);
+}
+
+fn worldVector(v: vec3<f32>, tick: u32) -> vec3<f32> {
+    if (params.start.w == 0u) {
+        return v;
+    }
+    var origin = vec3<f32>(0.0);
+    var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    let scale = placeAt(tick, &origin, &rotation);
+    return rotate(rotation, v * scale);
+}
+
+// A plan's tick as the instance's (two words).
+fn planTick(tick: u32) -> vec2<u32> {
+    let low = params.start.x + tick;
+    return vec2<u32>(low, params.start.y + select(0u, 1u, low < params.start.x));
+}
+
+// The tick of a contact at a share t of a move from a tick of the plan
+// over ticks of it, rounded half up, as the CPU path's.
+fn contactTick(start: u32, ticks: u32, t: f32) -> u32 {
+    return start + u32(floor(t * f32(ticks) + 0.5));
+}
+
+// What an event says, in the particles' space, its ticks the plan's: when
+// it happened, and the tick whose place of the instance maps it into the
+// world (an ended death's the step's start).
+struct Event {
+    kind: u32,
+    killed: bool,
+    serial: u32,
+    tick: u32,
+    placeTick: u32,
+    place: vec3<f32>,
+    velocity: vec3<f32>,
+    normal: vec3<f32>,
+    color: vec4<f32>,
+    size: vec3<f32>,
+    birth: vec2<u32>,
+    inverseLife: f32,
+}
+
+// Writes an event at its place, in the world, unless past the capacity.
+fn writeEvent(at: u32, e: Event) {
+    if (at >= params.fateHead.z) {
+        return;
+    }
+    let w = params.fateHead.w + EVENT_WORDS * at;
+    let tick = planTick(e.tick);
+    let place = worldPlace(e.place, e.placeTick);
+    let velocity = worldVector(e.velocity, e.placeTick);
+    var normal = vec3<f32>(0.0);
+    if (dot3(e.normal, e.normal) > 0.0) {
+        normal = normalize(worldVector(e.normal, e.placeTick));
+    }
+    events[w] = e.kind | (select(0u, 1u, e.killed) << 8u);
+    events[w + 1u] = e.serial;
+    events[w + 2u] = tick.x;
+    events[w + 3u] = tick.y;
+    for (var k = 0u; k < 3u; k++) {
+        events[w + 4u + k] = bitcast<u32>(place[k]);
+        events[w + 7u + k] = bitcast<u32>(velocity[k]);
+        events[w + 10u + k] = bitcast<u32>(normal[k]);
+        events[w + 17u + k] = bitcast<u32>(e.size[k]);
+    }
+    for (var k = 0u; k < 4u; k++) {
+        events[w + 13u + k] = bitcast<u32>(e.color[k]);
+    }
+    let v = e.velocity;
+    events[w + 20u] = e.birth.x;
+    events[w + 21u] = e.birth.y;
+    events[w + 22u] = bitcast<u32>(e.inverseLife);
+    events[w + 23u] = bitcast<u32>(sqrt(v.x * v.x + v.y * v.y + v.z * v.z));
+}
+
+// A live particle's stored vector of n components, ones where the
+// emitter stores none.
+fn liveStored(first: u32, i: u32, n: u32) -> vec4<f32> {
+    var out = vec4<f32>(1.0);
+    for (var k = 0u; first != NONE && k < n; k++) {
+        out[k] = bitcast<f32>(source[(first + k) * params.counts.x + i]);
+    }
+    return out;
+}
+
+// Live particle i's event of a kind, its place and velocity as given.
+fn liveEvent(i: u32, kind: u32, tick: u32, place: vec3<f32>, velocity: vec3<f32>) -> Event {
+    let c = params.counts.x;
+    let w = params.words;
+    return Event(kind, false, source[w.serial * c + i], tick, tick, place, velocity, vec3<f32>(0.0),
+                 liveStored(w.color, i, 4u), liveStored(w.size, i, 3u).xyz,
+                 vec2<u32>(source[w.birth * c + i], source[(w.birth + 1u) * c + i]),
+                 bitcast<f32>(source[w.inverseLife * c + i]));
+}
+
+// Live particle i's events of its groups, at their places.
+fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
+    let c = params.counts.x;
+    let w = params.words;
+    let place = readVector(0u, i, w.place);
+    let velocity = readVector(0u, i, w.velocity);
+    if (g.x > 0u) {
+        // Ended: where the step found it, at its death tick.
+        var e = liveEvent(i, EVENT_DEATH, 0u, place + params.shift.xyz, velocity);
+        e.tick = source[w.death * c + i] - params.start.x;
+        writeEvent((*at).x, e);
+        (*at).x += 1u;
+        return;
+    }
+    if (g.y > 0u) {
+        let facts = EVENT_FACTS * i;
+        let t = bitcast<f32>(events[facts + 1u]);
+        var point = vec3<f32>(0.0);
+        var normal = vec3<f32>(0.0);
+        for (var k = 0u; k < 3u; k++) {
+            point[k] = bitcast<f32>(events[facts + 2u + k]);
+            normal[k] = bitcast<f32>(events[facts + 5u + k]);
+        }
+        var e = liveEvent(i, EVENT_COLLISION, contactTick(0u, params.counts.z, t), point, velocity);
+        e.normal = normal;
+        e.inverseLife = bitcast<f32>(events[facts + 8u]);
+        writeEvent((*at).y, e);
+        (*at).y += 1u;
+    }
+    if (g.w > 0u) {
+        var e = liveEvent(i, EVENT_DEATH, params.counts.z, place, velocity);
+        e.killed = true;
+        writeEvent((*at).w, e);
+        (*at).w += 1u;
+    }
+}
+
+// Birth j's events of its groups, at their places.
+fn writeBirthEvents(j: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
+    let b0 = births[3u * j];
+    let b1 = births[3u * j + 1u];
+    var born = vec3<f32>(0.0);
+    var bornVelocity = vec3<f32>(0.0);
+    var place = vec3<f32>(0.0);
+    var velocity = vec3<f32>(0.0);
+    let fate = bornFacts(j, &born, &bornVelocity, &place, &velocity);
+    var birth = vec2<u32>(0u);
+    var death = vec2<u32>(0u);
+    birthTicks(b0, b1, &birth, &death);
+    var e = Event(EVENT_BIRTH, false, b0.x, b0.z, b0.z, born, bornVelocity, vec3<f32>(0.0),
+                  bornColor(j), bornSize(j), birth, bitcast<f32>(b1.y));
+    if (writes(EVENT_BIRTH)) {
+        writeEvent((*at).z, e);
+        (*at).z += 1u;
+    }
+    if (writes(EVENT_COLLISION) && (accepted[j] & BIRTH_CONTACT) != 0u) {
+        e.kind = EVENT_COLLISION;
+        e.tick = contactTick(b0.z, params.counts.z - b0.z, fate.first.t);
+        e.placeTick = e.tick;
+        e.place = fate.first.point;
+        e.velocity = velocity;
+        e.normal = fate.first.normal;
+        writeEvent((*at).z, e);
+        (*at).z += 1u;
+    }
+    if (g.w > 0u) {
+        e.kind = EVENT_DEATH;
+        e.killed = true;
+        e.tick = params.counts.z;
+        e.placeTick = params.counts.z;
+        e.place = place;
+        e.velocity = velocity;
+        e.normal = vec3<f32>(0.0);
+        e.inverseLife = fate.inverseLife;
+        writeEvent((*at).w, e);
+        (*at).w += 1u;
+    }
+}
+
+// Event write: each block's elements' events at their places.
+@compute @workgroup_size(256, 1, 1)
+fn eventWrite(@builtin(local_invocation_index) local: u32,
+              @builtin(workgroup_id) group: vec3<u32>) {
+    if (params.fateHead.y == 0u) {
+        return;
+    }
+    let live = counts[1];
+    let first = group.x * BLOCK + local * ITEMS;
+    var mine: array<vec4<u32>, ITEMS>;
+    var sum = vec4<u32>(0u);
+    for (var k = 0u; k < ITEMS; k++) {
+        mine[k] = eventCounts(first + k, live);
+        sum += mine[k];
+    }
+    var at = vec4<u32>(0u);
+    for (var g = 0u; g < 4u; g++) {
+        at[g] = counts[30u + g] + events[eventBlocks() + 4u * group.x + g] +
+                exclusiveScan(local, sum[g]);
+    }
+    for (var k = 0u; k < ITEMS; k++) {
+        let e = first + k;
+        let g = mine[k];
+        if (g.x + g.y + g.z + g.w == 0u) {
+            continue;
+        }
+        if (e < live) {
+            writeLiveEvents(e, g, &at);
+        } else {
+            writeBirthEvents(e - live, g, &at);
+        }
     }
 }

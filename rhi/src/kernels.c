@@ -42,6 +42,8 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSim, "measure"},     {mvfx_containerSim, "killBirths"},
     {mvfx_containerRecords, "records"}, {mvfx_containerRecords, "keys"},
     {mvfx_containerSort, "offsets"},    {mvfx_containerSort, "scatter"},
+    {mvfx_containerSim, "eventCount"},  {mvfx_containerSim, "eventOffsets"},
+    {mvfx_containerSim, "eventWrite"},  {mvfx_containerRecords, "eventValues"},
 };
 
 struct mvfxGpu

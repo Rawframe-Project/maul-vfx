@@ -259,36 +259,50 @@ fn nearestFloat(low: u32, high: u32) -> f32 {
     return bitcast<f32>(((exponent + 127u) << 23u) | (kept & 0x007FFFFFu));
 }
 
-// Particle i's age at the clock in ticks (two words).
-fn ticksOf(i: u32) -> vec2<u32> {
-    let w = params.words;
-    let low = wordAt(w.birth, i);
-    let high = wordAt(w.birth + 1u, i);
-    let borrow = select(0u, 1u, params.clock.x < low);
-    return vec2<u32>(params.clock.x - low, params.clock.y - high - borrow);
+// The age at the clock in ticks (two words) of a particle born at a
+// tick (two words).
+fn ticksSince(birth: vec2<u32>) -> vec2<u32> {
+    let borrow = select(0u, 1u, params.clock.x < birth.x);
+    return vec2<u32>(params.clock.x - birth.x, params.clock.y - birth.y - borrow);
 }
 
-// Particle i's normalized age at the clock, as the core's: its seconds
-// rounded to binary32 times its inverse life, held to [0, 1].
-fn ageOf(i: u32) -> f32 {
-    let ticks = ticksOf(i);
+fn ticksOf(i: u32) -> vec2<u32> {
+    let w = params.words;
+    return ticksSince(vec2<u32>(wordAt(w.birth, i), wordAt(w.birth + 1u, i)));
+}
+
+// A normalized age at the clock, as the core's: the seconds since birth
+// rounded to binary32 times the inverse life, held to [0, 1].
+fn ageAt(birth: vec2<u32>, inverseLife: f32) -> f32 {
+    let ticks = ticksSince(birth);
     let seconds = nearestFloat(ticks.x, ticks.y) * (1.0 / 1048576.0);
-    let age = seconds * floatAt(params.words.inverseLife, i);
+    let age = seconds * inverseLife;
     return select(min(age, 1.0), 0.0, !(age > 0.0));
+}
+
+fn ageOf(i: u32) -> f32 {
+    let w = params.words;
+    return ageAt(vec2<u32>(wordAt(w.birth, i), wordAt(w.birth + 1u, i)),
+                 floatAt(w.inverseLife, i));
+}
+
+// Particle i's speed in the particles' space.
+fn speedOf(i: u32) -> f32 {
+    let v = vectorAt(params.words.velocity, i);
+    return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
 // The input a value over life is taken at: the age, or the speed's share
 // of a range, the speed in the emitter's units.
-fn inputOf(i: u32, age: f32, input: u32, range: vec4<f32>) -> f32 {
+fn inputAt(speed: f32, age: f32, input: u32, range: vec4<f32>) -> f32 {
     if (input != INPUT_SPEED) {
         return age;
     }
-    let v = vectorAt(params.words.velocity, i);
-    var speed = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    var units = speed;
     if (params.scales.y != 1.0) {
-        speed /= params.scales.y;
+        units /= params.scales.y;
     }
-    let share = (speed - range.x) / (range.y - range.x);
+    let share = (units - range.x) / (range.y - range.x);
     return select(min(share, 1.0), 0.0, !(share > 0.0));
 }
 
@@ -302,13 +316,19 @@ fn storedOf(first: u32, i: u32, n: u32) -> vec4<f32> {
 }
 
 fn colorOf(i: u32, age: f32) -> vec4<f32> {
-    var out = storedOf(params.words.color, i, 4u);
+    return colorAt(storedOf(params.words.color, i, 4u), speedOf(i), age);
+}
+
+// A stored colour (ones for none) with the values over life at a speed
+// and an age.
+fn colorAt(stored: vec4<f32>, speed: f32, age: f32) -> vec4<f32> {
+    var out = stored;
     let c = params.color;
     if (c.x == 0u) {
         return out;
     }
     if (c.z != NONE) {
-        out *= gradientAt(c.z, inputOf(i, age, c.y, params.colorRange));
+        out *= gradientAt(c.z, inputAt(speed, age, c.y, params.colorRange));
     }
     if (c.w != 0u) {
         out.w *= lifeAt(LIFE_ALPHA, age);
@@ -317,10 +337,15 @@ fn colorOf(i: u32, age: f32) -> vec4<f32> {
 }
 
 fn sizeOf(i: u32, age: f32) -> vec3<f32> {
-    var out = storedOf(params.words.size, i, 3u).xyz;
+    return sizeAt(storedOf(params.words.size, i, 3u).xyz, speedOf(i), age);
+}
+
+// A stored size (ones for none) with the values over life, as a colour.
+fn sizeAt(stored: vec3<f32>, speed: f32, age: f32) -> vec3<f32> {
+    var out = stored;
     let s = params.size;
     if (s.x != 0u) {
-        let t = inputOf(i, age, s.y, params.sizeRange);
+        let t = inputAt(speed, age, s.y, params.sizeRange);
         let scale = lifeAt(LIFE_SIZE, t);
         for (var k = 0u; k < 3u; k++) {
             out[k] *= select(scale, lifeAt(LIFE_SIZE + k, t), s.z != 0u);
@@ -699,5 +724,39 @@ fn keys(@builtin(local_invocation_index) local: u32,
         workgroupBarrier();
         digits[local * n + b] = atomicLoad(&tally[local]);
         workgroupBarrier();
+    }
+}
+
+// An event's words in an emitter's events buffer, as sim.wgsl's.
+const EVENT_WORDS: u32 = 24u;
+
+// Event values: each of the step's events (statistics word 28) given its
+// colour and size with the values over life, at the age and speed it
+// keeps in its last words; the events from word head.z of the events
+// buffer bound for the records.
+@compute @workgroup_size(64, 1, 1)
+fn eventValues(@builtin(global_invocation_id) id: vec3<u32>) {
+    let n = statistics[28];
+    for (var e = id.x; e < n; e += params.shape.y * 64u) {
+        let w = params.head.z + EVENT_WORDS * e;
+        let age = ageAt(vec2<u32>(recordWords[w + 20u], recordWords[w + 21u]),
+                        bitcast<f32>(recordWords[w + 22u]));
+        let speed = bitcast<f32>(recordWords[w + 23u]);
+        var color = vec4<f32>(0.0);
+        var size = vec3<f32>(0.0);
+        for (var k = 0u; k < 4u; k++) {
+            color[k] = bitcast<f32>(recordWords[w + 13u + k]);
+        }
+        for (var k = 0u; k < 3u; k++) {
+            size[k] = bitcast<f32>(recordWords[w + 17u + k]);
+        }
+        color = colorAt(color, speed, age);
+        size = sizeAt(size, speed, age);
+        for (var k = 0u; k < 4u; k++) {
+            recordWords[w + 13u + k] = bitcast<u32>(color[k]);
+        }
+        for (var k = 0u; k < 3u; k++) {
+            recordWords[w + 17u + k] = bitcast<u32>(size[k]);
+        }
     }
 }

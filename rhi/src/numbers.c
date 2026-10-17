@@ -370,6 +370,16 @@ static void RecordOverLife(const mvfxEmitterView* view, const mvfxStepTables* ta
     }
 }
 
+uint32_t mvfxEventFirst(int32_t capacity)
+{
+    return MVFX_EVENT_FACTS * (uint32_t)capacity + 4u * mvfxScanBlocks(capacity);
+}
+
+uint64_t mvfxEventBufferWords(int32_t capacity, int32_t eventCapacity)
+{
+    return mvfxEventFirst(capacity) + (uint64_t)MVFX_EVENT_WORDS * (uint64_t)eventCapacity;
+}
+
 uint32_t mvfxRecordOrder(const mvfxEmitterView* view)
 {
     switch (view->sortMode)
@@ -646,5 +656,10 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Floats(at + 92, angular[0], angular[1], limit[0], 0.0f);
     Modules(&plan->modules, at + 96);
     KillRules(plan, words + MVFX_KILLS_FIRST);
+    // The events the GPU writes (births, deaths, collisions), how many, and
+    // where in the events buffer.
+    words[MVFX_KILLS_FIRST + 1] = view->events & 7u;
+    words[MVFX_KILLS_FIRST + 2] = (uint32_t)view->eventCapacity;
+    words[MVFX_KILLS_FIRST + 3] = mvfxEventFirst(plan->capacity);
     Sources(view, tables, words + MVFX_SOURCES_FIRST);
 }

@@ -1176,7 +1176,7 @@ static void TestOverLifeView(void)
     // The view's values over life are the compiled ones: a colour by a
     // gradient at the speed with alpha over life, a size an axis, a
     // flipbook, a custom value scaled and one not; without values over
-    // life, white and ones. Its order is the emitter's.
+    // life, white and ones. Its order and events are the emitter's.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1206,6 +1206,8 @@ static void TestOverLifeView(void)
         .frame = {.animation = mvfx_frameAtRate, .frameCount = 16, .frameRate = 24, .loop = true}};
     emitter.sortMode = mvfx_sortBackToFront;
     emitter.sortMeasure = mvfx_sortByDepth;
+    emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
+    emitter.eventCapacity = 77;
     mvfxEffectId effect = Effect(context, &emitter);
     mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
@@ -1218,13 +1220,16 @@ static void TestOverLifeView(void)
               o->frame.frameCount == 16 && o->frame.frameRate == 24.0f && o->frame.loop &&
               o->customScaled[0] && o->custom[0].value == 3.0f && o->custom[0].curve != NULL &&
               !o->customScaled[1] && view.sortMode == mvfx_sortBackToFront &&
-              view.sortMeasure == mvfx_sortByDepth,
-          "the view's values over life and order");
+              view.sortMeasure == mvfx_sortByDepth &&
+              view.events == (mvfx_eventMaskBirth | mvfx_eventMaskDeath) &&
+              view.eventCapacity == 77,
+          "the view's values over life, order and events");
     emitter = Emitter(64);
     effect = Effect(context, &emitter);
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               !view.overLife.color && view.overLife.gradient == NULL && !view.overLife.size &&
-              view.overLife.sizes[0].value == 0.0f && view.sortMode == mvfx_sortNone,
+              view.overLife.sizes[0].value == 0.0f && view.sortMode == mvfx_sortNone &&
+              view.events == 0 && view.eventCapacity == 0,
           "none");
     mvfxDestroyContext(context);
 }

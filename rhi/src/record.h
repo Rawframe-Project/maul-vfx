@@ -15,7 +15,9 @@
 // those past the capacity, the growth (a binary32), the box's min and
 // max (binary32 each), all the GPU's; then the space, the instance's
 // scale (binary32), the plan's anchor after and the instance's origin at
-// the plan's end (binary64 each, two words), its rotation (binary32).
+// the plan's end (binary64 each, two words), its rotation (binary32);
+// then the GPU's again: the events written and dropped, and four words of
+// its own.
 enum
 {
     MVFX_RECORD_COUNT = 0,
@@ -29,6 +31,9 @@ enum
     MVFX_RECORD_ANCHOR = 12,
     MVFX_RECORD_ORIGIN = 18,
     MVFX_RECORD_ROTATION = 24,
+    // The events written and those dropped (MVFX_GPU_EVENTS_WRITTEN), then
+    // the kernels' words.
+    MVFX_RECORD_EVENTS = 28,
     // The words the transfer pass writes, from MVFX_RECORD_SPACE on.
     MVFX_RECORD_MAP_WORDS = 18
 };

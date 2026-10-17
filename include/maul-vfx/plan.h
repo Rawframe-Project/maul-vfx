@@ -513,6 +513,10 @@ extern "C"
         // by place measures.
         mvfxSortMode sortMode;
         mvfxSortMeasure sortMeasure;
+        // The events its particles write each step (a mask of the kinds),
+        // at most eventCapacity of them (0 when it writes none).
+        uint8_t events;
+        int32_t eventCapacity;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.
