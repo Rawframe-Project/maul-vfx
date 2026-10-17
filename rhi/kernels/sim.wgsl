@@ -138,6 +138,17 @@ struct Source {
     high: vec4<f32>,
 }
 
+// A kill rule as resolved (mvfxPlannedKillRule): its kind, the
+// collisions that kill, its least age in ticks (two words); its center
+// and radius; its half sizes and speed; its rotation; its normal.
+struct KillRule {
+    modes: vec4<u32>,
+    center: vec4<f32>,
+    half: vec4<f32>,
+    rotation: vec4<f32>,
+    normal: vec4<f32>,
+}
+
 struct Step {
     // capacity, births, the plan's ticks, the instance's seed
     counts: vec4<u32>,
@@ -187,20 +198,32 @@ struct Step {
     words: Words,
     // The instance's parameters.
     parameters: array<vec4<f32>, 16>,
-    // The angular drag's factors over the plan: decay, carry; unused.
+    // The angular drag's factors over the plan: decay, carry; the speed
+    // limit's decay over the plan; unused.
     angular: vec4<f32>,
+    // The velocity modules in the particles' space: the added direction
+    // and the scale into the particles' space; the orbit's axis; its
+    // center; the radial center.
+    modules: array<vec4<f32>, 4>,
+    // The kill rules' count, unused; the rules.
+    killHead: vec4<u32>,
+    kills: array<KillRule, 8>,
     // The sources: the births' size, colour, angle, spin, orientation,
-    // angular velocity, drag scale and custom values, then the rotation
-    // speed over life.
-    sources: array<Source, 16>,
+    // angular velocity, drag scale and custom values.
+    sources: array<Source, 15>,
     // The frame's and the mesh index's draws: first, last, whether random.
     draws: array<vec4<u32>, 2>,
     // The bounds' growth by size: the most the size over life scales each
     // axis; the margin for rounding.
     growth: vec4<f32>,
-    // How particles turn: the orientation's mode, the angular drag
-    // (binary32 bits); unused.
+    // How particles turn and move: the orientation's mode, the angular
+    // drag (binary32 bits), whether the speed is limited (1) and modules
+    // move them (2), how fast the speed falls to the limit (bits).
     turns: vec4<u32>,
+    // The values over life (LIFE_ROTATION and on), two words each: the
+    // value (binary32 bits) and the baked curve's first word (NONE for
+    // none).
+    lives: array<vec4<u32>, 3>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -258,7 +281,20 @@ const SOURCE_ORIENTATION: u32 = 4u;
 const SOURCE_ANGULAR: u32 = 5u;
 const SOURCE_DRAG: u32 = 6u;
 const SOURCE_CUSTOM: u32 = 7u;
-const SOURCE_ROTATION: u32 = 15u;
+const LIFE_ROTATION: u32 = 0u;
+const LIFE_SPEED_LIMIT: u32 = 1u;
+const LIFE_MOTION_SCALE: u32 = 2u;
+const LIFE_ADDED_SPEED: u32 = 3u;
+const LIFE_RADIAL_SPEED: u32 = 4u;
+const LIFE_ORBIT_RATE: u32 = 5u;
+const LIMITS_SPEED: u32 = 1u;
+const MODULES_MOVE: u32 = 2u;
+const KILL_INSIDE_SPHERE: u32 = 0u;
+const KILL_OUTSIDE_SPHERE: u32 = 1u;
+const KILL_INSIDE_BOX: u32 = 2u;
+const KILL_OUTSIDE_BOX: u32 = 3u;
+const KILL_PAST_PLANE: u32 = 4u;
+const KILL_COLLISIONS: u32 = 6u;
 const ORIENTATION_EULER: u32 = 1u;
 const ORIENTATION_RANDOM: u32 = 2u;
 const MAX_DRAG: f32 = 1000.0;
@@ -739,9 +775,98 @@ fn forcesAt(x: vec3<f32>, seconds: f32, a: ptr<function, vec3<f32>>, drag: ptr<f
     }
 }
 
-// Whether a step from start to end passes within an attractor's kill
-// radius of its point.
-fn killed(start: vec3<f32>, end: vec3<f32>) -> bool {
+// Whether a segment passes within radius of a center: its closest point
+// to it, as the core's mvfxSegmentMeetsSphere.
+fn segmentMeetsSphere(s: vec3<f32>, e: vec3<f32>, center: vec3<f32>, radius: f32) -> bool {
+    let d = e - s;
+    let f = s - center;
+    let length = dot3(d, d);
+    var t = select(0.0, -dot3(f, d) / length, length > 0.0);
+    t = min(max(t, 0.0), 1.0);
+    let closest = f + t * d;
+    return dot3(closest, closest) <= radius * radius;
+}
+
+// A place in a kill rule's box's own frame.
+fn intoBox(rule: KillRule, place: vec3<f32>) -> vec3<f32> {
+    let q = rule.rotation;
+    return rotate(vec4<f32>(-q.xyz, q.w), place - rule.center.xyz);
+}
+
+// Whether a segment meets a kill rule's box: the slabs' overlap along it.
+fn segmentMeetsBox(rule: KillRule, s: vec3<f32>, e: vec3<f32>) -> bool {
+    let a = intoBox(rule, s);
+    let b = intoBox(rule, e);
+    var low = 0.0;
+    var high = 1.0;
+    for (var k = 0u; k < 3u; k++) {
+        let d = b[k] - a[k];
+        let h = rule.half[k];
+        if (d == 0.0) {
+            if (abs(a[k]) > h) {
+                return false;
+            }
+            continue;
+        }
+        let t1 = (-h - a[k]) / d;
+        let t2 = (h - a[k]) / d;
+        low = max(low, min(t1, t2));
+        high = min(high, max(t1, t2));
+    }
+    return low <= high;
+}
+
+// Whether a kill rule kills a particle that went from start to end and
+// ends with velocity v, age ticks old (two words) and collisions
+// contacts, as the core's.
+fn ruleKills(rule: KillRule, start: vec3<f32>, end: vec3<f32>, v: vec3<f32>, age: vec2<u32>,
+             collisions: u32) -> bool {
+    switch rule.modes.x {
+        case KILL_INSIDE_SPHERE: {
+            return segmentMeetsSphere(start, end, rule.center.xyz, rule.center.w);
+        }
+        case KILL_OUTSIDE_SPHERE: {
+            let d = end - rule.center.xyz;
+            return dot3(d, d) > rule.center.w * rule.center.w;
+        }
+        case KILL_INSIDE_BOX: {
+            return segmentMeetsBox(rule, start, end);
+        }
+        case KILL_OUTSIDE_BOX: {
+            let local = abs(intoBox(rule, end));
+            return !(local.x <= rule.half.x && local.y <= rule.half.y && local.z <= rule.half.z);
+        }
+        case KILL_PAST_PLANE: {
+            return dot3(end - rule.center.xyz, rule.normal.xyz) > 0.0;
+        }
+        case KILL_COLLISIONS: {
+            return collisions >= rule.modes.y;
+        }
+        default: {
+            let old = age.y > rule.modes.w || (age.y == rule.modes.w && age.x >= rule.modes.z);
+            return old && dot3(v, v) < rule.half.w * rule.half.w;
+        }
+    }
+}
+
+// Whether any kill rule kills a particle.
+fn killedByRules(start: vec3<f32>, end: vec3<f32>, v: vec3<f32>, age: vec2<u32>,
+                 collisions: u32) -> bool {
+    for (var r = 0u; r < params.killHead.x; r++) {
+        if (ruleKills(params.kills[r], start, end, v, age, collisions)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Whether a step from start to end is killed: by a kill rule (with the
+// particle's velocity, age in ticks and contacts at its end), or by
+// passing within an attractor's kill radius of its point.
+fn killed(start: vec3<f32>, end: vec3<f32>, v: vec3<f32>, age: vec2<u32>, collisions: u32) -> bool {
+    if (killedByRules(start, end, v, age, collisions)) {
+        return true;
+    }
     if (params.forceHead.y == 0u) {
         return false;
     }
@@ -1466,30 +1591,38 @@ fn moveLive(i: u32) {
     if (params.words.drag != NONE) {
         scale = bitcast<f32>(source[params.words.drag * c + i]);
     }
-    let f = factorsFor(wind, scale, f32(params.counts.z) / TICKS_PER_SECOND, true);
-    let v0 = readVector(0u, i, params.words.velocity);
-    var p = start + v0 * f.y + a * f.z;
-    var v = v0 * f.x + a * f.y;
+    let seconds = f32(params.counts.z) / TICKS_PER_SECOND;
+    let f = factorsFor(wind, scale, seconds, true);
     let birth = vec2<u32>(source[params.words.birth * c + i], source[(params.words.birth + 1u) * c + i]);
     let death = vec2<u32>(source[params.words.death * c + i], source[(params.words.death + 1u) * c + i]);
-    let fate = meet(start, &p, &v, birth, bitcast<f32>(source[params.words.inverseLife * c + i]), death);
+    let inverseLife = bitcast<f32>(source[params.words.inverseLife * c + i]);
+    let age = ageAt(birth, inverseLife);
+    let v0 = limitSpeed(readVector(0u, i, params.words.velocity), age, params.angular.z);
+    var p = moveByModules(start, start + v0 * f.y + a * f.z, age, seconds);
+    var v = v0 * f.x + a * f.y;
+    let fate = meet(start, &p, &v, birth, inverseLife, death);
     for (var k = 0u; k < 3u; k++) {
         source[(params.words.place + k) * c + i] = bitcast<u32>(p[k]);
         source[(params.words.velocity + k) * c + i] = bitcast<u32>(v[k]);
     }
     let collisions = params.words.collisions;
+    var contacts = 0u;
     if (collisions != NONE) {
         let count = source[collisions * c + i];
-        source[collisions * c + i] = select(count + fate.contacts, 0xFFFFFFFFu,
-                                            count > 0xFFFFFFFFu - fate.contacts);
+        contacts = select(count + fate.contacts, 0xFFFFFFFFu, count > 0xFFFFFFFFu - fate.contacts);
+        source[collisions * c + i] = contacts;
     }
     source[params.words.inverseLife * c + i] = bitcast<u32>(fate.inverseLife);
-    let rotation = drawVector(SOURCE_ROTATION, ageAt(birth, fate.inverseLife), vec4<u32>(0u)).x;
-    turn(0u, i, params.angular.xy, rotation);
+    turn(0u, i, params.angular.xy, lifeAt(LIFE_ROTATION, ageAt(birth, fate.inverseLife)));
     source[params.words.death * c + i] = fate.death.x;
     source[(params.words.death + 1u) * c + i] = fate.death.y;
-    source[params.words.alive * c + i] = select(0u, 1u, outlives(fate.death.x, fate.death.y) &&
-                                               !fate.killed && !killed(start, p));
+    // Its age at the plan's end, in ticks.
+    let endLow = params.start.x + params.counts.z;
+    let endHigh = params.start.y + select(0u, 1u, endLow < params.start.x);
+    let ageTicks = vec2<u32>(endLow - birth.x, endHigh - birth.y - select(0u, 1u, endLow < birth.x));
+    source[params.words.alive * c + i] =
+        select(0u, 1u, outlives(fate.death.x, fate.death.y) && !fate.killed &&
+                           !killed(start, p, v, ageTicks, contacts));
 }
 
 // Adds keep's values of the workgroup in order: each invocation's sum of
@@ -1627,14 +1760,18 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
     var a = vec3<f32>(0.0);
     var wind = 0.0;
     forcesAt(p, f32(b0.z) / TICKS_PER_SECOND, &a, &wind);
-    let f = factorsFor(wind, dragScaleOf(j), remainderOf(j), false);
-    *place = p + v * f.y + a * f.z;
+    let seconds = remainderOf(j);
+    let f = factorsFor(wind, dragScaleOf(j), seconds, false);
+    // Born at age 0, its speed limit's decay its own.
+    v = limitSpeed(v, 0.0, factors(bitcast<f32>(params.turns.w), seconds).x);
+    *place = moveByModules(p, p + v * f.y + a * f.z, 0.0, seconds);
     *velocity = v * f.x + a * f.y;
     var birth = vec2<u32>(0u);
     var death = vec2<u32>(0u);
     birthTicks(b0, b1, &birth, &death);
     var fate = meet(p, place, velocity, birth, bitcast<f32>(b1.y), death);
-    fate.killed = fate.killed || killed(p, *place);
+    let age = vec2<u32>(params.counts.z - b0.z, 0u);
+    fate.killed = fate.killed || killed(p, *place, *velocity, age, fate.contacts);
     return fate;
 }
 
@@ -1665,7 +1802,7 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     storeValues(j, at);
     // Born at age 0, turned over the rest of the plan.
     let angular = factors(bitcast<f32>(params.turns.y), remainderOf(j)).xy;
-    turn(1u, at, angular, drawVector(SOURCE_ROTATION, 0.0, vec4<u32>(0u)).x);
+    turn(1u, at, angular, lifeAt(LIFE_ROTATION, 0.0));
     return moved_place;
 }
 
@@ -1693,6 +1830,59 @@ fn ageAt(birth: vec2<u32>, inverseLife: f32) -> f32 {
     let seconds = f32(high) * 4096.0 + f32(low) / TICKS_PER_SECOND;
     let age = seconds * inverseLife;
     return select(min(age, 1.0), 0.0, !(age > 0.0));
+}
+
+// A value over life at a normalized age, as the core's mvfxLifeAt.
+fn lifeAt(k: u32, age: f32) -> f32 {
+    let life = params.lives[k / 2u];
+    let value = bitcast<f32>(life[2u * (k % 2u)]);
+    let first = life[2u * (k % 2u) + 1u];
+    if (first == NONE) {
+        return value;
+    }
+    return value * curveAt(first, age);
+}
+
+// A velocity held to the speed limit at a normalized age: past it, its
+// speed falls toward it by decay, as the core's mvfxLimitSpeed.
+fn limitSpeed(v: vec3<f32>, age: f32, decay: f32) -> vec3<f32> {
+    if ((params.turns.z & LIMITS_SPEED) == 0u) {
+        return v;
+    }
+    let limit = max(lifeAt(LIFE_SPEED_LIMIT, age), 0.0) * params.modules[0].w;
+    let speed = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (!(speed > limit)) {
+        return v;
+    }
+    return v * ((limit + (speed - limit) * decay) / speed);
+}
+
+// A place moved over seconds from start by the velocity modules at a
+// normalized age: the motion scaled, the added and radial speeds' moves,
+// then the orbit, as the core's mvfxMoveByModules.
+fn moveByModules(start: vec3<f32>, place: vec3<f32>, age: f32, h: f32) -> vec3<f32> {
+    if ((params.turns.z & MODULES_MOVE) == 0u) {
+        return place;
+    }
+    let sigma = params.modules[0].w;
+    let scale = lifeAt(LIFE_MOTION_SCALE, age);
+    let added = lifeAt(LIFE_ADDED_SPEED, age) * sigma * h;
+    let radial = lifeAt(LIFE_RADIAL_SPEED, age) * sigma * h;
+    let out = start - params.modules[3].xyz;
+    let square = dot3(out, out);
+    let away = square > 0.0 && square < LARGEST;
+    let unit = out * inverseSqrt(square);
+    var p = start + scale * (place - start) + added * params.modules[0].xyz;
+    if (away) {
+        p += radial * unit;
+    }
+    let angle = lifeAt(LIFE_ORBIT_RATE, age) * h;
+    if (angle != 0.0) {
+        let center = params.modules[2].xyz;
+        let q = vec4<f32>(params.modules[1].xyz * sin(0.5 * angle), cos(0.5 * angle));
+        p = center + rotate(q, p - center);
+    }
+    return p;
 }
 
 // A word of buffer (0 the current, 1 the other) at an index, and its
@@ -1837,14 +2027,14 @@ fn storeValues(j: u32, at: u32) {
 }
 
 // Kill births: each birth with room killed on its way to the plan's end
-// (an attractor's kill radius, a contact that kills, a contact's life loss
-// that ends its life within the plan) loses its room's mark (2), so the
-// scan keeps it not; it held its room for the step, as a killed particle
-// does until the step's end. The workgroups stride over the births as
-// update's over the particles.
+// (a kill rule, an attractor's kill radius, a contact that kills, a
+// contact's life loss that ends its life within the plan) loses its
+// room's mark (2), so the scan keeps it not; it held its room for the
+// step, as a killed particle does until the step's end. The workgroups
+// stride over the births as update's over the particles.
 @compute @workgroup_size(64, 1, 1)
 fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (params.forceHead.y == 0u && params.collisionHead.z == 0u) {
+    if (params.forceHead.y == 0u && params.collisionHead.z == 0u && params.killHead.x == 0u) {
         return;
     }
     for (var j = id.x; j < params.counts.y; j += params.modes.z * 64u) {

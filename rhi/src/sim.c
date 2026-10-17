@@ -73,9 +73,9 @@ typedef struct Emitter
     mrhiResourceId resources[BUFFER_COUNT];
     uint32_t words[MVFX_STEP_WORDS];
     mvfxStepSpans spans;
-    // Each source's curve and gradient in the grids buffer (all ones for
-    // none), and whether the sources' block is uploaded.
-    uint32_t sourceTables[MVFX_GPU_SOURCES][2];
+    // Where the baked tables are in the grids buffer, and whether the
+    // sources' block is uploaded.
+    mvfxStepTables tables;
     bool sourcesWritten;
     uint32_t map[MVFX_RECORD_MAP_WORDS];
     const mvfxPlannedBirth* plannedBirths;
@@ -121,7 +121,8 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
     (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES | MVFX_FEATURE_COLLISION |                \
      MVFX_FEATURE_SIZE | MVFX_FEATURE_COLOR | MVFX_FEATURE_CUSTOM | MVFX_FEATURE_FRAME |           \
      MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE | MVFX_FEATURE_ANGLE |                       \
-     MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE)
+     MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE | MVFX_FEATURE_VELOCITY_MODULES |          \
+     MVFX_FEATURE_KILL_RULES)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -212,17 +213,27 @@ static bool CreateTextures(mvfxGpuSim* sim)
     return made && mrhiCreateTexture(sim->device, &def, &sim->ownNormals) == mrhi_success;
 }
 
-// Places the baked tables of an emitter's sources after its grids.
+static_assert(MVFX_GPU_TABLES >= 2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES, "room for every table");
+
+// Places the baked tables of an emitter's sources and values over life
+// after its grids.
 static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
 {
+    mvfxGpuGrids* layout = &emitter->gridLayout;
     mvfxSourceView sources[MVFX_GPU_SOURCES];
     mvfxSourcesOf(view, sources);
     for (int32_t s = 0; s < MVFX_GPU_SOURCES; ++s)
     {
-        emitter->sourceTables[s][0] =
-            mvfxAddTable(&emitter->gridLayout, sources[s].curve, MVFX_CURVE_SAMPLES + 2);
-        emitter->sourceTables[s][1] =
-            mvfxAddTable(&emitter->gridLayout, sources[s].gradient, 4 * MVFX_CURVE_SAMPLES);
+        emitter->tables.sources[s][0] =
+            mvfxAddTable(layout, sources[s].curve, MVFX_CURVE_SAMPLES + 2);
+        emitter->tables.sources[s][1] =
+            mvfxAddTable(layout, sources[s].gradient, 4 * MVFX_CURVE_SAMPLES);
+    }
+    mvfxLifeView lives[MVFX_GPU_LIVES];
+    mvfxLivesOf(view, lives);
+    for (int32_t k = 0; k < MVFX_GPU_LIVES; ++k)
+    {
+        emitter->tables.lives[k] = mvfxAddTable(layout, lives[k].curve, MVFX_CURVE_SAMPLES + 2);
     }
 }
 
@@ -518,8 +529,8 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         }
         mvfxStepNumbers(&sim->views[e], &plan, e, (const uint32_t (*)[5])forceGrids,
                         (const uint32_t (*)[5])colliderGrids, sim->hostNormals.index1 != 0,
-                        (const uint32_t (*)[2])emitter->sourceTables, emitter->words);
-        emitter->spans = mvfxStepSpansOf(plan.forceCount, plan.colliderCount);
+                        &emitter->tables, emitter->words);
+        emitter->spans = mvfxStepSpansOf(&plan);
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
         emitter->plannedBirths = plan.births;
         emitter->birthCount = plan.birthCount;
@@ -537,7 +548,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
 static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, Emitter* emitter)
 {
     bool written = true;
-    for (int32_t s = 0; written && s < 3; ++s)
+    for (int32_t s = 0; written && s < 4; ++s)
     {
         uint32_t first = emitter->spans.first[s];
         written =

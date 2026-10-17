@@ -6,7 +6,10 @@
 #include "collide.h"
 #include "depth.h"
 #include "force.h"
+#include "kill.h"
+#include "velocity_modules.h"
 
+#include <math.h>
 #include <string.h>
 
 // A resolved collider as a plan hands it over, with its def's grid.
@@ -27,6 +30,44 @@ static mvfxPlannedCollider PlannedCollider(const mvfxResolvedCollider* c, mvfxGr
     for (int32_t k = 0; k < 4; ++k)
     {
         out.rotation[k] = c->rotation[k];
+    }
+    return out;
+}
+
+// A resolved kill rule as a plan hands it over, its least age in ticks
+// rounded up (exact: the age in seconds times 2^20 in binary64).
+static mvfxPlannedKillRule PlannedKillRule(const mvfxResolvedKillRule* r)
+{
+    mvfxPlannedKillRule out = {
+        .kind = r->kind,
+        .radius = r->radius,
+        .speed = r->speed,
+        .minimumAgeTicks = (uint64_t)ceil((double)r->minimumAge * (double)MVFX_TICKS_PER_SECOND),
+        .collisions = r->collisions,
+    };
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out.center[k] = r->center[k];
+        out.halfExtents[k] = r->halfExtents[k];
+        out.normal[k] = r->normal[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out.rotation[k] = r->rotation[k];
+    }
+    return out;
+}
+
+// Resolved velocity modules as a plan hands them over.
+static mvfxPlannedModules PlannedModules(const mvfxResolvedVelocityModules* m)
+{
+    mvfxPlannedModules out = {.sigma = m->sigma};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out.addedDirection[k] = m->addedDirection[k];
+        out.orbitAxis[k] = m->orbitAxis[k];
+        out.orbitCenter[k] = m->orbitCenter[k];
+        out.radialCenter[k] = m->radialCenter[k];
     }
     return out;
 }
@@ -63,5 +104,11 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
     if (state->hasDepth)
     {
         mvfxPlanDepth(&state->depth, collision, &plan->depth);
+    }
+    plan->modules = PlannedModules(&state->velocityModules);
+    plan->killRuleCount = compiled->killRuleCount;
+    for (int32_t r = 0; r < plan->killRuleCount; ++r)
+    {
+        plan->killRules[r] = PlannedKillRule(&state->killRules[r]);
     }
 }

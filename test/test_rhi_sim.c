@@ -1373,6 +1373,95 @@ static void TestTurns(Gpu* gpu, mvfxGpu* kernels)
             "angles, orientations and drag scales");
 }
 
+static void TestModules(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Velocity modules of every kind, each over life: the speed limited by
+    // a curve, the motion scaled by one, added and radial speeds and an
+    // orbit; in the instance's space and in the world's (scaled by a
+    // growing instance), under a moving instance.
+    static const mvfxCurveKey keys[3] = {
+        {.time = 0, .value = 2, .interpolation = mvfx_interpolationLinear},
+        {.time = 0.5f, .value = 0.5f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 1, .interpolation = mvfx_interpolationLinear}};
+    const mvfxCurve curve = {.keys = keys, .keyCount = 3};
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        emitters[e].velocityModules =
+            (mvfxVelocityModules){.motionScale = {.value = 0.75f, .curve = curve},
+                                  .addedDirection = {1, 0, 0.5f},
+                                  .addedSpeed = {.value = 1.5f},
+                                  .orbitAxis = {0, 1, 0},
+                                  .orbitCenter = {0.3f, 0, 0},
+                                  .orbitRate = {.value = 2.5f, .curve = curve},
+                                  .radialCenter = {0, -0.5f, 0},
+                                  .radialSpeed = {.value = 0.8f},
+                                  .limitSpeed = true,
+                                  .speedLimit = {.value = 2, .curve = curve},
+                                  .limitDampen = 3};
+    }
+    emitters[1].space = mvfx_spaceWorld;
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .pace = 0.1},
+            "velocity modules in both spaces");
+}
+
+static void TestKillRules(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Each kind of kill rule alone kills, the particles' paths through
+    // its region (a turned box the newborn cross too), a speed they fall
+    // below once old enough, a ceiling they meet; in the world's space and
+    // the instance's, under a slowly moving instance. A rule may kill most
+    // of them: 20 held at some step is enough.
+    static const mvfxCollider ceiling = {
+        .kind = mvfx_colliderPlane, .center = {0, 0.55f, 0}, .normal = {0, -1, 0}};
+    const mvfxKillRule rules[7] = {
+        {.kind = mvfx_killInsideSphere, .center = {0.1f, 0.4f, 0}, .radius = 0.3f},
+        {.kind = mvfx_killOutsideSphere,
+         .space = mvfx_spaceLocal,
+         .center = {0, 0.3f, 0},
+         .radius = 0.7f},
+        {.kind = mvfx_killInsideBox,
+         .center = {0.1f, 0.45f, 0},
+         .halfExtents = {0.4f, 0.05f, 0.4f},
+         .rotation = {0, 0, 0.19509032f, 0.98078528f}},
+        {.kind = mvfx_killOutsideBox,
+         .space = mvfx_spaceLocal,
+         .center = {0, 0.4f, 0},
+         .halfExtents = {0.6f, 0.4f, 0.6f},
+         .rotation = {0, 0.6f, 0, 0.8f}},
+        {.kind = mvfx_killPastPlane, .center = {0, 0.8f, 0}, .normal = {0.2f, 1, 0}},
+        {.kind = mvfx_killSlower, .speed = 2.0f, .minimumAge = 0.1f},
+        {.kind = mvfx_killCollisions, .collisions = 1}};
+    static const char* names[7] = {"passing through a sphere",
+                                   "ending outside a sphere",
+                                   "passing through a turned box",
+                                   "ending outside a turned box",
+                                   "ending past a plane",
+                                   "slower once old enough",
+                                   "a collision"};
+    for (int32_t r = 0; r < 7; ++r)
+    {
+        mvfxEmitterDef emitter = Sprite();
+        emitter.killRules = &rules[r];
+        emitter.killRuleCount = 1;
+        if (rules[r].kind == mvfx_killCollisions)
+        {
+            emitter.colliders = &ceiling;
+            emitter.colliderCount = 1;
+            emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
+        }
+        Compare(gpu, kernels,
+                &(Run){.emitters = &emitter,
+                       .emitterCount = 1,
+                       .least = 20,
+                       .moving = true,
+                       .pace = 0.001,
+                       .killing = true},
+                names[r]);
+    }
+}
+
 // A depth image's pixels and normals, 64 a side.
 static float s_pixels[DEPTH_SIDE * DEPTH_SIDE];
 static float s_viewNormals[3 * DEPTH_SIDE * DEPTH_SIDE];
@@ -1986,6 +2075,8 @@ int main(void)
     TestDepth(&gpu, kernels);
     TestValues(&gpu, kernels);
     TestTurns(&gpu, kernels);
+    TestModules(&gpu, kernels);
+    TestKillRules(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

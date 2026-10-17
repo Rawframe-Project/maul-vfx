@@ -652,3 +652,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   drag with the rotation speed over life, each particle's drag scaled.
   Its drag sums as the CPU path's does (the emitter's added to the
   winds').
+- A plan carries its emitter's velocity modules and kill rules as
+  resolved (`mvfxPlannedModules`, `mvfxPlannedKillRule`, each least age
+  in ticks), and the emitter view the modules as compiled
+  (`mvfxModulesView`, values over life as `mvfxLifeView`; the rotation
+  speed over life is `rotationSpeed`). The GPU part runs velocity
+  modules and kill rules.

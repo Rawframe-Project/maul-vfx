@@ -218,12 +218,13 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
     }
 }
 
-mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount)
+mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan)
 {
     return (mvfxStepSpans){
-        .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_SOURCES_FIRST - MVFX_VALUES_WORDS},
-        .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)forceCount,
-                  56 + 32 * (uint32_t)colliderCount, MVFX_VALUES_WORDS},
+        .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_VALUES_FIRST, MVFX_KILLS_FIRST},
+        .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)plan->forceCount,
+                  56 + 32 * (uint32_t)plan->colliderCount, MVFX_VALUES_WORDS,
+                  4 + 20 * (uint32_t)plan->killRuleCount},
     };
 }
 
@@ -241,13 +242,17 @@ void mvfxSourcesOf(const mvfxEmitterView* view, mvfxSourceView sources[MVFX_GPU_
     {
         sources[MVFX_SOURCE_CUSTOM + i] = view->custom[i];
     }
-    sources[MVFX_SOURCE_ROTATION] = (mvfxSourceView){
-        .kind = view->rotationCurve != nullptr ? mvfx_sourceCurve : mvfx_sourceRange,
-        .components = 1,
-        .min = {view->rotationScale},
-        .max = {view->rotationScale},
-        .curve = view->rotationCurve,
-    };
+}
+
+void mvfxLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_GPU_LIVES])
+{
+    const mvfxModulesView* m = &view->modules;
+    lives[0] = view->rotationSpeed;
+    lives[1] = m->speedLimit;
+    lives[2] = m->motionScale;
+    lives[3] = m->addedSpeed;
+    lives[4] = m->radialSpeed;
+    lives[5] = m->orbitRate;
 }
 
 // An index's draw (sim.wgsl's draws): first, last, whether random.
@@ -260,9 +265,11 @@ static void IndexDraw(const mvfxIndexView* index, uint32_t* words)
 }
 
 // The sources (sim.wgsl's Source, 16 words each), the frame's and mesh
-// index's draws, the bounds' growth by size, and how particles turn: the
-// orientation's mode and the angular drag.
-static void Sources(const mvfxEmitterView* view, const uint32_t (*tables)[2], uint32_t* words)
+// index's draws, the bounds' growth by size, how particles turn and move
+// (the orientation's mode, the angular drag, whether the speed is limited
+// and modules move them, how fast the speed falls to the limit) and the
+// values over life (each one's value and curve).
+static void Sources(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t* words)
 {
     mvfxSourceView sources[MVFX_GPU_SOURCES];
     mvfxSourcesOf(view, sources);
@@ -274,8 +281,8 @@ static void Sources(const mvfxEmitterView* view, const uint32_t (*tables)[2], ui
                                   source->uniform ? 1u : 0u,
                                   (uint32_t)source->components,
                                   (uint32_t)source->parameter,
-                                  tables[s][0],
-                                  tables[s][1],
+                                  tables->sources[s][0],
+                                  tables->sources[s][1],
                                   0u,
                                   0u};
         memcpy(at, head, sizeof head);
@@ -287,9 +294,56 @@ static void Sources(const mvfxEmitterView* view, const uint32_t (*tables)[2], ui
     const float growth[4] = {view->sizeBounds[0], view->sizeBounds[1], view->sizeBounds[2],
                              view->sizeMargin};
     memcpy(words + 16 * MVFX_GPU_SOURCES + 8, growth, sizeof growth);
+    const mvfxModulesView* m = &view->modules;
     uint32_t* turns = words + 16 * MVFX_GPU_SOURCES + 12;
     turns[0] = view->orientationMode;
     memcpy(&turns[1], &view->angularDrag, sizeof(float));
+    turns[2] = (m->limitSpeed ? 1u : 0u) | (m->moves ? 2u : 0u);
+    memcpy(&turns[3], &m->limitDampen, sizeof(float));
+    mvfxLifeView lives[MVFX_GPU_LIVES];
+    mvfxLivesOf(view, lives);
+    for (int32_t k = 0; k < MVFX_GPU_LIVES; ++k)
+    {
+        uint32_t* at = words + 16 * MVFX_GPU_SOURCES + 16 + 2 * k;
+        memcpy(&at[0], &lives[k].value, sizeof(float));
+        at[1] = tables->lives[k];
+    }
+}
+
+// The velocity modules (sim.wgsl's modules): the added direction and the
+// scale into the particles' space, the orbit's axis and center, the
+// radial center.
+static void Modules(const mvfxPlannedModules* m, uint32_t* words)
+{
+    const float* d = m->addedDirection;
+    Floats(words, d[0], d[1], d[2], m->sigma);
+    Floats(words + 4, m->orbitAxis[0], m->orbitAxis[1], m->orbitAxis[2], 0.0f);
+    Floats(words + 8, m->orbitCenter[0], m->orbitCenter[1], m->orbitCenter[2], 0.0f);
+    Floats(words + 12, m->radialCenter[0], m->radialCenter[1], m->radialCenter[2], 0.0f);
+}
+
+// The kill rules' head (their count) and each rule's 20 words (sim.wgsl's
+// KillRule): its kind, the collisions that kill, its least age in ticks
+// (two words); its center and radius; its half sizes and speed; its
+// rotation; its normal.
+static void KillRules(const mvfxEmitterPlan* plan, uint32_t* words)
+{
+    words[0] = (uint32_t)plan->killRuleCount;
+    for (int32_t r = 0; r < plan->killRuleCount; ++r)
+    {
+        const mvfxPlannedKillRule* rule = &plan->killRules[r];
+        uint32_t* at = words + 4 + 20 * r;
+        at[0] = rule->kind;
+        at[1] = (uint32_t)rule->collisions;
+        at[2] = (uint32_t)rule->minimumAgeTicks;
+        at[3] = (uint32_t)(rule->minimumAgeTicks >> 32u);
+        const float* c = rule->center;
+        const float* h = rule->halfExtents;
+        Floats(at + 4, c[0], c[1], c[2], rule->radius);
+        Floats(at + 8, h[0], h[1], h[2], rule->speed);
+        memcpy(at + 12, rule->rotation, 4 * sizeof(float));
+        Floats(at + 16, rule->normal[0], rule->normal[1], rule->normal[2], 0.0f);
+    }
 }
 
 // A value's first word, or NONE (all ones) for one not stored.
@@ -333,8 +387,7 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
-                     bool normals, const uint32_t (*sourceTables)[2],
-                     uint32_t words[MVFX_STEP_WORDS])
+                     bool normals, const mvfxStepTables* tables, uint32_t words[MVFX_STEP_WORDS])
 {
     memset(words, 0, MVFX_STEP_WORDS * sizeof(uint32_t));
     uint64_t start = (uint64_t)plan->start;
@@ -382,12 +435,16 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
     Forces(plan, sharedDrag, forceGrids, words + 80);
     Colliders(plan, colliderGrids, normals, words + 84 + 132 * MVFX_MAX_FORCES);
-    uint32_t* at = words + MVFX_SOURCES_FIRST - MVFX_VALUES_WORDS;
+    uint32_t* at = words + MVFX_VALUES_FIRST;
     Words(&view->arrays, at);
     memcpy(at + 28, plan->parameters, sizeof plan->parameters);
+    double seconds = (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND;
     float angular[3];
-    DragFactors((double)view->angularDrag, (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND,
-                angular);
-    Floats(at + 92, angular[0], angular[1], 0.0f, 0.0f);
-    Sources(view, sourceTables, words + MVFX_SOURCES_FIRST);
+    DragFactors((double)view->angularDrag, seconds, angular);
+    float limit[3];
+    DragFactors((double)view->modules.limitDampen, seconds, limit);
+    Floats(at + 92, angular[0], angular[1], limit[0], 0.0f);
+    Modules(&plan->modules, at + 96);
+    KillRules(plan, words + MVFX_KILLS_FIRST);
+    Sources(view, tables, words + MVFX_SOURCES_FIRST);
 }

@@ -18,8 +18,10 @@
 #include "force.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "kill.h"
 #include "noise.h"
 #include "test_harness.h"
+#include "velocity_modules.h"
 
 #include "maul-vfx/plan.h"
 
@@ -975,6 +977,108 @@ static void TestColliders(void)
     mvfxDestroyContext(context);
 }
 
+// Whether a planned kill rule is a resolved one, its least age in ticks
+// rounded up.
+static bool SameKillRule(const mvfxPlannedKillRule* p, const mvfxResolvedKillRule* r,
+                         uint64_t ticks)
+{
+    bool same = p->kind == r->kind && p->radius == r->radius && p->speed == r->speed &&
+                p->minimumAgeTicks == ticks && p->collisions == r->collisions;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && p->center[k] == r->center[k] && p->halfExtents[k] == r->halfExtents[k] &&
+               p->normal[k] == r->normal[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && p->rotation[k] == r->rotation[k];
+    }
+    return same;
+}
+
+static void TestModulesAndKills(void)
+{
+    // A world-space emitter's velocity modules and kill rules under a
+    // moving, turning, growing instance: the plan's are the CPU instance's
+    // as resolved, each least age in ticks rounded up (a third of a second
+    // is not a whole tick; a quarter is); the view's modules are the
+    // compiled ones, a curve's samples where one is given.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const mvfxCurveKey keys[2] = {{.time = 0, .value = 1}, {.time = 1, .value = 2}};
+    mvfxEmitterDef emitter = Emitter(256);
+    emitter.space = mvfx_spaceWorld;
+    emitter.velocityModules = (mvfxVelocityModules){
+        .motionScale = {.value = 0.5f, .curve = {.keys = keys, .keyCount = 2}},
+        .addedDirection = {0, 0, 2},
+        .addedSpeed = {.value = 1.5f},
+        .orbitAxis = {0, 1, 0},
+        .orbitCenter = {1, 0, 0},
+        .orbitRate = {.value = 2},
+        .radialCenter = {0, -1, 0},
+        .radialSpeed = {.value = -0.5f},
+        .limitSpeed = true,
+        .speedLimit = {.value = 3, .curve = {.keys = keys, .keyCount = 2}},
+        .limitDampen = 4};
+    const mvfxKillRule rules[3] = {
+        {.kind = mvfx_killInsideBox,
+         .space = mvfx_spaceLocal,
+         .center = {0, 2, 0},
+         .halfExtents = {1, 0.5f, 2},
+         .rotation = {0, 0.6f, 0, 0.8f}},
+        {.kind = mvfx_killSlower, .speed = 0.5f, .minimumAge = 1.0f / 3.0f},
+        {.kind = mvfx_killSlower, .space = mvfx_spaceLocal, .speed = 2, .minimumAge = 0.25f}};
+    emitter.killRules = rules;
+    emitter.killRuleCount = 3;
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    const uint64_t ticks[3] = {0, 349526, 262144};
+    bool same = true;
+    for (int32_t s = 0; s < 6 && same; ++s)
+    {
+        const double origin[3] = {-20.0 + 3.0 * s, 1.5 * s, 4.0};
+        const float rotation[4] = {0.0f, sinf(0.1f * (float)s), 0.0f, cosf(0.1f * (float)s)};
+        mvfxInstanceId both[2] = {cpu, planned};
+        for (int32_t i = 0; i < 2; ++i)
+        {
+            CHECK(mvfxInstance_SetTransform(context, both[i], origin, rotation,
+                                            1.0f + 0.2f * (float)s, false) == mvfx_success,
+                  "moved");
+        }
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        mvfxEmitterPlan plan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+        const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
+        const mvfxResolvedVelocityModules* m = &state->velocityModules;
+        same = plan.modules.sigma == m->sigma && plan.killRuleCount == 3;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && plan.modules.addedDirection[k] == m->addedDirection[k] &&
+                   plan.modules.orbitAxis[k] == m->orbitAxis[k] &&
+                   plan.modules.orbitCenter[k] == m->orbitCenter[k] &&
+                   plan.modules.radialCenter[k] == m->radialCenter[k];
+        }
+        for (int32_t r = 0; same && r < 3; ++r)
+        {
+            same = SameKillRule(&plan.killRules[r], &state->killRules[r], ticks[r]);
+        }
+    }
+    CHECK(same, "the plan's velocity modules and kill rules are the CPU path's");
+    mvfxEmitterView view;
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
+    const mvfxModulesView* m = &view.modules;
+    CHECK(m->limitSpeed && m->limitDampen == 4.0f && m->moves && m->motionScale.value == 0.5f &&
+              m->motionScale.curve != NULL && m->speedLimit.value == 3.0f &&
+              m->speedLimit.curve != NULL && m->addedSpeed.value == 1.5f &&
+              m->addedSpeed.curve == NULL && m->radialSpeed.value == -0.5f &&
+              m->orbitRate.value == 2.0f && view.rotationSpeed.value == 1.0f &&
+              view.rotationSpeed.curve == NULL,
+          "the view's velocity modules");
+    mvfxDestroyContext(context);
+}
+
 // The CPU path's clip place of a particle's place: mapped back to the
 // world (the step's map), into the view, projected, in binary64.
 static void CoreClip(const mvfxSpaceMap* map, const mvfxDepthImage* image, const float x[3],
@@ -1129,6 +1233,7 @@ int main(void)
     TestView();
     TestForces();
     TestColliders();
+    TestModulesAndKills();
     TestDepth();
     return s_failures == 0 ? 0 : 1;
 }

@@ -103,6 +103,28 @@ static mvfxSourceView ScalarSourceOf(const mvfxCompiledScalar* source)
     };
 }
 
+// A value over life as the view gives it.
+static mvfxLifeView LifeOf(const mvfxCompiledLife* life)
+{
+    return (mvfxLifeView){.value = life->value,
+                          .curve = life->curve != nullptr ? life->curve->samples : nullptr};
+}
+
+// Velocity modules as the view gives them.
+static mvfxModulesView ModulesOf(const mvfxCompiledVelocityModules* m)
+{
+    return (mvfxModulesView){
+        .limitSpeed = m->limitSpeed,
+        .limitDampen = m->limitDampen,
+        .moves = m->moves,
+        .speedLimit = LifeOf(&m->speedLimit),
+        .motionScale = LifeOf(&m->motionScale),
+        .addedSpeed = LifeOf(&m->addedSpeed),
+        .radialSpeed = LifeOf(&m->radialSpeed),
+        .orbitRate = LifeOf(&m->orbitRate),
+    };
+}
+
 // An index's draw at birth, as the view gives it.
 static mvfxIndexView IndexOf(const mvfxFrameStart* start)
 {
@@ -145,7 +167,8 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
 }
 
 // Where an emitter's particles keep their values, how its births draw
-// them, how their sizes grow its bounds and how they turn.
+// them, how their sizes grow its bounds, how they turn and how its
+// velocity modules move them.
 static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
 {
     viewOut->arrays = ArraysOf(&e->plan);
@@ -164,9 +187,8 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->angularVelocity = SourceOf(&e->angularVelocity);
     viewOut->dragScale = ScalarSourceOf(&e->dragScale);
     viewOut->angularDrag = e->angularDrag;
-    const mvfxCompiledLife* rotation = &e->overLife.rotationScale;
-    viewOut->rotationScale = rotation->value;
-    viewOut->rotationCurve = rotation->curve != nullptr ? rotation->curve->samples : nullptr;
+    viewOut->rotationSpeed = LifeOf(&e->overLife.rotationScale);
+    viewOut->modules = ModulesOf(&e->velocityModules);
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];

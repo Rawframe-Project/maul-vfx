@@ -151,6 +151,36 @@ extern "C"
         bool killOutsideView;
     } mvfxPlannedDepth;
 
+    // An emitter's velocity modules as resolved for a plan's step: the
+    // emitter's space's scale in the particles' space, and the added
+    // direction, orbit axis and centers mapped there.
+    typedef struct mvfxPlannedModules
+    {
+        float sigma;
+        float addedDirection[3];
+        float orbitAxis[3];
+        float orbitCenter[3];
+        float radialCenter[3];
+    } mvfxPlannedModules;
+
+    // A kill rule of an emitter as resolved for a plan's step, in the
+    // particles' space: its def's meaning (mvfxKillRule) with lengths and
+    // the speed scaled, points, normals and turns mapped, and its least
+    // age in ticks, rounded up (a particle at least that many ticks old is
+    // old enough).
+    typedef struct mvfxPlannedKillRule
+    {
+        mvfxKillKind kind;
+        float center[3];
+        float radius;
+        float halfExtents[3];
+        float rotation[4];
+        float normal[3];
+        float speed;
+        uint64_t minimumAgeTicks;
+        int32_t collisions;
+    } mvfxPlannedKillRule;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -204,6 +234,10 @@ extern "C"
         // Its depth image as resolved for the step (not enabled when it
         // does not collide with one or the instance has none).
         mvfxPlannedDepth depth;
+        // Its velocity modules and kill rules as resolved for the step.
+        mvfxPlannedModules modules;
+        int32_t killRuleCount;
+        mvfxPlannedKillRule killRules[MVFX_MAX_KILL_RULES];
         // The instance's parameters at the plan's end, which values drawn
         // from a parameter read.
         float parameters[MVFX_MAX_PARAMETERS][4];
@@ -327,6 +361,31 @@ extern "C"
         const float* gradient;
     } mvfxSourceView;
 
+    // A value over a particle's life as compiled: its value times its
+    // curve's baked samples (MVFX_CURVE_SAMPLES, then the domain's start
+    // and the factor to a sample's place) at the normalized age, the value
+    // alone without a curve (NULL).
+    typedef struct mvfxLifeView
+    {
+        float value;
+        const float* curve;
+    } mvfxLifeView;
+
+    // An emitter's velocity modules as compiled (mvfxVelocityModules):
+    // whether the speed is limited and how fast it falls to the limit,
+    // whether any module moves particles, and the values over life.
+    typedef struct mvfxModulesView
+    {
+        bool limitSpeed;
+        float limitDampen;
+        bool moves;
+        mvfxLifeView speedLimit;
+        mvfxLifeView motionScale;
+        mvfxLifeView addedSpeed;
+        mvfxLifeView radialSpeed;
+        mvfxLifeView orbitRate;
+    } mvfxModulesView;
+
     // A flipbook frame's or a mesh index's draw at birth: from first,
     // drawn up to last when random.
     typedef struct mvfxIndexView
@@ -391,11 +450,11 @@ extern "C"
         mvfxSourceView angularVelocity;
         mvfxSourceView dragScale;
         // How its angles and orientations turn: the angular drag, and the
-        // rotation speed over life, its value times its curve at the
-        // normalized age (1 and NULL without one).
+        // rotation speed over life (1 without one).
         float angularDrag;
-        float rotationScale;
-        const float* rotationCurve;
+        mvfxLifeView rotationSpeed;
+        // Its velocity modules.
+        mvfxModulesView modules;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

@@ -18,9 +18,9 @@
 // and its instance's.
 #define MVFX_GPU_GRIDS (MVFX_MAX_FORCES + 2 * MVFX_MAX_COLLIDERS)
 
-// The most baked tables an emitter reads: a curve or a gradient for each
-// of its sources and its values over life.
-#define MVFX_GPU_TABLES 32
+// The most baked tables an emitter reads: a curve and a gradient for each
+// of its 15 sources, a curve for each of its 6 values over life.
+#define MVFX_GPU_TABLES 36
 
 // A baked table in the buffer: its values (the effect's) and words, and
 // its first word.
