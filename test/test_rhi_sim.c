@@ -1274,15 +1274,17 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     static const float parameters[8] = {0, 0, 0, 0, 0.25f, -2, 7, 1};
     mvfxEmitterDef emitter = Sprite();
     emitter.duration = 0.4f;
+    // A negative size counts by its magnitude in the bounds.
     emitter.size = (mvfxVectorSource){
-        .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f}, .max = {0.4f, 0.6f, 0.8f}};
+        .kind = mvfx_sourceRange, .min = {0.1f, -0.6f, 0.3f}, .max = {0.4f, -0.2f, 0.8f}};
     emitter.color = (mvfxVectorSource){.kind = mvfx_sourceGradient,
                                        .gradient = gradient,
                                        .min = {0.5f, 0.5f, 0.5f, 1},
                                        .max = {1, 1, 1, 1}};
     emitter.custom = custom;
     emitter.customCount = 3;
-    emitter.frame = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 0, .last = 15};
+    // A wide range carries in the draw's product.
+    emitter.frame = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 0, .last = 65000};
     emitter.meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 2, .last = 5};
     // A size over life for each axis grows the bounds by the largest of
     // each axis's largest size times its factor: here the second's.
