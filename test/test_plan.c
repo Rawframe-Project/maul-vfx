@@ -555,10 +555,14 @@ static void TestHostBirths(void)
         }
     }
     CHECK(same, "the host's particles are the plan's first births");
+    // Both plans owe the same births: those the lower one lacks are its
+    // refused, the host's among them.
+    int32_t owed = plan.birthCount;
+    CHECK(plan.refused == 0, "the full plan refuses none");
     CHECK(mvfxInstance_GetEmitterPlan(context, lowered, 0, &plan) == mvfx_success &&
-              plan.capacity == 4 && plan.hostBirthCount == 4 && plan.refused >= 2 &&
-              plan.births[3].host == 3 && plan.births[4].host == UINT32_MAX &&
-              plan.births[4].serialLow == 6,
+              plan.capacity == 4 && plan.hostBirthCount == 4 &&
+              plan.refused == (uint64_t)(owed - plan.birthCount) && plan.births[3].host == 3 &&
+              plan.births[4].host == UINT32_MAX && plan.births[4].serialLow == 6,
           "past the capacity, the host's particles are refused");
     mvfxDestroyContext(context);
 }

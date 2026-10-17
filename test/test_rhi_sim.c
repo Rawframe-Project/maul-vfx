@@ -542,7 +542,8 @@ static uint32_t s_gpuCount[4];
 // The fill's bytes: written before the GPU's records each step.
 static uint32_t s_fillBytes[RECORD_BYTES / 4];
 
-static bool OpenRecords(Gpu* gpu, const mvfxLayoutDef* layout, int64_t capacity)
+static bool OpenRecords(Gpu* gpu, const mvfxLayoutDef* layout, int64_t capacity,
+                        const mvfxView* view)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = RECORD_BYTES;
@@ -551,8 +552,11 @@ static bool OpenRecords(Gpu* gpu, const mvfxLayoutDef* layout, int64_t capacity)
     count.size = sizeof s_gpuCount;
     memset(s_fillBytes, RECORD_FILL, sizeof s_fillBytes);
     s_recordCapacity = capacity;
-    s_view = (mvfxView){
-        .origin = {3.5, -1.25, 2.0}, .eye = {0, 0, 5}, .forward = {0, 0, -1}, .up = {0, 1, 0}};
+    s_view = view != NULL ? *view
+                          : (mvfxView){.origin = {3.5, -1.25, 2.0},
+                                       .eye = {0, 0, 5},
+                                       .forward = {0, 0, -1},
+                                       .up = {0, 1, 0}};
     return mvfxCreateLayout(s_context, layout, &s_layout) == mvfx_success &&
            mvfxLayout_GetView(s_context, s_layout, &s_layoutView) == mvfx_success &&
            mrhiCreateBuffer(gpu->device, &def, &s_recordBuffer) == mrhi_success &&
@@ -1006,12 +1010,14 @@ typedef struct Run
     // A layout the first emitter's records are written in by both paths
     // and compared every step (none for NULL), and the most records the
     // buffer holds; whether a sort by place must keep the CPU path's
-    // order exactly (every key tied), and whether each record's words
-    // must be the CPU path's exactly (values exact on both paths).
+    // order exactly (every key tied), whether each record's words must
+    // be the CPU path's exactly (values exact on both paths), and the
+    // view (one from the origin's side for NULL).
     const mvfxLayoutDef* layout;
     int64_t recordCapacity;
     bool tied;
     bool exact;
+    const mvfxView* view;
 } Run;
 
 // Queues a run's host particles for both instances at step s: a little
@@ -1193,7 +1199,8 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     s_stepsApart = 0;
     if (run->layout != NULL)
     {
-        CHECK(OpenRecords(gpu, run->layout, run->recordCapacity), "the records' buffers");
+        CHECK(OpenRecords(gpu, run->layout, run->recordCapacity, run->view),
+              "the records' buffers");
     }
     s_sorted = run->emitters[0].sortMode >= mvfx_sortBackToFront && !run->tied;
     s_exactRecords = run->exact;
@@ -2046,10 +2053,12 @@ static void TestExactRecords(Gpu* gpu, mvfxGpu* kernels)
 static void TestSortedRecords(Gpu* gpu, mvfxGpu* kernels)
 {
     // Records youngest first; back to front by distance in the world's
-    // space over blocks of the sort's (thousands of particles); front to
-    // back by depth in the instance's space, cut at fewer records than
-    // particles; and keys all tied (every particle at one place), which
-    // keep the pool's order exactly, back to front.
+    // space over blocks of the sort's (thousands of particles in three
+    // blocks, all live at times, so chunks of the digit counts' scan end
+    // at each block); front to back by depth in the instance's space from
+    // an eye amid the particles (depths below 0 and above), cut at fewer
+    // records than particles; and keys all tied (every particle at one
+    // place), which keep the pool's order exactly, back to front.
     static const mvfxLayoutField fields[5] = {
         {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
         {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 12},
@@ -2075,28 +2084,31 @@ static void TestSortedRecords(Gpu* gpu, mvfxGpu* kernels)
                    .layout = &layout,
                    .recordCapacity = CAPACITY},
             "records youngest first");
-    emitter.capacity = 4096;
+    emitter.capacity = 3000;
     emitter.rate = 9000.0f;
     emitter.space = mvfx_spaceWorld;
     emitter.sortMode = mvfx_sortBackToFront;
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
-                   .least = 2000,
+                   .least = 2100,
                    .moving = true,
                    .pace = 0.1,
                    .layout = &layout,
-                   .recordCapacity = 4096},
+                   .recordCapacity = 3000},
             "records back to front by distance, over blocks");
     emitter = Sprite();
     emitter.sortMode = mvfx_sortFrontToBack;
     emitter.sortMeasure = mvfx_sortByDepth;
+    const mvfxView amid = {
+        .origin = {3.5, -1.25, 2.0}, .eye = {0, 0.3, 0}, .forward = {0, 0, -1}, .up = {0, 1, 0}};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
                    .moving = true,
                    .layout = &layout,
-                   .recordCapacity = 60},
+                   .recordCapacity = 60,
+                   .view = &amid},
             "records front to back by depth, cut");
     emitter.shape.radius = 0;
     emitter.velocity.speed = (mvfxRange){0, 0};
