@@ -1203,6 +1203,13 @@ static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
     emitter.colliderCount = 2;
     emitter.collision.hostColliders = true;
     emitter.collision.lifeLoss = 0.3f;
+    // Spins read over life at the age a contact's lost life leaves.
+    static const mvfxCurveKey keys[2] = {
+        {.time = 0, .value = 0, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 8, .interpolation = mvfx_interpolationLinear}};
+    emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {2, 4}};
+    emitter.overLife.rotation = (mvfxRotationOverLife){
+        .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
