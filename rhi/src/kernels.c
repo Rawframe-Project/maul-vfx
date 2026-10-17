@@ -6,6 +6,7 @@
 #include "allocator.h"
 
 #include "../kernels/pcg4d_container.h"
+#include "../kernels/records_container.h"
 #include "../kernels/sim_container.h"
 #include "maul-rhi/shader.h"
 
@@ -22,6 +23,7 @@ typedef struct Container
 static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_pcg4dContainer, sizeof s_pcg4dContainer},
     {s_simContainer, sizeof s_simContainer},
+    {s_recordsContainer, sizeof s_recordsContainer},
 };
 
 // A kernel's container and entry.
@@ -32,10 +34,11 @@ typedef struct Kernel
 } Kernel;
 
 static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
-    {mvfx_containerPcg4d, "pcg"},   {mvfx_containerSim, "update"},
-    {mvfx_containerSim, "room"},    {mvfx_containerSim, "reduce"},
-    {mvfx_containerSim, "offsets"}, {mvfx_containerSim, "scatter"},
-    {mvfx_containerSim, "measure"}, {mvfx_containerSim, "killBirths"},
+    {mvfx_containerPcg4d, "pcg"},       {mvfx_containerSim, "update"},
+    {mvfx_containerSim, "room"},        {mvfx_containerSim, "reduce"},
+    {mvfx_containerSim, "offsets"},     {mvfx_containerSim, "scatter"},
+    {mvfx_containerSim, "measure"},     {mvfx_containerSim, "killBirths"},
+    {mvfx_containerRecords, "records"},
 };
 
 struct mvfxGpu

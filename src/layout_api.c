@@ -69,6 +69,27 @@ mvfxResult mvfxDestroyLayout(mvfxContext* context, mvfxLayoutId layout)
     return mvfx_success;
 }
 
+mvfxResult mvfxLayout_GetView(const mvfxContext* context, mvfxLayoutId layout,
+                              mvfxLayoutView* viewOut)
+{
+    if (viewOut != nullptr)
+    {
+        *viewOut = (mvfxLayoutView){0};
+    }
+    if (context == nullptr || viewOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    const mvfxOutputLayout* live = mvfxContextLayout(context, layout);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    *viewOut = (mvfxLayoutView){
+        .fields = live->fields, .fieldCount = live->fieldCount, .stride = live->stride};
+    return mvfx_success;
+}
+
 bool mvfxLayout_IsValid(const mvfxContext* context, mvfxLayoutId layout)
 {
     return context != nullptr && mvfxContextLayout(context, layout) != nullptr;

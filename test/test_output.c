@@ -603,9 +603,56 @@ static void TestMeshIndex(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestLayoutView(void)
+{
+    // A layout's view: its fields as given and its stride; refusals.
+    mvfxContext* context = NewContext(2);
+    static const mvfxLayoutField fields[2] = {
+        {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
+        {.field = mvfx_recordColor,
+         .format = mvfx_formatUnorm8,
+         .components = 4,
+         .srgb = true,
+         .offset = 12}};
+    mvfxLayoutId id = {0};
+    CHECK(Make(context, fields, 2, 20, &id) == mvfx_success, "a layout");
+    mvfxLayoutView view;
+    CHECK(mvfxLayout_GetView(context, id, &view) == mvfx_success && view.fieldCount == 2 &&
+              view.stride == 20 && memcmp(view.fields, fields, sizeof fields) == 0,
+          "its view");
+    CHECK(mvfxLayout_GetView(NULL, id, &view) == mvfx_errorInvalid && view.fields == NULL &&
+              mvfxLayout_GetView(context, id, NULL) == mvfx_errorInvalid &&
+              mvfxDestroyLayout(context, id) == mvfx_success &&
+              mvfxLayout_GetView(context, id, &view) == mvfx_errorStale && view.stride == 0,
+          "refusals");
+    mvfxDestroyContext(context);
+}
+
+static void TestSrgbSteps(void)
+{
+    // Each step is the least value whose sRGB byte reaches it: its byte is
+    // the step's count, the value below's one less.
+    float steps[MVFX_SRGB_STEPS];
+    mvfxSrgbSteps(steps);
+    bool rising = steps[0] > 0.0f && steps[MVFX_SRGB_STEPS - 1] <= 1.0f;
+    for (int32_t k = 0; rising && k < MVFX_SRGB_STEPS; ++k)
+    {
+        const float at[4] = {steps[k], 0, 0, 1};
+        const float below[4] = {nextafterf(steps[k], 0.0f), 0, 0, 1};
+        unsigned char a[16];
+        unsigned char b[16];
+        Write(mvfx_formatUnorm8, true, 4, at, a);
+        Write(mvfx_formatUnorm8, true, 4, below, b);
+        rising = (k == 0 || steps[k] > steps[k - 1]) && a[0] == k + 1 && b[0] == k;
+    }
+    CHECK(rising, "the sRGB steps");
+}
+
 int main(void)
 {
     TestLayouts();
+    TestLayoutView();
+    TestSrgbSteps();
     TestFormats();
     TestRecords();
     TestRuns();

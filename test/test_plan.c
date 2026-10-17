@@ -1167,6 +1167,61 @@ static void TestModulesAndKills(void)
     mvfxDestroyContext(context);
 }
 
+static void TestOverLifeView(void)
+{
+    // The view's values over life are the compiled ones: a colour by a
+    // gradient at the speed with alpha over life, a size an axis, a
+    // flipbook, a custom value scaled and one not; without values over
+    // life, white and ones.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const mvfxCurveKey keys[2] = {{.time = 0, .value = 1}, {.time = 1, .value = 0}};
+    static const mvfxColorKey colors[2] = {{0, 1, 0, 0}, {1, 0, 0, 1}};
+    static const mvfxAlphaKey alphas[2] = {{0, 1}, {1, 0.5f}};
+    const mvfxCurve curve = {.keys = keys, .keyCount = 2};
+    mvfxCustomAttribute custom[2] = {
+        {.components = 2, .scaledOverLife = true, .overLife = {.value = 3, .curve = curve}},
+        {.components = 1}};
+    mvfxEmitterDef emitter = Emitter(64);
+    emitter.custom = custom;
+    emitter.customCount = 2;
+    emitter.overLife = (mvfxOverLife){
+        .color = {.enabled = true,
+                  .input = mvfx_overSpeed,
+                  .speedRange = {1, 4},
+                  .gradient = {.colorKeys = colors,
+                               .colorKeyCount = 2,
+                               .alphaKeys = alphas,
+                               .alphaKeyCount = 2},
+                  .scaleAlpha = true,
+                  .alpha = {.value = 0.5f, .curve = curve}},
+        .size = {.enabled = true,
+                 .perAxis = true,
+                 .size = {{.value = 1, .curve = curve}, {.value = 2}, {.value = 3}}},
+        .frame = {.animation = mvfx_frameAtRate, .frameCount = 16, .frameRate = 24, .loop = true}};
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxEmitterView view;
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
+    const mvfxOverLifeView* o = &view.overLife;
+    CHECK(o->color && o->colorInput == mvfx_overSpeed && o->colorRange[0] == 1.0f &&
+              o->colorRange[1] == 4.0f && o->gradient != NULL && o->gradient[0] == 1.0f &&
+              o->scaleAlpha && o->alpha.value == 0.5f && o->alpha.curve != NULL && o->size &&
+              o->perAxis && o->sizes[0].curve != NULL && o->sizes[1].value == 2.0f &&
+              o->sizes[2].curve == NULL && o->frame.animation == mvfx_frameAtRate &&
+              o->frame.frameCount == 16 && o->frame.frameRate == 24.0f && o->frame.loop &&
+              o->customScaled[0] && o->custom[0].value == 3.0f && o->custom[0].curve != NULL &&
+              !o->customScaled[1],
+          "the view's values over life");
+    emitter = Emitter(64);
+    effect = Effect(context, &emitter);
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
+              !view.overLife.color && view.overLife.gradient == NULL && !view.overLife.size &&
+              view.overLife.sizes[0].value == 0.0f,
+          "none");
+    mvfxDestroyContext(context);
+}
+
 // The CPU path's clip place of a particle's place: mapped back to the
 // world (the step's map), into the view, projected, in binary64.
 static void CoreClip(const mvfxSpaceMap* map, const mvfxDepthImage* image, const float x[3],
@@ -1323,6 +1378,7 @@ int main(void)
     TestForces();
     TestColliders();
     TestModulesAndKills();
+    TestOverLifeView();
     TestDepth();
     return s_failures == 0 ? 0 : 1;
 }

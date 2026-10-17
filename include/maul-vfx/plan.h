@@ -411,6 +411,31 @@ extern "C"
         mvfxLifeView orbitRate;
     } mvfxModulesView;
 
+    // An emitter's values over life as its records show them, compiled
+    // (mvfxOverLife): the colour times a gradient (its baked samples,
+    // MVFX_CURVE_SAMPLES of linear RGBA; NULL for white) at the age or the
+    // speed's share of its range, alpha times a value over life; the size
+    // times a value over life (one an axis where perAxis) at the age or the
+    // speed's share; the flipbook; each custom attribute's values times a
+    // value over life where scaled.
+    typedef struct mvfxOverLifeView
+    {
+        bool color;
+        mvfxOverLifeInput colorInput;
+        float colorRange[2];
+        const float* gradient;
+        bool scaleAlpha;
+        mvfxLifeView alpha;
+        bool size;
+        mvfxOverLifeInput sizeInput;
+        float sizeRange[2];
+        bool perAxis;
+        mvfxLifeView sizes[3];
+        mvfxFrameOverLife frame;
+        bool customScaled[MVFX_MAX_CUSTOM_ATTRIBUTES];
+        mvfxLifeView custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
+    } mvfxOverLifeView;
+
     // A flipbook frame's or a mesh index's draw at birth: from first,
     // drawn up to last when random.
     typedef struct mvfxIndexView
@@ -482,6 +507,8 @@ extern "C"
         mvfxModulesView modules;
         // How many particles the host may queue for it between steps.
         int32_t hostSpawnCapacity;
+        // Its values over life as its records show them.
+        mvfxOverLifeView overLife;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

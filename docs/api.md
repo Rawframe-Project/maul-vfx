@@ -380,6 +380,16 @@ bool mvfxLayout_IsValid(const mvfxContext* context, mvfxLayoutId layout);
 Returns whether an id names a live layout of the context. A stale id is not misuse.  @param context  The context. @param layout   Any id. @return Whether the layout is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxLayout_GetView(const mvfxContext* context, mvfxLayoutId layout, mvfxLayoutView* viewOut);
+```
+Returns a layout as made, for a simulation elsewhere to write it.  @param context  The context that owns the layout. @param layout   The layout. @param viewOut  Receives the view; zeroed on failure. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live layout; `mvfx_errorInvalid` for a NULL context or out parameter. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS]);
+```
+Fills the least binary32 values at which a linear colour channel's byte in an sRGB unorm8 field steps up: a value's byte is how many of them it is not below (none for NaN), as records are written; for a simulation elsewhere to write the same bytes.  @param steps  Receives MVFX_SRGB_STEPS values, rising. @par Thread safety Safe from any thread.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, int64_t* bytesOut);
 ```
 Returns the bytes of scratch an emitter's output takes, enough for any step: 16 a particle of its capacity when it sorts by place or is drawn as ribbons, else 0.  @param context   The context that owns the instance. @param instance  The instance. @param emitter   The emitter's index in the effect's def. @param bytesOut  Receives the bytes. @return `mvfx_success`; `mvfx_errorStale` for an instance that names nothing live; `mvfx_errorInvalid` for a NULL context or out parameter or an emitter out of range, which counts as misuse when the context is given. @par Thread safety Safe from any thread; the context is used by one thread at a time, except that outputs may run on several threads at once.
@@ -567,6 +577,16 @@ MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
 Adds the passes of the context's last step to the frame the host builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer pass and seven compute passes an emitter. It reads the instance's plans, which must stay until mvfxGpuSim_Record. A step whose instance's grids pass the room the def keeps adds no pass: the particles stay as they were, the step's plans unsimulated.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` when the device refuses a pass or an import (no frame open), or when an emitter meets the instance's depth image and no depth texture was given (mvfxGpuSim_SetDepthTextures); `mvfx_errorCapacity` when the grids the instance's colliders read pass the def's hostGridBytes. @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
 ```c
+mvfxGpuRecordsDef mvfxDefaultGpuRecordsDef(void);
+```
+Returns the default records def: emitter 0, no buffer yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def);
+```
+Adds the passes writing an emitter's records to the frame the host builds, as mvfxInstance_WriteParticles writes them on the CPU path, in the pool's order: a transfer pass and a compute pass, after the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them, reading the particles the last recorded step left; mvfxGpuSim_Record records them, and the next mvfxGpuSim_AddPasses lets go of those of a frame the host dropped. At most MVFX_GPU_RECORD_PASSES an emitter a frame. An emitter without particles at the instance's quality level writes no record; its count, if asked for, is 0.  @param sim  The simulation. @param def  Where the records go, from mvfxDefaultGpuRecordsDef. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, an emitter out of range, a layout whose stride is not a multiple of 4 or with a field the part does not write, an offset not a multiple of 4, a negative capacity, a null records buffer, or a view out of range; `mvfx_errorStale` for a layout or an instance that is gone; `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the emitter this frame; `mvfx_errorState` when the device refuses a pass or an import (no frame open). @par Thread safety Safe from any thread; the device is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);
 ```
 Records the passes mvfxGpuSim_AddPasses added, after the frame is compiled: the plans' bytes written, the kernels dispatched. Nothing when it added none. The bytes are the frame's uploads: 1,864 an emitter, 432 a force, 128 a collider and 80 a kill rule it has (8,008 at most); 48 a planned birth (a plan holds at most twice the emitter's capacity) and 64 a host's particle; at the first step, its sources' 1,072 and the effect's baked tables its values read (1,032 a curve, 4,096 a gradient); and the values of each grid its forces and colliders read (mvfxGridView's bytes) at the first step, after each change and, for the instance's, after each move in the room the def keeps, which the device's frameUploadBytes must hold.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorState` when the device refuses a command, such as an upload past the frame's. @par Thread safety Safe from any thread; the device is used by one thread at a time.
@@ -583,4 +603,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-104 functions across 17 headers.
+108 functions across 17 headers.

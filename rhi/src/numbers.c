@@ -82,6 +82,12 @@ static void Floats(uint32_t* words, float a, float b, float c, float d)
     memcpy(words, f, sizeof f);
 }
 
+// A value's first word, or NONE (all ones) for one not stored.
+static uint32_t WordOf(int16_t array)
+{
+    return array >= 0 ? (uint32_t)array : 0xFFFFFFFFu;
+}
+
 // A place's origin from the anchor, and its scale, then its rotation.
 static void Place(uint32_t* words, const mvfxPlanPlace* place, const double anchor[3])
 {
@@ -266,6 +272,141 @@ void mvfxHostBirthWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
     }
 }
 
+void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECORD_LIVES])
+{
+    const mvfxOverLifeView* o = &view->overLife;
+    lives[0] = o->alpha;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        lives[1 + k] = o->sizes[k];
+    }
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        lives[4 + i] = o->custom[i];
+    }
+}
+
+bool mvfxIsRecordLayout(const mvfxLayoutView* layout)
+{
+    bool written = layout->stride % 4 == 0;
+    for (int32_t f = 0; written && f < layout->fieldCount; ++f)
+    {
+        written = layout->fields[f].field <= mvfx_recordMesh;
+    }
+    return written;
+}
+
+// Where a particle's values are for the record pass (records.wgsl's
+// Words).
+static void RecordWords(const mvfxAttributeArrays* a, uint32_t* words)
+{
+    const uint32_t head[12] = {WordOf(a->position), WordOf(a->velocity),    WordOf(a->serial),
+                               WordOf(a->birth),    WordOf(a->inverseLife), WordOf(a->size),
+                               WordOf(a->color),    WordOf(a->angle),       WordOf(a->orientation),
+                               WordOf(a->frame),    WordOf(a->mesh),        0xFFFFFFFFu};
+    memcpy(words, head, sizeof head);
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        words[12 + i] = WordOf(a->custom[i]);
+    }
+}
+
+// The map into the view's space (records.wgsl's turn, offset and
+// scales), as the CPU path unmaps: a world-space emitter's places are
+// offsets from the anchor; an instance-space emitter's are turned by the
+// instance and divided by one over its scale.
+static void RecordMap(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                      const double origin[3], uint32_t* words)
+{
+    bool world = view->space == mvfx_spaceWorld;
+    const mvfxPlanPlace* to = &plan->to;
+    const double* from = world ? plan->anchorAfter : to->origin;
+    if (world)
+    {
+        Floats(words, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    else
+    {
+        memcpy(words, to->rotation, 4 * sizeof(float));
+    }
+    Floats(words + 4, (float)(from[0] - origin[0]), (float)(from[1] - origin[1]),
+           (float)(from[2] - origin[2]), 0.0f);
+    Floats(words + 8, world ? 1.0f : 1.0f / to->scale, world ? to->scale : 1.0f, 0.0f, 0.0f);
+}
+
+// The values over life records show (records.wgsl's color to lives).
+static void RecordOverLife(const mvfxEmitterView* view, const mvfxStepTables* tables,
+                           uint32_t* words)
+{
+    const mvfxOverLifeView* o = &view->overLife;
+    const uint32_t color[4] = {o->color ? 1u : 0u, o->colorInput, tables->gradient,
+                               o->scaleAlpha ? 1u : 0u};
+    memcpy(words, color, sizeof color);
+    Floats(words + 4, o->colorRange[0], o->colorRange[1], 0.0f, 0.0f);
+    const uint32_t size[4] = {o->size ? 1u : 0u, o->sizeInput, o->perAxis ? 1u : 0u, 0u};
+    memcpy(words + 8, size, sizeof size);
+    Floats(words + 12, o->sizeRange[0], o->sizeRange[1], 0.0f, 0.0f);
+    uint32_t components = 0;
+    uint32_t scaled = 0;
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        components |= (uint32_t)view->custom[i].components << (4 * i);
+        scaled |= o->customScaled[i] ? 1u << i : 0u;
+    }
+    words[16] = components;
+    words[17] = scaled;
+    const mvfxFrameOverLife* frame = &o->frame;
+    float factor = frame->animation == mvfx_frameAtRate ? frame->frameRate : frame->cycles;
+    words[20] = frame->animation;
+    words[21] = (uint32_t)frame->frameCount;
+    words[22] = frame->loop ? 1u : 0u;
+    memcpy(&words[23], &factor, sizeof factor);
+    mvfxLifeView lives[MVFX_RECORD_LIVES];
+    mvfxRecordLivesOf(view, lives);
+    for (int32_t k = 0; k < MVFX_RECORD_LIVES; ++k)
+    {
+        memcpy(&words[24 + 2 * k], &lives[k].value, sizeof(float));
+        words[25 + 2 * k] = tables->recordLives[k];
+    }
+}
+
+void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                       const mvfxLayoutView* layout, const mvfxGpuRecordsDef* def,
+                       const mvfxStepTables* tables, const float srgb[MVFX_SRGB_STEPS],
+                       uint32_t words[MVFX_RECORD_WORDS])
+{
+    memset(words, 0, MVFX_RECORD_WORDS * sizeof(uint32_t));
+    uint64_t end = (uint64_t)(plan->start + plan->ticks);
+    int64_t capacity = def->capacity < (int64_t)UINT32_MAX ? def->capacity : (int64_t)UINT32_MAX;
+    const uint32_t head[12] = {(uint32_t)plan->capacity,
+                               (uint32_t)capacity,
+                               (uint32_t)(def->offset / 4u),
+                               layout->stride / 4u,
+                               (uint32_t)layout->fieldCount,
+                               0u,
+                               def->count.index1 != 0 ? (uint32_t)(def->countOffset / 4u)
+                                                      : 0xFFFFFFFFu,
+                               0u,
+                               (uint32_t)end,
+                               (uint32_t)(end >> 32u),
+                               0u,
+                               0u};
+    memcpy(words, head, sizeof head);
+    RecordWords(&view->arrays, words + 12);
+    RecordMap(view, plan, def->view.origin, words + 32);
+    RecordOverLife(view, tables, words + 44);
+    memcpy(words + 92, srgb, MVFX_SRGB_STEPS * sizeof(float));
+    for (int32_t f = 0; f < layout->fieldCount; ++f)
+    {
+        const mvfxLayoutField* field = &layout->fields[f];
+        uint32_t* at = words + 348 + 4 * f;
+        at[0] = field->field;
+        at[1] = field->format;
+        at[2] = field->components | (uint32_t)field->custom << 8u | (field->srgb ? 1u << 16u : 0u);
+        at[3] = field->offset;
+    }
+}
+
 void mvfxLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_GPU_LIVES])
 {
     const mvfxModulesView* m = &view->modules;
@@ -366,12 +507,6 @@ static void KillRules(const mvfxEmitterPlan* plan, uint32_t* words)
         memcpy(at + 12, rule->rotation, 4 * sizeof(float));
         Floats(at + 16, rule->normal[0], rule->normal[1], rule->normal[2], 0.0f);
     }
-}
-
-// A value's first word, or NONE (all ones) for one not stored.
-static uint32_t WordOf(int16_t array)
-{
-    return array >= 0 ? (uint32_t)array : 0xFFFFFFFFu;
 }
 
 // Where a particle's values are among its words (sim.wgsl's Words): its

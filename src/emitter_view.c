@@ -125,6 +125,34 @@ static mvfxModulesView ModulesOf(const mvfxCompiledVelocityModules* m)
     };
 }
 
+// Values over life as records show them, as the view gives them.
+static mvfxOverLifeView OverLifeOf(const mvfxCompiledOverLife* o)
+{
+    mvfxOverLifeView view = {
+        .color = o->color,
+        .colorInput = o->colorInput,
+        .colorRange = {o->colorRange[0], o->colorRange[1]},
+        .gradient = o->gradient != nullptr ? o->gradient->rgba[0] : nullptr,
+        .scaleAlpha = o->scaleAlpha,
+        .alpha = LifeOf(&o->alpha),
+        .size = o->size,
+        .sizeInput = o->sizeInput,
+        .sizeRange = {o->sizeRange[0], o->sizeRange[1]},
+        .perAxis = o->perAxis,
+        .frame = o->frame,
+    };
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        view.sizes[k] = LifeOf(&o->sizes[k]);
+    }
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        view.customScaled[i] = o->customScaled[i];
+        view.custom[i] = LifeOf(&o->custom[i]);
+    }
+    return view;
+}
+
 // An index's draw at birth, as the view gives it.
 static mvfxIndexView IndexOf(const mvfxFrameStart* start)
 {
@@ -190,6 +218,7 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->rotationSpeed = LifeOf(&e->overLife.rotationScale);
     viewOut->modules = ModulesOf(&e->velocityModules);
     viewOut->hostSpawnCapacity = e->hostSpawnCapacity;
+    viewOut->overLife = OverLifeOf(&e->overLife);
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];

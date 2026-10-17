@@ -181,6 +181,70 @@ extern "C"
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
 
+// The record passes an emitter takes in a frame.
+#define MVFX_GPU_RECORD_PASSES 4
+
+    // Where an emitter's records go (mvfxGpuSim_AddRecords). Build it with
+    // mvfxDefaultGpuRecordsDef.
+    typedef struct mvfxGpuRecordsDef
+    {
+        uint32_t cookie;
+        // The emitter, and the layout its records take: a stride that is a
+        // multiple of 4 bytes, no ribbon or neighbor field.
+        int32_t emitter;
+        mvfxLayoutId layout;
+        // The view positions are made relative to (its origin; each
+        // coordinate at most 2^52 in size).
+        mvfxView view;
+        // A storage buffer of the frame open the records go into, from a
+        // byte that is a multiple of 4, at most capacity of them.
+        mrhiResourceId records;
+        uint64_t offset;
+        int64_t capacity;
+        // Optionally a storage buffer of the frame and a byte (a multiple
+        // of 4) the record count goes to as a 32-bit word: the live count
+        // held to the capacity; a null id for none.
+        mrhiResourceId count;
+        uint64_t countOffset;
+    } mvfxGpuRecordsDef;
+
+// The cookie of a records def, which its default sets and
+// mvfxGpuSim_AddRecords checks.
+#define MVFX_GPU_RECORDS_DEF_COOKIE 0x6D767264u
+
+    /// Returns the default records def: emitter 0, no buffer yet.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API mvfxGpuRecordsDef mvfxDefaultGpuRecordsDef(void);
+
+    /// Adds the passes writing an emitter's records to the frame the host
+    /// builds, as mvfxInstance_WriteParticles writes them on the CPU path,
+    /// in the pool's order: a transfer pass and a compute pass, after the
+    /// step's passes of the frame (mvfxGpuSim_AddPasses) or, without them,
+    /// reading the particles the last recorded step left; mvfxGpuSim_Record
+    /// records them, and the next mvfxGpuSim_AddPasses lets go of those of
+    /// a frame the host dropped. At most MVFX_GPU_RECORD_PASSES an emitter
+    /// a frame. An emitter without particles at the instance's quality
+    /// level writes no record; its count, if asked for, is 0.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the records go, from mvfxDefaultGpuRecordsDef.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, an emitter out of range, a layout
+    ///         whose stride is not a multiple of 4 or with a field the part
+    ///         does not write, an offset not a multiple of 4, a negative
+    ///         capacity, a null records buffer, or a view out of range;
+    ///         `mvfx_errorStale` for a layout or an instance that is gone;
+    ///         `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the
+    ///         emitter this frame; `mvfx_errorState` when the device refuses
+    ///         a pass or an import (no frame open).
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim,
+                                                                 const mvfxGpuRecordsDef* def);
+
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
     /// when it added none. The bytes are the frame's uploads: 1,864 an

@@ -103,7 +103,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   axis over age or speed, the flipbook over the life or at a rate,
   looping or held, rotation speed over life), and a custom attribute may
   be scaled over life. All but rotation are taken where a value is read
-  and never written back.
+  and never written back. A flipbook's frame is the floor of an exact
+  integer product (the age's ticks and the cycles or the rate, as the
+  binary32 values they are, times the frames), the same on every path.
 - Kill rules: an emitter def gains up to eight `killRules` (through a
   sphere or a turned box, ending outside one, past a plane, slower than
   a speed after an age), each in the world's or the emitter's space; an
@@ -664,3 +666,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   its record in `host`), each with its place as given, its velocity as
   the CPU path gives it and the colour and size it gives. The GPU part
   runs them, rate curves and distance spawning.
+- `mvfxLayout_GetView` and `mvfxSrgbSteps` (the least values at which an
+  sRGB byte steps up), and the emitter view's values over life as records
+  show them (`mvfxOverLifeView`). The GPU part writes an emitter's records
+  in a layout into a buffer of the host's frame, and their count
+  (`mvfxGpuSim_AddRecords`, `mvfxGpuRecordsDef`).

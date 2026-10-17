@@ -216,6 +216,33 @@ static void TestFrames(void)
     scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
     CHECK(mvfxFrameOf(scene.live, 0, 0) == 5u, "still");
     mvfxDestroyContext(scene.context);
+    // The frames moved are the floor of the exact product, where binary64
+    // rounds up to the next integer: an age of 0.6232155561447144 (one
+    // second of a life whose inverse it is) times 64.00150299072266 cycles
+    // of 65,535 frames is just below 2,613,977, frame 58,111 looping; a
+    // particle 977,351,125,672 ticks old at 1.0000003576278687 frames a
+    // second is just below 932,075, frame 14,584.
+    emitter = Held();
+    emitter.overLife.frame = (mvfxFrameOverLife){.animation = mvfx_frameOverLife,
+                                                 .frameCount = 65535,
+                                                 .cycles = 64.00150299072266f,
+                                                 .loop = true};
+    scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
+    float* inverse = mvfxAttributeArray(scene.live, 0, mvfx_attributeInverseLife);
+    inverse[0] = 0.6232155561447144f;
+    CHECK(mvfxFrameOf(scene.live, 0, 0) == 58111u, "over life, exactly");
+    mvfxDestroyContext(scene.context);
+    emitter.overLife.frame = (mvfxFrameOverLife){.animation = mvfx_frameAtRate,
+                                                 .frameCount = 65535,
+                                                 .frameRate = 1.0000003576278687f,
+                                                 .loop = true};
+    scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
+    uint64_t birth = (uint64_t)(scene.live->clock - 977351125672);
+    ((uint32_t*)mvfxAttributeArray(scene.live, 0, mvfx_attributeBirthLow))[0] = (uint32_t)birth;
+    ((uint32_t*)mvfxAttributeArray(scene.live, 0, mvfx_attributeBirthHigh))[0] =
+        (uint32_t)(birth >> 32u);
+    CHECK(mvfxFrameOf(scene.live, 0, 0) == 14584u, "at a rate, exactly");
+    mvfxDestroyContext(scene.context);
 }
 
 static void TestCustomAndRotation(void)

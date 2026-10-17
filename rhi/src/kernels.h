@@ -16,6 +16,7 @@ typedef enum mvfxContainer
 {
     mvfx_containerPcg4d = 0,
     mvfx_containerSim = 1,
+    mvfx_containerRecords = 2,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -36,6 +37,8 @@ typedef enum mvfxKernel
     mvfx_kernelMeasure = 6,
     // Which births with room an attractor kills in their first step.
     mvfx_kernelKillBirths = 7,
+    // An emitter's records in a layout of the host's (records.wgsl).
+    mvfx_kernelRecords = 8,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

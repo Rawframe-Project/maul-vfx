@@ -141,6 +141,38 @@ static int32_t Snorm(float value, float top)
     return scaled < 0.0f ? -magnitude : magnitude;
 }
 
+// A linear channel's sRGB byte.
+static uint32_t SrgbByte(float linear)
+{
+    return Unorm(ToSrgb(linear), 255.0f);
+}
+
+void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS])
+{
+    // The byte rises with the value: each step by bisection over the
+    // binary32 values from 0 to 1, ordered as their bits are.
+    for (uint32_t k = 1; k <= MVFX_SRGB_STEPS; ++k)
+    {
+        uint32_t low = 0;
+        uint32_t high = 0x3F800000u;
+        while (low < high)
+        {
+            uint32_t middle = low + (high - low) / 2u;
+            float x = 0.0f;
+            memcpy(&x, &middle, sizeof x);
+            if (SrgbByte(x) >= k)
+            {
+                high = middle;
+            }
+            else
+            {
+                low = middle + 1u;
+            }
+        }
+        memcpy(&steps[k - 1], &low, sizeof low);
+    }
+}
+
 // A value (a word for uint32) in a format at its place.
 static inline void WriteValue(mvfxFormat format, bool srgb, float value, uint32_t word,
                               unsigned char* at)

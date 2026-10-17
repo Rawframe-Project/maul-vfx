@@ -7,6 +7,7 @@
 #ifndef MAUL_VFX_RHI_SRC_NUMBERS_H
 #define MAUL_VFX_RHI_SRC_NUMBERS_H
 
+#include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/plan.h"
 
 // The sources: the births' size, colour, angle, spin, orientation,
@@ -73,14 +74,40 @@ typedef struct mvfxStepSpans
 
 mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan);
 
-// Where the step's baked tables are among the grids buffer's words (all
-// ones for none): each source's curve and gradient, each value over
-// life's curve.
+// The values over life records read: alpha, the three sizes', each
+// custom attribute's.
+#define MVFX_RECORD_LIVES (4 + MVFX_MAX_CUSTOM_ATTRIBUTES)
+
+// Where the baked tables are among the grids buffer's words (all ones for
+// none): each source's curve and gradient, each value over life's curve
+// the step reads; the colour's gradient over life and each value over
+// life's curve records read.
 typedef struct mvfxStepTables
 {
     uint32_t sources[MVFX_GPU_SOURCES][2];
     uint32_t lives[MVFX_GPU_LIVES];
+    uint32_t gradient;
+    uint32_t recordLives[MVFX_RECORD_LIVES];
 } mvfxStepTables;
+
+// An emitter's values over life records read, in the kernel's order.
+void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECORD_LIVES]);
+
+// The words of a record pass's numbers (records.wgsl's Records).
+#define MVFX_RECORD_WORDS 476
+
+// Whether a layout is one the record pass writes: its stride a multiple of
+// 4 bytes, no ribbon or neighbor field.
+bool mvfxIsRecordLayout(const mvfxLayoutView* layout);
+
+// Writes a record pass's numbers: the particle buffer's capacity, the
+// records' place, count and layout, the clock at the plan's end, where a
+// particle's values are, the map into the view's space, the values over
+// life and their tables, the sRGB steps.
+void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                       const mvfxLayoutView* layout, const mvfxGpuRecordsDef* def,
+                       const mvfxStepTables* tables, const float srgb[MVFX_SRGB_STEPS],
+                       uint32_t words[MVFX_RECORD_WORDS]);
 
 // Writes emitter's step numbers: the plan's counts and ticks, the
 // emitter's shape, velocity and motion, the instance's places from the

@@ -11,6 +11,7 @@
 // MVFX_RHI_REQUIRED is set.
 
 #include "emitter_step.h"
+#include "half.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "test_harness.h"
@@ -298,28 +299,12 @@ static bool RecordDepthPasses(Gpu* gpu)
 
 // One frame of the simulation's step, after the depth image's passes when
 // the run has one.
-static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
-{
-    mrhiFrameDef frame = mrhiDefaultFrameDef();
-    if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
-    {
-        return false;
-    }
-    bool depth = s_depth != NULL;
-    if ((depth && !AddDepthPasses(gpu, sim)) || mvfxGpuSim_AddPasses(sim) != mvfx_success ||
-        mrhiCompileFrame(gpu->device) != mrhi_success || (depth && !RecordDepthPasses(gpu)) ||
-        mvfxGpuSim_Record(sim) != mvfx_success)
-    {
-        (void)mrhiDropFrame(gpu->device);
-        return false;
-    }
-    return Finish(gpu);
-}
 
 // The emitter's particles and counts as the GPU holds them, read back, for
-// capacities up to 2^17 and particles of up to 32 words; where its values
+// capacities up to 2^17 and particles of up to 48 words; where its values
 // are among them, and each of the run's emitters'.
-static uint32_t s_words[32 * (1 << 17)];
+#define MOST_WORDS 48
+static uint32_t s_words[MOST_WORDS * (1 << 17)];
 static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
 static mvfxAttributeArrays s_arrays;
 static mvfxAttributeArrays s_runArrays[2];
@@ -340,7 +325,7 @@ static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
     }
     s_capacity = particles.capacity;
     s_arrays = s_runArrays[emitter];
-    if (particles.words != s_arrays.count + 3 || particles.words > 32)
+    if (particles.words != s_arrays.count + 3 || particles.words > MOST_WORDS)
     {
         (void)mrhiDropFrame(gpu->device);
         return false;
@@ -536,6 +521,266 @@ static mvfxContext* s_context;
 static mvfxInstanceId s_cpu;
 static mvfxInstanceId s_planned;
 
+// A run's records (none where its layout is NULL): the layout, the
+// buffers the GPU writes them and their count into, the view, and the
+// most records the buffer holds, past which the CPU path's count still
+// counts; the GPU's read back, and the CPU path's, every byte filled
+// first, the gaps no field covers kept.
+#define RECORD_BYTES (64 * 1024 * 16)
+#define RECORD_FILL  0xEEu
+static mvfxLayoutId s_layout;
+static mvfxLayoutView s_layoutView;
+static mrhiBufferId s_recordBuffer;
+static mrhiBufferId s_countBuffer;
+static mrhiResourceId s_recordResource;
+static mvfxView s_view;
+static int64_t s_recordCapacity;
+static uint8_t s_gpuRecords[RECORD_BYTES];
+static uint8_t s_cpuRecords[RECORD_BYTES];
+static uint32_t s_gpuCount[4];
+
+// The fill's bytes: written before the GPU's records each step.
+static uint32_t s_fillBytes[RECORD_BYTES / 4];
+
+static bool OpenRecords(Gpu* gpu, const mvfxLayoutDef* layout, int64_t capacity)
+{
+    mrhiBufferDef def = mrhiDefaultBufferDef();
+    def.size = RECORD_BYTES;
+    def.usage = mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
+    mrhiBufferDef count = def;
+    count.size = sizeof s_gpuCount;
+    memset(s_fillBytes, RECORD_FILL, sizeof s_fillBytes);
+    s_recordCapacity = capacity;
+    s_view = (mvfxView){
+        .origin = {3.5, -1.25, 2.0}, .eye = {0, 0, 5}, .forward = {0, 0, -1}, .up = {0, 1, 0}};
+    return mvfxCreateLayout(s_context, layout, &s_layout) == mvfx_success &&
+           mvfxLayout_GetView(s_context, s_layout, &s_layoutView) == mvfx_success &&
+           mrhiCreateBuffer(gpu->device, &def, &s_recordBuffer) == mrhi_success &&
+           mrhiCreateBuffer(gpu->device, &count, &s_countBuffer) == mrhi_success;
+}
+
+static void CloseRecords(Gpu* gpu)
+{
+    (void)mrhiDestroyBuffer(gpu->device, s_recordBuffer);
+    (void)mrhiDestroyBuffer(gpu->device, s_countBuffer);
+    s_layout = (mvfxLayoutId){0};
+}
+
+// Adds the fill of the records buffer and the first emitter's record pass,
+// its count at the count buffer's second word; the fill's pass.
+static bool AddRecordPasses(mvfxGpuSim* sim, mrhiDevice* device, mrhiPassId* fill)
+{
+    mrhiResourceId count = {0};
+    if (mrhiImportBuffer(device, s_recordBuffer, &s_recordResource) != mrhi_success ||
+        mrhiImportBuffer(device, s_countBuffer, &count) != mrhi_success)
+    {
+        return false;
+    }
+    const mrhiAccess written[1] = {
+        {.resource = s_recordResource, .kind = mrhi_accessCopyDestination}};
+    mrhiPassDef def = mrhiDefaultPassDef();
+    def.passClass = mrhi_passTransfer;
+    def.accesses = written;
+    def.accessCount = 1;
+    def.neverCull = true;
+    mvfxGpuRecordsDef records = mvfxDefaultGpuRecordsDef();
+    records.layout = s_layout;
+    records.view = s_view;
+    records.records = s_recordResource;
+    records.offset = 64;
+    records.capacity = s_recordCapacity;
+    records.count = count;
+    records.countOffset = 4;
+    return mrhiAddPass(device, &def, fill) == mrhi_success &&
+           mvfxGpuSim_AddRecords(sim, &records) == mvfx_success;
+}
+
+static bool RecordFill(mrhiDevice* device, mrhiPassId fill)
+{
+    bool recorded = mrhiBeginPass(device, fill) == mrhi_success &&
+                    mrhiWriteBuffer(device, fill, s_recordResource, 0, s_fillBytes,
+                                    sizeof s_fillBytes) == mrhi_success;
+    return mrhiEndPass(device, fill) == mrhi_success && recorded;
+}
+
+// Reads the GPU's records and count back.
+static bool ReadRecords(Gpu* gpu)
+{
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    mrhiResourceId buffers[2] = {{0}, {0}};
+    mrhiPassId pass = {0};
+    mrhiRequestId reads[2] = {{0}, {0}};
+    if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+    {
+        return false;
+    }
+    bool recorded = mrhiImportBuffer(gpu->device, s_recordBuffer, &buffers[0]) == mrhi_success &&
+                    mrhiImportBuffer(gpu->device, s_countBuffer, &buffers[1]) == mrhi_success;
+    const mrhiAccess reading[2] = {{.resource = buffers[0], .kind = mrhi_accessCopySource},
+                                   {.resource = buffers[1], .kind = mrhi_accessCopySource}};
+    mrhiPassDef def = mrhiDefaultPassDef();
+    def.passClass = mrhi_passTransfer;
+    def.accesses = reading;
+    def.accessCount = 2;
+    def.neverCull = true;
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+        mrhiCompileFrame(gpu->device) == mrhi_success &&
+        mrhiBeginPass(gpu->device, pass) == mrhi_success &&
+        mrhiReadBuffer(gpu->device, pass, buffers[0], 0, RECORD_BYTES, &reads[0]) == mrhi_success &&
+        mrhiReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_gpuCount, &reads[1]) ==
+            mrhi_success &&
+        mrhiEndPass(gpu->device, pass) == mrhi_success;
+    if (!recorded)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        return false;
+    }
+    size_t taken = 0;
+    size_t counted = 0;
+    return Finish(gpu) &&
+           mrhiTakeReadback(gpu->device, reads[0], s_gpuRecords, sizeof s_gpuRecords, &taken) ==
+               mrhi_success &&
+           mrhiTakeReadback(gpu->device, reads[1], s_gpuCount, sizeof s_gpuCount, &counted) ==
+               mrhi_success &&
+           taken == RECORD_BYTES && counted == sizeof s_gpuCount;
+}
+
+// The records' bytes a field's component takes, and its value decoded; a
+// word for uint32.
+static uint32_t FieldBytes(mvfxFormat format)
+{
+    return format == mvfx_formatFloat16 || format == mvfx_formatUnorm16 ||
+                   format == mvfx_formatSnorm16
+               ? 2u
+           : format == mvfx_formatUnorm8 || format == mvfx_formatSnorm8 ? 1u
+                                                                        : 4u;
+}
+
+static double Decoded(mvfxFormat format, const uint8_t* at)
+{
+    uint32_t word = 0;
+    memcpy(&word, at, FieldBytes(format));
+    float value = 0.0f;
+    switch (format)
+    {
+    case mvfx_formatFloat32:
+        memcpy(&value, &word, sizeof value);
+        return (double)value;
+    case mvfx_formatFloat16:
+        return (double)mvfxFloatFromHalf((uint16_t)word);
+    case mvfx_formatSnorm8:
+        return (int8_t)word;
+    case mvfx_formatSnorm16:
+        return (int16_t)word;
+    default:
+        return word;
+    }
+}
+
+// Records whose integer formats are a step apart, and those whose floats
+// differ, over a run.
+static int64_t s_stepsApart;
+
+// Whether a GPU record's field is the CPU path's: words alike, floats
+// within the tolerance (a half's within its last place), normalized
+// integers within a step (their binary32 inputs within the tolerance may
+// round apart).
+static bool SameField(const mvfxLayoutField* field, const uint8_t* cpu, const uint8_t* gpu)
+{
+    uint32_t bytes = FieldBytes(field->format);
+    bool same = true;
+    for (uint32_t k = 0; same && k < field->components; ++k)
+    {
+        double a = Decoded(field->format, cpu + field->offset + k * bytes);
+        double b = Decoded(field->format, gpu + field->offset + k * bytes);
+        double apart = fabs(a - b);
+        switch (field->format)
+        {
+        case mvfx_formatUint32:
+            same = a == b;
+            break;
+        case mvfx_formatFloat32:
+            same = apart <= (double)s_tolerance * (1.0 + fabs(a));
+            break;
+        case mvfx_formatFloat16:
+            same = apart <= fmax(fabs(a) * 0x1p-10, (double)s_tolerance * (1.0 + fabs(a)));
+            break;
+        default:
+            same = apart <= 1.0;
+            s_stepsApart += apart != 0.0 ? 1 : 0;
+            break;
+        }
+    }
+    return same;
+}
+
+// The GPU's records and count against the CPU path's: each record's
+// fields, every other byte the fill's.
+static bool SameRecords(void)
+{
+    int64_t count = 0;
+    memset(s_cpuRecords, RECORD_FILL, sizeof s_cpuRecords);
+    if (mvfxInstance_WriteParticles(s_context, s_cpu, 0, s_layout, &s_view, NULL, 0,
+                                    s_cpuRecords + 64, s_recordCapacity, &count) != mvfx_success)
+    {
+        return false;
+    }
+    int64_t written = count < s_recordCapacity ? count : s_recordCapacity;
+    bool same = (int64_t)s_gpuCount[1] == written;
+    uint32_t stride = s_layoutView.stride;
+    // Every byte no field covers: the fill's on both.
+    for (int64_t b = 0; same && b < RECORD_BYTES; ++b)
+    {
+        same = s_cpuRecords[b] == s_gpuRecords[b] || (b >= 64 && b < 64 + written * stride);
+    }
+    for (int64_t r = 0; same && r < written; ++r)
+    {
+        const uint8_t* cpu = s_cpuRecords + 64 + r * stride;
+        const uint8_t* gpu = s_gpuRecords + 64 + r * stride;
+        bool covered[MVFX_MAX_LAYOUT_STRIDE] = {false};
+        for (int32_t f = 0; same && f < s_layoutView.fieldCount; ++f)
+        {
+            const mvfxLayoutField* field = &s_layoutView.fields[f];
+            same = SameField(field, cpu, gpu);
+            for (uint32_t b = 0; b < FieldBytes(field->format) * field->components; ++b)
+            {
+                covered[field->offset + b] = true;
+            }
+        }
+        for (uint32_t b = 0; same && b < stride; ++b)
+        {
+            same = covered[b] || (cpu[b] == RECORD_FILL && gpu[b] == RECORD_FILL);
+        }
+        if (!same)
+        {
+            printf("record %lld of %lld differs\n", (long long)r, (long long)written);
+        }
+    }
+    return same;
+}
+
+static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
+{
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+    {
+        return false;
+    }
+    bool depth = s_depth != NULL;
+    bool records = s_layout.index1 != 0;
+    mrhiPassId fill = {0};
+    if ((depth && !AddDepthPasses(gpu, sim)) || mvfxGpuSim_AddPasses(sim) != mvfx_success ||
+        (records && !AddRecordPasses(sim, gpu->device, &fill)) ||
+        mrhiCompileFrame(gpu->device) != mrhi_success || (depth && !RecordDepthPasses(gpu)) ||
+        (records && !RecordFill(gpu->device, fill)) || mvfxGpuSim_Record(sim) != mvfx_success)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        return false;
+    }
+    return Finish(gpu);
+}
+
 // The largest difference of the bounds seen over the run, relative to
 // the box's size along its axis (as places, offsets from an anchor up to
 // that far, are compared relative to theirs).
@@ -658,6 +903,11 @@ typedef struct Run
     // before each step, placed about the instance's origin (none for
     // NULL).
     const mvfxSpawnRequest* spawn;
+    // A layout the first emitter's records are written in by both paths
+    // and compared every step (none for NULL), and the most records the
+    // buffer holds.
+    const mvfxLayoutDef* layout;
+    int64_t recordCapacity;
 } Run;
 
 // Queues a run's host particles for both instances at step s: a little
@@ -836,6 +1086,11 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
 {
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
+    s_stepsApart = 0;
+    if (run->layout != NULL)
+    {
+        CHECK(OpenRecords(gpu, run->layout, run->recordCapacity), "the records' buffers");
+    }
     s_placeError = 0.0f;
     s_velocityError = 0.0f;
     s_contacts = 0;
@@ -898,6 +1153,7 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
                    SameBounds(sim, e);
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
+        same = same && (run->layout == NULL || (ReadRecords(gpu) && SameRecords()));
     }
     printf("%s: largest relative differences, place %g, velocity %g, bounds %g\n", what,
            (double)s_placeError, (double)s_velocityError, s_boundsError);
@@ -920,6 +1176,11 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
         const mvfxEmitterState* state = &mvfxContextInstance(s_context, s_cpu)->emitters[0];
         printf("  killed: %llu\n", (unsigned long long)state->killed);
         CHECK(state->killed > 0, "kills");
+    }
+    if (run->layout != NULL)
+    {
+        printf("  records a step apart: %lld\n", (long long)s_stepsApart);
+        CloseRecords(gpu);
     }
     mvfxDestroyGpuSim(sim);
     CloseDepth(gpu);
@@ -1506,6 +1767,103 @@ static void TestHostSpawn(Gpu* gpu, mvfxGpu* kernels)
             "the host's particles with drawn velocities, in the instance's space");
 }
 
+static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Records of every field the GPU writes, in every format, with gaps no
+    // field covers: a world-space emitter under a moving instance, its
+    // values over life (a colour by a gradient at the speed with alpha
+    // over life, a size an axis at the age, a custom value scaled), a
+    // flipbook over life; then in the instance's space, frames at a rate,
+    // the buffer holding fewer records than the live particles.
+    static const mvfxCurveKey keys[2] = {
+        {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
+    static const mvfxColorKey colors[2] = {{0, 1, 0.5f, 0}, {1, 0, 0.25f, 1}};
+    static const mvfxAlphaKey alphas[2] = {{0, 1}, {1, 0.5f}};
+    const mvfxCurve curve = {.keys = keys, .keyCount = 2};
+    const mvfxCustomAttribute custom[1] = {
+        {.components = 2,
+         .initial = {.kind = mvfx_sourceRange, .min = {-1, 0}, .max = {1, 3}},
+         .scaledOverLife = true,
+         .overLife = {.value = 2, .curve = curve}}};
+    static const mvfxLayoutField fields[13] = {
+        {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
+        {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 12},
+        {.field = mvfx_recordColor,
+         .format = mvfx_formatUnorm8,
+         .components = 4,
+         .srgb = true,
+         .offset = 20},
+        {.field = mvfx_recordAngle, .format = mvfx_formatSnorm16, .components = 1, .offset = 24},
+        {.field = mvfx_recordOrientation,
+         .format = mvfx_formatSnorm8,
+         .components = 4,
+         .offset = 28},
+        {.field = mvfx_recordVelocity, .format = mvfx_formatFloat32, .components = 3, .offset = 32},
+        {.field = mvfx_recordAge, .format = mvfx_formatUnorm16, .components = 1, .offset = 44},
+        {.field = mvfx_recordFrame, .format = mvfx_formatUint32, .components = 1, .offset = 48},
+        {.field = mvfx_recordCustom, .format = mvfx_formatFloat32, .components = 2, .offset = 52},
+        {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 60},
+        {.field = mvfx_recordMesh, .format = mvfx_formatFloat32, .components = 1, .offset = 64},
+        {.field = mvfx_recordColor, .format = mvfx_formatUnorm16, .components = 3, .offset = 68},
+        {.field = mvfx_recordFrame, .format = mvfx_formatFloat32, .components = 1, .offset = 76}};
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = fields;
+    layout.fieldCount = 13;
+    layout.stride = 84;
+    mvfxEmitterDef emitter = Sprite();
+    emitter.space = mvfx_spaceWorld;
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f}, .max = {0.4f, 0.5f, 0.6f}};
+    emitter.color = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.2f, 0.2f, 0.2f, 1}, .max = {1, 1, 1, 1}};
+    emitter.angle = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {-0.5f, 0.5f}};
+    emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {-0.2f, 0.2f}};
+    emitter.orientationMode = mvfx_orientationRandom;
+    emitter.frame = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 0, .last = 3};
+    emitter.meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 1, .last = 7};
+    emitter.custom = custom;
+    emitter.customCount = 1;
+    emitter.overLife = (mvfxOverLife){
+        .color = {.enabled = true,
+                  .input = mvfx_overSpeed,
+                  .speedRange = {0.5f, 4},
+                  .gradient = {.colorKeys = colors,
+                               .colorKeyCount = 2,
+                               .alphaKeys = alphas,
+                               .alphaKeyCount = 2},
+                  .scaleAlpha = true,
+                  .alpha = {.value = 1, .curve = curve}},
+        .size = {.enabled = true,
+                 .perAxis = true,
+                 .size = {{.value = 2, .curve = curve},
+                          {.value = 1},
+                          {.value = 3, .curve = curve}}},
+        .frame = {.animation = mvfx_frameOverLife, .frameCount = 16, .cycles = 2.5f, .loop = true}};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .pace = 0.1,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY},
+            "records of every field, in the world's space");
+    emitter.space = mvfx_spaceLocal;
+    emitter.overLife.frame = (mvfxFrameOverLife){
+        .animation = mvfx_frameAtRate, .frameCount = 12, .frameRate = 30, .loop = false};
+    emitter.overLife.color.input = mvfx_overAge;
+    emitter.overLife.size.input = mvfx_overSpeed;
+    emitter.overLife.size.speedRange[0] = 1;
+    emitter.overLife.size.speedRange[1] = 3;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 60},
+            "records in the instance's space, fewer than the particles");
+}
+
 static void TestKillRules(Gpu* gpu, mvfxGpu* kernels)
 {
     // Each kind of kill rule alone kills, the particles' paths through
@@ -2042,6 +2400,171 @@ static void TestBoundsRefused(mvfxGpu* kernels)
     mvfxDestroyContext(s_context);
 }
 
+// A records def of a resource and layout, the rest valid.
+static mvfxGpuRecordsDef RecordsDef(mrhiResourceId records, mvfxLayoutId layout)
+{
+    mvfxGpuRecordsDef def = mvfxDefaultGpuRecordsDef();
+    def.layout = layout;
+    def.records = records;
+    def.capacity = 8;
+    return def;
+}
+
+static void TestRecordsRefused(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A records def refused: a NULL argument, a def without its cookie, an
+    // emitter out of range, no buffer, an offset or count offset not a
+    // multiple of 4, a negative capacity, a view out of range, a layout
+    // gone, a stride not a multiple of 4 or a ribbon field; past the
+    // passes an emitter takes in a frame, its limit. Then an emitter left
+    // out at the instance's quality level: a count of 0, no record.
+    mvfxEmitterDef emitter = Sprite();
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1}, &effect);
+    static const mvfxLayoutField word = {
+        .field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1};
+    static const mvfxLayoutField bytes = {
+        .field = mvfx_recordColor, .format = mvfx_formatUnorm8, .components = 2};
+    static const mvfxLayoutField ribbon = {
+        .field = mvfx_recordWidth, .format = mvfx_formatFloat32, .components = 1};
+    mvfxLayoutDef def = mvfxDefaultLayoutDef();
+    def.fieldCount = 1;
+    def.stride = 4;
+    mvfxLayoutId good = {0};
+    mvfxLayoutId gone = {0};
+    mvfxLayoutId uneven = {0};
+    mvfxLayoutId width = {0};
+    def.fields = &word;
+    CHECK(mvfxCreateLayout(s_context, &def, &good) == mvfx_success &&
+              mvfxCreateLayout(s_context, &def, &gone) == mvfx_success &&
+              mvfxDestroyLayout(s_context, gone) == mvfx_success,
+          "layouts");
+    def.fields = &bytes;
+    def.stride = 2;
+    CHECK(mvfxCreateLayout(s_context, &def, &uneven) == mvfx_success, "an uneven stride");
+    def.fields = &ribbon;
+    def.stride = 4;
+    CHECK(mvfxCreateLayout(s_context, &def, &width) == mvfx_success, "a ribbon field");
+    mrhiBufferDef bufferDef = mrhiDefaultBufferDef();
+    bufferDef.size = 1024;
+    bufferDef.usage = mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
+    mrhiBufferId buffer = {0};
+    mrhiResourceId resource = {0};
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    CHECK(mrhiCreateBuffer(gpu->device, &bufferDef, &buffer) == mrhi_success &&
+              mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+              mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success,
+          "a buffer");
+    mvfxGpuRecordsDef bad[11];
+    for (int32_t i = 0; i < 11; ++i)
+    {
+        bad[i] = RecordsDef(resource, good);
+    }
+    bad[0].cookie = 0;
+    bad[1].emitter = 1;
+    bad[2].emitter = -1;
+    bad[3].records = (mrhiResourceId){0};
+    bad[4].offset = 2;
+    bad[5].countOffset = 6;
+    bad[6].capacity = -1;
+    bad[7].view.origin[1] = 0x1p53;
+    bad[8].layout = uneven;
+    bad[9].layout = width;
+    bad[10].layout = gone;
+    int32_t refused = 0;
+    for (int32_t i = 0; i < 11; ++i)
+    {
+        mvfxResult result = mvfxGpuSim_AddRecords(sim, &bad[i]);
+        refused += result == (i == 10 ? mvfx_errorStale : mvfx_errorInvalid) ? 1 : 0;
+    }
+    const mvfxGpuRecordsDef valid = RecordsDef(resource, good);
+    int32_t added = 0;
+    for (int32_t p = 0; p < MVFX_GPU_RECORD_PASSES; ++p)
+    {
+        added += mvfxGpuSim_AddRecords(sim, &valid) == mvfx_success ? 1 : 0;
+    }
+    CHECK(refused == 11 && mvfxGpuSim_AddRecords(NULL, &valid) == mvfx_errorInvalid &&
+              mvfxGpuSim_AddRecords(sim, NULL) == mvfx_errorInvalid &&
+              added == MVFX_GPU_RECORD_PASSES &&
+              mvfxGpuSim_AddRecords(sim, &valid) == mvfx_errorLimit,
+          "records refused");
+    CHECK(mrhiDropFrame(gpu->device) == mrhi_success, "dropped");
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(s_context);
+
+    // Emitter 0 left out at quality level 1: its count is 0, the fill
+    // kept around it.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const mvfxQualityLevel omitted = {
+        .capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 1u};
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    effectDef.qualityLevels = &omitted;
+    effectDef.qualityLevelCount = 1;
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.planned = true;
+    instanceDef.quality = 1;
+    mvfxInstanceId planned = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success &&
+              mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success,
+          "a planned instance, stepped");
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    simDef.gpu = kernels;
+    simDef.context = context;
+    simDef.effect = effect;
+    simDef.instance = planned;
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, NULL) == mvfx_success, "a simulation");
+    mvfxLayoutId layout = {0};
+    def.fields = &word;
+    CHECK(mvfxCreateLayout(context, &def, &layout) == mvfx_success, "a layout");
+    static const uint32_t fill[4] = {RECORD_FILL * 0x01010101u, RECORD_FILL * 0x01010101u,
+                                     RECORD_FILL * 0x01010101u, RECORD_FILL * 0x01010101u};
+    mrhiPassId pass = {0};
+    mrhiRequestId read = {0};
+    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+                    mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success;
+    const mrhiAccess written[1] = {{.resource = resource, .kind = mrhi_accessCopyDestination}};
+    mrhiPassDef passDef = mrhiDefaultPassDef();
+    passDef.passClass = mrhi_passTransfer;
+    passDef.accesses = written;
+    passDef.accessCount = 1;
+    passDef.neverCull = true;
+    mvfxGpuRecordsDef records = RecordsDef(resource, layout);
+    records.count = resource;
+    records.countOffset = 4;
+    recorded = recorded && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
+               mvfxGpuSim_AddPasses(sim) == mvfx_success &&
+               mvfxGpuSim_AddRecords(sim, &records) == mvfx_success &&
+               mrhiCompileFrame(gpu->device) == mrhi_success &&
+               mrhiBeginPass(gpu->device, pass) == mrhi_success &&
+               mrhiWriteBuffer(gpu->device, pass, resource, 0, fill, sizeof fill) == mrhi_success &&
+               mrhiEndPass(gpu->device, pass) == mrhi_success &&
+               mvfxGpuSim_Record(sim) == mvfx_success && Finish(gpu);
+    recorded = recorded && mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+               mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success;
+    const mrhiAccess reading[1] = {{.resource = resource, .kind = mrhi_accessCopySource}};
+    passDef.accesses = reading;
+    uint32_t back[4] = {0};
+    size_t taken = 0;
+    recorded = recorded && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
+               mrhiCompileFrame(gpu->device) == mrhi_success &&
+               mrhiBeginPass(gpu->device, pass) == mrhi_success &&
+               mrhiReadBuffer(gpu->device, pass, resource, 0, sizeof back, &read) == mrhi_success &&
+               mrhiEndPass(gpu->device, pass) == mrhi_success && Finish(gpu) &&
+               mrhiTakeReadback(gpu->device, read, back, sizeof back, &taken) == mrhi_success;
+    CHECK(recorded && back[0] == RECORD_FILL * 0x01010101u && back[1] == 0 &&
+              back[2] == RECORD_FILL * 0x01010101u,
+          "an emitter left out: a count of 0, no record");
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(context);
+    (void)mrhiDestroyBuffer(gpu->device, buffer);
+}
+
 static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
 {
     // The instance given a heightfield whose grid (16 bytes) passes the
@@ -2202,6 +2725,8 @@ int main(void)
     TestKillRules(&gpu, kernels);
     TestSpawning(&gpu, kernels);
     TestHostSpawn(&gpu, kernels);
+    TestRecords(&gpu, kernels);
+    TestRecordsRefused(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

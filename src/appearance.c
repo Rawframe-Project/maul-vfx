@@ -4,6 +4,7 @@
 #include "appearance.h"
 
 #include <math.h>
+#include <string.h>
 
 static bool Has(const mvfxCompiledEmitter* emitter, mvfxAttribute attribute)
 {
@@ -15,15 +16,20 @@ static const float* Floats(const mvfxInstance* instance, int32_t emitter, mvfxAt
     return mvfxAttributeArray((mvfxInstance*)instance, emitter, attribute);
 }
 
-// Particle i's age in seconds at the instance's clock.
-static double SecondsOf(const mvfxInstance* instance, int32_t emitter, int32_t i)
+// Particle i's age in ticks at the instance's clock, and in seconds.
+static uint64_t TicksOf(const mvfxInstance* instance, int32_t emitter, int32_t i)
 {
     const uint32_t* low =
         mvfxAttributeArray((mvfxInstance*)instance, emitter, mvfx_attributeBirthLow);
     const uint32_t* high =
         mvfxAttributeArray((mvfxInstance*)instance, emitter, mvfx_attributeBirthHigh);
     int64_t birth = (int64_t)(((uint64_t)high[i] << 32u) | low[i]);
-    return (double)(instance->clock - birth) / (double)MVFX_TICKS_PER_SECOND;
+    return (uint64_t)(instance->clock - birth);
+}
+
+static double SecondsOf(const mvfxInstance* instance, int32_t emitter, int32_t i)
+{
+    return (double)TicksOf(instance, emitter, i) / (double)MVFX_TICKS_PER_SECOND;
 }
 
 float mvfxNormalizedAge(const mvfxInstance* instance, int32_t emitter, int32_t i)
@@ -200,6 +206,30 @@ void mvfxSizeOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float 
     SizeAt(&look, i, nullptr, out);
 }
 
+// A binary32 above or at 0 as an integer times a power of 2.
+static void PartsOf(float x, uint32_t* mantissa, int32_t* exponent)
+{
+    uint32_t bits = 0;
+    memcpy(&bits, &x, sizeof bits);
+    uint32_t biased = (bits >> 23u) & 0xFFu;
+    *mantissa = biased != 0 ? (bits & 0x007FFFFFu) | 0x00800000u : bits & 0x007FFFFFu;
+    *exponent = biased != 0 ? (int32_t)biased - 150 : -149;
+}
+
+// The floor of a b over 2^shift, exactly, for a below 2^56, shift above
+// or at 30 and a result below 2^64: the product's two halves.
+static uint64_t FloorProduct(uint64_t a, uint32_t b, int32_t shift)
+{
+    uint64_t high = (a >> 32u) * b;
+    uint64_t low = (a & 0xFFFFFFFFu) * b;
+    if (shift < 32)
+    {
+        return (high << (uint32_t)(32 - shift)) + (low >> (uint32_t)shift);
+    }
+    int32_t rest = shift - 32;
+    return rest < 64 ? (high + (low >> 32u)) >> (uint32_t)rest : 0;
+}
+
 uint32_t mvfxFrameOf(const mvfxInstance* instance, int32_t emitter, int32_t i)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -210,24 +240,35 @@ uint32_t mvfxFrameOf(const mvfxInstance* instance, int32_t emitter, int32_t i)
                                                      mvfx_attributeFrame))[i];
     }
     const mvfxFrameOverLife* frame = &compiled->overLife.frame;
-    double moved = 0.0;
-    if (frame->animation == mvfx_frameOverLife)
-    {
-        moved = (double)mvfxNormalizedAge(instance, emitter, i) * (double)frame->cycles *
-                (double)frame->frameCount;
-    }
-    else if (frame->animation == mvfx_frameAtRate)
-    {
-        moved = SecondsOf(instance, emitter, i) * (double)frame->frameRate;
-    }
-    else
+    if (frame->animation != mvfx_frameOverLife && frame->animation != mvfx_frameAtRate)
     {
         return start;
     }
-    // At most 1,000 cycles of 65,536 frames or 10,000 a second of a life
-    // of at most MVFX_MAX_LIFETIME seconds: within an int64_t.
-    int64_t count = frame->frameCount;
-    int64_t at = (int64_t)start + (int64_t)floor(fmax(moved, 0.0));
+    // The frames moved, the floor of an exact product, so a simulation
+    // elsewhere finds the same: the normalized age times the cycles and the
+    // frames (below 2^48 times 2^16, over at least 2^37), or the age's
+    // ticks times the rate over 2^20 (below 2^41 times 2^24, over at least
+    // 2^30). At most 1,000 cycles of 65,536 frames or 10,000 a second of a
+    // life of at most MVFX_MAX_LIFETIME seconds: within 2^40.
+    uint32_t mantissa = 0;
+    int32_t exponent = 0;
+    uint64_t moved = 0;
+    if (frame->animation == mvfx_frameOverLife)
+    {
+        uint32_t cycles = 0;
+        int32_t cyclesExponent = 0;
+        PartsOf(mvfxNormalizedAge(instance, emitter, i), &mantissa, &exponent);
+        PartsOf(frame->cycles, &cycles, &cyclesExponent);
+        moved = FloorProduct((uint64_t)mantissa * cycles, (uint32_t)frame->frameCount,
+                             -(exponent + cyclesExponent));
+    }
+    else
+    {
+        PartsOf(frame->frameRate, &mantissa, &exponent);
+        moved = FloorProduct(TicksOf(instance, emitter, i), mantissa, 20 - exponent);
+    }
+    uint64_t count = (uint64_t)frame->frameCount;
+    uint64_t at = start + moved;
     return (uint32_t)(frame->loop ? at % count : (at < count ? at : count - 1));
 }
 

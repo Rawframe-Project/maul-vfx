@@ -196,6 +196,41 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxLayout_IsValid(const mvfxContext* context, mvfxLayoutId layout);
 
+    // A layout as made: its fields, staying while it does, and its stride.
+    typedef struct mvfxLayoutView
+    {
+        const mvfxLayoutField* fields;
+        int32_t fieldCount;
+        uint32_t stride;
+    } mvfxLayoutView;
+
+    /// Returns a layout as made, for a simulation elsewhere to write it.
+    ///
+    /// @param context  The context that owns the layout.
+    /// @param layout   The layout.
+    /// @param viewOut  Receives the view; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
+    ///         layout; `mvfx_errorInvalid` for a NULL context or out
+    ///         parameter.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxLayout_GetView(const mvfxContext* context,
+                                                          mvfxLayoutId layout,
+                                                          mvfxLayoutView* viewOut);
+
+// The steps of an sRGB byte: one for each byte value above 0.
+#define MVFX_SRGB_STEPS 255
+
+    /// Fills the least binary32 values at which a linear colour channel's
+    /// byte in an sRGB unorm8 field steps up: a value's byte is how many of
+    /// them it is not below (none for NaN), as records are written; for a
+    /// simulation elsewhere to write the same bytes.
+    ///
+    /// @param steps  Receives MVFX_SRGB_STEPS values, rising.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_API void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS]);
+
     // A view the host draws: where positions are made relative to, the eye
     // a sort measures from, and the direction it looks.
     typedef struct mvfxView
