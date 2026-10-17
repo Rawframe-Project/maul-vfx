@@ -15,8 +15,9 @@ const CHUNK: u32 = 256u;
 // row; a workgroup's block is CHUNK times as many.
 const ITEMS: u32 = 4u;
 const BLOCK: u32 = CHUNK * ITEMS;
-const TICKS_PER_SECOND: f32 = 1048576.0;
 const TWO_PI: f32 = 6.28318530717958647692;
+
+// include: exact.wgsl
 
 const SHAPE_SALT: u32 = 0x53484150u;
 const VELOCITY_SALT: u32 = 0x56454C4Fu;
@@ -1520,23 +1521,9 @@ fn collide(start: vec3<f32>, place: ptr<function, vec3<f32>>,
 }
 
 // The first tick a particle born at birth (two words) reaches its life at
-// inverse life inverse: its age in binary32 (the tick difference scaled
-// by 2^-20) times the inverse; old when the life passes 2^32 ticks.
-fn deathAfter(birth: vec2<u32>, inverse: f32, old: vec2<u32>) -> vec2<u32> {
-    let span = ceil(TICKS_PER_SECOND / inverse);
-    if (!(span < 4.0e9)) {
-        return old;
-    }
-    var tick = max(u32(span), 1u);
-    for (var n = 0; n < 64 && tick > 1u && f32(tick - 1u) / TICKS_PER_SECOND * inverse >= 1.0;
-         n++) {
-        tick -= 1u;
-    }
-    for (var n = 0; n < 64 && f32(tick) / TICKS_PER_SECOND * inverse < 1.0; n++) {
-        tick += 1u;
-    }
-    let low = birth.x + tick;
-    return vec2<u32>(low, birth.y + select(0u, 1u, low < birth.x));
+// inverse life inverse, as the core's.
+fn deathAfter(birth: vec2<u32>, inverse: f32) -> vec2<u32> {
+    return add64(birth, lifeTicks(inverse));
 }
 
 // What a move's contacts did to a particle: its contacts, whether one
@@ -1583,9 +1570,9 @@ fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<functio
     if (loss > 0.0) {
         // Each contact takes its share of the life left.
         for (var n = 0u; n < fate.contacts; n++) {
-            fate.inverseLife /= 1.0 - loss;
+            fate.inverseLife = divide(fate.inverseLife, 1.0 - loss);
         }
-        fate.death = deathAfter(birth, fate.inverseLife, death);
+        fate.death = deathAfter(birth, fate.inverseLife);
     }
     return fate;
 }
@@ -1642,7 +1629,7 @@ fn moveLive(i: u32) {
     if (params.words.drag != NONE) {
         scale = bitcast<f32>(source[params.words.drag * c + i]);
     }
-    let seconds = f32(params.counts.z) / TICKS_PER_SECOND;
+    let seconds = secondsOf(vec2<u32>(params.counts.z, 0u));
     let f = factorsFor(wind, scale, seconds, true);
     let birth = vec2<u32>(source[params.words.birth * c + i], source[(params.words.birth + 1u) * c + i]);
     let death = vec2<u32>(source[params.words.death * c + i], source[(params.words.death + 1u) * c + i]);
@@ -1828,7 +1815,7 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
     *bornVelocity = v;
     var a = vec3<f32>(0.0);
     var wind = 0.0;
-    forcesAt(p, f32(b0.z) / TICKS_PER_SECOND, &a, &wind);
+    forcesAt(p, secondsOf(vec2<u32>(b0.z, 0u)), &a, &wind);
     let seconds = remainderOf(j);
     let f = factorsFor(wind, dragScaleOf(j), seconds, false);
     // Born at age 0, its speed limit's decay its own.
@@ -1897,7 +1884,7 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
 
 // The seconds from a birth of the plan to the plan's end.
 fn remainderOf(j: u32) -> f32 {
-    return f32(params.counts.z - births[3u * j].z) / TICKS_PER_SECOND;
+    return secondsOf(vec2<u32>(params.counts.z - births[3u * j].z, 0u));
 }
 
 // A birth's drag scale, as the core draws it (1 when the emitter has
@@ -1914,10 +1901,7 @@ fn dragScaleOf(j: u32) -> f32 {
 // A live particle's normalized age at the plan's start, as the core's:
 // its seconds since birth times its inverse life, held to [0, 1].
 fn ageAt(birth: vec2<u32>, inverseLife: f32) -> f32 {
-    let low = params.start.x - birth.x;
-    let high = params.start.y - birth.y - select(0u, 1u, params.start.x < birth.x);
-    let seconds = f32(high) * 4096.0 + f32(low) / TICKS_PER_SECOND;
-    let age = seconds * inverseLife;
+    let age = secondsOf(subtract64(params.start.xy, birth)) * inverseLife;
     return select(min(age, 1.0), 0.0, !(age > 0.0));
 }
 

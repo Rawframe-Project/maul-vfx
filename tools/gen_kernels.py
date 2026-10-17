@@ -8,10 +8,13 @@
 # Maul RHI's tools cross it to DXIL (spirv-cross and dxc) and Metal
 # (spirv-cross) and write the container with the WGSL beside it, which
 # lands in NAME_container.h beside it as bytes, its bindings described by
-# NAME.json. WGSL is the kernels' one source (the GPU path's decision
-# on shaders). CI runs none of these tools; the headers are committed, and
-# this script is run again whenever a kernel changes, with naga,
-# spirv-val, spirv-cross and dxc on the path.
+# NAME.json. A line "// include: FILE.wgsl" in a kernel is replaced by
+# rhi/kernels/shared/FILE.wgsl (functions with no bindings, which kernels
+# share) before naga reads it, and the container carries the result.
+# WGSL is the kernels' one source (the GPU path's decision on shaders).
+# CI runs none of these tools; the headers are committed, and this script
+# is run again whenever a kernel changes, with naga, spirv-val,
+# spirv-cross and dxc on the path.
 #
 # usage: gen_kernels.py <a Maul RHI source tree, for its tools/> [NAME ...]
 
@@ -23,6 +26,8 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNELS = os.path.join(ROOT, "rhi", "kernels")
 TEST_KERNELS = os.path.join(ROOT, "test", "kernels")
+SHARED = os.path.join(KERNELS, "shared")
+INCLUDE = "// include: "
 
 
 def folder(name):
@@ -37,8 +42,27 @@ def run(*command):
         sys.exit(f"{command[0]} failed:\n{result.stdout}{result.stderr}")
 
 
+def spliced(path, seen):
+    """A kernel's WGSL with each included file in place of its line, a file
+    once."""
+    lines = []
+    with open(path, encoding="utf-8") as file:
+        for line in file.read().split("\n"):
+            if not line.startswith(INCLUDE):
+                lines.append(line)
+                continue
+            name = line[len(INCLUDE):].strip()
+            if name in seen:
+                sys.exit(f"{path}: {name} included twice")
+            seen.add(name)
+            lines.append(spliced(os.path.join(SHARED, name), seen).rstrip("\n"))
+    return "\n".join(lines)
+
+
 def build(work, tools, name):
-    source = os.path.join(folder(name), f"{name}.wgsl")
+    source = os.path.join(work, f"{name}.wgsl")
+    with open(source, "w", encoding="utf-8", newline="\n") as file:
+        file.write(spliced(os.path.join(folder(name), f"{name}.wgsl"), set()))
     module = os.path.join(work, f"{name}.spv")
     run("naga", source, module)
     run("spirv-val", "--target-env", "vulkan1.3", module)

@@ -4,10 +4,15 @@
 // The GPU part's kernels on a real device (lavapipe on CI): the object
 // made and its pipelines built, then pcg4d of 4,096 indices dispatched in
 // one frame and read back, every word the CPU's (src/random.h) bit for
-// bit, and every byte the object took returned. Skips (77) without an
-// adapter, unless MVFX_RHI_REQUIRED is set; the refusals of mvfxCreateGpu
-// need no device.
+// bit, and every byte the object took returned; the kernels' exact
+// arithmetic (rhi/kernels/shared/exact.wgsl, through a test kernel) against
+// the core's: 1 over every significand, drawn quotients, 64-bit counts near
+// rounding ties as binary32, and drawn lives' ticks as mvfxDeathTick's.
+// Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set; the
+// refusals of mvfxCreateGpu need no device.
 
+#include "emitter_step.h"
+#include "exact_check_container.h"
 #include "kernels.h"
 #include "random.h"
 #include "test_harness.h"
@@ -17,12 +22,20 @@
 #include "maul-rhi/resources.h"
 #include "maul-vfx-rhi/gpu.h"
 
+#include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 // The indices hashed, a multiple of the kernel's 64 invocations.
 #define WORDS   4096
-#define WAIT_NS 10000000000ull
+#define WAIT_NS 300000000000ull
+
+// The exact checks' elements a frame, four words each, and the bytes a
+// frame uploads and reads back (the device's readback room twice that: an
+// earlier frame's readback holds its room a while after it is taken).
+#define CHECKS      (1 << 20)
+#define CHECK_BYTES ((uint32_t)CHECKS * 16u)
 
 typedef struct Gpu
 {
@@ -50,6 +63,8 @@ static bool Open(Gpu* gpu)
     }
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
+    deviceDef.deviceLimits.frameUploadBytes = CHECK_BYTES;
+    deviceDef.deviceLimits.readbackBytes = 2u * CHECK_BYTES;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
            mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
            record.outcome == mrhi_success;
@@ -74,10 +89,11 @@ static double Seconds(void)
     return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 }
 
-// Polls the device, ten seconds at most, for the object's pipelines.
+// Polls the device for the object's pipelines, as long as a frame may take
+// (a cold shader cache compiles every kernel here).
 static bool AwaitReady(Gpu* gpu, mvfxGpu* kernels)
 {
-    double deadline = Seconds() + 10.0;
+    double deadline = Seconds() + (double)WAIT_NS * 1e-9;
     while (!mvfxGpu_IsReady(kernels) && Seconds() < deadline)
     {
         mrhiDeviceNotification record;
@@ -217,6 +233,291 @@ static void TestPcg4d(Gpu* gpu)
     CHECK(s_held == 0, "every byte returned");
 }
 
+// The exact checks' kernel and buffer, and what a frame of them does.
+typedef enum CheckMode
+{
+    CHECK_RECIPROCALS = 0,
+    CHECK_QUOTIENTS = 1,
+    CHECK_CONVERSIONS = 2,
+    CHECK_LIFE_TICKS = 3
+} CheckMode;
+
+typedef struct Checker
+{
+    mrhiShaderId shader;
+    mrhiComputePipelineId pipeline;
+    mrhiBufferId buffer;
+    uint32_t* words;
+} Checker;
+
+static bool OpenChecker(Gpu* gpu, Checker* checker)
+{
+    *checker = (Checker){.words = calloc(CHECKS, 16)};
+    mrhiShaderDef shader = mrhiDefaultShaderDef();
+    shader.bytes = s_exactCheckContainer;
+    shader.byteCount = sizeof s_exactCheckContainer;
+    mrhiComputePipelineDef pipeline = mrhiDefaultComputePipelineDef();
+    pipeline.entry = "check";
+    pipeline.entryLength = strlen(pipeline.entry);
+    mrhiBufferDef buffer = mrhiDefaultBufferDef();
+    buffer.size = CHECK_BYTES;
+    buffer.usage = mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
+    mrhiRequestId request = {0};
+    if (checker->words == NULL ||
+        mrhiCreateShader(gpu->device, &shader, &checker->shader) != mrhi_success ||
+        mrhiCreateBuffer(gpu->device, &buffer, &checker->buffer) != mrhi_success)
+    {
+        return false;
+    }
+    pipeline.shader = checker->shader;
+    if (mrhiCreateComputePipeline(gpu->device, &pipeline, &checker->pipeline, &request) !=
+        mrhi_success)
+    {
+        return false;
+    }
+    double deadline = Seconds() + (double)WAIT_NS * 1e-9;
+    while (Seconds() < deadline)
+    {
+        mrhiDeviceNotification record;
+        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        {
+            if (record.kind == mrhi_devicePipelineReady &&
+                record.request.index1 == request.index1 &&
+                record.request.generation == request.generation)
+            {
+                return record.outcome == mrhi_success;
+            }
+        }
+    }
+    return false;
+}
+
+static void CloseChecker(Gpu* gpu, Checker* checker)
+{
+    if (checker->pipeline.index1 != 0)
+    {
+        (void)mrhiDestroyComputePipeline(gpu->device, checker->pipeline);
+    }
+    if (checker->shader.index1 != 0)
+    {
+        (void)mrhiDestroyShader(gpu->device, checker->shader);
+    }
+    if (checker->buffer.index1 != 0)
+    {
+        (void)mrhiDestroyBuffer(gpu->device, checker->buffer);
+    }
+    free(checker->words);
+}
+
+// Records a frame's passes: the elements uploaded, the kernel, the
+// elements read back.
+static bool RecordChecks(Gpu* gpu, const Checker* checker, mrhiResourceId words,
+                         const uint32_t root[4], mrhiRequestId* readback)
+{
+    uint64_t bytes = (uint64_t)root[2] * 16u;
+    const mrhiAccess put = {.resource = words, .kind = mrhi_accessCopyDestination};
+    const mrhiAccess use = {.resource = words, .kind = mrhi_accessStorageReadWrite};
+    const mrhiAccess take = {.resource = words, .kind = mrhi_accessCopySource};
+    mrhiPassDef defs[3] = {mrhiDefaultPassDef(), mrhiDefaultPassDef(), mrhiDefaultPassDef()};
+    const mrhiAccess* accesses[3] = {&put, &use, &take};
+    mrhiPassId passes[3] = {0};
+    bool recorded = true;
+    for (int32_t p = 0; p < 3; ++p)
+    {
+        defs[p].passClass = p == 1 ? mrhi_passGraphics : mrhi_passTransfer;
+        defs[p].accesses = accesses[p];
+        defs[p].accessCount = 1;
+        defs[p].neverCull = true;
+        recorded = recorded && mrhiAddPass(gpu->device, &defs[p], &passes[p]) == mrhi_success;
+    }
+    const mrhiBinding binding = {.slot = 0, .resource = words, .size = MRHI_WHOLE_SIZE};
+    return recorded && mrhiCompileFrame(gpu->device) == mrhi_success &&
+           mrhiBeginPass(gpu->device, passes[0]) == mrhi_success &&
+           mrhiWriteBuffer(gpu->device, passes[0], words, 0, checker->words, bytes) ==
+               mrhi_success &&
+           mrhiEndPass(gpu->device, passes[0]) == mrhi_success &&
+           mrhiBeginPass(gpu->device, passes[1]) == mrhi_success &&
+           mrhiSetComputePipeline(gpu->device, passes[1], checker->pipeline) == mrhi_success &&
+           mrhiSetBindings(gpu->device, passes[1], 0, &binding, 1) == mrhi_success &&
+           mrhiSetRootBlock(gpu->device, passes[1], 0, root, 4 * sizeof(uint32_t)) ==
+               mrhi_success &&
+           mrhiDispatch(gpu->device, passes[1], root[3], 1, 1) == mrhi_success &&
+           mrhiEndPass(gpu->device, passes[1]) == mrhi_success &&
+           mrhiBeginPass(gpu->device, passes[2]) == mrhi_success &&
+           mrhiReadBuffer(gpu->device, passes[2], words, 0, bytes, readback) == mrhi_success &&
+           mrhiEndPass(gpu->device, passes[2]) == mrhi_success;
+}
+
+// Runs a frame of checks over the checker's words, count elements, and
+// reads them back in place.
+static bool RunChecks(Gpu* gpu, Checker* checker, CheckMode mode, uint32_t first, uint32_t count)
+{
+    uint32_t groups = (count + 63u) / 64u;
+    const uint32_t root[4] = {(uint32_t)mode, first, count, groups < 65535u ? groups : 65535u};
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    mrhiResourceId words = {0};
+    mrhiRequestId readback = {0};
+    mrhiRequestId token = {0};
+    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+                    mrhiImportBuffer(gpu->device, checker->buffer, &words) == mrhi_success &&
+                    RecordChecks(gpu, checker, words, root, &readback);
+    if (!recorded)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        return false;
+    }
+    bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
+                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+    mrhiDeviceNotification record;
+    while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+    {
+    }
+    size_t taken = 0;
+    return done &&
+           mrhiTakeReadback(gpu->device, readback, checker->words, (size_t)count * 16u, &taken) ==
+               mrhi_success &&
+           taken == (size_t)count * 16u;
+}
+
+static uint32_t Bits(float x)
+{
+    uint32_t bits = 0;
+    memcpy(&bits, &x, sizeof bits);
+    return bits;
+}
+
+static float FloatOf(uint32_t bits)
+{
+    float x = 0.0f;
+    memcpy(&x, &bits, sizeof x);
+    return x;
+}
+
+// A word of a simple generator, the checks' draws.
+static uint32_t Draw(uint64_t* state)
+{
+    *state = *state * 6364136223846793005ull + 1442695040888963407ull;
+    return (uint32_t)(*state >> 32u);
+}
+
+// 1 over every significand of [1, 2), the core's division: correctly
+// rounded for every significand, so for every exponent the quotient keeps
+// normal.
+static void TestReciprocals(Gpu* gpu, Checker* checker)
+{
+    int64_t wrong = 0;
+    bool ran = true;
+    for (uint32_t first = 0; ran && first < (1u << 23u); first += CHECKS)
+    {
+        ran = RunChecks(gpu, checker, CHECK_RECIPROCALS, first, CHECKS);
+        for (uint32_t e = 0; ran && e < CHECKS; ++e)
+        {
+            wrong += checker->words[4 * e + 2] != Bits(1.0f / FloatOf(0x3F800000u | (first + e)));
+        }
+    }
+    CHECK(ran && wrong == 0, "1 over every significand as the core divides");
+}
+
+// Drawn quotients with normal results (exponents within 2^±40), and an
+// inverse life over what each of the contact's losses leaves.
+static void TestQuotients(Gpu* gpu, Checker* checker)
+{
+    uint64_t state = 1;
+    for (uint32_t e = 0; e < CHECKS; ++e)
+    {
+        uint32_t* w = &checker->words[4 * e];
+        w[0] = ((87u + Draw(&state) % 81u) << 23u) | (Draw(&state) & 0x007FFFFFu);
+        w[1] = ((87u + Draw(&state) % 81u) << 23u) | (Draw(&state) & 0x007FFFFFu);
+        if (e % 4 == 0)
+        {
+            w[1] = Bits(1.0f - (float)(Draw(&state) >> 8u) * 0x1p-24f);
+        }
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_QUOTIENTS, 0, CHECKS);
+    int64_t wrong = 0;
+    for (uint32_t e = 0; ran && e < CHECKS; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        wrong += w[2] != Bits(FloatOf(w[0]) / FloatOf(w[1]));
+    }
+    CHECK(ran && wrong == 0, "drawn quotients as the core divides");
+}
+
+// 64-bit counts of every length, drawn and at rounding ties (the dropped
+// bits exactly half, and a unit either side), as C converts them.
+static void TestConversions(Gpu* gpu, Checker* checker)
+{
+    uint64_t state = 2;
+    for (uint32_t e = 0; e < CHECKS; ++e)
+    {
+        uint32_t length = 1u + e % 64u;
+        uint64_t x = ((uint64_t)Draw(&state) << 32u | Draw(&state)) >> (64u - length);
+        x |= 1ull << (length - 1u);
+        if (length > 25u && e % 3 != 0)
+        {
+            uint64_t half = 1ull << (length - 25u);
+            x = (x & ~(2 * half - 1)) | half;
+            x += (uint64_t)(e % 3) - 1u;
+        }
+        checker->words[4 * e] = (uint32_t)x;
+        checker->words[4 * e + 1] = (uint32_t)(x >> 32u);
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_CONVERSIONS, 0, CHECKS);
+    int64_t wrong = 0;
+    for (uint32_t e = 0; ran && e < CHECKS; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        uint64_t x = (uint64_t)w[1] << 32u | w[0];
+        wrong += w[2] != Bits((float)x);
+    }
+    CHECK(ran && wrong == 0, "64-bit counts as C converts them");
+}
+
+// Lives from the shortest (2^-20 s) to the longest (MVFX_MAX_LIFETIME),
+// drawn evenly in their logarithm and at whole ticks, their inverses as
+// the core divides; each life's ticks as mvfxDeathTick finds them.
+static void TestLifeTicks(Gpu* gpu, Checker* checker)
+{
+    uint64_t state = 3;
+    const double span = log2((double)MVFX_MAX_LIFETIME) + 20.0;
+    for (uint32_t e = 0; e < CHECKS; ++e)
+    {
+        double share = (double)Draw(&state) * 0x1p-32;
+        float life = (float)exp2(share * span - 20.0);
+        if (e % 2 == 0)
+        {
+            life = (float)(floor((double)life * (double)MVFX_TICKS_PER_SECOND) /
+                           (double)MVFX_TICKS_PER_SECOND);
+        }
+        life = life >= 0x1p-20f ? life : 0x1p-20f;
+        checker->words[4 * e] = Bits(1.0f / life);
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_LIFE_TICKS, 0, CHECKS);
+    int64_t wrong = 0;
+    for (uint32_t e = 0; ran && e < CHECKS; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        int64_t ticks = (int64_t)((uint64_t)w[3] << 32u | w[2]);
+        wrong += ticks != mvfxDeathTick(0, FloatOf(w[0]));
+    }
+    CHECK(ran && wrong == 0, "drawn lives' ticks as mvfxDeathTick finds them");
+}
+
+static void TestExact(Gpu* gpu)
+{
+    Checker checker;
+    bool opened = OpenChecker(gpu, &checker);
+    CHECK(opened, "the exact checks' kernel built");
+    if (opened)
+    {
+        TestReciprocals(gpu, &checker);
+        TestQuotients(gpu, &checker);
+        TestConversions(gpu, &checker);
+        TestLifeTicks(gpu, &checker);
+    }
+    CloseChecker(gpu, &checker);
+}
+
 int main(void)
 {
     TestRefusals();
@@ -233,6 +534,7 @@ int main(void)
         return s_failures == 0 ? 77 : 1;
     }
     TestPcg4d(&gpu);
+    TestExact(&gpu);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
 }

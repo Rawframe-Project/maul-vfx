@@ -12,6 +12,10 @@
 
 #include "maul-vfx/modules.h"
 
+// A ceiling the particles rise into.
+static const mvfxCollider s_ceiling = {
+    .kind = mvfx_colliderPlane, .center = {0, 0.55f, 0}, .normal = {0, -1, 0}};
+
 static void TestBirthsAndDeaths(Gpu* gpu, mvfxGpu* kernels)
 {
     // Births and deaths by age, in the world's space and the instance's,
@@ -34,14 +38,12 @@ static void TestCollisions(Gpu* gpu, mvfxGpu* kernels)
     // the life left, which ends some lives (deaths by a kill); a contact
     // that kills (few live to a step's end); a kill rule, under an
     // instance that barely moves.
-    static const mvfxCollider ceiling = {
-        .kind = mvfx_colliderPlane, .center = {0, 0.55f, 0}, .normal = {0, -1, 0}};
     static const mvfxKillRule rule = {
         .kind = mvfx_killInsideSphere, .center = {0, 0.3f, 0}, .radius = 0.35f};
     mvfxEmitterDef emitter = Sprite();
     emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
     emitter.eventCapacity = 4096;
-    emitter.colliders = &ceiling;
+    emitter.colliders = &s_ceiling;
     emitter.colliderCount = 1;
     emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
     Compare(gpu, kernels,
@@ -80,7 +82,11 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     // Events' colours and sizes with the values over life (a colour by a
     // gradient at the speed with alpha over life, sizes an axis by age)
     // and stored values drawn at birth, in the world's space (the speed
-    // in the emitter's units under a growing instance) and the instance's.
+    // in the emitter's units under a growing instance) and the instance's;
+    // then under the ceiling in the world's space, each contact taking 60%
+    // of the life left, so that deaths by a kill (births' among them) are
+    // aged by the inverse life their contacts left. (In the instance's
+    // space a grazing contact there counts on one side and not the other.)
     static const mvfxCurveKey keys[2] = {
         {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
         {.time = 1, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
@@ -114,6 +120,13 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     emitter.space = mvfx_spaceLocal;
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true},
             "events' values over life, in the instance's space");
+    emitter.space = mvfx_spaceWorld;
+    emitter.colliders = &s_ceiling;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f, .lifeLoss = 0.6f};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .colliding = true},
+            "events' values over life after contacts' life loss");
 }
 
 static void TestBound(Gpu* gpu, mvfxGpu* kernels)

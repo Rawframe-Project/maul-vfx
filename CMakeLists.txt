@@ -252,7 +252,8 @@ if(MAUL_VFX_BUILD_TESTS)
         # adapter unless MVFX_RHI_REQUIRED is set.
         maul_add_test(rhi_kernels WHITEBOX)
         target_link_libraries(test_rhi_kernels PRIVATE maul-vfx-rhi)
-        target_include_directories(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src)
+        target_include_directories(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src
+            ${PROJECT_SOURCE_DIR}/test/kernels)
         set_tests_properties(rhi_kernels PROPERTIES SKIP_RETURN_CODE 77)
         # Planned instances on the device beside the CPU path, through the
         # tests' shared harness: their particles, and their records.

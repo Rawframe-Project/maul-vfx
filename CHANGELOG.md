@@ -682,3 +682,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   emitter's events buffer (`events`, `eventFirst`, `eventCapacity`,
   `MVFX_GPU_EVENT_WORDS`), the statistics record its count and those
   dropped (`MVFX_GPU_EVENTS_WRITTEN`), now 34 words.
+- The GPU part's inverse lives after a contact's life loss, particles'
+  ages and death ticks are exact on every device (division and tick
+  conversions in integers, which WGSL leaves inexact); a life past
+  4,096 s takes its new death tick after a life loss, where it kept the
+  old one.

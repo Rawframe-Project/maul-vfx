@@ -18,6 +18,8 @@ const CHUNK: u32 = 256u;
 const ITEMS: u32 = 4u;
 const BLOCK: u32 = CHUNK * ITEMS;
 
+// include: exact.wgsl
+
 const FIELD_POSITION: u32 = 0u;
 const FIELD_SIZE: u32 = 1u;
 const FIELD_COLOR: u32 = 2u;
@@ -212,58 +214,10 @@ fn mulWide(x: u32, y: u32) -> vec2<u32> {
                      xh * yh + (lh >> 16u) + (hl >> 16u) + (mid >> 16u));
 }
 
-// A 64-bit number (two words) over 2^s, floored, s below 64.
-fn shiftRight(x: vec2<u32>, s: u32) -> vec2<u32> {
-    if (s == 0u) {
-        return x;
-    }
-    if (s >= 32u) {
-        return vec2<u32>(x.y >> (s - 32u), 0u);
-    }
-    return vec2<u32>((x.x >> s) | (x.y << (32u - s)), x.y >> s);
-}
-
-// Whether a 64-bit number has a bit set below bit b.
-fn anyBelow(x: vec2<u32>, b: u32) -> bool {
-    if (b == 0u) {
-        return false;
-    }
-    if (b >= 32u) {
-        return x.x != 0u || (b > 32u && (x.y & ((1u << (b - 32u)) - 1u)) != 0u);
-    }
-    return (x.x & ((1u << b) - 1u)) != 0u;
-}
-
-// A 64-bit count (two words) as the nearest binary32, ties to even, as C
-// converts it.
-fn nearestFloat(low: u32, high: u32) -> f32 {
-    if (high == 0u && low < 0x01000000u) {
-        return f32(low);
-    }
-    let x = vec2<u32>(low, high);
-    let lead = select(31u - countLeadingZeros(low), 63u - countLeadingZeros(high), high != 0u);
-    // The top 24 bits kept; the first dropped is the half, those below it
-    // decide a tie.
-    let drop = lead - 23u;
-    var kept = shiftRight(x, drop).x;
-    let half = (shiftRight(x, drop - 1u).x & 1u) == 1u;
-    if (half && (anyBelow(x, drop - 1u) || (kept & 1u) == 1u)) {
-        kept += 1u;
-    }
-    // A carry past 24 bits doubles the value.
-    var exponent = lead;
-    if (kept == 0x01000000u) {
-        kept = 0x00800000u;
-        exponent += 1u;
-    }
-    return bitcast<f32>(((exponent + 127u) << 23u) | (kept & 0x007FFFFFu));
-}
-
 // The age at the clock in ticks (two words) of a particle born at a
 // tick (two words).
 fn ticksSince(birth: vec2<u32>) -> vec2<u32> {
-    let borrow = select(0u, 1u, params.clock.x < birth.x);
-    return vec2<u32>(params.clock.x - birth.x, params.clock.y - birth.y - borrow);
+    return subtract64(params.clock.xy, birth);
 }
 
 fn ticksOf(i: u32) -> vec2<u32> {
@@ -275,8 +229,7 @@ fn ticksOf(i: u32) -> vec2<u32> {
 // rounded to binary32 times the inverse life, held to [0, 1].
 fn ageAt(birth: vec2<u32>, inverseLife: f32) -> f32 {
     let ticks = ticksSince(birth);
-    let seconds = nearestFloat(ticks.x, ticks.y) * (1.0 / 1048576.0);
-    let age = seconds * inverseLife;
+    let age = secondsOf(ticks) * inverseLife;
     return select(min(age, 1.0), 0.0, !(age > 0.0));
 }
 
