@@ -595,8 +595,8 @@ static void TestVectorField(void)
     mvfxDestroyContext(scene.context);
 }
 
-// A vector field's acceleration and drag at x, its quick paths for an
-// unturned box and map taken or not.
+// A field's acceleration and drag at x, the quick paths for an unturned
+// box and map taken or not.
 static void FieldAt(mvfxResolvedForce force, bool quick, const float x[3], float out[4])
 {
     force.unturned = force.unturned && quick;
@@ -640,19 +640,40 @@ static void TestUnturnedBits(void)
     static const float zero[1][4] = {{0}};
     int32_t same = 0;
     int32_t count = 0;
+    // Sources: a vector field under each border in an unturned box, a box
+    // turned about Z alone, a box turned about every axis, and a turbulence,
+    // whose place the quick paths must leave alone.
+    static const float turns[3][4] = {
+        {0, 0, 0, 1}, {0, 0, 0.70710678f, 0.70710678f}, {0.1f, 0.2f, 0.3f, 0.92736185f}};
+    mvfxForce sources[10];
+    int32_t sourceCount = 0;
     for (mvfxGridBorder border = 0; border <= mvfx_borderRepeat; ++border)
     {
-        mvfxForce source = {.kind = mvfx_forceVectorField,
+        for (int32_t r = 0; r < 3; ++r)
+        {
+            sources[sourceCount++] =
+                (mvfxForce){.kind = mvfx_forceVectorField,
                             .point = {0.25f, -1, 2},
                             .strength = -1.5f,
                             .boxSize = {2, 3, 1.5f},
-                            .boxRotation = {0, 0, 0, 1},
+                            .boxRotation = {turns[r][0], turns[r][1], turns[r][2], turns[r][3]},
                             .border = border};
-        mvfxForce compiled = mvfxCompileForce(&source);
+        }
+    }
+    sources[sourceCount++] =
+        (mvfxForce){.kind = mvfx_forceTurbulence,
+                    .strength = 2.0f,
+                    .noise = {.frequency = 1.0f, .octaves = 2, .lacunarity = 2.0f, .gain = 0.5f}};
+    for (int32_t s = 0; s < sourceCount; ++s)
+    {
+        mvfxForce compiled = mvfxCompileForce(&sources[s]);
+        bool box = sources[s].kind == mvfx_forceVectorField;
         for (int32_t m = 0; m < 3; ++m)
         {
             mvfxResolvedForce force = mvfxResolveForce(&compiled, &maps[m], zero, 0, grid);
-            CHECK(force.unturned && force.mapUnturned == (m < 2), "the quick paths chosen");
+            CHECK(!box || (force.unturned == (sources[s].boxRotation[2] == 0.0f) &&
+                           force.mapUnturned == (m < 2)),
+                  "the quick paths chosen");
             for (int32_t i = 0; i < 9 * 9 * 9 + 7 * 7 * 7; ++i)
             {
                 float x[3];
