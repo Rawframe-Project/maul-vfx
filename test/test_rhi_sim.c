@@ -357,7 +357,7 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     }
     printf("%s: largest relative differences, place %g, velocity %g\n", what, (double)s_placeError,
            (double)s_velocityError);
-    CHECK(same && most[0] > 100 && (run->emitterCount < 2 || most[1] > 50), what);
+    CHECK(same && most[0] > 100 && (run->emitterCount < 2 || most[1] > 64), what);
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(s_context);
 }
@@ -372,14 +372,17 @@ static void TestSprite(Gpu* gpu, mvfxGpu* kernels)
 static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
 {
     // A world-space shell with a share of the instance's velocity and a
-    // strong drag, and a local-space emitter of 333 with world gravity and
+    // strong drag, and a local-space emitter of 100 with world gravity and
     // shape-normal velocities, under an instance moving past the rebase
-    // distance, turning and growing; cleared at half time.
+    // distance, turning and growing; cleared at half time. The second
+    // holds more than 64, the update's groups rounded up.
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
     emitters[0].shape.thickness = 0.4f;
     emitters[0].inheritVelocity = 0.5f;
     emitters[0].motion.drag = 30.0f;
-    emitters[1].capacity = 333;
+    emitters[1].capacity = 100;
+    emitters[1].rate = 320.0f;
+    emitters[1].lifetime = mvfxRangeSource(0.2f, 0.3f);
     emitters[1].space = mvfx_spaceLocal;
     emitters[1].motion.gravitySpace = mvfx_spaceWorld;
     emitters[1].velocity = (mvfxVelocity){.mode = mvfx_directionShapeNormal, .speed = {1, 2}};
@@ -427,6 +430,19 @@ static void TestRefused(mvfxGpu* kernels)
     simDef.instance = cpu;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorInvalid && refusal.emitter == -1,
           "an instance that is not planned");
+
+    // A feature alone refuses it.
+    emitters[1] = Sprite();
+    emitters[1].forces = &force;
+    emitters[1].forceCount = 1;
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "planned");
+    simDef.effect = effect;
+    simDef.instance = planned;
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && refusal.emitter == 1 &&
+              refusal.features == MVFX_FEATURE_FORCES && !refusal.shape && !refusal.velocity,
+          "a feature alone refused");
     mvfxDestroyContext(context);
 }
 

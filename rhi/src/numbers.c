@@ -108,12 +108,12 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
                                  0,
                                  0};
     memcpy(words, counts, sizeof counts);
-    bool world = view->space == mvfx_spaceWorld;
+    // The anchor's shift (none for an emitter in the instance's space,
+    // whose anchor stays).
     const double* before = plan->anchorBefore;
     const double* after = plan->anchorAfter;
-    Floats(words + 12, world ? (float)(before[0] - after[0]) : 0.0f,
-           world ? (float)(before[1] - after[1]) : 0.0f,
-           world ? (float)(before[2] - after[2]) : 0.0f, view->inheritVelocity);
+    Floats(words + 12, (float)(before[0] - after[0]), (float)(before[1] - after[1]),
+           (float)(before[2] - after[2]), view->inheritVelocity);
     float factors[3];
     DragFactors((double)view->drag, (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND, factors);
     Floats(words + 16, factors[0], factors[1], factors[2], view->drag);
