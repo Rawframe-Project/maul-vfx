@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The library's speed and memory against its targets (mvfx-0008), on one
+// The library's speed and memory against its targets, on one
 // core, with fixed inputs. A typical sprite emitter (spawning at a rate
 // from a sphere into a cone, under gravity and drag, coloured and sized
 // over its life, dying of age) holds about 100,000 particles at 60 steps
