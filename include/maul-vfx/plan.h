@@ -273,6 +273,33 @@ extern "C"
 
     // An emitter of an effect as compiled, as a simulation elsewhere reads
     // it: what it uses, and the numbers of what every emitter has.
+    // Where an emitter's particles keep their values, as the CPU path
+    // stores them: one array a component, each value's arrays in a row
+    // from its first (-1 for a value it does not store), count in all.
+    // Place, velocity and size take 3, colour and orientation 4, angular
+    // velocity 3, the birth tick 2 (its low and high words), a custom
+    // value its components.
+    typedef struct mvfxAttributeArrays
+    {
+        int16_t position;
+        int16_t birth;
+        int16_t inverseLife;
+        int16_t serial;
+        int16_t velocity;
+        int16_t size;
+        int16_t color;
+        int16_t angle;
+        int16_t spin;
+        int16_t orientation;
+        int16_t angular;
+        int16_t frame;
+        int16_t drag;
+        int16_t custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
+        int16_t collisions;
+        int16_t mesh;
+        int32_t count;
+    } mvfxAttributeArrays;
+
     typedef struct mvfxEmitterView
     {
         uint64_t features;
@@ -302,6 +329,8 @@ extern "C"
         bool fixedBounds;
         float boundsMin[3];
         float boundsMax[3];
+        // Where its particles keep their values.
+        mvfxAttributeArrays arrays;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

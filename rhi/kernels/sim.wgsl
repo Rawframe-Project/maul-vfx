@@ -4,19 +4,12 @@
 // An emitter's step on the GPU: update, room, then the survivors and the
 // births kept in order by a scan in three passes (reduce, offsets,
 // scatter), and their box measured. Particles are arrays of the capacity
-// in one buffer of words (WORDS a particle): place (3), velocity (3),
-// serial (2), birth tick (2), death tick (2), inverse life, collisions,
-// and whether it outlives the step.
+// in one buffer of words: the emitter's values as the CPU path stores
+// them, then the death tick (2) and whether it outlives the step, each
+// value's first word given by the step's numbers (Words).
 
-const WORDS: u32 = 15u;
-const PLACE: u32 = 0u;
-const VELOCITY: u32 = 3u;
-const SERIAL: u32 = 6u;
-const BIRTH: u32 = 8u;
-const DEATH: u32 = 10u;
-const INVERSE_LIFE: u32 = 12u;
-const COLLISIONS: u32 = 13u;
-const ALIVE: u32 = 14u;
+// A word of a value the emitter does not store.
+const NONE: u32 = 0xFFFFFFFFu;
 const CHUNK: u32 = 256u;
 // The elements an invocation of the scan's reduce and scatter takes, in a
 // row; a workgroup's block is CHUNK times as many.
@@ -96,6 +89,34 @@ struct Depth {
     fromClip: mat4x4<f32>,
 }
 
+// Where a particle's values are among its words: each one's first word
+// (NONE for one the emitter does not store); the emitter's arrays, after
+// which come the death tick's two words and whether it outlives the step
+// (death and alive).
+struct Words {
+    place: u32,
+    velocity: u32,
+    serial: u32,
+    birth: u32,
+    inverseLife: u32,
+    collisions: u32,
+    death: u32,
+    alive: u32,
+    size: u32,
+    color: u32,
+    angle: u32,
+    spin: u32,
+    orientation: u32,
+    angular: u32,
+    frame: u32,
+    drag: u32,
+    mesh: u32,
+    count: u32,
+    unused0: u32,
+    unused1: u32,
+    custom: array<vec4<u32>, 2>,
+}
+
 struct Step {
     // capacity, births, the plan's ticks, the instance's seed
     counts: vec4<u32>,
@@ -142,6 +163,7 @@ struct Step {
     response: vec4<f32>,
     depth: Depth,
     colliders: array<Collider, 16>,
+    words: Words,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -1282,28 +1304,31 @@ fn update(@builtin(global_invocation_id) id: vec3<u32>) {
 // it outlives the plan.
 fn moveLive(i: u32) {
     let c = params.counts.x;
-    let start = readVector(0u, i, PLACE) + params.shift.xyz;
+    let start = readVector(0u, i, params.words.place) + params.shift.xyz;
     var a = vec3<f32>(0.0);
     var drag = 0.0;
     forcesAt(start, 0.0, &a, &drag);
     let f = factorsFor(drag, f32(params.counts.z) / TICKS_PER_SECOND, true);
-    let v0 = readVector(0u, i, VELOCITY);
+    let v0 = readVector(0u, i, params.words.velocity);
     var p = start + v0 * f.y + a * f.z;
     var v = v0 * f.x + a * f.y;
-    let birth = vec2<u32>(source[BIRTH * c + i], source[(BIRTH + 1u) * c + i]);
-    let death = vec2<u32>(source[DEATH * c + i], source[(DEATH + 1u) * c + i]);
-    let fate = meet(start, &p, &v, birth, bitcast<f32>(source[INVERSE_LIFE * c + i]), death);
+    let birth = vec2<u32>(source[params.words.birth * c + i], source[(params.words.birth + 1u) * c + i]);
+    let death = vec2<u32>(source[params.words.death * c + i], source[(params.words.death + 1u) * c + i]);
+    let fate = meet(start, &p, &v, birth, bitcast<f32>(source[params.words.inverseLife * c + i]), death);
     for (var k = 0u; k < 3u; k++) {
-        source[(PLACE + k) * c + i] = bitcast<u32>(p[k]);
-        source[(VELOCITY + k) * c + i] = bitcast<u32>(v[k]);
+        source[(params.words.place + k) * c + i] = bitcast<u32>(p[k]);
+        source[(params.words.velocity + k) * c + i] = bitcast<u32>(v[k]);
     }
-    let count = source[COLLISIONS * c + i];
-    source[COLLISIONS * c + i] = select(count + fate.contacts, 0xFFFFFFFFu,
-                                        count > 0xFFFFFFFFu - fate.contacts);
-    source[INVERSE_LIFE * c + i] = bitcast<u32>(fate.inverseLife);
-    source[DEATH * c + i] = fate.death.x;
-    source[(DEATH + 1u) * c + i] = fate.death.y;
-    source[ALIVE * c + i] = select(0u, 1u, outlives(fate.death.x, fate.death.y) &&
+    let collisions = params.words.collisions;
+    if (collisions != NONE) {
+        let count = source[collisions * c + i];
+        source[collisions * c + i] = select(count + fate.contacts, 0xFFFFFFFFu,
+                                            count > 0xFFFFFFFFu - fate.contacts);
+    }
+    source[params.words.inverseLife * c + i] = bitcast<u32>(fate.inverseLife);
+    source[params.words.death * c + i] = fate.death.x;
+    source[(params.words.death + 1u) * c + i] = fate.death.y;
+    source[params.words.alive * c + i] = select(0u, 1u, outlives(fate.death.x, fate.death.y) &&
                                                !fate.killed && !killed(start, p));
 }
 
@@ -1332,7 +1357,7 @@ fn exclusiveScan(local: u32, keep: u32) -> u32 {
 fn keepAt(i: u32, live: u32) -> u32 {
     let c = params.counts.x;
     if (i < live) {
-        return source[ALIVE * c + i];
+        return source[params.words.alive * c + i];
     }
     let j = i - live;
     if (j >= params.counts.y) {
@@ -1465,17 +1490,18 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     var death = vec2<u32>(0u);
     birthTicks(b0, b1, &birth, &death);
     for (var k = 0u; k < 3u; k++) {
-        moved[(PLACE + k) * c + at] = bitcast<u32>(moved_place[k]);
-        moved[(VELOCITY + k) * c + at] = bitcast<u32>(moved_velocity[k]);
+        moved[(params.words.place + k) * c + at] = bitcast<u32>(moved_place[k]);
+        moved[(params.words.velocity + k) * c + at] = bitcast<u32>(moved_velocity[k]);
     }
-    moved[SERIAL * c + at] = b0.x;
-    moved[(SERIAL + 1u) * c + at] = b0.y;
-    moved[BIRTH * c + at] = birth.x;
-    moved[(BIRTH + 1u) * c + at] = birth.y;
-    moved[DEATH * c + at] = fate.death.x;
-    moved[(DEATH + 1u) * c + at] = fate.death.y;
-    moved[INVERSE_LIFE * c + at] = bitcast<u32>(fate.inverseLife);
-    moved[COLLISIONS * c + at] = fate.contacts;
+    moved[params.words.serial * c + at] = b0.x;
+    moved[params.words.birth * c + at] = birth.x;
+    moved[(params.words.birth + 1u) * c + at] = birth.y;
+    moved[params.words.death * c + at] = fate.death.x;
+    moved[(params.words.death + 1u) * c + at] = fate.death.y;
+    moved[params.words.inverseLife * c + at] = bitcast<u32>(fate.inverseLife);
+    if (params.words.collisions != NONE) {
+        moved[params.words.collisions * c + at] = fate.contacts;
+    }
     return moved_place;
 }
 
@@ -1554,10 +1580,10 @@ fn scatter(@builtin(local_invocation_index) local: u32,
         if (keep[k] == 1u && at < c) {
             var p = vec3<f32>(0.0);
             if (i < live) {
-                for (var w = 0u; w < ALIVE; w++) {
+                for (var w = 0u; w < params.words.alive; w++) {
                     moved[w * c + at] = source[w * c + i];
                 }
-                p = readVector(0u, i, PLACE);
+                p = readVector(0u, i, params.words.place);
             } else {
                 p = spawnAt(i - live, at);
             }
@@ -1613,8 +1639,8 @@ fn birthDiesBy(j: u32, t: u32) -> bool {
 // Whether a live particle dies by tick t of the plan, its death absolute.
 fn liveDiesBy(i: u32, t: u32) -> bool {
     let c = params.counts.x;
-    let low = source[DEATH * c + i];
-    let high = source[(DEATH + 1u) * c + i];
+    let low = source[params.words.death * c + i];
+    let high = source[(params.words.death + 1u) * c + i];
     let tickLow = params.start.x + t;
     let tickHigh = params.start.y + select(0u, 1u, tickLow < params.start.x);
     return high < tickHigh || (high == tickHigh && low <= tickLow);

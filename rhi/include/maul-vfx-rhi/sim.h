@@ -62,12 +62,13 @@ extern "C"
     } mvfxGpuRefusal;
 
     // An emitter's particles: a buffer of 32-bit words, arrays of the
-    // capacity each, in this order: place (x, y, z), velocity (x, y, z),
-    // serial (low, high word), birth tick (low, high), death tick (low,
-    // high), inverse life, collisions, a word the step uses; and its
-    // statistics
-    // record, MVFX_GPU_STATISTICS_WORDS words of the last recorded step:
-    // the live count first, then what the step uses and the bounds, which
+    // capacity each, words of them in all: the emitter's arrays as the CPU
+    // path stores them (mvfxEmitterView.arrays: binary32 values, the
+    // birth tick, serial, collisions, frame and mesh as words; values
+    // over life not applied), then the death tick (low, high word) and a
+    // word the step uses; and its statistics record,
+    // MVFX_GPU_STATISTICS_WORDS words of the last recorded step: the live
+    // count first, then what the step uses and the bounds, which
     // mvfxGpuSim_BoundsOf reads. A world-space emitter's places are
     // offsets from its anchor (its plan's anchor after).
     typedef struct mvfxGpuParticles
@@ -75,10 +76,8 @@ extern "C"
         mrhiBufferId particles;
         mrhiBufferId statistics;
         int32_t capacity;
+        int32_t words;
     } mvfxGpuParticles;
-
-// The words a particle takes in mvfxGpuParticles.particles.
-#define MVFX_GPU_PARTICLE_WORDS 15
 
 // The words of an emitter's statistics record.
 #define MVFX_GPU_STATISTICS_WORDS 28
@@ -184,8 +183,8 @@ extern "C"
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 1,400 an
-    /// emitter, 432 a force and 128 a collider it has (6,904 at most), 32
+    /// when it added none. The bytes are the frame's uploads: 1,512 an
+    /// emitter, 432 a force and 128 a collider it has (7,016 at most), 32
     /// a planned birth (a plan holds at most twice the
     /// emitter's capacity), and the values of each grid its forces and
     /// colliders read (mvfxGridView's bytes) at the first step, after each

@@ -221,10 +221,49 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
 mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount)
 {
     return (mvfxStepSpans){
-        .first = {0, 84 + 132 * MVFX_MAX_FORCES},
+        .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_STEP_WORDS - 28},
         .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)forceCount,
-                  56 + 32 * (uint32_t)colliderCount},
+                  56 + 32 * (uint32_t)colliderCount, 28},
     };
+}
+
+// A value's first word, or NONE (all ones) for one not stored.
+static uint32_t WordOf(int16_t array)
+{
+    return array >= 0 ? (uint32_t)array : 0xFFFFFFFFu;
+}
+
+// Where a particle's values are among its words (sim.wgsl's Words): its
+// values' first words, its arrays, then the death tick and the step's
+// word.
+static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
+{
+    uint32_t count = (uint32_t)arrays->count;
+    const uint32_t head[20] = {WordOf(arrays->position),
+                               WordOf(arrays->velocity),
+                               WordOf(arrays->serial),
+                               WordOf(arrays->birth),
+                               WordOf(arrays->inverseLife),
+                               WordOf(arrays->collisions),
+                               count,
+                               count + 2u,
+                               WordOf(arrays->size),
+                               WordOf(arrays->color),
+                               WordOf(arrays->angle),
+                               WordOf(arrays->spin),
+                               WordOf(arrays->orientation),
+                               WordOf(arrays->angular),
+                               WordOf(arrays->frame),
+                               WordOf(arrays->drag),
+                               WordOf(arrays->mesh),
+                               count,
+                               0u,
+                               0u};
+    memcpy(words, head, sizeof head);
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        words[20 + i] = WordOf(arrays->custom[i]);
+    }
 }
 
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
@@ -277,4 +316,5 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
     Forces(plan, sharedDrag, forceGrids, words + 80);
     Colliders(plan, colliderGrids, normals, words + 84 + 132 * MVFX_MAX_FORCES);
+    Words(&view->arrays, words + MVFX_STEP_WORDS - 28);
 }

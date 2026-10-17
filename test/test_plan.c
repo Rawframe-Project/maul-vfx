@@ -574,6 +574,28 @@ static void TestView(void)
                  dots[0] == 0.0f && dots[1] == 0.0f && dots[2] == 0.0f &&
                  view.gravity[1] == -9.8f && view.drag == 0.5f && !view.fixedBounds;
     CHECK(plain, "the plain sprite's view");
+    const mvfxAttributeArrays* arrays = &view.arrays;
+    CHECK(arrays->position == 0 && arrays->birth == 3 && arrays->inverseLife == 5 &&
+              arrays->serial == 6 && arrays->velocity == 7 && arrays->size == -1 &&
+              arrays->color == -1 && arrays->angle == -1 && arrays->orientation == -1 &&
+              arrays->custom[0] == -1 && arrays->collisions == -1 && arrays->count == 10,
+          "the plain sprite's arrays");
+    // Size, colour, a custom value of two components and collision: each
+    // value's arrays in a row, in the CPU path's order.
+    mvfxEmitterDef stores = emitter;
+    stores.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {1, 1, 1}};
+    stores.color =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 1}, .max = {1, 1, 1, 1}};
+    const mvfxCustomAttribute custom = {
+        .components = 2, .initial = {.kind = mvfx_sourceRange, .min = {0, 0}, .max = {1, 1}}};
+    stores.custom = &custom;
+    stores.customCount = 1;
+    stores.collision = (mvfxCollision){.enabled = true};
+    mvfxEffectId storing = Effect(context, &stores);
+    CHECK(mvfxEffect_GetEmitterView(context, storing, 0, &view) == mvfx_success &&
+              arrays->size == 10 && arrays->color == 13 && arrays->custom[0] == 17 &&
+              arrays->custom[1] == -1 && arrays->collisions == 19 && arrays->count == 20,
+          "a storing emitter's arrays");
     CHECK(mvfxEffect_GetEmitterView(context, effect, 1, &view) == mvfx_errorInvalid &&
               mvfxEffect_GetEmitterView(context, effect, -1, &view) == mvfx_errorInvalid &&
               mvfxEffect_GetEmitterView(NULL, effect, 0, &view) == mvfx_errorInvalid &&

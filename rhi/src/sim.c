@@ -53,6 +53,8 @@ enum
 typedef struct Emitter
 {
     int32_t capacity;
+    // The words a particle takes: its arrays and the GPU's own.
+    int32_t particleWords;
     mrhiBufferId particles[2];
     mrhiBufferId births;
     mrhiBufferId step;
@@ -173,8 +175,9 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
     uint64_t c = (uint64_t)emitter->capacity;
     mrhiBufferUsage particles = mrhi_bufferStorage | mrhi_bufferCopySource;
     mrhiBufferUsage written = mrhi_bufferStorage | mrhi_bufferCopyDestination;
-    return CreateBuffer(sim, c * MVFX_GPU_PARTICLE_WORDS * 4u, particles, &emitter->particles[0]) &&
-           CreateBuffer(sim, c * MVFX_GPU_PARTICLE_WORDS * 4u, particles, &emitter->particles[1]) &&
+    uint64_t words = (uint64_t)emitter->particleWords;
+    return CreateBuffer(sim, c * words * 4u, particles, &emitter->particles[0]) &&
+           CreateBuffer(sim, c * words * 4u, particles, &emitter->particles[1]) &&
            CreateBuffer(sim, 2u * c * sizeof(mvfxPlannedBirth), written, &emitter->births) &&
            CreateBuffer(sim, MVFX_STEP_WORDS * 4u, mrhi_bufferUniform | mrhi_bufferCopyDestination,
                         &emitter->step) &&
@@ -247,6 +250,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
         Emitter* emitter = &sim->emitters[e];
         result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
         emitter->capacity = plan.capacity;
+        emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
         uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
         if (result == mvfx_success &&
             !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
@@ -330,6 +334,7 @@ mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim, int32_t emitter,
         .particles = e->particles[e->current],
         .statistics = e->statistics,
         .capacity = e->capacity,
+        .words = e->particleWords,
     };
     return mvfx_success;
 }
@@ -506,7 +511,7 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
                          const Emitter* emitter)
 {
     bool written = true;
-    for (int32_t s = 0; written && s < 2; ++s)
+    for (int32_t s = 0; written && s < 3; ++s)
     {
         uint32_t first = emitter->spans.first[s];
         written =

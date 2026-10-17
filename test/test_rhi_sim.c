@@ -317,9 +317,12 @@ static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 }
 
 // The emitter's particles and counts as the GPU holds them, read back, for
-// capacities up to 2^17.
-static uint32_t s_words[MVFX_GPU_PARTICLE_WORDS * (1 << 17)];
+// capacities up to 2^17 and particles of up to 32 words; where its values
+// are among them, and each of the run's emitters'.
+static uint32_t s_words[32 * (1 << 17)];
 static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
+static mvfxAttributeArrays s_arrays;
+static mvfxAttributeArrays s_runArrays[2];
 
 static int32_t s_capacity;
 
@@ -336,7 +339,13 @@ static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
         return false;
     }
     s_capacity = particles.capacity;
-    uint64_t bytes = (uint64_t)s_capacity * MVFX_GPU_PARTICLE_WORDS * sizeof(uint32_t);
+    s_arrays = s_runArrays[emitter];
+    if (particles.words != s_arrays.count + 3 || particles.words > 32)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        return false;
+    }
+    uint64_t bytes = (uint64_t)s_capacity * (uint64_t)particles.words * sizeof(uint32_t);
     bool recorded =
         mrhiImportBuffer(gpu->device, particles.particles, &buffers[0]) == mrhi_success &&
         mrhiImportBuffer(gpu->device, particles.statistics, &buffers[1]) == mrhi_success;
@@ -411,7 +420,8 @@ static bool s_deathsWithin = true;
 static void CompareDeath(int32_t i, int64_t birth, float inverseLife)
 {
     int64_t cpu = mvfxDeathTick(birth, inverseLife);
-    int64_t gpu = (int64_t)((uint64_t)Word(10, i) | (uint64_t)Word(11, i) << 32u);
+    int32_t death = s_arrays.count;
+    int64_t gpu = (int64_t)((uint64_t)Word(death, i) | (uint64_t)Word(death + 1, i) << 32u);
     int64_t age = cpu - birth;
     int64_t bound = 0;
     for (int64_t top = (int64_t)1 << 25; top <= age * 2; top *= 2)
@@ -449,8 +459,10 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
     {
         uint32_t lifeBits;
         memcpy(&lifeBits, &inverseLife[i], sizeof lifeBits);
-        same = Word(6, i) == serial[i] && Word(8, i) == low[i] && Word(9, i) == high[i] &&
-               Word(12, i) == lifeBits && (collisions == NULL || Word(13, i) == collisions[i]);
+        const mvfxAttributeArrays* a = &s_arrays;
+        same = Word(a->serial, i) == serial[i] && Word(a->birth, i) == low[i] &&
+               Word(a->birth + 1, i) == high[i] && Word(a->inverseLife, i) == lifeBits &&
+               (collisions == NULL || Word(a->collisions, i) == collisions[i]);
         s_contacts += collisions != NULL ? collisions[i] : 0u;
         if (s_deathTicks)
         {
@@ -461,8 +473,8 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
             const float* p = mvfxAttributeArray(cpu, e, places[k]);
             const float* v = mvfxAttributeArray(cpu, e, velocities[k]);
             // Relative to the size, as places reach the rebase distance.
-            float dp = fabsf(FloatOf(k, i) - p[i]) / (1.0f + fabsf(p[i]));
-            float dv = fabsf(FloatOf(3 + k, i) - v[i]) / (1.0f + fabsf(v[i]));
+            float dp = fabsf(FloatOf(a->position + k, i) - p[i]) / (1.0f + fabsf(p[i]));
+            float dv = fabsf(FloatOf(a->velocity + k, i) - v[i]) / (1.0f + fabsf(v[i]));
             s_placeError = dp > s_placeError ? dp : s_placeError;
             s_velocityError = dv > s_velocityError ? dv : s_velocityError;
             same = same && dp <= s_tolerance && dv <= s_tolerance;
@@ -716,6 +728,12 @@ static mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effec
     effectDef.emitters = WithGrid(run);
     effectDef.emitterCount = run->emitterCount;
     CHECK(mvfxCreateEffect(s_context, &effectDef, effectOut) == mvfx_success, "effect");
+    for (int32_t e = 0; e < run->emitterCount; ++e)
+    {
+        mvfxEmitterView view;
+        CHECK(mvfxEffect_GetEmitterView(s_context, *effectOut, e, &view) == mvfx_success, "a view");
+        s_runArrays[e] = view.arrays;
+    }
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = *effectOut;
     instanceDef.seed = 11;

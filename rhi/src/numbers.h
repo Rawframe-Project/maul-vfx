@@ -12,8 +12,13 @@
 // The words the step's numbers take: 80 of the emitter and its plan, 4
 // of its forces' head, 24 a force and 108 its field for the most forces
 // an emitter has, 8 of its collision's head and response, 48 of its depth
-// image, 32 a collider for the most it has.
-#define MVFX_STEP_WORDS (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
+// image, 32 a collider for the most it has, 28 of where a particle's
+// values are among its words.
+#define MVFX_STEP_WORDS (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS + 28)
+
+// The words a particle of an emitter takes on the GPU: its arrays, the
+// death tick's two words and the step's word.
+#define MVFX_GPU_OWN_WORDS 3
 
 // The workgroups of 64 update takes for a capacity, striding over the
 // particles: at most 65,535, the most a dispatch has along one axis on
@@ -25,14 +30,15 @@ uint32_t mvfxUpdateGroups(int32_t capacity);
 // 49,152 for the largest capacity, 2^24.
 uint32_t mvfxScanBlocks(int32_t capacity);
 
-// The words of the step's numbers a plan's kernels read, in two spans
+// The words of the step's numbers a plan's kernels read, in three spans
 // from their first words: the head, the forces' slots and the fields of
 // the forces it has; the collision's head, its depth image and the
-// colliders it has. The rest keep what an earlier step left, never read.
+// colliders it has; where a particle's values are. The rest keep what an
+// earlier step left, never read.
 typedef struct mvfxStepSpans
 {
-    uint32_t first[2];
-    uint32_t count[2];
+    uint32_t first[3];
+    uint32_t count[3];
 } mvfxStepSpans;
 
 mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount);

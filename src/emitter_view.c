@@ -71,6 +71,40 @@ uint64_t mvfxFeaturesOf(const mvfxCompiledEmitter* e)
     return spawning | StoredFeatures(e) | MotionFeatures(e) | output;
 }
 
+// An attribute's first array in a plan, -1 when it stores none.
+static int16_t ArrayOf(const mvfxAttributePlan* plan, int32_t attribute)
+{
+    return mvfxHasAttribute(plan, attribute) ? (int16_t)plan->slots[attribute] : (int16_t)-1;
+}
+
+// Where a plan keeps an emitter's values.
+static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
+{
+    mvfxAttributeArrays arrays = {
+        .position = ArrayOf(plan, mvfx_attributePositionX),
+        .birth = ArrayOf(plan, mvfx_attributeBirthLow),
+        .inverseLife = ArrayOf(plan, mvfx_attributeInverseLife),
+        .serial = ArrayOf(plan, mvfx_attributeSerial),
+        .velocity = ArrayOf(plan, mvfx_attributeVelocityX),
+        .size = ArrayOf(plan, mvfx_attributeSizeX),
+        .color = ArrayOf(plan, mvfx_attributeColorR),
+        .angle = ArrayOf(plan, mvfx_attributeAngle),
+        .spin = ArrayOf(plan, mvfx_attributeSpin),
+        .orientation = ArrayOf(plan, mvfx_attributeOrientationX),
+        .angular = ArrayOf(plan, mvfx_attributeAngularX),
+        .frame = ArrayOf(plan, mvfx_attributeFrame),
+        .drag = ArrayOf(plan, mvfx_attributeDrag),
+        .collisions = ArrayOf(plan, mvfx_attributeCollisions),
+        .mesh = ArrayOf(plan, mvfx_attributeMesh),
+        .count = plan->arrayCount,
+    };
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        arrays.custom[i] = ArrayOf(plan, mvfx_attributeCustom + 4 * i);
+    }
+    return arrays;
+}
+
 mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId effect,
                                      int32_t emitter, mvfxEmitterView* viewOut)
 {
@@ -131,6 +165,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
             viewOut->forceGrids[f] = e->forces[f].grid;
         }
     }
+    viewOut->arrays = ArraysOf(&e->plan);
     for (int32_t k = 0; k < 9; ++k)
     {
         viewOut->shape.matrix[k] = s->matrix[k];

@@ -632,3 +632,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   depth-image collision from the depth texture the host rendered and
   optionally its normals (`mvfxGpuSim_SetDepthTextures`), the kill
   outside the view included.
+- The emitter view tells where an emitter's particles keep their values
+  (`mvfxAttributeArrays`: each value's first array, as the CPU path
+  stores them). The GPU part's particles follow it, then the death tick
+  and a word of the step's: `mvfxGpuParticles.words` replaces
+  `MVFX_GPU_PARTICLE_WORDS`, and the serial takes one word, as on the
+  CPU path.
