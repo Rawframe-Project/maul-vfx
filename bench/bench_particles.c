@@ -344,7 +344,7 @@ static int Updates(void)
     {
         return 1;
     }
-    Report("sprite update, baked turbulence", measure, none, "ns a particle", 40);
+    Report("sprite update, baked turbulence", measure, none, "ns a particle", 70);
 
     static const mvfxCollider walls[4] = {
         {.kind = mvfx_colliderPlane,
