@@ -7,6 +7,7 @@
 #include "half.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <string.h>
 
 static uint32_t FormatBytes(mvfxFormat format)
@@ -123,11 +124,11 @@ static float ToSrgb(float linear)
 }
 
 // A value clamped to 0 to 1 (NaN to 0) in steps of 1 / top, rounded half
-// up.
+// up: the conversion's truncation is the floor of a value not below 0.
 static uint32_t Unorm(float value, float top)
 {
     float x = value >= 0.0f ? fminf(value, 1.0f) : 0.0f;
-    return (uint32_t)floorf(x * top + 0.5f);
+    return (uint32_t)(x * top + 0.5f);
 }
 
 // A value clamped to -1 to 1 (NaN to 0) in steps of 1 / top, rounded half
@@ -136,51 +137,70 @@ static int32_t Snorm(float value, float top)
 {
     float x = value >= -1.0f ? fminf(value, 1.0f) : (value < -1.0f ? -1.0f : 0.0f);
     float scaled = x * top;
-    return (int32_t)copysignf(floorf(fabsf(scaled) + 0.5f), scaled);
+    int32_t magnitude = (int32_t)(fabsf(scaled) + 0.5f);
+    return scaled < 0.0f ? -magnitude : magnitude;
 }
 
-static void WriteComponent(const mvfxLayoutField* f, int32_t k, float value, uint32_t word,
-                           unsigned char* at)
+// Component k of n records stride bytes apart, at their first's: the
+// format chosen once for the run.
+static void WriteComponents(const mvfxLayoutField* f, int32_t k, const float values[][4],
+                            const uint32_t words[][4], int32_t n, unsigned char* at,
+                            ptrdiff_t stride)
 {
-    uint8_t byte = 0;
-    uint16_t half = 0;
-    switch (f->format)
+    // Read once: the records written may alias the field to the compiler.
+    bool srgb = f->srgb && k < 3;
+    mvfxFormat format = f->format;
+    for (int32_t j = 0; j < n; ++j, at += stride)
     {
-    case mvfx_formatFloat32:
-        memcpy(at, &value, 4);
-        break;
-    case mvfx_formatFloat16:
-        half = mvfxHalfFromFloat(value);
-        memcpy(at, &half, 2);
-        break;
-    case mvfx_formatUnorm8:
-        byte = (uint8_t)Unorm(f->srgb && k < 3 ? ToSrgb(value) : value, 255.0f);
-        memcpy(at, &byte, 1);
-        break;
-    case mvfx_formatSnorm8:
-        byte = (uint8_t)(int8_t)Snorm(value, 127.0f);
-        memcpy(at, &byte, 1);
-        break;
-    case mvfx_formatUnorm16:
-        half = (uint16_t)Unorm(value, 65535.0f);
-        memcpy(at, &half, 2);
-        break;
-    case mvfx_formatSnorm16:
-        half = (uint16_t)(int16_t)Snorm(value, 32767.0f);
-        memcpy(at, &half, 2);
-        break;
-    default:
-        memcpy(at, &word, 4);
-        break;
+        float value = values[j][k];
+        uint8_t byte = 0;
+        uint16_t half = 0;
+        switch (format)
+        {
+        case mvfx_formatFloat32:
+            memcpy(at, &value, 4);
+            break;
+        case mvfx_formatFloat16:
+            half = mvfxHalfFromFloat(value);
+            memcpy(at, &half, 2);
+            break;
+        case mvfx_formatUnorm8:
+            byte = (uint8_t)Unorm(srgb ? ToSrgb(value) : value, 255.0f);
+            memcpy(at, &byte, 1);
+            break;
+        case mvfx_formatSnorm8:
+            byte = (uint8_t)(int8_t)Snorm(value, 127.0f);
+            memcpy(at, &byte, 1);
+            break;
+        case mvfx_formatUnorm16:
+            half = (uint16_t)Unorm(value, 65535.0f);
+            memcpy(at, &half, 2);
+            break;
+        case mvfx_formatSnorm16:
+            half = (uint16_t)(int16_t)Snorm(value, 32767.0f);
+            memcpy(at, &half, 2);
+            break;
+        default:
+            memcpy(at, &words[j][k], 4);
+            break;
+        }
     }
 }
 
 void mvfxWriteField(const mvfxLayoutField* field, const float values[4], const uint32_t words[4],
                     unsigned char* record)
 {
+    float run[1][4] = {{values[0], values[1], values[2], values[3]}};
+    uint32_t runWords[1][4] = {{words[0], words[1], words[2], words[3]}};
+    mvfxWriteFieldRun(field, run, runWords, 1, record, 0);
+}
+
+void mvfxWriteFieldRun(const mvfxLayoutField* field, const float values[][4],
+                       const uint32_t words[][4], int32_t n, unsigned char* records, int32_t stride)
+{
     uint32_t bytes = FormatBytes(field->format);
     for (int32_t k = 0; k < field->components; ++k)
     {
-        WriteComponent(field, k, values[k], words[k], record + field->offset + k * bytes);
+        WriteComponents(field, k, values, words, n, records + field->offset + k * bytes, stride);
     }
 }

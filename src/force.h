@@ -8,6 +8,7 @@
 #ifndef MAUL_VFX_SRC_FORCE_H
 #define MAUL_VFX_SRC_FORCE_H
 
+#include "direction.h"
 #include "gas_lattice.h"
 
 #include "maul-vfx/effect.h"
@@ -36,10 +37,27 @@ void mvfxMapVector(const mvfxSpaceMap* map, const float v[3], float sigma, float
 // Maps a binary64 point by a map, in binary64 until the end.
 void mvfxMapPointDouble(const mvfxSpaceMap* map, const double p[3], float out[3]);
 
-// Maps a point back by a map, in binary64; and a vector, by the map's
-// turn back and 1 / sigma.
-void mvfxUnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3]);
+// A vector mapped back by a map's turn back and 1 / sigma.
 void mvfxUnmapVector(const mvfxSpaceMap* map, const float v[3], float out[3]);
+
+// A point mapped back by a map, in binary64: the map's inverse; inline,
+// as output maps every record's place back.
+static inline void mvfxUnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3])
+{
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = (double)x[k] - map->after[k];
+    }
+    const float* q = map->rotation;
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    double turned[3];
+    mvfxRotateDouble(inverse, d, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = turned[k] / (double)map->sigma + map->before[k];
+    }
+}
 
 struct mvfxGrid;
 

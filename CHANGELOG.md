@@ -445,6 +445,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   each time.
 - Turbulence's curl takes only the six gradient entries it reads, the
   same bits in about 16% fewer instructions a particle.
+- Particle records are written 64 at a time, a field at a time: places,
+  sizes, colours and angles over the run, each particle's age taken once,
+  each format chosen once; the same bytes in about 69% fewer
+  instructions a particle.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its

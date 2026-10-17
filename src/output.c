@@ -13,6 +13,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 
 static float FloatOf(const mvfxRecordSource* s, int32_t attribute, int32_t i)
 {
@@ -296,15 +297,115 @@ void mvfxWriteRibbonRecord(const mvfxRecordSource* source, const mvfxOutputLayou
     }
 }
 
+// The places of a run of particles, relative to the view's origin.
+static void PositionsOf(const mvfxRecordSource* s, const int32_t* run, int32_t n, float v[][4])
+{
+    const float* x = mvfxAttributeArray(s->instance, s->emitter, mvfx_attributePositionX);
+    const float* y = mvfxAttributeArray(s->instance, s->emitter, mvfx_attributePositionY);
+    const float* z = mvfxAttributeArray(s->instance, s->emitter, mvfx_attributePositionZ);
+    for (int32_t j = 0; j < n; ++j)
+    {
+        float p[3] = {x[run[j]], y[run[j]], z[run[j]]};
+        double world[3];
+        mvfxUnmapPoint(&s->map, p, world);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            v[j][k] = (float)(world[k] - s->viewOrigin[k]);
+        }
+    }
+}
+
+// A run of particles being written: their indices, and their ages once
+// a field has needed them.
+typedef struct Run
+{
+    int32_t indices[MVFX_APPEARANCE_RUN];
+    float ages[MVFX_APPEARANCE_RUN];
+    int32_t count;
+    bool aged;
+} Run;
+
+static const float* AgesOf(const mvfxRecordSource* s, Run* run)
+{
+    if (!run->aged)
+    {
+        mvfxNormalizedAges(s->instance, s->emitter, run->indices, run->count, run->ages);
+        run->aged = true;
+    }
+    return run->ages;
+}
+
+// A field's values for a run of particles: those every sprite writes
+// taken a field at a time, the rest a particle at a time.
+static void RunValuesOf(const mvfxRecordSource* s, const mvfxLayoutField* f, Run* run, float v[][4],
+                        uint32_t w[][4])
+{
+    const int32_t* at = run->indices;
+    int32_t n = run->count;
+    const float* angles = nullptr;
+    switch (f->field)
+    {
+    case mvfx_recordPosition:
+        PositionsOf(s, at, n, v);
+        break;
+    case mvfx_recordSize:
+        mvfxSizesOf(s->instance, s->emitter, at, n, AgesOf(s, run), v);
+        for (int32_t j = 0; j < n; ++j)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                v[j][k] /= s->map.sigma;
+            }
+        }
+        break;
+    case mvfx_recordColor:
+        mvfxColorsOf(s->instance, s->emitter, at, n, AgesOf(s, run), v);
+        break;
+    case mvfx_recordAngle:
+        if (mvfxHasAttribute(s->plan, mvfx_attributeAngle))
+        {
+            angles = mvfxAttributeArray(s->instance, s->emitter, mvfx_attributeAngle);
+        }
+        for (int32_t j = 0; j < n; ++j)
+        {
+            v[j][0] = angles != nullptr ? angles[at[j]] : 0.0f;
+        }
+        break;
+    default:
+        for (int32_t j = 0; j < n; ++j)
+        {
+            ValuesOf(s, f, at[j], nullptr, v[j], w[j]);
+        }
+        break;
+    }
+}
+
 void mvfxWriteRecords(const mvfxInstance* instance, int32_t emitter, const mvfxOutputLayout* layout,
                       const double viewOrigin[3], const mvfxRecordOrder* order,
                       unsigned char* records, int64_t count)
 {
     mvfxRecordSource s = mvfxOpenRecordSource(instance, emitter, viewOrigin);
-    for (int64_t r = 0; r < count; ++r)
+    Run run;
+    float values[MVFX_APPEARANCE_RUN][4];
+    uint32_t words[MVFX_APPEARANCE_RUN][4];
+    for (int64_t first = 0; first < count; first += MVFX_APPEARANCE_RUN)
     {
-        int32_t i = mvfxOrderAt(order, r);
-        mvfxWriteRecord(&s, layout, i, nullptr, records + r * (int64_t)layout->stride);
+        run.count =
+            (int32_t)(count - first < MVFX_APPEARANCE_RUN ? count - first : MVFX_APPEARANCE_RUN);
+        run.aged = false;
+        for (int32_t j = 0; j < run.count; ++j)
+        {
+            run.indices[j] = mvfxOrderAt(order, first + j);
+        }
+        unsigned char* at = records + first * (int64_t)layout->stride;
+        for (int32_t f = 0; f < layout->fieldCount; ++f)
+        {
+            memset(values, 0, (size_t)run.count * sizeof values[0]);
+            memset(words, 0, (size_t)run.count * sizeof words[0]);
+            RunValuesOf(&s, &layout->fields[f], &run, values, words);
+            mvfxWriteFieldRun(&layout->fields[f], values, words, run.count, at,
+                              (int32_t)layout->stride);
+        }
     }
 }
 

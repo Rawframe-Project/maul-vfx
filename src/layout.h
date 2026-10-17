@@ -32,4 +32,10 @@ void mvfxReleaseLayout(mvfxOutputLayout* layout, const mvfxAllocator* allocator)
 void mvfxWriteField(const mvfxLayoutField* field, const float values[4], const uint32_t words[4],
                     unsigned char* record);
 
+// Writes a field of n records stride bytes apart, record j's from values
+// and words j.
+void mvfxWriteFieldRun(const mvfxLayoutField* field, const float values[][4],
+                       const uint32_t words[][4], int32_t n, unsigned char* records,
+                       int32_t stride);
+
 #endif

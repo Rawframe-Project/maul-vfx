@@ -13,6 +13,23 @@
 // Particle i's normalized age at the instance's clock, held to [0, 1].
 float mvfxNormalizedAge(const mvfxInstance* instance, int32_t emitter, int32_t i);
 
+// The most particles a run of the functions below takes.
+#define MVFX_APPEARANCE_RUN 64
+
+// The normalized ages of a run of n particles, at most
+// MVFX_APPEARANCE_RUN, given by index.
+void mvfxNormalizedAges(const mvfxInstance* instance, int32_t emitter, const int32_t* run,
+                        int32_t n, float out[]);
+
+// The colours (red, green, blue, alpha) of a run of particles of those
+// ages.
+void mvfxColorsOf(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
+                  const float ages[], float out[][4]);
+
+// Their sizes along X, Y and Z, in the first three of each four.
+void mvfxSizesOf(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
+                 const float ages[], float out[][4]);
+
 // Its colour (red, green, blue, alpha).
 void mvfxColorOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float out[4]);
 

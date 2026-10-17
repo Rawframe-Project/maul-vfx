@@ -308,25 +308,6 @@ float mvfxForceDrag(const mvfxResolvedForce* force)
     return field && force->fieldMode == mvfx_fieldVelocity ? force->tightness : 0.0f;
 }
 
-// A stored place back in the force's space, in binary64: the map's
-// inverse.
-void mvfxUnmapPoint(const mvfxSpaceMap* map, const float x[3], double out[3])
-{
-    double d[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        d[k] = (double)x[k] - map->after[k];
-    }
-    const float* q = map->rotation;
-    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
-    double turned[3];
-    mvfxRotateDouble(inverse, d, turned);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out[k] = turned[k] / (double)map->sigma + map->before[k];
-    }
-}
-
 // A vector field's vector at a place in its force's space: the grid
 // sampled in the box's own space, turned out with the box; false outside
 // it under the none border.
