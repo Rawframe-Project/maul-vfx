@@ -572,3 +572,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   count, order, serials and ticks, their places and velocities within
   1e-5 of their size, under a moving, turning instance and a clear.
 - A plan also gives the instance's seed.
+- A full emitter on the GPU takes the births its capacity has room for
+  as the CPU path does, batch by batch at each batch's tick after the
+  deaths by then: the same particles as the CPU path's when an emitter
+  of 64 is owed three times as many and a burst of 150 comes at once.

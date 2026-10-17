@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// An emitter's step on the GPU: update, compact, spawn. Particles are
+// An emitter's step on the GPU: update, room, compact, spawn. Particles are
 // arrays of the capacity in one buffer of words (WORDS a particle):
 // place (3), velocity (3), serial (2), birth tick (2), death tick (2),
 // inverse life, and whether it outlives the step.
@@ -62,10 +62,16 @@ struct Step {
 @group(0) @binding(2) var<storage, read_write> source: array<u32>;
 @group(0) @binding(3) var<storage, read_write> moved: array<u32>;
 @group(0) @binding(4) var<storage, read_write> counts: array<u32>;
+// Whether each of the plan's births has room, as the room entry decides.
+@group(0) @binding(5) var<storage, read_write> accepted: array<u32>;
 
 var<workgroup> scan: array<u32, CHUNK>;
 var<workgroup> carried: u32;
 var<workgroup> liveCount: u32;
+var<workgroup> dead: u32;
+var<workgroup> batchStart: u32;
+var<workgroup> batchLength: u32;
+var<workgroup> taken: u32;
 
 fn pcg4dMix(v: vec4<u32>) -> vec4<u32> {
     var r = v;
@@ -281,7 +287,7 @@ fn spawn(@builtin(local_invocation_index) local: u32) {
             b1 = births[2u * i + 1u];
             // The death from the plan's start in two words: past the plan's
             // ticks when its high word is set or its low passes them.
-            if (b1.x > 0u || b0.w > params.counts.z) {
+            if (accepted[i] == 1u && (b1.x > 0u || b0.w > params.counts.z)) {
                 keep = 1u;
             }
         }
@@ -333,5 +339,94 @@ fn spawn(@builtin(local_invocation_index) local: u32) {
     if (local == 0u) {
         counts[0] = min(carried, c);
         counts[2] = carried - min(carried, c);
+    }
+}
+
+// Whether a birth of the plan dies by tick t of the plan, its death in two
+// words from the plan's start.
+fn birthDiesBy(j: u32, t: u32) -> bool {
+    let b0 = births[2u * j];
+    let b1 = births[2u * j + 1u];
+    return b1.x == 0u && b0.w <= t;
+}
+
+// Whether a live particle dies by tick t of the plan, its death absolute.
+fn liveDiesBy(i: u32, t: u32) -> bool {
+    let c = params.counts.x;
+    let low = source[DEATH * c + i];
+    let high = source[(DEATH + 1u) * c + i];
+    let tickLow = params.start.x + t;
+    let tickHigh = params.start.y + select(0u, 1u, tickLow < params.start.x);
+    return high < tickHigh || (high == tickHigh && low <= tickLow);
+}
+
+// Room: which of the plan's births the emitter takes, as the CPU path's
+// full step takes them. When the live particles and the births fit the
+// capacity, all; else, batch by batch in order, as many of each as the
+// capacity has room for at its tick, the deaths by then of the live
+// particles and of the births taken before counted across the workgroup.
+@compute @workgroup_size(256, 1, 1)
+fn room(@builtin(local_invocation_index) local: u32) {
+    let c = params.counts.x;
+    let count = params.counts.y;
+    if (local == 0u) {
+        liveCount = counts[0];
+        carried = 0u;
+        batchStart = 0u;
+    }
+    let live = workgroupUniformLoad(&liveCount);
+    if (live + count <= c) {
+        for (var j = local; j < count; j += CHUNK) {
+            accepted[j] = 1u;
+        }
+        return;
+    }
+    loop {
+        let start = workgroupUniformLoad(&batchStart);
+        if (start >= count) {
+            break;
+        }
+        let tick = births[2u * start].z;
+        if (local == 0u) {
+            // The batch's births in the plan: from its first on, its places
+            // in order at one tick.
+            var n = 1u;
+            while (start + n < count && births[2u * (start + n) + 1u].z == n &&
+                   births[2u * (start + n)].z == tick) {
+                n++;
+            }
+            batchLength = n;
+        }
+        workgroupBarrier();
+        var mine = 0u;
+        for (var i = local; i < live; i += CHUNK) {
+            mine += select(0u, 1u, liveDiesBy(i, tick));
+        }
+        for (var j = local; j < start; j += CHUNK) {
+            mine += select(0u, 1u, accepted[j] == 1u && birthDiesBy(j, tick));
+        }
+        // The workgroup's sum, by its scan: the last invocation's place
+        // plus its own.
+        let before = exclusiveScan(local, mine);
+        if (local == CHUNK - 1u) {
+            dead = before + mine;
+        }
+        workgroupBarrier();
+        if (local == 0u) {
+            let held = live + carried - dead;
+            let space = select(0u, c - held, held < c);
+            let owed = births[2u * start + 1u].w;
+            taken = min(min(owed, space), batchLength);
+            carried += taken;
+            batchStart = start + batchLength;
+        }
+        workgroupBarrier();
+        let n = workgroupUniformLoad(&batchLength);
+        let k = workgroupUniformLoad(&taken);
+        for (var j = local; j < n; j += CHUNK) {
+            accepted[start + j] = select(0u, 1u, j < k);
+        }
+        storageBarrier();
+        workgroupBarrier();
     }
 }

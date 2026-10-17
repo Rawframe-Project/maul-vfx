@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A planned instance on the GPU: each emitter's buffers, the step's numbers
-// it writes from the plan and the emitter's view, and the four passes of
+// it writes from the plan and the emitter's view, and the five passes of
 // its step (sim.wgsl).
 
 #include "maul-vfx-rhi/sim.h"
@@ -29,7 +29,8 @@ enum
     BUFFER_CURRENT = 2,
     BUFFER_OTHER = 3,
     BUFFER_COUNTS = 4,
-    BUFFER_COUNT = 5
+    BUFFER_ACCEPTED = 5,
+    BUFFER_COUNT = 6
 };
 
 // The passes of an emitter's step: the plan's bytes, then the kernels.
@@ -37,9 +38,10 @@ enum
 {
     PASS_WRITE = 0,
     PASS_UPDATE = 1,
-    PASS_COMPACT = 2,
-    PASS_SPAWN = 3,
-    PASS_COUNT = 4
+    PASS_ROOM = 2,
+    PASS_COMPACT = 3,
+    PASS_SPAWN = 4,
+    PASS_COUNT = 5
 };
 
 typedef struct Emitter
@@ -49,6 +51,7 @@ typedef struct Emitter
     mrhiBufferId births;
     mrhiBufferId step;
     mrhiBufferId counts;
+    mrhiBufferId accepted;
     // The particle buffer the last recorded step left them in.
     int32_t current;
     // The step added and not yet recorded: its passes, the buffers as the
@@ -142,7 +145,8 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
            CreateBuffer(sim, 2u * c * sizeof(mvfxPlannedBirth), written, &emitter->births) &&
            CreateBuffer(sim, MVFX_STEP_WORDS * 4u, mrhi_bufferUniform | mrhi_bufferCopyDestination,
                         &emitter->step) &&
-           CreateBuffer(sim, COUNT_WORDS * 4u, written | mrhi_bufferCopySource, &emitter->counts);
+           CreateBuffer(sim, COUNT_WORDS * 4u, written | mrhi_bufferCopySource, &emitter->counts) &&
+           CreateBuffer(sim, 2u * c * sizeof(uint32_t), mrhi_bufferStorage, &emitter->accepted);
 }
 
 // Whether a def is one a simulation can be made from.
@@ -233,6 +237,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->births);
         DestroyBuffer(sim, emitter->step);
         DestroyBuffer(sim, emitter->counts);
+        DestroyBuffer(sim, emitter->accepted);
     }
     mvfxAllocator allocator = sim->allocator;
     mvfxRhiRelease(&allocator, sim, sizeof *sim, alignof(mvfxGpuSim));
@@ -261,9 +266,12 @@ mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim, int32_t emitter,
 // Adds an emitter's passes: one writing the plan's bytes, one a kernel.
 static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
 {
-    const mrhiBufferId buffers[BUFFER_COUNT] = {
-        emitter->step, emitter->births, emitter->particles[emitter->current],
-        emitter->particles[1 - emitter->current], emitter->counts};
+    const mrhiBufferId buffers[BUFFER_COUNT] = {emitter->step,
+                                                emitter->births,
+                                                emitter->particles[emitter->current],
+                                                emitter->particles[1 - emitter->current],
+                                                emitter->counts,
+                                                emitter->accepted};
     for (int32_t b = 0; b < BUFFER_COUNT; ++b)
     {
         if (mrhiImportBuffer(sim->device, buffers[b], &emitter->resources[b]) != mrhi_success)
@@ -281,7 +289,8 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessStorageRead},
         {.resource = r[BUFFER_CURRENT], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_OTHER], .kind = mrhi_accessStorageReadWrite},
-        {.resource = r[BUFFER_COUNTS], .kind = mrhi_accessStorageReadWrite}};
+        {.resource = r[BUFFER_COUNTS], .kind = mrhi_accessStorageReadWrite},
+        {.resource = r[BUFFER_ACCEPTED], .kind = mrhi_accessStorageReadWrite}};
     for (int32_t p = 0; p < PASS_COUNT; ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
@@ -386,6 +395,7 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         uint32_t groups = ((uint32_t)emitter->capacity + 63u) / 64u;
         bool recorded = RecordWrites(sim, emitter) &&
                         RecordKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
+                        RecordKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
                         RecordKernel(sim, emitter, PASS_COMPACT, mvfx_kernelCompact, 1) &&
                         RecordKernel(sim, emitter, PASS_SPAWN, mvfx_kernelSpawn, 1);
         if (!recorded)

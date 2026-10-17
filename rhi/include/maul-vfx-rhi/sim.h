@@ -108,7 +108,7 @@ extern "C"
 
     /// Adds the passes of the context's last step to the frame the host
     /// builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer
-    /// pass and three compute passes an emitter. It reads the instance's
+    /// pass and four compute passes an emitter. It reads the instance's
     /// plans, which must stay until mvfxGpuSim_Record.
     ///
     /// @param sim  The simulation.

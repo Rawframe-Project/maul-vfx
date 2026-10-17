@@ -549,7 +549,7 @@ Destroys a simulation: its buffers. No frame of the device may still use them.  
 ```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
 ```
-Adds the passes of the context's last step to the frame the host builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer pass and three compute passes an emitter. It reads the instance's plans, which must stay until mvfxGpuSim_Record.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` when the device refuses a pass or an import (no frame open). @par Thread safety Safe from any thread; the device is used by one thread at a time.
+Adds the passes of the context's last step to the frame the host builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer pass and four compute passes an emitter. It reads the instance's plans, which must stay until mvfxGpuSim_Record.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` when the device refuses a pass or an import (no frame open). @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
 ```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);

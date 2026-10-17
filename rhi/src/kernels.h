@@ -29,6 +29,9 @@ typedef enum mvfxKernel
     mvfx_kernelUpdate = 1,
     mvfx_kernelCompact = 2,
     mvfx_kernelSpawn = 3,
+    // Which of the plan's births have room, as the CPU path's full step
+    // decides.
+    mvfx_kernelRoom = 4,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

@@ -3,7 +3,8 @@
 //
 // Planned instances simulated on a real device (lavapipe on CI) beside the
 // same effects on the CPU path, compared after every step (one emitter;
-// two, under a moving, turning instance, cleared at half time): the live count,
+// two, under a moving, turning instance, cleared at half time; one full
+// every step): the live count,
 // each particle's serial and its birth and death ticks equal, in the same
 // order; its place and velocity within a tolerance (the GPU's floats are
 // not the CPU's bits). Skips (77) without an adapter, unless
@@ -357,7 +358,9 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     }
     printf("%s: largest relative differences, place %g, velocity %g\n", what, (double)s_placeError,
            (double)s_velocityError);
-    CHECK(same && most[0] > 100 && (run->emitterCount < 2 || most[1] > 64), what);
+    CHECK(same && most[0] >= (run->emitters[0].capacity < 100 ? run->emitters[0].capacity : 100) &&
+              (run->emitterCount < 2 || most[1] > 64),
+          what);
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(s_context);
 }
@@ -390,6 +393,24 @@ static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .clearing = true},
             "two emitters under a moving instance, cleared");
+}
+
+// Bursts larger than the capacity at one tick, and past it with the rate.
+static const mvfxBurst s_floods[2] = {
+    {.time = 0.1f, .minCount = 40, .maxCount = 40, .cycles = 1, .probability = 1.0f},
+    {.time = 0.3f, .minCount = 150, .maxCount = 150, .cycles = 1, .probability = 1.0f}};
+
+static void TestFull(Gpu* gpu, mvfxGpu* kernels)
+{
+    // An emitter of 64 owed about 180 at a time, and a burst of 150 at one
+    // tick: full every step, the room for each batch as the CPU path's
+    // heap gives it.
+    mvfxEmitterDef emitter = Sprite();
+    emitter.capacity = 64;
+    emitter.bursts = s_floods;
+    emitter.burstCount = 2;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1},
+            "an emitter full every step");
 }
 
 static void TestRefused(mvfxGpu* kernels)
@@ -466,6 +487,7 @@ int main(void)
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     TestSprite(&gpu, kernels);
     TestMoving(&gpu, kernels);
+    TestFull(&gpu, kernels);
     TestRefused(kernels);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
