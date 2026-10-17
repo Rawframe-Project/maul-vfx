@@ -801,7 +801,8 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
 static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
 {
     // A floor, a turned box and an inside sphere around them, the
-    // particles bouncing (restitution, friction, a rest speed); then life
+    // particles bouncing (restitution, friction, a rest speed many come
+    // to rest at); then life
     // lost at each contact under a moving instance at a hundredth of the
     // usual pace, colliders in the instance's space and the instance's
     // own, apart (a particle rattling in a corner meets them by rounding);
@@ -816,11 +817,8 @@ static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Sprite();
     emitter.colliders = own;
     emitter.colliderCount = 3;
-    emitter.collision = (mvfxCollision){.enabled = true,
-                                        .restitution = 0.6f,
-                                        .friction = 0.2f,
-                                        .restSpeed = 0.05f,
-                                        .radius = 0.02f};
+    emitter.collision = (mvfxCollision){
+        .enabled = true, .restitution = 0.6f, .friction = 0.2f, .restSpeed = 0.6f, .radius = 0.02f};
     emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true},
             "a floor, a box and a sphere bounced off");
@@ -987,6 +985,37 @@ static void TestBoundsRefused(mvfxGpu* kernels)
     mvfxDestroyContext(s_context);
 }
 
+static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
+{
+    // The instance given a heightfield, a kind the part does not run yet:
+    // the step's passes refused.
+    mvfxEmitterDef emitter = Sprite();
+    emitter.collision = (mvfxCollision){.enabled = true, .hostColliders = true};
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1}, &effect);
+    static const float heights[4] = {0, 0.1f, 0.2f, 0.3f};
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 2;
+    gridDef.size[2] = 2;
+    gridDef.values = heights;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(s_context, &gridDef, &grid) == mvfx_success, "a grid");
+    const mvfxCollider heightfield = {.kind = mvfx_colliderHeightfield,
+                                      .halfExtents = {1, 1, 1},
+                                      .rotation = {0, 0, 0, 1},
+                                      .grid = grid};
+    CHECK(mvfxInstance_SetColliders(s_context, s_planned, &heightfield, 1) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success,
+          "stepped with a heightfield");
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    CHECK(mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+              mvfxGpuSim_AddPasses(sim) == mvfx_errorState,
+          "a heightfield of the instance refused");
+    (void)mrhiDropFrame(gpu->device);
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(s_context);
+}
+
 static void TestRefused(mvfxGpu* kernels)
 {
     // An emitter it does not run, after one it does: refused, named (a
@@ -1069,6 +1098,7 @@ int main(void)
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);
     TestBoundsRefused(kernels);
+    TestHostGridRefused(&gpu, kernels);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
