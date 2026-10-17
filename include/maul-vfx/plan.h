@@ -56,8 +56,10 @@ extern "C"
     typedef struct mvfxEmitterPlan
     {
         // The particles the emitter holds at most, at the instance's
-        // quality level (0 for an emitter left out).
+        // quality level (0 for an emitter left out), and the instance's
+        // seed, the first word of every draw.
         int32_t capacity;
+        uint32_t seed;
         // The instance at the plan's start and end, a birth's place
         // between them by its tick, and its velocity over the last step.
         mvfxPlanPlace from;

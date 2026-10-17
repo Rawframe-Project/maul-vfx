@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// The numbers of an emitter's step on the GPU. The kernels' floats are
+// compared with the CPU path's within a tolerance, so these need not be
+// its bits: the exponential is the part's own, in binary64.
+
+#include "numbers.h"
+
+#include <string.h>
+
+// e^-x for x >= 0: x halved until small, a series, squared back.
+static double ExpMinus(double x)
+{
+    int32_t halvings = 0;
+    while (x > 0x1p-10 && halvings < 64)
+    {
+        x *= 0.5;
+        ++halvings;
+    }
+    double e = 1.0 - x * (1.0 - x * (0.5 - x * (1.0 / 6.0 - x / 24.0)));
+    for (int32_t i = 0; i < halvings; ++i)
+    {
+        e *= e;
+    }
+    return e;
+}
+
+// The drag factors over seconds: decay, carry and push (the integrator's
+// exact form).
+static void DragFactors(double drag, double seconds, float out[3])
+{
+    double x = drag * seconds;
+    double decay = ExpMinus(x);
+    double phi1 = x < 1e-6 ? 1.0 - 0.5 * x : (1.0 - decay) / x;
+    double phi2 = x < 1e-6 ? 0.5 - x / 6.0 : (1.0 - phi1) / x;
+    out[0] = (float)decay;
+    out[1] = (float)(seconds * phi1);
+    out[2] = (float)(seconds * seconds * phi2);
+}
+
+// Turns v by the unit quaternion q.
+static void Rotate(const float q[4], const float v[3], float out[3])
+{
+    float tx = 2.0f * (q[1] * v[2] - q[2] * v[1]);
+    float ty = 2.0f * (q[2] * v[0] - q[0] * v[2]);
+    float tz = 2.0f * (q[0] * v[1] - q[1] * v[0]);
+    out[0] = v[0] + q[3] * tx + (q[1] * tz - q[2] * ty);
+    out[1] = v[1] + q[3] * ty + (q[2] * tx - q[0] * tz);
+    out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
+}
+
+// Gravity in the particles' space, by the instance at the plan's start.
+static void Gravity(const mvfxEmitterView* view, const mvfxPlanPlace* from, float out[3])
+{
+    if (view->gravitySpace == view->space)
+    {
+        memcpy(out, view->gravity, 3 * sizeof(float));
+        return;
+    }
+    const float* q = from->rotation;
+    if (view->gravitySpace == mvfx_spaceLocal)
+    {
+        float scaled[3] = {view->gravity[0] * from->scale, view->gravity[1] * from->scale,
+                           view->gravity[2] * from->scale};
+        Rotate(q, scaled, out);
+        return;
+    }
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    float turned[3];
+    Rotate(inverse, view->gravity, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = turned[k] / from->scale;
+    }
+}
+
+// Writes four floats' bits at words.
+static void Floats(uint32_t* words, float a, float b, float c, float d)
+{
+    const float f[4] = {a, b, c, d};
+    memcpy(words, f, sizeof f);
+}
+
+// A place's origin from the anchor, and its scale, then its rotation.
+static void Place(uint32_t* words, const mvfxPlanPlace* place, const double anchor[3])
+{
+    Floats(words, (float)(place->origin[0] - anchor[0]), (float)(place->origin[1] - anchor[1]),
+           (float)(place->origin[2] - anchor[2]), place->scale);
+    memcpy(words + 4, place->rotation, 4 * sizeof(float));
+}
+
+void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
+                     uint32_t words[MVFX_STEP_WORDS])
+{
+    memset(words, 0, MVFX_STEP_WORDS * sizeof(uint32_t));
+    uint64_t start = (uint64_t)plan->start;
+    const uint32_t counts[12] = {(uint32_t)plan->capacity,
+                                 (uint32_t)plan->birthCount,
+                                 (uint32_t)plan->ticks,
+                                 plan->seed,
+                                 (uint32_t)start,
+                                 (uint32_t)(start >> 32u),
+                                 (uint32_t)emitter,
+                                 view->space,
+                                 view->velocity.mode,
+                                 view->shape.kind,
+                                 0,
+                                 0};
+    memcpy(words, counts, sizeof counts);
+    bool world = view->space == mvfx_spaceWorld;
+    const double* before = plan->anchorBefore;
+    const double* after = plan->anchorAfter;
+    Floats(words + 12, world ? (float)(before[0] - after[0]) : 0.0f,
+           world ? (float)(before[1] - after[1]) : 0.0f,
+           world ? (float)(before[2] - after[2]) : 0.0f, view->inheritVelocity);
+    float factors[3];
+    DragFactors((double)view->drag, (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND, factors);
+    Floats(words + 16, factors[0], factors[1], factors[2], view->drag);
+    float gravity[3];
+    Gravity(view, &plan->from, gravity);
+    Floats(words + 20, gravity[0], gravity[1], gravity[2], 0.0f);
+    const float* m = view->shape.matrix;
+    for (int32_t r = 0; r < 3; ++r)
+    {
+        Floats(words + 24 + 4 * r, m[3 * r], m[3 * r + 1], m[3 * r + 2], 0.0f);
+    }
+    const mvfxShapeView* s = &view->shape;
+    Floats(words + 36, s->offset[0], s->offset[1], s->offset[2], s->radius);
+    Floats(words + 40, s->thickness, 0.0f, 0.0f, 0.0f);
+    const mvfxVelocityView* v = &view->velocity;
+    Floats(words + 44, v->direction[0], v->direction[1], v->direction[2], v->coneCosine);
+    Floats(words + 48, v->tangentA[0], v->tangentA[1], v->tangentA[2], v->randomize);
+    Floats(words + 52, v->tangentB[0], v->tangentB[1], v->tangentB[2], v->speedMin);
+    Floats(words + 56, v->speedMax, 0.0f, 0.0f, 0.0f);
+    Place(words + 60, &plan->from, after);
+    Place(words + 68, &plan->to, after);
+    Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
+}

@@ -527,6 +527,40 @@ bool mvfxGpu_IsReady(const mvfxGpu* gpu);
 ```
 Returns whether every kernel's pipeline is built.  @param gpu  The object. @return Whether it is ready; false for NULL or a pipeline that failed. @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
+### `sim.h`
+
+A planned instance simulated on the GPU: made once from a ready GPU object, a context and an instance planned in it (maul-vfx/plan.h), it holds each emitter's particles in device buffers. Each frame, after the context's step, mvfxGpuSim_AddPasses adds its passes to the frame the host builds, and mvfxGpuSim_Record records them once the frame is compiled. Nothing is read back in a step. What it does not run yet is refused when it is made.
+
+```c
+mvfxGpuSimDef mvfxDefaultGpuSimDef(void);
+```
+Returns the default simulation def: the C library's allocation, no GPU object, context or instance.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut, mvfxGpuRefusal* refusalOut);
+```
+Makes a simulation of a planned instance: each emitter's buffers on the GPU object's device.  @param def         The def, from mvfxDefaultGpuSimDef. @param simOut      Receives the simulation; NULL on failure. @param refusalOut  Optional: receives why it was refused, an emitter of -1 otherwise. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a GPU object that is not ready, an allocator with one of its two functions alone, or an instance that is not planned; `mvfx_errorStale` for an instance or effect that is gone; `mvfx_errorState` for an effect it does not run yet (refusalOut says why) or when the device refuses a buffer; `mvfx_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+
+```c
+void mvfxDestroyGpuSim(mvfxGpuSim* sim);
+```
+Destroys a simulation: its buffers. No frame of the device may still use them.  @param sim  The simulation; NULL does nothing. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
+```
+Adds the passes of the context's last step to the frame the host builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer pass and three compute passes an emitter. It reads the instance's plans, which must stay until mvfxGpuSim_Record.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` when the device refuses a pass or an import (no frame open). @par Thread safety Safe from any thread; the device is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);
+```
+Records the passes mvfxGpuSim_AddPasses added, after the frame is compiled: the plans' bytes written, the kernels dispatched. Nothing when it added none.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorState` when the device refuses a command. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim, int32_t emitter, mvfxGpuParticles* particlesOut);
+```
+Returns an emitter's particles: the buffer the last recorded step left them in, which the host imports to draw or read them.  @param sim           The simulation. @param emitter       The emitter's index in its effect. @param particlesOut  Receives the buffers; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+
 ---
 
-94 functions across 16 headers.
+100 functions across 17 headers.

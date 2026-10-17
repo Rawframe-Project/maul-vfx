@@ -60,7 +60,7 @@ static bool Open(Gpu* gpu, mrhiResult pipelines, uint32_t objects)
     }
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
-    deviceDef.deviceLimits.shaders = MVFX_KERNEL_COUNT;
+    deviceDef.deviceLimits.shaders = MVFX_CONTAINER_COUNT;
     deviceDef.deviceLimits.pipelines = MVFX_KERNEL_COUNT;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
            mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
@@ -181,7 +181,7 @@ static void TestNotifications(mvfxGpu* kernels, const mrhiDeviceNotification* mi
     other.request.generation += 1;
     ignored = ignored && !mvfxGpu_Notify(kernels, &other);
     other = *mine;
-    other.request.index1 += 1;
+    other.request.index1 = 0xFFFFFFF0u;
     ignored = ignored && !mvfxGpu_Notify(kernels, &other);
     CHECK(ignored && mvfxGpu_IsReady(kernels), "others' notifications ignored");
     other = *mine;
@@ -243,7 +243,7 @@ static void TestFailures(void)
     // error and all returned, until the device makes enough.
     int32_t refusedCount = 0;
     int32_t madeCount = 0;
-    for (uint32_t objects = 1; objects <= 2 * MVFX_KERNEL_COUNT + 2; ++objects)
+    for (uint32_t objects = 1; objects <= MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + 2; ++objects)
     {
         CHECK(Open(&gpu, mrhi_success, objects), "a device failing objects");
         def = CountedDef(gpu.device);
@@ -256,7 +256,7 @@ static void TestFailures(void)
         Close(&gpu);
     }
     CHECK(refusedCount > 0 && madeCount > 0 &&
-              refusedCount + madeCount == 2 * MVFX_KERNEL_COUNT + 2,
+              refusedCount + madeCount == MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + 2,
           "refused while the device fails, made once it does not");
 }
 

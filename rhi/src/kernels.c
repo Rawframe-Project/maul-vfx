@@ -6,28 +6,43 @@
 #include "allocator.h"
 
 #include "../kernels/pcg4d_container.h"
+#include "../kernels/sim_container.h"
 #include "maul-rhi/shader.h"
 
 #include <stdalign.h>
 #include <string.h>
 
+// A container's bytes.
+typedef struct Container
+{
+    const uint8_t* bytes;
+    size_t size;
+} Container;
+
+static const Container s_containers[MVFX_CONTAINER_COUNT] = {
+    {s_pcg4dContainer, sizeof s_pcg4dContainer},
+    {s_simContainer, sizeof s_simContainer},
+};
+
 // A kernel's container and entry.
 typedef struct Kernel
 {
-    const uint8_t* container;
-    size_t bytes;
+    mvfxContainer container;
     const char* entry;
 } Kernel;
 
 static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
-    {s_pcg4dContainer, sizeof s_pcg4dContainer, "pcg"},
+    {mvfx_containerPcg4d, "pcg"},
+    {mvfx_containerSim, "update"},
+    {mvfx_containerSim, "compact"},
+    {mvfx_containerSim, "spawn"},
 };
 
 struct mvfxGpu
 {
     mvfxAllocator allocator;
     mrhiDevice* device;
-    mrhiShaderId shaders[MVFX_KERNEL_COUNT];
+    mrhiShaderId shaders[MVFX_CONTAINER_COUNT];
     mrhiComputePipelineId pipelines[MVFX_KERNEL_COUNT];
     mrhiRequestId requests[MVFX_KERNEL_COUNT];
     bool built[MVFX_KERNEL_COUNT];
@@ -38,18 +53,20 @@ mvfxGpuDef mvfxDefaultGpuDef(void)
     return (mvfxGpuDef){.cookie = MVFX_GPU_DEF_COOKIE};
 }
 
-// Requests kernel k's shader and pipeline.
-static bool Request(mvfxGpu* gpu, int32_t k)
+// Creates container c's shader.
+static bool CreateShader(mvfxGpu* gpu, int32_t c)
 {
     mrhiShaderDef shader = mrhiDefaultShaderDef();
-    shader.bytes = s_kernels[k].container;
-    shader.byteCount = s_kernels[k].bytes;
-    if (mrhiCreateShader(gpu->device, &shader, &gpu->shaders[k]) != mrhi_success)
-    {
-        return false;
-    }
+    shader.bytes = s_containers[c].bytes;
+    shader.byteCount = s_containers[c].size;
+    return mrhiCreateShader(gpu->device, &shader, &gpu->shaders[c]) == mrhi_success;
+}
+
+// Requests kernel k's pipeline from its container's shader.
+static bool Request(mvfxGpu* gpu, int32_t k)
+{
     mrhiComputePipelineDef pipeline = mrhiDefaultComputePipelineDef();
-    pipeline.shader = gpu->shaders[k];
+    pipeline.shader = gpu->shaders[s_kernels[k].container];
     pipeline.entry = s_kernels[k].entry;
     pipeline.entryLength = strlen(s_kernels[k].entry);
     return mrhiCreateComputePipeline(gpu->device, &pipeline, &gpu->pipelines[k],
@@ -75,13 +92,19 @@ mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut)
     *gpu = (mvfxGpu){0};
     gpu->allocator = def->allocator;
     gpu->device = def->device;
-    for (int32_t k = 0; k < MVFX_KERNEL_COUNT; ++k)
+    bool made = true;
+    for (int32_t c = 0; made && c < MVFX_CONTAINER_COUNT; ++c)
     {
-        if (!Request(gpu, k))
-        {
-            mvfxDestroyGpu(gpu);
-            return mvfx_errorState;
-        }
+        made = CreateShader(gpu, c);
+    }
+    for (int32_t k = 0; made && k < MVFX_KERNEL_COUNT; ++k)
+    {
+        made = Request(gpu, k);
+    }
+    if (!made)
+    {
+        mvfxDestroyGpu(gpu);
+        return mvfx_errorState;
     }
     *gpuOut = gpu;
     return mvfx_success;
@@ -93,17 +116,20 @@ void mvfxDestroyGpu(mvfxGpu* gpu)
     {
         return;
     }
+    // Each was created, so its destruction is not refused; a creation that
+    // failed left its id null.
     for (int32_t k = 0; k < MVFX_KERNEL_COUNT; ++k)
     {
-        // Each was created, so its destruction is not refused; a creation
-        // that failed left its id null.
         if (gpu->pipelines[k].index1 != 0)
         {
             (void)mrhiDestroyComputePipeline(gpu->device, gpu->pipelines[k]);
         }
-        if (gpu->shaders[k].index1 != 0)
+    }
+    for (int32_t c = 0; c < MVFX_CONTAINER_COUNT; ++c)
+    {
+        if (gpu->shaders[c].index1 != 0)
         {
-            (void)mrhiDestroyShader(gpu->device, gpu->shaders[k]);
+            (void)mrhiDestroyShader(gpu->device, gpu->shaders[c]);
         }
     }
     mvfxAllocator allocator = gpu->allocator;
@@ -141,4 +167,9 @@ bool mvfxGpu_IsReady(const mvfxGpu* gpu)
 mrhiComputePipelineId mvfxGpuPipeline(const mvfxGpu* gpu, mvfxKernel kernel)
 {
     return gpu->pipelines[kernel];
+}
+
+mrhiDevice* mvfxGpuDevice(const mvfxGpu* gpu)
+{
+    return gpu->device;
 }

@@ -375,7 +375,7 @@ static void TestAnchors(void)
         mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         double last = 300.0 * (s > 0 ? s - 1 : 0);
-        same = same && plan.capacity == 1000 && plan.from.origin[0] == last &&
+        same = same && plan.capacity == 1000 && plan.seed == 7 && plan.from.origin[0] == last &&
                plan.to.origin[0] == place[0] && plan.to.origin[2] == place[2] &&
                plan.from.scale == 1.0f && plan.to.rotation[3] == 1.0f;
         for (int32_t k = 0; k < 3; ++k)

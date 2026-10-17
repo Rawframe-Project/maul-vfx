@@ -315,6 +315,7 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     const mvfxTransform* to = &live->to;
     *planOut = (mvfxEmitterPlan){
         .capacity = state->capacity,
+        .seed = live->seed,
         .from = {.scale = from->scale},
         .to = {.scale = to->scale},
         .start = live->planStart,

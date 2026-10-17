@@ -19,7 +19,8 @@ if(NOT maul-rhi_FOUND)
     FetchContent_MakeAvailable(maul-rhi)
 endif()
 
-add_library(maul-vfx-rhi STATIC rhi/src/allocator.c rhi/src/kernels.c)
+add_library(maul-vfx-rhi STATIC rhi/src/allocator.c rhi/src/kernels.c rhi/src/numbers.c
+    rhi/src/sim.c)
 add_library(maul-vfx-rhi::maul-vfx-rhi ALIAS maul-vfx-rhi)
 target_include_directories(maul-vfx-rhi PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rhi/include>

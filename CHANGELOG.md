@@ -560,3 +560,13 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   for it to refuse what it does not run), its shape, velocity, space,
   gravity and drag. A plan also gives the emitter's capacity, the
   instance's place at the plan's start and end, and its velocity.
+- The GPU part simulates planned instances (`maul-vfx-rhi/sim.h`):
+  `mvfxCreateGpuSim` makes a simulation of one on a ready GPU object,
+  refusing with the emitter and what it does not run yet; each frame
+  `mvfxGpuSim_AddPasses` adds its passes to the host's frame and
+  `mvfxGpuSim_Record` records them, and `mvfxGpuSim_GetParticles` gives
+  an emitter's particle and count buffers. It runs emitters of spheres
+  with cone, fixed or shape-normal velocities, gravity and drag: on
+  lavapipe, every step's particles are the CPU path's in count, order,
+  serials and ticks, their places and velocities within 4e-6.
+- A plan also gives the instance's seed.
