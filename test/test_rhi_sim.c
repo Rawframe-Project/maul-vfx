@@ -1287,6 +1287,33 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true, .depth = &image},
             "terraces of an orthographic depth image");
+    // A pole of two columns before a far wall, particles crossing it fast
+    // between the two, behind it by less than the thickness and before the
+    // wall: a step's one sample by its length (a thickness of 2) misses
+    // the pole, its samples a pixel apart meet it.
+    image = Terraces(perspective, -7.0f, -7.0f, NULL, NULL);
+    float pole = DeviceDepth(perspective, -4.0f);
+    for (int32_t r = 0; r < DEPTH_SIDE; ++r)
+    {
+        s_pixels[r * DEPTH_SIDE + 30] = pole;
+        s_pixels[r * DEPTH_SIDE + 31] = pole;
+    }
+    image.origin[2] = 5.0;
+    emitter = Sprite();
+    emitter.velocity.direction[0] = 1;
+    emitter.velocity.direction[1] = 0;
+    emitter.velocity.coneAngle = 0.05f;
+    emitter.velocity.speed = (mvfxRange){20, 25};
+    emitter.motion.gravity[1] = 0;
+    emitter.collision = (mvfxCollision){.enabled = true,
+                                        .restitution = 0.5f,
+                                        .radius = 0.02f,
+                                        .depthImage = true,
+                                        .depthThickness = 2.0f,
+                                        .depthSamples = 64};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true, .depth = &image},
+            "a pole crossed fast, sampled a pixel apart");
     // A step whose emitter meets the instance's depth image with no depth
     // texture given: refused, no pass added.
     mvfxEffectId effect = {0};
