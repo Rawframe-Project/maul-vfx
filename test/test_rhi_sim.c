@@ -64,7 +64,7 @@ static bool Open(Gpu* gpu)
     deviceDef.adapter = adapter;
     // Room for an emitter of 2^17: its plan's births uploaded, its
     // particles read back.
-    deviceDef.deviceLimits.frameUploadBytes = 8u << 20u;
+    deviceDef.deviceLimits.frameUploadBytes = 16u << 20u;
     deviceDef.deviceLimits.readbackBytes = 16u << 20u;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
            mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
@@ -434,6 +434,43 @@ static void CompareDeath(int32_t i, int64_t birth, float inverseLife)
     s_deathsWithin = s_deathsWithin && apart <= bound;
 }
 
+// A drawn value of the GPU's particle i against the CPU path's: its
+// components from its first word (none where not stored), as binary32
+// within the tolerance or as words equal.
+static bool SameValue(const mvfxInstance* cpu, int32_t e, int32_t i, int16_t first,
+                      int32_t attribute, int32_t components, bool words)
+{
+    bool same = true;
+    for (int32_t k = 0; first >= 0 && k < components; ++k)
+    {
+        const uint32_t* cpuWords = mvfxAttributeArray(cpu, e, (mvfxAttribute)(attribute + k));
+        float cpuValue = 0.0f;
+        memcpy(&cpuValue, &cpuWords[i], sizeof cpuValue);
+        float gpuValue = FloatOf(first + k, i);
+        same =
+            same && (words ? Word(first + k, i) == cpuWords[i]
+                           : fabsf(gpuValue - cpuValue) <= s_tolerance * (1.0f + fabsf(cpuValue)));
+    }
+    return same;
+}
+
+// Every value a birth draws of the GPU's particle i against the CPU path's.
+static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t i)
+{
+    const mvfxAttributeArrays* a = &s_arrays;
+    const mvfxCompiledEmitter* compiled = &cpu->effect->emitters[e];
+    bool same = SameValue(cpu, e, i, a->size, mvfx_attributeSizeX, 3, false) &&
+                SameValue(cpu, e, i, a->color, mvfx_attributeColorR, 4, false) &&
+                SameValue(cpu, e, i, a->frame, mvfx_attributeFrame, 1, true) &&
+                SameValue(cpu, e, i, a->mesh, mvfx_attributeMesh, 1, true);
+    for (int32_t c = 0; same && c < compiled->customCount; ++c)
+    {
+        same = SameValue(cpu, e, i, a->custom[c], mvfx_attributeCustom + 4 * c,
+                         compiled->custom[c].components, false);
+    }
+    return same;
+}
+
 static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
 {
     const mvfxEmitterState* state = &cpu->emitters[e];
@@ -479,6 +516,7 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
             s_velocityError = dv > s_velocityError ? dv : s_velocityError;
             same = same && dp <= s_tolerance && dv <= s_tolerance;
         }
+        same = same && SameValues(cpu, e, i);
         if (!same)
         {
             printf("particle %d of serial %u differs\n", i, serial[i]);
@@ -602,6 +640,10 @@ typedef struct Run
     float tolerance;
     // Whether each particle's death tick is compared too.
     bool deathTicks;
+    // The defaults of the instances' parameters, four floats each (none
+    // for NULL).
+    const float* parameters;
+    int32_t parameterCount;
     // A depth image both instances collide with (none for NULL): the CPU
     // instance's with its pixels, the planned one's without, its
     // simulation's rendered from the same pixels.
@@ -727,6 +769,8 @@ static mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effec
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = WithGrid(run);
     effectDef.emitterCount = run->emitterCount;
+    effectDef.parameters = run->parameters;
+    effectDef.parameterCount = run->parameterCount;
     CHECK(mvfxCreateEffect(s_context, &effectDef, effectOut) == mvfx_success, "effect");
     for (int32_t e = 0; e < run->emitterCount; ++e)
     {
@@ -1192,6 +1236,65 @@ static void TestOldDeaths(Gpu* gpu, mvfxGpu* kernels)
                    .deathTicks = true},
             "life lost past 16 seconds of age");
     s_stepTicks = STEP_TICKS;
+}
+
+static void TestValues(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Every value a birth draws: a size between bounds, a colour from a
+    // gradient at a random point, custom values over the emitter's loop
+    // (a curve), its age through a gradient, and a parameter; a random
+    // frame and mesh index; under an emitter of a 0.4-second loop and a
+    // moving instance.
+    static const mvfxCurveKey keys[3] = {
+        {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
+        {.time = 0.5f, .value = 3, .interpolation = mvfx_interpolationCubic},
+        {.time = 1, .value = 0.5f, .interpolation = mvfx_interpolationLinear}};
+    static const mvfxColorKey colors[2] = {{.time = 0, .red = 1, .green = 0.2f, .blue = 0},
+                                           {.time = 1, .red = 0, .green = 0.5f, .blue = 1}};
+    static const mvfxAlphaKey alphas[2] = {{.time = 0, .alpha = 1}, {.time = 1, .alpha = 0.25f}};
+    const mvfxGradient gradient = {
+        .colorKeys = colors, .colorKeyCount = 2, .alphaKeys = alphas, .alphaKeyCount = 2};
+    const mvfxCustomAttribute custom[3] = {
+        {.components = 2,
+         .initial = {.kind = mvfx_sourceCurve,
+                     .curve = {.keys = keys, .keyCount = 3, .tangents = mvfx_tangentsSmooth},
+                     .min = {1, 2},
+                     .max = {2, 3}}},
+        {.components = 4,
+         .initial = {.kind = mvfx_sourceGradientOverAge,
+                     .gradient = gradient,
+                     .uniform = true,
+                     .min = {0.5f, 0.5f, 0.5f, 0.5f},
+                     .max = {1, 1, 1, 1}}},
+        {.components = 3,
+         .initial = {.kind = mvfx_sourceParameter,
+                     .parameter = 1,
+                     .min = {1, 1, 1},
+                     .max = {1.5f, 2, 2.5f}}}};
+    static const float parameters[8] = {0, 0, 0, 0, 0.25f, -2, 7, 1};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.duration = 0.4f;
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f}, .max = {0.4f, 0.6f, 0.8f}};
+    emitter.color = (mvfxVectorSource){.kind = mvfx_sourceGradient,
+                                       .gradient = gradient,
+                                       .min = {0.5f, 0.5f, 0.5f, 1},
+                                       .max = {1, 1, 1, 1}};
+    emitter.custom = custom;
+    emitter.customCount = 3;
+    emitter.frame = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 0, .last = 15};
+    emitter.meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 2, .last = 5};
+    // A size over life for each axis grows the bounds by the largest of
+    // each axis's largest size times its factor: here the second's.
+    emitter.overLife.size = (mvfxSizeOverLife){
+        .enabled = true, .perAxis = true, .size = {{.value = 1}, {.value = 3}, {.value = 2}}};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .parameters = parameters,
+                   .parameterCount = 2},
+            "every value a birth draws");
 }
 
 // A depth image's pixels and normals, 64 a side.
@@ -1699,14 +1802,13 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
 static void TestRefused(mvfxGpu* kernels)
 {
     // An emitter it does not run, after one it does: refused, named (a
-    // feature it does not run yet, colors).
+    // feature it does not run yet, angles).
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    const mvfxVectorSource color = {
-        .kind = mvfx_sourceRange, .min = {1, 0.5f, 0, 1}, .max = {1, 1, 0, 1}};
+    const mvfxScalarSource angle = {.kind = mvfx_sourceRange, .range = {0, 1}};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
-    emitters[1].color = color;
+    emitters[1].angle = angle;
     emitters[1].shape.kind = mvfx_shapeBox;
     emitters[1].velocity.randomize = 0.5f;
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
@@ -1729,7 +1831,7 @@ static void TestRefused(mvfxGpu* kernels)
     mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
     mvfxGpuRefusal refusal;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
-              refusal.emitter == 1 && refusal.features == MVFX_FEATURE_COLOR && refusal.shape &&
+              refusal.emitter == 1 && refusal.features == MVFX_FEATURE_ANGLE && refusal.shape &&
               refusal.velocity,
           "an emitter it does not run, named");
     simDef.instance = cpu;
@@ -1738,14 +1840,14 @@ static void TestRefused(mvfxGpu* kernels)
 
     // A feature alone refuses it.
     emitters[1] = Sprite();
-    emitters[1].color = color;
+    emitters[1].angle = angle;
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "planned");
     simDef.effect = effect;
     simDef.instance = planned;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && refusal.emitter == 1 &&
-              refusal.features == MVFX_FEATURE_COLOR && !refusal.shape && !refusal.velocity,
+              refusal.features == MVFX_FEATURE_ANGLE && !refusal.shape && !refusal.velocity,
           "a feature alone refused");
     mvfxDestroyContext(context);
 }
@@ -1778,6 +1880,7 @@ int main(void)
     TestGridColliders(&gpu, kernels);
     TestOldDeaths(&gpu, kernels);
     TestDepth(&gpu, kernels);
+    TestValues(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

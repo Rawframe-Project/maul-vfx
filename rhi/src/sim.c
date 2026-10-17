@@ -21,8 +21,8 @@
 
 // The buffers of the step an emitter has: its numbers, its births, its
 // particles in the buffer they are in and the other, its statistics
-// record, which births have room, the scan's blocks and their boxes, the
-// grids its forces read.
+// record, which births have room, the scan's blocks with their boxes and
+// growths, the grids its forces read.
 enum
 {
     BUFFER_STEP = 0,
@@ -73,6 +73,10 @@ typedef struct Emitter
     mrhiResourceId resources[BUFFER_COUNT];
     uint32_t words[MVFX_STEP_WORDS];
     mvfxStepSpans spans;
+    // Each source's curve and gradient in the grids buffer (all ones for
+    // none), and whether the sources' block is uploaded.
+    uint32_t sourceTables[MVFX_GPU_SOURCES][2];
+    bool sourcesWritten;
     uint32_t map[MVFX_RECORD_MAP_WORDS];
     const mvfxPlannedBirth* plannedBirths;
     int32_t birthCount;
@@ -109,10 +113,15 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
     return (mvfxGpuSimDef){.cookie = MVFX_GPU_SIM_DEF_COOKIE};
 }
 
-// The features the part runs, the kinds of force (constant, wind,
-// attractor, vortex, turbulence, vector field) and of collider (plane,
-// sphere, box, heightfield, distance grid).
-#define RUN_FEATURES  (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES | MVFX_FEATURE_COLLISION)
+// The features the part runs (values over life are applied where
+// particles are read; the rotation's scale over life moves only angles and
+// orientations, which it does not run yet), the kinds of force (constant,
+// wind, attractor, vortex, turbulence, vector field) and of collider
+// (plane, sphere, box, heightfield, distance grid).
+#define RUN_FEATURES                                                                               \
+    (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES | MVFX_FEATURE_COLLISION |                \
+     MVFX_FEATURE_SIZE | MVFX_FEATURE_COLOR | MVFX_FEATURE_CUSTOM | MVFX_FEATURE_FRAME |           \
+     MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -184,7 +193,7 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
            CreateBuffer(sim, MVFX_GPU_STATISTICS_WORDS * 4u, written | mrhi_bufferCopySource,
                         &emitter->statistics) &&
            CreateBuffer(sim, 2u * c * sizeof(uint32_t), mrhi_bufferStorage, &emitter->accepted) &&
-           CreateBuffer(sim, 7u * mvfxScanBlocks(emitter->capacity) * sizeof(uint32_t),
+           CreateBuffer(sim, 8u * mvfxScanBlocks(emitter->capacity) * sizeof(uint32_t),
                         mrhi_bufferStorage, &emitter->blocks) &&
            CreateBuffer(sim, 4u * (emitter->gridLayout.words > 0 ? emitter->gridLayout.words : 1u),
                         written, &emitter->grids);
@@ -201,6 +210,20 @@ static bool CreateTextures(mvfxGpuSim* sim)
     bool made = mrhiCreateTexture(sim->device, &def, &sim->ownDepth) == mrhi_success;
     def.format = mrhi_formatRgba32Float;
     return made && mrhiCreateTexture(sim->device, &def, &sim->ownNormals) == mrhi_success;
+}
+
+// Places the baked tables of an emitter's sources after its grids.
+static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
+{
+    mvfxSourceView sources[MVFX_GPU_SOURCES];
+    mvfxSourcesOf(view, sources);
+    for (int32_t s = 0; s < MVFX_GPU_SOURCES; ++s)
+    {
+        emitter->sourceTables[s][0] =
+            mvfxAddTable(&emitter->gridLayout, sources[s].curve, MVFX_CURVE_SAMPLES + 2);
+        emitter->sourceTables[s][1] =
+            mvfxAddTable(&emitter->gridLayout, sources[s].gradient, 4 * MVFX_CURVE_SAMPLES);
+    }
 }
 
 // Whether a def is one a simulation can be made from.
@@ -256,6 +279,10 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
             !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
         {
             result = mvfx_errorStale;
+        }
+        if (result == mvfx_success)
+        {
+            LayTables(&sim->views[e], emitter);
         }
         if (result == mvfx_success && emitter->capacity > 0 && !CreateBuffers(sim, emitter))
         {
@@ -491,7 +518,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         }
         mvfxStepNumbers(&sim->views[e], &plan, e, (const uint32_t (*)[5])forceGrids,
                         (const uint32_t (*)[5])colliderGrids, sim->hostNormals.index1 != 0,
-                        emitter->words);
+                        (const uint32_t (*)[2])emitter->sourceTables, emitter->words);
         emitter->spans = mvfxStepSpansOf(plan.forceCount, plan.colliderCount);
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
         emitter->plannedBirths = plan.births;
@@ -507,8 +534,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
 }
 
 // Records the writes of the step's numbers its kernels read.
-static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
-                         const Emitter* emitter)
+static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, Emitter* emitter)
 {
     bool written = true;
     for (int32_t s = 0; written && s < 3; ++s)
@@ -517,6 +543,14 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
         written =
             mrhiWriteBuffer(sim->device, pass, step, (uint64_t)first * 4u, emitter->words + first,
                             (uint64_t)emitter->spans.count[s] * 4u) == mrhi_success;
+    }
+    // The sources' block, unchanged from step to step, at the first.
+    if (written && !emitter->sourcesWritten)
+    {
+        written = mrhiWriteBuffer(sim->device, pass, step, MVFX_SOURCES_FIRST * 4u,
+                                  emitter->words + MVFX_SOURCES_FIRST,
+                                  (MVFX_STEP_WORDS - MVFX_SOURCES_FIRST) * 4u) == mrhi_success;
+        emitter->sourcesWritten = written;
     }
     return written;
 }

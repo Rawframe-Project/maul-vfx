@@ -71,6 +71,32 @@ uint64_t mvfxFeaturesOf(const mvfxCompiledEmitter* e)
     return spawning | StoredFeatures(e) | MotionFeatures(e) | output;
 }
 
+// A source as compiled, as the view gives it.
+static mvfxSourceView SourceOf(const mvfxCompiledVector* source)
+{
+    mvfxSourceView view = {
+        .kind = source->kind,
+        .uniform = source->uniform,
+        .components = source->components,
+        .parameter = source->parameter,
+        .curve = source->curve != nullptr ? source->curve->samples : nullptr,
+        .gradient = source->gradient != nullptr ? source->gradient->rgba[0] : nullptr,
+    };
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        view.min[c] = source->min[c];
+        view.max[c] = source->max[c];
+    }
+    return view;
+}
+
+// An index's draw at birth, as the view gives it.
+static mvfxIndexView IndexOf(const mvfxFrameStart* start)
+{
+    return (mvfxIndexView){
+        .first = start->first, .last = start->last, .random = start->mode == mvfx_frameRandom};
+}
+
 // An attribute's first array in a plan, -1 when it stores none.
 static int16_t ArrayOf(const mvfxAttributePlan* plan, int32_t attribute)
 {
@@ -103,6 +129,26 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
         arrays.custom[i] = ArrayOf(plan, mvfx_attributeCustom + 4 * i);
     }
     return arrays;
+}
+
+// Where an emitter's particles keep their values, how its births draw
+// them, and how their sizes grow its bounds.
+static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
+{
+    viewOut->arrays = ArraysOf(&e->plan);
+    viewOut->size = SourceOf(&e->size);
+    viewOut->color = SourceOf(&e->color);
+    for (int32_t i = 0; i < e->customCount; ++i)
+    {
+        viewOut->custom[i] = SourceOf(&e->custom[i]);
+    }
+    viewOut->frame = IndexOf(&e->frame);
+    viewOut->meshIndex = IndexOf(&e->meshIndex);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];
+    }
+    viewOut->sizeMargin = e->overLife.sizeMargin;
 }
 
 mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId effect,
@@ -165,7 +211,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
             viewOut->forceGrids[f] = e->forces[f].grid;
         }
     }
-    viewOut->arrays = ArraysOf(&e->plan);
+    ValuesOf(e, viewOut);
     for (int32_t k = 0; k < 9; ++k)
     {
         viewOut->shape.matrix[k] = s->matrix[k];

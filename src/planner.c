@@ -50,6 +50,7 @@ static void Write(mvfxInstance* instance, int32_t emitter, uint64_t serial, int6
         .inverseLife = inverseLife,
         .batchIndex = (uint32_t)batchIndex,
         .batchCount = batchCount < UINT32_MAX ? (uint32_t)batchCount : UINT32_MAX,
+        .sourceAge = mvfxSourceAge(&instance->effect->emitters[emitter], tick),
     };
     state->lastDeath = death > state->lastDeath ? death : state->lastDeath;
 }

@@ -7,6 +7,8 @@
 #include "depth.h"
 #include "force.h"
 
+#include <string.h>
+
 // A resolved collider as a plan hands it over, with its def's grid.
 static mvfxPlannedCollider PlannedCollider(const mvfxResolvedCollider* c, mvfxGridId grid)
 {
@@ -56,6 +58,7 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
     plan->lifeLoss = collision->lifeLoss;
     plan->restSpeed = collision->restSpeed * state->velocityModules.sigma;
     plan->killOnCollision = collision->killOnCollision;
+    memcpy(plan->parameters, instance->parameters, sizeof plan->parameters);
     plan->depth = (mvfxPlannedDepth){0};
     if (state->hasDepth)
     {

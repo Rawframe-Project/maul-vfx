@@ -221,10 +221,59 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
 mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount)
 {
     return (mvfxStepSpans){
-        .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_STEP_WORDS - 28},
+        .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_SOURCES_FIRST - 92},
         .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)forceCount,
-                  56 + 32 * (uint32_t)colliderCount, 28},
+                  56 + 32 * (uint32_t)colliderCount, 92},
     };
+}
+
+void mvfxSourcesOf(const mvfxEmitterView* view, mvfxSourceView sources[MVFX_GPU_SOURCES])
+{
+    memset(sources, 0, MVFX_GPU_SOURCES * sizeof sources[0]);
+    sources[MVFX_SOURCE_SIZE] = view->size;
+    sources[MVFX_SOURCE_COLOR] = view->color;
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        sources[MVFX_SOURCE_CUSTOM + i] = view->custom[i];
+    }
+}
+
+// An index's draw (sim.wgsl's draws): first, last, whether random.
+static void IndexDraw(const mvfxIndexView* index, uint32_t* words)
+{
+    words[0] = (uint32_t)index->first;
+    words[1] = (uint32_t)index->last;
+    words[2] = index->random ? 1u : 0u;
+    words[3] = 0u;
+}
+
+// The births' sources (sim.wgsl's Source, 16 words each), the frame's
+// and mesh index's draws, and the bounds' growth by size.
+static void Sources(const mvfxEmitterView* view, const uint32_t (*tables)[2], uint32_t* words)
+{
+    mvfxSourceView sources[MVFX_GPU_SOURCES];
+    mvfxSourcesOf(view, sources);
+    for (int32_t s = 0; s < MVFX_GPU_SOURCES; ++s)
+    {
+        const mvfxSourceView* source = &sources[s];
+        uint32_t* at = words + 16 * s;
+        const uint32_t head[8] = {source->kind,
+                                  source->uniform ? 1u : 0u,
+                                  (uint32_t)source->components,
+                                  (uint32_t)source->parameter,
+                                  tables[s][0],
+                                  tables[s][1],
+                                  0u,
+                                  0u};
+        memcpy(at, head, sizeof head);
+        memcpy(at + 8, source->min, 4 * sizeof(float));
+        memcpy(at + 12, source->max, 4 * sizeof(float));
+    }
+    IndexDraw(&view->frame, words + 16 * MVFX_GPU_SOURCES);
+    IndexDraw(&view->meshIndex, words + 16 * MVFX_GPU_SOURCES + 4);
+    const float growth[4] = {view->sizeBounds[0], view->sizeBounds[1], view->sizeBounds[2],
+                             view->sizeMargin};
+    memcpy(words + 16 * MVFX_GPU_SOURCES + 8, growth, sizeof growth);
 }
 
 // A value's first word, or NONE (all ones) for one not stored.
@@ -268,7 +317,8 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
-                     bool normals, uint32_t words[MVFX_STEP_WORDS])
+                     bool normals, const uint32_t (*sourceTables)[2],
+                     uint32_t words[MVFX_STEP_WORDS])
 {
     memset(words, 0, MVFX_STEP_WORDS * sizeof(uint32_t));
     uint64_t start = (uint64_t)plan->start;
@@ -316,5 +366,8 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
     Forces(plan, sharedDrag, forceGrids, words + 80);
     Colliders(plan, colliderGrids, normals, words + 84 + 132 * MVFX_MAX_FORCES);
-    Words(&view->arrays, words + MVFX_STEP_WORDS - 28);
+    uint32_t* at = words + MVFX_SOURCES_FIRST - 92;
+    Words(&view->arrays, at);
+    memcpy(at + 28, plan->parameters, sizeof plan->parameters);
+    Sources(view, sourceTables, words + MVFX_SOURCES_FIRST);
 }

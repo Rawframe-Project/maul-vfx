@@ -143,6 +143,7 @@ void mvfxCompileOverLife(const mvfxOverLife* overLife, const mvfxCustomAttribute
         out->sizeBounds[k] =
             size->enabled ? mvfxLifeBound(&out->sizes[size->perAxis ? k : 0]) : 1.0f;
     }
+    out->sizeMargin = size->enabled ? 1.0f + 0x1p-20f : 1.0f;
     out->frame = overLife->frame;
     out->rotation = overLife->rotation.enabled;
     out->rotationScale = (mvfxCompiledLife){.value = 1.0f};

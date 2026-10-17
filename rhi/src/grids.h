@@ -4,8 +4,9 @@
 // An emitter's grids on the GPU, in one buffer of words: those its forces
 // and its own colliders read (fixed by its effect) laid out once, then a
 // region of the room the simulation's def sets aside for the grids its
-// instance's colliders read, placed each step. Each is uploaded when its
-// serial differs from its copy's.
+// instance's colliders read, placed each step; after them the effect's
+// baked tables the emitter's values read, uploaded once. Each grid is
+// uploaded when its serial differs from its copy's.
 
 #ifndef MAUL_VFX_RHI_SRC_GRIDS_H
 #define MAUL_VFX_RHI_SRC_GRIDS_H
@@ -16,6 +17,19 @@
 // The most grids an emitter reads: a force's or a collider's each, its own
 // and its instance's.
 #define MVFX_GPU_GRIDS (MVFX_MAX_FORCES + 2 * MVFX_MAX_COLLIDERS)
+
+// The most baked tables an emitter reads: a curve or a gradient for each
+// of its sources and its values over life.
+#define MVFX_GPU_TABLES 32
+
+// A baked table in the buffer: its values (the effect's) and words, and
+// its first word.
+typedef struct mvfxGpuTable
+{
+    const float* values;
+    uint32_t words;
+    uint32_t first;
+} mvfxGpuTable;
 
 // A grid in the buffer: its id, first word, size, format, and the serial
 // of the copy there (0 for none yet).
@@ -40,6 +54,9 @@ typedef struct mvfxGpuGrids
     int32_t colliderGrid[MVFX_MAX_COLLIDERS];
     uint32_t hostFirst;
     uint32_t hostWords;
+    mvfxGpuTable tables[MVFX_GPU_TABLES];
+    int32_t tableCount;
+    bool tablesWritten;
     uint32_t words;
 } mvfxGpuGrids;
 
@@ -66,9 +83,13 @@ void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxEmitterPlan* pla
 bool mvfxHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders, int32_t count,
                        int64_t* bytes);
 
+// Adds a baked table of words values after the buffer's other words (once
+// the grids are laid out): its first word; all ones for NULL values.
+uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words);
+
 // Records the uploads of the grids whose serial differs from the copy's,
-// into the pass, then takes their serials; false when the device refuses
-// one or a grid is gone.
+// and of the tables at the first write, into the pass, then takes their
+// serials; false when the device refuses one or a grid is gone.
 bool mvfxWriteGrids(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
                     const mvfxContext* context, mvfxGpuGrids* grids);
 

@@ -638,3 +638,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and a word of the step's: `mvfxGpuParticles.words` replaces
   `MVFX_GPU_PARTICLE_WORDS`, and the serial takes one word, as on the
   CPU path.
+- A planned birth carries its source age (`mvfxPlannedBirth` is 48
+  bytes), a plan the instance's parameters, and the emitter view how
+  births draw their size, colour and custom values (`mvfxSourceView`),
+  frame and mesh index (`mvfxIndexView`), and how sizes grow measured
+  bounds (`sizeBounds`, `sizeMargin`). The GPU part draws those values
+  at each birth from the effect's baked curves and gradients, uploaded
+  once, and grows its bounds by size as the CPU path does.

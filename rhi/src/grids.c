@@ -200,9 +200,43 @@ static bool Upload(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer, u
     return written;
 }
 
+uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words)
+{
+    if (values == nullptr || grids->tableCount == MVFX_GPU_TABLES)
+    {
+        return 0xFFFFFFFFu;
+    }
+    grids->tables[grids->tableCount++] =
+        (mvfxGpuTable){.values = values, .words = words, .first = grids->words};
+    grids->words += words;
+    return grids->words - words;
+}
+
+// Records the tables' uploads.
+static bool WriteTables(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
+                        const mvfxGpuGrids* grids)
+{
+    bool written = true;
+    for (int32_t t = 0; written && t < grids->tableCount; ++t)
+    {
+        const mvfxGpuTable* table = &grids->tables[t];
+        written = mrhiWriteBuffer(device, pass, buffer, (uint64_t)table->first * 4u, table->values,
+                                  (uint64_t)table->words * 4u) == mrhi_success;
+    }
+    return written;
+}
+
 bool mvfxWriteGrids(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
                     const mvfxContext* context, mvfxGpuGrids* grids)
 {
+    if (!grids->tablesWritten)
+    {
+        if (!WriteTables(device, pass, buffer, grids))
+        {
+            return false;
+        }
+        grids->tablesWritten = true;
+    }
     for (int32_t g = 0; g < grids->count; ++g)
     {
         mvfxGpuGrid* grid = &grids->grids[g];

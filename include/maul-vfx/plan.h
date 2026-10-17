@@ -22,7 +22,7 @@ extern "C"
 {
 #endif
 
-    // A birth a step owes an emitter: 32 bytes, as a GPU buffer holds it.
+    // A birth a step owes an emitter: 48 bytes, as a GPU buffer holds it.
     typedef struct mvfxPlannedBirth
     {
         // Its serial, the count of the emitter's births owed before it.
@@ -41,6 +41,11 @@ extern "C"
         // shape's spread of a burst reads.
         uint32_t batchIndex;
         uint32_t batchCount;
+        // The emitter's source age at its tick: what its values drawn over
+        // the emitter's duration read (its loop's share, or seconds where
+        // it has no duration).
+        float sourceAge;
+        uint32_t reserved[3];
     } mvfxPlannedBirth;
 
     // Where an instance is: its place in the world, its turn (a unit
@@ -199,6 +204,9 @@ extern "C"
         // Its depth image as resolved for the step (not enabled when it
         // does not collide with one or the instance has none).
         mvfxPlannedDepth depth;
+        // The instance's parameters at the plan's end, which values drawn
+        // from a parameter read.
+        float parameters[MVFX_MAX_PARAMETERS][4];
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
@@ -300,6 +308,34 @@ extern "C"
         int32_t count;
     } mvfxAttributeArrays;
 
+    // A value source as compiled, for a GPU part to draw as the CPU path
+    // does: its kind, whether one draw serves every component, its
+    // components, its bounds, the instance parameter it reads, and its
+    // baked curve (MVFX_CURVE_SAMPLES samples, then the domain's start
+    // and the factor to a sample position) or gradient (MVFX_CURVE_SAMPLES
+    // linear RGBA samples), each NULL where it has none, staying while the
+    // effect does.
+    typedef struct mvfxSourceView
+    {
+        mvfxSourceKind kind;
+        bool uniform;
+        int32_t components;
+        float min[4];
+        float max[4];
+        int32_t parameter;
+        const float* curve;
+        const float* gradient;
+    } mvfxSourceView;
+
+    // A flipbook frame's or a mesh index's draw at birth: from first,
+    // drawn up to last when random.
+    typedef struct mvfxIndexView
+    {
+        int32_t first;
+        int32_t last;
+        bool random;
+    } mvfxIndexView;
+
     typedef struct mvfxEmitterView
     {
         uint64_t features;
@@ -329,8 +365,22 @@ extern "C"
         bool fixedBounds;
         float boundsMin[3];
         float boundsMax[3];
+        // Measured bounds grow by the largest size a particle can have:
+        // its largest stored size component (1 when it stores no size)
+        // times the most its size over life scales that axis (1 without
+        // one), times the margin for the rounding of reading the curve
+        // and of the product (1 without a size over life).
+        float sizeBounds[3];
+        float sizeMargin;
         // Where its particles keep their values.
         mvfxAttributeArrays arrays;
+        // How its births draw their size, colour and custom values (one
+        // a custom attribute it has), frame and mesh index.
+        mvfxSourceView size;
+        mvfxSourceView color;
+        mvfxSourceView custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
+        mvfxIndexView frame;
+        mvfxIndexView meshIndex;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

@@ -20,6 +20,11 @@ const TWO_PI: f32 = 6.28318530717958647692;
 
 const SHAPE_SALT: u32 = 0x53484150u;
 const VELOCITY_SALT: u32 = 0x56454C4Fu;
+const SIZE_SALT: u32 = 0x53495A45u;
+const COLOR_SALT: u32 = 0x434F4C52u;
+const FRAME_SALT: u32 = 0x46524D45u;
+const CUSTOM_SALT: u32 = 0x43555354u;
+const MESH_SALT: u32 = 0x4D455348u;
 
 // A force as resolved for the step, in the particles' space.
 struct Force {
@@ -117,6 +122,17 @@ struct Words {
     custom: array<vec4<u32>, 2>,
 }
 
+// A value source as compiled (mvfxSourceView): its kind, whether one
+// draw serves every component, its components and parameter; its baked
+// curve's and gradient's first words in the grids buffer (NONE for
+// none); its bounds.
+struct Source {
+    modes: vec4<u32>,
+    tables: vec4<u32>,
+    low: vec4<f32>,
+    high: vec4<f32>,
+}
+
 struct Step {
     // capacity, births, the plan's ticks, the instance's seed
     counts: vec4<u32>,
@@ -164,6 +180,16 @@ struct Step {
     depth: Depth,
     colliders: array<Collider, 16>,
     words: Words,
+    // The instance's parameters.
+    parameters: array<vec4<f32>, 16>,
+    // The births' sources: size, colour, then angle, spin, orientation,
+    // angular velocity and drag scale, then the custom values.
+    sources: array<Source, 15>,
+    // The frame's and the mesh index's draws: first, last, whether random.
+    draws: array<vec4<u32>, 2>,
+    // The bounds' growth by size: the most the size over life scales each
+    // axis; the margin for rounding.
+    growth: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -183,7 +209,8 @@ struct Step {
 @group(0) @binding(9) var normalImage: texture_2d<f32>;
 // Each block of the sequence's count of kept elements, then its first
 // place; after them (blockCount() words on), each block's box of the
-// places scatter wrote: min then max, three binary32 words each.
+// places scatter wrote: min then max, three binary32 words each; after
+// them (7 blockCount() words on), each block's growth by size.
 @group(0) @binding(6) var<storage, read_write> blocks: array<u32>;
 
 var<workgroup> scan: array<u32, CHUNK>;
@@ -210,6 +237,105 @@ fn pcg4d(start: vec4<u32>) -> vec4<u32> {
     v = pcg4dMix(v);
     v ^= v >> vec4<u32>(16u);
     return pcg4dMix(v);
+}
+
+const SOURCE_SIZE: u32 = 0u;
+const SOURCE_COLOR: u32 = 1u;
+const SOURCE_CUSTOM: u32 = 7u;
+const SOURCE_CURVE: u32 = 2u;
+const SOURCE_PARAMETER: u32 = 3u;
+const SOURCE_GRADIENT: u32 = 4u;
+const SOURCE_GRADIENT_OVER_AGE: u32 = 5u;
+const SOURCE_RANGE: u32 = 1u;
+const CURVE_SAMPLES: u32 = 256u;
+
+// A table's binary32 at a word of the grids buffer.
+fn tableAt(at: u32) -> f32 {
+    return bitcast<f32>(grids[at]);
+}
+
+// A baked curve's value at a time, as the core blends it: its samples,
+// then its domain's start and the factor to a sample position.
+fn curveAt(first: u32, time: f32) -> f32 {
+    let last = f32(CURVE_SAMPLES - 1u);
+    var position = (time - tableAt(first + CURVE_SAMPLES)) * tableAt(first + CURVE_SAMPLES + 1u);
+    position = select(position, 0.0, position < 0.0);
+    position = select(position, last, position > last);
+    let index = min(u32(position), CURVE_SAMPLES - 2u);
+    let fraction = position - f32(index);
+    let low = tableAt(first + index);
+    return low + (tableAt(first + index + 1u) - low) * fraction;
+}
+
+// A baked gradient's linear RGBA at t in [0, 1].
+fn gradientTableAt(first: u32, t: f32) -> vec4<f32> {
+    let last = f32(CURVE_SAMPLES - 1u);
+    var position = t * last;
+    position = select(position, 0.0, position < 0.0);
+    position = select(position, last, position > last);
+    let index = min(u32(position), CURVE_SAMPLES - 2u);
+    let fraction = position - f32(index);
+    var rgba = vec4<f32>(0.0);
+    for (var c = 0u; c < 4u; c++) {
+        let low = tableAt(first + 4u * index + c);
+        rgba[c] = low + (tableAt(first + 4u * (index + 1u) + c) - low) * fraction;
+    }
+    return rgba;
+}
+
+// A source's vector at a source age from four drawn words, as the core's
+// mvfxDrawVector: a base by its kind times a draw between its bounds for
+// each component it has.
+fn drawVector(s: u32, age: f32, words: vec4<u32>) -> vec4<f32> {
+    let source = params.sources[s];
+    var base = vec4<f32>(1.0);
+    switch source.modes.x {
+        case SOURCE_CURVE: {
+            base = vec4<f32>(curveAt(source.tables.x, age));
+        }
+        case SOURCE_PARAMETER: {
+            base = params.parameters[source.modes.w];
+        }
+        case SOURCE_GRADIENT: {
+            base = gradientTableAt(source.tables.y, unitFloat(pcg4dMix(words).x));
+        }
+        case SOURCE_GRADIENT_OVER_AGE: {
+            base = gradientTableAt(source.tables.y, age);
+        }
+        case SOURCE_RANGE: {
+        }
+        default: {
+            return vec4<f32>(0.0);
+        }
+    }
+    var out = vec4<f32>(0.0);
+    for (var c = 0u; c < 4u; c++) {
+        let u = unitFloat(select(words[c], words.x, source.modes.y != 0u));
+        let value = source.low[c] + (source.high[c] - source.low[c]) * u;
+        out[c] = select(0.0, base[c] * value, c < source.modes.z);
+    }
+    return out;
+}
+
+// The high word of a 32-bit product.
+fn productHigh(a: u32, b: u32) -> u32 {
+    let al = a & 0xFFFFu;
+    let ah = a >> 16u;
+    let bl = b & 0xFFFFu;
+    let bh = b >> 16u;
+    let low = al * bl;
+    let middle1 = ah * bl;
+    let middle2 = al * bh;
+    let carry = ((low >> 16u) + (middle1 & 0xFFFFu) + (middle2 & 0xFFFFu)) >> 16u;
+    return ah * bh + (middle1 >> 16u) + (middle2 >> 16u) + carry;
+}
+
+// An index drawn at birth: first, or uniform up to last when random.
+fn drawIndex(d: vec4<u32>, salt: u32, serialLow: u32, serialHigh: u32) -> u32 {
+    if (d.z == 0u) {
+        return d.x;
+    }
+    return d.x + productHigh(draw(salt, serialLow, serialHigh).x, d.y - d.x + 1u);
 }
 
 // The words of a purpose at a serial, as the core draws them.
@@ -1363,8 +1489,8 @@ fn keepAt(i: u32, live: u32) -> u32 {
     if (j >= params.counts.y) {
         return 0u;
     }
-    let b0 = births[2u * j];
-    let b1 = births[2u * j + 1u];
+    let b0 = births[3u * j];
+    let b1 = births[3u * j + 1u];
     return select(0u, 1u, accepted[j] == 1u && (b1.x > 0u || b0.w > params.counts.z));
 }
 
@@ -1449,8 +1575,8 @@ fn birthTicks(b0: vec4<u32>, b1: vec4<u32>, birth: ptr<function, vec2<u32>>,
 // place and velocity then, and its fate, killed too when an attractor
 // kills it on the way.
 fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
-    let b0 = births[2u * j];
-    let b1 = births[2u * j + 1u];
+    let b0 = births[3u * j];
+    let b1 = births[3u * j + 1u];
     var normal = vec3<f32>(0.0);
     let shapeWords = draw(SHAPE_SALT, b0.x, b0.y);
     let local_place = turnByShape(sampleSphere(shapeWords, &normal));
@@ -1481,8 +1607,8 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
 // A birth written to place at of the other buffer; its place.
 fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     let c = params.counts.x;
-    let b0 = births[2u * j];
-    let b1 = births[2u * j + 1u];
+    let b0 = births[3u * j];
+    let b1 = births[3u * j + 1u];
     var moved_place = vec3<f32>(0.0);
     var moved_velocity = vec3<f32>(0.0);
     let fate = bornAt(j, &moved_place, &moved_velocity);
@@ -1502,7 +1628,50 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     if (params.words.collisions != NONE) {
         moved[params.words.collisions * c + at] = fate.contacts;
     }
+    storeValues(j, at);
     return moved_place;
+}
+
+// Writes a value's components (those it has, from its first word) at
+// place at of the other buffer; nothing for a value not stored.
+fn storeValue(first: u32, components: u32, at: u32, value: vec4<f32>) {
+    let c = params.counts.x;
+    if (first == NONE) {
+        return;
+    }
+    for (var k = 0u; k < components; k++) {
+        moved[(first + k) * c + at] = bitcast<u32>(value[k]);
+    }
+}
+
+// A birth's drawn values, each the emitter stores, as the core's
+// AppendValues and StoreWords draw them: size, colour and custom values
+// over the birth's source age, frame and mesh index.
+fn storeValues(j: u32, at: u32) {
+    let c = params.counts.x;
+    let b0 = births[3u * j];
+    let age = bitcast<f32>(births[3u * j + 2u].x);
+    let w = params.words;
+    if (w.size != NONE) {
+        storeValue(w.size, 3u, at, drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, b0.x, b0.y)));
+    }
+    if (w.color != NONE) {
+        storeValue(w.color, 4u, at, drawVector(SOURCE_COLOR, age, draw(COLOR_SALT, b0.x, b0.y)));
+    }
+    if (w.frame != NONE) {
+        moved[w.frame * c + at] = drawIndex(params.draws[0], FRAME_SALT, b0.x, b0.y);
+    }
+    if (w.mesh != NONE) {
+        moved[w.mesh * c + at] = drawIndex(params.draws[1], MESH_SALT, b0.x, b0.y);
+    }
+    for (var i = 0u; i < 8u; i++) {
+        let first = w.custom[i / 4u][i % 4u];
+        if (first != NONE) {
+            let s = SOURCE_CUSTOM + i;
+            let value = drawVector(s, age, draw(CUSTOM_SALT + i, b0.x, b0.y));
+            storeValue(first, params.sources[s].modes.z, at, value);
+        }
+    }
 }
 
 // Kill births: each birth with room killed on its way to the plan's end
@@ -1539,16 +1708,16 @@ fn higherOf(high: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
 }
 
 // The workgroup's box from each invocation's, by a fixed tree; whole in
-// boxLow[0] and boxHigh[0].
-fn reduceBox(local: u32, low: vec3<f32>, high: vec3<f32>) {
+// boxLow[0] and boxHigh[0], the largest growth in boxHigh[0].w.
+fn reduceBox(local: u32, low: vec3<f32>, high: vec3<f32>, growth: f32) {
     boxLow[local] = vec4<f32>(low, 0.0);
-    boxHigh[local] = vec4<f32>(high, 0.0);
+    boxHigh[local] = vec4<f32>(high, growth);
     workgroupBarrier();
     for (var half = CHUNK / 2u; half > 0u; half >>= 1u) {
         if (local < half) {
             boxLow[local] = vec4<f32>(lowerOf(boxLow[local].xyz, boxLow[local + half].xyz), 0.0);
-            boxHigh[local] =
-                vec4<f32>(higherOf(boxHigh[local].xyz, boxHigh[local + half].xyz), 0.0);
+            boxHigh[local] = vec4<f32>(higherOf(boxHigh[local].xyz, boxHigh[local + half].xyz),
+                                       max(boxHigh[local].w, boxHigh[local + half].w));
         }
         workgroupBarrier();
     }
@@ -1575,6 +1744,7 @@ fn scatter(@builtin(local_invocation_index) local: u32,
     var at = blocks[group.x] + exclusiveScan(local, kept);
     var low = vec3<f32>(EMPTY_LOW);
     var high = vec3<f32>(-EMPTY_LOW);
+    var growth = 0.0;
     for (var k = 0u; k < ITEMS; k++) {
         let i = first + k;
         if (keep[k] == 1u && at < c) {
@@ -1589,38 +1759,57 @@ fn scatter(@builtin(local_invocation_index) local: u32,
             }
             low = lowerOf(low, p);
             high = higherOf(high, p);
+            growth = max(growth, growthOf(at));
         }
         at += keep[k];
     }
-    reduceBox(local, low, high);
+    reduceBox(local, low, high, growth);
     if (local == 0u) {
-        let box = blockCount() + 6u * group.x;
+        let n = blockCount();
+        let box = n + 6u * group.x;
         for (var k = 0u; k < 3u; k++) {
             blocks[box + k] = bitcast<u32>(boxLow[0][k]);
             blocks[box + 3u + k] = bitcast<u32>(boxHigh[0][k]);
         }
+        blocks[7u * n + group.x] = bitcast<u32>(boxHigh[0].w);
     }
+}
+
+// How much a kept particle grows the bounds: its largest size component
+// times the most the size over life scales that axis, 1 for a size it
+// does not store, as the CPU path's bounds (the largest over particles of
+// each axis's stored size is the largest product, the factors being
+// positive).
+fn growthOf(at: u32) -> f32 {
+    var size = vec3<f32>(1.0);
+    if (params.words.size != NONE) {
+        size = abs(readVector(1u, at, params.words.size));
+    }
+    let g = size * params.growth.xyz;
+    return max(g.x, max(g.y, g.z));
 }
 
 // Measure, in one workgroup: the blocks' boxes reduced by a fixed tree to
 // the emitter's, in the particles' space, into the statistics record with
-// the growth by the largest size (1: the part runs no sizes yet).
+// the growth by the largest size, with its margin.
 @compute @workgroup_size(256, 1, 1)
 fn measure(@builtin(local_invocation_index) local: u32) {
     let n = blockCount();
     var low = vec3<f32>(EMPTY_LOW);
     var high = vec3<f32>(-EMPTY_LOW);
+    var growth = 0.0;
     for (var g = local; g < n; g += CHUNK) {
         let box = n + 6u * g;
+        growth = max(growth, bitcast<f32>(blocks[7u * n + g]));
         low = lowerOf(low, vec3<f32>(bitcast<f32>(blocks[box]), bitcast<f32>(blocks[box + 1u]),
                                      bitcast<f32>(blocks[box + 2u])));
         high = higherOf(high, vec3<f32>(bitcast<f32>(blocks[box + 3u]),
                                         bitcast<f32>(blocks[box + 4u]),
                                         bitcast<f32>(blocks[box + 5u])));
     }
-    reduceBox(local, low, high);
+    reduceBox(local, low, high, growth);
     if (local == 0u) {
-        counts[3] = bitcast<u32>(1.0);
+        counts[3] = bitcast<u32>(boxHigh[0].w * params.growth.w);
         for (var k = 0u; k < 3u; k++) {
             counts[4u + k] = bitcast<u32>(boxLow[0][k]);
             counts[7u + k] = bitcast<u32>(boxHigh[0][k]);
@@ -1631,8 +1820,8 @@ fn measure(@builtin(local_invocation_index) local: u32) {
 // Whether a birth of the plan dies by tick t of the plan, its death in two
 // words from the plan's start.
 fn birthDiesBy(j: u32, t: u32) -> bool {
-    let b0 = births[2u * j];
-    let b1 = births[2u * j + 1u];
+    let b0 = births[3u * j];
+    let b1 = births[3u * j + 1u];
     return b1.x == 0u && b0.w <= t;
 }
 
@@ -1675,13 +1864,13 @@ fn room(@builtin(local_invocation_index) local: u32) {
         if (start >= count) {
             break;
         }
-        let tick = births[2u * start].z;
+        let tick = births[3u * start].z;
         if (local == 0u) {
             // The batch's births in the plan: from its first on, its places
             // in order at one tick.
             var n = 1u;
-            while (start + n < count && births[2u * (start + n) + 1u].z == n &&
-                   births[2u * (start + n)].z == tick) {
+            while (start + n < count && births[3u * (start + n) + 1u].z == n &&
+                   births[3u * (start + n)].z == tick) {
                 n++;
             }
             batchLength = n;
