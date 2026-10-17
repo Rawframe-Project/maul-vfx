@@ -23,6 +23,7 @@ option(MAUL_VFX_SANITIZE "Instrument with AddressSanitizer and UBSan" OFF)
 option(MAUL_VFX_TSAN "Instrument with ThreadSanitizer" OFF)
 option(MAUL_VFX_COVERAGE "Instrument for gcov coverage" OFF)
 option(MAUL_VFX_FUZZ "Build the libFuzzer targets (Clang)" OFF)
+option(MAUL_VFX_RHI "Build maul-vfx-rhi, the GPU part on Maul RHI" OFF)
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -146,6 +147,10 @@ if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(maul-vfx PUBLIC m)
 endif()
 
+if(MAUL_VFX_RHI)
+    include(cmake/Rhi.cmake)
+endif()
+
 if(MAUL_VFX_BUILD_TESTS)
     enable_testing()
     maul_add_test(aero WHITEBOX)
@@ -237,6 +242,14 @@ if(MAUL_VFX_BUILD_TESTS)
     # The web build has no threads; the twins need four.
     if(NOT EMSCRIPTEN)
         maul_add_test(twins WHITEBOX POSIX)
+    endif()
+    if(MAUL_VFX_RHI)
+        # The GPU part's kernels on a real device; skipped (77) without an
+        # adapter unless MVFX_RHI_REQUIRED is set.
+        maul_add_test(rhi_kernels WHITEBOX)
+        target_link_libraries(test_rhi_kernels PRIVATE maul-vfx-rhi)
+        target_include_directories(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src)
+        set_tests_properties(rhi_kernels PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     maul_add_header_tests()
     # The library keeps within WebAssembly's default 64 KiB stack: on the

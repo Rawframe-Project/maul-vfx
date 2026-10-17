@@ -30,7 +30,7 @@ jobs:
       - name: clang-format
         run: |
           clang-format --version
-          clang-format --dry-run -Werror $(find include src test tools bench samples -name '*.[ch]' 2>/dev/null)
+          clang-format --dry-run -Werror $(find include src test tools bench samples rhi -name '*.[ch]' 2>/dev/null)
       - name: The effect file's tables match the headers
         run: CLANG_FORMAT=clang-format python3 tools/gen_file.py --check
       - name: The effect fixtures' JSON and binary forms match
@@ -114,6 +114,57 @@ jobs:
   # corpus in test/corpus (minimized from local campaigns) and, for the
   # effect file reader, the golden scene's effects written as files: the
   # reader, and the step playing the effects fuzzed files make.
+  rhi:
+    # The GPU part with Maul RHI fetched: clang-tidy over its sources and
+    # its kernels' tests on lavapipe, which must be found, under the
+    # Vulkan validation layer, whose messages fail the step; then the same
+    # under AddressSanitizer and UBSan.
+    name: linux-rhi
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the compiler, lavapipe and the validation layer
+        timeout-minutes: 10
+        run: |
+          sudo apt-get $APT_OPTIONS update -q
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 clang-tidy-20 \
+            libclang-rt-20-dev
+          sudo apt-get $APT_OPTIONS install -y -q ninja-build mesa-vulkan-drivers vulkan-validationlayers
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -D${PREFIX}_WERROR=ON
+          -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 -D${PREFIX}_RHI=ON
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: clang-tidy
+        run: |
+          for f in rhi/src/*.c; do
+            clang-tidy-20 -p build --quiet --warnings-as-errors='*' "$f" || exit 1
+          done
+      - name: Test
+        env:
+          MVFX_RHI_REQUIRED: 1
+          VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
+        run: |
+          ctest --test-dir build -R rhi --output-on-failure --timeout 300 2>&1 | tee rhi.log
+          ! grep -qiE "validation error|VUID" rhi.log
+          build/test_rhi_kernels 2>&1 | tee kernels.log
+          ! grep -qiE "validation error|VUID" kernels.log
+      - name: Under the sanitizers
+        # LeakSanitizer is off: lavapipe's own allocations, its module
+        # unloaded before the report, cannot be suppressed by name; the
+        # test counts the part's allocations itself.
+        env:
+          MVFX_RHI_REQUIRED: 1
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          cmake -B build-sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug -D${PREFIX}_WERROR=ON \
+            -D${PREFIX}_SANITIZE=ON -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
+            -D${PREFIX}_RHI=ON
+          cmake --build build-sanitize -j 4
+          ctest --test-dir build-sanitize -R rhi --output-on-failure --timeout 300
+
   fuzz:
     name: fuzz
     runs-on: ubuntu-24.04

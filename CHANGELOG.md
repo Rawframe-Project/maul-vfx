@@ -530,3 +530,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   Sleeping rigid particles on a grid collider then wake only within
   reach of the cells those points change, where new values for the
   whole grid wake every one within its box.
+- The optional GPU part, the static library `maul-vfx-rhi` (CMake
+  option `MAUL_VFX_RHI`, off by default), built on Maul RHI 0.7.0: a
+  GPU object (`mvfxCreateGpu`, `mvfxDestroyGpu`) holds the part's
+  compute kernels, whose pipelines the device builds while the host
+  passes it notifications (`mvfxGpu_Notify`, `mvfxGpu_IsReady`). Its
+  first kernel hashes with pcg4d, every word the CPU's.
+- `tools/gen_kernels.py` builds the part's kernels from WGSL into the
+  containers Maul RHI loads (SPIR-V, DXIL and MSL), checked by
+  spirv-val, as headers the part compiles in.

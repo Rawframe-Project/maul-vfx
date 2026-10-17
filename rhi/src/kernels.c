@@ -1,0 +1,144 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+
+#include "kernels.h"
+
+#include "allocator.h"
+
+#include "../kernels/pcg4d_container.h"
+#include "maul-rhi/shader.h"
+
+#include <stdalign.h>
+#include <string.h>
+
+// A kernel's container and entry.
+typedef struct Kernel
+{
+    const uint8_t* container;
+    size_t bytes;
+    const char* entry;
+} Kernel;
+
+static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
+    {s_pcg4dContainer, sizeof s_pcg4dContainer, "pcg"},
+};
+
+struct mvfxGpu
+{
+    mvfxAllocator allocator;
+    mrhiDevice* device;
+    mrhiShaderId shaders[MVFX_KERNEL_COUNT];
+    mrhiComputePipelineId pipelines[MVFX_KERNEL_COUNT];
+    mrhiRequestId requests[MVFX_KERNEL_COUNT];
+    bool built[MVFX_KERNEL_COUNT];
+};
+
+mvfxGpuDef mvfxDefaultGpuDef(void)
+{
+    return (mvfxGpuDef){.cookie = MVFX_GPU_DEF_COOKIE};
+}
+
+// Requests kernel k's shader and pipeline.
+static bool Request(mvfxGpu* gpu, int32_t k)
+{
+    mrhiShaderDef shader = mrhiDefaultShaderDef();
+    shader.bytes = s_kernels[k].container;
+    shader.byteCount = s_kernels[k].bytes;
+    if (mrhiCreateShader(gpu->device, &shader, &gpu->shaders[k]) != mrhi_success)
+    {
+        return false;
+    }
+    mrhiComputePipelineDef pipeline = mrhiDefaultComputePipelineDef();
+    pipeline.shader = gpu->shaders[k];
+    pipeline.entry = s_kernels[k].entry;
+    pipeline.entryLength = strlen(s_kernels[k].entry);
+    return mrhiCreateComputePipeline(gpu->device, &pipeline, &gpu->pipelines[k],
+                                     &gpu->requests[k]) == mrhi_success;
+}
+
+mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut)
+{
+    if (gpuOut != nullptr)
+    {
+        *gpuOut = nullptr;
+    }
+    if (def == nullptr || gpuOut == nullptr || def->cookie != MVFX_GPU_DEF_COOKIE ||
+        def->device == nullptr || !mvfxRhiIsAllocatorValid(&def->allocator))
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxGpu* gpu = mvfxRhiAllocate(&def->allocator, sizeof *gpu, alignof(mvfxGpu));
+    if (gpu == nullptr)
+    {
+        return mvfx_errorCapacity;
+    }
+    *gpu = (mvfxGpu){0};
+    gpu->allocator = def->allocator;
+    gpu->device = def->device;
+    for (int32_t k = 0; k < MVFX_KERNEL_COUNT; ++k)
+    {
+        if (!Request(gpu, k))
+        {
+            mvfxDestroyGpu(gpu);
+            return mvfx_errorState;
+        }
+    }
+    *gpuOut = gpu;
+    return mvfx_success;
+}
+
+void mvfxDestroyGpu(mvfxGpu* gpu)
+{
+    if (gpu == nullptr)
+    {
+        return;
+    }
+    for (int32_t k = 0; k < MVFX_KERNEL_COUNT; ++k)
+    {
+        // Each was created, so its destruction is not refused; a creation
+        // that failed left its id null.
+        if (gpu->pipelines[k].index1 != 0)
+        {
+            (void)mrhiDestroyComputePipeline(gpu->device, gpu->pipelines[k]);
+        }
+        if (gpu->shaders[k].index1 != 0)
+        {
+            (void)mrhiDestroyShader(gpu->device, gpu->shaders[k]);
+        }
+    }
+    mvfxAllocator allocator = gpu->allocator;
+    mvfxRhiRelease(&allocator, gpu, sizeof *gpu, alignof(mvfxGpu));
+}
+
+bool mvfxGpu_Notify(mvfxGpu* gpu, const mrhiDeviceNotification* notification)
+{
+    if (gpu == nullptr || notification == nullptr || notification->kind != mrhi_devicePipelineReady)
+    {
+        return false;
+    }
+    for (int32_t k = 0; k < MVFX_KERNEL_COUNT; ++k)
+    {
+        if (notification->request.index1 == gpu->requests[k].index1 &&
+            notification->request.generation == gpu->requests[k].generation)
+        {
+            gpu->built[k] = notification->outcome == mrhi_success;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool mvfxGpu_IsReady(const mvfxGpu* gpu)
+{
+    bool ready = gpu != nullptr;
+    for (int32_t k = 0; ready && k < MVFX_KERNEL_COUNT; ++k)
+    {
+        ready = gpu->built[k];
+    }
+    return ready;
+}
+
+mrhiComputePipelineId mvfxGpuPipeline(const mvfxGpu* gpu, mvfxKernel kernel)
+{
+    return gpu->pipelines[kernel];
+}
