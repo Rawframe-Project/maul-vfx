@@ -686,6 +686,9 @@ static int64_t s_stepsApart;
 // within the tolerance (a half's within its last place), normalized
 // integers within a step (their binary32 inputs within the tolerance may
 // round apart).
+// Whether the run's records must match exactly.
+static bool s_exactRecords;
+
 static bool SameField(const mvfxLayoutField* field, const uint8_t* cpu, const uint8_t* gpu)
 {
     uint32_t bytes = FieldBytes(field->format);
@@ -695,7 +698,7 @@ static bool SameField(const mvfxLayoutField* field, const uint8_t* cpu, const ui
         double a = Decoded(field->format, cpu + field->offset + k * bytes);
         double b = Decoded(field->format, gpu + field->offset + k * bytes);
         double apart = fabs(a - b);
-        switch (field->format)
+        switch (s_exactRecords ? mvfx_formatUint32 : field->format)
         {
         case mvfx_formatUint32:
             same = a == b;
@@ -1003,10 +1006,12 @@ typedef struct Run
     // A layout the first emitter's records are written in by both paths
     // and compared every step (none for NULL), and the most records the
     // buffer holds; whether a sort by place must keep the CPU path's
-    // order exactly (every key tied).
+    // order exactly (every key tied), and whether each record's words
+    // must be the CPU path's exactly (values exact on both paths).
     const mvfxLayoutDef* layout;
     int64_t recordCapacity;
     bool tied;
+    bool exact;
 } Run;
 
 // Queues a run's host particles for both instances at step s: a little
@@ -1191,6 +1196,7 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
         CHECK(OpenRecords(gpu, run->layout, run->recordCapacity), "the records' buffers");
     }
     s_sorted = run->emitters[0].sortMode >= mvfx_sortBackToFront && !run->tied;
+    s_exactRecords = run->exact;
     s_byDepth = run->emitters[0].sortMeasure == mvfx_sortByDepth;
     s_placeError = 0.0f;
     s_velocityError = 0.0f;
@@ -1827,10 +1833,11 @@ static void TestSpawning(Gpu* gpu, mvfxGpu* kernels)
 static void TestHostSpawn(Gpu* gpu, mvfxGpu* kernels)
 {
     // The host's particles beside the emitter's own each step: in the
-    // world's space with their velocities, colours and sizes given; in the
-    // instance's space with velocities drawn along their direction from
-    // the instance's origin (one at the origin at the first step, whose
-    // direction is drawn too) and sizes given.
+    // world's space with their velocities, colours and sizes given, near
+    // the origin and far from it; in the instance's space with velocities
+    // drawn along their direction from the instance's origin (one at the
+    // origin at the first step, whose direction is drawn too) and sizes
+    // given, the colours the emitter stores drawn.
     static const double positions[3 * 8] = {0.5,  0,   0,    -0.5, 0.2, 0,   0,   0.3,
                                             0.4,  0,   0,    0,    0.1, 0.1, 0.1, 0.3,
                                             -0.2, 0.2, -0.3, 0.6,  0,   0,   0.2, -0.4};
@@ -1859,8 +1866,10 @@ static void TestHostSpawn(Gpu* gpu, mvfxGpu* kernels)
         &(Run){
             .emitters = &emitter, .emitterCount = 1, .moving = true, .pace = 0.1, .spawn = &given},
         "the host's particles with their values, in the world's space");
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .far = true, .spawn = &given},
+            "the host's particles in the world's space, far from the origin");
     emitter.space = mvfx_spaceLocal;
-    emitter.color = (mvfxVectorSource){0};
     emitter.velocity.mode = mvfx_directionShapeNormal;
     const mvfxSpawnRequest drawn = {.count = 8, .positions = positions, .sizes = sizes};
     Compare(gpu, kernels,
@@ -1873,8 +1882,9 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
     // Records of every field the GPU writes, in every format, with gaps no
     // field covers: a world-space emitter under a moving instance, its
     // values over life (a colour by a gradient at the speed with alpha
-    // over life, a size an axis at the age, a custom value scaled), a
-    // flipbook over life; then in the instance's space, frames at a rate,
+    // over life, a size an axis at the age, two custom values scaled by
+    // curves of their own), a flipbook over life; then in the instance's
+    // space, frames at a rate,
     // the buffer holding fewer records than the live particles.
     static const mvfxCurveKey keys[2] = {
         {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
@@ -1882,12 +1892,19 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
     static const mvfxColorKey colors[2] = {{0, 1, 0.5f, 0}, {1, 0, 0.25f, 1}};
     static const mvfxAlphaKey alphas[2] = {{0, 1}, {1, 0.5f}};
     const mvfxCurve curve = {.keys = keys, .keyCount = 2};
-    const mvfxCustomAttribute custom[1] = {
+    static const mvfxCurveKey rising[2] = {
+        {.time = 0, .value = 0, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 3, .interpolation = mvfx_interpolationLinear}};
+    const mvfxCustomAttribute custom[2] = {
         {.components = 2,
          .initial = {.kind = mvfx_sourceRange, .min = {-1, 0}, .max = {1, 3}},
          .scaledOverLife = true,
-         .overLife = {.value = 2, .curve = curve}}};
-    static const mvfxLayoutField fields[13] = {
+         .overLife = {.value = 2, .curve = curve}},
+        {.components = 1,
+         .initial = {.kind = mvfx_sourceRange, .min = {0.5f}, .max = {1}},
+         .scaledOverLife = true,
+         .overLife = {.value = 1, .curve = {.keys = rising, .keyCount = 2}}}};
+    static const mvfxLayoutField fields[14] = {
         {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
         {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 12},
         {.field = mvfx_recordColor,
@@ -1907,11 +1924,16 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
         {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 60},
         {.field = mvfx_recordMesh, .format = mvfx_formatFloat32, .components = 1, .offset = 64},
         {.field = mvfx_recordColor, .format = mvfx_formatUnorm16, .components = 3, .offset = 68},
-        {.field = mvfx_recordFrame, .format = mvfx_formatFloat32, .components = 1, .offset = 76}};
+        {.field = mvfx_recordFrame, .format = mvfx_formatFloat32, .components = 1, .offset = 76},
+        {.field = mvfx_recordCustom,
+         .format = mvfx_formatFloat32,
+         .components = 1,
+         .custom = 1,
+         .offset = 84}};
     mvfxLayoutDef layout = mvfxDefaultLayoutDef();
     layout.fields = fields;
-    layout.fieldCount = 13;
-    layout.stride = 84;
+    layout.fieldCount = 14;
+    layout.stride = 88;
     mvfxEmitterDef emitter = Sprite();
     emitter.space = mvfx_spaceWorld;
     emitter.size = (mvfxVectorSource){
@@ -1924,7 +1946,7 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
     emitter.frame = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 0, .last = 3};
     emitter.meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 1, .last = 7};
     emitter.custom = custom;
-    emitter.customCount = 1;
+    emitter.customCount = 2;
     emitter.overLife = (mvfxOverLife){
         .color = {.enabled = true,
                   .input = mvfx_overSpeed,
@@ -1963,6 +1985,62 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
                    .layout = &layout,
                    .recordCapacity = 60},
             "records in the instance's space, fewer than the particles");
+}
+
+static void TestExactRecords(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Records whose values are the same binary32 on both paths (particles
+    // at rest, values drawn at birth, none over life), so every word must
+    // be the CPU path's: colours past 1, a channel at one of the CPU path's
+    // sRGB steps, sizes at a half float's ties, angles and orientations in
+    // snorm, custom values past [0, 1] in unorm, the age, a byte field
+    // ending inside its word before a gap.
+    float steps[MVFX_SRGB_STEPS];
+    mvfxSrgbSteps(steps);
+    static const mvfxLayoutField fields[8] = {
+        {.field = mvfx_recordColor, .format = mvfx_formatUnorm8, .components = 3},
+        {.field = mvfx_recordColor,
+         .format = mvfx_formatUnorm8,
+         .components = 4,
+         .srgb = true,
+         .offset = 4},
+        {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 3, .offset = 8},
+        {.field = mvfx_recordAngle, .format = mvfx_formatSnorm16, .components = 1, .offset = 16},
+        {.field = mvfx_recordOrientation,
+         .format = mvfx_formatSnorm8,
+         .components = 4,
+         .offset = 20},
+        {.field = mvfx_recordCustom, .format = mvfx_formatUnorm16, .components = 2, .offset = 24},
+        {.field = mvfx_recordAge, .format = mvfx_formatUnorm16, .components = 1, .offset = 28},
+        {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 32}};
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = fields;
+    layout.fieldCount = 8;
+    layout.stride = 36;
+    const mvfxCustomAttribute custom[1] = {
+        {.components = 2,
+         .initial = {.kind = mvfx_sourceRange, .min = {-0.5f, 0}, .max = {1.5f, 1}}}};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.velocity.speed = (mvfxRange){0, 0};
+    emitter.motion.gravity[1] = 0;
+    emitter.color = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                       .min = {0, steps[99], 0.5f, 0},
+                                       .max = {1.5f, steps[99], 1.25f, 1}};
+    // 1 + 2^-11 and 3 + 2^-10 halfway between half floats, rounded to even.
+    emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                      .min = {1.00048828125f, 3.0009765625f, 0.1f},
+                                      .max = {1.00048828125f, 3.0009765625f, 0.7f}};
+    emitter.angle = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {-1.5f, 1.5f}};
+    emitter.orientationMode = mvfx_orientationRandom;
+    emitter.custom = custom;
+    emitter.customCount = 1;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .exact = true},
+            "records exact on both paths");
 }
 
 static void TestSortedRecords(Gpu* gpu, mvfxGpu* kernels)
@@ -2525,7 +2603,8 @@ static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
             "lives past 2^32 ticks");
     // Steps of a second to ages past 2^32 ticks, the plan's start's low
     // word wrapping past births' (spin read over life at those ages),
-    // without gravity or drag.
+    // without gravity or drag; records of the age and of frames at a rate,
+    // exactly the CPU path's.
     static const mvfxCurveKey keys[2] = {
         {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
         {.time = 1, .value = 9, .interpolation = mvfx_interpolationLinear}};
@@ -2537,9 +2616,25 @@ static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
     emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {1e-3f, 2e-3f}};
     emitter.overLife.rotation = (mvfxRotationOverLife){
         .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
+    emitter.overLife.frame = (mvfxFrameOverLife){
+        .animation = mvfx_frameAtRate, .frameCount = 1000, .frameRate = 7.3f, .loop = true};
+    static const mvfxLayoutField fields[3] = {
+        {.field = mvfx_recordAge, .format = mvfx_formatFloat32, .components = 1},
+        {.field = mvfx_recordFrame, .format = mvfx_formatUint32, .components = 1, .offset = 4},
+        {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 8}};
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = fields;
+    layout.fieldCount = 3;
+    layout.stride = 12;
     s_stepTicks = MVFX_TICKS_PER_SECOND;
     Compare(gpu, kernels,
-            &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 4200, .least = 50},
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .steps = 4200,
+                   .least = 50,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .exact = true},
             "ages past 2^32 ticks");
     s_stepTicks = STEP_TICKS;
 }
@@ -2897,6 +2992,7 @@ int main(void)
     TestModules(&gpu, kernels);
     TestKillRules(&gpu, kernels);
     TestSortedRecords(&gpu, kernels);
+    TestExactRecords(&gpu, kernels);
     TestSpawning(&gpu, kernels);
     TestHostSpawn(&gpu, kernels);
     TestRecords(&gpu, kernels);
