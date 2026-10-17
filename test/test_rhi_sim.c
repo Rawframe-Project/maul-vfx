@@ -466,13 +466,18 @@ static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 2, .least = 32},
             "refused births taking no room");
     s_stepTicks = STEP_TICKS;
-    // Lives of 4,096 seconds, 2^32 ticks: deaths whose low word falls
-    // within the plan, its high word 1; and longer ones.
+    // Lives of 4,096 seconds, 2^32 ticks, born early in their steps:
+    // deaths just short of 2^32 ticks after the plan's start. A life 1,024
+    // ticks longer: deaths whose high word is 1 and low word falls within
+    // the plan. And longer ones.
     emitter = Sprite();
     emitter.rate = 60.0f;
     emitter.lifetime = mvfxRangeSource(4096.0f, 4096.0f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
             "lives of 2^32 ticks");
+    emitter.lifetime = mvfxRangeSource(4096.0009765625f, 4096.0009765625f);
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
+            "lives of 2^32 ticks and 1,024");
     emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
             "lives past 2^32 ticks");
