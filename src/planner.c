@@ -17,6 +17,7 @@
 void mvfxBeginPlans(mvfxInstance* instance)
 {
     instance->planStart = instance->clock;
+    instance->planFrom = instance->from;
     instance->planCleared = instance->clearPending;
     instance->clearPending = false;
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)

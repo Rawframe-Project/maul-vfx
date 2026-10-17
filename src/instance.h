@@ -312,6 +312,8 @@ typedef struct mvfxInstance
     // the first tick of its plans.
     bool planned;
     int64_t planStart;
+    // Where it was when its plans began.
+    mvfxTransform planFrom;
     // Whether the host cleared it (a stop that clears, a restart) since
     // the last plans began, and whether the last plans begin after a clear.
     bool clearPending;

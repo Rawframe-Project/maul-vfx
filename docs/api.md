@@ -469,6 +469,11 @@ Writes the mesh of a surface gas at a level of its distance (0 for its surface),
 Plans: an instance whose particles are simulated elsewhere, on the GPU part or the host's own GPU path. A planned instance holds no particles; each step advances its clocks, counters, cursors and anchors and writes each emitter's plan: the births the step owes, with their serials, the ticks they are born at and the ticks they die at, all from the CPU path's own arithmetic, so a simulation elsewhere numbers, draws and ends its particles as the CPU path does. Which births have room is for the simulation to decide: only it knows the particles it holds.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId effect, int32_t emitter, mvfxEmitterView* viewOut);
+```
+Returns an emitter of an effect as compiled.  @param context  The context. @param effect   The effect. @param emitter  The emitter's index in the effect. @param viewOut  Receives the view; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range; `mvfx_errorStale` for an effect that is gone. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxEmitterPlan* planOut);
 ```
 Returns an emitter's plan for the context's last step. The births stay valid until the context's next step or the instance's destruction.  @param context   The context. @param instance  A planned instance. @param emitter   The emitter's index in its effect. @param planOut   Receives the plan; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned. @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -524,4 +529,4 @@ Returns whether every kernel's pipeline is built.  @param gpu  The object. @retu
 
 ---
 
-93 functions across 16 headers.
+94 functions across 16 headers.

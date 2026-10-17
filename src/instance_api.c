@@ -311,7 +311,12 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
         return mvfx_errorState;
     }
     const mvfxEmitterState* state = &live->emitters[emitter];
+    const mvfxTransform* from = &live->planFrom;
+    const mvfxTransform* to = &live->to;
     *planOut = (mvfxEmitterPlan){
+        .capacity = state->capacity,
+        .from = {.scale = from->scale},
+        .to = {.scale = to->scale},
         .start = live->planStart,
         .ticks = live->clock - live->planStart,
         .births = state->plan,
@@ -323,6 +328,14 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     {
         planOut->anchorBefore[k] = state->planAnchor[k];
         planOut->anchorAfter[k] = state->anchor[k];
+        planOut->from.origin[k] = from->origin[k];
+        planOut->to.origin[k] = to->origin[k];
+        planOut->velocity[k] = live->velocity[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        planOut->from.rotation[k] = from->rotation[k];
+        planOut->to.rotation[k] = to->rotation[k];
     }
     return mvfx_success;
 }

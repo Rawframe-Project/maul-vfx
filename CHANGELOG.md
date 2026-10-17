@@ -554,3 +554,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   new), for the simulation to drop what it holds. Host spawns and
   prewarm are refused for it, and an effect with gases, water surfaces,
   beams or births from events cannot be planned yet.
+- `mvfxEffect_GetEmitterView` gives an emitter as compiled, for a
+  simulation elsewhere: the parts it uses beyond plain spawning and
+  motion (`MVFX_FEATURE_*` bits, one for each part of an emitter def,
+  for it to refuse what it does not run), its shape, velocity, space,
+  gravity and drag. A plan also gives the emitter's capacity, the
+  instance's place at the plan's start and end, and its velocity.

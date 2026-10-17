@@ -374,10 +374,15 @@ static void TestAnchors(void)
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+        double last = 300.0 * (s > 0 ? s - 1 : 0);
+        same = same && plan.capacity == 1000 && plan.from.origin[0] == last &&
+               plan.to.origin[0] == place[0] && plan.to.origin[2] == place[2] &&
+               plan.from.scale == 1.0f && plan.to.rotation[3] == 1.0f;
         for (int32_t k = 0; k < 3; ++k)
         {
             same = same && plan.anchorBefore[k] == before[k] &&
-                   plan.anchorAfter[k] == cpuLive->emitters[0].anchor[k];
+                   plan.anchorAfter[k] == cpuLive->emitters[0].anchor[k] &&
+                   plan.velocity[k] == cpuLive->velocity[k];
         }
         Gather(&plan, mvfxContextInstance(context, planned)->clock);
         same = same && SameAsHeld(cpuLive);
@@ -385,8 +390,9 @@ static void TestAnchors(void)
     const mvfxInstance* cpuLive = mvfxContextInstance(context, cpu);
     // At 10 births a step and a burst of 12, all alive: past 132 by
     // distance.
-    CHECK(same && cpuLive->emitters[0].anchor[0] > 1000.0 && s_heldCount > 180,
-          "the CPU path's anchors and births by distance");
+    CHECK(same && cpuLive->emitters[0].anchor[0] > 1000.0 && s_heldCount > 180 &&
+              cpuLive->velocity[0] > 0.0f,
+          "the CPU path's places, anchors and births by distance");
     mvfxDestroyContext(context);
 }
 
@@ -517,6 +523,124 @@ static void TestCannotBePlanned(void)
     mvfxDestroyContext(context);
 }
 
+// The features of an emitter in an effect of its own, or ~0 when the
+// effect is refused.
+static uint64_t FeaturesOf(mvfxContext* context, const mvfxEmitterDef* emitter)
+{
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    mvfxEmitterView view;
+    if (mvfxCreateEffect(context, &def, &effect) != mvfx_success ||
+        mvfxEffect_GetEmitterView(context, effect, 0, &view) != mvfx_success)
+    {
+        return ~0ull;
+    }
+    (void)mvfxDestroyEffect(context, effect);
+    return view.features;
+}
+
+static void TestView(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    // The plain sprite: nothing past what every emitter has, its numbers.
+    mvfxEmitterDef emitter = Emitter(64);
+    emitter.velocity = (mvfxVelocity){
+        .mode = mvfx_directionCone, .direction = {0, 1, 0}, .coneAngle = 0.4f, .speed = {2, 4}};
+    emitter.motion.drag = 0.5f;
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxEmitterView view;
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
+    const mvfxVelocityView* v = &view.velocity;
+    float dots[3] = {v->tangentA[0] * v->tangentB[0] + v->tangentA[1] * v->tangentB[1] +
+                         v->tangentA[2] * v->tangentB[2],
+                     v->tangentA[1], v->tangentB[1]};
+    bool plain = view.features == 0 && view.space == mvfx_spaceWorld &&
+                 view.shape.kind == mvfx_shapeSphere && view.shape.radius == 0.5f &&
+                 view.shape.matrix[0] == 1.0f && view.shape.matrix[4] == 1.0f &&
+                 view.shape.matrix[8] == 1.0f && view.shape.matrix[1] == 0.0f &&
+                 v->mode == mvfx_directionCone && v->direction[1] == 1.0f && v->speedMin == 2.0f &&
+                 v->speedMax == 4.0f && v->coneCosine < 1.0f && v->coneCosine > 0.9f &&
+                 dots[0] == 0.0f && dots[1] == 0.0f && dots[2] == 0.0f &&
+                 view.gravity[1] == -9.8f && view.drag == 0.5f;
+    CHECK(plain, "the plain sprite's view");
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 1, &view) == mvfx_errorInvalid &&
+              mvfxEffect_GetEmitterView(context, effect, -1, &view) == mvfx_errorInvalid &&
+              mvfxEffect_GetEmitterView(NULL, effect, 0, &view) == mvfx_errorInvalid &&
+              mvfxEffect_GetEmitterView(context, effect, 0, NULL) == mvfx_errorInvalid &&
+              view.features == 0 && view.shape.kind == 0,
+          "the view's refusals");
+    CHECK(mvfxDestroyEffect(context, effect) == mvfx_success &&
+              mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_errorStale,
+          "a stale effect");
+
+    // A part each: its bit, and only it.
+    static const mvfxForce force = {.kind = mvfx_forceConstant, .vector = {1, 0, 0}};
+    static const mvfxCurveKey keys[2] = {{.time = 0.0f, .value = 1.0f},
+                                         {.time = 1.0f, .value = 2.0f}};
+    static const mvfxKillRule rule = {.kind = mvfx_killInsideSphere, .radius = 1.0f};
+    struct
+    {
+        mvfxEmitterDef def;
+        uint64_t bit;
+    } parts[16];
+    int32_t count = 0;
+    for (int32_t i = 0; i < 16; ++i)
+    {
+        parts[i].def = Emitter(64);
+    }
+    parts[count].def.rateCurve = (mvfxCurve){.keys = keys, .keyCount = 2};
+    parts[count].def.duration = 1.0f;
+    parts[count++].bit = MVFX_FEATURE_RATE_CURVE;
+    parts[count].def.ratePerDistance = 1.0f;
+    parts[count++].bit = MVFX_FEATURE_DISTANCE;
+    parts[count].def.hostSpawnCapacity = 4;
+    parts[count++].bit = MVFX_FEATURE_HOST_SPAWN;
+    parts[count].def.inheritVelocity = 0.5f;
+    parts[count++].bit = MVFX_FEATURE_INHERIT_VELOCITY;
+    parts[count].def.size =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 1}, .max = {1, 1, 1, 1}};
+    parts[count++].bit = MVFX_FEATURE_SIZE;
+    parts[count].def.color =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 1}, .max = {1, 1, 1, 1}};
+    parts[count++].bit = MVFX_FEATURE_COLOR;
+    parts[count].def.angle = mvfxRangeSource(0.0f, 1.0f);
+    parts[count++].bit = MVFX_FEATURE_ANGLE;
+    parts[count].def.orientationMode = mvfx_orientationRandom;
+    parts[count++].bit = MVFX_FEATURE_ORIENTATION;
+    parts[count].def.forces = &force;
+    parts[count].def.forceCount = 1;
+    parts[count++].bit = MVFX_FEATURE_FORCES;
+    parts[count].def.killRules = &rule;
+    parts[count].def.killRuleCount = 1;
+    parts[count++].bit = MVFX_FEATURE_KILL_RULES;
+    parts[count].def.collision.enabled = true;
+    parts[count++].bit = MVFX_FEATURE_COLLISION;
+    parts[count].def.events = mvfx_eventMaskDeath;
+    parts[count].def.eventCapacity = 8;
+    parts[count++].bit = MVFX_FEATURE_EVENTS;
+    parts[count].def.sortMode = mvfx_sortBackToFront;
+    parts[count++].bit = MVFX_FEATURE_SORT;
+    parts[count].def.velocityModules.motionScale.value = 0.5f;
+    parts[count++].bit = MVFX_FEATURE_VELOCITY_MODULES;
+    bool each = true;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        uint64_t features = FeaturesOf(context, &parts[i].def);
+        each = each && features == parts[i].bit;
+        if (features != parts[i].bit)
+        {
+            printf("part %d: %llx, not %llx\n", (int)i, (unsigned long long)features,
+                   (unsigned long long)parts[i].bit);
+        }
+    }
+    CHECK(each, "each part's bit");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestBirths();
@@ -527,5 +651,6 @@ int main(void)
     TestHighWords();
     TestRefusals();
     TestCannotBePlanned();
+    TestView();
     return s_failures == 0 ? 0 : 1;
 }
