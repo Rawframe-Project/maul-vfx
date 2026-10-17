@@ -18,6 +18,8 @@
 
 // A chain being written: the source of its records, the particles of its
 // ribbon in order, the view, its length in the world and its points.
+typedef struct PlaceCache PlaceCache;
+
 typedef struct Chain
 {
     const mvfxRecordSource* source;
@@ -36,7 +38,18 @@ typedef struct Chain
     // plexus width, its alpha times fade.
     bool link;
     float fade;
+    // The world places last read, or NULL to read each anew.
+    PlaceCache* cache;
 } Chain;
+
+// The world places of a chain's points last read, by the point's index
+// modulo 8: a walk reads each point's place up to five times in a row (a
+// spline reads four, a segment's start one), and the same each time.
+struct PlaceCache
+{
+    int32_t points[8];
+    double places[8][3];
+};
 
 // The particle point j takes its values from: its own, or for the head the
 // youngest's.
@@ -56,7 +69,22 @@ static void PointPlace(const Chain* chain, int32_t j, double out[3])
         }
         return;
     }
-    mvfxWorldPlaceOf(chain->source, ParticleAt(chain, j), out);
+    PlaceCache* cache = chain->cache;
+    if (cache == nullptr)
+    {
+        mvfxWorldPlaceOf(chain->source, ParticleAt(chain, j), out);
+        return;
+    }
+    int32_t slot = j & 7;
+    if (cache->points[slot] != j)
+    {
+        mvfxWorldPlaceOf(chain->source, ParticleAt(chain, j), cache->places[slot]);
+        cache->points[slot] = j;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = cache->places[slot][k];
+    }
 }
 
 // A place along a chain: segment s from particle s to s + 1, piece q of
@@ -558,12 +586,14 @@ static Totals WriteChains(const mvfxInstance* instance, int32_t emitter, const m
         {
             ++end;
         }
+        PlaceCache cache = {.points = {-1, -1, -1, -1, -1, -1, -1, -1}};
         Chain chain = {.source = &source,
                        .compiled = &instance->effect->emitters[emitter],
                        .view = view,
                        .particles = indices + start,
                        .particleCount = end - start,
-                       .count = end - start};
+                       .count = end - start,
+                       .cache = &cache};
         // The current ribbon by the counter takes the pinned head.
         chain.head = keys[start] == instance->emitters[emitter].ribbonCounter &&
                      mvfxRibbonHeadPlace(instance, emitter, chain.headPlace);
