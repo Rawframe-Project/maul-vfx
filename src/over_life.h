@@ -25,6 +25,9 @@ typedef struct mvfxCompiledOverLife
     float sizeRange[2];
     bool perAxis;
     mvfxCompiledLife sizes[3];
+    // The largest each axis's factor is at any input, which bounds are
+    // grown by: 1 without sizes over life.
+    float sizeBounds[3];
     mvfxFrameOverLife frame;
     bool rotation;
     mvfxCompiledLife rotationScale;

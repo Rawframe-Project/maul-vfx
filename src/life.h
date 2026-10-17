@@ -28,6 +28,10 @@ int32_t mvfxLifeCurves(const mvfxLifeCurve* life);
 // Compiles a valid life curve, its table into space.
 void mvfxCompileLife(const mvfxLifeCurve* life, mvfxTableSpace* space, mvfxCompiledLife* out);
 
+// The largest its value is in size at any age: its table is read between
+// samples, so never past the largest sample.
+float mvfxLifeBound(const mvfxCompiledLife* life);
+
 // Its value at a normalized age.
 static inline float mvfxLifeAt(const mvfxCompiledLife* life, float age)
 {

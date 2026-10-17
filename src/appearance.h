@@ -19,6 +19,10 @@ void mvfxColorOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float
 // Its size along X, Y and Z.
 void mvfxSizeOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float out[3]);
 
+// The largest a stored float attribute is in size over an emitter's live
+// particles; 1 when it is not stored (its value then).
+float mvfxLargestStored(const mvfxInstance* instance, int32_t emitter, mvfxAttribute attribute);
+
 // Its flipbook frame.
 uint32_t mvfxFrameOf(const mvfxInstance* instance, int32_t emitter, int32_t i);
 

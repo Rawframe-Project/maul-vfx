@@ -597,9 +597,10 @@ extern "C"
 
     /// Reads an emitter's bounds in the world after the last step: its
     /// fixed box through the instance's transform, or the box of its live
-    /// particles (measured at the step's end, grown on every side by their
-    /// largest size component); with emitter -1, the box around every
-    /// emitter's and every gas's box.
+    /// particles (measured at the step's end, grown on every side by the
+    /// largest size component any of them can have over its life: its
+    /// stored size times the most its size over life scales it); with
+    /// emitter -1, the box around every emitter's and every gas's box.
     ///
     /// @param context    The context that owns the instance.
     /// @param instance   The instance.

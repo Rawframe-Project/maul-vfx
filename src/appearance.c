@@ -68,6 +68,21 @@ static void Stored(const mvfxInstance* instance, int32_t emitter, int32_t i, mvf
     }
 }
 
+float mvfxLargestStored(const mvfxInstance* instance, int32_t emitter, mvfxAttribute attribute)
+{
+    if (!Has(&instance->effect->emitters[emitter], attribute))
+    {
+        return 1.0f;
+    }
+    const float* values = Floats(instance, emitter, attribute);
+    float largest = 0.0f;
+    for (int32_t i = 0; i < instance->emitters[emitter].count; ++i)
+    {
+        largest = fmaxf(largest, fabsf(values[i]));
+    }
+    return largest;
+}
+
 void mvfxColorOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float out[4])
 {
     Stored(instance, emitter, i, mvfx_attributeColorR, 4, out);

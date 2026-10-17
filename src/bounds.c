@@ -26,7 +26,6 @@ void mvfxMeasureBounds(mvfxInstance* instance, int32_t emitter)
         state->boundsMin[k] = INFINITY;
         state->boundsMax[k] = -INFINITY;
     }
-    float largest = 0.0f;
     for (int32_t i = 0; i < state->count; ++i)
     {
         for (int32_t k = 0; k < 3; ++k)
@@ -34,10 +33,19 @@ void mvfxMeasureBounds(mvfxInstance* instance, int32_t emitter)
             state->boundsMin[k] = fminf(state->boundsMin[k], p[k][i]);
             state->boundsMax[k] = fmaxf(state->boundsMax[k], p[k][i]);
         }
-        float size[3];
-        mvfxSizeOf(instance, emitter, i, size);
-        largest = fmaxf(largest, fmaxf(fabsf(size[0]), fmaxf(fabsf(size[1]), fabsf(size[2]))));
     }
+    // Grown by the largest size any particle can have: its largest stored
+    // size component times the most its size over life scales that axis,
+    // a hair more for the rounding of reading the curve and of the product.
+    const mvfxCompiledOverLife* over = &compiled->overLife;
+    float largest = 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float stored =
+            mvfxLargestStored(instance, emitter, (mvfxAttribute)(mvfx_attributeSizeX + k));
+        largest = fmaxf(largest, stored * over->sizeBounds[k]);
+    }
+    largest *= over->size ? 1.0f + 0x1p-20f : 1.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
         state->boundsMin[k] -= largest;

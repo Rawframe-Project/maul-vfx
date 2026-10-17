@@ -335,8 +335,41 @@ static void TestRefusals(void)
     mvfxDestroyContext(context);
 }
 
+// Sizes over life: the box grows by the most a particle's size can be
+// over its life (its stored size times the curve's largest value in size),
+// so it holds the particles through the step without measuring each.
+static void TestSizeOverLife(void)
+{
+    static const mvfxCurveKey peak[3] = {{.time = 0.0f, .value = 1.0f},
+                                         {.time = 0.5f, .value = 3.0f},
+                                         {.time = 1.0f, .value = 0.5f}};
+    static const mvfxCurveKey below[2] = {{.time = 0.0f, .value = -2.0f},
+                                          {.time = 1.0f, .value = 1.0f}};
+    const mvfxCurveKey* curves[2] = {peak, below};
+    const int32_t keys[2] = {3, 2};
+    const double grown[2] = {1.5, 1.0};
+    for (int32_t c = 0; c < 2; ++c)
+    {
+        mvfxContext* context = NewContext();
+        mvfxEmitterDef emitter = Held(0.5f);
+        emitter.overLife.size = (mvfxSizeOverLife){
+            .enabled = true,
+            .size = {{.value = 1.0f, .curve = {.keys = curves[c], .keyCount = keys[c]}}}};
+        mvfxInstanceId instance = NewInstance(context, NewEffect(context, &emitter, 1));
+        Place(context, instance, 0, 1, 2, 3);
+        CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success, "step");
+        mvfxBounds bounds = {0};
+        double g = grown[c];
+        CHECK(mvfxInstance_GetBounds(context, instance, 0, &bounds) == mvfx_success &&
+                  IsBox(&bounds, 1 - g, 2 - g, 3 - g, 1 + g, 2 + g, 3 + g),
+              "grown by the largest size over life");
+        mvfxDestroyContext(context);
+    }
+}
+
 int main(void)
 {
+    TestSizeOverLife();
     TestMeasured();
     TestLocal();
     TestFixed();

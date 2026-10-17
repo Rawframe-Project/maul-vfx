@@ -430,6 +430,16 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfx_errorMissing`, a new status.
 - A sheet unit whose points times rows overflows is refused, where the
   check computed the overflowing product first.
+- Changed: an emitter's measured bounds grow by the largest size any of
+  its particles can have over its life (its stored size times the most
+  its size over life scales it), computed once, rather than by each
+  particle's size at the step's end; boxes with sizes over life may be
+  larger, never too small.
+- An emitter's step takes about a quarter of the instructions it did
+  for a typical sprite emitter: dead particles are taken out by moving
+  runs of the living (one move an array), and bounds no longer evaluate
+  each particle's size. `bench/bench_particles.c` prints the
+  instructions a particle beside each time.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its

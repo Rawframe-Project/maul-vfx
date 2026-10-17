@@ -56,29 +56,50 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
         }
         ++kept;
     }
+    // The arrays the emitter has, and the runs of the living after it moved
+    // down whole, each run's in one move an array.
     const mvfxAttributePlan* plan = &instance->effect->emitters[emitter].plan;
-    for (int32_t i = kept; i < state->count; ++i)
+    uint32_t* arrays[MVFX_ATTRIBUTE_COUNT];
+    int32_t arrayCount = 0;
+    for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
     {
-        int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
-        if (AgeAt(instance->clock, birth) * inverseLife[i] >= 1.0f)
+        if (mvfxHasAttribute(plan, a))
         {
+            arrays[arrayCount++] = mvfxAttributeArray(instance, emitter, a);
+        }
+    }
+    int32_t i = kept;
+    while (i < state->count)
+    {
+        for (; i < state->count; ++i)
+        {
+            int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
+            if (!(AgeAt(instance->clock, birth) * inverseLife[i] >= 1.0f))
+            {
+                break;
+            }
             // Its death at its tick, its place its last, from the step's start.
             mvfxRecordEvent(instance, emitter,
                             &(mvfxEventFact){.kind = mvfx_eventDeath,
                                              .particle = i,
                                              .tick = mvfxDeathTick(birth, inverseLife[i]),
                                              .placeTick = instance->stepStart});
-            continue;
         }
-        for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
+        int32_t start = i;
+        for (; i < state->count; ++i)
         {
-            if (mvfxHasAttribute(plan, a))
+            int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
+            if (AgeAt(instance->clock, birth) * inverseLife[i] >= 1.0f)
             {
-                uint32_t* array = mvfxAttributeArray(instance, emitter, a);
-                array[kept] = array[i];
+                break;
             }
         }
-        ++kept;
+        // Moves down only: what it overwrites is behind the scan.
+        for (int32_t a = 0; a < arrayCount && i > start; ++a)
+        {
+            memmove(arrays[a] + kept, arrays[a] + start, (size_t)(i - start) * sizeof(uint32_t));
+        }
+        kept += i - start;
     }
     state->count = kept;
 }

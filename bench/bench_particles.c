@@ -16,6 +16,14 @@
 //   nothing alive and nothing to spawn; a finished instance; then its
 //   memory: bytes a particle, an instance's fixed bytes for its emitter,
 //   and the compiled effect's bytes, through a counting allocator.
+// Beside each time, the instructions it took (Linux's hardware counter,
+// "n/a" where it cannot be opened), which a loaded machine does not
+// change as it does the time.
+
+// Before every include: Linux's syscall, for the instruction counter.
+#if defined(__linux__)
+#define _GNU_SOURCE
+#endif
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/effect.h"
@@ -27,6 +35,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+#if defined(__linux__)
+#include <linux/perf_event.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 enum
 {
@@ -46,6 +61,62 @@ static double Now(void)
     struct timespec now;
     timespec_get(&now, TIME_UTC);
     return (double)now.tv_sec + 1e-9 * (double)now.tv_nsec;
+}
+
+// A span of time and of instructions retired in user space.
+typedef struct Measure
+{
+    double seconds;
+    double instructions;
+} Measure;
+
+#if defined(__linux__)
+// The counter of this thread's user-space instructions, -1 for none.
+static int s_counter = -1;
+#endif
+
+static void OpenCounter(void)
+{
+#if defined(__linux__)
+    struct perf_event_attr attr = {.type = PERF_TYPE_HARDWARE,
+                                   .size = sizeof attr,
+                                   .config = PERF_COUNT_HW_INSTRUCTIONS,
+                                   .exclude_kernel = 1,
+                                   .exclude_hv = 1};
+    s_counter = (int)syscall(SYS_perf_event_open, &attr, 0, -1, -1, 0);
+#endif
+}
+
+// The instructions counted so far, -1 without a counter.
+static double Instructions(void)
+{
+#if defined(__linux__)
+    long long count = 0;
+    if (s_counter >= 0 && read(s_counter, &count, sizeof count) == (ssize_t)sizeof count)
+    {
+        return (double)count;
+    }
+#endif
+    return -1.0;
+}
+
+static Measure Mark(void)
+{
+    return (Measure){Now(), Instructions()};
+}
+
+// The span since a mark, divided over n.
+static Measure Since(Measure start, double n)
+{
+    Measure now = Mark();
+    return (Measure){(now.seconds - start.seconds) / n,
+                     start.instructions < 0.0 ? -1.0 : (now.instructions - start.instructions) / n};
+}
+
+// The faster of two spans.
+static Measure Best(Measure best, Measure each)
+{
+    return best.seconds < 0.0 || each.seconds < best.seconds ? each : best;
 }
 
 // The bytes a counting allocator holds, and their blocks' sizes kept
@@ -164,49 +235,71 @@ static int32_t Live(Scene* scene)
                : 0;
 }
 
-// Seconds a step of a scene of count instances of an emitter, the best of
-// the runs, after warm steps; the particles of its first instance.
-static double TimeSteps(const mvfxEmitterDef* emitter, int32_t count, int32_t warm, int32_t* live)
+// A step of a scene of count instances of an emitter, the best of the
+// runs, after warm steps; the particles of its first instance.
+static Measure TimeSteps(const mvfxEmitterDef* emitter, int32_t count, int32_t warm, int32_t* live)
 {
-    double best = -1.0;
+    Measure best = {-1.0, -1.0};
     for (int32_t r = 0; r < RUNS; ++r)
     {
         Scene scene;
         if (!Open(&scene, emitter, count) || !Steps(&scene, warm))
         {
-            return -1.0;
+            return (Measure){-1.0, -1.0};
         }
-        double start = Now();
+        Measure start = Mark();
         if (!Steps(&scene, STEPS))
         {
-            return -1.0;
+            return (Measure){-1.0, -1.0};
         }
-        double each = (Now() - start) / STEPS;
-        best = best < 0.0 || each < best ? each : best;
+        best = Best(best, Since(start, STEPS));
         *live = Live(&scene);
         mvfxDestroyContext(scene.context);
     }
     return best;
 }
 
-static void Report(const char* name, double value, const char* unit, double target)
+// A measure over n: a particle's, a point's, an instance's.
+static Measure Per(Measure measure, double n)
 {
-    printf("%-36s %10.2f %-14s (target %g)\n", name, value, unit, target);
+    return (Measure){measure.seconds / n,
+                     measure.instructions < 0.0 ? -1.0 : measure.instructions / n};
 }
 
-// The update's nanoseconds a particle, the plain emitter's into plain.
-static int Updates(double* plain)
+// Prints a case's time and instructions, less a base's (none: zeros), and
+// its time's target.
+static void Report(const char* name, Measure value, Measure base, const char* unit, double target)
 {
+    char instructions[32] = "n/a";
+    if (value.instructions >= 0.0)
+    {
+        snprintf(instructions, sizeof instructions, "%.1f",
+                 value.instructions - (base.instructions > 0.0 ? base.instructions : 0.0));
+    }
+    printf("%-36s %10.2f %-14s %10s instructions (target %g)\n", name,
+           1e9 * (value.seconds - base.seconds), unit, instructions, target);
+}
+
+// Prints a figure that is no time, such as bytes, and its target.
+static void ReportBytes(const char* name, double value, double target)
+{
+    printf("%-36s %10.2f %-14s (target %g)\n", name, value, "bytes", target);
+}
+
+// The update's cases: a particle's step of the sprite, with turbulence,
+// and with collision (less the plain one's).
+static int Updates(void)
+{
+    static const Measure none = {0.0, 0.0};
     mvfxEmitterDef sprite = Sprite(110000, 50000.0f);
     int32_t live = 0;
-    double seconds = TimeSteps(&sprite, 1, WARM, &live);
-    if (seconds < 0.0 || live == 0)
+    Measure plain = Per(TimeSteps(&sprite, 1, WARM, &live), live);
+    if (plain.seconds < 0.0 || live == 0)
     {
         return 1;
     }
     printf("# the sprite emitter: %d particles alive\n", live);
-    *plain = 1e9 * seconds / live;
-    Report("sprite update", *plain, "ns a particle", 10);
+    Report("sprite update", plain, none, "ns a particle", 10);
 
     static const mvfxForce turbulence = {
         .kind = mvfx_forceTurbulence,
@@ -215,12 +308,12 @@ static int Updates(double* plain)
     mvfxEmitterDef noisy = sprite;
     noisy.forces = &turbulence;
     noisy.forceCount = 1;
-    seconds = TimeSteps(&noisy, 1, WARM, &live);
-    if (seconds < 0.0 || live == 0)
+    Measure measure = Per(TimeSteps(&noisy, 1, WARM, &live), live);
+    if (measure.seconds < 0.0 || live == 0)
     {
         return 1;
     }
-    Report("sprite update, turbulence", 1e9 * seconds / live, "ns a particle", 40);
+    Report("sprite update, turbulence", measure, none, "ns a particle", 40);
 
     static const mvfxCollider walls[4] = {
         {.kind = mvfx_colliderPlane,
@@ -246,33 +339,32 @@ static int Updates(double* plain)
     colliding.collision.enabled = true;
     colliding.collision.radius = 0.02f;
     colliding.collision.restitution = 0.5f;
-    seconds = TimeSteps(&colliding, 1, WARM, &live);
-    if (seconds < 0.0 || live == 0)
+    measure = Per(TimeSteps(&colliding, 1, WARM, &live), live);
+    if (measure.seconds < 0.0 || live == 0)
     {
         return 1;
     }
-    Report("collision, 3 planes and a sphere", 1e9 * seconds / live - *plain, "ns more", 8);
+    Report("collision, 3 planes and a sphere", measure, plain, "ns more", 8);
     return 0;
 }
 
-// Seconds a call to write the first instance's records, the best of
+// A call to write the first instance's records, the best of
 // RUNS * 4 calls; the records into count.
-static double TimeWrite(Scene* scene, mvfxLayoutId layout, void* scratch, int64_t scratchBytes,
-                        void* records, int64_t capacity, int64_t* count)
+static Measure TimeWrite(Scene* scene, mvfxLayoutId layout, void* scratch, int64_t scratchBytes,
+                         void* records, int64_t capacity, int64_t* count)
 {
     static const mvfxView view = {.eye = {0, 1, 8}, .forward = {0, 0, -1}, .up = {0, 1, 0}};
-    double best = -1.0;
+    Measure best = {-1.0, -1.0};
     for (int32_t r = 0; r < RUNS * 4; ++r)
     {
-        double start = Now();
+        Measure start = Mark();
         if (mvfxInstance_WriteParticles(scene->context, scene->instances[0], 0, layout, &view,
                                         scratch, scratchBytes, records, capacity,
                                         count) != mvfx_success)
         {
-            return -1.0;
+            return (Measure){-1.0, -1.0};
         }
-        double each = Now() - start;
-        best = best < 0.0 || each < best ? each : best;
+        best = Best(best, Since(start, 1.0));
     }
     return best;
 }
@@ -287,7 +379,7 @@ static int Outputs(void)
         {.field = mvfx_recordColor, .format = mvfx_formatUnorm8, .components = 4, .offset = 16},
         {.field = mvfx_recordAngle, .format = mvfx_formatFloat32, .components = 1, .offset = 20},
     };
-    double seconds[2] = {0};
+    Measure seconds[2] = {0};
     int64_t count = 0;
     for (int32_t sorted = 0; sorted < 2; ++sorted)
     {
@@ -311,18 +403,19 @@ static int Outputs(void)
         void* records = malloc(110000 * 24);
         seconds[sorted] = records != NULL ? TimeWrite(&scene, layout, scratch, scratchBytes,
                                                       records, 110000, &count)
-                                          : -1.0;
+                                          : (Measure){-1.0, -1.0};
         free(records);
         free(scratch);
         mvfxDestroyContext(scene.context);
-        if (seconds[sorted] < 0.0 || count == 0)
+        if (seconds[sorted].seconds < 0.0 || count == 0)
         {
             return 1;
         }
     }
-    Report("packing records", 1e9 * seconds[0] / (double)count, "ns a particle", 3);
-    Report("radix sort for a view", 1e9 * (seconds[1] - seconds[0]) / (double)count,
-           "ns a particle", 10);
+    static const Measure none = {0.0, 0.0};
+    Measure packing = Per(seconds[0], (double)count);
+    Report("packing records", packing, none, "ns a particle", 3);
+    Report("radix sort for a view", Per(seconds[1], (double)count), packing, "ns a particle", 10);
     return 0;
 }
 
@@ -361,32 +454,32 @@ static int Ribbons(void)
                                  .ribbonCapacity = 16,
                                  .scratch = malloc((size_t)scratchBytes),
                                  .scratchBytes = scratchBytes};
-    double best = -1.0;
+    Measure best = {-1.0, -1.0};
     int64_t points = 0;
     int64_t ribbons = 0;
     for (int32_t r = 0; r < RUNS * 4 && buffers.points != NULL && buffers.ribbons != NULL &&
                         buffers.scratch != NULL;
          ++r)
     {
-        double start = Now();
+        Measure start = Mark();
         if (mvfxInstance_WriteRibbons(scene.context, scene.instances[0], 0, layout, &view, &buffers,
                                       &points, &ribbons) != mvfx_success)
         {
             break;
         }
-        double each = Now() - start;
-        best = best < 0.0 || each < best ? each : best;
+        best = Best(best, Since(start, 1.0));
     }
     free(buffers.points);
     free(buffers.ribbons);
     free(buffers.scratch);
     mvfxDestroyContext(scene.context);
-    if (best < 0.0 || points == 0)
+    if (best.seconds < 0.0 || points == 0)
     {
         return 1;
     }
     printf("# the ribbon: %lld points in %lld ribbons\n", (long long)points, (long long)ribbons);
-    Report("ribbon output, 2 pieces", 1e9 * best / (double)points, "ns a point", 15);
+    static const Measure none = {0.0, 0.0};
+    Report("ribbon output, 2 pieces", Per(best, (double)points), none, "ns a point", 15);
     return 0;
 }
 
@@ -396,23 +489,24 @@ static int Idle(void)
 {
     mvfxEmitterDef idle = Sprite(16, 0.0f);
     int32_t live = 0;
-    double seconds = TimeSteps(&idle, MANY, 10, &live);
-    if (seconds < 0.0 || live != 0)
+    static const Measure none = {0.0, 0.0};
+    Measure seconds = TimeSteps(&idle, MANY, 10, &live);
+    if (seconds.seconds < 0.0 || live != 0)
     {
         return 1;
     }
-    Report("an idle emitter", 1e9 * seconds / MANY, "ns a step", 50);
+    Report("an idle emitter", Per(seconds, MANY), none, "ns a step", 50);
 
     mvfxEmitterDef brief = Sprite(16, 100.0f);
     brief.duration = 0.05f;
     brief.loops = 1;
     brief.lifetime = mvfxRangeSource(0.05f, 0.05f);
     seconds = TimeSteps(&brief, MANY, 60, &live);
-    if (seconds < 0.0 || live != 0)
+    if (seconds.seconds < 0.0 || live != 0)
     {
         return 1;
     }
-    Report("a finished instance", 1e9 * seconds / MANY, "ns a step", 20);
+    Report("a finished instance", Per(seconds, MANY), none, "ns a step", 20);
     return 0;
 }
 
@@ -454,17 +548,17 @@ static int Memory(void)
         mvfxDestroyContext(scene.context);
     }
     double perParticle = (double)(held[1] - held[0]) / 10000.0;
-    Report("a sprite particle", perParticle, "bytes", 64);
-    Report("an instance's fixed bytes, 1 emitter", (double)held[0] - perParticle * 10000.0, "bytes",
-           1024);
-    Report("the compiled effect", (double)effect, "bytes", 16384);
+    ReportBytes("a sprite particle", perParticle, 64);
+    ReportBytes("an instance's fixed bytes, 1 emitter", (double)held[0] - perParticle * 10000.0,
+                1024);
+    ReportBytes("the compiled effect", (double)effect, 16384);
     return 0;
 }
 
 int main(void)
 {
-    double plain = 0.0;
-    int failed = Updates(&plain);
+    OpenCounter();
+    int failed = Updates();
     failed |= Outputs();
     failed |= Ribbons();
     failed |= Idle();

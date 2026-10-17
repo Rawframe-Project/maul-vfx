@@ -16,6 +16,20 @@ int32_t mvfxLifeCurves(const mvfxLifeCurve* life)
     return life->curve.keyCount > 0 ? 1 : 0;
 }
 
+float mvfxLifeBound(const mvfxCompiledLife* life)
+{
+    float most = 1.0f;
+    if (life->curve != nullptr)
+    {
+        most = 0.0f;
+        for (int32_t k = 0; k < MVFX_CURVE_SAMPLES; ++k)
+        {
+            most = fmaxf(most, fabsf(life->curve->samples[k]));
+        }
+    }
+    return fabsf(life->value) * most;
+}
+
 void mvfxCompileLife(const mvfxLifeCurve* life, mvfxTableSpace* space, mvfxCompiledLife* out)
 {
     out->value = life->value;
