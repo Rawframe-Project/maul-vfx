@@ -327,6 +327,9 @@ typedef struct Run
     // some step, 100 for 0.
     int32_t steps;
     int32_t least;
+    // Whether the first emitter's particles must be killed on the CPU path
+    // over the run (a scene that kills).
+    bool killing;
 } Run;
 
 // Moves both instances to step s's place: along a line past the rebase
@@ -415,6 +418,12 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     CHECK(same && most[0] >= (run->least > 0 ? run->least : 100) &&
               (run->emitterCount < 2 || most[1] > 64),
           what);
+    if (run->killing)
+    {
+        const mvfxEmitterState* state = &mvfxContextInstance(s_context, s_cpu)->emitters[0];
+        printf("  killed: %llu\n", (unsigned long long)state->killed);
+        CHECK(state->killed > 0, "kills");
+    }
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(s_context);
 }
@@ -481,7 +490,8 @@ static mvfxEmitterDef Bursts(const mvfxBurst* bursts, int32_t burstCount);
 static void TestForces(Gpu* gpu, mvfxGpu* kernels)
 {
     // A constant force, a wind in a cone in the instance's space, an
-    // attractor with a kill radius the particles fly through, a vortex in
+    // attractor with a kill radius the particles fly through (both the
+    // live and the newborn), in the instance's space, a vortex in
     // the instance's space, under a moving, turning, growing instance;
     // then a wind everywhere (the drag every particle shares), a constant
     // force in a tube, an attractor in a sphere, in the world.
@@ -497,7 +507,8 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
                                         .angle = 0.6f,
                                         .exponent = 2.0f}},
                            {.kind = mvfx_forceAttractor,
-                            .point = {0, 1.5f, 0},
+                            .space = mvfx_spaceLocal,
+                            .point = {0, 0.75f, 0},
                             .strength = 3.0f,
                             .softening = 0.5f,
                             .killRadius = 0.3f},
@@ -527,6 +538,19 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
     emitter.forceCount = 3;
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1},
             "a wind everywhere, falloffs of a tube and a sphere");
+    // A strong attractor whose kill radius, out of a newborn's first
+    // step's reach and smaller than a step, the living fly through: a
+    // step can cross it with both ends outside.
+    forces[0] = (mvfxForce){.kind = mvfx_forceAttractor,
+                            .point = {0, 0.7f, 0},
+                            .strength = 20.0f,
+                            .softening = 0.2f,
+                            .killRadius = 0.05f};
+    emitter.forceCount = 1;
+    emitter.rate = 3000.0f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .least = 500, .killing = true},
+            "the living killed by an attractor");
 }
 
 static void TestFull(Gpu* gpu, mvfxGpu* kernels)
