@@ -415,8 +415,8 @@ fn room(@builtin(local_invocation_index) local: u32) {
         if (local == 0u) {
             let held = live + carried - dead;
             let space = select(0u, c - held, held < c);
-            let owed = births[2u * start + 1u].w;
-            taken = min(min(owed, space), batchLength);
+            // The batch's births in the plan are at most those it owes.
+            taken = min(space, batchLength);
             carried += taken;
             batchStart = start + batchLength;
         }

@@ -262,6 +262,9 @@ static mvfxEmitterDef Sprite(void)
     return emitter;
 }
 
+// The ticks a step of the run takes.
+static int64_t s_stepTicks = STEP_TICKS;
+
 // A run of an effect: a CPU instance and a planned one side by side, the
 // GPU's particles compared with the CPU path's after every step. The
 // instance moves and turns when moving, and is cleared and restarted at
@@ -272,6 +275,10 @@ typedef struct Run
     int32_t emitterCount;
     bool moving;
     bool clearing;
+    // Its steps, STEPS for 0; the most the first emitter must hold at
+    // some step, 100 for 0.
+    int32_t steps;
+    int32_t least;
 } Run;
 
 static mvfxContext* s_context;
@@ -338,7 +345,8 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     s_velocityError = 0.0f;
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
-    for (int32_t s = 0; same && s < STEPS; ++s)
+    int32_t steps = run->steps > 0 ? run->steps : STEPS;
+    for (int32_t s = 0; same && s < steps; ++s)
     {
         if (run->moving)
         {
@@ -348,7 +356,7 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
         {
             Clear();
         }
-        CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success, "stepped");
+        CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         same = Simulate(gpu, sim);
         for (int32_t e = 0; same && e < run->emitterCount; ++e)
         {
@@ -358,7 +366,7 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     }
     printf("%s: largest relative differences, place %g, velocity %g\n", what, (double)s_placeError,
            (double)s_velocityError);
-    CHECK(same && most[0] >= (run->emitters[0].capacity < 100 ? run->emitters[0].capacity : 100) &&
+    CHECK(same && most[0] >= (run->least > 0 ? run->least : 100) &&
               (run->emitterCount < 2 || most[1] > 64),
           what);
     mvfxDestroyGpuSim(sim);
@@ -409,8 +417,39 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     emitter.capacity = 64;
     emitter.bursts = s_floods;
     emitter.burstCount = 2;
-    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1},
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 64},
             "an emitter full every step");
+}
+
+// Bursts on ticks of exact quarters and eighths of a second, lives of a
+// quarter: deaths fall on batches' ticks.
+static const mvfxBurst s_exact[3] = {
+    {.time = 0.125f, .minCount = 40, .maxCount = 40, .cycles = 1, .probability = 1.0f},
+    {.time = 0.375f, .minCount = 32, .maxCount = 32, .cycles = 1, .probability = 1.0f},
+    {.time = 0.625f, .minCount = 32, .maxCount = 32, .cycles = 1, .probability = 1.0f}};
+
+static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Steps of half a second, an emitter of 32 lives of a quarter: the
+    // first burst's 40 leaves 8 refused, its 32 die within the plan at
+    // the second's tick and make it room; the second's die at the third's
+    // tick, in the next plan.
+    mvfxEmitterDef emitter = Sprite();
+    emitter.capacity = 32;
+    emitter.rate = 0.0f;
+    emitter.bursts = s_exact;
+    emitter.burstCount = 3;
+    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    s_stepTicks = MVFX_TICKS_PER_SECOND / 2;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 4, .least = 32},
+            "deaths on batches' ticks");
+    s_stepTicks = STEP_TICKS;
+    // Lives past 2^32 ticks: deaths in two words.
+    emitter = Sprite();
+    emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
+    emitter.rate = 60.0f;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
+            "lives past 2^32 ticks");
 }
 
 static void TestRefused(mvfxGpu* kernels)
@@ -488,6 +527,7 @@ int main(void)
     TestSprite(&gpu, kernels);
     TestMoving(&gpu, kernels);
     TestFull(&gpu, kernels);
+    TestBoundaries(&gpu, kernels);
     TestRefused(kernels);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
