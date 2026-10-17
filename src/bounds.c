@@ -26,13 +26,20 @@ void mvfxMeasureBounds(mvfxInstance* instance, int32_t emitter)
         state->boundsMin[k] = INFINITY;
         state->boundsMax[k] = -INFINITY;
     }
-    for (int32_t i = 0; i < state->count; ++i)
+    // An axis at a time, by comparisons the compiler can vectorize (a NaN
+    // place is passed over, as fminf would).
+    for (int32_t k = 0; k < 3; ++k)
     {
-        for (int32_t k = 0; k < 3; ++k)
+        float low = state->boundsMin[k];
+        float high = state->boundsMax[k];
+        const float* x = p[k];
+        for (int32_t i = 0; i < state->count; ++i)
         {
-            state->boundsMin[k] = fminf(state->boundsMin[k], p[k][i]);
-            state->boundsMax[k] = fmaxf(state->boundsMax[k], p[k][i]);
+            low = x[i] < low ? x[i] : low;
+            high = x[i] > high ? x[i] : high;
         }
+        state->boundsMin[k] = low;
+        state->boundsMax[k] = high;
     }
     // Grown by the largest size any particle can have: its largest stored
     // size component times the most its size over life scales that axis,

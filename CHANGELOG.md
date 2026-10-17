@@ -435,11 +435,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   its size over life scales it), computed once, rather than by each
   particle's size at the step's end; boxes with sizes over life may be
   larger, never too small.
-- An emitter's step takes about a quarter of the instructions it did
-  for a typical sprite emitter: dead particles are taken out by moving
-  runs of the living (one move an array), and bounds no longer evaluate
-  each particle's size. `bench/bench_particles.c` prints the
-  instructions a particle beside each time.
+- A typical sprite emitter's step takes 79 instructions a particle
+  where it took 1,438: dead particles are taken out by moving runs of
+  the living (one move an array), bounds no longer evaluate each
+  particle's size and take their box by comparisons that vectorize, and
+  an emitter moved by gravity and drag alone moves its particles an axis
+  at a time, in the same operations, so the same bits.
+  `bench/bench_particles.c` prints the instructions a particle beside
+  each time.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its

@@ -345,16 +345,18 @@ static void TestSizeOverLife(void)
                                          {.time = 1.0f, .value = 0.5f}};
     static const mvfxCurveKey below[2] = {{.time = 0.0f, .value = -2.0f},
                                           {.time = 1.0f, .value = 1.0f}};
-    const mvfxCurveKey* curves[2] = {peak, below};
-    const int32_t keys[2] = {3, 2};
-    const double grown[2] = {1.5, 1.0};
-    for (int32_t c = 0; c < 2; ++c)
+    // The peak, a curve below 0, and the peak under a value below 0.
+    const mvfxCurveKey* curves[3] = {peak, below, peak};
+    const int32_t keys[3] = {3, 2, 3};
+    const float values[3] = {1.0f, 1.0f, -1.0f};
+    const double grown[3] = {1.5, 1.0, 1.5};
+    for (int32_t c = 0; c < 3; ++c)
     {
         mvfxContext* context = NewContext();
         mvfxEmitterDef emitter = Held(0.5f);
         emitter.overLife.size = (mvfxSizeOverLife){
             .enabled = true,
-            .size = {{.value = 1.0f, .curve = {.keys = curves[c], .keyCount = keys[c]}}}};
+            .size = {{.value = values[c], .curve = {.keys = curves[c], .keyCount = keys[c]}}}};
         mvfxInstanceId instance = NewInstance(context, NewEffect(context, &emitter, 1));
         Place(context, instance, 0, 1, 2, 3);
         CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success, "step");

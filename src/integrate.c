@@ -426,6 +426,40 @@ static void MoveParticle(const Range* r, int32_t i)
     r->instance->killScratch[i] |= collisionKills || IsKilled(r, i, start, place) ? 1 : 0;
 }
 
+// Whether a range's particles move by gravity and the shared drag alone:
+// no forces, water, drag scales, speed limit, motion modules, collision or
+// kill rules. MoveParticle then reduces to MoveLinear under gravity with
+// the shared factors, its kill marks unchanged.
+static bool IsPlain(const Range* r)
+{
+    const mvfxCompiledEmitter* compiled = r->compiled;
+    const mvfxCompiledVelocityModules* modules = r->modules->compiled;
+    return compiled->forceCount == 0 && r->water == nullptr && r->dragScales == nullptr &&
+           !modules->limitSpeed && !modules->moves &&
+           !(compiled->collision.enabled && !compiled->rigid.enabled) &&
+           compiled->killRuleCount == 0;
+}
+
+// MoveLinear over a plain range, an axis at a time, in the same operations
+// so the same bits.
+static void MovePlain(const Range* r, int32_t first, int32_t end)
+{
+    const mvfxDragFactors f = r->shared;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float* restrict p = r->p[k];
+        float* restrict v = r->v[k];
+        float carry = r->gravity[k] * f.carry;
+        float push = r->gravity[k] * f.push;
+        for (int32_t i = first; i < end; ++i)
+        {
+            float v0 = v[i];
+            p[i] += v0 * f.carry + push;
+            v[i] = v0 * f.decay + carry;
+        }
+    }
+}
+
 // Moves particles from first to end over seconds from tick.
 void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
                         int64_t tick, double seconds)
@@ -466,9 +500,16 @@ void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, 
     r.wetDrag = r.water != nullptr ? compiled->drag + (winds + compiled->water.drag) : -1.0f;
     r.wet = r.water != nullptr ? mvfxDragFactorsOf((double)r.wetDrag, seconds) : r.shared;
     r.limitDecay = mvfxDragFactorsOf((double)compiled->velocityModules.limitDampen, seconds).decay;
-    for (int32_t i = first; i < end; ++i)
+    if (IsPlain(&r))
     {
-        MoveParticle(&r, i);
+        MovePlain(&r, first, end);
+    }
+    else
+    {
+        for (int32_t i = first; i < end; ++i)
+        {
+            MoveParticle(&r, i);
+        }
     }
     if (mvfxHasAttribute(&compiled->plan, mvfx_attributeAngle) ||
         mvfxHasAttribute(&compiled->plan, mvfx_attributeOrientationX))

@@ -78,7 +78,8 @@ float mvfxLargestStored(const mvfxInstance* instance, int32_t emitter, mvfxAttri
     float largest = 0.0f;
     for (int32_t i = 0; i < instance->emitters[emitter].count; ++i)
     {
-        largest = fmaxf(largest, fabsf(values[i]));
+        float size = fabsf(values[i]);
+        largest = size > largest ? size : largest;
     }
     return largest;
 }
