@@ -447,8 +447,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   same bits in about 16% fewer instructions a particle.
 - Particle records are written 64 at a time, a field at a time: places,
   sizes, colours and angles over the run, each particle's age taken once,
-  each format chosen once; the same bytes in about 69% fewer
-  instructions a particle.
+  each format chosen once; the same bytes in about 61% fewer
+  instructions a particle. A ribbon's records, written one at a time,
+  take about 1% fewer.
 - An emitter moved by gravity and the shared drag alone keeps its plain
   move when it collides: 64 particles moved an axis at a time, then each
   one's contacts from where it started; the same bits.

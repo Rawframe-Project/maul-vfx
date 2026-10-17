@@ -325,8 +325,14 @@ typedef struct Run
     bool aged;
 } Run;
 
+// The run's ages, taken once; NULL when nothing over life reads them.
 static const float* AgesOf(const mvfxRecordSource* s, Run* run)
 {
+    const mvfxCompiledOverLife* over = &s->instance->effect->emitters[s->emitter].overLife;
+    if (!over->color && !over->size)
+    {
+        return nullptr;
+    }
     if (!run->aged)
     {
         mvfxNormalizedAges(s->instance, s->emitter, run->indices, run->count, run->ages);

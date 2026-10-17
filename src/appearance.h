@@ -22,7 +22,7 @@ void mvfxNormalizedAges(const mvfxInstance* instance, int32_t emitter, const int
                         int32_t n, float out[]);
 
 // The colours (red, green, blue, alpha) of a run of particles of those
-// ages.
+// ages (NULL: each taken where needed).
 void mvfxColorsOf(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
                   const float ages[], float out[][4]);
 

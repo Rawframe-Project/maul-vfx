@@ -33,51 +33,70 @@ float mvfxNormalizedAge(const mvfxInstance* instance, int32_t emitter, int32_t i
     return fminf(fmaxf(age, 0.0f), 1.0f);
 }
 
-// The inputs over-life values are taken at for a run of particles of the
-// given ages: the age, or the speed's share of its range, the speed in the
-// emitter's units.
-static void InputsOf(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
-                     const float ages[], mvfxOverLifeInput input, const float range[2], float out[])
+// What a particle's colour or size reads: a stored vector's arrays (NULL
+// where the emitter stores none), the velocity's for a value over life
+// taken at the speed, and the values over life; resolved once a call or a
+// run.
+typedef struct Look
+{
+    const mvfxInstance* instance;
+    int32_t emitter;
+    const mvfxCompiledOverLife* over;
+    const float* stored[4];
+    const float* velocity[3];
+    float speedScale;
+} Look;
+
+static Look LookOf(const mvfxInstance* instance, int32_t emitter, mvfxAttribute first, int32_t n)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    Look look = {.instance = instance,
+                 .emitter = emitter,
+                 .over = &compiled->overLife,
+                 .speedScale = compiled->space == mvfx_spaceWorld ? instance->to.scale : 1.0f};
+    bool stored = Has(compiled, first);
+    for (int32_t k = 0; k < n; ++k)
+    {
+        look.stored[k] = stored ? Floats(instance, emitter, (mvfxAttribute)(first + k)) : nullptr;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        look.velocity[k] = Floats(instance, emitter, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+    }
+    return look;
+}
+
+// Particle i's normalized age: the given one, or taken now.
+static float AgeAt(const Look* look, int32_t i, const float* age)
+{
+    return age != nullptr ? *age : mvfxNormalizedAge(look->instance, look->emitter, i);
+}
+
+// The input an over-life value is taken at: the age, or the speed's share
+// of its range, the speed in the emitter's units.
+static inline float InputOf(const Look* look, int32_t i, const float* age, mvfxOverLifeInput input,
+                            const float range[2])
 {
     if (input == mvfx_overAge)
     {
-        for (int32_t j = 0; j < n; ++j)
-        {
-            out[j] = ages[j];
-        }
-        return;
+        return AgeAt(look, i, age);
     }
-    const float* vx = Floats(instance, emitter, mvfx_attributeVelocityX);
-    const float* vy = Floats(instance, emitter, mvfx_attributeVelocityY);
-    const float* vz = Floats(instance, emitter, mvfx_attributeVelocityZ);
-    bool world = instance->effect->emitters[emitter].space == mvfx_spaceWorld;
-    for (int32_t j = 0; j < n; ++j)
+    float v[3] = {look->velocity[0][i], look->velocity[1][i], look->velocity[2][i]};
+    float speed = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (look->speedScale != 1.0f)
     {
-        float v[3] = {vx[run[j]], vy[run[j]], vz[run[j]]};
-        float speed = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-        if (world)
-        {
-            speed /= instance->to.scale;
-        }
-        float share = (speed - range[0]) / (range[1] - range[0]);
-        out[j] = fminf(fmaxf(share, 0.0f), 1.0f);
+        speed /= look->speedScale;
     }
+    float share = (speed - range[0]) / (range[1] - range[0]);
+    return fminf(fmaxf(share, 0.0f), 1.0f);
 }
 
-// A run's stored vectors of n components, or ones when the emitter does
-// not store them.
-static void Stored(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
-                   mvfxAttribute first, int32_t components, float out[][4])
+// A stored vector of n components, or ones where the emitter stores none.
+static void Stored(const Look* look, int32_t i, int32_t n, float out[])
 {
-    bool stored = Has(&instance->effect->emitters[emitter], first);
-    for (int32_t k = 0; k < components; ++k)
+    for (int32_t k = 0; k < n; ++k)
     {
-        const float* values =
-            stored ? Floats(instance, emitter, (mvfxAttribute)(first + k)) : nullptr;
-        for (int32_t j = 0; j < n; ++j)
-        {
-            out[j][k] = values != nullptr ? values[run[j]] : 1.0f;
-        }
+        out[k] = look->stored[k] != nullptr ? look->stored[k][i] : 1.0f;
     }
 }
 
@@ -106,78 +125,79 @@ void mvfxNormalizedAges(const mvfxInstance* instance, int32_t emitter, const int
     }
 }
 
-void mvfxColorsOf(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
-                  const float ages[], float out[][4])
+// Particle i's colour, at the given normalized age where one is given.
+static inline void ColorAt(const Look* look, int32_t i, const float* age, float out[4])
 {
-    Stored(instance, emitter, run, n, mvfx_attributeColorR, 4, out);
-    const mvfxCompiledOverLife* over = &instance->effect->emitters[emitter].overLife;
+    Stored(look, i, 4, out);
+    const mvfxCompiledOverLife* over = look->over;
     if (!over->color)
     {
         return;
     }
     if (over->gradient != nullptr)
     {
-        float t[MVFX_APPEARANCE_RUN];
-        InputsOf(instance, emitter, run, n, ages, over->colorInput, over->colorRange, t);
-        for (int32_t j = 0; j < n; ++j)
+        float t = InputOf(look, i, age, over->colorInput, over->colorRange);
+        float factor[4];
+        mvfxGradientTableAt(over->gradient, t, factor);
+        for (int32_t k = 0; k < 4; ++k)
         {
-            float factor[4];
-            mvfxGradientTableAt(over->gradient, t[j], factor);
-            for (int32_t k = 0; k < 4; ++k)
-            {
-                out[j][k] *= factor[k];
-            }
+            out[k] *= factor[k];
         }
     }
-    for (int32_t j = 0; over->scaleAlpha && j < n; ++j)
+    if (over->scaleAlpha)
     {
-        out[j][3] *= mvfxLifeAt(&over->alpha, ages[j]);
+        out[3] *= mvfxLifeAt(&over->alpha, AgeAt(look, i, age));
+    }
+}
+
+// Particle i's size, at the given normalized age where one is given.
+static inline void SizeAt(const Look* look, int32_t i, const float* age, float out[3])
+{
+    Stored(look, i, 3, out);
+    const mvfxCompiledOverLife* over = look->over;
+    if (!over->size)
+    {
+        return;
+    }
+    float t = InputOf(look, i, age, over->sizeInput, over->sizeRange);
+    // One curve's sample serves all three axes unless they have their own.
+    float scale = mvfxLifeAt(&over->sizes[0], t);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] *= over->perAxis ? mvfxLifeAt(&over->sizes[k], t) : scale;
+    }
+}
+
+void mvfxColorsOf(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
+                  const float ages[], float out[][4])
+{
+    Look look = LookOf(instance, emitter, mvfx_attributeColorR, 4);
+    for (int32_t j = 0; j < n; ++j)
+    {
+        ColorAt(&look, run[j], ages != nullptr ? &ages[j] : nullptr, out[j]);
     }
 }
 
 void mvfxSizesOf(const mvfxInstance* instance, int32_t emitter, const int32_t* run, int32_t n,
                  const float ages[], float out[][4])
 {
-    Stored(instance, emitter, run, n, mvfx_attributeSizeX, 3, out);
-    const mvfxCompiledOverLife* over = &instance->effect->emitters[emitter].overLife;
-    if (!over->size)
-    {
-        return;
-    }
-    float t[MVFX_APPEARANCE_RUN];
-    InputsOf(instance, emitter, run, n, ages, over->sizeInput, over->sizeRange, t);
+    Look look = LookOf(instance, emitter, mvfx_attributeSizeX, 3);
     for (int32_t j = 0; j < n; ++j)
     {
-        // One curve's sample serves all three axes unless they have their
-        // own.
-        float scale = mvfxLifeAt(&over->sizes[0], t[j]);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            out[j][k] *= over->perAxis ? mvfxLifeAt(&over->sizes[k], t[j]) : scale;
-        }
+        SizeAt(&look, run[j], ages != nullptr ? &ages[j] : nullptr, out[j]);
     }
 }
 
 void mvfxColorOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float out[4])
 {
-    float run[1][4];
-    float age = mvfxNormalizedAge(instance, emitter, i);
-    mvfxColorsOf(instance, emitter, &i, 1, &age, run);
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        out[k] = run[0][k];
-    }
+    Look look = LookOf(instance, emitter, mvfx_attributeColorR, 4);
+    ColorAt(&look, i, nullptr, out);
 }
 
 void mvfxSizeOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float out[3])
 {
-    float run[1][4];
-    float age = mvfxNormalizedAge(instance, emitter, i);
-    mvfxSizesOf(instance, emitter, &i, 1, &age, run);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out[k] = run[0][k];
-    }
+    Look look = LookOf(instance, emitter, mvfx_attributeSizeX, 3);
+    SizeAt(&look, i, nullptr, out);
 }
 
 uint32_t mvfxFrameOf(const mvfxInstance* instance, int32_t emitter, int32_t i)

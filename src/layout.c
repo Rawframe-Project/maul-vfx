@@ -141,66 +141,67 @@ static int32_t Snorm(float value, float top)
     return scaled < 0.0f ? -magnitude : magnitude;
 }
 
-// Component k of n records stride bytes apart, at their first's: the
-// format chosen once for the run.
-static void WriteComponents(const mvfxLayoutField* f, int32_t k, const float values[][4],
-                            const uint32_t words[][4], int32_t n, unsigned char* at,
-                            ptrdiff_t stride)
+// A value (a word for uint32) in a format at its place.
+static inline void WriteValue(mvfxFormat format, bool srgb, float value, uint32_t word,
+                              unsigned char* at)
 {
-    // Read once: the records written may alias the field to the compiler.
-    bool srgb = f->srgb && k < 3;
-    mvfxFormat format = f->format;
-    for (int32_t j = 0; j < n; ++j, at += stride)
+    uint8_t byte = 0;
+    uint16_t half = 0;
+    switch (format)
     {
-        float value = values[j][k];
-        uint8_t byte = 0;
-        uint16_t half = 0;
-        switch (format)
-        {
-        case mvfx_formatFloat32:
-            memcpy(at, &value, 4);
-            break;
-        case mvfx_formatFloat16:
-            half = mvfxHalfFromFloat(value);
-            memcpy(at, &half, 2);
-            break;
-        case mvfx_formatUnorm8:
-            byte = (uint8_t)Unorm(srgb ? ToSrgb(value) : value, 255.0f);
-            memcpy(at, &byte, 1);
-            break;
-        case mvfx_formatSnorm8:
-            byte = (uint8_t)(int8_t)Snorm(value, 127.0f);
-            memcpy(at, &byte, 1);
-            break;
-        case mvfx_formatUnorm16:
-            half = (uint16_t)Unorm(value, 65535.0f);
-            memcpy(at, &half, 2);
-            break;
-        case mvfx_formatSnorm16:
-            half = (uint16_t)(int16_t)Snorm(value, 32767.0f);
-            memcpy(at, &half, 2);
-            break;
-        default:
-            memcpy(at, &words[j][k], 4);
-            break;
-        }
+    case mvfx_formatFloat32:
+        memcpy(at, &value, 4);
+        break;
+    case mvfx_formatFloat16:
+        half = mvfxHalfFromFloat(value);
+        memcpy(at, &half, 2);
+        break;
+    case mvfx_formatUnorm8:
+        byte = (uint8_t)Unorm(srgb ? ToSrgb(value) : value, 255.0f);
+        memcpy(at, &byte, 1);
+        break;
+    case mvfx_formatSnorm8:
+        byte = (uint8_t)(int8_t)Snorm(value, 127.0f);
+        memcpy(at, &byte, 1);
+        break;
+    case mvfx_formatUnorm16:
+        half = (uint16_t)Unorm(value, 65535.0f);
+        memcpy(at, &half, 2);
+        break;
+    case mvfx_formatSnorm16:
+        half = (uint16_t)(int16_t)Snorm(value, 32767.0f);
+        memcpy(at, &half, 2);
+        break;
+    default:
+        memcpy(at, &word, 4);
+        break;
     }
 }
 
 void mvfxWriteField(const mvfxLayoutField* field, const float values[4], const uint32_t words[4],
                     unsigned char* record)
 {
-    float run[1][4] = {{values[0], values[1], values[2], values[3]}};
-    uint32_t runWords[1][4] = {{words[0], words[1], words[2], words[3]}};
-    mvfxWriteFieldRun(field, run, runWords, 1, record, 0);
+    uint32_t bytes = FormatBytes(field->format);
+    for (int32_t k = 0; k < field->components; ++k)
+    {
+        WriteValue(field->format, field->srgb && k < 3, values[k], words[k],
+                   record + field->offset + k * bytes);
+    }
 }
 
 void mvfxWriteFieldRun(const mvfxLayoutField* field, const float values[][4],
                        const uint32_t words[][4], int32_t n, unsigned char* records, int32_t stride)
 {
-    uint32_t bytes = FormatBytes(field->format);
+    // Read once: the records written may alias the field to the compiler.
+    mvfxFormat format = field->format;
+    uint32_t bytes = FormatBytes(format);
     for (int32_t k = 0; k < field->components; ++k)
     {
-        WriteComponents(field, k, values, words, n, records + field->offset + k * bytes, stride);
+        bool srgb = field->srgb && k < 3;
+        unsigned char* at = records + field->offset + k * bytes;
+        for (int32_t j = 0; j < n; ++j, at += stride)
+        {
+            WriteValue(format, srgb, values[j][k], words[j][k], at);
+        }
     }
 }
