@@ -169,6 +169,11 @@ extern "C"
         float gravity[3];
         mvfxSimulationSpace gravitySpace;
         float drag;
+        // Whether its bounds are a fixed box in the instance's space
+        // rather than measured from its particles, and the box.
+        bool fixedBounds;
+        float boundsMin[3];
+        float boundsMax[3];
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

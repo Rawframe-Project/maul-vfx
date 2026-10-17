@@ -63,7 +63,7 @@ islands at rest), gases (smoke and fire on grids) and grid liquids,
 water surfaces (waves and shallow water) that particles float in, push
 and pour into, and effect files are in place; the benchmarks and the GPU
 path come next.
-It has 100 public functions.
+It has 101 public functions.
 
 ## Building
 

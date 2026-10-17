@@ -6,14 +6,17 @@
 // holds each emitter's particles in device buffers. Each frame, after the
 // context's step, mvfxGpuSim_AddPasses adds its passes to the frame the
 // host builds, and mvfxGpuSim_Record records them once the frame is
-// compiled. Nothing is read back in a step. What it does not run yet is
-// refused when it is made.
+// compiled. Nothing is read back in a step: each emitter's statistics
+// record (its count and bounds) is the host's to read back, as late as its
+// frames lag, and mvfxGpuSim_BoundsOf maps it to the world. What it does
+// not run yet is refused when it is made.
 
 #ifndef MAUL_VFX_RHI_SIM_H
 #define MAUL_VFX_RHI_SIM_H
 
 #include "maul-rhi/resources.h"
 #include "maul-vfx-rhi/gpu.h"
+#include "maul-vfx/output.h"
 #include "maul-vfx/plan.h"
 
 #ifdef __cplusplus
@@ -55,19 +58,23 @@ extern "C"
     // An emitter's particles: a buffer of 32-bit words, arrays of the
     // capacity each, in this order: place (x, y, z), velocity (x, y, z),
     // serial (low, high word), birth tick (low, high), death tick (low,
-    // high), inverse life, a word the step uses; and a buffer of three
-    // words: the live count, then two the step uses. A world-space
-    // emitter's places are offsets from its anchor (its plan's anchor
-    // after).
+    // high), inverse life, a word the step uses; and its statistics
+    // record, MVFX_GPU_STATISTICS_WORDS words of the last recorded step:
+    // the live count first, then what the step uses and the bounds, which
+    // mvfxGpuSim_BoundsOf reads. A world-space emitter's places are
+    // offsets from its anchor (its plan's anchor after).
     typedef struct mvfxGpuParticles
     {
         mrhiBufferId particles;
-        mrhiBufferId counts;
+        mrhiBufferId statistics;
         int32_t capacity;
     } mvfxGpuParticles;
 
 // The words a particle takes in mvfxGpuParticles.particles.
 #define MVFX_GPU_PARTICLE_WORDS 14
+
+// The words of an emitter's statistics record.
+#define MVFX_GPU_STATISTICS_WORDS 28
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -148,6 +155,28 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim,
                                                                    int32_t emitter,
                                                                    mvfxGpuParticles* particlesOut);
+
+    /// Maps an emitter's statistics record, read back from its buffer any
+    /// frames after its step, to its bounds in the world as
+    /// mvfxInstance_GetBounds gives the CPU path's: its fixed box through
+    /// the instance's transform at that step; else empty with no
+    /// particles, or the box of its places at that step's end grown by the
+    /// largest size any can have, through the map to the world at that
+    /// step. The record holds that step's map, so a late read is exact
+    /// for its step.
+    ///
+    /// @param sim        The simulation.
+    /// @param emitter    The emitter's index in its effect.
+    /// @param record     The record, MVFX_GPU_STATISTICS_WORDS words.
+    /// @param boundsOut  Receives the bounds; empty on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or
+    ///         an emitter out of range.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim,
+                                                               int32_t emitter,
+                                                               const uint32_t* record,
+                                                               mvfxBounds* boundsOut);
 
 #ifdef __cplusplus
 }

@@ -565,7 +565,7 @@ static void TestView(void)
                  v->mode == mvfx_directionCone && v->direction[1] == 1.0f && v->speedMin == 2.0f &&
                  v->speedMax == 4.0f && v->coneCosine < 1.0f && v->coneCosine > 0.9f &&
                  dots[0] == 0.0f && dots[1] == 0.0f && dots[2] == 0.0f &&
-                 view.gravity[1] == -9.8f && view.drag == 0.5f;
+                 view.gravity[1] == -9.8f && view.drag == 0.5f && !view.fixedBounds;
     CHECK(plain, "the plain sprite's view");
     CHECK(mvfxEffect_GetEmitterView(context, effect, 1, &view) == mvfx_errorInvalid &&
               mvfxEffect_GetEmitterView(context, effect, -1, &view) == mvfx_errorInvalid &&
@@ -576,6 +576,21 @@ static void TestView(void)
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success &&
               mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_errorStale,
           "a stale effect");
+    // Fixed bounds: the flag and the box.
+    emitter.fixedBounds = true;
+    emitter.boundsMin[0] = -1.0f;
+    emitter.boundsMin[1] = -2.0f;
+    emitter.boundsMin[2] = -3.0f;
+    emitter.boundsMax[0] = 4.0f;
+    emitter.boundsMax[1] = 5.0f;
+    emitter.boundsMax[2] = 6.0f;
+    effect = Effect(context, &emitter);
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
+              view.fixedBounds && view.boundsMin[0] == -1.0f && view.boundsMin[1] == -2.0f &&
+              view.boundsMin[2] == -3.0f && view.boundsMax[0] == 4.0f &&
+              view.boundsMax[1] == 5.0f && view.boundsMax[2] == 6.0f,
+          "fixed bounds in the view");
+    CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "destroyed");
 
     // A part each: its bit, and only it.
     static const mvfxForce force = {.kind = mvfx_forceConstant, .vector = {1, 0, 0}};

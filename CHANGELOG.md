@@ -581,3 +581,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   within a device's limits, for capacities up to the largest an emitter
   has (2^24). `mvfxGpuSim_Record` documents the uploads a frame takes:
   320 bytes an emitter and 32 a planned birth.
+- The GPU part measures each emitter's bounds into its statistics record
+  (`mvfxGpuParticles.statistics`, which replaces `counts`), which holds
+  its step's map to the world: `mvfxGpuSim_BoundsOf` maps a record read
+  back any frames later to the bounds `mvfxInstance_GetBounds` gives
+  the CPU path, fixed boxes included. The emitter view gains the fixed
+  bounds.

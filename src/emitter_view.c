@@ -114,6 +114,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
                      .speedMax = v->speed.max},
         .gravitySpace = e->gravitySpace,
         .drag = e->drag,
+        .fixedBounds = e->fixedBounds,
     };
     for (int32_t k = 0; k < 9; ++k)
     {
@@ -127,6 +128,8 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
         viewOut->velocity.tangentA[k] = v->tangentA[k];
         viewOut->velocity.tangentB[k] = v->tangentB[k];
         viewOut->gravity[k] = e->gravity[k];
+        viewOut->boundsMin[k] = e->boundsMin[k];
+        viewOut->boundsMax[k] = e->boundsMax[k];
     }
     return mvfx_success;
 }

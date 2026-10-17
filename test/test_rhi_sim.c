@@ -133,7 +133,7 @@ static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 // The emitter's particles and counts as the GPU holds them, read back, for
 // capacities up to 2^17.
 static uint32_t s_words[MVFX_GPU_PARTICLE_WORDS * (1 << 17)];
-static uint32_t s_counts[4];
+static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
 
 static int32_t s_capacity;
 
@@ -153,7 +153,7 @@ static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
     uint64_t bytes = (uint64_t)s_capacity * MVFX_GPU_PARTICLE_WORDS * sizeof(uint32_t);
     bool recorded =
         mrhiImportBuffer(gpu->device, particles.particles, &buffers[0]) == mrhi_success &&
-        mrhiImportBuffer(gpu->device, particles.counts, &buffers[1]) == mrhi_success;
+        mrhiImportBuffer(gpu->device, particles.statistics, &buffers[1]) == mrhi_success;
     const mrhiAccess reading[2] = {{.resource = buffers[0], .kind = mrhi_accessCopySource},
                                    {.resource = buffers[1], .kind = mrhi_accessCopySource}};
     mrhiPassDef def = mrhiDefaultPassDef();
@@ -165,7 +165,7 @@ static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
                mrhiCompileFrame(gpu->device) == mrhi_success &&
                mrhiBeginPass(gpu->device, pass) == mrhi_success &&
                mrhiReadBuffer(gpu->device, pass, buffers[0], 0, bytes, &reads[0]) == mrhi_success &&
-               mrhiReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_counts, &reads[1]) ==
+               mrhiReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_record, &reads[1]) ==
                    mrhi_success &&
                mrhiEndPass(gpu->device, pass) == mrhi_success;
     if (!recorded)
@@ -179,9 +179,9 @@ static bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
            mrhiTakeReadback(gpu->device, reads[0], s_words, sizeof s_words, &taken) ==
                mrhi_success &&
            taken == bytes &&
-           mrhiTakeReadback(gpu->device, reads[1], s_counts, sizeof s_counts, &counted) ==
+           mrhiTakeReadback(gpu->device, reads[1], s_record, sizeof s_record, &counted) ==
                mrhi_success &&
-           counted == sizeof s_counts;
+           counted == sizeof s_record;
 }
 
 // A word of particle i in the read-back arrays.
@@ -207,9 +207,9 @@ static float s_velocityError;
 static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
 {
     const mvfxEmitterState* state = &cpu->emitters[e];
-    if ((int32_t)s_counts[0] != state->count || s_counts[2] != 0)
+    if ((int32_t)s_record[0] != state->count || s_record[2] != 0)
     {
-        printf("counts: GPU %u (refused %u), CPU %d\n", s_counts[0], s_counts[2], state->count);
+        printf("counts: GPU %u (refused %u), CPU %d\n", s_record[0], s_record[2], state->count);
         return false;
     }
     const uint32_t* low = mvfxAttributeArray(cpu, e, mvfx_attributeBirthLow);
@@ -242,6 +242,47 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
         {
             printf("particle %d of serial %u differs\n", i, serial[i]);
         }
+    }
+    return same;
+}
+
+// The context of a run: a CPU instance and a planned one side by side.
+static mvfxContext* s_context;
+static mvfxInstanceId s_cpu;
+static mvfxInstanceId s_planned;
+
+// The largest difference of the bounds seen over the run, relative to
+// the size.
+static double s_boundsError;
+
+// Whether the GPU's bounds, from its record, are the CPU path's.
+static bool SameBounds(const mvfxGpuSim* sim, int32_t e)
+{
+    mvfxBounds gpuBox;
+    mvfxBounds cpuBox;
+    if (mvfxGpuSim_BoundsOf(sim, e, s_record, &gpuBox) != mvfx_success ||
+        mvfxInstance_GetBounds(s_context, s_cpu, e, &cpuBox) != mvfx_success ||
+        gpuBox.empty != cpuBox.empty)
+    {
+        printf("bounds: GPU %s, CPU %s\n", gpuBox.empty ? "empty" : "a box",
+               cpuBox.empty ? "empty" : "a box");
+        return false;
+    }
+    bool same = true;
+    for (int32_t k = 0; !cpuBox.empty && k < 3; ++k)
+    {
+        double low = fabs(gpuBox.min[k] - cpuBox.min[k]) / (1.0 + fabs(cpuBox.min[k]));
+        double high = fabs(gpuBox.max[k] - cpuBox.max[k]) / (1.0 + fabs(cpuBox.max[k]));
+        double most = low > high ? low : high;
+        s_boundsError = most > s_boundsError ? most : s_boundsError;
+        same = same && most <= 1e-4;
+    }
+    if (!same)
+    {
+        printf("bounds differ: GPU (%g %g %g)-(%g %g %g), CPU (%g %g %g)-(%g %g %g)\n",
+               gpuBox.min[0], gpuBox.min[1], gpuBox.min[2], gpuBox.max[0], gpuBox.max[1],
+               gpuBox.max[2], cpuBox.min[0], cpuBox.min[1], cpuBox.min[2], cpuBox.max[0],
+               cpuBox.max[1], cpuBox.max[2]);
     }
     return same;
 }
@@ -285,10 +326,6 @@ typedef struct Run
     int32_t steps;
     int32_t least;
 } Run;
-
-static mvfxContext* s_context;
-static mvfxInstanceId s_cpu;
-static mvfxInstanceId s_planned;
 
 // Moves both instances to step s's place: along a line past the rebase
 // distance, turning about a tilted axis.
@@ -348,6 +385,7 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
     s_placeError = 0.0f;
     s_velocityError = 0.0f;
+    s_boundsError = 0.0;
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
     int32_t steps = run->steps > 0 ? run->steps : STEPS;
@@ -365,12 +403,13 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
         same = Simulate(gpu, sim);
         for (int32_t e = 0; same && e < run->emitterCount; ++e)
         {
-            same = ReadBack(gpu, sim, e) && SameAsCpu(mvfxContextInstance(s_context, s_cpu), e);
-            most[e] = (int32_t)s_counts[0] > most[e] ? (int32_t)s_counts[0] : most[e];
+            same = ReadBack(gpu, sim, e) && SameAsCpu(mvfxContextInstance(s_context, s_cpu), e) &&
+                   SameBounds(sim, e);
+            most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
     }
-    printf("%s: largest relative differences, place %g, velocity %g\n", what, (double)s_placeError,
-           (double)s_velocityError);
+    printf("%s: largest relative differences, place %g, velocity %g, bounds %g\n", what,
+           (double)s_placeError, (double)s_velocityError, s_boundsError);
     CHECK(same && most[0] >= (run->least > 0 ? run->least : 100) &&
               (run->emitterCount < 2 || most[1] > 64),
           what);
@@ -406,6 +445,16 @@ static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .clearing = true},
             "two emitters under a moving instance, cleared");
+    // Fixed bounds, a box in the instance's space, under the same motion.
+    emitters[0].fixedBounds = true;
+    emitters[0].boundsMin[0] = -1.0f;
+    emitters[0].boundsMin[1] = -0.5f;
+    emitters[0].boundsMin[2] = -2.0f;
+    emitters[0].boundsMax[0] = 3.0f;
+    emitters[0].boundsMax[1] = 4.0f;
+    emitters[0].boundsMax[2] = 0.25f;
+    Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 1, .moving = true},
+            "fixed bounds under a moving instance");
 }
 
 // Bursts larger than the capacity at one tick, and past it with the rate.
@@ -534,6 +583,31 @@ static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
             "lives past 2^32 ticks");
 }
 
+static void TestBoundsRefused(mvfxGpu* kernels)
+{
+    // Reading a record: refused for a NULL argument or an emitter out of
+    // range, the bounds empty; a record with no particles is empty.
+    mvfxEmitterDef emitter = Sprite();
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1}, &effect);
+    uint32_t record[MVFX_GPU_STATISTICS_WORDS] = {0};
+    mvfxBounds box = {.empty = false};
+    CHECK(mvfxGpuSim_BoundsOf(sim, 0, record, &box) == mvfx_success && box.empty,
+          "no particles, empty");
+    box.empty = false;
+    CHECK(mvfxGpuSim_BoundsOf(sim, 1, record, &box) == mvfx_errorInvalid && box.empty, "past");
+    box.empty = false;
+    CHECK(mvfxGpuSim_BoundsOf(sim, -1, record, &box) == mvfx_errorInvalid && box.empty, "negative");
+    box.empty = false;
+    CHECK(mvfxGpuSim_BoundsOf(NULL, 0, record, &box) == mvfx_errorInvalid && box.empty,
+          "no simulation");
+    box.empty = false;
+    CHECK(mvfxGpuSim_BoundsOf(sim, 0, NULL, &box) == mvfx_errorInvalid && box.empty, "no record");
+    CHECK(mvfxGpuSim_BoundsOf(sim, 0, record, NULL) == mvfx_errorInvalid, "no bounds");
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(s_context);
+}
+
 static void TestRefused(mvfxGpu* kernels)
 {
     // An emitter it does not run, after one it does: refused, named.
@@ -611,6 +685,7 @@ int main(void)
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);
+    TestBoundsRefused(kernels);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;

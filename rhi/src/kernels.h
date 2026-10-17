@@ -27,12 +27,13 @@ typedef enum mvfxKernel
     // An emitter's step (sim.wgsl): its live particles moved; which of
     // the plan's births have room, as the CPU path's full step decides;
     // the survivors and the births kept in order by a scan in three
-    // passes.
+    // passes; their box measured.
     mvfx_kernelUpdate = 1,
     mvfx_kernelRoom = 2,
     mvfx_kernelReduce = 3,
     mvfx_kernelOffsets = 4,
     mvfx_kernelScatter = 5,
+    mvfx_kernelMeasure = 6,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

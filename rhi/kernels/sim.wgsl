@@ -3,7 +3,7 @@
 //
 // An emitter's step on the GPU: update, room, then the survivors and the
 // births kept in order by a scan in three passes (reduce, offsets,
-// scatter). Particles are arrays of the capacity in one buffer of words
+// scatter), and their box measured. Particles are arrays of the capacity in one buffer of words
 // (WORDS a particle): place (3), velocity (3), serial (2), birth tick (2),
 // death tick (2), inverse life, and whether it outlives the step.
 
@@ -66,10 +66,13 @@ struct Step {
 @group(0) @binding(1) var<storage, read> births: array<vec4<u32>>;
 @group(0) @binding(2) var<storage, read_write> source: array<u32>;
 @group(0) @binding(3) var<storage, read_write> moved: array<u32>;
+// The statistics record (rhi/src/record.h): counts, the growth, the box.
 @group(0) @binding(4) var<storage, read_write> counts: array<u32>;
 // Whether each of the plan's births has room, as the room entry decides.
 @group(0) @binding(5) var<storage, read_write> accepted: array<u32>;
-// Each block of the sequence's count of kept elements, then its first place.
+// Each block of the sequence's count of kept elements, then its first
+// place; after them (blockCount() words on), each block's box of the
+// places scatter wrote: min then max, three binary32 words each.
 @group(0) @binding(6) var<storage, read_write> blocks: array<u32>;
 
 var<workgroup> scan: array<u32, CHUNK>;
@@ -79,6 +82,8 @@ var<workgroup> dead: u32;
 var<workgroup> batchStart: u32;
 var<workgroup> batchLength: u32;
 var<workgroup> taken: u32;
+var<workgroup> boxLow: array<vec4<f32>, CHUNK>;
+var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 
 fn pcg4dMix(v: vec4<u32>) -> vec4<u32> {
     var r = v;
@@ -318,8 +323,8 @@ fn placeAt(tick: u32, origin: ptr<function, vec3<f32>>, rotation: ptr<function, 
 }
 
 // A birth of the plan drawn, placed, and moved from its tick to the plan's
-// end, written to place at of the other buffer.
-fn spawnAt(j: u32, at: u32) {
+// end, written to place at of the other buffer; its place.
+fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     let c = params.counts.x;
     let b0 = births[2u * j];
     let b1 = births[2u * j + 1u];
@@ -358,7 +363,36 @@ fn spawnAt(j: u32, at: u32) {
     moved[DEATH * c + at] = deathLow;
     moved[(DEATH + 1u) * c + at] = deathHigh;
     moved[INVERSE_LIFE * c + at] = b1.y;
+    return moved_place;
 }
+
+// The box around a box and a place, by comparisons that pass a NaN over.
+fn lowerOf(low: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
+    return select(low, p, p < low);
+}
+
+fn higherOf(high: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
+    return select(high, p, p > high);
+}
+
+// The workgroup's box from each invocation's, by a fixed tree; whole in
+// boxLow[0] and boxHigh[0].
+fn reduceBox(local: u32, low: vec3<f32>, high: vec3<f32>) {
+    boxLow[local] = vec4<f32>(low, 0.0);
+    boxHigh[local] = vec4<f32>(high, 0.0);
+    workgroupBarrier();
+    for (var half = CHUNK / 2u; half > 0u; half >>= 1u) {
+        if (local < half) {
+            boxLow[local] = vec4<f32>(lowerOf(boxLow[local].xyz, boxLow[local + half].xyz), 0.0);
+            boxHigh[local] =
+                vec4<f32>(higherOf(boxHigh[local].xyz, boxHigh[local + half].xyz), 0.0);
+        }
+        workgroupBarrier();
+    }
+}
+
+// The empty box: min at the largest binary32, max at the least.
+const EMPTY_LOW: f32 = 3.40282347e38;
 
 // Scatter: each kept element to its place in the other buffer, its block's
 // first place and those kept before it in the block; a live particle
@@ -376,18 +410,58 @@ fn scatter(@builtin(local_invocation_index) local: u32,
         kept += keep[k];
     }
     var at = blocks[group.x] + exclusiveScan(local, kept);
+    var low = vec3<f32>(EMPTY_LOW);
+    var high = vec3<f32>(-EMPTY_LOW);
     for (var k = 0u; k < ITEMS; k++) {
         let i = first + k;
         if (keep[k] == 1u && at < c) {
+            var p = vec3<f32>(0.0);
             if (i < live) {
                 for (var w = 0u; w < ALIVE; w++) {
                     moved[w * c + at] = source[w * c + i];
                 }
+                p = readVector(0u, i, PLACE);
             } else {
-                spawnAt(i - live, at);
+                p = spawnAt(i - live, at);
             }
+            low = lowerOf(low, p);
+            high = higherOf(high, p);
         }
         at += keep[k];
+    }
+    reduceBox(local, low, high);
+    if (local == 0u) {
+        let box = blockCount() + 6u * group.x;
+        for (var k = 0u; k < 3u; k++) {
+            blocks[box + k] = bitcast<u32>(boxLow[0][k]);
+            blocks[box + 3u + k] = bitcast<u32>(boxHigh[0][k]);
+        }
+    }
+}
+
+// Measure, in one workgroup: the blocks' boxes reduced by a fixed tree to
+// the emitter's, in the particles' space, into the statistics record with
+// the growth by the largest size (1: the part runs no sizes yet).
+@compute @workgroup_size(256, 1, 1)
+fn measure(@builtin(local_invocation_index) local: u32) {
+    let n = blockCount();
+    var low = vec3<f32>(EMPTY_LOW);
+    var high = vec3<f32>(-EMPTY_LOW);
+    for (var g = local; g < n; g += CHUNK) {
+        let box = n + 6u * g;
+        low = lowerOf(low, vec3<f32>(bitcast<f32>(blocks[box]), bitcast<f32>(blocks[box + 1u]),
+                                     bitcast<f32>(blocks[box + 2u])));
+        high = higherOf(high, vec3<f32>(bitcast<f32>(blocks[box + 3u]),
+                                        bitcast<f32>(blocks[box + 4u]),
+                                        bitcast<f32>(blocks[box + 5u])));
+    }
+    reduceBox(local, low, high);
+    if (local == 0u) {
+        counts[3] = bitcast<u32>(1.0);
+        for (var k = 0u; k < 3u; k++) {
+            counts[4u + k] = bitcast<u32>(boxLow[0][k]);
+            counts[7u + k] = bitcast<u32>(boxHigh[0][k]);
+        }
     }
 }
 

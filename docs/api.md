@@ -529,7 +529,7 @@ Returns whether every kernel's pipeline is built.  @param gpu  The object. @retu
 
 ### `sim.h`
 
-A planned instance simulated on the GPU: made once from a ready GPU object, a context and an instance planned in it (maul-vfx/plan.h), it holds each emitter's particles in device buffers. Each frame, after the context's step, mvfxGpuSim_AddPasses adds its passes to the frame the host builds, and mvfxGpuSim_Record records them once the frame is compiled. Nothing is read back in a step. What it does not run yet is refused when it is made.
+A planned instance simulated on the GPU: made once from a ready GPU object, a context and an instance planned in it (maul-vfx/plan.h), it holds each emitter's particles in device buffers. Each frame, after the context's step, mvfxGpuSim_AddPasses adds its passes to the frame the host builds, and mvfxGpuSim_Record records them once the frame is compiled. Nothing is read back in a step: each emitter's statistics record (its count and bounds) is the host's to read back, as late as its frames lag, and mvfxGpuSim_BoundsOf maps it to the world. What it does not run yet is refused when it is made.
 
 ```c
 mvfxGpuSimDef mvfxDefaultGpuSimDef(void);
@@ -561,6 +561,11 @@ MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim*
 ```
 Returns an emitter's particles: the buffer the last recorded step left them in, which the host imports to draw or read them.  @param sim           The simulation. @param emitter       The emitter's index in its effect. @param particlesOut  Receives the buffers; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range. @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record, mvfxBounds* boundsOut);
+```
+Maps an emitter's statistics record, read back from its buffer any frames after its step, to its bounds in the world as mvfxInstance_GetBounds gives the CPU path's: its fixed box through the instance's transform at that step; else empty with no particles, or the box of its places at that step's end grown by the largest size any can have, through the map to the world at that step. The record holds that step's map, so a late read is exact for its step.  @param sim        The simulation. @param emitter    The emitter's index in its effect. @param record     The record, MVFX_GPU_STATISTICS_WORDS words. @param boundsOut  Receives the bounds; empty on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+
 ---
 
-100 functions across 17 headers.
+101 functions across 17 headers.
