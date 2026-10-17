@@ -157,9 +157,9 @@ static void CurlOctave(const double p[3], uint32_t seed, float curl[3])
 }
 
 // CurlOctave on a lattice that repeats every period cells along each
-// axis: a cell taken modulo the period, the period's last cell's next its
-// first. A copy, so CurlOctave keeps its plain cells' additions; the bake's
-// test holds the two to the same bits within the period.
+// axis, at a place within the period (so its cell is below it): the
+// period's last cell's next its first. A copy, so CurlOctave keeps its plain cells' additions; the
+// bake's test holds the two to the same bits within the period.
 static void PeriodicCurlOctave(const double p[3], uint32_t seed, uint32_t period, float curl[3])
 {
     float f[3];
@@ -169,7 +169,7 @@ static void PeriodicCurlOctave(const double p[3], uint32_t seed, uint32_t period
     uint32_t next[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        cell[k] = Cell(p[k], &f[k]) % period;
+        cell[k] = Cell(p[k], &f[k]);
         fade[k] = Fade(f[k]);
         slope[k] = FadeSlope(f[k]);
         next[k] = cell[k] + 1u == period ? 0u : cell[k] + 1u;

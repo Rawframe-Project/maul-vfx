@@ -226,20 +226,22 @@ static void TestOctavesScrollAndWrap(void)
 }
 
 // The bake into a periodic grid: a noise of two octaves at lacunarity 2,
-// frequency 1 so a lattice place is a place, period 4 cells over 16
-// points an axis.
+// frequency 1 so a lattice place is a place, period 4 cells over 16, 8
+// and 12 points along X, Y and Z.
 enum
 {
-    BAKE_POINTS = 16,
+    BAKE_X = 16,
+    BAKE_Y = 8,
+    BAKE_Z = 12,
     BAKE_PERIOD = 4,
-    BAKE_VALUES = 3 * BAKE_POINTS * BAKE_POINTS * BAKE_POINTS
+    BAKE_VALUES = 3 * BAKE_X * BAKE_Y * BAKE_Z
 };
 
 static float s_baked[BAKE_VALUES];
 
 static const float* BakedAt(int32_t x, int32_t y, int32_t z)
 {
-    return &s_baked[3 * ((z * BAKE_POINTS + y) * BAKE_POINTS + x)];
+    return &s_baked[3 * ((z * BAKE_Y + y) * BAKE_X + x)];
 }
 
 static void TestBakeSeam(void)
@@ -248,19 +250,19 @@ static void TestBakeSeam(void)
     // seam where the tile repeats.
     float step = 0.0f;
     float seam = 0.0f;
-    for (int32_t z = 0; z < BAKE_POINTS; ++z)
+    for (int32_t z = 0; z < BAKE_Z; ++z)
     {
-        for (int32_t y = 0; y < BAKE_POINTS; ++y)
+        for (int32_t y = 0; y < BAKE_Y; ++y)
         {
-            for (int32_t x = 0; x < BAKE_POINTS; ++x)
+            for (int32_t x = 0; x < BAKE_X; ++x)
             {
                 const float* a = BakedAt(x, y, z);
-                const float* b = BakedAt((x + 1) % BAKE_POINTS, y, z);
+                const float* b = BakedAt((x + 1) % BAKE_X, y, z);
                 for (int32_t c = 0; c < 3; ++c)
                 {
                     float d = fabsf(b[c] - a[c]);
-                    step = x + 1 < BAKE_POINTS ? fmaxf(step, d) : step;
-                    seam = x + 1 == BAKE_POINTS ? fmaxf(seam, d) : seam;
+                    step = x + 1 < BAKE_X ? fmaxf(step, d) : step;
+                    seam = x + 1 == BAKE_X ? fmaxf(seam, d) : seam;
                 }
             }
         }
@@ -274,7 +276,7 @@ static void TestBakeRefusals(const mvfxNoise* baked, const int32_t size[3])
     // Refusals write nothing.
     mvfxNoise fractional = noise;
     fractional.lacunarity = 2.5f;
-    const int32_t empty[3] = {BAKE_POINTS, 0, BAKE_POINTS};
+    const int32_t empty[3] = {BAKE_X, 0, BAKE_Z};
     s_baked[0] = 12345.0f;
     bool refused =
         mvfxBakeCurlNoise(NULL, BAKE_PERIOD, size, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
@@ -309,22 +311,22 @@ static void TestBake(void)
     noise.frequency = 1.0f;
     noise.octaves = 2;
     noise.seed = 7u;
-    const int32_t size[3] = {BAKE_POINTS, BAKE_POINTS, BAKE_POINTS};
+    const int32_t size[3] = {BAKE_X, BAKE_Y, BAKE_Z};
     CHECK(mvfxBakeCurlNoise(&noise, BAKE_PERIOD, size, s_baked, BAKE_VALUES) == mvfx_success,
           "baked");
     // Where no octave's cell is its period's last, the unbounded curl's
     // bits.
     int32_t compared = 0;
     int32_t same = 0;
-    for (int32_t z = 0; z < BAKE_POINTS; ++z)
+    for (int32_t z = 0; z < BAKE_Z; ++z)
     {
-        for (int32_t y = 0; y < BAKE_POINTS; ++y)
+        for (int32_t y = 0; y < BAKE_Y; ++y)
         {
-            for (int32_t x = 0; x < BAKE_POINTS; ++x)
+            for (int32_t x = 0; x < BAKE_X; ++x)
             {
-                const double place[3] = {(double)x * BAKE_PERIOD / BAKE_POINTS,
-                                         (double)y * BAKE_PERIOD / BAKE_POINTS,
-                                         (double)z * BAKE_PERIOD / BAKE_POINTS};
+                const double place[3] = {(double)x * BAKE_PERIOD / BAKE_X,
+                                         (double)y * BAKE_PERIOD / BAKE_Y,
+                                         (double)z * BAKE_PERIOD / BAKE_Z};
                 if (!IsInner(place))
                 {
                     continue;
@@ -337,7 +339,8 @@ static void TestBake(void)
             }
         }
     }
-    CHECK(compared == 12 * 12 * 12 && same == compared, "the unbounded curl's bits within");
+    // Within along X 12 of 16 points, along Y 6 of 8, along Z 9 of 12.
+    CHECK(compared == 12 * 6 * 9 && same == compared, "the unbounded curl's bits within");
     TestBakeSeam();
     TestBakeRefusals(&noise, size);
 }
