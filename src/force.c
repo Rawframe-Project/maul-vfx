@@ -503,7 +503,37 @@ void mvfxMapPointDouble(const mvfxSpaceMap* map, const double p[3], float out[3]
     }
 }
 
-mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force)
+// A turbulence's noise for a plan starting at time: per octave, the
+// lattice coordinate of the particles' space's origin, as mvfxCurlNoise
+// takes a place's, split into its cell and fraction.
+static void PlanNoise(const mvfxResolvedForce* force, double time, mvfxPlannedForce* out)
+{
+    const mvfxNoise* noise = &force->source->noise;
+    static const float origin[3] = {0.0f, 0.0f, 0.0f};
+    double place[3];
+    mvfxUnmapPoint(&force->map, origin, place);
+    double moved[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        moved[k] = place[k] + (double)noise->scroll[k] * time;
+        out->scroll[k] = noise->scroll[k];
+    }
+    out->octaves = noise->octaves;
+    out->seed = force->seed;
+    out->gain = noise->gain;
+    double frequency = (double)noise->frequency;
+    for (int32_t o = 0; o < noise->octaves; ++o)
+    {
+        out->frequency[o] = (float)frequency;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out->cell[o][k] = mvfxNoiseCell(moved[k] * frequency, &out->fraction[o][k]);
+        }
+        frequency *= (double)noise->lacunarity;
+    }
+}
+
+mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force, double time)
 {
     mvfxPlannedForce out = {
         .kind = force->kind,
@@ -517,6 +547,7 @@ mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force)
         .cosine = force->cosine,
         .exponent = force->exponent,
         .tightness = force->tightness,
+        .sigma = force->map.sigma,
     };
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -524,6 +555,14 @@ mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force)
         out.point[k] = force->point[k];
         out.center[k] = force->center[k];
         out.axis[k] = force->axis[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out.rotation[k] = force->map.rotation[k];
+    }
+    if (force->kind == mvfx_forceTurbulence)
+    {
+        PlanNoise(force, time, &out);
     }
     return out;
 }

@@ -18,6 +18,7 @@
 #include "maul-rhi/instance.h"
 #include "maul-rhi/resources.h"
 #include "maul-vfx-rhi/sim.h"
+#include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/plan.h"
 
@@ -330,13 +331,30 @@ typedef struct Run
     // Whether the first emitter's particles must be killed on the CPU path
     // over the run (a scene that kills).
     bool killing;
+    // Whether the instances stand still far from the origin, past where
+    // binary32 places keep a noise's lattice.
+    bool far;
+    // How fast a moving instance goes, a share of Move's (0 for all):
+    // particles a fast instance leaves behind are far from their anchor,
+    // where binary32 places cannot hold a field's detail.
+    double pace;
 } Run;
 
 // Moves both instances to step s's place: along a line past the rebase
 // distance, turning about a tilted axis.
-static void Move(int32_t s)
+// Places both instances far from the origin, still.
+static void PlaceFar(void)
 {
-    const double place[3] = {90.0 * s, 3.0 * s, -40.0 * s};
+    static const double place[3] = {100000.0, 2500.0, -60000.0};
+    static const float q[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    CHECK(mvfxInstance_SetTransform(s_context, s_cpu, place, q, 1.0f, true) == mvfx_success &&
+              mvfxInstance_SetTransform(s_context, s_planned, place, q, 1.0f, true) == mvfx_success,
+          "placed far");
+}
+
+static void Move(int32_t s, double pace)
+{
+    const double place[3] = {90.0 * pace * s, 3.0 * pace * s, -40.0 * pace * s};
     float angle = 0.03f * (float)s;
     const float q[4] = {0.6f * sinf(angle), 0.8f * sinf(angle), 0.0f, cosf(angle)};
     float scale = 1.0f + 0.01f * (float)s;
@@ -394,11 +412,15 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
     int32_t steps = run->steps > 0 ? run->steps : STEPS;
+    if (run->far)
+    {
+        PlaceFar();
+    }
     for (int32_t s = 0; same && s < steps; ++s)
     {
         if (run->moving)
         {
-            Move(s);
+            Move(s, run->pace > 0.0 ? run->pace : 1.0);
         }
         if (run->clearing && s == STEPS / 2)
         {
@@ -553,6 +575,55 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
             "the living killed by an attractor");
 }
 
+static void TestTurbulence(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Turbulence of three octaves scrolling in the instance's space, as an
+    // acceleration, under a turning, growing instance moving at a hundredth
+    // of the usual pace (at full pace the particles it leaves behind are
+    // 1,400 units from their anchor, where binary32 places differ from the
+    // CPU path's turbulence by 1e-4 of a velocity, as measured); then as a
+    // velocity everywhere (the drag every particle shares) and one in a
+    // sphere, in the world, seeded by the instance, past 4,096 units from
+    // the origin where binary32 places lose the lattice.
+    mvfxForce forces[2] = {
+        {.kind = mvfx_forceTurbulence,
+         .space = mvfx_spaceLocal,
+         .strength = 3.0f,
+         .noise = {.frequency = 1.5f,
+                   .octaves = 3,
+                   .lacunarity = 2.0f,
+                   .gain = 0.5f,
+                   .scroll = {0.4f, -0.3f, 0.2f},
+                   .seed = 9}},
+    };
+    mvfxEmitterDef emitter = Sprite();
+    emitter.forces = forces;
+    emitter.forceCount = 1;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .pace = 0.01},
+            "turbulence in the instance's space under a moving instance");
+    forces[0] = (mvfxForce){.kind = mvfx_forceTurbulence,
+                            .strength = 1.0f,
+                            .fieldMode = mvfx_fieldVelocity,
+                            .tightness = 2.0f,
+                            .noise = {.frequency = 0.7f,
+                                      .octaves = 2,
+                                      .lacunarity = 3.0f,
+                                      .gain = 0.7f,
+                                      .seed = 3,
+                                      .seedPerInstance = true}};
+    forces[1] = (mvfxForce){
+        .kind = mvfx_forceTurbulence,
+        .strength = 4.0f,
+        .fieldMode = mvfx_fieldVelocity,
+        .tightness = 1.0f,
+        .falloff = {.kind = mvfx_falloffSphere, .center = {0, 0.5f, 0}, .radius = 1.0f},
+        .noise = {.frequency = 2.0f, .octaves = 1, .lacunarity = 1.0f, .gain = 1.0f, .seed = 4}};
+    emitter.forceCount = 2;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .far = true},
+            "turbulence as velocities, far from the origin");
+}
+
 static void TestFull(Gpu* gpu, mvfxGpu* kernels)
 {
     // An emitter of 64 owed about 180 at a time, and a burst of 150 at one
@@ -688,19 +759,26 @@ static void TestBoundsRefused(mvfxGpu* kernels)
 static void TestRefused(mvfxGpu* kernels)
 {
     // An emitter it does not run, after one it does: refused, named; a
-    // kind of force it does not run yet refuses forces.
-    static const mvfxForce force = {
-        .kind = mvfx_forceTurbulence,
-        .strength = 1.0f,
-        .noise = {.frequency = 1.0f, .octaves = 1, .lacunarity = 2.0f, .gain = 0.5f}};
+    // kind of force it does not run yet (a vector field) refuses forces.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const float values[3] = {1.0f, 0.0f, 0.0f};
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.components = 3;
+    gridDef.values = values;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success, "a grid");
+    const mvfxForce force = {.kind = mvfx_forceVectorField,
+                             .strength = 1.0f,
+                             .grid = grid,
+                             .boxSize = {1, 1, 1},
+                             .boxRotation = {0, 0, 0, 1}};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
     emitters[1].forces = &force;
     emitters[1].forceCount = 1;
     emitters[1].shape.kind = mvfx_shapeBox;
     emitters[1].velocity.randomize = 0.5f;
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = emitters;
     effectDef.emitterCount = 2;
@@ -764,6 +842,7 @@ int main(void)
     TestSprite(&gpu, kernels);
     TestMoving(&gpu, kernels);
     TestForces(&gpu, kernels);
+    TestTurbulence(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

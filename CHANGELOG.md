@@ -593,3 +593,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   radius too) and vortices with their falloffs, in either space: on
   lavapipe the particles are the CPU path's every step under a moving,
   turning, growing instance.
+- The GPU part runs turbulence (curl noise, as an acceleration or a
+  velocity, scrolling, seeded per instance): a plan's turbulence holds
+  each octave's lattice coordinate of the particles' origin split into
+  a cell and a fraction, so the GPU's lattice is the CPU path's at any
+  distance from the origin.

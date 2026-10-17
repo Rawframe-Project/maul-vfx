@@ -38,7 +38,7 @@ static float FadeSlope(float t)
 // A lattice coordinate's cell, wrapped to 32 bits, and the fraction past
 // it: exact for any finite coordinate; one that is not finite (a particle
 // flown past the float range) reads as 0.
-static uint32_t Cell(double p, float* fraction)
+uint32_t mvfxNoiseCell(double p, float* fraction)
 {
     if (!isfinite(p))
     {
@@ -59,7 +59,7 @@ void mvfxGradientNoise3(const double p[3], uint32_t seed, float value[3], float 
     float slope[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        cell[k] = Cell(p[k], &f[k]);
+        cell[k] = mvfxNoiseCell(p[k], &f[k]);
         fade[k] = Fade(f[k]);
         slope[k] = FadeSlope(f[k]);
     }
@@ -112,7 +112,7 @@ static void CurlOctave(const double p[3], uint32_t seed, float curl[3])
     float slope[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        cell[k] = Cell(p[k], &f[k]);
+        cell[k] = mvfxNoiseCell(p[k], &f[k]);
         fade[k] = Fade(f[k]);
         slope[k] = FadeSlope(f[k]);
     }
@@ -169,7 +169,7 @@ static void PeriodicCurlOctave(const double p[3], uint32_t seed, uint32_t period
     uint32_t next[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        cell[k] = Cell(p[k], &f[k]);
+        cell[k] = mvfxNoiseCell(p[k], &f[k]);
         fade[k] = Fade(f[k]);
         slope[k] = FadeSlope(f[k]);
         next[k] = cell[k] + 1u == period ? 0u : cell[k] + 1u;

@@ -109,8 +109,8 @@ mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* m
                                    const float (*parameters)[4], uint32_t instanceSeed,
                                    const struct mvfxGrid* grid);
 
-// A resolved force as a plan hands it over.
-mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force);
+// A resolved force as a plan starting at time seconds hands it over.
+mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force, double time);
 
 // The drag a resolved force adds at full weight: a wind's strength, a
 // velocity field's tightness, else 0.

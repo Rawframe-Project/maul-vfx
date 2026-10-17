@@ -76,6 +76,25 @@ extern "C"
         float cosine;
         float exponent;
         float tightness;
+        // A field's map from its own space into the particles': a turn (a
+        // unit quaternion) after a scale; a place maps back by their
+        // inverse.
+        float rotation[4];
+        float sigma;
+        // A turbulence's noise for the plan: its octaves, its seed (an
+        // octave's is seed + octave * 0x9E3779B9), each octave's weight
+        // over the last's, its scroll a second in its own space; for each
+        // octave, its frequency and the lattice coordinate of the
+        // particles' space's origin at the plan's start, a 32-bit cell
+        // (wrapping) and the binary32 fraction past it. A place's
+        // coordinate adds its own, mapped back, times the frequency.
+        int32_t octaves;
+        uint32_t seed;
+        float gain;
+        float scroll[3];
+        float frequency[MVFX_MAX_OCTAVES];
+        uint32_t cell[MVFX_MAX_OCTAVES][3];
+        float fraction[MVFX_MAX_OCTAVES][3];
     } mvfxPlannedForce;
 
     // An emitter's plan for the context's last step.

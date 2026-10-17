@@ -89,9 +89,9 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 }
 
 // The features the part runs, and the kinds of force: constant, wind,
-// attractor, vortex.
+// attractor, vortex, turbulence.
 #define RUN_FEATURES (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES)
-#define RUN_FORCES   0xFu
+#define RUN_FORCES   0x1Fu
 
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)

@@ -11,10 +11,12 @@
 // them; and the refusals.
 
 #include "context.h"
+#include "direction.h"
 #include "emitter_step.h"
 #include "force.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "noise.h"
 #include "test_harness.h"
 
 #include "maul-vfx/plan.h"
@@ -663,6 +665,7 @@ static void TestView(void)
 static bool SameForce(const mvfxPlannedForce* p, const mvfxResolvedForce* r)
 {
     bool same = p->kind == r->kind && p->falloff == r->falloff && p->fieldMode == r->fieldMode &&
+                p->sigma == r->map.sigma && p->rotation[3] == r->map.rotation[3] &&
                 p->strength == r->strength && p->softening == r->softening &&
                 p->killRadius == r->killRadius && p->pull == r->pull && p->radius == r->radius &&
                 p->cosine == r->cosine && p->exponent == r->exponent &&
@@ -675,6 +678,41 @@ static bool SameForce(const mvfxPlannedForce* p, const mvfxResolvedForce* r)
     return same;
 }
 
+// Whether a turbulence's planned octaves give a place's lattice cells
+// and fractions as the CPU path takes them: the place mapped back in
+// binary32 and added, times each frequency, to the split coordinate.
+static bool SameLattice(const mvfxPlannedForce* p, const mvfxResolvedForce* r, double time)
+{
+    bool same = p->octaves == r->source->noise.octaves && p->seed == r->seed;
+    const float* q = p->rotation;
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    for (int32_t i = 0; same && i < 27; ++i)
+    {
+        const float x[3] = {(float)(i % 3) - 1.0f, (float)(i / 3 % 3) * 0.7f - 0.7f,
+                            (float)(i / 9) * 1.3f - 1.3f};
+        float turned[3];
+        mvfxRotate(inverse, x, turned);
+        double place[3];
+        mvfxUnmapPoint(&r->map, x, place);
+        double frequency = (double)r->source->noise.frequency;
+        for (int32_t o = 0; o < p->octaves; ++o)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                float fraction;
+                double moved = place[k] + (double)r->source->noise.scroll[k] * time;
+                uint32_t cell = mvfxNoiseCell(moved * frequency, &fraction);
+                float s = p->fraction[o][k] + turned[k] / p->sigma * p->frequency[o];
+                float floor = floorf(s);
+                uint32_t gpuCell = p->cell[o][k] + (uint32_t)(int32_t)floor;
+                same = same && gpuCell == cell && fabsf((s - floor) - fraction) < 1e-4f;
+            }
+            frequency *= (double)r->source->noise.lacunarity;
+        }
+    }
+    return same;
+}
+
 static void TestForces(void)
 {
     // Forces of every kind the plan carries, in both spaces, a falloff, a
@@ -683,7 +721,7 @@ static void TestForces(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxForce forces[4] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
+    mvfxForce forces[5] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
                            {.kind = mvfx_forceWind,
                             .space = mvfx_spaceLocal,
                             .vector = {0, 0, 3},
@@ -706,10 +744,20 @@ static void TestForces(void)
                             .vector = {0, 1, 0},
                             .point = {1, 0, 0},
                             .strength = 1.5f,
-                            .pull = 0.25f}};
+                            .pull = 0.25f},
+                           {.kind = mvfx_forceTurbulence,
+                            .space = mvfx_spaceLocal,
+                            .strength = 2.0f,
+                            .noise = {.frequency = 0.8f,
+                                      .octaves = 3,
+                                      .lacunarity = 2.0f,
+                                      .gain = 0.5f,
+                                      .scroll = {0.3f, -0.2f, 0.1f},
+                                      .seed = 5,
+                                      .seedPerInstance = true}}};
     mvfxEmitterDef emitter = Emitter(256);
     emitter.forces = forces;
-    emitter.forceCount = 4;
+    emitter.forceCount = 5;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
@@ -738,16 +786,18 @@ static void TestForces(void)
         mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
         const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
-        same = plan.forceCount == 4;
-        for (int32_t f = 0; same && f < 4; ++f)
+        same = plan.forceCount == 5;
+        for (int32_t f = 0; same && f < 5; ++f)
         {
             same = SameForce(&plan.forces[f], &state->forces[f]);
         }
+        double time = (double)plan.start / (double)MVFX_TICKS_PER_SECOND;
+        same = same && SameLattice(&plan.forces[4], &state->forces[4], time);
     }
     CHECK(same, "the plan's forces are the CPU path's");
     mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
-              view.forceKinds == 0xFu,
+              view.forceKinds == 0x1Fu,
           "the view's force kinds");
     mvfxDestroyContext(context);
 }

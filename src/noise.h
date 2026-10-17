@@ -15,6 +15,11 @@
 // Whether a turbulence's noise is within its ranges.
 bool mvfxIsNoiseValid(const mvfxNoise* noise);
 
+// A lattice coordinate's cell, wrapped to 32 bits, and the fraction past
+// it in binary32, as the noises take them: exact for any finite
+// coordinate; one that is not finite reads as cell 0, fraction 0.
+uint32_t mvfxNoiseCell(double p, float* fraction);
+
 // The three noises' values and gradients at p, in lattice units: each
 // within [-1, 1] or near, 0 at every lattice point.
 void mvfxGradientNoise3(const double p[3], uint32_t seed, float value[3], float gradient[3][3]);

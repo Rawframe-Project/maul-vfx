@@ -119,8 +119,26 @@ static float SharedDrag(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
     return view->drag + wind;
 }
 
-// The forces: a head (their count, whether any kills, the shared drag)
-// then 24 words each.
+// A field's 88 words: its map's turn; its octaves and seed; its scale
+// and the octaves' gain; its scroll; the octaves' frequencies (8), cells
+// (8 of 4 words) and fractions (8 of 4).
+static void Field(const mvfxPlannedForce* force, uint32_t* words)
+{
+    memcpy(words, force->rotation, 4 * sizeof(float));
+    words[4] = (uint32_t)force->octaves;
+    words[5] = force->seed;
+    Floats(words + 8, force->sigma, force->gain, 0.0f, 0.0f);
+    Floats(words + 12, force->scroll[0], force->scroll[1], force->scroll[2], 0.0f);
+    memcpy(words + 16, force->frequency, MVFX_MAX_OCTAVES * sizeof(float));
+    for (int32_t o = 0; o < MVFX_MAX_OCTAVES; ++o)
+    {
+        memcpy(words + 24 + 4 * o, force->cell[o], 3 * sizeof(uint32_t));
+        memcpy(words + 56 + 4 * o, force->fraction[o], 3 * sizeof(float));
+    }
+}
+
+// The forces: a head (their count, whether any kills, the shared drag),
+// 24 words each, then each one's field.
 static void Forces(const mvfxEmitterPlan* plan, float sharedDrag, uint32_t* words)
 {
     bool kills = false;
@@ -137,6 +155,7 @@ static void Forces(const mvfxEmitterPlan* plan, float sharedDrag, uint32_t* word
         Floats(at + 16, force->axis[0], force->axis[1], force->axis[2], force->cosine);
         Floats(at + 20, force->killRadius, force->pull, force->exponent, force->tightness);
         kills = kills || (force->kind == mvfx_forceAttractor && force->killRadius > 0.0f);
+        Field(force, words + 4 + 24 * MVFX_MAX_FORCES + 88 * f);
     }
     words[0] = (uint32_t)plan->forceCount;
     words[1] = kills ? 1u : 0u;

@@ -42,6 +42,21 @@ struct Force {
     extra: vec4<f32>,
 }
 
+// A force's field, as resolved for the plan: its map's turn into the
+// particles' space; its octaves and seed; its map's scale and the octaves'
+// gain; its scroll a second in its own space; each octave's frequency and
+// the lattice coordinate of the particles' origin at the plan's start, a
+// cell and the fraction past it.
+struct Field {
+    rotation: vec4<f32>,
+    counts: vec4<u32>,
+    scales: vec4<f32>,
+    scroll: vec4<f32>,
+    frequency: array<vec4<f32>, 2>,
+    cell: array<vec4<u32>, 8>,
+    fraction: array<vec4<f32>, 8>,
+}
+
 struct Step {
     // capacity, births, the plan's ticks, the instance's seed
     counts: vec4<u32>,
@@ -80,6 +95,7 @@ struct Step {
     // (binary32 bits), unused
     forceHead: vec4<u32>,
     forces: array<Force, 8>,
+    fields: array<Field, 8>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -215,6 +231,8 @@ fn outlives(low: u32, high: u32) -> bool {
 const FORCE_CONSTANT: u32 = 0u;
 const FORCE_WIND: u32 = 1u;
 const FORCE_ATTRACTOR: u32 = 2u;
+const FORCE_VORTEX: u32 = 3u;
+const FIELD_VELOCITY: u32 = 1u;
 const FALLOFF_NONE: u32 = 0u;
 const FALLOFF_TUBE: u32 = 2u;
 const FALLOFF_CONE: u32 = 3u;
@@ -276,9 +294,105 @@ fn swirl(f: Force, x: vec3<f32>, weight: f32) -> vec3<f32> {
     return weight * inverse * (f.vector.w * cross(u, across) - f.extra.y * across);
 }
 
-// The forces at x: gravity and their accelerations in order, and the
-// emitter's drag and what the winds add.
-fn forcesAt(x: vec3<f32>, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) {
+// The twelve edges of a cube, four repeated to fill sixteen (Perlin 2002).
+const GRADIENTS = array<vec3<f32>, 16>(
+    vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(-1.0, 1.0, 0.0), vec3<f32>(1.0, -1.0, 0.0),
+    vec3<f32>(-1.0, -1.0, 0.0), vec3<f32>(1.0, 0.0, 1.0), vec3<f32>(-1.0, 0.0, 1.0),
+    vec3<f32>(1.0, 0.0, -1.0), vec3<f32>(-1.0, 0.0, -1.0), vec3<f32>(0.0, 1.0, 1.0),
+    vec3<f32>(0.0, -1.0, 1.0), vec3<f32>(0.0, 1.0, -1.0), vec3<f32>(0.0, -1.0, -1.0),
+    vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(-1.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 1.0),
+    vec3<f32>(0.0, -1.0, -1.0));
+
+// 6 t^5 - 15 t^4 + 10 t^3 and its derivative.
+fn fade(t: vec3<f32>) -> vec3<f32> {
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+fn fadeSlope(t: vec3<f32>) -> vec3<f32> {
+    let u = t * (t - 1.0);
+    return 30.0 * u * u;
+}
+
+// One octave's curl at a lattice cell and the fraction past it: the six
+// gradient entries the curl reads, summed over the corners in the core's
+// operations and order.
+fn curlOctave(cell: vec3<u32>, f: vec3<f32>, seed: u32) -> vec3<f32> {
+    let w1 = fade(f);
+    let s1 = fadeSlope(f);
+    var g21 = 0.0;
+    var g12 = 0.0;
+    var g02 = 0.0;
+    var g20 = 0.0;
+    var g10 = 0.0;
+    var g01 = 0.0;
+    for (var corner = 0u; corner < 8u; corner++) {
+        let i = corner & 1u;
+        let j = (corner >> 1u) & 1u;
+        let k = (corner >> 2u) & 1u;
+        let h = pcg4d(vec4<u32>(cell.x + i, cell.y + j, cell.z + k, seed));
+        let d = f - vec3<f32>(f32(i), f32(j), f32(k));
+        let wx = select(1.0 - w1.x, w1.x, i != 0u);
+        let wy = select(1.0 - w1.y, w1.y, j != 0u);
+        let wz = select(1.0 - w1.z, w1.z, k != 0u);
+        let sx = select(-s1.x, s1.x, i != 0u);
+        let sy = select(-s1.y, s1.y, j != 0u);
+        let sz = select(-s1.z, s1.z, k != 0u);
+        let weight = wx * wy * wz;
+        let dw = vec3<f32>(sx * wy * wz, wx * sy * wz, wx * wy * sz);
+        let a = GRADIENTS[h.x >> 28u];
+        let b = GRADIENTS[h.y >> 28u];
+        let c = GRADIENTS[h.z >> 28u];
+        let da = a.x * d.x + a.y * d.y + a.z * d.z;
+        let db = b.x * d.x + b.y * d.y + b.z * d.z;
+        let dc = c.x * d.x + c.y * d.y + c.z * d.z;
+        g01 += dw.y * da + weight * a.y;
+        g02 += dw.z * da + weight * a.z;
+        g10 += dw.x * db + weight * b.x;
+        g12 += dw.z * db + weight * b.z;
+        g20 += dw.x * dc + weight * c.x;
+        g21 += dw.y * dc + weight * c.y;
+    }
+    return vec3<f32>(g21 - g12, g02 - g20, g10 - g01);
+}
+
+// A turbulence's curl at x, seconds after the plan's start, in its own
+// space: x mapped back, scrolled, added to each octave's split coordinate
+// times its frequency, the cell carried with 32-bit wrapping.
+fn turbulence(n: u32, x: vec3<f32>, seconds: f32) -> vec3<f32> {
+    let field = &params.fields[n];
+    let q = (*field).rotation;
+    let y = rotate(vec4<f32>(-q.xyz, q.w), x) / (*field).scales.x + (*field).scroll.xyz * seconds;
+    var curl = vec3<f32>(0.0);
+    var weight = 1.0;
+    for (var o = 0u; o < (*field).counts.x; o++) {
+        let s = (*field).fraction[o].xyz + y * (*field).frequency[o / 4u][o % 4u];
+        let whole = floor(s);
+        let cell = (*field).cell[o].xyz + bitcast<vec3<u32>>(vec3<i32>(whole));
+        curl += weight * curlOctave(cell, s - whole, (*field).counts.y + o * 0x9E3779B9u);
+        weight *= (*field).scales.y;
+    }
+    return curl;
+}
+
+// A field's vector at x added to a, or, as a velocity, its pull and its
+// drag.
+fn fieldAt(n: u32, f: Force, x: vec3<f32>, seconds: f32, weight: f32,
+           a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) {
+    let field = &params.fields[n];
+    let value = turbulence(n, x, seconds);
+    let mapped = rotate((*field).rotation, value * ((*field).scales.x * f.vector.w));
+    var scale = weight;
+    if (f.modes.z == FIELD_VELOCITY) {
+        *drag += weight * f.extra.w;
+        scale *= f.extra.w;
+    }
+    *a += scale * mapped;
+}
+
+// The forces at x, seconds after the plan's start: gravity and their
+// accelerations in order, and the emitter's drag and what the winds and
+// velocity fields add.
+fn forcesAt(x: vec3<f32>, seconds: f32, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) {
     *a = params.gravity.xyz;
     *drag = params.factors.w;
     for (var n = 0u; n < params.forceHead.x; n++) {
@@ -298,8 +412,11 @@ fn forcesAt(x: vec3<f32>, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>)
             case FORCE_ATTRACTOR: {
                 *a += attract(f, x, weight);
             }
-            default: {
+            case FORCE_VORTEX: {
                 *a += swirl(f, x, weight);
+            }
+            default: {
+                fieldAt(n, f, x, seconds, weight, a, drag);
             }
         }
     }
@@ -355,7 +472,7 @@ fn moveLive(i: u32) {
     let start = readVector(0u, i, PLACE) + params.shift.xyz;
     var a = vec3<f32>(0.0);
     var drag = 0.0;
-    forcesAt(start, &a, &drag);
+    forcesAt(start, 0.0, &a, &drag);
     let f = factorsFor(drag, f32(params.counts.z) / TICKS_PER_SECOND, true);
     let v0 = readVector(0u, i, VELOCITY);
     let p = start + v0 * f.y + a * f.z;
@@ -491,7 +608,7 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
     }
     var a = vec3<f32>(0.0);
     var drag = 0.0;
-    forcesAt(p, &a, &drag);
+    forcesAt(p, f32(b0.z) / TICKS_PER_SECOND, &a, &drag);
     let f = factorsFor(drag, f32(params.counts.z - b0.z) / TICKS_PER_SECOND, false);
     *place = p + v * f.y + a * f.z;
     *velocity = v * f.x + a * f.y;

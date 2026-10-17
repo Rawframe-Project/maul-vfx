@@ -329,7 +329,8 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     };
     for (int32_t f = 0; f < planOut->forceCount; ++f)
     {
-        planOut->forces[f] = mvfxPlannedForceOf(&state->forces[f]);
+        planOut->forces[f] = mvfxPlannedForceOf(
+            &state->forces[f], (double)live->planStart / (double)MVFX_TICKS_PER_SECOND);
     }
     for (int32_t k = 0; k < 3; ++k)
     {
