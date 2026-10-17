@@ -63,8 +63,8 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
         return;
     }
     mvfxPlanDistance(instance, emitter);
-    // The forces of the step, held over the plan.
-    mvfxResolveForces(instance, emitter);
+    // The forces and colliders of the step, held over the plan.
+    mvfxResolveEmitter(instance, emitter);
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int64_t room = 2 * (int64_t)state->capacity;

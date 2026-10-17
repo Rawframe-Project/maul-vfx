@@ -171,6 +171,30 @@ static void Forces(const mvfxEmitterPlan* plan, float sharedDrag, const uint32_t
     memcpy(&words[2], &sharedDrag, sizeof sharedDrag);
 }
 
+// The collision: a head (the colliders' count, whether a contact kills),
+// the response (restitution, friction, life loss, rest speed), then 20
+// words a collider: its kind and inside; center and radius; normal; half
+// extents; rotation.
+static void Colliders(const mvfxEmitterPlan* plan, uint32_t* words)
+{
+    words[0] = (uint32_t)plan->colliderCount;
+    words[1] = plan->killOnCollision || plan->lifeLoss >= 1.0f ? 1u : 0u;
+    Floats(words + 4, plan->restitution, plan->friction, plan->lifeLoss, plan->restSpeed);
+    for (int32_t c = 0; c < plan->colliderCount; ++c)
+    {
+        const mvfxPlannedCollider* collider = &plan->colliders[c];
+        uint32_t* at = words + 8 + 20 * c;
+        at[0] = collider->kind;
+        at[1] = collider->inside ? 1u : 0u;
+        Floats(at + 4, collider->center[0], collider->center[1], collider->center[2],
+               collider->radius);
+        Floats(at + 8, collider->normal[0], collider->normal[1], collider->normal[2], 0.0f);
+        Floats(at + 12, collider->halfExtents[0], collider->halfExtents[1],
+               collider->halfExtents[2], 0.0f);
+        memcpy(at + 16, collider->rotation, 4 * sizeof(float));
+    }
+}
+
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*gridWords)[5], uint32_t words[MVFX_STEP_WORDS])
 {
@@ -219,4 +243,5 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Place(words + 68, &plan->to, after);
     Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
     Forces(plan, sharedDrag, gridWords, words + 80);
+    Colliders(plan, words + 84 + 132 * MVFX_MAX_FORCES);
 }

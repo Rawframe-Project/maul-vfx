@@ -115,7 +115,13 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
         .gravitySpace = e->gravitySpace,
         .drag = e->drag,
         .fixedBounds = e->fixedBounds,
+        .sceneQueries = e->collision.enabled && e->collision.sceneQueries,
+        .depthImage = e->collision.enabled && e->collision.depthImage,
     };
+    for (int32_t c = 0; e->collision.enabled && c < e->colliderCount; ++c)
+    {
+        viewOut->colliderKinds |= 1u << e->colliders[c].kind;
+    }
     for (int32_t f = 0; f < e->forceCount; ++f)
     {
         viewOut->forceKinds |= 1u << e->forces[f].kind;

@@ -58,7 +58,8 @@ extern "C"
     // An emitter's particles: a buffer of 32-bit words, arrays of the
     // capacity each, in this order: place (x, y, z), velocity (x, y, z),
     // serial (low, high word), birth tick (low, high), death tick (low,
-    // high), inverse life, a word the step uses; and its statistics
+    // high), inverse life, collisions, a word the step uses; and its
+    // statistics
     // record, MVFX_GPU_STATISTICS_WORDS words of the last recorded step:
     // the live count first, then what the step uses and the bounds, which
     // mvfxGpuSim_BoundsOf reads. A world-space emitter's places are
@@ -71,7 +72,7 @@ extern "C"
     } mvfxGpuParticles;
 
 // The words a particle takes in mvfxGpuParticles.particles.
-#define MVFX_GPU_PARTICLE_WORDS 14
+#define MVFX_GPU_PARTICLE_WORDS 15
 
 // The words of an emitter's statistics record.
 #define MVFX_GPU_STATISTICS_WORDS 28
@@ -122,7 +123,9 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
     ///         `mvfx_errorStale` for an instance that is gone;
     ///         `mvfx_errorState` when the device refuses a pass or an
-    ///         import (no frame open).
+    ///         import (no frame open), or when the instance's colliders
+    ///         (mvfxInstance_SetColliders) hold a kind the part does not
+    ///         run yet (heightfields and distance grids).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);

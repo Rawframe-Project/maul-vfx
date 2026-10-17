@@ -93,18 +93,24 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
     return (mvfxGpuSimDef){.cookie = MVFX_GPU_SIM_DEF_COOKIE};
 }
 
-// The features the part runs, and the kinds of force: constant, wind,
-// attractor, vortex, turbulence, vector field.
-#define RUN_FEATURES (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES)
-#define RUN_FORCES   0x3Fu
+// The features the part runs, the kinds of force (constant, wind,
+// attractor, vortex, turbulence, vector field) and of collider (plane,
+// sphere, box).
+#define RUN_FEATURES  (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES | MVFX_FEATURE_COLLISION)
+#define RUN_FORCES    0x3Fu
+#define RUN_COLLIDERS 0x7u
 
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     const mvfxVelocityView* v = &view->velocity;
     *refusal = (mvfxGpuRefusal){
-        .features = (view->features & ~RUN_FEATURES) |
-                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0),
+        .features =
+            (view->features & ~RUN_FEATURES) |
+            ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
+            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries || view->depthImage
+                 ? MVFX_FEATURE_COLLISION
+                 : 0),
         .shape = view->shape.kind != mvfx_shapeSphere,
         .velocity = (v->mode != mvfx_directionShapeNormal && v->mode != mvfx_directionCone &&
                      v->mode != mvfx_directionFixed) ||
@@ -357,6 +363,15 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         if (emitter->capacity == 0)
         {
             continue;
+        }
+        // The instance's colliders change at any step: one the part does
+        // not run yet refuses the step.
+        for (int32_t c = 0; c < plan.colliderCount; ++c)
+        {
+            if (((1u << plan.colliders[c].kind) & RUN_COLLIDERS) == 0)
+            {
+                return mvfx_errorState;
+            }
         }
         uint32_t gridWords[MVFX_MAX_FORCES][5];
         for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)

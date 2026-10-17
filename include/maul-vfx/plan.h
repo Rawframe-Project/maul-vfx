@@ -104,6 +104,20 @@ extern "C"
         mvfxGridBorder border;
     } mvfxPlannedForce;
 
+    // A collider of an emitter as resolved for a plan's step, in the
+    // particles' space and grown by their radius: its def's meaning
+    // (mvfxCollider).
+    typedef struct mvfxPlannedCollider
+    {
+        mvfxColliderKind kind;
+        bool inside;
+        float center[3];
+        float normal[3];
+        float radius;
+        float halfExtents[3];
+        float rotation[4];
+    } mvfxPlannedCollider;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -142,6 +156,16 @@ extern "C"
         // at its place at the plan's start, each birth at its birth.
         int32_t forceCount;
         mvfxPlannedForce forces[MVFX_MAX_FORCES];
+        // Its colliders as resolved for the step, its own then the
+        // instance's (none when it does not collide), and its collision's
+        // response, the rest speed in the particles' space.
+        int32_t colliderCount;
+        mvfxPlannedCollider colliders[2 * MVFX_MAX_COLLIDERS];
+        float restitution;
+        float friction;
+        float lifeLoss;
+        float restSpeed;
+        bool killOnCollision;
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
@@ -232,6 +256,12 @@ extern "C"
         // null id for the others).
         uint32_t forceKinds;
         mvfxGridId forceGrids[MVFX_MAX_FORCES];
+        // A bit for each kind of collider of its own (1 <<
+        // mvfx_colliderPlane and so on), and whether it collides with the
+        // host's scene or a depth image.
+        uint32_t colliderKinds;
+        bool sceneQueries;
+        bool depthImage;
         // Whether its bounds are a fixed box in the instance's space
         // rather than measured from its particles, and the box.
         bool fixedBounds;

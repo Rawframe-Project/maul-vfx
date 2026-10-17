@@ -199,6 +199,9 @@ static float FloatOf(int32_t array, int32_t i)
     return f;
 }
 
+// The contacts the CPU path's particles hold, summed over a run's steps.
+static uint64_t s_contacts;
+
 // The largest differences seen, place and velocity, over the run.
 static float s_placeError;
 static float s_velocityError;
@@ -217,6 +220,10 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
     const uint32_t* high = mvfxAttributeArray(cpu, e, mvfx_attributeBirthHigh);
     const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
     const float* inverseLife = mvfxAttributeArray(cpu, e, mvfx_attributeInverseLife);
+    const mvfxAttributePlan* plan = &cpu->effect->emitters[e].plan;
+    const uint32_t* collisions = mvfxHasAttribute(plan, mvfx_attributeCollisions)
+                                     ? mvfxAttributeArray(cpu, e, mvfx_attributeCollisions)
+                                     : NULL;
     static const mvfxAttribute places[3] = {mvfx_attributePositionX, mvfx_attributePositionY,
                                             mvfx_attributePositionZ};
     static const mvfxAttribute velocities[3] = {mvfx_attributeVelocityX, mvfx_attributeVelocityY,
@@ -227,7 +234,8 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
         uint32_t lifeBits;
         memcpy(&lifeBits, &inverseLife[i], sizeof lifeBits);
         same = Word(6, i) == serial[i] && Word(8, i) == low[i] && Word(9, i) == high[i] &&
-               Word(12, i) == lifeBits;
+               Word(12, i) == lifeBits && (collisions == NULL || Word(13, i) == collisions[i]);
+        s_contacts += collisions != NULL ? collisions[i] : 0u;
         for (int32_t k = 0; k < 3; ++k)
         {
             const float* p = mvfxAttributeArray(cpu, e, places[k]);
@@ -331,6 +339,11 @@ typedef struct Run
     // Whether the first emitter's particles must be killed on the CPU path
     // over the run (a scene that kills).
     bool killing;
+    // Whether its particles must meet colliders over the run, and the
+    // instance's colliders (none for NULL).
+    bool colliding;
+    const mvfxCollider* hostColliders;
+    int32_t hostColliderCount;
     // Whether the instances stand still far from the origin, past where
     // binary32 places keep a noise's lattice.
     bool far;
@@ -454,6 +467,15 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
     s_placeError = 0.0f;
     s_velocityError = 0.0f;
+    s_contacts = 0;
+    if (run->hostColliders != NULL)
+    {
+        CHECK(mvfxInstance_SetColliders(s_context, s_cpu, run->hostColliders,
+                                        run->hostColliderCount) == mvfx_success &&
+                  mvfxInstance_SetColliders(s_context, s_planned, run->hostColliders,
+                                            run->hostColliderCount) == mvfx_success,
+              "the instance's colliders");
+    }
     s_boundsError = 0.0;
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
@@ -490,6 +512,11 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     CHECK(same && most[0] >= (run->least > 0 ? run->least : 100) &&
               (run->emitterCount < 2 || most[1] > 64),
           what);
+    if (run->colliding)
+    {
+        printf("  contacts held: %llu\n", (unsigned long long)s_contacts);
+        CHECK(s_contacts > 0, "contacts");
+    }
     if (run->killing)
     {
         const mvfxEmitterState* state = &mvfxContextInstance(s_context, s_cpu)->emitters[0];
@@ -771,6 +798,63 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
             "a box with no field past it");
 }
 
+static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A floor, a turned box and an inside sphere around them, the
+    // particles bouncing (restitution, friction, a rest speed); then life
+    // lost at each contact under a moving instance at a hundredth of the
+    // usual pace, colliders in the instance's space and the instance's
+    // own, apart (a particle rattling in a corner meets them by rounding);
+    // then a contact that kills.
+    static const mvfxCollider own[3] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -0.3f, 0}, .normal = {0, 1, 0.1f}},
+        {.kind = mvfx_colliderBox,
+         .center = {0.3f, 0.6f, 0},
+         .halfExtents = {0.3f, 0.1f, 0.4f},
+         .rotation = {0, 0, 0.38268343f, 0.92387953f}},
+        {.kind = mvfx_colliderSphere, .inside = true, .center = {0, 0.2f, 0}, .radius = 1.0f}};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.colliders = own;
+    emitter.colliderCount = 3;
+    emitter.collision = (mvfxCollision){.enabled = true,
+                                        .restitution = 0.6f,
+                                        .friction = 0.2f,
+                                        .restSpeed = 0.05f,
+                                        .radius = 0.02f};
+    emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true},
+            "a floor, a box and a sphere bounced off");
+    static const mvfxCollider local[2] = {{.kind = mvfx_colliderPlane,
+                                           .space = mvfx_spaceLocal,
+                                           .center = {0, -0.2f, 0},
+                                           .normal = {0, 1, 0}},
+                                          {.kind = mvfx_colliderBox,
+                                           .space = mvfx_spaceLocal,
+                                           .center = {-0.4f, 0.4f, 0},
+                                           .halfExtents = {0.15f, 0.15f, 0.15f},
+                                           .rotation = {0, 0, 0, 1}}};
+    static const mvfxCollider hosts[1] = {
+        {.kind = mvfx_colliderSphere, .center = {0, 0.5f, 0.4f}, .radius = 0.25f}};
+    emitter.colliders = local;
+    emitter.colliderCount = 2;
+    emitter.collision.hostColliders = true;
+    emitter.collision.lifeLoss = 0.3f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .pace = 0.01,
+                   .colliding = true,
+                   .hostColliders = hosts,
+                   .hostColliderCount = 1},
+            "life lost at contacts, the instance's colliders, a moving instance");
+    emitter.colliders = own;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true, .killOnCollision = true};
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .killing = true},
+            "a contact that kills");
+}
+
 static void TestFull(Gpu* gpu, mvfxGpu* kernels)
 {
     // An emitter of 64 owed about 180 at a time, and a burst of 150 at one
@@ -980,6 +1064,7 @@ int main(void)
     TestForces(&gpu, kernels);
     TestTurbulence(&gpu, kernels);
     TestVectorFields(&gpu, kernels);
+    TestCollision(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

@@ -8,11 +8,11 @@
 #include "collide.h"
 #include "context.h"
 #include "effect_api.h"
-#include "force.h"
 #include "grid_api.h"
 #include "instance.h"
 #include "mesh.h"
 #include "mesh_api.h"
+#include "plan_resolved.h"
 #include "rigid_wake.h"
 #include "slots.h"
 #include "spawn.h"
@@ -325,13 +325,8 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
         .birthCount = state->planCount,
         .refused = state->planRefused,
         .cleared = live->planCleared,
-        .forceCount = live->effect->emitters[emitter].forceCount,
     };
-    for (int32_t f = 0; f < planOut->forceCount; ++f)
-    {
-        planOut->forces[f] = mvfxPlannedForceOf(
-            &state->forces[f], (double)live->planStart / (double)MVFX_TICKS_PER_SECOND);
-    }
+    mvfxPlanResolved(live, emitter, planOut);
     for (int32_t k = 0; k < 3; ++k)
     {
         planOut->anchorBefore[k] = state->planAnchor[k];

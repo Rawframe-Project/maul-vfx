@@ -3,18 +3,20 @@
 //
 // An emitter's step on the GPU: update, room, then the survivors and the
 // births kept in order by a scan in three passes (reduce, offsets,
-// scatter), and their box measured. Particles are arrays of the capacity in one buffer of words
-// (WORDS a particle): place (3), velocity (3), serial (2), birth tick (2),
-// death tick (2), inverse life, and whether it outlives the step.
+// scatter), and their box measured. Particles are arrays of the capacity
+// in one buffer of words (WORDS a particle): place (3), velocity (3),
+// serial (2), birth tick (2), death tick (2), inverse life, collisions,
+// and whether it outlives the step.
 
-const WORDS: u32 = 14u;
+const WORDS: u32 = 15u;
 const PLACE: u32 = 0u;
 const VELOCITY: u32 = 3u;
 const SERIAL: u32 = 6u;
 const BIRTH: u32 = 8u;
 const DEATH: u32 = 10u;
 const INVERSE_LIFE: u32 = 12u;
-const ALIVE: u32 = 13u;
+const COLLISIONS: u32 = 13u;
+const ALIVE: u32 = 14u;
 const CHUNK: u32 = 256u;
 // The elements an invocation of the scan's reduce and scatter takes, in a
 // row; a workgroup's block is CHUNK times as many.
@@ -65,6 +67,17 @@ struct Field {
     gridModes: vec4<u32>,
 }
 
+// A collider as resolved for the step, in the particles' space: its
+// kind and whether it keeps them inside; its center and radius; a plane's
+// normal; a box's half extents and turn.
+struct Collider {
+    modes: vec4<u32>,
+    center: vec4<f32>,
+    normal: vec4<f32>,
+    halfExtents: vec4<f32>,
+    rotation: vec4<f32>,
+}
+
 struct Step {
     // capacity, births, the plan's ticks, the instance's seed
     counts: vec4<u32>,
@@ -104,6 +117,11 @@ struct Step {
     forceHead: vec4<u32>,
     forces: array<Force, 8>,
     fields: array<Field, 8>,
+    // the colliders' count, whether a contact kills, unused (2); the
+    // response: restitution, friction, life loss, rest speed
+    collisionHead: vec4<u32>,
+    response: vec4<f32>,
+    colliders: array<Collider, 16>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -555,6 +573,300 @@ fn factorsFor(drag: f32, seconds: f32, whole: bool) -> vec3<f32> {
     return factors(drag, seconds);
 }
 
+const COLLIDER_PLANE: u32 = 0u;
+const COLLIDER_SPHERE: u32 = 1u;
+const COLLIDER_BOX: u32 = 2u;
+const MAX_CONTACTS: u32 = 4u;
+const LARGEST: f32 = 3.40282347e38;
+
+fn dot3(a: vec3<f32>, b: vec3<f32>) -> f32 {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+// A contact: how far along the segment (0 for a start on the wrong side),
+// where, and the surface's normal toward the allowed side.
+struct Hit {
+    t: f32,
+    point: vec3<f32>,
+    normal: vec3<f32>,
+}
+
+fn hitPlane(c: Collider, s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> bool {
+    let n = c.normal.xyz;
+    let d0 = dot3(s - c.center.xyz, n);
+    let d1 = dot3(e - c.center.xyz, n);
+    (*hit).normal = n;
+    if (d0 < 0.0) {
+        (*hit).t = 0.0;
+        (*hit).point = s - d0 * n;
+        return true;
+    }
+    if (!(d1 < 0.0)) {
+        return false;
+    }
+    (*hit).t = d0 / (d0 - d1);
+    (*hit).point = s + (*hit).t * (e - s);
+    return true;
+}
+
+// A sphere's surface point along a direction from its center (up when the
+// direction is 0), the normal outward or inward.
+fn spherePoint(c: Collider, toward: vec3<f32>, hit: ptr<function, Hit>) {
+    var dir = toward - c.center.xyz;
+    let length = sqrt(dot3(dir, dir));
+    if (length > 0.0) {
+        dir = dir / length;
+    } else {
+        dir = vec3<f32>(0.0, 0.0, 1.0);
+    }
+    (*hit).point = c.center.xyz + c.center.w * dir;
+    (*hit).normal = select(1.0, -1.0, c.modes.y != 0u) * dir;
+}
+
+fn hitSphere(c: Collider, s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> bool {
+    let inside = c.modes.y != 0u;
+    let f = s - c.center.xyz;
+    let g = e - c.center.xyz;
+    let d = e - s;
+    let r2 = c.center.w * c.center.w;
+    let ff = dot3(f, f);
+    let outside = r2 < ff;
+    if (select(ff < r2, outside, inside)) {
+        (*hit).t = 0.0;
+        spherePoint(c, s, hit);
+        return true;
+    }
+    let crosses = !inside || dot3(g, g) > r2;
+    let a = dot3(d, d);
+    if (!crosses || !(a > 0.0)) {
+        return false;
+    }
+    let b = dot3(f, d);
+    let disc = b * b - a * (ff - r2);
+    if (!(disc >= 0.0)) {
+        return false;
+    }
+    let root = sqrt(disc);
+    let t = select((-b - root) / a, (-b + root) / a, inside);
+    if (!(t >= 0.0 && t <= 1.0)) {
+        return false;
+    }
+    (*hit).t = t;
+    spherePoint(c, s + t * d, hit);
+    return true;
+}
+
+// The axis a start inside a box is nearest a face on, or outside it
+// farthest past one.
+fn pushAxis(h: vec3<f32>, a: vec3<f32>, inside: bool) -> u32 {
+    var axis = 0u;
+    var best = select(LARGEST, -LARGEST, inside);
+    for (var k = 0u; k < 3u; k++) {
+        let room = h[k] - abs(a[k]);
+        let deeper = best < -room;
+        if (select(room < best, deeper, inside)) {
+            best = select(room, -room, inside);
+            axis = k;
+        }
+    }
+    return axis;
+}
+
+fn isInside(h: vec3<f32>, a: vec3<f32>) -> bool {
+    return abs(a.x) <= h.x && abs(a.y) <= h.y && abs(a.z) <= h.z;
+}
+
+// A box's contact in its own frame, from local start a to local end b.
+fn hitBoxLocal(h: vec3<f32>, inside: bool, a: vec3<f32>, b: vec3<f32>,
+               hit: ptr<function, Hit>) -> bool {
+    if (isInside(h, a) != inside) {
+        // A start on the wrong side: put on the surface.
+        (*hit).t = 0.0;
+        let axis = pushAxis(h, a, inside);
+        let sign = select(1.0, -1.0, a[axis] < 0.0);
+        var point = select(a, min(max(a, -h), h), inside);
+        point[axis] = sign * h[axis];
+        var normal = vec3<f32>(0.0);
+        normal[axis] = select(sign, -sign, inside);
+        (*hit).point = point;
+        (*hit).normal = normal;
+        return true;
+    }
+    if (inside && isInside(h, b)) {
+        return false;
+    }
+    var low = 0.0;
+    var high = 1.0;
+    var lowAxis = -1;
+    var highAxis = -1;
+    for (var k = 0; k < 3; k++) {
+        let d = b[k] - a[k];
+        if (d == 0.0) {
+            if (abs(a[k]) > h[k]) {
+                return false;
+            }
+            continue;
+        }
+        let t1 = (-h[k] - a[k]) / d;
+        let t2 = (h[k] - a[k]) / d;
+        let near = min(t1, t2);
+        let far = max(t1, t2);
+        lowAxis = select(lowAxis, k, near > low);
+        low = max(low, near);
+        highAxis = select(highAxis, k, far < high);
+        high = min(high, far);
+    }
+    let axis = select(lowAxis, highAxis, inside);
+    if (low > high || axis < 0) {
+        return false;
+    }
+    (*hit).t = select(low, high, inside);
+    (*hit).point = a + (*hit).t * (b - a);
+    var normal = vec3<f32>(0.0);
+    normal[axis] = select(1.0, -1.0, b[axis] - a[axis] > 0.0);
+    (*hit).normal = normal;
+    return true;
+}
+
+fn hitBox(c: Collider, s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> bool {
+    let q = c.rotation;
+    let inverse = vec4<f32>(-q.xyz, q.w);
+    let a = rotate(inverse, s - c.center.xyz);
+    let b = rotate(inverse, e - c.center.xyz);
+    var local: Hit;
+    if (!hitBoxLocal(c.halfExtents.xyz, c.modes.y != 0u, a, b, &local)) {
+        return false;
+    }
+    (*hit).t = local.t;
+    (*hit).point = rotate(q, local.point) + c.center.xyz;
+    (*hit).normal = rotate(q, local.normal);
+    return true;
+}
+
+// The segment's earliest contact with any collider.
+fn firstHit(s: vec3<f32>, e: vec3<f32>, best: ptr<function, Hit>) -> bool {
+    var found = false;
+    for (var i = 0u; i < params.collisionHead.x; i++) {
+        let c = params.colliders[i];
+        var hit: Hit;
+        var met = false;
+        switch c.modes.x {
+            case COLLIDER_PLANE: {
+                met = hitPlane(c, s, e, &hit);
+            }
+            case COLLIDER_SPHERE: {
+                met = hitSphere(c, s, e, &hit);
+            }
+            case COLLIDER_BOX: {
+                met = hitBox(c, s, e, &hit);
+            }
+            default: {
+            }
+        }
+        if (met && (!found || hit.t < (*best).t)) {
+            *best = hit;
+            found = true;
+        }
+    }
+    return found;
+}
+
+// A vector bounced off a surface: its part into it reversed by
+// restitution, its part along it cut by friction.
+fn bounce(n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
+    let into = dot3(v, n);
+    let normal = select(into, -params.response.x * into, into < 0.0);
+    let keep = 1.0 - params.response.y;
+    return normal * n + keep * (v - into * n);
+}
+
+// A move from start to place met with the colliders: the place and the
+// velocity after its contacts (at most MAX_CONTACTS), which it returns.
+fn collide(start: vec3<f32>, place: ptr<function, vec3<f32>>,
+           velocity: ptr<function, vec3<f32>>) -> u32 {
+    var s = start;
+    var contacts = 0u;
+    var hit: Hit;
+    while (contacts < MAX_CONTACTS && firstHit(s, *place, &hit)) {
+        contacts += 1u;
+        var rest = (*place - s) * (1.0 - hit.t);
+        *velocity = bounce(hit.normal, *velocity);
+        rest = bounce(hit.normal, rest);
+        // Off the surface by a hair, so the next test does not meet it again.
+        let p = hit.point;
+        let hair = 1e-6 * (1.0 + abs(p.x) + abs(p.y) + abs(p.z));
+        let stops = dot3(*velocity, *velocity) < params.response.w * params.response.w;
+        s = p + hair * hit.normal;
+        if (stops) {
+            *velocity = vec3<f32>(0.0);
+            *place = s;
+            return contacts;
+        }
+        *place = s + rest;
+    }
+    if (contacts == MAX_CONTACTS && firstHit(s, *place, &hit)) {
+        // Out of contacts with a path still into a surface: stop at it.
+        *place = hit.point;
+    }
+    return contacts;
+}
+
+// The first tick a particle born at birth (two words) reaches its life at
+// inverse life inverse: its age in binary32 (the tick difference scaled
+// by 2^-20) times the inverse; old when the life passes 2^32 ticks.
+fn deathAfter(birth: vec2<u32>, inverse: f32, old: vec2<u32>) -> vec2<u32> {
+    let span = ceil(TICKS_PER_SECOND / inverse);
+    if (!(span < 4.0e9)) {
+        return old;
+    }
+    var tick = max(u32(span), 1u);
+    for (var n = 0; n < 64 && tick > 1u && f32(tick - 1u) / TICKS_PER_SECOND * inverse >= 1.0;
+         n++) {
+        tick -= 1u;
+    }
+    for (var n = 0; n < 64 && f32(tick) / TICKS_PER_SECOND * inverse < 1.0; n++) {
+        tick += 1u;
+    }
+    let low = birth.x + tick;
+    return vec2<u32>(low, birth.y + select(0u, 1u, low < birth.x));
+}
+
+// What a move's contacts did to a particle: its contacts, whether one
+// kills it, its inverse life and death tick after the lives they took.
+struct Fate {
+    contacts: u32,
+    killed: bool,
+    inverseLife: f32,
+    death: vec2<u32>,
+}
+
+// A move from start met with the colliders, for a particle born at birth
+// with inverse life inverse, dying at death.
+fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>,
+        birth: vec2<u32>, inverse: f32, death: vec2<u32>) -> Fate {
+    var fate = Fate(0u, false, inverse, death);
+    if (params.collisionHead.x == 0u) {
+        return fate;
+    }
+    fate.contacts = collide(start, place, velocity);
+    if (fate.contacts == 0u) {
+        return fate;
+    }
+    if (params.collisionHead.y != 0u) {
+        fate.killed = true;
+        return fate;
+    }
+    let loss = params.response.z;
+    if (loss > 0.0) {
+        // Each contact takes its share of the life left.
+        for (var n = 0u; n < fate.contacts; n++) {
+            fate.inverseLife /= 1.0 - loss;
+        }
+        fate.death = deathAfter(birth, fate.inverseLife, death);
+    }
+    return fate;
+}
+
 // Update: each live particle moved, the workgroups (at most a dispatch's
 // along one axis) striding over them.
 @compute @workgroup_size(64, 1, 1)
@@ -575,15 +887,23 @@ fn moveLive(i: u32) {
     forcesAt(start, 0.0, &a, &drag);
     let f = factorsFor(drag, f32(params.counts.z) / TICKS_PER_SECOND, true);
     let v0 = readVector(0u, i, VELOCITY);
-    let p = start + v0 * f.y + a * f.z;
-    let v = v0 * f.x + a * f.y;
+    var p = start + v0 * f.y + a * f.z;
+    var v = v0 * f.x + a * f.y;
+    let birth = vec2<u32>(source[BIRTH * c + i], source[(BIRTH + 1u) * c + i]);
+    let death = vec2<u32>(source[DEATH * c + i], source[(DEATH + 1u) * c + i]);
+    let fate = meet(start, &p, &v, birth, bitcast<f32>(source[INVERSE_LIFE * c + i]), death);
     for (var k = 0u; k < 3u; k++) {
         source[(PLACE + k) * c + i] = bitcast<u32>(p[k]);
         source[(VELOCITY + k) * c + i] = bitcast<u32>(v[k]);
     }
-    source[ALIVE * c + i] = select(0u, 1u, outlives(source[DEATH * c + i],
-                                                     source[(DEATH + 1u) * c + i]) &&
-                                               !killed(start, p));
+    let count = source[COLLISIONS * c + i];
+    source[COLLISIONS * c + i] = select(count + fate.contacts, 0xFFFFFFFFu,
+                                        count > 0xFFFFFFFFu - fate.contacts);
+    source[INVERSE_LIFE * c + i] = bitcast<u32>(fate.inverseLife);
+    source[DEATH * c + i] = fate.death.x;
+    source[(DEATH + 1u) * c + i] = fate.death.y;
+    source[ALIVE * c + i] = select(0u, 1u, outlives(fate.death.x, fate.death.y) &&
+                                               !fate.killed && !killed(start, p));
 }
 
 // Adds keep's values of the workgroup in order: each invocation's sum of
@@ -688,11 +1008,23 @@ fn placeAt(tick: u32, origin: ptr<function, vec3<f32>>, rotation: ptr<function, 
     return mix(params.fromOrigin.w, params.toOrigin.w, t);
 }
 
+// A birth's tick and death tick made absolute (two words each).
+fn birthTicks(b0: vec4<u32>, b1: vec4<u32>, birth: ptr<function, vec2<u32>>,
+              death: ptr<function, vec2<u32>>) {
+    let birthLow = params.start.x + b0.z;
+    *birth = vec2<u32>(birthLow, params.start.y + select(0u, 1u, birthLow < params.start.x));
+    let deathLow = params.start.x + b0.w;
+    *death = vec2<u32>(deathLow,
+                       params.start.y + b1.x + select(0u, 1u, deathLow < params.start.x));
+}
+
 // A birth of the plan drawn, placed, and moved from its tick to the plan's
-// end under its forces at its birth place: its place and velocity then;
-// whether an attractor kills it on the way.
-fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> bool {
+// end under its forces at its birth place and met with the colliders: its
+// place and velocity then, and its fate, killed too when an attractor
+// kills it on the way.
+fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
     let b0 = births[2u * j];
+    let b1 = births[2u * j + 1u];
     var normal = vec3<f32>(0.0);
     let shapeWords = draw(SHAPE_SALT, b0.x, b0.y);
     let local_place = turnByShape(sampleSphere(shapeWords, &normal));
@@ -712,7 +1044,12 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
     let f = factorsFor(drag, f32(params.counts.z - b0.z) / TICKS_PER_SECOND, false);
     *place = p + v * f.y + a * f.z;
     *velocity = v * f.x + a * f.y;
-    return killed(p, *place);
+    var birth = vec2<u32>(0u);
+    var death = vec2<u32>(0u);
+    birthTicks(b0, b1, &birth, &death);
+    var fate = meet(p, place, velocity, birth, bitcast<f32>(b1.y), death);
+    fate.killed = fate.killed || killed(p, *place);
+    return fate;
 }
 
 // A birth written to place at of the other buffer; its place.
@@ -722,40 +1059,44 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     let b1 = births[2u * j + 1u];
     var moved_place = vec3<f32>(0.0);
     var moved_velocity = vec3<f32>(0.0);
-    _ = bornAt(j, &moved_place, &moved_velocity);
-    // The birth and death ticks made absolute.
-    let birthLow = params.start.x + b0.z;
-    let birthHigh = params.start.y + select(0u, 1u, birthLow < params.start.x);
-    let deathLow = params.start.x + b0.w;
-    let deathHigh = params.start.y + b1.x + select(0u, 1u, deathLow < params.start.x);
+    let fate = bornAt(j, &moved_place, &moved_velocity);
+    var birth = vec2<u32>(0u);
+    var death = vec2<u32>(0u);
+    birthTicks(b0, b1, &birth, &death);
     for (var k = 0u; k < 3u; k++) {
         moved[(PLACE + k) * c + at] = bitcast<u32>(moved_place[k]);
         moved[(VELOCITY + k) * c + at] = bitcast<u32>(moved_velocity[k]);
     }
     moved[SERIAL * c + at] = b0.x;
     moved[(SERIAL + 1u) * c + at] = b0.y;
-    moved[BIRTH * c + at] = birthLow;
-    moved[(BIRTH + 1u) * c + at] = birthHigh;
-    moved[DEATH * c + at] = deathLow;
-    moved[(DEATH + 1u) * c + at] = deathHigh;
-    moved[INVERSE_LIFE * c + at] = b1.y;
+    moved[BIRTH * c + at] = birth.x;
+    moved[(BIRTH + 1u) * c + at] = birth.y;
+    moved[DEATH * c + at] = fate.death.x;
+    moved[(DEATH + 1u) * c + at] = fate.death.y;
+    moved[INVERSE_LIFE * c + at] = bitcast<u32>(fate.inverseLife);
+    moved[COLLISIONS * c + at] = fate.contacts;
     return moved_place;
 }
 
-// Kill births: each birth with room an attractor kills on its way to the
-// plan's end loses its room's mark (2), so the scan keeps it not; it
-// held its room for the step, as a killed particle does until the step's
-// end. The workgroups stride over the births as update's over the
-// particles.
+// Kill births: each birth with room killed on its way to the plan's end
+// (an attractor's kill radius, a contact that kills, a contact's life loss
+// that ends its life within the plan) loses its room's mark (2), so the
+// scan keeps it not; it held its room for the step, as a killed particle
+// does until the step's end. The workgroups stride over the births as
+// update's over the particles.
 @compute @workgroup_size(64, 1, 1)
 fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (params.forceHead.y == 0u) {
+    if (params.forceHead.y == 0u && params.collisionHead.x == 0u) {
         return;
     }
     for (var j = id.x; j < params.counts.y; j += params.modes.z * 64u) {
+        if (accepted[j] != 1u) {
+            continue;
+        }
         var p = vec3<f32>(0.0);
         var v = vec3<f32>(0.0);
-        if (accepted[j] == 1u && bornAt(j, &p, &v)) {
+        let fate = bornAt(j, &p, &v);
+        if (fate.killed || !outlives(fate.death.x, fate.death.y)) {
             accepted[j] = 2u;
         }
     }

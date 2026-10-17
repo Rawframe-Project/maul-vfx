@@ -75,6 +75,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/liquid.c
     src/emitter_step.c
     src/planner.c
+    src/plan_resolved.c
     src/emitter_view.c
     src/event.c
     src/neighbor.c

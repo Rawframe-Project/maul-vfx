@@ -7,9 +7,10 @@
 // capacity does not bind, by distance too, past 32 bits of serials and
 // ticks; a held throttle's steps gathered in one plan; the anchors before
 // and after; the plan's room at one tick and in a plan; finishing at the
-// latest death; clears; the forces resolved as the CPU path resolves
-// them; and the refusals.
+// latest death; clears; the forces and colliders resolved as the CPU
+// path resolves them; and the refusals.
 
+#include "collide.h"
 #include "context.h"
 #include "direction.h"
 #include "emitter_step.h"
@@ -840,6 +841,96 @@ static void TestForces(void)
     mvfxDestroyContext(context);
 }
 
+// Whether a planned collider is the CPU path's resolved one.
+static bool SameCollider(const mvfxPlannedCollider* p, const mvfxResolvedCollider* r)
+{
+    bool same = p->kind == r->kind && p->inside == r->inside && p->radius == r->radius;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && p->center[k] == r->center[k] && p->normal[k] == r->normal[k] &&
+               p->halfExtents[k] == r->halfExtents[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && p->rotation[k] == r->rotation[k];
+    }
+    return same;
+}
+
+static void TestColliders(void)
+{
+    // A plane, an inside sphere and a turned box of its own in both spaces,
+    // and two of the instance's, a radius, under a moving, turning, growing
+    // instance: the plan's colliders and response are the CPU instance's.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Emitter(256);
+    static const mvfxCollider own[3] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}},
+        {.kind = mvfx_colliderSphere,
+         .space = mvfx_spaceLocal,
+         .inside = true,
+         .center = {0, 0.5f, 0},
+         .radius = 3.0f},
+        {.kind = mvfx_colliderBox,
+         .center = {1, 0, 0},
+         .halfExtents = {0.5f, 0.25f, 0.75f},
+         .rotation = {0, 0.6f, 0, 0.8f}}};
+    emitter.colliders = own;
+    emitter.colliderCount = 3;
+    emitter.collision = (mvfxCollision){.enabled = true,
+                                        .hostColliders = true,
+                                        .restitution = 0.5f,
+                                        .friction = 0.25f,
+                                        .lifeLoss = 0.1f,
+                                        .restSpeed = 0.2f,
+                                        .radius = 0.05f};
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    static const mvfxCollider hosts[2] = {
+        {.kind = mvfx_colliderSphere, .center = {2, 0, 0}, .radius = 0.5f},
+        {.kind = mvfx_colliderPlane,
+         .space = mvfx_spaceLocal,
+         .center = {0, 0, -2},
+         .normal = {0, 0, 1}}};
+    bool same = true;
+    for (int32_t s = 0; s < 10 && same; ++s)
+    {
+        const double origin[3] = {500.0 + 2.0 * s, 0.25 * s, 1.0};
+        const float rotation[4] = {sinf(0.04f * (float)s), 0.0f, 0.0f, cosf(0.04f * (float)s)};
+        mvfxInstanceId both[2] = {cpu, planned};
+        for (int32_t i = 0; i < 2; ++i)
+        {
+            CHECK(mvfxInstance_SetTransform(context, both[i], origin, rotation,
+                                            1.0f + 0.1f * (float)s, false) == mvfx_success &&
+                      mvfxInstance_SetColliders(context, both[i], hosts, s < 5 ? 2 : 1) ==
+                          mvfx_success,
+                  "moved");
+        }
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        mvfxEmitterPlan plan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+        const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
+        same = plan.colliderCount == (s < 5 ? 5 : 4) && plan.colliderCount == state->colliderCount;
+        for (int32_t c = 0; same && c < plan.colliderCount; ++c)
+        {
+            same = SameCollider(&plan.colliders[c], &state->colliders[c]);
+        }
+        // The rest speed scales as the instance did at the step's start.
+        same = same && plan.restitution == 0.5f && plan.friction == 0.25f &&
+               plan.lifeLoss == 0.1f && !plan.killOnCollision &&
+               plan.restSpeed == 0.2f * state->velocityModules.sigma;
+    }
+    CHECK(same, "the plan's colliders are the CPU path's");
+    mvfxEmitterView view;
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
+              view.colliderKinds == 0x7u && !view.sceneQueries && !view.depthImage,
+          "the view's colliders");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestBirths();
@@ -852,5 +943,6 @@ int main(void)
     TestCannotBePlanned();
     TestView();
     TestForces();
+    TestColliders();
     return s_failures == 0 ? 0 : 1;
 }

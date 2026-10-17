@@ -603,3 +603,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   reads. The GPU part runs vector fields (every border, binary32 and
   binary16 grids, as accelerations or velocities), uploading a grid at
   the first step and again whenever it changes.
+- A plan carries its emitter's colliders as resolved for the step (its
+  own and the instance's, `mvfxPlannedCollider`) and its collision's
+  response; the emitter view gains the kinds of its colliders and
+  whether it queries the scene or a depth image. The GPU part runs
+  collision with planes, spheres and boxes, inside and out: bounces,
+  friction, the rest speed, kills and life lost at contacts (the death
+  tick recomputed), each particle counting its collisions in a word of
+  its own (`MVFX_GPU_PARTICLE_WORDS` is 15).
