@@ -715,13 +715,110 @@ static bool SameField(const mvfxLayoutField* field, const uint8_t* cpu, const ui
     return same;
 }
 
+// Whether the run's first emitter sorts its records by place, and by
+// depth; the CPU path's scratch for its sort.
+static bool s_sorted;
+static bool s_byDepth;
+static uint64_t s_sortScratch[4096 * 16 / 8];
+
+// A record's measure from the view's eye, in binary64 from its place (a
+// binary32 vector at the layout's first field).
+static double MeasureOf(const uint8_t* record)
+{
+    float place[3];
+    memcpy(place, record, sizeof place);
+    double measure = 0.0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double d = (double)place[k] - (s_view.eye[k] - s_view.origin[k]);
+        measure += s_byDepth ? d * (double)s_view.forward[k] : d * d;
+    }
+    return measure;
+}
+
+// The serial of a record, a word at its serial field's offset.
+static uint32_t SerialOf(const uint8_t* record)
+{
+    uint32_t serial = 0;
+    for (int32_t f = 0; f < s_layoutView.fieldCount; ++f)
+    {
+        if (s_layoutView.fields[f].field == mvfx_recordSerial)
+        {
+            memcpy(&serial, record + s_layoutView.fields[f].offset, sizeof serial);
+        }
+    }
+    return serial;
+}
+
+// The CPU path's records by serial: each one's serial and place.
+typedef struct Serial
+{
+    uint32_t serial;
+    int64_t record;
+} Serial;
+
+static Serial s_serials[RECORD_BYTES / 64];
+
+static int BySerial(const void* a, const void* b)
+{
+    uint32_t x = ((const Serial*)a)->serial;
+    uint32_t y = ((const Serial*)b)->serial;
+    return (x > y) - (x < y);
+}
+
+// The CPU path's record of a serial (NULL for none).
+static const uint8_t* CpuRecordOf(uint32_t serial, int64_t written)
+{
+    Serial key = {.serial = serial};
+    const Serial* found = bsearch(&key, s_serials, (size_t)written, sizeof key, BySerial);
+    return found != NULL ? s_cpuRecords + 64 + found->record * s_layoutView.stride : NULL;
+}
+
+// Each of the GPU's records against the CPU path's of its serial: the
+// measures at each place the same within 1e-5 (so the orders differ only
+// where measures do by less); a serial the CPU path did not write only at
+// the cut, within that of the last record's measure.
+static bool SameSorted(int64_t written)
+{
+    uint32_t stride = s_layoutView.stride;
+    for (int64_t c = 0; c < written; ++c)
+    {
+        s_serials[c] = (Serial){.serial = SerialOf(s_cpuRecords + 64 + c * stride), .record = c};
+    }
+    qsort(s_serials, (size_t)written, sizeof s_serials[0], BySerial);
+    bool same = true;
+    for (int64_t r = 0; same && r < written; ++r)
+    {
+        const uint8_t* gpu = s_gpuRecords + 64 + r * stride;
+        double cpuMeasure = MeasureOf(s_cpuRecords + 64 + r * stride);
+        same = fabs(MeasureOf(gpu) - cpuMeasure) <= 1e-5 * (1.0 + fabs(cpuMeasure));
+        const uint8_t* cpu = CpuRecordOf(SerialOf(gpu), written);
+        double last = MeasureOf(s_cpuRecords + 64 + (written - 1) * stride);
+        same = same && (cpu != NULL || (written == s_recordCapacity &&
+                                        fabs(MeasureOf(gpu) - last) <= 1e-5 * (1.0 + fabs(last))));
+        for (int32_t f = 0; same && cpu != NULL && f < s_layoutView.fieldCount; ++f)
+        {
+            same = SameField(&s_layoutView.fields[f], cpu, gpu);
+        }
+        if (!same)
+        {
+            printf("sorted record %lld of %lld differs\n", (long long)r, (long long)written);
+        }
+    }
+    return same;
+}
+
 // The GPU's records and count against the CPU path's: each record's
-// fields, every other byte the fill's.
+// fields (in the same order, or by serial where sorted), every other byte
+// the fill's.
 static bool SameRecords(void)
 {
     int64_t count = 0;
+    int64_t scratch = 0;
     memset(s_cpuRecords, RECORD_FILL, sizeof s_cpuRecords);
-    if (mvfxInstance_WriteParticles(s_context, s_cpu, 0, s_layout, &s_view, NULL, 0,
+    if (mvfxInstance_GetSortScratchBytes(s_context, s_cpu, 0, &scratch) != mvfx_success ||
+        scratch > (int64_t)sizeof s_sortScratch ||
+        mvfxInstance_WriteParticles(s_context, s_cpu, 0, s_layout, &s_view, s_sortScratch, scratch,
                                     s_cpuRecords + 64, s_recordCapacity, &count) != mvfx_success)
     {
         return false;
@@ -742,7 +839,7 @@ static bool SameRecords(void)
         for (int32_t f = 0; same && f < s_layoutView.fieldCount; ++f)
         {
             const mvfxLayoutField* field = &s_layoutView.fields[f];
-            same = SameField(field, cpu, gpu);
+            same = s_sorted || SameField(field, cpu, gpu);
             for (uint32_t b = 0; b < FieldBytes(field->format) * field->components; ++b)
             {
                 covered[field->offset + b] = true;
@@ -757,7 +854,7 @@ static bool SameRecords(void)
             printf("record %lld of %lld differs\n", (long long)r, (long long)written);
         }
     }
-    return same;
+    return same && (!s_sorted || SameSorted(written));
 }
 
 static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
@@ -905,9 +1002,11 @@ typedef struct Run
     const mvfxSpawnRequest* spawn;
     // A layout the first emitter's records are written in by both paths
     // and compared every step (none for NULL), and the most records the
-    // buffer holds.
+    // buffer holds; whether a sort by place must keep the CPU path's
+    // order exactly (every key tied).
     const mvfxLayoutDef* layout;
     int64_t recordCapacity;
+    bool tied;
 } Run;
 
 // Queues a run's host particles for both instances at step s: a little
@@ -1091,6 +1190,8 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     {
         CHECK(OpenRecords(gpu, run->layout, run->recordCapacity), "the records' buffers");
     }
+    s_sorted = run->emitters[0].sortMode >= mvfx_sortBackToFront && !run->tied;
+    s_byDepth = run->emitters[0].sortMeasure == mvfx_sortByDepth;
     s_placeError = 0.0f;
     s_velocityError = 0.0f;
     s_contacts = 0;
@@ -1864,6 +1965,74 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
             "records in the instance's space, fewer than the particles");
 }
 
+static void TestSortedRecords(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Records youngest first; back to front by distance in the world's
+    // space over blocks of the sort's (thousands of particles); front to
+    // back by depth in the instance's space, cut at fewer records than
+    // particles; and keys all tied (every particle at one place), which
+    // keep the pool's order exactly, back to front.
+    static const mvfxLayoutField fields[5] = {
+        {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
+        {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 12},
+        {.field = mvfx_recordColor,
+         .format = mvfx_formatUnorm8,
+         .components = 4,
+         .srgb = true,
+         .offset = 16},
+        {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 2, .offset = 20},
+        {.field = mvfx_recordAge, .format = mvfx_formatUnorm16, .components = 1, .offset = 24}};
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = fields;
+    layout.fieldCount = 5;
+    layout.stride = 28;
+    mvfxEmitterDef emitter = Sprite();
+    emitter.color = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.2f, 0.2f, 0.2f, 1}, .max = {1, 1, 1, 1}};
+    emitter.sortMode = mvfx_sortYoungestFirst;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY},
+            "records youngest first");
+    emitter.capacity = 4096;
+    emitter.rate = 9000.0f;
+    emitter.space = mvfx_spaceWorld;
+    emitter.sortMode = mvfx_sortBackToFront;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .least = 2000,
+                   .moving = true,
+                   .pace = 0.1,
+                   .layout = &layout,
+                   .recordCapacity = 4096},
+            "records back to front by distance, over blocks");
+    emitter = Sprite();
+    emitter.sortMode = mvfx_sortFrontToBack;
+    emitter.sortMeasure = mvfx_sortByDepth;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 60},
+            "records front to back by depth, cut");
+    emitter.shape.radius = 0;
+    emitter.velocity.speed = (mvfxRange){0, 0};
+    emitter.motion.gravity[1] = 0;
+    emitter.sortMode = mvfx_sortBackToFront;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .tied = true},
+            "records of tied keys in the pool's order");
+}
+
 static void TestKillRules(Gpu* gpu, mvfxGpu* kernels)
 {
     // Each kind of kill rule alone kills, the particles' paths through
@@ -2414,8 +2583,9 @@ static void TestRecordsRefused(Gpu* gpu, mvfxGpu* kernels)
 {
     // A records def refused: a NULL argument, a def without its cookie, an
     // emitter out of range, no buffer, an offset or count offset not a
-    // multiple of 4, a negative capacity, a view out of range, a layout
-    // gone, a stride not a multiple of 4 or a ribbon field; past the
+    // multiple of 4, a negative capacity, a view's origin or eye out of
+    // range or its directions not finite, a layout gone, a stride not a
+    // multiple of 4 or a ribbon field; past the
     // passes an emitter takes in a frame, its limit. Then an emitter left
     // out at the instance's quality level: a count of 0, no record.
     mvfxEmitterDef emitter = Sprite();
@@ -2455,8 +2625,8 @@ static void TestRecordsRefused(Gpu* gpu, mvfxGpu* kernels)
               mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
               mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success,
           "a buffer");
-    mvfxGpuRecordsDef bad[11];
-    for (int32_t i = 0; i < 11; ++i)
+    mvfxGpuRecordsDef bad[14];
+    for (int32_t i = 0; i < 14; ++i)
     {
         bad[i] = RecordsDef(resource, good);
     }
@@ -2471,8 +2641,11 @@ static void TestRecordsRefused(Gpu* gpu, mvfxGpu* kernels)
     bad[8].layout = uneven;
     bad[9].layout = width;
     bad[10].layout = gone;
+    bad[11].view.eye[2] = -0x1p53;
+    bad[12].view.forward[0] = NAN;
+    bad[13].view.up[1] = INFINITY;
     int32_t refused = 0;
-    for (int32_t i = 0; i < 11; ++i)
+    for (int32_t i = 0; i < 14; ++i)
     {
         mvfxResult result = mvfxGpuSim_AddRecords(sim, &bad[i]);
         refused += result == (i == 10 ? mvfx_errorStale : mvfx_errorInvalid) ? 1 : 0;
@@ -2483,7 +2656,7 @@ static void TestRecordsRefused(Gpu* gpu, mvfxGpu* kernels)
     {
         added += mvfxGpuSim_AddRecords(sim, &valid) == mvfx_success ? 1 : 0;
     }
-    CHECK(refused == 11 && mvfxGpuSim_AddRecords(NULL, &valid) == mvfx_errorInvalid &&
+    CHECK(refused == 14 && mvfxGpuSim_AddRecords(NULL, &valid) == mvfx_errorInvalid &&
               mvfxGpuSim_AddRecords(sim, NULL) == mvfx_errorInvalid &&
               added == MVFX_GPU_RECORD_PASSES &&
               mvfxGpuSim_AddRecords(sim, &valid) == mvfx_errorLimit,
@@ -2723,6 +2896,7 @@ int main(void)
     TestTurns(&gpu, kernels);
     TestModules(&gpu, kernels);
     TestKillRules(&gpu, kernels);
+    TestSortedRecords(&gpu, kernels);
     TestSpawning(&gpu, kernels);
     TestHostSpawn(&gpu, kernels);
     TestRecords(&gpu, kernels);

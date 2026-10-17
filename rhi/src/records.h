@@ -2,7 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // An emitter's record passes: each a transfer pass writing its
-// numbers and a compute pass writing the records into the host's buffer.
+// numbers, for a sort by place a keys pass and four radix passes of two
+// kernels each, and a compute pass writing the records into the host's
+// buffer.
 
 #ifndef MAUL_VFX_RHI_SRC_RECORDS_H
 #define MAUL_VFX_RHI_SRC_RECORDS_H
@@ -12,9 +14,14 @@
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
 
+// The radix passes of a sort, 8 bits each.
+#define MVFX_SORT_PASSES 4
+
 // The frame's resources a record pass reads and writes: the particles,
 // the statistics record, the grids (the baked tables), the host's
-// records and count (its own word where the host gives none).
+// records and count (its own word where the host gives none), the sort's
+// keys and indices and its digit counts (the simulation's own words for
+// an emitter that does not sort).
 typedef struct mvfxRecordResources
 {
     mrhiResourceId particles;
@@ -22,15 +29,31 @@ typedef struct mvfxRecordResources
     mrhiResourceId grids;
     mrhiResourceId records;
     mrhiResourceId count;
+    mrhiResourceId sort;
+    mrhiResourceId digits;
 } mvfxRecordResources;
+
+// The pipelines record passes run: the records', the keys', and a radix
+// pass's offsets' and scatter's.
+typedef struct mvfxRecordPipelines
+{
+    mrhiComputePipelineId records;
+    mrhiComputePipelineId keys;
+    mrhiComputePipelineId offsets;
+    mrhiComputePipelineId scatter;
+} mvfxRecordPipelines;
 
 // A record pass added to the frame open: its passes (only the transfer
 // pass, writing a count of 0, for an emitter without particles at the
-// instance's quality level), resources, numbers and workgroups.
+// instance's quality level; the sort's for one that sorts), resources,
+// numbers and workgroups.
 typedef struct mvfxRecordPass
 {
     bool empty;
+    bool sorted;
     mrhiPassId write;
+    mrhiPassId keys;
+    mrhiPassId radix[2 * MVFX_SORT_PASSES];
     mrhiPassId kernel;
     mrhiResourceId numbers;
     mvfxRecordResources resources;
@@ -65,9 +88,9 @@ bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
 bool mvfxAddEmptyRecordPass(mrhiDevice* device, mvfxRecordPasses* passes, mrhiResourceId count,
                             uint32_t word);
 
-// Records the passes added, the pipeline the record kernel's, and lets
-// them go; false when the device refuses a command.
-bool mvfxRecordRecordPasses(mrhiDevice* device, mrhiComputePipelineId pipeline,
+// Records the passes added and lets them go; false when the device
+// refuses a command.
+bool mvfxRecordRecordPasses(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
                             mvfxRecordPasses* passes);
 
 #endif

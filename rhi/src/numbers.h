@@ -94,7 +94,26 @@ typedef struct mvfxStepTables
 void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECORD_LIVES]);
 
 // The words of a record pass's numbers (records.wgsl's Records).
-#define MVFX_RECORD_WORDS 476
+#define MVFX_RECORD_WORDS 488
+
+// The orders a record pass writes in: the pool's, its reverse, or sorted
+// by place.
+#define MVFX_ORDER_POOL     0u
+#define MVFX_ORDER_REVERSED 1u
+#define MVFX_ORDER_SORTED   2u
+
+// An emitter's order for its records.
+uint32_t mvfxRecordOrder(const mvfxEmitterView* view);
+
+// The first word of a record pass's order words: the order, the sort's
+// measure and flip, the sort's workgroups.
+#define MVFX_RECORD_ORDER 476
+
+// The elements of a sort's block; the blocks of a capacity. An emitter
+// that sorts keeps keys and indices twice over its blocks (4 words an
+// element) and two sets of digit counts (256 words a block each).
+#define MVFX_SORT_BLOCK 1024u
+uint32_t mvfxSortBlocks(int32_t capacity);
 
 // Whether a layout is one the record pass writes: its stride a multiple of
 // 4 bytes, no ribbon or neighbor field.
@@ -103,7 +122,8 @@ bool mvfxIsRecordLayout(const mvfxLayoutView* layout);
 // Writes a record pass's numbers: the particle buffer's capacity, the
 // records' place, count and layout, the clock at the plan's end, where a
 // particle's values are, the map into the view's space, the values over
-// life and their tables, the sRGB steps.
+// life and their tables, the sRGB steps, the order and what a sort
+// measures from the eye.
 void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxLayoutView* layout, const mvfxGpuRecordsDef* def,
                        const mvfxStepTables* tables, const float srgb[MVFX_SRGB_STEPS],

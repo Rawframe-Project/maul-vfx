@@ -84,8 +84,11 @@ typedef struct Emitter
     uint32_t map[MVFX_RECORD_MAP_WORDS];
     const mvfxPlannedBirth* plannedBirths;
     int32_t birthCount;
-    // Its record passes of the frame open.
+    // Its record passes of the frame open, and its sort's keys and indices
+    // and digit counts when it sorts by place.
     mvfxRecordPasses records;
+    mrhiBufferId sort;
+    mrhiBufferId digits;
     // Its host births in the kernels' form, room for its host queue's.
     uint32_t* hostWords;
     int32_t hostCount;
@@ -111,9 +114,13 @@ struct mvfxGpuSim
     mrhiResourceId hostNormals;
     mrhiResourceId bound[2];
     // The sRGB steps records write bytes by, and a word of its own a
-    // record pass's count goes to where the host asks for none.
+    // record pass's count goes to where the host asks for none; words of
+    // its own a record pass binds for the sort of an emitter that does
+    // not sort.
     float srgb[MVFX_SRGB_STEPS];
     mrhiBufferId ownCount;
+    mrhiBufferId ownSort;
+    mrhiBufferId ownDigits;
 };
 
 // The parts of the depth and normal textures the kernels read.
@@ -136,7 +143,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE | MVFX_FEATURE_ANGLE |                       \
      MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE | MVFX_FEATURE_VELOCITY_MODULES |          \
      MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
-     MVFX_FEATURE_HOST_SPAWN)
+     MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -225,6 +232,19 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
                         written, &emitter->grids);
 }
 
+// Creates an emitter's sort buffers when it sorts by place: keys and
+// indices twice over its blocks, and two sets of digit counts.
+static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
+{
+    if (mvfxRecordOrder(view) != MVFX_ORDER_SORTED)
+    {
+        return true;
+    }
+    uint64_t blocks = mvfxSortBlocks(emitter->capacity);
+    return CreateBuffer(sim, 16u * blocks * MVFX_SORT_BLOCK, mrhi_bufferStorage, &emitter->sort) &&
+           CreateBuffer(sim, 2u * 256u * blocks * 4u, mrhi_bufferStorage, &emitter->digits);
+}
+
 // Creates the simulation's own 1-pixel textures.
 static bool CreateTextures(mvfxGpuSim* sim)
 {
@@ -298,7 +318,8 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
         LayTables(&sim->views[e], emitter);
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
-        (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records)))
+        (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
+         !CreateSortBuffers(sim, &sim->views[e], emitter)))
     {
         result = mvfx_errorState;
     }
@@ -353,7 +374,9 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     }
     mvfxSrgbSteps(sim->srgb);
     if (result == mvfx_success &&
-        (!CreateTextures(sim) || !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownCount)))
+        (!CreateTextures(sim) || !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownCount) ||
+         !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownSort) ||
+         !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownDigits)))
     {
         result = mvfx_errorState;
     }
@@ -397,9 +420,13 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->blocks);
         DestroyBuffer(sim, emitter->grids);
         mvfxDestroyRecordBuffers(sim->device, &emitter->records);
+        DestroyBuffer(sim, emitter->sort);
+        DestroyBuffer(sim, emitter->digits);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
     }
     DestroyBuffer(sim, sim->ownCount);
+    DestroyBuffer(sim, sim->ownSort);
+    DestroyBuffer(sim, sim->ownDigits);
     mrhiTextureId textures[2] = {sim->ownDepth, sim->ownNormals};
     for (int32_t t = 0; t < 2; ++t)
     {
@@ -695,7 +722,9 @@ static bool IsRecordsDefValid(const mvfxGpuSim* sim, const mvfxGpuRecordsDef* de
     bool within = true;
     for (int32_t k = 0; k < 3; ++k)
     {
-        within = within && fabs(def->view.origin[k]) <= 0x1p52;
+        within = within && fabs(def->view.origin[k]) <= 0x1p52 &&
+                 fabs(def->view.eye[k]) <= 0x1p52 && isfinite(def->view.forward[k]) &&
+                 isfinite(def->view.up[k]);
     }
     return def->cookie == MVFX_GPU_RECORDS_DEF_COOKIE && def->emitter >= 0 &&
            def->emitter < sim->emitterCount && def->records.index1 != 0 && def->offset % 4u == 0 &&
@@ -760,9 +789,14 @@ mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
                    : mvfx_errorState;
     }
     mvfxRecordResources resources = {.records = def->records, .count = def->count};
+    bool sorts = emitter->sort.index1 != 0;
     if (!RecordInputs(sim, emitter, &resources) ||
         (def->count.index1 == 0 &&
-         mrhiImportBuffer(sim->device, sim->ownCount, &resources.count) != mrhi_success))
+         mrhiImportBuffer(sim->device, sim->ownCount, &resources.count) != mrhi_success) ||
+        mrhiImportBuffer(sim->device, sorts ? emitter->sort : sim->ownSort, &resources.sort) !=
+            mrhi_success ||
+        mrhiImportBuffer(sim->device, sorts ? emitter->digits : sim->ownDigits,
+                         &resources.digits) != mrhi_success)
     {
         return mvfx_errorState;
     }
@@ -803,13 +837,17 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
     {
         return mvfx_errorInvalid;
     }
+    const mvfxRecordPipelines pipelines = {
+        .records = mvfxGpuPipeline(sim->gpu, mvfx_kernelRecords),
+        .keys = mvfxGpuPipeline(sim->gpu, mvfx_kernelKeys),
+        .offsets = mvfxGpuPipeline(sim->gpu, mvfx_kernelSortOffsets),
+        .scatter = mvfxGpuPipeline(sim->gpu, mvfx_kernelSortScatter)};
     for (int32_t e = 0; e < sim->emitterCount; ++e)
     {
         Emitter* emitter = &sim->emitters[e];
         // The step's passes, then the record passes after them.
         if (!RecordStep(sim, emitter) ||
-            !mvfxRecordRecordPasses(sim->device, mvfxGpuPipeline(sim->gpu, mvfx_kernelRecords),
-                                    &emitter->records))
+            !mvfxRecordRecordPasses(sim->device, &pipelines, &emitter->records))
         {
             return mvfx_errorState;
         }

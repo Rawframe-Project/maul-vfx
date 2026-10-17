@@ -91,7 +91,9 @@ extern "C"
     MVFX_RHI_API mvfxGpuSimDef mvfxDefaultGpuSimDef(void);
 
     /// Makes a simulation of a planned instance: each emitter's buffers on
-    /// the GPU object's device.
+    /// the GPU object's device; an emitter that sorts its records by place
+    /// keeps 16 bytes a particle of its capacity and 2,048 a block of 1,024
+    /// of them for the sort.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -193,8 +195,10 @@ extern "C"
         // multiple of 4 bytes, no ribbon or neighbor field.
         int32_t emitter;
         mvfxLayoutId layout;
-        // The view positions are made relative to (its origin; each
-        // coordinate at most 2^52 in size).
+        // The view positions are made relative to (its origin) and a sort
+        // by place measures from (its eye and forward direction): each
+        // coordinate of the origin and the eye at most 2^52 in size, the
+        // directions finite.
         mvfxView view;
         // A storage buffer of the frame open the records go into, from a
         // byte that is a multiple of 4, at most capacity of them.
@@ -221,7 +225,10 @@ extern "C"
 
     /// Adds the passes writing an emitter's records to the frame the host
     /// builds, as mvfxInstance_WriteParticles writes them on the CPU path,
-    /// in the pool's order: a transfer pass and a compute pass, after the
+    /// in the emitter's order: a transfer pass and a compute pass, and 9
+    /// compute passes more for a sort by place (the view's eye and forward
+    /// direction its measure's, keys within units in the last place of the
+    /// CPU path's, so particles that close may trade places), after the
     /// step's passes of the frame (mvfxGpuSim_AddPasses) or, without them,
     /// reading the particles the last recorded step left; mvfxGpuSim_Record
     /// records them, and the next mvfxGpuSim_AddPasses lets go of those of
@@ -235,7 +242,8 @@ extern "C"
     ///         def without its cookie, an emitter out of range, a layout
     ///         whose stride is not a multiple of 4 or with a field the part
     ///         does not write, an offset not a multiple of 4, a negative
-    ///         capacity, a null records buffer, or a view out of range;
+    ///         capacity, a null records buffer, or a view whose origin or
+    ///         eye is out of range or whose directions are not finite;
     ///         `mvfx_errorStale` for a layout or an instance that is gone;
     ///         `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the
     ///         emitter this frame; `mvfx_errorState` when the device refuses

@@ -17,6 +17,7 @@ typedef enum mvfxContainer
     mvfx_containerPcg4d = 0,
     mvfx_containerSim = 1,
     mvfx_containerRecords = 2,
+    mvfx_containerSort = 3,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -39,6 +40,11 @@ typedef enum mvfxKernel
     mvfx_kernelKillBirths = 7,
     // An emitter's records in a layout of the host's (records.wgsl).
     mvfx_kernelRecords = 8,
+    // A sort by place: each live particle's key (records.wgsl), then a
+    // radix pass's offsets and scatter (sort.wgsl).
+    mvfx_kernelKeys = 9,
+    mvfx_kernelSortOffsets = 10,
+    mvfx_kernelSortScatter = 11,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

@@ -509,6 +509,10 @@ extern "C"
         int32_t hostSpawnCapacity;
         // Its values over life as its records show them.
         mvfxOverLifeView overLife;
+        // The order its records are written in for a view, and what a sort
+        // by place measures.
+        mvfxSortMode sortMode;
+        mvfxSortMeasure sortMeasure;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

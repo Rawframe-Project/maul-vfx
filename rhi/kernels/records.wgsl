@@ -3,10 +3,20 @@
 //
 // An emitter's records: each live particle's values in a layout of the
 // host's, written into a buffer of the host's as the CPU path's
-// mvfxInstance_WriteParticles writes them, one invocation a record.
+// mvfxInstance_WriteParticles writes them, one invocation a record, in the
+// pool's order, its reverse, or sorted (keys here, sort.wgsl's passes).
 
 const NONE: u32 = 0xFFFFFFFFu;
 const CURVE_SAMPLES: u32 = 256u;
+
+const ORDER_REVERSED: u32 = 1u;
+const ORDER_SORTED: u32 = 2u;
+const MEASURE_DEPTH: u32 = 1u;
+
+// A sort's block, as sort.wgsl's: CHUNK invocations of ITEMS elements.
+const CHUNK: u32 = 256u;
+const ITEMS: u32 = 4u;
+const BLOCK: u32 = CHUNK * ITEMS;
 
 const FIELD_POSITION: u32 = 0u;
 const FIELD_SIZE: u32 = 1u;
@@ -93,6 +103,14 @@ struct Records {
     // The fields: kind, format, components | custom << 8 | sRGB << 16,
     // byte offset.
     fields: array<vec4<u32>, 32>,
+    // The order: the pool's, reversed or sorted by place; what a sort
+    // measures (the distance squared or the depth); the keys' flip (all
+    // ones back to front); the sort's workgroups.
+    order: vec4<u32>,
+    // The eye's offset from the view's origin; the view's forward
+    // direction.
+    eye: vec4<f32>,
+    forward: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Records;
@@ -101,6 +119,14 @@ struct Records {
 @group(0) @binding(3) var<storage, read> grids: array<u32>;
 @group(0) @binding(4) var<storage, read_write> recordWords: array<u32>;
 @group(0) @binding(5) var<storage, read_write> count: array<u32>;
+// The emitter's sort (an emitter that sorts; a word of the simulation's
+// otherwise): keys, then indices, twice over its blocks; and two sets of
+// digit counts, 256 a block each, digit-major.
+@group(0) @binding(6) var<storage, read_write> sortWords: array<u32>;
+@group(0) @binding(7) var<storage, read_write> digits: array<u32>;
+
+var<workgroup> tally: array<atomic<u32>, CHUNK>;
+var<workgroup> liveCount: u32;
 
 fn wordAt(first: u32, i: u32) -> u32 {
     return particles[first * params.head.x + i];
@@ -388,6 +414,12 @@ fn frameOf(i: u32, age: f32) -> u32 {
     return select(f.y - 1u, at.x, at.y == 0u && at.x < f.y);
 }
 
+// Particle i's place in the view's space, from the view's origin.
+fn placeOf(i: u32) -> vec3<f32> {
+    let p = rotate(params.turn, vectorAt(params.words.place, i));
+    return p / params.scales.x + params.offset.xyz;
+}
+
 // A field's values of particle i: four floats, or words for the word
 // fields.
 fn valuesOf(field: vec4<u32>, i: u32, age: f32, words: ptr<function, vec4<u32>>) -> vec4<f32> {
@@ -395,8 +427,7 @@ fn valuesOf(field: vec4<u32>, i: u32, age: f32, words: ptr<function, vec4<u32>>)
     var v = vec4<f32>(0.0);
     switch field.x {
         case FIELD_POSITION: {
-            let p = rotate(params.turn, vectorAt(w.place, i));
-            v = vec4<f32>(p / params.scales.x + params.offset.xyz, 0.0);
+            v = vec4<f32>(placeOf(i), 0.0);
         }
         case FIELD_SIZE: {
             v = vec4<f32>(sizeOf(i, age) / params.scales.x, 0.0);
@@ -564,10 +595,10 @@ fn writeBytes(record: u32, byte: u32, bytes: u32, bits: u32) {
     recordWords[at] = (recordWords[at] & ~mask) | ((bits << shift) & mask);
 }
 
-// A particle's record at its place in the pool's order.
-fn writeRecord(i: u32) {
+// Record r: particle i's values.
+fn writeRecord(r: u32, i: u32) {
     let age = ageOf(i);
-    let record = params.head.z + i * params.head.w;
+    let record = params.head.z + r * params.head.w;
     for (var f = 0u; f < params.shape.x; f++) {
         let field = params.fields[f];
         var words = vec4<u32>(0u);
@@ -581,17 +612,92 @@ fn writeRecord(i: u32) {
     }
 }
 
+// The words of one of the sort's arrays: its blocks' elements.
+fn sortSpan() -> u32 {
+    return (params.head.x + BLOCK - 1u) / BLOCK * BLOCK;
+}
+
+// The particle record r shows, of live: in the pool's order, its reverse,
+// or the sort's (its indices in the first set after four passes).
+fn particleAt(r: u32, live: u32) -> u32 {
+    switch params.order.x {
+        case ORDER_REVERSED: {
+            return live - 1u - r;
+        }
+        case ORDER_SORTED: {
+            return sortWords[sortSpan() + r];
+        }
+        default: {
+            return r;
+        }
+    }
+}
+
 // Records: the live particles' up to the capacity, the workgroups (at
 // most a dispatch's along one axis) striding over them; the count by the
 // first invocation. The workgroups come from the numbers, as the step's:
 // num_workgroups would take a constant buffer of its own on D3D12.
 @compute @workgroup_size(64, 1, 1)
 fn records(@builtin(global_invocation_id) id: vec3<u32>) {
-    let n = min(statistics[0], params.head.y);
+    let live = statistics[0];
+    let n = min(live, params.head.y);
     if (id.x == 0u && params.shape.z != NONE) {
         count[params.shape.z] = n;
     }
-    for (var i = id.x; i < n; i += params.shape.y * 64u) {
-        writeRecord(i);
+    for (var r = id.x; r < n; r += params.shape.y * 64u) {
+        writeRecord(r, particleAt(r, live));
+    }
+}
+
+// A binary32's key, ordered as the values are, as the core's
+// mvfxOrderedKey: a negative value's bits flipped, a positive one's sign
+// set; -0 as +0.
+fn orderedKey(value: f32) -> u32 {
+    var bits = bitcast<u32>(value);
+    bits = select(bits, 0u, bits == 0x80000000u);
+    return bits ^ select(0x80000000u, 0xFFFFFFFFu, (bits >> 31u) != 0u);
+}
+
+// Particle i's sort key: its distance squared or depth from the eye in
+// binary32, as the core's binary64 measure rounded, flipped back to front.
+fn keyOf(i: u32) -> u32 {
+    let d = placeOf(i) - params.eye.xyz;
+    var measure = d.x * d.x + d.y * d.y + d.z * d.z;
+    if (params.order.y == MEASURE_DEPTH) {
+        let f = params.forward;
+        measure = d.x * f.x + d.y * f.y + d.z * f.z;
+    }
+    return orderedKey(measure) ^ params.order.z;
+}
+
+// Keys: each live particle's key and index in the first set, a block a
+// workgroup, and each block's counts of the lowest digit.
+@compute @workgroup_size(256, 1, 1)
+fn keys(@builtin(local_invocation_index) local: u32,
+        @builtin(workgroup_id) group: vec3<u32>) {
+    if (local == 0u) {
+        liveCount = statistics[0];
+    }
+    let live = workgroupUniformLoad(&liveCount);
+    let n = (params.head.x + BLOCK - 1u) / BLOCK;
+    let span = n * BLOCK;
+    let blocks = (live + BLOCK - 1u) / BLOCK;
+    for (var b = group.x; b < blocks; b += params.order.w) {
+        // An exchange, not a store: naga's HLSL of an atomic store names a
+        // result it never declares.
+        _ = atomicExchange(&tally[local], 0u);
+        workgroupBarrier();
+        for (var k = 0u; k < ITEMS; k++) {
+            let i = b * BLOCK + k * CHUNK + local;
+            if (i < live) {
+                let key = keyOf(i);
+                sortWords[i] = key;
+                sortWords[span + i] = i;
+                atomicAdd(&tally[key & 0xFFu], 1u);
+            }
+        }
+        workgroupBarrier();
+        digits[local * n + b] = atomicLoad(&tally[local]);
+        workgroupBarrier();
     }
 }

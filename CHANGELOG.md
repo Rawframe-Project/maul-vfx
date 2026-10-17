@@ -671,3 +671,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   show them (`mvfxOverLifeView`). The GPU part writes an emitter's records
   in a layout into a buffer of the host's frame, and their count
   (`mvfxGpuSim_AddRecords`, `mvfxGpuRecordsDef`).
+- The emitter view gives its records' order (`sortMode`, `sortMeasure`).
+  The GPU part writes records youngest first, and back to front or front
+  to back by distance or depth through a radix sort of its own, its keys
+  within units in the last place of the CPU path's.

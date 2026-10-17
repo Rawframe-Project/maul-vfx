@@ -370,6 +370,48 @@ static void RecordOverLife(const mvfxEmitterView* view, const mvfxStepTables* ta
     }
 }
 
+uint32_t mvfxRecordOrder(const mvfxEmitterView* view)
+{
+    switch (view->sortMode)
+    {
+    case mvfx_sortYoungestFirst:
+        return MVFX_ORDER_REVERSED;
+    case mvfx_sortBackToFront:
+    case mvfx_sortFrontToBack:
+        return MVFX_ORDER_SORTED;
+    default:
+        return MVFX_ORDER_POOL;
+    }
+}
+
+uint32_t mvfxSortBlocks(int32_t capacity)
+{
+    return ((uint32_t)capacity + MVFX_SORT_BLOCK - 1u) / MVFX_SORT_BLOCK;
+}
+
+// A record pass's order, the sort's measure, the keys' flip (back to front
+// sorts their complements, so equal keys keep the pool's order) and the
+// sort's workgroups; the eye's offset from the view's origin, rounded once,
+// and the view's forward direction.
+static void RecordOrder(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, const mvfxView* v,
+                        uint32_t words[12])
+{
+    uint32_t blocks = mvfxSortBlocks(plan->capacity);
+    words[0] = mvfxRecordOrder(view);
+    words[1] = view->sortMeasure == mvfx_sortByDepth ? 1u : 0u;
+    words[2] = view->sortMode == mvfx_sortBackToFront ? 0xFFFFFFFFu : 0u;
+    words[3] = blocks < 65535u ? blocks : 65535u;
+    float eye[4] = {0};
+    float forward[4] = {0};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        eye[k] = (float)(v->eye[k] - v->origin[k]);
+        forward[k] = v->forward[k];
+    }
+    memcpy(words + 4, eye, sizeof eye);
+    memcpy(words + 8, forward, sizeof forward);
+}
+
 void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxLayoutView* layout, const mvfxGpuRecordsDef* def,
                        const mvfxStepTables* tables, const float srgb[MVFX_SRGB_STEPS],
@@ -405,6 +447,7 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
         at[2] = field->components | (uint32_t)field->custom << 8u | (field->srgb ? 1u << 16u : 0u);
         at[3] = field->offset;
     }
+    RecordOrder(view, plan, &def->view, words + MVFX_RECORD_ORDER);
 }
 
 void mvfxLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_GPU_LIVES])

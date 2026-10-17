@@ -8,6 +8,7 @@
 #include "../kernels/pcg4d_container.h"
 #include "../kernels/records_container.h"
 #include "../kernels/sim_container.h"
+#include "../kernels/sort_container.h"
 #include "maul-rhi/shader.h"
 
 #include <stdalign.h>
@@ -24,6 +25,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_pcg4dContainer, sizeof s_pcg4dContainer},
     {s_simContainer, sizeof s_simContainer},
     {s_recordsContainer, sizeof s_recordsContainer},
+    {s_sortContainer, sizeof s_sortContainer},
 };
 
 // A kernel's container and entry.
@@ -38,7 +40,8 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSim, "room"},        {mvfx_containerSim, "reduce"},
     {mvfx_containerSim, "offsets"},     {mvfx_containerSim, "scatter"},
     {mvfx_containerSim, "measure"},     {mvfx_containerSim, "killBirths"},
-    {mvfx_containerRecords, "records"},
+    {mvfx_containerRecords, "records"}, {mvfx_containerRecords, "keys"},
+    {mvfx_containerSort, "offsets"},    {mvfx_containerSort, "scatter"},
 };
 
 struct mvfxGpu

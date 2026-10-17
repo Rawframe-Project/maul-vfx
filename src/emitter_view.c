@@ -219,6 +219,8 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->modules = ModulesOf(&e->velocityModules);
     viewOut->hostSpawnCapacity = e->hostSpawnCapacity;
     viewOut->overLife = OverLifeOf(&e->overLife);
+    viewOut->sortMode = e->sortMode;
+    viewOut->sortMeasure = e->sortMeasure;
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];
