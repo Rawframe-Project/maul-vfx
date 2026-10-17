@@ -3,40 +3,19 @@
 
 #include "sort.h"
 
-#include <stdbool.h>
 #include <string.h>
 
-uint32_t mvfxOrderedKey(float value)
+// One pass on the byte at shift, from source to target, stable, by its
+// byte's counts.
+static void Pass(const uint32_t* keys, const uint32_t* indices, uint32_t* targetKeys,
+                 uint32_t* targetIndices, int32_t count, uint32_t shift, const int32_t counts[256])
 {
-    float canonical = value + 0.0f;
-    uint32_t bits = 0;
-    memcpy(&bits, &canonical, sizeof bits);
-    // A negative value: every bit flipped, so larger magnitudes come
-    // first; a positive one: the sign bit set, above every negative.
-    uint32_t mask = (bits >> 31u) != 0 ? 0xFFFFFFFFu : 0x80000000u;
-    return bits ^ mask;
-}
-
-// One pass on the byte at shift, from source to target, stable; false
-// when every key has the same byte, so nothing moves.
-static bool Pass(const uint32_t* keys, const uint32_t* indices, uint32_t* targetKeys,
-                 uint32_t* targetIndices, int32_t count, uint32_t shift)
-{
-    int32_t starts[256] = {0};
-    for (int32_t i = 0; i < count; ++i)
-    {
-        starts[(keys[i] >> shift) & 0xFFu] += 1;
-    }
-    if (starts[(keys[0] >> shift) & 0xFFu] == count)
-    {
-        return false;
-    }
+    int32_t starts[256];
     int32_t sum = 0;
     for (int32_t b = 0; b < 256; ++b)
     {
-        int32_t here = starts[b];
         starts[b] = sum;
-        sum += here;
+        sum += counts[b];
     }
     for (int32_t i = 0; i < count; ++i)
     {
@@ -44,7 +23,6 @@ static bool Pass(const uint32_t* keys, const uint32_t* indices, uint32_t* target
         targetKeys[at] = keys[i];
         targetIndices[at] = indices[i];
     }
-    return true;
 }
 
 void mvfxRadixSort(uint32_t* keys, uint32_t* indices, uint32_t* temporaryKeys,
@@ -54,14 +32,27 @@ void mvfxRadixSort(uint32_t* keys, uint32_t* indices, uint32_t* temporaryKeys,
     {
         return;
     }
+    // Every byte's counts in one read; a pass whose byte is the same in
+    // every key moves nothing and is left out.
+    int32_t counts[4][256] = {0};
+    for (int32_t i = 0; i < count; ++i)
+    {
+        uint32_t key = keys[i];
+        counts[0][key & 0xFFu] += 1;
+        counts[1][(key >> 8u) & 0xFFu] += 1;
+        counts[2][(key >> 16u) & 0xFFu] += 1;
+        counts[3][key >> 24u] += 1;
+    }
     uint32_t* fromKeys = keys;
     uint32_t* fromIndices = indices;
     uint32_t* toKeys = temporaryKeys;
     uint32_t* toIndices = temporaryIndices;
-    for (uint32_t shift = 0; shift < 32u; shift += 8u)
+    for (uint32_t pass = 0; pass < 4u; ++pass)
     {
-        if (Pass(fromKeys, fromIndices, toKeys, toIndices, count, shift))
+        uint32_t shift = 8u * pass;
+        if (counts[pass][(keys[0] >> shift) & 0xFFu] != count)
         {
+            Pass(fromKeys, fromIndices, toKeys, toIndices, count, shift, counts[pass]);
             uint32_t* swapKeys = fromKeys;
             uint32_t* swapIndices = fromIndices;
             fromKeys = toKeys;

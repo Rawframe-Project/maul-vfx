@@ -455,6 +455,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   one's contacts from where it started, tried first against only the
   planes and spheres the 64 can reach; the same bits, in about 36% fewer
   instructions for collision.
+- A view's sort counts every byte of its keys in one read and takes each
+  key inline; the same order in about 26% fewer instructions.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its

@@ -457,11 +457,13 @@ static const uint32_t* SortByPlace(const mvfxInstance* instance, int32_t emitter
     // pool's order either way.
     uint32_t flip = compiled->sortMode == mvfx_sortBackToFront ? 0xFFFFFFFFu : 0u;
     bool depth = compiled->sortMeasure == mvfx_sortByDepth;
+    const float* x = mvfxAttributeArray(instance, emitter, mvfx_attributePositionX);
+    const float* y = mvfxAttributeArray(instance, emitter, mvfx_attributePositionY);
+    const float* z = mvfxAttributeArray(instance, emitter, mvfx_attributePositionZ);
     for (int32_t i = 0; i < live; ++i)
     {
-        float p[3];
+        const float p[3] = {x[i], y[i], z[i]};
         double world[3];
-        VectorOf(&s, mvfx_attributePositionX, i, p);
         mvfxUnmapPoint(&s.map, p, world);
         double measure = 0.0;
         for (int32_t k = 0; k < 3; ++k)
