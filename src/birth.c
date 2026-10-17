@@ -373,28 +373,20 @@ static const mvfxHostBirth* GivenOf(const mvfxInstance* instance, int32_t emitte
                                : nullptr;
 }
 
-// A host's queued particle: its place as given, made an offset from the
-// anchor in world space; its velocity as given, or drawn in the instance's
-// space at the place (its direction from the instance's origin standing
-// for the shape's normal and center) and turned, scaled and given the
-// inherited share as a shape's birth is.
-static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
-                           float position[3], float velocity[3])
+void mvfxHostVelocity(const mvfxInstance* instance, int32_t emitter, const mvfxHostBirth* host,
+                      uint64_t serial, int64_t tick, float velocity[3])
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    const mvfxEmitterState* state = &instance->emitters[emitter];
-    const mvfxHostBirth* host = GivenOf(instance, emitter, birth);
     bool world = compiled->space == mvfx_spaceWorld;
     mvfxTransform transform;
-    mvfxTransformAt(instance, birth->tick, &transform);
+    mvfxTransformAt(instance, tick, &transform);
     mvfxShapeSample sample = {0};
     float relative[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        position[k] = (float)(world ? host->position[k] - state->anchor[k] : host->position[k]);
         relative[k] =
             world ? (float)((host->position[k] - transform.origin[k]) / (double)transform.scale)
-                  : position[k];
+                  : (float)host->position[k];
     }
     // Into the instance's space: the conjugate turn undoes the rotation.
     const float* q = transform.rotation;
@@ -416,7 +408,7 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
         velocity[2] = host->velocity[2];
         return;
     }
-    mvfxWords4 words = Draw(instance, emitter, VELOCITY_SALT, birth->serial);
+    mvfxWords4 words = Draw(instance, emitter, VELOCITY_SALT, serial);
     sample.normal[0] = sample.local[0];
     sample.normal[1] = sample.local[1];
     sample.normal[2] = sample.local[2];
@@ -424,7 +416,7 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
     {
         // Any way, from the shape's draw as a point shape's normal is, apart
         // from the velocity's own.
-        mvfxWords4 shapeWords = Draw(instance, emitter, SHAPE_SALT, birth->serial);
+        mvfxWords4 shapeWords = Draw(instance, emitter, SHAPE_SALT, serial);
         mvfxRandomDirection(shapeWords.x, shapeWords.y, sample.normal);
     }
     mvfxDrawVelocity(&compiled->velocity, &sample, words, velocity);
@@ -442,6 +434,21 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
     {
         velocity[k] += host->velocity[k];
     }
+}
+
+// A host's queued particle: its place as given, made an offset from the
+// anchor in world space; its velocity as mvfxHostVelocity gives it.
+static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
+                           float position[3], float velocity[3])
+{
+    const mvfxEmitterState* state = &instance->emitters[emitter];
+    const mvfxHostBirth* host = GivenOf(instance, emitter, birth);
+    bool world = instance->effect->emitters[emitter].space == mvfx_spaceWorld;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        position[k] = (float)(world ? host->position[k] - state->anchor[k] : host->position[k]);
+    }
+    mvfxHostVelocity(instance, emitter, host, birth->serial, birth->tick, velocity);
 }
 
 // The step from one point of a unit to the next along a direction at

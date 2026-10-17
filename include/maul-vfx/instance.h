@@ -247,7 +247,9 @@ extern "C"
     /// Queues particles for an emitter of an instance: they are born at the
     /// start of the next step, before its other births, each taking a serial
     /// and room like any birth (refused, and counted, when the emitter is
-    /// full). The values are copied: the arrays may be released at once.
+    /// full); a planned instance's plan carries them (mvfxEmitterPlan's
+    /// hostBirths). The values are copied: the arrays may be released at
+    /// once.
     ///
     /// @param context   The context that owns the instance.
     /// @param instance  The instance.
@@ -259,8 +261,7 @@ extern "C"
     ///         a color or size for an emitter that does not store it, which
     ///         counts as misuse when the context is given;
     ///         `mvfx_errorCapacity` when the emitter's host queue lacks the
-    ///         room (none of the particles is queued); `mvfx_errorState` for
-    ///         a planned instance.
+    ///         room (none of the particles is queued).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Spawn(mvfxContext* context,

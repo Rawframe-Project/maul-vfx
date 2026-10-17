@@ -493,10 +493,11 @@ static StatesAt AddFieldStates(mvfxLayout* layout, const mvfxEffect* effect)
 }
 
 // Lays out each emitter's rooms and particle arrays for rooms[e]
-// particles, then its plan of plans[e] births.
+// particles, then its plan of plans[e] births and, with a plan, its host
+// queue's particles.
 static void AddEmitterBlocks(mvfxLayout* layout, const mvfxEffect* effect, const int32_t plans[],
                              const int32_t rooms[], EmitterAt at[], size_t particlesAt[],
-                             size_t plansAt[])
+                             size_t plansAt[], size_t hostsAt[])
 {
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
@@ -508,18 +509,22 @@ static void AddEmitterBlocks(mvfxLayout* layout, const mvfxEffect* effect, const
                                        mvfxArrayBytes(rooms[e]), MVFX_ATTRIBUTE_ALIGNMENT);
         plansAt[e] = mvfxLayoutAdd(layout, (size_t)plans[e], sizeof(mvfxPlannedBirth),
                                    alignof(mvfxPlannedBirth));
+        size_t hosts = plans[e] > 0 ? (size_t)effect->emitters[e].hostSpawnCapacity : 0;
+        hostsAt[e] = mvfxLayoutAdd(layout, hosts, sizeof(mvfxPlannedHostBirth),
+                                   alignof(mvfxPlannedHostBirth));
     }
 }
 
 // Points each planned emitter at its plan, and gives it back its capacity,
 // its rooms having been laid out for none.
 static void StartPlans(mvfxInstance* instance, unsigned char* block, const size_t plansAt[],
-                       const int32_t capacities[])
+                       const size_t hostsAt[], const int32_t capacities[])
 {
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
         instance->emitters[e].capacity = capacities[e];
         instance->emitters[e].plan = (mvfxPlannedBirth*)(block + plansAt[e]);
+        instance->emitters[e].planHosts = (mvfxPlannedHostBirth*)(block + hostsAt[e]);
     }
 }
 
@@ -554,7 +559,8 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
                                     alignof(mvfxBurstCursor));
     EmitterAt at[MVFX_MAX_EMITTERS] = {0};
     size_t plansAt[MVFX_MAX_EMITTERS] = {0};
-    AddEmitterBlocks(&layout, effect, plans, rooms, at, particlesAt, plansAt);
+    size_t hostsAt[MVFX_MAX_EMITTERS] = {0};
+    AddEmitterBlocks(&layout, effect, plans, rooms, at, particlesAt, plansAt, hostsAt);
     StatesAt statesOf = AddFieldStates(&layout, effect);
     FieldsAt fieldsAt;
     AddFieldLayouts(&layout, effect, rooms, &fieldsAt);
@@ -602,7 +608,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     StartFields(instance, block, rooms, &fieldsAt);
     if (planned)
     {
-        StartPlans(instance, block, plansAt, capacities);
+        StartPlans(instance, block, plansAt, hostsAt, capacities);
     }
     mvfxResetInstance(instance);
     return instance;

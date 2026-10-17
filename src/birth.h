@@ -21,6 +21,14 @@ float mvfxInverseLifeOf(const mvfxInstance* instance, int32_t emitter, uint64_t 
 // emitter began.
 float mvfxSourceAge(const mvfxCompiledEmitter* emitter, int64_t tick);
 
+// The velocity of a host's queued particle of a serial born at a tick, in
+// the particles' space: as given, or drawn in the instance's space at its
+// place (its direction from the instance's origin standing for the
+// shape's normal and center) and turned, scaled and given the inherited
+// share as a shape's birth is, the host's added velocity after.
+void mvfxHostVelocity(const mvfxInstance* instance, int32_t emitter, const mvfxHostBirth* host,
+                      uint64_t serial, int64_t tick, float velocity[3]);
+
 // Appends a particle to the emitter: every attribute from its birth.
 void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
                      float inverseLife);

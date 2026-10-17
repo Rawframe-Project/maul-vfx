@@ -654,7 +654,36 @@ typedef struct Run
     // instance's with its pixels, the planned one's without, its
     // simulation's rendered from the same pixels.
     const mvfxDepthImage* depth;
+    // Particles the host queues for the first emitter of both instances
+    // before each step, placed about the instance's origin (none for
+    // NULL).
+    const mvfxSpawnRequest* spawn;
 } Run;
+
+// Queues a run's host particles for both instances at step s: a little
+// further each step, about the instance's origin for a world-space
+// emitter.
+static void SpawnFor(const Run* run, int32_t s)
+{
+    double positions[3 * 64];
+    mvfxSpawnRequest request = *run->spawn;
+    const mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
+    bool world = run->emitters[0].space == mvfx_spaceWorld;
+    for (int32_t i = 0; i < request.count; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            positions[3 * i + k] = run->spawn->positions[3 * i + k] +
+                                   (world ? cpu->to.origin[k] : 0.0) + 0.01 * (double)s;
+        }
+    }
+    request.positions = positions;
+    mvfxInstanceId both[2] = {s_cpu, s_planned};
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        CHECK(mvfxInstance_Spawn(s_context, both[i], 0, &request) == mvfx_success, "spawned");
+    }
+}
 
 // Moves both instances to step s's place: along a line past the rebase
 // distance, turning about a tilted axis.
@@ -856,6 +885,10 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
         if (run->laterHostColliders != NULL && s == steps / 2)
         {
             SetHostColliders(run->laterHostColliders, run->laterHostColliderCount);
+        }
+        if (run->spawn != NULL)
+        {
+            SpawnFor(run, s);
         }
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         same = Simulate(gpu, sim);
@@ -1404,6 +1437,73 @@ static void TestModules(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .pace = 0.1},
             "velocity modules in both spaces");
+}
+
+static void TestSpawning(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Births by a rate curve over a loop of 0.3 seconds, and by the
+    // distance a moving instance travels, in the world's space.
+    static const mvfxCurveKey keys[3] = {
+        {.time = 0, .value = 0.2f, .interpolation = mvfx_interpolationLinear},
+        {.time = 0.4f, .value = 2, .interpolation = mvfx_interpolationCubic},
+        {.time = 1, .value = 0, .interpolation = mvfx_interpolationLinear}};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.duration = 0.3f;
+    emitter.rateCurve = (mvfxCurve){.keys = keys, .keyCount = 3};
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true},
+            "births by a rate curve");
+    emitter = Sprite();
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.space = mvfx_spaceWorld;
+    emitter.ratePerDistance = 60.0f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .pace = 0.1},
+            "births by distance");
+}
+
+static void TestHostSpawn(Gpu* gpu, mvfxGpu* kernels)
+{
+    // The host's particles beside the emitter's own each step: in the
+    // world's space with their velocities, colours and sizes given; in the
+    // instance's space with velocities drawn along their direction from
+    // the instance's origin (one at the origin at the first step, whose
+    // direction is drawn too) and sizes given.
+    static const double positions[3 * 8] = {0.5,  0,   0,    -0.5, 0.2, 0,   0,   0.3,
+                                            0.4,  0,   0,    0,    0.1, 0.1, 0.1, 0.3,
+                                            -0.2, 0.2, -0.3, 0.6,  0,   0,   0.2, -0.4};
+    static const float velocities[3 * 8] = {1, 2, 0,  0, 3, 1, -1, 2, 0, 0,  1, 0,
+                                            2, 2, -1, 0, 1, 1, 1,  1, 1, -2, 3, 0};
+    static const float colors[4 * 8] = {1, 0, 0, 1, 0,    1,    0,    1,    0,    0,   1,
+                                        1, 1, 1, 0, 0.5f, 0.5f, 0.5f, 0.5f, 1,    0,   1,
+                                        1, 1, 1, 0, 1,    1,    0.2f, 0.4f, 0.6f, 0.8f};
+    static const float sizes[3 * 8] = {0.1f, 0.2f, 0.3f, 0.5f, 0.5f, 0.5f, 1,    1,
+                                       1,    0.2f, 0.1f, 0.2f, 0.3f, 0.3f, 0.1f, 0.4f,
+                                       0.2f, 0.4f, 0.6f, 0.6f, 0.6f, 0.1f, 0.1f, 0.1f};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.space = mvfx_spaceWorld;
+    emitter.hostSpawnCapacity = 16;
+    emitter.color =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 0, 1}, .max = {1, 1, 1, 1}};
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.1f, 0.1f, 0.1f}, .max = {0.2f, 0.2f, 0.2f}};
+    const mvfxSpawnRequest given = {.count = 8,
+                                    .positions = positions,
+                                    .velocities = velocities,
+                                    .colors = colors,
+                                    .sizes = sizes};
+    Compare(
+        gpu, kernels,
+        &(Run){
+            .emitters = &emitter, .emitterCount = 1, .moving = true, .pace = 0.1, .spawn = &given},
+        "the host's particles with their values, in the world's space");
+    emitter.space = mvfx_spaceLocal;
+    emitter.color = (mvfxVectorSource){0};
+    emitter.velocity.mode = mvfx_directionShapeNormal;
+    const mvfxSpawnRequest drawn = {.count = 8, .positions = positions, .sizes = sizes};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .spawn = &drawn},
+            "the host's particles with drawn velocities, in the instance's space");
 }
 
 static void TestKillRules(Gpu* gpu, mvfxGpu* kernels)
@@ -2100,6 +2200,8 @@ int main(void)
     TestTurns(&gpu, kernels);
     TestModules(&gpu, kernels);
     TestKillRules(&gpu, kernels);
+    TestSpawning(&gpu, kernels);
+    TestHostSpawn(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

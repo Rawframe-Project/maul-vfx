@@ -324,6 +324,8 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
         .births = state->plan,
         .birthCount = state->planCount,
         .refused = state->planRefused,
+        .hostBirths = state->planHosts,
+        .hostBirthCount = state->planHostCount,
         .cleared = live->planCleared,
     };
     mvfxPlanResolved(live, emitter, planOut);
@@ -633,11 +635,6 @@ mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
-    }
-    if (live->planned)
-    {
-        // Its births are planned from its emitters' own sources alone.
-        return mvfx_errorState;
     }
     mvfxEmitterState* state = &live->emitters[emitter];
     if (request->count > live->effect->emitters[emitter].hostSpawnCapacity - state->hostCount)

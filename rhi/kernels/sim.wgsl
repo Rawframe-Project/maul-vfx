@@ -1750,7 +1750,13 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
     let drawn = local_place + params.shapeOffset.xyz;
     var v = drawVelocity(draw(VELOCITY_SALT, b0.x, b0.y), turnByShape(normal));
     var p = drawn;
-    if (params.start.w == 0u) {
+    let host = births[3u * j + 2u].y;
+    if (host != NONE) {
+        // The host's particle: its place and velocity as the core gives them.
+        let record = hostBirthAt(host);
+        p = record.place.xyz;
+        v = record.velocity.xyz;
+    } else if (params.start.w == 0u) {
         var origin = vec3<f32>(0.0);
         var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         let scale = placeAt(b0.z, &origin, &rotation);
@@ -1774,6 +1780,26 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
     fate.killed = fate.killed || killed(p, *place, *velocity, age, fate.contacts);
     return fate;
 }
+
+// A host's particle of the plan after the births' room (twice the
+// capacity's, three words each): its place in the particles' space and
+// what it gives (HOST_GIVES_COLOR, HOST_GIVES_SIZE); its velocity; its
+// colour; its size.
+struct HostBirth {
+    place: vec4<f32>,
+    velocity: vec4<f32>,
+    color: vec4<f32>,
+    size: vec4<f32>,
+}
+
+fn hostBirthAt(h: u32) -> HostBirth {
+    let at = 6u * params.counts.x + 4u * h;
+    return HostBirth(bitcast<vec4<f32>>(births[at]), bitcast<vec4<f32>>(births[at + 1u]),
+                     bitcast<vec4<f32>>(births[at + 2u]), bitcast<vec4<f32>>(births[at + 3u]));
+}
+
+const HOST_GIVES_COLOR: u32 = 1u;
+const HOST_GIVES_SIZE: u32 = 2u;
 
 // A birth written to place at of the other buffer; its place.
 fn spawnAt(j: u32, at: u32) -> vec3<f32> {
@@ -2015,6 +2041,18 @@ fn storeValues(j: u32, at: u32) {
     }
     if (w.drag != NONE) {
         moved[w.drag * c + at] = bitcast<u32>(dragScaleOf(j));
+    }
+    // A host's particle's colour and size as it gives them.
+    let host = births[3u * j + 2u].y;
+    if (host != NONE) {
+        let record = hostBirthAt(host);
+        let given = bitcast<u32>(record.place.w);
+        if ((given & HOST_GIVES_COLOR) != 0u) {
+            storeValue(w.color, 4u, at, record.color);
+        }
+        if ((given & HOST_GIVES_SIZE) != 0u) {
+            storeValue(w.size, 3u, at, record.size);
+        }
     }
     for (var i = 0u; i < 8u; i++) {
         let first = w.custom[i / 4u][i % 4u];

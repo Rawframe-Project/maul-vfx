@@ -97,6 +97,16 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
                      bool normals, const mvfxStepTables* tables, uint32_t words[MVFX_STEP_WORDS]);
 
+// The words a host's particle takes after a plan's births (sim.wgsl's
+// HostBirth).
+#define MVFX_HOST_BIRTH_WORDS 16
+
+// Writes a plan's host births in the kernels' form: each one's place in
+// the particles' space (a world-space emitter's an offset from the
+// plan's anchor after) and what it gives; its velocity; its colour; its
+// size.
+void mvfxHostBirthWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t* words);
+
 // An emitter's sources (MVFX_SOURCE_SIZE and so on), a null one's kind
 // none.
 void mvfxSourcesOf(const mvfxEmitterView* view, mvfxSourceView sources[MVFX_GPU_SOURCES]);

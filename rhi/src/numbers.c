@@ -244,6 +244,28 @@ void mvfxSourcesOf(const mvfxEmitterView* view, mvfxSourceView sources[MVFX_GPU_
     }
 }
 
+void mvfxHostBirthWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t* words)
+{
+    bool world = view->space == mvfx_spaceWorld;
+    for (int32_t h = 0; h < plan->hostBirthCount; ++h)
+    {
+        const mvfxPlannedHostBirth* host = &plan->hostBirths[h];
+        uint32_t* at = words + MVFX_HOST_BIRTH_WORDS * h;
+        float place[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            place[k] =
+                (float)(world ? host->position[k] - plan->anchorAfter[k] : host->position[k]);
+        }
+        Floats(at, place[0], place[1], place[2], 0.0f);
+        at[3] = host->given;
+        const float* v = host->velocity;
+        Floats(at + 4, v[0], v[1], v[2], 0.0f);
+        memcpy(at + 8, host->color, 4 * sizeof(float));
+        Floats(at + 12, host->size[0], host->size[1], host->size[2], 0.0f);
+    }
+}
+
 void mvfxLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_GPU_LIVES])
 {
     const mvfxModulesView* m = &view->modules;

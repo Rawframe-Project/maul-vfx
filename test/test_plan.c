@@ -461,9 +461,9 @@ static void TestRefusals(void)
     static const double place[3] = {0, 0, 0};
     const mvfxSpawnRequest request = {.count = 1, .positions = place};
     double left = 0.0;
-    CHECK(mvfxInstance_Spawn(context, planned, 0, &request) == mvfx_errorState &&
+    CHECK(mvfxInstance_Spawn(context, planned, 0, &request) == mvfx_success &&
               mvfxInstance_Prewarm(context, planned, 1.0, 0.1, 10, &left) == mvfx_errorState,
-          "no host spawns or prewarm for a planned instance");
+          "host spawns but no prewarm for a planned instance");
     // Before any step, an empty plan from tick 0.
     CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
               plan.birthCount == 0 && plan.ticks == 0 && plan.start == 0,
@@ -472,6 +472,94 @@ static void TestRefusals(void)
               mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_errorStale,
           "a stale instance");
 
+    mvfxDestroyContext(context);
+}
+
+static void TestHostBirths(void)
+{
+    // The host's particles queued for a planned instance of a world-space
+    // emitter are its plan's first births at the step's start, each
+    // naming its record: the place as given, the velocity as the CPU path
+    // gives it (given, or drawn: without forces the CPU instance's
+    // particle keeps it), the colour and size it gives; the emitter's own
+    // births name none. At a quality level of a quarter's capacity, those
+    // past it are refused and counted, their serials taken.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Emitter(16);
+    emitter.hostSpawnCapacity = 8;
+    emitter.space = mvfx_spaceWorld;
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.color =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 0, 1}, .max = {1, 1, 1, 1}};
+    emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {2, 2, 2}};
+    static const mvfxQualityLevel quarter = {.capacityScale = 0.25f, .rateScale = 1.0f};
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    effectDef.qualityLevels = &quarter;
+    effectDef.qualityLevelCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    mvfxInstanceDef low = mvfxDefaultInstanceDef();
+    low.effect = effect;
+    low.seed = 7;
+    low.planned = true;
+    low.quality = 1;
+    mvfxInstanceId lowered = {0};
+    CHECK(mvfxCreateInstance(context, &low, &lowered) == mvfx_success, "a lower quality");
+    static const double positions[9] = {1, 2, 3, -1, 0.5, 0, 0.25, -2, 4};
+    static const float velocities[9] = {1, 0, 0, 0, 2, 0, 0, 0, 3};
+    static const float colors[12] = {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0.5f};
+    static const float sizes[9] = {0.5f, 0.5f, 0.5f, 3, 3, 3, 1, 2, 3};
+    const mvfxSpawnRequest given = {
+        .count = 3, .positions = positions, .velocities = velocities, .colors = colors};
+    const mvfxSpawnRequest drawn = {.count = 3, .positions = positions, .sizes = sizes};
+    mvfxInstanceId all[3] = {cpu, planned, lowered};
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        CHECK(mvfxInstance_Spawn(context, all[i], 0, &given) == mvfx_success &&
+                  mvfxInstance_Spawn(context, all[i], 0, &drawn) == mvfx_success,
+              "spawned");
+    }
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    mvfxEmitterPlan plan;
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+    const mvfxInstance* core = mvfxContextInstance(context, cpu);
+    const float* v[3] = {mvfxAttributeArray(core, 0, mvfx_attributeVelocityX),
+                         mvfxAttributeArray(core, 0, mvfx_attributeVelocityY),
+                         mvfxAttributeArray(core, 0, mvfx_attributeVelocityZ)};
+    bool same = plan.hostBirthCount == 6 && plan.birthCount > 6 &&
+                plan.births[6].host == UINT32_MAX && plan.births[6].serialLow == 6;
+    for (int32_t h = 0; same && h < 6; ++h)
+    {
+        const mvfxPlannedBirth* birth = &plan.births[h];
+        const mvfxPlannedHostBirth* host = &plan.hostBirths[h];
+        int32_t i = h % 3;
+        same = birth->host == (uint32_t)h && birth->serialLow == (uint32_t)h && birth->tick == 0 &&
+               birth->batchIndex == (uint32_t)h && birth->batchCount == 6 &&
+               host->given == (h < 3 ? MVFX_HOST_GIVES_COLOR : MVFX_HOST_GIVES_SIZE);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && host->position[k] == positions[3 * i + k] &&
+                   host->velocity[k] == v[k][h] &&
+                   (h < 3 ? host->velocity[k] == velocities[3 * i + k]
+                          : host->size[k] == sizes[3 * i + k]);
+        }
+        for (int32_t k = 0; same && h < 3 && k < 4; ++k)
+        {
+            same = host->color[k] == colors[4 * i + k];
+        }
+    }
+    CHECK(same, "the host's particles are the plan's first births");
+    CHECK(mvfxInstance_GetEmitterPlan(context, lowered, 0, &plan) == mvfx_success &&
+              plan.capacity == 4 && plan.hostBirthCount == 4 && plan.refused >= 2 &&
+              plan.births[3].host == 3 && plan.births[4].host == UINT32_MAX &&
+              plan.births[4].serialLow == 6,
+          "past the capacity, the host's particles are refused");
     mvfxDestroyContext(context);
 }
 
@@ -1229,6 +1317,7 @@ int main(void)
     TestAnchors();
     TestHighWords();
     TestRefusals();
+    TestHostBirths();
     TestCannotBePlanned();
     TestView();
     TestForces();

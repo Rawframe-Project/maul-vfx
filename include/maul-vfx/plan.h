@@ -45,7 +45,10 @@ extern "C"
         // the emitter's duration read (its loop's share, or seconds where
         // it has no duration).
         float sourceAge;
-        uint32_t reserved[3];
+        // The host's particle it is, an index into the plan's host births
+        // (all ones for one of the emitter's own).
+        uint32_t host;
+        uint32_t reserved[2];
     } mvfxPlannedBirth;
 
     // Where an instance is: its place in the world, its turn (a unit
@@ -151,6 +154,25 @@ extern "C"
         bool killOutsideView;
     } mvfxPlannedDepth;
 
+// The values a host's particle gives beside its place and velocity
+// (mvfxPlannedHostBirth's given).
+#define MVFX_HOST_GIVES_COLOR 1u
+#define MVFX_HOST_GIVES_SIZE  2u
+
+    // A particle the host queued (mvfxInstance_Spawn) as a plan hands it
+    // over: its place as given (the world's for a world-space emitter, the
+    // instance's otherwise), its velocity in the particles' space, given
+    // or drawn as the CPU path draws it, and the colour and size it gives
+    // (MVFX_HOST_GIVES_COLOR and MVFX_HOST_GIVES_SIZE in given).
+    typedef struct mvfxPlannedHostBirth
+    {
+        double position[3];
+        float velocity[3];
+        float color[4];
+        float size[3];
+        uint8_t given;
+    } mvfxPlannedHostBirth;
+
     // An emitter's velocity modules as resolved for a plan's step: the
     // emitter's space's scale in the particles' space, and the added
     // direction, orbit axis and centers mapped there.
@@ -210,6 +232,9 @@ extern "C"
         const mvfxPlannedBirth* births;
         int32_t birthCount;
         uint64_t refused;
+        // The host's particles its births name, staying as the births do.
+        const mvfxPlannedHostBirth* hostBirths;
+        int32_t hostBirthCount;
         // Whether the instance was cleared before the plan (stopped with
         // mvfx_stopAndClear, restarted, or just created): the simulation
         // drops every particle it holds first.
@@ -455,6 +480,8 @@ extern "C"
         mvfxLifeView rotationSpeed;
         // Its velocity modules.
         mvfxModulesView modules;
+        // How many particles the host may queue for it between steps.
+        int32_t hostSpawnCapacity;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

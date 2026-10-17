@@ -186,10 +186,10 @@ extern "C"
     /// when it added none. The bytes are the frame's uploads: 1,864 an
     /// emitter, 432 a force, 128 a collider and 80 a kill rule it has
     /// (8,008 at most); 48 a planned birth (a plan holds at most twice the
-    /// emitter's capacity); at the first step, its sources' 1,072 and the
-    /// effect's baked tables its values read (1,032 a curve, 4,096 a
-    /// gradient); and the values
-    /// of each grid its forces and colliders read (mvfxGridView's bytes)
+    /// emitter's capacity) and 64 a host's particle; at the first step,
+    /// its sources' 1,072 and the effect's baked tables its values read
+    /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
+    /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,
     /// after each move in the room the def keeps, which the device's
     /// frameUploadBytes must hold.

@@ -52,7 +52,9 @@ enum
 
 typedef struct Emitter
 {
+    // Its capacity, and how many particles its host queue holds.
     int32_t capacity;
+    int32_t hostCapacity;
     // The words a particle takes: its arrays and the GPU's own.
     int32_t particleWords;
     mrhiBufferId particles[2];
@@ -80,6 +82,9 @@ typedef struct Emitter
     uint32_t map[MVFX_RECORD_MAP_WORDS];
     const mvfxPlannedBirth* plannedBirths;
     int32_t birthCount;
+    // Its host births in the kernels' form, room for its host queue's.
+    uint32_t* hostWords;
+    int32_t hostCount;
     bool cleared;
 } Emitter;
 
@@ -122,7 +127,8 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_SIZE | MVFX_FEATURE_COLOR | MVFX_FEATURE_CUSTOM | MVFX_FEATURE_FRAME |           \
      MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE | MVFX_FEATURE_ANGLE |                       \
      MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE | MVFX_FEATURE_VELOCITY_MODULES |          \
-     MVFX_FEATURE_KILL_RULES)
+     MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
+     MVFX_FEATURE_HOST_SPAWN)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -179,6 +185,17 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
 }
 
+// The bytes of an emitter's births, and of its host queue's after them.
+static uint64_t BirthBytes(const Emitter* emitter)
+{
+    return 2u * (uint64_t)emitter->capacity * sizeof(mvfxPlannedBirth);
+}
+
+static uint64_t HostBytes(const Emitter* emitter)
+{
+    return (uint64_t)emitter->hostCapacity * MVFX_HOST_BIRTH_WORDS * 4u;
+}
+
 // Creates an emitter's buffers for its capacity.
 static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 {
@@ -188,7 +205,7 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
     uint64_t words = (uint64_t)emitter->particleWords;
     return CreateBuffer(sim, c * words * 4u, particles, &emitter->particles[0]) &&
            CreateBuffer(sim, c * words * 4u, particles, &emitter->particles[1]) &&
-           CreateBuffer(sim, 2u * c * sizeof(mvfxPlannedBirth), written, &emitter->births) &&
+           CreateBuffer(sim, BirthBytes(emitter) + HostBytes(emitter), written, &emitter->births) &&
            CreateBuffer(sim, MVFX_STEP_WORDS * 4u, mrhi_bufferUniform | mrhi_bufferCopyDestination,
                         &emitter->step) &&
            CreateBuffer(sim, MVFX_GPU_STATISTICS_WORDS * 4u, written | mrhi_bufferCopySource,
@@ -237,6 +254,38 @@ static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
     }
 }
 
+// Sizes an emitter's memory by its plan and makes it: the host's
+// particles' words, the grids and tables laid out, the buffers.
+static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t e)
+{
+    Emitter* emitter = &sim->emitters[e];
+    mvfxEmitterPlan plan;
+    mvfxResult result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
+    emitter->capacity = plan.capacity;
+    emitter->hostCapacity = plan.capacity > 0 ? sim->views[e].hostSpawnCapacity : 0;
+    emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
+    if (result == mvfx_success && emitter->hostCapacity > 0)
+    {
+        emitter->hostWords = mvfxRhiAllocate(&sim->allocator, HostBytes(emitter), 4);
+        result = emitter->hostWords != nullptr ? mvfx_success : mvfx_errorCapacity;
+    }
+    uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
+    if (result == mvfx_success &&
+        !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
+    {
+        result = mvfx_errorStale;
+    }
+    if (result == mvfx_success)
+    {
+        LayTables(&sim->views[e], emitter);
+    }
+    if (result == mvfx_success && emitter->capacity > 0 && !CreateBuffers(sim, emitter))
+    {
+        result = mvfx_errorState;
+    }
+    return result;
+}
+
 // Whether a def is one a simulation can be made from.
 static bool IsDefValid(const mvfxGpuSimDef* def)
 {
@@ -281,24 +330,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     mvfxResult result = ReadViews(sim, def->effect, &refusal);
     for (int32_t e = 0; result == mvfx_success && e < sim->emitterCount; ++e)
     {
-        Emitter* emitter = &sim->emitters[e];
-        result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
-        emitter->capacity = plan.capacity;
-        emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
-        uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
-        if (result == mvfx_success &&
-            !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
-        {
-            result = mvfx_errorStale;
-        }
-        if (result == mvfx_success)
-        {
-            LayTables(&sim->views[e], emitter);
-        }
-        if (result == mvfx_success && emitter->capacity > 0 && !CreateBuffers(sim, emitter))
-        {
-            result = mvfx_errorState;
-        }
+        result = PrepareEmitter(sim, def, e);
     }
     if (result == mvfx_success && !CreateTextures(sim))
     {
@@ -343,6 +375,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->accepted);
         DestroyBuffer(sim, emitter->blocks);
         DestroyBuffer(sim, emitter->grids);
+        mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
     }
     mrhiTextureId textures[2] = {sim->ownDepth, sim->ownNormals};
     for (int32_t t = 0; t < 2; ++t)
@@ -534,6 +567,11 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
         emitter->plannedBirths = plan.births;
         emitter->birthCount = plan.birthCount;
+        emitter->hostCount = plan.hostBirthCount;
+        if (plan.hostBirthCount > 0)
+        {
+            mvfxHostBirthWords(&sim->views[e], &plan, emitter->hostWords);
+        }
         emitter->cleared = plan.cleared;
         if (!AddEmitterPasses(sim, emitter))
         {
@@ -566,8 +604,9 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
     return written;
 }
 
-// Records the pass writing the plan's bytes: its numbers, its births, the
-// record's map, the counts emptied after a clear, and the grids changed.
+// Records the pass writing the plan's bytes: its numbers, its births and
+// its host births after the births' room, the record's map, the counts
+// emptied after a clear, and the grids changed.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     static const uint32_t empty[MVFX_RECORD_PAST + 1] = {0};
@@ -580,6 +619,10 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
          mrhiWriteBuffer(sim->device, pass, r[BUFFER_BIRTHS], 0, emitter->plannedBirths,
                          (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth)) ==
              mrhi_success) &&
+        (emitter->hostCount == 0 ||
+         mrhiWriteBuffer(
+             sim->device, pass, r[BUFFER_BIRTHS], BirthBytes(emitter), emitter->hostWords,
+             (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u) == mrhi_success) &&
         mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS],
                         MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map,
                         sizeof emitter->map) == mrhi_success &&

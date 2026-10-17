@@ -658,3 +658,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   (`mvfxModulesView`, values over life as `mvfxLifeView`; the rotation
   speed over life is `rotationSpeed`). The GPU part runs velocity
   modules and kill rules.
+- `mvfxInstance_Spawn` queues the host's particles for a planned instance
+  too: its plan carries them as its first births at the step's start
+  (`mvfxPlannedHostBirth`, the plan's `hostBirths`; a planned birth names
+  its record in `host`), each with its place as given, its velocity as
+  the CPU path gives it and the colour and size it gives. The GPU part
+  runs them, rate curves and distance spawning.

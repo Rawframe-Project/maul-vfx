@@ -138,11 +138,14 @@ typedef struct mvfxEmitterState
     // from it.
     double anchor[3];
     // A planned instance's plan: room for twice the capacity's births, the
-    // births written, those refused, and the anchor before the plan.
+    // births written, those refused, and the anchor before the plan; and
+    // room for the host's queue's particles, those written.
     mvfxPlannedBirth* plan;
     int32_t planCount;
     uint64_t planRefused;
     double planAnchor[3];
+    mvfxPlannedHostBirth* planHosts;
+    int32_t planHostCount;
     // The latest tick a planned birth dies at: the emitter holds
     // particles elsewhere until then, as far as the core knows.
     int64_t lastDeath;
