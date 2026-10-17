@@ -665,6 +665,45 @@ static void TestReach(void)
         {.kind = mvfx_colliderSphere, .inside = true, .radius = 1.0f, .rotation = {0, 0, 0, 1}}};
     mvfxResolvedCollider kept[3];
     CHECK(mvfxReachable(always, 3, lo, hi, kept) == 3, "boxes, fields and inside spheres kept");
+    // A sphere is left out of a box wholly below it as of one above.
+    const mvfxResolvedCollider ball = {
+        .kind = mvfx_colliderSphere, .radius = 1.0f, .rotation = {0, 0, 0, 1}};
+    const float below[2][3] = {{-5, -5, -5}, {-4, -4, -4}};
+    const float above[2][3] = {{4, 4, 4}, {5, 5, 5}};
+    CHECK(mvfxReachable(&ball, 1, below[0], below[1], kept) == 0 &&
+              mvfxReachable(&ball, 1, above[0], above[1], kept) == 0,
+          "a sphere left out on either side");
+    // A point in front of a plane exactly, behind it as float arithmetic
+    // has it: the plane is kept, the margin past that rounding.
+    const mvfxResolvedCollider tilted = {.kind = mvfx_colliderPlane,
+                                         .center = {0.1f, 0.2f, 0.3f},
+                                         .normal = {0.48f, 0.6f, 0.64f},
+                                         .rotation = {0, 0, 0, 1}};
+    bool found = false;
+    bool keptAll = true;
+    for (int32_t trial = 0; trial < 200000; ++trial)
+    {
+        float s[3] = {Uniform(-100, 100), Uniform(-100, 100), 0};
+        // On the plane in z, then a few ulps either way.
+        double z = (double)tilted.center[2] -
+                   ((double)tilted.normal[0] * ((double)s[0] - (double)tilted.center[0]) +
+                    (double)tilted.normal[1] * ((double)s[1] - (double)tilted.center[1])) /
+                       (double)tilted.normal[2];
+        s[2] = nextafterf((float)z, trial % 2 == 0 ? INFINITY : -INFINITY);
+        double distance = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            distance += (double)tilted.normal[k] * ((double)s[k] - (double)tilted.center[k]);
+        }
+        float a[3] = {s[0] - tilted.center[0], s[1] - tilted.center[1], s[2] - tilted.center[2]};
+        float rounded = a[0] * tilted.normal[0] + a[1] * tilted.normal[1] + a[2] * tilted.normal[2];
+        if (distance > 0.0 && rounded < 0.0f)
+        {
+            found = true;
+            keptAll = keptAll && mvfxReachable(&tilted, 1, s, s, kept) == 1;
+        }
+    }
+    CHECK(found && keptAll, "a plane kept where rounding alone puts a point behind it");
 }
 
 int main(void)
