@@ -55,6 +55,14 @@ struct Field {
     frequency: array<vec4<f32>, 2>,
     cell: array<vec4<u32>, 8>,
     fraction: array<vec4<f32>, 8>,
+    // a vector field's box: the particles' origin mapped back less its
+    // center; its size; its turn; its grid's first word in the grids and
+    // size; the grid's format (1 for binary16) and the border
+    box: vec4<f32>,
+    boxSize: vec4<f32>,
+    boxRotation: vec4<f32>,
+    grid: vec4<u32>,
+    gridModes: vec4<u32>,
 }
 
 struct Step {
@@ -106,6 +114,8 @@ struct Step {
 @group(0) @binding(4) var<storage, read_write> counts: array<u32>;
 // Whether each of the plan's births has room, as the room entry decides.
 @group(0) @binding(5) var<storage, read_write> accepted: array<u32>;
+// The grids the forces read, binary32 values one a word, binary16 two.
+@group(0) @binding(7) var<storage, read> grids: array<u32>;
 // Each block of the sequence's count of kept elements, then its first
 // place; after them (blockCount() words on), each block's box of the
 // places scatter wrote: min then max, three binary32 words each.
@@ -232,6 +242,7 @@ const FORCE_CONSTANT: u32 = 0u;
 const FORCE_WIND: u32 = 1u;
 const FORCE_ATTRACTOR: u32 = 2u;
 const FORCE_VORTEX: u32 = 3u;
+const FORCE_TURBULENCE: u32 = 4u;
 const FIELD_VELOCITY: u32 = 1u;
 const FALLOFF_NONE: u32 = 0u;
 const FALLOFF_TUBE: u32 = 2u;
@@ -374,12 +385,109 @@ fn turbulence(n: u32, x: vec3<f32>, seconds: f32) -> vec3<f32> {
     return curl;
 }
 
+const BORDER_NONE: u32 = 0u;
+const BORDER_REPEAT: u32 = 2u;
+
+// Along an axis of n points: the two points a place lies between, and its
+// share toward the second, as the core locates them. The repeat border
+// takes u * n as the core's binary64 does: u's 11 leading bits times n
+// are exact, and the rest adds to the fraction.
+fn locate(u: f32, n: u32, border: u32, low: ptr<function, u32>, high: ptr<function, u32>) -> f32 {
+    if (border == BORDER_REPEAT) {
+        let finite = u == u && abs(u) <= 3.40282347e38;
+        let v = select(0.0, u, finite);
+        let lead = bitcast<f32>(bitcast<u32>(v) & 0xFFFFE000u);
+        let a = lead * f32(n);
+        let b = (v - lead) * f32(n);
+        let whole = floor(a);
+        let s = (a - whole) + b;
+        let carry = floor(s);
+        let period = f32(n);
+        let wrapped = whole - period * floor(whole / period);
+        var cell = i32(wrapped) + i32(carry);
+        cell = select(cell, cell - i32(n), cell >= i32(n));
+        cell = select(cell, cell + i32(n), cell < 0);
+        *low = u32(cell);
+        *high = select(*low + 1u, 0u, *low + 1u == n);
+        return s - carry;
+    }
+    var clamped = 0.0;
+    if (u > 0.0) {
+        clamped = min(u, 1.0);
+    }
+    let g = clamped * f32(n - 1u);
+    let cell = floor(g);
+    *low = u32(cell);
+    *high = select(*low, *low + 1u, *low + 1u < n);
+    return g - cell;
+}
+
+// Field n's grid's three components at a point.
+fn gridPoint(n: u32, point: u32) -> vec3<f32> {
+    let first = params.fields[n].grid.x;
+    if (params.fields[n].gridModes.x == 1u) {
+        var v = vec3<f32>(0.0);
+        for (var c = 0u; c < 3u; c++) {
+            let i = 3u * point + c;
+            let pair = unpack2x16float(grids[first + i / 2u]);
+            v[c] = select(pair.x, pair.y, (i & 1u) != 0u);
+        }
+        return v;
+    }
+    let at = first + 3u * point;
+    return vec3<f32>(bitcast<f32>(grids[at]), bitcast<f32>(grids[at + 1u]),
+                     bitcast<f32>(grids[at + 2u]));
+}
+
+// A vector field's vector at x in its own space: the grid sampled in the
+// box's frame, turned out with it; false outside under the none border.
+fn vectorField(n: u32, x: vec3<f32>, out: ptr<function, vec3<f32>>) -> bool {
+    let field = &params.fields[n];
+    let q = (*field).rotation;
+    let d = rotate(vec4<f32>(-q.xyz, q.w), x) / (*field).scales.x + (*field).box.xyz;
+    let r = (*field).boxRotation;
+    let u = rotate(vec4<f32>(-r.xyz, r.w), d) / (*field).boxSize.xyz + 0.5;
+    let border = (*field).gridModes.y;
+    if (border == BORDER_NONE && !(all(u >= vec3<f32>(0.0)) && all(u <= vec3<f32>(1.0)))) {
+        return false;
+    }
+    let size = (*field).grid.yzw;
+    var low = vec3<u32>(0u);
+    var high = vec3<u32>(0u);
+    var share = vec3<f32>(0.0);
+    for (var k = 0u; k < 3u; k++) {
+        var l = 0u;
+        var h = 0u;
+        share[k] = locate(u[k], size[k], border, &l, &h);
+        low[k] = l;
+        high[k] = h;
+    }
+    var sample = vec3<f32>(0.0);
+    for (var corner = 0u; corner < 8u; corner++) {
+        let i = (corner & 1u) != 0u;
+        let j = (corner & 2u) != 0u;
+        let k = (corner & 4u) != 0u;
+        let weight = select(1.0 - share.x, share.x, i) * select(1.0 - share.y, share.y, j) *
+                     select(1.0 - share.z, share.z, k);
+        let point = select(low.x, high.x, i) +
+                    (select(low.y, high.y, j) + select(low.z, high.z, k) * size.y) * size.x;
+        sample += weight * gridPoint(n, point);
+    }
+    *out = rotate(r, sample);
+    return true;
+}
+
 // A field's vector at x added to a, or, as a velocity, its pull and its
 // drag.
 fn fieldAt(n: u32, f: Force, x: vec3<f32>, seconds: f32, weight: f32,
            a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) {
     let field = &params.fields[n];
-    let value = turbulence(n, x, seconds);
+    var value = vec3<f32>(0.0);
+    if (f.modes.x == FORCE_TURBULENCE) {
+        value = turbulence(n, x, seconds);
+    } else if (!vectorField(n, x, &value)) {
+        return;
+    }
     let mapped = rotate((*field).rotation, value * ((*field).scales.x * f.vector.w));
     var scale = weight;
     if (f.modes.z == FIELD_VELOCITY) {

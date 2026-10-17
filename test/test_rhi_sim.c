@@ -334,6 +334,10 @@ typedef struct Run
     // Whether the instances stand still far from the origin, past where
     // binary32 places keep a noise's lattice.
     bool far;
+    // A grid made in the run's context for its emitters' vector fields
+    // (NULL for none), and whether it is given new values at half time.
+    const mvfxGridDef* grid;
+    bool animated;
     // How fast a moving instance goes, a share of Move's (0 for all):
     // particles a fast instance leaves behind are far from their anchor,
     // where binary32 places cannot hold a field's detail.
@@ -376,12 +380,54 @@ static void Clear(void)
     }
 }
 
+// The run's grid, and its emitters with their vector fields reading it.
+static mvfxGridId s_grid;
+static mvfxEmitterDef s_emitters[2];
+static mvfxForce s_forces[2][MVFX_MAX_FORCES];
+
+// Makes the run's grid and points its emitters' vector fields at it.
+static const mvfxEmitterDef* WithGrid(const Run* run)
+{
+    if (run->grid == NULL)
+    {
+        return run->emitters;
+    }
+    CHECK(mvfxCreateGrid(s_context, run->grid, &s_grid) == mvfx_success, "the run's grid");
+    for (int32_t e = 0; e < run->emitterCount; ++e)
+    {
+        s_emitters[e] = run->emitters[e];
+        for (int32_t f = 0; f < s_emitters[e].forceCount; ++f)
+        {
+            s_forces[e][f] = s_emitters[e].forces[f];
+            if (s_forces[e][f].kind == mvfx_forceVectorField)
+            {
+                s_forces[e][f].grid = s_grid;
+            }
+        }
+        s_emitters[e].forces = s_forces[e];
+    }
+    return s_emitters;
+}
+
+// Gives the run's grid new values: each doubled.
+static void Animate(const mvfxGridDef* def)
+{
+    static float values[3 * 64];
+    int64_t count = 3 * (int64_t)def->size[0] * def->size[1] * def->size[2];
+    CHECK(count <= 3 * 64, "a small grid");
+    for (int64_t i = 0; i < count; ++i)
+    {
+        values[i] = 2.0f * def->values[i];
+    }
+    CHECK(mvfxGrid_SetValues(s_context, s_grid, values, count) == mvfx_success, "animated");
+}
+
 static mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = run->emitters;
+    effectDef.emitters = WithGrid(run);
     effectDef.emitterCount = run->emitterCount;
     CHECK(mvfxCreateEffect(s_context, &effectDef, effectOut) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -425,6 +471,10 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
         if (run->clearing && s == STEPS / 2)
         {
             Clear();
+        }
+        if (run->animated && s == steps / 2)
+        {
+            Animate(run->grid);
         }
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         same = Simulate(gpu, sim);
@@ -624,6 +674,76 @@ static void TestTurbulence(Gpu* gpu, mvfxGpu* kernels)
             "turbulence as velocities, far from the origin");
 }
 
+// A smooth field on 4 x 4 x 3 points: three components a point.
+static float s_field[3 * 48];
+
+static mvfxGridDef FieldGrid(mvfxGridFormat format)
+{
+    for (int32_t p = 0; p < 48; ++p)
+    {
+        float x = (float)(p % 4);
+        float y = (float)(p / 4 % 4);
+        float z = (float)(p / 16);
+        s_field[3 * p] = sinf(0.9f * y + 0.3f * z);
+        s_field[3 * p + 1] = 0.5f * cosf(0.7f * x - 0.4f * z);
+        s_field[3 * p + 2] = sinf(0.5f * x + 0.8f * y) - 0.25f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 4;
+    def.size[1] = 4;
+    def.size[2] = 3;
+    def.components = 3;
+    def.format = format;
+    def.values = s_field;
+    return def;
+}
+
+static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A turned box repeating its grid, given new values at half time, in
+    // the world; a binary16 grid clamped at a box's faces, as velocities,
+    // in the instance's space under a turning, growing instance at a
+    // hundredth of the usual pace; a box with no field past it that the
+    // particles fly out of.
+    mvfxForce forces[1] = {{.kind = mvfx_forceVectorField,
+                            .point = {0.2f, 0.5f, -0.1f},
+                            .strength = 3.0f,
+                            .boxSize = {1.5f, 1.0f, 1.2f},
+                            .boxRotation = {0.0f, 0.38268343f, 0.0f, 0.92387953f},
+                            .border = mvfx_borderRepeat}};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.forces = forces;
+    emitter.forceCount = 1;
+    mvfxGridDef grid = FieldGrid(mvfx_gridFloat32);
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .grid = &grid, .animated = true},
+            "a turned box repeating its grid, animated");
+    forces[0] = (mvfxForce){.kind = mvfx_forceVectorField,
+                            .space = mvfx_spaceLocal,
+                            .point = {0, 0.3f, 0},
+                            .strength = 2.0f,
+                            .fieldMode = mvfx_fieldVelocity,
+                            .tightness = 3.0f,
+                            .boxSize = {2.0f, 2.0f, 2.0f},
+                            .boxRotation = {0, 0, 0, 1},
+                            .border = mvfx_borderClamp};
+    grid = FieldGrid(mvfx_gridFloat16);
+    Compare(
+        gpu, kernels,
+        &(Run){
+            .emitters = &emitter, .emitterCount = 1, .moving = true, .pace = 0.01, .grid = &grid},
+        "a binary16 grid clamped, as velocities, under a moving instance");
+    forces[0] = (mvfxForce){.kind = mvfx_forceVectorField,
+                            .point = {0, 0.2f, 0},
+                            .strength = 6.0f,
+                            .boxSize = {0.8f, 0.6f, 0.8f},
+                            .boxRotation = {0, 0, 0, 1},
+                            .border = mvfx_borderNone};
+    grid = FieldGrid(mvfx_gridFloat32);
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .grid = &grid},
+            "a box with no field past it");
+}
+
 static void TestFull(Gpu* gpu, mvfxGpu* kernels)
 {
     // An emitter of 64 owed about 180 at a time, and a burst of 150 at one
@@ -758,25 +878,15 @@ static void TestBoundsRefused(mvfxGpu* kernels)
 
 static void TestRefused(mvfxGpu* kernels)
 {
-    // An emitter it does not run, after one it does: refused, named; a
-    // kind of force it does not run yet (a vector field) refuses forces.
+    // An emitter it does not run, after one it does: refused, named (a
+    // feature it does not run yet, colors).
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    static const float values[3] = {1.0f, 0.0f, 0.0f};
-    mvfxGridDef gridDef = mvfxDefaultGridDef();
-    gridDef.components = 3;
-    gridDef.values = values;
-    mvfxGridId grid = {0};
-    CHECK(mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success, "a grid");
-    const mvfxForce force = {.kind = mvfx_forceVectorField,
-                             .strength = 1.0f,
-                             .grid = grid,
-                             .boxSize = {1, 1, 1},
-                             .boxRotation = {0, 0, 0, 1}};
+    const mvfxVectorSource color = {
+        .kind = mvfx_sourceRange, .min = {1, 0.5f, 0, 1}, .max = {1, 1, 0, 1}};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
-    emitters[1].forces = &force;
-    emitters[1].forceCount = 1;
+    emitters[1].color = color;
     emitters[1].shape.kind = mvfx_shapeBox;
     emitters[1].velocity.randomize = 0.5f;
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
@@ -799,7 +909,7 @@ static void TestRefused(mvfxGpu* kernels)
     mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
     mvfxGpuRefusal refusal;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
-              refusal.emitter == 1 && refusal.features == MVFX_FEATURE_FORCES && refusal.shape &&
+              refusal.emitter == 1 && refusal.features == MVFX_FEATURE_COLOR && refusal.shape &&
               refusal.velocity,
           "an emitter it does not run, named");
     simDef.instance = cpu;
@@ -808,15 +918,14 @@ static void TestRefused(mvfxGpu* kernels)
 
     // A feature alone refuses it.
     emitters[1] = Sprite();
-    emitters[1].forces = &force;
-    emitters[1].forceCount = 1;
+    emitters[1].color = color;
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "planned");
     simDef.effect = effect;
     simDef.instance = planned;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && refusal.emitter == 1 &&
-              refusal.features == MVFX_FEATURE_FORCES && !refusal.shape && !refusal.velocity,
+              refusal.features == MVFX_FEATURE_COLOR && !refusal.shape && !refusal.velocity,
           "a feature alone refused");
     mvfxDestroyContext(context);
 }
@@ -843,6 +952,7 @@ int main(void)
     TestMoving(&gpu, kernels);
     TestForces(&gpu, kernels);
     TestTurbulence(&gpu, kernels);
+    TestVectorFields(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

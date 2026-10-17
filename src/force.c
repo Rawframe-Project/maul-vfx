@@ -533,6 +533,26 @@ static void PlanNoise(const mvfxResolvedForce* force, double time, mvfxPlannedFo
     }
 }
 
+// A vector field's box for a plan: the particles' origin mapped back,
+// less the box's center, as SampleBox takes a place's offset.
+static void PlanBox(const mvfxResolvedForce* force, mvfxPlannedForce* out)
+{
+    const mvfxForce* source = force->source;
+    static const float origin[3] = {0.0f, 0.0f, 0.0f};
+    double place[3];
+    mvfxUnmapPoint(&force->map, origin, place);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->boxOrigin[k] = (float)(place[k] - (double)source->point[k]);
+        out->boxSize[k] = source->boxSize[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out->boxRotation[k] = source->boxRotation[k];
+    }
+    out->border = source->border;
+}
+
 mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force, double time)
 {
     mvfxPlannedForce out = {
@@ -563,6 +583,10 @@ mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force, double time)
     if (force->kind == mvfx_forceTurbulence)
     {
         PlanNoise(force, time, &out);
+    }
+    if (force->kind == mvfx_forceVectorField)
+    {
+        PlanBox(force, &out);
     }
     return out;
 }

@@ -77,6 +77,33 @@ bool mvfxGrid_IsValid(const mvfxContext* context, mvfxGridId grid)
     return context != nullptr && mvfxContextGrid(context, grid) != nullptr;
 }
 
+mvfxResult mvfxGrid_GetView(const mvfxContext* context, mvfxGridId grid, mvfxGridView* viewOut)
+{
+    if (viewOut != nullptr)
+    {
+        *viewOut = (mvfxGridView){0};
+    }
+    if (context == nullptr || viewOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    const mvfxGrid* live = mvfxContextGrid(context, grid);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    size_t item = live->format == mvfx_gridFloat16 ? sizeof(uint16_t) : sizeof(float);
+    *viewOut = (mvfxGridView){
+        .size = {live->size[0], live->size[1], live->size[2]},
+        .components = live->components,
+        .format = live->format,
+        .values = live->values,
+        .bytes = live->count * (int64_t)item,
+        .serial = live->serial,
+    };
+    return mvfx_success;
+}
+
 // A grid's values changed at the points from first, size along each axis:
 // a new serial, and the points among those changed since the context's
 // last step (the first change after a step starts them anew, from the

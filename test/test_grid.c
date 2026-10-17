@@ -5,7 +5,8 @@
 // trilinear sampling that reproduces a linear field, each border, a
 // constant axis, binary16 storage, three components read with the
 // general loop's bits, new values for a box of points and
-// the points changed since a step, and an effect keeping its grid busy.
+// the points changed since a step, an effect keeping its grid busy, and
+// the view of a grid as stored.
 
 #include "context.h"
 #include "grid.h"
@@ -445,6 +446,45 @@ static void TestBusy(void)
     mvfxDestroyContext(context);
 }
 
+static void TestView(void)
+{
+    // A view: the size, components, format, values as stored and their
+    // bytes; a new serial at each change; the refusals, the view zeroed.
+    mvfxContext* context = NewContext(4);
+    mvfxGridDef def = LinearDef(3);
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "a grid");
+    mvfxGridView view;
+    CHECK(mvfxGrid_GetView(context, grid, &view) == mvfx_success && view.size[0] == 2 &&
+              view.size[1] == 2 && view.size[2] == 2 && view.components == 3 &&
+              view.format == mvfx_gridFloat32 && view.bytes == 96 &&
+              memcmp(view.values, s_linear, 96) == 0,
+          "a view as stored");
+    uint64_t serial = view.serial;
+    CHECK(mvfxGrid_SetValues(context, grid, s_linear, 24) == mvfx_success &&
+              mvfxGrid_GetView(context, grid, &view) == mvfx_success && view.serial != serial,
+          "a new serial for new values");
+    serial = view.serial;
+    static const int32_t first[3] = {0, 0, 0};
+    static const int32_t size[3] = {1, 1, 1};
+    CHECK(mvfxGrid_SetValuesIn(context, grid, first, size, s_linear, 3) == mvfx_success &&
+              mvfxGrid_GetView(context, grid, &view) == mvfx_success && view.serial != serial,
+          "a new serial for a box's");
+    def.format = mvfx_gridFloat16;
+    mvfxGridId half = {0};
+    CHECK(mvfxCreateGrid(context, &def, &half) == mvfx_success &&
+              mvfxGrid_GetView(context, half, &view) == mvfx_success && view.bytes == 48 &&
+              ((const uint16_t*)view.values)[3] == mvfxHalfFromFloat(1.0f),
+          "binary16 as stored");
+    CHECK(mvfxGrid_GetView(NULL, grid, &view) == mvfx_errorInvalid && view.bytes == 0 &&
+              mvfxGrid_GetView(context, grid, NULL) == mvfx_errorInvalid,
+          "the view's refusals");
+    CHECK(mvfxDestroyGrid(context, grid) == mvfx_success &&
+              mvfxGrid_GetView(context, grid, &view) == mvfx_errorStale && view.bytes == 0,
+          "a stale grid");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestLife();
@@ -452,5 +492,6 @@ int main(void)
     TestThreeComponents();
     TestSetValuesIn();
     TestBusy();
+    TestView();
     return s_failures == 0 ? 0 : 1;
 }

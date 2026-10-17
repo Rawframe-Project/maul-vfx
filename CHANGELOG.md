@@ -598,3 +598,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   each octave's lattice coordinate of the particles' origin split into
   a cell and a fraction, so the GPU's lattice is the CPU path's at any
   distance from the origin.
+- `mvfxGrid_GetView` gives a grid as stored, with a serial new at each
+  change of its values; the emitter view names the grid each force
+  reads. The GPU part runs vector fields (every border, binary32 and
+  binary16 grids, as accelerations or velocities), uploading a grid at
+  the first step and again whenever it changes.

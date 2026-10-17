@@ -10,9 +10,9 @@
 #include "maul-vfx/plan.h"
 
 // The words the step's numbers take: 80 of the emitter and its plan, 4
-// of its forces' head, 24 a force and 88 its field for the most forces an
-// emitter has.
-#define MVFX_STEP_WORDS (84 + 112 * MVFX_MAX_FORCES)
+// of its forces' head, 24 a force and 108 its field for the most forces
+// an emitter has.
+#define MVFX_STEP_WORDS (84 + 132 * MVFX_MAX_FORCES)
 
 // The workgroups of 64 update takes for a capacity, striding over the
 // particles: at most 65,535, the most a dispatch has along one axis on
@@ -28,8 +28,9 @@ uint32_t mvfxScanBlocks(int32_t capacity);
 // emitter's shape, velocity and motion, the instance's places from the
 // plan's anchor after, gravity in the particles' space, the drag factors
 // over the plan for the drag every particle has (the emitter's and its
-// winds' and velocity fields' without a falloff), and its forces.
+// winds' and velocity fields' without a falloff), and its forces, each
+// force's grid as gridWords gives it (mvfxGridWords).
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
-                     uint32_t words[MVFX_STEP_WORDS]);
+                     const uint32_t (*gridWords)[5], uint32_t words[MVFX_STEP_WORDS]);
 
 #endif

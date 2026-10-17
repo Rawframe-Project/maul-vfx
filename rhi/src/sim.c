@@ -8,6 +8,7 @@
 #include "maul-vfx-rhi/sim.h"
 
 #include "allocator.h"
+#include "grids.h"
 #include "kernels.h"
 #include "numbers.h"
 #include "record.h"
@@ -20,7 +21,8 @@
 
 // The buffers of the step an emitter has: its numbers, its births, its
 // particles in the buffer they are in and the other, its statistics
-// record, which births have room, the scan's blocks and their boxes.
+// record, which births have room, the scan's blocks and their boxes, the
+// grids its forces read.
 enum
 {
     BUFFER_STEP = 0,
@@ -30,7 +32,8 @@ enum
     BUFFER_STATISTICS = 4,
     BUFFER_ACCEPTED = 5,
     BUFFER_BLOCKS = 6,
-    BUFFER_COUNT = 7
+    BUFFER_GRIDS = 7,
+    BUFFER_COUNT = 8
 };
 
 // The passes of an emitter's step: the plan's bytes, then the kernels.
@@ -56,6 +59,8 @@ typedef struct Emitter
     mrhiBufferId statistics;
     mrhiBufferId accepted;
     mrhiBufferId blocks;
+    mrhiBufferId grids;
+    mvfxGpuGrids gridLayout;
     // The particle buffer the last recorded step left them in.
     int32_t current;
     // The step added and not yet recorded: its passes, the buffers as the
@@ -89,9 +94,9 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 }
 
 // The features the part runs, and the kinds of force: constant, wind,
-// attractor, vortex, turbulence.
+// attractor, vortex, turbulence, vector field.
 #define RUN_FEATURES (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES)
-#define RUN_FORCES   0x1Fu
+#define RUN_FORCES   0x3Fu
 
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
@@ -158,7 +163,9 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
                         &emitter->statistics) &&
            CreateBuffer(sim, 2u * c * sizeof(uint32_t), mrhi_bufferStorage, &emitter->accepted) &&
            CreateBuffer(sim, 7u * mvfxScanBlocks(emitter->capacity) * sizeof(uint32_t),
-                        mrhi_bufferStorage, &emitter->blocks);
+                        mrhi_bufferStorage, &emitter->blocks) &&
+           CreateBuffer(sim, 4u * (emitter->gridLayout.words > 0 ? emitter->gridLayout.words : 1u),
+                        written, &emitter->grids);
 }
 
 // Whether a def is one a simulation can be made from.
@@ -208,6 +215,11 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
         Emitter* emitter = &sim->emitters[e];
         result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
         emitter->capacity = plan.capacity;
+        if (result == mvfx_success &&
+            !mvfxLayGrids(def->context, &sim->views[e], &emitter->gridLayout))
+        {
+            result = mvfx_errorStale;
+        }
         if (result == mvfx_success && emitter->capacity > 0 && !CreateBuffers(sim, emitter))
         {
             result = mvfx_errorState;
@@ -251,6 +263,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->statistics);
         DestroyBuffer(sim, emitter->accepted);
         DestroyBuffer(sim, emitter->blocks);
+        DestroyBuffer(sim, emitter->grids);
     }
     mvfxAllocator allocator = sim->allocator;
     mvfxRhiRelease(&allocator, sim, sizeof *sim, alignof(mvfxGpuSim));
@@ -285,7 +298,8 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
                                                 emitter->particles[1 - emitter->current],
                                                 emitter->statistics,
                                                 emitter->accepted,
-                                                emitter->blocks};
+                                                emitter->blocks,
+                                                emitter->grids};
     for (int32_t b = 0; b < BUFFER_COUNT; ++b)
     {
         if (mrhiImportBuffer(sim->device, buffers[b], &emitter->resources[b]) != mrhi_success)
@@ -294,10 +308,11 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         }
     }
     const mrhiResourceId* r = emitter->resources;
-    const mrhiAccess written[3] = {
+    const mrhiAccess written[4] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessCopyDestination},
-        {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination}};
+        {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination},
+        {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessCopyDestination}};
     const mrhiAccess used[BUFFER_COUNT] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessUniform},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessStorageRead},
@@ -305,13 +320,14 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = r[BUFFER_OTHER], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_ACCEPTED], .kind = mrhi_accessStorageReadWrite},
-        {.resource = r[BUFFER_BLOCKS], .kind = mrhi_accessStorageReadWrite}};
+        {.resource = r[BUFFER_BLOCKS], .kind = mrhi_accessStorageReadWrite},
+        {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessStorageRead}};
     for (int32_t p = 0; p < PASS_COUNT; ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
         def.passClass = p == PASS_WRITE ? mrhi_passTransfer : mrhi_passGraphics;
         def.accesses = p == PASS_WRITE ? written : used;
-        def.accessCount = p == PASS_WRITE ? 3 : BUFFER_COUNT;
+        def.accessCount = p == PASS_WRITE ? 4 : BUFFER_COUNT;
         // Its writes outlive the frame, read by the next step or the host.
         def.neverCull = true;
         if (mrhiAddPass(sim->device, &def, &emitter->passes[p]) != mrhi_success)
@@ -342,7 +358,12 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         {
             continue;
         }
-        mvfxStepNumbers(&sim->views[e], &plan, e, emitter->words);
+        uint32_t gridWords[MVFX_MAX_FORCES][5];
+        for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)
+        {
+            mvfxGridWords(&emitter->gridLayout, f, gridWords[f]);
+        }
+        mvfxStepNumbers(&sim->views[e], &plan, e, (const uint32_t (*)[5])gridWords, emitter->words);
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
         emitter->plannedBirths = plan.births;
         emitter->birthCount = plan.birthCount;
@@ -357,24 +378,26 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
 }
 
 // Records the pass writing the plan's bytes: its numbers, its births, the
-// record's map, and the counts emptied after a clear.
-static bool RecordWrites(mvfxGpuSim* sim, const Emitter* emitter)
+// record's map, the counts emptied after a clear, and the grids changed.
+static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     static const uint32_t empty[MVFX_RECORD_PAST + 1] = {0};
     mrhiPassId pass = emitter->passes[PASS_WRITE];
     const mrhiResourceId* r = emitter->resources;
-    bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
-                    mrhiWriteBuffer(sim->device, pass, r[BUFFER_STEP], 0, emitter->words,
-                                    sizeof emitter->words) == mrhi_success &&
-                    (emitter->birthCount == 0 ||
-                     mrhiWriteBuffer(sim->device, pass, r[BUFFER_BIRTHS], 0, emitter->plannedBirths,
-                                     (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth)) ==
-                         mrhi_success) &&
-                    mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS],
-                                    MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map,
-                                    sizeof emitter->map) == mrhi_success &&
-                    (!emitter->cleared || mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS],
-                                                          0, empty, sizeof empty) == mrhi_success);
+    bool recorded =
+        mrhiBeginPass(sim->device, pass) == mrhi_success &&
+        mrhiWriteBuffer(sim->device, pass, r[BUFFER_STEP], 0, emitter->words,
+                        sizeof emitter->words) == mrhi_success &&
+        (emitter->birthCount == 0 ||
+         mrhiWriteBuffer(sim->device, pass, r[BUFFER_BIRTHS], 0, emitter->plannedBirths,
+                         (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth)) ==
+             mrhi_success) &&
+        mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS],
+                        MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map,
+                        sizeof emitter->map) == mrhi_success &&
+        (!emitter->cleared || mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS], 0, empty,
+                                              sizeof empty) == mrhi_success) &&
+        mvfxWriteGrids(sim->device, pass, r[BUFFER_GRIDS], sim->context, &emitter->gridLayout);
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 

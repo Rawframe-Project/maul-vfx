@@ -119,6 +119,10 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
     for (int32_t f = 0; f < e->forceCount; ++f)
     {
         viewOut->forceKinds |= 1u << e->forces[f].kind;
+        if (e->forces[f].kind == mvfx_forceVectorField)
+        {
+            viewOut->forceGrids[f] = e->forces[f].grid;
+        }
     }
     for (int32_t k = 0; k < 9; ++k)
     {

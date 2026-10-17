@@ -129,10 +129,11 @@ extern "C"
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 1,176 an
-    /// emitter and 32 a planned birth (a plan holds at most twice the
-    /// emitter's capacity), which the device's frameUploadBytes must
-    /// hold.
+    /// when it added none. The bytes are the frame's uploads: 4,632 an
+    /// emitter, 32 a planned birth (a plan holds at most twice the
+    /// emitter's capacity), and the values of each grid its forces read
+    /// (mvfxGridView's bytes) at the first step and after each change,
+    /// which the device's frameUploadBytes must hold.
     ///
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;

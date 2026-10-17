@@ -108,6 +108,33 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxGrid_IsValid(const mvfxContext* context, mvfxGridId grid);
 
+    // A grid as stored, for a simulation elsewhere to copy: its points
+    // along each axis, components a point and format, its values (X
+    // fastest, then Y, then Z, as binary32 or binary16 bits) and their
+    // bytes, and a serial new at each change of them.
+    typedef struct mvfxGridView
+    {
+        int32_t size[3];
+        int32_t components;
+        mvfxGridFormat format;
+        const void* values;
+        int64_t bytes;
+        uint64_t serial;
+    } mvfxGridView;
+
+    /// Returns a grid as stored. The values stay valid until the grid's
+    /// next change or destruction; the serial tells a change.
+    ///
+    /// @param context  The context that owns the grid.
+    /// @param grid     The grid.
+    /// @param viewOut  Receives the view; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument;
+    ///         `mvfx_errorStale` for an id that names no live grid.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_GetView(const mvfxContext* context, mvfxGridId grid,
+                                                        mvfxGridView* viewOut);
+
     /// Gives a grid new values for the same points, as an animated field;
     /// steps after read them.
     ///

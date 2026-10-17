@@ -95,6 +95,13 @@ extern "C"
         float frequency[MVFX_MAX_OCTAVES];
         uint32_t cell[MVFX_MAX_OCTAVES][3];
         float fraction[MVFX_MAX_OCTAVES][3];
+        // A vector field's box: the particles' origin mapped back into
+        // its own space, less the box's center; its size, its turn, and
+        // the border its grid reads past it.
+        float boxOrigin[3];
+        float boxSize[3];
+        float boxRotation[4];
+        mvfxGridBorder border;
     } mvfxPlannedForce;
 
     // An emitter's plan for the context's last step.
@@ -220,8 +227,11 @@ extern "C"
         mvfxSimulationSpace gravitySpace;
         float drag;
         // A bit for each kind of force it has (1 << mvfx_forceConstant
-        // and so on), for a simulation to refuse a kind it does not run.
+        // and so on), for a simulation to refuse a kind it does not run,
+        // and the grid each of its forces reads (a vector field's; the
+        // null id for the others).
         uint32_t forceKinds;
+        mvfxGridId forceGrids[MVFX_MAX_FORCES];
         // Whether its bounds are a fixed box in the instance's space
         // rather than measured from its particles, and the box.
         bool fixedBounds;

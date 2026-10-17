@@ -138,6 +138,11 @@ bool mvfxGrid_IsValid(const mvfxContext* context, mvfxGridId grid);
 Returns whether an id names a live grid of the context. A stale id is not misuse.  @param context  The context. @param grid     Any id. @return Whether the grid is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_GetView(const mvfxContext* context, mvfxGridId grid, mvfxGridView* viewOut);
+```
+Returns a grid as stored. The values stay valid until the grid's next change or destruction; the serial tells a change.  @param context  The context that owns the grid. @param grid     The grid. @param viewOut  Receives the view; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument; `mvfx_errorStale` for an id that names no live grid. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float* values, int64_t count);
 ```
 Gives a grid new values for the same points, as an animated field; steps after read them.  @param context  The context that owns the grid. @param grid     The grid. @param values   The values, as in the grid def. @param count    How many: the grid's points times its components. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live grid; `mvfx_errorInvalid` for a NULL context or values, a count not the grid's or a value out of range, which counts as misuse when the context is given (the grid is then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -554,7 +559,7 @@ Adds the passes of the context's last step to the frame the host builds (after m
 ```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);
 ```
-Records the passes mvfxGpuSim_AddPasses added, after the frame is compiled: the plans' bytes written, the kernels dispatched. Nothing when it added none. The bytes are the frame's uploads: 1,176 an emitter and 32 a planned birth (a plan holds at most twice the emitter's capacity), which the device's frameUploadBytes must hold.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorState` when the device refuses a command, such as an upload past the frame's. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+Records the passes mvfxGpuSim_AddPasses added, after the frame is compiled: the plans' bytes written, the kernels dispatched. Nothing when it added none. The bytes are the frame's uploads: 4,632 an emitter, 32 a planned birth (a plan holds at most twice the emitter's capacity), and the values of each grid its forces read (mvfxGridView's bytes) at the first step and after each change, which the device's frameUploadBytes must hold.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorState` when the device refuses a command, such as an upload past the frame's. @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
 ```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim, int32_t emitter, mvfxGpuParticles* particlesOut);
@@ -568,4 +573,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-101 functions across 17 headers.
+102 functions across 17 headers.

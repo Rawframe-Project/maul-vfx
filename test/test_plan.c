@@ -713,6 +713,26 @@ static bool SameLattice(const mvfxPlannedForce* p, const mvfxResolvedForce* r, d
     return same;
 }
 
+// Whether a vector field's planned box is its def's, with the particles'
+// origin mapped back less its center.
+static bool SameBox(const mvfxPlannedForce* p, const mvfxResolvedForce* r)
+{
+    static const float origin[3] = {0.0f, 0.0f, 0.0f};
+    double place[3];
+    mvfxUnmapPoint(&r->map, origin, place);
+    bool same = p->border == r->source->border;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && p->boxOrigin[k] == (float)(place[k] - (double)r->source->point[k]) &&
+               p->boxSize[k] == r->source->boxSize[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && p->boxRotation[k] == r->source->boxRotation[k];
+    }
+    return same;
+}
+
 static void TestForces(void)
 {
     // Forces of every kind the plan carries, in both spaces, a falloff, a
@@ -721,7 +741,16 @@ static void TestForces(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxForce forces[5] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
+    static const float values[24] = {0};
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 2;
+    gridDef.size[1] = 2;
+    gridDef.size[2] = 2;
+    gridDef.components = 3;
+    gridDef.values = values;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success, "a grid");
+    mvfxForce forces[6] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
                            {.kind = mvfx_forceWind,
                             .space = mvfx_spaceLocal,
                             .vector = {0, 0, 3},
@@ -754,10 +783,17 @@ static void TestForces(void)
                                       .gain = 0.5f,
                                       .scroll = {0.3f, -0.2f, 0.1f},
                                       .seed = 5,
-                                      .seedPerInstance = true}}};
+                                      .seedPerInstance = true}},
+                           {.kind = mvfx_forceVectorField,
+                            .point = {3, -1, 2},
+                            .strength = 1.0f,
+                            .grid = grid,
+                            .boxSize = {4, 2, 3},
+                            .boxRotation = {0, 0.6f, 0, 0.8f},
+                            .border = mvfx_borderRepeat}};
     mvfxEmitterDef emitter = Emitter(256);
     emitter.forces = forces;
-    emitter.forceCount = 5;
+    emitter.forceCount = 6;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
@@ -786,18 +822,20 @@ static void TestForces(void)
         mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
         const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
-        same = plan.forceCount == 5;
-        for (int32_t f = 0; same && f < 5; ++f)
+        same = plan.forceCount == 6;
+        for (int32_t f = 0; same && f < 6; ++f)
         {
             same = SameForce(&plan.forces[f], &state->forces[f]);
         }
         double time = (double)plan.start / (double)MVFX_TICKS_PER_SECOND;
-        same = same && SameLattice(&plan.forces[4], &state->forces[4], time);
+        same = same && SameLattice(&plan.forces[4], &state->forces[4], time) &&
+               SameBox(&plan.forces[5], &state->forces[5]);
     }
     CHECK(same, "the plan's forces are the CPU path's");
     mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
-              view.forceKinds == 0x1Fu,
+              view.forceKinds == 0x3Fu && view.forceGrids[5].index1 == grid.index1 &&
+              view.forceGrids[5].generation == grid.generation && view.forceGrids[4].index1 == 0,
           "the view's force kinds");
     mvfxDestroyContext(context);
 }
