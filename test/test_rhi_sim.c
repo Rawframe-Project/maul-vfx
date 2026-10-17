@@ -1225,11 +1225,18 @@ static void TestOldDeaths(Gpu* gpu, mvfxGpu* kernels)
     // sliding on a floor that takes all their speed into it, meeting it
     // each step (no rest speed, whose edge each path decides alone), a
     // share of their life lost each time: the GPU recomputes death ticks past 2^24 ticks of age,
-    // within their bound of the CPU path's.
+    // within their bound of the CPU path's. Their spin's speed over life
+    // reads the age the lost life leaves.
     static const mvfxCollider floor = {
         .kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}};
+    static const mvfxCurveKey keys[2] = {
+        {.time = 0, .value = 0, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 8, .interpolation = mvfx_interpolationLinear}};
     mvfxEmitterDef emitter = Sprite();
     emitter.lifetime = mvfxRangeSource(24.0f, 30.0f);
+    emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {1, 2}};
+    emitter.overLife.rotation = (mvfxRotationOverLife){
+        .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
     emitter.colliders = &floor;
     emitter.colliderCount = 1;
     emitter.collision = (mvfxCollision){.enabled = true, .lifeLoss = 0.005f};
@@ -1770,6 +1777,25 @@ static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
     emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
             "lives past 2^32 ticks");
+    // Steps of a second to ages past 2^32 ticks, the plan's start's low
+    // word wrapping past births' (spin read over life at those ages),
+    // without gravity or drag.
+    static const mvfxCurveKey keys[2] = {
+        {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 9, .interpolation = mvfx_interpolationLinear}};
+    emitter.rate = 0.1f;
+    emitter.burstCount = 0;
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.motion.drag = 0.0f;
+    emitter.velocity.speed = (mvfxRange){0.001f, 0.002f};
+    emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {1e-3f, 2e-3f}};
+    emitter.overLife.rotation = (mvfxRotationOverLife){
+        .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
+    s_stepTicks = MVFX_TICKS_PER_SECOND;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 4200, .least = 50},
+            "ages past 2^32 ticks");
+    s_stepTicks = STEP_TICKS;
 }
 
 static void TestBoundsRefused(mvfxGpu* kernels)
