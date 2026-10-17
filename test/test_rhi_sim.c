@@ -126,8 +126,9 @@ static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
     return Finish(gpu);
 }
 
-// The emitter's particles and counts as the GPU holds them, read back.
-static uint32_t s_words[MVFX_GPU_PARTICLE_WORDS * CAPACITY];
+// The emitter's particles and counts as the GPU holds them, read back, for
+// capacities up to 4,096.
+static uint32_t s_words[MVFX_GPU_PARTICLE_WORDS * 4096];
 static uint32_t s_counts[4];
 
 static int32_t s_capacity;
@@ -419,6 +420,19 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     emitter.burstCount = 2;
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 64},
             "an emitter full every step");
+    // Scans of many blocks of 1,024: about 2,400 live of 3,000, deaths
+    // scattered among them by lives of 0.1 to 0.3 seconds; then 1,500
+    // owed 500 a step, full, refusing across blocks.
+    emitter = Sprite();
+    emitter.capacity = 3000;
+    emitter.rate = 12000.0f;
+    emitter.lifetime = mvfxRangeSource(0.1f, 0.3f);
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 2000},
+            "an emitter of many blocks");
+    emitter.capacity = 1500;
+    emitter.rate = 30000.0f;
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 1500},
+            "an emitter of many blocks, full");
 }
 
 // Bursts on ticks of exact eighths of a second; lives of a quarter.

@@ -12,6 +12,16 @@
 // The words the step's numbers take.
 #define MVFX_STEP_WORDS 80
 
+// The workgroups of 64 update takes for a capacity, striding over the
+// particles: at most 65,535, the most a dispatch has along one axis on
+// every device.
+uint32_t mvfxUpdateGroups(int32_t capacity);
+
+// The scan's blocks for a capacity (reduce's and scatter's workgroups):
+// its live particles and twice its births, 1,024 elements a block; at most
+// 49,152 for the largest capacity, 2^24.
+uint32_t mvfxScanBlocks(int32_t capacity);
+
 // Writes emitter's step numbers: the plan's counts and ticks, the
 // emitter's shape, velocity and motion, the instance's places from the
 // plan's anchor after, gravity in the particles' space and the drag

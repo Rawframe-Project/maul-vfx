@@ -24,14 +24,15 @@ typedef enum mvfxKernel
 {
     // pcg4d of each index, the words the CPU's must equal.
     mvfx_kernelPcg4d = 0,
-    // An emitter's step (sim.wgsl): its live particles moved, the
-    // survivors kept in order, the plan's births spawned after them.
+    // An emitter's step (sim.wgsl): its live particles moved; which of
+    // the plan's births have room, as the CPU path's full step decides;
+    // the survivors and the births kept in order by a scan in three
+    // passes.
     mvfx_kernelUpdate = 1,
-    mvfx_kernelCompact = 2,
-    mvfx_kernelSpawn = 3,
-    // Which of the plan's births have room, as the CPU path's full step
-    // decides.
-    mvfx_kernelRoom = 4,
+    mvfx_kernelRoom = 2,
+    mvfx_kernelReduce = 3,
+    mvfx_kernelOffsets = 4,
+    mvfx_kernelScatter = 5,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

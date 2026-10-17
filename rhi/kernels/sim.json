@@ -2,12 +2,14 @@
   "root_block_bytes": 0,
   "entries": [
     {"name": "update", "stage": "compute", "workgroup": [64, 1, 1]},
-    {"name": "compact", "stage": "compute", "workgroup": [256, 1, 1],
-     "workgroup_storage_bytes": 1032},
-    {"name": "spawn", "stage": "compute", "workgroup": [256, 1, 1],
-     "workgroup_storage_bytes": 1032},
     {"name": "room", "stage": "compute", "workgroup": [256, 1, 1],
-     "workgroup_storage_bytes": 1052}
+     "workgroup_storage_bytes": 1052},
+    {"name": "reduce", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1024},
+    {"name": "offsets", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1028},
+    {"name": "scatter", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1024}
   ],
   "bindings": [
     {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 320},
@@ -15,7 +17,8 @@
     {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 4, "kind": "storage_buffer", "stages": ["compute"], "min_size": 12},
-    {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4}
+    {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 6, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4}
   ],
   "constants": []
 }

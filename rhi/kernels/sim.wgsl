@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// An emitter's step on the GPU: update, room, compact, spawn. Particles are
-// arrays of the capacity in one buffer of words (WORDS a particle):
-// place (3), velocity (3), serial (2), birth tick (2), death tick (2),
-// inverse life, and whether it outlives the step.
+// An emitter's step on the GPU: update, room, then the survivors and the
+// births kept in order by a scan in three passes (reduce, offsets,
+// scatter). Particles are arrays of the capacity in one buffer of words
+// (WORDS a particle): place (3), velocity (3), serial (2), birth tick (2),
+// death tick (2), inverse life, and whether it outlives the step.
 
 const WORDS: u32 = 14u;
 const PLACE: u32 = 0u;
@@ -15,6 +16,10 @@ const DEATH: u32 = 10u;
 const INVERSE_LIFE: u32 = 12u;
 const ALIVE: u32 = 13u;
 const CHUNK: u32 = 256u;
+// The elements an invocation of the scan's reduce and scatter takes, in a
+// row; a workgroup's block is CHUNK times as many.
+const ITEMS: u32 = 4u;
+const BLOCK: u32 = CHUNK * ITEMS;
 const TICKS_PER_SECOND: f32 = 1048576.0;
 const TWO_PI: f32 = 6.28318530717958647692;
 
@@ -27,7 +32,7 @@ struct Step {
     // the plan's start (two words), the emitter's index, its space (0 for
     // the world)
     start: vec4<u32>,
-    // the velocity's mode, the shape's kind, unused (2)
+    // the velocity's mode, the shape's kind, update's workgroups, unused
     modes: vec4<u32>,
     // the anchors' shift, rounded to binary32; the share of the instance's
     // velocity inherited
@@ -64,6 +69,8 @@ struct Step {
 @group(0) @binding(4) var<storage, read_write> counts: array<u32>;
 // Whether each of the plan's births has room, as the room entry decides.
 @group(0) @binding(5) var<storage, read_write> accepted: array<u32>;
+// Each block of the sequence's count of kept elements, then its first place.
+@group(0) @binding(6) var<storage, read_write> blocks: array<u32>;
 
 var<workgroup> scan: array<u32, CHUNK>;
 var<workgroup> carried: u32;
@@ -181,15 +188,20 @@ fn outlives(low: u32, high: u32) -> bool {
     return high > endHigh || (high == endHigh && low > endLow);
 }
 
-// Update: each live particle shifted with the anchor and moved over the
-// plan; whether it outlives the plan.
+// Update: each live particle moved, the workgroups (at most a dispatch's
+// along one axis) striding over them.
 @compute @workgroup_size(64, 1, 1)
 fn update(@builtin(global_invocation_id) id: vec3<u32>) {
-    let i = id.x;
-    let c = params.counts.x;
-    if (i >= counts[0]) {
-        return;
+    let live = counts[0];
+    for (var i = id.x; i < live; i += params.modes.z * 64u) {
+        moveLive(i);
     }
+}
+
+// A live particle shifted with the anchor and moved over the plan; whether
+// it outlives the plan.
+fn moveLive(i: u32) {
+    let c = params.counts.x;
     let a = params.gravity.xyz;
     let f = params.factors.xyz;
     let v0 = readVector(0u, i, VELOCITY);
@@ -203,9 +215,8 @@ fn update(@builtin(global_invocation_id) id: vec3<u32>) {
                                                      source[(DEATH + 1u) * c + i]));
 }
 
-// Adds keep's flags of the workgroup in order: each invocation's place
-// among those kept before it in this chunk, the chunk's count in carried's
-// next value.
+// Adds keep's values of the workgroup in order: each invocation's sum of
+// those before it.
 fn exclusiveScan(local: u32, keep: u32) -> u32 {
     scan[local] = keep;
     workgroupBarrier();
@@ -221,37 +232,77 @@ fn exclusiveScan(local: u32, keep: u32) -> u32 {
     return scan[local] - keep;
 }
 
-// Compact: the particles that outlive the plan moved, in order, to the
-// other buffer; their count in counts[1].
-@compute @workgroup_size(256, 1, 1)
-fn compact(@builtin(local_invocation_index) local: u32) {
+// Whether element i of the step's sequence is kept: the live particles
+// first (live of them), those that outlive the plan; then the plan's
+// births, those with room that outlive it, their death from the plan's
+// start in two words past its ticks when the high word is set or the low
+// passes them.
+fn keepAt(i: u32, live: u32) -> u32 {
     let c = params.counts.x;
+    if (i < live) {
+        return source[ALIVE * c + i];
+    }
+    let j = i - live;
+    if (j >= params.counts.y) {
+        return 0u;
+    }
+    let b0 = births[2u * j];
+    let b1 = births[2u * j + 1u];
+    return select(0u, 1u, accepted[j] == 1u && (b1.x > 0u || b0.w > params.counts.z));
+}
+
+// The workgroups of the reduce and scatter entries: the sequence is at
+// most the capacity's live particles and twice the capacity's births.
+fn blockCount() -> u32 {
+    return (3u * params.counts.x + BLOCK - 1u) / BLOCK;
+}
+
+// Reduce: each workgroup's count of kept elements, in blocks.
+@compute @workgroup_size(256, 1, 1)
+fn reduce(@builtin(local_invocation_index) local: u32,
+          @builtin(workgroup_id) group: vec3<u32>) {
+    let live = counts[0];
+    let first = group.x * BLOCK + local * ITEMS;
+    var kept = 0u;
+    for (var k = 0u; k < ITEMS; k++) {
+        kept += keepAt(first + k, live);
+    }
+    let before = exclusiveScan(local, kept);
+    if (local == CHUNK - 1u) {
+        blocks[group.x] = before + kept;
+    }
+}
+
+// Offsets, in one workgroup: the blocks' counts made each block's first
+// place, in order; the live count before the step kept in counts[1], the
+// new one in counts[0], those past the capacity in counts[2].
+@compute @workgroup_size(256, 1, 1)
+fn offsets(@builtin(local_invocation_index) local: u32) {
+    let c = params.counts.x;
+    let n = blockCount();
     if (local == 0u) {
         carried = 0u;
-        liveCount = counts[0];
     }
-    let live = workgroupUniformLoad(&liveCount);
-    for (var base = 0u; base < live; base += CHUNK) {
-        let i = base + local;
-        var keep = 0u;
-        if (i < live) {
-            keep = source[ALIVE * c + i];
+    for (var base = 0u; base < n; base += CHUNK) {
+        let k = base + local;
+        var count = 0u;
+        if (k < n) {
+            count = blocks[k];
         }
-        let before = exclusiveScan(local, keep);
-        let at = carried + before;
-        if (keep == 1u) {
-            for (var w = 0u; w < ALIVE; w++) {
-                moved[w * c + at] = source[w * c + i];
-            }
+        let before = exclusiveScan(local, count);
+        if (k < n) {
+            blocks[k] = carried + before;
         }
         workgroupBarrier();
         if (local == CHUNK - 1u) {
-            carried += before + keep;
+            carried += before + count;
         }
         workgroupBarrier();
     }
     if (local == 0u) {
-        counts[1] = carried;
+        counts[1] = counts[0];
+        counts[0] = min(carried, c);
+        counts[2] = carried - min(carried, c);
     }
 }
 
@@ -266,79 +317,77 @@ fn placeAt(tick: u32, origin: ptr<function, vec3<f32>>, rotation: ptr<function, 
     return mix(params.fromOrigin.w, params.toOrigin.w, t);
 }
 
-// Spawn: the plan's births that outlive it, from counts[1] on in order,
-// each drawn, placed, and moved from its tick to the plan's end; the new
-// count in counts[0], refusing past the capacity.
-@compute @workgroup_size(256, 1, 1)
-fn spawn(@builtin(local_invocation_index) local: u32) {
+// A birth of the plan drawn, placed, and moved from its tick to the plan's
+// end, written to place at of the other buffer.
+fn spawnAt(j: u32, at: u32) {
     let c = params.counts.x;
-    let count = params.counts.y;
-    if (local == 0u) {
-        carried = counts[1];
+    let b0 = births[2u * j];
+    let b1 = births[2u * j + 1u];
+    var normal = vec3<f32>(0.0);
+    let shapeWords = draw(SHAPE_SALT, b0.x, b0.y);
+    let local_place = turnByShape(sampleSphere(shapeWords, &normal));
+    let place = local_place + params.shapeOffset.xyz;
+    var velocity = drawVelocity(draw(VELOCITY_SALT, b0.x, b0.y), turnByShape(normal));
+    var p = place;
+    if (params.start.w == 0u) {
+        var origin = vec3<f32>(0.0);
+        var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        let scale = placeAt(b0.z, &origin, &rotation);
+        p = origin + rotate(rotation, place * scale);
+        velocity = rotate(rotation, velocity * scale) +
+                   params.shift.w * params.instanceVelocity.xyz;
     }
-    workgroupBarrier();
-    for (var base = 0u; base < count; base += CHUNK) {
-        let i = base + local;
-        var keep = 0u;
-        var b0 = vec4<u32>(0u);
-        var b1 = vec4<u32>(0u);
-        if (i < count) {
-            b0 = births[2u * i];
-            b1 = births[2u * i + 1u];
-            // The death from the plan's start in two words: past the plan's
-            // ticks when its high word is set or its low passes them.
-            if (accepted[i] == 1u && (b1.x > 0u || b0.w > params.counts.z)) {
-                keep = 1u;
-            }
-        }
-        let before = exclusiveScan(local, keep);
-        let at = carried + before;
-        if (keep == 1u && at < c) {
-            var normal = vec3<f32>(0.0);
-            let shapeWords = draw(SHAPE_SALT, b0.x, b0.y);
-            let local_place = turnByShape(sampleSphere(shapeWords, &normal));
-            let place = local_place + params.shapeOffset.xyz;
-            var velocity = drawVelocity(draw(VELOCITY_SALT, b0.x, b0.y), turnByShape(normal));
-            var p = place;
-            if (params.start.w == 0u) {
-                var origin = vec3<f32>(0.0);
-                var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-                let scale = placeAt(b0.z, &origin, &rotation);
-                p = origin + rotate(rotation, place * scale);
-                velocity = rotate(rotation, velocity * scale) +
-                           params.shift.w * params.instanceVelocity.xyz;
-            }
-            let seconds = f32(params.counts.z - b0.z) / TICKS_PER_SECOND;
-            let f = factors(seconds);
-            let a = params.gravity.xyz;
-            let moved_place = p + velocity * f.y + a * f.z;
-            let moved_velocity = velocity * f.x + a * f.y;
-            // The birth and death ticks made absolute.
-            let birthLow = params.start.x + b0.z;
-            let birthHigh = params.start.y + select(0u, 1u, birthLow < params.start.x);
-            let deathLow = params.start.x + b0.w;
-            let deathHigh = params.start.y + b1.x + select(0u, 1u, deathLow < params.start.x);
-            for (var k = 0u; k < 3u; k++) {
-                moved[(PLACE + k) * c + at] = bitcast<u32>(moved_place[k]);
-                moved[(VELOCITY + k) * c + at] = bitcast<u32>(moved_velocity[k]);
-            }
-            moved[SERIAL * c + at] = b0.x;
-            moved[(SERIAL + 1u) * c + at] = b0.y;
-            moved[BIRTH * c + at] = birthLow;
-            moved[(BIRTH + 1u) * c + at] = birthHigh;
-            moved[DEATH * c + at] = deathLow;
-            moved[(DEATH + 1u) * c + at] = deathHigh;
-            moved[INVERSE_LIFE * c + at] = b1.y;
-        }
-        workgroupBarrier();
-        if (local == CHUNK - 1u) {
-            carried += before + keep;
-        }
-        workgroupBarrier();
+    let seconds = f32(params.counts.z - b0.z) / TICKS_PER_SECOND;
+    let f = factors(seconds);
+    let a = params.gravity.xyz;
+    let moved_place = p + velocity * f.y + a * f.z;
+    let moved_velocity = velocity * f.x + a * f.y;
+    // The birth and death ticks made absolute.
+    let birthLow = params.start.x + b0.z;
+    let birthHigh = params.start.y + select(0u, 1u, birthLow < params.start.x);
+    let deathLow = params.start.x + b0.w;
+    let deathHigh = params.start.y + b1.x + select(0u, 1u, deathLow < params.start.x);
+    for (var k = 0u; k < 3u; k++) {
+        moved[(PLACE + k) * c + at] = bitcast<u32>(moved_place[k]);
+        moved[(VELOCITY + k) * c + at] = bitcast<u32>(moved_velocity[k]);
     }
-    if (local == 0u) {
-        counts[0] = min(carried, c);
-        counts[2] = carried - min(carried, c);
+    moved[SERIAL * c + at] = b0.x;
+    moved[(SERIAL + 1u) * c + at] = b0.y;
+    moved[BIRTH * c + at] = birthLow;
+    moved[(BIRTH + 1u) * c + at] = birthHigh;
+    moved[DEATH * c + at] = deathLow;
+    moved[(DEATH + 1u) * c + at] = deathHigh;
+    moved[INVERSE_LIFE * c + at] = b1.y;
+}
+
+// Scatter: each kept element to its place in the other buffer, its block's
+// first place and those kept before it in the block; a live particle
+// moved, a birth spawned; none past the capacity.
+@compute @workgroup_size(256, 1, 1)
+fn scatter(@builtin(local_invocation_index) local: u32,
+           @builtin(workgroup_id) group: vec3<u32>) {
+    let c = params.counts.x;
+    let live = counts[1];
+    let first = group.x * BLOCK + local * ITEMS;
+    var keep: array<u32, ITEMS>;
+    var kept = 0u;
+    for (var k = 0u; k < ITEMS; k++) {
+        keep[k] = keepAt(first + k, live);
+        kept += keep[k];
+    }
+    var at = blocks[group.x] + exclusiveScan(local, kept);
+    for (var k = 0u; k < ITEMS; k++) {
+        let i = first + k;
+        if (keep[k] == 1u && at < c) {
+            if (i < live) {
+                for (var w = 0u; w < ALIVE; w++) {
+                    moved[w * c + at] = source[w * c + i];
+                }
+            } else {
+                spawnAt(i - live, at);
+            }
+        }
+        at += keep[k];
     }
 }
 

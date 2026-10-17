@@ -17,11 +17,13 @@
 #include <stdalign.h>
 #include <string.h>
 
-// The words of the counts: the live count, the survivors, the refused.
+// The words of the counts: the live count, the live count before the
+// step, those past the capacity.
 #define COUNT_WORDS 4
 
 // The buffers of the step an emitter has: its numbers, its births, its
-// particles in the buffer they are in and the other, its counts.
+// particles in the buffer they are in and the other, its counts, which
+// births have room, the scan's blocks.
 enum
 {
     BUFFER_STEP = 0,
@@ -30,7 +32,8 @@ enum
     BUFFER_OTHER = 3,
     BUFFER_COUNTS = 4,
     BUFFER_ACCEPTED = 5,
-    BUFFER_COUNT = 6
+    BUFFER_BLOCKS = 6,
+    BUFFER_COUNT = 7
 };
 
 // The passes of an emitter's step: the plan's bytes, then the kernels.
@@ -39,9 +42,10 @@ enum
     PASS_WRITE = 0,
     PASS_UPDATE = 1,
     PASS_ROOM = 2,
-    PASS_COMPACT = 3,
-    PASS_SPAWN = 4,
-    PASS_COUNT = 5
+    PASS_REDUCE = 3,
+    PASS_OFFSETS = 4,
+    PASS_SCATTER = 5,
+    PASS_COUNT = 6
 };
 
 typedef struct Emitter
@@ -52,6 +56,7 @@ typedef struct Emitter
     mrhiBufferId step;
     mrhiBufferId counts;
     mrhiBufferId accepted;
+    mrhiBufferId blocks;
     // The particle buffer the last recorded step left them in.
     int32_t current;
     // The step added and not yet recorded: its passes, the buffers as the
@@ -146,7 +151,9 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
            CreateBuffer(sim, MVFX_STEP_WORDS * 4u, mrhi_bufferUniform | mrhi_bufferCopyDestination,
                         &emitter->step) &&
            CreateBuffer(sim, COUNT_WORDS * 4u, written | mrhi_bufferCopySource, &emitter->counts) &&
-           CreateBuffer(sim, 2u * c * sizeof(uint32_t), mrhi_bufferStorage, &emitter->accepted);
+           CreateBuffer(sim, 2u * c * sizeof(uint32_t), mrhi_bufferStorage, &emitter->accepted) &&
+           CreateBuffer(sim, mvfxScanBlocks(emitter->capacity) * sizeof(uint32_t),
+                        mrhi_bufferStorage, &emitter->blocks);
 }
 
 // Whether a def is one a simulation can be made from.
@@ -238,6 +245,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->step);
         DestroyBuffer(sim, emitter->counts);
         DestroyBuffer(sim, emitter->accepted);
+        DestroyBuffer(sim, emitter->blocks);
     }
     mvfxAllocator allocator = sim->allocator;
     mvfxRhiRelease(&allocator, sim, sizeof *sim, alignof(mvfxGpuSim));
@@ -271,7 +279,8 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
                                                 emitter->particles[emitter->current],
                                                 emitter->particles[1 - emitter->current],
                                                 emitter->counts,
-                                                emitter->accepted};
+                                                emitter->accepted,
+                                                emitter->blocks};
     for (int32_t b = 0; b < BUFFER_COUNT; ++b)
     {
         if (mrhiImportBuffer(sim->device, buffers[b], &emitter->resources[b]) != mrhi_success)
@@ -290,7 +299,8 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = r[BUFFER_CURRENT], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_OTHER], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_COUNTS], .kind = mrhi_accessStorageReadWrite},
-        {.resource = r[BUFFER_ACCEPTED], .kind = mrhi_accessStorageReadWrite}};
+        {.resource = r[BUFFER_ACCEPTED], .kind = mrhi_accessStorageReadWrite},
+        {.resource = r[BUFFER_BLOCKS], .kind = mrhi_accessStorageReadWrite}};
     for (int32_t p = 0; p < PASS_COUNT; ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
@@ -392,12 +402,14 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
             continue;
         }
         emitter->added = false;
-        uint32_t groups = ((uint32_t)emitter->capacity + 63u) / 64u;
+        uint32_t groups = mvfxUpdateGroups(emitter->capacity);
+        uint32_t blocks = mvfxScanBlocks(emitter->capacity);
         bool recorded = RecordWrites(sim, emitter) &&
                         RecordKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
                         RecordKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
-                        RecordKernel(sim, emitter, PASS_COMPACT, mvfx_kernelCompact, 1) &&
-                        RecordKernel(sim, emitter, PASS_SPAWN, mvfx_kernelSpawn, 1);
+                        RecordKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
+                        RecordKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
+                        RecordKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks);
         if (!recorded)
         {
             return mvfx_errorState;

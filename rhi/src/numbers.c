@@ -90,6 +90,17 @@ static void Place(uint32_t* words, const mvfxPlanPlace* place, const double anch
     memcpy(words + 4, place->rotation, 4 * sizeof(float));
 }
 
+uint32_t mvfxUpdateGroups(int32_t capacity)
+{
+    uint32_t groups = ((uint32_t)capacity + 63u) / 64u;
+    return groups < 65535u ? groups : 65535u;
+}
+
+uint32_t mvfxScanBlocks(int32_t capacity)
+{
+    return (3u * (uint32_t)capacity + 1023u) / 1024u;
+}
+
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      uint32_t words[MVFX_STEP_WORDS])
 {
@@ -105,7 +116,7 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
                                  view->space,
                                  view->velocity.mode,
                                  view->shape.kind,
-                                 0,
+                                 mvfxUpdateGroups(plan->capacity),
                                  0};
     memcpy(words, counts, sizeof counts);
     // The anchor's shift (none for an emitter in the instance's space,

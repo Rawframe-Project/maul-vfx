@@ -576,3 +576,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   as the CPU path does, batch by batch at each batch's tick after the
   deaths by then: the same particles as the CPU path's when an emitter
   of 64 is owed three times as many and a burst of 150 comes at once.
+- The GPU part keeps an emitter's survivors and births in order across
+  many workgroups (a scan in three passes) and sizes every dispatch
+  within a device's limits, for capacities up to the largest an emitter
+  has (2^24).
