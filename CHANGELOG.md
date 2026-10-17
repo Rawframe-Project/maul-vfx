@@ -611,3 +611,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   friction, the rest speed, kills and life lost at contacts (the death
   tick recomputed), each particle counting its collisions in a word of
   its own (`MVFX_GPU_PARTICLE_WORDS` is 15).
+- A planned collider carries its grid, scale and grow, a plan its own
+  colliders' count (`ownColliderCount`), and the emitter view the grid
+  each of its colliders reads. The GPU part runs heightfields and
+  distance grids: its own read from the grids buffer, the instance's
+  from room each emitter keeps (`mvfxGpuSimDef.hostGridBytes`), a step
+  whose instance grids pass it refused with `mvfx_errorCapacity`.

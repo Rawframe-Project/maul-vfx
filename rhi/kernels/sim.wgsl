@@ -69,13 +69,17 @@ struct Field {
 
 // A collider as resolved for the step, in the particles' space: its
 // kind and whether it keeps them inside; its center and radius; a plane's
-// normal; a box's half extents and turn.
+// normal; a box's half extents and turn; a grid collider's grid (first
+// word, size), its format, and the scale of its values and its grow.
 struct Collider {
     modes: vec4<u32>,
     center: vec4<f32>,
     normal: vec4<f32>,
     halfExtents: vec4<f32>,
     rotation: vec4<f32>,
+    grid: vec4<u32>,
+    gridModes: vec4<u32>,
+    scales: vec4<f32>,
 }
 
 struct Step {
@@ -132,7 +136,8 @@ struct Step {
 @group(0) @binding(4) var<storage, read_write> counts: array<u32>;
 // Whether each of the plan's births has room, as the room entry decides.
 @group(0) @binding(5) var<storage, read_write> accepted: array<u32>;
-// The grids the forces read, binary32 values one a word, binary16 two.
+// The grids the forces and colliders read, binary32 values one a word,
+// binary16 two.
 @group(0) @binding(7) var<storage, read> grids: array<u32>;
 // Each block of the sequence's count of kept elements, then its first
 // place; after them (blockCount() words on), each block's box of the
@@ -432,36 +437,24 @@ fn locate(u: f32, n: u32, border: u32, low: ptr<function, u32>, high: ptr<functi
     return g - cell;
 }
 
-// Field n's grid's three components at a point.
-fn gridPoint(n: u32, point: u32) -> vec3<f32> {
-    let first = params.fields[n].grid.x;
-    if (params.fields[n].gridModes.x == 1u) {
-        var v = vec3<f32>(0.0);
-        for (var c = 0u; c < 3u; c++) {
-            let i = 3u * point + c;
-            let pair = unpack2x16float(grids[first + i / 2u]);
-            v[c] = select(pair.x, pair.y, (i & 1u) != 0u);
-        }
-        return v;
+// The value at index i of the grid from word first, of a format (1 for
+// binary16).
+fn gridValue(first: u32, format: u32, i: u32) -> f32 {
+    if (format == 1u) {
+        let pair = unpack2x16float(grids[first + i / 2u]);
+        return select(pair.x, pair.y, (i & 1u) != 0u);
     }
-    let at = first + 3u * point;
-    return vec3<f32>(bitcast<f32>(grids[at]), bitcast<f32>(grids[at + 1u]),
-                     bitcast<f32>(grids[at + 2u]));
+    return bitcast<f32>(grids[first + i]);
 }
 
-// A vector field's vector at x in its own space: the grid sampled in the
-// box's frame, turned out with it; false outside under the none border.
-fn vectorField(n: u32, x: vec3<f32>, out: ptr<function, vec3<f32>>) -> bool {
-    let field = &params.fields[n];
-    let q = (*field).rotation;
-    let d = rotate(vec4<f32>(-q.xyz, q.w), x) / (*field).scales.x + (*field).box.xyz;
-    let r = (*field).boxRotation;
-    let u = rotate(vec4<f32>(-r.xyz, r.w), d) / (*field).boxSize.xyz + 0.5;
-    let border = (*field).gridModes.y;
+// A grid's components (1 or 3) at box coordinate u, trilinear as the core
+// samples; false outside under the none border.
+fn sampleGrid(grid: vec4<u32>, format: u32, components: u32, u: vec3<f32>, border: u32,
+              out: ptr<function, vec3<f32>>) -> bool {
     if (border == BORDER_NONE && !(all(u >= vec3<f32>(0.0)) && all(u <= vec3<f32>(1.0)))) {
         return false;
     }
-    let size = (*field).grid.yzw;
+    let size = grid.yzw;
     var low = vec3<u32>(0u);
     var high = vec3<u32>(0u);
     var share = vec3<f32>(0.0);
@@ -481,7 +474,25 @@ fn vectorField(n: u32, x: vec3<f32>, out: ptr<function, vec3<f32>>) -> bool {
                      select(1.0 - share.z, share.z, k);
         let point = select(low.x, high.x, i) +
                     (select(low.y, high.y, j) + select(low.z, high.z, k) * size.y) * size.x;
-        sample += weight * gridPoint(n, point);
+        for (var c = 0u; c < components; c++) {
+            sample[c] += weight * gridValue(grid.x, format, components * point + c);
+        }
+    }
+    *out = sample;
+    return true;
+}
+
+// A vector field's vector at x in its own space: the grid sampled in the
+// box's frame, turned out with it; false outside under the none border.
+fn vectorField(n: u32, x: vec3<f32>, out: ptr<function, vec3<f32>>) -> bool {
+    let field = &params.fields[n];
+    let q = (*field).rotation;
+    let d = rotate(vec4<f32>(-q.xyz, q.w), x) / (*field).scales.x + (*field).box.xyz;
+    let r = (*field).boxRotation;
+    let u = rotate(vec4<f32>(-r.xyz, r.w), d) / (*field).boxSize.xyz + 0.5;
+    var sample = vec3<f32>(0.0);
+    if (!sampleGrid((*field).grid, (*field).gridModes.x, 3u, u, (*field).gridModes.y, &sample)) {
+        return false;
     }
     *out = rotate(r, sample);
     return true;
@@ -576,6 +587,8 @@ fn factorsFor(drag: f32, seconds: f32, whole: bool) -> vec3<f32> {
 const COLLIDER_PLANE: u32 = 0u;
 const COLLIDER_SPHERE: u32 = 1u;
 const COLLIDER_BOX: u32 = 2u;
+const COLLIDER_HEIGHTFIELD: u32 = 3u;
+const COLLIDER_DISTANCE: u32 = 4u;
 const MAX_CONTACTS: u32 = 4u;
 const LARGEST: f32 = 3.40282347e38;
 
@@ -743,6 +756,171 @@ fn hitBox(c: Collider, s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> b
     return true;
 }
 
+// The most samples a grid collider takes along a segment, and the
+// halvings that find a crossing between two.
+const FIELD_SAMPLES: u32 = 256u;
+const FIELD_HALVINGS: u32 = 10u;
+
+// A grid collider's field at a place in its box's frame: at or above 0 on
+// the allowed side; LARGEST (allowed) outside its box.
+fn gridField(c: Collider, local: vec3<f32>) -> f32 {
+    var u = local / (2.0 * c.halfExtents.xyz) + 0.5;
+    let height = c.modes.x == COLLIDER_HEIGHTFIELD;
+    if (height) {
+        u.y = 0.5;
+    }
+    var value = vec3<f32>(0.0);
+    if (!sampleGrid(c.grid, c.gridModes.x, 1u, u, BORDER_NONE, &value)) {
+        return LARGEST;
+    }
+    let v = select(value.x * c.scales.x, local.y - value.x * c.scales.x, height);
+    return select(v, -v, c.modes.y != 0u) - c.scales.y;
+}
+
+// The span between a grid's points along the axes it varies on, the least
+// of them; 0 for a grid of one point.
+fn cellOf(c: Collider) -> f32 {
+    var cell = LARGEST;
+    for (var k = 0u; k < 3u; k++) {
+        let n = c.grid[1u + k];
+        if (n > 1u) {
+            cell = min(cell, 2.0 * c.halfExtents[k] / f32(n - 1u));
+        }
+    }
+    return select(0.0, cell, cell < LARGEST);
+}
+
+// The field's gradient at a local place, unit length, toward the allowed
+// side; the box's up where it is flat or a difference leaves the box.
+fn gradientAt(c: Collider, local: vec3<f32>) -> vec3<f32> {
+    let cell = cellOf(c);
+    let h = select(0.5 * c.halfExtents.x, 0.5 * cell, cell > 0.0);
+    let f0 = gridField(c, local);
+    var g = vec3<f32>(0.0);
+    var lost = false;
+    for (var k = 0u; k < 3u; k++) {
+        var a = local;
+        var b = local;
+        a[k] += h;
+        b[k] -= h;
+        let fa = gridField(c, a);
+        let fb = gridField(c, b);
+        let aIn = fa < LARGEST;
+        let bIn = fb < LARGEST;
+        // At the box's edge one side is outside: a one-sided difference.
+        if (aIn && bIn) {
+            g[k] = (fa - fb) / (2.0 * h);
+        } else if (aIn || bIn) {
+            lost = lost || !(f0 < LARGEST);
+            g[k] = select((f0 - fb) / h, (fa - f0) / h, aIn);
+        }
+    }
+    let square = dot3(g, g);
+    if (lost || !(square > 0.0 && square <= LARGEST)) {
+        return vec3<f32>(0.0, 1.0, 0.0);
+    }
+    return g * (1.0 / sqrt(square));
+}
+
+// A local place on the wrong side put back on the surface: straight up or
+// down onto a heightfield, along the gradient out of a distance grid.
+fn pushOutOfField(c: Collider, start: vec3<f32>) -> vec3<f32> {
+    var local = start;
+    for (var turn = 0u; turn < 4u; turn++) {
+        let f = gridField(c, local);
+        if (!(f < 0.0)) {
+            break;
+        }
+        if (c.modes.x == COLLIDER_HEIGHTFIELD) {
+            local.y += select(-f, f, c.modes.y != 0u);
+            continue;
+        }
+        local -= f * gradientAt(c, local);
+    }
+    return local;
+}
+
+// The part [low, high] of the local segment a to b within the grid's box
+// (a heightfield's X and Z); false when it misses it.
+fn clipToBox(c: Collider, a: vec3<f32>, b: vec3<f32>, low: ptr<function, f32>,
+             high: ptr<function, f32>) -> bool {
+    *low = 0.0;
+    *high = 1.0;
+    for (var k = 0u; k < 3u; k++) {
+        if (k == 1u && c.modes.x == COLLIDER_HEIGHTFIELD) {
+            continue;
+        }
+        let h = c.halfExtents[k];
+        let d = b[k] - a[k];
+        if (d == 0.0) {
+            if (abs(a[k]) > h) {
+                return false;
+            }
+            continue;
+        }
+        let t1 = (-h - a[k]) / d;
+        let t2 = (h - a[k]) / d;
+        *low = max(*low, min(t1, t2));
+        *high = min(*high, max(t1, t2));
+    }
+    return *low <= *high;
+}
+
+// The local segment's first crossing into a grid's wrong side, sampled
+// every half cell: its share of the segment, on the allowed side.
+fn crossField(c: Collider, a: vec3<f32>, b: vec3<f32>, t: ptr<function, f32>) -> bool {
+    var low = 0.0;
+    var high = 1.0;
+    if (!clipToBox(c, a, b, &low, &high)) {
+        return false;
+    }
+    let d = b - a;
+    let length = sqrt(dot3(d, d)) * (high - low);
+    let cell = cellOf(c);
+    let wanted = select(1.0, ceil(length / (0.5 * cell)), cell > 0.0);
+    let n = u32(min(max(wanted, 1.0), f32(FIELD_SAMPLES)));
+    var before = low;
+    for (var i = 0u; i <= n; i++) {
+        var at = low + (high - low) * f32(i) / f32(n);
+        if (!(gridField(c, a + at * d) < 0.0)) {
+            before = at;
+            continue;
+        }
+        // Halve [before, at] toward the crossing, keeping the allowed end.
+        for (var halving = 0u; halving < FIELD_HALVINGS && i > 0u; halving++) {
+            let middle = 0.5 * (before + at);
+            if (gridField(c, a + middle * d) < 0.0) {
+                at = middle;
+            } else {
+                before = middle;
+            }
+        }
+        *t = before;
+        return true;
+    }
+    return false;
+}
+
+fn hitField(c: Collider, s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> bool {
+    let q = c.rotation;
+    let inverse = vec4<f32>(-q.xyz, q.w);
+    let a = rotate(inverse, s - c.center.xyz);
+    let b = rotate(inverse, e - c.center.xyz);
+    var local = a;
+    var t = 0.0;
+    if (gridField(c, a) < 0.0) {
+        local = pushOutOfField(c, a);
+    } else if (crossField(c, a, b, &t)) {
+        local = a + t * (b - a);
+    } else {
+        return false;
+    }
+    (*hit).t = t;
+    (*hit).point = rotate(q, local) + c.center.xyz;
+    (*hit).normal = rotate(q, gradientAt(c, local));
+    return true;
+}
+
 // The segment's earliest contact with any collider.
 fn firstHit(s: vec3<f32>, e: vec3<f32>, best: ptr<function, Hit>) -> bool {
     var found = false;
@@ -759,6 +937,9 @@ fn firstHit(s: vec3<f32>, e: vec3<f32>, best: ptr<function, Hit>) -> bool {
             }
             case COLLIDER_BOX: {
                 met = hitBox(c, s, e, &hit);
+            }
+            case COLLIDER_HEIGHTFIELD, COLLIDER_DISTANCE: {
+                met = hitField(c, s, e, &hit);
             }
             default: {
             }

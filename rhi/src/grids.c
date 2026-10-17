@@ -16,55 +16,143 @@ static bool SameId(mvfxGridId a, mvfxGridId b)
     return a.index1 == b.index1 && a.generation == b.generation;
 }
 
-bool mvfxLayGrids(const mvfxContext* context, const mvfxEmitterView* view, mvfxGpuGrids* grids)
+// The grid among first to count with an id, or -1.
+static int32_t Find(const mvfxGpuGrids* grids, int32_t first, int32_t count, mvfxGridId id)
+{
+    for (int32_t g = first; g < count; ++g)
+    {
+        if (SameId(grids->grids[g].id, id))
+        {
+            return g;
+        }
+    }
+    return -1;
+}
+
+// Adds a grid at word at; false when it is gone.
+static bool Add(const mvfxContext* context, mvfxGridId id, uint32_t at, mvfxGpuGrids* grids)
+{
+    mvfxGridView view;
+    if (mvfxGrid_GetView(context, id, &view) != mvfx_success)
+    {
+        return false;
+    }
+    mvfxGpuGrid* grid = &grids->grids[grids->count++];
+    *grid = (mvfxGpuGrid){.id = id, .first = at, .format = view.format};
+    memcpy(grid->size, view.size, sizeof view.size);
+    return true;
+}
+
+// The grid a fixed reader reads: found or added after the others; -1 for
+// a null id; false through ok when it is gone.
+static int32_t Fixed(const mvfxContext* context, mvfxGridId id, mvfxGpuGrids* grids, bool* ok)
+{
+    if (id.index1 == 0)
+    {
+        return -1;
+    }
+    int32_t g = Find(grids, 0, grids->count, id);
+    if (g >= 0)
+    {
+        return g;
+    }
+    mvfxGridView view;
+    if (mvfxGrid_GetView(context, id, &view) != mvfx_success ||
+        !Add(context, id, grids->words, grids))
+    {
+        *ok = false;
+        return -1;
+    }
+    grids->words += WordsOf(&view);
+    return grids->count - 1;
+}
+
+bool mvfxLayGrids(const mvfxContext* context, const mvfxEmitterView* view, uint32_t hostWords,
+                  mvfxGpuGrids* grids)
 {
     *grids = (mvfxGpuGrids){0};
+    bool ok = true;
     for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)
     {
-        grids->forceGrid[f] = -1;
-        mvfxGridId id = view->forceGrids[f];
-        if (id.index1 == 0)
+        grids->forceGrid[f] = Fixed(context, view->forceGrids[f], grids, &ok);
+    }
+    for (int32_t c = 0; c < MVFX_MAX_COLLIDERS; ++c)
+    {
+        grids->colliderGrid[c] = Fixed(context, view->colliderGrids[c], grids, &ok);
+    }
+    grids->fixedCount = grids->count;
+    grids->hostFirst = grids->words;
+    grids->hostWords = hostWords;
+    grids->words += hostWords;
+    return ok;
+}
+
+bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxEmitterPlan* plan,
+                        int32_t ownColliders, mvfxGpuGrids* grids)
+{
+    // The region as the last step left it, kept where a grid stays.
+    mvfxGpuGrid was[MVFX_MAX_COLLIDERS];
+    int32_t wasCount = grids->count - grids->fixedCount;
+    memcpy(was, &grids->grids[grids->fixedCount], (size_t)wasCount * sizeof was[0]);
+    grids->count = grids->fixedCount;
+    uint32_t used = 0;
+    for (int32_t c = ownColliders; c < plan->colliderCount; ++c)
+    {
+        mvfxGridId id = plan->colliders[c].grid;
+        if (id.index1 == 0 || Find(grids, grids->fixedCount, grids->count, id) >= 0)
         {
             continue;
         }
-        int32_t g = 0;
-        while (g < grids->count && !SameId(grids->ids[g], id))
+        mvfxGridView view;
+        if (mvfxGrid_GetView(context, id, &view) != mvfx_success ||
+            used + WordsOf(&view) > grids->hostWords ||
+            !Add(context, id, grids->hostFirst + used, grids))
         {
-            ++g;
+            grids->count = grids->fixedCount;
+            return false;
         }
-        if (g == grids->count)
+        mvfxGpuGrid* grid = &grids->grids[grids->count - 1];
+        // The copy stands where the same grid stood last step.
+        for (int32_t w = 0; w < wasCount; ++w)
         {
-            mvfxGridView grid;
-            if (mvfxGrid_GetView(context, id, &grid) != mvfx_success)
-            {
-                return false;
-            }
-            grids->ids[g] = id;
-            grids->first[g] = grids->words;
-            memcpy(grids->size[g], grid.size, sizeof grid.size);
-            grids->format[g] = grid.format;
-            grids->words += WordsOf(&grid);
-            grids->count = g + 1;
+            grid->serial =
+                SameId(was[w].id, id) && was[w].first == grid->first ? was[w].serial : grid->serial;
         }
-        grids->forceGrid[f] = g;
+        used += WordsOf(&view);
     }
     return true;
 }
 
-void mvfxGridWords(const mvfxGpuGrids* grids, int32_t f, uint32_t out[5])
+// A grid's words, or zeros for -1.
+static void Words(const mvfxGpuGrids* grids, int32_t g, uint32_t out[5])
 {
     memset(out, 0, 5 * sizeof(uint32_t));
-    int32_t g = grids->forceGrid[f];
     if (g < 0)
     {
         return;
     }
-    out[0] = grids->first[g];
+    const mvfxGpuGrid* grid = &grids->grids[g];
+    out[0] = grid->first;
     for (int32_t k = 0; k < 3; ++k)
     {
-        out[1 + k] = (uint32_t)grids->size[g][k];
+        out[1 + k] = (uint32_t)grid->size[k];
     }
-    out[4] = grids->format[g];
+    out[4] = grid->format;
+}
+
+void mvfxForceGridWords(const mvfxGpuGrids* grids, int32_t f, uint32_t out[5])
+{
+    Words(grids, grids->forceGrid[f], out);
+}
+
+void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxEmitterPlan* plan,
+                           int32_t ownColliders, int32_t c, uint32_t out[5])
+{
+    mvfxGridId id = plan->colliders[c].grid;
+    int32_t g = c < ownColliders ? grids->colliderGrid[c]
+                : id.index1 != 0 ? Find(grids, grids->fixedCount, grids->count, id)
+                                 : -1;
+    Words(grids, g, out);
 }
 
 // Uploads a grid's values from its first word: the whole words, then a
@@ -90,20 +178,21 @@ bool mvfxWriteGrids(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
 {
     for (int32_t g = 0; g < grids->count; ++g)
     {
+        mvfxGpuGrid* grid = &grids->grids[g];
         mvfxGridView view;
-        if (mvfxGrid_GetView(context, grids->ids[g], &view) != mvfx_success)
+        if (mvfxGrid_GetView(context, grid->id, &view) != mvfx_success)
         {
             return false;
         }
-        if (view.serial == grids->serials[g])
+        if (view.serial == grid->serial)
         {
             continue;
         }
-        if (!Upload(device, pass, buffer, grids->first[g], &view))
+        if (!Upload(device, pass, buffer, grid->first, &view))
         {
             return false;
         }
-        grids->serials[g] = view.serial;
+        grid->serial = view.serial;
     }
     return true;
 }

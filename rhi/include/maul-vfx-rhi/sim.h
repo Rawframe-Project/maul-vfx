@@ -38,6 +38,11 @@ extern "C"
         const mvfxContext* context;
         mvfxEffectId effect;
         mvfxInstanceId instance;
+        // The bytes each emitter keeps for the grids its instance's
+        // colliders read (mvfxInstance_SetColliders: heightfields and
+        // distance grids), their values as stored (mvfxGridView's bytes,
+        // each rounded up to 4); 0 for none.
+        int64_t hostGridBytes;
     } mvfxGpuSimDef;
 
 // The cookie of a simulation def, which its default sets and
@@ -123,20 +128,20 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
     ///         `mvfx_errorStale` for an instance that is gone;
     ///         `mvfx_errorState` when the device refuses a pass or an
-    ///         import (no frame open), or when the instance's colliders
-    ///         (mvfxInstance_SetColliders) hold a kind the part does not
-    ///         run yet (heightfields and distance grids).
+    ///         import (no frame open); `mvfx_errorCapacity` when the grids
+    ///         the instance's colliders read pass the def's hostGridBytes.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 4,632 an
+    /// when it added none. The bytes are the frame's uploads: 6,712 an
     /// emitter, 32 a planned birth (a plan holds at most twice the
-    /// emitter's capacity), and the values of each grid its forces read
-    /// (mvfxGridView's bytes) at the first step and after each change,
-    /// which the device's frameUploadBytes must hold.
+    /// emitter's capacity), and the values of each grid its forces and
+    /// colliders read (mvfxGridView's bytes) at the first step, after each
+    /// change and, for the instance's, after each move in the room the
+    /// def keeps, which the device's frameUploadBytes must hold.
     ///
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;

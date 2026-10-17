@@ -121,6 +121,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
     for (int32_t c = 0; e->collision.enabled && c < e->colliderCount; ++c)
     {
         viewOut->colliderKinds |= 1u << e->colliders[c].kind;
+        viewOut->colliderGrids[c] = e->colliders[c].grid;
     }
     for (int32_t f = 0; f < e->forceCount; ++f)
     {

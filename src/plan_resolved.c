@@ -6,10 +6,15 @@
 #include "collide.h"
 #include "force.h"
 
-// A resolved collider as a plan hands it over.
-static mvfxPlannedCollider PlannedCollider(const mvfxResolvedCollider* c)
+// A resolved collider as a plan hands it over, with its def's grid.
+static mvfxPlannedCollider PlannedCollider(const mvfxResolvedCollider* c, mvfxGridId grid)
 {
-    mvfxPlannedCollider out = {.kind = c->kind, .inside = c->inside, .radius = c->radius};
+    mvfxPlannedCollider out = {.kind = c->kind,
+                               .inside = c->inside,
+                               .radius = c->radius,
+                               .grid = c->grid != nullptr ? grid : (mvfxGridId){0},
+                               .scale = c->scale,
+                               .grow = c->grow};
     for (int32_t k = 0; k < 3; ++k)
     {
         out.center[k] = c->center[k];
@@ -35,9 +40,15 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
     }
     const mvfxCollision* collision = &compiled->collision;
     plan->colliderCount = state->colliderCount;
+    int32_t own = compiled->colliderCount < state->colliderCount ? compiled->colliderCount
+                                                                 : state->colliderCount;
+    plan->ownColliderCount = own;
     for (int32_t c = 0; c < plan->colliderCount; ++c)
     {
-        plan->colliders[c] = PlannedCollider(&state->colliders[c]);
+        // The emitter's own, then the instance's.
+        mvfxGridId grid =
+            c < own ? compiled->colliders[c].grid : instance->hostColliders[c - own].grid;
+        plan->colliders[c] = PlannedCollider(&state->colliders[c], grid);
     }
     plan->restitution = collision->restitution;
     plan->friction = collision->friction;

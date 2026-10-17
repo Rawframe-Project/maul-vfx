@@ -116,6 +116,11 @@ extern "C"
         float radius;
         float halfExtents[3];
         float rotation[4];
+        // A heightfield's or distance grid's grid, the scale of its values
+        // into the particles' space and the radius it keeps them off by.
+        mvfxGridId grid;
+        float scale;
+        float grow;
     } mvfxPlannedCollider;
 
     // An emitter's plan for the context's last step.
@@ -157,9 +162,11 @@ extern "C"
         int32_t forceCount;
         mvfxPlannedForce forces[MVFX_MAX_FORCES];
         // Its colliders as resolved for the step, its own then the
-        // instance's (none when it does not collide), and its collision's
-        // response, the rest speed in the particles' space.
+        // instance's (none when it does not collide), the first
+        // ownColliderCount its own, and its collision's response, the rest
+        // speed in the particles' space.
         int32_t colliderCount;
+        int32_t ownColliderCount;
         mvfxPlannedCollider colliders[2 * MVFX_MAX_COLLIDERS];
         float restitution;
         float friction;
@@ -257,9 +264,11 @@ extern "C"
         uint32_t forceKinds;
         mvfxGridId forceGrids[MVFX_MAX_FORCES];
         // A bit for each kind of collider of its own (1 <<
-        // mvfx_colliderPlane and so on), and whether it collides with the
-        // host's scene or a depth image.
+        // mvfx_colliderPlane and so on), the grid each reads (a
+        // heightfield's or a distance grid's; the null id for the others),
+        // and whether it collides with the host's scene or a depth image.
         uint32_t colliderKinds;
+        mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS];
         bool sceneQueries;
         bool depthImage;
         // Whether its bounds are a fixed box in the instance's space

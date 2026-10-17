@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// An emitter's grids on the GPU: the grids its forces read (fixed by its
-// effect), laid out once in one buffer of words, each uploaded when its
-// serial differs from the copy's.
+// An emitter's grids on the GPU, in one buffer of words: those its forces
+// and its own colliders read (fixed by its effect) laid out once, then a
+// region of the room the simulation's def sets aside for the grids its
+// instance's colliders read, placed each step. Each is uploaded when its
+// serial differs from its copy's.
 
 #ifndef MAUL_VFX_RHI_SRC_GRIDS_H
 #define MAUL_VFX_RHI_SRC_GRIDS_H
@@ -11,27 +13,52 @@
 #include "maul-rhi/encoder.h"
 #include "maul-vfx/plan.h"
 
-// The grids: each distinct one's id, first word in the buffer and the
-// serial of the copy there (0 for none yet), its size and format; for
-// each force the grid it reads (-1 for none); the buffer's words.
+// The most grids an emitter reads: a force's or a collider's each, its own
+// and its instance's.
+#define MVFX_GPU_GRIDS (MVFX_MAX_FORCES + 2 * MVFX_MAX_COLLIDERS)
+
+// A grid in the buffer: its id, first word, size, format, and the serial
+// of the copy there (0 for none yet).
+typedef struct mvfxGpuGrid
+{
+    mvfxGridId id;
+    uint32_t first;
+    int32_t size[3];
+    mvfxGridFormat format;
+    uint64_t serial;
+} mvfxGpuGrid;
+
+// The grids: the fixed ones, then the instance's in the region from
+// hostFirst, hostWords long; for each force and own collider the grid it
+// reads (-1 for none); the buffer's words.
 typedef struct mvfxGpuGrids
 {
     int32_t count;
-    mvfxGridId ids[MVFX_MAX_FORCES];
-    uint32_t first[MVFX_MAX_FORCES];
-    uint64_t serials[MVFX_MAX_FORCES];
-    int32_t size[MVFX_MAX_FORCES][3];
-    mvfxGridFormat format[MVFX_MAX_FORCES];
+    int32_t fixedCount;
+    mvfxGpuGrid grids[MVFX_GPU_GRIDS];
     int32_t forceGrid[MVFX_MAX_FORCES];
+    int32_t colliderGrid[MVFX_MAX_COLLIDERS];
+    uint32_t hostFirst;
+    uint32_t hostWords;
     uint32_t words;
 } mvfxGpuGrids;
 
-// Lays out an emitter's grids from its view; false when one is gone.
-bool mvfxLayGrids(const mvfxContext* context, const mvfxEmitterView* view, mvfxGpuGrids* grids);
+// Lays out an emitter's fixed grids from its view and the instance's
+// region of hostWords; false when a grid is gone.
+bool mvfxLayGrids(const mvfxContext* context, const mvfxEmitterView* view, uint32_t hostWords,
+                  mvfxGpuGrids* grids);
 
-// Writes force f's grid as the step's numbers give it: its first word,
-// its size along X, Y and Z, its format (all 0 for a force with none).
-void mvfxGridWords(const mvfxGpuGrids* grids, int32_t f, uint32_t out[5]);
+// Places the grids the plan's instance colliders read in the region, in
+// order, each once; false when one is gone or they pass the region.
+bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxEmitterPlan* plan,
+                        int32_t ownColliders, mvfxGpuGrids* grids);
+
+// Writes a grid as the step's numbers give it: its first word, its size
+// along X, Y and Z, its format (all 0 for none): force f's, or the plan's
+// collider c's.
+void mvfxForceGridWords(const mvfxGpuGrids* grids, int32_t f, uint32_t out[5]);
+void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxEmitterPlan* plan,
+                           int32_t ownColliders, int32_t c, uint32_t out[5]);
 
 // Records the uploads of the grids whose serial differs from the copy's,
 // into the pass, then takes their serials; false when the device refuses

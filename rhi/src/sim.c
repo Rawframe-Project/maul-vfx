@@ -95,10 +95,10 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 
 // The features the part runs, the kinds of force (constant, wind,
 // attractor, vortex, turbulence, vector field) and of collider (plane,
-// sphere, box).
+// sphere, box, heightfield, distance grid).
 #define RUN_FEATURES  (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES | MVFX_FEATURE_COLLISION)
 #define RUN_FORCES    0x3Fu
-#define RUN_COLLIDERS 0x7u
+#define RUN_COLLIDERS 0x1Fu
 
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
@@ -221,8 +221,9 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
         Emitter* emitter = &sim->emitters[e];
         result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
         emitter->capacity = plan.capacity;
+        uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
         if (result == mvfx_success &&
-            !mvfxLayGrids(def->context, &sim->views[e], &emitter->gridLayout))
+            !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
         {
             result = mvfx_errorStale;
         }
@@ -364,21 +365,25 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         {
             continue;
         }
-        // The instance's colliders change at any step: one the part does
-        // not run yet refuses the step.
-        for (int32_t c = 0; c < plan.colliderCount; ++c)
+        // The instance's colliders change at any step: their grids go in
+        // the room the def sets aside.
+        int32_t own = plan.ownColliderCount;
+        if (!mvfxPlaceHostGrids(sim->context, &plan, own, &emitter->gridLayout))
         {
-            if (((1u << plan.colliders[c].kind) & RUN_COLLIDERS) == 0)
-            {
-                return mvfx_errorState;
-            }
+            return mvfx_errorCapacity;
         }
-        uint32_t gridWords[MVFX_MAX_FORCES][5];
+        uint32_t forceGrids[MVFX_MAX_FORCES][5];
         for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)
         {
-            mvfxGridWords(&emitter->gridLayout, f, gridWords[f]);
+            mvfxForceGridWords(&emitter->gridLayout, f, forceGrids[f]);
         }
-        mvfxStepNumbers(&sim->views[e], &plan, e, (const uint32_t (*)[5])gridWords, emitter->words);
+        uint32_t colliderGrids[2 * MVFX_MAX_COLLIDERS][5];
+        for (int32_t c = 0; c < plan.colliderCount; ++c)
+        {
+            mvfxColliderGridWords(&emitter->gridLayout, &plan, own, c, colliderGrids[c]);
+        }
+        mvfxStepNumbers(&sim->views[e], &plan, e, (const uint32_t (*)[5])forceGrids,
+                        (const uint32_t (*)[5])colliderGrids, emitter->words);
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
         emitter->plannedBirths = plan.births;
         emitter->birthCount = plan.birthCount;
