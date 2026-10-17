@@ -116,6 +116,27 @@ static bool SameAsHeld(const mvfxInstance* cpu)
     return same;
 }
 
+// Whether a plan's births come in whole batches: each numbered 0 to
+// n - 1 of n at one tick.
+static bool BatchesWhole(const mvfxEmitterPlan* plan)
+{
+    bool whole = true;
+    for (int32_t i = 0; whole && i < plan->birthCount;)
+    {
+        const mvfxPlannedBirth* first = &plan->births[i];
+        int32_t n = (int32_t)first->batchCount;
+        whole = n >= 1 && i + n <= plan->birthCount;
+        for (int32_t k = 0; whole && k < n; ++k)
+        {
+            const mvfxPlannedBirth* b = &plan->births[i + k];
+            whole = b->batchIndex == (uint32_t)k && b->batchCount == (uint32_t)n &&
+                    b->tick == first->tick;
+        }
+        i += n;
+    }
+    return whole;
+}
+
 // Steps a CPU instance and a planned one side by side, the plans gathered
 // and compared with the CPU path's particles after each step.
 static void Compare(mvfxOffscreen offscreen, const char* what)
@@ -145,7 +166,8 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
         mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         const mvfxInstance* live = mvfxContextInstance(context, planned);
-        same = same && plan.start + plan.ticks == live->clock && plan.refused == 0;
+        same = same && plan.start + plan.ticks == live->clock && plan.refused == 0 &&
+               BatchesWhole(&plan);
         planned_ticks += plan.ticks;
         births += plan.birthCount;
         Gather(&plan, live->clock);
@@ -230,8 +252,9 @@ static int32_t FinishedAlike(mvfxContext* context, mvfxInstanceId cpu, mvfxInsta
 
 static void TestFinished(void)
 {
-    // Spawning for 0.2 seconds once, lives of 0.1 to 1 second: finished
-    // when the latest death passes, not the last birth's.
+    // Spawning for 0.2 seconds once, lives falling with the emitter's age
+    // from 1 second to 0.1: the first births die last, so finished at the
+    // latest death, not the last birth's.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -239,12 +262,17 @@ static void TestFinished(void)
     emitter.duration = 0.2f;
     emitter.loops = 1;
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(0.1f, 1.0f);
+    static const mvfxCurveKey falling[2] = {
+        {.time = 0.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 0.1f, .interpolation = mvfx_interpolationLinear}};
+    emitter.lifetime = (mvfxScalarSource){
+        .kind = mvfx_sourceCurve, .range = {1.0f, 1.0f}, .curve = {.keys = falling, .keyCount = 2}};
     mvfxEffectId effect = Effect(context, &emitter);
     bool alike = true;
     int32_t finishedAt = FinishedAlike(context, Instance(context, effect, false),
                                        Instance(context, effect, true), 90, STEP_TICKS, &alike);
-    CHECK(alike && finishedAt > 50, "finished at the latest death, as the CPU path");
+    CHECK(alike && finishedAt >= 59 && finishedAt <= 61,
+          "finished at the latest death, as the CPU path");
 
     // One birth at tick 0 living 0.25 seconds exactly: a step ending at its
     // death finishes both.
@@ -429,23 +457,63 @@ static void TestRefusals(void)
               mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_errorStale,
           "a stale instance");
 
-    // An effect with a beam cannot be planned.
-    emitter = mvfxDefaultEmitterDef();
-    emitter.rate = 0.0f;
-    emitter.capacity = 8;
-    emitter.ribbon.ids = mvfx_ribbonOne;
-    emitter.beam = (mvfxBeamDef){
-        .enabled = true, .segments = 4, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
-    mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = &emitter;
-    def.emitterCount = 1;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a beam's effect");
+    mvfxDestroyContext(context);
+}
+
+// Whether a planned instance of an effect is refused, its id null.
+static bool PlannedRefused(mvfxContext* context, const mvfxEffectDef* def)
+{
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, def, &effect) == mvfx_success, "an effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.planned = true;
-    mvfxInstanceId beam = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &beam) == mvfx_errorState && beam.index1 == 0,
-          "a beam refused");
+    mvfxInstanceId instance = {0};
+    return mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_errorState &&
+           instance.index1 == 0;
+}
+
+static void TestCannotBePlanned(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    // A beam.
+    mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), Emitter(16)};
+    emitters[0].rate = 0.0f;
+    emitters[0].capacity = 8;
+    emitters[0].ribbon.ids = mvfx_ribbonOne;
+    emitters[0].beam = (mvfxBeamDef){
+        .enabled = true, .segments = 4, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 1;
+    bool refused = PlannedRefused(context, &def);
+    // Births from another emitter's deaths.
+    emitters[0] = Emitter(16);
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 16;
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventDeath,
+                                              .minCount = 1,
+                                              .maxCount = 1,
+                                              .capacity = 16};
+    def.emitterCount = 2;
+    refused = refused && PlannedRefused(context, &def);
+    // A gas, and a water surface.
+    def.emitterCount = 1;
+    const mvfxGasDef gas = mvfxDefaultGasDef();
+    def.gases = &gas;
+    def.gasCount = 1;
+    refused = refused && PlannedRefused(context, &def);
+    def.gasCount = 0;
+    def.gases = NULL;
+    const mvfxWaterDef water = mvfxDefaultWaterDef();
+    def.waters = &water;
+    def.waterCount = 1;
+    refused = refused && PlannedRefused(context, &def);
+    CHECK(refused, "beams, births from events, gases and water surfaces refused");
     mvfxDestroyContext(context);
 }
 
@@ -458,5 +526,6 @@ int main(void)
     TestAnchors();
     TestHighWords();
     TestRefusals();
+    TestCannotBePlanned();
     return s_failures == 0 ? 0 : 1;
 }

@@ -35,8 +35,9 @@ extern "C"
         uint32_t deathHigh;
         // One over its lifetime in seconds.
         float inverseLife;
-        // Its place among the births owed at its tick, and their count:
-        // what a shape's spread of a burst reads.
+        // Its place in its batch, the births one source owes at its tick
+        // (a burst's firing, or the rate's), and the batch's size: what a
+        // shape's spread of a burst reads.
         uint32_t batchIndex;
         uint32_t batchCount;
     } mvfxPlannedBirth;
