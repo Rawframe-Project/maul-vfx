@@ -104,6 +104,13 @@ typedef struct mvfxOwnColliders
     const struct mvfxResolvedDepth* depth;
 } mvfxOwnColliders;
 
+// Copies to out those colliders a segment within the box from lo to hi
+// may meet: all but the planes the box lies in front of and the outside
+// spheres it keeps clear of, each by a margin past rounding, so a segment
+// in the box has no contact with any collider left out. Returns how many.
+int32_t mvfxReachable(const mvfxResolvedCollider* colliders, int32_t count, const float lo[3],
+                      const float hi[3], mvfxResolvedCollider* out);
+
 // Collides a particle that went from start to place over a step and ends
 // it with velocity, with the colliders and its own: place and velocity
 // become what the contacts make them, and first the first contact's.

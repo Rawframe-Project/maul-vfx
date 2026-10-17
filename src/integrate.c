@@ -272,10 +272,21 @@ mvfxOwnColliders mvfxOwnCollidersOf(const mvfxInstance* instance, int32_t emitte
     };
 }
 
+// The colliders a run of particles may meet, as mvfxReachable gives them.
+typedef struct Reach
+{
+    mvfxResolvedCollider colliders[2 * MVFX_MAX_COLLIDERS];
+    int32_t count;
+} Reach;
+
 // Collides particle i, gone from start to place: its place and velocity
 // after its contacts, its count of them, and the life a contact takes;
-// whether a contact kills it.
-static bool Collide(const Range* r, int32_t i, const float start[3], float place[3])
+// whether a contact kills it. Where its run's reach is given, the
+// particle is tried against those colliders first: no contact there is no
+// contact at all, and a contact is found again against them all, so the
+// contacts are the same.
+static bool Collide(const Range* r, int32_t i, const float start[3], float place[3],
+                    const Reach* reach)
 {
     const mvfxCollision* collision = &r->compiled->collision;
     const mvfxEmitterState* state = &r->instance->emitters[r->emitter];
@@ -285,8 +296,19 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
     mvfxOwnColliders own =
         mvfxOwnCollidersOf(r->instance, r->emitter, i, r->modules->sigma, &plane);
     mvfxContact first = {0};
-    int32_t contacts = mvfxCollide(state->colliders, state->colliderCount, &own, collision,
-                                   restSpeed, start, place, velocity, &first);
+    int32_t contacts = 0;
+    if (reach != nullptr)
+    {
+        float tried[3] = {place[0], place[1], place[2]};
+        float turned[3] = {velocity[0], velocity[1], velocity[2]};
+        contacts = mvfxCollide(reach->colliders, reach->count, &own, collision, restSpeed, start,
+                               tried, turned, &first);
+    }
+    if (reach == nullptr || contacts > 0)
+    {
+        contacts = mvfxCollide(state->colliders, state->colliderCount, &own, collision, restSpeed,
+                               start, place, velocity, &first);
+    }
     if (state->hasDepth && collision->killOutsideView && !mvfxDepthSees(&state->depth, place))
     {
         return true;
@@ -413,7 +435,7 @@ static void MoveParticle(const Range* r, int32_t i)
     // Rigid particles meet the colliders at their shapes' surfaces, in their
     // own solve.
     bool collisionKills = r->compiled->collision.enabled && !r->compiled->rigid.enabled &&
-                          Collide(r, i, start, place);
+                          Collide(r, i, start, place, nullptr);
     for (int32_t k = 0; k < 3; ++k)
     {
         r->p[k][i] = place[k];
@@ -468,6 +490,33 @@ static void MovePlain(const Range* r, int32_t first, int32_t end)
 // The most particles a plain range moves before their contacts.
 #define PLAIN_RUN 64
 
+// The colliders a run's segments, from their starts to their places, may
+// meet: those within reach of the box around them.
+static void ReachOf(const Range* r, const float starts[3][PLAIN_RUN], int32_t at, int32_t stop,
+                    Reach* reach)
+{
+    float lo[3];
+    float hi[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        lo[k] = INFINITY;
+        hi[k] = -INFINITY;
+        for (int32_t i = at; i < stop; ++i)
+        {
+            // Comparisons, which vectorize; a NaN place is left out, its
+            // segment meeting nothing.
+            float a = starts[k][i - at];
+            float b = r->p[k][i];
+            lo[k] = a < lo[k] ? a : lo[k];
+            lo[k] = b < lo[k] ? b : lo[k];
+            hi[k] = a > hi[k] ? a : hi[k];
+            hi[k] = b > hi[k] ? b : hi[k];
+        }
+    }
+    const mvfxEmitterState* state = &r->instance->emitters[r->emitter];
+    reach->count = mvfxReachable(state->colliders, state->colliderCount, lo, hi, reach->colliders);
+}
+
 // MovePlain a run at a time, then each particle's contacts from where it
 // started, as MoveParticle makes them: its kill mark set where one kills.
 static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
@@ -484,11 +533,13 @@ static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
             }
         }
         MovePlain(r, at, stop);
+        Reach reach;
+        ReachOf(r, starts, at, stop, &reach);
         for (int32_t i = at; i < stop; ++i)
         {
             const float start[3] = {starts[0][i - at], starts[1][i - at], starts[2][i - at]};
             float place[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
-            bool kills = Collide(r, i, start, place);
+            bool kills = Collide(r, i, start, place, &reach);
             for (int32_t k = 0; k < 3; ++k)
             {
                 r->p[k][i] = place[k];

@@ -6,8 +6,9 @@
 // friction as computed by hand; a rest speed; a particle's radius; a
 // start on the wrong side put back; contacts several a step; kill on
 // collision, life lost, the count and its kill rule; the instance's own
-// colliders; a collider in the emitter's space; the refusals; and the
-// signed gaps to each kind of collider.
+// colliders; a collider in the emitter's space; the refusals; the signed
+// gaps to each kind of collider; and the colliders a box's segments may
+// reach, none left out that one meets.
 
 #include "collide.h"
 #include "context.h"
@@ -579,6 +580,93 @@ static void TestGaps(void)
     CHECK(planes && balls && boxes && grids, "gaps to colliders");
 }
 
+// A small generator for the reach's trials.
+static uint32_t s_seed = 12345u;
+
+static float Uniform(float lo, float hi)
+{
+    s_seed = s_seed * 1664525u + 1013904223u;
+    return lo + (hi - lo) * (float)(s_seed >> 8) * 0x1p-24f;
+}
+
+// Whether a segment from a to b meets a collider alone.
+static bool Meets(const mvfxResolvedCollider* c, const float a[3], const float b[3])
+{
+    const mvfxOwnColliders none = {0};
+    const mvfxCollision response = {.enabled = true, .restitution = 0.5f};
+    float place[3] = {b[0], b[1], b[2]};
+    float velocity[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    mvfxContact first = {0};
+    return mvfxCollide(c, 1, &none, &response, 0.0f, a, place, velocity, &first) > 0;
+}
+
+static void TestReach(void)
+{
+    // Boxes at random near planes and outside spheres, at scales from 1 to
+    // 1000: a collider the reach leaves out meets none of 64 segments
+    // between random points of the box and its corners; many boxes graze
+    // their colliders, and some are left out within a hair of them. A box,
+    // a field and an inside sphere are always kept.
+    int32_t out = 0;
+    int32_t close = 0;
+    bool exact = true;
+    for (int32_t trial = 0; trial < 4000; ++trial)
+    {
+        float scale = trial % 4 == 0 ? 1000.0f : (trial % 4 == 1 ? 10.0f : 1.0f);
+        mvfxResolvedCollider c = {.rotation = {0, 0, 0, 1}};
+        float n[3] = {Uniform(-1, 1), Uniform(-1, 1), Uniform(-1, 1)};
+        float length = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            c.center[k] = Uniform(-scale, scale);
+            c.normal[k] = n[k] / length;
+        }
+        bool sphere = trial % 2 == 1;
+        c.kind = sphere ? mvfx_colliderSphere : mvfx_colliderPlane;
+        c.radius = sphere ? Uniform(0.01f, 1.0f) * scale : 0.0f;
+        // The box's near corner a small way off the surface along n.
+        float gap = Uniform(-0.01f, 0.05f) * (trial % 8 < 4 ? 1.0f : 0.001f);
+        float lo[3];
+        float hi[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float at = c.center[k] + c.normal[k] * (c.radius + gap * scale);
+            float size = Uniform(0.0f, 0.5f) * scale;
+            lo[k] = c.normal[k] > 0.0f ? at : at - size;
+            hi[k] = c.normal[k] > 0.0f ? at + size : at;
+        }
+        mvfxResolvedCollider kept[1];
+        if (mvfxReachable(&c, 1, lo, hi, kept) == 1)
+        {
+            continue;
+        }
+        out += 1;
+        close += gap * scale < 1e-3f * scale ? 1 : 0;
+        for (int32_t s = 0; s < 64; ++s)
+        {
+            float a[3];
+            float b[3];
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                bool corner = s % 4 == 0;
+                a[k] = corner ? (Uniform(0, 1) < 0.5f ? lo[k] : hi[k]) : Uniform(lo[k], hi[k]);
+                b[k] = corner ? (Uniform(0, 1) < 0.5f ? lo[k] : hi[k]) : Uniform(lo[k], hi[k]);
+            }
+            exact = exact && !Meets(&c, a, b);
+        }
+    }
+    CHECK(exact, "a collider left out meets no segment in its box");
+    CHECK(out > 1000 && close > 100, "many left out, some within a hair");
+    const float lo[3] = {100, 100, 100};
+    const float hi[3] = {101, 101, 101};
+    const mvfxResolvedCollider always[3] = {
+        {.kind = mvfx_colliderBox, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}},
+        {.kind = mvfx_colliderHeightfield, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}},
+        {.kind = mvfx_colliderSphere, .inside = true, .radius = 1.0f, .rotation = {0, 0, 0, 1}}};
+    mvfxResolvedCollider kept[3];
+    CHECK(mvfxReachable(always, 3, lo, hi, kept) == 3, "boxes, fields and inside spheres kept");
+}
+
 int main(void)
 {
     TestNoTunneling();
@@ -590,5 +678,6 @@ int main(void)
     TestShapes();
     TestRefusals();
     TestGaps();
+    TestReach();
     return s_failures == 0 ? 0 : 1;
 }

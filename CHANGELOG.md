@@ -452,7 +452,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   take about 1% fewer.
 - An emitter moved by gravity and the shared drag alone keeps its plain
   move when it collides: 64 particles moved an axis at a time, then each
-  one's contacts from where it started; the same bits.
+  one's contacts from where it started, tried first against only the
+  planes and spheres the 64 can reach; the same bits, in about 36% fewer
+  instructions for collision.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its

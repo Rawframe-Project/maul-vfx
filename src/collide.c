@@ -659,6 +659,59 @@ static void Bounce(const mvfxCollision* response, const float n[3], float v[3])
     }
 }
 
+// Whether a segment in the box from lo to hi cannot meet a collider: in
+// binary64, the box's nearest point to a plane in front of it, or to an
+// outside sphere farther than its radius, each by a margin. A plane's test
+// is a dot product, its float rounding below 2^-20 of the coordinates'
+// sum; a sphere's discriminant cancels, so its margin is 2^-8 of it (more
+// than the square root of the rounding's share). NaN keeps a collider.
+static bool IsOutOfReach(const mvfxResolvedCollider* c, const float lo[3], const float hi[3])
+{
+    double size = 0.0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        size += fmax(fabs((double)lo[k]), fabs((double)hi[k])) + fabs((double)c->center[k]);
+    }
+    if (c->kind == mvfx_colliderPlane)
+    {
+        double nearest = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double n = (double)c->normal[k];
+            nearest += n * ((n > 0.0 ? (double)lo[k] : (double)hi[k]) - (double)c->center[k]);
+        }
+        return nearest > 0x1p-20 * size;
+    }
+    if (c->kind == mvfx_colliderSphere && !c->inside)
+    {
+        double squared = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double x = (double)c->center[k];
+            double d = fmax(fmax((double)lo[k] - x, x - (double)hi[k]), 0.0);
+            squared += d * d;
+        }
+        double clear = (double)c->radius + 0x1p-8 * (size + (double)c->radius);
+        return squared > clear * clear;
+    }
+    return false;
+}
+
+int32_t mvfxReachable(const mvfxResolvedCollider* colliders, int32_t count, const float lo[3],
+                      const float hi[3], mvfxResolvedCollider* out)
+{
+    int32_t kept = 0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        if (!IsOutOfReach(&colliders[i], lo, hi))
+        {
+            out[kept] = colliders[i];
+            kept += 1;
+        }
+    }
+    return kept;
+}
+
 int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
                     const mvfxOwnColliders* own, const mvfxCollision* response, float restSpeed,
                     const float start[3], float place[3], float velocity[3], mvfxContact* first)
