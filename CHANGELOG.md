@@ -460,6 +460,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A ribbon keeps the world places of the last eight points it read, which
   its splines read up to five times each; the same points in about 13%
   fewer instructions.
+- `bench_threads` measures the scaling over a host's threads: a million
+  particles in 64 instances through a POSIX thread pool of 1 to 8
+  threads, plain and with turbulence, where POSIX threads are.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its
