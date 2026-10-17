@@ -443,6 +443,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   at a time, in the same operations, so the same bits.
   `bench/bench_particles.c` prints the instructions a particle beside
   each time.
+- Turbulence's curl takes only the six gradient entries it reads, the
+  same bits in about 16% fewer instructions a particle.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its
