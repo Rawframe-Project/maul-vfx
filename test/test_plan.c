@@ -4,9 +4,10 @@
 // Planned instances: a planned instance's births, gathered from its plans
 // and ended at their death ticks, are the particles the CPU path holds,
 // in order, with their serials, birth ticks and inverse lives, while the
-// capacity does not bind; a held throttle's steps gathered in one plan;
-// the plan's room at one tick and in a plan; finishing at the last
-// death; and the refusals.
+// capacity does not bind, by distance too, past 32 bits of serials and
+// ticks; a held throttle's steps gathered in one plan; the anchors before
+// and after; the plan's room at one tick and in a plan; finishing at the
+// latest death; clears; and the refusals.
 
 #include "context.h"
 #include "emitter_step.h"
@@ -210,10 +211,27 @@ static void TestRoom(void)
     mvfxDestroyContext(context);
 }
 
+// Steps a CPU instance and a planned one of an emitter side by side for
+// steps, whether each is finished compared after every step; the step
+// it first was, or -1.
+static int32_t FinishedAlike(mvfxContext* context, mvfxInstanceId cpu, mvfxInstanceId planned,
+                             int32_t steps, int64_t ticks, bool* alike)
+{
+    int32_t finishedAt = -1;
+    for (int32_t s = 0; s < steps; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(context, ticks) == mvfx_success, "stepped");
+        bool done = mvfxInstance_IsFinished(context, planned);
+        *alike = *alike && done == mvfxInstance_IsFinished(context, cpu);
+        finishedAt = done && finishedAt < 0 ? s : finishedAt;
+    }
+    return finishedAt;
+}
+
 static void TestFinished(void)
 {
-    // Spawning for 0.2 seconds once: finished when the last death passes,
-    // on both paths alike.
+    // Spawning for 0.2 seconds once, lives of 0.1 to 1 second: finished
+    // when the latest death passes, not the last birth's.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -221,19 +239,162 @@ static void TestFinished(void)
     emitter.duration = 0.2f;
     emitter.loops = 1;
     emitter.burstCount = 0;
+    emitter.lifetime = mvfxRangeSource(0.1f, 1.0f);
+    mvfxEffectId effect = Effect(context, &emitter);
+    bool alike = true;
+    int32_t finishedAt = FinishedAlike(context, Instance(context, effect, false),
+                                       Instance(context, effect, true), 90, STEP_TICKS, &alike);
+    CHECK(alike && finishedAt > 50, "finished at the latest death, as the CPU path");
+
+    // One birth at tick 0 living 0.25 seconds exactly: a step ending at its
+    // death finishes both.
+    emitter = Emitter(16);
+    emitter.rate = 0.0f;
+    emitter.bursts =
+        &(const mvfxBurst){.minCount = 1, .maxCount = 1, .cycles = 1, .probability = 1.0f};
+    emitter.burstCount = 1;
+    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    effect = Effect(context, &emitter);
+    alike = true;
+    finishedAt =
+        FinishedAlike(context, Instance(context, effect, false), Instance(context, effect, true), 2,
+                      MVFX_TICKS_PER_SECOND / 4, &alike);
+    CHECK(alike && finishedAt == 0, "finished at the step ending on the death");
+    mvfxDestroyContext(context);
+}
+
+static void TestCleared(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Emitter(1000);
+    emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
     mvfxEffectId effect = Effect(context, &emitter);
     mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
-    bool alike = true;
-    int32_t finishedAt = -1;
-    for (int32_t s = 0; s < 60; ++s)
+    mvfxEmitterPlan plan;
+    bool cleared = true;
+    for (int32_t s = 0; s < 3; ++s)
     {
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        bool done = mvfxInstance_IsFinished(context, planned);
-        alike = alike && done == mvfxInstance_IsFinished(context, cpu);
-        finishedAt = done && finishedAt < 0 ? s : finishedAt;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+        cleared = cleared && plan.cleared == (s == 0);
     }
-    CHECK(alike && finishedAt > 12, "finished at the last death, as the CPU path");
+    CHECK(cleared, "the first plan cleared, the next not");
+    // Stopped and cleared: finished at once on both paths, the next plan
+    // cleared.
+    CHECK(mvfxInstance_Stop(context, cpu, mvfx_stopAndClear) == mvfx_success &&
+              mvfxInstance_Stop(context, planned, mvfx_stopAndClear) == mvfx_success,
+          "stopped");
+    bool alike = true;
+    int32_t finishedAt = FinishedAlike(context, cpu, planned, 1, STEP_TICKS, &alike);
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success && plan.cleared &&
+              alike && finishedAt == 0,
+          "a clear in the plan, finished at once");
+    // Restarted, then stopped: nothing held on either path, the plan empty
+    // until the next step, which says cleared.
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    CHECK(mvfxInstance_Restart(context, cpu) == mvfx_success &&
+              mvfxInstance_Restart(context, planned) == mvfx_success,
+          "restarted");
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    CHECK(mvfxInstance_Restart(context, cpu) == mvfx_success &&
+              mvfxInstance_Restart(context, planned) == mvfx_success &&
+              mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
+              plan.birthCount == 0 && plan.ticks == 0,
+          "an empty plan after a restart");
+    CHECK(mvfxInstance_Stop(context, cpu, mvfx_stopEmitting) == mvfx_success &&
+              mvfxInstance_Stop(context, planned, mvfx_stopEmitting) == mvfx_success,
+          "stopped");
+    alike = true;
+    finishedAt = FinishedAlike(context, cpu, planned, 1, STEP_TICKS, &alike);
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success && plan.cleared &&
+              alike && finishedAt == 0,
+          "nothing held after a restart");
+    mvfxDestroyContext(context);
+}
+
+static void TestAnchors(void)
+{
+    // A world-space emitter spawning by distance too, its instance moving
+    // past the rebase distance: the CPU path's particles, and its anchors
+    // before and after each plan.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Emitter(1000);
+    emitter.space = mvfx_spaceWorld;
+    emitter.ratePerDistance = 0.02f;
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    static const float unturned[4] = {0, 0, 0, 1};
+    s_heldCount = 0;
+    bool same = true;
+    for (int32_t s = 0; s < 12; ++s)
+    {
+        const double place[3] = {300.0 * s, 0.0, -125.0 * s};
+        const mvfxInstance* cpuLive = mvfxContextInstance(context, cpu);
+        double before[3] = {cpuLive->emitters[0].anchor[0], cpuLive->emitters[0].anchor[1],
+                            cpuLive->emitters[0].anchor[2]};
+        CHECK(mvfxInstance_SetTransform(context, cpu, place, unturned, 1.0f, false) ==
+                      mvfx_success &&
+                  mvfxInstance_SetTransform(context, planned, place, unturned, 1.0f, false) ==
+                      mvfx_success,
+              "moved");
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        mvfxEmitterPlan plan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && plan.anchorBefore[k] == before[k] &&
+                   plan.anchorAfter[k] == cpuLive->emitters[0].anchor[k];
+        }
+        Gather(&plan, mvfxContextInstance(context, planned)->clock);
+        same = same && SameAsHeld(cpuLive);
+    }
+    const mvfxInstance* cpuLive = mvfxContextInstance(context, cpu);
+    // At 10 births a step and a burst of 12, all alive: past 132 by
+    // distance.
+    CHECK(same && cpuLive->emitters[0].anchor[0] > 1000.0 && s_heldCount > 180,
+          "the CPU path's anchors and births by distance");
+    mvfxDestroyContext(context);
+}
+
+static void TestHighWords(void)
+{
+    // Serials past 2^32 and lives past 2^32 ticks (4,096 seconds): both
+    // words of each.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Emitter(1000);
+    emitter.burstCount = 0;
+    emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    uint64_t first = (1ull << 32u) - 20u;
+    mvfxContextInstance(context, cpu)->emitters[0].owed = first;
+    mvfxContextInstance(context, planned)->emitters[0].owed = first;
+    s_heldCount = 0;
+    bool same = true;
+    for (int32_t s = 0; s < 6; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        mvfxEmitterPlan plan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+        Gather(&plan, mvfxContextInstance(context, planned)->clock);
+        same = same && SameAsHeld(mvfxContextInstance(context, cpu));
+    }
+    bool numbered = s_heldCount > 40;
+    for (int32_t i = 0; i < s_heldCount; ++i)
+    {
+        numbered = numbered && s_held[i].serial == first + (uint64_t)i &&
+                   s_held[i].death - s_held[i].birth > (1ll << 32);
+    }
+    CHECK(same && numbered, "serials and deaths past 32 bits");
     mvfxDestroyContext(context);
 }
 
@@ -293,6 +454,9 @@ int main(void)
     TestBirths();
     TestRoom();
     TestFinished();
+    TestCleared();
+    TestAnchors();
+    TestHighWords();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

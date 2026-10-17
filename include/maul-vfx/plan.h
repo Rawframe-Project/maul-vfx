@@ -60,6 +60,10 @@ extern "C"
         const mvfxPlannedBirth* births;
         int32_t birthCount;
         uint64_t refused;
+        // Whether the instance was cleared before the plan (stopped with
+        // mvfx_stopAndClear, restarted, or just created): the simulation
+        // drops every particle it holds first.
+        bool cleared;
     } mvfxEmitterPlan;
 
     /// Returns an emitter's plan for the context's last step. The births

@@ -549,6 +549,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   particles, and each step writes its emitters' plans
   (`mvfxInstance_GetEmitterPlan`), the births the step owes with their
   serials, birth ticks, death ticks and inverse lives, as the CPU path
-  computes them, and the anchor before and after. Host spawns and
+  computes them, the anchor before and after, and whether the instance
+  was cleared before it (stopped with `mvfx_stopAndClear`, restarted or
+  new), for the simulation to drop what it holds. Host spawns and
   prewarm are refused for it, and an effect with gases, water surfaces,
   beams or births from events cannot be planned yet.

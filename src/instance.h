@@ -312,6 +312,10 @@ typedef struct mvfxInstance
     // the first tick of its plans.
     bool planned;
     int64_t planStart;
+    // Whether the host cleared it (a stop that clears, a restart) since
+    // the last plans began, and whether the last plans begin after a clear.
+    bool clearPending;
+    bool planCleared;
     // No birth past this tick; INT64_MAX until the instance is stopped.
     int64_t stopTick;
     // Its parameters, from the effect's defaults until the host sets them.

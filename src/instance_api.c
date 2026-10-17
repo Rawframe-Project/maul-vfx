@@ -317,6 +317,7 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
         .births = state->plan,
         .birthCount = state->planCount,
         .refused = state->planRefused,
+        .cleared = live->planCleared,
     };
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -398,7 +399,9 @@ mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfx
         for (int32_t e = 0; e < live->effect->emitterCount; ++e)
         {
             live->emitters[e].count = 0;
+            live->emitters[e].lastDeath = 0;
         }
+        live->clearPending = true;
         for (int32_t g = 0; g < live->effect->gasCount; ++g)
         {
             mvfxClearGas(&live->gases[g], &live->effect->gases[g]);

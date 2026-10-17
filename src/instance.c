@@ -661,6 +661,8 @@ void mvfxResetInstance(mvfxInstance* instance)
     instance->unseenSteps = 0;
     instance->stopTick = INT64_MAX;
     instance->planStart = 0;
+    instance->clearPending = true;
+    instance->planCleared = false;
     instance->from = instance->to;
     instance->stepDistance = 0.0;
     instance->velocity[0] = 0.0f;
