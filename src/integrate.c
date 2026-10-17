@@ -427,17 +427,22 @@ static void MoveParticle(const Range* r, int32_t i)
 }
 
 // Whether a range's particles move by gravity and the shared drag alone:
-// no forces, water, drag scales, speed limit, motion modules, collision or
-// kill rules. MoveParticle then reduces to MoveLinear under gravity with
-// the shared factors, its kill marks unchanged.
+// no forces, water, drag scales, speed limit, motion modules or kill
+// rules. MoveParticle then reduces to MoveLinear under gravity with the
+// shared factors, then the contacts where the particles collide (and not
+// as rigid particles, which meet the colliders in their own solve).
 static bool IsPlain(const Range* r)
 {
     const mvfxCompiledEmitter* compiled = r->compiled;
     const mvfxCompiledVelocityModules* modules = r->modules->compiled;
     return compiled->forceCount == 0 && r->water == nullptr && r->dragScales == nullptr &&
-           !modules->limitSpeed && !modules->moves &&
-           !(compiled->collision.enabled && !compiled->rigid.enabled) &&
-           compiled->killRuleCount == 0;
+           !modules->limitSpeed && !modules->moves && compiled->killRuleCount == 0;
+}
+
+// Whether a plain range's particles meet the colliders.
+static bool Collides(const Range* r)
+{
+    return r->compiled->collision.enabled && !r->compiled->rigid.enabled;
 }
 
 // MoveLinear over a plain range, an axis at a time, in the same operations
@@ -456,6 +461,39 @@ static void MovePlain(const Range* r, int32_t first, int32_t end)
             float v0 = v[i];
             p[i] += v0 * f.carry + push;
             v[i] = v0 * f.decay + carry;
+        }
+    }
+}
+
+// The most particles a plain range moves before their contacts.
+#define PLAIN_RUN 64
+
+// MovePlain a run at a time, then each particle's contacts from where it
+// started, as MoveParticle makes them: its kill mark set where one kills.
+static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
+{
+    float starts[3][PLAIN_RUN];
+    for (int32_t at = first; at < end; at += PLAIN_RUN)
+    {
+        int32_t stop = end - at < PLAIN_RUN ? end : at + PLAIN_RUN;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            for (int32_t i = at; i < stop; ++i)
+            {
+                starts[k][i - at] = r->p[k][i];
+            }
+        }
+        MovePlain(r, at, stop);
+        for (int32_t i = at; i < stop; ++i)
+        {
+            const float start[3] = {starts[0][i - at], starts[1][i - at], starts[2][i - at]};
+            float place[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
+            bool kills = Collide(r, i, start, place);
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                r->p[k][i] = place[k];
+            }
+            r->instance->killScratch[i] |= kills ? 1 : 0;
         }
     }
 }
@@ -500,7 +538,11 @@ void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, 
     r.wetDrag = r.water != nullptr ? compiled->drag + (winds + compiled->water.drag) : -1.0f;
     r.wet = r.water != nullptr ? mvfxDragFactorsOf((double)r.wetDrag, seconds) : r.shared;
     r.limitDecay = mvfxDragFactorsOf((double)compiled->velocityModules.limitDampen, seconds).decay;
-    if (IsPlain(&r))
+    if (IsPlain(&r) && Collides(&r))
+    {
+        MovePlainColliding(&r, first, end);
+    }
+    else if (IsPlain(&r))
     {
         MovePlain(&r, first, end);
     }

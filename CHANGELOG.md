@@ -449,6 +449,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   sizes, colours and angles over the run, each particle's age taken once,
   each format chosen once; the same bytes in about 69% fewer
   instructions a particle.
+- An emitter moved by gravity and the shared drag alone keeps its plain
+  move when it collides: 64 particles moved an axis at a time, then each
+  one's contacts from where it started; the same bits.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its
