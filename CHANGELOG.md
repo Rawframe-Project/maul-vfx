@@ -579,4 +579,5 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part keeps an emitter's survivors and births in order across
   many workgroups (a scan in three passes) and sizes every dispatch
   within a device's limits, for capacities up to the largest an emitter
-  has (2^24).
+  has (2^24). `mvfxGpuSim_Record` documents the uploads a frame takes:
+  320 bytes an emitter and 32 a planned birth.

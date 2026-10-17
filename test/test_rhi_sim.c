@@ -57,6 +57,10 @@ static bool Open(Gpu* gpu)
     }
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
+    // Room for an emitter of 2^17: its plan's births uploaded, its
+    // particles read back.
+    deviceDef.deviceLimits.frameUploadBytes = 8u << 20u;
+    deviceDef.deviceLimits.readbackBytes = 16u << 20u;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
            mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
            record.outcome == mrhi_success;
@@ -127,8 +131,8 @@ static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 }
 
 // The emitter's particles and counts as the GPU holds them, read back, for
-// capacities up to 4,096.
-static uint32_t s_words[MVFX_GPU_PARTICLE_WORDS * 4096];
+// capacities up to 2^17.
+static uint32_t s_words[MVFX_GPU_PARTICLE_WORDS * (1 << 17)];
 static uint32_t s_counts[4];
 
 static int32_t s_capacity;
@@ -409,6 +413,20 @@ static const mvfxBurst s_floods[2] = {
     {.time = 0.1f, .minCount = 40, .maxCount = 40, .cycles = 1, .probability = 1.0f},
     {.time = 0.3f, .minCount = 150, .maxCount = 150, .cycles = 1, .probability = 1.0f}};
 
+// A full emitter turned over in a half-second step: refused, then
+// replaced once its particles die.
+static const mvfxBurst s_turnover[3] = {
+    {.time = 0.4375f, .minCount = 1000, .maxCount = 1000, .cycles = 1, .probability = 1.0f},
+    {.time = 0.5625f, .minCount = 500, .maxCount = 500, .cycles = 1, .probability = 1.0f},
+    {.time = 0.75f, .minCount = 1000, .maxCount = 1000, .cycles = 1, .probability = 1.0f}};
+static const mvfxBurst s_turnoverLarge[3] = {
+    {.time = 0.4375f, .minCount = 1 << 17, .maxCount = 1 << 17, .cycles = 1, .probability = 1.0f},
+    {.time = 0.5625f, .minCount = 50000, .maxCount = 50000, .cycles = 1, .probability = 1.0f},
+    {.time = 0.75f, .minCount = 1 << 17, .maxCount = 1 << 17, .cycles = 1, .probability = 1.0f}};
+
+// An emitter of 32, bursts only, lives of a quarter of a second.
+static mvfxEmitterDef Bursts(const mvfxBurst* bursts, int32_t burstCount);
+
 static void TestFull(Gpu* gpu, mvfxGpu* kernels)
 {
     // An emitter of 64 owed about 180 at a time, and a burst of 150 at one
@@ -433,6 +451,25 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     emitter.rate = 30000.0f;
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 1500},
             "an emitter of many blocks, full");
+    // Half-second steps: a full emitter whose particles all die in the
+    // second step, which owes half its capacity refused before they die
+    // and its capacity after: a sequence past twice the capacity, its
+    // last kept beyond it.
+    s_stepTicks = MVFX_TICKS_PER_SECOND / 2;
+    emitter = Bursts(s_turnover, 3);
+    emitter.capacity = 1000;
+    emitter.lifetime = mvfxRangeSource(0.3f, 0.3f);
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 2, .least = 1000},
+            "a sequence past twice the capacity");
+    // The same at 2^17: more than 256 blocks, the offsets carried across
+    // chunks.
+    emitter.capacity = 1 << 17;
+    emitter.bursts = s_turnoverLarge;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 2, .least = 1 << 17},
+            "more than 256 blocks");
+    s_stepTicks = STEP_TICKS;
 }
 
 // Bursts on ticks of exact eighths of a second; lives of a quarter.
