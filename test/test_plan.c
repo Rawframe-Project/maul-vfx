@@ -1176,7 +1176,8 @@ static void TestOverLifeView(void)
     // The view's values over life are the compiled ones: a colour by a
     // gradient at the speed with alpha over life, a size an axis, a
     // flipbook, a custom value scaled and one not; without values over
-    // life, white and ones. Its order and events are the emitter's.
+    // life, white and ones. Its order and events are the emitter's; a
+    // capacity without events gives none.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1225,6 +1226,7 @@ static void TestOverLifeView(void)
               view.eventCapacity == 77,
           "the view's values over life, order and events");
     emitter = Emitter(64);
+    emitter.eventCapacity = 77;
     effect = Effect(context, &emitter);
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               !view.overLife.color && view.overLife.gradient == NULL && !view.overLife.size &&

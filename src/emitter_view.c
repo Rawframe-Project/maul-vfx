@@ -222,7 +222,7 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->sortMode = e->sortMode;
     viewOut->sortMeasure = e->sortMeasure;
     viewOut->events = e->events;
-    viewOut->eventCapacity = e->events != 0 ? e->eventCapacity : 0;
+    viewOut->eventCapacity = e->eventCapacity;
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];
