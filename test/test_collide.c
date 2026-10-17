@@ -7,8 +7,9 @@
 // start on the wrong side put back; contacts several a step; kill on
 // collision, life lost, the count and its kill rule; the instance's own
 // colliders; a collider in the emitter's space; the refusals; the signed
-// gaps to each kind of collider; and the colliders a box's segments may
-// reach, none left out that one meets.
+// gaps to each kind of collider; the colliders a box's segments may
+// reach, none left out that one meets; and the segments a run's tests
+// mark, every one that meets a collider among them.
 
 #include "collide.h"
 #include "context.h"
@@ -706,6 +707,68 @@ static void TestReach(void)
     CHECK(found && keptAll, "a plane kept where rounding alone puts a point behind it");
 }
 
+static void TestMayMeet(void)
+{
+    // Runs of 64 segments at random about a plane and an outside sphere,
+    // at scales from 1 to 100: every segment that meets either is marked,
+    // and many are not; any other kind marks every segment.
+    enum
+    {
+        RUN = 64
+    };
+    bool superset = true;
+    int32_t unmarked = 0;
+    int32_t meeting = 0;
+    for (int32_t trial = 0; trial < 200; ++trial)
+    {
+        float scale = trial % 3 == 0 ? 100.0f : 1.0f;
+        mvfxResolvedCollider pair[2] = {{.kind = mvfx_colliderPlane, .rotation = {0, 0, 0, 1}},
+                                        {.kind = mvfx_colliderSphere,
+                                         .radius = Uniform(0.1f, 1.0f) * scale,
+                                         .rotation = {0, 0, 0, 1}}};
+        float n[3] = {Uniform(-1, 1), Uniform(-1, 1), Uniform(-1, 1)};
+        float length = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            pair[0].normal[k] = n[k] / length;
+            pair[0].center[k] = Uniform(-1, 1) * scale;
+            pair[1].center[k] = Uniform(-1, 1) * scale;
+        }
+        float s[3][RUN];
+        float e[3][RUN];
+        for (int32_t j = 0; j < RUN; ++j)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                s[k][j] = Uniform(-2, 2) * scale;
+                e[k][j] = s[k][j] + Uniform(-0.5f, 0.5f) * scale;
+            }
+        }
+        const float* const starts[3] = {s[0], s[1], s[2]};
+        const float* const ends[3] = {e[0], e[1], e[2]};
+        uint8_t marks[RUN];
+        mvfxMayMeet(pair, 2, starts, ends, RUN, marks);
+        for (int32_t j = 0; j < RUN; ++j)
+        {
+            const float a[3] = {s[0][j], s[1][j], s[2][j]};
+            const float b[3] = {e[0][j], e[1][j], e[2][j]};
+            bool meets = Meets(&pair[0], a, b) || Meets(&pair[1], a, b);
+            meeting += meets ? 1 : 0;
+            superset = superset && (!meets || marks[j] == 1);
+            unmarked += marks[j] == 0 ? 1 : 0;
+        }
+    }
+    CHECK(superset && meeting > 1000 && unmarked > 1000,
+          "every segment that meets a plane or a sphere marked, many not");
+    const mvfxResolvedCollider box = {
+        .kind = mvfx_colliderBox, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}};
+    const float far[3][1] = {{100}, {100}, {100}};
+    const float* const ends[3] = {far[0], far[1], far[2]};
+    uint8_t mark = 0;
+    mvfxMayMeet(&box, 1, ends, ends, 1, &mark);
+    CHECK(mark == 1, "any other kind marks every segment");
+}
+
 int main(void)
 {
     TestNoTunneling();
@@ -718,5 +781,6 @@ int main(void)
     TestRefusals();
     TestGaps();
     TestReach();
+    TestMayMeet();
     return s_failures == 0 ? 0 : 1;
 }

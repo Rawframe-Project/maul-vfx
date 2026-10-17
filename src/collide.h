@@ -111,6 +111,15 @@ typedef struct mvfxOwnColliders
 int32_t mvfxReachable(const mvfxResolvedCollider* colliders, int32_t count, const float lo[3],
                       const float hi[3], mvfxResolvedCollider* out);
 
+// Marks which of n segments, segment j from starts[k][j] to ends[k][j],
+// may meet any of the colliders: a plane by its own contact test, an
+// outside sphere by its start inside or a line through it (more than its
+// contacts), and every segment for any other kind. A segment left 0 meets
+// none of them, as mvfxCollide finds with no particle colliders of its
+// own; the tests run a collider at a time over the segments.
+void mvfxMayMeet(const mvfxResolvedCollider* colliders, int32_t count, const float* const starts[3],
+                 const float* const ends[3], int32_t n, uint8_t* marks);
+
 // Collides a particle that went from start to place over a step and ends
 // it with velocity, with the colliders and its own: place and velocity
 // become what the contacts make them, and first the first contact's.

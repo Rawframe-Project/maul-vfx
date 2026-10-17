@@ -517,8 +517,20 @@ static void ReachOf(const Range* r, const float starts[3][PLAIN_RUN], int32_t at
     reach->count = mvfxReachable(state->colliders, state->colliderCount, lo, hi, reach->colliders);
 }
 
+// Whether a range's particles have no colliders of their own (a scene
+// plane, the instance's depth image), so the run's colliders alone can
+// give them a contact.
+static bool HasNoOwnColliders(const Range* r)
+{
+    return !mvfxHasAttribute(&r->compiled->plan, mvfx_attributeScenePointX) &&
+           !r->instance->emitters[r->emitter].hasDepth;
+}
+
 // MovePlain a run at a time, then each particle's contacts from where it
 // started, as MoveParticle makes them: its kill mark set where one kills.
+// Each run's segments are tested against its colliders together first,
+// where the particles have none of their own; only those that may meet
+// one are collided.
 static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
 {
     float starts[3][PLAIN_RUN];
@@ -535,8 +547,22 @@ static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
         MovePlain(r, at, stop);
         Reach reach;
         ReachOf(r, starts, at, stop, &reach);
+        uint8_t marks[PLAIN_RUN];
+        bool lanes = HasNoOwnColliders(r);
+        if (lanes)
+        {
+            const float* const from[3] = {starts[0], starts[1], starts[2]};
+            const float* const to[3] = {r->p[0] + at, r->p[1] + at, r->p[2] + at};
+            mvfxMayMeet(reach.colliders, reach.count, from, to, stop - at, marks);
+        }
         for (int32_t i = at; i < stop; ++i)
         {
+            // A segment no collider may meet has no contact: its particle
+            // is as the move left it.
+            if (lanes && marks[i - at] == 0)
+            {
+                continue;
+            }
             const float start[3] = {starts[0][i - at], starts[1][i - at], starts[2][i - at]};
             float place[3] = {r->p[0][i], r->p[1][i], r->p[2][i]};
             bool kills = Collide(r, i, start, place, &reach);

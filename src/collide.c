@@ -712,6 +712,67 @@ int32_t mvfxReachable(const mvfxResolvedCollider* colliders, int32_t count, cons
     return kept;
 }
 
+// Marks the segments that may meet a plane: HitPlane's own test, either
+// end behind it, in its operations.
+static void MayMeetPlane(const mvfxResolvedCollider* c, const float* const s[3],
+                         const float* const e[3], int32_t n, uint8_t* marks)
+{
+    for (int32_t j = 0; j < n; ++j)
+    {
+        float a[3] = {s[0][j] - c->center[0], s[1][j] - c->center[1], s[2][j] - c->center[2]};
+        float b[3] = {e[0][j] - c->center[0], e[1][j] - c->center[1], e[2][j] - c->center[2]};
+        float d0 = Dot(a, c->normal);
+        float d1 = Dot(b, c->normal);
+        marks[j] |= d0 < 0.0f || d1 < 0.0f ? 1 : 0;
+    }
+}
+
+// Marks the segments that may meet an outside sphere: HitSphere's start
+// inside, or its discriminant not below 0, in its operations.
+static void MayMeetSphere(const mvfxResolvedCollider* c, const float* const s[3],
+                          const float* const e[3], int32_t n, uint8_t* marks)
+{
+    float r2 = c->radius * c->radius;
+    for (int32_t j = 0; j < n; ++j)
+    {
+        float f[3] = {s[0][j] - c->center[0], s[1][j] - c->center[1], s[2][j] - c->center[2]};
+        float d[3] = {e[0][j] - s[0][j], e[1][j] - s[1][j], e[2][j] - s[2][j]};
+        float ff = Dot(f, f);
+        float a = Dot(d, d);
+        float b = Dot(f, d);
+        float disc = b * b - a * (ff - r2);
+        marks[j] |= ff < r2 || (a > 0.0f && disc >= 0.0f) ? 1 : 0;
+    }
+}
+
+void mvfxMayMeet(const mvfxResolvedCollider* colliders, int32_t count, const float* const starts[3],
+                 const float* const ends[3], int32_t n, uint8_t* marks)
+{
+    for (int32_t j = 0; j < n; ++j)
+    {
+        marks[j] = 0;
+    }
+    for (int32_t i = 0; i < count; ++i)
+    {
+        const mvfxResolvedCollider* c = &colliders[i];
+        if (c->kind == mvfx_colliderPlane)
+        {
+            MayMeetPlane(c, starts, ends, n, marks);
+        }
+        else if (c->kind == mvfx_colliderSphere && !c->inside)
+        {
+            MayMeetSphere(c, starts, ends, n, marks);
+        }
+        else
+        {
+            for (int32_t j = 0; j < n; ++j)
+            {
+                marks[j] = 1;
+            }
+        }
+    }
+}
+
 int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
                     const mvfxOwnColliders* own, const mvfxCollision* response, float restSpeed,
                     const float start[3], float place[3], float velocity[3], mvfxContact* first)

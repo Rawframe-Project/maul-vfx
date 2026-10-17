@@ -469,6 +469,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   about a third fewer instructions a particle than the analytic one.
 - A grid's repeat border wraps in integers and its format is chosen once
   a point; quaternion turns are inline; the same bits.
+- A plain run's segments are tested against its planes and outside
+  spheres together, in their own contact tests' operations; only those
+  that may meet one are collided. The same contacts, collision's cost
+  about halved.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its
