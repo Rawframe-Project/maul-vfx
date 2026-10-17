@@ -7,8 +7,10 @@
 // words); records of a world emitter relative to a view's origin with
 // the host's padding untouched, a buffer too small and a count alone; a
 // local emitter's records in the world under a moved, turned, scaled
-// instance, its custom attribute among them; and the refusals.
+// instance, its custom attribute among them; records written in runs,
+// each its own particle's values over life; and the refusals.
 
+#include "appearance.h"
 #include "context.h"
 #include "instance.h"
 #include "layout.h"
@@ -325,6 +327,65 @@ static void TestRecords(void)
     mvfxDestroyContext(scene.context);
 }
 
+static const mvfxColorKey s_redToBlue[2] = {{0.0f, 1, 0, 0}, {1.0f, 0, 0, 1}};
+static const mvfxAlphaKey s_fading[2] = {{0.0f, 1}, {1.0f, 0.5f}};
+static const mvfxCurveKey s_rising[2] = {
+    {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+    {.time = 1.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear}};
+
+// Records written in runs: about 150 particles of as many ages, colour,
+// alpha and size over life by age, each record the particle's own values
+// (more particles than one run, so a run's ages are its own).
+static void TestRuns(void)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = 256;
+    emitter.rate = 100.0f;
+    emitter.lifetime = mvfxRangeSource(4.0f, 4.0f);
+    emitter.overLife.color =
+        (mvfxColorOverLife){.enabled = true,
+                            .gradient = {s_redToBlue, 2, s_fading, 2},
+                            .scaleAlpha = true,
+                            .alpha = {.value = 1.0f, .curve = {.keys = s_rising, .keyCount = 2}}};
+    emitter.overLife.size = (mvfxSizeOverLife){
+        .enabled = true, .size = {{.value = 2.0f, .curve = {.keys = s_rising, .keyCount = 2}}}};
+    Scene scene = NewScene(&emitter);
+    for (int32_t step = 0; step < 90; ++step)
+    {
+        CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success,
+              "step");
+    }
+    static const mvfxLayoutField fields[3] = {
+        {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
+        {.field = mvfx_recordColor, .format = mvfx_formatFloat32, .components = 4, .offset = 12},
+        {.field = mvfx_recordSize, .format = mvfx_formatFloat32, .components = 3, .offset = 28},
+    };
+    mvfxLayoutId layout = {0};
+    CHECK(Make(scene.context, fields, 3, 40, &layout) == mvfx_success, "layout");
+    static float records[256][10];
+    static const mvfxView view = {.origin = {0.0, 0.0, 0.0}};
+    int64_t count = 0;
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      records, 256, &count) == mvfx_success &&
+              count > 128,
+          "more records than two runs");
+    int32_t same = 0;
+    for (int32_t i = 0; i < (int32_t)count; ++i)
+    {
+        float color[4];
+        float size[3];
+        mvfxColorOf(scene.live, 0, i, color);
+        mvfxSizeOf(scene.live, 0, i, size);
+        same += memcmp(color, &records[i][3], sizeof color) == 0 &&
+                memcmp(size, &records[i][7], sizeof size) == 0;
+    }
+    CHECK(same == (int32_t)count, "each record holds its own particle's colour and size");
+    CHECK(records[0][3] != records[count - 1][3] && records[0][6] != records[count - 1][6] &&
+              records[0][7] != records[count - 1][7],
+          "the first and last differ in age");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestLocal(void)
 {
     // A local emitter under an instance at (100, 0, 0) turned a quarter
@@ -547,6 +608,7 @@ int main(void)
     TestLayouts();
     TestFormats();
     TestRecords();
+    TestRuns();
     TestLocal();
     TestRefusals();
     TestFrameAsFloat();
