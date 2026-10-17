@@ -114,6 +114,26 @@ static int32_t LevelThatFits(const mvfxContext* context, const mvfxEffect* effec
     return -1;
 }
 
+// Whether an effect's steps can be written as plans: none of what the
+// core steps beside the particles (gases, water surfaces) or what waits on
+// the particles held (a beam's strikes, births from events).
+static bool CanBePlanned(const mvfxEffect* effect)
+{
+    if (effect->gasCount > 0 || effect->waterCount > 0)
+    {
+        return false;
+    }
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        const mvfxCompiledEmitter* emitter = &effect->emitters[e];
+        if (emitter->beam.enabled || emitter->eventSpawn.enabled)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
                               mvfxInstanceId* instanceOut)
 {
@@ -143,6 +163,10 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
+    if (def->planned && !CanBePlanned(effect))
+    {
+        return mvfx_errorState;
+    }
     if (context->instances.firstFree == 0)
     {
         return mvfx_errorLimit;
@@ -154,8 +178,8 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
     }
     uint32_t seed = def->seed != 0 ? def->seed : SeedFromOrdinal(context->instancesCreated);
     mvfxTransform transform = MakeTransform(def->origin, def->rotation, def->scale);
-    mvfxInstance* instance =
-        mvfxCreateInstanceBlock(effect, quality, &transform, seed, &context->allocator);
+    mvfxInstance* instance = mvfxCreateInstanceBlock(effect, quality, &transform, seed,
+                                                     def->planned, &context->allocator);
     if (instance == nullptr)
     {
         return mvfx_errorCapacity;
@@ -262,6 +286,46 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
+mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t emitter, mvfxEmitterPlan* planOut)
+{
+    if (planOut != nullptr)
+    {
+        *planOut = (mvfxEmitterPlan){0};
+    }
+    if (context == nullptr || planOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (emitter < 0 || emitter >= live->effect->emitterCount)
+    {
+        return mvfx_errorInvalid;
+    }
+    if (!live->planned)
+    {
+        return mvfx_errorState;
+    }
+    const mvfxEmitterState* state = &live->emitters[emitter];
+    *planOut = (mvfxEmitterPlan){
+        .start = live->planStart,
+        .ticks = live->clock - live->planStart,
+        .births = state->plan,
+        .birthCount = state->planCount,
+        .refused = state->planRefused,
+    };
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        planOut->anchorBefore[k] = state->planAnchor[k];
+        planOut->anchorAfter[k] = state->anchor[k];
+    }
+    return mvfx_success;
+}
+
 mvfxEmitterStatus mvfxEmitterStatusOf(const mvfxInstance* instance, int32_t emitter)
 {
     if (mvfxHasBirthsAhead(instance, emitter))
@@ -269,7 +333,9 @@ mvfxEmitterStatus mvfxEmitterStatusOf(const mvfxInstance* instance, int32_t emit
         return instance->clock < instance->effect->emitters[emitter].delay ? mvfx_emitterDelayed
                                                                            : mvfx_emitterActive;
     }
-    return instance->emitters[emitter].count > 0 ? mvfx_emitterStopping : mvfx_emitterStopped;
+    const mvfxEmitterState* state = &instance->emitters[emitter];
+    bool holds = state->count > 0 || (instance->planned && state->lastDeath > instance->clock);
+    return holds ? mvfx_emitterStopping : mvfx_emitterStopped;
 }
 
 bool mvfxIsInstanceFinished(const mvfxInstance* instance)
@@ -548,6 +614,11 @@ mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
+    }
+    if (live->planned)
+    {
+        // Its births are planned from its emitters' own sources alone.
+        return mvfx_errorState;
     }
     mvfxEmitterState* state = &live->emitters[emitter];
     if (request->count > live->effect->emitters[emitter].hostSpawnCapacity - state->hostCount)

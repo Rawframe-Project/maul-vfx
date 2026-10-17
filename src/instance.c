@@ -492,11 +492,46 @@ static StatesAt AddFieldStates(mvfxLayout* layout, const mvfxEffect* effect)
     return at;
 }
 
+// Lays out each emitter's rooms and particle arrays for rooms[e]
+// particles, then its plan of plans[e] births.
+static void AddEmitterBlocks(mvfxLayout* layout, const mvfxEffect* effect, const int32_t plans[],
+                             const int32_t rooms[], EmitterAt at[], size_t particlesAt[],
+                             size_t plansAt[])
+{
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        at[e] = AddEmitterRooms(layout, effect, e, rooms);
+    }
+    for (int32_t e = 0; e < effect->emitterCount; ++e)
+    {
+        particlesAt[e] = mvfxLayoutAdd(layout, (size_t)effect->emitters[e].plan.arrayCount,
+                                       mvfxArrayBytes(rooms[e]), MVFX_ATTRIBUTE_ALIGNMENT);
+        plansAt[e] = mvfxLayoutAdd(layout, (size_t)plans[e], sizeof(mvfxPlannedBirth),
+                                   alignof(mvfxPlannedBirth));
+    }
+}
+
+// Points each planned emitter at its plan, and gives it back its capacity,
+// its rooms having been laid out for none.
+static void StartPlans(mvfxInstance* instance, unsigned char* block, const size_t plansAt[],
+                       const int32_t capacities[])
+{
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        instance->emitters[e].capacity = capacities[e];
+        instance->emitters[e].plan = (mvfxPlannedBirth*)(block + plansAt[e]);
+    }
+}
+
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
-                                      const mvfxTransform* transform, uint32_t seed,
+                                      const mvfxTransform* transform, uint32_t seed, bool planned,
                                       const mvfxAllocator* allocator)
 {
+    // A planned instance's rooms are laid out for no particles, its plans
+    // for twice each capacity's births.
     int32_t capacities[MVFX_MAX_EMITTERS] = {0};
+    int32_t rooms[MVFX_MAX_EMITTERS] = {0};
+    int32_t plans[MVFX_MAX_EMITTERS] = {0};
     mvfxLayout layout = {0};
     (void)mvfxLayoutAdd(&layout, 1, sizeof(mvfxInstance), MVFX_ATTRIBUTE_ALIGNMENT);
     size_t statesAt = mvfxLayoutAdd(&layout, (size_t)effect->emitterCount, sizeof(mvfxEmitterState),
@@ -506,7 +541,9 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
         capacities[e] = mvfxCapacityAt(effect, e, quality);
-        largest = capacities[e] > largest ? capacities[e] : largest;
+        rooms[e] = planned ? 0 : capacities[e];
+        plans[e] = planned ? 2 * capacities[e] : 0;
+        largest = rooms[e] > largest ? rooms[e] : largest;
     }
     size_t deathsAt = mvfxLayoutAdd(&layout, (size_t)largest, sizeof(int64_t), alignof(int64_t));
     size_t acceptedAt =
@@ -516,18 +553,11 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
     size_t burstsAt = mvfxLayoutAdd(&layout, (size_t)effect->burstCount, sizeof(mvfxBurstCursor),
                                     alignof(mvfxBurstCursor));
     EmitterAt at[MVFX_MAX_EMITTERS] = {0};
-    for (int32_t e = 0; e < effect->emitterCount; ++e)
-    {
-        at[e] = AddEmitterRooms(&layout, effect, e, capacities);
-    }
-    for (int32_t e = 0; e < effect->emitterCount; ++e)
-    {
-        particlesAt[e] = mvfxLayoutAdd(&layout, (size_t)effect->emitters[e].plan.arrayCount,
-                                       mvfxArrayBytes(capacities[e]), MVFX_ATTRIBUTE_ALIGNMENT);
-    }
+    size_t plansAt[MVFX_MAX_EMITTERS] = {0};
+    AddEmitterBlocks(&layout, effect, plans, rooms, at, particlesAt, plansAt);
     StatesAt statesOf = AddFieldStates(&layout, effect);
     FieldsAt fieldsAt;
-    AddFieldLayouts(&layout, effect, capacities, &fieldsAt);
+    AddFieldLayouts(&layout, effect, rooms, &fieldsAt);
     if (layout.overflow)
     {
         return nullptr;
@@ -559,6 +589,7 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
         .gasForces = (mvfxResolvedForce*)(block + statesOf.gasForces),
         .gasPours = (mvfxGasPour*)(block + statesOf.pours),
         .blockBytes = layout.size,
+        .planned = planned,
     };
     for (int32_t p = 0; p < effect->parameterCount; ++p)
     {
@@ -567,10 +598,59 @@ mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
             instance->parameters[p][c] = effect->parameters[p][c];
         }
     }
-    StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, capacities);
-    StartFields(instance, block, capacities, &fieldsAt);
+    StartStates(instance, block, (mvfxBurstCursor*)(block + burstsAt), particlesAt, at, rooms);
+    StartFields(instance, block, rooms, &fieldsAt);
+    if (planned)
+    {
+        StartPlans(instance, block, plansAt, capacities);
+    }
     mvfxResetInstance(instance);
     return instance;
+}
+
+// Resets an emitter's state: nothing held, owed or counted, its cursors at
+// 0, its anchor at the instance's place.
+static void ResetEmitter(mvfxInstance* instance, int32_t e)
+{
+    mvfxEmitterState* state = &instance->emitters[e];
+    state->count = 0;
+    state->owed = 0;
+    state->refused = 0;
+    state->rate = (mvfxRateCursor){0};
+    state->hostCount = 0;
+    state->killed = 0;
+    state->queryCount = 0;
+    state->queriesDropped = 0;
+    state->eventCount = 0;
+    state->eventsDropped = 0;
+    state->neighborsCapped = 0;
+    state->contactsCapped = 0;
+    state->plexus.linkCount = 0;
+    state->linksDropped = 0;
+    state->torn = 0;
+    state->selfContactsCapped = 0;
+    state->rigidContactsCapped = 0;
+    state->rigidSearchesCapped = 0;
+    state->hasBounds = false;
+    state->ribbonCounter = 0;
+    state->beamStrike = instance->effect->emitters[e].delay;
+    state->distanceCarry = 0.0;
+    state->distanceDelta = 0.0;
+    state->distanceSkip = 0.0;
+    state->distanceTake = 0;
+    state->distanceNext = 0;
+    state->planCount = 0;
+    state->planRefused = 0;
+    state->lastDeath = 0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        state->anchor[k] = instance->to.origin[k];
+        state->planAnchor[k] = instance->to.origin[k];
+    }
+    for (int32_t b = 0; b < instance->effect->emitters[e].burstCount; ++b)
+    {
+        state->bursts[b] = (mvfxBurstCursor){0};
+    }
 }
 
 void mvfxResetInstance(mvfxInstance* instance)
@@ -580,6 +660,7 @@ void mvfxResetInstance(mvfxInstance* instance)
     instance->heldTicks = 0;
     instance->unseenSteps = 0;
     instance->stopTick = INT64_MAX;
+    instance->planStart = 0;
     instance->from = instance->to;
     instance->stepDistance = 0.0;
     instance->velocity[0] = 0.0f;
@@ -587,41 +668,7 @@ void mvfxResetInstance(mvfxInstance* instance)
     instance->velocity[2] = 0.0f;
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
-        mvfxEmitterState* state = &instance->emitters[e];
-        state->count = 0;
-        state->owed = 0;
-        state->refused = 0;
-        state->rate = (mvfxRateCursor){0};
-        state->hostCount = 0;
-        state->killed = 0;
-        state->queryCount = 0;
-        state->queriesDropped = 0;
-        state->eventCount = 0;
-        state->eventsDropped = 0;
-        state->neighborsCapped = 0;
-        state->contactsCapped = 0;
-        state->plexus.linkCount = 0;
-        state->linksDropped = 0;
-        state->torn = 0;
-        state->selfContactsCapped = 0;
-        state->rigidContactsCapped = 0;
-        state->rigidSearchesCapped = 0;
-        state->hasBounds = false;
-        state->ribbonCounter = 0;
-        state->beamStrike = instance->effect->emitters[e].delay;
-        state->distanceCarry = 0.0;
-        state->distanceDelta = 0.0;
-        state->distanceSkip = 0.0;
-        state->distanceTake = 0;
-        state->distanceNext = 0;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            state->anchor[k] = instance->to.origin[k];
-        }
-        for (int32_t b = 0; b < instance->effect->emitters[e].burstCount; ++b)
-        {
-            state->bursts[b] = (mvfxBurstCursor){0};
-        }
+        ResetEmitter(instance, e);
     }
     for (int32_t g = 0; g < instance->effect->gasCount; ++g)
     {

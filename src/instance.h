@@ -16,6 +16,7 @@
 #include "rigid_shape.h"
 
 #include "maul-vfx/instance.h"
+#include "maul-vfx/plan.h"
 
 // Where an emitter's rate stands: the loop it is in, the rate birth of
 // that loop it spawns next, and the loop tick of the last one it spawned
@@ -136,6 +137,15 @@ typedef struct mvfxEmitterState
     // A world-space emitter's anchor: its particles' positions are offsets
     // from it.
     double anchor[3];
+    // A planned instance's plan: room for twice the capacity's births, the
+    // births written, those refused, and the anchor before the plan.
+    mvfxPlannedBirth* plan;
+    int32_t planCount;
+    uint64_t planRefused;
+    double planAnchor[3];
+    // The latest tick a planned birth dies at: the emitter holds
+    // particles elsewhere until then, as far as the core knows.
+    int64_t lastDeath;
     // The emitter's forces as resolved for the step being taken.
     struct mvfxResolvedForce* forces;
     // Its velocity modules as resolved for the step.
@@ -298,6 +308,10 @@ typedef struct mvfxInstance
     uint64_t unseenSteps;
     int64_t particles;
     int64_t clock;
+    // Whether it is planned (no particles, a plan an emitter each step), and
+    // the first tick of its plans.
+    bool planned;
+    int64_t planStart;
     // No birth past this tick; INT64_MAX until the instance is stopped.
     int64_t stopTick;
     // Its parameters, from the effect's defaults until the host sets them.
@@ -344,10 +358,11 @@ static inline uint64_t mvfxSaturatingAdd(uint64_t a, uint64_t b)
     return a > UINT64_MAX - b ? UINT64_MAX : a + b;
 }
 
-// Creates an instance of a compiled effect in one block from allocator;
-// NULL when the allocator fails or the block's size does not fit.
+// Creates an instance of a compiled effect in one block from allocator,
+// planned or holding its particles; NULL when the allocator fails or the
+// block's size does not fit.
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
-                                      const mvfxTransform* transform, uint32_t seed,
+                                      const mvfxTransform* transform, uint32_t seed, bool planned,
                                       const mvfxAllocator* allocator);
 
 // An emitter's capacity at a quality level: its own times the level's

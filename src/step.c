@@ -15,6 +15,7 @@
 #include "gas_surface.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "planner.h"
 #include "tasks.h"
 #include "water_step.h"
 
@@ -225,6 +226,11 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
             mvfxBeginEvents(instance, e);
             continue;
         }
+        if (instance->planned)
+        {
+            mvfxPlanEmitter(instance, e);
+            continue;
+        }
         mvfxStepEmitter(instance, e);
     }
     instance->gasesDue = !finished && instance->effect->gasCount + instance->effect->waterCount > 0;
@@ -278,6 +284,10 @@ static void StepSplit(mvfxInstance* instance, int64_t ticks)
 // A sum past the longest step steps what it holds first.
 static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
 {
+    if (instance->planned)
+    {
+        mvfxBeginPlans(instance);
+    }
     bool due = IsDue(instance);
     bool paused = !due && instance->offscreen == mvfx_offscreenPause;
     if (!due)
@@ -390,6 +400,11 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
     if (live == nullptr)
     {
         return mvfx_errorStale;
+    }
+    if (live->planned)
+    {
+        // Its particles are simulated elsewhere, step by step.
+        return mvfx_errorState;
     }
     mvfxFloatMode mode = mvfxEnterFloatMode();
     bool valid = seconds >= 0.0 && seconds <= 1e9 && stepSeconds > 0.0 &&

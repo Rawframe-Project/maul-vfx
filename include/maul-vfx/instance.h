@@ -81,6 +81,11 @@ extern "C"
         // (read only for that policy). It is made seen.
         mvfxOffscreen offscreen;
         int32_t offscreenInterval;
+        // Whether its particles are simulated elsewhere (maul-vfx/plan.h):
+        // it then holds none, and each step writes its emitters' plans. An
+        // effect with gases, water surfaces, beams or emitters spawning
+        // from events cannot be planned yet.
+        bool planned;
     } mvfxInstanceDef;
 
 // The least and greatest scale of an instance.
@@ -117,7 +122,9 @@ extern "C"
     ///         misuse when the context is given; `mvfx_errorStale` for an
     ///         effect id that names no live effect; `mvfx_errorLimit` when the
     ///         context holds its limit of instances; `mvfx_errorCapacity` when
-    ///         the allocator fails or the block's size does not fit.
+    ///         the allocator fails or the block's size does not fit;
+    ///         `mvfx_errorState` for a planned instance of an effect that
+    ///         cannot be planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateInstance(mvfxContext* context,
@@ -252,7 +259,8 @@ extern "C"
     ///         a color or size for an emitter that does not store it, which
     ///         counts as misuse when the context is given;
     ///         `mvfx_errorCapacity` when the emitter's host queue lacks the
-    ///         room (none of the particles is queued).
+    ///         room (none of the particles is queued); `mvfx_errorState` for
+    ///         a planned instance.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Spawn(mvfxContext* context,
@@ -307,8 +315,9 @@ extern "C"
     /// @param remainingOut  Receives the span left, exactly as ticks; may be
     ///                      NULL.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL context or a value out
-    ///         of range, which counts as misuse when the context is given.
+    ///         instance; `mvfx_errorState` for a planned instance;
+    ///         `mvfx_errorInvalid` for a NULL context or a value out of range,
+    ///         which counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Prewarm(mvfxContext* context,

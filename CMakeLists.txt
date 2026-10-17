@@ -74,6 +74,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/life.c
     src/liquid.c
     src/emitter_step.c
+    src/planner.c
     src/event.c
     src/neighbor.c
     src/contact.c
@@ -189,6 +190,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(liquid_flow WHITEBOX)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)
+    maul_add_test(plan WHITEBOX)
     maul_add_test(event WHITEBOX)
     maul_add_test(event_spawn WHITEBOX)
     maul_add_test(expand)

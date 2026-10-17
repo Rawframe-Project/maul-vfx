@@ -544,3 +544,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   repeat border's wrap divides only for a cell past the period: the
   baked turbulence's update takes about 40% fewer instructions, with
   the same results bit for bit.
+- Planned instances (`mvfxInstanceDef.planned`, `maul-vfx/plan.h`) for
+  a simulation elsewhere, such as a GPU: a planned instance holds no
+  particles, and each step writes its emitters' plans
+  (`mvfxInstance_GetEmitterPlan`), the births the step owes with their
+  serials, birth ticks, death ticks and inverse lives, as the CPU path
+  computes them, and the anchor before and after. Host spawns and
+  prewarm are refused for it, and an effect with gases, water surfaces,
+  beams or births from events cannot be planned yet.
