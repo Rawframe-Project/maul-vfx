@@ -674,26 +674,42 @@ static void TestTurbulence(Gpu* gpu, mvfxGpu* kernels)
             "turbulence as velocities, far from the origin");
 }
 
-// A smooth field on 4 x 4 x 3 points: three components a point.
-static float s_field[3 * 48];
+// A smooth field: three components a point, on up to 4,096 points.
+static float s_field[3 * 4096];
 
-static mvfxGridDef FieldGrid(mvfxGridFormat format)
+static mvfxGridDef FieldGrid(mvfxGridFormat format, int32_t x, int32_t y, int32_t z)
 {
-    for (int32_t p = 0; p < 48; ++p)
+    for (int32_t p = 0; p < x * y * z; ++p)
     {
-        float x = (float)(p % 4);
-        float y = (float)(p / 4 % 4);
-        float z = (float)(p / 16);
-        s_field[3 * p] = sinf(0.9f * y + 0.3f * z);
-        s_field[3 * p + 1] = 0.5f * cosf(0.7f * x - 0.4f * z);
-        s_field[3 * p + 2] = sinf(0.5f * x + 0.8f * y) - 0.25f;
+        float px = (float)(p % x);
+        float py = (float)(p / x % y);
+        float pz = (float)(p / (x * y));
+        s_field[3 * p] = sinf(0.9f * py + 0.3f * pz);
+        s_field[3 * p + 1] = 0.5f * cosf(0.7f * px - 0.4f * pz);
+        s_field[3 * p + 2] = sinf(0.5f * px + 0.8f * py) - 0.25f;
     }
     mvfxGridDef def = mvfxDefaultGridDef();
-    def.size[0] = 4;
-    def.size[1] = 4;
-    def.size[2] = 3;
+    def.size[0] = x;
+    def.size[1] = y;
+    def.size[2] = z;
     def.components = 3;
     def.format = format;
+    def.values = s_field;
+    return def;
+}
+
+// 4,096 points along X whose first component turns sign at each.
+static mvfxGridDef LongGrid(void)
+{
+    for (int32_t p = 0; p < 4096; ++p)
+    {
+        s_field[3 * p] = (p & 1) != 0 ? 1.0f : -1.0f;
+        s_field[3 * p + 1] = 0.0f;
+        s_field[3 * p + 2] = 0.0f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 4096;
+    def.components = 3;
     def.values = s_field;
     return def;
 }
@@ -701,7 +717,8 @@ static mvfxGridDef FieldGrid(mvfxGridFormat format)
 static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
 {
     // A turned box repeating its grid, given new values at half time, in
-    // the world; a binary16 grid clamped at a box's faces, as velocities,
+    // the world; a long grid repeating; a binary16 grid clamped at the
+    // faces of a box the particles leave, as velocities,
     // in the instance's space under a turning, growing instance at a
     // hundredth of the usual pace; a box with no field past it that the
     // particles fly out of.
@@ -714,20 +731,30 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Sprite();
     emitter.forces = forces;
     emitter.forceCount = 1;
-    mvfxGridDef grid = FieldGrid(mvfx_gridFloat32);
+    mvfxGridDef grid = FieldGrid(mvfx_gridFloat32, 4, 4, 3);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .grid = &grid, .animated = true},
             "a turned box repeating its grid, animated");
+    // 4,096 points along an unturned box of 100 repeating, each cell a
+    // sign's turn: the cells and shares of a fine grid.
+    forces[0].boxSize[0] = 100.0f;
+    forces[0].boxRotation[1] = 0.0f;
+    forces[0].boxRotation[3] = 1.0f;
+    forces[0].strength = 0.5f;
+    grid = LongGrid();
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .grid = &grid},
+            "a long grid repeating");
     forces[0] = (mvfxForce){.kind = mvfx_forceVectorField,
                             .space = mvfx_spaceLocal,
                             .point = {0, 0.3f, 0},
                             .strength = 2.0f,
                             .fieldMode = mvfx_fieldVelocity,
                             .tightness = 3.0f,
-                            .boxSize = {2.0f, 2.0f, 2.0f},
+                            .boxSize = {0.8f, 0.8f, 0.8f},
                             .boxRotation = {0, 0, 0, 1},
                             .border = mvfx_borderClamp};
-    grid = FieldGrid(mvfx_gridFloat16);
+    // An odd count of halves (81): the last alone in its word.
+    grid = FieldGrid(mvfx_gridFloat16, 3, 3, 3);
     Compare(
         gpu, kernels,
         &(Run){
@@ -739,7 +766,7 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
                             .boxSize = {0.8f, 0.6f, 0.8f},
                             .boxRotation = {0, 0, 0, 1},
                             .border = mvfx_borderNone};
-    grid = FieldGrid(mvfx_gridFloat32);
+    grid = FieldGrid(mvfx_gridFloat32, 4, 4, 3);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .grid = &grid},
             "a box with no field past it");
 }

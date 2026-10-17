@@ -389,27 +389,19 @@ const BORDER_NONE: u32 = 0u;
 const BORDER_REPEAT: u32 = 2u;
 
 // Along an axis of n points: the two points a place lies between, and its
-// share toward the second, as the core locates them. The repeat border
-// takes u * n as the core's binary64 does: u's 11 leading bits times n
-// are exact, and the rest adds to the fraction.
+// share toward the second, as the core locates them (the repeat border's
+// product in binary32: the core's binary64 one differs by less than the
+// paths' places do).
 fn locate(u: f32, n: u32, border: u32, low: ptr<function, u32>, high: ptr<function, u32>) -> f32 {
     if (border == BORDER_REPEAT) {
         let finite = u == u && abs(u) <= 3.40282347e38;
-        let v = select(0.0, u, finite);
-        let lead = bitcast<f32>(bitcast<u32>(v) & 0xFFFFE000u);
-        let a = lead * f32(n);
-        let b = (v - lead) * f32(n);
-        let whole = floor(a);
-        let s = (a - whole) + b;
-        let carry = floor(s);
+        let g = select(0.0, u, finite) * f32(n);
+        let whole = floor(g);
         let period = f32(n);
-        let wrapped = whole - period * floor(whole / period);
-        var cell = i32(wrapped) + i32(carry);
-        cell = select(cell, cell - i32(n), cell >= i32(n));
-        cell = select(cell, cell + i32(n), cell < 0);
-        *low = u32(cell);
+        let cell = i32(whole - period * floor(whole / period));
+        *low = select(u32(cell), 0u, cell < 0 || cell >= i32(n));
         *high = select(*low + 1u, 0u, *low + 1u == n);
-        return s - carry;
+        return g - whole;
     }
     var clamped = 0.0;
     if (u > 0.0) {
