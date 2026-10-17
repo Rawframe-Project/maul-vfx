@@ -203,6 +203,8 @@ extern "C"
 
 // The most octaves of a noise.
 #define MVFX_MAX_OCTAVES 8
+// The most lattice cells a baked noise's period spans along an axis.
+#define MVFX_MAX_NOISE_PERIOD 4096
 
 // The highest frequency of a noise, in cycles a unit.
 #define MVFX_MAX_FREQUENCY 1e4f
@@ -1219,6 +1221,38 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxEffect_IsValid(const mvfxContext* context, mvfxEffectId effect);
+
+    /// Bakes a turbulence's curl noise into a grid's values over one period
+    /// of a periodic lattice, for a vector field force that repeats it
+    /// without a seam: the grid's n points along an axis at i / n of the
+    /// period, as the repeat border reads them; the noise's octaves, gain
+    /// and seed as a turbulence force takes them (an instance's seed is not
+    /// mixed in), each octave's lattice wrapped every period times the
+    /// lacunarity to the octave cells. A value is the turbulence's curl at
+    /// that place in lattice units bit for bit, but where an octave puts it
+    /// in its period's last cell, whose far corners wrap to the first. The
+    /// field's box spans period / frequency along each axis; the noise's
+    /// scroll is not baked (the host may move the box).
+    ///
+    /// @param noise       A turbulence's noise, its lacunarity a whole
+    ///                    number.
+    /// @param period      The first octave's period in lattice cells, from 1
+    ///                    to MVFX_MAX_NOISE_PERIOD.
+    /// @param size        The grid's points along X, Y and Z, each from 1 to
+    ///                    MVFX_MAX_GRID_SIZE, at most MVFX_MAX_GRID_POINTS in
+    ///                    all.
+    /// @param values      Receives three values a point, X fastest, then Y,
+    ///                    then Z.
+    /// @param valueCount  The values the array holds, at least three a point.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         noise out of its ranges or with a lacunarity that is not
+    ///         whole, a period or size out of range, or too few values;
+    ///         nothing is written then.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxBakeCurlNoise(const mvfxNoise* noise, int32_t period,
+                                                         const int32_t size[3], float* values,
+                                                         int64_t valueCount);
 
 #ifdef __cplusplus
 }

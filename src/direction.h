@@ -15,8 +15,18 @@ void mvfxRandomDirection(uint32_t a, uint32_t b, float out[3]);
 // v normalized; false (and v left) when its length is 0 or not finite.
 bool mvfxNormalize(float v[3]);
 
-// Turns v by a unit quaternion (x, y, z, w).
-void mvfxRotate(const float q[4], const float v[3], float out[3]);
+// Turns v by a unit quaternion (x, y, z, w); inline, as forces, collision
+// and output turn a vector a particle.
+static inline void mvfxRotate(const float q[4], const float v[3], float out[3])
+{
+    // v + 2 w (u x v) + 2 u x (u x v), u the quaternion's vector part.
+    float tx = 2.0f * (q[1] * v[2] - q[2] * v[1]);
+    float ty = 2.0f * (q[2] * v[0] - q[0] * v[2]);
+    float tz = 2.0f * (q[0] * v[1] - q[1] * v[0]);
+    out[0] = v[0] + q[3] * tx + (q[1] * tz - q[2] * ty);
+    out[1] = v[1] + q[3] * ty + (q[2] * tx - q[0] * tz);
+    out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
+}
 
 // The quaternion product a b: b's turn, then a's.
 void mvfxMultiplyRotations(const float a[4], const float b[4], float out[4]);

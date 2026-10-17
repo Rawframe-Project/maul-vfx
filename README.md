@@ -14,7 +14,8 @@ It covers:
   circles, spheres, boxes, cones and meshes, on their surfaces or in
   their volumes.
 - **Motion:** gravity and drag integrated exactly, wind, attractors,
-  vortices, curl-noise turbulence, vector fields, velocity and values
+  vortices, curl-noise turbulence (analytic, or baked into a periodic
+  grid), vector fields, velocity and values
   over each particle's life, collision with shapes, grids and the
   host's scene, kill rules, and modules a host writes itself.
 - **Ribbons:** trails from a moving source, trails of particles,
@@ -62,7 +63,7 @@ islands at rest), gases (smoke and fire on grids) and grid liquids,
 water surfaces (waves and shallow water) that particles float in, push
 and pour into, and effect files are in place; the benchmarks and the GPU
 path come next.
-It has 86 public functions.
+It has 87 public functions.
 
 ## Building
 

@@ -463,6 +463,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - `bench_threads` measures the scaling over a host's threads: a million
   particles in 64 instances through a POSIX thread pool of 1 to 8
   threads, plain and with turbulence, where POSIX threads are.
+- `mvfxBakeCurlNoise` bakes a turbulence's curl noise into a grid's
+  values over one period of a periodic lattice, for a vector field force
+  with the repeat border: the same curl without a seam where it repeats,
+  about a third fewer instructions a particle than the analytic one.
+- A grid's repeat border wraps in integers and its format is chosen once
+  a point; quaternion turns are inline; the same bits.
 - An instance holds room for its own effect's gases, water surfaces and
   gas pours only, and a compiled effect for its own gases and water
   surfaces: an instance of one sprite emitter holds 2.8 KiB besides its

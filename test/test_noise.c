@@ -5,7 +5,8 @@
 // differences, continuous across cells, within its range, its curl the
 // finite-difference curl of the potential and without divergence,
 // octaves, gain and scroll, the 32-bit wrap of the lattice, huge
-// coordinates, and seeds.
+// coordinates, and seeds; and its bake into a periodic grid, the
+// unbounded curl's bits within the period and no seam where it repeats.
 
 #include "noise.h"
 #include "test_harness.h"
@@ -224,11 +225,129 @@ static void TestOctavesScrollAndWrap(void)
     CHECK(a[0] != b[0] || a[1] != b[1], "seeds differ");
 }
 
+// The bake into a periodic grid: a noise of two octaves at lacunarity 2,
+// frequency 1 so a lattice place is a place, period 4 cells over 16
+// points an axis.
+enum
+{
+    BAKE_POINTS = 16,
+    BAKE_PERIOD = 4,
+    BAKE_VALUES = 3 * BAKE_POINTS * BAKE_POINTS * BAKE_POINTS
+};
+
+static float s_baked[BAKE_VALUES];
+
+static const float* BakedAt(int32_t x, int32_t y, int32_t z)
+{
+    return &s_baked[3 * ((z * BAKE_POINTS + y) * BAKE_POINTS + x)];
+}
+
+static void TestBakeSeam(void)
+{
+    // Along X, the last point to the first is a step like any other: no
+    // seam where the tile repeats.
+    float step = 0.0f;
+    float seam = 0.0f;
+    for (int32_t z = 0; z < BAKE_POINTS; ++z)
+    {
+        for (int32_t y = 0; y < BAKE_POINTS; ++y)
+        {
+            for (int32_t x = 0; x < BAKE_POINTS; ++x)
+            {
+                const float* a = BakedAt(x, y, z);
+                const float* b = BakedAt((x + 1) % BAKE_POINTS, y, z);
+                for (int32_t c = 0; c < 3; ++c)
+                {
+                    float d = fabsf(b[c] - a[c]);
+                    step = x + 1 < BAKE_POINTS ? fmaxf(step, d) : step;
+                    seam = x + 1 == BAKE_POINTS ? fmaxf(seam, d) : seam;
+                }
+            }
+        }
+    }
+    CHECK(seam > 0.0f && seam <= step, "no seam where it repeats");
+}
+
+static void TestBakeRefusals(const mvfxNoise* baked, const int32_t size[3])
+{
+    mvfxNoise noise = *baked;
+    // Refusals write nothing.
+    mvfxNoise fractional = noise;
+    fractional.lacunarity = 2.5f;
+    const int32_t empty[3] = {BAKE_POINTS, 0, BAKE_POINTS};
+    s_baked[0] = 12345.0f;
+    bool refused =
+        mvfxBakeCurlNoise(NULL, BAKE_PERIOD, size, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
+        mvfxBakeCurlNoise(&fractional, BAKE_PERIOD, size, s_baked, BAKE_VALUES) ==
+            mvfx_errorInvalid &&
+        mvfxBakeCurlNoise(&noise, 0, size, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
+        mvfxBakeCurlNoise(&noise, MVFX_MAX_NOISE_PERIOD + 1, size, s_baked, BAKE_VALUES) ==
+            mvfx_errorInvalid &&
+        mvfxBakeCurlNoise(&noise, BAKE_PERIOD, empty, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
+        mvfxBakeCurlNoise(&noise, BAKE_PERIOD, size, s_baked, BAKE_VALUES - 1) == mvfx_errorInvalid;
+    CHECK(refused && s_baked[0] == 12345.0f, "refusals write nothing");
+}
+// Whether a place in the bake's grid lies, at every octave, outside its
+// period's last cell.
+static bool IsInner(const double place[3])
+{
+    bool inner = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        for (int32_t o = 0; o < 2; ++o)
+        {
+            double scale = (double)(1 << o);
+            inner = inner && floor(place[k] * scale) < BAKE_PERIOD * scale - 1.0;
+        }
+    }
+    return inner;
+}
+
+static void TestBake(void)
+{
+    mvfxNoise noise = s_noise;
+    noise.frequency = 1.0f;
+    noise.octaves = 2;
+    noise.seed = 7u;
+    const int32_t size[3] = {BAKE_POINTS, BAKE_POINTS, BAKE_POINTS};
+    CHECK(mvfxBakeCurlNoise(&noise, BAKE_PERIOD, size, s_baked, BAKE_VALUES) == mvfx_success,
+          "baked");
+    // Where no octave's cell is its period's last, the unbounded curl's
+    // bits.
+    int32_t compared = 0;
+    int32_t same = 0;
+    for (int32_t z = 0; z < BAKE_POINTS; ++z)
+    {
+        for (int32_t y = 0; y < BAKE_POINTS; ++y)
+        {
+            for (int32_t x = 0; x < BAKE_POINTS; ++x)
+            {
+                const double place[3] = {(double)x * BAKE_PERIOD / BAKE_POINTS,
+                                         (double)y * BAKE_PERIOD / BAKE_POINTS,
+                                         (double)z * BAKE_PERIOD / BAKE_POINTS};
+                if (!IsInner(place))
+                {
+                    continue;
+                }
+                float curl[3];
+                mvfxCurlNoise(&noise, noise.seed, place, 0.0, curl);
+                const float* baked = BakedAt(x, y, z);
+                compared += 1;
+                same += baked[0] == curl[0] && baked[1] == curl[1] && baked[2] == curl[2];
+            }
+        }
+    }
+    CHECK(compared == 12 * 12 * 12 && same == compared, "the unbounded curl's bits within");
+    TestBakeSeam();
+    TestBakeRefusals(&noise, size);
+}
+
 int main(void)
 {
     TestLatticeAndRange();
     TestGradients();
     TestCurl();
     TestOctavesScrollAndWrap();
+    TestBake();
     return s_failures == 0 ? 0 : 1;
 }

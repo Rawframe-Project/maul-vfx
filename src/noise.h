@@ -12,6 +12,9 @@
 
 #include "maul-vfx/effect.h"
 
+// Whether a turbulence's noise is within its ranges.
+bool mvfxIsNoiseValid(const mvfxNoise* noise);
+
 // The three noises' values and gradients at p, in lattice units: each
 // within [-1, 1] or near, 0 at every lattice point.
 void mvfxGradientNoise3(const double p[3], uint32_t seed, float value[3], float gradient[3][3]);

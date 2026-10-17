@@ -40,14 +40,6 @@ static bool IsFalloffValid(const mvfxFalloff* falloff)
             (falloff->angle > 0.0f && falloff->angle <= MVFX_MAX_CONE_ANGLE));
 }
 
-static bool IsNoiseValid(const mvfxNoise* noise)
-{
-    return noise->frequency > 0.0f && noise->frequency <= MVFX_MAX_FREQUENCY &&
-           noise->octaves >= 1 && noise->octaves <= MVFX_MAX_OCTAVES &&
-           IsWithin(noise->lacunarity, 1.0f, 4.0f) && IsWithin(noise->gain, 0.0f, 1.0f) &&
-           IsVectorWithin(noise->scroll, MVFX_MAX_EXTENT);
-}
-
 // Whether a unit quaternion within 0.001, finite.
 static bool IsRotation(const float q[4])
 {
@@ -98,7 +90,7 @@ bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
     case mvfx_forceVortex:
         return IsAxis(force->vector) && IsWithin(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
     case mvfx_forceTurbulence:
-        return IsNoiseValid(&force->noise);
+        return mvfxIsNoiseValid(&force->noise);
     case mvfx_forceVectorField:
         return IsBoxValid(force);
     case mvfx_forceGas:

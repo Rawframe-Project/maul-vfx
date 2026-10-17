@@ -8,7 +8,9 @@
 // a second; each case prints the best of five runs of 60 steps after the
 // emitter has filled, per particle (or per point, instance or emitter),
 // with its target:
-//   the sprite emitter's update; with one octave of turbulence; with
+//   the sprite emitter's update; with one octave of turbulence, analytic
+//   (its target Effekseer's accurate curl, measured back to back) and
+//   baked into a periodic grid read as a vector field; with
 //   three planes and a sphere to collide with (the extra over the plain
 //   emitter); packing its records (position, size, colour in 8 bits,
 //   angle); a radix sort for a view (the extra over packing unsorted);
@@ -29,6 +31,7 @@
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/effect.h"
+#include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/output.h"
 
@@ -160,17 +163,35 @@ typedef struct Scene
     int32_t count;
 } Scene;
 
+// A grid each scene opened creates first and gives the emitter's first
+// force, or NULL for none.
+static const mvfxGridDef* s_fieldGrid;
+
 static bool Open(Scene* scene, const mvfxEmitterDef* emitter, int32_t count)
 {
     mvfxContextDef def = mvfxDefaultContextDef();
     def.limits.instances = MANY;
     def.allocator = (mvfxAllocator){.alloc = Allocate, .free = Free};
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitter;
+    mvfxEmitterDef local = *emitter;
+    effectDef.emitters = &local;
     effectDef.emitterCount = 1;
     *scene = (Scene){.count = count};
-    if (mvfxCreateContext(&def, &scene->context) != mvfx_success ||
-        mvfxCreateEffect(scene->context, &effectDef, &scene->effect) != mvfx_success)
+    if (mvfxCreateContext(&def, &scene->context) != mvfx_success)
+    {
+        return false;
+    }
+    mvfxForce field;
+    if (s_fieldGrid != NULL && emitter->forceCount > 0)
+    {
+        field = emitter->forces[0];
+        if (mvfxCreateGrid(scene->context, s_fieldGrid, &field.grid) != mvfx_success)
+        {
+            return false;
+        }
+        local.forces = &field;
+    }
+    if (mvfxCreateEffect(scene->context, &effectDef, &scene->effect) != mvfx_success)
     {
         return false;
     }
@@ -287,7 +308,43 @@ static int Updates(void)
     {
         return 1;
     }
-    Report("sprite update, turbulence", measure, none, "ns a particle", 40);
+    Report("sprite update, turbulence", measure, none, "ns a particle", 150);
+
+    // The same noise baked into a periodic grid of 32 points an axis over 8
+    // cells, read by a vector field over a box of one period that repeats.
+    enum
+    {
+        BAKED = 32
+    };
+    static float baked[3 * BAKED * BAKED * BAKED];
+    const int32_t size[3] = {BAKED, BAKED, BAKED};
+    if (mvfxBakeCurlNoise(&turbulence.noise, 8, size, baked, 3 * BAKED * BAKED * BAKED) !=
+        mvfx_success)
+    {
+        return 1;
+    }
+    mvfxGridDef grid = mvfxDefaultGridDef();
+    grid.size[0] = BAKED;
+    grid.size[1] = BAKED;
+    grid.size[2] = BAKED;
+    grid.components = 3;
+    grid.values = baked;
+    static const mvfxForce field = {.kind = mvfx_forceVectorField,
+                                    .strength = 2.0f,
+                                    .boxSize = {8.0f, 8.0f, 8.0f},
+                                    .boxRotation = {0, 0, 0, 1},
+                                    .border = mvfx_borderRepeat};
+    mvfxEmitterDef fielded = sprite;
+    fielded.forces = &field;
+    fielded.forceCount = 1;
+    s_fieldGrid = &grid;
+    measure = Per(TimeSteps(&fielded, 1, WARM, &live), live);
+    s_fieldGrid = NULL;
+    if (measure.seconds < 0.0 || live == 0)
+    {
+        return 1;
+    }
+    Report("sprite update, baked turbulence", measure, none, "ns a particle", 40);
 
     static const mvfxCollider walls[4] = {
         {.kind = mvfx_colliderPlane,

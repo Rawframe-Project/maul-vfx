@@ -119,16 +119,6 @@ void mvfxStoreGridBox(mvfxGrid* grid, const int32_t first[3], const int32_t size
     }
 }
 
-// Value i of the grid.
-static float Fetch(const mvfxGrid* grid, int64_t i)
-{
-    if (grid->format == mvfx_gridFloat16)
-    {
-        return mvfxFloatFromHalf(((const uint16_t*)grid->values)[i]);
-    }
-    return ((const float*)grid->values)[i];
-}
-
 // Along one axis of n points: the two points a place lies between and its
 // share toward the second.
 static void Locate(float u, int32_t n, mvfxGridBorder border, int32_t* low, int32_t* high,
@@ -141,6 +131,19 @@ static void Locate(float u, int32_t n, mvfxGridBorder border, int32_t* low, int3
         // cell. For a finite one u times n is exact in binary64, so the wrap
         // is exact and lies in [0, n); the cell is held there all the same.
         double g = isfinite(u) ? (double)u * (double)n : 0.0;
+        if (fabs(g) < 0x1p52)
+        {
+            // In integers, the same: the floor of a binary64 below 2^52 is
+            // a whole int64_t, and its wrap the remainder put in [0, n).
+            int64_t whole = (int64_t)g;
+            whole -= (double)whole > g ? 1 : 0;
+            *share = (float)(g - (double)whole);
+            int64_t wrapped = whole % n;
+            wrapped += wrapped < 0 ? n : 0;
+            *low = (int32_t)wrapped;
+            *high = *low + 1 == n ? 0 : *low + 1;
+            return;
+        }
         double cell = floor(g);
         *share = (float)(g - cell);
         double wrapped = cell - (double)n * floor(cell / (double)n);
@@ -156,6 +159,26 @@ static void Locate(float u, int32_t n, mvfxGridBorder border, int32_t* low, int3
     *low = (int32_t)cell;
     *high = *low + 1 < n ? *low + 1 : *low;
     *share = g - cell;
+}
+
+// Adds a point's values, from at, times weight to out: the format chosen
+// once a point rather than once a value.
+static void AddPoint(const mvfxGrid* grid, int64_t at, float weight, float out[4])
+{
+    if (grid->format == mvfx_gridFloat16)
+    {
+        const uint16_t* halves = (const uint16_t*)grid->values + at;
+        for (int32_t c = 0; c < grid->components; ++c)
+        {
+            out[c] += weight * mvfxFloatFromHalf(halves[c]);
+        }
+        return;
+    }
+    const float* floats = (const float*)grid->values + at;
+    for (int32_t c = 0; c < grid->components; ++c)
+    {
+        out[c] += weight * floats[c];
+    }
 }
 
 bool mvfxSampleGrid(const mvfxGrid* grid, const float u[3], mvfxGridBorder border, float out[4])
@@ -193,10 +216,7 @@ bool mvfxSampleGrid(const mvfxGrid* grid, const float u[3], mvfxGridBorder borde
                        (k ? share[2] : 1.0f - share[2]);
         int64_t at = (int64_t)(i ? high[0] : low[0]) * sx + (int64_t)(j ? high[1] : low[1]) * sy +
                      (int64_t)(k ? high[2] : low[2]) * sz;
-        for (int32_t c = 0; c < grid->components; ++c)
-        {
-            out[c] += weight * Fetch(grid, at + c);
-        }
+        AddPoint(grid, at, weight, out);
     }
     return true;
 }
