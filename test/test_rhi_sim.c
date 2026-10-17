@@ -2033,10 +2033,11 @@ static void TestExactRecords(Gpu* gpu, mvfxGpu* kernels)
     emitter.color = (mvfxVectorSource){.kind = mvfx_sourceRange,
                                        .min = {0, steps[99], 0.5f, 0},
                                        .max = {1.5f, steps[99], 1.25f, 1}};
-    // 1 + 2^-11 and 3 + 2^-10 halfway between half floats, rounded to even.
+    // 1 + 3 2^-11 and 3 + 3 2^-10 halfway between half floats, the lower
+    // odd: rounded to even, up.
     emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,
-                                      .min = {1.00048828125f, 3.0009765625f, 0.1f},
-                                      .max = {1.00048828125f, 3.0009765625f, 0.7f}};
+                                      .min = {1.00146484375f, 3.0029296875f, 0.1f},
+                                      .max = {1.00146484375f, 3.0029296875f, 0.7f}};
     emitter.angle = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {-1.5f, 1.5f}};
     emitter.orientationMode = mvfx_orientationRandom;
     emitter.custom = custom;
