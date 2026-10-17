@@ -426,7 +426,9 @@ extern "C"
     // A view's depth image, as a camera saw the world (often the frame
     // before, so a moving camera sees it a frame late). Its pixels are the
     // host's, borrowed: they stay valid while the image is set. Pixels in
-    // the host's byte order, rows from the image's top.
+    // the host's byte order, rows from the image's top. A planned
+    // instance's image may have no pixels and no normals (NULL, their byte
+    // counts and strides not read): its simulation reads them on the GPU.
     typedef struct mvfxDepthImage
     {
         const void* pixels;

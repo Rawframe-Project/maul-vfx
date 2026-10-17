@@ -140,6 +140,28 @@ extern "C"
                                                                     int32_t count,
                                                                     int64_t* bytesOut);
 
+    /// Gives the textures of the frame open that the next
+    /// mvfxGpuSim_AddPasses binds for the emitters whose collision meets
+    /// the instance's depth image (mvfxInstance_SetDepthImage, which may
+    /// come without pixels for a planned instance): the depth the host
+    /// rendered, a `Depth32Float` or `DepthStencil` texture of the image's
+    /// size whose depth aspect is read, nearest pixel; and optionally the
+    /// surface's normals in the view's space, an `Rgba32Float` or
+    /// `Rgba16Float` texture of the same size, read likewise (a null id
+    /// to make them from the depth). Each is read where the step's passes
+    /// run; mvfxGpuSim_Record lets go of them.
+    ///
+    /// @param sim      The simulation.
+    /// @param depth    The depth texture's id in the frame, or a null id.
+    /// @param normals  The normal texture's id in the frame, or a null id
+    ///                 (ignored without a depth texture).
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim,
+                                                                       mrhiResourceId depth,
+                                                                       mrhiResourceId normals);
+
     /// Adds the passes of the context's last step to the frame the host
     /// builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer
     /// pass and seven compute passes an emitter. It reads the instance's
@@ -151,16 +173,19 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
     ///         `mvfx_errorStale` for an instance that is gone;
     ///         `mvfx_errorState` when the device refuses a pass or an
-    ///         import (no frame open); `mvfx_errorCapacity` when the grids
-    ///         the instance's colliders read pass the def's hostGridBytes.
+    ///         import (no frame open), or when an emitter meets the
+    ///         instance's depth image and no depth texture was given
+    ///         (mvfxGpuSim_SetDepthTextures); `mvfx_errorCapacity` when the
+    ///         grids the instance's colliders read pass the def's
+    ///         hostGridBytes.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 1,208 an
-    /// emitter, 432 a force and 128 a collider it has (6,712 at most), 32
+    /// when it added none. The bytes are the frame's uploads: 1,400 an
+    /// emitter, 432 a force and 128 a collider it has (6,904 at most), 32
     /// a planned birth (a plan holds at most twice the
     /// emitter's capacity), and the values of each grid its forces and
     /// colliders read (mvfxGridView's bytes) at the first step, after each

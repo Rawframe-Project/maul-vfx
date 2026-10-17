@@ -11,6 +11,7 @@
 #include "force.h"
 
 #include "maul-vfx/instance.h"
+#include "maul-vfx/plan.h"
 
 // A checked depth image with its projection and inverse in binary64.
 typedef struct mvfxDepthView
@@ -31,8 +32,14 @@ typedef struct mvfxResolvedDepth
     int32_t samples;
 } mvfxResolvedDepth;
 
-// Checks an image and prepares its view; false for one out of range.
-bool mvfxPrepareDepthView(const mvfxDepthImage* image, mvfxDepthView* out);
+// Checks an image and prepares its view; false for one out of range. A
+// planned instance's image may come without pixels or normals (its
+// simulation reads them on the GPU).
+bool mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out);
+
+// A resolved depth as a plan hands it over, for an emitter's collision.
+void mvfxPlanDepth(const mvfxResolvedDepth* depth, const mvfxCollision* collision,
+                   mvfxPlannedDepth* out);
 
 // Whether a place in the particles' space is within the image, in front
 // of the camera.

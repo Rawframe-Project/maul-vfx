@@ -123,6 +123,29 @@ extern "C"
         float grow;
     } mvfxPlannedCollider;
 
+    // An emitter's depth image as resolved for a plan's step: the maps
+    // between its particles' space and the view's clip space (clip =
+    // toClip (x, 1), column-major, rounded once from binary64; fromClip
+    // its inverse), the turn of the view's normals into the particles'
+    // space, the image's size and range, and how its particles meet it in
+    // the particles' space: their radius, the thickness behind a surface,
+    // the samples a step takes at most, and whether leaving the view
+    // kills.
+    typedef struct mvfxPlannedDepth
+    {
+        bool enabled;
+        float toClip[16];
+        float fromClip[16];
+        float normalTurn[4];
+        int32_t width;
+        int32_t height;
+        bool reversed;
+        float radius;
+        float thickness;
+        int32_t samples;
+        bool killOutsideView;
+    } mvfxPlannedDepth;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -173,6 +196,9 @@ extern "C"
         float lifeLoss;
         float restSpeed;
         bool killOnCollision;
+        // Its depth image as resolved for the step (not enabled when it
+        // does not collide with one or the instance has none).
+        mvfxPlannedDepth depth;
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape

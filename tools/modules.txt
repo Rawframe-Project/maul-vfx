@@ -100,6 +100,6 @@ curve:
 curve_integral: curve
 grid: allocator half
 force: direction elementary gas_lattice grid noise
-plan_resolved: collide force instance
+plan_resolved: collide depth force instance
 gradient:
 elementary:

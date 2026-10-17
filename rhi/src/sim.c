@@ -87,7 +87,20 @@ struct mvfxGpuSim
     int32_t emitterCount;
     mvfxEmitterView views[MVFX_MAX_EMITTERS];
     Emitter emitters[MVFX_MAX_EMITTERS];
+    // Its own 1-pixel depth and normal textures, bound where the host
+    // gives none; the host's for the frame open (null ids for none); the
+    // frame's ids of the two the step binds.
+    mrhiTextureId ownDepth;
+    mrhiTextureId ownNormals;
+    mrhiResourceId hostDepth;
+    mrhiResourceId hostNormals;
+    mrhiResourceId bound[2];
 };
+
+// The parts of the depth and normal textures the kernels read.
+static const mrhiTextureRange TEXTURE_RANGES[2] = {
+    {.mipCount = 1, .layerCount = 1, .aspect = mrhi_aspectDepthOnly},
+    {.mipCount = 1, .layerCount = 1, .aspect = mrhi_aspectAll}};
 
 mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 {
@@ -106,12 +119,11 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     const mvfxVelocityView* v = &view->velocity;
     *refusal = (mvfxGpuRefusal){
-        .features =
-            (view->features & ~RUN_FEATURES) |
-            ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
-            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries || view->depthImage
-                 ? MVFX_FEATURE_COLLISION
-                 : 0),
+        .features = (view->features & ~RUN_FEATURES) |
+                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
+                    ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
+                         ? MVFX_FEATURE_COLLISION
+                         : 0),
         .shape = view->shape.kind != mvfx_shapeSphere,
         .velocity = (v->mode != mvfx_directionShapeNormal && v->mode != mvfx_directionCone &&
                      v->mode != mvfx_directionFixed) ||
@@ -175,6 +187,19 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
                         written, &emitter->grids);
 }
 
+// Creates the simulation's own 1-pixel textures.
+static bool CreateTextures(mvfxGpuSim* sim)
+{
+    mrhiTextureDef def = mrhiDefaultTextureDef();
+    def.width = 1;
+    def.height = 1;
+    def.usage = mrhi_textureSampled;
+    def.format = mrhi_formatDepth32Float;
+    bool made = mrhiCreateTexture(sim->device, &def, &sim->ownDepth) == mrhi_success;
+    def.format = mrhi_formatRgba32Float;
+    return made && mrhiCreateTexture(sim->device, &def, &sim->ownNormals) == mrhi_success;
+}
+
 // Whether a def is one a simulation can be made from.
 static bool IsDefValid(const mvfxGpuSimDef* def)
 {
@@ -233,6 +258,10 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
             result = mvfx_errorState;
         }
     }
+    if (result == mvfx_success && !CreateTextures(sim))
+    {
+        result = mvfx_errorState;
+    }
     if (result != mvfx_success)
     {
         mvfxDestroyGpuSim(sim);
@@ -272,6 +301,14 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->accepted);
         DestroyBuffer(sim, emitter->blocks);
         DestroyBuffer(sim, emitter->grids);
+    }
+    mrhiTextureId textures[2] = {sim->ownDepth, sim->ownNormals};
+    for (int32_t t = 0; t < 2; ++t)
+    {
+        if (textures[t].index1 != 0)
+        {
+            (void)mrhiDestroyTexture(sim->device, textures[t]);
+        }
     }
     mvfxAllocator allocator = sim->allocator;
     mvfxRhiRelease(&allocator, sim, sizeof *sim, alignof(mvfxGpuSim));
@@ -321,7 +358,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessCopyDestination}};
-    const mrhiAccess used[BUFFER_COUNT] = {
+    const mrhiAccess used[BUFFER_COUNT + 2] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessUniform},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessStorageRead},
         {.resource = r[BUFFER_CURRENT], .kind = mrhi_accessStorageReadWrite},
@@ -329,13 +366,15 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_ACCEPTED], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_BLOCKS], .kind = mrhi_accessStorageReadWrite},
-        {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessStorageRead}};
+        {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessStorageRead},
+        {.resource = sim->bound[0], .kind = mrhi_accessSampled, .range = TEXTURE_RANGES[0]},
+        {.resource = sim->bound[1], .kind = mrhi_accessSampled, .range = TEXTURE_RANGES[1]}};
     for (int32_t p = 0; p < PASS_COUNT; ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
         def.passClass = p == PASS_WRITE ? mrhi_passTransfer : mrhi_passGraphics;
         def.accesses = p == PASS_WRITE ? written : used;
-        def.accessCount = p == PASS_WRITE ? 4 : BUFFER_COUNT;
+        def.accessCount = p == PASS_WRITE ? 4 : BUFFER_COUNT + 2;
         // Its writes outlive the frame, read by the next step or the host.
         def.neverCull = true;
         if (mrhiAddPass(sim->device, &def, &emitter->passes[p]) != mrhi_success)
@@ -361,6 +400,34 @@ mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context, const mvfxCollid
     return mvfxHostGridBytes(context, colliders, count, bytesOut) ? mvfx_success : mvfx_errorStale;
 }
 
+mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim, mrhiResourceId depth,
+                                       mrhiResourceId normals)
+{
+    if (sim == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    sim->hostDepth = depth;
+    sim->hostNormals = depth.index1 != 0 ? normals : (mrhiResourceId){0};
+    return mvfx_success;
+}
+
+// Brings the depth and normal textures the step binds into the frame: the
+// host's, or the simulation's own.
+static bool BindTextures(mvfxGpuSim* sim)
+{
+    const mrhiResourceId host[2] = {sim->hostDepth, sim->hostNormals};
+    const mrhiTextureId own[2] = {sim->ownDepth, sim->ownNormals};
+    bool bound = true;
+    for (int32_t t = 0; bound && t < 2; ++t)
+    {
+        sim->bound[t] = host[t];
+        bound = host[t].index1 != 0 ||
+                mrhiImportTexture(sim->device, own[t], &sim->bound[t]) == mrhi_success;
+    }
+    return bound;
+}
+
 mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
 {
     if (sim == nullptr)
@@ -380,11 +447,19 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         {
             return result;
         }
+        if (emitter->capacity > 0 && plan.depth.enabled && sim->hostDepth.index1 == 0)
+        {
+            return mvfx_errorState;
+        }
         if (emitter->capacity > 0 &&
             !mvfxPlaceHostGrids(sim->context, &plan, plan.ownColliderCount, &emitter->gridLayout))
         {
             return mvfx_errorCapacity;
         }
+    }
+    if (!BindTextures(sim))
+    {
+        return mvfx_errorState;
     }
     for (int32_t e = 0; e < sim->emitterCount; ++e)
     {
@@ -410,7 +485,8 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
             mvfxColliderGridWords(&emitter->gridLayout, &plan, own, c, colliderGrids[c]);
         }
         mvfxStepNumbers(&sim->views[e], &plan, e, (const uint32_t (*)[5])forceGrids,
-                        (const uint32_t (*)[5])colliderGrids, emitter->words);
+                        (const uint32_t (*)[5])colliderGrids, sim->hostNormals.index1 != 0,
+                        emitter->words);
         emitter->spans = mvfxStepSpansOf(plan.forceCount, plan.colliderCount);
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
         emitter->plannedBirths = plan.births;
@@ -468,17 +544,25 @@ static bool RecordKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p, mvf
                          uint32_t groups)
 {
     mrhiPassId pass = emitter->passes[p];
-    mrhiBinding bindings[BUFFER_COUNT];
+    mrhiBinding bindings[BUFFER_COUNT + 2];
     for (int32_t b = 0; b < BUFFER_COUNT; ++b)
     {
         bindings[b] = (mrhiBinding){
             .slot = (uint32_t)b, .resource = emitter->resources[b], .size = MRHI_WHOLE_SIZE};
     }
-    bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
-                    mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
-                        mrhi_success &&
-                    mrhiSetBindings(sim->device, pass, 0, bindings, BUFFER_COUNT) == mrhi_success &&
-                    mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+    for (int32_t t = 0; t < 2; ++t)
+    {
+        bindings[BUFFER_COUNT + t] = (mrhiBinding){.slot = (uint32_t)(BUFFER_COUNT + t),
+                                                   .resource = sim->bound[t],
+                                                   .viewKind = mrhi_texture2d,
+                                                   .range = TEXTURE_RANGES[t]};
+    }
+    bool recorded =
+        mrhiBeginPass(sim->device, pass) == mrhi_success &&
+        mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
+            mrhi_success &&
+        mrhiSetBindings(sim->device, pass, 0, bindings, BUFFER_COUNT + 2) == mrhi_success &&
+        mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 
@@ -513,6 +597,9 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         // The step's particles are in the other buffer now.
         emitter->current = 1 - emitter->current;
     }
+    // The host's textures were the frame's.
+    sim->hostDepth = (mrhiResourceId){0};
+    sim->hostNormals = (mrhiResourceId){0};
     return mvfx_success;
 }
 

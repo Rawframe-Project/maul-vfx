@@ -15,9 +15,12 @@
 #include "instance_api.h"
 #include "test_harness.h"
 
+#include "kernels/depth_fill_container.h"
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/instance.h"
+#include "maul-rhi/pipeline.h"
 #include "maul-rhi/resources.h"
+#include "maul-rhi/shader.h"
 #include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
@@ -115,7 +118,186 @@ static bool Finish(Gpu* gpu)
     return done;
 }
 
-// One frame of the simulation's step.
+// The test's depth-writing pipeline, and a run's depth image on the GPU:
+// its pixels in a buffer (the width's bits first), rendered into a depth
+// texture at every frame, and its normals, four binary32 a pixel, written
+// into a normal texture.
+#define DEPTH_SIDE 64
+static mrhiShaderId s_fillShader;
+static mrhiGraphicsPipelineId s_fill;
+static const mvfxDepthImage* s_depth;
+static mrhiBufferId s_depthBuffer;
+static mrhiTextureId s_depthTexture;
+static mrhiTextureId s_normalTexture;
+static float s_depthWords[1 + DEPTH_SIDE * DEPTH_SIDE];
+static float s_normalWords[4 * DEPTH_SIDE * DEPTH_SIDE];
+static mrhiPassId s_depthPasses[2];
+static mrhiResourceId s_depthResources[3];
+
+// Makes the depth-writing pipeline and waits, ten seconds at most, for it.
+static bool MakeFill(Gpu* gpu)
+{
+    mrhiShaderDef shader = mrhiDefaultShaderDef();
+    shader.bytes = s_depthFillContainer;
+    shader.byteCount = sizeof s_depthFillContainer;
+    mrhiGraphicsPipelineDef def = mrhiDefaultGraphicsPipelineDef();
+    def.vertexEntry = "cover";
+    def.vertexEntryLength = 5;
+    def.fragmentEntry = "fill";
+    def.fragmentEntryLength = 4;
+    def.depthStencilFormat = mrhi_formatDepth32Float;
+    def.depthWrite = true;
+    def.depthCompare = mrhi_compareAlways;
+    mrhiRequestId request = {0};
+    if (mrhiCreateShader(gpu->device, &shader, &s_fillShader) != mrhi_success)
+    {
+        return false;
+    }
+    def.shader = s_fillShader;
+    if (mrhiCreateGraphicsPipeline(gpu->device, &def, &s_fill, &request) != mrhi_success)
+    {
+        return false;
+    }
+    double deadline = Seconds() + 10.0;
+    while (Seconds() < deadline)
+    {
+        mrhiDeviceNotification record;
+        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        {
+            if (record.kind == mrhi_devicePipelineReady &&
+                record.request.index1 == request.index1 &&
+                record.request.generation == request.generation)
+            {
+                return record.outcome == mrhi_success;
+            }
+        }
+    }
+    return false;
+}
+
+// Makes a run's depth image's buffer and textures, the pixels and normals
+// laid out for them.
+static void OpenDepth(Gpu* gpu, const mvfxDepthImage* image)
+{
+    s_depth = image;
+    int32_t w = image->width;
+    int32_t h = image->height;
+    CHECK(w <= DEPTH_SIDE && h <= DEPTH_SIDE && image->format == mvfx_depthFloat32,
+          "a depth image the test renders");
+    uint32_t width = (uint32_t)w;
+    memcpy(&s_depthWords[0], &width, sizeof width);
+    for (int32_t r = 0; r < h; ++r)
+    {
+        memcpy(&s_depthWords[1 + r * w],
+               (const unsigned char*)image->pixels + (int64_t)r * image->stride,
+               (size_t)w * sizeof(float));
+        for (int32_t c = 0; image->normals != NULL && c < w; ++c)
+        {
+            memcpy(&s_normalWords[4 * (r * w + c)],
+                   (const unsigned char*)image->normals + (int64_t)r * image->normalStride +
+                       (int64_t)c * 12,
+                   12);
+            s_normalWords[4 * (r * w + c) + 3] = 0.0f;
+        }
+    }
+    mrhiBufferDef buffer = mrhiDefaultBufferDef();
+    buffer.size = (uint64_t)(1 + w * h) * sizeof(float);
+    buffer.usage = mrhi_bufferStorage | mrhi_bufferCopyDestination;
+    mrhiTextureDef texture = mrhiDefaultTextureDef();
+    texture.width = (uint32_t)w;
+    texture.height = (uint32_t)h;
+    texture.format = mrhi_formatDepth32Float;
+    texture.usage = mrhi_textureSampled | mrhi_textureRenderTarget;
+    CHECK(mrhiCreateBuffer(gpu->device, &buffer, &s_depthBuffer) == mrhi_success &&
+              mrhiCreateTexture(gpu->device, &texture, &s_depthTexture) == mrhi_success,
+          "the depth image's buffer and texture");
+    s_normalTexture = (mrhiTextureId){0};
+    if (image->normals != NULL)
+    {
+        texture.format = mrhi_formatRgba32Float;
+        texture.usage = mrhi_textureSampled | mrhi_textureCopyDestination;
+        CHECK(mrhiCreateTexture(gpu->device, &texture, &s_normalTexture) == mrhi_success,
+              "the normal texture");
+    }
+}
+
+static void CloseDepth(Gpu* gpu)
+{
+    if (s_depth == NULL)
+    {
+        return;
+    }
+    (void)mrhiDestroyBuffer(gpu->device, s_depthBuffer);
+    (void)mrhiDestroyTexture(gpu->device, s_depthTexture);
+    if (s_normalTexture.index1 != 0)
+    {
+        (void)mrhiDestroyTexture(gpu->device, s_normalTexture);
+    }
+    s_depth = NULL;
+}
+
+// Adds the frame's passes making the depth image: the pixels and normals
+// written, the pixels rendered into the depth texture; gives the textures
+// to the simulation.
+static bool AddDepthPasses(Gpu* gpu, mvfxGpuSim* sim)
+{
+    bool normals = s_normalTexture.index1 != 0;
+    mrhiResourceId* r = s_depthResources;
+    r[2] = (mrhiResourceId){0};
+    if (mrhiImportBuffer(gpu->device, s_depthBuffer, &r[0]) != mrhi_success ||
+        mrhiImportTexture(gpu->device, s_depthTexture, &r[1]) != mrhi_success ||
+        (normals && mrhiImportTexture(gpu->device, s_normalTexture, &r[2]) != mrhi_success))
+    {
+        return false;
+    }
+    const mrhiAccess written[2] = {{.resource = r[0], .kind = mrhi_accessCopyDestination},
+                                   {.resource = r[2],
+                                    .kind = mrhi_accessCopyDestination,
+                                    .range = {.mipCount = 1, .layerCount = 1}}};
+    mrhiPassDef write = mrhiDefaultPassDef();
+    write.passClass = mrhi_passTransfer;
+    write.accesses = written;
+    write.accessCount = normals ? 2 : 1;
+    const mrhiAccess read = {.resource = r[0], .kind = mrhi_accessStorageRead};
+    mrhiPassDef fill = mrhiDefaultPassDef();
+    fill.accesses = &read;
+    fill.accessCount = 1;
+    fill.depthTarget = (mrhiDepthTarget){
+        .resource = r[1], .depthLoad = mrhi_loadClear, .depthStore = mrhi_storeKeep};
+    return mrhiAddPass(gpu->device, &write, &s_depthPasses[0]) == mrhi_success &&
+           mrhiAddPass(gpu->device, &fill, &s_depthPasses[1]) == mrhi_success &&
+           mvfxGpuSim_SetDepthTextures(sim, r[1], r[2]) == mvfx_success;
+}
+
+// Records the passes AddDepthPasses added.
+static bool RecordDepthPasses(Gpu* gpu)
+{
+    int32_t w = s_depth->width;
+    int32_t h = s_depth->height;
+    mrhiResourceId* r = s_depthResources;
+    mrhiPassId write = s_depthPasses[0];
+    mrhiPassId fill = s_depthPasses[1];
+    const mrhiTextureCopy normals = {.resource = r[2]};
+    const mrhiTexelLayout layout = {.bytesPerRow = (uint32_t)w * 16u};
+    const mrhiExtent3d size = {(uint32_t)w, (uint32_t)h, 1};
+    bool recorded =
+        mrhiBeginPass(gpu->device, write) == mrhi_success &&
+        mrhiWriteBuffer(gpu->device, write, r[0], 0, s_depthWords,
+                        (uint64_t)(1 + w * h) * sizeof(float)) == mrhi_success &&
+        (r[2].index1 == 0 ||
+         mrhiWriteTexture(gpu->device, write, &normals, s_normalWords,
+                          (size_t)(4 * w * h) * sizeof(float), &layout, &size) == mrhi_success);
+    recorded = mrhiEndPass(gpu->device, write) == mrhi_success && recorded;
+    const mrhiBinding binding = {.slot = 0, .resource = r[0], .size = MRHI_WHOLE_SIZE};
+    recorded = recorded && mrhiBeginPass(gpu->device, fill) == mrhi_success &&
+               mrhiSetGraphicsPipeline(gpu->device, fill, s_fill) == mrhi_success &&
+               mrhiSetBindings(gpu->device, fill, 0, &binding, 1) == mrhi_success &&
+               mrhiDraw(gpu->device, fill, 3, 1, 0, 0) == mrhi_success;
+    return mrhiEndPass(gpu->device, fill) == mrhi_success && recorded;
+}
+
+// One frame of the simulation's step, after the depth image's passes when
+// the run has one.
 static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 {
     mrhiFrameDef frame = mrhiDefaultFrameDef();
@@ -123,8 +305,10 @@ static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
     {
         return false;
     }
-    if (mvfxGpuSim_AddPasses(sim) != mvfx_success ||
-        mrhiCompileFrame(gpu->device) != mrhi_success || mvfxGpuSim_Record(sim) != mvfx_success)
+    bool depth = s_depth != NULL;
+    if ((depth && !AddDepthPasses(gpu, sim)) || mvfxGpuSim_AddPasses(sim) != mvfx_success ||
+        mrhiCompileFrame(gpu->device) != mrhi_success || (depth && !RecordDepthPasses(gpu)) ||
+        mvfxGpuSim_Record(sim) != mvfx_success)
     {
         (void)mrhiDropFrame(gpu->device);
         return false;
@@ -406,6 +590,10 @@ typedef struct Run
     float tolerance;
     // Whether each particle's death tick is compared too.
     bool deathTicks;
+    // A depth image both instances collide with (none for NULL): the CPU
+    // instance's with its pixels, the planned one's without, its
+    // simulation's rendered from the same pixels.
+    const mvfxDepthImage* depth;
 } Run;
 
 // Moves both instances to step s's place: along a line past the rebase
@@ -558,6 +746,18 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     {
         SetHostColliders(run->hostColliders, run->hostColliderCount);
     }
+    if (run->depth != NULL)
+    {
+        mvfxDepthImage bare = *run->depth;
+        bare.pixels = NULL;
+        bare.byteCount = 0;
+        bare.normals = NULL;
+        bare.normalByteCount = 0;
+        OpenDepth(gpu, run->depth);
+        CHECK(mvfxInstance_SetDepthImage(s_context, s_cpu, run->depth) == mvfx_success &&
+                  mvfxInstance_SetDepthImage(s_context, s_planned, &bare) == mvfx_success,
+              "the depth images");
+    }
     s_boundsError = 0.0;
     s_tolerance = run->tolerance > 0.0f ? run->tolerance : 1e-4f;
     s_deathTicks = run->deathTicks;
@@ -621,6 +821,7 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
         CHECK(state->killed > 0, "kills");
     }
     mvfxDestroyGpuSim(sim);
+    CloseDepth(gpu);
     mvfxDestroyContext(s_context);
 }
 
@@ -973,6 +1174,137 @@ static void TestOldDeaths(Gpu* gpu, mvfxGpu* kernels)
                    .deathTicks = true},
             "life lost past 16 seconds of age");
     s_stepTicks = STEP_TICKS;
+}
+
+// A depth image's pixels and normals, 64 a side.
+static float s_pixels[DEPTH_SIDE * DEPTH_SIDE];
+static float s_viewNormals[3 * DEPTH_SIDE * DEPTH_SIDE];
+
+// A projection's device depth at a view depth z (negative ahead).
+static float DeviceDepth(const float projection[16], float z)
+{
+    return (projection[10] * z + projection[14]) / (projection[11] * z + projection[15]);
+}
+
+// An image of 64 by 64 pixels of a surface at view depth far, with a
+// square of columns 24 to 39 and rows 16 to 31 at view depth near (off the
+// middle row, so rows read upside down are seen); normals (when given)
+// far's and near's, in the view's space.
+static mvfxDepthImage Terraces(const float projection[16], float far, float near,
+                               const float* farNormal, const float* nearNormal)
+{
+    float d[2] = {DeviceDepth(projection, far), DeviceDepth(projection, near)};
+    for (int32_t p = 0; p < DEPTH_SIDE * DEPTH_SIDE; ++p)
+    {
+        int32_t c = p % DEPTH_SIDE;
+        int32_t r = p / DEPTH_SIDE;
+        int32_t square = c >= 24 && c < 40 && r >= 16 && r < 32 ? 1 : 0;
+        s_pixels[p] = d[square];
+        for (int32_t k = 0; farNormal != NULL && k < 3; ++k)
+        {
+            s_viewNormals[3 * p + k] = square != 0 ? nearNormal[k] : farNormal[k];
+        }
+    }
+    mvfxDepthImage image = {.pixels = s_pixels,
+                            .byteCount = sizeof s_pixels,
+                            .width = DEPTH_SIDE,
+                            .height = DEPTH_SIDE,
+                            .stride = DEPTH_SIDE * 4,
+                            .format = mvfx_depthFloat32,
+                            .rotation = {0, 0, 0, 1}};
+    memcpy(image.projection, projection, sizeof image.projection);
+    if (farNormal != NULL)
+    {
+        image.normals = s_viewNormals;
+        image.normalByteCount = sizeof s_viewNormals;
+        image.normalStride = DEPTH_SIDE * 12;
+    }
+    return image;
+}
+
+static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A wall square to a perspective camera's axis, a nearer square on it
+    // (one device depth each), particles flying into it, normals made
+    // from the neighbors; then reversed depth under a camera turned 10
+    // degrees about Y, normals given, killing those that leave a narrow
+    // view; then terraces under an orthographic camera looking down,
+    // particles falling onto them.
+    static const float perspective[16] = {1.7320508f, 0,          0,  0, 0, 1.7320508f,  0, 0, 0,
+                                          0,          -1.002004f, -1, 0, 0, -0.1002004f, 0};
+    mvfxDepthImage image = Terraces(perspective, -5.5f, -5.0f, NULL, NULL);
+    image.origin[1] = 0.5;
+    image.origin[2] = 4.0;
+    mvfxEmitterDef emitter = Sprite();
+    emitter.velocity.direction[1] = 0;
+    emitter.velocity.direction[2] = -1;
+    emitter.velocity.coneAngle = 0.3f;
+    emitter.velocity.speed = (mvfxRange){3, 5};
+    emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
+    emitter.collision = (mvfxCollision){.enabled = true,
+                                        .restitution = 0.5f,
+                                        .friction = 0.1f,
+                                        .radius = 0.02f,
+                                        .depthImage = true,
+                                        .depthThickness = 0.3f,
+                                        .depthSamples = 16};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true, .depth = &image},
+            "a wall and a square of a perspective depth image");
+    static const float reversed[16] = {3, 0, 0,         0,  0, 3, 0,          0,
+                                       0, 0, 0.002004f, -1, 0, 0, 0.1002004f, 0};
+    static const float tilted[3] = {0, 0.6f, 0.8f};
+    static const float square[3] = {0, 0, 1};
+    image = Terraces(reversed, -5.5f, -5.0f, tilted, square);
+    image.reversed = true;
+    image.origin[0] = 0.7;
+    image.origin[1] = 0.5;
+    image.origin[2] = 4.0;
+    image.rotation[1] = 0.08715574f;
+    image.rotation[3] = 0.99619470f;
+    emitter.collision.killOutsideView = true;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .colliding = true,
+                   .killing = true,
+                   .depth = &image},
+            "reversed depth, normals given, killed out of view");
+    static const float orthographic[16] = {0.5f, 0,           0, 0, 0, 0.5f,         0, 0, 0,
+                                           0,    -0.1010101f, 0, 0, 0, -0.01010101f, 1};
+    image = Terraces(orthographic, -3.6f, -3.3f, NULL, NULL);
+    image.origin[1] = 3.0;
+    image.rotation[0] = -0.70710678f;
+    image.rotation[3] = 0.70710678f;
+    emitter = Sprite();
+    emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
+    emitter.collision = (mvfxCollision){.enabled = true,
+                                        .restitution = 0.4f,
+                                        .radius = 0.02f,
+                                        .depthImage = true,
+                                        .depthThickness = 0.3f,
+                                        .depthSamples = 16};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true, .depth = &image},
+            "terraces of an orthographic depth image");
+    // A step whose emitter meets the instance's depth image with no depth
+    // texture given: refused, no pass added.
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1}, &effect);
+    mvfxDepthImage bare = image;
+    bare.pixels = NULL;
+    bare.byteCount = 0;
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    CHECK(mvfxInstance_SetDepthImage(s_context, s_planned, &bare) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success &&
+              mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+              mvfxGpuSim_AddPasses(sim) == mvfx_errorState &&
+              mvfxGpuSim_SetDepthTextures(NULL, (mrhiResourceId){0}, (mrhiResourceId){0}) ==
+                  mvfx_errorInvalid,
+          "a depth image without its texture refused");
+    (void)mrhiDropFrame(gpu->device);
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(s_context);
 }
 
 // Heights over 9 by 9 points, a gentle swell.
@@ -1391,6 +1723,7 @@ int main(void)
     def.device = gpu.device;
     mvfxGpu* kernels = NULL;
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
+    CHECK(MakeFill(&gpu), "the depth-writing pipeline");
     TestSprite(&gpu, kernels);
     TestMoving(&gpu, kernels);
     TestForces(&gpu, kernels);
@@ -1399,11 +1732,14 @@ int main(void)
     TestCollision(&gpu, kernels);
     TestGridColliders(&gpu, kernels);
     TestOldDeaths(&gpu, kernels);
+    TestDepth(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);
     TestBoundsRefused(kernels);
     TestHostGridRefused(&gpu, kernels);
+    (void)mrhiDestroyGraphicsPipeline(gpu.device, s_fill);
+    (void)mrhiDestroyShader(gpu.device, s_fillShader);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;

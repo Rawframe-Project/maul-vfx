@@ -625,3 +625,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   CPU path: the births are chosen from the deaths the step began with.
   A benchmark of the GPU step (`maul-vfx_bench_gpu`, with the GPU part)
   times the worst grid collision.
+- A planned instance's depth image may come without pixels, and a plan
+  carries its emitter's depth image resolved (`mvfxPlannedDepth`: the
+  maps between the particles' space and clip space, the normals' turn,
+  the size, the range, the radius and thickness). The GPU part runs
+  depth-image collision from the depth texture the host rendered and
+  optionally its normals (`mvfxGpuSim_SetDepthTextures`), the kill
+  outside the view included.

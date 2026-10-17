@@ -82,6 +82,20 @@ struct Collider {
     scales: vec4<f32>,
 }
 
+// The depth image as resolved for the step: whether it is met, its size
+// and the samples a step takes at most; whether it is reversed, whether
+// leaving it kills, whether a normal image is given; the radius and the
+// thickness in the particles' space; the turn of its normals into the
+// particles' space; the maps between the particles' space and clip space.
+struct Depth {
+    head: vec4<u32>,
+    modes: vec4<u32>,
+    sizes: vec4<f32>,
+    normalTurn: vec4<f32>,
+    toClip: mat4x4<f32>,
+    fromClip: mat4x4<f32>,
+}
+
 struct Step {
     // capacity, births, the plan's ticks, the instance's seed
     counts: vec4<u32>,
@@ -121,10 +135,12 @@ struct Step {
     forceHead: vec4<u32>,
     forces: array<Force, 8>,
     fields: array<Field, 8>,
-    // the colliders' count, whether a contact kills, unused (2); the
-    // response: restitution, friction, life loss, rest speed
+    // the colliders' count, whether a contact kills, whether it meets
+    // anything (colliders or a depth image), unused; the response:
+    // restitution, friction, life loss, rest speed
     collisionHead: vec4<u32>,
     response: vec4<f32>,
+    depth: Depth,
     colliders: array<Collider, 16>,
 }
 
@@ -139,6 +155,10 @@ struct Step {
 // The grids the forces and colliders read, binary32 values one a word,
 // binary16 two.
 @group(0) @binding(7) var<storage, read> grids: array<u32>;
+// The host's depth image and its normals in the view's space, when the
+// step's depth is met and they are given (else the simulation's own).
+@group(0) @binding(8) var depthImage: texture_depth_2d;
+@group(0) @binding(9) var normalImage: texture_2d<f32>;
 // Each block of the sequence's count of kept elements, then its first
 // place; after them (blockCount() words on), each block's box of the
 // places scatter wrote: min then max, three binary32 words each.
@@ -921,9 +941,203 @@ fn hitField(c: Collider, s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) ->
     return true;
 }
 
-// The segment's earliest contact with any collider.
+// A place projected into the depth image: its device coordinates and its
+// pixel.
+struct Projected {
+    ndc: vec3<f32>,
+    column: i32,
+    row: i32,
+}
+
+// Whether a place in the particles' space projects into the image, in
+// front of the camera, and where.
+fn project(x: vec3<f32>, p: ptr<function, Projected>) -> bool {
+    let clip = params.depth.toClip * vec4<f32>(x, 1.0);
+    if (!(clip.w > 0.0)) {
+        return false;
+    }
+    let ndc = clip.xyz / clip.w;
+    if (!(abs(ndc.x) <= 1.0 && abs(ndc.y) <= 1.0 && ndc.z >= 0.0 && ndc.z <= 1.0)) {
+        return false;
+    }
+    let w = i32(params.depth.head.y);
+    let h = i32(params.depth.head.z);
+    (*p).ndc = ndc;
+    (*p).column = min(i32((ndc.x * 0.5 + 0.5) * f32(w)), w - 1);
+    (*p).row = min(i32((0.5 - ndc.y * 0.5) * f32(h)), h - 1);
+    return true;
+}
+
+// A pixel's device depth; false where it holds none.
+fn depthAt(column: i32, row: i32, d: ptr<function, f32>) -> bool {
+    if (column < 0 || row < 0 || column >= i32(params.depth.head.y) ||
+        row >= i32(params.depth.head.z)) {
+        return false;
+    }
+    *d = textureLoad(depthImage, vec2<i32>(column, row), 0);
+    let far = select(1.0, 0.0, params.depth.modes.x != 0u);
+    return *d >= 0.0 && *d <= 1.0 && *d != far;
+}
+
+// The particles' place at device x, y and depth; false at infinity.
+fn unproject(x: f32, y: f32, d: f32, out: ptr<function, vec3<f32>>) -> bool {
+    let h = params.depth.fromClip * vec4<f32>(x, y, d, 1.0);
+    if (h.w == 0.0) {
+        return false;
+    }
+    *out = h.xyz / h.w;
+    return all(abs(*out) <= vec3<f32>(LARGEST));
+}
+
+// A pixel's surface place, at its center; false where it has none.
+fn pixelPoint(column: i32, row: i32, out: ptr<function, vec3<f32>>) -> bool {
+    var d = 0.0;
+    if (!depthAt(column, row, &d)) {
+        return false;
+    }
+    let x = (f32(column) + 0.5) / f32(params.depth.head.y) * 2.0 - 1.0;
+    let y = 1.0 - (f32(row) + 0.5) / f32(params.depth.head.z) * 2.0;
+    return unproject(x, y, d, out);
+}
+
+// The shorter of the differences to a pixel's two neighbors along an
+// axis; false with neither.
+fn across(center: vec3<f32>, column: i32, row: i32, dc: i32, dr: i32,
+          out: ptr<function, vec3<f32>>) -> bool {
+    var after = vec3<f32>(0.0);
+    var before = vec3<f32>(0.0);
+    let hasAfter = pixelPoint(column + dc, row + dr, &after);
+    let hasBefore = pixelPoint(column - dc, row - dr, &before);
+    let a = after - center;
+    let b = center - before;
+    if (!hasAfter && !hasBefore) {
+        return false;
+    }
+    let useAfter = hasAfter && (!hasBefore || sqrt(dot3(a, a)) <= sqrt(dot3(b, b)));
+    *out = select(b, a, useAfter);
+    return true;
+}
+
+// The direction toward the camera along the ray at device x, y.
+fn towardCamera(x: f32, y: f32) -> vec3<f32> {
+    let reversed = params.depth.modes.x != 0u;
+    var nearer = vec3<f32>(0.0);
+    var farther = vec3<f32>(0.0);
+    if (unproject(x, y, select(0.25, 0.75, reversed), &nearer) &&
+        unproject(x, y, select(0.75, 0.25, reversed), &farther)) {
+        return nearer - farther;
+    }
+    return rotate(params.depth.normalTurn, vec3<f32>(0.0, 0.0, 1.0));
+}
+
+// The surface's unit normal at a pixel, toward the camera: the normal
+// image's turned, or the cross of the shorter neighbor differences.
+fn depthNormal(p: Projected) -> vec3<f32> {
+    let toward = towardCamera(p.ndc.x, p.ndc.y);
+    var n = toward;
+    var center = vec3<f32>(0.0);
+    var dx = vec3<f32>(0.0);
+    var dy = vec3<f32>(0.0);
+    if (params.depth.modes.z != 0u) {
+        let given = textureLoad(normalImage, vec2<i32>(p.column, p.row), 0).xyz;
+        let finite = abs(given) <= vec3<f32>(LARGEST);
+        n = rotate(params.depth.normalTurn, select(vec3<f32>(0.0), given, finite));
+    } else if (pixelPoint(p.column, p.row, &center) && across(center, p.column, p.row, 1, 0, &dx) &&
+               across(center, p.column, p.row, 0, 1, &dy)) {
+        n = vec3<f32>(dx.y * dy.z - dx.z * dy.y, dx.z * dy.x - dx.x * dy.z,
+                      dx.x * dy.y - dx.y * dy.x);
+    }
+    var length = sqrt(dot3(n, n));
+    if (!(length > 0.0 && length <= LARGEST)) {
+        n = toward;
+        length = sqrt(dot3(n, n));
+    }
+    let sign = select(1.0, -1.0, dot3(n, toward) < 0.0);
+    return sign * n / length;
+}
+
+// Whether a place meets the image: along its ray, within the radius in
+// front of the pixel's surface or less than the thickness behind it; the
+// surface's place on that ray.
+fn meetsDepth(place: vec3<f32>, p: ptr<function, Projected>, surface: ptr<function, vec3<f32>>)
+    -> bool {
+    var d = 0.0;
+    if (!project(place, p) || !depthAt((*p).column, (*p).row, &d) ||
+        !unproject((*p).ndc.x, (*p).ndc.y, d, surface)) {
+        return false;
+    }
+    let toward = towardCamera((*p).ndc.x, (*p).ndc.y);
+    let behind = -dot3(place - *surface, toward) / sqrt(dot3(toward, toward));
+    return behind > -params.depth.sizes.x && behind < params.depth.sizes.y;
+}
+
+// The samples a segment takes: one a pixel it crosses and one each half
+// thickness, at least one, at most the emitter's.
+fn depthSamples(s: vec3<f32>, e: vec3<f32>) -> u32 {
+    let d = e - s;
+    var wanted = sqrt(dot3(d, d)) / (0.5 * params.depth.sizes.y);
+    var ps: Projected;
+    var pe: Projected;
+    let most = f32(params.depth.head.w);
+    if (!project(s, &ps) || !project(e, &pe)) {
+        wanted = most;
+    } else {
+        let pixels = max(abs(f32(pe.column - ps.column)), abs(f32(pe.row - ps.row)));
+        wanted = max(wanted, pixels);
+    }
+    return u32(min(max(ceil(wanted), 1.0), most));
+}
+
+// The halvings that find a crossing between two samples.
+const DEPTH_HALVINGS: u32 = 10u;
+
+// The first share of the segment that meets the image, sampled and then
+// halved toward from the sample before; -1 when none does.
+fn firstMeeting(s: vec3<f32>, e: vec3<f32>, p: ptr<function, Projected>,
+                surface: ptr<function, vec3<f32>>) -> f32 {
+    let n = depthSamples(s, e);
+    for (var i = 0u; i <= n; i++) {
+        var hi = f32(i) / f32(n);
+        if (!meetsDepth(s + hi * (e - s), p, surface)) {
+            continue;
+        }
+        var lo = select(hi, f32(i - 1u) / f32(n), i > 0u);
+        for (var halving = 0u; halving < DEPTH_HALVINGS && i > 0u; halving++) {
+            let middle = 0.5 * (lo + hi);
+            var q: Projected;
+            var at = vec3<f32>(0.0);
+            if (meetsDepth(s + middle * (e - s), &q, &at)) {
+                hi = middle;
+                *p = q;
+                *surface = at;
+            } else {
+                lo = middle;
+            }
+        }
+        return hi;
+    }
+    return -1.0;
+}
+
+// The segment's first meeting with the depth image: the surface grown by
+// the radius along its normal.
+fn hitDepth(s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> bool {
+    var p: Projected;
+    var surface = vec3<f32>(0.0);
+    let at = firstMeeting(s, e, &p, &surface);
+    if (at < 0.0) {
+        return false;
+    }
+    let normal = depthNormal(p);
+    (*hit).t = at;
+    (*hit).normal = normal;
+    (*hit).point = surface + params.depth.sizes.x * normal;
+    return true;
+}
+
+// The segment's earliest contact with the depth image or any collider.
 fn firstHit(s: vec3<f32>, e: vec3<f32>, best: ptr<function, Hit>) -> bool {
-    var found = false;
+    var found = params.depth.head.x != 0u && hitDepth(s, e, best);
     for (var i = 0u; i < params.collisionHead.x; i++) {
         let c = params.colliders[i];
         var hit: Hit;
@@ -1026,10 +1240,16 @@ struct Fate {
 fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>,
         birth: vec2<u32>, inverse: f32, death: vec2<u32>) -> Fate {
     var fate = Fate(0u, false, inverse, death);
-    if (params.collisionHead.x == 0u) {
+    if (params.collisionHead.z == 0u) {
         return fate;
     }
     fate.contacts = collide(start, place, velocity);
+    var seen: Projected;
+    if (params.depth.modes.y != 0u && !project(*place, &seen)) {
+        // Out of the view, where leaving it kills.
+        fate.killed = true;
+        return fate;
+    }
     if (fate.contacts == 0u) {
         return fate;
     }
@@ -1267,7 +1487,7 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
 // update's over the particles.
 @compute @workgroup_size(64, 1, 1)
 fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (params.forceHead.y == 0u && params.collisionHead.x == 0u) {
+    if (params.forceHead.y == 0u && params.collisionHead.z == 0u) {
         return;
     }
     for (var j = id.x; j < params.counts.y; j += params.modes.z * 64u) {

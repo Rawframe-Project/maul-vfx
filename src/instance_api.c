@@ -766,7 +766,7 @@ mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId insta
         return mvfx_success;
     }
     mvfxDepthView view;
-    if (!mvfxPrepareDepthView(image, &view))
+    if (!mvfxPrepareDepthView(image, live->planned, &view))
     {
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;

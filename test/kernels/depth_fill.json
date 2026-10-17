@@ -1,0 +1,10 @@
+{
+  "root_block_bytes": 0,
+  "entries": [
+    {"name": "cover", "stage": "vertex"},
+    {"name": "fill", "stage": "fragment", "builtins": ["frag_depth"]}
+  ],
+  "bindings": [
+    {"table": 0, "slot": 0, "kind": "read_only_storage_buffer", "stages": ["fragment"], "min_size": 8}
+  ]
+}

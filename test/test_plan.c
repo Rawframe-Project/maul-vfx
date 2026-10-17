@@ -12,6 +12,7 @@
 
 #include "collide.h"
 #include "context.h"
+#include "depth.h"
 #include "direction.h"
 #include "emitter_step.h"
 #include "force.h"
@@ -952,6 +953,147 @@ static void TestColliders(void)
     mvfxDestroyContext(context);
 }
 
+// The CPU path's clip place of a particle's place: mapped back to the
+// world (the step's map), into the view, projected, in binary64.
+static void CoreClip(const mvfxSpaceMap* map, const mvfxDepthImage* image, const float x[3],
+                     double clip[4])
+{
+    double world[3];
+    mvfxUnmapPoint(map, x, world);
+    double d[3] = {world[0] - image->origin[0], world[1] - image->origin[1],
+                   world[2] - image->origin[2]};
+    const float back[4] = {-image->rotation[0], -image->rotation[1], -image->rotation[2],
+                           image->rotation[3]};
+    double v[3];
+    mvfxRotateDouble(back, d, v);
+    for (int32_t r = 0; r < 4; ++r)
+    {
+        clip[r] = (double)image->projection[r] * v[0] + (double)image->projection[4 + r] * v[1] +
+                  (double)image->projection[8 + r] * v[2] + (double)image->projection[12 + r];
+    }
+}
+
+// A column-major binary32 matrix times (v, 1), in binary64.
+static void Apply(const float m[16], const double v[3], double out[4])
+{
+    for (int32_t r = 0; r < 4; ++r)
+    {
+        out[r] = (double)m[r] * v[0] + (double)m[4 + r] * v[1] + (double)m[8 + r] * v[2] +
+                 (double)m[12 + r];
+    }
+}
+
+// Whether a plan's depth maps places as the CPU path does, its inverse
+// maps them back, and its normals turn as the CPU path turns them.
+static bool SameDepth(const mvfxPlannedDepth* planned, const mvfxResolvedDepth* depth,
+                      const mvfxDepthImage* image)
+{
+    bool same = planned->enabled && planned->width == image->width &&
+                planned->height == image->height && planned->reversed == image->reversed &&
+                planned->radius == depth->radius &&
+                planned->thickness == depth->thickness * depth->map.sigma &&
+                planned->samples == depth->samples;
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        const float x[3] = {0.3f * (float)i - 1.0f, 0.2f * (float)(i % 3), -0.1f * (float)i};
+        double core[4];
+        CoreClip(&depth->map, image, x, core);
+        const double place[3] = {(double)x[0], (double)x[1], (double)x[2]};
+        double clip[4];
+        Apply(planned->toClip, place, clip);
+        double back[4];
+        const double ndc[3] = {clip[0] / clip[3], clip[1] / clip[3], clip[2] / clip[3]};
+        Apply(planned->fromClip, ndc, back);
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            same = same && fabs(clip[k] - core[k]) <= 1e-5 * (1.0 + fabs(core[k]));
+        }
+        // Mapped back in binary32: within a few units in its last place of
+        // the view's distance.
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && fabs(back[k] / back[3] - (double)x[k]) <= 1e-6 * (1.0 + fabs(core[3]));
+        }
+    }
+    const float n[3] = {0.6f, 0.0f, 0.8f};
+    float world[3];
+    float core[3];
+    float turned[3];
+    mvfxRotate(image->rotation, n, world);
+    mvfxRotate(depth->map.rotation, world, core);
+    mvfxRotate(planned->normalTurn, n, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && fabsf(turned[k] - core[k]) <= 1e-6f;
+    }
+    return same;
+}
+
+static void TestDepth(void)
+{
+    // A depth image of a perspective view far from the origin, turned,
+    // set without pixels on a planned instance (refused on one that is
+    // not): the plan's depth maps an emitter's places in either space,
+    // under a moving, turning, growing instance, as the CPU path's.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const float pixels[4] = {0.5f, 0.5f, 0.5f, 0.5f};
+    mvfxDepthImage image = {
+        .pixels = pixels,
+        .byteCount = sizeof pixels,
+        .width = 2,
+        .height = 2,
+        .stride = 8,
+        .reversed = true,
+        .projection = {1.2f, 0, 0, 0, 0, 1.6f, 0, 0, 0, 0, 0, -1, 0, 0, 0.1f, 0},
+        .origin = {10000.0, 40.0, -3000.0},
+        .rotation = {0, 0.28401534f, 0, 0.95881973f}};
+    for (int32_t space = 0; space < 2; ++space)
+    {
+        mvfxEmitterDef emitter = Emitter(256);
+        emitter.space = (mvfxSimulationSpace)space;
+        emitter.collision = (mvfxCollision){.enabled = true,
+                                            .depthImage = true,
+                                            .depthThickness = 0.5f,
+                                            .depthSamples = 12,
+                                            .killOutsideView = space == 1,
+                                            .radius = 0.05f};
+        mvfxEffectId effect = Effect(context, &emitter);
+        mvfxInstanceId cpu = Instance(context, effect, false);
+        mvfxInstanceId planned = Instance(context, effect, true);
+        mvfxDepthImage bare = image;
+        bare.pixels = NULL;
+        bare.byteCount = 0;
+        CHECK(mvfxInstance_SetDepthImage(context, cpu, &bare) == mvfx_errorInvalid &&
+                  mvfxInstance_SetDepthImage(context, cpu, &image) == mvfx_success &&
+                  mvfxInstance_SetDepthImage(context, planned, &bare) == mvfx_success,
+              "the images set");
+        bool same = true;
+        for (int32_t s = 0; s < 6 && same; ++s)
+        {
+            const double origin[3] = {9990.0 + 2.0 * s, 0.25 * s, -2990.0};
+            const float rotation[4] = {sinf(0.1f * (float)s), 0.0f, 0.0f, cosf(0.1f * (float)s)};
+            mvfxInstanceId both[2] = {cpu, planned};
+            for (int32_t i = 0; i < 2; ++i)
+            {
+                CHECK(mvfxInstance_SetTransform(context, both[i], origin, rotation,
+                                                1.0f + 0.2f * (float)s, false) == mvfx_success,
+                      "moved");
+            }
+            CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+            mvfxEmitterPlan plan;
+            CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success,
+                  "a plan");
+            const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
+            same = state->hasDepth && SameDepth(&plan.depth, &state->depth, &image) &&
+                   plan.depth.killOutsideView == (space == 1);
+        }
+        CHECK(same, space == 0 ? "a world emitter's depth" : "a local emitter's depth");
+    }
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestBirths();
@@ -965,5 +1107,6 @@ int main(void)
     TestView();
     TestForces();
     TestColliders();
+    TestDepth();
     return s_failures == 0 ? 0 : 1;
 }

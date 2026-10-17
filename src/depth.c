@@ -116,13 +116,14 @@ static bool IsPoseValid(const mvfxDepthImage* image)
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-bool mvfxPrepareDepthView(const mvfxDepthImage* image, mvfxDepthView* out)
+bool mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out)
 {
-    bool sized = image->pixels != nullptr && image->format <= mvfx_depthUnorm24 &&
+    bool bare = planned && image->pixels == nullptr;
+    bool sized = (image->pixels != nullptr || bare) && image->format <= mvfx_depthUnorm24 &&
                  image->width >= 1 && image->width <= MVFX_MAX_DEPTH_SIZE && image->height >= 1 &&
                  image->height <= MVFX_MAX_DEPTH_SIZE &&
-                 RowsFit(image->width, image->height, image->stride, PixelBytes(image->format),
-                         image->byteCount);
+                 (bare || RowsFit(image->width, image->height, image->stride,
+                                  PixelBytes(image->format), image->byteCount));
     bool normals =
         image->normals == nullptr ||
         RowsFit(image->width, image->height, image->normalStride, 12, image->normalByteCount);
@@ -506,4 +507,104 @@ bool mvfxDepthHit(const mvfxResolvedDepth* depth, const float s[3], const float 
     }
     *t = at;
     return true;
+}
+
+// The column-major product a b of 4x4 matrices, in binary64.
+static void Multiply(const double a[16], const double b[16], double out[16])
+{
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        for (int32_t r = 0; r < 4; ++r)
+        {
+            out[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] +
+                             a[12 + r] * b[c * 4 + 3];
+        }
+    }
+}
+
+// The Hamilton product a b of quaternions (b's turn, then a's), in
+// binary64.
+static void Compose(const float a[4], const float b[4], double out[4])
+{
+    double ax = (double)a[0];
+    double ay = (double)a[1];
+    double az = (double)a[2];
+    double aw = (double)a[3];
+    double bx = (double)b[0];
+    double by = (double)b[1];
+    double bz = (double)b[2];
+    double bw = (double)b[3];
+    out[0] = aw * bx + ax * bw + ay * bz - az * by;
+    out[1] = aw * by - ax * bz + ay * bw + az * bx;
+    out[2] = aw * bz + ax * by - ay * bx + az * bw;
+    out[3] = aw * bw - ax * bx - ay * by - az * bz;
+}
+
+void mvfxPlanDepth(const mvfxResolvedDepth* depth, const mvfxCollision* collision,
+                   mvfxPlannedDepth* out)
+{
+    const mvfxDepthView* view = depth->view;
+    const mvfxDepthImage* image = &view->image;
+    const mvfxSpaceMap* map = &depth->map;
+    // The particles' space to the view's (ToView), as a matrix: each axis
+    // turned back by the map and the view and over sigma; the origin's
+    // place.
+    const float* q = map->rotation;
+    const float back[4] = {-q[0], -q[1], -q[2], q[3]};
+    const float* r = image->rotation;
+    const float viewBack[4] = {-r[0], -r[1], -r[2], r[3]};
+    double toView[16] = {0.0};
+    for (int32_t c = 0; c < 3; ++c)
+    {
+        double axis[3] = {c == 0 ? 1.0 : 0.0, c == 1 ? 1.0 : 0.0, c == 2 ? 1.0 : 0.0};
+        double world[3];
+        double turned[3];
+        mvfxRotateDouble(back, axis, world);
+        mvfxRotateDouble(viewBack, world, turned);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            toView[c * 4 + k] = turned[k] / (double)map->sigma;
+        }
+    }
+    double shift[3] = {-map->after[0], -map->after[1], -map->after[2]};
+    double world[3];
+    mvfxRotateDouble(back, shift, world);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        world[k] = world[k] / (double)map->sigma + map->before[k] - image->origin[k];
+    }
+    double origin[3];
+    mvfxRotateDouble(viewBack, world, origin);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        toView[12 + k] = origin[k];
+    }
+    toView[15] = 1.0;
+    double toClip[16];
+    double fromClip[16] = {0.0};
+    Multiply(view->projection, toView, toClip);
+    // The projection is invertible and the map is a turn and a scale: the
+    // product inverts.
+    (void)Invert(toClip, fromClip);
+    double turn[4];
+    Compose(map->rotation, image->rotation, turn);
+    *out = (mvfxPlannedDepth){
+        .enabled = true,
+        .width = image->width,
+        .height = image->height,
+        .reversed = image->reversed,
+        .radius = depth->radius,
+        .thickness = depth->thickness * map->sigma,
+        .samples = depth->samples,
+        .killOutsideView = collision->killOutsideView,
+    };
+    for (int32_t k = 0; k < 16; ++k)
+    {
+        out->toClip[k] = (float)toClip[k];
+        out->fromClip[k] = (float)fromClip[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out->normalTurn[k] = (float)turn[k];
+    }
 }
