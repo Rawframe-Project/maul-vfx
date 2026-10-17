@@ -9,6 +9,8 @@ if(NOT maul-rhi_FOUND)
     set(MAUL_RHI_BUILD_BENCH OFF)
     set(MAUL_RHI_BUILD_SAMPLES OFF)
     set(MAUL_RHI_INSTALL OFF)
+    # The part's tests run on its test driver as well as on a device.
+    set(MAUL_RHI_TEST_DRIVER ${MAUL_VFX_BUILD_TESTS})
     include(FetchContent)
     FetchContent_Declare(maul-rhi
         GIT_REPOSITORY https://github.com/Rawframe-Project/maul-rhi.git
