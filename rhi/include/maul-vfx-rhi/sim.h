@@ -41,7 +41,8 @@ extern "C"
         // The bytes each emitter keeps for the grids its instance's
         // colliders read (mvfxInstance_SetColliders: heightfields and
         // distance grids), their values as stored (mvfxGridView's bytes,
-        // each rounded up to 4); 0 for none.
+        // each rounded up to 4, each grid once), as
+        // mvfxGpuSim_HostGridBytes counts them; 0 for none.
         int64_t hostGridBytes;
     } mvfxGpuSimDef;
 
@@ -119,10 +120,32 @@ extern "C"
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_RHI_API void mvfxDestroyGpuSim(mvfxGpuSim* sim);
 
+    /// Counts the bytes of the grids a set of the instance's colliders
+    /// reads, the room mvfxGpuSimDef.hostGridBytes must keep for them:
+    /// each heightfield's and distance grid's grid once, its bytes
+    /// (mvfxGridView) rounded up to 4.
+    ///
+    /// @param context    The context that owns the grids.
+    /// @param colliders  The colliders, as for mvfxInstance_SetColliders;
+    ///                   NULL when count is 0.
+    /// @param count      How many, 0 to MVFX_MAX_COLLIDERS.
+    /// @param bytesOut   Receives the bytes; 0 on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or
+    ///         bytesOut, a count out of range or NULL colliders with a
+    ///         count; `mvfx_errorStale` for a grid that is gone.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context,
+                                                                    const mvfxCollider* colliders,
+                                                                    int32_t count,
+                                                                    int64_t* bytesOut);
+
     /// Adds the passes of the context's last step to the frame the host
     /// builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer
     /// pass and seven compute passes an emitter. It reads the instance's
-    /// plans, which must stay until mvfxGpuSim_Record.
+    /// plans, which must stay until mvfxGpuSim_Record. A step whose
+    /// instance's grids pass the room the def keeps adds no pass: the
+    /// particles stay as they were, the step's plans unsimulated.
     ///
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
@@ -136,8 +159,9 @@ extern "C"
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 6,712 an
-    /// emitter, 32 a planned birth (a plan holds at most twice the
+    /// when it added none. The bytes are the frame's uploads: 1,208 an
+    /// emitter, 432 a force and 128 a collider it has (6,712 at most), 32
+    /// a planned birth (a plan holds at most twice the
     /// emitter's capacity), and the values of each grid its forces and
     /// colliders read (mvfxGridView's bytes) at the first step, after each
     /// change and, for the instance's, after each move in the room the

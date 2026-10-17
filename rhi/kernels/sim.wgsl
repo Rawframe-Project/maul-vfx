@@ -1405,6 +1405,9 @@ fn liveDiesBy(i: u32, t: u32) -> bool {
 // capacity, all; else, batch by batch in order, as many of each as the
 // capacity has room for at its tick, the deaths by then of the live
 // particles and of the births taken before counted across the workgroup.
+// It runs before update, as the CPU path takes a full step's births
+// before it moves: the deaths are those the step began with (and the
+// plan's for births), not those its contacts shorten or its kills.
 @compute @workgroup_size(256, 1, 1)
 fn room(@builtin(local_invocation_index) local: u32) {
     let c = params.counts.x;

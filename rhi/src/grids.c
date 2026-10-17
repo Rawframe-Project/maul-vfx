@@ -123,6 +123,33 @@ bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxEmitterPlan* plan,
     return true;
 }
 
+bool mvfxHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders, int32_t count,
+                       int64_t* bytes)
+{
+    *bytes = 0;
+    for (int32_t c = 0; c < count; ++c)
+    {
+        bool grid = colliders[c].kind == mvfx_colliderHeightfield ||
+                    colliders[c].kind == mvfx_colliderDistance;
+        bool before = false;
+        for (int32_t b = 0; grid && b < c; ++b)
+        {
+            before = before || (colliders[b].kind >= mvfx_colliderHeightfield &&
+                                SameId(colliders[b].grid, colliders[c].grid));
+        }
+        mvfxGridView view;
+        if (grid && !before)
+        {
+            if (mvfxGrid_GetView(context, colliders[c].grid, &view) != mvfx_success)
+            {
+                return false;
+            }
+            *bytes += 4 * (int64_t)WordsOf(&view);
+        }
+    }
+    return true;
+}
+
 // A grid's words, or zeros for -1.
 static void Words(const mvfxGpuGrids* grids, int32_t g, uint32_t out[5])
 {

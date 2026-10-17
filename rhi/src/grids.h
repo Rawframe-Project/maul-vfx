@@ -60,6 +60,12 @@ void mvfxForceGridWords(const mvfxGpuGrids* grids, int32_t f, uint32_t out[5]);
 void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxEmitterPlan* plan,
                            int32_t ownColliders, int32_t c, uint32_t out[5]);
 
+// The bytes the room for the instance's grids needs for colliders: each
+// heightfield's and distance grid's grid once, its bytes rounded up to 4,
+// as mvfxPlaceHostGrids places them; false when one is gone.
+bool mvfxHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders, int32_t count,
+                       int64_t* bytes);
+
 // Records the uploads of the grids whose serial differs from the copy's,
 // into the pass, then takes their serials; false when the device refuses
 // one or a grid is gone.

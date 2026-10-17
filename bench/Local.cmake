@@ -13,3 +13,10 @@ if(CMAKE_USE_PTHREADS_INIT AND NOT EMSCRIPTEN)
     target_link_libraries(${PROJECT_NAME}_bench_threads PRIVATE ${PROJECT_NAME} Threads::Threads)
     maul_apply_flags(${PROJECT_NAME}_bench_threads)
 endif()
+
+# The GPU part's step, where the part is built (MAUL_VFX_RHI).
+if(TARGET maul-vfx-rhi)
+    add_executable(${PROJECT_NAME}_bench_gpu bench_gpu.c)
+    target_link_libraries(${PROJECT_NAME}_bench_gpu PRIVATE maul-vfx-rhi)
+    maul_apply_flags(${PROJECT_NAME}_bench_gpu)
+endif()

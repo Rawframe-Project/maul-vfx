@@ -617,3 +617,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   distance grids: its own read from the grids buffer, the instance's
   from room each emitter keeps (`mvfxGpuSimDef.hostGridBytes`), a step
   whose instance grids pass it refused with `mvfx_errorCapacity`.
+- `mvfxGpuSim_HostGridBytes` counts the room a set of the instance's
+  colliders needs for its grids. A step refused for it adds no pass for
+  any emitter. Each step uploads only the numbers its kernels read (its
+  forces' fields and its colliders). A full emitter whose particles lose
+  life or die at contacts takes the same births on the GPU as on the
+  CPU path: the births are chosen from the deaths the step began with.
+  A benchmark of the GPU step (`maul-vfx_bench_gpu`, with the GPU part)
+  times the worst grid collision.

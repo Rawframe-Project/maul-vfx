@@ -31,6 +31,18 @@ uint32_t mvfxScanBlocks(int32_t capacity);
 // over the plan for the drag every particle has (the emitter's and its
 // winds' and velocity fields' without a falloff), its forces and its
 // colliders, each one's grid as forceGrids and colliderGrids give it.
+// The words of the step's numbers a plan's kernels read, in two spans
+// from their first words: the head, the forces' slots and the fields of
+// the forces it has; the collision's head and the colliders it has. The
+// rest keep what an earlier step left, never read.
+typedef struct mvfxStepSpans
+{
+    uint32_t first[2];
+    uint32_t count[2];
+} mvfxStepSpans;
+
+mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount);
+
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
                      uint32_t words[MVFX_STEP_WORDS]);

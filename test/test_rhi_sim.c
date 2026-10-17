@@ -10,6 +10,7 @@
 // not the CPU's bits). Skips (77) without an adapter, unless
 // MVFX_RHI_REQUIRED is set.
 
+#include "emitter_step.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "test_harness.h"
@@ -211,6 +212,34 @@ static float s_velocityError;
 // The largest relative difference a place or a velocity may have.
 static float s_tolerance = 1e-4f;
 
+// Whether each particle's death tick is compared, and what the comparison
+// found: the particles past 2^24 ticks of age at death (16 seconds), those
+// whose ticks differ, and whether every difference was within its bound.
+static bool s_deathTicks;
+static int64_t s_pastAge;
+static int64_t s_deathsApart;
+static bool s_deathsWithin = true;
+
+// A particle's death tick on the GPU against the CPU path's: the same
+// before 2^24 ticks of age, where binary32 holds every age; past it the
+// GPU's integer to binary32 conversion may round the other way, by half a
+// binary32 unit of the age in ticks (one tick to 32 seconds).
+static void CompareDeath(int32_t i, int64_t birth, float inverseLife)
+{
+    int64_t cpu = mvfxDeathTick(birth, inverseLife);
+    int64_t gpu = (int64_t)((uint64_t)Word(10, i) | (uint64_t)Word(11, i) << 32u);
+    int64_t age = cpu - birth;
+    int64_t bound = 0;
+    for (int64_t top = (int64_t)1 << 25; top <= age * 2; top *= 2)
+    {
+        bound = bound == 0 ? 1 : 2 * bound;
+    }
+    int64_t apart = gpu > cpu ? gpu - cpu : cpu - gpu;
+    s_pastAge += age >= (int64_t)1 << 24 ? 1 : 0;
+    s_deathsApart += apart != 0 ? 1 : 0;
+    s_deathsWithin = s_deathsWithin && apart <= bound;
+}
+
 static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
 {
     const mvfxEmitterState* state = &cpu->emitters[e];
@@ -239,6 +268,10 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
         same = Word(6, i) == serial[i] && Word(8, i) == low[i] && Word(9, i) == high[i] &&
                Word(12, i) == lifeBits && (collisions == NULL || Word(13, i) == collisions[i]);
         s_contacts += collisions != NULL ? collisions[i] : 0u;
+        if (s_deathTicks)
+        {
+            CompareDeath(i, (int64_t)((uint64_t)low[i] | (uint64_t)high[i] << 32u), inverseLife[i]);
+        }
         for (int32_t k = 0; k < 3; ++k)
         {
             const float* p = mvfxAttributeArray(cpu, e, places[k]);
@@ -371,6 +404,8 @@ typedef struct Run
     // 1e-4 for 0: a grid collider's normal, a difference across its
     // field's cells, moves with a contact a halving placed differently.
     float tolerance;
+    // Whether each particle's death tick is compared too.
+    bool deathTicks;
 } Run;
 
 // Moves both instances to step s's place: along a line past the rebase
@@ -525,6 +560,10 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     }
     s_boundsError = 0.0;
     s_tolerance = run->tolerance > 0.0f ? run->tolerance : 1e-4f;
+    s_deathTicks = run->deathTicks;
+    s_pastAge = 0;
+    s_deathsApart = 0;
+    s_deathsWithin = true;
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
     int32_t steps = run->steps > 0 ? run->steps : STEPS;
@@ -568,6 +607,12 @@ static void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what
     {
         printf("  contacts held: %llu\n", (unsigned long long)s_contacts);
         CHECK(s_contacts > 0, "contacts");
+    }
+    if (run->deathTicks)
+    {
+        printf("  death ticks past 2^24 ticks of age: %lld, apart: %lld\n", (long long)s_pastAge,
+               (long long)s_deathsApart);
+        CHECK(s_pastAge > 0 && s_deathsWithin, "death ticks within their bound");
     }
     if (run->killing)
     {
@@ -905,6 +950,31 @@ static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
             "a contact that kills");
 }
 
+static void TestOldDeaths(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Lives of 24 to 30 seconds in steps of half a second, the particles
+    // sliding on a floor that takes all their speed into it, meeting it
+    // each step (no rest speed, whose edge each path decides alone), a
+    // share of their life lost each time: the GPU recomputes death ticks past 2^24 ticks of age,
+    // within their bound of the CPU path's.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}};
+    mvfxEmitterDef emitter = Sprite();
+    emitter.lifetime = mvfxRangeSource(24.0f, 30.0f);
+    emitter.colliders = &floor;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true, .lifeLoss = 0.005f};
+    s_stepTicks = MVFX_TICKS_PER_SECOND / 2;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .steps = 64,
+                   .colliding = true,
+                   .deathTicks = true},
+            "life lost past 16 seconds of age");
+    s_stepTicks = STEP_TICKS;
+}
+
 // Heights over 9 by 9 points, a gentle swell.
 static float s_heights[81];
 // Signed distances over 8 points each way to a sphere of radius 0.25 at
@@ -943,6 +1013,22 @@ static mvfxGridDef DistanceGrid(mvfxGridFormat format)
     return def;
 }
 
+// A comb: heights up and down at each point along X.
+static float s_comb[81];
+
+static mvfxGridDef CombGrid(void)
+{
+    for (int32_t p = 0; p < 81; ++p)
+    {
+        s_comb[p] = (p % 9) % 2 != 0 ? 0.2f : -0.2f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 9;
+    def.size[2] = 9;
+    def.values = s_comb;
+    return def;
+}
+
 static void TestGridColliders(Gpu* gpu, mvfxGpu* kernels)
 {
     // A heightfield floor, a narrower one as a ceiling (inside: the
@@ -957,7 +1043,7 @@ static void TestGridColliders(Gpu* gpu, mvfxGpu* kernels)
     static const mvfxCollider own[3] = {{.kind = mvfx_colliderHeightfield,
                                          .space = mvfx_spaceLocal,
                                          .center = {0, -0.4f, 0},
-                                         .halfExtents = {1, 1, 1},
+                                         .halfExtents = {1, 0.1f, 1},
                                          .rotation = {0, 0, 0, 1},
                                          .grid = {.index1 = 1}},
                                         {.kind = mvfx_colliderDistance,
@@ -1008,6 +1094,33 @@ static void TestGridColliders(Gpu* gpu, mvfxGpu* kernels)
                    .laterHostColliderCount = 3,
                    .tolerance = 1e-3f},
             "the instance's grid colliders, swapped at half time");
+    // Particles flying along a comb's teeth at 15 to 20 a second, a step
+    // longer than a cell: sampled each half cell, a tooth's tip is met
+    // that a sample each cell would pass. A step crossing two teeth may
+    // be halved toward a crossing on another part of a facet (the
+    // samples' bracket placed a hair apart): places within 5e-3.
+    const mvfxGridDef comb = CombGrid();
+    static const mvfxCollider teeth = {.kind = mvfx_colliderHeightfield,
+                                       .center = {0, -0.1f, 0},
+                                       .halfExtents = {1, 0.1f, 1},
+                                       .rotation = {0, 0, 0, 1},
+                                       .grid = {.index1 = 1}};
+    emitter = Sprite();
+    emitter.velocity.direction[0] = 1;
+    emitter.velocity.direction[1] = 0.1f;
+    emitter.velocity.coneAngle = 0.2f;
+    emitter.velocity.speed = (mvfxRange){15, 20};
+    emitter.colliders = &teeth;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f, .radius = 0.02f};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .colliding = true,
+                   .colliderGrids = &comb,
+                   .colliderGridCount = 1,
+                   .tolerance = 5e-3f},
+            "a comb's teeth met by fast particles");
 }
 
 static void TestFull(Gpu* gpu, mvfxGpu* kernels)
@@ -1145,12 +1258,15 @@ static void TestBoundsRefused(mvfxGpu* kernels)
 static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
 {
     // The instance given a heightfield whose grid (16 bytes) passes the
-    // room the simulation keeps (12): the step's passes refused.
-    mvfxEmitterDef emitter = Sprite();
-    emitter.collision = (mvfxCollision){.enabled = true, .hostColliders = true};
+    // room the simulation keeps (12): the step adds no pass, not even
+    // the first emitter's, which meets none of the instance's colliders
+    // (its particles stay as the step before left them). The bytes a set of colliders needs: a
+    // grid named twice counted once, a sphere none.
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    emitters[1].collision = (mvfxCollision){.enabled = true, .hostColliders = true};
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(
-        kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .hostGridBytes = 12}, &effect);
+        kernels, &(Run){.emitters = emitters, .emitterCount = 2, .hostGridBytes = 12}, &effect);
     static const float heights[4] = {0, 0.1f, 0.2f, 0.3f};
     mvfxGridDef gridDef = mvfxDefaultGridDef();
     gridDef.size[0] = 2;
@@ -1158,18 +1274,47 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
     gridDef.values = heights;
     mvfxGridId grid = {0};
     CHECK(mvfxCreateGrid(s_context, &gridDef, &grid) == mvfx_success, "a grid");
-    const mvfxCollider heightfield = {.kind = mvfx_colliderHeightfield,
-                                      .halfExtents = {1, 1, 1},
-                                      .rotation = {0, 0, 0, 1},
-                                      .grid = grid};
-    CHECK(mvfxInstance_SetColliders(s_context, s_planned, &heightfield, 1) == mvfx_success &&
+    const mvfxCollider colliders[3] = {{.kind = mvfx_colliderHeightfield,
+                                        .halfExtents = {1, 1, 1},
+                                        .rotation = {0, 0, 0, 1},
+                                        .grid = grid},
+                                       {.kind = mvfx_colliderSphere, .radius = 1, .grid = grid},
+                                       {.kind = mvfx_colliderDistance,
+                                        .halfExtents = {1, 1, 1},
+                                        .rotation = {0, 0, 0, 1},
+                                        .grid = grid}};
+    int64_t bytes = -1;
+    CHECK(mvfxGpuSim_HostGridBytes(s_context, colliders, 3, &bytes) == mvfx_success &&
+              bytes == 16 &&
+              mvfxGpuSim_HostGridBytes(s_context, colliders + 1, 1, &bytes) == mvfx_success &&
+              bytes == 0 && mvfxGpuSim_HostGridBytes(s_context, NULL, 0, &bytes) == mvfx_success,
+          "the bytes a set of colliders needs");
+    const mvfxCollider gone = {.kind = mvfx_colliderHeightfield,
+                               .halfExtents = {1, 1, 1},
+                               .rotation = {0, 0, 0, 1},
+                               .grid = {.index1 = 999, .generation = 1}};
+    CHECK(mvfxGpuSim_HostGridBytes(s_context, &gone, 1, &bytes) == mvfx_errorStale && bytes == 0 &&
+              mvfxGpuSim_HostGridBytes(NULL, colliders, 1, &bytes) == mvfx_errorInvalid &&
+              mvfxGpuSim_HostGridBytes(s_context, colliders, 1, NULL) == mvfx_errorInvalid &&
+              mvfxGpuSim_HostGridBytes(s_context, NULL, 1, &bytes) == mvfx_errorInvalid &&
+              mvfxGpuSim_HostGridBytes(s_context, colliders, -1, &bytes) == mvfx_errorInvalid &&
+              mvfxGpuSim_HostGridBytes(s_context, colliders, MVFX_MAX_COLLIDERS + 1, &bytes) ==
+                  mvfx_errorInvalid,
+          "the bytes refused");
+    CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success && Simulate(gpu, sim) &&
+              ReadBack(gpu, sim, 0) && s_record[0] > 0,
+          "a step before");
+    int32_t before = (int32_t)s_record[0];
+    CHECK(mvfxInstance_SetColliders(s_context, s_planned, colliders, 1) == mvfx_success &&
               mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success,
           "stepped with a heightfield");
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     CHECK(mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
               mvfxGpuSim_AddPasses(sim) == mvfx_errorCapacity,
           "a heightfield of the instance past the room refused");
-    (void)mrhiDropFrame(gpu->device);
+    CHECK(mrhiCompileFrame(gpu->device) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
+              Finish(gpu) && ReadBack(gpu, sim, 0) && s_record[0] == (uint32_t)before,
+          "a refused step adds no pass");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(s_context);
 }
@@ -1253,6 +1398,7 @@ int main(void)
     TestVectorFields(&gpu, kernels);
     TestCollision(&gpu, kernels);
     TestGridColliders(&gpu, kernels);
+    TestOldDeaths(&gpu, kernels);
     TestFull(&gpu, kernels);
     TestBoundaries(&gpu, kernels);
     TestRefused(kernels);

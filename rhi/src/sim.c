@@ -40,8 +40,8 @@ enum
 enum
 {
     PASS_WRITE = 0,
-    PASS_UPDATE = 1,
-    PASS_ROOM = 2,
+    PASS_ROOM = 1,
+    PASS_UPDATE = 2,
     PASS_KILL = 3,
     PASS_REDUCE = 4,
     PASS_OFFSETS = 5,
@@ -70,6 +70,7 @@ typedef struct Emitter
     mrhiPassId passes[PASS_COUNT];
     mrhiResourceId resources[BUFFER_COUNT];
     uint32_t words[MVFX_STEP_WORDS];
+    mvfxStepSpans spans;
     uint32_t map[MVFX_RECORD_MAP_WORDS];
     const mvfxPlannedBirth* plannedBirths;
     int32_t birthCount;
@@ -345,17 +346,49 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
     return true;
 }
 
+mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context, const mvfxCollider* colliders,
+                                    int32_t count, int64_t* bytesOut)
+{
+    if (bytesOut != nullptr)
+    {
+        *bytesOut = 0;
+    }
+    if (context == nullptr || bytesOut == nullptr || count < 0 || count > MVFX_MAX_COLLIDERS ||
+        (colliders == nullptr && count > 0))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxHostGridBytes(context, colliders, count, bytesOut) ? mvfx_success : mvfx_errorStale;
+}
+
 mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
 {
     if (sim == nullptr)
     {
         return mvfx_errorInvalid;
     }
+    // The instance's colliders change at any step: their grids go in the
+    // room the def sets aside, every emitter's placed before a pass is
+    // added, so a step refused adds none.
+    mvfxEmitterPlan plan;
     for (int32_t e = 0; e < sim->emitterCount; ++e)
     {
         Emitter* emitter = &sim->emitters[e];
         emitter->added = false;
-        mvfxEmitterPlan plan;
+        mvfxResult result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, e, &plan);
+        if (result != mvfx_success)
+        {
+            return result;
+        }
+        if (emitter->capacity > 0 &&
+            !mvfxPlaceHostGrids(sim->context, &plan, plan.ownColliderCount, &emitter->gridLayout))
+        {
+            return mvfx_errorCapacity;
+        }
+    }
+    for (int32_t e = 0; e < sim->emitterCount; ++e)
+    {
+        Emitter* emitter = &sim->emitters[e];
         mvfxResult result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, e, &plan);
         if (result != mvfx_success)
         {
@@ -365,13 +398,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         {
             continue;
         }
-        // The instance's colliders change at any step: their grids go in
-        // the room the def sets aside.
         int32_t own = plan.ownColliderCount;
-        if (!mvfxPlaceHostGrids(sim->context, &plan, own, &emitter->gridLayout))
-        {
-            return mvfx_errorCapacity;
-        }
         uint32_t forceGrids[MVFX_MAX_FORCES][5];
         for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)
         {
@@ -384,6 +411,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         }
         mvfxStepNumbers(&sim->views[e], &plan, e, (const uint32_t (*)[5])forceGrids,
                         (const uint32_t (*)[5])colliderGrids, emitter->words);
+        emitter->spans = mvfxStepSpansOf(plan.forceCount, plan.colliderCount);
         mvfxRecordMap(&sim->views[e], &plan, emitter->map);
         emitter->plannedBirths = plan.births;
         emitter->birthCount = plan.birthCount;
@@ -397,6 +425,21 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
     return mvfx_success;
 }
 
+// Records the writes of the step's numbers its kernels read.
+static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
+                         const Emitter* emitter)
+{
+    bool written = true;
+    for (int32_t s = 0; written && s < 2; ++s)
+    {
+        uint32_t first = emitter->spans.first[s];
+        written =
+            mrhiWriteBuffer(sim->device, pass, step, (uint64_t)first * 4u, emitter->words + first,
+                            (uint64_t)emitter->spans.count[s] * 4u) == mrhi_success;
+    }
+    return written;
+}
+
 // Records the pass writing the plan's bytes: its numbers, its births, the
 // record's map, the counts emptied after a clear, and the grids changed.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
@@ -406,8 +449,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
     const mrhiResourceId* r = emitter->resources;
     bool recorded =
         mrhiBeginPass(sim->device, pass) == mrhi_success &&
-        mrhiWriteBuffer(sim->device, pass, r[BUFFER_STEP], 0, emitter->words,
-                        sizeof emitter->words) == mrhi_success &&
+        WriteNumbers(sim, pass, r[BUFFER_STEP], emitter) &&
         (emitter->birthCount == 0 ||
          mrhiWriteBuffer(sim->device, pass, r[BUFFER_BIRTHS], 0, emitter->plannedBirths,
                          (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth)) ==
@@ -457,8 +499,8 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         uint32_t groups = mvfxUpdateGroups(emitter->capacity);
         uint32_t blocks = mvfxScanBlocks(emitter->capacity);
         bool recorded = RecordWrites(sim, emitter) &&
-                        RecordKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
                         RecordKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
+                        RecordKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
                         RecordKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
                         RecordKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
                         RecordKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&

@@ -552,14 +552,19 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim);
 Destroys a simulation: its buffers. No frame of the device may still use them.  @param sim  The simulation; NULL does nothing. @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context, const mvfxCollider* colliders, int32_t count, int64_t* bytesOut);
+```
+Counts the bytes of the grids a set of the instance's colliders reads, the room mvfxGpuSimDef.hostGridBytes must keep for them: each heightfield's and distance grid's grid once, its bytes (mvfxGridView) rounded up to 4.  @param context    The context that owns the grids. @param colliders  The colliders, as for mvfxInstance_SetColliders; NULL when count is 0. @param count      How many, 0 to MVFX_MAX_COLLIDERS. @param bytesOut   Receives the bytes; 0 on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or bytesOut, a count out of range or NULL colliders with a count; `mvfx_errorStale` for a grid that is gone. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
 ```
-Adds the passes of the context's last step to the frame the host builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer pass and seven compute passes an emitter. It reads the instance's plans, which must stay until mvfxGpuSim_Record.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` when the device refuses a pass or an import (no frame open); `mvfx_errorCapacity` when the grids the instance's colliders read pass the def's hostGridBytes. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+Adds the passes of the context's last step to the frame the host builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer pass and seven compute passes an emitter. It reads the instance's plans, which must stay until mvfxGpuSim_Record. A step whose instance's grids pass the room the def keeps adds no pass: the particles stay as they were, the step's plans unsimulated.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` when the device refuses a pass or an import (no frame open); `mvfx_errorCapacity` when the grids the instance's colliders read pass the def's hostGridBytes. @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
 ```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);
 ```
-Records the passes mvfxGpuSim_AddPasses added, after the frame is compiled: the plans' bytes written, the kernels dispatched. Nothing when it added none. The bytes are the frame's uploads: 6,712 an emitter, 32 a planned birth (a plan holds at most twice the emitter's capacity), and the values of each grid its forces and colliders read (mvfxGridView's bytes) at the first step, after each change and, for the instance's, after each move in the room the def keeps, which the device's frameUploadBytes must hold.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorState` when the device refuses a command, such as an upload past the frame's. @par Thread safety Safe from any thread; the device is used by one thread at a time.
+Records the passes mvfxGpuSim_AddPasses added, after the frame is compiled: the plans' bytes written, the kernels dispatched. Nothing when it added none. The bytes are the frame's uploads: 1,208 an emitter, 432 a force and 128 a collider it has (6,712 at most), 32 a planned birth (a plan holds at most twice the emitter's capacity), and the values of each grid its forces and colliders read (mvfxGridView's bytes) at the first step, after each change and, for the instance's, after each move in the room the def keeps, which the device's frameUploadBytes must hold.  @param sim  The simulation. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation; `mvfx_errorState` when the device refuses a command, such as an upload past the frame's. @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
 ```c
 MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim, int32_t emitter, mvfxGpuParticles* particlesOut);
@@ -573,4 +578,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-102 functions across 17 headers.
+103 functions across 17 headers.

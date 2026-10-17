@@ -199,6 +199,15 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], u
     }
 }
 
+mvfxStepSpans mvfxStepSpansOf(int32_t forceCount, int32_t colliderCount)
+{
+    return (mvfxStepSpans){
+        .first = {0, 84 + 132 * MVFX_MAX_FORCES},
+        .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)forceCount,
+                  8 + 32 * (uint32_t)colliderCount},
+    };
+}
+
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
                      uint32_t words[MVFX_STEP_WORDS])

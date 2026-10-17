@@ -1,0 +1,273 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// The GPU part's step on the first adapter Maul RHI finds (a software one
+// allowed), wall time from submission to completion: a sprite emitter of
+// 16,384 particles, full, then the same inside 16 distance grids (8 its
+// own, 8 the instance's) at the collision's worst: particles crossing a
+// ball's grid of 64 points a side at 500 a second, a step's segment taking
+// near the 256 samples a grid allows and its 4 contacts, each grid's
+// crossing halved 10 times. Each case prints the best of three runs of 20
+// steps, per particle a step; the collision's figure is the extra over the
+// plain emitter. A software adapter's figures say what the GPU's work
+// costs against itself, not what a GPU takes.
+
+#include "maul-rhi/encoder.h"
+#include "maul-rhi/instance.h"
+#include "maul-rhi/resources.h"
+#include "maul-vfx-rhi/gpu.h"
+#include "maul-vfx-rhi/sim.h"
+#include "maul-vfx/context.h"
+#include "maul-vfx/effect.h"
+#include "maul-vfx/grid.h"
+#include "maul-vfx/instance.h"
+
+#include <math.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <time.h>
+
+#define CAPACITY 16384
+#define SIDE     64
+#define WARM     30
+#define STEPS    20
+#define RUNS     3
+#define WAIT_NS  600000000000ull
+
+typedef struct Gpu
+{
+    mrhiInstance* instance;
+    mrhiDevice* device;
+} Gpu;
+
+static double Now(void)
+{
+    struct timespec now = {0};
+    (void)timespec_get(&now, TIME_UTC);
+    return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+}
+
+static bool Open(Gpu* gpu)
+{
+    *gpu = (Gpu){0};
+    mrhiInstanceDef def = mrhiDefaultInstanceDef();
+    mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
+    search.allowSoftware = true;
+    mrhiRequestId request;
+    mrhiInstanceNotification record;
+    mrhiAdapterId adapter;
+    size_t count = 0;
+    if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
+        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
+        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
+        record.outcome != mrhi_success ||
+        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
+    {
+        return false;
+    }
+    mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
+    deviceDef.adapter = adapter;
+    // The grids' first upload: two of 512 KiB.
+    deviceDef.deviceLimits.frameUploadBytes = 8u << 20u;
+    return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
+           mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
+           record.outcome == mrhi_success;
+}
+
+static void Close(Gpu* gpu)
+{
+    if (gpu->device != NULL)
+    {
+        mrhiDestroyDevice(gpu->device);
+    }
+    if (gpu->instance != NULL)
+    {
+        mrhiDestroyInstance(gpu->instance);
+    }
+}
+
+// Polls the device, ten seconds at most, for the object's pipelines.
+static bool AwaitReady(Gpu* gpu, mvfxGpu* kernels)
+{
+    double deadline = Now() + 10.0;
+    while (!mvfxGpu_IsReady(kernels) && Now() < deadline)
+    {
+        mrhiDeviceNotification record;
+        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        {
+            (void)mvfxGpu_Notify(kernels, &record);
+        }
+    }
+    return mvfxGpu_IsReady(kernels);
+}
+
+// One step of the context and its frame on the GPU, waited for.
+static bool Step(Gpu* gpu, mvfxContext* context, mvfxGpuSim* sim)
+{
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    mrhiRequestId token = {0};
+    if (mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) != mvfx_success ||
+        mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+    {
+        return false;
+    }
+    if (mvfxGpuSim_AddPasses(sim) != mvfx_success ||
+        mrhiCompileFrame(gpu->device) != mrhi_success || mvfxGpuSim_Record(sim) != mvfx_success)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        return false;
+    }
+    bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
+                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+    mrhiDeviceNotification record;
+    while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+    {
+    }
+    return done;
+}
+
+// Signed distances to a ball of radius 0.9 at the middle of a box of half
+// size 1, 64 points a side, as binary16.
+static float s_distances[SIDE * SIDE * SIDE];
+
+static mvfxGridDef BallGrid(void)
+{
+    for (int32_t p = 0; p < SIDE * SIDE * SIDE; ++p)
+    {
+        float x = -1.0f + 2.0f * (float)(p % SIDE) / (float)(SIDE - 1);
+        float y = -1.0f + 2.0f * (float)(p / SIDE % SIDE) / (float)(SIDE - 1);
+        float z = -1.0f + 2.0f * (float)(p / (SIDE * SIDE)) / (float)(SIDE - 1);
+        s_distances[p] = sqrtf(x * x + y * y + z * z) - 0.9f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = SIDE;
+    def.size[1] = SIDE;
+    def.size[2] = SIDE;
+    def.format = mvfx_gridFloat16;
+    def.values = s_distances;
+    return def;
+}
+
+static const mvfxBurst s_fill[1] = {
+    {.time = 0.0f, .minCount = CAPACITY, .maxCount = CAPACITY, .cycles = 1, .probability = 1}};
+
+// The emitter: full from its first step, its particles inside the balls
+// and living past the run; with colliders, 8 inside balls of the grid.
+static mvfxEmitterDef Emitter(const mvfxCollider* colliders, int32_t colliderCount, float speed)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = CAPACITY;
+    emitter.bursts = s_fill;
+    emitter.burstCount = 1;
+    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.shape = (mvfxShape){.kind = mvfx_shapeSphere, .rotation = {0, 0, 0, 1}, .radius = 0.5f};
+    emitter.velocity = (mvfxVelocity){.mode = mvfx_directionShapeNormal, .speed = {speed, speed}};
+    emitter.colliders = colliders;
+    emitter.colliderCount = colliderCount;
+    emitter.collision = (mvfxCollision){
+        .enabled = colliderCount > 0, .hostColliders = colliderCount > 0, .restitution = 1};
+    return emitter;
+}
+
+// The best of RUNS runs of STEPS steps after WARM, in ns a particle a
+// step; a negative value when a step fails.
+static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    if (mvfxCreateContext(&contextDef, &context) != mvfx_success)
+    {
+        return -1.0;
+    }
+    mvfxGridDef gridDef = BallGrid();
+    mvfxGridId grid = {0};
+    mvfxCollider balls[MVFX_MAX_COLLIDERS];
+    for (int32_t c = 0; c < MVFX_MAX_COLLIDERS; ++c)
+    {
+        float shift = 0.001f * (float)c;
+        balls[c] = (mvfxCollider){.kind = mvfx_colliderDistance,
+                                  .inside = true,
+                                  .center = {shift, -shift, shift},
+                                  .halfExtents = {1, 1, 1},
+                                  .rotation = {0, 0, 0, 1}};
+    }
+    bool made = mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success;
+    for (int32_t c = 0; c < MVFX_MAX_COLLIDERS; ++c)
+    {
+        balls[c].grid = grid;
+    }
+    mvfxEmitterDef emitter = Emitter(balls, colliding ? MVFX_MAX_COLLIDERS : 0, 500.0f);
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.planned = true;
+    mvfxInstanceId instance = {0};
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    mvfxGpuSim* sim = NULL;
+    made = made && mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    instanceDef.effect = effect;
+    made =
+        made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success &&
+        (!colliding ||
+         (mvfxInstance_SetColliders(context, instance, balls, MVFX_MAX_COLLIDERS) == mvfx_success &&
+          mvfxGpuSim_HostGridBytes(context, balls, MVFX_MAX_COLLIDERS, &simDef.hostGridBytes) ==
+              mvfx_success));
+    simDef.gpu = kernels;
+    simDef.context = context;
+    simDef.effect = effect;
+    simDef.instance = instance;
+    made = made && mvfxCreateGpuSim(&simDef, &sim, NULL) == mvfx_success;
+    for (int32_t s = 0; made && s < WARM; ++s)
+    {
+        made = Step(gpu, context, sim);
+    }
+    double best = 1e300;
+    for (int32_t r = 0; made && r < RUNS; ++r)
+    {
+        double start = Now();
+        for (int32_t s = 0; made && s < STEPS; ++s)
+        {
+            made = Step(gpu, context, sim);
+        }
+        double seconds = Now() - start;
+        best = seconds < best ? seconds : best;
+    }
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(context);
+    return made ? best * 1e9 / ((double)STEPS * CAPACITY) : -1.0;
+}
+
+int main(void)
+{
+    Gpu gpu;
+    if (!Open(&gpu))
+    {
+        Close(&gpu);
+        printf("no adapter: nothing measured\n");
+        return 0;
+    }
+    mvfxGpuDef def = mvfxDefaultGpuDef();
+    def.device = gpu.device;
+    mvfxGpu* kernels = NULL;
+    int failed = mvfxCreateGpu(&def, &kernels) != mvfx_success || !AwaitReady(&gpu, kernels);
+    double plain = failed ? -1.0 : Run(&gpu, kernels, false);
+    double colliding = plain < 0.0 ? -1.0 : Run(&gpu, kernels, true);
+    if (plain < 0.0 || colliding < 0.0)
+    {
+        printf("a step failed\n");
+        failed = 1;
+    }
+    else
+    {
+        printf("# %d particles, wall time a step from submission\n", CAPACITY);
+        printf("%-44s %12.2f ns a particle\n", "the sprite emitter's GPU step", plain);
+        printf("%-44s %12.2f ns a particle\n", "16 distance grids at the worst (extra)",
+               colliding - plain);
+    }
+    mvfxDestroyGpu(kernels);
+    Close(&gpu);
+    return failed;
+}
