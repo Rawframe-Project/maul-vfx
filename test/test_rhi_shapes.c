@@ -65,7 +65,11 @@ static void TestShapes(Gpu* gpu, mvfxGpu* kernels)
     Compared(gpu, kernels, &emitter, "a cone's base");
     emitter.shape.coneVolume = true;
     Compared(gpu, kernels, &emitter, "a cone's volume");
+    // From an apex: through the volume, its radius growing from 0, and on
+    // the base of radius 0, every direction within the cone's angle.
     emitter.shape.radius = 0.0f;
+    Compared(gpu, kernels, &emitter, "a cone's volume from its apex");
+    emitter.shape.coneVolume = false;
     Compared(gpu, kernels, &emitter, "a cone from its apex");
 }
 
@@ -148,6 +152,7 @@ static void TestVelocities(Gpu* gpu, mvfxGpu* kernels)
     emitter.shape.coneVolume = true;
     Compared(gpu, kernels, &emitter, "velocities along a cone volume's slant");
     emitter.shape.radius = 0.0f;
+    emitter.shape.coneVolume = false;
     Compared(gpu, kernels, &emitter, "velocities from a cone's apex");
 }
 
