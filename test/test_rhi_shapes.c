@@ -224,17 +224,20 @@ static void TestMeshes(Gpu* gpu, mvfxGpu* kernels)
                 &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .mesh = &box},
                 names[m]);
     }
-    // Velocities along the blended normals of the surface and the edges.
+    // Velocities along each mode's normals, which only velocities read:
+    // a vertex's, an edge's and a triangle's blended, a tetrahedron's drawn.
+    static const char* const normals[4] = {
+        "velocities along a mesh vertex's normals", "velocities along a mesh edge's normals",
+        "velocities along a mesh surface's normals", "velocities from a mesh volume's draws"};
     mvfxEmitterDef emitter = OnShape(mvfx_shapeMesh);
-    emitter.shape.meshMode = mvfx_meshSurface;
     emitter.velocity.mode = mvfx_directionShapeNormal;
-    Compare(gpu, kernels,
-            &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .mesh = &box},
-            "velocities along a mesh surface's normals");
-    emitter.shape.meshMode = mvfx_meshEdges;
-    Compare(gpu, kernels,
-            &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .mesh = &box},
-            "velocities along a mesh edge's normals");
+    for (int32_t m = 0; m < 4; ++m)
+    {
+        emitter.shape.meshMode = modes[m];
+        Compare(gpu, kernels,
+                &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .mesh = &box},
+                normals[m]);
+    }
     // At half time the mesh moves (a skinned mesh's new positions, its
     // areas changed), and then another, larger mesh is bound, in room the
     // simulation keeps for it.

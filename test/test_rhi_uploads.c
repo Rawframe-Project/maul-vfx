@@ -6,7 +6,8 @@
 // mvfxGpuSim_Record states them, from its plan's forces, colliders, kill
 // rules, births and host births, for a plain emitter, one with forces,
 // colliders and kill rules, one the host spawns into, and one writing
-// events with another spawning from them.
+// events with another spawning from them, and one of a mesh shape, its mesh
+// uploaded at the first step alone.
 
 #include "test_harness.h"
 
@@ -131,8 +132,25 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    // A mesh shape's emitter spawns from a triangle pair made here.
+    static const float corners[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0};
+    static const uint32_t triangles[6] = {0, 1, 2, 1, 3, 2};
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = corners;
+    meshDef.vertexCount = 4;
+    meshDef.triangles = triangles;
+    meshDef.triangleCount = 2;
+    mvfxEmitterDef own[4];
+    for (int32_t e = 0; e < count; ++e)
+    {
+        own[e] = emitters[e];
+        if (own[e].shape.kind == mvfx_shapeMesh)
+        {
+            CHECK(mvfxCreateMesh(context, &meshDef, &own[e].shape.mesh) == mvfx_success, "mesh");
+        }
+    }
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitters;
+    effectDef.emitters = own;
     effectDef.emitterCount = count;
     mvfxEffectId effect;
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
@@ -231,6 +249,13 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     pair[1].eventSpawn = (mvfxEventSpawn){
         .enabled = true, .kind = mvfx_eventDeath, .minCount = 1, .maxCount = 2, .capacity = 512};
     Measure(gpu, kernels, pair, 2, "events and births from them");
+
+    // A mesh shape's mesh goes up at the first step alone while it stays
+    // the same.
+    mvfxEmitterDef meshed = Sprite();
+    meshed.shape =
+        (mvfxShape){.kind = mvfx_shapeMesh, .rotation = {0, 0, 0, 1}, .meshMode = mvfx_meshSurface};
+    Measure(gpu, kernels, &meshed, 1, "a mesh shape's emitter");
 }
 
 static void TestRefusals(void)
