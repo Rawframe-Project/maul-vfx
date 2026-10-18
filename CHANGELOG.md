@@ -714,3 +714,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   of by their serials: an event that gives other births leaves every
   other event's births as they were. The golden state hashes change (the
   scene's spark emitter spawns from events).
+- The GPU part decides a full emitter's births in a few linear passes
+  when none of them dies within its step, where it walked the births one
+  batch at a time: 4,096 births a step went from 25.6 times the step
+  with room to 1.7 times on lavapipe. The births taken are the same.
