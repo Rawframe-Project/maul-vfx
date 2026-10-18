@@ -14,6 +14,7 @@
 #include "half.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "rhi_apart.h"
 #include "test_harness.h"
 
 #include "kernels/depth_fill_container.h"
@@ -409,11 +410,11 @@ static bool s_deathsWithin = true;
 // before 2^24 ticks of age, where binary32 holds every age; past it the
 // GPU's integer to binary32 conversion may round the other way, by half a
 // binary32 unit of the age in ticks (one tick to 32 seconds).
-static void CompareDeath(int32_t i, int64_t birth, float inverseLife)
+static void CompareDeath(int32_t g, int64_t birth, float inverseLife)
 {
     int64_t cpu = mvfxDeathTick(birth, inverseLife);
     int32_t death = s_arrays.count;
-    int64_t gpu = (int64_t)((uint64_t)Word(death, i) | (uint64_t)Word(death + 1, i) << 32u);
+    int64_t gpu = (int64_t)((uint64_t)Word(death, g) | (uint64_t)Word(death + 1, g) << 32u);
     int64_t age = cpu - birth;
     int64_t bound = 0;
     for (int64_t top = (int64_t)1 << 25; top <= age * 2; top *= 2)
@@ -426,10 +427,10 @@ static void CompareDeath(int32_t i, int64_t birth, float inverseLife)
     s_deathsWithin = s_deathsWithin && apart <= bound;
 }
 
-// A drawn value of the GPU's particle i against the CPU path's: its
-// components from its first word (none where not stored), as binary32
+// A drawn value of the GPU's particle g against the CPU path's particle c:
+// its components from its first word (none where not stored), as binary32
 // within the tolerance or as words equal.
-static bool SameValue(const mvfxInstance* cpu, int32_t e, int32_t i, int16_t first,
+static bool SameValue(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c, int16_t first,
                       int32_t attribute, int32_t components, bool words)
 {
     bool same = true;
@@ -437,49 +438,50 @@ static bool SameValue(const mvfxInstance* cpu, int32_t e, int32_t i, int16_t fir
     {
         const uint32_t* cpuWords = mvfxAttributeArray(cpu, e, (mvfxAttribute)(attribute + k));
         float cpuValue = 0.0f;
-        memcpy(&cpuValue, &cpuWords[i], sizeof cpuValue);
-        float gpuValue = FloatOf(first + k, i);
+        memcpy(&cpuValue, &cpuWords[c], sizeof cpuValue);
+        float gpuValue = FloatOf(first + k, g);
         same =
-            same && (words ? Word(first + k, i) == cpuWords[i]
+            same && (words ? Word(first + k, g) == cpuWords[c]
                            : fabsf(gpuValue - cpuValue) <= s_tolerance * (1.0f + fabsf(cpuValue)));
     }
     return same;
 }
 
-// Every value a birth draws, as moved since, of the GPU's particle i
-// against the CPU path's.
-static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t i)
+// Every value a birth draws, as moved since, of the GPU's particle g
+// against the CPU path's particle c.
+static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
 {
     const mvfxAttributeArrays* a = &s_arrays;
     const mvfxCompiledEmitter* compiled = &cpu->effect->emitters[e];
-    bool same = SameValue(cpu, e, i, a->size, mvfx_attributeSizeX, 3, false) &&
-                SameValue(cpu, e, i, a->color, mvfx_attributeColorR, 4, false) &&
-                SameValue(cpu, e, i, a->frame, mvfx_attributeFrame, 1, true) &&
-                SameValue(cpu, e, i, a->mesh, mvfx_attributeMesh, 1, true) &&
-                SameValue(cpu, e, i, a->angle, mvfx_attributeAngle, 1, false) &&
-                SameValue(cpu, e, i, a->spin, mvfx_attributeSpin, 1, false) &&
-                SameValue(cpu, e, i, a->orientation, mvfx_attributeOrientationX, 4, false) &&
-                SameValue(cpu, e, i, a->angular, mvfx_attributeAngularX, 3, false) &&
-                SameValue(cpu, e, i, a->drag, mvfx_attributeDrag, 1, false);
-    for (int32_t c = 0; same && c < compiled->customCount; ++c)
+    bool same = SameValue(cpu, e, g, c, a->size, mvfx_attributeSizeX, 3, false) &&
+                SameValue(cpu, e, g, c, a->color, mvfx_attributeColorR, 4, false) &&
+                SameValue(cpu, e, g, c, a->frame, mvfx_attributeFrame, 1, true) &&
+                SameValue(cpu, e, g, c, a->mesh, mvfx_attributeMesh, 1, true) &&
+                SameValue(cpu, e, g, c, a->angle, mvfx_attributeAngle, 1, false) &&
+                SameValue(cpu, e, g, c, a->spin, mvfx_attributeSpin, 1, false) &&
+                SameValue(cpu, e, g, c, a->orientation, mvfx_attributeOrientationX, 4, false) &&
+                SameValue(cpu, e, g, c, a->angular, mvfx_attributeAngularX, 3, false) &&
+                SameValue(cpu, e, g, c, a->drag, mvfx_attributeDrag, 1, false);
+    for (int32_t n = 0; same && n < compiled->customCount; ++n)
     {
-        same = SameValue(cpu, e, i, a->custom[c], mvfx_attributeCustom + 4 * c,
-                         compiled->custom[c].components, false);
+        same = SameValue(cpu, e, g, c, a->custom[n], mvfx_attributeCustom + 4 * n,
+                         compiled->custom[n].components, false);
     }
     return same;
 }
 
-static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
+// The context of a run: a CPU instance and a planned one side by side.
+static mvfxContext* s_context;
+static mvfxInstanceId s_cpu;
+static mvfxInstanceId s_planned;
+
+// The GPU's particle g against the CPU path's particle c of the same
+// serial: ticks, life and contacts equal, places, velocities and values
+// within the tolerance.
+static bool SameParticle(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
 {
-    const mvfxEmitterState* state = &cpu->emitters[e];
-    if ((int32_t)s_record[0] != state->count || s_record[2] != 0)
-    {
-        printf("counts: GPU %u (refused %u), CPU %d\n", s_record[0], s_record[2], state->count);
-        return false;
-    }
     const uint32_t* low = mvfxAttributeArray(cpu, e, mvfx_attributeBirthLow);
     const uint32_t* high = mvfxAttributeArray(cpu, e, mvfx_attributeBirthHigh);
-    const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
     const float* inverseLife = mvfxAttributeArray(cpu, e, mvfx_attributeInverseLife);
     const mvfxAttributePlan* plan = &cpu->effect->emitters[e].plan;
     const uint32_t* collisions = mvfxHasAttribute(plan, mvfx_attributeCollisions)
@@ -495,46 +497,80 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
     const mvfxEventSpawn* spawn = &cpu->effect->emitters[e].eventSpawn;
     int64_t slack =
         spawn->enabled && spawn->kind == mvfx_eventCollision ? 1 + s_stepTicks / 1000 : 0;
-    bool same = true;
-    for (int32_t i = 0; same && i < state->count; ++i)
+    uint32_t lifeBits;
+    memcpy(&lifeBits, &inverseLife[c], sizeof lifeBits);
+    const mvfxAttributeArrays* a = &s_arrays;
+    int64_t gpuBirth = (int64_t)((uint64_t)Word(a->birth + 1, g) << 32u | Word(a->birth, g));
+    int64_t cpuBirth = (int64_t)((uint64_t)high[c] << 32u | low[c]);
+    bool same = llabs(gpuBirth - cpuBirth) <= slack && Word(a->inverseLife, g) == lifeBits &&
+                (collisions == NULL || Word(a->collisions, g) == collisions[c]);
+    if (s_deathTicks)
     {
-        uint32_t lifeBits;
-        memcpy(&lifeBits, &inverseLife[i], sizeof lifeBits);
-        const mvfxAttributeArrays* a = &s_arrays;
-        int64_t gpuBirth = (int64_t)((uint64_t)Word(a->birth + 1, i) << 32u | Word(a->birth, i));
-        int64_t cpuBirth = (int64_t)((uint64_t)high[i] << 32u | low[i]);
-        same = Word(a->serial, i) == serial[i] && llabs(gpuBirth - cpuBirth) <= slack &&
-               Word(a->inverseLife, i) == lifeBits &&
-               (collisions == NULL || Word(a->collisions, i) == collisions[i]);
-        s_contacts += collisions != NULL ? collisions[i] : 0u;
-        if (s_deathTicks)
+        CompareDeath(g, cpuBirth, inverseLife[c]);
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        const float* p = mvfxAttributeArray(cpu, e, places[k]);
+        const float* v = mvfxAttributeArray(cpu, e, velocities[k]);
+        // Relative to the size, as places reach the rebase distance.
+        float dp = fabsf(FloatOf(a->position + k, g) - p[c]) / (1.0f + fabsf(p[c]));
+        float dv = fabsf(FloatOf(a->velocity + k, g) - v[c]) / (1.0f + fabsf(v[c]));
+        s_placeError = dp > s_placeError ? dp : s_placeError;
+        s_velocityError = dv > s_velocityError ? dv : s_velocityError;
+        same = same && dp <= s_tolerance && dv <= s_tolerance;
+    }
+    return same && SameValues(cpu, e, g, c);
+}
+
+// Whether the GPU's particles are the CPU path's, merged by serial (both
+// pools keep serial order): each pair the same (SameParticle), and a
+// particle that differs, or that one path holds alone, only one gone
+// apart (rhi_apart.h), compared no more.
+static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
+{
+    const mvfxEmitterState* state = &cpu->emitters[e];
+    const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
+    const mvfxAttributePlan* attributes = &cpu->effect->emitters[e].plan;
+    const uint32_t* collisions = mvfxHasAttribute(attributes, mvfx_attributeCollisions)
+                                     ? mvfxAttributeArray(cpu, e, mvfx_attributeCollisions)
+                                     : NULL;
+    const float* places[3] = {mvfxAttributeArray(cpu, e, mvfx_attributePositionX),
+                              mvfxAttributeArray(cpu, e, mvfx_attributePositionY),
+                              mvfxAttributeArray(cpu, e, mvfx_attributePositionZ)};
+    mvfxEmitterPlan plan;
+    if (mvfxInstance_GetEmitterPlan(s_context, s_planned, e, &plan) != mvfx_success ||
+        s_record[2] != 0)
+    {
+        printf("no plan, or births refused: %u\n", s_record[2]);
+        return false;
+    }
+    ApartTakeStep(e, serial, places, state->count, &plan, s_tolerance);
+    int32_t held = (int32_t)s_record[0];
+    bool same = true;
+    int32_t g = 0;
+    int32_t c = 0;
+    while (same && (g < held || c < state->count))
+    {
+        uint32_t gs = g < held ? Word(s_arrays.serial, g) : UINT32_MAX;
+        uint32_t cs = c < state->count ? serial[c] : UINT32_MAX;
+        uint32_t at = gs < cs ? gs : cs;
+        bool apart = IsApart(e, at);
+        if (gs == cs && !apart)
         {
-            CompareDeath(i, (int64_t)((uint64_t)low[i] | (uint64_t)high[i] << 32u), inverseLife[i]);
+            s_contacts += collisions != NULL ? collisions[c] : 0u;
+            same = SameParticle(cpu, e, g, c);
         }
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            const float* p = mvfxAttributeArray(cpu, e, places[k]);
-            const float* v = mvfxAttributeArray(cpu, e, velocities[k]);
-            // Relative to the size, as places reach the rebase distance.
-            float dp = fabsf(FloatOf(a->position + k, i) - p[i]) / (1.0f + fabsf(p[i]));
-            float dv = fabsf(FloatOf(a->velocity + k, i) - v[i]) / (1.0f + fabsf(v[i]));
-            s_placeError = dp > s_placeError ? dp : s_placeError;
-            s_velocityError = dv > s_velocityError ? dv : s_velocityError;
-            same = same && dp <= s_tolerance && dv <= s_tolerance;
-        }
-        same = same && SameValues(cpu, e, i);
+        same = same || apart || GoApart(e, at);
         if (!same)
         {
-            printf("particle %d of serial %u differs\n", i, serial[i]);
+            printf("particle of serial %u differs (GPU %d of %d, CPU %d of %d)\n", at, g, held, c,
+                   state->count);
         }
+        g += gs <= cs ? 1 : 0;
+        c += cs <= gs ? 1 : 0;
     }
     return same;
 }
-
-// The context of a run: a CPU instance and a planned one side by side.
-static mvfxContext* s_context;
-static mvfxInstanceId s_cpu;
-static mvfxInstanceId s_planned;
 
 // A run's records (none where its layout is NULL): the layout, the
 // buffers the GPU writes them and their count into, the view, and the
@@ -773,14 +809,30 @@ static bool SameEvents(int32_t emitter)
     uint64_t dropped = stats.eventsDropped - s_dropped[emitter];
     s_dropped[emitter] = stats.eventsDropped;
     s_events += count;
-    bool same = (int32_t)s_record[MVFX_GPU_EVENTS_WRITTEN] == count &&
-                s_record[MVFX_GPU_EVENTS_WRITTEN + 1] == dropped;
-    for (int32_t e = 0; same && e < count; ++e)
+    // The events of particles gone apart left out on both paths, each
+    // other the same in order.
+    int32_t written = (int32_t)s_record[MVFX_GPU_EVENTS_WRITTEN];
+    bool same = s_record[MVFX_GPU_EVENTS_WRITTEN + 1] == dropped;
+    int32_t g = 0;
+    for (int32_t e = 0; same && e <= count; ++e)
     {
-        same = SameEvent(s_eventWords + e * MVFX_GPU_EVENT_WORDS, &events[e], plan.anchorAfter);
+        while (g < written && IsApart(emitter, s_eventWords[g * MVFX_GPU_EVENT_WORDS + 1]))
+        {
+            ++g;
+        }
+        if (e < count && IsApart(emitter, events[e].serial))
+        {
+            continue;
+        }
+        if (e == count || g == written)
+        {
+            same = e == count && g == written;
+            break;
+        }
+        const uint32_t* w = s_eventWords + g++ * MVFX_GPU_EVENT_WORDS;
+        same = SameEvent(w, &events[e], plan.anchorAfter);
         if (!same)
         {
-            const uint32_t* w = s_eventWords + e * MVFX_GPU_EVENT_WORDS;
             float place[3];
             memcpy(place, w + 4, sizeof place);
             printf("event %d of %d differs: GPU kind %u killed %u serial %u tick %llu place "
@@ -1311,6 +1363,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_pastAge = 0;
     s_deathsApart = 0;
     s_deathsWithin = true;
+    ApartReset();
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
     int32_t steps = run->steps > 0 ? run->steps : STEPS;
@@ -1377,7 +1430,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
           what);
     if (run->colliding)
     {
-        printf("  contacts held: %llu\n", (unsigned long long)s_contacts);
+        printf("  contacts held: %llu; particles apart: %d (at most %d near a collider at a "
+               "step; the farthest at %.3f of the reach)\n",
+               (unsigned long long)s_contacts, ApartCount(), MostNear(), (double)LargestShare());
         CHECK(s_contacts > 0, "contacts");
     }
     if (run->deathTicks)

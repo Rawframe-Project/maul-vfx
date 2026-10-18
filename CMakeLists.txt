@@ -259,7 +259,8 @@ if(MAUL_VFX_BUILD_TESTS)
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn)
             maul_add_test(${suite} WHITEBOX)
-            target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c)
+            target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
+                ${PROJECT_SOURCE_DIR}/test/rhi_apart.c)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi)
             set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77)
         endforeach()

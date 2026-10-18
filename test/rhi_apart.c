@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Particles whose contacts the two paths may decide differently
+// (rhi_apart.h): the near particles of each emitter at a step's end and
+// the last, in serial order, and those gone apart.
+
+#include "rhi_apart.h"
+
+#include <math.h>
+#include <stdlib.h>
+
+// The most particles an emitter of a run holds, and gone apart in a run.
+#define MOST_HELD  (1 << 17)
+#define MOST_APART 256
+
+// Serials in order, and each one's distance to the nearest collider as
+// a share of the reach.
+typedef struct Near
+{
+    uint32_t serials[MOST_HELD];
+    float shares[MOST_HELD];
+    int32_t count;
+} Near;
+
+// Each emitter's near particles at this step's end and the last.
+static Near s_near[2][2];
+static int32_t s_now[2];
+static uint32_t s_apart[2][MOST_APART];
+static int32_t s_apartCount[2];
+static int32_t s_mostNear;
+static float s_largestShare;
+
+void ApartReset(void)
+{
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        s_near[e][0].count = 0;
+        s_near[e][1].count = 0;
+        s_apartCount[e] = 0;
+    }
+    s_mostNear = 0;
+    s_largestShare = 0.0f;
+}
+
+// The distance from a place to a collider's surface, in the particles'
+// space; infinity for a kind whose surface is not measured here (planes
+// and spheres are), which no particle is near.
+static double Distance(const float place[3], const mvfxPlannedCollider* collider)
+{
+    double d = 0.0;
+    double length = 0.0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double offset = (double)place[k] - (double)collider->center[k];
+        d += collider->kind == mvfx_colliderPlane ? offset * (double)collider->normal[k]
+                                                  : offset * offset;
+        length += (double)collider->normal[k] * (double)collider->normal[k];
+    }
+    switch (collider->kind)
+    {
+    case mvfx_colliderPlane:
+        return fabs(d) / sqrt(length);
+    case mvfx_colliderSphere:
+        return fabs(sqrt(d) - (double)collider->radius);
+    default:
+        return (double)INFINITY;
+    }
+}
+
+void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const places[3],
+                   int32_t count, const mvfxEmitterPlan* plan, float tolerance)
+{
+    s_now[emitter] = 1 - s_now[emitter];
+    Near* near = &s_near[emitter][s_now[emitter]];
+    near->count = 0;
+    for (int32_t i = 0; i < count && near->count < MOST_HELD; ++i)
+    {
+        float place[3] = {places[0][i], places[1][i], places[2][i]};
+        // A place on each path within the tolerance of each component:
+        // the GPU's at most this far from the CPU path's.
+        double largest =
+            fmax(fabs((double)place[0]), fmax(fabs((double)place[1]), fabs((double)place[2])));
+        double reach = sqrt(3.0) * (double)tolerance * (1.0 + largest);
+        double nearest = (double)INFINITY;
+        for (int32_t c = 0; c < plan->colliderCount; ++c)
+        {
+            nearest = fmin(nearest, Distance(place, &plan->colliders[c]));
+        }
+        if (nearest <= reach)
+        {
+            near->shares[near->count] = (float)(nearest / reach);
+            near->serials[near->count++] = serials[i];
+        }
+    }
+    s_mostNear = near->count > s_mostNear ? near->count : s_mostNear;
+}
+
+static int BySerial(const void* a, const void* b)
+{
+    uint32_t x = *(const uint32_t*)a;
+    uint32_t y = *(const uint32_t*)b;
+    return (x > y) - (x < y);
+}
+
+// The share of the reach a near particle lay at; above 1 for one not near.
+static float ShareOf(const Near* near, uint32_t serial)
+{
+    const uint32_t* found =
+        bsearch(&serial, near->serials, (size_t)near->count, sizeof serial, BySerial);
+    return found != NULL ? near->shares[found - near->serials] : 2.0f;
+}
+
+bool IsApart(int32_t emitter, uint32_t serial)
+{
+    for (int32_t a = 0; a < s_apartCount[emitter]; ++a)
+    {
+        if (s_apart[emitter][a] == serial)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GoApart(int32_t emitter, uint32_t serial)
+{
+    float share = fminf(ShareOf(&s_near[emitter][0], serial), ShareOf(&s_near[emitter][1], serial));
+    if (share > 1.0f || s_apartCount[emitter] == MOST_APART)
+    {
+        return false;
+    }
+    s_largestShare = share > s_largestShare ? share : s_largestShare;
+    s_apart[emitter][s_apartCount[emitter]++] = serial;
+    return true;
+}
+
+int32_t ApartCount(void)
+{
+    return s_apartCount[0] + s_apartCount[1];
+}
+
+int32_t MostNear(void)
+{
+    return s_mostNear;
+}
+
+float LargestShare(void)
+{
+    return s_largestShare;
+}

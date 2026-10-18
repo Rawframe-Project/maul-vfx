@@ -85,8 +85,7 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     // in the emitter's units under a growing instance) and the instance's;
     // then under the ceiling in the world's space, each contact taking 60%
     // of the life left, so that deaths by a kill (births' among them) are
-    // aged by the inverse life their contacts left (in the instance's
-    // space a grazing contact there counts on one side and not the other);
+    // aged by the inverse life their contacts left, in both spaces;
     // then births killed in their first step.
     static const mvfxCurveKey keys[2] = {
         {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
@@ -128,6 +127,18 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .colliding = true},
             "events' values over life after contacts' life loss");
+    // In the instance's space, where one grazing contact counts on the GPU
+    // only: its particle goes apart (rhi_apart.h). Contacts take lives
+    // fast here; the emitter holds 40 at most.
+    emitter.space = mvfx_spaceLocal;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .least = 30,
+                   .moving = true,
+                   .colliding = true},
+            "events' values over life after contacts' life loss, in the instance's space");
+    emitter.space = mvfx_spaceWorld;
     // A ceiling through the shape's middle that kills on contact: births
     // just under it, rising, die in their first step, their deaths aged by
     // the lives they had.
