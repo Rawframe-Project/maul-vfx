@@ -302,6 +302,10 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
         return mvfx_errorInvalid;
     }
     *effectOut = (mvfxEffectId){0};
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     if (!mvfxIsEffectDefValid(def) || !mvfxAreEffectPartsValid(def))
     {
         mvfxCountMisuse(context);
@@ -359,6 +363,10 @@ mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     mvfxEffect* compiled = mvfxSlotObject(&context->effects, effect.index1, effect.generation);
     if (compiled == nullptr)

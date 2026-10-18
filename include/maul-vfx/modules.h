@@ -640,7 +640,9 @@ extern "C"
     // the step on the thread stepping the instance (instances may step on
     // several threads at once), so it must be safe to run beside itself;
     // and the step stays deterministic only if the module is, which is the
-    // host's to keep (mvfxModule_Random gives it a stream that is).
+    // host's to keep (mvfxModule_Random gives it a stream that is). It calls
+    // none of the context's functions that take it mutable: such a call is
+    // refused with mvfx_errorState and counted as misuse.
     typedef void mvfxModuleFn(const mvfxModuleCall* call, void* user);
 
     typedef struct mvfxHostModule

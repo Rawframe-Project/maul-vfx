@@ -28,6 +28,10 @@ mvfxResult mvfxCreateLayout(mvfxContext* context, const mvfxLayoutDef* def, mvfx
         return mvfx_errorInvalid;
     }
     *layoutOut = (mvfxLayoutId){0};
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     if (!mvfxIsLayoutDefValid(def))
     {
         mvfxCountMisuse(context);
@@ -58,6 +62,10 @@ mvfxResult mvfxDestroyLayout(mvfxContext* context, mvfxLayoutId layout)
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     mvfxOutputLayout* live = mvfxContextLayout(context, layout);
     if (live == nullptr)

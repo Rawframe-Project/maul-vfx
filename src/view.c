@@ -43,6 +43,10 @@ mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance,
         return mvfx_errorInvalid;
     }
     *boundsOut = (mvfxBounds){.empty = true};
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitters(context, instance, emitter, &live);
     if (found != mvfx_success)
@@ -200,6 +204,10 @@ mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3],
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     int64_t count = 0;
     int64_t kept = 0;

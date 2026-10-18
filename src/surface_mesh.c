@@ -400,6 +400,10 @@ static const mvfxInstance* FindSurface(mvfxContext* context, mvfxInstanceId inst
 mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(mvfxContext* context, mvfxInstanceId instance,
                                                    int32_t gas, int64_t* bytesOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindSurface(context, instance, gas, &result);
     if (live == nullptr)
@@ -446,6 +450,10 @@ mvfxResult mvfxInstance_WriteSurfaceMesh(mvfxContext* context, mvfxInstanceId in
                                          const mvfxSurfaceMeshBuffers* buffers,
                                          int64_t* vertexCountOut, int64_t* indexCountOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindSurface(context, instance, gas, &result);
     if (live == nullptr)

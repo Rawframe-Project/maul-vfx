@@ -720,3 +720,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   every particle: 4,096 births a step went from 25.6 times the step
   with room to 1.7 times on lavapipe, and to 2.5 times when they die
   within it. The births taken are the same.
+- Host code the library calls (the allocator, the task hooks and host
+  modules) may call only the context's read-only functions: a call of
+  one that takes it mutable, from a step's tasks or modules or from an
+  allocation, is refused with `mvfx_errorState` and counted as misuse,
+  where it could change the context in the middle of the call.

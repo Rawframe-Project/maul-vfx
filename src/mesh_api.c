@@ -31,6 +31,10 @@ mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def, mvfxMesh
         return mvfx_errorInvalid;
     }
     *meshOut = (mvfxMeshId){0};
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     if (!mvfxIsMeshDefValid(def))
     {
         mvfxCountMisuse(context);
@@ -56,6 +60,10 @@ mvfxResult mvfxDestroyMesh(mvfxContext* context, mvfxMeshId mesh)
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
@@ -83,6 +91,10 @@ mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const fl
     {
         return mvfx_errorInvalid;
     }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
     {
@@ -104,6 +116,10 @@ mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, float cent
     {
         context != nullptr ? mvfxCountMisuse(context) : (void)0;
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
@@ -132,6 +148,10 @@ mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32
         return mvfx_errorInvalid;
     }
     *countOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
     {

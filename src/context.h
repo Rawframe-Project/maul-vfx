@@ -35,9 +35,24 @@ struct mvfxContext
     int64_t particleBudget;
     // Atomic: outputs for several views may count it at once.
     _Atomic uint64_t misuse;
+    // The host's allocator, which allocator's functions call; and how many
+    // calls of host code the context is in (a step, whose tasks and host
+    // modules are the host's, or an allocation): its own calls from host
+    // code meanwhile are refused (record mvfx-0001). Atomic: instances step
+    // on the host's threads.
+    mvfxAllocator hostAllocator;
+    _Atomic int32_t hostCalls;
 };
 
 // Counts one refused call against the context.
 void mvfxCountMisuse(mvfxContext* context);
+
+// Marks a call of host code begun and ended.
+void mvfxEnterHost(mvfxContext* context);
+void mvfxLeaveHost(mvfxContext* context);
+
+// Whether a call of the context's comes from host code it is calling, and
+// is refused: one misuse counted. False for NULL.
+bool mvfxRefusesHostCall(mvfxContext* context);
 
 #endif

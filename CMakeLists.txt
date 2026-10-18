@@ -115,6 +115,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/hull.c
     src/instance.c
     src/instance_api.c
+    src/instance_inputs.c
     src/mesh.c
     src/mesh_api.c
     src/noise.c
@@ -243,6 +244,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(value WHITEBOX)
     maul_add_test(velocity_modules WHITEBOX)
     maul_add_test(tasks WHITEBOX)
+    maul_add_test(host_calls)
     # The web build has no threads; the twins need four.
     if(NOT EMSCRIPTEN)
         maul_add_test(twins WHITEBOX POSIX)

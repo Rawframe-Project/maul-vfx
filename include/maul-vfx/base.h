@@ -89,7 +89,9 @@ extern "C"
 
     // The allocator an owner object takes in its def and keeps for its
     // lifetime. Alignment is a power of two. A zeroed allocator means the C
-    // library's allocation functions.
+    // library's allocation functions. Its functions call none of the
+    // owner's functions that take it mutable: such a call is refused with
+    // mvfx_errorState and counted as misuse.
     typedef struct mvfxAllocator
     {
         void* (*alloc)(size_t size, size_t alignment, void* context);

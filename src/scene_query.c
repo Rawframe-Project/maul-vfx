@@ -63,6 +63,10 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
     }
     *queriesOut = nullptr;
     *countOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)
@@ -124,6 +128,10 @@ mvfxResult mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId 
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);

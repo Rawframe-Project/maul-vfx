@@ -32,6 +32,10 @@ extern "C"
                                     void* taskContext, void* userContext);
 
     // Waits until every range of the work behind userTask has run.
+    //
+    // The task hooks, and the tasks they run, call none of the context's
+    // functions that take it mutable (it is stepping): such a call is
+    // refused with mvfx_errorState and counted as misuse.
     typedef void mvfxFinishTaskFn(void* userTask, void* userContext);
 
     // The named limits of a context. A creation past one is refused.

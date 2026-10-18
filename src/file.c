@@ -518,6 +518,10 @@ mvfxFileResult mvfxCreateEffectFromBytes(mvfxContext* context, const void* bytes
         return Fault(mvfx_errorInvalid, -1);
     }
     *effectOut = (mvfxEffectId){0};
+    if (mvfxRefusesHostCall(context))
+    {
+        return Fault(mvfx_errorState, -1);
+    }
     mvfxEffectDef def;
     int64_t needed = 0;
     mvfxFileResult result =

@@ -47,6 +47,12 @@ frames.
   slots, so the split and the schedule never change results. A context
   is used by one thread at a time; outputs for different views of a
   stepped context may be written from different threads at once.
+- **Host code calling back in:** the allocator, the task hooks and host
+  modules call none of the context's functions that take it mutable;
+  only those taking it read-only (`const`) are allowed. Such a call is
+  refused with `mvfx_errorState` and counted as misuse: the context
+  counts its calls of host code (a step or a prewarm, whose tasks and
+  host modules are the host's, and each allocation).
 - **Memory:** the owner object is the context, which takes the host's
   allocator. Creating an effect allocates its compiled form in one
   block; creating an instance allocates all of its particle, ribbon,

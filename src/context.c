@@ -14,6 +14,24 @@
 
 #include <stdatomic.h>
 
+// The context's allocator: the host's, each call counted as host code.
+static void* HostAlloc(size_t size, size_t alignment, void* opaque)
+{
+    mvfxContext* context = opaque;
+    mvfxEnterHost(context);
+    void* memory = mvfxAllocate(&context->hostAllocator, size, alignment);
+    mvfxLeaveHost(context);
+    return memory;
+}
+
+static void HostFree(void* memory, size_t size, size_t alignment, void* opaque)
+{
+    mvfxContext* context = opaque;
+    mvfxEnterHost(context);
+    mvfxRelease(&context->hostAllocator, memory, size, alignment);
+    mvfxLeaveHost(context);
+}
+
 mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut)
 {
     if (contextOut == nullptr)
@@ -45,9 +63,16 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
     }
     *context = (mvfxContext){
         .allocator = def->allocator,
+        .hostAllocator = def->allocator,
         .tasks = {def->enqueueTask, def->finishTask, def->userTaskContext},
         .particleBudget = def->limits.particles,
     };
+    if (def->allocator.alloc != nullptr)
+    {
+        // The host's allocator behind the context's own, which counts its
+        // calls.
+        context->allocator = (mvfxAllocator){HostAlloc, HostFree, context};
+    }
     mvfxSlots* tables[5] = {&context->effects, &context->instances, &context->meshes,
                             &context->grids, &context->layouts};
     const int32_t limits[5] = {def->limits.effects, def->limits.instances, def->limits.meshes,
@@ -70,11 +95,12 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
 
 void mvfxDestroyContext(mvfxContext* context)
 {
-    if (context == nullptr)
+    if (context == nullptr || mvfxRefusesHostCall(context))
     {
         return;
     }
     mvfxAllocator allocator = context->allocator;
+    mvfxAllocator host = context->hostAllocator;
     for (uint32_t i = 0; i < context->instances.capacity; ++i)
     {
         mvfxInstance* instance = context->instances.slots[i].object;
@@ -120,7 +146,9 @@ void mvfxDestroyContext(mvfxContext* context)
         }
     }
     mvfxReleaseSlots(&context->layouts, &allocator);
-    mvfxRelease(&allocator, context, sizeof(mvfxContext), alignof(mvfxContext));
+    // The context's own memory through the host's allocator: the count of
+    // its calls lives in it.
+    mvfxRelease(&host, context, sizeof(mvfxContext), alignof(mvfxContext));
 }
 
 int64_t mvfxContext_GetParticles(const mvfxContext* context)
@@ -136,4 +164,24 @@ uint64_t mvfxContext_GetMisuse(const mvfxContext* context)
 void mvfxCountMisuse(mvfxContext* context)
 {
     atomic_fetch_add_explicit(&context->misuse, 1, memory_order_relaxed);
+}
+
+void mvfxEnterHost(mvfxContext* context)
+{
+    atomic_fetch_add_explicit(&context->hostCalls, 1, memory_order_relaxed);
+}
+
+void mvfxLeaveHost(mvfxContext* context)
+{
+    atomic_fetch_sub_explicit(&context->hostCalls, 1, memory_order_relaxed);
+}
+
+bool mvfxRefusesHostCall(mvfxContext* context)
+{
+    if (context == nullptr || atomic_load_explicit(&context->hostCalls, memory_order_relaxed) == 0)
+    {
+        return false;
+    }
+    mvfxCountMisuse(context);
+    return true;
 }

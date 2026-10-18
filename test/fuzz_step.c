@@ -10,7 +10,8 @@
 // documented, and nothing may read, write or overflow out of bounds. Defs
 // too costly to step within a fuzzing run (many particles, large gases or
 // water surfaces) are passed over. Inputs are sealed (size and hash set),
-// as the file's own target does for most.
+// as the file's own target does for most. No call may return with the
+// context still in a call of host code.
 
 #include "context.h"
 #include "slots.h"
@@ -32,9 +33,11 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 
 static mvfxContext* s_fuzzContext;
 
+// Aborts on a condition that does not hold, or on a context left in a
+// call of host code (record mvfx-0001) after one of its calls returned.
 static void Expect(bool condition)
 {
-    if (!condition)
+    if (!condition || (s_fuzzContext != NULL && s_fuzzContext->hostCalls != 0))
     {
         abort();
     }

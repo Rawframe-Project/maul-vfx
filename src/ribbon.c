@@ -729,6 +729,10 @@ static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int
     }
     *pointCountOut = 0;
     *ribbonCountOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     bool valid = buffers->pointCapacity >= 0 &&
                  (buffers->pointCapacity == 0 || buffers->points != nullptr) &&
                  mvfxIsBufferValid(buffers->ribbons, buffers->ribbonCapacity, alignof(mvfxRibbon));
@@ -774,6 +778,10 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
     }
     *vertexCountOut = 0;
     *indexCountOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     bool valid = buffers->vertexCapacity >= 0 &&
                  (buffers->vertexCapacity == 0 || buffers->vertices != nullptr) &&
                  mvfxIsBufferValid(buffers->indices, buffers->indexCapacity, alignof(uint32_t));

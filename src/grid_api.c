@@ -29,6 +29,10 @@ mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGrid
         return mvfx_errorInvalid;
     }
     *gridOut = (mvfxGridId){0};
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     if (!mvfxIsGridDefValid(def))
     {
         mvfxCountMisuse(context);
@@ -57,6 +61,10 @@ mvfxResult mvfxDestroyGrid(mvfxContext* context, mvfxGridId grid)
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     mvfxGrid* live = mvfxContextGrid(context, grid);
     if (live == nullptr)
@@ -138,6 +146,10 @@ mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float
     {
         return mvfx_errorInvalid;
     }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxGrid* live = mvfxContextGrid(context, grid);
     if (live == nullptr)
     {
@@ -161,6 +173,10 @@ mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid, const int
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     mvfxGrid* live = mvfxContextGrid(context, grid);
     if (live == nullptr)

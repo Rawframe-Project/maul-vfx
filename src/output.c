@@ -516,6 +516,10 @@ mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId
         return mvfx_errorInvalid;
     }
     *bytesOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)
@@ -548,6 +552,10 @@ mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId inst
         return mvfx_errorInvalid;
     }
     *countOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)
@@ -613,6 +621,10 @@ mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instanc
         return mvfx_errorInvalid;
     }
     *countOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)

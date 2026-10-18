@@ -399,6 +399,10 @@ static bool IsPushValid(const mvfxWaterPush* push)
 mvfxResult mvfxInstance_PushWater(mvfxContext* context, mvfxInstanceId instance, int32_t water,
                                   const mvfxWaterPush* pushes, int32_t count)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxResult result = mvfx_success;
     mvfxInstance* live = (mvfxInstance*)FindWater(context, instance, water, &result);
     if (live == nullptr)

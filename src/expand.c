@@ -225,6 +225,10 @@ mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId insta
         return mvfx_errorInvalid;
     }
     *countOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)
@@ -381,6 +385,10 @@ mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instan
     }
     *vertexCountOut = 0;
     *indexCountOut = 0;
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
     if (found != mvfx_success)

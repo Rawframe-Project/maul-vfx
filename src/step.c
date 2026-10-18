@@ -5,6 +5,7 @@
 
 #include "step.h"
 
+#include "context.h"
 #include "emitter_step.h"
 #include "event.h"
 #include "float_mode.h"
@@ -333,9 +334,12 @@ void mvfxStepInstances(mvfxContext* context, int64_t ticks)
 {
     context->steps += 1;
     StepWork work = {&context->instances, ticks};
+    // The step's tasks and host modules are the host's code.
+    mvfxEnterHost(context);
     mvfxRunTasks(&context->tasks, StepRange, (int32_t)context->instances.capacity, STEP_MIN_RANGE,
                  &work);
     mvfxStepDueGases(context);
+    mvfxLeaveHost(context);
 }
 
 void mvfxStepDueGases(mvfxContext* context)
@@ -357,6 +361,10 @@ mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks)
     {
         return mvfx_errorInvalid;
     }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     if (ticks < 0 || ticks > MAX_STEP_TICKS)
     {
         mvfxCountMisuse(context);
@@ -371,6 +379,10 @@ mvfxResult mvfxContext_Step(mvfxContext* context, double seconds)
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
     }
     if (!(seconds >= 0.0 && seconds <= MVFX_MAX_STEP_SECONDS))
     {
@@ -396,6 +408,10 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
     {
         return mvfx_errorInvalid;
     }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
     {
@@ -417,6 +433,7 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
+    mvfxEnterHost(context);
     for (int32_t i = 0; i < maxSteps && left > 0; ++i)
     {
         int64_t ticks = left < step ? left : step;
@@ -427,6 +444,7 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
     {
         StepGases(live, &context->tasks);
     }
+    mvfxLeaveHost(context);
     mvfxLeaveFloatMode(mode);
     if (remainingOut != nullptr)
     {
