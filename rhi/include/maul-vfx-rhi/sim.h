@@ -83,7 +83,12 @@ extern "C"
     // whose path passes that close to a surface may touch it on one path
     // only, and with it its collision event, the life or the kill the
     // contact takes, and the births a spawner gives for it; contacts
-    // clear of a surface are the CPU path's.
+    // clear of a surface are the CPU path's. A contact's tick is found from
+    // its share of the move in binary32, within a thousandth of a step of
+    // the CPU path's: births a spawner gives for a contact whose tick
+    // differs may differ in count and values, those for every other event
+    // are the CPU path's but for their serials, moved by the births that
+    // differ (mvfxEventSpawn).
     typedef struct mvfxGpuParticles
     {
         mrhiBufferId particles;

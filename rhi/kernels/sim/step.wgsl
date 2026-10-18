@@ -194,11 +194,12 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
              place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
     let b0 = births[3u * j];
     let b1 = births[3u * j + 1u];
+    let k = birthKey(j);
     var normal = vec3<f32>(0.0);
-    let shapeWords = draw(SHAPE_SALT, b0.x, b0.y);
+    let shapeWords = draw(SHAPE_SALT, k.x, k.y);
     let local_place = turnByShape(sampleSphere(shapeWords, &normal));
     let drawn = local_place + params.shapeOffset.xyz;
-    var v = drawVelocity(draw(VELOCITY_SALT, b0.x, b0.y), turnByShape(normal));
+    var v = drawVelocity(draw(VELOCITY_SALT, k.x, k.y), turnByShape(normal));
     var p = drawn;
     let host = births[3u * j + 2u].y;
     if (host != NONE) {
@@ -295,9 +296,9 @@ fn dragScaleOf(j: u32) -> f32 {
     if (params.words.drag == NONE) {
         return 1.0;
     }
-    let b0 = births[3u * j];
+    let k = birthKey(j);
     let age = bitcast<f32>(births[3u * j + 2u].x);
-    return drawVector(SOURCE_DRAG, age, draw(DRAG_SALT, b0.x, b0.y)).x;
+    return drawVector(SOURCE_DRAG, age, draw(DRAG_SALT, k.x, k.y)).x;
 }
 
 // A live particle's normalized age at the plan's start, as the core's:
@@ -463,7 +464,7 @@ fn orientationOf(age: f32, words: vec4<u32>) -> vec4<f32> {
 // the birth's source age, frame and mesh index.
 fn storeValues(j: u32, at: u32) {
     let c = params.counts.x;
-    let b0 = births[3u * j];
+    let k = birthKey(j);
     let age = bitcast<f32>(births[3u * j + 2u].x);
     let w = params.words;
     if (w.size != NONE) {
@@ -473,20 +474,20 @@ fn storeValues(j: u32, at: u32) {
         storeValue(w.color, 4u, at, bornColor(j));
     }
     if (w.frame != NONE) {
-        moved[w.frame * c + at] = drawIndex(params.draws[0], FRAME_SALT, b0.x, b0.y);
+        moved[w.frame * c + at] = drawIndex(params.draws[0], FRAME_SALT, k.x, k.y);
     }
     if (w.mesh != NONE) {
-        moved[w.mesh * c + at] = drawIndex(params.draws[1], MESH_SALT, b0.x, b0.y);
+        moved[w.mesh * c + at] = drawIndex(params.draws[1], MESH_SALT, k.x, k.y);
     }
     if (w.angle != NONE) {
         moved[w.angle * c + at] =
-            bitcast<u32>(drawVector(SOURCE_ANGLE, age, draw(ANGLE_SALT, b0.x, b0.y)).x);
+            bitcast<u32>(drawVector(SOURCE_ANGLE, age, draw(ANGLE_SALT, k.x, k.y)).x);
         moved[w.spin * c + at] =
-            bitcast<u32>(drawVector(SOURCE_SPIN, age, draw(SPIN_SALT, b0.x, b0.y)).x);
+            bitcast<u32>(drawVector(SOURCE_SPIN, age, draw(SPIN_SALT, k.x, k.y)).x);
     }
     if (w.orientation != NONE) {
-        storeValue(w.orientation, 4u, at, orientationOf(age, draw(ORIENTATION_SALT, b0.x, b0.y)));
-        storeValue(w.angular, 3u, at, drawVector(SOURCE_ANGULAR, age, draw(ANGULAR_SALT, b0.x, b0.y)));
+        storeValue(w.orientation, 4u, at, orientationOf(age, draw(ORIENTATION_SALT, k.x, k.y)));
+        storeValue(w.angular, 3u, at, drawVector(SOURCE_ANGULAR, age, draw(ANGULAR_SALT, k.x, k.y)));
     }
     if (w.drag != NONE) {
         moved[w.drag * c + at] = bitcast<u32>(dragScaleOf(j));
@@ -495,7 +496,7 @@ fn storeValues(j: u32, at: u32) {
         let first = w.custom[i / 4u][i % 4u];
         if (first != NONE) {
             let s = SOURCE_CUSTOM + i;
-            let value = drawVector(s, age, draw(CUSTOM_SALT + i, b0.x, b0.y));
+            let value = drawVector(s, age, draw(CUSTOM_SALT + i, k.x, k.y));
             storeValue(first, params.sources[s].modes.z, at, value);
         }
     }
@@ -514,9 +515,9 @@ fn bornColor(j: u32) -> vec4<f32> {
             return record.color;
         }
     }
-    let b0 = births[3u * j];
+    let k = birthKey(j);
     let age = bitcast<f32>(births[3u * j + 2u].x);
-    return drawVector(SOURCE_COLOR, age, draw(COLOR_SALT, b0.x, b0.y));
+    return drawVector(SOURCE_COLOR, age, draw(COLOR_SALT, k.x, k.y));
 }
 
 // A birth's size (ones where the emitter stores none), as its colour.
@@ -531,9 +532,9 @@ fn bornSize(j: u32) -> vec3<f32> {
             return record.size.xyz;
         }
     }
-    let b0 = births[3u * j];
+    let k = birthKey(j);
     let age = bitcast<f32>(births[3u * j + 2u].x);
-    return drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, b0.x, b0.y)).xyz;
+    return drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, k.x, k.y)).xyz;
 }
 
 // Kill births: each birth with room killed on its way to the plan's end

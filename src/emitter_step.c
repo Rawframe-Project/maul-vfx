@@ -193,7 +193,8 @@ static void AppendEventBirthsBy(mvfxInstance* instance, int32_t emitter, int64_t
         uint64_t k = state->owed;
         state->owed = mvfxSaturatingAdd(state->owed, 1);
         int64_t tick = state->eventQueue[*next].tick;
-        float inverseLife = mvfxInverseLifeOf(instance, emitter, k, tick);
+        float inverseLife =
+            mvfxInverseLifeOf(instance, emitter, state->eventQueue[*next].key, tick);
         if (AgeAt(instance->clock, tick) * inverseLife < 1.0f)
         {
             mvfxBirth birth = {k, tick, 0, 1, -1, *next + 1};
@@ -308,7 +309,8 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
             state->refused = mvfxSaturatingAdd(state->refused, 1);
             continue;
         }
-        int64_t death = mvfxDeathTick(tick, mvfxInverseLifeOf(instance, emitter, k, tick));
+        int64_t death = mvfxDeathTick(
+            tick, mvfxInverseLifeOf(instance, emitter, state->eventQueue[*next].key, tick));
         mvfxPushDeath(heap, death);
         if (death > instance->clock)
         {
@@ -395,7 +397,8 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     {
         const mvfxBirth* birth = &instance->acceptedScratch[i];
         mvfxAppendBirth(instance, emitter, birth,
-                        mvfxInverseLifeOf(instance, emitter, birth->serial, birth->tick));
+                        mvfxInverseLifeOf(instance, emitter, mvfxDrawKey(instance, emitter, birth),
+                                          birth->tick));
     }
 }
 

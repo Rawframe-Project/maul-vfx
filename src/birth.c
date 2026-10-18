@@ -230,12 +230,14 @@ static void StoreWords(mvfxInstance* instance, int32_t emitter, const mvfxBirth*
     if (Has(compiled, mvfx_attributeFrame))
     {
         StoreWord(instance, emitter, mvfx_attributeFrame, at,
-                  DrawIndex(instance, emitter, &compiled->frame, FRAME_SALT, birth->serial));
+                  DrawIndex(instance, emitter, &compiled->frame, FRAME_SALT,
+                            mvfxDrawKey(instance, emitter, birth)));
     }
     if (Has(compiled, mvfx_attributeMesh))
     {
         StoreWord(instance, emitter, mvfx_attributeMesh, at,
-                  DrawIndex(instance, emitter, &compiled->meshIndex, MESH_SALT, birth->serial));
+                  DrawIndex(instance, emitter, &compiled->meshIndex, MESH_SALT,
+                            mvfxDrawKey(instance, emitter, birth)));
     }
     if (Has(compiled, mvfx_attributeRibbon))
     {
@@ -260,7 +262,7 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     float age = mvfxSourceAge(compiled, birth->tick);
     const float (*parameters)[4] = instance->parameters;
-    uint64_t serial = birth->serial;
+    uint64_t serial = mvfxDrawKey(instance, emitter, birth);
     float values[4];
     if (Has(compiled, mvfx_attributeSizeX))
     {
@@ -373,6 +375,12 @@ static const mvfxHostBirth* GivenOf(const mvfxInstance* instance, int32_t emitte
                                : nullptr;
 }
 
+uint64_t mvfxDrawKey(const mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth)
+{
+    return birth->event1 > 0 ? instance->emitters[emitter].eventQueue[birth->event1 - 1].key
+                             : birth->serial;
+}
+
 void mvfxHostVelocity(const mvfxInstance* instance, int32_t emitter, const mvfxHostBirth* host,
                       uint64_t serial, int64_t tick, float velocity[3])
 {
@@ -448,7 +456,8 @@ static void PlaceHostBirth(const mvfxInstance* instance, int32_t emitter, const 
     {
         position[k] = (float)(world ? host->position[k] - state->anchor[k] : host->position[k]);
     }
-    mvfxHostVelocity(instance, emitter, host, birth->serial, birth->tick, velocity);
+    mvfxHostVelocity(instance, emitter, host, mvfxDrawKey(instance, emitter, birth), birth->tick,
+                     velocity);
 }
 
 // The step from one point of a unit to the next along a direction at

@@ -8,8 +8,9 @@
 
 #include "maul-vfx/modules.h"
 
-// The salt of an event's count.
+// The salts of an event's count and of its births' keys.
 #define EVENT_SALT 0x45564E54u
+#define KEY_SALT   0x4B455953u
 
 // Whether a tick lies where the emitter spawns: from its delay, within its
 // loops, not past a stop.
@@ -19,6 +20,13 @@ static bool IsSpawning(const mvfxInstance* instance, const mvfxCompiledEmitter* 
     int64_t end = emitter->delay + (int64_t)emitter->loops * emitter->duration;
     return tick >= emitter->delay && tick <= instance->stopTick &&
            (emitter->loops == 0 || tick <= end);
+}
+
+uint64_t mvfxEventBirthKey(uint32_t source, int64_t tick, int32_t index)
+{
+    mvfxWords4 words = mvfxPcg4d((mvfxWords4){
+        (uint32_t)(uint64_t)tick, (uint32_t)((uint64_t)tick >> 32u), (uint32_t)index, KEY_SALT});
+    return (uint64_t)source | (uint64_t)(0x80000000u | (words.x >> 1u)) << 32u;
 }
 
 // The particles an event spawns, drawn from its serial and tick.
@@ -178,6 +186,7 @@ void mvfxBuildEventBirths(mvfxInstance* instance, int32_t emitter)
         {
             mvfxHostBirth birth = BirthOf(instance, emitter, spawn, event);
             birth.order = order++;
+            birth.key = mvfxEventBirthKey(event->serial, event->tick, c);
             if (!KeepEarliest(state->eventQueue, &state->eventQueueCount, spawn->capacity, &birth))
             {
                 // More than a step takes from events: the latest refused, a

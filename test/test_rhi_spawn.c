@@ -72,8 +72,7 @@ static void TestCollisions(Gpu* gpu, mvfxGpu* kernels)
 {
     // Births from collisions with a ceiling the particles rise into, two
     // a contact: a contact's tick rounds a share the GPU finds in binary32
-    // (within a thousandth of the step), and a count drawn from it could
-    // differ.
+    // (within a thousandth of the step).
     static const mvfxCollider ceiling = {
         .kind = mvfx_colliderPlane, .center = {0, 0.55f, 0}, .normal = {0, -1, 0}};
     mvfxEmitterDef emitters[2] = {Sprite(), Child(0, mvfx_eventCollision)};
@@ -89,6 +88,14 @@ static void TestCollisions(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .colliding = true},
             "births from collisions");
+    // Then one to three a contact, drawn: a contact whose tick differs on
+    // the two paths may give a different count, so the births of such
+    // contacts are left out on both, bounded (rhi_harness.c).
+    emitters[1].eventSpawn.minCount = 1;
+    emitters[1].eventSpawn.maxCount = 3;
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .colliding = true},
+            "births from collisions, a count drawn");
 }
 
 static void TestBounds(Gpu* gpu, mvfxGpu* kernels)

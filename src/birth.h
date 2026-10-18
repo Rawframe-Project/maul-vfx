@@ -29,6 +29,10 @@ float mvfxSourceAge(const mvfxCompiledEmitter* emitter, int64_t tick);
 void mvfxHostVelocity(const mvfxInstance* instance, int32_t emitter, const mvfxHostBirth* host,
                       uint64_t serial, int64_t tick, float velocity[3]);
 
+// The key a birth draws its values by: its event's (mvfxEventBirthKey)
+// for a birth from an event, else its serial.
+uint64_t mvfxDrawKey(const mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth);
+
 // Appends a particle to the emitter: every attribute from its birth.
 void mvfxAppendBirth(mvfxInstance* instance, int32_t emitter, const mvfxBirth* birth,
                      float inverseLife);

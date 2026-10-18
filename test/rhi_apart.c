@@ -10,9 +10,11 @@
 #include <math.h>
 #include <stdlib.h>
 
-// The most particles an emitter of a run holds, and gone apart in a run.
-#define MOST_HELD  (1 << 17)
-#define MOST_APART 256
+// The most particles an emitter of a run holds, gone apart in a run,
+// and uncertain events in a run.
+#define MOST_HELD      (1 << 17)
+#define MOST_APART     256
+#define MOST_UNCERTAIN 1024
 
 // Serials in order, and each one's distance to the nearest collider as
 // a share of the reach.
@@ -30,6 +32,8 @@ static uint32_t s_apart[2][MOST_APART];
 static int32_t s_apartCount[2];
 static int32_t s_mostNear;
 static float s_largestShare;
+static int64_t s_uncertain[MOST_UNCERTAIN];
+static int32_t s_uncertainCount;
 
 void ApartReset(void)
 {
@@ -41,6 +45,7 @@ void ApartReset(void)
     }
     s_mostNear = 0;
     s_largestShare = 0.0f;
+    s_uncertainCount = 0;
 }
 
 // The distance from a place to a collider's surface, in the particles'
@@ -148,4 +153,34 @@ int32_t MostNear(void)
 float LargestShare(void)
 {
     return s_largestShare;
+}
+
+void TakeUncertain(int64_t tick)
+{
+    if (!IsUncertain(tick, 0) && s_uncertainCount < MOST_UNCERTAIN)
+    {
+        s_uncertain[s_uncertainCount++] = tick;
+    }
+}
+
+bool IsUncertain(int64_t tick, int64_t slack)
+{
+    return UncertainBetween(tick - slack - 1, tick + slack, 0);
+}
+
+bool UncertainBetween(int64_t after, int64_t upTo, int64_t slack)
+{
+    for (int32_t u = 0; u < s_uncertainCount; ++u)
+    {
+        if (s_uncertain[u] > after - slack && s_uncertain[u] <= upTo + slack)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+int32_t UncertainCount(void)
+{
+    return s_uncertainCount;
 }

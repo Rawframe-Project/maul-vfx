@@ -256,7 +256,13 @@ extern "C"
     // refused); the source's capacity of events bounds the spawns, and so
     // do capacity a step and the emitter's own room, the rest counted
     // refused. Spawns follow the emitter's delay, loops and a stop, as its
-    // rate does.
+    // rate does. The count and every value a birth draws (its life,
+    // velocity, size, colour and the rest) follow from its event alone:
+    // the event's particle's serial, its tick and the birth's place among
+    // the event's births, not the birth's serial, which stays the
+    // emitter's counter. So an event that gives other births (one dropped,
+    // a count that differs) leaves every other event's births as they
+    // were, though their serials move.
     typedef struct mvfxEventSpawn
     {
         bool enabled;

@@ -45,11 +45,13 @@ typedef struct mvfxHostBirth
     float color[4];
     float size[3];
     uint8_t given;
-    // An event's birth: its tick, its place in the queue as built, and the
-    // serial of the event's particle.
+    // An event's birth: its tick, its place in the queue as built, the
+    // serial of the event's particle, and the key its values are drawn by
+    // in place of its serial (mvfxEventBirthKey).
     int64_t tick;
     int32_t order;
     uint32_t source;
+    uint64_t key;
     // A host's unit's frame (mvfx_attachHost).
     int32_t frame;
 } mvfxHostBirth;

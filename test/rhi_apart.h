@@ -33,6 +33,20 @@ void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const 
 bool IsApart(int32_t emitter, uint32_t serial);
 bool GoApart(int32_t emitter, uint32_t serial);
 
+// An event of a source emitter the two paths may give different births
+// from: one of a particle apart, or one whose tick differs (a contact's,
+// whose share of the move the GPU finds in binary32), whose drawn count
+// may differ. Takes its tick on either path; whether a birth's tick lies
+// within slack of one taken.
+void TakeUncertain(int64_t tick);
+bool IsUncertain(int64_t tick, int64_t slack);
+
+// Whether an uncertain tick lies in (after, upTo], each end widened by
+// slack: where a spawning emitter's serial offset between the paths may
+// change. The uncertain events taken over the run.
+bool UncertainBetween(int64_t after, int64_t upTo, int64_t slack);
+int32_t UncertainCount(void);
+
 // The particles gone apart over the run, the most near at one step, and
 // the largest distance from a collider one gone apart lay at, a share of
 // the reach (at most 1).

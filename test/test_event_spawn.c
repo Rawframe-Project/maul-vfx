@@ -8,8 +8,9 @@
 // neither); a local emitter's births mapped
 // through the instance; a full consumer taking the earliest events'
 // births and refusing the rest; a stop ending the spawns; a consumer
-// keeping its instance going while its source lives; and the refusals,
-// a cycle among them.
+// keeping its instance going while its source lives; births drawn by
+// their event, whatever other events gave; and the refusals, a cycle
+// among them.
 
 #include "context.h"
 #include "instance.h"
@@ -442,10 +443,60 @@ static void TestRefusals(void)
     mvfxDestroyContext(context);
 }
 
+static void TestDrawnByEvent(void)
+{
+    // Births from events draw by their event, not their serial: a
+    // consumer taking one birth a step (refusing the rest, their serials
+    // spent) keeps births whose lives are those of the same event's births
+    // in a consumer taking them all, though their serials differ.
+    Scene scenes[2];
+    for (int32_t run = 0; run < 2; ++run)
+    {
+        mvfxEmitterDef emitters[2] = {Source(0.2f, 0.8f), Consumer(0, 1, 3)};
+        emitters[0].capacity = 128;
+        emitters[0].hostSpawnCapacity = 128;
+        emitters[0].eventCapacity = 128;
+        emitters[1].lifetime = mvfxRangeSource(5.0f, 10.0f);
+        emitters[1].eventSpawn.capacity = run == 0 ? 64 : 1;
+        scenes[run] = NewScene(emitters, 2);
+        for (int32_t i = 0; i < 120; ++i)
+        {
+            Place(&scenes[run], 0, i, 0, 0, 0.0f);
+        }
+        for (int32_t step = 0; step < 60; ++step)
+        {
+            Step(&scenes[run], MVFX_TICKS_PER_SECOND / 60);
+        }
+    }
+    const mvfxEmitterState* all = &scenes[0].live->emitters[1];
+    const mvfxEmitterState* few = &scenes[1].live->emitters[1];
+    const uint32_t* allLives = mvfxAttributeArray(scenes[0].live, 1, mvfx_attributeInverseLife);
+    const uint32_t* fewLives = mvfxAttributeArray(scenes[1].live, 1, mvfx_attributeInverseLife);
+    const uint32_t* fewSerials = mvfxAttributeArray(scenes[1].live, 1, mvfx_attributeSerial);
+    bool twins = true;
+    bool shifted = false;
+    for (int32_t j = 0; j < few->count; ++j)
+    {
+        bool found = false;
+        for (int32_t i = 0; !found && i < all->count; ++i)
+        {
+            found = BirthOf(&scenes[0], 1, i) == BirthOf(&scenes[1], 1, j) &&
+                    allLives[i] == fewLives[j];
+        }
+        twins = twins && found;
+        shifted = shifted || fewSerials[j] != (uint32_t)j;
+    }
+    CHECK(few->count > 10 && few->refused > 0 && shifted && twins,
+          "an event's births the same whatever other events gave");
+    mvfxDestroyContext(scenes[0].context);
+    mvfxDestroyContext(scenes[1].context);
+}
+
 int main(void)
 {
     TestDeathSpawns();
     TestCounts();
+    TestDrawnByEvent();
     TestInherit();
     TestLocal();
     TestFullAndStopped();

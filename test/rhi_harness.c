@@ -522,12 +522,91 @@ static bool SameParticle(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t 
     return same && SameValues(cpu, e, g, c);
 }
 
+// The birth tick of the GPU's particle g, and of the CPU path's c.
+static int64_t GpuBirth(int32_t g)
+{
+    return (int64_t)((uint64_t)Word(s_arrays.birth + 1, g) << 32u | Word(s_arrays.birth, g));
+}
+
+static int64_t CpuBirth(const mvfxInstance* cpu, int32_t e, int32_t c)
+{
+    const uint32_t* low = mvfxAttributeArray(cpu, e, mvfx_attributeBirthLow);
+    const uint32_t* high = mvfxAttributeArray(cpu, e, mvfx_attributeBirthHigh);
+    return (int64_t)((uint64_t)high[c] << 32u | low[c]);
+}
+
+// The most particles of an emitter spawning from events left out at a
+// step, born from uncertain events, over the run; and whether each
+// emitter's step left any particle out, whose bounds then go uncompared.
+static int32_t s_childrenLeft;
+static bool s_leftOut[2];
+
+// Whether a spawning emitter's particles on the GPU are the CPU path's:
+// those born at an uncertain event's tick (rhi_apart.h) left out on both
+// paths, the rest the same in order (SameParticle), each pair's serials
+// apart by an offset that changes only across an uncertain tick (the
+// births one path gave alone took serials).
+static bool SameChildren(const mvfxInstance* cpu, int32_t e)
+{
+    const mvfxEmitterState* state = &cpu->emitters[e];
+    const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
+    int64_t slack = 1 + s_stepTicks / 1000;
+    int32_t held = (int32_t)s_record[0];
+    bool same = s_record[2] == 0;
+    bool paired = false;
+    int64_t offset = 0;
+    int64_t lastBirth = 0;
+    int32_t left = 0;
+    int32_t g = 0;
+    int32_t c = 0;
+    while (same && (g < held || c < state->count))
+    {
+        if (g < held && IsUncertain(GpuBirth(g), slack))
+        {
+            ++g;
+            ++left;
+            continue;
+        }
+        if (c < state->count && IsUncertain(CpuBirth(cpu, e, c), slack))
+        {
+            ++c;
+            ++left;
+            continue;
+        }
+        same = g < held && c < state->count;
+        int64_t birth = same ? CpuBirth(cpu, e, c) : 0;
+        int64_t apart = same ? (int64_t)Word(s_arrays.serial, g) - (int64_t)serial[c] : 0;
+        // The first pair's offset counts the births given alone before it.
+        same =
+            same && (paired ? apart == offset || UncertainBetween(lastBirth, birth, slack)
+                            : apart == 0 || UncertainBetween(INT64_MIN + slack + 1, birth, slack));
+        same = same && SameParticle(cpu, e, g, c);
+        if (!same)
+        {
+            printf("child %d of %d (GPU), %d of %d (CPU) differs\n", g, held, c, state->count);
+        }
+        paired = true;
+        offset = apart;
+        lastBirth = birth;
+        ++g;
+        ++c;
+    }
+    s_childrenLeft = left > s_childrenLeft ? left : s_childrenLeft;
+    s_leftOut[e] = left > 0;
+    return same;
+}
+
 // Whether the GPU's particles are the CPU path's, merged by serial (both
 // pools keep serial order): each pair the same (SameParticle), and a
 // particle that differs, or that one path holds alone, only one gone
 // apart (rhi_apart.h), compared no more.
 static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
 {
+    s_leftOut[e] = false;
+    if (cpu->effect->emitters[e].eventSpawn.enabled)
+    {
+        return SameChildren(cpu, e);
+    }
     const mvfxEmitterState* state = &cpu->emitters[e];
     const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
     const mvfxAttributePlan* attributes = &cpu->effect->emitters[e].plan;
@@ -560,7 +639,9 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
             s_contacts += collisions != NULL ? collisions[c] : 0u;
             same = SameParticle(cpu, e, g, c);
         }
-        same = same || apart || GoApart(e, at);
+        bool gone = !same && GoApart(e, at);
+        s_leftOut[e] = s_leftOut[e] || apart || gone || gs != cs;
+        same = same || apart || gone;
         if (!same)
         {
             printf("particle of serial %u differs (GPU %d of %d, CPU %d of %d)\n", at, g, held, c,
@@ -794,6 +875,18 @@ static bool SameEvent(const uint32_t* w, const mvfxEvent* cpu, const double anch
 
 // An emitter's events of the step on the GPU against the CPU path's: as
 // many, as many dropped, each alike in the same order.
+// Whether an emitter of the effect spawns from the source's events.
+static bool SpawnedFrom(const mvfxInstance* cpu, int32_t source)
+{
+    bool spawned = false;
+    for (int32_t e = 0; e < cpu->effect->emitterCount; ++e)
+    {
+        const mvfxEventSpawn* spawn = &cpu->effect->emitters[e].eventSpawn;
+        spawned = spawned || (spawn->enabled && spawn->source == source);
+    }
+    return spawned;
+}
+
 static bool SameEvents(int32_t emitter)
 {
     const mvfxEvent* events = NULL;
@@ -810,7 +903,10 @@ static bool SameEvents(int32_t emitter)
     s_dropped[emitter] = stats.eventsDropped;
     s_events += count;
     // The events of particles gone apart left out on both paths, each
-    // other the same in order.
+    // other the same in order. Those, and events whose ticks differ where
+    // an emitter spawns from them (their births' count and draws follow
+    // from the tick), are uncertain.
+    bool spawned = SpawnedFrom(mvfxContextInstance(s_context, s_cpu), emitter);
     int32_t written = (int32_t)s_record[MVFX_GPU_EVENTS_WRITTEN];
     bool same = s_record[MVFX_GPU_EVENTS_WRITTEN + 1] == dropped;
     int32_t g = 0;
@@ -818,10 +914,12 @@ static bool SameEvents(int32_t emitter)
     {
         while (g < written && IsApart(emitter, s_eventWords[g * MVFX_GPU_EVENT_WORDS + 1]))
         {
-            ++g;
+            const uint32_t* skipped = s_eventWords + g++ * MVFX_GPU_EVENT_WORDS;
+            TakeUncertain((int64_t)(((uint64_t)skipped[3] << 32u) | skipped[2]));
         }
         if (e < count && IsApart(emitter, events[e].serial))
         {
+            TakeUncertain(events[e].tick);
             continue;
         }
         if (e == count || g == written)
@@ -831,6 +929,12 @@ static bool SameEvents(int32_t emitter)
         }
         const uint32_t* w = s_eventWords + g++ * MVFX_GPU_EVENT_WORDS;
         same = SameEvent(w, &events[e], plan.anchorAfter);
+        int64_t tick = (int64_t)(((uint64_t)w[3] << 32u) | w[2]);
+        if (tick != events[e].tick && spawned)
+        {
+            TakeUncertain(tick);
+            TakeUncertain(events[e].tick);
+        }
         if (!same)
         {
             float place[3];
@@ -1364,6 +1468,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_deathsApart = 0;
     s_deathsWithin = true;
     ApartReset();
+    s_childrenLeft = 0;
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
     int32_t steps = run->steps > 0 ? run->steps : STEPS;
@@ -1408,7 +1513,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                 same = false;
                 break;
             }
-            same = SameAsCpu(mvfxContextInstance(s_context, s_cpu), e) && SameBounds(sim, e) &&
+            same = SameAsCpu(mvfxContextInstance(s_context, s_cpu), e) &&
+                   (s_leftOut[e] || SameBounds(sim, e)) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e)));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
@@ -1424,6 +1530,19 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     if (eventful)
     {
         printf("  events: %llu\n", (unsigned long long)s_events);
+    }
+    // Children of uncertain events left out: at most each such event's
+    // most births, on both paths.
+    for (int32_t e = 0; e < run->emitterCount; ++e)
+    {
+        const mvfxEventSpawn* spawn = &run->emitters[e].eventSpawn;
+        if (spawn->enabled)
+        {
+            int32_t bound = 2 * UncertainCount() * spawn->maxCount;
+            printf("  uncertain events: %d; children left out at a step: %d (at most %d)\n",
+                   UncertainCount(), s_childrenLeft, bound);
+            CHECK(s_childrenLeft <= bound, "children left out within the bound");
+        }
     }
     CHECK(same && (!eventful || s_events > 0) && most[0] >= (run->least > 0 ? run->least : 100) &&
               (run->emitterCount < 2 || most[1] >= (run->secondLeast != 0 ? run->secondLeast : 65)),

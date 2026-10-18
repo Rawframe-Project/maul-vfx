@@ -323,6 +323,19 @@ fn eventBirthTick(j: u32) -> u32 {
     return events[sortedSet() + rankOf(j)];
 }
 
+// Event birth j's draw key, as the core's mvfxEventBirthKey: its event's
+// particle's serial, and the top bit with 31 bits of pcg4d of the event's
+// tick and the birth's index among the event's births.
+const KEY_SALT: u32 = 0x4B455953u;
+
+fn eventBirthKey(j: u32) -> vec2<u32> {
+    let r = rankOf(j);
+    let e = events[spawnArray(ARRAY_EVENTS) + events[sortedSet() + params.spawnRule[1].w + r]];
+    let index = j - events[spawnArray(ARRAY_FIRSTS) + r];
+    let words = pcg4d(vec4<u32>(sourceEvent(e, 2u), sourceEvent(e, 3u), index, KEY_SALT));
+    return vec2<u32>(sourceEvent(e, 1u), 0x80000000u | (words.x >> 1u));
+}
+
 // How many of the plan's own births are among the first q of the merged
 // births past the host's: own birth i goes before event birth j when its
 // tick is earlier, after it when the same or later.
@@ -359,11 +372,12 @@ fn sourceAgeAt(tick: u32) -> f32 {
     return ratio(remainder64(since, length), length);
 }
 
-// A host's particle's velocity at a serial, as the core's
+// A host's particle's velocity at a draw key (its serial, or an event
+// birth's key), as the core's
 // mvfxHostVelocity: given; or drawn from the shape's normal at its place
 // (turned and scaled in the world's space, the instance's velocity
 // inherited), with a given one added.
-fn hostVelocity(h: u32, serial: vec2<u32>, tick: u32) -> vec3<f32> {
+fn hostVelocity(h: u32, key: vec2<u32>, tick: u32) -> vec3<f32> {
     let record = hostBirthAt(h);
     let given = bitcast<u32>(record.place.w);
     if ((given & HOST_GIVES_VELOCITY) != 0u) {
@@ -382,10 +396,10 @@ fn hostVelocity(h: u32, serial: vec2<u32>, tick: u32) -> vec3<f32> {
     if (length > 0.0) {
         normal = local / length;
     } else {
-        let shapeWords = draw(SHAPE_SALT, serial.x, serial.y);
+        let shapeWords = draw(SHAPE_SALT, key.x, key.y);
         normal = randomDirection(shapeWords.x, shapeWords.y);
     }
-    var v = drawVelocity(draw(VELOCITY_SALT, serial.x, serial.y), normal);
+    var v = drawVelocity(draw(VELOCITY_SALT, key.x, key.y), normal);
     if (world) {
         v = rotate(rotation, v * scale) + params.shift.w * params.instanceVelocity.xyz;
     }
@@ -500,25 +514,29 @@ fn spawnMerge(@builtin(global_invocation_id) id: vec3<u32>) {
             before = j;
         }
         var serial = vec2<u32>(0u);
+        var key = vec2<u32>(0u);
         var tick = 0u;
         if (isEvent) {
             let next = select(vec2<u32>(params.spawnOwed.x, params.spawnOwed.y),
                               plannedBirth(p, 0u).xy, p < params.counts.y);
             serial = add64(add64(next, skipped), vec2<u32>(j, 0u));
             tick = eventBirthTick(j);
+            key = eventBirthKey(j);
             b1 = vec4<u32>(0u, 0u, 0u, 1u);
-            b2 = vec4<u32>(bitcast<u32>(sourceAgeAt(tick)), hosts + j, 0u, 0u);
+            // Its key in the record's last words, which the step draws by.
+            b2 = vec4<u32>(bitcast<u32>(sourceAgeAt(tick)), hosts + j, key.x, key.y);
             writeEventHost(j, tick);
         } else {
             let planned0 = plannedBirth(p, 0u);
             let planned1 = plannedBirth(p, 1u);
             b2 = plannedBirth(p, 2u);
             serial = add64(add64(planned0.xy, skipped), vec2<u32>(before, 0u));
+            key = serial;
             tick = planned0.z;
             b1 = vec4<u32>(0u, 0u, planned1.z, planned1.w);
         }
         let age = bitcast<f32>(b2.x);
-        let drawn = drawVector(SOURCE_LIFE, age, draw(LIFE_SALT, serial.x, serial.y)).x;
+        let drawn = drawVector(SOURCE_LIFE, age, draw(LIFE_SALT, key.x, key.y)).x;
         let life = min(max(drawn, SHORTEST_LIFE), LONGEST_LIFE);
         let inverse = divide(1.0, life);
         let death = add64(vec2<u32>(tick, 0u), lifeTicks(inverse));
@@ -527,9 +545,9 @@ fn spawnMerge(@builtin(global_invocation_id) id: vec3<u32>) {
         b1.y = bitcast<u32>(inverse);
         if (b2.y != NONE) {
             // A host's particle or an event birth: its velocity drawn at
-            // its serial.
+            // its key.
             let at = 6u * params.counts.x + 4u * b2.y + 1u;
-            births[at] = bitcast<vec4<u32>>(vec4<f32>(hostVelocity(b2.y, serial, tick), 0.0));
+            births[at] = bitcast<vec4<u32>>(vec4<f32>(hostVelocity(b2.y, key, tick), 0.0));
         }
         births[3u * m] = b0;
         births[3u * m + 1u] = b1;

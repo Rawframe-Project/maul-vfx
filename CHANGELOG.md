@@ -709,3 +709,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   step), where it stated 1,864 and 1,072. The public record states the
   sort's parity a host may rely on and which contacts the two paths may
   decide differently.
+- Births from events draw their count and values by their event (its
+  particle's serial, its tick and their place among its births) instead
+  of by their serials: an event that gives other births leaves every
+  other event's births as they were. The golden state hashes change (the
+  scene's spark emitter spawns from events).
