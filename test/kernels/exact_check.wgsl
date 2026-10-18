@@ -11,6 +11,9 @@ const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
 const CONVERSIONS: u32 = 2u;
 const LIFE_TICKS: u32 = 3u;
+const SUMS: u32 = 4u;
+const REMAINDERS: u32 = 5u;
+const RATIOS: u32 = 6u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -28,7 +31,12 @@ var<immediate> root: Root;
 // Reciprocals: 1 over each significand of [1, 2) from first, its bits
 // out. Quotients: in a and b, out a / b. Conversions: in a 64-bit count,
 // out its binary32. Life ticks: in an inverse life, out the ticks it
-// lives (two words).
+// lives (two words), the search started as many values a count rounds to
+// from its estimate as the second in-word says (signed). Sums: in two 32-bit halves of 64-bit numbers a (low
+// words) and b (high words) as a = (w0, w2), b = (w1, w3); out a + b in
+// w0 and w2, a - b in w1 and w3. Remainders: in x (w0, w1) and d (w2,
+// w3), out x % d in w0 and w1. Ratios: in n (w0, w1) and d (w2, w3), out
+// n / d as binary32 in w0.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -45,10 +53,38 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
             case CONVERSIONS: {
                 words[w + 2u] = bitcast<u32>(nearestFloat(words[w], words[w + 1u]));
             }
-            case LIFE_TICKS, default: {
-                let ticks = lifeTicks(bitcast<f32>(words[w]));
+            case LIFE_TICKS: {
+                // The search started its in-word's values a count rounds
+                // to away from its estimate, as a coarser division would.
+                let inverse = bitcast<f32>(words[w]);
+                var start = max(ceil(1048576.0 / inverse), 1.0);
+                let away = bitcast<i32>(words[w + 1u]);
+                for (var k = 0; k < abs(away); k++) {
+                    start = select(nextCount(start), max(previousCount(start), 1.0), away < 0);
+                }
+                let ticks = lifeTicksFrom(inverse, start);
                 words[w + 2u] = ticks.x;
                 words[w + 3u] = ticks.y;
+            }
+            case REMAINDERS: {
+                let r = remainder64(vec2<u32>(words[w], words[w + 1u]),
+                                    vec2<u32>(words[w + 2u], words[w + 3u]));
+                words[w] = r.x;
+                words[w + 1u] = r.y;
+            }
+            case RATIOS: {
+                words[w] = bitcast<u32>(ratio(vec2<u32>(words[w], words[w + 1u]),
+                                              vec2<u32>(words[w + 2u], words[w + 3u])));
+            }
+            case SUMS, default: {
+                let a = vec2<u32>(words[w], words[w + 2u]);
+                let b = vec2<u32>(words[w + 1u], words[w + 3u]);
+                let sum = add64(a, b);
+                let difference = subtract64(a, b);
+                words[w] = sum.x;
+                words[w + 2u] = sum.y;
+                words[w + 1u] = difference.x;
+                words[w + 3u] = difference.y;
             }
         }
     }

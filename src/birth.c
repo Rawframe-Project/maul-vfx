@@ -500,12 +500,14 @@ static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth
     AppendValues(instance, emitter, birth, at);
     if (given != nullptr)
     {
+        // A colour or size given to an emitter that stores none is dropped:
+        // an attribute it lacks has no array of its own.
         const mvfxHostBirth* host = given;
-        if ((host->given & mvfx_givenColor) != 0)
+        if ((host->given & mvfx_givenColor) != 0 && Has(compiled, mvfx_attributeColorR))
         {
             StoreVector(instance, emitter, mvfx_attributeColorR, 4, at, host->color);
         }
-        if ((host->given & mvfx_givenSize) != 0)
+        if ((host->given & mvfx_givenSize) != 0 && Has(compiled, mvfx_attributeSizeX))
         {
             StoreVector(instance, emitter, mvfx_attributeSizeX, 3, at, host->size);
         }

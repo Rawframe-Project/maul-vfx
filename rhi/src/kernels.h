@@ -53,6 +53,13 @@ typedef enum mvfxKernel
     // The events' colours and sizes with the values over life
     // (records.wgsl).
     mvfx_kernelEventValues = 15,
+    // An emitter's births from another's events (sim.wgsl): the events
+    // that spawn kept, sorted by tick, their births placed and bounded,
+    // merged with the plan's.
+    mvfx_kernelSpawnCount = 16,
+    mvfx_kernelSpawnSort = 17,
+    mvfx_kernelSpawnScan = 18,
+    mvfx_kernelSpawnMerge = 19,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

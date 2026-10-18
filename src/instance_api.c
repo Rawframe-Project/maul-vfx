@@ -117,7 +117,8 @@ static int32_t LevelThatFits(const mvfxContext* context, const mvfxEffect* effec
 
 // Whether an effect's steps can be written as plans: none of what the
 // core steps beside the particles (gases, water surfaces) or what waits on
-// the particles held (a beam's strikes, births from events).
+// the particles held (a beam's strikes). Births from events are the
+// simulation's to build and number (mvfxPlannedBirth).
 static bool CanBePlanned(const mvfxEffect* effect)
 {
     if (effect->gasCount > 0 || effect->waterCount > 0)
@@ -126,8 +127,7 @@ static bool CanBePlanned(const mvfxEffect* effect)
     }
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
-        const mvfxCompiledEmitter* emitter = &effect->emitters[e];
-        if (emitter->beam.enabled || emitter->eventSpawn.enabled)
+        if (effect->emitters[e].beam.enabled)
         {
             return false;
         }
@@ -287,6 +287,21 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
+// The ticks from a plan's start whose events give an emitter births.
+static void SpawnWindow(const mvfxInstance* instance, int32_t emitter, mvfxEmitterPlan* plan)
+{
+    int64_t first = 1;
+    int64_t last = 0;
+    if (instance->effect->emitters[emitter].eventSpawn.enabled)
+    {
+        mvfxEventSpawnWindow(instance, emitter, &first, &last);
+        first -= instance->planStart;
+        last -= instance->planStart;
+    }
+    plan->spawnFirst = first;
+    plan->spawnLast = last;
+}
+
 mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance,
                                        int32_t emitter, mvfxEmitterPlan* planOut)
 {
@@ -327,7 +342,9 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
         .hostBirths = state->planHosts,
         .hostBirthCount = state->planHostCount,
         .cleared = live->planCleared,
+        .owed = state->owed,
     };
+    SpawnWindow(live, emitter, planOut);
     mvfxPlanResolved(live, emitter, planOut);
     for (int32_t k = 0; k < 3; ++k)
     {

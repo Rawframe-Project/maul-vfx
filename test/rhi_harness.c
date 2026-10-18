@@ -478,14 +478,22 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
                                             mvfx_attributePositionZ};
     static const mvfxAttribute velocities[3] = {mvfx_attributeVelocityX, mvfx_attributeVelocityY,
                                                 mvfx_attributeVelocityZ};
+    // Births from collisions are born at their contacts' ticks, which
+    // round a share of the move the GPU finds in binary32: within a
+    // thousandth of the step, as the events' (SameEvent).
+    const mvfxEventSpawn* spawn = &cpu->effect->emitters[e].eventSpawn;
+    int64_t slack =
+        spawn->enabled && spawn->kind == mvfx_eventCollision ? 1 + s_stepTicks / 1000 : 0;
     bool same = true;
     for (int32_t i = 0; same && i < state->count; ++i)
     {
         uint32_t lifeBits;
         memcpy(&lifeBits, &inverseLife[i], sizeof lifeBits);
         const mvfxAttributeArrays* a = &s_arrays;
-        same = Word(a->serial, i) == serial[i] && Word(a->birth, i) == low[i] &&
-               Word(a->birth + 1, i) == high[i] && Word(a->inverseLife, i) == lifeBits &&
+        int64_t gpuBirth = (int64_t)((uint64_t)Word(a->birth + 1, i) << 32u | Word(a->birth, i));
+        int64_t cpuBirth = (int64_t)((uint64_t)high[i] << 32u | low[i]);
+        same = Word(a->serial, i) == serial[i] && llabs(gpuBirth - cpuBirth) <= slack &&
+               Word(a->inverseLife, i) == lifeBits &&
                (collisions == NULL || Word(a->collisions, i) == collisions[i]);
         s_contacts += collisions != NULL ? collisions[i] : 0u;
         if (s_deathTicks)

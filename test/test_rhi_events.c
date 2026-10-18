@@ -85,8 +85,9 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     // in the emitter's units under a growing instance) and the instance's;
     // then under the ceiling in the world's space, each contact taking 60%
     // of the life left, so that deaths by a kill (births' among them) are
-    // aged by the inverse life their contacts left. (In the instance's
-    // space a grazing contact there counts on one side and not the other.)
+    // aged by the inverse life their contacts left (in the instance's
+    // space a grazing contact there counts on one side and not the other);
+    // then births killed in their first step.
     static const mvfxCurveKey keys[2] = {
         {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
         {.time = 1, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
@@ -127,6 +128,18 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .colliding = true},
             "events' values over life after contacts' life loss");
+    // A ceiling through the shape's middle that kills on contact: births
+    // just under it, rising, die in their first step, their deaths aged by
+    // the lives they had.
+    static const mvfxCollider middle = {
+        .kind = mvfx_colliderPlane, .center = {0, 0.02f, 0}, .normal = {0, -1, 0}};
+    emitter.colliders = &middle;
+    emitter.collision = (mvfxCollision){.enabled = true, .killOnCollision = true};
+    Compare(
+        gpu, kernels,
+        &(Run){
+            .emitters = &emitter, .emitterCount = 1, .least = 5, .moving = true, .killing = true},
+        "events' values over life of births killed at once");
 }
 
 static void TestBound(Gpu* gpu, mvfxGpu* kernels)

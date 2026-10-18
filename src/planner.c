@@ -7,6 +7,9 @@
 // the CPU path's heap would hold. Room is left to the simulation, which
 // alone knows what it holds: the plan refuses only what no simulation
 // could take (past the capacity at one tick) and what it has no room for.
+// An emitter that spawns from events is numbered by the simulation, which
+// alone builds the births events give: the plan counts its own and the
+// host's births, and its last death is bounded instead.
 
 #include "planner.h"
 
@@ -14,6 +17,8 @@
 #include "emitter_step.h"
 #include "integrate.h"
 #include "spawn.h"
+
+#include <math.h>
 
 void mvfxBeginPlans(mvfxInstance* instance)
 {
@@ -34,14 +39,23 @@ void mvfxBeginPlans(mvfxInstance* instance)
     }
 }
 
+// Whether the simulation numbers an emitter's births: it spawns from
+// events.
+static bool NumberedElsewhere(const mvfxInstance* instance, int32_t emitter)
+{
+    return instance->effect->emitters[emitter].eventSpawn.enabled;
+}
+
 // Writes a kept birth into the emitter's plan, the host's particle it is
-// (all ones for one of its own).
+// (all ones for one of its own); its death tick and inverse life 0 when
+// the simulation numbers it.
 static void Write(mvfxInstance* instance, int32_t emitter, uint64_t serial, int64_t tick,
                   int64_t batchIndex, int64_t batchCount, uint32_t host)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
-    float inverseLife = mvfxInverseLifeOf(instance, emitter, serial, tick);
-    int64_t death = mvfxDeathTick(tick, inverseLife);
+    bool elsewhere = NumberedElsewhere(instance, emitter);
+    float inverseLife = elsewhere ? 0.0f : mvfxInverseLifeOf(instance, emitter, serial, tick);
+    int64_t death = elsewhere ? instance->planStart : mvfxDeathTick(tick, inverseLife);
     uint64_t deathFromStart = (uint64_t)(death - instance->planStart);
     state->plan[state->planCount++] = (mvfxPlannedBirth){
         .serialLow = (uint32_t)serial,
@@ -56,6 +70,20 @@ static void Write(mvfxInstance* instance, int32_t emitter, uint64_t serial, int6
         .host = host,
     };
     state->lastDeath = death > state->lastDeath ? death : state->lastDeath;
+}
+
+// The values a host's particle gives as a plan names them, and how its
+// velocity is given where the simulation draws it.
+static uint8_t GivenOf(const mvfxInstance* instance, int32_t emitter, const mvfxHostBirth* host)
+{
+    uint32_t given = ((host->given & mvfx_givenColor) != 0 ? MVFX_HOST_GIVES_COLOR : 0u) |
+                     ((host->given & mvfx_givenSize) != 0 ? MVFX_HOST_GIVES_SIZE : 0u);
+    if (NumberedElsewhere(instance, emitter))
+    {
+        given |= ((host->given & mvfx_givenVelocity) != 0 ? MVFX_HOST_GIVES_VELOCITY : 0u) |
+                 ((host->given & mvfx_givenAddedVelocity) != 0 ? MVFX_HOST_ADDS_VELOCITY : 0u);
+    }
+    return (uint8_t)given;
 }
 
 // Writes the host's queued particles, born at the step's start before its
@@ -74,9 +102,7 @@ static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
         const mvfxHostBirth* host = &state->hostQueue[h];
         uint64_t serial = state->owed + (uint64_t)h;
         mvfxPlannedHostBirth* out = &state->planHosts[state->planHostCount];
-        *out = (mvfxPlannedHostBirth){
-            .given = (uint8_t)(((host->given & mvfx_givenColor) != 0 ? MVFX_HOST_GIVES_COLOR : 0u) |
-                               ((host->given & mvfx_givenSize) != 0 ? MVFX_HOST_GIVES_SIZE : 0u))};
+        *out = (mvfxPlannedHostBirth){.given = GivenOf(instance, emitter, host)};
         for (int32_t k = 0; k < 3; ++k)
         {
             out->position[k] = host->position[k];
@@ -86,7 +112,18 @@ static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
         {
             out->color[k] = host->color[k];
         }
-        mvfxHostVelocity(instance, emitter, host, serial, start, out->velocity);
+        if (NumberedElsewhere(instance, emitter))
+        {
+            // Drawn by the simulation at the serial it decides.
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                out->velocity[k] = host->velocity[k];
+            }
+        }
+        else
+        {
+            mvfxHostVelocity(instance, emitter, host, serial, start, out->velocity);
+        }
         Write(instance, emitter, serial, start, h, state->hostCount,
               (uint32_t)state->planHostCount++);
     }
@@ -95,6 +132,54 @@ static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
     state->planRefused = mvfxSaturatingAdd(state->planRefused, refused);
     state->refused = mvfxSaturatingAdd(state->refused, refused);
     state->hostCount = 0;
+}
+
+// The ticks the longest life a birth of the emitter could draw now spans,
+// and one more: its lifetime's largest value times its curve's largest
+// sample or its parameter, held as a drawn life is.
+static int64_t LongestLifeTicks(const mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledScalar* lifetime = &instance->effect->emitters[emitter].lifetime;
+    double longest = fmax(fabs((double)lifetime->min), fabs((double)lifetime->max));
+    if (lifetime->kind == mvfx_sourceCurve)
+    {
+        double factor = 0.0;
+        for (int32_t s = 0; s < MVFX_CURVE_SAMPLES; ++s)
+        {
+            factor = fmax(factor, fabs((double)lifetime->curve->samples[s]));
+        }
+        longest *= factor;
+    }
+    else if (lifetime->kind == mvfx_sourceParameter)
+    {
+        longest *= fabs((double)instance->parameters[lifetime->parameter][0]);
+    }
+    longest = fmin(fmax(longest, 0x1p-20), (double)MVFX_MAX_LIFETIME);
+    return (int64_t)ceil(longest * (double)MVFX_TICKS_PER_SECOND) + 1;
+}
+
+// An emitter numbered by the simulation has no death ticks in its plan:
+// when it took births within the plan, or its source may have written
+// events where they give births (it held particles or took births), its
+// particles may live until the plan's end and the longest life after.
+static void BoundLastDeath(mvfxInstance* instance, int32_t emitter)
+{
+    if (!NumberedElsewhere(instance, emitter))
+    {
+        return;
+    }
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    const mvfxEmitterState* source =
+        &instance->emitters[instance->effect->emitters[emitter].eventSpawn.source];
+    int64_t first = 0;
+    int64_t last = 0;
+    mvfxEventSpawnWindow(instance, emitter, &first, &last);
+    bool sourceWrites = first <= last && (source->lastDeath > first || source->planCount > 0);
+    if (state->planCount > 0 || sourceWrites)
+    {
+        int64_t bound = instance->clock + LongestLifeTicks(instance, emitter);
+        state->lastDeath = bound > state->lastDeath ? bound : state->lastDeath;
+    }
 }
 
 void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
@@ -131,5 +216,6 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
         state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)(count - taken));
     }
     mvfxSaveBirths(instance, &births);
+    BoundLastDeath(instance, emitter);
     mvfxEndDistance(instance, emitter);
 }

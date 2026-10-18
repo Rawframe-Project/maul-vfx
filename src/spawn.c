@@ -309,6 +309,29 @@ void mvfxEndDistance(mvfxInstance* instance, int32_t emitter)
     state->distanceNext = 0;
 }
 
+void mvfxEventSpawnWindow(const mvfxInstance* instance, int32_t emitter, int64_t* first,
+                          int64_t* last)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    *first = compiled->delay > instance->planStart ? compiled->delay : instance->planStart;
+    *last = instance->stopTick < instance->clock ? instance->stopTick : instance->clock;
+    if (compiled->loops > 0)
+    {
+        int64_t end = compiled->delay + (int64_t)compiled->loops * compiled->duration;
+        *last = end < *last ? end : *last;
+    }
+}
+
+// Whether an emitter spawning from a source's events may still spawn: the
+// source holds particles (a planned one, while its last death is ahead) or
+// has births ahead.
+static bool SourceMayWrite(const mvfxInstance* instance, int32_t source)
+{
+    const mvfxEmitterState* held = &instance->emitters[source];
+    return held->count > 0 || (instance->planned && held->lastDeath > instance->clock) ||
+           mvfxHasBirthsAhead(instance, source);
+}
+
 bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -336,14 +359,9 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
         // It spawns whenever the instance moves, or strikes its beam again.
         return true;
     }
-    if (compiled->eventSpawn.enabled)
+    if (compiled->eventSpawn.enabled && SourceMayWrite(instance, compiled->eventSpawn.source))
     {
-        // It spawns while its source may write events.
-        int32_t source = compiled->eventSpawn.source;
-        if (instance->emitters[source].count > 0 || mvfxHasBirthsAhead(instance, source))
-        {
-            return true;
-        }
+        return true;
     }
     if (compiled->duration > 0)
     {

@@ -230,7 +230,7 @@ mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan)
         .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_VALUES_FIRST, MVFX_KILLS_FIRST},
         .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)plan->forceCount,
                   56 + 32 * (uint32_t)plan->colliderCount, MVFX_VALUES_WORDS,
-                  4 + 20 * (uint32_t)plan->killRuleCount},
+                  24 + 20 * (uint32_t)plan->killRuleCount},
     };
 }
 
@@ -248,6 +248,74 @@ void mvfxSourcesOf(const mvfxEmitterView* view, mvfxSourceView sources[MVFX_GPU_
     {
         sources[MVFX_SOURCE_CUSTOM + i] = view->custom[i];
     }
+    sources[MVFX_SOURCE_LIFE] = view->lifetime;
+}
+
+uint32_t mvfxSpawnFirst(int32_t capacity, int32_t eventCapacity)
+{
+    return mvfxEventFirst(capacity) + MVFX_EVENT_WORDS * (uint32_t)eventCapacity;
+}
+
+uint64_t mvfxSpawnWords(int32_t sourceEventCapacity)
+{
+    return MVFX_SPAWN_EVENTS + (uint64_t)(MVFX_EVENT_WORDS + 7u) * (uint64_t)sourceEventCapacity;
+}
+
+// A plan's ticks from its start as a word, held to the plan.
+static uint32_t PlanTick(int64_t tick, int64_t ticks)
+{
+    return (uint32_t)(tick < 0 ? 0 : (tick > ticks ? ticks : tick));
+}
+
+void mvfxSpawnNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                      const mvfxEmitterView* source, const mvfxEmitterPlan* sourcePlan,
+                      int32_t hostRecords, uint32_t words[MVFX_STEP_WORDS])
+{
+    const mvfxEventSpawn* spawn = &view->eventSpawn;
+    if (!spawn->enabled)
+    {
+        return;
+    }
+    uint32_t* head = words + MVFX_SPAWN_FIRST;
+    bool spawns = plan->spawnFirst <= plan->spawnLast && plan->spawnLast >= 0 &&
+                  plan->spawnFirst <= plan->ticks;
+    head[0] = spawns ? PlanTick(plan->spawnFirst, plan->ticks) : 1u;
+    head[1] = spawns ? PlanTick(plan->spawnLast, plan->ticks) : 0u;
+    head[2] = (uint32_t)plan->hostBirthCount;
+    head[3] = mvfxSpawnFirst(plan->capacity, view->eventCapacity);
+    head[4] = (uint32_t)plan->owed;
+    head[5] = (uint32_t)(plan->owed >> 32u);
+    head[6] = 6u * (uint32_t)plan->capacity + 4u * (uint32_t)hostRecords;
+    head[7] = 2u * (uint32_t)plan->capacity;
+    const double* anchor = sourcePlan->anchorAfter;
+    const double* own = plan->anchorAfter;
+    const double* start = plan->from.origin;
+    const double* end = plan->to.origin;
+    Floats(head + 8, (float)(anchor[0] - own[0]), (float)(anchor[1] - own[1]),
+           (float)(anchor[2] - own[2]), 0.0f);
+    Floats(head + 12, (float)(anchor[0] - start[0]), (float)(anchor[1] - start[1]),
+           (float)(anchor[2] - start[2]), 0.0f);
+    Floats(head + 16, (float)(end[0] - start[0]), (float)(end[1] - start[1]),
+           (float)(end[2] - start[2]), 0.0f);
+    uint32_t* rule = words + MVFX_SPAWN_RULE_FIRST;
+    uint64_t delay = (uint64_t)view->delayTicks;
+    uint64_t loop = (uint64_t)view->loopTicks;
+    const uint32_t ruleWords[12] = {1u,
+                                    (uint32_t)spawn->kind,
+                                    (uint32_t)spawn->minCount,
+                                    (uint32_t)(spawn->maxCount - spawn->minCount) + 1u,
+                                    (uint32_t)spawn->capacity,
+                                    (spawn->inheritColor ? 1u : 0u) |
+                                        (spawn->inheritSize ? 2u : 0u) |
+                                        (source->space == mvfx_spaceLocal ? 4u : 0u),
+                                    0u,
+                                    (uint32_t)source->eventCapacity,
+                                    (uint32_t)delay,
+                                    (uint32_t)(delay >> 32u),
+                                    (uint32_t)loop,
+                                    (uint32_t)(loop >> 32u)};
+    memcpy(rule, ruleWords, sizeof ruleWords);
+    memcpy(&rule[6], &spawn->inheritVelocity, sizeof(float));
 }
 
 void mvfxHostBirthWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t* words)
@@ -548,7 +616,7 @@ static void KillRules(const mvfxEmitterPlan* plan, uint32_t* words)
     for (int32_t r = 0; r < plan->killRuleCount; ++r)
     {
         const mvfxPlannedKillRule* rule = &plan->killRules[r];
-        uint32_t* at = words + 4 + 20 * r;
+        uint32_t* at = words + (MVFX_KILL_RULES_FIRST - MVFX_KILLS_FIRST) + 20 * r;
         at[0] = rule->kind;
         at[1] = (uint32_t)rule->collisions;
         at[2] = (uint32_t)rule->minimumAgeTicks;

@@ -4,7 +4,8 @@
 // Spawning from events: a death's particles born at its tick and place
 // with a share of its velocity; a source after its consumer in the def
 // still stepping first; counts drawn in their range and fixed by their
-// inputs; the colour and size inherited; a local emitter's births mapped
+// inputs; the colour and size inherited (dropped by a consumer storing
+// neither); a local emitter's births mapped
 // through the instance; a full consumer taking the earliest events'
 // births and refusing the rest; a stop ending the spawns; a consumer
 // keeping its instance going while its source lives; and the refusals,
@@ -169,6 +170,18 @@ static void TestInherit(void)
     CHECK(scene.live->emitters[1].count == 1 && At(&scene, 1, mvfx_attributeColorG, 0) == 0.5f &&
               At(&scene, 1, mvfx_attributeSizeX, 0) == 3.0f,
           "its colour and size");
+    mvfxDestroyContext(scene.context);
+    // A consumer storing neither keeps its places: what it inherits goes.
+    emitters[1].color = (mvfxVectorSource){0};
+    emitters[1].size = (mvfxVectorSource){0};
+    scene = NewScene(emitters, 2);
+    Place(&scene, 0, 4, 5, 6, 0.0f);
+    Step(&scene, 1);
+    Step(&scene, MVFX_TICKS_PER_SECOND - 1);
+    CHECK(scene.live->emitters[1].count == 1 && At(&scene, 1, mvfx_attributePositionX, 0) == 4.0f &&
+              At(&scene, 1, mvfx_attributePositionY, 0) == 5.0f &&
+              At(&scene, 1, mvfx_attributePositionZ, 0) == 6.0f,
+          "a consumer storing no colour or size keeps its places");
     mvfxDestroyContext(scene.context);
 }
 

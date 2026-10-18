@@ -26,6 +26,10 @@ extern "C"
     typedef struct mvfxPlannedBirth
     {
         // Its serial, the count of the emitter's births owed before it.
+        // For an emitter that spawns from events, which the simulation
+        // numbers, the count of its own and the host's births before it
+        // (the simulation adds the births events gave before it), and its
+        // death tick and inverse life are 0: they follow from the serial.
         uint32_t serialLow;
         uint32_t serialHigh;
         // The tick it is born at, from the plan's start.
@@ -155,15 +159,22 @@ extern "C"
     } mvfxPlannedDepth;
 
 // The values a host's particle gives beside its place and velocity
-// (mvfxPlannedHostBirth's given).
-#define MVFX_HOST_GIVES_COLOR 1u
-#define MVFX_HOST_GIVES_SIZE  2u
+// (mvfxPlannedHostBirth's given), and for an emitter that spawns from
+// events how its velocity is given.
+#define MVFX_HOST_GIVES_COLOR    1u
+#define MVFX_HOST_GIVES_SIZE     2u
+#define MVFX_HOST_GIVES_VELOCITY 4u
+#define MVFX_HOST_ADDS_VELOCITY  8u
 
     // A particle the host queued (mvfxInstance_Spawn) as a plan hands it
     // over: its place as given (the world's for a world-space emitter, the
     // instance's otherwise), its velocity in the particles' space, given
     // or drawn as the CPU path draws it, and the colour and size it gives
-    // (MVFX_HOST_GIVES_COLOR and MVFX_HOST_GIVES_SIZE in given).
+    // (MVFX_HOST_GIVES_COLOR and MVFX_HOST_GIVES_SIZE in given). For an
+    // emitter that spawns from events, whose serials the simulation
+    // decides, the velocity is the host's own: given
+    // (MVFX_HOST_GIVES_VELOCITY), added to the one drawn at the serial
+    // (MVFX_HOST_ADDS_VELOCITY), or neither, the drawn one alone.
     typedef struct mvfxPlannedHostBirth
     {
         double position[3];
@@ -228,13 +239,26 @@ extern "C"
         double anchorAfter[3];
         // The births owed, in tick order. Past the plan's room (the
         // capacity's births at one tick, twice the capacity in a plan) a
-        // birth is refused here, still owed; refused counts them.
+        // birth is refused here, still owed; refused counts them. For an
+        // emitter that spawns from events they are its own and the host's
+        // only: the simulation builds the births events give and numbers
+        // them all (mvfxPlannedBirth).
         const mvfxPlannedBirth* births;
         int32_t birthCount;
         uint64_t refused;
         // The host's particles its births name, staying as the births do.
         const mvfxPlannedHostBirth* hostBirths;
         int32_t hostBirthCount;
+        // For an emitter that spawns from events, the ticks from the plan's
+        // start whose events give births: from spawnFirst to spawnLast,
+        // within its delay and loops and up to the instance's stop (none
+        // when spawnFirst is past spawnLast).
+        int64_t spawnFirst;
+        int64_t spawnLast;
+        // The serials its births took to the plan's end, refused or not:
+        // the next birth's (for an emitter that spawns from events, its own
+        // and the host's births only).
+        uint64_t owed;
         // Whether the instance was cleared before the plan (stopped with
         // mvfx_stopAndClear, restarted, or just created): the simulation
         // drops every particle it holds first.
@@ -517,6 +541,17 @@ extern "C"
         // at most eventCapacity of them (0 when it writes none).
         uint8_t events;
         int32_t eventCapacity;
+        // Its lifetime in seconds as a birth draws it (one component, held
+        // to [2^-20, MVFX_MAX_LIFETIME] after the draw), and the births it
+        // takes from another emitter's events (eventSpawn.enabled), which a
+        // simulation of its plan builds, numbers and draws the lives of
+        // itself (mvfxPlannedBirth).
+        mvfxSourceView lifetime;
+        mvfxEventSpawn eventSpawn;
+        // Its start delay and loop in ticks (a loop of 0 for none), from
+        // which an event birth's source age follows (mvfxPlannedBirth).
+        int64_t delayTicks;
+        int64_t loopTicks;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

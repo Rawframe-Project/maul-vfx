@@ -77,7 +77,7 @@ extern "C"
     // most eventCapacity; those past it in the next word): kind | killed
     // << 8, serial, tick (low, high word), place (binary32 offsets from the
     // plan's anchor after, in the world), velocity, normal, colour, size,
-    // then four words the part uses; in the order the CPU path's
+    // then eight words the part uses; in the order the CPU path's
     // mvfxInstance_GetEvents gives them.
     typedef struct mvfxGpuParticles
     {
@@ -93,11 +93,17 @@ extern "C"
 // The words of an event in an events buffer, and the statistics record's
 // word holding the step's count of events written (the next, those
 // dropped).
-#define MVFX_GPU_EVENT_WORDS    24
+#define MVFX_GPU_EVENT_WORDS    28
 #define MVFX_GPU_EVENTS_WRITTEN 28
 
+// For an emitter that spawns from events, the statistics record's words
+// holding the serials its event births took (two words), then the step's
+// event births refused (past its spawning's capacity) and births past its
+// births' room (twice its capacity).
+#define MVFX_GPU_EVENT_SERIALS 34
+
 // The words of an emitter's statistics record.
-#define MVFX_GPU_STATISTICS_WORDS 34
+#define MVFX_GPU_STATISTICS_WORDS 38
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -112,8 +118,12 @@ extern "C"
     /// keeps 16 bytes a particle of its capacity and 2,048 a block of 1,024
     /// of them for the sort, one that writes events 36 bytes a particle of
     /// its capacity, 16 a block of its scan (a block for 1,024 of three
-    /// times its capacity), 96 an event of its capacity of them and 1,952
-    /// for their numbers.
+    /// times its capacity), 112 an event of its capacity of them and 1,952
+    /// for their numbers; one that spawns from another's events the same
+    /// 36 and 16 where it writes none, 140 an event of its source's event
+    /// capacity and 64 more for the region's counts, 96 more a particle of
+    /// its capacity for its plan's births staged, and 64 a birth from
+    /// events a step takes (to twice its capacity) for their records.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.

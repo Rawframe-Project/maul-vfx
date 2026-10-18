@@ -223,6 +223,10 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->sortMeasure = e->sortMeasure;
     viewOut->events = e->events;
     viewOut->eventCapacity = e->eventCapacity;
+    viewOut->lifetime = ScalarSourceOf(&e->lifetime);
+    viewOut->eventSpawn = e->eventSpawn;
+    viewOut->delayTicks = e->delay;
+    viewOut->loopTicks = e->duration;
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];

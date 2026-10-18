@@ -239,7 +239,10 @@ typedef enum CheckMode
     CHECK_RECIPROCALS = 0,
     CHECK_QUOTIENTS = 1,
     CHECK_CONVERSIONS = 2,
-    CHECK_LIFE_TICKS = 3
+    CHECK_LIFE_TICKS = 3,
+    CHECK_SUMS = 4,
+    CHECK_REMAINDERS = 5,
+    CHECK_RATIOS = 6
 } CheckMode;
 
 typedef struct Checker
@@ -475,7 +478,12 @@ static void TestConversions(Gpu* gpu, Checker* checker)
 
 // Lives from the shortest (2^-20 s) to the longest (MVFX_MAX_LIFETIME),
 // drawn evenly in their logarithm and at whole ticks, their inverses as
-// the core divides; each life's ticks as mvfxDeathTick finds them.
+// the core divides; inverses at powers of 2 and a unit in the last place
+// either side (ticks at powers of 2, where the gap below a count's binary32
+// halves, 2^24 among them); half of them with the search started up to 8
+// values a count rounds to either side of its estimate, as a division
+// within 2.5 units in the last place might put it. Each life's ticks as
+// mvfxDeathTick finds them.
 static void TestLifeTicks(Gpu* gpu, Checker* checker)
 {
     uint64_t state = 3;
@@ -491,6 +499,14 @@ static void TestLifeTicks(Gpu* gpu, Checker* checker)
         }
         life = life >= 0x1p-20f ? life : 0x1p-20f;
         checker->words[4 * e] = Bits(1.0f / life);
+        if (e < 3 * 20)
+        {
+            // 2^0 down to 2^-19, as lives of 1 s to 2^19 s, and either
+            // neighbour.
+            checker->words[4 * e] = ((127u - e / 3u) << 23u) + (e % 3u) - 1u;
+        }
+        int32_t away = e % 2 == 0 ? 0 : (int32_t)(e / 2 % 17) - 8;
+        memcpy(&checker->words[4 * e + 1], &away, sizeof away);
     }
     bool ran = RunChecks(gpu, checker, CHECK_LIFE_TICKS, 0, CHECKS);
     int64_t wrong = 0;
@@ -501,6 +517,116 @@ static void TestLifeTicks(Gpu* gpu, Checker* checker)
         wrong += ticks != mvfxDeathTick(0, FloatOf(w[0]));
     }
     CHECK(ran && wrong == 0, "drawn lives' ticks as mvfxDeathTick finds them");
+}
+
+// 64-bit sums and differences, drawn and with every carry and borrow at
+// the low word's edge.
+static void TestSums(Gpu* gpu, Checker* checker)
+{
+    uint64_t state = 4;
+    for (uint32_t e = 0; e < CHECKS; ++e)
+    {
+        uint32_t* w = &checker->words[4 * e];
+        w[0] = Draw(&state);
+        w[1] = Draw(&state);
+        w[2] = Draw(&state);
+        w[3] = Draw(&state);
+        if (e % 2 == 0)
+        {
+            w[0] = 0xFFFFFFFFu - (Draw(&state) & 7u);
+            w[1] = Draw(&state) & 15u;
+        }
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_SUMS, 0, CHECKS);
+    // The same draws again, against what came back.
+    state = 4;
+    int64_t wrong = 0;
+    for (uint32_t e = 0; ran && e < CHECKS; ++e)
+    {
+        uint32_t in[4];
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            in[k] = Draw(&state);
+        }
+        if (e % 2 == 0)
+        {
+            in[0] = 0xFFFFFFFFu - (Draw(&state) & 7u);
+            in[1] = Draw(&state) & 15u;
+        }
+        uint64_t a = (uint64_t)in[2] << 32u | in[0];
+        uint64_t b = (uint64_t)in[3] << 32u | in[1];
+        const uint32_t* w = &checker->words[4 * e];
+        uint64_t sum = (uint64_t)w[2] << 32u | w[0];
+        uint64_t difference = (uint64_t)w[3] << 32u | w[1];
+        wrong += sum != a + b || difference != a - b;
+    }
+    CHECK(ran && wrong == 0, "64-bit sums and differences with their carries");
+}
+
+// Two 64-bit numbers of an element, its first and second.
+static void PutPair(uint32_t* w, uint64_t first, uint64_t second)
+{
+    w[0] = (uint32_t)first;
+    w[1] = (uint32_t)(first >> 32u);
+    w[2] = (uint32_t)second;
+    w[3] = (uint32_t)(second >> 32u);
+}
+
+// A drawn number of 1 to bits bits.
+static uint64_t DrawBits(uint64_t* state, uint32_t bits)
+{
+    uint32_t length = 1u + Draw(state) % bits;
+    uint64_t x = ((uint64_t)Draw(state) << 32u | Draw(state)) >> (64u - length);
+    return x | 1ull << (length - 1u);
+}
+
+// 64-bit remainders over divisors of up to 48 bits, and the ratios of
+// numbers below their divisors (below 2^53, as C's binary64 divides them
+// exactly) as C rounds them to binary32: drawn, and at exact ties (an odd
+// numerator of 25 bits over a power of 2).
+static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
+{
+    uint64_t state = 5;
+    for (uint32_t e = 0; e < CHECKS; ++e)
+    {
+        PutPair(&checker->words[4 * e], DrawBits(&state, 64), DrawBits(&state, 48));
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_REMAINDERS, 0, CHECKS);
+    state = 5;
+    int64_t wrong = 0;
+    for (uint32_t e = 0; ran && e < CHECKS; ++e)
+    {
+        uint64_t x = DrawBits(&state, 64);
+        uint64_t d = DrawBits(&state, 48);
+        const uint32_t* w = &checker->words[4 * e];
+        wrong += ((uint64_t)w[1] << 32u | w[0]) != x % d;
+    }
+    CHECK(ran && wrong == 0, "64-bit remainders");
+    uint64_t* pairs = calloc(2 * (size_t)CHECKS, sizeof *pairs);
+    for (uint32_t e = 0; pairs != NULL && e < CHECKS; ++e)
+    {
+        uint64_t d = DrawBits(&state, 53);
+        uint64_t n = DrawBits(&state, 53) % d;
+        if (e % 4 == 0)
+        {
+            uint32_t shift = 25u + Draw(&state) % 28u;
+            d = 1ull << shift;
+            n = ((1ull << 24u) | (Draw(&state) & 0x00FFFFFFu) | 1u)
+                << (Draw(&state) % (shift - 24u));
+        }
+        pairs[2 * e] = n;
+        pairs[2 * e + 1] = d;
+        PutPair(&checker->words[4 * e], n, d);
+    }
+    ran = pairs != NULL && RunChecks(gpu, checker, CHECK_RATIOS, 0, CHECKS);
+    wrong = 0;
+    for (uint32_t e = 0; ran && e < CHECKS; ++e)
+    {
+        float expected = (float)((double)pairs[2 * e] / (double)pairs[2 * e + 1]);
+        wrong += checker->words[4 * e] != Bits(expected);
+    }
+    free(pairs);
+    CHECK(ran && wrong == 0, "ratios as C rounds them, ties among them");
 }
 
 static void TestExact(Gpu* gpu)
@@ -514,6 +640,8 @@ static void TestExact(Gpu* gpu)
         TestQuotients(gpu, &checker);
         TestConversions(gpu, &checker);
         TestLifeTicks(gpu, &checker);
+        TestSums(gpu, &checker);
+        TestRemaindersAndRatios(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }

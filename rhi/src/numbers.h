@@ -11,8 +11,8 @@
 #include "maul-vfx/plan.h"
 
 // The sources: the births' size, colour, angle, spin, orientation,
-// angular velocity, drag scale and custom values.
-#define MVFX_GPU_SOURCES        15
+// angular velocity, drag scale, custom values and lifetime.
+#define MVFX_GPU_SOURCES        16
 #define MVFX_SOURCE_SIZE        0
 #define MVFX_SOURCE_COLOR       1
 #define MVFX_SOURCE_ANGLE       2
@@ -21,6 +21,7 @@
 #define MVFX_SOURCE_ANGULAR     5
 #define MVFX_SOURCE_DRAG        6
 #define MVFX_SOURCE_CUSTOM      7
+#define MVFX_SOURCE_LIFE        15
 
 // The values over life the kernels read: the rotation speed, then the
 // velocity modules' speed limit, motion scale, added speed, radial speed
@@ -33,16 +34,20 @@
 // its depth image, 32 a collider for the most it has; 28 of where a
 // particle's values are among its words, 64 of the instance's
 // parameters, 4 of the angular drag's factors over the plan and 16 of
-// the velocity modules; 4 of the kill rules' head and 20 a rule for the
-// most an emitter has; then, unchanged from step to step and uploaded
-// once, 16 a source, 8 of the frame's and mesh index's draws, 4 of the
-// bounds' growth by size, 4 of how particles turn and move, and 12 of
-// the values over life.
-#define MVFX_VALUES_FIRST  (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
-#define MVFX_VALUES_WORDS  112
-#define MVFX_KILLS_FIRST   (MVFX_VALUES_FIRST + MVFX_VALUES_WORDS)
-#define MVFX_SOURCES_FIRST (MVFX_KILLS_FIRST + 4 + 20 * MVFX_MAX_KILL_RULES)
-#define MVFX_STEP_WORDS    (MVFX_SOURCES_FIRST + 16 * MVFX_GPU_SOURCES + 28)
+// the velocity modules; 4 of the kill rules' and events' head, 20 of the
+// spawning from events' and 20 a rule for the most an emitter has; then,
+// unchanged from step to step and uploaded once, 16 a source, 8 of the
+// frame's and mesh index's draws, 4 of the bounds' growth by size, 4 of
+// how particles turn and move, 12 of the values over life and 12 of how
+// it spawns from events.
+#define MVFX_VALUES_FIRST     (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
+#define MVFX_VALUES_WORDS     112
+#define MVFX_KILLS_FIRST      (MVFX_VALUES_FIRST + MVFX_VALUES_WORDS)
+#define MVFX_SPAWN_FIRST      (MVFX_KILLS_FIRST + 4)
+#define MVFX_KILL_RULES_FIRST (MVFX_KILLS_FIRST + 24)
+#define MVFX_SOURCES_FIRST    (MVFX_KILL_RULES_FIRST + 20 * MVFX_MAX_KILL_RULES)
+#define MVFX_SPAWN_RULE_FIRST (MVFX_SOURCES_FIRST + 16 * MVFX_GPU_SOURCES + 28)
+#define MVFX_STEP_WORDS       (MVFX_SPAWN_RULE_FIRST + 12)
 
 // The words a particle of an emitter takes on the GPU: its arrays, the
 // death tick's two words and the step's word.
@@ -63,7 +68,8 @@ uint32_t mvfxScanBlocks(int32_t capacity);
 // the forces it has; the collision's head, its depth image and the
 // colliders it has; where a particle's values are, the instance's
 // parameters, the angular factors and the velocity modules; the kill
-// rules' head and the rules it has. The sources' block
+// rules' and events' head, the spawning from events' and the rules it
+// has. The sources' block
 // (MVFX_SOURCES_FIRST on) is written once. The rest keep what an earlier
 // step left, never read.
 typedef struct mvfxStepSpans
@@ -97,7 +103,7 @@ void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECO
 // particle of its capacity, four a block of its scan, then its events,
 // MVFX_EVENT_WORDS each; the events' first word, and the words in all.
 #define MVFX_EVENT_FACTS 9u
-#define MVFX_EVENT_WORDS 24u
+#define MVFX_EVENT_WORDS 28u
 uint32_t mvfxEventFirst(int32_t capacity);
 uint64_t mvfxEventBufferWords(int32_t capacity, int32_t eventCapacity);
 
@@ -155,6 +161,28 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
 // The words a host's particle takes after a plan's births (sim.wgsl's
 // HostBirth).
 #define MVFX_HOST_BIRTH_WORDS 16
+
+// An emitter's spawn region in its events buffer, after its own events
+// (sim.wgsl's spawn region): 16 words of its counts, then the source's
+// events copied and seven arrays of the source's event capacity. Its
+// first word, and its words.
+uint32_t mvfxSpawnFirst(int32_t capacity, int32_t eventCapacity);
+uint64_t mvfxSpawnWords(int32_t sourceEventCapacity);
+
+// The spawn region's word of the source's events written, and of its
+// copied events.
+#define MVFX_SPAWN_SOURCE 8u
+#define MVFX_SPAWN_EVENTS 16u
+
+// Writes an emitter's numbers for spawning from events, beside its step's
+// (nothing for one that does not): the ticks whose events spawn, its
+// plan's host births, its spawn region, the serials its plan's births
+// took, the first vector of its staged plan after hostRecords host
+// records, its births' room and the source's anchor less its own; how it
+// spawns, the source's event capacity, its start delay and loop.
+void mvfxSpawnNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                      const mvfxEmitterView* source, const mvfxEmitterPlan* sourcePlan,
+                      int32_t hostRecords, uint32_t words[MVFX_STEP_WORDS]);
 
 // Writes a plan's host births in the kernels' form: each one's place in
 // the particles' space (a world-space emitter's an offset from the

@@ -9,6 +9,7 @@
 
 #include "allocator.h"
 #include "grids.h"
+#include "kernels.h"
 #include "numbers.h"
 #include "record.h"
 #include "records.h"
@@ -50,14 +51,26 @@ enum
     PASS_EVENT_OFFSETS = 9,
     PASS_EVENT_WRITE = 10,
     PASS_EVENT_VALUES = 11,
-    PASS_COUNT = 12
+    // Its births from events, when it spawns from them, after the plan's
+    // bytes: the source's events copied in, then the kernels.
+    PASS_SPAWN_COPY = 12,
+    PASS_SPAWN_COUNT = 13,
+    PASS_SPAWN_SORT = 14,
+    PASS_SPAWN_SCAN = 15,
+    PASS_SPAWN_MERGE = 16,
+    PASS_COUNT = 17
 };
 
 typedef struct Emitter
 {
-    // Its capacity, and how many particles its host queue holds.
+    // Its capacity, and how many particles its host queue holds; the
+    // emitter whose events it spawns from (-1 for none), and the host
+    // records its births buffer holds (its host queue's and its event
+    // births').
     int32_t capacity;
     int32_t hostCapacity;
+    int32_t spawnSource;
+    int32_t hostRecords;
     // The words a particle takes: its arrays and the GPU's own.
     int32_t particleWords;
     mrhiBufferId particles[2];
@@ -67,10 +80,13 @@ typedef struct Emitter
     mrhiBufferId accepted;
     mrhiBufferId blocks;
     mrhiBufferId grids;
-    // Its events' buffer, when it writes any, and the numbers the records
-    // kernel gives their values over life by (a record pass's), with the
-    // frame's ids of what that pass binds beside the step's.
+    // Its events' buffer, when it writes any or spawns from another's
+    // (whose spawn region follows its own events), whether it writes any,
+    // and the numbers the records kernel gives their values over life by
+    // (a record pass's), with the frame's ids of what that pass binds
+    // beside the step's.
     mrhiBufferId events;
+    bool writesEvents;
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
     mrhiResourceId eventResources[4];
@@ -112,6 +128,8 @@ struct mvfxGpuSim
     mvfxInstanceId instance;
     int32_t emitterCount;
     mvfxEmitterView views[MVFX_MAX_EMITTERS];
+    // The order its emitters step in: each after the one it spawns from.
+    int32_t order[MVFX_MAX_EMITTERS];
     Emitter emitters[MVFX_MAX_EMITTERS];
     // Its own 1-pixel depth and normal textures, bound where the host
     // gives none; the host's for the frame open (null ids for none); the
@@ -133,5 +151,18 @@ struct mvfxGpuSim
     // writes none.
     mrhiBufferId ownEvents;
 };
+
+// Records a kernel's pass over an emitter's buffers (sim.c).
+bool mvfxRecordSimKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p, mvfxKernel kernel,
+                         uint32_t groups);
+
+// The emitters' step order, each after the one it spawns from
+// (sim_spawn.c); the pass copying a spawning emitter's source's events
+// into its spawn region, added and recorded; its births from events
+// recorded; its numbers for them written beside its step's.
+void mvfxOrderSimEmitters(mvfxGpuSim* sim);
+bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxRecordSpawn(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups);
+mvfxResult mvfxSpawnStepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 
 #endif

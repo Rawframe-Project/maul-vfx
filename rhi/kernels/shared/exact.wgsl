@@ -47,6 +47,59 @@ fn subtract64(x: vec2<u32>, y: vec2<u32>) -> vec2<u32> {
     return vec2<u32>(x.x - y.x, x.y - y.y - select(0u, 1u, x.x < y.x));
 }
 
+fn less64(x: vec2<u32>, y: vec2<u32>) -> bool {
+    return x.y < y.y || (x.y == y.y && x.x < y.x);
+}
+
+// The remainder of a 64-bit number over a divisor below 2^63, by long
+// division a bit at a time.
+fn remainder64(x: vec2<u32>, d: vec2<u32>) -> vec2<u32> {
+    var r = vec2<u32>(0u);
+    for (var b = 63; b >= 0; b--) {
+        let word = select(x.x, x.y, b >= 32);
+        r = shiftLeft(r, 1u) | vec2<u32>((word >> (u32(b) % 32u)) & 1u, 0u);
+        if (!less64(r, d)) {
+            r = subtract64(r, d);
+        }
+    }
+    return r;
+}
+
+// n / d correctly rounded to binary32, ties to even, for n below d below
+// 2^63 (64-bit both), as C's (float)((double)n / (double)d) gives it for
+// numbers below 2^53 (rounding to binary64 first changes nothing: 53 bits
+// are at least twice 24 and 2): n shifted up to d's binade, the quotient
+// by long division to 25 bits and the remainder deciding a tie.
+fn ratio(n: vec2<u32>, d: vec2<u32>) -> f32 {
+    if (n.x == 0u && n.y == 0u) {
+        return 0.0;
+    }
+    var r = n;
+    var exponent = 127;
+    for (var k = 0; k < 64 && less64(r, d); k++) {
+        r = shiftLeft(r, 1u);
+        exponent -= 1;
+    }
+    var q = 0u;
+    for (var k = 0u; k < 25u; k++) {
+        q <<= 1u;
+        if (!less64(r, d)) {
+            r = subtract64(r, d);
+            q |= 1u;
+        }
+        r = shiftLeft(r, 1u);
+    }
+    var kept = q >> 1u;
+    if ((q & 1u) == 1u && (r.x != 0u || r.y != 0u || (kept & 1u) == 1u)) {
+        kept += 1u;
+    }
+    if (kept == 0x01000000u) {
+        kept = 0x00800000u;
+        exponent += 1;
+    }
+    return bitcast<f32>((u32(exponent) << 23u) | (kept & 0x007FFFFFu));
+}
+
 // A 64-bit count as the nearest binary32, ties to even, as C converts it.
 fn nearestFloat(low: u32, high: u32) -> f32 {
     if (high == 0u && low < 0x01000000u) {
@@ -71,9 +124,12 @@ fn nearestFloat(low: u32, high: u32) -> f32 {
     return bitcast<f32>(((exponent + 127u) << 23u) | (kept & 0x007FFFFFu));
 }
 
-// a / b correctly rounded, ties to even, for positive normal a and b whose
-// quotient is normal: the significands' quotient by long division, 25
-// bits and the remainder deciding the rounding.
+// a / b correctly rounded for positive normal a and b whose quotient is
+// normal: the significands' quotient by long division to 25 bits, rounded
+// up when the 25th is set. A quotient of two binary32 numbers is never
+// halfway between two of them, so no tie needs the remainder; and the
+// significands' quotient is at most 2 - 2^-23, below the midpoint under 2,
+// so the rounding never carries into the exponent.
 fn divide(a: f32, b: f32) -> f32 {
     let x = bitcast<u32>(a);
     let y = bitcast<u32>(b);
@@ -94,14 +150,7 @@ fn divide(a: f32, b: f32) -> f32 {
         }
         r <<= 1u;
     }
-    var kept = q >> 1u;
-    if ((q & 1u) == 1u && (r != 0u || (kept & 1u) == 1u)) {
-        kept += 1u;
-    }
-    if (kept == 0x01000000u) {
-        kept = 0x00800000u;
-        exponent += 1;
-    }
+    let kept = (q >> 1u) + (q & 1u);
     return bitcast<f32>((u32(exponent) << 23u) | (kept & 0x007FFFFFu));
 }
 
@@ -157,10 +206,16 @@ fn leastCount(f: f32) -> vec2<u32> {
 // The ticks a particle at inverse life inverse lives, as the core's
 // mvfxDeathTick: the least count of at least 1 whose age times the
 // inverse reaches 1. The age only changes where the count's binary32
-// does, so the search walks those values from an estimate (a few steps),
-// then takes the least count rounding to the value found.
+// does, so the search walks those values from an estimate (a few steps:
+// WGSL's division is within 2.5 units in the last place), then takes the
+// least count rounding to the value found.
 fn lifeTicks(inverse: f32) -> vec2<u32> {
-    var f = max(ceil(1048576.0 / inverse), 1.0);
+    return lifeTicksFrom(inverse, max(ceil(1048576.0 / inverse), 1.0));
+}
+
+// lifeTicks from a start f, a value a count rounds to.
+fn lifeTicksFrom(inverse: f32, start: f32) -> vec2<u32> {
+    var f = start;
     for (var n = 0; n < 64 && f > 1.0 && reaches(previousCount(f), inverse); n++) {
         f = previousCount(f);
     }

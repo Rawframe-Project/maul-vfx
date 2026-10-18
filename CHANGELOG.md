@@ -687,3 +687,18 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   conversions in integers, which WGSL leaves inexact); a life past
   4,096 s takes its new death tick after a life loss, where it kept the
   old one.
+- An emitter given a colour or size it stores none of (a host's particle
+  with colours, a birth inheriting them from an event) keeps its
+  particles' places: the value was written over the first array. The
+  golden state hashes change with it (the scene's spark emitter inherits
+  a colour it does not store).
+- Emitters spawning from events can be planned: the plan numbers an
+  emitter's own and the host's births and leaves the births events give,
+  their serials and lives to the simulation (`mvfxEmitterPlan`'s
+  `spawnFirst`, `spawnLast` and `owed`, `MVFX_HOST_GIVES_VELOCITY` and
+  `MVFX_HOST_ADDS_VELOCITY`), bounding the emitter's last death instead;
+  the emitter view gives the lifetime, the spawning and the loop
+  (`lifetime`, `eventSpawn`, `delayTicks`, `loopTicks`). The GPU part
+  builds those births in the CPU path's order and bound, numbers and
+  draws them, and keeps the serials they took in the statistics record
+  (`MVFX_GPU_EVENT_SERIALS`, now 38 words).

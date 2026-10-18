@@ -567,6 +567,108 @@ static void TestHostBirths(void)
     mvfxDestroyContext(context);
 }
 
+static void TestEventSpawn(void)
+{
+    // An emitter spawning from another's deaths, planned: its view gives
+    // its lifetime and how it spawns; its plan numbers its own and the
+    // host's births only, with no death ticks or lives (the simulation's),
+    // the host's velocity as given; the ticks whose events spawn follow
+    // its delay and loops; and it holds no longer than its longest life
+    // past the CPU path's last particle.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitters[2] = {Emitter(64), Emitter(64)};
+    emitters[0].duration = 0.2f;
+    emitters[0].loops = 1;
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 64;
+    emitters[1].hostSpawnCapacity = 4;
+    emitters[1].startDelay = 0.1f;
+    emitters[1].duration = 0.3f;
+    emitters[1].loops = 1;
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventDeath,
+                                              .minCount = 1,
+                                              .maxCount = 2,
+                                              .inheritColor = true,
+                                              .capacity = 32};
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 2;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    mvfxEmitterView view;
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 1, &view) == mvfx_success &&
+              view.lifetime.kind == mvfx_sourceRange && view.lifetime.components == 1 &&
+              view.lifetime.min[0] == 0.3f && view.lifetime.max[0] == 0.5f &&
+              view.eventSpawn.enabled && view.eventSpawn.source == 0 &&
+              view.eventSpawn.kind == mvfx_eventDeath && view.eventSpawn.maxCount == 2 &&
+              view.eventSpawn.inheritColor && view.eventSpawn.capacity == 32 &&
+              view.delayTicks == (int64_t)floor((double)0.1f * MVFX_TICKS_PER_SECOND + 0.5) &&
+              view.loopTicks == (int64_t)floor((double)0.3f * MVFX_TICKS_PER_SECOND + 0.5),
+          "the view's lifetime, start delay, loop and spawning from events");
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    static const double positions[6] = {1, 2, 3, -1, 0.5, 0};
+    static const float velocities[6] = {1, 0, 0, 0, 2, 0};
+    const mvfxSpawnRequest given = {.count = 2, .positions = positions, .velocities = velocities};
+    const mvfxSpawnRequest drawn = {.count = 2, .positions = positions};
+    CHECK(mvfxInstance_Spawn(context, planned, 1, &given) == mvfx_success &&
+              mvfxInstance_Spawn(context, planned, 1, &drawn) == mvfx_success,
+          "spawned");
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    mvfxEmitterPlan plan;
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 1, &plan) == mvfx_success, "a plan");
+    // Before its delay, the host's births alone.
+    bool numbered = plan.hostBirthCount == 4 && plan.birthCount == 4 && plan.owed == 4 &&
+                    plan.spawnFirst > plan.spawnLast;
+    for (int32_t b = 0; numbered && b < plan.birthCount; ++b)
+    {
+        const mvfxPlannedBirth* birth = &plan.births[b];
+        numbered = birth->serialLow == (uint32_t)b && birth->serialHigh == 0 &&
+                   birth->deathLow == 0 && birth->deathHigh == 0 && birth->inverseLife == 0.0f;
+    }
+    for (int32_t h = 0; numbered && h < 4; ++h)
+    {
+        const mvfxPlannedHostBirth* host = &plan.hostBirths[h];
+        numbered = host->given == (h < 2 ? MVFX_HOST_GIVES_VELOCITY : 0u);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            numbered = numbered && host->velocity[k] == (h < 2 ? velocities[3 * h + k] : 0.0f);
+        }
+    }
+    CHECK(numbered, "its own and the host's births numbered alone, without lives");
+    // The delay (0.1 s, rounded to ticks) falls in the seventh step: its
+    // events spawn from there to the step's end, and its own births are
+    // numbered after the host's.
+    for (int32_t s = 1; s < 7; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    }
+    int64_t delay = (int64_t)floor((double)0.1f * MVFX_TICKS_PER_SECOND + 0.5);
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 1, &plan) == mvfx_success &&
+              plan.spawnFirst == delay - plan.start && plan.spawnLast == plan.ticks &&
+              plan.birthCount > 0 && plan.births[0].serialLow == 4,
+          "events spawn from its delay");
+    int32_t cpuDone = -1;
+    int32_t plannedDone = -1;
+    for (int32_t s = 0; s < 120; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        cpuDone = cpuDone < 0 && mvfxInstance_IsFinished(context, cpu) ? s : cpuDone;
+        plannedDone =
+            plannedDone < 0 && mvfxInstance_IsFinished(context, planned) ? s : plannedDone;
+    }
+    // Its loop ends at 0.4 s (the 24th step, 7 before these): later events
+    // give none, so both finish by then and the longest life (0.5 s, 30
+    // steps) after.
+    CHECK(cpuDone >= 0 && plannedDone >= cpuDone && plannedDone + 7 <= 24 + 31,
+          "it holds no longer than its longest life past the CPU path");
+    mvfxDestroyContext(context);
+}
+
 // Whether a planned instance of an effect is refused, its id null.
 static bool PlannedRefused(mvfxContext* context, const mvfxEffectDef* def)
 {
@@ -596,18 +698,6 @@ static void TestCannotBePlanned(void)
     def.emitters = emitters;
     def.emitterCount = 1;
     bool refused = PlannedRefused(context, &def);
-    // Births from another emitter's deaths.
-    emitters[0] = Emitter(16);
-    emitters[0].events = mvfx_eventMaskDeath;
-    emitters[0].eventCapacity = 16;
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
-                                              .source = 0,
-                                              .kind = mvfx_eventDeath,
-                                              .minCount = 1,
-                                              .maxCount = 1,
-                                              .capacity = 16};
-    def.emitterCount = 2;
-    refused = refused && PlannedRefused(context, &def);
     // A gas, and a water surface.
     def.emitterCount = 1;
     const mvfxGasDef gas = mvfxDefaultGasDef();
@@ -620,7 +710,7 @@ static void TestCannotBePlanned(void)
     def.waters = &water;
     def.waterCount = 1;
     refused = refused && PlannedRefused(context, &def);
-    CHECK(refused, "beams, births from events, gases and water surfaces refused");
+    CHECK(refused, "beams, gases and water surfaces refused");
     mvfxDestroyContext(context);
 }
 
@@ -1387,6 +1477,7 @@ int main(void)
     TestHighWords();
     TestRefusals();
     TestHostBirths();
+    TestEventSpawn();
     TestCannotBePlanned();
     TestView();
     TestForces();

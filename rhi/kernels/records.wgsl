@@ -681,7 +681,7 @@ fn keys(@builtin(local_invocation_index) local: u32,
 }
 
 // An event's words in an emitter's events buffer, as sim.wgsl's.
-const EVENT_WORDS: u32 = 24u;
+const EVENT_WORDS: u32 = 28u;
 
 // Event values: each of the step's events (statistics word 28) given its
 // colour and size with the values over life, at the age and speed it
