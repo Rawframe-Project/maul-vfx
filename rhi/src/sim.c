@@ -355,10 +355,11 @@ static void DestroyBuffer(mvfxGpuSim* sim, mrhiBufferId buffer)
 
 void mvfxDestroyGpuSim(mvfxGpuSim* sim)
 {
-    if (sim == nullptr)
+    if (sim == nullptr || sim->ending)
     {
         return;
     }
+    sim->ending = true;
     for (int32_t e = 0; e < sim->emitterCount; ++e)
     {
         Emitter* emitter = &sim->emitters[e];
@@ -589,6 +590,10 @@ mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim, mrhiResourceId depth,
     {
         return mvfx_errorInvalid;
     }
+    if (sim->ending)
+    {
+        return mvfx_errorState;
+    }
     sim->hostDepth = depth;
     sim->hostNormals = depth.index1 != 0 ? normals : (mrhiResourceId){0};
     return mvfx_success;
@@ -700,6 +705,10 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
     if (sim == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (sim->ending)
+    {
+        return mvfx_errorState;
     }
     // The instance's colliders change at any step: their grids go in the
     // room the def sets aside, every emitter's placed before a pass is
@@ -864,6 +873,10 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
     if (sim == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (sim->ending)
+    {
+        return mvfx_errorState;
     }
     sim->uploaded = 0;
     const mvfxRecordPipelines pipelines = {

@@ -272,6 +272,9 @@ if(MAUL_VFX_BUILD_TESTS)
         # The bytes a step uploads, on the test driver's frame log.
         maul_add_test(rhi_uploads)
         target_link_libraries(test_rhi_uploads PRIVATE maul-vfx-rhi)
+        # Host code calling back into a simulation, refused.
+        maul_add_test(rhi_host_calls)
+        target_link_libraries(test_rhi_host_calls PRIVATE maul-vfx-rhi)
     endif()
     maul_add_header_tests()
     # The library keeps within WebAssembly's default 64 KiB stack: on the

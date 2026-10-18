@@ -31,6 +31,8 @@ extern "C"
     typedef struct mvfxGpuSimDef
     {
         uint32_t cookie;
+        // Its memory; its functions call none of the part's functions,
+        // nor change the context the simulation reads (record mvfx-0001).
         mvfxAllocator allocator;
         // A ready GPU object, which outlives the simulation.
         mvfxGpu* gpu;
@@ -154,7 +156,8 @@ extern "C"
                                                             mvfxGpuRefusal* refusalOut);
 
     /// Destroys a simulation: its buffers. No frame of the device may
-    /// still use them.
+    /// still use them. Called again from its allocator while it releases
+    /// the simulation's memory, it does nothing.
     ///
     /// @param sim  The simulation; NULL does nothing.
     /// @par Thread safety
@@ -196,7 +199,9 @@ extern "C"
     /// @param depth    The depth texture's id in the frame, or a null id.
     /// @param normals  The normal texture's id in the frame, or a null id
     ///                 (ignored without a depth texture).
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
+    ///         `mvfx_errorState` while it is destroyed (a call from its
+    ///         allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim,
@@ -217,7 +222,8 @@ extern "C"
     ///         `mvfx_errorState` when the device refuses a pass or an
     ///         import (no frame open), or when an emitter meets the
     ///         instance's depth image and no depth texture was given
-    ///         (mvfxGpuSim_SetDepthTextures); `mvfx_errorCapacity` when the
+    ///         (mvfxGpuSim_SetDepthTextures), or while it is destroyed (a
+    ///         call from its allocator); `mvfx_errorCapacity` when the
     ///         grids the instance's colliders read pass the def's
     ///         hostGridBytes.
     /// @par Thread safety
@@ -293,7 +299,8 @@ extern "C"
     ///         `mvfx_errorStale` for a layout or an instance that is gone;
     ///         `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the
     ///         emitter this frame; `mvfx_errorState` when the device refuses
-    ///         a pass or an import (no frame open).
+    ///         a pass or an import (no frame open), or while it is destroyed
+    ///         (a call from its allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim,
@@ -319,7 +326,8 @@ extern "C"
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
     ///         `mvfx_errorState` when the device refuses a command, such as
-    ///         an upload past the frame's.
+    ///         an upload past the frame's, or while it is destroyed (a call
+    ///         from its allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);

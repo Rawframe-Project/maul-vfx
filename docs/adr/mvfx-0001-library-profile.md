@@ -53,6 +53,10 @@ frames.
   refused with `mvfx_errorState` and counted as misuse: the context
   counts its calls of host code (a step or a prewarm, whose tasks and
   host modules are the host's, and each allocation).
+  The GPU part's allocators call none of its functions either: a
+  simulation refuses its changing calls the same way (counting nothing,
+  the part having no misuse count) while its destruction releases its
+  memory, the one time its host code can reach a whole object.
 - **Memory:** the owner object is the context, which takes the host's
   allocator. Creating an effect allocates its compiled form in one
   block; creating an instance allocates all of its particle, ribbon,

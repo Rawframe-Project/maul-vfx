@@ -152,6 +152,9 @@ struct mvfxGpuSim
     mrhiBufferId ownEvents;
     // The bytes the last mvfxGpuSim_Record uploaded.
     uint64_t uploaded;
+    // Whether it is being destroyed: its changing calls from its
+    // allocator meanwhile are refused (record mvfx-0001).
+    bool ending;
 };
 
 // Records a kernel's pass over an emitter's buffers (sim.c).

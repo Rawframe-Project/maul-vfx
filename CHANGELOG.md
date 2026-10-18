@@ -725,3 +725,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   one that takes it mutable, from a step's tasks or modules or from an
   allocation, is refused with `mvfx_errorState` and counted as misuse,
   where it could change the context in the middle of the call.
+- The GPU part's simulation refuses `mvfxGpuSim_SetDepthTextures`,
+  `_AddPasses`, `_AddRecords` and `_Record` with `mvfx_errorState`, and
+  a second `mvfxDestroyGpuSim` does nothing, when its allocator calls
+  them while the simulation's destruction releases its memory.

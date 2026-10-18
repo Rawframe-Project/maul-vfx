@@ -32,6 +32,8 @@ extern "C"
     typedef struct mvfxGpuDef
     {
         uint32_t cookie;
+        // Its memory, taken at creation and given back at destruction; its
+        // functions call none of the part's functions (record mvfx-0001).
         mvfxAllocator allocator;
         // The device it runs on; the object does not own it, and the device
         // outlives it.

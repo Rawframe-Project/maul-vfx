@@ -61,6 +61,10 @@ mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
     {
         return mvfx_errorInvalid;
     }
+    if (sim->ending)
+    {
+        return mvfx_errorState;
+    }
     mvfxLayoutView layout;
     mvfxResult result = mvfxLayout_GetView(sim->context, def->layout, &layout);
     if (result != mvfx_success || !mvfxIsRecordLayout(&layout))
