@@ -739,3 +739,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   the randomize amount: `mvfxGpuRefusal.shape` names a mesh shape alone,
   and its `velocity` is gone. The first step uploads 48 bytes more of an
   emitter's shape (its sources' block 1,232).
+- A mesh whose elements all have no length, area or volume (positions
+  collapsed) spawns from its first element, as documented, where the
+  choice ended on its last.

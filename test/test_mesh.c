@@ -153,6 +153,19 @@ static void TestSurfaceByArea(void)
     mvfxSampleMesh(first, mvfx_meshSurface, (mvfxWords4){0u, 0u, 0x80000000u, 0x80000000u}, p, n);
     CHECK(p[2] > 0.0f, "a draw of 0 skips the empty first triangle");
     Free(first);
+    // Triangles all of no area (a mesh whose positions collapsed): the
+    // first is chosen, whatever the draw.
+    static const float line[] = {0, 0, 0, 1, 0, 0, 2, 0, 0, 5, 0, 0, 6, 0, 0};
+    static const uint32_t lineTriangles[] = {0, 1, 2, 2, 3, 4};
+    mvfxMesh* collapsed = Build(line, NULL, 5, lineTriangles, 2, NULL, 0);
+    bool firstChosen = true;
+    for (uint32_t i = 0; i < 1000; ++i)
+    {
+        mvfxSampleMesh(collapsed, mvfx_meshSurface, Words(i), p, n);
+        firstChosen = firstChosen && p[0] <= 2.0f + 1e-6f;
+    }
+    CHECK(firstChosen, "the first of triangles of no area chosen");
+    Free(collapsed);
     Free(mesh);
 }
 

@@ -300,6 +300,10 @@ static double UnitDouble(uint32_t high, uint32_t low)
 // is never chosen; the first when every measure is 0.
 static int32_t Choose(const double* sums, int32_t count, double unit)
 {
+    if (!(sums[count - 1] > 0.0))
+    {
+        return 0;
+    }
     double target = unit * sums[count - 1];
     int32_t low = 0;
     int32_t high = count - 1;
