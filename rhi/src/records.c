@@ -3,6 +3,8 @@
 
 #include "records.h"
 
+#include "upload.h"
+
 #include "maul-rhi/resources.h"
 
 #include <string.h>
@@ -124,13 +126,12 @@ bool mvfxAddEmptyRecordPass(mrhiDevice* device, mvfxRecordPasses* passes, mrhiRe
 }
 
 // Records an empty pass's count of 0.
-static bool RecordEmpty(mrhiDevice* device, const mvfxRecordPass* pass)
+static bool RecordEmpty(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordPass* pass)
 {
     static const uint32_t zero = 0;
-    bool recorded =
-        mrhiBeginPass(device, pass->write) == mrhi_success &&
-        mrhiWriteBuffer(device, pass->write, pass->resources.count, (uint64_t)pass->words[0] * 4u,
-                        &zero, sizeof zero) == mrhi_success;
+    bool recorded = mrhiBeginPass(device, pass->write) == mrhi_success &&
+                    mvfxUpload(device, uploaded, pass->write, pass->resources.count,
+                               (uint64_t)pass->words[0] * 4u, &zero, sizeof zero);
     return mrhiEndPass(device, pass->write) == mrhi_success && recorded;
 }
 
@@ -184,16 +185,16 @@ static bool RecordRadix(mrhiDevice* device, const mvfxRecordPipelines* pipelines
 }
 
 // Records one pass's numbers, its sort and its kernel.
-static bool RecordPass(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
+static bool RecordPass(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordPipelines* pipelines,
                        const mvfxRecordPass* pass)
 {
     if (pass->empty)
     {
-        return RecordEmpty(device, pass);
+        return RecordEmpty(device, uploaded, pass);
     }
     bool recorded = mrhiBeginPass(device, pass->write) == mrhi_success &&
-                    mrhiWriteBuffer(device, pass->write, pass->numbers, 0, pass->words,
-                                    sizeof pass->words) == mrhi_success;
+                    mvfxUpload(device, uploaded, pass->write, pass->numbers, 0, pass->words,
+                               sizeof pass->words);
     recorded = mrhiEndPass(device, pass->write) == mrhi_success && recorded;
     const mvfxRecordResources* r = &pass->resources;
     const mrhiResourceId bound[RECORD_BINDINGS] = {pass->numbers, r->particles, r->statistics,
@@ -209,13 +210,13 @@ static bool RecordPass(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
                                     RECORD_BINDINGS, nullptr, pass->words[5]);
 }
 
-bool mvfxRecordRecordPasses(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
-                            mvfxRecordPasses* passes)
+bool mvfxRecordRecordPasses(mrhiDevice* device, uint64_t* uploaded,
+                            const mvfxRecordPipelines* pipelines, mvfxRecordPasses* passes)
 {
     bool recorded = true;
     for (int32_t p = 0; recorded && p < passes->count; ++p)
     {
-        recorded = RecordPass(device, pipelines, &passes->passes[p]);
+        recorded = RecordPass(device, uploaded, pipelines, &passes->passes[p]);
     }
     passes->count = 0;
     return recorded;

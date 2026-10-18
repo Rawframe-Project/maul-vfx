@@ -8,15 +8,22 @@
 # Maul RHI's tools cross it to DXIL (spirv-cross and dxc) and Metal
 # (spirv-cross) and write the container with the WGSL beside it, which
 # lands in NAME_container.h beside it as bytes, its bindings described by
-# NAME.json. A line "// include: FILE.wgsl" in a kernel is replaced by
-# rhi/kernels/shared/FILE.wgsl (functions with no bindings, which kernels
-# share) before naga reads it, and the container carries the result.
+# NAME.json. A line "// include: PATH.wgsl" in a kernel is replaced by
+# rhi/kernels/PATH.wgsl before naga reads it, a file once, and the
+# container carries the result: shared/ holds what several kernels splice
+# (functions with no bindings), a kernel's own directory (sim/) the parts
+# only it splices, cut at its top-level declarations.
 # WGSL is the kernels' one source (the GPU path's decision on shaders).
 # CI runs none of these tools; the headers are committed, and this script
 # is run again whenever a kernel changes, with naga, spirv-val,
 # spirv-cross and dxc on the path.
 #
+# With --check it needs none of them: each committed container must
+# carry a fresh splice of its kernel's sources, byte for byte, so a part
+# or shared file edited without a rebuild fails the gate and CI.
+#
 # usage: gen_kernels.py <a Maul RHI source tree, for its tools/> [NAME ...]
+#        gen_kernels.py --check
 
 import os
 import subprocess
@@ -26,7 +33,6 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNELS = os.path.join(ROOT, "rhi", "kernels")
 TEST_KERNELS = os.path.join(ROOT, "test", "kernels")
-SHARED = os.path.join(KERNELS, "shared")
 INCLUDE = "// include: "
 
 
@@ -55,7 +61,7 @@ def spliced(path, seen):
             if name in seen:
                 sys.exit(f"{path}: {name} included twice")
             seen.add(name)
-            lines.append(spliced(os.path.join(SHARED, name), seen).rstrip("\n"))
+            lines.append(spliced(os.path.join(KERNELS, name), seen).rstrip("\n"))
     return "\n".join(lines)
 
 
@@ -103,12 +109,53 @@ def header(name, data):
     return "\n".join(lines)
 
 
+def kernel_names():
+    return sorted(f[:-5] for d in (KERNELS, TEST_KERNELS) for f in os.listdir(d)
+                  if f.endswith(".wgsl"))
+
+
+def committed(name):
+    """The bytes of a kernel's committed container, read from its header."""
+    path = os.path.join(folder(name), f"{name}_container.h")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as file:
+        text = file.read()
+    body = text[text.index("= {") + 3:text.index("};")]
+    return bytes(int(word, 16) for word in body.replace(",", " ").split())
+
+
+# WGSL the crossing tools break on though naga takes it: spirv-cross
+# 2021.01.15 (Vulkan SDK 1.3.239, as Debian and Ubuntu ship it) writes an
+# OpAtomicStore in a branch or a called function as an InterlockedExchange
+# into a result it never declares, which dxc refuses, so kernels store an
+# atomic by `_ = atomicExchange(&a, v);`. The check refuses the word, as
+# CI runs no dxc; it goes when the pinned spirv-cross writes it right.
+REFUSED = {"atomicStore": "write `_ = atomicExchange(&a, v);` (spirv-cross 2021.01.15's HLSL)"}
+
+
+def check():
+    stale = []
+    for name in kernel_names():
+        data = committed(name)
+        text = spliced(os.path.join(folder(name), f"{name}.wgsl"), set())
+        for word, instead in REFUSED.items():
+            if word in text:
+                sys.exit(f"{name}.wgsl uses {word}: {instead}")
+        if data is None or text.encode("utf-8") not in data:
+            stale.append(name)
+    if stale:
+        sys.exit(f"stale kernel containers (run gen_kernels.py): {' '.join(stale)}")
+
+
 def main():
+    if sys.argv[1:] == ["--check"]:
+        check()
+        return
     if len(sys.argv) < 2:
         sys.exit("usage: gen_kernels.py <a Maul RHI source tree> [NAME ...]")
     tools = os.path.join(os.path.abspath(sys.argv[1]), "tools")
-    names = sys.argv[2:] or sorted(f[:-5] for d in (KERNELS, TEST_KERNELS)
-                                   for f in os.listdir(d) if f.endswith(".wgsl"))
+    names = sys.argv[2:] or kernel_names()
     for name in names:
         with tempfile.TemporaryDirectory() as work:
             data = build(work, tools, name)

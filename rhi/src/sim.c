@@ -14,6 +14,7 @@
 #include "record.h"
 #include "records.h"
 #include "sim_state.h"
+#include "upload.h"
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
@@ -723,16 +724,15 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
     for (int32_t s = 0; written && s < 4; ++s)
     {
         uint32_t first = emitter->spans.first[s];
-        written =
-            mrhiWriteBuffer(sim->device, pass, step, (uint64_t)first * 4u, emitter->words + first,
-                            (uint64_t)emitter->spans.count[s] * 4u) == mrhi_success;
+        written = mvfxUpload(sim->device, &sim->uploaded, pass, step, (uint64_t)first * 4u,
+                             emitter->words + first, (uint64_t)emitter->spans.count[s] * 4u);
     }
     // The sources' block, unchanged from step to step, at the first.
     if (written && !emitter->sourcesWritten)
     {
-        written = mrhiWriteBuffer(sim->device, pass, step, MVFX_SOURCES_FIRST * 4u,
-                                  emitter->words + MVFX_SOURCES_FIRST,
-                                  (MVFX_STEP_WORDS - MVFX_SOURCES_FIRST) * 4u) == mrhi_success;
+        written = mvfxUpload(sim->device, &sim->uploaded, pass, step, MVFX_SOURCES_FIRST * 4u,
+                             emitter->words + MVFX_SOURCES_FIRST,
+                             (MVFX_STEP_WORDS - MVFX_SOURCES_FIRST) * 4u);
         emitter->sourcesWritten = written;
     }
     return written;
@@ -752,27 +752,25 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         mrhiBeginPass(sim->device, pass) == mrhi_success &&
         WriteNumbers(sim, pass, r[BUFFER_STEP], emitter) &&
         (emitter->birthCount == 0 ||
-         mrhiWriteBuffer(sim->device, pass, r[BUFFER_BIRTHS], spawns ? StagedBirths(emitter) : 0,
-                         emitter->plannedBirths,
-                         (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth)) ==
-             mrhi_success) &&
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS],
+                    spawns ? StagedBirths(emitter) : 0, emitter->plannedBirths,
+                    (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth))) &&
         (emitter->hostCount == 0 ||
-         mrhiWriteBuffer(
-             sim->device, pass, r[BUFFER_BIRTHS], BirthBytes(emitter), emitter->hostWords,
-             (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u) == mrhi_success) &&
-        mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS],
-                        MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map,
-                        sizeof emitter->map) == mrhi_success &&
-        (!emitter->cleared || mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS], 0, empty,
-                                              sizeof empty) == mrhi_success) &&
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS], BirthBytes(emitter),
+                    emitter->hostWords,
+                    (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u)) &&
+        mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
+                   MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map, sizeof emitter->map) &&
+        (!emitter->cleared || mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS], 0,
+                                         empty, sizeof empty)) &&
         (!emitter->cleared || !spawns ||
-         mrhiWriteBuffer(sim->device, pass, r[BUFFER_STATISTICS],
-                         MVFX_GPU_EVENT_SERIALS * sizeof(uint32_t), noSerials,
-                         sizeof noSerials) == mrhi_success) &&
-        mvfxWriteGrids(sim->device, pass, r[BUFFER_GRIDS], sim->context, &emitter->gridLayout) &&
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
+                    MVFX_GPU_EVENT_SERIALS * sizeof(uint32_t), noSerials, sizeof noSerials)) &&
+        mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
+                       &emitter->gridLayout) &&
         (!emitter->writesEvents ||
-         mrhiWriteBuffer(sim->device, pass, emitter->eventResources[0], 0, emitter->eventWords,
-                         sizeof emitter->eventWords) == mrhi_success);
+         mvfxUpload(sim->device, &sim->uploaded, pass, emitter->eventResources[0], 0,
+                    emitter->eventWords, sizeof emitter->eventWords));
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 
@@ -867,6 +865,7 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
     {
         return mvfx_errorInvalid;
     }
+    sim->uploaded = 0;
     const mvfxRecordPipelines pipelines = {
         .records = mvfxGpuPipeline(sim->gpu, mvfx_kernelRecords),
         .keys = mvfxGpuPipeline(sim->gpu, mvfx_kernelKeys),
@@ -877,7 +876,7 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         Emitter* emitter = &sim->emitters[sim->order[n]];
         // The step's passes, then the record passes after them.
         if (!RecordStep(sim, emitter) ||
-            !mvfxRecordRecordPasses(sim->device, &pipelines, &emitter->records))
+            !mvfxRecordRecordPasses(sim->device, &sim->uploaded, &pipelines, &emitter->records))
         {
             return mvfx_errorState;
         }
@@ -885,6 +884,20 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
     // The host's textures were the frame's.
     sim->hostDepth = (mrhiResourceId){0};
     sim->hostNormals = (mrhiResourceId){0};
+    return mvfx_success;
+}
+
+mvfxResult mvfxGpuSim_UploadBytes(const mvfxGpuSim* sim, int64_t* bytesOut)
+{
+    if (bytesOut != nullptr)
+    {
+        *bytesOut = 0;
+    }
+    if (sim == nullptr || bytesOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    *bytesOut = (int64_t)sim->uploaded;
     return mvfx_success;
 }
 

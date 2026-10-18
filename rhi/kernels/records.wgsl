@@ -18,7 +18,7 @@ const CHUNK: u32 = 256u;
 const ITEMS: u32 = 4u;
 const BLOCK: u32 = CHUNK * ITEMS;
 
-// include: exact.wgsl
+// include: shared/exact.wgsl
 
 const FIELD_POSITION: u32 = 0u;
 const FIELD_SIZE: u32 = 1u;

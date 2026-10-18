@@ -32,10 +32,16 @@
 #include <string.h>
 #include <time.h>
 
-// The longest a frame is waited for: a device's first frame may compile
-// the kernels it dispatches (lavapipe does, without its shader cache, a
-// minute on a loaded machine).
-#define WAIT_NS 300000000000ull
+// The longest a frame of the warm-up is waited for: a device's first
+// frame may compile the kernels it dispatches (lavapipe does, without its
+// shader cache, a minute on a loaded machine); and every frame after it,
+// so a kernel that hangs fails in seconds.
+#define WARM_WAIT_NS  300000000000ull
+#define FRAME_WAIT_NS 20000000000ull
+static uint64_t s_waitNs = WARM_WAIT_NS;
+
+// The longest a frame after the warm-up took, in seconds.
+static double s_longestFrame;
 
 // The ticks a step of the run takes.
 static int64_t s_stepTicks = STEP_TICKS;
@@ -107,8 +113,13 @@ static bool AwaitReady(Gpu* gpu, mvfxGpu* kernels)
 bool Finish(Gpu* gpu)
 {
     mrhiRequestId token = {0};
+    double start = Seconds();
     bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+                mrhiWaitFrame(gpu->device, token, s_waitNs) == mrhi_success;
+    if (s_waitNs == FRAME_WAIT_NS && Seconds() - start > s_longestFrame)
+    {
+        s_longestFrame = Seconds() - start;
+    }
     mrhiDeviceNotification record;
     while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
     {
@@ -922,10 +933,12 @@ static const uint8_t* CpuRecordOf(uint32_t serial, int64_t written)
     return found != NULL ? s_cpuRecords + 64 + found->record * s_layoutView.stride : NULL;
 }
 
-// Each of the GPU's records against the CPU path's of its serial: the
-// measures at each place the same within 1e-5 (so the orders differ only
-// where measures do by less); a serial the CPU path did not write only at
-// the cut, within that of the last record's measure.
+// Each of the GPU's records against the CPU path's of its serial: the CPU
+// path's measure of the GPU's record at each place the same as of its own
+// within 1e-5 (so the orders differ only where measures do by less, as
+// sim.h states; the places, held to the tolerance, are the fields'); a
+// serial the CPU path did not write only at the cut, its measure within
+// that of the last record's.
 static bool SameSorted(int64_t written)
 {
     uint32_t stride = s_layoutView.stride;
@@ -938,9 +951,10 @@ static bool SameSorted(int64_t written)
     for (int64_t r = 0; same && r < written; ++r)
     {
         const uint8_t* gpu = s_gpuRecords + 64 + r * stride;
-        double cpuMeasure = MeasureOf(s_cpuRecords + 64 + r * stride);
-        same = fabs(MeasureOf(gpu) - cpuMeasure) <= 1e-5 * (1.0 + fabs(cpuMeasure));
         const uint8_t* cpu = CpuRecordOf(SerialOf(gpu), written);
+        double cpuMeasure = MeasureOf(s_cpuRecords + 64 + r * stride);
+        double measure = MeasureOf(cpu != NULL ? cpu : gpu);
+        same = fabs(measure - cpuMeasure) <= 1e-5 * (1.0 + fabs(cpuMeasure));
         double last = MeasureOf(s_cpuRecords + 64 + (written - 1) * stride);
         same = same && (cpu != NULL || (written == s_recordCapacity &&
                                         fabs(MeasureOf(gpu) - last) <= 1e-5 * (1.0 + fabs(last))));
@@ -1359,7 +1373,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         printf("  events: %llu\n", (unsigned long long)s_events);
     }
     CHECK(same && (!eventful || s_events > 0) && most[0] >= (run->least > 0 ? run->least : 100) &&
-              (run->emitterCount < 2 || most[1] > 64),
+              (run->emitterCount < 2 || most[1] >= (run->secondLeast != 0 ? run->secondLeast : 65)),
           what);
     if (run->colliding)
     {
@@ -1413,6 +1427,41 @@ const uint32_t* StatisticsRecord(void)
     return s_record;
 }
 
+// A scene whose frames dispatch each kernel of the step's, the events',
+// the births' from events, the records' and the sort's, run with the
+// warm-up's wait (every emitter's step dispatches the step's kernels): a
+// device that compiles a kernel at its first dispatch does it here.
+static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
+{
+    static const mvfxCollider ceiling = {
+        .kind = mvfx_colliderPlane, .center = {0, 0.55f, 0}, .normal = {0, -1, 0}};
+    static const mvfxLayoutField fields[2] = {
+        {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
+        {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 12}};
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = fields;
+    layout.fieldCount = 2;
+    layout.stride = 16;
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    emitters[0].events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
+    emitters[0].eventCapacity = 4096;
+    emitters[0].colliders = &ceiling;
+    emitters[0].colliderCount = 1;
+    emitters[0].collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
+    emitters[0].sortMode = mvfx_sortBackToFront;
+    emitters[1].rate = 0.0f;
+    emitters[1].burstCount = 0;
+    emitters[1].eventSpawn = (mvfxEventSpawn){
+        .enabled = true, .kind = mvfx_eventDeath, .minCount = 1, .maxCount = 2, .capacity = 512};
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters,
+                   .emitterCount = 2,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY},
+            "the warm-up");
+}
+
 int RunSuite(SceneSuite suite)
 {
     Gpu gpu;
@@ -1432,7 +1481,10 @@ int RunSuite(SceneSuite suite)
     mvfxGpu* kernels = NULL;
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     CHECK(MakeFill(&gpu), "the depth-writing pipeline");
+    WarmUp(&gpu, kernels);
+    s_waitNs = FRAME_WAIT_NS;
     suite(&gpu, kernels);
+    printf("longest frame after the warm-up: %.3f s\n", s_longestFrame);
     (void)mrhiDestroyGraphicsPipeline(gpu.device, s_fill);
     (void)mrhiDestroyShader(gpu.device, s_fillShader);
     mvfxDestroyGpu(kernels);

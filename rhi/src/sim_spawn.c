@@ -6,6 +6,7 @@
 // numbers and kernels of its births from them (sim.wgsl's spawn kernels).
 
 #include "sim_state.h"
+#include "upload.h"
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
@@ -71,9 +72,8 @@ static bool RecordSpawnCopy(mvfxGpuSim* sim, const Emitter* emitter)
     }
     else
     {
-        recorded =
-            recorded && mrhiWriteBuffer(sim->device, pass, into, first + 4u * MVFX_SPAWN_SOURCE,
-                                        &none, sizeof none) == mrhi_success;
+        recorded = recorded && mvfxUpload(sim->device, &sim->uploaded, pass, into,
+                                          first + 4u * MVFX_SPAWN_SOURCE, &none, sizeof none);
     }
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }

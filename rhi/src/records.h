@@ -88,9 +88,9 @@ bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
 bool mvfxAddEmptyRecordPass(mrhiDevice* device, mvfxRecordPasses* passes, mrhiResourceId count,
                             uint32_t word);
 
-// Records the passes added and lets them go; false when the device
-// refuses a command.
-bool mvfxRecordRecordPasses(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
-                            mvfxRecordPasses* passes);
+// Records the passes added and lets them go, the bytes they upload added
+// to uploaded; false when the device refuses a command.
+bool mvfxRecordRecordPasses(mrhiDevice* device, uint64_t* uploaded,
+                            const mvfxRecordPipelines* pipelines, mvfxRecordPasses* passes);
 
 #endif

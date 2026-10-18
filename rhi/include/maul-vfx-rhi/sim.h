@@ -78,7 +78,12 @@ extern "C"
     // << 8, serial, tick (low, high word), place (binary32 offsets from the
     // plan's anchor after, in the world), velocity, normal, colour, size,
     // then eight words the part uses; in the order the CPU path's
-    // mvfxInstance_GetEvents gives them.
+    // mvfxInstance_GetEvents gives them. Contacts are decided on places,
+    // which the GPU holds to a tolerance of the CPU path's: a particle
+    // whose path passes that close to a surface may touch it on one path
+    // only, and with it its collision event, the life or the kill the
+    // contact takes, and the births a spawner gives for it; contacts
+    // clear of a surface are the CPU path's.
     typedef struct mvfxGpuParticles
     {
         mrhiBufferId particles;
@@ -258,9 +263,14 @@ extern "C"
     /// builds, as mvfxInstance_WriteParticles writes them on the CPU path,
     /// in the emitter's order: a transfer pass and a compute pass, and 9
     /// compute passes more for a sort by place (the view's eye and forward
-    /// direction its measure's, keys within units in the last place of the
-    /// CPU path's, so particles that close may trade places), after the
-    /// step's passes of the frame (mvfxGpuSim_AddPasses) or, without them,
+    /// direction its measure's). What a host may rely on of a sorted
+    /// emitter: the records are the CPU path's by serial (a cut's border
+    /// may differ by particles within a tolerance of its measure), each
+    /// matching its serial's, and through the CPU path's measures the
+    /// order never falls by more than a relative 1e-5; the CPU path's
+    /// order is exact, so the two paths' frames may swap particles whose
+    /// measures lie that close, and no more. The passes come after
+    /// the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them,
     /// reading the particles the last recorded step left; mvfxGpuSim_Record
     /// records them, and the next mvfxGpuSim_AddPasses lets go of those of
     /// a frame the host dropped. At most MVFX_GPU_RECORD_PASSES an emitter
@@ -286,11 +296,15 @@ extern "C"
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
-    /// when it added none. The bytes are the frame's uploads: 1,864 an
-    /// emitter, 432 a force, 128 a collider and 80 a kill rule it has
-    /// (8,008 at most); 48 a planned birth (a plan holds at most twice the
-    /// emitter's capacity) and 64 a host's particle; at the first step,
-    /// its sources' 1,072 and the effect's baked tables its values read
+    /// when it added none. The bytes are the frame's uploads
+    /// (mvfxGpuSim_UploadBytes counts them): 1,944 an emitter (its
+    /// numbers' 1,872 and its record map's 72), 432 a force, 128 a collider
+    /// and 80 a kill rule it has (8,088 at most), and 1,952 more for one
+    /// that writes events (its events' values over life); 48 a planned
+    /// birth (a plan holds at most twice the emitter's capacity) and 64 a
+    /// host's particle; at the first step and after a clear, 12 for its
+    /// counts and 16 more for one spawning from events; at the first step,
+    /// its sources' 1,184 and the effect's baked tables its values read
     /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,
@@ -304,6 +318,19 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);
+
+    /// Counts the bytes the last mvfxGpuSim_Record uploaded: its step
+    /// passes' as it states them, and its record passes' (1,952 a pass, 4 for
+    /// one of an emitter with no particles), so a host can hold its
+    /// frameUploadBytes to what its effects take.
+    ///
+    /// @param sim       The simulation.
+    /// @param bytesOut  Receives the bytes; 0 before a record and on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_UploadBytes(const mvfxGpuSim* sim,
+                                                                  int64_t* bytesOut);
 
     /// Returns an emitter's particles: the buffer the last recorded step
     /// left them in, which the host imports to draw or read them.

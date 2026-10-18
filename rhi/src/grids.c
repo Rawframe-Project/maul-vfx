@@ -3,6 +3,8 @@
 
 #include "grids.h"
 
+#include "upload.h"
+
 #include <string.h>
 
 // A grid's words: binary32 values one a word, binary16 two.
@@ -184,18 +186,18 @@ void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxEmitterPlan* pla
 
 // Uploads a grid's values from its first word: the whole words, then a
 // last half alone in a word of its own.
-static bool Upload(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer, uint32_t first,
-                   const mvfxGridView* view)
+static bool Upload(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass, mrhiResourceId buffer,
+                   uint32_t first, const mvfxGridView* view)
 {
     uint64_t whole = (uint64_t)view->bytes & ~(uint64_t)3;
-    bool written = whole == 0 || mrhiWriteBuffer(device, pass, buffer, (uint64_t)first * 4u,
-                                                 view->values, whole) == mrhi_success;
+    bool written = whole == 0 || mvfxUpload(device, uploaded, pass, buffer, (uint64_t)first * 4u,
+                                            view->values, whole);
     if (written && whole < (uint64_t)view->bytes)
     {
         uint32_t last = 0;
         memcpy(&last, (const unsigned char*)view->values + whole, (size_t)view->bytes - whole);
-        written = mrhiWriteBuffer(device, pass, buffer, (uint64_t)first * 4u + whole, &last,
-                                  sizeof last) == mrhi_success;
+        written = mvfxUpload(device, uploaded, pass, buffer, (uint64_t)first * 4u + whole, &last,
+                             sizeof last);
     }
     return written;
 }
@@ -213,25 +215,25 @@ uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words)
 }
 
 // Records the tables' uploads.
-static bool WriteTables(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
-                        const mvfxGpuGrids* grids)
+static bool WriteTables(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass,
+                        mrhiResourceId buffer, const mvfxGpuGrids* grids)
 {
     bool written = true;
     for (int32_t t = 0; written && t < grids->tableCount; ++t)
     {
         const mvfxGpuTable* table = &grids->tables[t];
-        written = mrhiWriteBuffer(device, pass, buffer, (uint64_t)table->first * 4u, table->values,
-                                  (uint64_t)table->words * 4u) == mrhi_success;
+        written = mvfxUpload(device, uploaded, pass, buffer, (uint64_t)table->first * 4u,
+                             table->values, (uint64_t)table->words * 4u);
     }
     return written;
 }
 
-bool mvfxWriteGrids(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
+bool mvfxWriteGrids(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass, mrhiResourceId buffer,
                     const mvfxContext* context, mvfxGpuGrids* grids)
 {
     if (!grids->tablesWritten)
     {
-        if (!WriteTables(device, pass, buffer, grids))
+        if (!WriteTables(device, uploaded, pass, buffer, grids))
         {
             return false;
         }
@@ -249,7 +251,7 @@ bool mvfxWriteGrids(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
         {
             continue;
         }
-        if (!Upload(device, pass, buffer, grid->first, &view))
+        if (!Upload(device, uploaded, pass, buffer, grid->first, &view))
         {
             return false;
         }

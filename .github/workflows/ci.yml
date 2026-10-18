@@ -35,6 +35,8 @@ jobs:
         run: CLANG_FORMAT=clang-format python3 tools/gen_file.py --check
       - name: The effect fixtures' JSON and binary forms match
         run: python3 tools/effect_json.py --check test/fixtures
+      - name: The kernel containers carry their sources' splice
+        run: python3 tools/gen_kernels.py --check
       - name: Family checks
         run: |
           python3 tools/check_source.py

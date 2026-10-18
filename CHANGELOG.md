@@ -702,3 +702,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   builds those births in the CPU path's order and bound, numbers and
   draws them, and keeps the serials they took in the statistics record
   (`MVFX_GPU_EVENT_SERIALS`, now 38 words).
+- `mvfxGpuSim_UploadBytes` counts the bytes the last `mvfxGpuSim_Record`
+  uploaded, so a host can hold its frame's upload room to its effects;
+  `mvfxGpuSim_Record` states them as measured (1,944 an emitter a step,
+  1,952 more for one writing events, its sources' 1,184 at the first
+  step), where it stated 1,864 and 1,072. The public record states the
+  sort's parity a host may rely on and which contacts the two paths may
+  decide differently.

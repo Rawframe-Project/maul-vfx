@@ -45,9 +45,11 @@ typedef struct Run
     bool moving;
     bool clearing;
     // Its steps, STEPS for 0; the most the first emitter must hold at
-    // some step, 100 for 0.
+    // some step, 100 for 0, and the second, 65 for 0 (none for -1: its
+    // particles never outlive a step).
     int32_t steps;
     int32_t least;
+    int32_t secondLeast;
     // Whether the first emitter's particles must be killed on the CPU path
     // over the run (a scene that kills).
     bool killing;

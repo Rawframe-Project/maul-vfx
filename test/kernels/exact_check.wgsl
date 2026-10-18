@@ -5,7 +5,7 @@
 // device, for test_rhi_kernels to hold against the core's: each element
 // four words, two in and two out.
 
-// include: exact.wgsl
+// include: shared/exact.wgsl
 
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;

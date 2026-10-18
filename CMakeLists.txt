@@ -266,6 +266,9 @@ if(MAUL_VFX_BUILD_TESTS)
         maul_add_test(rhi_object WHITEBOX)
         target_link_libraries(test_rhi_object PRIVATE maul-vfx-rhi)
         target_include_directories(test_rhi_object PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src)
+        # The bytes a step uploads, on the test driver's frame log.
+        maul_add_test(rhi_uploads)
+        target_link_libraries(test_rhi_uploads PRIVATE maul-vfx-rhi)
     endif()
     maul_add_header_tests()
     # The library keeps within WebAssembly's default 64 KiB stack: on the

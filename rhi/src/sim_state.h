@@ -150,6 +150,8 @@ struct mvfxGpuSim
     // A word of its own the step binds for the events of an emitter that
     // writes none.
     mrhiBufferId ownEvents;
+    // The bytes the last mvfxGpuSim_Record uploaded.
+    uint64_t uploaded;
 };
 
 // Records a kernel's pass over an emitter's buffers (sim.c).

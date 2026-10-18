@@ -109,6 +109,61 @@ static void TestBounds(Gpu* gpu, mvfxGpu* kernels)
             "a full emitter replaying births from events");
 }
 
+static void TestManyAndDelayed(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Over a thousand deaths a step, more than one block of the sort's,
+    // for an emitter whose start delay (0.15 s) leaves the first deaths'
+    // events giving none.
+    mvfxEmitterDef emitters[2] = {Sprite(), Child(0, mvfx_eventDeath)};
+    emitters[0].capacity = 16384;
+    emitters[0].rate = 120000.0f;
+    emitters[0].lifetime = mvfxRangeSource(0.1f, 0.2f);
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 4096;
+    emitters[1].capacity = 4096;
+    emitters[1].startDelay = 0.15f;
+    emitters[1].eventSpawn.minCount = 1;
+    emitters[1].eventSpawn.maxCount = 1;
+    emitters[1].eventSpawn.capacity = 2048;
+    Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
+            "over a thousand events a step, for a delayed emitter");
+}
+
+static void TestShortestLife(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Event births drawn a life of 0 (a curve's: a range's lives are above
+    // 0) live the shortest life, 2^-20 s, as the core clamps it: none
+    // outlives its step, and their deaths' ticks are compared.
+    static const mvfxCurveKey zero = {.time = 0, .value = 0};
+    mvfxEmitterDef emitters[2] = {Sprite(), Child(0, mvfx_eventDeath)};
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 4096;
+    emitters[1].lifetime = (mvfxScalarSource){
+        .kind = mvfx_sourceCurve, .curve = {.keys = &zero, .keyCount = 1}, .range = {1, 1}};
+    emitters[1].events = mvfx_eventMaskDeath;
+    emitters[1].eventCapacity = 4096;
+    Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .secondLeast = -1},
+            "event births drawn no life");
+}
+
+static void TestLoopingAge(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Event births of a looping emitter draw their lives over the loop's
+    // share, which starts again at each loop (0.1 s a loop, forever).
+    static const mvfxCurveKey keys[2] = {
+        {.time = 0, .value = 0.1f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 0.6f, .interpolation = mvfx_interpolationLinear}};
+    mvfxEmitterDef emitters[2] = {Sprite(), Child(0, mvfx_eventDeath)};
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 4096;
+    emitters[1].duration = 0.1f;
+    emitters[1].loops = 0;
+    emitters[1].lifetime = (mvfxScalarSource){
+        .kind = mvfx_sourceCurve, .curve = {.keys = keys, .keyCount = 2}, .range = {1, 1}};
+    Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2},
+            "event births' lives over a looping emitter's age");
+}
+
 static void TestOrderAndHost(Gpu* gpu, mvfxGpu* kernels)
 {
     // The spawning emitter first and its source after (the source steps
@@ -131,6 +186,9 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestBirthsMerged(gpu, kernels);
     TestCollisions(gpu, kernels);
     TestBounds(gpu, kernels);
+    TestManyAndDelayed(gpu, kernels);
+    TestShortestLife(gpu, kernels);
+    TestLoopingAge(gpu, kernels);
     TestOrderAndHost(gpu, kernels);
 }
 

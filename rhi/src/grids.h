@@ -91,8 +91,9 @@ uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words);
 
 // Records the uploads of the grids whose serial differs from the copy's,
 // and of the tables at the first write, into the pass, then takes their
-// serials; false when the device refuses one or a grid is gone.
-bool mvfxWriteGrids(mrhiDevice* device, mrhiPassId pass, mrhiResourceId buffer,
+// serials, their bytes added to uploaded; false when the device refuses
+// one or a grid is gone.
+bool mvfxWriteGrids(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass, mrhiResourceId buffer,
                     const mvfxContext* context, mvfxGpuGrids* grids);
 
 #endif

@@ -9,10 +9,14 @@
 // near the 256 samples a grid allows and its 4 contacts, each grid's
 // crossing halved 10 times. Each case prints the best of three runs of 20
 // steps, per particle a step; the collision's figure is the extra over the
-// plain emitter. A software adapter's figures say what the GPU's work
+// plain emitter. Then the bytes the plain emitter's step uploads
+// (mvfxGpuSim_UploadBytes) and their share of its step: a frame writing
+// that many bytes into a buffer against one writing 4, the best of three
+// runs of 20 frames. A software adapter's figures say what the GPU's work
 // costs against itself, not what a GPU takes.
 
 #include "maul-rhi/encoder.h"
+#include "maul-rhi/frame.h"
 #include "maul-rhi/instance.h"
 #include "maul-rhi/resources.h"
 #include "maul-vfx-rhi/gpu.h"
@@ -171,8 +175,9 @@ static mvfxEmitterDef Emitter(const mvfxCollider* colliders, int32_t colliderCou
 }
 
 // The best of RUNS runs of STEPS steps after WARM, in ns a particle a
-// step; a negative value when a step fails.
-static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding)
+// step, and the bytes the last step uploaded; a negative value when a step
+// fails.
+static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding, int64_t* uploadedOut)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
@@ -235,9 +240,61 @@ static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding)
         double seconds = Now() - start;
         best = seconds < best ? seconds : best;
     }
+    made = made && mvfxGpuSim_UploadBytes(sim, uploadedOut) == mvfx_success;
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);
     return made ? best * 1e9 / ((double)STEPS * CAPACITY) : -1.0;
+}
+
+static uint8_t s_bytes[1 << 16];
+
+// The best of RUNS runs of STEPS frames, each writing bytes into a buffer
+// of its own in a transfer pass, in ns a frame; a negative value when a
+// frame fails.
+static double Uploads(Gpu* gpu, uint64_t bytes)
+{
+    mrhiBufferDef def = mrhiDefaultBufferDef();
+    def.size = sizeof s_bytes;
+    def.usage = mrhi_bufferStorage | mrhi_bufferCopyDestination;
+    mrhiBufferId buffer = {0};
+    bool made =
+        bytes <= sizeof s_bytes && mrhiCreateBuffer(gpu->device, &def, &buffer) == mrhi_success;
+    double best = 1e300;
+    for (int32_t r = 0; made && r < RUNS; ++r)
+    {
+        double start = Now();
+        for (int32_t s = 0; made && s < STEPS; ++s)
+        {
+            mrhiFrameDef frame = mrhiDefaultFrameDef();
+            mrhiResourceId resource = {0};
+            mrhiPassId pass = {0};
+            mrhiRequestId token = {0};
+            made = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+                   mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success;
+            const mrhiAccess written[1] = {
+                {.resource = resource, .kind = mrhi_accessCopyDestination}};
+            mrhiPassDef passDef = mrhiDefaultPassDef();
+            passDef.passClass = mrhi_passTransfer;
+            passDef.accesses = written;
+            passDef.accessCount = 1;
+            passDef.neverCull = true;
+            made =
+                made && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
+                mrhiCompileFrame(gpu->device) == mrhi_success &&
+                mrhiBeginPass(gpu->device, pass) == mrhi_success &&
+                mrhiWriteBuffer(gpu->device, pass, resource, 0, s_bytes, bytes) == mrhi_success &&
+                mrhiEndPass(gpu->device, pass) == mrhi_success &&
+                mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
+                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+        }
+        double seconds = Now() - start;
+        best = seconds < best ? seconds : best;
+    }
+    if (buffer.index1 != 0)
+    {
+        (void)mrhiDestroyBuffer(gpu->device, buffer);
+    }
+    return made ? best * 1e9 / (double)STEPS : -1.0;
 }
 
 int main(void)
@@ -253,9 +310,13 @@ int main(void)
     def.device = gpu.device;
     mvfxGpu* kernels = NULL;
     int failed = mvfxCreateGpu(&def, &kernels) != mvfx_success || !AwaitReady(&gpu, kernels);
-    double plain = failed ? -1.0 : Run(&gpu, kernels, false);
-    double colliding = plain < 0.0 ? -1.0 : Run(&gpu, kernels, true);
-    if (plain < 0.0 || colliding < 0.0)
+    int64_t uploaded = 0;
+    int64_t unused = 0;
+    double plain = failed ? -1.0 : Run(&gpu, kernels, false, &uploaded);
+    double colliding = plain < 0.0 ? -1.0 : Run(&gpu, kernels, true, &unused);
+    double many = colliding < 0.0 ? -1.0 : Uploads(&gpu, (uint64_t)uploaded);
+    double few = many < 0.0 ? -1.0 : Uploads(&gpu, 4);
+    if (plain < 0.0 || colliding < 0.0 || few < 0.0)
     {
         printf("a step failed\n");
         failed = 1;
@@ -266,6 +327,11 @@ int main(void)
         printf("%-44s %12.2f ns a particle\n", "the sprite emitter's GPU step", plain);
         printf("%-44s %12.2f ns a particle\n", "16 distance grids at the worst (extra)",
                colliding - plain);
+        double cost = many > few ? many - few : 0.0;
+        printf("%-44s %12lld bytes\n", "the plain step's uploads", (long long)uploaded);
+        printf("%-44s %12.0f ns, %.2f%% of the step\n",
+               "their cost (a frame of them less one of 4)", cost,
+               100.0 * cost / (plain * CAPACITY));
     }
     mvfxDestroyGpu(kernels);
     Close(&gpu);
