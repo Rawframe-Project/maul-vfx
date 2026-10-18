@@ -134,6 +134,21 @@ static void TestVelocities(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.mode = mvfx_directionShapeNormal;
     emitter.velocity.randomize = 0.25f;
     Compared(gpu, kernels, &emitter, "normal velocities a quarter random");
+    // Along the shapes' own normals, which only velocities read: a box's
+    // volume's nearest face, a cone's slant on its base, through its volume
+    // and from its apex.
+    emitter = OnShape(mvfx_shapeBox);
+    emitter.shape.thickness = 1.0f;
+    emitter.velocity.mode = mvfx_directionShapeNormal;
+    Compared(gpu, kernels, &emitter, "velocities along a box's volume's normals");
+    emitter = OnShape(mvfx_shapeCone);
+    emitter.shape.thickness = 0.4f;
+    emitter.velocity.mode = mvfx_directionShapeNormal;
+    Compared(gpu, kernels, &emitter, "velocities along a cone base's slant");
+    emitter.shape.coneVolume = true;
+    Compared(gpu, kernels, &emitter, "velocities along a cone volume's slant");
+    emitter.shape.radius = 0.0f;
+    Compared(gpu, kernels, &emitter, "velocities from a cone's apex");
 }
 
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
