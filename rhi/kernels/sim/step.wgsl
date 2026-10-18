@@ -722,17 +722,13 @@ fn liveDeathTick(i: u32) -> u32 {
     return select(ROOM_NEVER, since.x, since.y == 0u && since.x != ROOM_NEVER);
 }
 
-// Room by the allowance, when no birth dies by the last birth's tick
-// (research 28): birth p is taken as the CPU path's full step takes it
-// exactly when a(p) - p - 1 is at least every earlier birth's and 0,
-// a(p) the capacity less the live particles plus those dead by its tick.
-// Each invocation keeps a run of the births, counting in accepted the
-// live deaths by the first of its births whose tick reaches each (the
-// deaths before its run in base), then each birth's value and the run's
-// least; the runs' least scanned, each birth taken against the least
-// before it.
-fn roomByAllowance(local: u32, live: u32, count: u32) {
-    let c = params.counts.x;
+// Counts in accepted, at each of the plan's births, the live particles
+// that die by its tick and not by the birth's before it (each death at the
+// first birth whose tick reaches it): each invocation keeps a run of the
+// births (count over the workgroup's invocations, in order), the deaths
+// coming through workgroup memory a tile at a time, found in its run by
+// a binary search; it returns the deaths before its run.
+fn liveDeathsByBirth(local: u32, live: u32, count: u32) -> u32 {
     let per = (count + CHUNK - 1u) / CHUNK;
     let lo = min(local * per, count);
     let hi = min(lo + per, count);
@@ -774,7 +770,21 @@ fn roomByAllowance(local: u32, live: u32, count: u32) {
         }
         workgroupBarrier();
     }
-    var gone = base;
+    return base;
+}
+
+// Room by the allowance, when no birth dies by the last birth's tick
+// (research 28): birth p is taken as the CPU path's full step takes it
+// exactly when a(p) - p - 1 is at least every earlier birth's and 0,
+// a(p) the capacity less the live particles plus those dead by its tick:
+// each birth's value from the deaths counted, its run's least, the runs'
+// least scanned, each birth taken against the least before it.
+fn roomByAllowance(local: u32, live: u32, count: u32) {
+    let c = params.counts.x;
+    let per = (count + CHUNK - 1u) / CHUNK;
+    let lo = min(local * per, count);
+    let hi = min(lo + per, count);
+    var gone = liveDeathsByBirth(local, live, count);
     var least = 0x7FFFFFFF;
     for (var p = lo; p < hi; p++) {
         gone += accepted[p];
@@ -805,13 +815,55 @@ fn roomByAllowance(local: u32, live: u32, count: u32) {
     }
 }
 
+// Room by a walk, when a birth dies by the last birth's tick: one
+// invocation takes the births in order, the particles held less the
+// deaths counted at each, a birth taken while they are under the
+// capacity; a taken birth dying by the last birth's tick counted, as the
+// live particles' deaths are, at the first later birth whose tick
+// reaches its death. Linear in the births, a binary search for each that
+// dies within the step.
+fn roomByWalk(local: u32, live: u32, count: u32) {
+    let c = params.counts.x;
+    _ = liveDeathsByBirth(local, live, count);
+    storageBarrier();
+    workgroupBarrier();
+    if (local != 0u) {
+        return;
+    }
+    let last = births[3u * (count - 1u)].z;
+    var held = live;
+    for (var p = 0u; p < count; p++) {
+        held -= accepted[p];
+        let take = held < c;
+        accepted[p] = select(0u, 1u, take);
+        if (!take) {
+            continue;
+        }
+        held += 1u;
+        if (birthDiesBy(p, last)) {
+            let d = births[3u * p].w;
+            var a = p + 1u;
+            var b = count;
+            while (a < b) {
+                let m = (a + b) / 2u;
+                if (births[3u * m].z >= d) {
+                    b = m;
+                } else {
+                    a = m + 1u;
+                }
+            }
+            if (a < count) {
+                accepted[a] += 1u;
+            }
+        }
+    }
+}
+
 // Room: which of the plan's births the emitter takes, as the CPU path's
 // full step takes them. When the live particles and the births fit the
 // capacity, all; when no birth dies by the last birth's tick, by the
-// allowance (roomByAllowance); else, batch by batch in order, as many of
-// each as the capacity has room for at its tick, the deaths by then of
-// the live particles and of the births taken before counted across the
-// workgroup. It runs before update, as the CPU path takes a full step's
+// allowance (roomByAllowance); else by a walk (roomByWalk). It runs
+// before update, as the CPU path takes a full step's
 // births before it moves: the deaths are those the step began with (and
 // the plan's for births), not those its contacts shorten or its kills.
 @compute @workgroup_size(256, 1, 1)
@@ -819,8 +871,6 @@ fn room(@builtin(local_invocation_index) local: u32) {
     let c = params.counts.x;
     if (local == 0u) {
         liveCount = counts[0];
-        carried = 0u;
-        batchStart = 0u;
         taken = birthCount();
     }
     let live = workgroupUniformLoad(&liveCount);
@@ -843,54 +893,7 @@ fn room(@builtin(local_invocation_index) local: u32) {
     workgroupBarrier();
     if (workgroupUniformLoad(&dead) == 0u) {
         roomByAllowance(local, live, count);
-        return;
-    }
-    loop {
-        let start = workgroupUniformLoad(&batchStart);
-        if (start >= count) {
-            break;
-        }
-        let tick = births[3u * start].z;
-        if (local == 0u) {
-            // The batch's births in the plan: from its first on, its places
-            // in order at one tick.
-            var n = 1u;
-            while (start + n < count && births[3u * (start + n) + 1u].z == n &&
-                   births[3u * (start + n)].z == tick) {
-                n++;
-            }
-            batchLength = n;
-        }
-        workgroupBarrier();
-        var mine = 0u;
-        for (var i = local; i < live; i += CHUNK) {
-            mine += select(0u, 1u, liveDiesBy(i, tick));
-        }
-        for (var j = local; j < start; j += CHUNK) {
-            mine += select(0u, 1u, accepted[j] == 1u && birthDiesBy(j, tick));
-        }
-        // The workgroup's sum, by its scan: the last invocation's place
-        // plus its own.
-        let before = exclusiveScan(local, mine);
-        if (local == CHUNK - 1u) {
-            dead = before + mine;
-        }
-        workgroupBarrier();
-        if (local == 0u) {
-            let held = live + carried - dead;
-            let space = select(0u, c - held, held < c);
-            // The batch's births in the plan are at most those it owes.
-            taken = min(space, batchLength);
-            carried += taken;
-            batchStart = start + batchLength;
-        }
-        workgroupBarrier();
-        let n = workgroupUniformLoad(&batchLength);
-        let k = workgroupUniformLoad(&taken);
-        for (var j = local; j < n; j += CHUNK) {
-            accepted[start + j] = select(0u, 1u, j < k);
-        }
-        storageBarrier();
-        workgroupBarrier();
+    } else {
+        roomByWalk(local, live, count);
     }
 }

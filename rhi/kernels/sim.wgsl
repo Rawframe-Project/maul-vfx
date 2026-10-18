@@ -285,8 +285,6 @@ var<workgroup> scan: array<u32, CHUNK>;
 var<workgroup> carried: u32;
 var<workgroup> liveCount: u32;
 var<workgroup> dead: u32;
-var<workgroup> batchStart: u32;
-var<workgroup> batchLength: u32;
 var<workgroup> taken: u32;
 var<workgroup> boxLow: array<vec4<f32>, CHUNK>;
 var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;

@@ -19,10 +19,12 @@
 // keeps no event: the extra is the births' passes (the events kept, their
 // sort by tick in one workgroup, the scan and the merge) and the
 // sub-emitter's own step, a share of the step without them. Last, a full
-// emitter's births at 4,096 a step, room freed only by deaths within the
-// step, against the same with room for them all: what deciding room
-// birth by birth in one workgroup costs. A software adapter's figures say what
-// the GPU's work costs against itself, not what a GPU takes.
+// emitter's births at 4,096 a step living a step, room freed only by the
+// deaths of the particles it holds, then living half a step, freed by
+// their own deaths too, each against the same with room for them all:
+// what deciding room costs by the allowance and by the walk. A software
+// adapter's figures say what the GPU's work costs against itself, not
+// what a GPU takes.
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
@@ -256,12 +258,12 @@ static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding, int64_t* uploadedO
 }
 
 // The best of RUNS runs of STEPS steps after WARM, in ns a step, of a
-// source of births a step particles living one step, room for room steps'
-// births, writing their deaths when it has a sub-emitter (sub), which
+// source of births a step particles living life seconds, room for room
+// steps' births, writing their deaths when it has a sub-emitter (sub), which
 // spawns one birth a death (delayed past the run, so none, unless
 // spawning); a negative value when a step fails.
 static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, bool sub,
-                     bool spawning)
+                     bool spawning, float life)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
@@ -273,7 +275,7 @@ static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, b
     emitters[0].capacity = room * births;
     emitters[0].burstCount = 0;
     emitters[0].rate = (float)births * 60.0f;
-    emitters[0].lifetime = mvfxRangeSource(1.0f / 60.0f, 1.0f / 60.0f);
+    emitters[0].lifetime = mvfxRangeSource(life, life);
     emitters[0].events = sub ? mvfx_eventMaskDeath : 0;
     emitters[0].eventCapacity = sub ? births : 0;
     emitters[1].capacity = room * births;
@@ -413,19 +415,27 @@ int main(void)
         static const int32_t sizes[2] = {4096, 16384};
         for (int32_t n = 0; n < 2 && !failed; ++n)
         {
-            double without = Births(&gpu, kernels, sizes[n], 4, true, false);
-            double with = without < 0.0 ? -1.0 : Births(&gpu, kernels, sizes[n], 4, true, true);
+            double without = Births(&gpu, kernels, sizes[n], 4, true, false, 1.0f / 60.0f);
+            double with =
+                without < 0.0 ? -1.0 : Births(&gpu, kernels, sizes[n], 4, true, true, 1.0f / 60.0f);
             failed = with < 0.0;
             char label[64];
             (void)snprintf(label, sizeof label, "births from %d events a step (extra)", sizes[n]);
             printf("%-44s %12.0f ns, %.1f%% of the step without\n", label, with - without,
                    100.0 * (with - without) / without);
         }
-        double roomy = failed ? -1.0 : Births(&gpu, kernels, 4096, 4, false, false);
-        double full = roomy < 0.0 ? -1.0 : Births(&gpu, kernels, 4096, 1, false, false);
-        failed = failed || full < 0.0;
-        printf("%-44s %12.0f ns, %.1fx the step with room\n",
-               "a full emitter's 4096 births a step (extra)", full - roomy, full / roomy);
+        static const float lives[2] = {1.0f / 60.0f, 1.0f / 120.0f};
+        static const char* const labels[2] = {"a full emitter's 4096 births a step (extra)",
+                                              "the same dying within the step (extra)"};
+        for (int32_t n = 0; n < 2 && !failed; ++n)
+        {
+            double roomy = Births(&gpu, kernels, 4096, 4, false, false, lives[n]);
+            double full =
+                roomy < 0.0 ? -1.0 : Births(&gpu, kernels, 4096, 1, false, false, lives[n]);
+            failed = full < 0.0;
+            printf("%-44s %12.0f ns, %.1fx the step with room\n", labels[n], full - roomy,
+                   full / roomy);
+        }
         if (failed)
         {
             printf("a step failed\n");
