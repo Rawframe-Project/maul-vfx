@@ -49,6 +49,7 @@ mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def, mvfxMesh
     {
         return mvfx_errorCapacity;
     }
+    mesh->serial = ++context->meshValues;
     uint32_t generation = 0;
     uint32_t index1 = mvfxTakeSlot(&context->meshes, mesh, &generation);
     *meshOut = (mvfxMeshId){index1, generation};
@@ -107,6 +108,26 @@ mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const fl
         return mvfx_errorInvalid;
     }
     mvfxMoveMesh(live, positions, normals);
+    live->serial = ++context->meshValues;
+    return mvfx_success;
+}
+
+mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMeshView* viewOut)
+{
+    if (viewOut != nullptr)
+    {
+        *viewOut = (mvfxMeshView){0};
+    }
+    if (context == nullptr || viewOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    const mvfxMesh* live = mvfxContextMesh(context, mesh);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    *viewOut = mvfxViewOfMesh(live);
     return mvfx_success;
 }
 

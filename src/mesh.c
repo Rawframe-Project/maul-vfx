@@ -221,6 +221,25 @@ static void ComputeNormals(mvfxMesh* mesh)
     }
 }
 
+mvfxMeshView mvfxViewOfMesh(const mvfxMesh* mesh)
+{
+    return (mvfxMeshView){
+        .positions = mesh->positions,
+        .normals = mesh->normals,
+        .vertexCount = mesh->vertexCount,
+        .triangles = mesh->triangles,
+        .triangleCount = mesh->triangleCount,
+        .edges = mesh->edges,
+        .edgeCount = mesh->edgeCount,
+        .tetrahedra = mesh->tetrahedra,
+        .tetrahedronCount = mesh->tetrahedronCount,
+        .triangleSums = mesh->triangleSums,
+        .edgeSums = mesh->edgeSums,
+        .tetrahedronSums = mesh->tetrahedronSums,
+        .serial = mesh->serial,
+    };
+}
+
 void mvfxMoveMesh(mvfxMesh* mesh, const float* positions, const float* normals)
 {
     size_t values = 3 * (size_t)mesh->vertexCount;

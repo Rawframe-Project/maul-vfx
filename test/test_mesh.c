@@ -492,6 +492,33 @@ static void TestThroughTheStep(void)
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    // The meshes as stored, each with a serial of its own; the instance's
+    // emitter spawning from the effect's.
+    mvfxMeshView flatView;
+    mvfxMeshView solidView;
+    mvfxMeshView spawning;
+    CHECK(mvfxMesh_GetView(context, flat, &flatView) == mvfx_success && flatView.vertexCount == 7 &&
+              flatView.triangleCount == 3 && flatView.edgeCount > 0 &&
+              flatView.positions[2] == s_quad[2] &&
+              flatView.triangleSums[2] > flatView.triangleSums[0] && flatView.serial != 0,
+          "a mesh's view");
+    CHECK(mvfxMesh_GetView(context, solid, &solidView) == mvfx_success &&
+              solidView.tetrahedronCount == 1 && solidView.tetrahedronSums[0] > 0.0 &&
+              solidView.serial != flatView.serial,
+          "another mesh's serial");
+    CHECK(mvfxInstance_GetEmitterMesh(context, instance, 0, &spawning) == mvfx_success &&
+              spawning.serial == flatView.serial && spawning.positions == flatView.positions,
+          "the emitter's mesh, its effect's");
+    CHECK(mvfxInstance_GetEmitterMesh(context, instance, 1, &spawning) == mvfx_errorInvalid &&
+              spawning.positions == NULL &&
+              mvfxInstance_GetEmitterMesh(context, instance, 2, &spawning) == mvfx_errorInvalid &&
+              mvfxInstance_GetEmitterMesh(context, instance, 0, NULL) == mvfx_errorInvalid &&
+              mvfxInstance_GetEmitterMesh(NULL, instance, 0, &spawning) == mvfx_errorInvalid,
+          "no mesh shape, no emitter, no view, no context");
+    CHECK(mvfxMesh_GetView(context, (mvfxMeshId){0}, &spawning) == mvfx_errorStale &&
+              mvfxMesh_GetView(context, flat, NULL) == mvfx_errorInvalid &&
+              mvfxMesh_GetView(NULL, flat, &spawning) == mvfx_errorInvalid,
+          "a stale mesh, no view, no context");
     CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
     const mvfxInstance* live = context->instances.slots[instance.index1 - 1].object;
     const float* z = mvfxAttributeArray(live, 0, mvfx_attributePositionZ);
@@ -524,6 +551,9 @@ static void TestThroughTheStep(void)
     CHECK(mvfxContext_GetMisuse(context) == misuse + 1, "counted");
     CHECK(mvfxInstance_SetEmitterMesh(NULL, instance, 0, solid) == mvfx_errorInvalid, "no context");
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, solid) == mvfx_success, "bound");
+    CHECK(mvfxInstance_GetEmitterMesh(context, instance, 0, &spawning) == mvfx_success &&
+              spawning.serial == solidView.serial,
+          "the emitter's mesh, the one bound");
     CHECK(mvfxDestroyMesh(context, solid) == mvfx_errorBusy, "busy while an instance uses it");
     int32_t before = live->emitters[0].count;
     CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
@@ -534,8 +564,17 @@ static void TestThroughTheStep(void)
         onSolid = onSolid && z[i] == 12.0f;
     }
     CHECK(onSolid, "born on the bound mesh's face");
+    // Moved, the bound mesh takes a new serial, past every one before.
+    static const float lowered[] = {0, 0, 4, 1, 0, 4, 0, 1, 4, 0, 0, 5};
+    CHECK(mvfxMesh_SetPositions(context, solid, lowered, NULL, 4) == mvfx_success, "moved");
+    CHECK(mvfxInstance_GetEmitterMesh(context, instance, 0, &spawning) == mvfx_success &&
+              spawning.serial > solidView.serial && spawning.serial > flatView.serial &&
+              spawning.positions[2] == 4.0f,
+          "a new serial for new positions");
 
     CHECK(mvfxDestroyInstance(context, instance) == mvfx_success, "instance gone");
+    CHECK(mvfxInstance_GetEmitterMesh(context, instance, 0, &spawning) == mvfx_errorStale,
+          "a stale instance");
     CHECK(mvfxDestroyMesh(context, solid) == mvfx_success, "free once the instance is gone");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "effect gone");
     CHECK(mvfxDestroyMesh(context, flat) == mvfx_success, "free once the effect is gone");

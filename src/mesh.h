@@ -35,8 +35,13 @@ typedef struct mvfxMesh
     double* tetrahedronSums;
     // The effects and instances that spawn from it.
     int64_t users;
+    // A serial new at its creation and each change of its positions.
+    uint64_t serial;
     size_t blockBytes;
 } mvfxMesh;
+
+// A mesh as its public view gives it.
+mvfxMeshView mvfxViewOfMesh(const mvfxMesh* mesh);
 
 // Whether a mesh def is valid.
 bool mvfxIsMeshDefValid(const mvfxMeshDef* def);

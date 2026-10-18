@@ -313,6 +313,31 @@ static void SpawnWindow(const mvfxInstance* instance, int32_t emitter, mvfxEmitt
     plan->spawnLast = last;
 }
 
+mvfxResult mvfxInstance_GetEmitterMesh(const mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t emitter, mvfxMeshView* viewOut)
+{
+    if (viewOut != nullptr)
+    {
+        *viewOut = (mvfxMeshView){0};
+    }
+    if (context == nullptr || viewOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (emitter < 0 || emitter >= live->effect->emitterCount ||
+        live->emitters[emitter].mesh == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    *viewOut = mvfxViewOfMesh(live->emitters[emitter].mesh);
+    return mvfx_success;
+}
+
 mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance,
                                        int32_t emitter, mvfxEmitterPlan* planOut)
 {

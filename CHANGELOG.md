@@ -742,3 +742,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A mesh whose elements all have no length, area or volume (positions
   collapsed) spawns from its first element, as documented, where the
   choice ended on its last.
+- `mvfxMesh_GetView` gives a mesh as stored (positions, normals, its
+  triangles, edges and tetrahedra and the running sums that choose one)
+  with a serial new at its creation and at each change of its positions;
+  `mvfxInstance_GetEmitterMesh` gives the mesh an instance's emitter
+  spawns from now, so a simulation elsewhere copies a mesh only when it
+  changes.

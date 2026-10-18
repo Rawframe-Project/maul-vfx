@@ -25,8 +25,10 @@ struct mvfxContext
     // How many instances the context has created, which seeds those whose
     // def gives no seed.
     uint64_t instancesCreated;
-    // How many grids' values it has made or changed, their serials.
+    // How many grids' values it has made or changed, their serials; how
+    // many meshes' positions, theirs.
     uint64_t gridValues;
+    uint64_t meshValues;
     // How many steps it has taken.
     uint64_t steps;
     // The particles its instances hold, against limits.particles (0 for no

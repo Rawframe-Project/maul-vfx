@@ -341,6 +341,11 @@ bool mvfxMesh_IsValid(const mvfxContext* context, mvfxMeshId mesh);
 Returns whether an id names a live mesh of the context. A stale id is not misuse.  @param context  The context. @param mesh     Any id. @return Whether the mesh is alive. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMeshView* viewOut);
+```
+Returns a mesh as stored. The arrays stay valid until the mesh's next change or destruction; the serial tells a change.  @param context  The context that owns the mesh. @param mesh     The mesh. @param viewOut  Receives the view; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument; `mvfx_errorStale` for an id that names no live mesh. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const float* positions, const float* normals, int32_t vertexCount);
 ```
 Gives a mesh new positions (and normals) for the same vertices, as a skinned mesh moves, and rebuilds what is drawn from them. Steps after spawn from the new positions.  @param context      The context that owns the mesh. @param mesh         The mesh. @param positions    x, y and z for each vertex, as in the mesh def. @param normals      Unit normals for each vertex, or NULL to compute them. @param vertexCount  The mesh's count of vertices. @return `mvfx_success`; `mvfx_errorStale` for an id that names no live mesh; `mvfx_errorInvalid` for a NULL context or positions, a count not the mesh's or a value out of range, which counts as misuse when the context is given (the mesh is then unchanged). @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -489,6 +494,11 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* 
 Returns an emitter of an effect as compiled.  @param context  The context. @param effect   The effect. @param emitter  The emitter's index in the effect. @param viewOut  Receives the view; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range; `mvfx_errorStale` for an effect that is gone. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterMesh(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxMeshView* viewOut);
+```
+Returns the mesh an instance's emitter spawns from now (its effect's, or the one mvfxInstance_SetEmitterMesh gave it), as mvfxMesh_GetView gives a mesh: its serial tells a change of the mesh or another mesh.  @param context   The context. @param instance  The instance. @param emitter   The emitter's index in its effect, a mesh shape's. @param viewOut   Receives the view; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an emitter out of range or one whose shape is not a mesh; `mvfx_errorStale` for an instance that is gone. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxEmitterPlan* planOut);
 ```
 Returns an emitter's plan for the context's last step. The births stay valid until the context's next step or the instance's destruction.  @param context   The context. @param instance  A planned instance. @param emitter   The emitter's index in its effect. @param planOut   Receives the plan; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned. @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -608,4 +618,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-109 functions across 17 headers.
+111 functions across 17 headers.

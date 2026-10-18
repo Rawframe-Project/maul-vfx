@@ -105,6 +105,43 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API bool mvfxMesh_IsValid(const mvfxContext* context, mvfxMeshId mesh);
 
+    // A mesh as stored, for a simulation elsewhere to copy: its vertices'
+    // positions and unit normals (x, y and z each), its triangles (three
+    // vertex indices each), edges (two, the lower first) and tetrahedra
+    // (four), the running sums of their lengths, areas and volumes that
+    // choose one (element i's sum includes it; binary64), and a serial new
+    // at its creation and at each change of its positions, unique among
+    // the context's meshes.
+    typedef struct mvfxMeshView
+    {
+        const float* positions;
+        const float* normals;
+        int32_t vertexCount;
+        const uint32_t* triangles;
+        int32_t triangleCount;
+        const uint32_t* edges;
+        int32_t edgeCount;
+        const uint32_t* tetrahedra;
+        int32_t tetrahedronCount;
+        const double* triangleSums;
+        const double* edgeSums;
+        const double* tetrahedronSums;
+        uint64_t serial;
+    } mvfxMeshView;
+
+    /// Returns a mesh as stored. The arrays stay valid until the mesh's next
+    /// change or destruction; the serial tells a change.
+    ///
+    /// @param context  The context that owns the mesh.
+    /// @param mesh     The mesh.
+    /// @param viewOut  Receives the view; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument;
+    ///         `mvfx_errorStale` for an id that names no live mesh.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh,
+                                                        mvfxMeshView* viewOut);
+
     /// Gives a mesh new positions (and normals) for the same vertices, as a
     /// skinned mesh moves, and rebuilds what is drawn from them. Steps after
     /// spawn from the new positions.

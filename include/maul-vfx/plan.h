@@ -16,6 +16,7 @@
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
+#include "maul-vfx/mesh.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -569,6 +570,24 @@ extern "C"
                                                                  mvfxEffectId effect,
                                                                  int32_t emitter,
                                                                  mvfxEmitterView* viewOut);
+
+    /// Returns the mesh an instance's emitter spawns from now (its effect's,
+    /// or the one mvfxInstance_SetEmitterMesh gave it), as mvfxMesh_GetView
+    /// gives a mesh: its serial tells a change of the mesh or another mesh.
+    ///
+    /// @param context   The context.
+    /// @param instance  The instance.
+    /// @param emitter   The emitter's index in its effect, a mesh shape's.
+    /// @param viewOut   Receives the view; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an
+    ///         emitter out of range or one whose shape is not a mesh;
+    ///         `mvfx_errorStale` for an instance that is gone.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterMesh(const mvfxContext* context,
+                                                                   mvfxInstanceId instance,
+                                                                   int32_t emitter,
+                                                                   mvfxMeshView* viewOut);
 
     /// Returns an emitter's plan for the context's last step. The births
     /// stay valid until the context's next step or the instance's
