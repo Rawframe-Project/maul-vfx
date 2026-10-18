@@ -765,3 +765,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   emitter's ribbon counter after the host's breaks
   (`mvfxEmitterPlan.ribbonCounter`), for a simulation elsewhere to join
   births to ribbons as the CPU path does.
+- By source (`mvfx_ribbonPerSource`), the counter's ribbons take ids
+  with the top bit set and a source's ribbon its serial's low 31 bits:
+  the emitter's own ribbon and a source's of the same number were drawn
+  as one chain through both.

@@ -251,6 +251,32 @@ static void TestPerSource(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestPerSourceApart(void)
+{
+    // The emitter's own births take the counter's ribbon (0 at first) and
+    // a source particle's births its serial (0 for the first): two
+    // ribbons, never one through both.
+    mvfxEmitterDef emitters[2] = {Ribbon(mvfx_ribbonNone), Ribbon(mvfx_ribbonPerSource)};
+    emitters[0].events = mvfx_eventMaskBirth;
+    emitters[0].eventCapacity = 4;
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventBirth,
+                                              .minCount = 3,
+                                              .maxCount = 3,
+                                              .capacity = 16};
+    Scene scene = NewScene(emitters, 2);
+    static const double own[6] = {9, 0, 0, 9, 1, 0};
+    Spawn(&scene, 1, own, 2);
+    static const double source[3] = {0, 0, 0};
+    Spawn(&scene, 0, source, 1);
+    Written w = Write(&scene, 1, 16, 4);
+    CHECK(w.result == mvfx_success && w.pointCount == 5 && w.ribbonCount == 2 &&
+              w.ribbons[0].count + w.ribbons[1].count == 5 && w.ribbons[0].id != w.ribbons[1].id,
+          "the counter's ribbon apart from a source's of the same number");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestLocal(void)
 {
     // Turned a quarter about Z at scale 2: local x of 0 and 1 are the
@@ -418,6 +444,7 @@ int main(void)
     TestPerBatch();
     TestStopsAtTheFirstMiss();
     TestPerSource();
+    TestPerSourceApart();
     TestLocal();
     TestParticleRecord();
     TestChecks();

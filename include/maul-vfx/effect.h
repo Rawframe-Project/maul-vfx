@@ -352,9 +352,11 @@ extern "C"
         // one ribbon: its id is the serial of the batch's first.
         mvfx_ribbonPerBatch = 2,
         // A particle born of an event in the ribbon of the event's
-        // particle: its id is that particle's serial (each spark leaves a
-        // ribbon of its own); others as with mvfx_ribbonOne (the counter
-        // and its breaks).
+        // particle: its id is that particle's serial's low 31 bits (each
+        // spark leaves a ribbon of its own); others as with
+        // mvfx_ribbonOne (the counter and its breaks), their ids the
+        // counter with the top bit set, so the emitter's own ribbon never
+        // joins a source's.
         mvfx_ribbonPerSource = 3,
     };
 

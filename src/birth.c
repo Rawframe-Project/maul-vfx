@@ -178,6 +178,10 @@ static float GapBetween(mvfxInstance* instance, int32_t emitter, int32_t a, int3
     return sqrtf(square);
 }
 
+// By source, the counter's ribbons take ids with the top bit set and a
+// source's ribbon its serial's low bits, so the two never share an id.
+#define RIBBON_COUNTER_TAG 0x80000000u
+
 // The ribbon a birth at at joins: its batch's first serial; its event's
 // particle's serial; else the counter, advanced first when the birth lies
 // farther than the break distance from the ribbon's youngest point.
@@ -195,20 +199,22 @@ static uint32_t AssignRibbon(mvfxInstance* instance, int32_t emitter, const mvfx
     {
         return (uint32_t)(birth->serial - (uint64_t)birth->batchIndex);
     }
-    if (compiled->ribbonIds == mvfx_ribbonPerSource && birth->event1 > 0)
+    bool bySource = compiled->ribbonIds == mvfx_ribbonPerSource;
+    if (bySource && birth->event1 > 0)
     {
-        return state->eventQueue[birth->event1 - 1].source;
+        return state->eventQueue[birth->event1 - 1].source & ~RIBBON_COUNTER_TAG;
     }
+    uint32_t tag = bySource ? RIBBON_COUNTER_TAG : 0u;
     if (compiled->ribbonBreakDistance > 0.0f)
     {
-        int32_t before = PreviousInRibbon(instance, emitter, at, state->ribbonCounter);
+        int32_t before = PreviousInRibbon(instance, emitter, at, state->ribbonCounter | tag);
         if (before >= 0 &&
             GapBetween(instance, emitter, at, before) > compiled->ribbonBreakDistance)
         {
             state->ribbonCounter += 1;
         }
     }
-    return state->ribbonCounter;
+    return state->ribbonCounter | tag;
 }
 
 // A ribbon's distance at the particle at: its ribbon's youngest point

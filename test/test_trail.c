@@ -232,7 +232,8 @@ static void TestBreakDistance(void)
 
 static void TestPerSourceCounter(void)
 {
-    // A ribbon per source takes the counter for births not of an event.
+    // A ribbon per source takes the counter for births not of an event,
+    // its ids with the top bit set (apart from the sources' serials).
     mvfxEmitterDef emitter = Trail();
     emitter.ribbon.ids = mvfx_ribbonPerSource;
     Scene scene = NewScene(&emitter, 1);
@@ -242,7 +243,8 @@ static void TestPerSourceCounter(void)
     Spawn(&scene, 2);
     Spawn(&scene, 3);
     Written w = Write(&scene, 0);
-    CHECK(w.ribbonCount == 2 && w.ribbons[0].id == 0 && w.ribbons[1].id == 1, "by the counter");
+    CHECK(w.ribbonCount == 2 && w.ribbons[0].id == 0x80000000u && w.ribbons[1].id == 0x80000001u,
+          "by the counter");
     mvfxDestroyContext(scene.context);
 }
 
