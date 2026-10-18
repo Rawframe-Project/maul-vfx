@@ -48,7 +48,7 @@
 #define MVFX_SOURCES_FIRST    (MVFX_KILL_RULES_FIRST + 20 * MVFX_MAX_KILL_RULES)
 #define MVFX_SPAWN_RULE_FIRST (MVFX_SOURCES_FIRST + 16 * MVFX_GPU_SOURCES + 28)
 #define MVFX_SHAPE_FIRST      (MVFX_SPAWN_RULE_FIRST + 12)
-#define MVFX_STEP_WORDS       (MVFX_SHAPE_FIRST + 12)
+#define MVFX_STEP_WORDS       (MVFX_SHAPE_FIRST + 16)
 
 // The words a particle of an emitter takes on the GPU: its arrays, the
 // death tick's two words and the step's word.
@@ -95,6 +95,8 @@ typedef struct mvfxStepTables
     uint32_t lives[MVFX_GPU_LIVES];
     uint32_t gradient;
     uint32_t recordLives[MVFX_RECORD_LIVES];
+    // A mesh shape's region (rhi/src/mesh_image.h), all ones for none.
+    uint32_t mesh;
 } mvfxStepTables;
 
 // An emitter's values over life records read, in the kernel's order.

@@ -56,9 +56,8 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                     ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
                          ? MVFX_FEATURE_COLLISION
                          : 0),
-        .shape = view->shape.kind == mvfx_shapeMesh,
     };
-    return refusal->features == 0 && !refusal->shape;
+    return refusal->features == 0;
 }
 
 // Reads the effect's emitters' views; false with a status when one is
@@ -229,6 +228,7 @@ static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
         emitter->tables.recordLives[k] =
             mvfxAddTable(layout, recordLives[k].curve, MVFX_CURVE_SAMPLES + 2);
     }
+    emitter->tables.mesh = 0xFFFFFFFFu;
 }
 
 // Sizes an emitter's memory by its plan and makes it: the host's
@@ -261,6 +261,11 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     if (result == mvfx_success)
     {
         LayTables(&sim->views[e], emitter);
+    }
+    if (result == mvfx_success && emitter->capacity > 0 &&
+        sim->views[e].shape.kind == mvfx_shapeMesh)
+    {
+        result = mvfxLaySimMesh(sim, def, e);
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
         (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
@@ -373,6 +378,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->events);
         DestroyBuffer(sim, emitter->eventNumbers);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
+        mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
     }
     DestroyBuffer(sim, sim->ownCount);
     DestroyBuffer(sim, sim->ownSort);
@@ -635,6 +641,11 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
         {
             return mvfx_errorCapacity;
         }
+        result = emitter->meshImage != nullptr ? mvfxPlaceSimMesh(sim, e) : mvfx_success;
+        if (result != mvfx_success)
+        {
+            return result;
+        }
     }
     return mvfx_success;
 }
@@ -794,6 +805,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
                     MVFX_GPU_EVENT_SERIALS * sizeof(uint32_t), noSerials, sizeof noSerials)) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
+        mvfxWriteSimMesh(sim, pass, emitter) &&
         (!emitter->writesEvents || WriteEventNumbers(sim, pass, emitter));
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }

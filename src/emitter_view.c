@@ -264,6 +264,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
         .shape = {.kind = s->kind,
                   .arcMode = s->arcMode,
                   .coneVolume = s->coneVolume,
+                  .meshMode = s->meshMode,
                   .radius = s->radius,
                   .length = s->length,
                   .tangent = s->tangent,

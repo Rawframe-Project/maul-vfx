@@ -738,7 +738,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   exact at any age, spread over a burst) and every velocity mode, with
   the randomize amount: `mvfxGpuRefusal.shape` names a mesh shape alone,
   and its `velocity` is gone. The first step uploads 48 bytes more of an
-  emitter's shape (its sources' block 1,232).
+  emitter's shape (its sources' block 1,248 with a mesh's place).
 - A mesh whose elements all have no length, area or volume (positions
   collapsed) spawns from its first element, as documented, where the
   choice ended on its last.
@@ -748,3 +748,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxInstance_GetEmitterMesh` gives the mesh an instance's emitter
   spawns from now, so a simulation elsewhere copies a mesh only when it
   changes.
+- The GPU part runs mesh shapes (vertices, edges, surface, volume),
+  choosing the CPU path's element exactly by thresholds the host computes
+  from the mesh's running sums, the mesh written again only when its
+  serial changes; `mvfxGpuSimDef.hostMeshBytes` keeps room for a larger
+  mesh bound later and `mvfxGpuSim_MeshBytes` counts a mesh's;
+  `mvfxGpuSim_SetEmitterMesh` binds a mesh only when it fits that room,
+  refusing a larger one at setup rather than at every step.
+  `mvfxGpuRefusal` names the features alone (its `shape` is gone: every
+  shape runs), and `mvfxShapeView` gives the mesh mode.

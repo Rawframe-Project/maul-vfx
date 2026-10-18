@@ -1320,6 +1320,7 @@ static void Clear(void)
 // colliders reading them.
 static mvfxGridId s_grid;
 static mvfxGridId s_colliderGrids[4];
+static mvfxMeshId s_mesh;
 static mvfxEmitterDef s_emitters[2];
 static mvfxForce s_forces[2][MVFX_MAX_FORCES];
 static mvfxCollider s_colliders[2][MVFX_MAX_COLLIDERS];
@@ -1351,9 +1352,17 @@ static const mvfxEmitterDef* WithGrid(const Run* run)
                   mvfx_success,
               "a collider's grid");
     }
+    if (run->mesh != NULL)
+    {
+        CHECK(mvfxCreateMesh(s_context, run->mesh, &s_mesh) == mvfx_success, "the run's mesh");
+    }
     for (int32_t e = 0; e < run->emitterCount; ++e)
     {
         s_emitters[e] = run->emitters[e];
+        if (run->mesh != NULL && s_emitters[e].shape.kind == mvfx_shapeMesh)
+        {
+            s_emitters[e].shape.mesh = s_mesh;
+        }
         for (int32_t f = 0; f < s_emitters[e].forceCount; ++f)
         {
             s_forces[e][f] = s_emitters[e].forces[f];
@@ -1377,6 +1386,27 @@ static void SetHostColliders(const mvfxCollider* colliders, int32_t count)
     CHECK(mvfxInstance_SetColliders(s_context, s_cpu, mapped, count) == mvfx_success &&
               mvfxInstance_SetColliders(s_context, s_planned, mapped, count) == mvfx_success,
           "the instance's colliders");
+}
+
+// Changes the run's mesh at half time: its new positions, and a second
+// mesh bound to both instances' first emitter, the planned one's through
+// its simulation.
+static void ChangeMesh(const Run* run, mvfxGpuSim* sim)
+{
+    if (run->laterPositions != NULL)
+    {
+        CHECK(mvfxMesh_SetPositions(s_context, s_mesh, run->laterPositions, NULL,
+                                    run->mesh->vertexCount) == mvfx_success,
+              "the mesh moved");
+    }
+    if (run->laterMesh != NULL)
+    {
+        mvfxMeshId later = {0};
+        CHECK(mvfxCreateMesh(s_context, run->laterMesh, &later) == mvfx_success &&
+                  mvfxInstance_SetEmitterMesh(s_context, s_cpu, 0, later) == mvfx_success &&
+                  mvfxGpuSim_SetEmitterMesh(sim, s_context, 0, later) == mvfx_success,
+              "another mesh bound");
+    }
 }
 
 // Gives the run's grid new values: each doubled.
@@ -1420,6 +1450,7 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     simDef.effect = *effectOut;
     simDef.instance = s_planned;
     simDef.hostGridBytes = run->hostGridBytes;
+    simDef.hostMeshBytes = run->hostMeshBytes;
     mvfxGpuSim* sim = NULL;
     mvfxGpuRefusal refusal;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_success && refusal.emitter == -1,
@@ -1494,6 +1525,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         if (run->laterHostColliders != NULL && s == steps / 2)
         {
             SetHostColliders(run->laterHostColliders, run->laterHostColliderCount);
+        }
+        if (run->mesh != NULL && s == steps / 2)
+        {
+            ChangeMesh(run, sim);
         }
         if (run->spawn != NULL)
         {

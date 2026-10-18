@@ -1,6 +1,6 @@
 // The sim kernel's spawn shapes (spliced into sim.wgsl): each shape's
 // sample, the arc fraction it reads and the initial velocity, as the CPU
-// path's src/shape.c and src/velocity.c write them (research 29).
+// path's src/shape.c and src/velocity.c write them.
 
 const SHAPE_LINE: u32 = 1u;
 const SHAPE_CIRCLE: u32 = 2u;
@@ -8,6 +8,10 @@ const SHAPE_SPHERE: u32 = 3u;
 const SHAPE_HEMISPHERE: u32 = 4u;
 const SHAPE_BOX: u32 = 5u;
 const SHAPE_CONE: u32 = 6u;
+const SHAPE_MESH: u32 = 7u;
+const MESH_EDGES: u32 = 1u;
+const MESH_SURFACE: u32 = 2u;
+const MESH_VOLUME: u32 = 3u;
 const ARC_LOOP: u32 = 1u;
 const ARC_PING_PONG: u32 = 2u;
 const ARC_BURST_SPREAD: u32 = 3u;
@@ -43,7 +47,8 @@ fn lowBits(word: u32, k: i32) -> u32 {
 // The fraction of ticks times speed over 2^20 (times a half where halved):
 // speed is m 2^e, so the turns are ticks m 2^-k, k = 20 - e, whose
 // fraction is the product's low k bits over 2^k, the 88-bit product exact;
-// within a few ulps of the CPU path's binary64 (research 29).
+// within a few ulps of the CPU path's binary64, which rounds the product
+// to 53 bits.
 fn turnsFraction(ticks: vec2<u32>, speed: f32, halved: bool) -> f32 {
     let bits = bitcast<u32>(speed);
     let biased = i32((bits >> 23u) & 0xFFu);
@@ -234,6 +239,115 @@ fn sampleCone(words: vec4<u32>, arc: f32, normal: ptr<function, vec3<f32>>) -> v
     return vec3<f32>(ring * cosine, ring * sine, height);
 }
 
+// A word of the mesh's region, and one as binary32.
+fn meshWord(i: u32) -> u32 {
+    return grids[params.shapeMesh.x + i];
+}
+
+fn meshFloat(i: u32) -> f32 {
+    return bitcast<f32>(meshWord(i));
+}
+
+// Vertex v's place and normal.
+fn meshPlace(v: u32) -> vec3<f32> {
+    let at = MESH_HEAD + 6u * v;
+    return vec3<f32>(meshFloat(at), meshFloat(at + 1u), meshFloat(at + 2u));
+}
+
+fn meshNormal(v: u32) -> vec3<f32> {
+    let at = MESH_HEAD + 6u * v + 3u;
+    return vec3<f32>(meshFloat(at), meshFloat(at + 1u), meshFloat(at + 2u));
+}
+
+const MESH_HEAD: u32 = 4u;
+
+// The element a draw chooses, as the CPU path's running sums choose it:
+// the 53-bit draw from the first two words, the first element whose
+// threshold passes it, the last when it reaches every one.
+fn meshElement(words: vec4<u32>) -> u32 {
+    let high = words.x >> 5u;
+    let k = vec2<u32>((high << 26u) | (words.y >> 6u), high >> 6u);
+    let thresholds = meshWord(3u);
+    var low = 0u;
+    var top = meshWord(0u) - 1u;
+    while (low < top) {
+        let middle = (low + top) / 2u;
+        let at = thresholds + 2u * middle;
+        if (less64(k, vec2<u32>(meshWord(at), meshWord(at + 1u)))) {
+            top = middle;
+        } else {
+            low = middle + 1u;
+        }
+    }
+    return low;
+}
+
+// The element's vertex i.
+fn meshVertex(element: u32, per: u32, i: u32) -> u32 {
+    return meshWord(meshWord(2u) + per * element + i);
+}
+
+// A mesh's sample, as src/mesh.c's: a vertex; a point along an edge; a
+// triangle's point by Osada's two draws, its normal blended (the face's
+// where the blend is zero); a tetrahedron's point by Rocchini and
+// Cignoni's fold, a random normal.
+fn sampleMesh(words: vec4<u32>, normal: ptr<function, vec3<f32>>) -> vec3<f32> {
+    let e = meshElement(words);
+    let mode = params.shapeMesh.y;
+    var place = vec3<f32>(0.0);
+    var n = vec3<f32>(0.0);
+    if (mode == MESH_EDGES) {
+        let t = unitFloat(words.z);
+        let a = meshVertex(e, 2u, 0u);
+        let b = meshVertex(e, 2u, 1u);
+        place = (1.0 - t) * meshPlace(a) + t * meshPlace(b);
+        n = (1.0 - t) * meshNormal(a) + t * meshNormal(b);
+    } else if (mode == MESH_SURFACE) {
+        let root = sqrt(unitFloat(words.z));
+        let r2 = unitFloat(words.w);
+        let w = vec3<f32>(1.0 - root, root * (1.0 - r2), root * r2);
+        let a = meshVertex(e, 3u, 0u);
+        let b = meshVertex(e, 3u, 1u);
+        let c = meshVertex(e, 3u, 2u);
+        place = w.x * meshPlace(a) + w.y * meshPlace(b) + w.z * meshPlace(c);
+        n = w.x * meshNormal(a) + w.y * meshNormal(b) + w.z * meshNormal(c);
+        if (!normalized(&n)) {
+            n = cross(meshPlace(b) - meshPlace(a), meshPlace(c) - meshPlace(a));
+        }
+    } else if (mode == MESH_VOLUME) {
+        let more = pcg4dMix(words);
+        var s = unitFloat(words.z);
+        var u = unitFloat(words.w);
+        var w = unitFloat(more.x);
+        if (s + u > 1.0) {
+            s = 1.0 - s;
+            u = 1.0 - u;
+        }
+        if (u + w > 1.0) {
+            let swap = w;
+            w = 1.0 - s - u;
+            u = 1.0 - swap;
+        } else if (s + u + w > 1.0) {
+            let swap = w;
+            w = s + u + w - 1.0;
+            s = 1.0 - u - swap;
+        }
+        place = (1.0 - s - u - w) * meshPlace(meshVertex(e, 4u, 0u)) +
+                s * meshPlace(meshVertex(e, 4u, 1u)) + u * meshPlace(meshVertex(e, 4u, 2u)) +
+                w * meshPlace(meshVertex(e, 4u, 3u));
+        *normal = randomDirection(more.y, more.z);
+        return place;
+    } else {
+        place = meshPlace(e);
+        n = meshNormal(e);
+    }
+    if (!normalized(&n)) {
+        n = vec3<f32>(0.0, 0.0, 1.0);
+    }
+    *normal = n;
+    return place;
+}
+
 // A shape's sample for birth j from its shape draw: its place in the
 // emitter's space before the offset (local), turned by the shape's
 // rotation, and its normal.
@@ -261,6 +375,8 @@ fn sampleShape(j: u32, words: vec4<u32>, normal: ptr<function, vec3<f32>>) -> ve
         }
     } else if (kind == SHAPE_CONE) {
         position = sampleCone(words, arcFraction(j, words), &n);
+    } else if (kind == SHAPE_MESH) {
+        position = sampleMesh(words, &n);
     } else {
         n = randomDirection(words.x, words.y);
     }

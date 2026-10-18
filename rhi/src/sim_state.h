@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A simulation's state, which its files share (sim.c, sim_records.c): an
-// emitter's buffers, passes and numbers, and the simulation's own.
+// A simulation's state, which its files share (sim.c, sim_records.c,
+// sim_spawn.c, sim_mesh.c): an emitter's buffers, passes and numbers, and
+// the simulation's own.
 
 #ifndef MAUL_VFX_RHI_SRC_SIM_STATE_H
 #define MAUL_VFX_RHI_SRC_SIM_STATE_H
@@ -116,6 +117,15 @@ typedef struct Emitter
     mvfxRecordPasses records;
     mrhiBufferId sort;
     mrhiBufferId digits;
+    // A mesh shape's region: its room in the grids buffer in bytes, the
+    // host's copy the region is written from, the serial of the mesh
+    // written there (0 for none yet), and the serial and bytes of one to
+    // write at the next record (0 for none).
+    uint32_t meshBytes;
+    uint32_t* meshImage;
+    uint64_t meshSerial;
+    uint64_t meshPending;
+    uint32_t meshPendingBytes;
     // Its host births in the kernels' form, room for its host queue's.
     uint32_t* hostWords;
     int32_t hostCount;
@@ -172,5 +182,15 @@ void mvfxOrderSimEmitters(mvfxGpuSim* sim);
 bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSpawn(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups);
 mvfxResult mvfxSpawnStepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+
+// A mesh shape's region (sim_mesh.c): laid out after emitter e's tables,
+// with the host's copy, at the simulation's creation (mvfx_errorStale for
+// a mesh gone, mvfx_errorCapacity past MVFX_GPU_MESH_BYTES or when the
+// allocator fails); readied for a step, written into the copy when the
+// mesh's serial is not the region's (mvfx_errorCapacity past the room);
+// its upload recorded into the step's write pass.
+mvfxResult mvfxLaySimMesh(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t e);
+mvfxResult mvfxPlaceSimMesh(mvfxGpuSim* sim, int32_t e);
+bool mvfxWriteSimMesh(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
 
 #endif

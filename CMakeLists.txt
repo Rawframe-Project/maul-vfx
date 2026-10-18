@@ -266,6 +266,11 @@ if(MAUL_VFX_BUILD_TESTS)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi)
             set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77)
         endforeach()
+        # A mesh's region and the element its thresholds choose, beside the
+        # CPU path's sampler; no device needed.
+        maul_add_test(rhi_mesh_image WHITEBOX)
+        target_link_libraries(test_rhi_mesh_image PRIVATE maul-vfx-rhi)
+        target_include_directories(test_rhi_mesh_image PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src)
         maul_add_test(rhi_object WHITEBOX)
         target_link_libraries(test_rhi_object PRIVATE maul-vfx-rhi)
         target_include_directories(test_rhi_object PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src)

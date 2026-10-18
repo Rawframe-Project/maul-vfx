@@ -332,12 +332,14 @@ extern "C"
 #define MVFX_FEATURE_FRAME            (1ull << 33)
 
     // A shape as compiled: its def's kind and numbers, its rotation made a
-    // row-major matrix.
+    // row-major matrix; a mesh shape's mode (its mesh by
+    // mvfxInstance_GetEmitterMesh).
     typedef struct mvfxShapeView
     {
         mvfxShapeKind kind;
         mvfxArcMode arcMode;
         bool coneVolume;
+        mvfxMeshMode meshMode;
         float matrix[9];
         float offset[3];
         float radius;

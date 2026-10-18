@@ -258,6 +258,9 @@ struct Step {
     shapeSize: vec4<f32>,
     shapeArc: vec4<f32>,
     shapeModes: vec4<u32>,
+    // A mesh shape's region in the grids buffer (rhi/src/mesh_image.h):
+    // its first word; the mesh mode; unused.
+    shapeMesh: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;

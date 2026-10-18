@@ -46,20 +46,27 @@ extern "C"
         // each rounded up to 4, each grid once), as
         // mvfxGpuSim_HostGridBytes counts them; 0 for none.
         int64_t hostGridBytes;
+        // The bytes each emitter of a mesh shape keeps for its mesh beyond
+        // the one it spawns from at the simulation's creation (room for
+        // mvfxInstance_SetEmitterMesh to bind a larger one), as
+        // mvfxGpuSim_MeshBytes counts a mesh's, at most MVFX_GPU_MESH_BYTES;
+        // 0 for the mesh at creation's alone.
+        int64_t hostMeshBytes;
     } mvfxGpuSimDef;
+
+// The most bytes a mesh shape's mesh takes on the GPU.
+#define MVFX_GPU_MESH_BYTES (INT64_C(1) << 30)
 
 // The cookie of a simulation def, which its default sets and
 // mvfxCreateGpuSim checks.
 #define MVFX_GPU_SIM_DEF_COOKIE 0x6D767373u
 
-    // Why a simulation was refused: the first emitter it cannot run, the
-    // features of it the part does not run yet, and whether its shape's
-    // kind is one it does not run yet (a mesh).
+    // Why a simulation was refused: the first emitter it cannot run, and
+    // the features of it the part does not run yet.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
         uint64_t features;
-        bool shape;
     } mvfxGpuRefusal;
 
     // An emitter's particles: a buffer of 32-bit words, arrays of the
@@ -183,6 +190,49 @@ extern "C"
                                                                     int32_t count,
                                                                     int64_t* bytesOut);
 
+    /// Counts the bytes a mesh takes on the GPU for a mesh shape's mode,
+    /// the room mvfxGpuSimDef.hostMeshBytes keeps for it: 16, 24 a vertex,
+    /// and for each element the mode chooses among (each vertex for
+    /// mvfx_meshVertices) 4 a vertex index and 8.
+    ///
+    /// @param context   The context that owns the mesh.
+    /// @param mesh      The mesh.
+    /// @param mode      The mesh shape's mode.
+    /// @param bytesOut  Receives the bytes; 0 on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or
+    ///         bytesOut or a mode out of range; `mvfx_errorStale` for a mesh
+    ///         that is gone.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_MeshBytes(const mvfxContext* context,
+                                                                mvfxMeshId mesh, mvfxMeshMode mode,
+                                                                int64_t* bytesOut);
+
+    /// Binds another mesh to the simulation's instance's emitter of a mesh
+    /// shape, as mvfxInstance_SetEmitterMesh does, when it fits the room
+    /// the simulation keeps for the emitter's mesh (the mesh at creation's
+    /// or the def's hostMeshBytes, whichever is more): a mesh too large is
+    /// refused here, at setup, rather than refusing every step after.
+    ///
+    /// @param sim      The simulation.
+    /// @param context  Its context, which the binding changes.
+    /// @param emitter  The emitter's index in its effect.
+    /// @param mesh     The mesh, of the elements the emitter's mode needs.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument,
+    ///         another context, an emitter out of range or not of a mesh
+    ///         shape, or a mesh without the elements its mode needs;
+    ///         `mvfx_errorStale` for a mesh or an instance that is gone;
+    ///         `mvfx_errorCapacity` for a mesh past the room (unbound);
+    ///         `mvfx_errorState` while the simulation is destroyed or from
+    ///         the context's host code.
+    /// @par Thread safety
+    /// Safe from any thread; the context and the device are each used by
+    /// one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_SetEmitterMesh(mvfxGpuSim* sim,
+                                                                     mvfxContext* context,
+                                                                     int32_t emitter,
+                                                                     mvfxMeshId mesh);
+
     /// Gives the textures of the frame open that the next
     /// mvfxGpuSim_AddPasses binds for the emitters whose collision meets
     /// the instance's depth image (mvfxInstance_SetDepthImage, which may
@@ -224,7 +274,7 @@ extern "C"
     ///         (mvfxGpuSim_SetDepthTextures), or while it is destroyed (a
     ///         call from its allocator); `mvfx_errorCapacity` when the
     ///         grids the instance's colliders read pass the def's
-    ///         hostGridBytes.
+    ///         hostGridBytes, or a mesh shape's mesh its room.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);
@@ -316,12 +366,14 @@ extern "C"
     /// birth (a plan holds at most twice the emitter's capacity) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts and 16 more for one spawning from events; at the first step,
-    /// its sources' 1,232 and the effect's baked tables its values read
+    /// its sources' 1,248 and the effect's baked tables its values read
     /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,
-    /// after each move in the room the def keeps, which the device's
-    /// frameUploadBytes must hold.
+    /// after each move in the room the def keeps; and a mesh shape's mesh
+    /// (mvfxGpuSim_MeshBytes) at the first step and after each change of
+    /// it or of the mesh bound: which the device's frameUploadBytes must
+    /// hold.
     ///
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;

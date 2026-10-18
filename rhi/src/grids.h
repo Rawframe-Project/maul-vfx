@@ -89,6 +89,9 @@ bool mvfxHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders
 // the grids are laid out): its first word; all ones for NULL values.
 uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words);
 
+// Adds room of words after the buffer's other words: its first word.
+uint32_t mvfxAddRoom(mvfxGpuGrids* grids, uint32_t words);
+
 // Records the uploads of the grids whose serial differs from the copy's,
 // and of the tables at the first write, into the pass, then takes their
 // serials, their bytes added to uploaded; false when the device refuses

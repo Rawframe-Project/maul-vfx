@@ -214,6 +214,12 @@ uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words)
     return grids->words - words;
 }
 
+uint32_t mvfxAddRoom(mvfxGpuGrids* grids, uint32_t words)
+{
+    grids->words += words;
+    return grids->words - words;
+}
+
 // Records the tables' uploads.
 static bool WriteTables(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass,
                         mrhiResourceId buffer, const mvfxGpuGrids* grids)

@@ -740,4 +740,6 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     shape[9] = s->coneVolume ? 1u : 0u;
     shape[10] = (uint32_t)delay;
     shape[11] = (uint32_t)(delay >> 32u);
+    shape[12] = tables->mesh;
+    shape[13] = s->meshMode;
 }

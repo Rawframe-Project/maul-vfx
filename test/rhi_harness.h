@@ -107,6 +107,15 @@ typedef struct Run
     bool tied;
     bool exact;
     const mvfxView* view;
+    // A mesh made in the run's context for its emitters of a mesh shape
+    // (none for NULL); new positions it takes at half time, as a skinned
+    // mesh does (none for NULL); a second mesh both instances' first
+    // emitter is bound to at half time (none for NULL); and the bytes the
+    // simulation keeps for a mesh beyond the first.
+    const mvfxMeshDef* mesh;
+    const float* laterPositions;
+    const mvfxMeshDef* laterMesh;
+    int64_t hostMeshBytes;
 } Run;
 
 // The scenes a test runs on the device.

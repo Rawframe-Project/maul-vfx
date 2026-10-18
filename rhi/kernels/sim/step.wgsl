@@ -773,8 +773,8 @@ fn liveDeathsByBirth(local: u32, live: u32, count: u32) -> u32 {
     return base;
 }
 
-// Room by the allowance, when no birth dies by the last birth's tick
-// (research 28): birth p is taken as the CPU path's full step takes it
+// Room by the allowance, when no birth dies by the last birth's tick:
+// birth p is taken as the CPU path's full step takes it
 // exactly when a(p) - p - 1 is at least every earlier birth's and 0,
 // a(p) the capacity less the live particles plus those dead by its tick:
 // each birth's value from the deaths counted, its run's least, the runs'
