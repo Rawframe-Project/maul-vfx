@@ -1033,6 +1033,16 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 12, .least = 4096},
             "an emitter owing its capacity a step, full");
+    // Lives past 2^32 ticks (4,096 s and 25 ms) of an emitter full from
+    // its first step: none dies in a plan, though their deaths' low words
+    // fall within the step.
+    emitter = Sprite();
+    emitter.capacity = 64;
+    emitter.burstCount = 0;
+    emitter.rate = 64.0f * 120.0f;
+    emitter.lifetime = mvfxRangeSource(4096.025f, 4096.025f);
+    Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 64},
+            "an emitter full of lives past 2^32 ticks");
     // Half-second steps: a full emitter whose particles all die in the
     // second step, which owes half its capacity refused before they die
     // and its capacity after: a sequence past twice the capacity, its
