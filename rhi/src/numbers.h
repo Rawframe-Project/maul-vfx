@@ -123,6 +123,14 @@ uint32_t mvfxRecordOrder(const mvfxEmitterView* view);
 // measure and flip, the sort's workgroups.
 #define MVFX_RECORD_ORDER 476
 
+// The words of an emitter's events' numbers a plan changes, in two spans
+// of MVFX_RECORD_SPAN words: the head (with the clock at the plan's end)
+// and the map into the view's space. The rest are the emitter's and the
+// part's, its order words among them (its capacity, no view), the same at
+// every step.
+#define MVFX_RECORD_SPAN 12
+#define MVFX_RECORD_MAP  32
+
 // The elements of a sort's block; the blocks of a capacity. An emitter
 // that sorts keeps keys and indices twice over its blocks (4 words an
 // element) and two sets of digit counts (256 words a block each).

@@ -747,6 +747,27 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
     return written;
 }
 
+// Records the writes of the events' numbers their pass reads: all of them
+// at the first step, the words a plan changes after.
+static bool WriteEventNumbers(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter)
+{
+    mrhiResourceId numbers = emitter->eventResources[0];
+    if (!emitter->eventNumbersWritten)
+    {
+        emitter->eventNumbersWritten = mvfxUpload(sim->device, &sim->uploaded, pass, numbers, 0,
+                                                  emitter->eventWords, sizeof emitter->eventWords);
+        return emitter->eventNumbersWritten;
+    }
+    static const uint32_t spans[2] = {0, MVFX_RECORD_MAP};
+    bool written = true;
+    for (int32_t s = 0; written && s < 2; ++s)
+    {
+        written = mvfxUpload(sim->device, &sim->uploaded, pass, numbers, spans[s] * 4u,
+                             emitter->eventWords + spans[s], MVFX_RECORD_SPAN * 4u);
+    }
+    return written;
+}
+
 // Records the pass writing the plan's bytes: its numbers, its births and
 // its host births after the births' room, the record's map, the counts
 // emptied after a clear, and the grids changed.
@@ -777,9 +798,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
                     MVFX_GPU_EVENT_SERIALS * sizeof(uint32_t), noSerials, sizeof noSerials)) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
-        (!emitter->writesEvents ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, emitter->eventResources[0], 0,
-                    emitter->eventWords, sizeof emitter->eventWords));
+        (!emitter->writesEvents || WriteEventNumbers(sim, pass, emitter));
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 

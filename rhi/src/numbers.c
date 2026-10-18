@@ -513,7 +513,7 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                                0u};
     memcpy(words, head, sizeof head);
     RecordWords(&view->arrays, words + 12);
-    RecordMap(view, plan, def->view.origin, words + 32);
+    RecordMap(view, plan, def->view.origin, words + MVFX_RECORD_MAP);
     RecordOverLife(view, tables, words + 44);
     memcpy(words + 92, srgb, MVFX_SRGB_STEPS * sizeof(float));
     for (int32_t f = 0; f < layout->fieldCount; ++f)

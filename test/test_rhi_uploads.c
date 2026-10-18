@@ -116,7 +116,7 @@ static mvfxEmitterDef Sprite(void)
 // whether it writes events, as mvfxGpuSim_Record states them.
 static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events)
 {
-    return 1944 + (events ? 1952 : 0) + 432 * (int64_t)plan->forceCount +
+    return 1944 + (events ? 96 : 0) + 432 * (int64_t)plan->forceCount +
            128 * (int64_t)plan->colliderCount + 80 * (int64_t)plan->killRuleCount +
            48 * (int64_t)plan->birthCount + 64 * (int64_t)plan->hostBirthCount;
 }

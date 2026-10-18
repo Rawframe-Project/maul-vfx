@@ -89,6 +89,9 @@ typedef struct Emitter
     bool writesEvents;
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
+    // Whether all its event numbers were written: after, only the words a
+    // plan changes are.
+    bool eventNumbersWritten;
     mrhiResourceId eventResources[4];
     mvfxGpuGrids gridLayout;
     // The particle buffer the last recorded step left them in.

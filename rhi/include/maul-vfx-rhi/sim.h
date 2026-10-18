@@ -311,8 +311,9 @@ extern "C"
     /// when it added none. The bytes are the frame's uploads
     /// (mvfxGpuSim_UploadBytes counts them): 1,944 an emitter (its
     /// numbers' 1,872 and its record map's 72), 432 a force, 128 a collider
-    /// and 80 a kill rule it has (8,088 at most), and 1,952 more for one
-    /// that writes events (its events' values over life); 48 a planned
+    /// and 80 a kill rule it has (8,088 at most), and 96 more for one
+    /// that writes events (its events' values over life: the clock and
+    /// the map, all 1,952 at the first step); 48 a planned
     /// birth (a plan holds at most twice the emitter's capacity) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts and 16 more for one spawning from events; at the first step,

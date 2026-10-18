@@ -729,3 +729,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `_AddPasses`, `_AddRecords` and `_Record` with `mvfx_errorState`, and
   a second `mvfxDestroyGpuSim` does nothing, when its allocator calls
   them while the simulation's destruction releases its memory.
+- An emitter writing events uploads 96 bytes a step for its events'
+  values over life, the words a plan changes (the clock and the map
+  into its space), where it uploaded all 1,952; the rest once.
