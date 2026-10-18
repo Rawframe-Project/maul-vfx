@@ -45,6 +45,10 @@ static void TestDeaths(Gpu* gpu, mvfxGpu* kernels)
         .kind = mvfx_sourceRange, .min = {0.2f, 0.2f, 0.2f, 1}, .max = {1, 1, 1, 1}};
     emitters[0].space = mvfx_spaceWorld;
     emitters[1].space = mvfx_spaceWorld;
+    // Sizes and angles drawn in the step, by the births' event keys.
+    emitters[1].size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f}, .max = {0.4f, 0.5f, 0.6f}};
+    emitters[1].angle = mvfxRangeSource(0.0f, 6.0f);
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "births from deaths, in the world's space");
     emitters[0].space = mvfx_spaceLocal;
@@ -114,6 +118,13 @@ static void TestBounds(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].capacity = 96;
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "a full emitter replaying births from events");
+    // Then lives shorter than a step (5 to 30 ms): births die within the
+    // step that takes them, freeing room by their drawn deaths.
+    emitters[1].capacity = 24;
+    emitters[1].lifetime = mvfxRangeSource(0.005f, 0.03f);
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .secondLeast = 20},
+            "a full emitter of births living less than a step");
 }
 
 static void TestManyAndDelayed(Gpu* gpu, mvfxGpu* kernels)

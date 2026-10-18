@@ -12,8 +12,17 @@
 // plain emitter. Then the bytes the plain emitter's step uploads
 // (mvfxGpuSim_UploadBytes) and their share of its step: a frame writing
 // that many bytes into a buffer against one writing 4, the best of three
-// runs of 20 frames. A software adapter's figures say what the GPU's work
-// costs against itself, not what a GPU takes.
+// runs of 20 frames. Then births from events at 4,096 and 16,384 events a
+// step: a source dying whole each step, its events buffer full, and a
+// sub-emitter taking a birth from each death, both with room for four
+// steps' births, against the same sub-emitter delayed past the run, which
+// keeps no event: the extra is the births' passes (the events kept, their
+// sort by tick in one workgroup, the scan and the merge) and the
+// sub-emitter's own step, a share of the step without them. Last, a full
+// emitter's births at 4,096 a step, room freed only by deaths within the
+// step, against the same with room for them all: what deciding room
+// birth by birth in one workgroup costs. A software adapter's figures say what
+// the GPU's work costs against itself, not what a GPU takes.
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
@@ -246,6 +255,75 @@ static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding, int64_t* uploadedO
     return made ? best * 1e9 / ((double)STEPS * CAPACITY) : -1.0;
 }
 
+// The best of RUNS runs of STEPS steps after WARM, in ns a step, of a
+// source of births a step particles living one step, room for room steps'
+// births, writing their deaths when it has a sub-emitter (sub), which
+// spawns one birth a death (delayed past the run, so none, unless
+// spawning); a negative value when a step fails.
+static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, bool sub,
+                     bool spawning)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    if (mvfxCreateContext(&contextDef, &context) != mvfx_success)
+    {
+        return -1.0;
+    }
+    mvfxEmitterDef emitters[2] = {Emitter(NULL, 0, 1.0f), Emitter(NULL, 0, 1.0f)};
+    emitters[0].capacity = room * births;
+    emitters[0].burstCount = 0;
+    emitters[0].rate = (float)births * 60.0f;
+    emitters[0].lifetime = mvfxRangeSource(1.0f / 60.0f, 1.0f / 60.0f);
+    emitters[0].events = sub ? mvfx_eventMaskDeath : 0;
+    emitters[0].eventCapacity = sub ? births : 0;
+    emitters[1].capacity = room * births;
+    emitters[1].burstCount = 0;
+    emitters[1].rate = 0.0f;
+    emitters[1].lifetime = mvfxRangeSource(1.0f / 60.0f, 1.0f / 60.0f);
+    emitters[1].startDelay = spawning ? 0.0f : 1000.0f;
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventDeath,
+                                              .minCount = 1,
+                                              .maxCount = 1,
+                                              .capacity = births};
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = emitters;
+    effectDef.emitterCount = sub ? 2 : 1;
+    mvfxEffectId effect = {0};
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.planned = true;
+    mvfxInstanceId instance = {0};
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    mvfxGpuSim* sim = NULL;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    instanceDef.effect = effect;
+    made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
+    simDef.gpu = kernels;
+    simDef.context = context;
+    simDef.effect = effect;
+    simDef.instance = instance;
+    made = made && mvfxCreateGpuSim(&simDef, &sim, NULL) == mvfx_success;
+    for (int32_t s = 0; made && s < WARM; ++s)
+    {
+        made = Step(gpu, context, sim);
+    }
+    double best = 1e300;
+    for (int32_t r = 0; made && r < RUNS; ++r)
+    {
+        double start = Now();
+        for (int32_t s = 0; made && s < STEPS; ++s)
+        {
+            made = Step(gpu, context, sim);
+        }
+        double seconds = Now() - start;
+        best = seconds < best ? seconds : best;
+    }
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(context);
+    return made ? best * 1e9 / (double)STEPS : -1.0;
+}
+
 static uint8_t s_bytes[1 << 16];
 
 // The best of RUNS runs of STEPS frames, each writing bytes into a buffer
@@ -332,6 +410,26 @@ int main(void)
         printf("%-44s %12.0f ns, %.2f%% of the step\n",
                "their cost (a frame of them less one of 4)", cost,
                100.0 * cost / (plain * CAPACITY));
+        static const int32_t sizes[2] = {4096, 16384};
+        for (int32_t n = 0; n < 2 && !failed; ++n)
+        {
+            double without = Births(&gpu, kernels, sizes[n], 4, true, false);
+            double with = without < 0.0 ? -1.0 : Births(&gpu, kernels, sizes[n], 4, true, true);
+            failed = with < 0.0;
+            char label[64];
+            (void)snprintf(label, sizeof label, "births from %d events a step (extra)", sizes[n]);
+            printf("%-44s %12.0f ns, %.1f%% of the step without\n", label, with - without,
+                   100.0 * (with - without) / without);
+        }
+        double roomy = failed ? -1.0 : Births(&gpu, kernels, 4096, 4, false, false);
+        double full = roomy < 0.0 ? -1.0 : Births(&gpu, kernels, 4096, 1, false, false);
+        failed = failed || full < 0.0;
+        printf("%-44s %12.0f ns, %.1fx the step with room\n",
+               "a full emitter's 4096 births a step (extra)", full - roomy, full / roomy);
+        if (failed)
+        {
+            printf("a step failed\n");
+        }
     }
     mvfxDestroyGpu(kernels);
     Close(&gpu);

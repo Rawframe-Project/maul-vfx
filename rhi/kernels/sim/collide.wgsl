@@ -572,7 +572,6 @@ fn collide(start: vec3<f32>, place: ptr<function, vec3<f32>>,
         if (contacts == 0u) {
             *first = hit;
         }
-        contacts += 1u;
         var rest = (*place - s) * (1.0 - hit.t);
         *velocity = bounce(hit.normal, *velocity);
         rest = bounce(hit.normal, rest);
@@ -584,9 +583,12 @@ fn collide(start: vec3<f32>, place: ptr<function, vec3<f32>>,
         if (stops) {
             *velocity = vec3<f32>(0.0);
             *place = s;
-            return contacts;
+            return contacts + 1u;
         }
         *place = s + rest;
+        // Counted last: HLSL that reads a stepped count later in the loop
+        // trips Maul RHI's check for SPIRV-Cross's stale loop reads.
+        contacts += 1u;
     }
     if (contacts == MAX_CONTACTS && firstHit(s, *place, &hit)) {
         // Out of contacts with a path still into a surface: stop at it.
