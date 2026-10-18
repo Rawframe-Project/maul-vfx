@@ -291,6 +291,11 @@ extern "C"
         // The instance's parameters at the plan's end, which values drawn
         // from a parameter read.
         float parameters[MVFX_MAX_PARAMETERS][4];
+        // The ribbon counter as the host moved it on
+        // (mvfxInstance_BreakRibbons, a teleport): a simulation elsewhere
+        // adds the breaks it finds itself, the planned instance finding
+        // none.
+        uint32_t ribbonCounter;
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
@@ -391,6 +396,10 @@ extern "C"
         int16_t custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
         int16_t collisions;
         int16_t mesh;
+        // The ribbon a particle joins (a word) and the ribbon's distance at
+        // its birth.
+        int16_t ribbon;
+        int16_t ribbonDistance;
         int32_t count;
     } mvfxAttributeArrays;
 
@@ -555,6 +564,12 @@ extern "C"
         // which an event birth's source age follows (mvfxPlannedBirth).
         int64_t delayTicks;
         int64_t loopTicks;
+        // How its births join ribbons (mvfxEmitterDef's ribbon): by the
+        // counter, broken where a birth lies farther than the break
+        // distance (0 for never) from its ribbon's youngest point, by
+        // batch, or by the event's source particle.
+        mvfxRibbonIds ribbonIds;
+        float ribbonBreakDistance;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

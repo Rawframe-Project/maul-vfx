@@ -368,6 +368,7 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     *planOut = (mvfxEmitterPlan){
         .capacity = state->capacity,
         .seed = live->seed,
+        .ribbonCounter = state->ribbonCounter,
         .from = {.scale = from->scale},
         .to = {.scale = to->scale},
         .start = live->planStart,

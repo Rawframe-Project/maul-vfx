@@ -732,6 +732,43 @@ static uint64_t FeaturesOf(mvfxContext* context, const mvfxEmitterDef* emitter)
     return view.features;
 }
 
+// A ribbon by the counter with breaks, tiled by distance: its id and its
+// distance in the view's arrays, how its births join, and the host's
+// breaks in the plan.
+static void TestRibbonView(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef ribboned = Emitter(64);
+    ribboned.ribbon.ids = mvfx_ribbonOne;
+    ribboned.ribbon.texture = mvfx_ribbonTileByDistance;
+    ribboned.ribbon.breakDistance = 0.5f;
+    mvfxEffectId ribbons = Effect(context, &ribboned);
+    mvfxEmitterView view;
+    const mvfxAttributeArrays* arrays = &view.arrays;
+    CHECK(mvfxEffect_GetEmitterView(context, ribbons, 0, &view) == mvfx_success &&
+              arrays->ribbon >= 10 && arrays->ribbonDistance > arrays->ribbon &&
+              arrays->ribbonDistance < arrays->count && view.ribbonIds == mvfx_ribbonOne &&
+              view.ribbonBreakDistance == 0.5f,
+          "a ribbon's arrays and how its births join");
+    // The plan carries the host's breaks.
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = ribbons;
+    instanceDef.planned = true;
+    mvfxInstanceId planned = {0};
+    mvfxEmitterPlan plan;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success &&
+              mvfxContext_StepTicks(context, 1) == mvfx_success &&
+              mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
+              plan.ribbonCounter == 0 &&
+              mvfxInstance_BreakRibbons(context, planned, 0) == mvfx_success &&
+              mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
+              plan.ribbonCounter == 1,
+          "the host's ribbon breaks in the plan");
+    mvfxDestroyContext(context);
+}
+
 static void TestView(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -762,7 +799,9 @@ static void TestView(void)
     CHECK(arrays->position == 0 && arrays->birth == 3 && arrays->inverseLife == 5 &&
               arrays->serial == 6 && arrays->velocity == 7 && arrays->size == -1 &&
               arrays->color == -1 && arrays->angle == -1 && arrays->orientation == -1 &&
-              arrays->custom[0] == -1 && arrays->collisions == -1 && arrays->count == 10,
+              arrays->custom[0] == -1 && arrays->collisions == -1 && arrays->ribbon == -1 &&
+              arrays->ribbonDistance == -1 && view.ribbonIds == mvfx_ribbonNone &&
+              arrays->count == 10,
           "the plain sprite's arrays");
     // Size, colour, a custom value of two components and collision: each
     // value's arrays in a row, in the CPU path's order.
@@ -1480,6 +1519,7 @@ int main(void)
     TestEventSpawn();
     TestCannotBePlanned();
     TestView();
+    TestRibbonView();
     TestForces();
     TestColliders();
     TestModulesAndKills();

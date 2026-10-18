@@ -185,6 +185,8 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
         .drag = ArrayOf(plan, mvfx_attributeDrag),
         .collisions = ArrayOf(plan, mvfx_attributeCollisions),
         .mesh = ArrayOf(plan, mvfx_attributeMesh),
+        .ribbon = ArrayOf(plan, mvfx_attributeRibbon),
+        .ribbonDistance = ArrayOf(plan, mvfx_attributeRibbonDistance),
         .count = plan->arrayCount,
     };
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
@@ -227,6 +229,8 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->eventSpawn = e->eventSpawn;
     viewOut->delayTicks = e->delay;
     viewOut->loopTicks = e->duration;
+    viewOut->ribbonIds = e->ribbonIds;
+    viewOut->ribbonBreakDistance = e->ribbonBreakDistance;
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];

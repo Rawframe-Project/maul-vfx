@@ -755,8 +755,13 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   mesh bound later and `mvfxGpuSim_MeshBytes` counts a mesh's;
   `mvfxGpuSim_SetEmitterMesh` binds a mesh only when it fits that room,
   refusing a larger one at setup rather than at every step.
+  `mvfxGpuRefusal` names the features alone (its `shape` is gone: every
+  shape runs), and `mvfxShapeView` gives the mesh mode.
 - The misuse count is `mvfxGetContextMisuse`, the family's name for an
   object's count (conventions section 4), where it was
   `mvfxContext_GetMisuse`.
-  `mvfxGpuRefusal` names the features alone (its `shape` is gone: every
-  shape runs), and `mvfxShapeView` gives the mesh mode.
+- An emitter's view gives its ribbon ids and break distance and its
+  arrays the ribbon and the distance along it, and a plan gives the
+  emitter's ribbon counter after the host's breaks
+  (`mvfxEmitterPlan.ribbonCounter`), for a simulation elsewhere to join
+  births to ribbons as the CPU path does.
