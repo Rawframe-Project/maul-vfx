@@ -25,14 +25,20 @@
      "workgroup_storage_bytes": 12296},
     {"name": "spawnScan", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 1032},
-    {"name": "spawnMerge", "stage": "compute", "workgroup": [64, 1, 1]}
+    {"name": "spawnMerge", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "ribbonScan", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1036},
+    {"name": "ribbonFacts", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "ribbonLinks", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "ribbonIds", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1032}
   ],
   "bindings": [
-    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9200},
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9216},
     {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 16},
     {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
-    {"table": 0, "slot": 4, "kind": "storage_buffer", "stages": ["compute"], "min_size": 152},
+    {"table": 0, "slot": 4, "kind": "storage_buffer", "stages": ["compute"], "min_size": 156},
     {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 6, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 7, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},

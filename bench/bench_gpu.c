@@ -261,9 +261,10 @@ static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding, int64_t* uploadedO
 // source of births a step particles living life seconds, room for room
 // steps' births, writing their deaths when it has a sub-emitter (sub), which
 // spawns one birth a death (delayed past the run, so none, unless
-// spawning); a negative value when a step fails.
+// spawning), its births joining ribbons by ids; a negative value when a
+// step fails.
 static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, bool sub,
-                     bool spawning, float life)
+                     bool spawning, float life, mvfxRibbonIds ribbons)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
@@ -277,6 +278,9 @@ static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, b
     emitters[0].rate = (float)births * 60.0f;
     emitters[0].lifetime = mvfxRangeSource(life, life);
     emitters[0].events = sub ? mvfx_eventMaskDeath : 0;
+    emitters[0].ribbon.ids = ribbons;
+    emitters[0].ribbon.texture = mvfx_ribbonTileByDistance;
+    emitters[0].ribbon.breakDistance = 0.5f;
     emitters[0].eventCapacity = sub ? births : 0;
     emitters[1].capacity = room * births;
     emitters[1].burstCount = 0;
@@ -415,9 +419,11 @@ int main(void)
         static const int32_t sizes[2] = {4096, 16384};
         for (int32_t n = 0; n < 2 && !failed; ++n)
         {
-            double without = Births(&gpu, kernels, sizes[n], 4, true, false, 1.0f / 60.0f);
-            double with =
-                without < 0.0 ? -1.0 : Births(&gpu, kernels, sizes[n], 4, true, true, 1.0f / 60.0f);
+            double without =
+                Births(&gpu, kernels, sizes[n], 4, true, false, 1.0f / 60.0f, mvfx_ribbonNone);
+            double with = without < 0.0 ? -1.0
+                                        : Births(&gpu, kernels, sizes[n], 4, true, true,
+                                                 1.0f / 60.0f, mvfx_ribbonNone);
             failed = with < 0.0;
             char label[64];
             (void)snprintf(label, sizeof label, "births from %d events a step (extra)", sizes[n]);
@@ -429,12 +435,29 @@ int main(void)
                                               "the same dying within the step (extra)"};
         for (int32_t n = 0; n < 2 && !failed; ++n)
         {
-            double roomy = Births(&gpu, kernels, 4096, 4, false, false, lives[n]);
-            double full =
-                roomy < 0.0 ? -1.0 : Births(&gpu, kernels, 4096, 1, false, false, lives[n]);
+            double roomy = Births(&gpu, kernels, 4096, 4, false, false, lives[n], mvfx_ribbonNone);
+            double full = roomy < 0.0 ? -1.0
+                                      : Births(&gpu, kernels, 4096, 1, false, false, lives[n],
+                                               mvfx_ribbonNone);
             failed = full < 0.0;
             printf("%-44s %12.0f ns, %.1fx the step with room\n", labels[n], full - roomy,
                    full / roomy);
+        }
+        // Births joining one ribbon by the counter, broken past half a
+        // unit, tiled by distance: the ribbons pass's walk over them.
+        for (int32_t n = 0; n < 2 && !failed; ++n)
+        {
+            double plainBirths =
+                Births(&gpu, kernels, sizes[n], 4, false, false, 1.0f / 60.0f, mvfx_ribbonNone);
+            double ribboned = plainBirths < 0.0 ? -1.0
+                                                : Births(&gpu, kernels, sizes[n], 4, false, false,
+                                                         1.0f / 60.0f, mvfx_ribbonOne);
+            failed = ribboned < 0.0;
+            char label[64];
+            (void)snprintf(label, sizeof label, "ribbons through %d births a step (extra)",
+                           sizes[n]);
+            printf("%-44s %12.0f ns, %.1f%% of the step without\n", label, ribboned - plainBirths,
+                   100.0 * (ribboned - plainBirths) / plainBirths);
         }
         if (failed)
         {

@@ -96,7 +96,13 @@ extern "C"
     // the CPU path's: births a spawner gives for a contact whose tick
     // differs may differ in count and values, those for every other event
     // are the CPU path's but for their serials, moved by the births that
-    // differ (mvfxEventSpawn).
+    // differ (mvfxEventSpawn). A ribbon's break by distance is decided on
+    // places too: a birth whose gap to its ribbon's youngest point lies
+    // that close to the break distance may break the ribbon on one path
+    // only, its ribbon then joined or started apart from the CPU path's,
+    // and every id the counter gives after it one apart; the ribbons are
+    // the CPU path's but for their ids and at such births. Distances
+    // along a ribbon are within the tolerance of the CPU path's.
     typedef struct mvfxGpuParticles
     {
         mrhiBufferId particles;
@@ -120,8 +126,15 @@ extern "C"
 // births' room (twice its capacity).
 #define MVFX_GPU_EVENT_SERIALS 34
 
+// For an emitter whose births join ribbons, the statistics record's word
+// counting the ribbon breaks the GPU made (a birth farther than the break
+// distance from its ribbon's youngest point) since the instance was last
+// cleared: the emitter's ribbon counter is its plan's (the host's breaks)
+// plus it.
+#define MVFX_GPU_RIBBON_BREAKS 38
+
 // The words of an emitter's statistics record.
-#define MVFX_GPU_STATISTICS_WORDS 38
+#define MVFX_GPU_STATISTICS_WORDS 39
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.

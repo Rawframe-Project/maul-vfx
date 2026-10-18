@@ -43,7 +43,8 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_MESH_INDEX | MVFX_FEATURE_OVER_LIFE | MVFX_FEATURE_ANGLE |                       \
      MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE | MVFX_FEATURE_VELOCITY_MODULES |          \
      MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
-     MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS | MVFX_FEATURE_EVENT_SPAWN)
+     MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
+     MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -121,6 +122,16 @@ static uint64_t StagedBirths(const Emitter* emitter)
     return BirthBytes(emitter) + HostRecordBytes(emitter);
 }
 
+// The words of an emitter's births' marks (two a particle slot), and for
+// one whose births join ribbons the ribbon passes' words after them
+// (rhi/kernels/sim/ribbons.wgsl): each birth's place among the appended,
+// 14 arrays over the appended, two words of head and a window of 256.
+static uint64_t AcceptedWords(const Emitter* emitter)
+{
+    uint64_t c = (uint64_t)emitter->capacity;
+    return emitter->ribbons ? 18u * c + 2u + 256u : 2u * c;
+}
+
 // Creates an emitter's buffers for its capacity.
 static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 {
@@ -137,7 +148,8 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
                         &emitter->step) &&
            CreateBuffer(sim, MVFX_GPU_STATISTICS_WORDS * 4u, written | mrhi_bufferCopySource,
                         &emitter->statistics) &&
-           CreateBuffer(sim, 2u * c * sizeof(uint32_t), mrhi_bufferStorage, &emitter->accepted) &&
+           CreateBuffer(sim, AcceptedWords(emitter) * sizeof(uint32_t), mrhi_bufferStorage,
+                        &emitter->accepted) &&
            CreateBuffer(sim, 8u * mvfxScanBlocks(emitter->capacity) * sizeof(uint32_t),
                         mrhi_bufferStorage, &emitter->blocks) &&
            CreateBuffer(sim, 4u * (emitter->gridLayout.words > 0 ? emitter->gridLayout.words : 1u),
@@ -247,6 +259,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->hostRecords = emitter->hostCapacity +
                            (spawn->enabled ? (spawn->capacity < room ? spawn->capacity : room) : 0);
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
+    emitter->ribbons = sim->views[e].ribbonIds != mvfx_ribbonNone;
     if (result == mvfx_success && emitter->hostCapacity > 0)
     {
         emitter->hostWords = mvfxRhiAllocate(&sim->allocator, HostBytes(emitter), 4);
@@ -500,7 +513,10 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
     for (int32_t p = PASS_ROOM; p < (emitter->writesEvents ? PASS_EVENT_VALUES : PASS_EVENT_COUNT);
          ++p)
     {
-        order[count++] = p;
+        if (p < PASS_RIBBON_SCAN || p > PASS_RIBBON_IDS || emitter->ribbons)
+        {
+            order[count++] = p;
+        }
     }
     return count;
 }
@@ -803,6 +819,9 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         (!emitter->cleared || !spawns ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_GPU_EVENT_SERIALS * sizeof(uint32_t), noSerials, sizeof noSerials)) &&
+        (!emitter->cleared || !emitter->ribbons ||
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
+                    MVFX_GPU_RIBBON_BREAKS * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
         mvfxWriteSimMesh(sim, pass, emitter) &&
@@ -871,6 +890,16 @@ static bool RecordEvents(mvfxGpuSim* sim, const Emitter* emitter, uint32_t block
             RecordEventValues(sim, emitter));
 }
 
+// Records an emitter's ribbon kernels, when its births join ribbons.
+static bool RecordRibbons(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups)
+{
+    return !emitter->ribbons ||
+           (mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_SCAN, mvfx_kernelRibbonScan, 1) &&
+            mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_FACTS, mvfx_kernelRibbonFacts, groups) &&
+            mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_LINKS, mvfx_kernelRibbonLinks, groups) &&
+            mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_IDS, mvfx_kernelRibbonIds, 1));
+}
+
 // Records an emitter's step passes, if added: the plan's writes and the
 // kernels; its particles are in the other buffer after.
 static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
@@ -889,6 +918,7 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
                     mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
                     mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
                     mvfxRecordSimKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&
+                    RecordRibbons(sim, emitter, groups) &&
                     mvfxRecordSimKernel(sim, emitter, PASS_MEASURE, mvfx_kernelMeasure, 1) &&
                     RecordEvents(sim, emitter, blocks);
     emitter->current = recorded ? 1 - emitter->current : emitter->current;

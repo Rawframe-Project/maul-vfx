@@ -125,8 +125,8 @@ struct Words {
     drag: u32,
     mesh: u32,
     count: u32,
-    unused0: u32,
-    unused1: u32,
+    ribbon: u32,
+    ribbonDistance: u32,
     custom: array<vec4<u32>, 2>,
 }
 
@@ -158,7 +158,8 @@ struct Step {
     // the plan's start (two words), the emitter's index, its space (0 for
     // the world)
     start: vec4<u32>,
-    // the velocity's mode, the shape's kind, update's workgroups, unused
+    // the velocity's mode, the shape's kind, update's workgroups, the
+    // ribbon counter after the host's breaks
     modes: vec4<u32>,
     // the anchors' shift, rounded to binary32; the share of the instance's
     // velocity inherited
@@ -261,6 +262,9 @@ struct Step {
     // A mesh shape's region in the grids buffer (rhi/src/mesh_image.h):
     // its first word; the mesh mode; unused.
     shapeMesh: vec4<u32>,
+    // How births join ribbons: the ids (mvfxRibbonIds, 0 for none), the
+    // break distance (binary32 bits); unused.
+    ribbon: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -310,3 +314,5 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/events.wgsl
 
 // include: sim/spawn.wgsl
+
+// include: sim/ribbons.wgsl

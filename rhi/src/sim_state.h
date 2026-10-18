@@ -46,20 +46,25 @@ enum
     PASS_REDUCE = 4,
     PASS_OFFSETS = 5,
     PASS_SCATTER = 6,
-    PASS_MEASURE = 7,
+    // Its births' ribbons, when it has ribbons.
+    PASS_RIBBON_SCAN = 7,
+    PASS_RIBBON_FACTS = 8,
+    PASS_RIBBON_LINKS = 9,
+    PASS_RIBBON_IDS = 10,
+    PASS_MEASURE = 11,
     // An emitter's events, when it writes any.
-    PASS_EVENT_COUNT = 8,
-    PASS_EVENT_OFFSETS = 9,
-    PASS_EVENT_WRITE = 10,
-    PASS_EVENT_VALUES = 11,
+    PASS_EVENT_COUNT = 12,
+    PASS_EVENT_OFFSETS = 13,
+    PASS_EVENT_WRITE = 14,
+    PASS_EVENT_VALUES = 15,
     // Its births from events, when it spawns from them, after the plan's
     // bytes: the source's events copied in, then the kernels.
-    PASS_SPAWN_COPY = 12,
-    PASS_SPAWN_COUNT = 13,
-    PASS_SPAWN_SORT = 14,
-    PASS_SPAWN_SCAN = 15,
-    PASS_SPAWN_MERGE = 16,
-    PASS_COUNT = 17
+    PASS_SPAWN_COPY = 16,
+    PASS_SPAWN_COUNT = 17,
+    PASS_SPAWN_SORT = 18,
+    PASS_SPAWN_SCAN = 19,
+    PASS_SPAWN_MERGE = 20,
+    PASS_COUNT = 21
 };
 
 typedef struct Emitter
@@ -88,6 +93,9 @@ typedef struct Emitter
     // beside the step's.
     mrhiBufferId events;
     bool writesEvents;
+    // Whether its births join ribbons (the ribbons pass, and its words
+    // after the births' marks).
+    bool ribbons;
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
     // Whether all its event numbers were written: after, only the words a

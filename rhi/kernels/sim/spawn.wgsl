@@ -479,7 +479,8 @@ fn writeEventHost(j: u32, tick: u32) {
     births[at] = bitcast<vec4<u32>>(vec4<f32>(place, bitcast<f32>(given)));
     births[at + 1u] = bitcast<vec4<u32>>(vec4<f32>(velocity, 0.0));
     births[at + 2u] = bitcast<vec4<u32>>(color);
-    births[at + 3u] = bitcast<vec4<u32>>(vec4<f32>(size, 0.0));
+    // Its event's particle's serial, which a ribbon by source takes.
+    births[at + 3u] = vec4<u32>(bitcast<vec3<u32>>(size), sourceEvent(e, 1u));
 }
 
 // Spawn merge: merged birth m written as the core numbers it.

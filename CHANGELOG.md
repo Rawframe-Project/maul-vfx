@@ -769,3 +769,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   with the top bit set and a source's ribbon its serial's low 31 bits:
   the emitter's own ribbon and a source's of the same number were drawn
   as one chain through both.
+- The GPU part runs emitters whose births join ribbons: each particle's
+  ribbon and its distance along it are the CPU path's (by the counter
+  with its breaks by distance, by batch, by source), and the statistics
+  record's new word `MVFX_GPU_RIBBON_BREAKS` counts the breaks the GPU
+  made since the last clear, the emitter's counter being its plan's plus
+  it (`MVFX_GPU_STATISTICS_WORDS` is 39). The first step uploads 16 bytes
+  more of an emitter's numbers.

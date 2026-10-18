@@ -116,6 +116,11 @@ typedef struct Run
     const float* laterPositions;
     const mvfxMeshDef* laterMesh;
     int64_t hostMeshBytes;
+    // Whether the host breaks both instances' ribbons every seventh step,
+    // and the ribbon breaks the GPU must make itself over the run (none
+    // needed for 0).
+    bool breaking;
+    int32_t leastBreaks;
 } Run;
 
 // The scenes a test runs on the device.

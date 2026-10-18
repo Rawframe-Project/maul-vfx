@@ -470,6 +470,121 @@ static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
     return same;
 }
 
+// Ribbons compared up to their ids (sim.h): a break by distance whose gap
+// lies within the tolerance of the break distance may happen on one path
+// only, and the counter's ids after it then differ by one. Each emitter's
+// shifts (from a serial on, the CPU path's counter ids less the GPU's),
+// the ids of the chains through a birth so decided (their distances not
+// compared after), the latest particle of the counter's ribbon seen in
+// serial order this step, and the run's births so decided.
+#define MOST_SHIFTS 16
+typedef struct RibbonState
+{
+    int32_t shifts;
+    uint32_t from[MOST_SHIFTS];
+    uint32_t shift[MOST_SHIFTS];
+    uint32_t apartGpu[MOST_SHIFTS];
+    uint32_t apartCpu[MOST_SHIFTS];
+    bool seen;
+    uint32_t gpu;
+    uint32_t cpu;
+    float gpuAlong;
+    float cpuAlong;
+} RibbonState;
+
+static RibbonState s_ribbons[2];
+static int32_t s_breaksApart;
+
+// Whether an emitter's ribbon id is the counter's: every id by the
+// counter, those with the top bit by source, none by batch.
+static bool IsCounterId(const mvfxCompiledEmitter* compiled, uint32_t id)
+{
+    return compiled->ribbonIds == mvfx_ribbonOne ||
+           (compiled->ribbonIds == mvfx_ribbonPerSource && (id & 0x80000000u) != 0);
+}
+
+// The shift of the counter's ids for a particle of a serial.
+static uint32_t ShiftAt(const RibbonState* r, uint32_t serial)
+{
+    uint32_t shift = 0;
+    for (int32_t k = 0; k < r->shifts && serial >= r->from[k]; ++k)
+    {
+        shift = r->shift[k];
+    }
+    return shift;
+}
+
+static bool IsApartChain(const RibbonState* r, uint32_t gpu, uint32_t cpu)
+{
+    for (int32_t k = 0; k < r->shifts; ++k)
+    {
+        if (gpu == r->apartGpu[k] || cpu == r->apartCpu[k])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The ribbon and distance of the GPU's particle g against the CPU path's
+// particle c, pairs taken in serial order: a fixed id equal; a counter id
+// equal up to its shift, which changes at a birth only where one path
+// broke its ribbon and the other did not, the gap (the distance the
+// joining path added) within the tolerance of the break distance; a
+// distance within the tolerance but on a chain through such a birth.
+static bool SameRibbon(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
+{
+    const mvfxAttributeArrays* a = &s_arrays;
+    if (a->ribbon < 0)
+    {
+        return true;
+    }
+    const mvfxCompiledEmitter* compiled = &cpu->effect->emitters[e];
+    const uint32_t* ids = mvfxAttributeArray(cpu, e, mvfx_attributeRibbon);
+    const float* alongs =
+        a->ribbonDistance >= 0 ? mvfxAttributeArray(cpu, e, mvfx_attributeRibbonDistance) : NULL;
+    RibbonState* r = &s_ribbons[e];
+    uint32_t gpu = Word(a->ribbon, g);
+    uint32_t cpuId = ids[c];
+    float gpuAlong = alongs != NULL ? FloatOf(a->ribbonDistance, g) : 0.0f;
+    float cpuAlong = alongs != NULL ? alongs[c] : 0.0f;
+    if (!IsCounterId(compiled, cpuId))
+    {
+        return gpu == cpuId && (alongs == NULL || fabsf(gpuAlong - cpuAlong) <=
+                                                      s_tolerance * (1.0f + fabsf(cpuAlong)));
+    }
+    uint32_t serial = Word(a->serial, g);
+    bool same = gpu + ShiftAt(r, serial) == cpuId;
+    if (!same && r->seen && alongs != NULL && r->shifts < MOST_SHIFTS)
+    {
+        bool gpuBroke = gpu != r->gpu;
+        bool cpuBroke = cpuId != r->cpu;
+        float gap = gpuBroke ? cpuAlong - r->cpuAlong : gpuAlong - r->gpuAlong;
+        float d = compiled->ribbonBreakDistance;
+        float near = 4.0f * s_tolerance * (1.0f + d + fabsf(gpuBroke ? cpuAlong : gpuAlong));
+        if (gpuBroke != cpuBroke && fabsf(gap - d) <= near)
+        {
+            r->from[r->shifts] = serial;
+            r->shift[r->shifts] = cpuId - gpu;
+            r->apartGpu[r->shifts] = gpu;
+            r->apartCpu[r->shifts] = cpuId;
+            r->shifts += 1;
+            s_breaksApart += 1;
+            same = true;
+        }
+    }
+    if (same && alongs != NULL && !IsApartChain(r, gpu, cpuId))
+    {
+        same = fabsf(gpuAlong - cpuAlong) <= s_tolerance * (1.0f + fabsf(cpuAlong));
+    }
+    r->seen = true;
+    r->gpu = gpu;
+    r->cpu = cpuId;
+    r->gpuAlong = gpuAlong;
+    r->cpuAlong = cpuAlong;
+    return same;
+}
+
 // The context of a run: a CPU instance and a planned one side by side.
 static mvfxContext* s_context;
 static mvfxInstanceId s_cpu;
@@ -548,6 +663,7 @@ static bool s_leftOut[2];
 // births one path gave alone took serials).
 static bool SameChildren(const mvfxInstance* cpu, int32_t e)
 {
+    s_ribbons[e].seen = false;
     const mvfxEmitterState* state = &cpu->emitters[e];
     const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
     int64_t slack = 1 + s_stepTicks / 1000;
@@ -580,7 +696,7 @@ static bool SameChildren(const mvfxInstance* cpu, int32_t e)
         same =
             same && (paired ? apart == offset || UncertainBetween(lastBirth, birth, slack)
                             : apart == 0 || UncertainBetween(INT64_MIN + slack + 1, birth, slack));
-        same = same && SameParticle(cpu, e, g, c);
+        same = same && SameParticle(cpu, e, g, c) && SameRibbon(cpu, e, g, c);
         if (!same)
         {
             printf("child %d of %d (GPU), %d of %d (CPU) differs\n", g, held, c, state->count);
@@ -603,6 +719,7 @@ static bool SameChildren(const mvfxInstance* cpu, int32_t e)
 static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
 {
     s_leftOut[e] = false;
+    s_ribbons[e].seen = false;
     if (cpu->effect->emitters[e].eventSpawn.enabled)
     {
         return SameChildren(cpu, e);
@@ -637,7 +754,7 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
         if (gs == cs && !apart)
         {
             s_contacts += collisions != NULL ? collisions[c] : 0u;
-            same = SameParticle(cpu, e, g, c);
+            same = SameParticle(cpu, e, g, c) && SameRibbon(cpu, e, g, c);
         }
         bool gone = !same && GoApart(e, at);
         s_leftOut[e] = s_leftOut[e] || apart || gone || gs != cs;
@@ -1305,8 +1422,40 @@ static void Move(int32_t s, double pace)
 }
 
 // Clears and restarts both instances.
+// Breaks both instances' ribbons by the counter, as the host does.
+static void BreakRibbons(void)
+{
+    CHECK(mvfxInstance_BreakRibbons(s_context, s_cpu, -1) == mvfx_success &&
+              mvfxInstance_BreakRibbons(s_context, s_planned, -1) == mvfx_success,
+          "ribbons broken");
+}
+
+// The most ribbon breaks the GPU made at a step of the run.
+static uint32_t s_ribbonBreaks;
+
+// Whether an emitter's ribbon counter on the GPU (its plan's, the host's
+// breaks, plus the breaks the GPU made) is the CPU path's.
+static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
+{
+    mvfxEmitterPlan plan;
+    uint32_t breaks = s_record[MVFX_GPU_RIBBON_BREAKS];
+    const RibbonState* r = &s_ribbons[e];
+    uint32_t shift = r->shifts > 0 ? r->shift[r->shifts - 1] : 0;
+    bool same = mvfxInstance_GetEmitterPlan(s_context, s_planned, e, &plan) == mvfx_success &&
+                plan.ribbonCounter + breaks + shift == cpu->emitters[e].ribbonCounter;
+    if (!same)
+    {
+        printf("ribbon counter %u + %u, the CPU path's %u\n", plan.ribbonCounter, breaks,
+               cpu->emitters[e].ribbonCounter);
+    }
+    s_ribbonBreaks = breaks > s_ribbonBreaks ? breaks : s_ribbonBreaks;
+    return same;
+}
+
 static void Clear(void)
 {
+    // Both counters start again from 0.
+    memset(s_ribbons, 0, sizeof s_ribbons);
     mvfxInstanceId both[2] = {s_cpu, s_planned};
     for (int32_t i = 0; i < 2; ++i)
     {
@@ -1500,6 +1649,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_deathsWithin = true;
     ApartReset();
     s_childrenLeft = 0;
+    s_ribbonBreaks = 0;
+    memset(s_ribbons, 0, sizeof s_ribbons);
+    s_breaksApart = 0;
     bool same = sim != NULL;
     int32_t most[2] = {0, 0};
     int32_t steps = run->steps > 0 ? run->steps : STEPS;
@@ -1534,6 +1686,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         {
             SpawnFor(run, s);
         }
+        if (run->breaking && s % 7 == 3)
+        {
+            BreakRibbons();
+        }
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         same = Simulate(gpu, sim);
         if (!same)
@@ -1548,8 +1704,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                 same = false;
                 break;
             }
-            same = SameAsCpu(mvfxContextInstance(s_context, s_cpu), e) &&
-                   (s_leftOut[e] || SameBounds(sim, e)) &&
+            const mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
+            same = SameAsCpu(cpu, e) && (s_leftOut[e] || SameBounds(sim, e)) &&
+                   (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(cpu, e)) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e)));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
@@ -1588,6 +1745,13 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                "step; the farthest at %.3f of the reach)\n",
                (unsigned long long)s_contacts, ApartCount(), MostNear(), (double)LargestShare());
         CHECK(s_contacts > 0, "contacts");
+    }
+    if (run->leastBreaks > 0)
+    {
+        printf("  ribbon breaks the GPU made: %u (at least %d); decided apart within the "
+               "tolerance: %d\n",
+               s_ribbonBreaks, run->leastBreaks, s_breaksApart);
+        CHECK(s_ribbonBreaks >= (uint32_t)run->leastBreaks, "ribbon breaks");
     }
     if (run->deathTicks)
     {

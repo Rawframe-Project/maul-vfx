@@ -38,8 +38,8 @@
 // spawning from events' and 20 a rule for the most an emitter has; then,
 // unchanged from step to step and uploaded once, 16 a source, 8 of the
 // frame's and mesh index's draws, 4 of the bounds' growth by size, 4 of
-// how particles turn and move, 12 of the values over life and 12 of how
-// it spawns from events.
+// how particles turn and move, 12 of the values over life, 12 of how it
+// spawns from events, 16 of the shape and 4 of how births join ribbons.
 #define MVFX_VALUES_FIRST     (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
 #define MVFX_VALUES_WORDS     112
 #define MVFX_KILLS_FIRST      (MVFX_VALUES_FIRST + MVFX_VALUES_WORDS)
@@ -48,7 +48,8 @@
 #define MVFX_SOURCES_FIRST    (MVFX_KILL_RULES_FIRST + 20 * MVFX_MAX_KILL_RULES)
 #define MVFX_SPAWN_RULE_FIRST (MVFX_SOURCES_FIRST + 16 * MVFX_GPU_SOURCES + 28)
 #define MVFX_SHAPE_FIRST      (MVFX_SPAWN_RULE_FIRST + 12)
-#define MVFX_STEP_WORDS       (MVFX_SHAPE_FIRST + 16)
+#define MVFX_RIBBON_FIRST     (MVFX_SHAPE_FIRST + 16)
+#define MVFX_STEP_WORDS       (MVFX_RIBBON_FIRST + 4)
 
 // The words a particle of an emitter takes on the GPU: its arrays, the
 // death tick's two words and the step's word.

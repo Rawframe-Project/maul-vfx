@@ -15,11 +15,15 @@ fn update(@builtin(global_invocation_id) id: vec3<u32>) {
 // A live particle shifted with the anchor and moved over the plan; whether
 // it outlives the plan. One whose life ends within the plan is taken out
 // unmoved, as the CPU path takes the ended out before the moves: it dies
-// where the step found it.
+// where the step found it, marked LIVE_ENDED.
+// The alive word's bits: kept (bit 0), and taken out unmoved, ended before
+// the moves (bit 1), which the ribbons pass tells from killed.
+const LIVE_ENDED: u32 = 2u;
+
 fn moveLive(i: u32) {
     let c = params.counts.x;
     if (!outlives(source[params.words.death * c + i], source[(params.words.death + 1u) * c + i])) {
-        source[params.words.alive * c + i] = 0u;
+        source[params.words.alive * c + i] = LIVE_ENDED;
         noteFacts(i, EVENT_ENDED, Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0)), 0.0);
         return;
     }
@@ -91,7 +95,7 @@ fn exclusiveScan(local: u32, keep: u32) -> u32 {
 fn keepAt(i: u32, live: u32) -> u32 {
     let c = params.counts.x;
     if (i < live) {
-        return source[params.words.alive * c + i];
+        return source[params.words.alive * c + i] & 1u;
     }
     let j = i - live;
     if (j >= birthCount()) {
@@ -188,18 +192,20 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
     return bornFacts(j, &born, &bornVelocity, place, velocity);
 }
 
-// bornAt with the birth's place and velocity at its tick, before its
-// move, as its birth event gives them.
-fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function, vec3<f32>>,
-             place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
+// A birth's place at its tick, before its move, and its velocity then
+// when withVelocity is set (drawn: none otherwise).
+fn bornPlace(j: u32, withVelocity: bool, place: ptr<function, vec3<f32>>,
+             velocity: ptr<function, vec3<f32>>) {
     let b0 = births[3u * j];
-    let b1 = births[3u * j + 1u];
     let k = birthKey(j);
     var normal = vec3<f32>(0.0);
     let shapeWords = draw(SHAPE_SALT, k.x, k.y);
     let local_place = sampleShape(j, shapeWords, &normal);
     let drawn = local_place + params.shapeOffset.xyz;
-    var v = drawVelocity(draw(VELOCITY_SALT, k.x, k.y), local_place, normal);
+    var v = vec3<f32>(0.0);
+    if (withVelocity) {
+        v = drawVelocity(draw(VELOCITY_SALT, k.x, k.y), local_place, normal);
+    }
     var p = drawn;
     let host = births[3u * j + 2u].y;
     if (host != NONE) {
@@ -214,6 +220,19 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
         p = origin + rotate(rotation, drawn * scale);
         v = rotate(rotation, v * scale) + params.shift.w * params.instanceVelocity.xyz;
     }
+    *place = p;
+    *velocity = v;
+}
+
+// bornAt with the birth's place and velocity at its tick, before its
+// move, as its birth event gives them.
+fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function, vec3<f32>>,
+             place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
+    let b0 = births[3u * j];
+    let b1 = births[3u * j + 1u];
+    var p = vec3<f32>(0.0);
+    var v = vec3<f32>(0.0);
+    bornPlace(j, true, &p, &v);
     *born = p;
     *bornVelocity = v;
     var a = vec3<f32>(0.0);
@@ -631,6 +650,10 @@ fn scatter(@builtin(local_invocation_index) local: u32,
             low = lowerOf(low, p);
             high = higherOf(high, p);
             growth = max(growth, growthOf(at));
+        }
+        if (keep[k] == 1u && i >= live && params.words.ribbon != NONE) {
+            // Where the birth went, for the ribbons passes after.
+            accepted[2u * c + i - live] = at;
         }
         at += keep[k];
     }

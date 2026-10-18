@@ -48,7 +48,7 @@ fn eventCounts(e: u32, live: u32) -> vec4<u32> {
             return g;
         }
         g.y = select(0u, 1u, writes(EVENT_COLLISION) && (flags & EVENT_CONTACT) != 0u);
-        g.w = select(0u, 1u, writes(EVENT_DEATH) && source[params.words.alive * c + e] == 0u);
+        g.w = select(0u, 1u, writes(EVENT_DEATH) && (source[params.words.alive * c + e] & 1u) == 0u);
         return g;
     }
     let j = e - live;

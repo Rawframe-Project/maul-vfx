@@ -654,8 +654,8 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
                                WordOf(arrays->drag),
                                WordOf(arrays->mesh),
                                count,
-                               0u,
-                               0u};
+                               WordOf(arrays->ribbon),
+                               WordOf(arrays->ribbonDistance)};
     memcpy(words, head, sizeof head);
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
     {
@@ -680,7 +680,7 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
                                  view->velocity.mode,
                                  view->shape.kind,
                                  mvfxUpdateGroups(plan->capacity),
-                                 0};
+                                 plan->ribbonCounter};
     memcpy(words, counts, sizeof counts);
     // The anchor's shift (none for an emitter in the instance's space,
     // whose anchor stays).
@@ -742,4 +742,7 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     shape[11] = (uint32_t)(delay >> 32u);
     shape[12] = tables->mesh;
     shape[13] = s->meshMode;
+    uint32_t* ribbon = words + MVFX_RIBBON_FIRST;
+    ribbon[0] = view->ribbonIds;
+    memcpy(&ribbon[1], &view->ribbonBreakDistance, sizeof(float));
 }

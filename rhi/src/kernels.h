@@ -60,6 +60,13 @@ typedef enum mvfxKernel
     mvfx_kernelSpawnSort = 17,
     mvfx_kernelSpawnScan = 18,
     mvfx_kernelSpawnMerge = 19,
+    // Which ribbon each birth joins and its distance along it: the
+    // births placed, their places, their points before, the ids and
+    // distances.
+    mvfx_kernelRibbonScan = 20,
+    mvfx_kernelRibbonFacts = 21,
+    mvfx_kernelRibbonLinks = 22,
+    mvfx_kernelRibbonIds = 23,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

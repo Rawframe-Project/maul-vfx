@@ -46,6 +46,8 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSim, "eventWrite"},  {mvfx_containerRecords, "eventValues"},
     {mvfx_containerSim, "spawnCount"},  {mvfx_containerSim, "spawnSort"},
     {mvfx_containerSim, "spawnScan"},   {mvfx_containerSim, "spawnMerge"},
+    {mvfx_containerSim, "ribbonScan"},  {mvfx_containerSim, "ribbonFacts"},
+    {mvfx_containerSim, "ribbonLinks"}, {mvfx_containerSim, "ribbonIds"},
 };
 
 struct mvfxGpu
