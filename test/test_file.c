@@ -827,10 +827,10 @@ static void TestCreate(void)
                   mvfx_errorStale, -1),
           "a grid destroyed, refused by the effect");
     CHECK(s_live == live - 1, "the read memory freed");
-    uint64_t misuse = mvfxContext_GetMisuse(context);
+    uint64_t misuse = mvfxGetContextMisuse(context);
     CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, NULL),
                   mvfx_errorInvalid, -1) &&
-              mvfxContext_GetMisuse(context) == misuse + 1,
+              mvfxGetContextMisuse(context) == misuse + 1,
           "a NULL out counted as misuse");
     CHECK(Refused(mvfxCreateEffectFromBytes(NULL, bytes, size, table, 4, &effect),
                   mvfx_errorInvalid, -1),

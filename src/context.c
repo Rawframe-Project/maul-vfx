@@ -156,7 +156,7 @@ int64_t mvfxContext_GetParticles(const mvfxContext* context)
     return context->particlesHeld;
 }
 
-uint64_t mvfxContext_GetMisuse(const mvfxContext* context)
+uint64_t mvfxGetContextMisuse(const mvfxContext* context)
 {
     return atomic_load_explicit(&context->misuse, memory_order_relaxed);
 }

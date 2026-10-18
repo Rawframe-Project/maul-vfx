@@ -42,7 +42,7 @@ void mvfxDestroyContext(mvfxContext* context);
 Destroys a context and everything it owns.  @param context  The context. NULL does nothing. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
-uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
+uint64_t mvfxGetContextMisuse(const mvfxContext* context);
 ```
 Returns how many calls the context refused as misuse: invalid arguments against it. Stale ids are not misuse.  @param context  The context. @return The count since the context was created. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 

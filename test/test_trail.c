@@ -326,10 +326,10 @@ static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Trail();
     Scene scene = NewScene(&emitter, 1);
-    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
     CHECK(mvfxInstance_BreakRibbons(scene.context, scene.instance, 1) == mvfx_errorInvalid &&
               mvfxInstance_BreakRibbons(scene.context, scene.instance, -2) == mvfx_errorInvalid &&
-              mvfxContext_GetMisuse(scene.context) == misuse + 2,
+              mvfxGetContextMisuse(scene.context) == misuse + 2,
           "emitters out of range, counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;

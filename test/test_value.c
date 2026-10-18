@@ -410,7 +410,7 @@ static void TestLivesAndParameters(void)
               read[3] == 4.0f,
           "a restart keeps the parameters");
 
-    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
     static const float notFinite[4] = {0, INFINITY, 0, 0};
     CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 2, zero) == mvfx_errorInvalid,
           "past the count");
@@ -424,14 +424,14 @@ static void TestLivesAndParameters(void)
     CHECK(mvfxInstance_GetParameter(scene.context, scene.instance, 5, read) == mvfx_errorInvalid &&
               read[0] == 0.0f,
           "zeroed on failure");
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 5, "each counted");
+    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 5, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_SetParameter(scene.context, stale, 0, zero) == mvfx_errorStale, "stale");
     CHECK(mvfxInstance_GetParameter(scene.context, stale, 0, read) == mvfx_errorStale, "stale");
     CHECK(mvfxInstance_SetParameter(NULL, scene.instance, 0, zero) == mvfx_errorInvalid,
           "no context");
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 5, "stale ids are not misuse");
+    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 5, "stale ids are not misuse");
     mvfxDestroyContext(scene.context);
 
     // A parameter's life past the longest is held to it.

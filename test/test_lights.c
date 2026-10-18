@@ -245,7 +245,7 @@ static void TestRefusals(void)
     static const mvfxView far = {.origin = {0, -0x1p53, 0}};
     mvfxLight lights[1];
     int64_t count = 0;
-    uint64_t misuse = mvfxContext_GetMisuse(c);
+    uint64_t misuse = mvfxGetContextMisuse(c);
     CHECK(mvfxInstance_WriteLights(c, i, 1, &view, lights, 1, &count) == mvfx_errorInvalid &&
               mvfxInstance_WriteLights(c, i, 0, NULL, lights, 1, &count) == mvfx_errorInvalid &&
               mvfxInstance_WriteLights(c, i, 0, &view, lights, 1, NULL) == mvfx_errorInvalid &&
@@ -253,7 +253,7 @@ static void TestRefusals(void)
               mvfxInstance_WriteLights(c, i, 0, &view, NULL, 1, &count) == mvfx_errorInvalid &&
               mvfxInstance_WriteLights(c, i, 0, &far, lights, 1, &count) == mvfx_errorInvalid,
           "refused");
-    CHECK(mvfxContext_GetMisuse(c) == misuse + 6, "each counted");
+    CHECK(mvfxGetContextMisuse(c) == misuse + 6, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     CHECK(mvfxInstance_WriteLights(c, stale, 0, &view, lights, 1, &count) == mvfx_errorStale &&

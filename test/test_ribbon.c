@@ -378,7 +378,7 @@ static void TestRefusals(void)
     bad[3].ribbonCapacity = -1;
     bad[4].scratch = (unsigned char*)scratch + 2;
     bad[5].ribbons = (mvfxRibbon*)((unsigned char*)list + 4);
-    uint64_t misuse = mvfxContext_GetMisuse(c);
+    uint64_t misuse = mvfxGetContextMisuse(c);
     int32_t refused = 0;
     for (int32_t b = 0; b < 6; ++b)
     {
@@ -397,7 +397,7 @@ static void TestRefusals(void)
         mvfxInstance_WriteRibbons(c, i, 0, l, &view, &good, &points1, NULL) == mvfx_errorInvalid;
     refused += mvfxInstance_WriteRibbons(c, i, 1, l, &view, &good, &points1, &ribbons1) ==
                mvfx_errorInvalid;
-    CHECK(refused == 12 && mvfxContext_GetMisuse(c) == misuse + 12, "refused, each counted");
+    CHECK(refused == 12 && mvfxGetContextMisuse(c) == misuse + 12, "refused, each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     mvfxLayoutId staleLayout = l;

@@ -277,10 +277,10 @@ static void TestChecks(void)
     levels[0] = (mvfxQualityLevel){.capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 15u};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds of each");
     mvfxInstanceId instance = {0};
-    uint64_t misuse = mvfxContext_GetMisuse(context);
+    uint64_t misuse = mvfxGetContextMisuse(context);
     CHECK(NewInstance(context, effect, 3, &instance) == mvfx_errorInvalid &&
               NewInstance(context, effect, -1, &instance) == mvfx_errorInvalid &&
-              mvfxContext_GetMisuse(context) == misuse + 2,
+              mvfxGetContextMisuse(context) == misuse + 2,
           "a level it does not have, counted");
     CHECK(NewInstance(context, effect, 2, &instance) == mvfx_success, "its last level");
     int32_t level = 0;

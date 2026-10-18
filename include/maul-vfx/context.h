@@ -137,7 +137,7 @@ extern "C"
     /// @return The count since the context was created.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_API uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
+    MVFX_API uint64_t mvfxGetContextMisuse(const mvfxContext* context);
 
     /// Returns the particles the context's instances hold against its
     /// budget: the sum of their emitters' capacities at their quality

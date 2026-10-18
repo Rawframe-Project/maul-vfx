@@ -277,7 +277,7 @@ static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Telling(10.0f);
     Scene scene = NewScene(&emitter);
-    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
     const mvfxEvent* events = NULL;
     int32_t count = 0;
     CHECK(mvfxInstance_GetEvents(scene.context, scene.instance, 0, NULL, &count) ==
@@ -289,7 +289,7 @@ static void TestRefusals(void)
               mvfxInstance_GetEvents(scene.context, scene.instance, -1, &events, &count) ==
                   mvfx_errorInvalid,
           "refused");
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 4, "each counted");
+    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 4, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_GetEvents(scene.context, stale, 0, &events, &count) == mvfx_errorStale &&

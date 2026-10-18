@@ -241,7 +241,7 @@ static void TestScratch(void)
                                       &count) == mvfx_success &&
               count == 3 && serials[0] == 1 && serials[1] == 2 && serials[2] == 0,
           "enough for the live ones");
-    uint64_t misuse = mvfxContext_GetMisuse(c);
+    uint64_t misuse = mvfxGetContextMisuse(c);
     unsigned char* odd = (unsigned char*)scratch + 2;
     mvfxView far = {.eye = {0, 0x1p53, 0}};
     mvfxView farOrigin = {.origin = {0, 0, -0x1p53}};
@@ -269,7 +269,7 @@ static void TestScratch(void)
               mvfxInstance_GetSortScratchBytes(c, i, 0, NULL) == mvfx_errorInvalid &&
               mvfxInstance_GetSortScratchBytes(NULL, i, 0, &bytes) == mvfx_errorInvalid,
           "the query refused");
-    CHECK(mvfxContext_GetMisuse(c) == misuse + 10, "each counted");
+    CHECK(mvfxGetContextMisuse(c) == misuse + 10, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     CHECK(mvfxInstance_GetSortScratchBytes(c, stale, 0, &bytes) == mvfx_errorStale, "stale");

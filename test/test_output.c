@@ -48,7 +48,7 @@ static void TestLayouts(void)
     mvfxLayoutId id = {0};
     CHECK(Make(context, &good, 1, 12, &id) == mvfx_success && mvfxLayout_IsValid(context, id),
           "a layout");
-    uint64_t misuse = mvfxContext_GetMisuse(context);
+    uint64_t misuse = mvfxGetContextMisuse(context);
     int32_t refused = 0;
     for (int32_t rule = 0; rule < 20; ++rule)
     {
@@ -146,7 +146,7 @@ static void TestLayouts(void)
               mvfxCreateLayout(context, &noCookie, NULL) == mvfx_errorInvalid &&
               mvfxCreateLayout(NULL, &noCookie, &id) == mvfx_errorInvalid,
           "no cookie, no def, no id, no context");
-    CHECK(mvfxContext_GetMisuse(context) == misuse + 23, "each counted");
+    CHECK(mvfxGetContextMisuse(context) == misuse + 23, "each counted");
     // Two at most here; destroyed, its id is stale and its slot free.
     mvfxLayoutId second = {0};
     mvfxLayoutId third = {0};
@@ -452,7 +452,7 @@ static void TestRefusals(void)
     static const mvfxView farZ = {.origin = {0, 0, -0x1p53}};
     Record records[1];
     int64_t count = 0;
-    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
     mvfxContext* c = scene.context;
     mvfxInstanceId i = scene.instance;
     CHECK(mvfxInstance_WriteParticles(c, i, 1, layout, &view, NULL, 0, records, 1, &count) ==
@@ -472,7 +472,7 @@ static void TestRefusals(void)
               mvfxInstance_WriteParticles(c, i, 0, layout, &farZ, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid,
           "refused");
-    CHECK(mvfxContext_GetMisuse(c) == misuse + 8, "each counted");
+    CHECK(mvfxGetContextMisuse(c) == misuse + 8, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     mvfxLayoutId staleLayout = layout;

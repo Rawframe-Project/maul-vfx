@@ -217,7 +217,7 @@ static void TestRefusals(void)
     far.eye[0] = 0x1p53;
     int64_t vertexCount = 0;
     int64_t indexCount = 0;
-    uint64_t misuse = mvfxContext_GetMisuse(c);
+    uint64_t misuse = mvfxGetContextMisuse(c);
     int32_t refused = 0;
     for (int32_t b = 0; b < 6; ++b)
     {
@@ -236,7 +236,7 @@ static void TestRefusals(void)
                mvfx_errorInvalid;
     refused += mvfxInstance_ExpandRibbons(c, i, 1, l, &s_view, &good, &vertexCount, &indexCount) ==
                mvfx_errorInvalid;
-    CHECK(refused == 12 && mvfxContext_GetMisuse(c) == misuse + 12, "refused, each counted");
+    CHECK(refused == 12 && mvfxGetContextMisuse(c) == misuse + 12, "refused, each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     mvfxLayoutId staleLayout = l;

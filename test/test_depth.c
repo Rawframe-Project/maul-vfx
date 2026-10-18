@@ -480,7 +480,7 @@ static void TestRefusals(void)
     Scene scene = NewScene(&emitter);
     mvfxDepthImage good = Camera(s_floats, mvfx_depthFloat32, false);
     Show(&scene, &good);
-    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
     static float normals[SIDE * SIDE * 3];
     for (int32_t field = 0; field < 14; ++field)
     {
@@ -539,7 +539,7 @@ static void TestRefusals(void)
         CHECK(mvfxInstance_SetDepthImage(scene.context, scene.instance, &bad) == mvfx_errorInvalid,
               "an image out of range");
     }
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 14, "each counted");
+    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 14, "each counted");
     // The good image kept: the wall still met.
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);

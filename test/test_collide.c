@@ -332,7 +332,7 @@ static void TestHostAndSpaces(void)
             CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success,
                   "step");
             CHECK(fabsf(At(&scene, mvfx_attributePositionY, 1) + 1.0f) <= 1e-4f, "cleared");
-            uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+            uint64_t misuse = mvfxGetContextMisuse(scene.context);
             mvfxCollider bad = {.kind = mvfx_colliderSphere};
             CHECK(mvfxInstance_SetColliders(scene.context, scene.instance, &bad, 1) ==
                           mvfx_errorInvalid &&
@@ -341,7 +341,7 @@ static void TestHostAndSpaces(void)
                       mvfxInstance_SetColliders(scene.context, scene.instance, NULL, 1) ==
                           mvfx_errorInvalid,
                   "refused");
-            CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 3, "each counted");
+            CHECK(mvfxGetContextMisuse(scene.context) == misuse + 3, "each counted");
             mvfxInstanceId stale = scene.instance;
             stale.generation += 1;
             CHECK(mvfxInstance_SetColliders(scene.context, stale, &floor, 1) == mvfx_errorStale &&

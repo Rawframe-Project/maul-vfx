@@ -48,12 +48,12 @@ static void CallBack(Callback from)
     }
     s_target = NULL;
     s_armed = NONE;
-    uint64_t before = mvfxContext_GetMisuse(target);
+    uint64_t before = mvfxGetContextMisuse(target);
     bool refused = mvfxContext_StepTicks(target, 1) == mvfx_errorState &&
                    mvfxInstance_SetVisible(target, s_instance, false) == mvfx_errorState &&
                    mvfxDestroyInstance(target, s_instance) == mvfx_errorState;
     mvfxDestroyContext(target);
-    s_refused += refused && mvfxContext_GetMisuse(target) == before + 4 ? 1 : 0;
+    s_refused += refused && mvfxGetContextMisuse(target) == before + 4 ? 1 : 0;
     s_made += 1;
 }
 

@@ -351,7 +351,7 @@ static void TestChecks(void)
     mvfxExpandBuffers strips = {0};
     int64_t a = 0;
     int64_t b = 0;
-    uint64_t misuse = mvfxContext_GetMisuse(context);
+    uint64_t misuse = mvfxGetContextMisuse(context);
     refused = mvfxInstance_WritePlexus(context, instance, 0, layout, NULL, &buffers, &a, &b) ==
               mvfx_errorInvalid;
     refused += mvfxInstance_WritePlexus(context, instance, 1, layout, &s_view, &buffers, &a, &b) ==
@@ -361,7 +361,7 @@ static void TestChecks(void)
     strips.vertexCapacity = -1;
     refused += mvfxInstance_ExpandPlexus(context, instance, 0, layout, &s_view, &strips, &a, &b) ==
                mvfx_errorInvalid;
-    CHECK(refused == 4 && mvfxContext_GetMisuse(context) == misuse + 4, "refused, counted");
+    CHECK(refused == 4 && mvfxGetContextMisuse(context) == misuse + 4, "refused, counted");
     mvfxDestroyContext(context);
 }
 

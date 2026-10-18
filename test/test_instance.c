@@ -54,7 +54,7 @@ static void TestLifecycle(void)
           "stats of a stale instance");
     CHECK(stats.live == 0 && stats.owed == 0 && stats.status == 0, "zeroed on failure");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "free once its instance is gone");
-    CHECK(mvfxContext_GetMisuse(context) == 0, "no misuse so far");
+    CHECK(mvfxGetContextMisuse(context) == 0, "no misuse so far");
     mvfxDestroyContext(context);
 }
 
@@ -67,21 +67,21 @@ static void TestRefusals(void)
     mvfxInstanceId instance = {5, 5};
     uint64_t misuse = 0;
     CHECK(mvfxCreateInstance(context, NULL, &instance) == mvfx_errorInvalid, "no def");
-    CHECK(instance.index1 == 0 && mvfxContext_GetMisuse(context) == ++misuse, "counted");
+    CHECK(instance.index1 == 0 && mvfxGetContextMisuse(context) == ++misuse, "counted");
     CHECK(mvfxCreateInstance(context, &def, NULL) == mvfx_errorInvalid, "no out-parameter");
-    CHECK(mvfxContext_GetMisuse(context) == ++misuse, "counted");
+    CHECK(mvfxGetContextMisuse(context) == ++misuse, "counted");
     CHECK(mvfxCreateInstance(NULL, &def, &instance) == mvfx_errorInvalid, "no context");
     mvfxInstanceDef bad = def;
     bad.cookie = 0;
     CHECK(mvfxCreateInstance(context, &bad, &instance) == mvfx_errorInvalid, "no cookie");
-    CHECK(mvfxContext_GetMisuse(context) == ++misuse, "counted");
+    CHECK(mvfxGetContextMisuse(context) == ++misuse, "counted");
     static const double origins[] = {(double)NAN, (double)INFINITY, 0x1p53};
     for (int32_t i = 0; i < 3; ++i)
     {
         bad = def;
         bad.origin[i] = origins[i];
         CHECK(mvfxCreateInstance(context, &bad, &instance) == mvfx_errorInvalid, "bad origin");
-        CHECK(mvfxContext_GetMisuse(context) == ++misuse, "counted");
+        CHECK(mvfxGetContextMisuse(context) == ++misuse, "counted");
     }
     bad = def;
     bad.effect = (mvfxEffectId){effect.index1, effect.generation + 1};
@@ -97,8 +97,8 @@ static void TestRefusals(void)
           "no emitter -1");
     CHECK(mvfxInstance_GetEmitterStats(context, a, 0, NULL) == mvfx_errorInvalid, "no out");
     misuse += 3;
-    CHECK(mvfxContext_GetMisuse(context) == misuse, "each counted");
-    CHECK(mvfxContext_GetMisuse(context) == misuse && misuse == 9, "nine refusals");
+    CHECK(mvfxGetContextMisuse(context) == misuse, "each counted");
+    CHECK(mvfxGetContextMisuse(context) == misuse && misuse == 9, "nine refusals");
 
     CHECK(mvfxContext_Step(context, -0.001) == mvfx_errorInvalid, "a negative step");
     CHECK(mvfxContext_Step(context, (double)NAN) == mvfx_errorInvalid, "a NaN step");
@@ -107,7 +107,7 @@ static void TestRefusals(void)
     CHECK(mvfxContext_StepTicks(context, -1) == mvfx_errorInvalid, "negative ticks");
     CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND + 1) == mvfx_errorInvalid,
           "too many ticks");
-    CHECK(mvfxContext_GetMisuse(context) == misuse + 5, "each counted");
+    CHECK(mvfxGetContextMisuse(context) == misuse + 5, "each counted");
     CHECK(mvfxContext_Step(NULL, 0.1) == mvfx_errorInvalid, "no context");
     CHECK(mvfxContext_StepTicks(NULL, 1) == mvfx_errorInvalid, "no context, ticks");
     CHECK(mvfxContext_Step(context, 0.0) == mvfx_success, "a zero step");

@@ -383,7 +383,7 @@ static void TestHeldAndRefused(void)
     CHECK(mvfxDestroyGrid(context, slopeGrid) == mvfx_success, "let go");
 
     // Stale, of three components, a heightfield two points tall.
-    uint64_t misuse = mvfxContext_GetMisuse(context);
+    uint64_t misuse = mvfxGetContextMisuse(context);
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorStale, "a stale grid");
     static const float vectors[6] = {0};
     mvfxGridDef def = mvfxDefaultGridDef();
@@ -401,7 +401,7 @@ static void TestHeldAndRefused(void)
     CHECK(mvfxCreateGrid(context, &def, &tall) == mvfx_success, "two tall");
     slope.grid = tall;
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "tall refused");
-    CHECK(mvfxContext_GetMisuse(context) == misuse + 2, "each counted");
+    CHECK(mvfxGetContextMisuse(context) == misuse + 2, "each counted");
     // A distance grid may be two tall, and a heightfield need not set its Y.
     mvfxCollider tallDistance = Distance(tall);
     emitter.colliders = &tallDistance;

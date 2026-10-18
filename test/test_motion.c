@@ -323,7 +323,7 @@ static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     Scene scene = NewScene(&emitter);
-    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
     const double origin[3] = {0.0, 0.0, 0.0};
     const double far[3] = {0.0, 0x1p53, 0.0};
     const float half[4] = {0.0f, 0.0f, 0.0f, 0.5f};
@@ -339,7 +339,7 @@ static void TestRefusals(void)
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, NULL, s_identity, 1.0f, false) ==
               mvfx_errorInvalid,
           "no origin");
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 4, "each counted");
+    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 4, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_SetTransform(scene.context, stale, origin, s_identity, 1.0f, false) ==

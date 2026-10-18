@@ -71,7 +71,7 @@ static void TestDefaultDefCreatesAndDestroys(void)
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "default def creates");
     CHECK(context != NULL, "context returned");
-    CHECK(mvfxContext_GetMisuse(context) == 0, "no misuse yet");
+    CHECK(mvfxGetContextMisuse(context) == 0, "no misuse yet");
     mvfxDestroyContext(context);
 }
 

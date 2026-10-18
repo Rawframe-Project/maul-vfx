@@ -521,9 +521,9 @@ static void TestStop(void)
     CHECK(stats.live == 0 && stats.owed == 16 && stats.status == mvfx_emitterStopped,
           "cleared at once");
 
-    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
     CHECK(mvfxInstance_Stop(scene.context, scene.instance, 2) == mvfx_errorInvalid, "a bad mode");
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 1, "counted");
+    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 1, "counted");
     CHECK(mvfxInstance_Stop(NULL, scene.instance, mvfx_stopEmitting) == mvfx_errorInvalid,
           "no context");
     CHECK(mvfxInstance_Restart(NULL, scene.instance) == mvfx_errorInvalid, "no context");
@@ -531,7 +531,7 @@ static void TestStop(void)
     stale.generation += 1;
     CHECK(mvfxInstance_Stop(scene.context, stale, mvfx_stopEmitting) == mvfx_errorStale, "stale");
     CHECK(mvfxInstance_Restart(scene.context, stale) == mvfx_errorStale, "stale");
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 1, "stale ids are not misuse");
+    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 1, "stale ids are not misuse");
     mvfxDestroyContext(scene.context);
 }
 
