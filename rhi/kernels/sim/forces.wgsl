@@ -164,44 +164,6 @@ fn randomDirection(a: u32, b: u32) -> vec3<f32> {
     return vec3<f32>(ring * cos(angle), ring * sin(angle), z);
 }
 
-// A sphere's sample: the place in the emitter's space, and its normal.
-fn sampleSphere(words: vec4<u32>, normal: ptr<function, vec3<f32>>) -> vec3<f32> {
-    *normal = randomDirection(words.x, words.y);
-    let outer = params.shapeOffset.w;
-    let inner = outer * (1.0 - params.shapeExtra.x);
-    let innerCube = inner * inner * inner;
-    let outerCube = outer * outer * outer;
-    var radius = pow(innerCube + unitFloat(words.z) * (outerCube - innerCube), 1.0 / 3.0);
-    if (params.shapeExtra.x == 0.0) {
-        radius = outer;
-    }
-    return radius * *normal;
-}
-
-fn turnByShape(v: vec3<f32>) -> vec3<f32> {
-    return vec3<f32>(dot(params.shapeRow0.xyz, v), dot(params.shapeRow1.xyz, v),
-                     dot(params.shapeRow2.xyz, v));
-}
-
-// The initial velocity from the shape's normal, in the emitter's space:
-// the cone and fixed modes, the normal's for the others.
-fn drawVelocity(words: vec4<u32>, normal: vec3<f32>) -> vec3<f32> {
-    var direction = normal;
-    if (params.modes.x == 2u) {
-        let z = 1.0 - unitFloat(words.x) * (1.0 - params.direction.w);
-        let across = sqrt(max(0.0, 1.0 - z * z));
-        let angle = TWO_PI * unitFloat(words.y);
-        direction = across * cos(angle) * params.tangentA.xyz +
-                    across * sin(angle) * params.tangentB.xyz + z * params.direction.xyz;
-    } else if (params.modes.x == 3u) {
-        direction = params.direction.xyz;
-    }
-    let speedWord = ((words.x & 0xFFu) << 24u) | ((words.y & 0xFFu) << 16u) |
-                    ((words.z & 0xFFu) << 8u) | (words.w & 0xFFu);
-    let speed = params.tangentB.w + (params.speed.x - params.tangentB.w) * unitFloat(speedWord);
-    return direction * speed;
-}
-
 fn rotate(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
     let t = 2.0 * cross(q.xyz, v);
     return v + q.w * t + cross(q.xyz, t);

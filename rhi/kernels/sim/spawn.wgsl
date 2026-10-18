@@ -392,14 +392,11 @@ fn hostVelocity(h: u32, key: vec2<u32>, tick: u32) -> vec3<f32> {
         local = rotate(vec4<f32>(-rotation.xyz, rotation.w), (record.place.xyz - origin) / scale);
     }
     var normal = local;
-    let length = sqrt(dot3(local, local));
-    if (length > 0.0) {
-        normal = local / length;
-    } else {
+    if (!normalized(&normal)) {
         let shapeWords = draw(SHAPE_SALT, key.x, key.y);
         normal = randomDirection(shapeWords.x, shapeWords.y);
     }
-    var v = drawVelocity(draw(VELOCITY_SALT, key.x, key.y), normal);
+    var v = drawVelocity(draw(VELOCITY_SALT, key.x, key.y), local, normal);
     if (world) {
         v = rotate(rotation, v * scale) + params.shift.w * params.instanceVelocity.xyz;
     }

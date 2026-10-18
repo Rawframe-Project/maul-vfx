@@ -730,4 +730,14 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     words[MVFX_KILLS_FIRST + 2] = (uint32_t)view->eventCapacity;
     words[MVFX_KILLS_FIRST + 3] = mvfxEventFirst(plan->capacity);
     Sources(view, tables, words + MVFX_SOURCES_FIRST);
+    // The shape beyond the sphere's numbers, and the delay its arc's age
+    // is from.
+    uint32_t* shape = words + MVFX_SHAPE_FIRST;
+    Floats(shape, s->length, s->halfExtents[0], s->halfExtents[1], s->halfExtents[2]);
+    Floats(shape + 4, s->arc, s->arcSpeed, s->tangent, 0.0f);
+    uint64_t delay = (uint64_t)view->delayTicks;
+    shape[8] = s->arcMode;
+    shape[9] = s->coneVolume ? 1u : 0u;
+    shape[10] = (uint32_t)delay;
+    shape[11] = (uint32_t)(delay >> 32u);
 }

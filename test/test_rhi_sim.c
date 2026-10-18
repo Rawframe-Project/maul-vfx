@@ -23,6 +23,7 @@
 #include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
+#include "maul-vfx/mesh.h"
 #include "maul-vfx/plan.h"
 
 #include <math.h>
@@ -1271,8 +1272,17 @@ static void TestRefused(mvfxGpu* kernels)
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
     emitters[1].hostModules = &module;
     emitters[1].hostModuleCount = 1;
-    emitters[1].shape.kind = mvfx_shapeBox;
-    emitters[1].velocity.randomize = 0.5f;
+    // A mesh shape, which the part does not run yet: one triangle's.
+    static const float corners[9] = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+    static const uint32_t triangle[3] = {0, 1, 2};
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = corners;
+    meshDef.vertexCount = 3;
+    meshDef.triangles = triangle;
+    meshDef.triangleCount = 1;
+    CHECK(mvfxCreateMesh(context, &meshDef, &emitters[1].shape.mesh) == mvfx_success, "a mesh");
+    emitters[1].shape.kind = mvfx_shapeMesh;
+    emitters[1].shape.meshMode = mvfx_meshSurface;
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = emitters;
     effectDef.emitterCount = 2;
@@ -1294,7 +1304,7 @@ static void TestRefused(mvfxGpu* kernels)
     mvfxGpuRefusal refusal;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
               refusal.emitter == 1 && refusal.features == MVFX_FEATURE_HOST_MODULES &&
-              refusal.shape && refusal.velocity,
+              refusal.shape,
           "an emitter it does not run, named");
     simDef.instance = cpu;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorInvalid && refusal.emitter == -1,
@@ -1310,7 +1320,7 @@ static void TestRefused(mvfxGpu* kernels)
     simDef.effect = effect;
     simDef.instance = planned;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && refusal.emitter == 1 &&
-              refusal.features == MVFX_FEATURE_HOST_MODULES && !refusal.shape && !refusal.velocity,
+              refusal.features == MVFX_FEATURE_HOST_MODULES && !refusal.shape,
           "a feature alone refused");
     mvfxDestroyContext(context);
 }

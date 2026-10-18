@@ -732,3 +732,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - An emitter writing events uploads 96 bytes a step for its events'
   values over life, the words a plan changes (the clock and the map
   into its space), where it uploaded all 1,952; the rest once.
+- The GPU part runs every spawn shape but the mesh (point, line, circle,
+  sphere, hemisphere, box by its thickness, cone on its base, through its
+  volume or from its apex), every arc mode (looping and going and coming
+  exact at any age, spread over a burst) and every velocity mode, with
+  the randomize amount: `mvfxGpuRefusal.shape` names a mesh shape alone,
+  and its `velocity` is gone. The first step uploads 48 bytes more of an
+  emitter's shape (its sources' block 1,232).

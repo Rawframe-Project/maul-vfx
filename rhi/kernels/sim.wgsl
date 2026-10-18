@@ -251,6 +251,13 @@ struct Step {
     // (bits), the source's event capacity; its loop's start and length in
     // ticks (two words each; a length of 0 for none).
     spawnRule: array<vec4<u32>, 3>,
+    // The shape beyond the sphere's numbers: its length and half extents;
+    // its arc, arc speed and cone tangent, unused; its arc mode, whether a
+    // cone fills its volume, and the emitter's start delay in ticks (two
+    // words).
+    shapeSize: vec4<f32>,
+    shapeArc: vec4<f32>,
+    shapeModes: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -290,6 +297,8 @@ var<workgroup> boxLow: array<vec4<f32>, CHUNK>;
 var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 
 // include: sim/forces.wgsl
+
+// include: sim/shapes.wgsl
 
 // include: sim/collide.wgsl
 

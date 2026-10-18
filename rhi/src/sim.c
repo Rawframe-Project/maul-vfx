@@ -50,19 +50,15 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
-    const mvfxVelocityView* v = &view->velocity;
     *refusal = (mvfxGpuRefusal){
         .features = (view->features & ~RUN_FEATURES) |
                     ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
                     ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
                          ? MVFX_FEATURE_COLLISION
                          : 0),
-        .shape = view->shape.kind != mvfx_shapeSphere,
-        .velocity = (v->mode != mvfx_directionShapeNormal && v->mode != mvfx_directionCone &&
-                     v->mode != mvfx_directionFixed) ||
-                    v->randomize != 0.0f,
+        .shape = view->shape.kind == mvfx_shapeMesh,
     };
-    return refusal->features == 0 && !refusal->shape && !refusal->velocity;
+    return refusal->features == 0 && !refusal->shape;
 }
 
 // Reads the effect's emitters' views; false with a status when one is

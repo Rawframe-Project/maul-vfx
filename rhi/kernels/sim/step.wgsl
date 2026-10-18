@@ -197,9 +197,9 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
     let k = birthKey(j);
     var normal = vec3<f32>(0.0);
     let shapeWords = draw(SHAPE_SALT, k.x, k.y);
-    let local_place = turnByShape(sampleSphere(shapeWords, &normal));
+    let local_place = sampleShape(j, shapeWords, &normal);
     let drawn = local_place + params.shapeOffset.xyz;
-    var v = drawVelocity(draw(VELOCITY_SALT, k.x, k.y), turnByShape(normal));
+    var v = drawVelocity(draw(VELOCITY_SALT, k.x, k.y), local_place, normal);
     var p = drawn;
     let host = births[3u * j + 2u].y;
     if (host != NONE) {

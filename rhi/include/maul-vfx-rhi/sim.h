@@ -54,13 +54,12 @@ extern "C"
 
     // Why a simulation was refused: the first emitter it cannot run, the
     // features of it the part does not run yet, and whether its shape's
-    // kind or its velocity's mode is one it does not run yet.
+    // kind is one it does not run yet (a mesh).
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
         uint64_t features;
         bool shape;
-        bool velocity;
     } mvfxGpuRefusal;
 
     // An emitter's particles: a buffer of 32-bit words, arrays of the
@@ -317,7 +316,7 @@ extern "C"
     /// birth (a plan holds at most twice the emitter's capacity) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts and 16 more for one spawning from events; at the first step,
-    /// its sources' 1,184 and the effect's baked tables its values read
+    /// its sources' 1,232 and the effect's baked tables its values read
     /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,

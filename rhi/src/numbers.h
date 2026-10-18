@@ -47,7 +47,8 @@
 #define MVFX_KILL_RULES_FIRST (MVFX_KILLS_FIRST + 24)
 #define MVFX_SOURCES_FIRST    (MVFX_KILL_RULES_FIRST + 20 * MVFX_MAX_KILL_RULES)
 #define MVFX_SPAWN_RULE_FIRST (MVFX_SOURCES_FIRST + 16 * MVFX_GPU_SOURCES + 28)
-#define MVFX_STEP_WORDS       (MVFX_SPAWN_RULE_FIRST + 12)
+#define MVFX_SHAPE_FIRST      (MVFX_SPAWN_RULE_FIRST + 12)
+#define MVFX_STEP_WORDS       (MVFX_SHAPE_FIRST + 12)
 
 // The words a particle of an emitter takes on the GPU: its arrays, the
 // death tick's two words and the step's word.
