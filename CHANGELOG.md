@@ -760,11 +760,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The misuse count is `mvfxGetContextMisuse`, the family's name for an
   object's count (conventions section 4), where it was
   `mvfxContext_GetMisuse`.
-- An emitter's view gives its ribbon ids and break distance and its
-  arrays the ribbon and the distance along it, and a plan gives the
-  emitter's ribbon counter after the host's breaks
-  (`mvfxEmitterPlan.ribbonCounter`), for a simulation elsewhere to join
-  births to ribbons as the CPU path does.
+- An emitter's view gives how it is drawn as ribbons
+  (`mvfxEmitterView.ribbon`, a `mvfxRibbonView`: its ids and break
+  distance, pieces and bend, texture coordinate, facing, pinned head,
+  width and colour over the length) and its arrays the ribbon and the
+  distance along it, and a plan gives the emitter's ribbon counter after
+  the host's breaks (`mvfxEmitterPlan.ribbonCounter`), for a simulation
+  elsewhere to join births to ribbons and draw them as the CPU path
+  does.
 - By source (`mvfx_ribbonPerSource`), the counter's ribbons take ids
   with the top bit set and a source's ribbon its serial's low 31 bits:
   the emitter's own ribbon and a source's of the same number were drawn
@@ -776,3 +779,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   made since the last clear, the emitter's counter being its plan's plus
   it (`MVFX_GPU_STATISTICS_WORDS` is 39). The first step uploads 16 bytes
   more of an emitter's numbers.
+- The GPU part writes an emitter's ribbons as
+  `mvfxInstance_WriteRibbons` does (`mvfxGpuSim_AddRibbons`,
+  `mvfxGpuRibbonsDef`): its points in the host's layout, the list of the
+  ribbons written and their counts (`MVFX_GPU_RIBBON_COUNTS`: the points
+  and ribbons there are and those written), a segment as one piece and
+  no pinned head yet. Its passes count among an emitter's
+  `MVFX_GPU_RECORD_PASSES`.

@@ -18,6 +18,7 @@ typedef enum mvfxContainer
     mvfx_containerSim = 1,
     mvfx_containerRecords = 2,
     mvfx_containerSort = 3,
+    mvfx_containerRibbonRecords = 4,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -62,6 +63,12 @@ typedef enum mvfxKernel
     mvfx_kernelSpawnMerge = 19,
     // Which ribbon each birth joins and its distance along it.
     mvfx_kernelRibbons = 20,
+    // An emitter's ribbons in a layout of the host's
+    // (ribbon_records.wgsl): each live particle's ribbon id as a key for
+    // the radix passes, the chains and their list, a record a point.
+    mvfx_kernelRibbonKeys = 21,
+    mvfx_kernelRibbonChains = 22,
+    mvfx_kernelRibbonPoints = 23,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

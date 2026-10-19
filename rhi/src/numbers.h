@@ -98,6 +98,9 @@ typedef struct mvfxStepTables
     uint32_t recordLives[MVFX_RECORD_LIVES];
     // A mesh shape's region (rhi/src/mesh_image.h), all ones for none.
     uint32_t mesh;
+    // The ribbons' width curve and colour gradient over their length.
+    uint32_t ribbonWidth;
+    uint32_t ribbonColor;
 } mvfxStepTables;
 
 // An emitter's values over life records read, in the kernel's order.
@@ -137,8 +140,11 @@ uint32_t mvfxRecordOrder(const mvfxEmitterView* view);
 
 // The elements of a sort's block; the blocks of a capacity. An emitter
 // that sorts keeps keys and indices twice over its blocks (4 words an
-// element) and two sets of digit counts (256 words a block each).
-#define MVFX_SORT_BLOCK 1024u
+// element) and two sets of digit counts (256 words a block each); one
+// drawn as ribbons keeps the chains' 7 words an element after them
+// (ribbon_records.wgsl's scratch).
+#define MVFX_SORT_BLOCK        1024u
+#define MVFX_RIBBON_SORT_WORDS 11u
 uint32_t mvfxSortBlocks(int32_t capacity);
 
 // Whether a layout is one the record pass writes: its stride a multiple of
@@ -154,6 +160,23 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxLayoutView* layout, const mvfxGpuRecordsDef* def,
                        const mvfxStepTables* tables, const float srgb[MVFX_SRGB_STEPS],
                        uint32_t words[MVFX_RECORD_WORDS]);
+
+// The words of a ribbon pass's own numbers (ribbon_records.wgsl's
+// Ribbons), beside its record numbers.
+#define MVFX_RIBBON_WORDS 16
+
+// Whether a layout is one the ribbon pass writes: its stride a multiple
+// of 4 bytes, no neighbor field.
+bool mvfxIsRibbonLayout(const mvfxLayoutView* layout);
+
+// Writes a ribbon pass's own numbers: where a particle's ribbon id and
+// distance are, the texture coordinate along and the facing, the tile
+// length, the scroll's offset at the plan's end, the width, the normal,
+// the width's and colour's tables, the list's capacity and the counts'
+// first word.
+void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                       const mvfxStepTables* tables, int64_t listCapacity, uint32_t countWord,
+                       uint32_t words[MVFX_RIBBON_WORDS]);
 
 // Writes emitter's step numbers: the plan's counts and ticks, the
 // emitter's shape, velocity and motion, the instance's places from the

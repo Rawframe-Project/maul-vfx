@@ -229,8 +229,23 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->eventSpawn = e->eventSpawn;
     viewOut->delayTicks = e->delay;
     viewOut->loopTicks = e->duration;
-    viewOut->ribbonIds = e->ribbonIds;
-    viewOut->ribbonBreakDistance = e->ribbonBreakDistance;
+    viewOut->ribbon = (mvfxRibbonView){
+        .ids = e->ribbonIds,
+        .breakDistance = e->ribbonBreakDistance,
+        .pieces = e->ribbonPieces,
+        .texture = e->ribbonTexture,
+        .tileLength = e->ribbonTileLength,
+        .scroll = e->ribbonScroll,
+        .facing = e->ribbonFacing,
+        .normal = {e->ribbonNormal[0], e->ribbonNormal[1], e->ribbonNormal[2]},
+        .pinHead = e->ribbonPinHead,
+        .width = LifeOf(&e->ribbonWidth),
+        .color = e->ribbonColor != nullptr ? e->ribbonColor->rgba[0] : nullptr,
+    };
+    for (int32_t k = 0; k < MVFX_MAX_RIBBON_PIECES; ++k)
+    {
+        viewOut->ribbon.bendCosines[k] = e->ribbonCosLimits[k];
+    }
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->sizeBounds[k] = e->overLife.sizeBounds[k];

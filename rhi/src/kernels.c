@@ -7,6 +7,7 @@
 
 #include "../kernels/pcg4d_container.h"
 #include "../kernels/records_container.h"
+#include "../kernels/ribbon_records_container.h"
 #include "../kernels/sim_container.h"
 #include "../kernels/sort_container.h"
 #include "maul-rhi/shader.h"
@@ -26,6 +27,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_simContainer, sizeof s_simContainer},
     {s_recordsContainer, sizeof s_recordsContainer},
     {s_sortContainer, sizeof s_sortContainer},
+    {s_ribbonRecordsContainer, sizeof s_ribbonRecordsContainer},
 };
 
 // A kernel's container and entry.
@@ -36,17 +38,30 @@ typedef struct Kernel
 } Kernel;
 
 static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
-    {mvfx_containerPcg4d, "pcg"},       {mvfx_containerSim, "update"},
-    {mvfx_containerSim, "room"},        {mvfx_containerSim, "reduce"},
-    {mvfx_containerSim, "offsets"},     {mvfx_containerSim, "scatter"},
-    {mvfx_containerSim, "measure"},     {mvfx_containerSim, "killBirths"},
-    {mvfx_containerRecords, "records"}, {mvfx_containerRecords, "keys"},
-    {mvfx_containerSort, "offsets"},    {mvfx_containerSort, "scatter"},
-    {mvfx_containerSim, "eventCount"},  {mvfx_containerSim, "eventOffsets"},
-    {mvfx_containerSim, "eventWrite"},  {mvfx_containerRecords, "eventValues"},
-    {mvfx_containerSim, "spawnCount"},  {mvfx_containerSim, "spawnSort"},
-    {mvfx_containerSim, "spawnScan"},   {mvfx_containerSim, "spawnMerge"},
+    {mvfx_containerPcg4d, "pcg"},
+    {mvfx_containerSim, "update"},
+    {mvfx_containerSim, "room"},
+    {mvfx_containerSim, "reduce"},
+    {mvfx_containerSim, "offsets"},
+    {mvfx_containerSim, "scatter"},
+    {mvfx_containerSim, "measure"},
+    {mvfx_containerSim, "killBirths"},
+    {mvfx_containerRecords, "records"},
+    {mvfx_containerRecords, "keys"},
+    {mvfx_containerSort, "offsets"},
+    {mvfx_containerSort, "scatter"},
+    {mvfx_containerSim, "eventCount"},
+    {mvfx_containerSim, "eventOffsets"},
+    {mvfx_containerSim, "eventWrite"},
+    {mvfx_containerRecords, "eventValues"},
+    {mvfx_containerSim, "spawnCount"},
+    {mvfx_containerSim, "spawnSort"},
+    {mvfx_containerSim, "spawnScan"},
+    {mvfx_containerSim, "spawnMerge"},
     {mvfx_containerSim, "ribbons"},
+    {mvfx_containerRibbonRecords, "ribbonKeys"},
+    {mvfx_containerRibbonRecords, "ribbonChains"},
+    {mvfx_containerRibbonRecords, "ribbonPoints"},
 };
 
 struct mvfxGpu

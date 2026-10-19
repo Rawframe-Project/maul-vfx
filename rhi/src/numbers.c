@@ -364,6 +364,34 @@ bool mvfxIsRecordLayout(const mvfxLayoutView* layout)
     return written;
 }
 
+bool mvfxIsRibbonLayout(const mvfxLayoutView* layout)
+{
+    bool written = layout->stride % 4 == 0;
+    for (int32_t f = 0; written && f < layout->fieldCount; ++f)
+    {
+        written = layout->fields[f].field <= mvfx_recordCorner;
+    }
+    return written;
+}
+
+void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                       const mvfxStepTables* tables, int64_t listCapacity, uint32_t countWord,
+                       uint32_t words[MVFX_RIBBON_WORDS])
+{
+    const mvfxRibbonView* r = &view->ribbon;
+    const uint32_t head[4] = {WordOf(view->arrays.ribbon), WordOf(view->arrays.ribbonDistance),
+                              r->texture, r->facing};
+    memcpy(words, head, sizeof head);
+    // The core's offset, a binary64 product at the clock rounded once.
+    double seconds = (double)(plan->start + plan->ticks) / (double)MVFX_TICKS_PER_SECOND;
+    Floats(words + 4, r->tileLength, (float)((double)r->scroll * seconds), r->width.value, 0.0f);
+    Floats(words + 8, r->normal[0], r->normal[1], r->normal[2], 0.0f);
+    words[12] = tables->ribbonWidth;
+    words[13] = tables->ribbonColor;
+    words[14] = (uint32_t)(listCapacity < (int64_t)UINT32_MAX ? listCapacity : (int64_t)UINT32_MAX);
+    words[15] = countWord;
+}
+
 // Where a particle's values are for the record pass (records.wgsl's
 // Words).
 static void RecordWords(const mvfxAttributeArrays* a, uint32_t* words)
@@ -743,6 +771,6 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     shape[12] = tables->mesh;
     shape[13] = s->meshMode;
     uint32_t* ribbon = words + MVFX_RIBBON_FIRST;
-    ribbon[0] = view->ribbonIds;
-    memcpy(&ribbon[1], &view->ribbonBreakDistance, sizeof(float));
+    ribbon[0] = view->ribbon.ids;
+    memcpy(&ribbon[1], &view->ribbon.breakDistance, sizeof(float));
 }

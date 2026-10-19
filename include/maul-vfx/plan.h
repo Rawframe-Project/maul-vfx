@@ -472,6 +472,35 @@ extern "C"
         mvfxLifeView custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
     } mvfxOverLifeView;
 
+    // An emitter's ribbons as compiled (mvfxRibbonDef): how its births
+    // join them (mvfx_ribbonNone for an emitter not drawn as ribbons), by
+    // the counter broken where a birth lies farther than breakDistance (0
+    // for never) from its ribbon's youngest point; the most pieces a
+    // segment is cut into and, with a bend angle, the cosine of the turn
+    // k + 1 pieces allow (bendCosines[0] below -1.5 for none: every
+    // segment cut into all of them); the texture coordinate along, its
+    // tile length and scroll; the facing and the normal it faces across
+    // (in the particles' space); whether the current ribbon ends at a
+    // pinned head; the width over the normalized length (a value over
+    // life, read at the length); the colour over it (its baked samples,
+    // MVFX_CURVE_SAMPLES of linear RGBA; NULL for white), staying while
+    // the effect does.
+    typedef struct mvfxRibbonView
+    {
+        mvfxRibbonIds ids;
+        float breakDistance;
+        int32_t pieces;
+        float bendCosines[MVFX_MAX_RIBBON_PIECES];
+        mvfxRibbonTexture texture;
+        float tileLength;
+        float scroll;
+        mvfxRibbonFacing facing;
+        float normal[3];
+        bool pinHead;
+        mvfxLifeView width;
+        const float* color;
+    } mvfxRibbonView;
+
     // A flipbook frame's or a mesh index's draw at birth: from first,
     // drawn up to last when random.
     typedef struct mvfxIndexView
@@ -564,12 +593,8 @@ extern "C"
         // which an event birth's source age follows (mvfxPlannedBirth).
         int64_t delayTicks;
         int64_t loopTicks;
-        // How its births join ribbons (mvfxEmitterDef's ribbon): by the
-        // counter, broken where a birth lies farther than the break
-        // distance (0 for never) from its ribbon's youngest point, by
-        // batch, or by the event's source particle.
-        mvfxRibbonIds ribbonIds;
-        float ribbonBreakDistance;
+        // How it is drawn as ribbons (mvfxEmitterDef's ribbon).
+        mvfxRibbonView ribbon;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

@@ -20,9 +20,10 @@
 
 // The most baked tables an emitter reads: a curve and a gradient for each
 // of its 16 sources, a curve for each of its 6 values over life the step
-// reads, its colour's gradient over life and a curve for each of the 12
-// values over life its records read.
-#define MVFX_GPU_TABLES 51
+// reads, its colour's gradient over life, a curve for each of the 12
+// values over life its records read, and its ribbons' width curve and
+// colour gradient.
+#define MVFX_GPU_TABLES 53
 
 // A baked table in the buffer: its values (the effect's) and words, and
 // its first word.

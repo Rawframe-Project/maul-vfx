@@ -787,6 +787,18 @@ static uint8_t s_gpuRecords[RECORD_BYTES];
 static uint8_t s_cpuRecords[RECORD_BYTES];
 static uint32_t s_gpuCount[4];
 
+// A run's ribbon points instead (s_ribbonPoints): the list's buffer, the most
+// ribbons it holds, the GPU's list read back and the CPU path's, filled
+// first as the records are.
+#define LIST_RIBBONS 4096
+static bool s_ribbonPoints;
+static int32_t s_recordEmitter;
+static mrhiBufferId s_listBuffer;
+static mrhiResourceId s_listResource;
+static int64_t s_ribbonCapacity;
+static uint32_t s_gpuList[4 * LIST_RIBBONS];
+static mvfxRibbon s_cpuList[LIST_RIBBONS];
+
 // The fill's bytes: written before the GPU's records each step.
 static uint32_t s_fillBytes[RECORD_BYTES / 4];
 
@@ -798,6 +810,8 @@ static bool OpenRecords(Gpu* gpu, const mvfxLayoutDef* layout, int64_t capacity,
     def.usage = mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
     mrhiBufferDef count = def;
     count.size = sizeof s_gpuCount;
+    mrhiBufferDef list = def;
+    list.size = sizeof s_gpuList;
     memset(s_fillBytes, RECORD_FILL, sizeof s_fillBytes);
     s_recordCapacity = capacity;
     s_view = view != NULL ? *view
@@ -808,34 +822,61 @@ static bool OpenRecords(Gpu* gpu, const mvfxLayoutDef* layout, int64_t capacity,
     return mvfxCreateLayout(s_context, layout, &s_layout) == mvfx_success &&
            mvfxLayout_GetView(s_context, s_layout, &s_layoutView) == mvfx_success &&
            mrhiCreateBuffer(gpu->device, &def, &s_recordBuffer) == mrhi_success &&
-           mrhiCreateBuffer(gpu->device, &count, &s_countBuffer) == mrhi_success;
+           mrhiCreateBuffer(gpu->device, &count, &s_countBuffer) == mrhi_success &&
+           mrhiCreateBuffer(gpu->device, &list, &s_listBuffer) == mrhi_success;
 }
 
 static void CloseRecords(Gpu* gpu)
 {
     (void)mrhiDestroyBuffer(gpu->device, s_recordBuffer);
     (void)mrhiDestroyBuffer(gpu->device, s_countBuffer);
+    (void)mrhiDestroyBuffer(gpu->device, s_listBuffer);
     s_layout = (mvfxLayoutId){0};
 }
 
-// Adds the fill of the records buffer and the first emitter's record pass,
-// its count at the count buffer's second word; the fill's pass.
+// Adds the first emitter's ribbon pass: its points where the records go,
+// its list in the list's buffer, its counts in the count buffer.
+static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
+{
+    mvfxGpuRibbonsDef ribbons = mvfxDefaultGpuRibbonsDef();
+    ribbons.emitter = s_recordEmitter;
+    ribbons.layout = s_layout;
+    ribbons.view = s_view;
+    ribbons.points = s_recordResource;
+    ribbons.pointOffset = 64;
+    ribbons.pointCapacity = s_recordCapacity;
+    ribbons.ribbons = s_listResource;
+    ribbons.ribbonCapacity = s_ribbonCapacity;
+    ribbons.counts = count;
+    return mvfxGpuSim_AddRibbons(sim, &ribbons) == mvfx_success;
+}
+
+// Adds the fill of the records and list buffers and the first emitter's
+// record pass, its count at the count buffer's second word (or its ribbon
+// pass); the fill's pass.
 static bool AddRecordPasses(mvfxGpuSim* sim, mrhiDevice* device, mrhiPassId* fill)
 {
     mrhiResourceId count = {0};
     if (mrhiImportBuffer(device, s_recordBuffer, &s_recordResource) != mrhi_success ||
-        mrhiImportBuffer(device, s_countBuffer, &count) != mrhi_success)
+        mrhiImportBuffer(device, s_countBuffer, &count) != mrhi_success ||
+        mrhiImportBuffer(device, s_listBuffer, &s_listResource) != mrhi_success)
     {
         return false;
     }
-    const mrhiAccess written[1] = {
-        {.resource = s_recordResource, .kind = mrhi_accessCopyDestination}};
+    const mrhiAccess written[2] = {
+        {.resource = s_recordResource, .kind = mrhi_accessCopyDestination},
+        {.resource = s_listResource, .kind = mrhi_accessCopyDestination}};
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = mrhi_passTransfer;
     def.accesses = written;
-    def.accessCount = 1;
+    def.accessCount = 2;
     def.neverCull = true;
+    if (s_ribbonPoints)
+    {
+        return mrhiAddPass(device, &def, fill) == mrhi_success && AddRibbonPass(sim, count);
+    }
     mvfxGpuRecordsDef records = mvfxDefaultGpuRecordsDef();
+    records.emitter = s_recordEmitter;
     records.layout = s_layout;
     records.view = s_view;
     records.records = s_recordResource;
@@ -851,29 +892,33 @@ static bool RecordFill(mrhiDevice* device, mrhiPassId fill)
 {
     bool recorded = mrhiBeginPass(device, fill) == mrhi_success &&
                     mrhiWriteBuffer(device, fill, s_recordResource, 0, s_fillBytes,
-                                    sizeof s_fillBytes) == mrhi_success;
+                                    sizeof s_fillBytes) == mrhi_success &&
+                    mrhiWriteBuffer(device, fill, s_listResource, 0, s_fillBytes,
+                                    sizeof s_gpuList) == mrhi_success;
     return mrhiEndPass(device, fill) == mrhi_success && recorded;
 }
 
-// Reads the GPU's records and count back.
+// Reads the GPU's records, count and list back.
 static bool ReadRecords(Gpu* gpu)
 {
     mrhiFrameDef frame = mrhiDefaultFrameDef();
-    mrhiResourceId buffers[2] = {{0}, {0}};
+    mrhiResourceId buffers[3] = {{0}, {0}, {0}};
     mrhiPassId pass = {0};
-    mrhiRequestId reads[2] = {{0}, {0}};
+    mrhiRequestId reads[3] = {{0}, {0}, {0}};
     if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
     }
     bool recorded = mrhiImportBuffer(gpu->device, s_recordBuffer, &buffers[0]) == mrhi_success &&
-                    mrhiImportBuffer(gpu->device, s_countBuffer, &buffers[1]) == mrhi_success;
-    const mrhiAccess reading[2] = {{.resource = buffers[0], .kind = mrhi_accessCopySource},
-                                   {.resource = buffers[1], .kind = mrhi_accessCopySource}};
+                    mrhiImportBuffer(gpu->device, s_countBuffer, &buffers[1]) == mrhi_success &&
+                    mrhiImportBuffer(gpu->device, s_listBuffer, &buffers[2]) == mrhi_success;
+    const mrhiAccess reading[3] = {{.resource = buffers[0], .kind = mrhi_accessCopySource},
+                                   {.resource = buffers[1], .kind = mrhi_accessCopySource},
+                                   {.resource = buffers[2], .kind = mrhi_accessCopySource}};
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = mrhi_passTransfer;
     def.accesses = reading;
-    def.accessCount = 2;
+    def.accessCount = 3;
     def.neverCull = true;
     recorded =
         recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
@@ -881,6 +926,8 @@ static bool ReadRecords(Gpu* gpu)
         mrhiBeginPass(gpu->device, pass) == mrhi_success &&
         mrhiReadBuffer(gpu->device, pass, buffers[0], 0, RECORD_BYTES, &reads[0]) == mrhi_success &&
         mrhiReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_gpuCount, &reads[1]) ==
+            mrhi_success &&
+        mrhiReadBuffer(gpu->device, pass, buffers[2], 0, sizeof s_gpuList, &reads[2]) ==
             mrhi_success &&
         mrhiEndPass(gpu->device, pass) == mrhi_success;
     if (!recorded)
@@ -890,12 +937,15 @@ static bool ReadRecords(Gpu* gpu)
     }
     size_t taken = 0;
     size_t counted = 0;
+    size_t listed = 0;
     return Finish(gpu) &&
            mrhiTakeReadback(gpu->device, reads[0], s_gpuRecords, sizeof s_gpuRecords, &taken) ==
                mrhi_success &&
            mrhiTakeReadback(gpu->device, reads[1], s_gpuCount, sizeof s_gpuCount, &counted) ==
                mrhi_success &&
-           taken == RECORD_BYTES && counted == sizeof s_gpuCount;
+           mrhiTakeReadback(gpu->device, reads[2], s_gpuList, sizeof s_gpuList, &listed) ==
+               mrhi_success &&
+           taken == RECORD_BYTES && counted == sizeof s_gpuCount && listed == sizeof s_gpuList;
 }
 
 // A run's emitters' events read back from the GPU (each emitter's, as
@@ -1246,20 +1296,123 @@ static bool SameSorted(int64_t written)
 // The GPU's records and count against the CPU path's: each record's
 // fields (in the same order, or by serial where sorted), every other byte
 // the fill's.
+// The CPU path's places and distances of the emitter whose ribbons are
+// written, kept while the GPU's stand in for them.
+#define MOST_POINTS 16384
+static float s_keptPlaces[4][MOST_POINTS];
+
+// Swaps the GPU's places and ribbon distances (read back last) into the
+// CPU path's emitter, or back: false when its pool is not the GPU's,
+// serial by serial. A point's frame turns with the difference of its
+// neighbours' places, so the paths' particles, alike within the
+// tolerance, would move it by as much over their distance; from the same
+// places the points compare the kernels' sums and turns alone.
+static bool SwapPlaces(bool in)
+{
+    mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
+    int32_t e = s_recordEmitter;
+    int32_t count = cpu->emitters[e].count;
+    const uint32_t* serials = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
+    bool alike = (int32_t)s_record[0] == count && count <= MOST_POINTS;
+    for (int32_t i = 0; alike && i < count; ++i)
+    {
+        alike = Word(s_arrays.serial, i) == serials[i];
+    }
+    if (!alike)
+    {
+        printf("the pools differ: %d particles, GPU %u\n", count, s_record[0]);
+        return false;
+    }
+    static const mvfxAttribute swapped[4] = {mvfx_attributePositionX, mvfx_attributePositionY,
+                                             mvfx_attributePositionZ, mvfx_attributeRibbonDistance};
+    const int32_t gpu[4] = {s_arrays.position, s_arrays.position + 1, s_arrays.position + 2,
+                            s_arrays.ribbonDistance};
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        float* values = gpu[k] >= 0 ? mvfxAttributeArray(cpu, e, swapped[k]) : NULL;
+        for (int32_t i = 0; values != NULL && i < count; ++i)
+        {
+            if (in)
+            {
+                s_keptPlaces[k][i] = values[i];
+            }
+            values[i] = in ? FloatOf(gpu[k], i) : s_keptPlaces[k][i];
+        }
+    }
+    return true;
+}
+
+// Writes the CPU path's ribbon points and list from the GPU's places:
+// whether they and the counts are the GPU's (the list exactly), the points
+// written.
+static bool SameRibbonList(int64_t* writtenOut)
+{
+    memset(s_cpuList, RECORD_FILL, sizeof s_cpuList);
+    const mvfxRibbonBuffers buffers = {.points = s_cpuRecords + 64,
+                                       .pointCapacity = s_recordCapacity,
+                                       .ribbons = s_cpuList,
+                                       .ribbonCapacity = s_ribbonCapacity,
+                                       .scratch = s_sortScratch,
+                                       .scratchBytes = sizeof s_sortScratch};
+    int64_t points = 0;
+    int64_t ribbons = 0;
+    if (!SwapPlaces(true))
+    {
+        return false;
+    }
+    mvfxResult written = mvfxInstance_WriteRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
+                                                   &s_view, &buffers, &points, &ribbons);
+    if (!SwapPlaces(false) || written != mvfx_success)
+    {
+        return false;
+    }
+    int64_t listed = 0;
+    while (listed < s_ribbonCapacity && s_cpuList[listed].count != (int32_t)0xEEEEEEEEu)
+    {
+        ++listed;
+    }
+    int64_t taken = listed > 0 ? s_cpuList[listed - 1].first + s_cpuList[listed - 1].count : 0;
+    *writtenOut = taken;
+    bool same = s_gpuCount[0] == (uint32_t)points && s_gpuCount[1] == (uint32_t)ribbons &&
+                s_gpuCount[2] == (uint32_t)taken && s_gpuCount[3] == (uint32_t)listed &&
+                memcmp(s_cpuList, s_gpuList, sizeof s_gpuList) == 0;
+    if (!same)
+    {
+        printf("ribbons differ: points %lld (GPU %u), ribbons %lld (GPU %u), written %lld and "
+               "%lld (GPU %u and %u)\n",
+               (long long)points, s_gpuCount[0], (long long)ribbons, s_gpuCount[1],
+               (long long)taken, (long long)listed, s_gpuCount[2], s_gpuCount[3]);
+    }
+    return same;
+}
+
 static bool SameRecords(void)
 {
     int64_t count = 0;
     int64_t scratch = 0;
+    int64_t written = 0;
     memset(s_cpuRecords, RECORD_FILL, sizeof s_cpuRecords);
-    if (mvfxInstance_GetSortScratchBytes(s_context, s_cpu, 0, &scratch) != mvfx_success ||
-        scratch > (int64_t)sizeof s_sortScratch ||
-        mvfxInstance_WriteParticles(s_context, s_cpu, 0, s_layout, &s_view, s_sortScratch, scratch,
-                                    s_cpuRecords + 64, s_recordCapacity, &count) != mvfx_success)
+    if (s_ribbonPoints)
+    {
+        if (!SameRibbonList(&written))
+        {
+            return false;
+        }
+    }
+    else if (mvfxInstance_GetSortScratchBytes(s_context, s_cpu, s_recordEmitter, &scratch) !=
+                 mvfx_success ||
+             scratch > (int64_t)sizeof s_sortScratch ||
+             mvfxInstance_WriteParticles(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
+                                         s_sortScratch, scratch, s_cpuRecords + 64,
+                                         s_recordCapacity, &count) != mvfx_success)
     {
         return false;
     }
-    int64_t written = count < s_recordCapacity ? count : s_recordCapacity;
-    bool same = (int64_t)s_gpuCount[1] == written;
+    else
+    {
+        written = count < s_recordCapacity ? count : s_recordCapacity;
+    }
+    bool same = s_ribbonPoints || (int64_t)s_gpuCount[1] == written;
     uint32_t stride = s_layoutView.stride;
     // Every byte no field covers: the fill's on both.
     for (int64_t b = 0; same && b < RECORD_BYTES; ++b)
@@ -1275,6 +1428,12 @@ static bool SameRecords(void)
         {
             const mvfxLayoutField* field = &s_layoutView.fields[f];
             same = s_sorted || SameField(field, cpu, gpu);
+            if (!same)
+            {
+                printf("field %d (kind %u) differs: %g, GPU %g\n", f, field->field,
+                       Decoded(field->format, cpu + field->offset),
+                       Decoded(field->format, gpu + field->offset));
+            }
             for (uint32_t b = 0; b < FieldBytes(field->format) * field->components; ++b)
             {
                 covered[field->offset + b] = true;
@@ -1612,6 +1771,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
     s_stepsApart = 0;
+    s_ribbonPoints = run->ribbons;
+    s_recordEmitter = run->recordEmitter;
+    s_ribbonCapacity = run->ribbonCapacity;
     if (run->layout != NULL)
     {
         CHECK(OpenRecords(gpu, run->layout, run->recordCapacity, run->view),
@@ -1710,7 +1872,12 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e)));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
-        same = same && (run->layout == NULL || (ReadRecords(gpu) && SameRecords()));
+        // The emitter whose records are written read back last, as the
+        // ribbons take the GPU's places.
+        same = same && (run->layout == NULL ||
+                        ((!run->ribbons || run->recordEmitter == run->emitterCount - 1 ||
+                          ReadBack(gpu, sim, run->recordEmitter)) &&
+                         ReadRecords(gpu) && SameRecords()));
     }
     if (!same)
     {

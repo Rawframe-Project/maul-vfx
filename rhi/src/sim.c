@@ -157,16 +157,20 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
                         written, &emitter->grids);
 }
 
-// Creates an emitter's sort buffers when it sorts by place: keys and
-// indices twice over its blocks, and two sets of digit counts.
+// Creates an emitter's sort buffers when it sorts by place or is drawn
+// as ribbons: keys and indices twice over its blocks (and for ribbons the
+// chains' words after them), and two sets of digit counts.
 static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
 {
-    if (mvfxRecordOrder(view) != MVFX_ORDER_SORTED)
+    bool ribbons = view->ribbon.ids != mvfx_ribbonNone;
+    if (mvfxRecordOrder(view) != MVFX_ORDER_SORTED && !ribbons)
     {
         return true;
     }
     uint64_t blocks = mvfxSortBlocks(emitter->capacity);
-    return CreateBuffer(sim, 16u * blocks * MVFX_SORT_BLOCK, mrhi_bufferStorage, &emitter->sort) &&
+    uint64_t words = ribbons ? MVFX_RIBBON_SORT_WORDS : 4u;
+    return CreateBuffer(sim, 4u * words * blocks * MVFX_SORT_BLOCK, mrhi_bufferStorage,
+                        &emitter->sort) &&
            CreateBuffer(sim, 2u * 256u * blocks * 4u, mrhi_bufferStorage, &emitter->digits);
 }
 
@@ -242,6 +246,11 @@ static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
             mvfxAddTable(layout, recordLives[k].curve, MVFX_CURVE_SAMPLES + 2);
     }
     emitter->tables.mesh = 0xFFFFFFFFu;
+    bool ribbons = view->ribbon.ids != mvfx_ribbonNone;
+    emitter->tables.ribbonWidth =
+        mvfxAddTable(layout, ribbons ? view->ribbon.width.curve : nullptr, MVFX_CURVE_SAMPLES + 2);
+    emitter->tables.ribbonColor =
+        mvfxAddTable(layout, ribbons ? view->ribbon.color : nullptr, 4 * MVFX_CURVE_SAMPLES);
 }
 
 // Sizes an emitter's memory by its plan and makes it: the host's
@@ -260,7 +269,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->hostRecords = emitter->hostCapacity +
                            (spawn->enabled ? (spawn->capacity < room ? spawn->capacity : room) : 0);
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
-    emitter->ribbons = sim->views[e].ribbonIds != mvfx_ribbonNone;
+    emitter->ribbons = sim->views[e].ribbon.ids != mvfx_ribbonNone;
     if (result == mvfx_success && emitter->hostCapacity > 0)
     {
         emitter->hostWords = mvfxRhiAllocate(&sim->allocator, HostBytes(emitter), 4);
@@ -282,7 +291,9 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
         result = mvfxLaySimMesh(sim, def, e);
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
-        (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
+        (!CreateBuffers(sim, emitter) ||
+         !mvfxCreateRecordBuffers(sim->device, &emitter->records,
+                                  sim->views[e].ribbon.ids != mvfx_ribbonNone) ||
          !CreateSortBuffers(sim, &sim->views[e], emitter) ||
          !CreateEventBuffer(sim, &sim->views[e], emitter)))
     {
@@ -339,7 +350,8 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     }
     mvfxSrgbSteps(sim->srgb);
     if (result == mvfx_success &&
-        (!CreateTextures(sim) || !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownCount) ||
+        (!CreateTextures(sim) ||
+         !CreateBuffer(sim, 4u * MVFX_GPU_RIBBON_COUNTS, mrhi_bufferStorage, &sim->ownCount) ||
          !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownSort) ||
          !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownDigits) ||
          !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownEvents)))
@@ -932,7 +944,10 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         .records = mvfxGpuPipeline(sim->gpu, mvfx_kernelRecords),
         .keys = mvfxGpuPipeline(sim->gpu, mvfx_kernelKeys),
         .offsets = mvfxGpuPipeline(sim->gpu, mvfx_kernelSortOffsets),
-        .scatter = mvfxGpuPipeline(sim->gpu, mvfx_kernelSortScatter)};
+        .scatter = mvfxGpuPipeline(sim->gpu, mvfx_kernelSortScatter),
+        .ribbonKeys = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonKeys),
+        .ribbonChains = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonChains),
+        .ribbonPoints = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPoints)};
     for (int32_t n = 0; n < sim->emitterCount; ++n)
     {
         Emitter* emitter = &sim->emitters[sim->order[n]];

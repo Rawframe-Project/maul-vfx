@@ -121,6 +121,14 @@ typedef struct Run
     // needed for 0).
     bool breaking;
     int32_t leastBreaks;
+    // Whether the layout's records are ribbon points, written by
+    // mvfxGpuSim_AddRibbons and by mvfxInstance_WriteRibbons from the
+    // GPU's places and distances (the pools alike), compared with their
+    // lists and counts every step, and the most ribbons the list holds.
+    bool ribbons;
+    int64_t ribbonCapacity;
+    // The emitter whose records are written (the first for 0).
+    int32_t recordEmitter;
 } Run;
 
 // The scenes a test runs on the device.

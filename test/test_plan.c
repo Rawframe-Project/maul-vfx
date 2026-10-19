@@ -749,8 +749,8 @@ static void TestRibbonView(void)
     const mvfxAttributeArrays* arrays = &view.arrays;
     CHECK(mvfxEffect_GetEmitterView(context, ribbons, 0, &view) == mvfx_success &&
               arrays->ribbon >= 10 && arrays->ribbonDistance > arrays->ribbon &&
-              arrays->ribbonDistance < arrays->count && view.ribbonIds == mvfx_ribbonOne &&
-              view.ribbonBreakDistance == 0.5f,
+              arrays->ribbonDistance < arrays->count && view.ribbon.ids == mvfx_ribbonOne &&
+              view.ribbon.breakDistance == 0.5f,
           "a ribbon's arrays and how its births join");
     // The plan carries the host's breaks.
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -766,6 +766,37 @@ static void TestRibbonView(void)
               mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
               plan.ribbonCounter == 1,
           "the host's ribbon breaks in the plan");
+    // How it is drawn: every setting as compiled; no bend angle cuts every
+    // segment into all its pieces.
+    CHECK(view.ribbon.pieces == 1 && view.ribbon.bendCosines[0] < -1.5f &&
+              view.ribbon.tileLength == 1.0f && view.ribbon.facing == mvfx_ribbonFaceCamera &&
+              view.ribbon.width.value == 1.0f && view.ribbon.width.curve == NULL &&
+              view.ribbon.color == NULL && !view.ribbon.pinHead,
+          "a plain ribbon's drawing");
+    static const mvfxColorKey colors[2] = {{0.0f, 1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}};
+    ribboned.ribbon.pieces = 4;
+    ribboned.ribbon.bendAngle = 0.5f;
+    ribboned.ribbon.tileLength = 2.0f;
+    ribboned.ribbon.scroll = 0.25f;
+    ribboned.ribbon.facing = mvfx_ribbonFaceNormal;
+    ribboned.ribbon.normal[0] = 0.0f;
+    ribboned.ribbon.normal[1] = 1.0f;
+    ribboned.ribbon.normal[2] = 0.0f;
+    ribboned.ribbon.pinHead = true;
+    ribboned.ribbon.width.value = 2.0f;
+    static const mvfxAlphaKey alphas[1] = {{0.0f, 1.0f}};
+    ribboned.ribbon.color = (mvfxGradient){
+        .colorKeys = colors, .colorKeyCount = 2, .alphaKeys = alphas, .alphaKeyCount = 1};
+    mvfxEffectId drawn = Effect(context, &ribboned);
+    CHECK(mvfxEffect_GetEmitterView(context, drawn, 0, &view) == mvfx_success &&
+              view.ribbon.pieces == 4 && view.ribbon.bendCosines[0] > -1.5f &&
+              view.ribbon.bendCosines[0] < 1.0f &&
+              view.ribbon.texture == mvfx_ribbonTileByDistance && view.ribbon.tileLength == 2.0f &&
+              view.ribbon.scroll == 0.25f && view.ribbon.facing == mvfx_ribbonFaceNormal &&
+              view.ribbon.normal[1] == 1.0f && view.ribbon.pinHead &&
+              view.ribbon.width.value == 2.0f && view.ribbon.color != NULL &&
+              view.ribbon.color[0] == 1.0f && view.ribbon.color[2] == 0.0f,
+          "a ribbon's drawing as compiled");
     mvfxDestroyContext(context);
 }
 
@@ -800,7 +831,7 @@ static void TestView(void)
               arrays->serial == 6 && arrays->velocity == 7 && arrays->size == -1 &&
               arrays->color == -1 && arrays->angle == -1 && arrays->orientation == -1 &&
               arrays->custom[0] == -1 && arrays->collisions == -1 && arrays->ribbon == -1 &&
-              arrays->ribbonDistance == -1 && view.ribbonIds == mvfx_ribbonNone &&
+              arrays->ribbonDistance == -1 && view.ribbon.ids == mvfx_ribbonNone &&
               arrays->count == 10,
           "the plain sprite's arrays");
     // Size, colour, a custom value of two components and collision: each
