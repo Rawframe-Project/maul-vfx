@@ -797,6 +797,7 @@ static uint32_t s_gpuCount[4];
 #define LIST_FIRST   4
 static bool s_ribbonPoints;
 static bool s_strips;
+static mvfxTubeDef s_tube;
 static int32_t s_recordEmitter;
 static mrhiBufferId s_listBuffer;
 static mrhiResourceId s_listResource;
@@ -870,7 +871,9 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     strips.indexOffset = 4u * LIST_FIRST;
     strips.indexCapacity = s_ribbonCapacity;
     strips.counts = count;
-    return mvfxGpuSim_ExpandRibbons(sim, &strips) == mvfx_success;
+    strips.tube = s_tube;
+    return (s_tube.sides > 0 ? mvfxGpuSim_ExpandTubes(sim, &strips)
+                             : mvfxGpuSim_ExpandRibbons(sim, &strips)) == mvfx_success;
 }
 
 // Adds the fill of the records and list buffers and the first emitter's
@@ -1387,8 +1390,11 @@ static bool SameStrips(int64_t* writtenOut)
     {
         return false;
     }
-    mvfxResult expanded = mvfxInstance_ExpandRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
-                                                     &s_view, &buffers, &vertices, &count);
+    mvfxResult expanded =
+        s_tube.sides > 0 ? mvfxInstance_ExpandTubes(s_context, s_cpu, s_recordEmitter, s_layout,
+                                                    &s_view, &s_tube, &buffers, &vertices, &count)
+                         : mvfxInstance_ExpandRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
+                                                      &s_view, &buffers, &vertices, &count);
     if (!SwapPlaces(false) || expanded != mvfx_success)
     {
         return false;
@@ -1494,7 +1500,9 @@ static void VectorField(const uint8_t* record, mvfxField kind, double out[3])
 // path's record.
 static double FacingSlack(const mvfxLayoutField* field, const uint8_t* cpu)
 {
-    if (!s_ribbonPoints ||
+    // A tube's side and face normal turn about its frame, crossed with
+    // nothing faced.
+    if (!s_ribbonPoints || s_tube.sides > 0 ||
         (field->field != mvfx_recordSide && field->field != mvfx_recordFaceNormal))
     {
         return 0.0;
@@ -1918,6 +1926,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_stepsApart = 0;
     s_ribbonPoints = run->ribbons;
     s_strips = run->strips;
+    s_tube = run->tube;
     s_recordEmitter = run->recordEmitter;
     s_ribbonCapacity = run->ribbonCapacity;
     if (run->layout != NULL)
@@ -2113,8 +2122,8 @@ const uint32_t* StatisticsRecord(void)
     return s_record;
 }
 
-// A scene whose frames dispatch each kernel of the step's, the events',
-// the births' from events, the records' and the sort's, run with the
+// Scenes whose frames dispatch each kernel of the step's, the events',
+// the births' from events, the records', the sort's and the ribbons', run with the
 // warm-up's wait (every emitter's step dispatches the step's kernels): a
 // device that compiles a kernel at its first dispatch does it here.
 static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
@@ -2146,6 +2155,20 @@ static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
                    .layout = &layout,
                    .recordCapacity = CAPACITY},
             "the warm-up");
+    // And the ribbon passes', their segments cut into pieces.
+    mvfxEmitterDef ribboned = Sprite();
+    ribboned.ribbon.ids = mvfx_ribbonOne;
+    ribboned.ribbon.pieces = 2;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &ribboned,
+                   .emitterCount = 1,
+                   .steps = 2,
+                   .least = 1,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "the ribbons' warm-up");
 }
 
 int RunSuite(SceneSuite suite)

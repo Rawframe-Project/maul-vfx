@@ -413,6 +413,77 @@ static void TestStrips(Gpu* gpu, mvfxGpu* kernels)
             "strips by batch, the indices too few");
 }
 
+static void TestTubes(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Tubes of rings turned by frames carried along: one ribbon of 6
+    // sides, capped; cut into pieces ending at a pinned head, 5 sides,
+    // uncapped, in the instance's space; by batch, capped, the vertices
+    // too few, then the indices.
+    const mvfxLayoutDef layout = PointLayout();
+    mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 8000,
+                   .ribbons = true,
+                   .strips = true,
+                   .tube = {.sides = 6, .caps = true},
+                   .ribbonCapacity = 16000},
+            "tubes of one ribbon, capped");
+    emitter.space = mvfx_spaceLocal;
+    emitter.ribbon.pieces = 2;
+    emitter.ribbon.pinHead = true;
+    emitter.ribbon.texture = mvfx_ribbonTileByDistance;
+    emitter.ribbon.tileLength = 0.3f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 8000,
+                   .ribbons = true,
+                   .strips = true,
+                   .tube = {.sides = 5},
+                   .ribbonCapacity = 16000},
+            "tubes of pieces to a pinned head in the instance's space");
+    static const mvfxBurst bursts[1] = {{.time = 0,
+                                         .minCount = 4,
+                                         .maxCount = 8,
+                                         .cycles = 0,
+                                         .interval = 0.02f,
+                                         .probability = 1}};
+    emitter = Ribboned(mvfx_ribbonPerBatch);
+    emitter.capacity = 4096;
+    emitter.bursts = bursts;
+    emitter.burstCount = 1;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .least = 200,
+                   .layout = &layout,
+                   .recordCapacity = 600,
+                   .ribbons = true,
+                   .strips = true,
+                   .tube = {.sides = 4, .caps = true},
+                   .ribbonCapacity = 16000},
+            "tubes by batch, capped, the vertices too few");
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .least = 200,
+                   .layout = &layout,
+                   .recordCapacity = 8000,
+                   .ribbons = true,
+                   .strips = true,
+                   .tube = {.sides = 4, .caps = true},
+                   .ribbonCapacity = 500},
+            "tubes by batch, capped, the indices too few");
+}
+
 static void TestAtRest(Gpu* gpu, mvfxGpu* kernels)
 {
     // Particles at rest at one point, in a still instance: a ribbon of
@@ -607,6 +678,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestAtRest(gpu, kernels);
     TestHead(gpu, kernels);
     TestStrips(gpu, kernels);
+    TestTubes(gpu, kernels);
     TestNone(gpu, kernels);
     TestRefused(gpu, kernels);
 }

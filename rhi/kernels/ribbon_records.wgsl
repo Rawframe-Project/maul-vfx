@@ -49,9 +49,10 @@ struct Ribbons {
     cut: vec4<u32>,
     // The pinned head's place in the particles' space, unused.
     head: vec4<f32>,
-    // What is written: points with the list (SINK_POINTS), or strips of
-    // two vertices a point with their triangles' indices (SINK_STRIPS);
-    // unused.
+    // What is written: points with the list (SINK_POINTS), strips of
+    // two vertices a point with their triangles' indices (SINK_STRIPS),
+    // or tubes of a ring a point (SINK_TUBES); a tube's sides, whether its
+    // ends are capped; unused.
     sink: vec4<u32>,
     // The cosine of the turn k + 1 pieces allow, at bends[k / 4][k % 4].
     bends: array<vec4<f32>, 4>,
@@ -65,6 +66,27 @@ struct Ribbons {
 
 const SINK_POINTS: u32 = 0u;
 const SINK_STRIPS: u32 = 1u;
+const SINK_TUBES: u32 = 2u;
+
+// The vertices a point and a chain take more (a tube's caps), and the
+// indices a point takes and a chain fewer (its last point's segment, less
+// a tube's caps): the vertices and indices of chains of P points in all
+// C chains are x P + y C and x P - y C.
+fn vertexShare() -> vec2<u32> {
+    if (ribbon.sink.x == SINK_TUBES) {
+        let sides = ribbon.sink.y;
+        return vec2<u32>(sides + 1u, select(0u, 2u * (sides + 2u), ribbon.sink.z != 0u));
+    }
+    return vec2<u32>(2u, 0u);
+}
+
+fn indexShare() -> vec2<u32> {
+    if (ribbon.sink.x == SINK_TUBES) {
+        let sides = ribbon.sink.y;
+        return vec2<u32>(6u * sides, select(6u * sides, 0u, ribbon.sink.z != 0u));
+    }
+    return vec2<u32>(6u, 6u);
+}
 @group(0) @binding(9) var<uniform> ribbon: Ribbons;
 
 // What ribbonPieces and ribbonChains keep for ribbonPoints in the sort
@@ -258,17 +280,20 @@ fn takeChains(local: u32, live: u32, chains: u32) {
     var first = exclusiveSum(local, points);
     let capacity = params.head.y;
     let listCapacity = ribbon.tables.z;
-    let strips = ribbon.sink.x == SINK_STRIPS;
+    let strips = ribbon.sink.x != SINK_POINTS;
+    let vertices = vertexShare();
+    let indices = indexShare();
     var written = 0u;
     var writtenPoints = 0u;
     for (var c = lo; c < hi; c++) {
         let n = chainPoints(c);
-        // A strip's two vertices a point and six indices a segment, after
-        // those of the chains before; else a point a point and the list.
+        // A strip's or a tube's vertices and indices after those of the
+        // chains before; else a point a point and the list.
         var fits = n >= 2u && place < listCapacity && first + n <= capacity;
         if (strips) {
-            fits = n >= 2u && 2u * (first + n) <= capacity &&
-                6u * (first + n - place - 1u) <= listCapacity;
+            fits = n >= 2u &&
+                vertices.x * (first + n) + vertices.y * (place + 1u) <= capacity &&
+                indices.x * (first + n) - indices.y * (place + 1u) <= listCapacity;
         }
         sortWords[scratchWord(SCRATCH_FIRST, c)] = select(NONE, first, fits);
         sortWords[scratchWord(SCRATCH_RIBBON, c)] = select(NONE, place, fits);
@@ -295,10 +320,10 @@ fn takeChains(local: u32, live: u32, chains: u32) {
         let takenPoints = writtenPointsBefore + writtenPoints;
         let taken = writtenBefore + written;
         if (strips) {
-            count[counts + COUNT_POINTS] = 2u * first;
-            count[counts + COUNT_RIBBONS] = 6u * (first - place);
-            count[counts + COUNT_POINTS_WRITTEN] = 2u * takenPoints;
-            count[counts + COUNT_RIBBONS_WRITTEN] = 6u * (takenPoints - taken);
+            count[counts + COUNT_POINTS] = vertices.x * first + vertices.y * place;
+            count[counts + COUNT_RIBBONS] = indices.x * first - indices.y * place;
+            count[counts + COUNT_POINTS_WRITTEN] = vertices.x * takenPoints + vertices.y * taken;
+            count[counts + COUNT_RIBBONS_WRITTEN] = indices.x * takenPoints - indices.y * taken;
         } else {
             count[counts + COUNT_POINTS] = first;
             count[counts + COUNT_RIBBONS] = place;
@@ -544,13 +569,23 @@ struct Point {
 @compute @workgroup_size(64, 1, 1)
 fn ribbonPoints(@builtin(global_invocation_id) id: vec3<u32>) {
     let live = statistics[0];
+    let tubes = ribbon.sink.x == SINK_TUBES;
     for (var e = id.x; e < live; e += params.shape.y * 64u) {
         let chain = sortWords[scratchWord(SCRATCH_CHAIN, e)];
         let first = sortWords[scratchWord(SCRATCH_FIRST, chain)];
-        if (first == NONE) {
+        // A tube's frame carried along its chain, an invocation a chain.
+        if (first == NONE || (tubes && !isHead(e))) {
             continue;
         }
-        writeSegment(e, live, chain, first);
+        var frame: Frame;
+        var f = e;
+        loop {
+            writeSegment(f, live, chain, first, &frame);
+            if (!tubes || isLast(f, live)) {
+                break;
+            }
+            f++;
+        }
     }
 }
 
@@ -570,7 +605,7 @@ fn pointBefore(e: u32, live: u32) -> vec3<f32> {
 // last particle's alone, or with the head after it the head's too; each
 // with its frame from the places before and after it, its distance
 // walked along the chain.
-fn writeSegment(e: u32, live: u32, chain: u32, first: u32) {
+fn writeSegment(e: u32, live: u32, chain: u32, first: u32, frame: ptr<function, Frame>) {
     let i = particleOf(e);
     let last = isLast(e, live);
     let segment = hasNext(e, live);
@@ -648,7 +683,8 @@ fn writeSegment(e: u32, live: u32, chain: u32, first: u32) {
         point.tangent = unitOf(rotate(params.turn, after - before) / params.scales.x);
         point.side = unitOf(cross(point.tangent, across));
         point.face = unitOf(cross(point.side, point.tangent));
-        writeOut(first, n, g + q, i, select(next, i, q == 0u), fraction, world, point);
+        writeOut(first, n, g + q, i, select(next, i, q == 0u), fraction, world,
+                 vectorAt(params.words.place, i) + here, point, frame);
         before = here;
         here = after;
         if (q + 2u < pieces) {
@@ -718,37 +754,50 @@ fn pointValues(field: vec4<u32>, i: u32, point: Point, words: ptr<function, vec4
     return values;
 }
 
-// Point g of a chain of n written from its point first: its record, or a
+// Point g of a chain of n written from its point first: its record; or a
 // strip's two vertices across its width at its side (half the size's X
 // between the particles, in the world, times the width) and but for the
-// last the indices of the two triangles to the next point's, after the
-// chains' before (the core's WritePoint).
+// last the indices of the two triangles to the next point's; or a tube's
+// ring about it (the frame carried to it), but for the last the quads to
+// the next ring, at either end its cap after the chain's rings: each
+// after the chains' before (the core's WritePoint); its place in the
+// view's space and in the particles'.
 fn writeOut(first: u32, n: u32, g: u32, a: u32, b: u32, fraction: f32, place: vec3<f32>,
-            point: Point) {
+            inParticles: vec3<f32>, point: Point, frame: ptr<function, Frame>) {
     let r = first + g;
-    if (ribbon.sink.x != SINK_STRIPS) {
+    if (ribbon.sink.x == SINK_POINTS) {
         writePoint(r, a, b, fraction, place, point);
         return;
     }
     let low = sizeOf(a, ageOf(a)).x;
     let high = sizeOf(b, ageOf(b)).x;
     let half = 0.5 * ((low + (high - low) * fraction) / params.scales.x * point.width);
-    var vertex = point;
-    for (var v = 0u; v < 2u; v++) {
-        vertex.corner = vec2<f32>(point.along, f32(v));
-        let across = point.side * select(half, -half, v == 0u);
-        writePoint(2u * r + v, a, b, fraction, place + across, vertex);
+    // The chain's first vertex and first index.
+    let vertices = vertexShare();
+    let indices = indexShare();
+    let chainVertex = vertices.x * first + vertices.y * point.ribbon;
+    let chainIndex = params.shape.w + indices.x * first - indices.y * point.ribbon;
+    if (ribbon.sink.x == SINK_STRIPS) {
+        var vertex = point;
+        for (var v = 0u; v < 2u; v++) {
+            vertex.corner = vec2<f32>(point.along, f32(v));
+            let across = point.side * select(half, -half, v == 0u);
+            writePoint(chainVertex + 2u * g + v, a, b, fraction, place + across, vertex);
+        }
+        if (g + 1u < n) {
+            let at = chainIndex + 6u * g;
+            let base = chainVertex + 2u * g;
+            ribbonList[at] = base;
+            ribbonList[at + 1u] = base + 1u;
+            ribbonList[at + 2u] = base + 2u;
+            ribbonList[at + 3u] = base + 2u;
+            ribbonList[at + 4u] = base + 1u;
+            ribbonList[at + 5u] = base + 3u;
+        }
+        return;
     }
-    if (g + 1u < n) {
-        let at = params.shape.w + 6u * (first - point.ribbon + g);
-        let base = 2u * r;
-        ribbonList[at] = base;
-        ribbonList[at + 1u] = base + 1u;
-        ribbonList[at + 2u] = base + 2u;
-        ribbonList[at + 3u] = base + 2u;
-        ribbonList[at + 4u] = base + 1u;
-        ribbonList[at + 5u] = base + 3u;
-    }
+    writeTube(chainVertex, chainIndex, n, g, a, b, fraction, place, inParticles, half, point,
+              frame);
 }
 
 // Whether a field is a count, the nearer particle's at a piece (the
@@ -794,3 +843,5 @@ fn writePoint(r: u32, a: u32, b: u32, fraction: f32, place: vec3<f32>, point: Po
         }
     }
 }
+
+// include: ribbon_records/tubes.wgsl

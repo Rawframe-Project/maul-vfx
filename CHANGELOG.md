@@ -792,6 +792,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxGpuExpandDef`): two vertices a point across its width, six
   indices a segment, ribbons taken whole while both buffers hold them,
   the counts the vertices and indices there are and those written.
+- The GPU part expands an emitter's ribbons into tubes as
+  `mvfxInstance_ExpandTubes` does (`mvfxGpuSim_ExpandTubes`, the expand
+  def's `tube`): a ring a point turned by rotation-minimizing frames
+  carried along each ribbon, the quads between rings, optional caps.
 - A plan gives an emitter's pinned head as the CPU path's ribbons find it
   (`mvfxEmitterPlan.ribbonHead`, `ribbonHeadPlace`), and the GPU part's
   bounds join it as `mvfxInstance_GetBounds` does: the statistics record

@@ -494,6 +494,9 @@ extern "C"
         // for none.
         mrhiResourceId counts;
         uint64_t countsOffset;
+        // For mvfxGpuSim_ExpandTubes, the tubes' sides (0 for strips, else
+        // 3 to MVFX_MAX_TUBE_SIDES) and whether their ends are capped.
+        mvfxTubeDef tube;
     } mvfxGpuExpandDef;
 
 // The cookie of an expand def, which its default sets and the expanding
@@ -527,6 +530,31 @@ extern "C"
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim,
                                                                     const mvfxGpuExpandDef* def);
+
+    /// Adds the passes expanding an emitter's ribbons into tubes to the
+    /// frame the host builds, as mvfxInstance_ExpandTubes expands them on
+    /// the CPU path: the passes of mvfxGpuSim_AddRibbons, each point a
+    /// ring of the def's sides + 1 vertices at half its width about it,
+    /// turned along the ribbon by rotation-minimizing frames carried point
+    /// to point (an invocation a ribbon), each segment sides quads, with
+    /// caps a center and a ring at either end and their triangles. Ribbons
+    /// are taken whole while both buffers hold them; the counts are the
+    /// vertices and indices there are and those written. A frame is
+    /// carried in binary32, so a ring's turn about its tangent may differ
+    /// from the CPU path's by what binary32 gathers along the ribbon. What
+    /// a host may rely on otherwise, where the passes come and what they
+    /// count among: as mvfxGpuSim_AddRibbons; with 0 sides, as
+    /// mvfxGpuSim_ExpandRibbons.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the tubes go, from mvfxDefaultGpuExpandDef, with
+    ///             its tube's sides and caps.
+    /// @return As mvfxGpuSim_ExpandRibbons; `mvfx_errorInvalid` too for
+    ///         sides out of range.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim,
+                                                                  const mvfxGpuExpandDef* def);
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing

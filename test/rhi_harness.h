@@ -129,8 +129,11 @@ typedef struct Run
     int64_t ribbonCapacity;
     // Whether those ribbons are expanded into strips instead
     // (mvfxGpuSim_ExpandRibbons and mvfxInstance_ExpandRibbons), the list
-    // their indices and ribbonCapacity the indices it holds.
+    // their indices and ribbonCapacity the indices it holds; or into
+    // tubes of these sides and caps (mvfxGpuSim_ExpandTubes and
+    // mvfxInstance_ExpandTubes) for sides past 0.
     bool strips;
+    mvfxTubeDef tube;
     // The emitter whose records are written (the first for 0).
     int32_t recordEmitter;
 } Run;

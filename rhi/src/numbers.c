@@ -409,8 +409,8 @@ static void HeadInParticles(const mvfxEmitterView* view, const mvfxEmitterPlan* 
 }
 
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
-                       const mvfxStepTables* tables, uint32_t sink, int64_t listCapacity,
-                       uint32_t countWord, uint32_t words[MVFX_RIBBON_WORDS])
+                       const mvfxStepTables* tables, const mvfxRibbonSink* sink,
+                       uint32_t words[MVFX_RIBBON_WORDS])
 {
     const mvfxRibbonView* r = &view->ribbon;
     const uint32_t arrays[4] = {WordOf(view->arrays.ribbon), WordOf(view->arrays.ribbonDistance),
@@ -422,8 +422,9 @@ void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     Floats(words + 8, r->normal[0], r->normal[1], r->normal[2], 0.0f);
     words[12] = tables->ribbonWidth;
     words[13] = tables->ribbonColor;
-    words[14] = (uint32_t)(listCapacity < (int64_t)UINT32_MAX ? listCapacity : (int64_t)UINT32_MAX);
-    words[15] = countWord;
+    words[14] =
+        (uint32_t)(sink->capacity < (int64_t)UINT32_MAX ? sink->capacity : (int64_t)UINT32_MAX);
+    words[15] = sink->countWord;
     const uint32_t cut[4] = {r->pieces > 1 ? (uint32_t)r->pieces : 1u,
                              r->bendCosines[0] >= -1.5f ? 1u : 0u, plan->ribbonHead ? 1u : 0u,
                              plan->ribbonCounter};
@@ -434,7 +435,7 @@ void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
         HeadInParticles(view, plan, head);
     }
     memcpy(words + 20, head, sizeof head);
-    const uint32_t sinks[4] = {sink, 0u, 0u, 0u};
+    const uint32_t sinks[4] = {sink->kind, sink->sides, sink->caps ? 1u : 0u, 0u};
     memcpy(words + 24, sinks, sizeof sinks);
     memcpy(words + 28, r->bendCosines, MVFX_MAX_RIBBON_PIECES * sizeof(float));
 }

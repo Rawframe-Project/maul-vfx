@@ -146,10 +146,10 @@ mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
                : mvfx_errorState;
 }
 
-// Adds a ribbon pass writing what sink asks (points with the list, or
+// Adds a ribbon pass writing what kind of sink asks (points with the list,
 // strips with indices in the def's ribbons buffer, its capacity theirs),
 // from a def checked.
-static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, uint32_t sink)
+static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfxRibbonSink sink)
 {
     if (sim->ending)
     {
@@ -201,9 +201,9 @@ static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, uint
     mvfxRecordNumbers(view, &plan, &layout, &records, &emitter->tables, sim->srgb, words);
     words[7] = (uint32_t)(def->ribbonOffset / 4u);
     uint32_t ribbonWords[MVFX_RIBBON_WORDS];
-    mvfxRibbonNumbers(view, &plan, &emitter->tables, sink, def->ribbonCapacity,
-                      def->counts.index1 != 0 ? (uint32_t)(def->countsOffset / 4u) : 0u,
-                      ribbonWords);
+    sink.capacity = def->ribbonCapacity;
+    sink.countWord = def->counts.index1 != 0 ? (uint32_t)(def->countsOffset / 4u) : 0u;
+    mvfxRibbonNumbers(view, &plan, &emitter->tables, &sink, ribbonWords);
     return mvfxAddRibbonPass(sim->device, &emitter->records, &resources, words, ribbonWords,
                              plan.capacity)
                ? mvfx_success
@@ -216,7 +216,7 @@ mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
     {
         return mvfx_errorInvalid;
     }
-    return AddRibbons(sim, def, MVFX_SINK_POINTS);
+    return AddRibbons(sim, def, (mvfxRibbonSink){.kind = MVFX_SINK_POINTS});
 }
 
 mvfxGpuExpandDef mvfxDefaultGpuExpandDef(void)
@@ -224,9 +224,16 @@ mvfxGpuExpandDef mvfxDefaultGpuExpandDef(void)
     return (mvfxGpuExpandDef){.cookie = MVFX_GPU_EXPAND_DEF_COOKIE};
 }
 
-mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+// Adds the passes expanding ribbons into strips, or into tubes of the
+// def's sides (strips for 0) when tubes.
+static mvfxResult Expand(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, bool tubes)
 {
     if (sim == nullptr || def == nullptr || def->cookie != MVFX_GPU_EXPAND_DEF_COOKIE)
+    {
+        return mvfx_errorInvalid;
+    }
+    int32_t sides = tubes ? def->tube.sides : 0;
+    if (sides != 0 && (sides < 3 || sides > MVFX_MAX_TUBE_SIDES))
     {
         return mvfx_errorInvalid;
     }
@@ -247,7 +254,20 @@ mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim, const mvfxGpuExpandDef* def
     {
         return mvfx_errorInvalid;
     }
-    return AddRibbons(sim, &ribbons, MVFX_SINK_STRIPS);
+    const mvfxRibbonSink sink = {.kind = sides > 0 ? MVFX_SINK_TUBES : MVFX_SINK_STRIPS,
+                                 .sides = (uint32_t)sides,
+                                 .caps = sides > 0 && def->tube.caps};
+    return AddRibbons(sim, &ribbons, sink);
+}
+
+mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+{
+    return Expand(sim, def, false);
+}
+
+mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+{
+    return Expand(sim, def, true);
 }
 
 mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,

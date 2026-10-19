@@ -176,13 +176,26 @@ bool mvfxIsRibbonLayout(const mvfxLayoutView* layout);
 // first word; the most pieces a segment is cut into, whether the bend
 // decides them, whether the current ribbon ends at a pinned head and the
 // plan's ribbon counter, the head's place in the particles' space, what
-// is written (points with the list, or strips with indices, the list's
-// or the indices' capacity in listCapacity), and the bend's cosines.
+// is written, and the bend's cosines.
 #define MVFX_SINK_POINTS 0u
 #define MVFX_SINK_STRIPS 1u
+#define MVFX_SINK_TUBES  2u
+
+// What a ribbon pass writes: points with the list, strips or tubes (of
+// sides, capped or not) with indices; the list's or the indices'
+// capacity, the counts' first word.
+typedef struct mvfxRibbonSink
+{
+    uint32_t kind;
+    uint32_t sides;
+    bool caps;
+    int64_t capacity;
+    uint32_t countWord;
+} mvfxRibbonSink;
+
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
-                       const mvfxStepTables* tables, uint32_t sink, int64_t listCapacity,
-                       uint32_t countWord, uint32_t words[MVFX_RIBBON_WORDS]);
+                       const mvfxStepTables* tables, const mvfxRibbonSink* sink,
+                       uint32_t words[MVFX_RIBBON_WORDS]);
 
 // Writes emitter's step numbers: the plan's counts and ticks, the
 // emitter's shape, velocity and motion, the instance's places from the
