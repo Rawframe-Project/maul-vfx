@@ -897,6 +897,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   first row held where it was born, or to the instance, weighing nothing
   in the constraints. `mvfxAttributeArrays` gains the anchor, the unit
   frame's origin and rotation, its flags and its source.
+- The GPU part runs units held to the host's frames, each unit's frame
+  eased to the frame the host set over the substeps, its pinned points
+  through it. `mvfxEmitterPlan` gains the host's frames at the plan's
+  end (`attachFrames`, `attachFrameCount`) and `mvfxPlannedHostBirth`
+  the unit's frame.
 
 ### Fixed
 

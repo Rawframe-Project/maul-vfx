@@ -100,6 +100,9 @@ typedef struct Run
     // before each step, placed about the instance's origin (none for
     // NULL).
     const mvfxSpawnRequest* spawn;
+    // For a first emitter of units held to the host's frames, how many
+    // frames the host moves and turns before each step (FramesFor).
+    int32_t attachFrames;
     // A layout the first emitter's records are written in by both paths
     // and compared every step (none for NULL), and the most records the
     // buffer holds; whether a sort by place must keep the CPU path's

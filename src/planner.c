@@ -13,6 +13,7 @@
 
 #include "planner.h"
 
+#include "attach.h"
 #include "birth.h"
 #include "emitter_step.h"
 #include "integrate.h"
@@ -120,7 +121,8 @@ static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
         const mvfxHostBirth* host = &state->hostQueue[h];
         uint64_t serial = state->owed + (uint64_t)h;
         mvfxPlannedHostBirth* out = &state->planHosts[state->planHostCount];
-        *out = (mvfxPlannedHostBirth){.given = GivenOf(instance, emitter, host)};
+        *out =
+            (mvfxPlannedHostBirth){.given = GivenOf(instance, emitter, host), .frame = host->frame};
         for (int32_t k = 0; k < 3; ++k)
         {
             out->position[k] = host->position[k];
@@ -232,6 +234,7 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
     // The forces and colliders of the step, held over the plan.
     mvfxResolveEmitter(instance, emitter);
     PlanHostBirths(instance, emitter);
+    mvfxPlanAttachFrames(instance, emitter);
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
     int32_t units = UnitCapacity(instance, emitter);

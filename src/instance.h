@@ -201,6 +201,10 @@ typedef struct mvfxEmitterState
     // and each unit's frame at the step's end (seven floats a unit: its
     // origin, then its orientation).
     mvfxAttachFrame* attachFrames;
+    // For a planned instance's units held to the host's frames, those
+    // frames at the plan's end in the particles' space (seven floats a
+    // frame of the capacity).
+    float* planFrames;
     int32_t attachFrameCount;
     float* attachTargets;
     // Its units' stretch constraints torn.

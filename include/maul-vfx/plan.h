@@ -183,6 +183,9 @@ extern "C"
         float color[4];
         float size[3];
         uint8_t given;
+        // For units held to the host's frames, the unit's frame
+        // (mvfxSpawnRequest.attachFrames); 0 otherwise.
+        int32_t frame;
     } mvfxPlannedHostBirth;
 
     // An emitter's velocity modules as resolved for a plan's step: the
@@ -281,6 +284,12 @@ extern "C"
         // The host's particles its births name, staying as the births do.
         const mvfxPlannedHostBirth* hostBirths;
         int32_t hostBirthCount;
+        // For units held to the host's frames, the frames the host set
+        // (mvfxInstance_SetAttachFrames) at the plan's end in the
+        // particles' space, seven floats each (an origin, then a
+        // rotation), staying as the births do; none otherwise.
+        const float* attachFrames;
+        int32_t attachFrameCount;
         // For an emitter that spawns from events, the ticks from the plan's
         // start whose events give births: from spawnFirst to spawnLast,
         // within its delay and loops and up to the instance's stop (none

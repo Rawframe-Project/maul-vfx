@@ -329,6 +329,8 @@ void mvfxHostBirthWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
         at[3] = host->given;
         const float* v = host->velocity;
         mvfxFloatWords(at + 4, v[0], v[1], v[2], 0.0f);
+        // For units held to the host's frames, the unit's frame.
+        at[7] = (uint32_t)host->frame;
         memcpy(at + 8, host->color, 4 * sizeof(float));
         mvfxFloatWords(at + 12, host->size[0], host->size[1], host->size[2], 0.0f);
     }

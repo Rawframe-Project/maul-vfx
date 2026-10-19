@@ -64,7 +64,7 @@ self: attach instance neighbor
 unit: aero attach elementary event instance integrate self
 emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate liquid neighbor plexus rigid scene_query spawn steer unit
 emitter_view: effect effect_api
-planner: birth emitter_step instance integrate spawn
+planner: attach birth emitter_step instance integrate spawn
 context: allocator effect grid instance layout mesh slots tasks
 convex: direction hull
 effect_api: allocator context effect effect_parts float_mode grid grid_api hull mesh mesh_api slots

@@ -1952,6 +1952,27 @@ static void SpawnFor(const Run* run, int32_t s)
     }
 }
 
+// Sets the first emitter's host frames of both instances at step s: frame
+// f a little along x from the last, rising, turning about y.
+static void FramesFor(const Run* run, int32_t s)
+{
+    mvfxAttachFrame frames[8];
+    int32_t count = run->attachFrames < 8 ? run->attachFrames : 8;
+    for (int32_t f = 0; f < count; ++f)
+    {
+        float angle = 0.05f * (float)(s * (f + 1));
+        frames[f] = (mvfxAttachFrame){
+            .position = {0.4 * (double)f - 0.6, 0.5 + 0.02 * (double)s, 0.1 * (double)f},
+            .rotation = {0.0f, sinf(angle), 0.0f, cosf(angle)}};
+    }
+    mvfxInstanceId both[2] = {s_cpu, s_planned};
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        CHECK(mvfxInstance_SetAttachFrames(s_context, both[i], 0, frames, count) == mvfx_success,
+              "frames set");
+    }
+}
+
 // Moves both instances to step s's place: along a line past the rebase
 // distance, turning about a tilted axis.
 // Places both instances far from the origin, still.
@@ -2406,6 +2427,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         if (run->spawn != NULL)
         {
             SpawnFor(run, s);
+        }
+        if (run->attachFrames > 0)
+        {
+            FramesFor(run, s);
         }
         if (run->aiming)
         {

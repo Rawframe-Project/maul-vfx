@@ -367,6 +367,10 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
         .refused = state->planRefused,
         .hostBirths = state->planHosts,
         .hostBirthCount = state->planHostCount,
+        .attachFrames = state->planFrames,
+        .attachFrameCount = live->effect->emitters[emitter].unit.attach == mvfx_attachHost
+                                ? state->attachFrameCount
+                                : 0,
         .cleared = live->planCleared,
         .owed = state->owed,
     };

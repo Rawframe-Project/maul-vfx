@@ -255,6 +255,13 @@ typedef struct Emitter
     // Its host births in the kernels' form, room for its host queue's.
     uint32_t* hostWords;
     int32_t hostCount;
+    // For units held to the host's frames, the frames in the kernels' form
+    // (room for the unit's attachFrameCapacity), how many the step has,
+    // and their first byte in the births buffer.
+    uint32_t* frameWords;
+    int32_t frameCapacity;
+    int32_t frameCount;
+    uint64_t framesAt;
     bool cleared;
 } Emitter;
 
@@ -310,6 +317,13 @@ void mvfxOrderSimEmitters(mvfxGpuSim* sim);
 bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSpawn(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups);
 mvfxResult mvfxSpawnStepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+
+// An emitter's units held to the host's frames (sim_attach.c): the bytes
+// the frames take in the births buffer; the step's frames staged and
+// their numbers written for a plan; their upload in the write pass.
+uint64_t mvfxSimFrameBytes(const Emitter* emitter);
+void mvfxSimFrameNumbers(Emitter* emitter, const mvfxEmitterPlan* plan);
+bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass);
 
 // An emitter's events (sim_events.c): the numbers of their values over
 // life written for a step's plan; what the pass giving them binds beside

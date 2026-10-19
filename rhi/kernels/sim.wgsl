@@ -284,7 +284,9 @@ struct Step {
     // first words of the pins' arrays (the anchor, the frame's origin and
     // rotation, its flags; NONE for none); the points pinned (UNIT_PIN_*
     // bits), what they are held to (mvfxAttachKind) and the source's
-    // array's first word.
+    // array's first word; for units held to the host's frames, the frames'
+    // first vector in the births buffer (two a frame: its origin, then its
+    // rotation) and how many the host set.
     units: vec4<u32>,
     unitAcross: vec4<f32>,
     unitDown: vec4<f32>,
@@ -292,6 +294,7 @@ struct Step {
     unitStiffness: vec4<f32>,
     unitArrays: vec4<u32>,
     unitPins: vec4<u32>,
+    unitFrames: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;

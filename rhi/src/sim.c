@@ -56,13 +56,12 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 #define UNITS_BESIDE (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
-// names, none held to the host's frames or a source's particles, blown by
-// the air, colliding with themselves or tearing.
+// names, none held to a source's particles, blown by the air, colliding
+// with themselves or tearing.
 static bool UnitsRun(const mvfxEmitterView* view)
 {
     const mvfxUnitDef* u = &view->unit;
-    return (view->features & UNITS_BESIDE) == 0 &&
-           (u->attach == mvfx_attachNone || u->attach == mvfx_attachInstance) &&
+    return (view->features & UNITS_BESIDE) == 0 && u->attach != mvfx_attachParticles &&
            u->normalDrag == 0.0f && u->tangentDrag == 0.0f && u->selfThickness == 0.0f &&
            u->tearStrain == 0.0f;
 }
@@ -171,9 +170,8 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
     uint64_t words = (uint64_t)emitter->particleWords;
     return CreateBuffer(sim, c * words * 4u, particles, &emitter->particles[0]) &&
            CreateBuffer(sim, c * words * 4u, particles, &emitter->particles[1]) &&
-           CreateBuffer(
-               sim, StagedBirths(emitter) + (emitter->spawnSource >= 0 ? BirthBytes(emitter) : 0),
-               written, &emitter->births) &&
+           CreateBuffer(sim, emitter->framesAt + mvfxSimFrameBytes(emitter), written,
+                        &emitter->births) &&
            CreateBuffer(sim, MVFX_STEP_WORDS * 4u, mrhi_bufferUniform | mrhi_bufferCopyDestination,
                         &emitter->step) &&
            CreateBuffer(sim, MVFX_GPU_STATISTICS_WORDS * 4u, written | mrhi_bufferCopySource,
@@ -289,6 +287,23 @@ static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
                      MVFX_CURVE_SAMPLES + 2);
 }
 
+// Allocates an emitter's staging of its host births and its host's
+// frames, as many as it holds.
+static mvfxResult AllocateStaging(mvfxGpuSim* sim, Emitter* emitter)
+{
+    if (emitter->hostCapacity > 0)
+    {
+        emitter->hostWords = mvfxRhiAllocate(&sim->allocator, HostBytes(emitter), 4);
+    }
+    if (emitter->frameCapacity > 0)
+    {
+        emitter->frameWords = mvfxRhiAllocate(&sim->allocator, mvfxSimFrameBytes(emitter), 4);
+    }
+    bool held = (emitter->hostCapacity == 0 || emitter->hostWords != nullptr) &&
+                (emitter->frameCapacity == 0 || emitter->frameWords != nullptr);
+    return held ? mvfx_success : mvfx_errorCapacity;
+}
+
 // Sizes an emitter's memory by its plan and makes it: the host's
 // particles' words, the grids and tables laid out, the buffers.
 static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t e)
@@ -298,12 +313,18 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     mvfxResult result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
     emitter->capacity = plan.capacity;
     emitter->hostCapacity = plan.capacity > 0 ? sim->views[e].hostSpawnCapacity : 0;
+    const mvfxUnitDef* unit = &sim->views[e].unit;
+    emitter->frameCapacity =
+        plan.capacity > 0 && unit->attach == mvfx_attachHost ? unit->attachFrameCapacity : 0;
     const mvfxEventSpawn* spawn = &sim->views[e].eventSpawn;
     emitter->spawnSource = spawn->enabled ? spawn->source : -1;
     // Event births past the births' room are never written.
     int32_t room = 2 * plan.capacity;
     emitter->hostRecords = emitter->hostCapacity +
                            (spawn->enabled ? (spawn->capacity < room ? spawn->capacity : room) : 0);
+    // The host's frames after the births, the host records and a spawning
+    // emitter's staged births.
+    emitter->framesAt = StagedBirths(emitter) + (spawn->enabled ? BirthBytes(emitter) : 0);
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
     emitter->ribbons = sim->views[e].ribbon.ids != mvfx_ribbonNone;
     emitter->beam = sim->views[e].beam.enabled;
@@ -314,11 +335,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->unitGroups = (uint32_t)(units < 65535 ? (units > 0 ? units : 1) : 65535);
     emitter->pinsHead = sim->views[e].ribbon.pinHead;
     emitter->gridMask = plan.gridMask;
-    if (result == mvfx_success && emitter->hostCapacity > 0)
-    {
-        emitter->hostWords = mvfxRhiAllocate(&sim->allocator, HostBytes(emitter), 4);
-        result = emitter->hostWords != nullptr ? mvfx_success : mvfx_errorCapacity;
-    }
+    result = result == mvfx_success ? AllocateStaging(sim, emitter) : result;
     uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
     if (result == mvfx_success &&
         !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
@@ -453,6 +470,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         mvfxDestroySimContacts(sim, emitter);
         mvfxDestroySimPlexus(sim, emitter);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
+        mvfxRhiRelease(&sim->allocator, emitter->frameWords, mvfxSimFrameBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
     }
     DestroyBuffer(sim, sim->ownCount);
@@ -740,6 +758,10 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     {
         mvfxHostBirthWords(&sim->views[e], &plan, emitter->hostWords);
     }
+    if (emitter->frameCapacity > 0)
+    {
+        mvfxSimFrameNumbers(emitter, &plan);
+    }
     emitter->cleared = plan.cleared;
     if (!AddEmitterPasses(sim, emitter))
     {
@@ -819,6 +841,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS], BirthBytes(emitter),
                     emitter->hostWords,
                     (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u)) &&
+        mvfxUploadSimFrames(sim, emitter, pass) &&
         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                    MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map, sizeof emitter->map) &&
         (!emitter->pinsHead ||

@@ -60,6 +60,10 @@ mvfxPinFrame mvfxPinFrameAt(const mvfxInstance* instance, int32_t emitter, int64
 void mvfxPinPlace(const mvfxInstance* instance, int32_t emitter, const mvfxPinFrame* frame,
                   int32_t u, int32_t i, float out[3]);
 
+// The host's frames at the step's end in the particles' space, for a plan
+// (mvfxEmitterPlan.attachFrames): seven floats each, as a unit's target.
+void mvfxPlanAttachFrames(mvfxInstance* instance, int32_t emitter);
+
 // Each live unit's frame becomes its target, after its substeps.
 void mvfxEndAttachments(mvfxInstance* instance, int32_t emitter);
 

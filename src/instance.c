@@ -45,6 +45,7 @@ typedef struct EmitterAt
     size_t unitContacts;
     size_t unitContactHeld;
     size_t attachFrames;
+    size_t planFrames;
     size_t attachTargets;
     size_t selfTable;
     size_t selfKeys;
@@ -98,6 +99,7 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     size_t frames = kind == mvfx_attachHost ? (size_t)compiled->unit.attachFrameCapacity : 0;
     at->attachFrames =
         mvfxLayoutAdd(layout, frames, sizeof(mvfxAttachFrame), alignof(mvfxAttachFrame));
+    at->planFrames = mvfxLayoutAdd(layout, 7u * frames, sizeof(float), alignof(float));
     bool framed = kind == mvfx_attachHost || kind == mvfx_attachParticles;
     size_t units = framed ? (size_t)(capacities[e] / compiled->unitPoints) : 0;
     at->attachTargets = mvfxLayoutAdd(layout, 7u * units, sizeof(float), alignof(float));
@@ -376,6 +378,7 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         instance->emitters[e].unitContacts = (mvfxEvent*)(block + at[e].unitContacts);
         instance->emitters[e].unitContactHeld = (uint8_t*)(block + at[e].unitContactHeld);
         instance->emitters[e].attachFrames = (mvfxAttachFrame*)(block + at[e].attachFrames);
+        instance->emitters[e].planFrames = (float*)(block + at[e].planFrames);
         instance->emitters[e].attachTargets = (float*)(block + at[e].attachTargets);
         instance->emitters[e].selfGrid = (mvfxNeighborGrid){
             .table = (int32_t*)(block + at[e].selfTable),

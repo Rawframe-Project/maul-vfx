@@ -281,6 +281,19 @@ void mvfxPinPlace(const mvfxInstance* instance, int32_t emitter, const mvfxPinFr
     }
 }
 
+void mvfxPlanAttachFrames(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (instance->effect->emitters[emitter].unit.attach != mvfx_attachHost)
+    {
+        return;
+    }
+    for (int32_t f = 0; f < state->attachFrameCount; ++f)
+    {
+        HostFrame(instance, emitter, f, state->planFrames + 7 * f);
+    }
+}
+
 void mvfxEndAttachments(mvfxInstance* instance, int32_t emitter)
 {
     if (!IsFramed(instance, emitter))
