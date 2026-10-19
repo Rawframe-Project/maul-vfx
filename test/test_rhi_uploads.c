@@ -113,11 +113,12 @@ static mvfxEmitterDef Sprite(void)
     return emitter;
 }
 
-// The bytes an emitter's step uploads after the first, from its plan and
-// whether it writes events, as mvfxGpuSim_Record states them.
-static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events)
+// The bytes an emitter's step uploads after the first, from its plan,
+// whether it writes events and whether it is a beam, as
+// mvfxGpuSim_Record states them.
+static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam)
 {
-    return 1944 + (events ? 96 : 0) + 432 * (int64_t)plan->forceCount +
+    return 1944 + (events ? 96 : 0) + (beam ? 96 : 0) + 432 * (int64_t)plan->forceCount +
            128 * (int64_t)plan->colliderCount + 80 * (int64_t)plan->killRuleCount +
            48 * (int64_t)plan->birthCount + 64 * (int64_t)plan->hostBirthCount;
 }
@@ -194,7 +195,7 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
         {
             mvfxEmitterPlan plan;
             exact = mvfxInstance_GetEmitterPlan(context, instance, e, &plan) == mvfx_success;
-            expected += StepBytes(&plan, emitters[e].events != 0);
+            expected += StepBytes(&plan, emitters[e].events != 0, emitters[e].beam.enabled);
             births += plan.birthCount + plan.hostBirthCount;
         }
         int64_t uploaded = -1;
@@ -256,6 +257,15 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     meshed.shape =
         (mvfxShape){.kind = mvfx_shapeMesh, .rotation = {0, 0, 0, 1}, .meshMode = mvfx_meshSurface};
     Measure(gpu, kernels, &meshed, 1, "a mesh shape's emitter");
+
+    mvfxEmitterDef beam = mvfxDefaultEmitterDef();
+    beam.rate = 0.0f;
+    beam.capacity = 9;
+    beam.lifetime = mvfxRangeSource(0.05f, 0.1f);
+    beam.ribbon.ids = mvfx_ribbonOne;
+    beam.beam = (mvfxBeamDef){
+        .enabled = true, .segments = 8, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
+    Measure(gpu, kernels, &beam, 1, "a beam");
 }
 
 static void TestRefusals(void)

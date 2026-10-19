@@ -33,15 +33,16 @@
 // forces an emitter has; 8 of its collision's head and response, 48 of
 // its depth image, 32 a collider for the most it has; 28 of where a
 // particle's values are among its words, 64 of the instance's
-// parameters, 4 of the angular drag's factors over the plan and 16 of
-// the velocity modules; 4 of the kill rules' and events' head, 20 of the
+// parameters, 4 of the angular drag's factors over the plan, 16 of the
+// velocity modules and 24 of the beam; 4 of the kill rules' and events' head, 20 of the
 // spawning from events' and 20 a rule for the most an emitter has; then,
 // unchanged from step to step and uploaded once, 16 a source, 8 of the
 // frame's and mesh index's draws, 4 of the bounds' growth by size, 4 of
 // how particles turn and move, 12 of the values over life, 12 of how it
 // spawns from events, 16 of the shape and 4 of how births join ribbons.
 #define MVFX_VALUES_FIRST     (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
-#define MVFX_VALUES_WORDS     112
+#define MVFX_VALUES_WORDS     136
+#define MVFX_BEAM_WORDS       24
 #define MVFX_KILLS_FIRST      (MVFX_VALUES_FIRST + MVFX_VALUES_WORDS)
 #define MVFX_SPAWN_FIRST      (MVFX_KILLS_FIRST + 4)
 #define MVFX_KILL_RULES_FIRST (MVFX_KILLS_FIRST + 24)
@@ -71,7 +72,8 @@ uint32_t mvfxScanBlocks(int32_t capacity);
 // colliders it has; where a particle's values are, the instance's
 // parameters, the angular factors and the velocity modules; the kill
 // rules' and events' head, the spawning from events' and the rules it
-// has. The sources' block
+// has; the beam's words, the values' last, only for a beam. The sources'
+// block
 // (MVFX_SOURCES_FIRST on) is written once. The rest keep what an earlier
 // step left, never read.
 typedef struct mvfxStepSpans
@@ -80,7 +82,7 @@ typedef struct mvfxStepSpans
     uint32_t count[4];
 } mvfxStepSpans;
 
-mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan);
+mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan, bool beam);
 
 // The values over life records read: alpha, the three sizes', each
 // custom attribute's.

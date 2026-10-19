@@ -209,6 +209,13 @@ struct Step {
     // and the scale into the particles' space; the orbit's axis; its
     // center; the radial center.
     modules: array<vec4<f32>, 4>,
+    // A beam (mvfxPlannedBeam): its segments (0 for none), its controls'
+    // count, the noise's time cell, unused; the noise's amplitude and
+    // frequency, the time's fraction past its cell, unused; its curve's
+    // points in the instance's space, start to end.
+    beam: vec4<u32>,
+    beamNoise: vec4<f32>,
+    beamPoints: array<vec4<f32>, 4>,
     // The kill rules' count, the events the emitter writes (a mask of
     // EVENT_ kinds), at most how many, the events' first word in the
     // events buffer.
@@ -316,3 +323,5 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/spawn.wgsl
 
 // include: sim/ribbons.wgsl
+
+// include: sim/beam.wgsl

@@ -224,12 +224,13 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
     }
 }
 
-mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan)
+mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan, bool beam)
 {
     return (mvfxStepSpans){
         .first = {0, 84 + 132 * MVFX_MAX_FORCES, MVFX_VALUES_FIRST, MVFX_KILLS_FIRST},
         .count = {84 + 24 * MVFX_MAX_FORCES + 108 * (uint32_t)plan->forceCount,
-                  56 + 32 * (uint32_t)plan->colliderCount, MVFX_VALUES_WORDS,
+                  56 + 32 * (uint32_t)plan->colliderCount,
+                  MVFX_VALUES_WORDS - (beam ? 0u : MVFX_BEAM_WORDS),
                   24 + 20 * (uint32_t)plan->killRuleCount},
     };
 }
@@ -739,6 +740,26 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
     }
 }
 
+// The beam as resolved for the step (sim.wgsl's beam, beamNoise and
+// beamPoints): none without one.
+static void Beam(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t* at)
+{
+    const mvfxBeamDef* beam = &view->beam;
+    if (!beam->enabled)
+    {
+        return;
+    }
+    at[0] = (uint32_t)beam->segments;
+    at[1] = (uint32_t)beam->controlCount;
+    at[2] = plan->beam.timeCell;
+    Floats(at + 4, beam->noiseAmplitude, beam->noiseFrequency, plan->beam.timeFraction, 0.0f);
+    for (int32_t p = 0; p < 4; ++p)
+    {
+        const float* point = plan->beam.points[p];
+        Floats(at + 8 + 4 * p, point[0], point[1], point[2], 0.0f);
+    }
+}
+
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
                      bool normals, const mvfxStepTables* tables, uint32_t words[MVFX_STEP_WORDS])
@@ -799,6 +820,7 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     DragFactors((double)view->modules.limitDampen, seconds, limit);
     Floats(at + 92, angular[0], angular[1], limit[0], 0.0f);
     Modules(&plan->modules, at + 96);
+    Beam(view, plan, at + 112);
     KillRules(plan, words + MVFX_KILLS_FIRST);
     // The events the GPU writes (births, deaths, collisions), how many, and
     // where in the events buffer.

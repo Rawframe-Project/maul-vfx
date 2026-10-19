@@ -27,10 +27,12 @@
      "workgroup_storage_bytes": 1032},
     {"name": "spawnMerge", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "ribbons", "stage": "compute", "workgroup": [256, 1, 1],
-     "workgroup_storage_bytes": 1036}
+     "workgroup_storage_bytes": 1036},
+    {"name": "beam", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 8196}
   ],
   "bindings": [
-    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9216},
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9312},
     {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 16},
     {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},

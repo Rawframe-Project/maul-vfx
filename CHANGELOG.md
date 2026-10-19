@@ -804,3 +804,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A planned instance may hold beams: a plan gives a beam's strikes as the
   CPU path strikes them (each at the tick the last one's points die, the
   points with the first's life), their ticks, serials and lives the same.
+- The GPU part runs beams (`MVFX_FEATURE_BEAM`): a pass after the step
+  places each point along its curve with the noise across it, at rest,
+  its distance along the beam summed in the CPU path's order, the bounds
+  the beam's. A plan gives a beam as resolved (`mvfxEmitterPlan.beam`,
+  `mvfxPlannedBeam`: its curve's points and the noise's time), and an
+  emitter's view its def (`mvfxEmitterView.beam`); a beam's step uploads
+  96 bytes more.

@@ -3,6 +3,7 @@
 
 #include "plan_resolved.h"
 
+#include "beam.h"
 #include "collide.h"
 #include "depth.h"
 #include "force.h"
@@ -100,6 +101,7 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
     plan->restSpeed = collision->restSpeed * state->velocityModules.sigma;
     plan->killOnCollision = collision->killOnCollision;
     memcpy(plan->parameters, instance->parameters, sizeof plan->parameters);
+    mvfxResolveBeam(instance, emitter, &plan->beam);
     plan->depth = (mvfxPlannedDepth){0};
     if (state->hasDepth)
     {

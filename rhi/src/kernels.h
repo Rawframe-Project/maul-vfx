@@ -71,6 +71,8 @@ typedef enum mvfxKernel
     mvfx_kernelRibbonPoints = 23,
     // Each segment of ribbons of more pieces than one cut into pieces.
     mvfx_kernelRibbonPieces = 24,
+    // A beam's points placed (sim.wgsl).
+    mvfx_kernelBeam = 25,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

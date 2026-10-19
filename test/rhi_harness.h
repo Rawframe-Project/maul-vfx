@@ -88,6 +88,10 @@ typedef struct Run
     // for NULL).
     const float* parameters;
     int32_t parameterCount;
+    // Whether both instances' parameters are set anew before each step
+    // (each one's x, y and z turning about its default), as a host aims a
+    // beam.
+    bool aiming;
     // A depth image both instances collide with (none for NULL): the CPU
     // instance's with its pixels, the planned one's without, its
     // simulation's rendered from the same pixels.

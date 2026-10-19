@@ -63,6 +63,7 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerRibbonRecords, "ribbonChains"},
     {mvfx_containerRibbonRecords, "ribbonPoints"},
     {mvfx_containerRibbonRecords, "ribbonPieces"},
+    {mvfx_containerSim, "beam"},
 };
 
 struct mvfxGpu

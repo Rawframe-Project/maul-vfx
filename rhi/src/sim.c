@@ -44,7 +44,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE | MVFX_FEATURE_VELOCITY_MODULES |          \
      MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
      MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
-     MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON)
+     MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -270,6 +270,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
                            (spawn->enabled ? (spawn->capacity < room ? spawn->capacity : room) : 0);
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
     emitter->ribbons = sim->views[e].ribbon.ids != mvfx_ribbonNone;
+    emitter->beam = sim->views[e].beam.enabled;
     emitter->pinsHead = sim->views[e].ribbon.pinHead;
     if (result == mvfx_success && emitter->hostCapacity > 0)
     {
@@ -527,7 +528,7 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
     for (int32_t p = PASS_ROOM; p < (emitter->writesEvents ? PASS_EVENT_VALUES : PASS_EVENT_COUNT);
          ++p)
     {
-        if (p != PASS_RIBBONS || emitter->ribbons)
+        if ((p != PASS_RIBBONS || emitter->ribbons) && (p != PASS_BEAM || emitter->beam))
         {
             order[count++] = p;
         }
@@ -718,7 +719,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     {
         return result;
     }
-    emitter->spans = mvfxStepSpansOf(&plan);
+    emitter->spans = mvfxStepSpansOf(&plan, emitter->beam);
     mvfxRecordMap(&sim->views[e], &plan, emitter->map);
     mvfxRecordHead(&plan, emitter->head);
     EventNumbers(sim, e, &plan);
@@ -919,17 +920,19 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
     emitter->added = false;
     uint32_t groups = mvfxUpdateGroups(emitter->capacity);
     uint32_t blocks = mvfxScanBlocks(emitter->capacity);
-    bool recorded = RecordWrites(sim, emitter) && mvfxRecordSpawn(sim, emitter, groups) &&
-                    mvfxRecordSimKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
-                    mvfxRecordSimKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
-                    mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
-                    mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
-                    mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
-                    mvfxRecordSimKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&
-                    (!emitter->ribbons ||
-                     mvfxRecordSimKernel(sim, emitter, PASS_RIBBONS, mvfx_kernelRibbons, 1)) &&
-                    mvfxRecordSimKernel(sim, emitter, PASS_MEASURE, mvfx_kernelMeasure, 1) &&
-                    RecordEvents(sim, emitter, blocks);
+    bool recorded =
+        RecordWrites(sim, emitter) && mvfxRecordSpawn(sim, emitter, groups) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&
+        (!emitter->ribbons ||
+         mvfxRecordSimKernel(sim, emitter, PASS_RIBBONS, mvfx_kernelRibbons, 1)) &&
+        (!emitter->beam || mvfxRecordSimKernel(sim, emitter, PASS_BEAM, mvfx_kernelBeam, 1)) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_MEASURE, mvfx_kernelMeasure, 1) &&
+        RecordEvents(sim, emitter, blocks);
     emitter->current = recorded ? 1 - emitter->current : emitter->current;
     return recorded;
 }

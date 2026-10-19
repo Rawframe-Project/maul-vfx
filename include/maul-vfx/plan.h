@@ -215,6 +215,19 @@ extern "C"
         int32_t collisions;
     } mvfxPlannedKillRule;
 
+    // A beam as resolved for a plan's step (mvfxBeamDef), its points
+    // placed at the plan's end: its curve's points in the instance's
+    // space (the start, the controls, the end: controlCount + 2 of them),
+    // and the noise's time coordinate then (the seconds of the clock
+    // times its speed) as the lattice takes it, a cell wrapped to 32 bits
+    // and the fraction past it.
+    typedef struct mvfxPlannedBeam
+    {
+        float points[4][3];
+        uint32_t timeCell;
+        float timeFraction;
+    } mvfxPlannedBeam;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -302,6 +315,8 @@ extern "C"
         // when the plan is read.
         bool ribbonHead;
         double ribbonHeadPlace[3];
+        // Its beam as resolved (zeros for an emitter without one).
+        mvfxPlannedBeam beam;
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
@@ -601,6 +616,9 @@ extern "C"
         int64_t loopTicks;
         // How it is drawn as ribbons (mvfxEmitterDef's ribbon).
         mvfxRibbonView ribbon;
+        // How its points are struck and placed as a beam (mvfxEmitterDef's
+        // beam; not enabled for none).
+        mvfxBeamDef beam;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

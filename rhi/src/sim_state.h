@@ -48,20 +48,22 @@ enum
     PASS_SCATTER = 6,
     // Its births' ribbons, when it has ribbons.
     PASS_RIBBONS = 7,
-    PASS_MEASURE = 8,
+    // Its points placed, when it is a beam.
+    PASS_BEAM = 8,
+    PASS_MEASURE = 9,
     // An emitter's events, when it writes any.
-    PASS_EVENT_COUNT = 9,
-    PASS_EVENT_OFFSETS = 10,
-    PASS_EVENT_WRITE = 11,
-    PASS_EVENT_VALUES = 12,
+    PASS_EVENT_COUNT = 10,
+    PASS_EVENT_OFFSETS = 11,
+    PASS_EVENT_WRITE = 12,
+    PASS_EVENT_VALUES = 13,
     // Its births from events, when it spawns from them, after the plan's
     // bytes: the source's events copied in, then the kernels.
-    PASS_SPAWN_COPY = 13,
-    PASS_SPAWN_COUNT = 14,
-    PASS_SPAWN_SORT = 15,
-    PASS_SPAWN_SCAN = 16,
-    PASS_SPAWN_MERGE = 17,
-    PASS_COUNT = 18
+    PASS_SPAWN_COPY = 14,
+    PASS_SPAWN_COUNT = 15,
+    PASS_SPAWN_SORT = 16,
+    PASS_SPAWN_SCAN = 17,
+    PASS_SPAWN_MERGE = 18,
+    PASS_COUNT = 19
 };
 
 typedef struct Emitter
@@ -95,6 +97,8 @@ typedef struct Emitter
     // the record).
     bool ribbons;
     bool pinsHead;
+    // Whether it is a beam, its points placed after the step.
+    bool beam;
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
     // Whether all its event numbers were written: after, only the words a

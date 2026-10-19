@@ -20,19 +20,12 @@ static void PointOf(const mvfxInstance* instance, const mvfxBeamPoint* point, fl
 
 // The curve's place a fraction t along it: a line, or a quadratic or
 // cubic Bezier curve through the controls.
-static void CurveAt(const mvfxInstance* instance, const mvfxBeamDef* beam, float t, float out[3])
+static void CurveAt(const float p[4][3], int32_t controlCount, float t, float out[3])
 {
-    float p[4][3];
-    PointOf(instance, &beam->start, p[0]);
-    for (int32_t c = 0; c < beam->controlCount; ++c)
-    {
-        PointOf(instance, &beam->controls[c], p[c + 1]);
-    }
-    PointOf(instance, &beam->end, p[beam->controlCount + 1]);
     float u = 1.0f - t;
     for (int32_t k = 0; k < 3; ++k)
     {
-        switch (beam->controlCount)
+        switch (controlCount)
         {
         case 0:
             out[k] = u * p[0][k] + t * p[1][k];
@@ -95,12 +88,10 @@ static void IntoParticles(const mvfxInstance* instance, int32_t emitter, const f
 }
 
 // The unit chord from the start to the end; 0 where they meet.
-static void ChordOf(const mvfxInstance* instance, const mvfxBeamDef* beam, float out[3])
+static void ChordOf(const mvfxPlannedBeam* resolved, int32_t controlCount, float out[3])
 {
-    float start[3];
-    float end[3];
-    PointOf(instance, &beam->start, start);
-    PointOf(instance, &beam->end, end);
+    const float* start = resolved->points[0];
+    const float* end = resolved->points[controlCount + 1];
     float square = 0.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -112,6 +103,24 @@ static void ChordOf(const mvfxInstance* instance, const mvfxBeamDef* beam, float
     {
         out[k] = length > 0.0f ? out[k] / length : 0.0f;
     }
+}
+
+void mvfxResolveBeam(const mvfxInstance* instance, int32_t emitter, mvfxPlannedBeam* beamOut)
+{
+    *beamOut = (mvfxPlannedBeam){0};
+    const mvfxBeamDef* beam = &instance->effect->emitters[emitter].beam;
+    if (!beam->enabled)
+    {
+        return;
+    }
+    PointOf(instance, &beam->start, beamOut->points[0]);
+    for (int32_t c = 0; c < beam->controlCount; ++c)
+    {
+        PointOf(instance, &beam->controls[c], beamOut->points[c + 1]);
+    }
+    PointOf(instance, &beam->end, beamOut->points[beam->controlCount + 1]);
+    double seconds = (double)instance->clock / (double)MVFX_TICKS_PER_SECOND;
+    beamOut->timeCell = mvfxNoiseCell(seconds * (double)beam->noiseSpeed, &beamOut->timeFraction);
 }
 
 void mvfxPlaceBeam(mvfxInstance* instance, int32_t emitter)
@@ -133,8 +142,10 @@ void mvfxPlaceBeam(mvfxInstance* instance, int32_t emitter)
     // The strike's noise: the seed of its first point.
     const uint32_t* serials = mvfxAttributeArray(instance, emitter, mvfx_attributeSerial);
     uint32_t seed = instance->seed ^ (serials[0] * 0x9E3779B9u);
+    mvfxPlannedBeam resolved;
+    mvfxResolveBeam(instance, emitter, &resolved);
     float chord[3];
-    ChordOf(instance, beam, chord);
+    ChordOf(&resolved, beam->controlCount, chord);
     float* distances = mvfxHasAttribute(&compiled->plan, mvfx_attributeRibbonDistance)
                            ? mvfxAttributeArray(instance, emitter, mvfx_attributeRibbonDistance)
                            : nullptr;
@@ -143,7 +154,7 @@ void mvfxPlaceBeam(mvfxInstance* instance, int32_t emitter)
         float t = (float)i / (float)beam->segments;
         float point[3];
         float noise[3];
-        CurveAt(instance, beam, t, point);
+        CurveAt(resolved.points, beam->controlCount, t, point);
         NoiseAt(instance, beam, seed, chord, t, noise);
         for (int32_t k = 0; k < 3; ++k)
         {

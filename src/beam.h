@@ -9,6 +9,12 @@
 
 #include "instance.h"
 
+#include "maul-vfx/plan.h"
+
+// A beam emitter's curve and noise time at the clock, as its points are
+// placed by: the plan's beam (none resolved for an emitter without one).
+void mvfxResolveBeam(const mvfxInstance* instance, int32_t emitter, mvfxPlannedBeam* beamOut);
+
 // Places a beam emitter's live points at the step's end: along its curve
 // in the instance's space through the transform into the particles'
 // space, at rest, their distances along it stored for a tile by distance.

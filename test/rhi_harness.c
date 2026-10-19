@@ -1733,7 +1733,22 @@ static void Move(int32_t s, double pace)
           "moved");
 }
 
-// Clears and restarts both instances.
+// Sets both instances' parameters anew at step s: each one's default
+// with its x, y and z turning on a circle of radius 1.5.
+static void Aim(const Run* run, int32_t s)
+{
+    for (int32_t p = 0; p < run->parameterCount; ++p)
+    {
+        const float* given = run->parameters + 4 * p;
+        float angle = 0.21f * (float)s + (float)p;
+        const float value[4] = {given[0] + 1.5f * cosf(angle), given[1] + 1.5f * sinf(angle),
+                                given[2] + 1.5f * sinf(0.5f * angle), given[3]};
+        CHECK(mvfxInstance_SetParameter(s_context, s_cpu, p, value) == mvfx_success &&
+                  mvfxInstance_SetParameter(s_context, s_planned, p, value) == mvfx_success,
+              "aimed");
+    }
+}
+
 // Breaks both instances' ribbons by the counter, as the host does.
 static void BreakRibbons(void)
 {
@@ -2002,6 +2017,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         if (run->spawn != NULL)
         {
             SpawnFor(run, s);
+        }
+        if (run->aiming)
+        {
+            Aim(run, s);
         }
         if (run->breaking && s % 7 == 3)
         {

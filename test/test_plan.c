@@ -673,6 +673,19 @@ static void TestEventSpawn(void)
     mvfxDestroyContext(context);
 }
 
+// Whether a plan's beam is the emitter's as resolved at the clock: its
+// start and end (a line's), the noise's time coordinate's cell and
+// fraction.
+static bool SameBeam(const mvfxEmitterPlan* plan, const mvfxEmitterDef* emitter, int64_t clock)
+{
+    double time = (double)clock / (double)MVFX_TICKS_PER_SECOND * (double)emitter->beam.noiseSpeed;
+    double cell = floor(time);
+    const mvfxPlannedBeam* beam = &plan->beam;
+    return memcmp(beam->points[0], emitter->beam.start.point, sizeof(float[3])) == 0 &&
+           memcmp(beam->points[1], emitter->beam.end.point, sizeof(float[3])) == 0 &&
+           beam->timeCell == (uint32_t)(int64_t)cell && beam->timeFraction == (float)(time - cell);
+}
+
 // Steps a CPU beam and a planned one by the given ticks, the plans
 // gathered and compared with the CPU path's points after each step; the
 // instances stopped from step stopAt (none when negative). Returns the
@@ -701,7 +714,7 @@ static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, 
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         const mvfxInstance* live = mvfxContextInstance(context, planned);
-        same = plan.refused == 0 && BatchesWhole(&plan) &&
+        same = plan.refused == 0 && BatchesWhole(&plan) && SameBeam(&plan, emitter, live->clock) &&
                (plan.birthCount == 0 || plan.birthCount == emitter->beam.segments + 1);
         births += plan.birthCount;
         Gather(&plan, live->clock);
@@ -721,7 +734,7 @@ static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, 
 
 // A planned beam's strikes are the stepped one's: their ticks, serials and
 // lives, the strikes skipped within a long step, the 64 a step works
-// through, a stop.
+// through, a stop; the beam as resolved.
 static void TestBeams(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -729,8 +742,11 @@ static void TestBeams(void)
     emitter.capacity = 6;
     emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
     emitter.ribbon.ids = mvfx_ribbonOne;
-    emitter.beam = (mvfxBeamDef){
-        .enabled = true, .segments = 5, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
+    emitter.beam = (mvfxBeamDef){.enabled = true,
+                                 .segments = 5,
+                                 .start = {.point = {0, 0.5f, 0}},
+                                 .end = {.point = {4, 0, -1}},
+                                 .noiseSpeed = 2.5f};
     int64_t steps[64];
     for (int32_t s = 0; s < 64; ++s)
     {
