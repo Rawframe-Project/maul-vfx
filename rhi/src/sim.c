@@ -183,15 +183,20 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 // as ribbons: keys and indices twice over its blocks (and for ribbons the
 // chains' words after them), and two sets of digit counts. One that
 // carries lights alone takes digit counts of two words a block (its
-// lights' counts and offsets).
+// lights' counts and offsets); one of sheets alone a sort buffer of two
+// words a particle and one (ribbon_records/sheets.wgsl's quads' places
+// and sheets' offsets, the sheets that fit).
 static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
 {
     bool ribbons = view->ribbon.ids != mvfx_ribbonNone;
+    bool sheets = view->unitPoints > 1 && view->unit.kind == mvfx_unitSheet;
     uint64_t blocks = mvfxSortBlocks(emitter->capacity);
     if (mvfxRecordOrder(view) != MVFX_ORDER_SORTED && !ribbons)
     {
-        return !view->light.enabled || CreateBuffer(sim, 2u * (blocks > 0 ? blocks : 1u) * 4u,
-                                                    mrhi_bufferStorage, &emitter->digits);
+        return (!view->light.enabled || CreateBuffer(sim, 2u * (blocks > 0 ? blocks : 1u) * 4u,
+                                                     mrhi_bufferStorage, &emitter->digits)) &&
+               (!sheets || CreateBuffer(sim, 4u * (2u * (uint64_t)emitter->capacity + 1u),
+                                        mrhi_bufferStorage, &emitter->sort));
     }
     uint64_t words = ribbons ? MVFX_RIBBON_SORT_WORDS : 4u;
     return CreateBuffer(sim, 4u * words * blocks * MVFX_SORT_BLOCK, mrhi_bufferStorage,
@@ -961,7 +966,9 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         .lightCount = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightCount),
         .lightOffsets = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightOffsets),
         .lightWrite = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightWrite),
-        .spriteQuads = mvfxGpuPipeline(sim->gpu, mvfx_kernelSpriteQuads)};
+        .spriteQuads = mvfxGpuPipeline(sim->gpu, mvfx_kernelSpriteQuads),
+        .sheetFit = mvfxGpuPipeline(sim->gpu, mvfx_kernelSheetFit),
+        .sheetPoints = mvfxGpuPipeline(sim->gpu, mvfx_kernelSheetPoints)};
     for (int32_t n = 0; n < sim->emitterCount; ++n)
     {
         Emitter* emitter = &sim->emitters[sim->order[n]];

@@ -350,7 +350,10 @@ mvfxResult mvfxGpuSim_ExpandPlexus(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
     return Expand(sim, def, false, true);
 }
 
-mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+// Checks an expand def for quads: its buffers as a ribbons def's, its
+// layout's view, the emitter's passes this frame; its plan.
+static mvfxResult CheckQuads(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, mvfxLayoutView* layout,
+                             mvfxEmitterPlan* plan)
 {
     if (sim == nullptr || def == nullptr || def->cookie != MVFX_GPU_EXPAND_DEF_COOKIE)
     {
@@ -375,26 +378,37 @@ mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def
     {
         return mvfx_errorState;
     }
-    mvfxLayoutView layout;
-    mvfxResult result = mvfxLayout_GetView(sim->context, def->layout, &layout);
-    if (result != mvfx_success || !mvfxIsRibbonLayout(&layout))
+    mvfxResult result = mvfxLayout_GetView(sim->context, def->layout, layout);
+    if (result != mvfx_success || !mvfxIsRibbonLayout(layout))
     {
         return result != mvfx_success ? result : mvfx_errorInvalid;
     }
-    Emitter* emitter = &sim->emitters[def->emitter];
-    if (emitter->records.count == MVFX_GPU_RECORD_PASSES)
+    if (sim->emitters[def->emitter].records.count == MVFX_GPU_RECORD_PASSES)
     {
         return mvfx_errorLimit;
     }
+    return mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, plan);
+}
+
+// Adds the passes expanding an emitter's particles into a sink's quads
+// (sprites or sheets): the vertices' numbers as a record pass's with the
+// indices' first word beside them; counts of 0 for an emitter without
+// particles at the instance's quality level, or of sheets for one of no
+// sheets.
+static mvfxResult ExpandQuads(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, uint32_t kind)
+{
+    mvfxLayoutView layout;
     mvfxEmitterPlan plan;
-    result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, &plan);
+    mvfxResult result = CheckQuads(sim, def, &layout, &plan);
     if (result != mvfx_success)
     {
         return result;
     }
-    if (emitter->capacity == 0)
+    Emitter* emitter = &sim->emitters[def->emitter];
+    const mvfxEmitterView* view = &sim->views[def->emitter];
+    bool sheets = view->unitPoints > 1 && view->unit.kind == mvfx_unitSheet;
+    if (emitter->capacity == 0 || (kind == MVFX_SINK_SHEETS && !sheets))
     {
-        // No particles at the instance's quality level: counts of 0.
         return def->counts.index1 == 0 ||
                        mvfxAddEmptyRecordPass(sim->device, &emitter->records, def->counts,
                                               (uint32_t)(def->countsOffset / 4u),
@@ -408,9 +422,6 @@ mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def
     {
         return mvfx_errorState;
     }
-    // The vertices' numbers as a record pass's, the indices' first word
-    // beside them.
-    const mvfxEmitterView* view = &sim->views[def->emitter];
     mvfxGpuRecordsDef records = mvfxDefaultGpuRecordsDef();
     records.emitter = def->emitter;
     records.view = def->view;
@@ -420,15 +431,32 @@ mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def
     mvfxRecordNumbers(view, &plan, &layout, &records, &emitter->tables, sim->srgb, words);
     words[7] = (uint32_t)(def->indexOffset / 4u);
     const mvfxRibbonSink sink = {
-        .kind = MVFX_SINK_SPRITES,
+        .kind = kind,
         .capacity = def->indexCapacity,
         .countWord = def->counts.index1 != 0 ? (uint32_t)(def->countsOffset / 4u) : 0u};
-    uint32_t spriteWords[MVFX_RIBBON_WORDS];
-    mvfxSpriteNumbers(view, &def->view, &sink, spriteWords);
-    return mvfxAddSpritePass(sim->device, &emitter->records, &resources, words, spriteWords,
+    uint32_t sinkWords[MVFX_RIBBON_WORDS];
+    if (kind == MVFX_SINK_SHEETS)
+    {
+        mvfxSheetNumbers(view, &sink, sinkWords);
+    }
+    else
+    {
+        mvfxSpriteNumbers(view, &def->view, &sink, sinkWords);
+    }
+    return mvfxAddRibbonPass(sim->device, &emitter->records, &resources, words, sinkWords,
                              plan.capacity)
                ? mvfx_success
                : mvfx_errorState;
+}
+
+mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+{
+    return ExpandQuads(sim, def, MVFX_SINK_SPRITES);
+}
+
+mvfxResult mvfxGpuSim_ExpandSheets(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+{
+    return ExpandQuads(sim, def, MVFX_SINK_SHEETS);
 }
 
 mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,

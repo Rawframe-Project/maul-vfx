@@ -918,6 +918,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part draws units as ribbons: each unit is a ribbon of its
   first point's serial with its points' distances along it, and a torn
   chain's ribbon splits where it tore, as on the CPU path.
+- `mvfxGpuSim_ExpandSheets` expands an emitter's sheets into meshes on
+  the GPU as `mvfxInstance_ExpandSheets` does: a vertex a point with its
+  frame from its neighbours, six indices a whole quad, the first whole
+  sheets that fit.
 
 ### Fixed
 

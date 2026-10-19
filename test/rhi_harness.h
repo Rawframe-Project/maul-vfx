@@ -148,8 +148,11 @@ typedef struct Run
     bool plexus;
     // Whether the strips' buffers take the particles expanded into quads
     // instead (mvfxGpuSim_ExpandSprites and mvfxInstance_ExpandSprites;
+    // strips and ribbons set too); or the emitter's sheets expanded into
+    // meshes (mvfxGpuSim_ExpandSheets and mvfxInstance_ExpandSheets,
     // strips and ribbons set too).
     bool sprites;
+    bool sheets;
     // The emitter whose records are written (the first for 0).
     int32_t recordEmitter;
     // Whether the records are its lights instead (mvfxGpuSim_AddLights

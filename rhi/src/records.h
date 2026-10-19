@@ -39,8 +39,9 @@ typedef struct mvfxRecordResources
 } mvfxRecordResources;
 
 // The pipelines record passes run: the records', the keys', a radix
-// pass's offsets' and scatter's, and a ribbon pass's keys', chains' and
-// points'.
+// pass's offsets' and scatter's, a ribbon pass's keys', chains' and
+// points', a lights pass's, a sprite pass's quads', and a sheet pass's
+// fit and points.
 typedef struct mvfxRecordPipelines
 {
     mrhiComputePipelineId records;
@@ -55,6 +56,8 @@ typedef struct mvfxRecordPipelines
     mrhiComputePipelineId lightOffsets;
     mrhiComputePipelineId lightWrite;
     mrhiComputePipelineId spriteQuads;
+    mrhiComputePipelineId sheetFit;
+    mrhiComputePipelineId sheetPoints;
 } mvfxRecordPipelines;
 
 // A record pass added to the frame open: its passes (only the transfer
@@ -62,7 +65,8 @@ typedef struct mvfxRecordPipelines
 // instance's quality level or a ribbon pass of one not drawn as ribbons;
 // the sort's for one that sorts or a ribbon pass; the chains' for a
 // ribbon pass, and the pieces' for ribbons of more pieces than one; a
-// lights pass's counts and offsets), resources, numbers and workgroups.
+// lights pass's counts and offsets; a sheet pass's fit), resources,
+// numbers and workgroups.
 typedef struct mvfxRecordPass
 {
     bool empty;
@@ -71,11 +75,13 @@ typedef struct mvfxRecordPass
     bool cut;
     bool lights;
     bool sprites;
+    bool sheets;
     mrhiPassId write;
     mrhiPassId keys;
     mrhiPassId radix[2 * MVFX_SORT_PASSES];
     mrhiPassId pieces;
     mrhiPassId chains;
+    mrhiPassId fit;
     mrhiPassId lightCount;
     mrhiPassId lightOffsets;
     mrhiPassId kernel;
@@ -110,19 +116,12 @@ bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
                        const mvfxRecordResources* resources, const uint32_t* words,
                        int64_t capacity);
 
-// Adds a ribbon pass of these numbers over these resources, its points'
-// workgroups for capacity particles; false when the device refuses an
-// import or a pass.
+// Adds a ribbon, sprite or sheet pass (its kind its ribbon numbers'
+// sink's) of these numbers over these resources, its workgroups for
+// capacity particles; false when the device refuses an import or a pass.
 bool mvfxAddRibbonPass(mrhiDevice* device, mvfxRecordPasses* passes,
                        const mvfxRecordResources* resources, const uint32_t* words,
                        const uint32_t* ribbonWords, int64_t capacity);
-
-// Adds a sprite pass of these numbers and sprite numbers over these
-// resources, its quads' workgroups for capacity particles; false when the
-// device refuses an import or a pass.
-bool mvfxAddSpritePass(mrhiDevice* device, mvfxRecordPasses* passes,
-                       const mvfxRecordResources* resources, const uint32_t* words,
-                       const uint32_t* spriteWords, int64_t capacity);
 
 // Adds a lights pass of these numbers over these resources; false when
 // the device refuses an import or a pass.

@@ -107,6 +107,11 @@ typedef enum mvfxKernel
     mvfx_kernelPlexusWrite = 43,
     // An emitter's units moved by substeps (sim.wgsl).
     mvfx_kernelUnits = 44,
+    // An emitter's sheets expanded into meshes (ribbon_records.wgsl): the
+    // sheets that fit and their quads' places, then their vertices and
+    // indices.
+    mvfx_kernelSheetFit = 45,
+    mvfx_kernelSheetPoints = 46,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

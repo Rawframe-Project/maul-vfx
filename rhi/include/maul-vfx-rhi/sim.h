@@ -730,6 +730,30 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim,
                                                                     const mvfxGpuExpandDef* def);
 
+    /// Adds the passes expanding an emitter's sheets (mvfx_unitSheet) into
+    /// meshes to the frame the host builds, as mvfxInstance_ExpandSheets
+    /// expands them on the CPU path: oldest first, a vertex a point row
+    /// after row (its tangent across, side down and face normal from its
+    /// neighbouring points in binary32, within a relative 1e-4 of the CPU
+    /// path's binary64 from the same places; its corner its place across
+    /// and row over the last of each; its ribbon the sheet's index) and six
+    /// indices a quad between rows none of whose edges is torn. The first
+    /// whole sheets that fit both buffers are written; the counts are the
+    /// strips': the vertices and indices there are and those written. A
+    /// transfer pass and two compute passes, a record pass of the emitter's
+    /// (MVFX_GPU_RECORD_PASSES), the same frames and order as
+    /// mvfxGpuSim_AddRecords. The def's tube is not read. An emitter
+    /// without particles at the instance's quality level, or of no sheets,
+    /// writes none; its counts, if asked for, are 0.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the meshes go, from mvfxDefaultGpuExpandDef.
+    /// @return As mvfxGpuSim_ExpandRibbons.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandSheets(mvfxGpuSim* sim,
+                                                                   const mvfxGpuExpandDef* def);
+
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
     /// when it added none. The bytes are the frame's uploads

@@ -7,7 +7,10 @@
     {"name": "ribbonChains", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 2056},
     {"name": "ribbonPoints", "stage": "compute", "workgroup": [64, 1, 1]},
-    {"name": "spriteQuads", "stage": "compute", "workgroup": [64, 1, 1]}
+    {"name": "spriteQuads", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "sheetFit", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1028},
+    {"name": "sheetPoints", "stage": "compute", "workgroup": [64, 1, 1]}
   ],
   "bindings": [
     {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 1952},

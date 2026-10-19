@@ -89,6 +89,8 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerPlexus, "plexusOffsets"},
     {mvfx_containerPlexus, "plexusWrite"},
     {mvfx_containerSim, "units"},
+    {mvfx_containerRibbonRecords, "sheetFit"},
+    {mvfx_containerRibbonRecords, "sheetPoints"},
 };
 
 struct mvfxGpu

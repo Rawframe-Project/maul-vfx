@@ -451,6 +451,21 @@ void mvfxSpriteNumbers(const mvfxEmitterView* view, const mvfxView* frame,
     words[25] = view->sprite.billboard;
 }
 
+void mvfxSheetNumbers(const mvfxEmitterView* view, const mvfxRibbonSink* sink,
+                      uint32_t words[MVFX_RIBBON_WORDS])
+{
+    memset(words, 0, MVFX_RIBBON_WORDS * sizeof(uint32_t));
+    words[0] = mvfxWordOf(view->arrays.torn);
+    words[12] = 0xFFFFFFFFu;
+    words[13] = 0xFFFFFFFFu;
+    words[14] =
+        (uint32_t)(sink->capacity < (int64_t)UINT32_MAX ? sink->capacity : (int64_t)UINT32_MAX);
+    words[15] = sink->countWord;
+    words[24] = MVFX_SINK_SHEETS;
+    words[25] = (uint32_t)view->unitWidth;
+    words[26] = (uint32_t)view->unitPoints;
+}
+
 // Where a particle's values are for the record pass (records.wgsl's
 // Words).
 static void RecordWords(const mvfxAttributeArrays* a, uint32_t* words)

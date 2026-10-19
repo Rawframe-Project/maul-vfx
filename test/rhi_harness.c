@@ -846,6 +846,7 @@ static bool s_strips;
 static bool s_plexus;
 static mvfxTubeDef s_tube;
 static bool s_sprites;
+static bool s_sheets;
 static int32_t s_recordEmitter;
 static mrhiBufferId s_listBuffer;
 static mrhiResourceId s_listResource;
@@ -931,6 +932,10 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     if (s_sprites)
     {
         return mvfxGpuSim_ExpandSprites(sim, &strips) == mvfx_success;
+    }
+    if (s_sheets)
+    {
+        return mvfxGpuSim_ExpandSheets(sim, &strips) == mvfx_success;
     }
     if (s_plexus)
     {
@@ -1567,6 +1572,11 @@ static bool SameStrips(int64_t* writtenOut)
         expanded = mvfxInstance_ExpandPlexus(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
                                              &buffers, &vertices, &count);
     }
+    else if (s_sheets)
+    {
+        expanded = mvfxInstance_ExpandSheets(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
+                                             &buffers, &vertices, &count);
+    }
     else if (s_sprites)
     {
         int64_t quads = 0;
@@ -1593,6 +1603,14 @@ static bool SameStrips(int64_t* writtenOut)
     {
         named = indices[written] + 1 > named ? indices[written] + 1 : named;
         ++written;
+    }
+    // A sheet's last vertices may be named by no quad (its last quads
+    // torn): its vertices written are the records the CPU path wrote.
+    while (s_sheets && named < s_recordCapacity &&
+           memcmp(s_cpuRecords + 64 + named * s_layoutView.stride, s_fillBytes,
+                  (size_t)s_layoutView.stride) != 0)
+    {
+        ++named;
     }
     *writtenOut = named;
     bool same = s_gpuCount[0] == (uint32_t)vertices && s_gpuCount[1] == (uint32_t)count &&
@@ -2357,6 +2375,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_plexus = run->plexus;
     s_tube = run->tube;
     s_sprites = run->sprites;
+    s_sheets = run->sheets;
     s_recordEmitter = run->recordEmitter;
     s_ribbonCapacity = run->ribbonCapacity;
     s_lights = run->lights;

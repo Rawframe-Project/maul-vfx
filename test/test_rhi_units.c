@@ -112,6 +112,10 @@ static void TestSheets(Gpu* gpu, mvfxGpu* kernels)
     emitter.unit.normalDrag = 2000.0f;
     emitter.unit.tangentDrag = 300.0f;
     Moved(gpu, kernels, &emitter, false, "sheets blown by a wind and a turbulent field");
+    // In a gale, each triangle's share of the speed through the air held
+    // to a sixth, as the core's ShareOf.
+    emitter.unit.normalDrag = 1e5f;
+    Moved(gpu, kernels, &emitter, false, "sheets in a gale, each triangle's share held");
 }
 
 // A run of an emitter of units that must meet colliders, or must kill.
@@ -471,8 +475,9 @@ static void TestTears(Gpu* gpu, mvfxGpu* kernels)
     Torn(gpu, kernels, &emitter, 20, "sheets torn in the air");
 }
 
-// A ribbon point's place, frame, width, lengths, ribbon and serial.
-static const mvfxLayoutField s_ribbonFields[9] = {
+// A ribbon point's place, frame, width, lengths, ribbon, serial and
+// corner.
+static const mvfxLayoutField s_ribbonFields[10] = {
     {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
     {.field = mvfx_recordTangent, .format = mvfx_formatFloat32, .components = 3, .offset = 12},
     {.field = mvfx_recordWidth, .format = mvfx_formatFloat32, .components = 1, .offset = 24},
@@ -481,7 +486,18 @@ static const mvfxLayoutField s_ribbonFields[9] = {
     {.field = mvfx_recordRibbon, .format = mvfx_formatUint32, .components = 1, .offset = 36},
     {.field = mvfx_recordSide, .format = mvfx_formatFloat32, .components = 3, .offset = 40},
     {.field = mvfx_recordFaceNormal, .format = mvfx_formatFloat32, .components = 3, .offset = 52},
-    {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 64}};
+    {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 64},
+    {.field = mvfx_recordCorner, .format = mvfx_formatFloat32, .components = 2, .offset = 68}};
+
+// The layout of s_ribbonFields.
+static mvfxLayoutDef RibbonLayout(void)
+{
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = s_ribbonFields;
+    layout.fieldCount = 10;
+    layout.stride = 76;
+    return layout;
+}
 
 static void TestRibbons(Gpu* gpu, mvfxGpu* kernels)
 {
@@ -492,10 +508,7 @@ static void TestRibbons(Gpu* gpu, mvfxGpu* kernels)
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.ribbon.texture = mvfx_ribbonTileByDistance;
     emitter.ribbon.tileLength = 0.25f;
-    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
-    layout.fields = s_ribbonFields;
-    layout.fieldCount = 9;
-    layout.stride = 68;
+    const mvfxLayoutDef layout = RibbonLayout();
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -513,6 +526,51 @@ static void TestRibbons(Gpu* gpu, mvfxGpu* kernels)
     emitter.unit.tearStrain = 0.3f;
     emitter.motion.gravity[1] = -40.0f;
     Torn(gpu, kernels, &emitter, 20, "torn chains' ribbons split");
+}
+
+// A run of sheets expanded into meshes in buffers of these vertices and
+// indices.
+static void Meshed(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, int64_t vertices,
+                   int64_t indices, bool adopting, const char* what)
+{
+    const mvfxLayoutDef layout = RibbonLayout();
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitter,
+                   .emitterCount = 1,
+                   .layout = &layout,
+                   .recordCapacity = vertices,
+                   .ribbons = true,
+                   .strips = true,
+                   .sheets = true,
+                   .ribbonCapacity = indices,
+                   .adopting = adopting,
+                   .tolerance = adopting ? 2e-3f : 1e-3f},
+            what);
+}
+
+static void TestSheetMeshes(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Sheets of eight by four expanded into meshes, oldest first: a
+    // vertex a point with its frame from its neighbours, its corner and
+    // its sheet's index; six indices a quad. Then buffers that hold three
+    // sheets' vertices, and indices for two sheets and part of a third:
+    // the first whole sheets that fit both, the counts all of them.
+    mvfxEmitterDef emitter = Sheets(8, 4, 2);
+    Meshed(gpu, kernels, &emitter, CAPACITY, 4096, false, "sheets expanded into meshes");
+    Meshed(gpu, kernels, &emitter, 100, 4096, false, "sheets past the vertices' room");
+    Meshed(gpu, kernels, &emitter, CAPACITY, 300, false, "sheets past the indices' room");
+    // Sheets torn hanging from their first rows in the air (a torn sheet
+    // flaps chaotically without it): a quad a torn edge bounds takes no
+    // indices, the sheets after it fewer places.
+    static const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {6, 0, 2}, .strength = 0.01f};
+    emitter.unit.pinFirstRow = true;
+    emitter.unit.stretchCompliance = 2e-4f;
+    emitter.unit.tearStrain = 0.3f;
+    emitter.unit.normalDrag = 2000.0f;
+    emitter.motion.gravity[1] = -40.0f;
+    emitter.forces = &wind;
+    emitter.forceCount = 1;
+    Meshed(gpu, kernels, &emitter, CAPACITY, 4096, true, "torn sheets' meshes");
 }
 
 // Whether a planned instance of an emitter is refused on the GPU for its
@@ -565,6 +623,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestContacts(gpu, kernels);
     TestTears(gpu, kernels);
     TestRibbons(gpu, kernels);
+    TestSheetMeshes(gpu, kernels);
     TestHostBirths(gpu, kernels);
     TestEventBirths(gpu, kernels);
 }
