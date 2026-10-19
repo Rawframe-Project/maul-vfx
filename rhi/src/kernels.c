@@ -11,6 +11,7 @@
 #include "../kernels/plexus_container.h"
 #include "../kernels/records_container.h"
 #include "../kernels/ribbon_records_container.h"
+#include "../kernels/self_container.h"
 #include "../kernels/sim_container.h"
 #include "../kernels/sort_container.h"
 #include "maul-rhi/shader.h"
@@ -34,6 +35,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_gridContainer, sizeof s_gridContainer},
     {s_contactsContainer, sizeof s_contactsContainer},
     {s_plexusContainer, sizeof s_plexusContainer},
+    {s_selfContainer, sizeof s_selfContainer},
 };
 
 // A kernel's container and entry.
@@ -91,6 +93,11 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSim, "units"},
     {mvfx_containerRibbonRecords, "sheetFit"},
     {mvfx_containerRibbonRecords, "sheetPoints"},
+    {mvfx_containerSelf, "selfReach"},
+    {mvfx_containerSelf, "selfKeys"},
+    {mvfx_containerSelf, "selfGather"},
+    {mvfx_containerSelf, "selfPart"},
+    {mvfx_containerSelf, "selfCommit"},
 };
 
 struct mvfxGpu

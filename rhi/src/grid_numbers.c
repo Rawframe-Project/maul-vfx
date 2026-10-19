@@ -2,10 +2,12 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The numbers of an emitter's grids on the GPU: the neighbor grid's, with
-// steering's and the pair force's, the contacts' and the plexus links'.
+// steering's and the pair force's, the contacts', the plexus links' and
+// units' self-collision's.
 
 #include "numbers.h"
 
+#include <math.h>
 #include <string.h>
 
 uint32_t mvfxTableMask(int32_t capacity)
@@ -34,6 +36,46 @@ void mvfxContactNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
                               0u};
     memcpy(words, head, sizeof head);
     mvfxFloatWords(words + 8, c->radiusScale, c->restitution, c->friction, 0.0f);
+}
+
+void mvfxSelfNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                     uint32_t words[MVFX_SELF_WORDS])
+{
+    const mvfxUnitDef* u = &view->unit;
+    const mvfxAttributeArrays* a = &view->arrays;
+    uint32_t blocks = mvfxSortBlocks(plan->capacity);
+    uint32_t groups = mvfxUpdateGroups(plan->capacity);
+    const uint32_t head[12] = {(uint32_t)plan->capacity,
+                               (uint32_t)u->selfContacts,
+                               blocks < 65535u ? (blocks > 0u ? blocks : 1u) : 65535u,
+                               groups > 0u ? groups : 1u,
+                               (uint32_t)view->unitPoints,
+                               (uint32_t)view->unitWidth,
+                               mvfxTableMask(plan->capacity),
+                               mvfxWordOf(a->attachFlags),
+                               mvfxWordOf(a->position),
+                               mvfxWordOf(a->velocity),
+                               (uint32_t)a->count + 2u,
+                               a->anchor >= 0 ? (u->pinFirst ? MVFX_UNIT_PIN_FIRST : 0u) |
+                                                    (u->pinFirstRow ? MVFX_UNIT_PIN_ROW : 0u)
+                                              : 0u};
+    memcpy(words, head, sizeof head);
+    // The core's float operations (src/self.c): the thickness scales with a
+    // world-space emitter's instance; gravity's pull, world gravity's over
+    // the scale in a local space; its travel over the step.
+    float scale = view->space == mvfx_spaceWorld ? plan->to.scale : 1.0f;
+    float thickness = u->selfThickness * scale;
+    const float* g = view->gravity;
+    float pull = sqrtf(g[0] * g[0] + g[1] * g[1] + g[2] * g[2]);
+    if (view->space == mvfx_spaceLocal && view->gravitySpace == mvfx_spaceWorld)
+    {
+        pull /= plan->to.scale;
+    }
+    float t = (float)((double)plan->ticks / (double)MVFX_TICKS_PER_SECOND);
+    mvfxFloatWords(words + 12, thickness, t, 0.5f * pull * t * t, u->selfFriction);
+    mvfxFloatWords(words + 16, u->direction[0], u->direction[1], u->direction[2], u->spacing);
+    mvfxFloatWords(words + 20, u->downDirection[0], u->downDirection[1], u->downDirection[2],
+                   thickness / u->selfThickness);
 }
 
 uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own)

@@ -14,6 +14,40 @@
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
 
+// Creates an emitter's events buffer when it writes events or spawns from
+// another's (its spawn region after its own events, as many of the
+// source's as it writes at most), and its events' numbers.
+bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e)
+{
+    Emitter* emitter = &sim->emitters[e];
+    const mvfxEmitterView* view = &sim->views[e];
+    emitter->writesEvents = view->events != 0;
+    bool spawns = emitter->spawnSource >= 0;
+    if (!emitter->writesEvents && !spawns)
+    {
+        return true;
+    }
+    uint64_t words = mvfxEventBufferWords(emitter->capacity, view->eventCapacity) +
+                     (spawns ? mvfxSpawnWords(sim->views[emitter->spawnSource].eventCapacity) : 0);
+    // A unit's point's tears of a step, its edges' facts after the rest.
+    bool tears = view->unitPoints > 1 && view->unit.tearStrain > 0.0f &&
+                 (view->events & mvfx_eventMaskTear) != 0;
+    emitter->tearFacts = tears ? (uint32_t)words : 0u;
+    words += tears ? (uint64_t)MVFX_TEAR_FACTS * (uint64_t)emitter->capacity : 0u;
+    mrhiBufferDef def = mrhiDefaultBufferDef();
+    def.size = 4u * words;
+    def.usage = mrhi_bufferStorage | mrhi_bufferCopySource |
+                (spawns ? mrhi_bufferCopyDestination : (mrhiBufferUsage)0);
+    if (mrhiCreateBuffer(sim->device, &def, &emitter->events) != mrhi_success)
+    {
+        return false;
+    }
+    def.size = MVFX_RECORD_WORDS * 4u;
+    def.usage = mrhi_bufferUniform | mrhi_bufferCopyDestination;
+    return !emitter->writesEvents ||
+           mrhiCreateBuffer(sim->device, &def, &emitter->eventNumbers) == mrhi_success;
+}
+
 // The numbers of an emitter's events' values over life: a record pass's
 // over its events, no field written, its workgroups striding over them.
 void mvfxSimEventNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)

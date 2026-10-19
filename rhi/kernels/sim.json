@@ -1,5 +1,5 @@
 {
-  "root_block_bytes": 0,
+  "root_block_bytes": 16,
   "entries": [
     {"name": "update", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "room", "stage": "compute", "workgroup": [256, 1, 1],

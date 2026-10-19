@@ -67,8 +67,7 @@ extern "C"
     // within a step (kill rules, colliders that kill, an attractor's kill
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
-    // move the births. Units (MVFX_FEATURE_UNITS) are refused colliding
-    // with themselves or in a beam.
+    // move the births.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -173,10 +172,16 @@ extern "C"
 // last cleared (mvfxEmitterStats.torn on the CPU path).
 #define MVFX_GPU_TORN 50
 
+// For an emitter of units that collide with themselves
+// (mvfxUnitDef.selfThickness), the statistics record's word counting the
+// points with more candidates than the most since the instance was last
+// cleared (mvfxEmitterStats.selfContactsCapped on the CPU path).
+#define MVFX_GPU_SELF_CAPPED 51
+
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 51
+#define MVFX_GPU_STATISTICS_WORDS 52
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -208,7 +213,11 @@ extern "C"
     /// links 12 bytes a particle of its capacity, 18,432 a block of 1,024
     /// of them for its link grid's sorted keys and digit counts, 112 a
     /// link of its most (mvfxPlexusDef.maxLinks: the links, and the
-    /// scratch their output takes) and 48 for its numbers.
+    /// scratch their output takes) and 48 for its numbers; one of units
+    /// that collide with themselves 28 bytes a particle of its capacity
+    /// and 4 more a candidate of its most (mvfxUnitDef.selfContacts),
+    /// 18,432 a block of 1,024 of them for its self grid's sorted keys and
+    /// digit counts, and 112 for its numbers and counts.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -768,14 +777,17 @@ extern "C"
     /// pair force (its targets too), and 16 a point of its path (all 752
     /// at the first step); 96 more for one with contacts (its sizes'
     /// clock and map; all 1,952, and its contact numbers' 48, at the
-    /// first step), and 48 at the first step for one with plexus links
-    /// (its plexus numbers); 48 a planned
+    /// first step), 48 at the first step for one with plexus links
+    /// (its plexus numbers), and 96 for units that collide with
+    /// themselves (their self-collision numbers); 48 a planned
     /// birth (a plan holds at most twice the emitter's capacity, in units for
     /// an emitter of units), 64 a host's particle, and for units held to
     /// the host's frames 32 a frame and 16 for the frames' numbers; at the
-    /// first step and after a clear, 12 for its
-    /// counts, 16 more for one spawning from events and 4 more for one
-    /// finding neighbors; at the first step,
+    /// first step and after a clear, 12 for its counts, 16 more for one
+    /// spawning from events, 4 more each for one drawn as ribbons, finding
+    /// neighbors, with contacts, of units that tear and of units that
+    /// collide with themselves, and 8 more for one with plexus links; at
+    /// the first step,
     /// its sources' 1,424 and the effect's baked tables its values read
     /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)

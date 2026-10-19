@@ -2089,6 +2089,27 @@ static bool SameContactsCapped(int32_t e)
     return same;
 }
 
+// The points whose self-collision candidates passed the most, counted by
+// the GPU, at the run's last step.
+static uint32_t s_selfCapped;
+
+// Whether an emitter's points whose candidates passed the most, counted
+// by the GPU, are the CPU path's.
+static bool SameSelfCapped(int32_t e)
+{
+    mvfxEmitterStats stats;
+    uint32_t capped = s_record[MVFX_GPU_SELF_CAPPED];
+    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
+                stats.selfContactsCapped == capped;
+    if (!same)
+    {
+        printf("self-contacts capped: GPU %u, the CPU path's %llu\n", capped,
+               (unsigned long long)stats.selfContactsCapped);
+    }
+    s_selfCapped = capped > s_selfCapped ? capped : s_selfCapped;
+    return same;
+}
+
 // The tears the GPU counted over a run, the last emitter's that tears.
 static uint32_t s_torn;
 
@@ -2384,6 +2405,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_neighborsCompared = 0;
     s_capped = 0;
     s_contactsCapped = 0;
+    s_selfCapped = 0;
     s_torn = 0;
     s_mostLinks = 0;
     s_linksDropped = 0;
@@ -2511,6 +2533,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (!run->emitters[e].neighbors.enabled || SameCapped(e)) &&
                    (!run->emitters[e].contacts.enabled || SameContactsCapped(e)) &&
                    (!(run->emitters[e].unit.tearStrain > 0.0f) || SameTorn(e)) &&
+                   (!(run->emitters[e].unit.selfThickness > 0.0f) || SameSelfCapped(e)) &&
                    (!run->emitters[e].plexus.enabled || SameLinks(gpu, sim, e)) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
                    (!run->adopting || AdoptGpu(e));
@@ -2591,6 +2614,11 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     {
         printf("  contacts capped: %u (at least %d)\n", s_contactsCapped, run->leastContactsCapped);
         CHECK(s_contactsCapped >= (uint32_t)run->leastContactsCapped, "contacts capped");
+    }
+    if (run->emitters[0].unit.selfThickness > 0.0f)
+    {
+        printf("  self-contacts capped: %u (at least %d)\n", s_selfCapped, run->leastSelfCapped);
+        CHECK(s_selfCapped >= (uint32_t)run->leastSelfCapped, "self-contacts capped");
     }
     if (run->emitters[0].plexus.enabled)
     {

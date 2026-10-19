@@ -173,6 +173,21 @@ void mvfxContactNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
 void mvfxPlexusNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        uint32_t words[12]);
 
+// The words of an emitter's self-collision numbers (self.wgsl's
+// SelfNumbers).
+#define MVFX_SELF_WORDS 24
+
+// Writes an emitter's self-collision numbers for a plan's step: its
+// capacity, the most candidates, the workgroups of the block passes and
+// the others; a unit's points and points across, the grid's mask, the
+// attach flags' first word; the places', velocities' and alive words,
+// the pins (none without anchors); the thickness, the step's seconds,
+// gravity's travel over them and the friction; the directions across and
+// down, the spacing and the thickness over the def's, rounded as the
+// core's.
+void mvfxSelfNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                     uint32_t words[MVFX_SELF_WORDS]);
+
 // What an emitter does with a neighbor grid (MVFX_GRID_*, 0 for nothing),
 // own when its source is itself.
 uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own);

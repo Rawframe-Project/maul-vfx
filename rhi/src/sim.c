@@ -50,36 +50,22 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
-// What units do not run beside: a beam, whose points are placed, not
-// moved.
-#define UNITS_BESIDE MVFX_FEATURE_BEAM
-
-// Whether the part runs an emitter's units: none beside what UNITS_BESIDE
-// names or colliding with themselves.
-static bool UnitsRun(const mvfxEmitterView* view)
-{
-    return (view->features & UNITS_BESIDE) == 0 && view->unit.selfThickness == 0.0f;
-}
-
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
-        .features =
-            (view->features & ~RUN_FEATURES) |
-            ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
-            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
-                 ? MVFX_FEATURE_COLLISION
-                 : 0) |
-            // Contacts see the particles a step kills, and move births
-            // after ribbons and beams take their places.
-            ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
-                     (view->kills ||
-                      (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
-                 ? MVFX_FEATURE_CONTACTS
-                 : 0) |
-            ((view->features & MVFX_FEATURE_UNITS) != 0 && !UnitsRun(view) ? MVFX_FEATURE_UNITS
-                                                                           : 0),
+        .features = (view->features & ~RUN_FEATURES) |
+                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
+                    ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
+                         ? MVFX_FEATURE_COLLISION
+                         : 0) |
+                    // Contacts see the particles a step kills, and move births
+                    // after ribbons and beams take their places.
+                    ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
+                             (view->kills ||
+                              (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
+                         ? MVFX_FEATURE_CONTACTS
+                         : 0),
     };
     return refusal->features == 0;
 }
@@ -202,32 +188,6 @@ static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emit
     return CreateBuffer(sim, 4u * words * blocks * MVFX_SORT_BLOCK, mrhi_bufferStorage,
                         &emitter->sort) &&
            CreateBuffer(sim, 2u * 256u * blocks * 4u, mrhi_bufferStorage, &emitter->digits);
-}
-
-// Creates an emitter's events buffer when it writes events or spawns from
-// another's (its spawn region after its own events, as many of the
-// source's as it writes at most).
-static bool CreateEventBuffer(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
-{
-    emitter->writesEvents = view->events != 0;
-    bool spawns = emitter->spawnSource >= 0;
-    if (!emitter->writesEvents && !spawns)
-    {
-        return true;
-    }
-    uint64_t words = mvfxEventBufferWords(emitter->capacity, view->eventCapacity) +
-                     (spawns ? mvfxSpawnWords(sim->views[emitter->spawnSource].eventCapacity) : 0);
-    // A unit's point's tears of a step, its edges' facts after the rest.
-    bool tears = view->unitPoints > 1 && view->unit.tearStrain > 0.0f &&
-                 (view->events & mvfx_eventMaskTear) != 0;
-    emitter->tearFacts = tears ? (uint32_t)words : 0u;
-    words += tears ? (uint64_t)MVFX_TEAR_FACTS * (uint64_t)emitter->capacity : 0u;
-    mrhiBufferUsage usage = mrhi_bufferStorage | mrhi_bufferCopySource |
-                            (spawns ? mrhi_bufferCopyDestination : (mrhiBufferUsage)0);
-    return CreateBuffer(sim, 4u * words, usage, &emitter->events) &&
-           (!emitter->writesEvents ||
-            CreateBuffer(sim, MVFX_RECORD_WORDS * 4u,
-                         mrhi_bufferUniform | mrhi_bufferCopyDestination, &emitter->eventNumbers));
 }
 
 // Creates the simulation's own 1-pixel textures.
@@ -357,9 +317,9 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
         (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
-         !CreateSortBuffers(sim, &sim->views[e], emitter) ||
-         !CreateEventBuffer(sim, &sim->views[e], emitter) || !mvfxCreateSimGrid(sim, e) ||
-         !mvfxCreateSimContacts(sim, e) || !mvfxCreateSimPlexus(sim, e)))
+         !CreateSortBuffers(sim, &sim->views[e], emitter) || !mvfxCreateSimEvents(sim, e) ||
+         !mvfxCreateSimGrid(sim, e) || !mvfxCreateSimContacts(sim, e) ||
+         !mvfxCreateSimPlexus(sim, e) || !mvfxCreateSimSelf(sim, e)))
     {
         result = mvfx_errorState;
     }
@@ -473,6 +433,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         mvfxDestroySimGrid(sim, emitter);
         mvfxDestroySimContacts(sim, emitter);
         mvfxDestroySimPlexus(sim, emitter);
+        mvfxDestroySimSelf(sim, emitter);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->frameWords, mvfxSimFrameBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
@@ -545,7 +506,8 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
          ++p)
     {
         if ((p != PASS_RIBBONS || emitter->ribbons) && (p != PASS_BEAM || emitter->beam) &&
-            (p != PASS_REBOX || emitter->contacts) && (p != PASS_UNITS || emitter->units))
+            (p != PASS_REBOX || emitter->contacts) &&
+            (p != PASS_UNITS || (emitter->units && !emitter->selfCollides)))
         {
             order[count++] = p;
         }
@@ -554,12 +516,16 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
 }
 
 // Adds the passes an emitter's pass p is followed by: the neighbor grid's
-// after room's, which tells them whether the births fit; the particle
-// contacts' after the scatter, on the pool it leaves; the plexus links'
-// after the bounds, of the places at the step's end.
-static bool AddPassesAfter(mvfxGpuSim* sim, Emitter* emitter, int32_t p)
+// after room's, which tells them whether the births fit; units'
+// self-collision's in place of the unit pass, after the kills', the unit
+// pass's halves with the step's accesses (used); the particle contacts'
+// after the scatter, on the pool it leaves; the plexus links' after the
+// bounds, of the places at the step's end.
+static bool AddPassesAfter(mvfxGpuSim* sim, Emitter* emitter, int32_t p, const mrhiAccess* used)
 {
     return (p != PASS_ROOM || mvfxAddSimGridPasses(sim, emitter)) &&
+           (p != PASS_KILL || !emitter->selfCollides ||
+            mvfxAddSimSelfPasses(sim, emitter, used, BUFFER_COUNT + 2)) &&
            (p != PASS_SCATTER || mvfxAddSimContactPasses(sim, emitter)) &&
            (p != PASS_MEASURE || mvfxAddSimPlexusPasses(sim, emitter));
 }
@@ -621,7 +587,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         bool added = p == PASS_SPAWN_COPY
                          ? mvfxAddSpawnCopyPass(sim, emitter)
                          : mrhiAddPass(sim->device, &def, &emitter->passes[p]) == mrhi_success;
-        added = added && AddPassesAfter(sim, emitter, p);
+        added = added && AddPassesAfter(sim, emitter, p, used);
         if (!added)
         {
             return false;
@@ -755,6 +721,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     mvfxSimEventNumbers(sim, e, &plan);
     mvfxSimGridNumbers(sim, e, &plan);
     mvfxSimContactNumbers(sim, e, &plan);
+    mvfxSimSelfNumbers(sim, e, &plan);
     mvfxSimPlexusNumbers(sim, e, &plan);
     emitter->plannedBirths = plan.births;
     emitter->birthCount = plan.birthCount;
@@ -826,15 +793,41 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
     return written;
 }
 
+// Records the counts a clear empties: the record's own, and each word of
+// the GPU's an emitter keeps (an event spawn's serials, the ribbons'
+// breaks, the neighbors', contacts' and self-contacts' caps, the tears,
+// the links and their drops).
+static bool ClearCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
+{
+    static const uint32_t zeros[4] = {0};
+    const struct
+    {
+        bool kept;
+        uint32_t word;
+        uint32_t words;
+    } counts[8] = {{true, MVFX_RECORD_COUNT, MVFX_RECORD_PAST + 1},
+                   {emitter->spawnSource >= 0, MVFX_GPU_EVENT_SERIALS, 4},
+                   {emitter->ribbons, MVFX_GPU_RIBBON_BREAKS, 1},
+                   {(emitter->gridFlags & MVFX_GRID_FINDS) != 0, MVFX_GPU_NEIGHBORS_CAPPED, 1},
+                   {emitter->contacts, MVFX_GPU_CONTACTS_CAPPED, 1},
+                   {emitter->tears, MVFX_GPU_TORN, 1},
+                   {emitter->selfCollides, MVFX_GPU_SELF_CAPPED, 1},
+                   {emitter->plexus, MVFX_GPU_LINKS, 2}};
+    bool written = true;
+    for (int32_t c = 0; written && emitter->cleared && c < 8; ++c)
+    {
+        written = !counts[c].kept || mvfxUpload(sim->device, &sim->uploaded, pass,
+                                                emitter->resources[BUFFER_STATISTICS],
+                                                counts[c].word * 4u, zeros, counts[c].words * 4u);
+    }
+    return written;
+}
+
 // Records the pass writing the plan's bytes: its numbers, its births and
 // its host births after the births' room, the record's map, the counts
-// emptied after a clear (the neighbors' and contacts' caps and the links'
-// drops too), and the
-// grids changed.
+// emptied after a clear, and the grids changed.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
-    static const uint32_t empty[MVFX_RECORD_PAST + 1] = {0};
-    static const uint32_t noSerials[4] = {0};
     mrhiPassId pass = emitter->passes[PASS_WRITE];
     const mrhiResourceId* r = emitter->resources;
     bool spawns = emitter->spawnSource >= 0;
@@ -855,26 +848,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         (!emitter->pinsHead ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_RECORD_HEAD * sizeof(uint32_t), emitter->head, sizeof emitter->head)) &&
-        (!emitter->cleared || mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS], 0,
-                                         empty, sizeof empty)) &&
-        (!emitter->cleared || !spawns ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                    MVFX_GPU_EVENT_SERIALS * sizeof(uint32_t), noSerials, sizeof noSerials)) &&
-        (!emitter->cleared || !emitter->ribbons ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                    MVFX_GPU_RIBBON_BREAKS * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
-        (!emitter->cleared || (emitter->gridFlags & MVFX_GRID_FINDS) == 0 ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                    MVFX_GPU_NEIGHBORS_CAPPED * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
-        (!emitter->cleared || !emitter->contacts ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                    MVFX_GPU_CONTACTS_CAPPED * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
-        (!emitter->cleared || !emitter->tears ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                    MVFX_GPU_TORN * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
-        (!emitter->cleared || !emitter->plexus ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                    MVFX_GPU_LINKS * sizeof(uint32_t), noSerials, 2 * sizeof(uint32_t))) &&
+        ClearCounts(sim, pass, emitter) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
         mvfxWriteSimMesh(sim, pass, emitter) &&
@@ -886,7 +860,13 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 bool mvfxRecordSimKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p, mvfxKernel kernel,
                          uint32_t groups)
 {
-    mrhiPassId pass = emitter->passes[p];
+    static const uint32_t none[4] = {0};
+    return mvfxRecordSimDispatch(sim, emitter, emitter->passes[p], kernel, groups, none);
+}
+
+bool mvfxRecordSimDispatch(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass,
+                           mvfxKernel kernel, uint32_t groups, const uint32_t root[4])
+{
     mrhiBinding bindings[BUFFER_COUNT + 2];
     for (int32_t b = 0; b < BUFFER_COUNT; ++b)
     {
@@ -905,6 +885,7 @@ bool mvfxRecordSimKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p, mvf
         mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
             mrhi_success &&
         mrhiSetBindings(sim->device, pass, 0, bindings, BUFFER_COUNT + 2) == mrhi_success &&
+        mrhiSetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
         mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
@@ -927,7 +908,9 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
         mvfxRecordSimKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
         mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
         (!emitter->units ||
-         mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelUnits, emitter->unitGroups)) &&
+         (emitter->selfCollides ? mvfxRecordSimSelf(sim, emitter)
+                                : mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelUnits,
+                                                      emitter->unitGroups))) &&
         mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
         mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
         mvfxRecordSimKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&

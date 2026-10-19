@@ -308,6 +308,17 @@ struct Step {
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
+
+// A dispatch's own words (0 but for the unit pass's split): what the unit
+// pass runs (UNITS_*, sim/units.wgsl) and its substep, unused.
+struct Root {
+    phase: u32,
+    substep: u32,
+    unused0: u32,
+    unused1: u32,
+}
+
+var<immediate> root: Root;
 @group(0) @binding(1) var<storage, read_write> births: array<vec4<u32>>;
 @group(0) @binding(2) var<storage, read_write> source: array<u32>;
 @group(0) @binding(3) var<storage, read_write> moved: array<u32>;

@@ -927,6 +927,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   are gathered both ways and it moves by its touching pairs' mean,
   computed from the same places, instead of pair after pair. The golden
   scene's hashes change from its third step.
+- The GPU part runs units' self-collision: each step a grid of the reach
+  over the points and their candidates as the CPU path's, and each
+  substep a pass between the unit pass's halves moving each point by its
+  touching pairs' mean. `MVFX_GPU_SELF_CAPPED` counts the points whose
+  candidates passed the most (`MVFX_GPU_STATISTICS_WORDS` is now 52).
 
 ### Fixed
 

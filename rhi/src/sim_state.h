@@ -3,7 +3,7 @@
 //
 // A simulation's state, which its files share (sim.c, sim_records.c,
 // sim_spawn.c, sim_mesh.c, sim_events.c, sim_grid.c, sim_contacts.c,
-// sim_plexus.c): an emitter's buffers, passes and numbers, and the
+// sim_plexus.c, sim_self.c): an emitter's buffers, passes and numbers, and the
 // simulation's own.
 
 #ifndef MAUL_VFX_RHI_SRC_SIM_STATE_H
@@ -122,6 +122,27 @@ enum
     PLEXUS_BUFFERS = 5
 };
 
+// The passes of an emitter's units' self-collision (sim_self.c), in
+// place of its unit pass: its numbers' write, its reach, its keys, the
+// sort's four radix passes, its gather; then for each of the most
+// substeps the unit pass's first half, the part, the commit and the unit
+// pass's rest.
+#define SELF_FIRST_PASSES 12
+#define SELF_PASSES       (SELF_FIRST_PASSES + 4 * MVFX_MAX_SUBSTEPS)
+
+// The buffers its self-collision passes bind (with its particles and
+// statistics): its numbers, its scratch words, its keys and indices, its
+// digit counts and its counts.
+enum
+{
+    SELF_NUMBERS = 0,
+    SELF_SCRATCH = 1,
+    SELF_SORT = 2,
+    SELF_DIGITS = 3,
+    SELF_COUNT = 4,
+    SELF_BUFFERS = 5
+};
+
 // The buffers of an emitter's grid the grid passes bind (with its
 // particles and statistics after the numbers): its numbers, its words,
 // digit counts and count, its source's words and count.
@@ -208,6 +229,16 @@ typedef struct Emitter
     uint32_t contactRecordWords[MVFX_RECORD_WORDS];
     uint32_t contactWords[CONTACT_WORDS];
     mrhiPassId contactPasses[CONTACT_PASSES];
+    // Its units' self-collision (sim_self.c): whether it has it, its
+    // substeps and the step's ticks; its buffers; the frame's ids of its
+    // buffers, its numbers (written every step), its passes.
+    bool selfCollides;
+    int32_t selfSubsteps;
+    int64_t selfTicks;
+    mrhiBufferId selfBuffers[SELF_BUFFERS];
+    mrhiResourceId selfResources[SELF_BUFFERS];
+    uint32_t selfWords[MVFX_SELF_WORDS];
+    mrhiPassId selfPasses[SELF_PASSES];
     // Its plexus links (sim_plexus.c): whether it has them; its buffers;
     // whether its numbers were written, and whether this step writes
     // them; the frame's ids of its buffers, its numbers, its passes.
@@ -315,9 +346,12 @@ struct mvfxGpuSim
     bool ending;
 };
 
-// Records a kernel's pass over an emitter's buffers (sim.c).
+// Records a kernel's pass p over an emitter's buffers (sim.c), its root
+// block 0; or a kernel in a pass of its own with these root words.
 bool mvfxRecordSimKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p, mvfxKernel kernel,
                          uint32_t groups);
+bool mvfxRecordSimDispatch(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass,
+                           mvfxKernel kernel, uint32_t groups, const uint32_t root[4]);
 
 // The emitters' step order, each after the one it spawns from
 // (sim_spawn.c); the pass copying a spawning emitter's source's events
@@ -340,11 +374,14 @@ void mvfxSimFrameNumbers(mvfxGpuSim* sim, Emitter* emitter, const mvfxEmitterPla
 bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass);
 bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass);
 
-// An emitter's events (sim_events.c): the numbers of their values over
-// life written for a step's plan; what the pass giving them binds beside
+// An emitter's events (sim_events.c): its events buffer and numbers made
+// at the simulation's creation (false when the device refuses); the
+// numbers of their values over life written for a step's plan; what the
+// pass giving them binds beside
 // the step's buffers imported; that pass added; its numbers' writes
 // recorded into the step's write pass; its kernels recorded, when it
 // writes events.
+bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e);
 void mvfxSimEventNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 bool mvfxImportEventValues(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxAddEventValuesPass(mvfxGpuSim* sim, Emitter* emitter);
@@ -371,6 +408,17 @@ void mvfxDestroySimContacts(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimContactNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 bool mvfxAddSimContactPasses(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSimContacts(mvfxGpuSim* sim, Emitter* emitter);
+
+// An emitter's units' self-collision (sim_self.c): its buffers made at
+// the simulation's creation (false when the device refuses), and
+// destroyed; its numbers written for a step's plan; its passes added in
+// place of the unit pass's, those of the unit pass's halves with the
+// step's accesses (used, count of them); recorded.
+bool mvfxCreateSimSelf(mvfxGpuSim* sim, int32_t e);
+void mvfxDestroySimSelf(mvfxGpuSim* sim, Emitter* emitter);
+void mvfxSimSelfNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+bool mvfxAddSimSelfPasses(mvfxGpuSim* sim, Emitter* emitter, const mrhiAccess* used, int32_t count);
+bool mvfxRecordSimSelf(mvfxGpuSim* sim, Emitter* emitter);
 
 // An emitter's plexus links (sim_plexus.c): its buffers made at the
 // simulation's creation (false when the device refuses), and destroyed;

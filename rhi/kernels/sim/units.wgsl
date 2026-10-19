@@ -1,6 +1,7 @@
 // The sim kernel's units (spliced into sim.wgsl), as the core's
-// mvfxStepUnits (src/unit.c), for units without self-collision: a
-// workgroup a live unit (striding over them), each of its substeps
+// mvfxStepUnits (src/unit.c): a workgroup a live unit (striding over
+// them), each of its substeps (for units that collide with themselves, a
+// dispatch for each half of each, the self pass between: self.wgsl)
 //  - blowing a sheet's points in the air (its triangles' normal and
 //    tangent drag);
 //  - moving its points as particles over the substep (forces, drag, the
@@ -698,8 +699,124 @@ fn solveSets(first: u32, local: u32, scale: f32, inverseSquare: f32, share: f32)
     }
 }
 
-// Units: each live unit's substeps, a workgroup a unit, the ended (marked
-// by update) skipped; then the plan's births of units, killed whole.
+// What a dispatch of the unit pass runs (root.phase): every substep of
+// each unit (UNITS_WHOLE); or, for an emitter whose units collide with
+// themselves (their pass between), one substep's first part (the air,
+// the move, the pins and the constraints) or its rest (the tears, the
+// velocities and the damping, the unit's end after the last).
+const UNITS_WHOLE: u32 = 0u;
+const UNITS_MOVE: u32 = 1u;
+const UNITS_REST: u32 = 2u;
+
+// Starts a unit from its first point in a dispatch, by its first
+// invocation: whether it ended, its kills and tears cleared, its frame
+// and target (each dispatch finds the same: a unit whose particle is gone
+// is let go by the first), whether it is let go.
+fn unitBegin(first: u32, local: u32) {
+    let c = params.counts.x;
+    if (local == 0u) {
+        unitEnded = select(0u, 1u, source[params.words.alive * c + first] == LIVE_ENDED);
+        atomicExchange(&unitKilled, 0u);
+        atomicExchange(&unitTore, 0u);
+        unitLetGo = 0u;
+        if (isFramed()) {
+            unitFrom = storedFrame(first);
+            unitTo = frameTarget(first, unitFrom);
+            unitLetGo = source[params.unitArrays.w * c + first] & UNIT_LET_GO;
+        }
+    }
+}
+
+// Substep s's span of the plan: its first tick and its ticks.
+fn substepSpan(s: u32) -> vec2<u32> {
+    let ticks = params.counts.z;
+    let substeps = params.units.z;
+    let since = ticks * s / substeps;
+    return vec2<u32>(since, ticks * (s + 1u) / substeps - since);
+}
+
+// Substep s's first part over a unit from its first point: the air, each
+// point's move and its pin, the constraints.
+fn substepMove(first: u32, local: u32, s: u32, scale: f32) {
+    let span = substepSpan(s);
+    let h = secondsOf(vec2<u32>(span.y, 0u));
+    if (params.unitAero.x != 0.0 || params.unitAero.y != 0.0) {
+        blowSheet(first, local, secondsOf(vec2<u32>(span.x, 0u)), h);
+    }
+    for (var q = local; q < unitPoints(); q += CHUNK) {
+        moveSpan(first + q, span.x, span.y);
+        if (isHeld(q)) {
+            pinPoint(first + q, span.x, span.x + span.y, h);
+        }
+    }
+    storageBarrier();
+    workgroupBarrier();
+    solveSets(first, local, scale, divide(1.0, h * h), 0.0);
+}
+
+// Substep s's rest over a unit from its first point: its tears (and a
+// torn chain's ribbons split), the velocities' correction, the damping;
+// its tears added to its tally.
+fn substepRest(first: u32, local: u32, s: u32, scale: f32) {
+    let c = params.counts.x;
+    let points = unitPoints();
+    let span = substepSpan(s);
+    let h = secondsOf(vec2<u32>(span.y, 0u));
+    if (params.unitTears.x != NONE) {
+        for (var q = local; q < points; q += CHUNK) {
+            tearPoint(first, q, scale, span.x + span.y);
+        }
+    }
+    if (params.unitTears.x != NONE && params.words.ribbon != NONE) {
+        // A torn unit drawn as ribbons splits them where it tore; its
+        // first point's id never changes.
+        storageBarrier();
+        workgroupBarrier();
+        for (var q = max(local, 1u); atomicLoad(&unitTore) != 0u && q < points; q += CHUNK) {
+            splitRibbon(first, q);
+        }
+    }
+    // The integrator's velocity and the constraints' correction over the
+    // substep; a held point's the pin's.
+    for (var q = local; q < points; q += CHUNK) {
+        let i = first + q;
+        if (isHeld(q)) {
+            continue;
+        }
+        let p = pointPlace(i);
+        let predicted = readVector(1u, i, params.words.place);
+        var v = readVector(0u, i, params.words.velocity);
+        for (var k = 0u; k < 3u; k++) {
+            v[k] += quotient(p[k] - predicted[k], h);
+        }
+        setVector(params.words.velocity, i, v);
+    }
+    storageBarrier();
+    workgroupBarrier();
+    let share = 1.0 - exp(-params.unitStiffness.w * h);
+    if (share > 0.0) {
+        solveSets(first, local, scale, 0.0, share);
+    }
+    if (local == 0u && params.unitTears.x != NONE) {
+        // Its tears' tally, which offsets sums (MVFX_GPU_TORN), in its
+        // first point's alive word of the other buffer, free until the
+        // scatter.
+        moved[params.words.alive * c + first] += atomicExchange(&unitTore, 0u);
+    }
+}
+
+// Ends a unit from its first point after its last substep: its frame at
+// its target, as the core's EndAttachments; its points killed together.
+fn unitEnd(first: u32, local: u32) {
+    if (local == 0u && isFramed()) {
+        storeFrame(first, unitTo);
+    }
+    wholeUnit(first, local);
+}
+
+// Units: each live unit's substeps (all, or one's part: root.phase), a
+// workgroup a unit, the ended (marked by update) skipped; after the last,
+// the plan's births of units, killed whole.
 @compute @workgroup_size(256, 1, 1)
 fn units(@builtin(local_invocation_index) local: u32,
          @builtin(workgroup_id) group: vec3<u32>) {
@@ -709,99 +826,45 @@ fn units(@builtin(local_invocation_index) local: u32,
         liveCount = counts[0];
     }
     let live = workgroupUniformLoad(&liveCount) / points;
-    let ticks = params.counts.z;
     let substeps = params.units.z;
+    let phase = root.phase;
+    let s = root.substep;
     // Rest lengths in the particles' space: a world-space emitter's scale
     // with its instance at the plan's end.
     let scale = select(1.0, params.toOrigin.w, params.start.w == 0u);
     for (var u = group.x; u < live; u += params.units.w) {
         let first = u * points;
-        if (local == 0u) {
-            unitEnded = select(0u, 1u, source[params.words.alive * c + first] == LIVE_ENDED);
-            atomicExchange(&unitKilled, 0u);
-            atomicExchange(&unitTore, 0u);
-            unitLetGo = 0u;
-            if (isFramed()) {
-                unitFrom = storedFrame(first);
-                unitTo = frameTarget(first, unitFrom);
-                unitLetGo = source[params.unitArrays.w * c + first] & UNIT_LET_GO;
-            }
+        unitBegin(first, local);
+        if (local == 0u && params.unitTears.x != NONE && phase != UNITS_REST && s == 0u) {
+            moved[params.words.alive * c + first] = 0u;
         }
         if (workgroupUniformLoad(&unitEnded) != 0u) {
-            if (local == 0u && params.unitTears.x != NONE) {
-                moved[params.words.alive * c + first] = 0u;
-            }
             continue;
         }
-        for (var s = 0u; s < substeps; s++) {
-            let since = ticks * s / substeps;
-            let to = ticks * (s + 1u) / substeps;
-            if (to == since) {
-                continue;
-            }
-            let h = secondsOf(vec2<u32>(to - since, 0u));
-            if (params.unitAero.x != 0.0 || params.unitAero.y != 0.0) {
-                blowSheet(first, local, secondsOf(vec2<u32>(since, 0u)), h);
-            }
-            for (var q = local; q < points; q += CHUNK) {
-                moveSpan(first + q, since, to - since);
-                if (isHeld(q)) {
-                    pinPoint(first + q, since, to, h);
+        if (phase == UNITS_WHOLE) {
+            for (var k = 0u; k < substeps; k++) {
+                if (substepSpan(k).y > 0u) {
+                    substepMove(first, local, k, scale);
+                    substepRest(first, local, k, scale);
                 }
             }
-            storageBarrier();
-            workgroupBarrier();
-            solveSets(first, local, scale, divide(1.0, h * h), 0.0);
-            if (params.unitTears.x != NONE) {
-                for (var q = local; q < points; q += CHUNK) {
-                    tearPoint(first, q, scale, to);
-                }
-            }
-            if (params.unitTears.x != NONE && params.words.ribbon != NONE) {
-                // A torn unit drawn as ribbons splits them where it tore;
-                // its first point's id never changes.
-                storageBarrier();
-                workgroupBarrier();
-                for (var q = max(local, 1u); atomicLoad(&unitTore) != 0u && q < points; q += CHUNK) {
-                    splitRibbon(first, q);
-                }
-            }
-            // The integrator's velocity and the constraints' correction over
-            // the substep; a held point's the pin's.
-            for (var q = local; q < points; q += CHUNK) {
-                let i = first + q;
-                if (isHeld(q)) {
-                    continue;
-                }
-                let p = pointPlace(i);
-                let predicted = readVector(1u, i, params.words.place);
-                var v = readVector(0u, i, params.words.velocity);
-                for (var k = 0u; k < 3u; k++) {
-                    v[k] += quotient(p[k] - predicted[k], h);
-                }
-                setVector(params.words.velocity, i, v);
-            }
-            storageBarrier();
-            workgroupBarrier();
-            let share = 1.0 - exp(-params.unitStiffness.w * h);
-            if (share > 0.0) {
-                solveSets(first, local, scale, 0.0, share);
+            unitEnd(first, local);
+            continue;
+        }
+        if (substepSpan(s).y > 0u) {
+            if (phase == UNITS_MOVE) {
+                substepMove(first, local, s, scale);
+            } else {
+                substepRest(first, local, s, scale);
             }
         }
-        if (local == 0u && isFramed()) {
-            // The frame at its target, as the core's EndAttachments.
-            storeFrame(first, unitTo);
+        if (phase == UNITS_REST && s + 1u == substeps) {
+            unitEnd(first, local);
         }
-        workgroupBarrier();
-        if (local == 0u && params.unitTears.x != NONE) {
-            // Its tears' tally, which offsets sums (MVFX_GPU_TORN), in its
-            // first point's alive word of the other buffer, free until the
-            // scatter.
-            moved[params.words.alive * c + first] = atomicLoad(&unitTore);
-        }
-        wholeUnit(first, local);
     }
-    wholeBirths(group.x, local);
+    if (phase == UNITS_WHOLE || (phase == UNITS_REST && s + 1u == substeps)) {
+        wholeBirths(group.x, local);
+    }
 }
 
 // Stores a unit's frame at its first point.

@@ -22,6 +22,7 @@ typedef enum mvfxContainer
     mvfx_containerGrid = 5,
     mvfx_containerContacts = 6,
     mvfx_containerPlexus = 7,
+    mvfx_containerSelf = 8,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -112,6 +113,14 @@ typedef enum mvfxKernel
     // indices.
     mvfx_kernelSheetFit = 45,
     mvfx_kernelSheetPoints = 46,
+    // An emitter's units' self-collision (self.wgsl): the reach and the
+    // first start places, the keys before sort.wgsl's passes, the
+    // candidates, and each substep's moves and their commit.
+    mvfx_kernelSelfReach = 47,
+    mvfx_kernelSelfKeys = 48,
+    mvfx_kernelSelfGather = 49,
+    mvfx_kernelSelfPart = 50,
+    mvfx_kernelSelfCommit = 51,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

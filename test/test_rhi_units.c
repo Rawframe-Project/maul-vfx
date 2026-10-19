@@ -10,9 +10,9 @@
 // refused), colliders with life lost and turns, kills by contacts, kill
 // rules and kill radii (a unit killed whole), units born from events,
 // pins held still, to the instance, the host's frames and a source's
-// particles, and what units are still refused (tearing, aerodynamics,
-// self-collision); their events (births, deaths, a point's first contact
-// a step).
+// particles, tearing, sheets in the air, ribbons, sheets' meshes and
+// self-collision (with its caps); their events (births, deaths, a point's
+// first contact a step, tears).
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -475,6 +475,49 @@ static void TestTears(Gpu* gpu, mvfxGpu* kernels)
     Torn(gpu, kernels, &emitter, 20, "sheets torn in the air");
 }
 
+// A run of units colliding with themselves, a step at a time from the
+// same state (pairs that close to touching may touch on one path only),
+// whose candidates must pass the most at least a count of times. Within
+// 2e-3: a pair's overlap, found in binary32 by either path, comes into its
+// points' velocities over a substep's seconds.
+static void Selves(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, bool moving,
+                   int32_t capped, const char* what)
+{
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitter,
+                   .emitterCount = 1,
+                   .moving = moving,
+                   .pace = 0.001,
+                   .adopting = true,
+                   .tolerance = 2e-3f,
+                   .leastSelfCapped = capped},
+            what);
+}
+
+static void TestSelfCollision(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Sheets born over each other: pairs of different units parted to the
+    // thickness, their sliding slowed by friction.
+    mvfxEmitterDef emitter = Sheets(8, 4, 4);
+    emitter.unit.selfThickness = 0.03f;
+    emitter.unit.selfFriction = 0.3f;
+    emitter.unit.selfContacts = 16;
+    Selves(gpu, kernels, &emitter, false, 0, "sheets colliding with each other");
+    // In the world's space under a moving instance: the thickness scales
+    // with it.
+    emitter.space = mvfx_spaceWorld;
+    Selves(gpu, kernels, &emitter, true, 0, "sheets colliding in the world, the instance moving");
+    // Chains hanging from their first points, held (no share of a pair's
+    // move), thicker than their spacing (a unit's neighbours left out),
+    // and at most two candidates a point: the caps counted.
+    emitter = Chains(8, 4);
+    emitter.unit.pinFirst = true;
+    emitter.unit.selfThickness = 0.08f;
+    emitter.unit.selfFriction = 1.0f;
+    emitter.unit.selfContacts = 2;
+    Selves(gpu, kernels, &emitter, false, 1, "pinned chains colliding, their candidates capped");
+}
+
 // A ribbon point's place, frame, width, lengths, ribbon, serial and
 // corner.
 static const mvfxLayoutField s_ribbonFields[10] = {
@@ -573,47 +616,8 @@ static void TestSheetMeshes(Gpu* gpu, mvfxGpu* kernels)
     Meshed(gpu, kernels, &emitter, CAPACITY, 4096, true, "torn sheets' meshes");
 }
 
-// Whether a planned instance of an emitter is refused on the GPU for its
-// units.
-static bool RefusedForUnits(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
-{
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitter;
-    effectDef.emitterCount = 1;
-    mvfxEffectId effect = {0};
-    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    instanceDef.planned = true;
-    mvfxInstanceId planned = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
-    instanceDef.effect = effect;
-    made = made && mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success;
-    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
-    simDef.gpu = kernels;
-    simDef.context = context;
-    simDef.effect = effect;
-    simDef.instance = planned;
-    mvfxGpuSim* sim = NULL;
-    mvfxGpuRefusal refusal;
-    bool refused = made && mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState &&
-                   sim == NULL && refusal.emitter == 0 && refusal.features == MVFX_FEATURE_UNITS;
-    mvfxDestroyContext(context);
-    return refused;
-}
-
-static void TestRefused(mvfxGpu* kernels)
-{
-    mvfxEmitterDef emitter = Chains(4, 2);
-    emitter.unit.selfThickness = 0.02f;
-    emitter.unit.selfContacts = 8;
-    CHECK(RefusedForUnits(kernels, &emitter), "self-colliding units refused");
-}
-
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
-    TestRefused(kernels);
     TestChains(gpu, kernels);
     TestSheets(gpu, kernels);
     TestPins(gpu, kernels);
@@ -622,6 +626,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestNeighbors(gpu, kernels);
     TestContacts(gpu, kernels);
     TestTears(gpu, kernels);
+    TestSelfCollision(gpu, kernels);
     TestRibbons(gpu, kernels);
     TestSheetMeshes(gpu, kernels);
     TestHostBirths(gpu, kernels);
