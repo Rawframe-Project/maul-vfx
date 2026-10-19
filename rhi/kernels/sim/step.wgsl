@@ -280,7 +280,10 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     let b1 = births[3u * j + 1u];
     var moved_place = vec3<f32>(0.0);
     var moved_velocity = vec3<f32>(0.0);
-    let fate = bornAt(j, &moved_place, &moved_velocity);
+    var born = vec3<f32>(0.0);
+    var bornVelocity = vec3<f32>(0.0);
+    let fate = bornFacts(j, &born, &bornVelocity, &moved_place, &moved_velocity);
+    storeBirthPlaces(j, born, moved_place);
     var birth = vec2<u32>(0u);
     var death = vec2<u32>(0u);
     birthTicks(b0, b1, &birth, &death);
@@ -574,10 +577,14 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         var p = vec3<f32>(0.0);
         var v = vec3<f32>(0.0);
-        let fate = bornAt(j, &p, &v);
+        var born = vec3<f32>(0.0);
+        var bornVelocity = vec3<f32>(0.0);
+        let fate = bornFacts(j, &born, &bornVelocity, &p, &v);
         var mark = 1u;
         if (fate.killed || !outlives(fate.death.x, fate.death.y)) {
             mark = 2u;
+            // Kept by no scatter: its places for the ribbons pass.
+            storeBirthPlaces(j, born, p);
         }
         // Its contacts make an event (BIRTH_CONTACT), for the events'
         // count.

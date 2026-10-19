@@ -47,24 +47,21 @@ enum
     PASS_OFFSETS = 5,
     PASS_SCATTER = 6,
     // Its births' ribbons, when it has ribbons.
-    PASS_RIBBON_SCAN = 7,
-    PASS_RIBBON_FACTS = 8,
-    PASS_RIBBON_LINKS = 9,
-    PASS_RIBBON_IDS = 10,
-    PASS_MEASURE = 11,
+    PASS_RIBBONS = 7,
+    PASS_MEASURE = 8,
     // An emitter's events, when it writes any.
-    PASS_EVENT_COUNT = 12,
-    PASS_EVENT_OFFSETS = 13,
-    PASS_EVENT_WRITE = 14,
-    PASS_EVENT_VALUES = 15,
+    PASS_EVENT_COUNT = 9,
+    PASS_EVENT_OFFSETS = 10,
+    PASS_EVENT_WRITE = 11,
+    PASS_EVENT_VALUES = 12,
     // Its births from events, when it spawns from them, after the plan's
     // bytes: the source's events copied in, then the kernels.
-    PASS_SPAWN_COPY = 16,
-    PASS_SPAWN_COUNT = 17,
-    PASS_SPAWN_SORT = 18,
-    PASS_SPAWN_SCAN = 19,
-    PASS_SPAWN_MERGE = 20,
-    PASS_COUNT = 21
+    PASS_SPAWN_COPY = 13,
+    PASS_SPAWN_COUNT = 14,
+    PASS_SPAWN_SORT = 15,
+    PASS_SPAWN_SCAN = 16,
+    PASS_SPAWN_MERGE = 17,
+    PASS_COUNT = 18
 };
 
 typedef struct Emitter

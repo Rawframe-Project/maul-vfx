@@ -26,12 +26,8 @@
     {"name": "spawnScan", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 1032},
     {"name": "spawnMerge", "stage": "compute", "workgroup": [64, 1, 1]},
-    {"name": "ribbonScan", "stage": "compute", "workgroup": [256, 1, 1],
-     "workgroup_storage_bytes": 1036},
-    {"name": "ribbonFacts", "stage": "compute", "workgroup": [64, 1, 1]},
-    {"name": "ribbonLinks", "stage": "compute", "workgroup": [64, 1, 1]},
-    {"name": "ribbonIds", "stage": "compute", "workgroup": [256, 1, 1],
-     "workgroup_storage_bytes": 1032}
+    {"name": "ribbons", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1036}
   ],
   "bindings": [
     {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9216},

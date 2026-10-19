@@ -123,13 +123,14 @@ static uint64_t StagedBirths(const Emitter* emitter)
 }
 
 // The words of an emitter's births' marks (two a particle slot), and for
-// one whose births join ribbons the ribbon passes' words after them
-// (rhi/kernels/sim/ribbons.wgsl): each birth's place among the appended,
-// 14 arrays over the appended, two words of head and a window of 256.
+// one whose births join ribbons the ribbons pass's words after them
+// (rhi/kernels/sim/ribbons.wgsl): where each birth went, its two places
+// (six words a birth), eight arrays over the appended, a word of head and
+// a window of 256.
 static uint64_t AcceptedWords(const Emitter* emitter)
 {
     uint64_t c = (uint64_t)emitter->capacity;
-    return emitter->ribbons ? 18u * c + 2u + 256u : 2u * c;
+    return emitter->ribbons ? 24u * c + 1u + 256u : 2u * c;
 }
 
 // Creates an emitter's buffers for its capacity.
@@ -513,7 +514,7 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
     for (int32_t p = PASS_ROOM; p < (emitter->writesEvents ? PASS_EVENT_VALUES : PASS_EVENT_COUNT);
          ++p)
     {
-        if (p < PASS_RIBBON_SCAN || p > PASS_RIBBON_IDS || emitter->ribbons)
+        if (p != PASS_RIBBONS || emitter->ribbons)
         {
             order[count++] = p;
         }
@@ -890,16 +891,6 @@ static bool RecordEvents(mvfxGpuSim* sim, const Emitter* emitter, uint32_t block
             RecordEventValues(sim, emitter));
 }
 
-// Records an emitter's ribbon kernels, when its births join ribbons.
-static bool RecordRibbons(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups)
-{
-    return !emitter->ribbons ||
-           (mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_SCAN, mvfx_kernelRibbonScan, 1) &&
-            mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_FACTS, mvfx_kernelRibbonFacts, groups) &&
-            mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_LINKS, mvfx_kernelRibbonLinks, groups) &&
-            mvfxRecordSimKernel(sim, emitter, PASS_RIBBON_IDS, mvfx_kernelRibbonIds, 1));
-}
-
 // Records an emitter's step passes, if added: the plan's writes and the
 // kernels; its particles are in the other buffer after.
 static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
@@ -918,7 +909,8 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
                     mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
                     mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
                     mvfxRecordSimKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&
-                    RecordRibbons(sim, emitter, groups) &&
+                    (!emitter->ribbons ||
+                     mvfxRecordSimKernel(sim, emitter, PASS_RIBBONS, mvfx_kernelRibbons, 1)) &&
                     mvfxRecordSimKernel(sim, emitter, PASS_MEASURE, mvfx_kernelMeasure, 1) &&
                     RecordEvents(sim, emitter, blocks);
     emitter->current = recorded ? 1 - emitter->current : emitter->current;

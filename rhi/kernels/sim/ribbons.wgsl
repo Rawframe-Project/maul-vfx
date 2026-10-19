@@ -1,14 +1,14 @@
 // The sim kernel's ribbons (spliced into sim.wgsl): the ribbon each birth
 // joins and its distance along it, as the core's AssignRibbon and
-// RibbonDistanceOf decide them while it appends the step's births, in four
-// passes after scatter (which keeps where each birth went): ribbonScan
-// places the births the CPU path
+// RibbonDistanceOf decide them while it appends the step's births, in one
+// pass after scatter, in one workgroup: it places the births the CPU path
 // appends (each one's place among them, the latest counter birth before
-// it) and the live particles a birth looks back at; ribbonFacts gives each
-// its places and its kind; ribbonLinks each its point before and whether
-// it breaks the counter's ribbon; ribbonIds the counter's ids by a scan of
-// the breaks, and each distance by pointer jumping along the links, both
-// stored with each kept birth.
+// it), gives each its point before and whether it breaks the counter's
+// ribbon, the counter's ids by a scan of the breaks, each distance by
+// pointer jumping along the links, and stores both with each kept birth.
+// Each birth's places at its tick and after its move come from scatter
+// (spawnAt) for a kept birth and killBirths for a killed one, where the
+// move was taken anyway: a pass costs more than its work here.
 //
 // The look-back is the core's: a birth's ribbon's youngest point among
 // the RIBBON_LOOKBACK entries before it, the births appended before it,
@@ -24,7 +24,7 @@
 // How far back a birth looks for its ribbon's point before, as the core.
 const RIBBON_LOOKBACK: u32 = 256u;
 
-// The ribbon ids (mvfxRibbonIds) the passes tell apart.
+// The ribbon ids (mvfxRibbonIds) the pass tells apart.
 const RIBBON_ONE: u32 = 1u;
 const RIBBON_PER_SOURCE: u32 = 3u;
 
@@ -46,45 +46,59 @@ const LINK_LIVE: u32 = 0x80000000u;
 
 // The words after the births' marks in accepted (rhi/src/sim.c gives the
 // room): from twice the capacity, where scatter put each kept birth; from
-// four times it, arrays of the
-// capacity over the appended (at most the capacity): the birth each is,
-// its place at its tick and after its move (three each), its id, its
-// kind, the latest counter birth before it, two values and two links for
-// the pointer jumping; then the head (the appended, the window's
-// particles) and the window, latest first.
+// four times it, six arrays over the births (twice the capacity each):
+// each one's place at its tick and after its move; from sixteen times it,
+// arrays of the capacity over the appended (at most the capacity): the
+// birth each is, its id, its kind, the latest counter birth before it,
+// two values and two links for the pointer jumping; then the head (the
+// window's particles) and the window, latest first.
+const PLACE_BORN: u32 = 0u;
+const PLACE_MOVED: u32 = 3u;
 const ARRAY_BIRTH: u32 = 0u;
-const ARRAY_BORN: u32 = 1u;
-const ARRAY_MOVED: u32 = 4u;
-const ARRAY_ID: u32 = 7u;
-const ARRAY_KIND: u32 = 8u;
-const ARRAY_LAST: u32 = 9u;
-const ARRAY_VALUE: u32 = 10u;
-const ARRAY_LINK: u32 = 12u;
-const RIBBON_ARRAYS: u32 = 14u;
-const HEAD_APPENDED: u32 = 0u;
-const HEAD_HELD: u32 = 1u;
-const HEAD_WORDS: u32 = 2u;
+const ARRAY_ID: u32 = 1u;
+const ARRAY_KIND: u32 = 2u;
+const ARRAY_LAST: u32 = 3u;
+const ARRAY_VALUE: u32 = 4u;
+const ARRAY_LINK: u32 = 6u;
+const RIBBON_ARRAYS: u32 = 8u;
+const HEAD_WORDS: u32 = 1u;
 
 fn keptAt(j: u32) -> u32 {
     return accepted[2u * params.counts.x + j];
 }
 
-fn ribbonWord(array: u32, a: u32) -> u32 {
-    return (4u + array) * params.counts.x + a;
+fn placeWord(k: u32, j: u32) -> u32 {
+    return 4u * params.counts.x + 2u * params.counts.x * k + j;
 }
 
-fn headWord(k: u32) -> u32 {
-    return (4u + RIBBON_ARRAYS) * params.counts.x + k;
+fn ribbonWord(array: u32, a: u32) -> u32 {
+    return (16u + array) * params.counts.x + a;
+}
+
+fn headWord() -> u32 {
+    return (16u + RIBBON_ARRAYS) * params.counts.x;
 }
 
 fn windowWord(k: u32) -> u32 {
-    return headWord(HEAD_WORDS) + k;
+    return headWord() + HEAD_WORDS + k;
 }
 
-fn ribbonVector(array: u32, a: u32) -> vec3<f32> {
-    return vec3<f32>(bitcast<f32>(accepted[ribbonWord(array, a)]),
-                     bitcast<f32>(accepted[ribbonWord(array + 1u, a)]),
-                     bitcast<f32>(accepted[ribbonWord(array + 2u, a)]));
+// Stores birth j's places at its tick and after its move, for an emitter
+// with ribbons.
+fn storeBirthPlaces(j: u32, born: vec3<f32>, place: vec3<f32>) {
+    if (params.words.ribbon == NONE) {
+        return;
+    }
+    for (var k = 0u; k < 3u; k++) {
+        accepted[placeWord(PLACE_BORN + k, j)] = bitcast<u32>(born[k]);
+        accepted[placeWord(PLACE_MOVED + k, j)] = bitcast<u32>(place[k]);
+    }
+}
+
+fn birthPlace(first: u32, j: u32) -> vec3<f32> {
+    return vec3<f32>(bitcast<f32>(accepted[placeWord(first, j)]),
+                     bitcast<f32>(accepted[placeWord(first + 1u, j)]),
+                     bitcast<f32>(accepted[placeWord(first + 2u, j)]));
 }
 
 // Whether birth j takes the counter's ribbon: every birth by the counter,
@@ -92,6 +106,17 @@ fn ribbonVector(array: u32, a: u32) -> vec3<f32> {
 fn takesCounter(j: u32) -> bool {
     let ids = params.ribbon.x;
     return ids == RIBBON_ONE || (ids == RIBBON_PER_SOURCE && births[3u * j + 2u].w == 0u);
+}
+
+// Birth j's fixed id: its batch's first serial (its serial less its batch
+// index; an event birth's batch index is 0), or by source its event's
+// particle's serial (in its host record's free word).
+fn fixedId(j: u32) -> u32 {
+    if (params.ribbon.x == RIBBON_PER_SOURCE) {
+        let host = births[3u * j + 2u].y;
+        return births[6u * params.counts.x + 4u * host + 3u].w & ~RIBBON_COUNTER_TAG;
+    }
+    return births[3u * j].x - births[3u * j + 1u].z;
 }
 
 fn counterTag() -> u32 {
@@ -136,93 +161,10 @@ fn exclusiveMax(local: u32, v: u32) -> u32 {
     return select(0u, scan[max(local, 1u) - 1u], local > 0u);
 }
 
-// Ribbon scan, in one workgroup: the window (in its first invocation),
-// then each appended birth's place among them and the latest counter birth
-// before it, a chunk of the births at a time.
-@compute @workgroup_size(256, 1, 1)
-fn ribbonScan(@builtin(local_invocation_index) local: u32) {
-    let c = params.counts.x;
-    if (local == 0u) {
-        var held = 0u;
-        // The live count before the step (offsets moved it to counts[1]).
-        var i = counts[1];
-        while (i > 0u && held < RIBBON_LOOKBACK) {
-            i--;
-            if ((source[params.words.alive * c + i] & LIVE_ENDED) == 0u) {
-                accepted[windowWord(held)] = i;
-                held++;
-            }
-        }
-        accepted[headWord(HEAD_HELD)] = held;
-        carried = 0u;
-        taken = 0u;
-        liveCount = birthCount();
-    }
-    let n = workgroupUniformLoad(&liveCount);
-    for (var first = 0u; first < n; first += CHUNK) {
-        let j = first + local;
-        let keep = select(0u, 1u, j < n && appended(j));
-        let a = carried + exclusiveScan(local, keep);
-        let counter = keep == 1u && takesCounter(j);
-        // The latest counter birth before, from 1 (0 for none).
-        let last = max(taken, exclusiveMax(local, select(0u, a + 1u, counter)));
-        if (keep == 1u) {
-            accepted[ribbonWord(ARRAY_BIRTH, a)] = j;
-            accepted[ribbonWord(ARRAY_LAST, a)] = select(NONE, last - 1u, last > 0u);
-        }
-        // The chunk's last element carries its sums to the next chunk.
-        workgroupBarrier();
-        if (local == CHUNK - 1u) {
-            carried = a + keep;
-            taken = max(last, select(0u, a + 1u, counter));
-        }
-        workgroupBarrier();
-    }
-    if (local == 0u) {
-        accepted[headWord(HEAD_APPENDED)] = carried;
-    }
-}
-
-// Ribbon facts: each appended birth's place at its tick and after its
-// move (where scatter stored it, moved again only for one killed on its
-// way), its kind and, for a fixed id, its id (its batch's first serial,
-// its serial less its batch index; its event's particle's serial).
-@compute @workgroup_size(64, 1, 1)
-fn ribbonFacts(@builtin(global_invocation_id) id: vec3<u32>) {
-    let c = params.counts.x;
-    let n = accepted[headWord(HEAD_APPENDED)];
-    for (var a = id.x; a < n; a += params.modes.z * 64u) {
-        let j = accepted[ribbonWord(ARRAY_BIRTH, a)];
-        var born = vec3<f32>(0.0);
-        var unused = vec3<f32>(0.0);
-        bornPlace(j, false, &born, &unused);
-        var place = vec3<f32>(0.0);
-        if ((accepted[j] & 3u) == 1u && keptAt(j) < c) {
-            place = readVector(1u, keptAt(j), params.words.place);
-        } else {
-            var velocity = vec3<f32>(0.0);
-            _ = bornAt(j, &place, &velocity);
-        }
-        for (var k = 0u; k < 3u; k++) {
-            accepted[ribbonWord(ARRAY_BORN + k, a)] = bitcast<u32>(born[k]);
-            accepted[ribbonWord(ARRAY_MOVED + k, a)] = bitcast<u32>(place[k]);
-        }
-        var kind = KIND_FIXED;
-        var fixed = births[3u * j].x - births[3u * j + 1u].z;
-        if (takesCounter(j)) {
-            kind = KIND_COUNTER;
-        } else if (params.ribbon.x == RIBBON_PER_SOURCE) {
-            fixed = births[6u * c + 4u * births[3u * j + 2u].y + 3u].w & ~RIBBON_COUNTER_TAG;
-        }
-        accepted[ribbonWord(ARRAY_KIND, a)] = kind;
-        accepted[ribbonWord(ARRAY_ID, a)] = fixed;
-    }
-}
-
 // The youngest live particle of the window of ribbon id among its first
 // budget particles, as a link (NONE for none).
 fn liveLink(id: u32, budget: u32) -> u32 {
-    let count = min(accepted[headWord(HEAD_HELD)], budget);
+    let count = min(accepted[headWord()], budget);
     for (var k = 0u; k < count; k++) {
         if (liveId(accepted[windowWord(k)]) == id) {
             return LINK_LIVE | k;
@@ -231,16 +173,96 @@ fn liveLink(id: u32, budget: u32) -> u32 {
     return NONE;
 }
 
-// Ribbon links: each appended birth's point before (a birth, a live
-// particle of the window, none), its gap to it, whether it breaks the
-// counter's ribbon; its value and link for the distances' pointer
-// jumping (a live particle's distance taken in, its link ended).
-@compute @workgroup_size(64, 1, 1)
-fn ribbonLinks(@builtin(global_invocation_id) id: vec3<u32>) {
-    let n = accepted[headWord(HEAD_APPENDED)];
+// Ribbons, in one workgroup, for an emitter with ribbons.
+@compute @workgroup_size(256, 1, 1)
+fn ribbons(@builtin(local_invocation_index) local: u32) {
+    if (local == 0u) {
+        // The window, in the first invocation: the live count before the
+        // step is in counts[1] since offsets.
+        let c = params.counts.x;
+        var held = 0u;
+        var i = counts[1];
+        while (i > 0u && held < RIBBON_LOOKBACK) {
+            i--;
+            if ((source[params.words.alive * c + i] & LIVE_ENDED) == 0u) {
+                accepted[windowWord(held)] = i;
+                held++;
+            }
+        }
+        accepted[headWord()] = held;
+        liveCount = birthCount();
+    }
+    let count = workgroupUniformLoad(&liveCount);
+    placeAppended(local, count);
+    let n = workgroupUniformLoad(&carried);
+    storageBarrier();
+    linkAppended(local, n);
+    storageBarrier();
+    countBreaks(local, n);
+    if (params.words.ribbonDistance != NONE) {
+        sumDistances(local, n);
+    }
+    storageBarrier();
+    let c = params.counts.x;
+    for (var a = local; a < n; a += CHUNK) {
+        let j = accepted[ribbonWord(ARRAY_BIRTH, a)];
+        let at = keptAt(j);
+        if ((accepted[j] & 3u) == 1u && at < c) {
+            moved[params.words.ribbon * c + at] = accepted[ribbonWord(ARRAY_ID, a)];
+            if (params.words.ribbonDistance != NONE) {
+                moved[params.words.ribbonDistance * c + at] =
+                    accepted[ribbonWord(ARRAY_VALUE, a)];
+            }
+        }
+    }
+}
+
+// Each appended birth's place among them (their count left in carried),
+// the birth it is, its kind and fixed id, and the latest counter birth
+// before it: each invocation walks a run of the births twice, joined by
+// one scan of the runs' counts and one of their latest counter births
+// (a workgroup barrier costs more than a run's work).
+fn placeAppended(local: u32, count: u32) {
+    let per = (count + CHUNK - 1u) / CHUNK;
+    let lo = min(local * per, count);
+    let hi = min(lo + per, count);
+    var kept = 0u;
+    // The run's latest counter birth, from 1 among its appended.
+    var latest = 0u;
+    for (var j = lo; j < hi; j++) {
+        if (appended(j)) {
+            kept++;
+            latest = select(latest, kept, takesCounter(j));
+        }
+    }
+    let base = exclusiveScan(local, kept);
+    // The latest counter birth before the run, from 1 (0 for none).
+    var last = exclusiveMax(local, select(0u, base + latest, latest > 0u));
+    var a = base;
+    for (var j = lo; j < hi; j++) {
+        if (appended(j)) {
+            let counter = takesCounter(j);
+            accepted[ribbonWord(ARRAY_BIRTH, a)] = j;
+            accepted[ribbonWord(ARRAY_LAST, a)] = select(NONE, last - 1u, last > 0u);
+            accepted[ribbonWord(ARRAY_KIND, a)] = select(KIND_FIXED, KIND_COUNTER, counter);
+            accepted[ribbonWord(ARRAY_ID, a)] = select(fixedId(j), 0u, counter);
+            last = select(last, a + 1u, counter);
+            a++;
+        }
+    }
+    if (local == CHUNK - 1u) {
+        carried = base + kept;
+    }
+}
+
+// Each appended birth's point before (a birth, a live particle of the
+// window, none), its gap to it, whether it breaks the counter's ribbon;
+// its value and link for the distances' pointer jumping (a live
+// particle's distance taken in, its link ended).
+fn linkAppended(local: u32, n: u32) {
     let start = params.modes.w + counts[STATISTICS_RIBBON_BREAKS];
     let breakDistance = bitcast<f32>(params.ribbon.y);
-    for (var a = id.x; a < n; a += params.modes.z * 64u) {
+    for (var a = local; a < n; a += CHUNK) {
         let budget = RIBBON_LOOKBACK - min(a, RIBBON_LOOKBACK);
         var link = NONE;
         let kind = accepted[ribbonWord(ARRAY_KIND, a)];
@@ -274,9 +296,10 @@ fn ribbonLinks(@builtin(global_invocation_id) id: vec3<u32>) {
                 before = readVector(0u, i, params.words.place);
                 base = liveAlong(i);
             } else {
-                before = ribbonVector(ARRAY_MOVED, link);
+                before = birthPlace(PLACE_MOVED, accepted[ribbonWord(ARRAY_BIRTH, link)]);
             }
-            gap = gapBetween(ribbonVector(ARRAY_BORN, a), before);
+            let j = accepted[ribbonWord(ARRAY_BIRTH, a)];
+            gap = gapBetween(birthPlace(PLACE_BORN, j), before);
         }
         if (kind == KIND_COUNTER && link != NONE && breakDistance > 0.0 && gap > breakDistance) {
             // A new ribbon: no point before it.
@@ -294,56 +317,29 @@ fn ribbonLinks(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 
-// Ribbon ids, in one workgroup: each counter birth's id, the counter at
-// the step's start plus the breaks up to it, by a scan of the breaks
-// (their count kept in the statistics record); then, for an emitter that
-// stores distances, each birth's distance by pointer jumping along the
-// links, in ping-pong arrays, as many rounds as halve the longest chain;
-// each kept birth's id and distance stored where scatter put it.
-@compute @workgroup_size(256, 1, 1)
-fn ribbonIds(@builtin(local_invocation_index) local: u32) {
-    if (local == 0u) {
-        liveCount = accepted[headWord(HEAD_APPENDED)];
-        carried = 0u;
-    }
-    let n = workgroupUniformLoad(&liveCount);
+// Each counter birth's id, the counter at the step's start plus the
+// breaks up to it, by runs joined by a scan of their breaks, their count
+// kept in the statistics record.
+fn countBreaks(local: u32, n: u32) {
     let start = params.modes.w + counts[STATISTICS_RIBBON_BREAKS];
     let tag = counterTag();
-    for (var first = 0u; first < n; first += CHUNK) {
-        let a = first + local;
-        var kind = KIND_FIXED;
-        if (a < n) {
-            kind = accepted[ribbonWord(ARRAY_KIND, a)];
-        }
-        let broken = select(0u, 1u, kind == KIND_BREAK);
-        let breaks = carried + exclusiveScan(local, broken) + broken;
+    let per = (n + CHUNK - 1u) / CHUNK;
+    let lo = min(local * per, n);
+    let hi = min(lo + per, n);
+    var broken = 0u;
+    for (var a = lo; a < hi; a++) {
+        broken += select(0u, 1u, accepted[ribbonWord(ARRAY_KIND, a)] == KIND_BREAK);
+    }
+    var breaks = exclusiveScan(local, broken);
+    for (var a = lo; a < hi; a++) {
+        let kind = accepted[ribbonWord(ARRAY_KIND, a)];
+        breaks += select(0u, 1u, kind == KIND_BREAK);
         if (kind != KIND_FIXED) {
             accepted[ribbonWord(ARRAY_ID, a)] = (start + breaks) | tag;
         }
-        workgroupBarrier();
-        if (local == CHUNK - 1u) {
-            carried = breaks;
-        }
-        workgroupBarrier();
     }
-    if (local == 0u) {
-        counts[STATISTICS_RIBBON_BREAKS] += carried;
-    }
-    if (params.words.ribbonDistance != NONE) {
-        sumDistances(local, n);
-    }
-    storageBarrier();
-    let c = params.counts.x;
-    for (var a = local; a < n; a += CHUNK) {
-        let j = accepted[ribbonWord(ARRAY_BIRTH, a)];
-        let at = keptAt(j);
-        if ((accepted[j] & 3u) == 1u && at < c) {
-            moved[params.words.ribbon * c + at] = accepted[ribbonWord(ARRAY_ID, a)];
-            if (params.words.ribbonDistance != NONE) {
-                moved[params.words.ribbonDistance * c + at] =
-                    accepted[ribbonWord(ARRAY_VALUE, a)];
-            }
-        }
+    if (local == CHUNK - 1u) {
+        counts[STATISTICS_RIBBON_BREAKS] = start - params.modes.w + breaks;
     }
 }
 
