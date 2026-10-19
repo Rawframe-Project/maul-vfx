@@ -37,23 +37,50 @@ static float AgeAt(int64_t clock, int64_t birth)
     return (float)((double)(clock - birth) * SECONDS_PER_TICK);
 }
 
-// Removes the particles whose life has ended, moving the rest down in
-// order.
-static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
+// Whether unit u (particle u for an emitter of particles) has ended: by
+// its first point's life, as all of a unit's points die together (a
+// contact's life loss can shorten a later point's alone).
+static bool UnitEnded(const mvfxInstance* instance, int32_t emitter, int32_t points, int32_t u)
 {
-    mvfxEmitterState* state = &instance->emitters[emitter];
     const uint32_t* birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow);
     const uint32_t* birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh);
     const float* inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife);
-    int32_t kept = 0;
-    // The first ended particle: before it nothing moves.
-    while (kept < state->count)
+    int32_t i = u * points;
+    int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
+    return AgeAt(instance->clock, birth) * inverseLife[i] >= 1.0f;
+}
+
+// Records the deaths of unit u's points at its first point's death tick,
+// their places their last, from the step's start.
+static void RecordEnded(mvfxInstance* instance, int32_t emitter, int32_t points, int32_t u)
+{
+    const uint32_t* birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow);
+    const uint32_t* birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh);
+    const float* inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife);
+    int32_t first = u * points;
+    int64_t birth = (int64_t)(((uint64_t)birthHigh[first] << 32u) | birthLow[first]);
+    int64_t tick = mvfxDeathTick(birth, inverseLife[first]);
+    for (int32_t i = first; i < first + points; ++i)
     {
-        int64_t birth = (int64_t)(((uint64_t)birthHigh[kept] << 32u) | birthLow[kept]);
-        if (AgeAt(instance->clock, birth) * inverseLife[kept] >= 1.0f)
-        {
-            break;
-        }
+        mvfxRecordEvent(instance, emitter,
+                        &(mvfxEventFact){.kind = mvfx_eventDeath,
+                                         .particle = i,
+                                         .tick = tick,
+                                         .placeTick = instance->stepStart});
+    }
+}
+
+// Removes the units (particles) whose life has ended, moving the rest down
+// in order.
+static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    int32_t points = instance->effect->emitters[emitter].unitPoints;
+    int32_t units = state->count / points;
+    int32_t kept = 0;
+    // The first ended unit: before it nothing moves.
+    while (kept < units && !UnitEnded(instance, emitter, points, kept))
+    {
         ++kept;
     }
     // The arrays the emitter has, and the runs of the living after it moved
@@ -68,40 +95,28 @@ static void RemoveEnded(mvfxInstance* instance, int32_t emitter)
             arrays[arrayCount++] = mvfxAttributeArray(instance, emitter, a);
         }
     }
-    int32_t i = kept;
-    while (i < state->count)
+    int32_t u = kept;
+    while (u < units)
     {
-        for (; i < state->count; ++i)
+        for (; u < units && UnitEnded(instance, emitter, points, u); ++u)
         {
-            int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
-            if (!(AgeAt(instance->clock, birth) * inverseLife[i] >= 1.0f))
-            {
-                break;
-            }
-            // Its death at its tick, its place its last, from the step's start.
-            mvfxRecordEvent(instance, emitter,
-                            &(mvfxEventFact){.kind = mvfx_eventDeath,
-                                             .particle = i,
-                                             .tick = mvfxDeathTick(birth, inverseLife[i]),
-                                             .placeTick = instance->stepStart});
+            RecordEnded(instance, emitter, points, u);
         }
-        int32_t start = i;
-        for (; i < state->count; ++i)
+        int32_t start = u;
+        while (u < units && !UnitEnded(instance, emitter, points, u))
         {
-            int64_t birth = (int64_t)(((uint64_t)birthHigh[i] << 32u) | birthLow[i]);
-            if (AgeAt(instance->clock, birth) * inverseLife[i] >= 1.0f)
-            {
-                break;
-            }
+            ++u;
         }
         // Moves down only: what it overwrites is behind the scan.
-        for (int32_t a = 0; a < arrayCount && i > start; ++a)
+        size_t run = (size_t)(u - start) * (size_t)points;
+        for (int32_t a = 0; a < arrayCount && u > start; ++a)
         {
-            memmove(arrays[a] + kept, arrays[a] + start, (size_t)(i - start) * sizeof(uint32_t));
+            memmove(arrays[a] + (size_t)kept * (size_t)points,
+                    arrays[a] + (size_t)start * (size_t)points, run * sizeof(uint32_t));
         }
-        kept += i - start;
+        kept += u - start;
     }
-    state->count = kept;
+    state->count = kept * points;
 }
 
 int64_t mvfxDeathTick(int64_t birth, float inverseLife)

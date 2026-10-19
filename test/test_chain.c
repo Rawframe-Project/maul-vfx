@@ -403,6 +403,42 @@ static void TestKillInSubsteps(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestLifeLossKeepsUnitsWhole(void)
+{
+    // A chain falling across, its tip alone bouncing off a small sphere:
+    // the tip's life shrinks to 0.7 s, but the chain lives by its first
+    // point's 1 s, all three points together.
+    mvfxEmitterDef emitter = Chain(3);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.unit.pinFirst = false;
+    emitter.unit.direction[0] = 1.0f;
+    emitter.unit.direction[1] = 0.0f;
+    emitter.unit.substeps = 4;
+    emitter.unit.stretchCompliance = 0.01f;
+    static const mvfxCollider sphere = {.kind = mvfx_colliderSphere,
+                                        .center = {1.0f, -0.6f, 0},
+                                        .radius = 0.1f,
+                                        .rotation = {0, 0, 0, 1}};
+    emitter.colliders = &sphere;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true, .lifeLoss = 0.3f, .restitution = 1.0f};
+    Open(&emitter, NULL, 0);
+    static const double root[3] = {0, 0, 0};
+    static const float down[3] = {0, -6, 0};
+    Spawn(1, root, down);
+    bool whole = true;
+    // Sixty steps of a sixtieth (in whole ticks) fall just short of 1 s.
+    for (int32_t s = 0; s < 60; ++s)
+    {
+        Steps(1, MVFX_TICKS_PER_SECOND / 60);
+        whole = whole && Stats().live == 3;
+    }
+    Steps(1, MVFX_TICKS_PER_SECOND / 60);
+    CHECK(whole && Stats().live == 0 && Stats().killed == 0, "the chain ends whole, at its root's");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestParticlesUnread(void)
 {
     // A particle emitter's unit is not read: a stray pin leaves its
@@ -517,6 +553,7 @@ int main(void)
     TestRebaseAndRibbons();
     TestQuality();
     TestKillInSubsteps();
+    TestLifeLossKeepsUnitsWhole();
     TestParticlesUnread();
     TestChecks();
     return s_failures == 0 ? 0 : 1;

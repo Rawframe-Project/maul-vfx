@@ -884,6 +884,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 
 ### Fixed
 
+- A unit ends whole, with its first point: a contact's life loss on a
+  later point alone ended that point by itself, leaving its unit split
+  (a chain of three left with two points).
 - The GPU part's documented first-step upload counts an emitter's
   sources' words with their ribbon words (the bytes it gave were 16
   short).
