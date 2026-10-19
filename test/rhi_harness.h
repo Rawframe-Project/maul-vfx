@@ -150,6 +150,12 @@ typedef struct Run
     // at some step.
     bool lights;
     int32_t leastLights;
+    // Whether the neighbor attributes must be the CPU path's words exactly
+    // (places exact on both paths; otherwise the counts are, and the
+    // offsets within the tolerance), and the queries their cap must have
+    // stopped over the run (none needed for 0).
+    bool exactNeighbors;
+    int32_t leastCapped;
 } Run;
 
 // The scenes a test runs on the device.

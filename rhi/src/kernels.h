@@ -19,6 +19,7 @@ typedef enum mvfxContainer
     mvfx_containerRecords = 2,
     mvfx_containerSort = 3,
     mvfx_containerRibbonRecords = 4,
+    mvfx_containerGrid = 5,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -80,6 +81,11 @@ typedef enum mvfxKernel
     mvfx_kernelLightWrite = 28,
     // An emitter's particles expanded into quads (ribbon_records.wgsl).
     mvfx_kernelSpriteQuads = 29,
+    // An emitter's neighbor grid (grid.wgsl): its keys, their values in
+    // its order after sort.wgsl's passes, and its particles' neighbors.
+    mvfx_kernelGridKeys = 30,
+    mvfx_kernelGridValues = 31,
+    mvfx_kernelNeighbors = 32,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

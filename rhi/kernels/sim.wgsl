@@ -105,7 +105,7 @@ struct Depth {
 // Where a particle's values are among its words: each one's first word
 // (NONE for one the emitter does not store); the emitter's arrays, after
 // which come the death tick's two words and whether it outlives the step
-// (death and alive).
+// (death and alive); its neighbor count, center and velocity, unused.
 struct Words {
     place: u32,
     velocity: u32,
@@ -128,6 +128,7 @@ struct Words {
     ribbon: u32,
     ribbonDistance: u32,
     custom: array<vec4<u32>, 2>,
+    neighbors: vec4<u32>,
 }
 
 // A value source as compiled (mvfxSourceView): its kind, whether one

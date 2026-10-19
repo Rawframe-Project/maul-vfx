@@ -522,6 +522,12 @@ fn storeValues(j: u32, at: u32) {
             storeValue(first, params.sources[s].modes.z, at, value);
         }
     }
+    // No neighbors until the next step's query, as the core's births.
+    if (w.neighbors.x != NONE) {
+        moved[w.neighbors.x * c + at] = 0u;
+        storeValue(w.neighbors.y, 3u, at, vec4<f32>(0.0));
+        storeValue(w.neighbors.z, 3u, at, vec4<f32>(0.0));
+    }
 }
 
 // A birth's colour (ones where the emitter stores none): drawn, or a host

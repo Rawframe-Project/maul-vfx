@@ -260,7 +260,7 @@ if(MAUL_VFX_BUILD_TESTS)
         # Planned instances on the device beside the CPU path, through the
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
-                rhi_ribbon_points rhi_beams rhi_lights rhi_sprites)
+                rhi_ribbon_points rhi_beams rhi_lights rhi_sprites rhi_neighbors)
             maul_add_test(${suite} WHITEBOX)
             target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c)

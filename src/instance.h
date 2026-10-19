@@ -390,6 +390,10 @@ void mvfxTransformAt(const mvfxInstance* instance, int64_t tick, mvfxTransform* 
 // cursors at 0, no stop, its anchors at its place.
 void mvfxResetInstance(mvfxInstance* instance);
 
+// The entries of a hashed grid's table at a capacity: the least power of
+// two at least twice it (and at least 2).
+uint32_t mvfxGridTableSize(int32_t capacity);
+
 // Returns an instance's block.
 void mvfxReleaseInstance(mvfxInstance* instance, const mvfxAllocator* allocator);
 

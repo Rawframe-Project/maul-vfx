@@ -823,3 +823,16 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   particle in its records' order, turned by its billboard, the first
   quads that fit both buffers, and the strips' counts. An emitter's view
   gives its sprite def (`mvfxEmitterView.sprite`).
+- The GPU part finds neighbors (`MVFX_FEATURE_NEIGHBORS`, for an emitter
+  without steering, a pair force or contacts) as the CPU path does. It
+  builds each queried emitter's grid from the particles that outlive the
+  step, with the same keys and order. Each particle's walk then gives it
+  the count and offsets of its neighbors, before the step moves it. The
+  statistics record counts the queries their cap stopped
+  (`MVFX_GPU_NEIGHBORS_CAPPED`; `MVFX_GPU_STATISTICS_WORDS` is 47). A plan gives a grid's mask
+  (`mvfxEmitterPlan.gridMask`), and an emitter's view its neighbor def,
+  its grid's cell and where the neighbor attributes are
+  (`mvfxEmitterView.neighbors`, `gridCell`, `mvfxAttributeArrays`'
+  `neighborCount`, `neighborCenter`, `neighborVelocity`). Births start
+  with no neighbors, as on the CPU path. Every emitter's step uploads 16
+  bytes more (1,960), and one with a grid 8 more.

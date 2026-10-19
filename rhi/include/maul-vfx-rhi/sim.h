@@ -133,10 +133,16 @@ extern "C"
 // plus it.
 #define MVFX_GPU_RIBBON_BREAKS 38
 
+// For an emitter that finds its neighbors (mvfxNeighborDef), the
+// statistics record's word counting the queries its cap stopped since the
+// instance was last cleared (mvfxEmitterStats.neighborsCapped on the CPU
+// path).
+#define MVFX_GPU_NEIGHBORS_CAPPED 46
+
 // The words of an emitter's statistics record (for an emitter whose
-// ribbons pin a head, its last words hold the head, which
+// ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 46
+#define MVFX_GPU_STATISTICS_WORDS 47
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -157,7 +163,11 @@ extern "C"
     /// 36 and 16 where it writes none, 140 an event of its source's event
     /// capacity and 64 more for the region's counts, 96 more a particle of
     /// its capacity for its plan's births staged, and 64 a birth from
-    /// events a step takes (to twice its capacity) for their records.
+    /// events a step takes (to twice its capacity) for their records; one
+    /// whose particles are queried for neighbors 24 bytes a particle of
+    /// its capacity, 18,432 a block of 1,024 of them for its grid's sorted
+    /// keys and digit counts, and 100 more; one that finds neighbors in
+    /// another's grid 96 for its numbers.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -644,16 +654,18 @@ extern "C"
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
     /// when it added none. The bytes are the frame's uploads
-    /// (mvfxGpuSim_UploadBytes counts them): 1,944 an emitter (its
-    /// numbers' 1,872 and its record map's 72; 28 more for one whose
+    /// (mvfxGpuSim_UploadBytes counts them): 1,960 an emitter (its
+    /// numbers' 1,888 and its record map's 72; 28 more for one whose
     /// ribbons pin a head), 432 a force, 128 a collider
-    /// and 80 a kill rule it has (8,088 at most), 96 more for one that
+    /// and 80 a kill rule it has (8,104 at most), 96 more for one that
     /// writes events (its events' values over life: the clock and the
-    /// map, all 1,952 at the first step) and 96 more for a beam (its
-    /// curve and noise); 48 a planned
+    /// map, all 1,952 at the first step), 96 more for a beam (its
+    /// curve and noise) and 8 more for one with a neighbor grid (its
+    /// clock, all 96 at the first step); 48 a planned
     /// birth (a plan holds at most twice the emitter's capacity) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
-    /// counts and 16 more for one spawning from events; at the first step,
+    /// counts, 16 more for one spawning from events and 4 more for one
+    /// finding neighbors; at the first step,
     /// its sources' 1,248 and the effect's baked tables its values read
     /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)

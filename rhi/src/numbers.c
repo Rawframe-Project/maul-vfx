@@ -619,6 +619,52 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     RecordOrder(view, plan, &def->view, words + MVFX_RECORD_ORDER);
 }
 
+uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own)
+{
+    // Steering, a pair force and contacts walk the neighbors themselves.
+    bool finds = view->neighbors.enabled &&
+                 (view->features &
+                  (MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE | MVFX_FEATURE_CONTACTS)) == 0;
+    return (view->gridCell > 0.0f ? MVFX_GRID_BUILDS : 0u) | (finds ? MVFX_GRID_FINDS : 0u) |
+           (finds && own ? MVFX_GRID_OWN : 0u);
+}
+
+void mvfxGridNumbers(const mvfxEmitterView* view, const mvfxEmitterView* source,
+                     const mvfxEmitterPlan* plan, uint32_t mask, uint32_t sourceMask,
+                     int32_t sourceCapacity, bool own, uint32_t words[MVFX_GRID_WORDS])
+{
+    memset(words, 0, MVFX_GRID_WORDS * sizeof(uint32_t));
+    const mvfxNeighborDef* n = &view->neighbors;
+    uint32_t flags = mvfxGridFlags(view, own);
+    bool finds = (flags & MVFX_GRID_FINDS) != 0;
+    bool builds = (flags & MVFX_GRID_BUILDS) != 0;
+    words[0] = (uint32_t)plan->capacity;
+    words[1] = (uint32_t)sourceCapacity;
+    uint32_t blocks = mvfxSortBlocks(plan->capacity);
+    uint32_t groups = mvfxUpdateGroups(plan->capacity);
+    words[2] = blocks < 65535u ? (blocks > 0u ? blocks : 1u) : 65535u;
+    words[3] = groups > 0u ? groups : 1u;
+    words[4] = builds ? mask : 0u;
+    words[5] = flags;
+    words[6] = finds ? (uint32_t)n->maxNeighbors : 0u;
+    words[7] = finds ? sourceMask : 0u;
+    Floats(words + 8, builds ? 1.0f / view->gridCell : 0.0f, finds ? 1.0f / source->gridCell : 0.0f,
+           finds ? n->radius * n->radius : 0.0f, 0.0f);
+    const mvfxAttributeArrays* a = &view->arrays;
+    const uint32_t arrays[8] = {WordOf(a->position),
+                                WordOf(a->velocity),
+                                (uint32_t)a->count,
+                                WordOf(a->neighborCount),
+                                WordOf(a->neighborCenter),
+                                WordOf(a->neighborVelocity),
+                                0u,
+                                0u};
+    memcpy(words + 12, arrays, sizeof arrays);
+    uint64_t end = (uint64_t)(plan->start + plan->ticks);
+    words[MVFX_GRID_CLOCK] = (uint32_t)end;
+    words[MVFX_GRID_CLOCK + 1] = (uint32_t)(end >> 32u);
+}
+
 void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                       const mvfxGpuLightsDef* def, const mvfxStepTables* tables,
                       const float srgb[MVFX_SRGB_STEPS], uint32_t words[MVFX_RECORD_WORDS])
@@ -632,7 +678,6 @@ void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     records.countOffset = def->countOffset;
     const mvfxLayoutView layout = {.stride = (uint32_t)sizeof(mvfxLight)};
     mvfxRecordNumbers(view, plan, &layout, &records, tables, srgb, words);
-    words[MVFX_RECORD_ORDER] = MVFX_ORDER_POOL;
     const mvfxLightDef* light = &view->light;
     uint32_t blocks = mvfxSortBlocks(plan->capacity);
     uint32_t* at = words + MVFX_RECORD_LIGHT;
@@ -747,7 +792,7 @@ static void KillRules(const mvfxEmitterPlan* plan, uint32_t* words)
 
 // Where a particle's values are among its words (sim.wgsl's Words): its
 // values' first words, its arrays, then the death tick and the step's
-// word.
+// word; its custom values' and its neighbor attributes'.
 static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 {
     uint32_t count = (uint32_t)arrays->count;
@@ -776,6 +821,10 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
     {
         words[20 + i] = WordOf(arrays->custom[i]);
     }
+    words[28] = WordOf(arrays->neighborCount);
+    words[29] = WordOf(arrays->neighborCenter);
+    words[30] = WordOf(arrays->neighborVelocity);
+    words[31] = 0xFFFFFFFFu;
 }
 
 // The beam as resolved for the step (sim.wgsl's beam, beamNoise and
@@ -850,15 +899,15 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Colliders(plan, colliderGrids, normals, words + 84 + 132 * MVFX_MAX_FORCES);
     uint32_t* at = words + MVFX_VALUES_FIRST;
     Words(&view->arrays, at);
-    memcpy(at + 28, plan->parameters, sizeof plan->parameters);
+    memcpy(at + 32, plan->parameters, sizeof plan->parameters);
     double seconds = (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND;
     float angular[3];
     DragFactors((double)view->angularDrag, seconds, angular);
     float limit[3];
     DragFactors((double)view->modules.limitDampen, seconds, limit);
-    Floats(at + 92, angular[0], angular[1], limit[0], 0.0f);
-    Modules(&plan->modules, at + 96);
-    Beam(view, plan, at + 112);
+    Floats(at + 96, angular[0], angular[1], limit[0], 0.0f);
+    Modules(&plan->modules, at + 100);
+    Beam(view, plan, at + 116);
     KillRules(plan, words + MVFX_KILLS_FIRST);
     // The events the GPU writes (births, deaths, collisions), how many, and
     // where in the events buffer.

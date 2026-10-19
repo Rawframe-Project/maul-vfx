@@ -449,8 +449,48 @@ static bool SameValue(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c, 
     return same;
 }
 
+// Whether the neighbor attributes are compared as words, and the
+// particles whose were compared over the run.
+static bool s_exactNeighbors;
+static int64_t s_neighborsCompared;
+
+// The neighbor attributes of the GPU's particle g against the CPU path's
+// particle c, where the emitter has them: the count exactly, the offsets
+// as words or, as each is a mean less the particle's own place or
+// velocity, within the tolerance of that place or velocity.
+static bool SameNeighbors(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
+{
+    const mvfxAttributeArrays* a = &s_arrays;
+    if (a->neighborCount < 0)
+    {
+        return true;
+    }
+    ++s_neighborsCompared;
+    if (s_exactNeighbors)
+    {
+        return SameValue(cpu, e, g, c, a->neighborCount, mvfx_attributeNeighborCount, 1, true) &&
+               SameValue(cpu, e, g, c, a->neighborCenter, mvfx_attributeNeighborCenterX, 3, true) &&
+               SameValue(cpu, e, g, c, a->neighborVelocity, mvfx_attributeNeighborVelocityX, 3,
+                         true);
+    }
+    bool same = SameValue(cpu, e, g, c, a->neighborCount, mvfx_attributeNeighborCount, 1, true);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        const float* p = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributePositionX + k));
+        const float* v = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+        const float* center =
+            mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeNeighborCenterX + k));
+        const float* mean =
+            mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeNeighborVelocityX + k));
+        float dc = fabsf(FloatOf(a->neighborCenter + k, g) - center[c]) / (1.0f + fabsf(p[c]));
+        float dv = fabsf(FloatOf(a->neighborVelocity + k, g) - mean[c]) / (1.0f + fabsf(v[c]));
+        same = same && dc <= s_tolerance && dv <= s_tolerance;
+    }
+    return same;
+}
+
 // Every value a birth draws, as moved since, of the GPU's particle g
-// against the CPU path's particle c.
+// against the CPU path's particle c, and its neighbor attributes.
 static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
 {
     const mvfxAttributeArrays* a = &s_arrays;
@@ -469,7 +509,7 @@ static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
         same = SameValue(cpu, e, g, c, a->custom[n], mvfx_attributeCustom + 4 * n,
                          compiled->custom[n].components, false);
     }
-    return same;
+    return same && SameNeighbors(cpu, e, g, c);
 }
 
 // Ribbons compared up to their ids (sim.h): a break by distance whose gap
@@ -1885,6 +1925,27 @@ static void BreakRibbons(void)
 // The most ribbon breaks the GPU made at a step of the run.
 static uint32_t s_ribbonBreaks;
 
+// The queries their cap stopped, counted by the GPU, at the run's last
+// step.
+static uint32_t s_capped;
+
+// Whether an emitter's queries stopped by their cap, counted by the GPU,
+// are the CPU path's.
+static bool SameCapped(int32_t e)
+{
+    mvfxEmitterStats stats;
+    uint32_t capped = s_record[MVFX_GPU_NEIGHBORS_CAPPED];
+    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
+                stats.neighborsCapped == capped;
+    if (!same)
+    {
+        printf("neighbor queries capped: GPU %u, the CPU path's %llu\n", capped,
+               (unsigned long long)stats.neighborsCapped);
+    }
+    s_capped = capped;
+    return same;
+}
+
 // Whether an emitter's ribbon counter on the GPU (its plan's, the host's
 // breaks, plus the breaks the GPU made) is the CPU path's.
 static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
@@ -2072,6 +2133,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_ribbonCapacity = run->ribbonCapacity;
     s_lights = run->lights;
     s_mostLights = 0;
+    s_exactNeighbors = run->exactNeighbors;
+    s_neighborsCompared = 0;
+    s_capped = 0;
     const mvfxLayoutDef lightLayout = {.cookie = mvfxDefaultLayoutDef().cookie,
                                        .fields = &s_lightField,
                                        .fieldCount = 1,
@@ -2177,6 +2241,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
             const mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
             same = SameAsCpu(cpu, e) && (s_leftOut[e] || SameBounds(sim, e)) &&
                    (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(cpu, e)) &&
+                   (!run->emitters[e].neighbors.enabled || SameCapped(e)) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e)));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
@@ -2239,6 +2304,12 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         const mvfxEmitterState* state = &mvfxContextInstance(s_context, s_cpu)->emitters[0];
         printf("  killed: %llu\n", (unsigned long long)state->killed);
         CHECK(state->killed > 0, "kills");
+    }
+    if (s_neighborsCompared > 0)
+    {
+        printf("  neighbor attributes compared: %lld; queries capped: %u (at least %d)\n",
+               (long long)s_neighborsCompared, s_capped, run->leastCapped);
+        CHECK(s_capped >= (uint32_t)run->leastCapped, "queries capped");
     }
     if (run->lights)
     {

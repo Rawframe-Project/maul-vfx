@@ -187,6 +187,9 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
         .mesh = ArrayOf(plan, mvfx_attributeMesh),
         .ribbon = ArrayOf(plan, mvfx_attributeRibbon),
         .ribbonDistance = ArrayOf(plan, mvfx_attributeRibbonDistance),
+        .neighborCount = ArrayOf(plan, mvfx_attributeNeighborCount),
+        .neighborCenter = ArrayOf(plan, mvfx_attributeNeighborCenterX),
+        .neighborVelocity = ArrayOf(plan, mvfx_attributeNeighborVelocityX),
         .count = plan->arrayCount,
     };
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
@@ -232,6 +235,8 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->beam = e->beam;
     viewOut->light = e->light;
     viewOut->sprite = e->sprite;
+    viewOut->neighbors = e->neighbors;
+    viewOut->gridCell = e->gridCell;
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
         .breakDistance = e->ribbonBreakDistance,

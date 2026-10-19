@@ -114,13 +114,14 @@ static mvfxEmitterDef Sprite(void)
 }
 
 // The bytes an emitter's step uploads after the first, from its plan,
-// whether it writes events and whether it is a beam, as
-// mvfxGpuSim_Record states them.
-static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam)
+// whether it writes events, whether it is a beam and whether it has a
+// neighbor grid, as mvfxGpuSim_Record states them.
+static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam, bool grid)
 {
-    return 1944 + (events ? 96 : 0) + (beam ? 96 : 0) + 432 * (int64_t)plan->forceCount +
-           128 * (int64_t)plan->colliderCount + 80 * (int64_t)plan->killRuleCount +
-           48 * (int64_t)plan->birthCount + 64 * (int64_t)plan->hostBirthCount;
+    return 1960 + (events ? 96 : 0) + (beam ? 96 : 0) + (grid ? 8 : 0) +
+           432 * (int64_t)plan->forceCount + 128 * (int64_t)plan->colliderCount +
+           80 * (int64_t)plan->killRuleCount + 48 * (int64_t)plan->birthCount +
+           64 * (int64_t)plan->hostBirthCount;
 }
 
 // Steps an effect's planned instance on the device, the host spawning
@@ -195,7 +196,8 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
         {
             mvfxEmitterPlan plan;
             exact = mvfxInstance_GetEmitterPlan(context, instance, e, &plan) == mvfx_success;
-            expected += StepBytes(&plan, emitters[e].events != 0, emitters[e].beam.enabled);
+            expected += StepBytes(&plan, emitters[e].events != 0, emitters[e].beam.enabled,
+                                  emitters[e].neighbors.enabled);
             births += plan.birthCount + plan.hostBirthCount;
         }
         int64_t uploaded = -1;
@@ -266,6 +268,10 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     beam.beam = (mvfxBeamDef){
         .enabled = true, .segments = 8, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
     Measure(gpu, kernels, &beam, 1, "a beam");
+    mvfxEmitterDef neighbors = Sprite();
+    neighbors.neighbors =
+        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.2f, .maxNeighbors = 8};
+    Measure(gpu, kernels, &neighbors, 1, "an emitter finding its neighbors");
 }
 
 static void TestRefusals(void)

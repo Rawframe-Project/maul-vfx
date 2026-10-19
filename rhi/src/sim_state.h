@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A simulation's state, which its files share (sim.c, sim_records.c,
-// sim_spawn.c, sim_mesh.c): an emitter's buffers, passes and numbers, and
-// the simulation's own.
+// sim_spawn.c, sim_mesh.c, sim_events.c, sim_grid.c): an emitter's
+// buffers, passes and numbers, and the simulation's own.
 
 #ifndef MAUL_VFX_RHI_SRC_SIM_STATE_H
 #define MAUL_VFX_RHI_SRC_SIM_STATE_H
@@ -66,6 +66,25 @@ enum
     PASS_COUNT = 19
 };
 
+// The passes of an emitter's neighbor grid (sim_grid.c), after its room
+// pass: its numbers' write, its keys, the sort's four radix passes
+// (offsets and scatter each), its values, the query.
+#define GRID_PASSES 12
+
+// The buffers of an emitter's grid the grid passes bind (with its
+// particles and statistics after the numbers): its numbers, its words,
+// digit counts and count, its source's words and count.
+enum
+{
+    GRID_NUMBERS = 0,
+    GRID_WORDS = 1,
+    GRID_DIGITS = 2,
+    GRID_COUNT = 3,
+    GRID_SOURCE_WORDS = 4,
+    GRID_SOURCE_COUNT = 5,
+    GRID_BUFFERS = 6
+};
+
 typedef struct Emitter
 {
     // Its capacity, and how many particles its host queue holds; the
@@ -99,6 +118,25 @@ typedef struct Emitter
     bool pinsHead;
     // Whether it is a beam, its points placed after the step.
     bool beam;
+    // Its neighbor grid (sim_grid.c): its mask (0 for none: no emitter
+    // queries it), what it does with one (MVFX_GRID_*, 0 for nothing) and
+    // the emitter whose grid it queries; the grid's numbers, its keys and
+    // indices with the values after them, its digit counts and the count
+    // it holds; whether its numbers were all written and its count
+    // emptied; the frame's ids of what its passes bind, its numbers, its
+    // passes.
+    uint32_t gridMask;
+    uint32_t gridFlags;
+    int32_t gridSource;
+    mrhiBufferId gridNumbers;
+    mrhiBufferId gridWords;
+    mrhiBufferId gridDigits;
+    mrhiBufferId gridCount;
+    bool gridNumbersWritten;
+    bool gridEmptied;
+    mrhiResourceId gridResources[GRID_BUFFERS];
+    uint32_t gridNumberWords[MVFX_GRID_WORDS];
+    mrhiPassId gridPasses[GRID_PASSES];
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
     // Whether all its event numbers were written: after, only the words a
@@ -173,8 +211,10 @@ struct mvfxGpuSim
     mrhiBufferId ownSort;
     mrhiBufferId ownDigits;
     // A word of its own the step binds for the events of an emitter that
-    // writes none.
+    // writes none; a grid's three of its own the grid passes bind for an
+    // emitter that builds none.
     mrhiBufferId ownEvents;
+    mrhiBufferId ownGrid[3];
     // The bytes the last mvfxGpuSim_Record uploaded.
     uint64_t uploaded;
     // Whether it is being destroyed: its changing calls from its
@@ -194,6 +234,28 @@ void mvfxOrderSimEmitters(mvfxGpuSim* sim);
 bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSpawn(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups);
 mvfxResult mvfxSpawnStepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+
+// An emitter's events (sim_events.c): the numbers of their values over
+// life written for a step's plan; what the pass giving them binds beside
+// the step's buffers imported; that pass added; its numbers' writes
+// recorded into the step's write pass; its kernels recorded, when it
+// writes events.
+void mvfxSimEventNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+bool mvfxImportEventValues(mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxAddEventValuesPass(mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxWriteEventNumbers(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
+bool mvfxRecordSimEvents(mvfxGpuSim* sim, const Emitter* emitter, uint32_t blocks);
+
+// An emitter's neighbor grid (sim_grid.c): what it does and its buffers
+// made at the simulation's creation (false when the device refuses), and
+// destroyed; its numbers written for a step's plan; its passes added
+// after its room pass, the source's grid's ids taken from the source,
+// which stepped first; recorded.
+bool mvfxCreateSimGrid(mvfxGpuSim* sim, int32_t e);
+void mvfxDestroySimGrid(mvfxGpuSim* sim, Emitter* emitter);
+void mvfxSimGridNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+bool mvfxAddSimGridPasses(mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxRecordSimGrid(mvfxGpuSim* sim, Emitter* emitter);
 
 // A mesh shape's region (sim_mesh.c): laid out after emitter e's tables,
 // with the host's copy, at the simulation's creation (mvfx_errorStale for

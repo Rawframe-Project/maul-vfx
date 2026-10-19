@@ -31,7 +31,7 @@
 // The step's numbers (sim.wgsl's Step), in words: 84 of the emitter, its
 // plan and its forces' head, 24 a force and 108 its field for the most
 // forces an emitter has; 8 of its collision's head and response, 48 of
-// its depth image, 32 a collider for the most it has; 28 of where a
+// its depth image, 32 a collider for the most it has; 32 of where a
 // particle's values are among its words, 64 of the instance's
 // parameters, 4 of the angular drag's factors over the plan, 16 of the
 // velocity modules and 24 of the beam; 4 of the kill rules' and events' head, 20 of the
@@ -41,7 +41,7 @@
 // how particles turn and move, 12 of the values over life, 12 of how it
 // spawns from events, 16 of the shape and 4 of how births join ribbons.
 #define MVFX_VALUES_FIRST     (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
-#define MVFX_VALUES_WORDS     136
+#define MVFX_VALUES_WORDS     140
 #define MVFX_BEAM_WORDS       24
 #define MVFX_KILLS_FIRST      (MVFX_VALUES_FIRST + MVFX_VALUES_WORDS)
 #define MVFX_SPAWN_FIRST      (MVFX_KILLS_FIRST + 4)
@@ -51,6 +51,31 @@
 #define MVFX_SHAPE_FIRST      (MVFX_SPAWN_RULE_FIRST + 12)
 #define MVFX_RIBBON_FIRST     (MVFX_SHAPE_FIRST + 16)
 #define MVFX_STEP_WORDS       (MVFX_RIBBON_FIRST + 4)
+
+// The words of a grid pass's numbers (grid.wgsl's Grid); what an emitter
+// does with a neighbor grid: builds one (its particles are queried), finds
+// its neighbors' attributes from its source's, the source being its own;
+// the first of the clock's two words, the only ones a step changes.
+#define MVFX_GRID_WORDS  24
+#define MVFX_GRID_BUILDS 1u
+#define MVFX_GRID_FINDS  2u
+#define MVFX_GRID_OWN    4u
+#define MVFX_GRID_CLOCK  20u
+
+// What an emitter does with a neighbor grid (MVFX_GRID_*, 0 for nothing),
+// own when its source is itself.
+uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own);
+
+// Writes an emitter's grid numbers for a step: its capacity and the
+// source's (0 for a source of none), the workgroups of the block passes
+// and the others; its mask, what it does, the most a query counts and the
+// source's mask; the inverse of its cells and the source's, the radius
+// squared; where a particle's place, velocity, death and neighbor
+// attributes are; the clock at the plan's end. The source is its own for
+// an emitter that finds none.
+void mvfxGridNumbers(const mvfxEmitterView* view, const mvfxEmitterView* source,
+                     const mvfxEmitterPlan* plan, uint32_t mask, uint32_t sourceMask,
+                     int32_t sourceCapacity, bool own, uint32_t words[MVFX_GRID_WORDS]);
 
 // The words a particle of an emitter takes on the GPU: its arrays, the
 // death tick's two words and the step's word.
@@ -169,8 +194,9 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
 // radius by size (binary32 bits), unused.
 #define MVFX_RECORD_LIGHT 348
 
-// Writes a lights pass's numbers: a record pass's without fields, in the
-// pool's order, the light def's beside them.
+// Writes a lights pass's numbers: a record pass's without fields (its
+// order unread: lights come in the pool's order), the light def's beside
+// them.
 void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                       const mvfxGpuLightsDef* def, const mvfxStepTables* tables,
                       const float srgb[MVFX_SRGB_STEPS], uint32_t words[MVFX_RECORD_WORDS]);

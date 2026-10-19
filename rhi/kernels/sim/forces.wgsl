@@ -1,21 +1,8 @@
-// The sim kernel's draws and forces (spliced into sim.wgsl): pcg4d and
-// the draws at a serial, the modules' forces and fields, the kill rules.
+// The sim kernel's draws and forces (spliced into sim.wgsl): the draws at
+// a serial (shared/pcg4d_hash.wgsl), the modules' forces and fields, the
+// kill rules.
 
-fn pcg4dMix(v: vec4<u32>) -> vec4<u32> {
-    var r = v;
-    r.x += r.y * r.w;
-    r.y += r.z * r.x;
-    r.z += r.x * r.y;
-    r.w += r.y * r.z;
-    return r;
-}
-
-fn pcg4d(start: vec4<u32>) -> vec4<u32> {
-    var v = start * 1664525u + 1013904223u;
-    v = pcg4dMix(v);
-    v ^= v >> vec4<u32>(16u);
-    return pcg4dMix(v);
-}
+// include: shared/pcg4d_hash.wgsl
 
 const SOURCE_SIZE: u32 = 0u;
 const SOURCE_COLOR: u32 = 1u;

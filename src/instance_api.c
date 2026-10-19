@@ -373,6 +373,11 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     SpawnWindow(live, emitter, planOut);
     mvfxPlanResolved(live, emitter, planOut);
     planOut->ribbonHead = mvfxRibbonHeadPlace(live, emitter, planOut->ribbonHeadPlace);
+    // Its neighbor grid's mask at its capacity (a planned instance's own
+    // grid is laid out for no particles).
+    planOut->gridMask = live->effect->emitters[emitter].gridCell > 0.0f
+                            ? mvfxGridTableSize(state->capacity) - 1u
+                            : 0u;
     for (int32_t k = 0; k < 3; ++k)
     {
         planOut->anchorBefore[k] = state->planAnchor[k];

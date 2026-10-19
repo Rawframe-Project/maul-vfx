@@ -79,9 +79,12 @@ static void TestBillboards(Gpu* gpu, mvfxGpu* kernels)
     Quads(gpu, kernels, &emitter, 1000, 1000, "quads rotated by angles, in the instance's space");
     emitter = Billboarded(mvfx_billboardAxisY);
     Quads(gpu, kernels, &emitter, 1000, 1000, "quads upright on Y");
+    // In the instance's space, so the instance's turn takes part.
     emitter = Billboarded(mvfx_billboardFixed);
     emitter.orientationMode = mvfx_orientationRandom;
-    Quads(gpu, kernels, &emitter, 1000, 1000, "quads fixed by random orientations");
+    emitter.space = mvfx_spaceLocal;
+    Quads(gpu, kernels, &emitter, 1000, 1000,
+          "quads fixed by random orientations, in the instance's space");
     emitter = Billboarded(mvfx_billboardDirectional);
     Quads(gpu, kernels, &emitter, 1000, 1000, "quads along the velocity, stretched");
 }

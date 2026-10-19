@@ -317,6 +317,11 @@ extern "C"
         double ribbonHeadPlace[3];
         // Its beam as resolved (zeros for an emitter without one).
         mvfxPlannedBeam beam;
+        // The mask of its neighbor grid's keys (a cell's key is pcg4d of
+        // its coordinates, the grid's salt, masked): the least power of
+        // two at least twice the capacity, less one; 0 when its view's
+        // gridCell is 0.
+        uint32_t gridMask;
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
@@ -421,6 +426,11 @@ extern "C"
         // its birth.
         int16_t ribbon;
         int16_t ribbonDistance;
+        // Its neighbors' count (a binary32 value) and the offsets to their
+        // mean place and mean velocity (mvfxNeighborDef).
+        int16_t neighborCount;
+        int16_t neighborCenter;
+        int16_t neighborVelocity;
         int32_t count;
     } mvfxAttributeArrays;
 
@@ -625,6 +635,12 @@ extern "C"
         // How its particles are expanded into quads (mvfxEmitterDef's
         // sprite).
         mvfxSpriteDef sprite;
+        // How it finds neighbors (mvfxEmitterDef's neighbors, its source
+        // resolved to an index: its own for -1; not enabled for none), and
+        // the cells of the grid its particles make for the emitters that
+        // query it (the largest radius among them; 0 when none does).
+        mvfxNeighborDef neighbors;
+        float gridCell;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

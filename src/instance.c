@@ -70,9 +70,7 @@ typedef struct EmitterAt
     uint32_t liquidMask;
 } EmitterAt;
 
-// The entries of a grid's table at a capacity: a power of two at least
-// twice it.
-static uint32_t GridTableSize(int32_t capacity)
+uint32_t mvfxGridTableSize(int32_t capacity)
 {
     uint32_t size = 2;
     while (size < 2u * (uint32_t)capacity)
@@ -100,7 +98,7 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     at->attachTargets = mvfxLayoutAdd(layout, 7u * units, sizeof(float), alignof(float));
     bool self = compiled->unitPoints > 1 && compiled->unit.selfThickness > 0.0f;
     size_t capacity = self ? (size_t)capacities[e] : 0;
-    uint32_t size = self ? GridTableSize(capacities[e]) : 0u;
+    uint32_t size = self ? mvfxGridTableSize(capacities[e]) : 0u;
     at->selfMask = self ? size - 1u : 0u;
     at->selfTable =
         mvfxLayoutAdd(layout, self ? (size_t)size + 1u : 0u, sizeof(int32_t), alignof(int32_t));
@@ -131,7 +129,7 @@ static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, in
     at->rigidCounts = mvfxLayoutAdd(layout, met, sizeof(int32_t), alignof(int32_t));
     size_t pairs = met > 0u ? (size_t)compiled->rigid.bodyContacts * met : 0u;
     size_t grid = pairs > 0u ? met : 0u;
-    uint32_t size = grid > 0u ? GridTableSize(capacity) : 0u;
+    uint32_t size = grid > 0u ? mvfxGridTableSize(capacity) : 0u;
     at->rigidMask = grid > 0u ? size - 1u : 0u;
     at->rigidTable = mvfxLayoutAdd(layout, grid > 0u ? (size_t)size + 1u : 0u, sizeof(int32_t),
                                    alignof(int32_t));
@@ -151,7 +149,7 @@ static void AddLiquid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, i
     {
         return;
     }
-    uint32_t size = GridTableSize(capacity);
+    uint32_t size = mvfxGridTableSize(capacity);
     at->liquidMask = size - 1u;
     at->liquidTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
     at->liquidKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
@@ -167,7 +165,7 @@ static void AddGrid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int
     {
         return;
     }
-    uint32_t size = GridTableSize(capacity);
+    uint32_t size = mvfxGridTableSize(capacity);
     at->gridMask = size - 1u;
     at->gridTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
     at->gridKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
@@ -242,7 +240,7 @@ static void AddContacts(mvfxLayout* layout, const mvfxCompiledEmitter* compiled,
     {
         return;
     }
-    uint32_t size = GridTableSize(capacity);
+    uint32_t size = mvfxGridTableSize(capacity);
     at->contactMask = size - 1u;
     at->contactTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
     at->contactKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
@@ -259,7 +257,7 @@ static void AddPlexus(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, i
     {
         return;
     }
-    uint32_t size = GridTableSize(capacity);
+    uint32_t size = mvfxGridTableSize(capacity);
     at->plexusMask = size - 1u;
     at->plexusTable = mvfxLayoutAdd(layout, (size_t)size + 1u, sizeof(int32_t), alignof(int32_t));
     at->plexusKeys = mvfxLayoutAdd(layout, (size_t)capacity, sizeof(uint32_t), alignof(uint32_t));
