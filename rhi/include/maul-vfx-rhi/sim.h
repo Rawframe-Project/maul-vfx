@@ -62,7 +62,12 @@ extern "C"
 #define MVFX_GPU_SIM_DEF_COOKIE 0x6D767373u
 
     // Why a simulation was refused: the first emitter it cannot run, and
-    // the features of it the part does not run yet.
+    // the features of it the part does not run yet. Contacts
+    // (MVFX_FEATURE_CONTACTS) are refused beside anything that kills
+    // within a step (kill rules, colliders that kill, an attractor's kill
+    // radius), whose killed the CPU path's contacts still see, and beside
+    // ribbons and beams, whose points the CPU path takes before contacts
+    // move the births.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;

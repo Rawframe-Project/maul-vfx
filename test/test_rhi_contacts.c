@@ -54,6 +54,19 @@ static void TestContacts(Gpu* gpu, mvfxGpu* kernels)
     emitter.shape.radius = 0.12f;
     emitter.rate = 2000.0f;
     Touched(gpu, kernels, &emitter, false, 50, "one pass, a cap of two that binds");
+    // Over three passes the caps are counted in the first alone. A short
+    // run: the cap binds from the first steps, and a pair the paths' births
+    // place within rounding of the impulses' reach grows likelier with
+    // every step of so packed a scene.
+    emitter.contacts.iterations = 3;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .steps = 12,
+                   .leastContactsCapped = 50,
+                   .tolerance = 1e-3f,
+                   .adopting = true},
+            "three passes, a cap of two that binds");
     emitter = Touching(3, 32);
     emitter.shape.radius = 0.12f;
     emitter.rate = 2000.0f;
