@@ -88,6 +88,30 @@ static void TestSheets(Gpu* gpu, mvfxGpu* kernels)
     Moved(gpu, kernels, &emitter, false, "sheets of eight by four");
     emitter.space = mvfx_spaceWorld;
     Moved(gpu, kernels, &emitter, true, "sheets in the world, the instance moving");
+    // Sheets in the air: a wind and a turbulent velocity field in a
+    // sphere blow them by their triangles' normal and tangent drag; a
+    // constant force and a field that only pushes take no part in the
+    // air. The air's velocity is its forces' pull over their drag, so
+    // weak ones give it whole while their own drag leaves the sheets
+    // moving through it.
+    static const mvfxForce air[4] = {
+        {.kind = mvfx_forceWind, .vector = {8, 0, 3}, .strength = 0.01f},
+        {.kind = mvfx_forceTurbulence,
+         .strength = 3.0f,
+         .fieldMode = mvfx_fieldVelocity,
+         .tightness = 0.01f,
+         .falloff = {.kind = mvfx_falloffSphere, .center = {0, 0.5f, 0}, .radius = 1.0f},
+         .noise = {.frequency = 2.0f, .octaves = 1, .lacunarity = 1.0f, .gain = 1.0f, .seed = 4}},
+        {.kind = mvfx_forceConstant, .vector = {0, 1, 0}, .strength = 2.0f},
+        {.kind = mvfx_forceTurbulence,
+         .strength = 1.0f,
+         .noise = {.frequency = 0.7f, .octaves = 1, .lacunarity = 1.0f, .gain = 1.0f, .seed = 5}}};
+    emitter = Sheets(8, 4, 2);
+    emitter.forces = air;
+    emitter.forceCount = 4;
+    emitter.unit.normalDrag = 2000.0f;
+    emitter.unit.tangentDrag = 300.0f;
+    Moved(gpu, kernels, &emitter, false, "sheets blown by a wind and a turbulent field");
 }
 
 // A run of an emitter of units that must meet colliders, or must kill.
@@ -429,9 +453,6 @@ static void TestRefused(mvfxGpu* kernels)
     mvfxEmitterDef emitter = Chains(4, 2);
     emitter.unit.tearStrain = 0.5f;
     CHECK(RefusedForUnits(kernels, &emitter), "tearing units refused");
-    emitter = Sheets(4, 4, 2);
-    emitter.unit.normalDrag = 0.5f;
-    CHECK(RefusedForUnits(kernels, &emitter), "sheets in the air refused");
     emitter = Chains(4, 2);
     emitter.unit.selfThickness = 0.02f;
     emitter.unit.selfContacts = 8;

@@ -56,12 +56,12 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 #define UNITS_BESIDE (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
-// names, blown by the air, colliding with themselves or tearing.
+// names, colliding with themselves or tearing.
 static bool UnitsRun(const mvfxEmitterView* view)
 {
     const mvfxUnitDef* u = &view->unit;
-    return (view->features & UNITS_BESIDE) == 0 && u->normalDrag == 0.0f &&
-           u->tangentDrag == 0.0f && u->selfThickness == 0.0f && u->tearStrain == 0.0f;
+    return (view->features & UNITS_BESIDE) == 0 && u->selfThickness == 0.0f &&
+           u->tearStrain == 0.0f;
 }
 
 // Whether the part runs an emitter; what it does not, in refusal.

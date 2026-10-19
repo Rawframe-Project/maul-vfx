@@ -435,28 +435,68 @@ fn forcesAt(x: vec3<f32>, seconds: f32, a: ptr<function, vec3<f32>>, drag: ptr<f
     for (var n = 0u; n < params.forceHead.x; n++) {
         let f = params.forces[n];
         let weight = falloffAt(f, x);
-        if (!(weight > 0.0)) {
-            continue;
-        }
-        switch f.modes.x {
-            case FORCE_CONSTANT: {
-                *a += weight * f.vector.w * f.vector.xyz;
-            }
-            case FORCE_WIND: {
-                *drag += weight * f.vector.w;
-                *a += weight * f.vector.w * f.vector.xyz;
-            }
-            case FORCE_ATTRACTOR: {
-                *a += attract(f, x, weight);
-            }
-            case FORCE_VORTEX: {
-                *a += swirl(f, x, weight);
-            }
-            default: {
-                fieldAt(n, f, x, seconds, weight, a, drag);
-            }
+        if (weight > 0.0) {
+            forceAt(n, f, x, seconds, weight, a, drag);
         }
     }
+}
+
+// Force n's acceleration at x of a weight added to a, and the drag it
+// adds.
+fn forceAt(n: u32, f: Force, x: vec3<f32>, seconds: f32, weight: f32,
+           a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) {
+    switch f.modes.x {
+        case FORCE_CONSTANT: {
+            *a += weight * f.vector.w * f.vector.xyz;
+        }
+        case FORCE_WIND: {
+            *drag += weight * f.vector.w;
+            *a += weight * f.vector.w * f.vector.xyz;
+        }
+        case FORCE_ATTRACTOR: {
+            *a += attract(f, x, weight);
+        }
+        case FORCE_VORTEX: {
+            *a += swirl(f, x, weight);
+        }
+        default: {
+            fieldAt(n, f, x, seconds, weight, a, drag);
+        }
+    }
+}
+
+// Whether a force drags, its drag above 0 as the core's mvfxForceDrag: a
+// wind of a strength above 0, a field pulling toward its velocity at a
+// tightness above 0.
+fn forceDrags(f: Force) -> bool {
+    if (f.modes.x == FORCE_WIND) {
+        return f.vector.w > 0.0;
+    }
+    let field = f.modes.x != FORCE_CONSTANT && f.modes.x != FORCE_ATTRACTOR && f.modes.x != FORCE_VORTEX;
+    return field && f.modes.z == FIELD_VELOCITY && f.extra.w > 0.0;
+}
+
+// The air's velocity at x, seconds after the plan's start, as the core's
+// AirAt: the pull of the forces that drag over their drag, 0 where none
+// reaches.
+fn airAt(x: vec3<f32>, seconds: f32) -> vec3<f32> {
+    var pull = vec3<f32>(0.0);
+    var drag = 0.0;
+    for (var n = 0u; n < params.forceHead.x; n++) {
+        let f = params.forces[n];
+        if (!forceDrags(f)) {
+            continue;
+        }
+        let weight = falloffAt(f, x);
+        if (weight > 0.0) {
+            forceAt(n, f, x, seconds, weight, &pull, &drag);
+        }
+    }
+    var out = vec3<f32>(0.0);
+    for (var k = 0u; drag > 0.0 && k < 3u; k++) {
+        out[k] = quotient(pull[k], drag);
+    }
+    return out;
 }
 
 // Whether a segment passes within radius of a center: its closest point

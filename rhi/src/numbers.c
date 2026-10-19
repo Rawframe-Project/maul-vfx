@@ -818,8 +818,8 @@ static void ShapeRest(const mvfxEmitterView* view, const mvfxStepTables* tables,
 
 // The units: a step across and down as the core's UnitStep takes it before
 // the instance's turn and scale, the angular drag the unit pass turns its
-// points by a substep, and the pins' arrays and kinds.
-static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[28])
+// points by a substep, the pins' arrays and kinds, and the air's drag.
+static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[32])
 {
     const mvfxUnitDef* u = &view->unit;
     units[0] = (uint32_t)(view->unitPoints > 1 ? view->unitPoints : 1);
@@ -845,6 +845,10 @@ static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint
         (u->pinFirst ? MVFX_UNIT_PIN_FIRST : 0u) | (u->pinFirstRow ? MVFX_UNIT_PIN_ROW : 0u);
     units[25] = (uint32_t)u->attach;
     units[26] = mvfxWordOf(a->attachSource);
+    // The air blows sheets alone, as the core's mvfxBlowSheets.
+    bool sheet = u->kind == mvfx_unitSheet;
+    mvfxFloatWords(units + 28, sheet ? u->normalDrag : 0.0f, sheet ? u->tangentDrag : 0.0f, 0.0f,
+                   0.0f);
 }
 
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,

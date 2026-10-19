@@ -906,6 +906,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   source's particles are copied after its step, each unit finds its
   particle by serial and follows its place and orientation, and a unit
   whose particle is gone is let go.
+- The GPU part blows sheets in the air (`mvfxUnitDef`'s `normalDrag` and
+  `tangentDrag`): each point sums its triangles' drag in the CPU path's
+  order, the air's velocity taken from the forces that drag.
 
 ### Fixed
 
