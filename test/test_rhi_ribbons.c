@@ -91,19 +91,20 @@ static void TestSources(Gpu* gpu, mvfxGpu* kernels)
 
 static void TestSourcesFarApart(Gpu* gpu, mvfxGpu* kernels)
 {
-    // By source, some 500 births from another emitter's deaths a step
-    // between births of the emitter's own a step apart: an own birth's
-    // ribbon's point before lies past the look-back's 256, so it starts
-    // the ribbon afresh, as the CPU path finds none.
+    // By source, some 700 births from another emitter's deaths a step
+    // between births of the emitter's own, 100 a second: an own birth's
+    // ribbon's point before (a survivor, or the step's other own birth)
+    // lies past the look-back's 256, so it starts the ribbon afresh, as
+    // the CPU path finds none.
     mvfxEmitterDef emitters[2] = {Sprite(), Ribboned(mvfx_ribbonPerSource, 0.3f)};
     emitters[0].capacity = 16384;
-    emitters[0].rate = 30000.0f;
+    emitters[0].rate = 60000.0f;
     emitters[0].burstCount = 0;
     emitters[0].lifetime = mvfxRangeSource(0.1f, 0.2f);
     emitters[0].events = mvfx_eventMaskDeath;
     emitters[0].eventCapacity = 4096;
     emitters[1].capacity = 16384;
-    emitters[1].rate = 60.0f;
+    emitters[1].rate = 100.0f;
     emitters[1].burstCount = 0;
     emitters[1].lifetime = mvfxRangeSource(0.1f, 0.3f);
     emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
@@ -111,7 +112,7 @@ static void TestSourcesFarApart(Gpu* gpu, mvfxGpu* kernels)
                                               .kind = mvfx_eventDeath,
                                               .minCount = 1,
                                               .maxCount = 1,
-                                              .capacity = 1024};
+                                              .capacity = 2048};
     Compare(gpu, kernels,
             &(Run){.emitters = emitters,
                    .emitterCount = 2,
@@ -120,6 +121,18 @@ static void TestSourcesFarApart(Gpu* gpu, mvfxGpu* kernels)
                    .secondLeast = 1000,
                    .moving = true},
             "by source, the own births past the look-back");
+    // Never broken by distance: an own birth whose point before lies past
+    // the look-back starts at a distance of 0, where one found would
+    // carry the distance on.
+    emitters[1].ribbon.breakDistance = 0.0f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters,
+                   .emitterCount = 2,
+                   .steps = 30,
+                   .least = 1000,
+                   .secondLeast = 1000,
+                   .moving = true},
+            "by source, never broken, the own births past the look-back");
 }
 
 static void TestKilled(Gpu* gpu, mvfxGpu* kernels)
@@ -164,8 +177,9 @@ static void TestMany(Gpu* gpu, mvfxGpu* kernels)
 {
     // Hundreds of births a step, past a workgroup's chunk of the scans and
     // the look-back's 256: one ribbon broken often, its distances summed
-    // along chains of hundreds; then bursts of 700 a firing by batch, a
-    // ribbon each past the chunk and the look-back.
+    // along chains of hundreds; then bursts of 768 a firing by batch, a
+    // ribbon each past the chunk and the look-back, the scans' last run
+    // full (768 is 256 runs of 3).
     mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne, 0.05f);
     emitter.capacity = 16384;
     emitter.rate = 36000.0f;
@@ -179,8 +193,8 @@ static void TestMany(Gpu* gpu, mvfxGpu* kernels)
                    .leastBreaks = 1000},
             "many births a step by the counter");
     static const mvfxBurst bursts[1] = {{.time = 0.0f,
-                                         .minCount = 700,
-                                         .maxCount = 700,
+                                         .minCount = 768,
+                                         .maxCount = 768,
                                          .cycles = 0,
                                          .interval = 0.05f,
                                          .probability = 1.0f}};
@@ -193,7 +207,7 @@ static void TestMany(Gpu* gpu, mvfxGpu* kernels)
     Compare(
         gpu, kernels,
         &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 20, .least = 2000, .moving = true},
-        "bursts of 700 by batch");
+        "bursts of 768 by batch");
 }
 
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
