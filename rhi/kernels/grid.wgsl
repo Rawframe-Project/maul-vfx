@@ -23,6 +23,8 @@
 
 // include: shared/exact.wgsl
 
+// include: shared/curve.wgsl
+
 const NONE: u32 = 0xFFFFFFFFu;
 const CHUNK: u32 = 256u;
 const ITEMS: u32 = 4u;
@@ -37,6 +39,7 @@ const MAX_CELL: f32 = 1073741824.0;
 const GRID_BUILDS: u32 = 1u;
 const GRID_FINDS: u32 = 2u;
 const GRID_OWN: u32 = 4u;
+const GRID_STEERS: u32 = 8u;
 
 // The statistics record's word counting the caps since the instance's
 // last clear (MVFX_GPU_NEIGHBORS_CAPPED).
@@ -59,6 +62,26 @@ struct Grid {
     found: vec4<u32>,
     // The clock at the step's end (two words), unused.
     clock: vec4<u32>,
+    // The anchor's shift over the step, unused: the core's step moves the
+    // places of a world-space emitter by it before anything reads them.
+    shift: vec4<f32>,
+    // Steering and the pair force (grid/steer.wgsl's): what it does, the
+    // path's points and segments, the strength's table; the cruise speed,
+    // the most force, the plan's seconds, the view's cosine; the rules'
+    // weights and the strength's value; their radii squared and the pair
+    // force's; the seek and flee points with their weights; their radii,
+    // the path's weight and radius; the lookahead, the perimeter, the pair
+    // force's inverse radius, whether the path is closed; the path's
+    // points.
+    steer: vec4<u32>,
+    steerScale: vec4<f32>,
+    rules: vec4<f32>,
+    ruleSquares: vec4<f32>,
+    seek: vec4<f32>,
+    flee: vec4<f32>,
+    targets: vec4<f32>,
+    path: vec4<f32>,
+    points: array<vec4<f32>, 32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Grid;
@@ -77,6 +100,8 @@ struct Grid {
 // word of the simulation's otherwise).
 @group(0) @binding(6) var<storage, read> sourceWords: array<u32>;
 @group(0) @binding(7) var<storage, read> sourceCount: array<u32>;
+// The step's baked tables (the pair force's strength).
+@group(0) @binding(8) var<storage, read> grids: array<u32>;
 
 var<workgroup> tally: array<atomic<u32>, CHUNK>;
 var<workgroup> held: u32;
@@ -88,6 +113,13 @@ fn spanOf(capacity: u32) -> u32 {
 
 fn floatAt(first: u32, i: u32) -> f32 {
     return bitcast<f32>(particles[first * params.head.x + i]);
+}
+
+// Particle i's place moved by the anchor's shift, as the core's step
+// moves it first (each coordinate one binary32 sum).
+fn placeOf(i: u32) -> vec3<f32> {
+    let p = params.words.x;
+    return vec3<f32>(floatAt(p, i), floatAt(p + 1u, i), floatAt(p + 2u, i)) + params.shift.xyz;
 }
 
 // A binary32 value's halves by Veltkamp's split, 12 bits each, so that
@@ -158,10 +190,9 @@ fn gridKeys(@builtin(local_invocation_index) local: u32,
             if (i < n) {
                 var key = NONE;
                 if (outlives(i)) {
-                    let p = params.words.x;
-                    key = keyOf(vec3<i32>(cellOf(floatAt(p, i), inverse),
-                                          cellOf(floatAt(p + 1u, i), inverse),
-                                          cellOf(floatAt(p + 2u, i), inverse)),
+                    let at = placeOf(i);
+                    key = keyOf(vec3<i32>(cellOf(at.x, inverse), cellOf(at.y, inverse),
+                                          cellOf(at.z, inverse)),
                                 params.grid.x);
                 }
                 gridWords[i] = key;
@@ -178,8 +209,8 @@ fn gridKeys(@builtin(local_invocation_index) local: u32,
     }
 }
 
-// Grid values: the places and velocities of the grid's particles in its
-// order.
+// Grid values: the places (shifted) and velocities of the grid's
+// particles in its order.
 @compute @workgroup_size(64, 1, 1)
 fn gridValues(@builtin(global_invocation_id) id: vec3<u32>) {
     let c = params.head.x;
@@ -187,8 +218,9 @@ fn gridValues(@builtin(global_invocation_id) id: vec3<u32>) {
     let n = gridCount[0];
     for (var j = id.x; j < n; j += params.head.w * 64u) {
         let i = gridWords[span + j];
+        let at = placeOf(i);
         for (var k = 0u; k < 3u; k++) {
-            gridWords[4u * span + k * c + j] = particles[(params.words.x + k) * c + i];
+            gridWords[4u * span + k * c + j] = bitcast<u32>(at[k]);
             gridWords[4u * span + (3u + k) * c + j] = particles[(params.words.y + k) * c + i];
         }
     }
@@ -235,17 +267,26 @@ fn firstKey(key: u32, n: u32, after: bool) -> u32 {
 }
 
 // What a query found: its neighbors' count and sums, whether it stopped
-// at the cap.
+// at the cap; for one that steers, the flocking rules' counts and sums and
+// the pair force's pulls (the core's mvfxNeighborSums).
 struct Sums {
     count: u32,
     place: vec3<f32>,
     velocity: vec3<f32>,
     capped: bool,
+    aligned: u32,
+    cohered: u32,
+    apart: vec3<f32>,
+    alignedVelocity: vec3<f32>,
+    coheredPlace: vec3<f32>,
+    pull: vec3<f32>,
 }
 
 // Adds the neighbors among a key's entries; false once one more than the
-// most is found.
-fn visitKey(key: u32, skip: u32, place: vec3<f32>, sums: ptr<function, Sums>) -> bool {
+// most is found. A particle that steers adds each counted neighbor to the
+// flocking rules (AddFlock) and the pair force (AddPull) too.
+fn visitKey(key: u32, skip: u32, place: vec3<f32>, heading: vec3<f32>,
+            sums: ptr<function, Sums>) -> bool {
     let c = params.head.y;
     let span = spanOf(c);
     let n = sourceHeld();
@@ -270,77 +311,109 @@ fn visitKey(key: u32, skip: u32, place: vec3<f32>, sums: ptr<function, Sums>) ->
             return false;
         }
         (*sums).count += 1u;
+        var moving = vec3<f32>(0.0);
         for (var k = 0u; k < 3u; k++) {
+            moving[k] = bitcast<f32>(sourceWord(4u * span + (3u + k) * c + j));
             (*sums).place[k] += at[k];
-            (*sums).velocity[k] += bitcast<f32>(sourceWord(4u * span + (3u + k) * c + j));
+            (*sums).velocity[k] += moving[k];
+        }
+        if ((params.steer.x & STEER_FLOCK) != 0u) {
+            addFlock(at, moving, d, square, heading, sums);
+        }
+        if (square < params.ruleSquares.w && square > 0.0) {
+            addPull(d, square, sums);
         }
     }
     return true;
 }
 
+// The neighbors of particle i from the 27 cells about its place (x
+// fastest, then y, then z, a key two cells share visited once), its
+// heading its velocity, as the core's mvfxSearchNeighbors.
+fn walk(i: u32, place: vec3<f32>, heading: vec3<f32>) -> Sums {
+    let inverse = params.cells.y;
+    let cell = vec3<i32>(cellOf(place.x, inverse), cellOf(place.y, inverse),
+                         cellOf(place.z, inverse));
+    var visited: array<u32, 27>;
+    var visits = 0u;
+    var sums = Sums();
+    let skip = select(NONE, i, own());
+    for (var m = 0u; m < 27u; m++) {
+        let around = cell + vec3<i32>(i32(m % 3u) - 1, i32(m / 3u % 3u) - 1, i32(m / 9u) - 1);
+        let key = keyOf(around, params.grid.w);
+        var seen = false;
+        for (var u = 0u; u < visits; u++) {
+            seen = seen || visited[u] == key;
+        }
+        if (seen) {
+            continue;
+        }
+        visited[visits] = key;
+        visits++;
+        if (!visitKey(key, skip, place, heading, &sums)) {
+            break;
+        }
+    }
+    return sums;
+}
+
+// Stores particle i's neighbor count and the offsets to their mean place
+// and velocity, as the core's mvfxStoreNeighbors.
+fn storeNeighbors(i: u32, place: vec3<f32>, velocity: vec3<f32>, sums: Sums) {
+    let c = params.head.x;
+    let any = sums.count > 0u;
+    var inverseCount = 0.0;
+    // Correctly rounded, as the core's: WGSL's division is within 2.5
+    // units in the last place.
+    if (any) {
+        inverseCount = divide(1.0, f32(sums.count));
+    }
+    if (params.words.w != NONE) {
+        particles[params.words.w * c + i] = bitcast<u32>(f32(sums.count));
+    }
+    for (var k = 0u; k < 3u; k++) {
+        let center = select(0.0, sums.place[k] * inverseCount - place[k], any);
+        let mean = select(0.0, sums.velocity[k] * inverseCount - velocity[k], any);
+        if (params.found.x != NONE) {
+            particles[(params.found.x + k) * c + i] = bitcast<u32>(center);
+        }
+        if (params.found.y != NONE) {
+            particles[(params.found.y + k) * c + i] = bitcast<u32>(mean);
+        }
+    }
+}
+
 // Neighbors: each particle that outlives the step given its neighbors'
-// count and the offsets to their mean place and velocity, from the 27
-// cells about it (x fastest, then y, then z, a key two cells share
-// visited once); its caps counted.
+// count and offsets, for an emitter that finds them, then its steering
+// and pull added to its velocity, for one that steers (before update
+// moves it, as the core's mvfxSteerEmitter); its caps counted. Each
+// particle writes only its own words and reads the others' from the grid.
 @compute @workgroup_size(64, 1, 1)
 fn neighbors(@builtin(global_invocation_id) id: vec3<u32>) {
-    let c = params.head.x;
     let live = atomicLoad(&statistics[0]);
+    let finds = (params.grid.y & GRID_FINDS) != 0u;
+    let steers = (params.grid.y & GRID_STEERS) != 0u;
     var capped = 0u;
     for (var i = id.x; i < live; i += params.head.w * 64u) {
         if (!outlives(i)) {
             continue;
         }
-        let p = params.words.x;
         let v = params.words.y;
-        let place = vec3<f32>(floatAt(p, i), floatAt(p + 1u, i), floatAt(p + 2u, i));
+        let place = placeOf(i);
         let velocity = vec3<f32>(floatAt(v, i), floatAt(v + 1u, i), floatAt(v + 2u, i));
-        let inverse = params.cells.y;
-        let cell = vec3<i32>(cellOf(place.x, inverse), cellOf(place.y, inverse),
-                             cellOf(place.z, inverse));
-        var visited: array<u32, 27>;
-        var visits = 0u;
         var sums = Sums();
-        let skip = select(NONE, i, own());
-        for (var m = 0u; m < 27u; m++) {
-            let around = cell + vec3<i32>(i32(m % 3u) - 1, i32(m / 3u % 3u) - 1, i32(m / 9u) - 1);
-            let key = keyOf(around, params.grid.w);
-            var seen = false;
-            for (var u = 0u; u < visits; u++) {
-                seen = seen || visited[u] == key;
-            }
-            if (seen) {
-                continue;
-            }
-            visited[visits] = key;
-            visits++;
-            if (!visitKey(key, skip, place, &sums)) {
-                break;
-            }
+        if (finds) {
+            sums = walk(i, place, velocity);
+            capped += select(0u, 1u, sums.capped);
+            storeNeighbors(i, place, velocity, sums);
         }
-        capped += select(0u, 1u, sums.capped);
-        let any = sums.count > 0u;
-        var inverseCount = 0.0;
-        // Correctly rounded, as the core's: WGSL's division is within 2.5
-        // units in the last place.
-        if (any) {
-            inverseCount = divide(1.0, f32(sums.count));
-        }
-        if (params.words.w != NONE) {
-            particles[params.words.w * c + i] = bitcast<u32>(f32(sums.count));
-        }
-        for (var k = 0u; k < 3u; k++) {
-            let center = select(0.0, sums.place[k] * inverseCount - place[k], any);
-            let mean = select(0.0, sums.velocity[k] * inverseCount - velocity[k], any);
-            if (params.found.x != NONE) {
-                particles[(params.found.x + k) * c + i] = bitcast<u32>(center);
-            }
-            if (params.found.y != NONE) {
-                particles[(params.found.y + k) * c + i] = bitcast<u32>(mean);
-            }
+        if (steers) {
+            steerParticle(i, place, velocity, sums);
         }
     }
     if (capped > 0u) {
         atomicAdd(&statistics[STATISTICS_CAPPED], capped);
     }
 }
+
+// include: grid/steer.wgsl

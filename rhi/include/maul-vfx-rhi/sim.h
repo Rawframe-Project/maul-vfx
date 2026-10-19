@@ -166,8 +166,8 @@ extern "C"
     /// events a step takes (to twice its capacity) for their records; one
     /// whose particles are queried for neighbors 24 bytes a particle of
     /// its capacity, 18,432 a block of 1,024 of them for its grid's sorted
-    /// keys and digit counts, and 100 more; one that finds neighbors in
-    /// another's grid 96 for its numbers.
+    /// keys and digit counts, and 756 more; one that finds neighbors in
+    /// another's grid, or steers, 752 for its numbers.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -660,8 +660,10 @@ extern "C"
     /// and 80 a kill rule it has (8,104 at most), 96 more for one that
     /// writes events (its events' values over life: the clock and the
     /// map, all 1,952 at the first step), 96 more for a beam (its
-    /// curve and noise) and 8 more for one with a neighbor grid (its
-    /// clock, all 96 at the first step); 48 a planned
+    /// curve and noise), and 32 more for one with a neighbor grid (its
+    /// clock and the anchor's shift) or 160 for one that steers or has a
+    /// pair force (its targets too), and 16 a point of its path (all 752
+    /// at the first step); 48 a planned
     /// birth (a plan holds at most twice the emitter's capacity) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts, 16 more for one spawning from events and 4 more for one

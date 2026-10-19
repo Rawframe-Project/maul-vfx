@@ -52,31 +52,6 @@
 #define MVFX_RIBBON_FIRST     (MVFX_SHAPE_FIRST + 16)
 #define MVFX_STEP_WORDS       (MVFX_RIBBON_FIRST + 4)
 
-// The words of a grid pass's numbers (grid.wgsl's Grid); what an emitter
-// does with a neighbor grid: builds one (its particles are queried), finds
-// its neighbors' attributes from its source's, the source being its own;
-// the first of the clock's two words, the only ones a step changes.
-#define MVFX_GRID_WORDS  24
-#define MVFX_GRID_BUILDS 1u
-#define MVFX_GRID_FINDS  2u
-#define MVFX_GRID_OWN    4u
-#define MVFX_GRID_CLOCK  20u
-
-// What an emitter does with a neighbor grid (MVFX_GRID_*, 0 for nothing),
-// own when its source is itself.
-uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own);
-
-// Writes an emitter's grid numbers for a step: its capacity and the
-// source's (0 for a source of none), the workgroups of the block passes
-// and the others; its mask, what it does, the most a query counts and the
-// source's mask; the inverse of its cells and the source's, the radius
-// squared; where a particle's place, velocity, death and neighbor
-// attributes are; the clock at the plan's end. The source is its own for
-// an emitter that finds none.
-void mvfxGridNumbers(const mvfxEmitterView* view, const mvfxEmitterView* source,
-                     const mvfxEmitterPlan* plan, uint32_t mask, uint32_t sourceMask,
-                     int32_t sourceCapacity, bool own, uint32_t words[MVFX_GRID_WORDS]);
-
 // The words a particle of an emitter takes on the GPU: its arrays, the
 // death tick's two words and the step's word.
 #define MVFX_GPU_OWN_WORDS 3
@@ -128,7 +103,46 @@ typedef struct mvfxStepTables
     // The ribbons' width curve and colour gradient over their length.
     uint32_t ribbonWidth;
     uint32_t ribbonColor;
+    // The pair force's strength over the distance.
+    uint32_t pairStrength;
 } mvfxStepTables;
+
+// The words of a grid pass's numbers (grid.wgsl's Grid): 28 of the grid,
+// its query and the anchor's shift, then 160 of steering and the pair
+// force; what an emitter
+// does with a neighbor grid: builds one (its particles are queried), finds
+// its neighbors' attributes from its source's, the source being its own,
+// steers or has a pair force (its query gathers more, and it may steer
+// with no grid); the first of the clock's two words, then the shift's
+// and steering's, the only ones a step changes.
+#define MVFX_GRID_WORDS  188
+#define MVFX_GRID_BUILDS 1u
+#define MVFX_GRID_FINDS  2u
+#define MVFX_GRID_OWN    4u
+#define MVFX_GRID_STEERS 8u
+#define MVFX_GRID_CLOCK  20u
+#define MVFX_GRID_SHIFT  24u
+#define MVFX_GRID_STEER  28u
+
+// Whether steering flocks (grid/steer.wgsl's STEER_FLOCK).
+#define MVFX_STEER_FLOCK 2u
+
+// What an emitter does with a neighbor grid (MVFX_GRID_*, 0 for nothing),
+// own when its source is itself.
+uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own);
+
+// Writes an emitter's grid numbers for a step (its tables' pair strength):
+// its capacity and the
+// source's (0 for a source of none), the workgroups of the block passes
+// and the others; its mask, what it does, the most a query counts and the
+// source's mask; the inverse of its cells and the source's, the radius
+// squared; where a particle's place, velocity, death and neighbor
+// attributes are; the clock at the plan's end; steering's (grid.wgsl's
+// Steering). The source is its own for an emitter that finds none.
+void mvfxGridNumbers(const mvfxEmitterView* view, const mvfxEmitterView* source,
+                     const mvfxEmitterPlan* plan, const mvfxStepTables* tables, uint32_t mask,
+                     uint32_t sourceMask, int32_t sourceCapacity, bool own,
+                     uint32_t words[MVFX_GRID_WORDS]);
 
 // An emitter's values over life records read, in the kernel's order.
 void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECORD_LIVES]);

@@ -46,7 +46,7 @@ typedef struct Run
     bool clearing;
     // Its steps, STEPS for 0; the most the first emitter must hold at
     // some step, 100 for 0, and the second, 65 for 0 (none for -1: its
-    // particles never outlive a step).
+    // particles never outlive a step, or it has no room).
     int32_t steps;
     int32_t least;
     int32_t secondLeast;
@@ -156,6 +156,9 @@ typedef struct Run
     // stopped over the run (none needed for 0).
     bool exactNeighbors;
     int32_t leastCapped;
+    // A quality level both instances play at (the full one for NULL): an
+    // emitter it leaves out has no room on either path.
+    const mvfxQualityLevel* quality;
 } Run;
 
 // The scenes a test runs on the device.

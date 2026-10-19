@@ -101,6 +101,6 @@ curve:
 curve_integral: curve
 grid: allocator half
 force: direction elementary gas_lattice grid noise
-plan_resolved: beam collide depth force instance kill velocity_modules
+plan_resolved: beam collide depth force instance kill steer velocity_modules
 gradient:
 elementary:

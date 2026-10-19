@@ -5,11 +5,12 @@
 // compared after every step (rhi_harness.h): each particle's neighbor
 // count, and the offsets to its neighbors' mean place and velocity, and
 // the queries their cap stopped. Covered: an emitter's own neighbors at
-// rest (the words exact) and moving, another emitter's, a cap that binds,
-// steps whose births do not all fit (the grid kept), places on cell
-// borders where a binary32 product rounds up to the next cell, places far
-// from the origin on both sides, and grids of several sort blocks. Skips
-// (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
+// rest (the words exact) and moving, another emitter's, a cap that binds
+// (and a clear emptying its count), another emitter left out by a quality
+// level, steps whose births do not all fit,
+// places on cell borders and far from the origin on both sides, where a
+// binary32 product rounds up to the next cell, and grids of several sort
+// blocks. Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
@@ -47,12 +48,16 @@ static void TestOwn(Gpu* gpu, mvfxGpu* kernels)
     emitter = Moving(0.15f, 64);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true},
             "an emitter's own neighbors, moving");
-    // A cap of 3 among dense particles: most queries stop at it.
+    // A cap of 3 among dense particles: most queries stop at it. Cleared
+    // at half time, which empties the caps' count.
     emitter = AtRest(0.3f, 3);
-    Compare(
-        gpu, kernels,
-        &(Run){.emitters = &emitter, .emitterCount = 1, .exactNeighbors = true, .leastCapped = 100},
-        "a cap that binds");
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .clearing = true,
+                   .exactNeighbors = true,
+                   .leastCapped = 100},
+            "a cap that binds, cleared at half time");
 }
 
 static void TestAnother(Gpu* gpu, mvfxGpu* kernels)
@@ -65,6 +70,15 @@ static void TestAnother(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].neighbors.source = 0;
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "another emitter's neighbors");
+    // A quality level leaving the first out: the second finds none.
+    static const mvfxQualityLevel lower = {.capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 1};
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters,
+                   .emitterCount = 2,
+                   .moving = true,
+                   .least = -1,
+                   .quality = &lower},
+            "another emitter's neighbors, the other left out");
 }
 
 static void TestNotFitting(Gpu* gpu, mvfxGpu* kernels)

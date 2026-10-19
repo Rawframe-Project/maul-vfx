@@ -228,6 +228,23 @@ extern "C"
         float timeFraction;
     } mvfxPlannedBeam;
 
+    // Steering's targets as resolved for a plan's step (mvfxSteeringDef),
+    // in the particles' space at the plan's start: the seek and flee
+    // points, the path's points (pointCount of them; none when it has no
+    // weight), its segments (one less than its points for an open path)
+    // and a closed path's length, summed over its segments in order; the
+    // cosine of the view's half angle (-1 for a view that sees all).
+    typedef struct mvfxPlannedSteering
+    {
+        float seek[3];
+        float flee[3];
+        float path[MVFX_MAX_PATH_POINTS][3];
+        int32_t pointCount;
+        int32_t segmentCount;
+        float perimeter;
+        float viewCosine;
+    } mvfxPlannedSteering;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -317,6 +334,9 @@ extern "C"
         double ribbonHeadPlace[3];
         // Its beam as resolved (zeros for an emitter without one).
         mvfxPlannedBeam beam;
+        // Its steering's targets as resolved (zeros for an emitter that
+        // does not steer).
+        mvfxPlannedSteering steering;
         // The mask of its neighbor grid's keys (a cell's key is pcg4d of
         // its coordinates, the grid's salt, masked): the least power of
         // two at least twice the capacity, less one; 0 when its view's
@@ -641,6 +661,13 @@ extern "C"
         // query it (the largest radius among them; 0 when none does).
         mvfxNeighborDef neighbors;
         float gridCell;
+        // Its steering (mvfxEmitterDef's steering, the path's points the
+        // effect's copy; not enabled for none; a plan resolves its targets),
+        // and its pair force: the radius (0 for none) and the strength over
+        // the distance as a share of it.
+        mvfxSteeringDef steering;
+        float pairRadius;
+        mvfxLifeView pairStrength;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

@@ -227,15 +227,21 @@ static float RuleSquared(float weight, float radius)
     return weight > 0.0f ? radius * radius : 0.0f;
 }
 
+float mvfxViewCosine(const mvfxSteeringDef* steering)
+{
+    float sine = 0.0f;
+    float cosine = 1.0f;
+    mvfxSinCos(steering->viewAngle, &sine, &cosine);
+    // pi's cosine is -1 within its rounding: a view of pi sees all.
+    return steering->viewAngle >= 3.14159274f ? -1.0f : cosine;
+}
+
 mvfxNeighborQuery mvfxOpenNeighborQuery(const mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxNeighborDef* neighbors = &compiled->neighbors;
     const mvfxSteeringDef* steering = &compiled->steering;
     int32_t source = neighbors->source;
-    float sine = 0.0f;
-    float cosine = 1.0f;
-    mvfxSinCos(steering->viewAngle, &sine, &cosine);
     bool flock = steering->enabled && (steering->separation > 0.0f || steering->alignment > 0.0f ||
                                        steering->cohesion > 0.0f);
     return (mvfxNeighborQuery){
@@ -248,8 +254,7 @@ mvfxNeighborQuery mvfxOpenNeighborQuery(const mvfxInstance* instance, int32_t em
         .separationSquared = RuleSquared(steering->separation, steering->separationRadius),
         .alignmentSquared = RuleSquared(steering->alignment, steering->alignmentRadius),
         .cohesionSquared = RuleSquared(steering->cohesion, steering->cohesionRadius),
-        // pi's cosine is -1 within its rounding: a view of pi sees all.
-        .viewCosine = steering->viewAngle >= 3.14159274f ? -1.0f : cosine,
+        .viewCosine = mvfxViewCosine(steering),
         .pairSquared = compiled->pairRadius * compiled->pairRadius,
         .pairInverse = compiled->pairRadius > 0.0f ? 1.0f / compiled->pairRadius : 0.0f,
         .pairStrength = &compiled->pairStrength,

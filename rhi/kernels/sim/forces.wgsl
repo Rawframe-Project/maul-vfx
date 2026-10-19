@@ -35,25 +35,8 @@ const SOURCE_PARAMETER: u32 = 3u;
 const SOURCE_GRADIENT: u32 = 4u;
 const SOURCE_GRADIENT_OVER_AGE: u32 = 5u;
 const SOURCE_RANGE: u32 = 1u;
-const CURVE_SAMPLES: u32 = 256u;
 
-// A table's binary32 at a word of the grids buffer.
-fn tableAt(at: u32) -> f32 {
-    return bitcast<f32>(grids[at]);
-}
-
-// A baked curve's value at a time, as the core blends it: its samples,
-// then its domain's start and the factor to a sample position.
-fn curveAt(first: u32, time: f32) -> f32 {
-    let last = f32(CURVE_SAMPLES - 1u);
-    var position = (time - tableAt(first + CURVE_SAMPLES)) * tableAt(first + CURVE_SAMPLES + 1u);
-    position = select(position, 0.0, position < 0.0);
-    position = select(position, last, position > last);
-    let index = min(u32(position), CURVE_SAMPLES - 2u);
-    let fraction = position - f32(index);
-    let low = tableAt(first + index);
-    return low + (tableAt(first + index + 1u) - low) * fraction;
-}
+// include: shared/curve.wgsl
 
 // A baked gradient's linear RGBA at t in [0, 1].
 fn gradientTableAt(first: u32, t: f32) -> vec4<f32> {

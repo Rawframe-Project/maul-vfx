@@ -457,7 +457,7 @@ static int64_t s_neighborsCompared;
 // The neighbor attributes of the GPU's particle g against the CPU path's
 // particle c, where the emitter has them: the count exactly, the offsets
 // as words or, as each is a mean less the particle's own place or
-// velocity, within the tolerance of that place or velocity.
+// velocity, within the tolerance of that place, or of both velocities.
 static bool SameNeighbors(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
 {
     const mvfxAttributeArrays* a = &s_arrays;
@@ -482,8 +482,11 @@ static bool SameNeighbors(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t
             mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeNeighborCenterX + k));
         const float* mean =
             mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeNeighborVelocityX + k));
+        // The mean velocity is the neighbors', each within the tolerance of
+        // its own size, as the particle's is of its.
         float dc = fabsf(FloatOf(a->neighborCenter + k, g) - center[c]) / (1.0f + fabsf(p[c]));
-        float dv = fabsf(FloatOf(a->neighborVelocity + k, g) - mean[c]) / (1.0f + fabsf(v[c]));
+        float dv = fabsf(FloatOf(a->neighborVelocity + k, g) - mean[c]) /
+                   (2.0f + fabsf(v[c]) + fabsf(mean[c] + v[c]));
         same = same && dc <= s_tolerance && dv <= s_tolerance;
     }
     return same;
@@ -2093,6 +2096,8 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     effectDef.emitterCount = run->emitterCount;
     effectDef.parameters = run->parameters;
     effectDef.parameterCount = run->parameterCount;
+    effectDef.qualityLevels = run->quality;
+    effectDef.qualityLevelCount = run->quality != NULL ? 1 : 0;
     CHECK(mvfxCreateEffect(s_context, &effectDef, effectOut) == mvfx_success, "effect");
     for (int32_t e = 0; e < run->emitterCount; ++e)
     {
@@ -2103,6 +2108,7 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = *effectOut;
     instanceDef.seed = 11;
+    instanceDef.quality = run->quality != NULL ? 1 : 0;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_cpu) == mvfx_success, "a CPU instance");
     instanceDef.planned = true;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_planned) == mvfx_success, "planned");
@@ -2232,6 +2238,13 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         }
         for (int32_t e = 0; same && e < run->emitterCount; ++e)
         {
+            // An emitter of no room has no buffers to read.
+            mvfxGpuParticles held;
+            if (mvfxGpuSim_GetParticles(sim, e, &held) == mvfx_success && held.capacity == 0)
+            {
+                same = mvfxContextInstance(s_context, s_cpu)->emitters[e].count == 0;
+                continue;
+            }
             if (!ReadBack(gpu, sim, e))
             {
                 printf("step %d: emitter %d not read back\n", s, e);
@@ -2276,7 +2289,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
             CHECK(s_childrenLeft <= bound, "children left out within the bound");
         }
     }
-    CHECK(same && (!eventful || s_events > 0) && most[0] >= (run->least > 0 ? run->least : 100) &&
+    CHECK(same && (!eventful || s_events > 0) && most[0] >= (run->least != 0 ? run->least : 100) &&
               (run->emitterCount < 2 || most[1] >= (run->secondLeast != 0 ? run->secondLeast : 65)),
           what);
     if (run->colliding)

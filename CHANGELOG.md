@@ -836,3 +836,18 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `neighborCount`, `neighborCenter`, `neighborVelocity`). Births start
   with no neighbors, as on the CPU path. Every emitter's step uploads 16
   bytes more (1,960), and one with a grid 8 more.
+- The GPU part steers (`MVFX_FEATURE_STEERING`) and runs pair forces
+  (`MVFX_FEATURE_PAIR_FORCE`) as the CPU path does: the neighbor query
+  gathers flocking's sums and the pulls, and seeking, fleeing and path
+  following steer toward targets a plan gives resolved
+  (`mvfxEmitterPlan.steering`, `mvfxPlannedSteering`), all added to the
+  velocity before the step moves it. An emitter's view gives its
+  steering def and pair force (`mvfxEmitterView.steering`, `pairRadius`,
+  `pairStrength`). A grid's step uploads 32 bytes, one that steers 160
+  and 16 a point of its path.
+
+### Fixed
+
+- The GPU part's neighbor grid moves a world-space emitter's places by
+  the anchor's shift before it reads them, as the CPU path's step does;
+  a moving instance's grid was built from the places before the shift.

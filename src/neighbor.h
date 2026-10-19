@@ -100,6 +100,10 @@ typedef struct mvfxNeighborSums
 // The query of a valid emitter that finds neighbors.
 mvfxNeighborQuery mvfxOpenNeighborQuery(const mvfxInstance* instance, int32_t emitter);
 
+// The cosine of a steering view's half angle, -1 for one that sees all
+// (pi, whose cosine is -1 within its rounding).
+float mvfxViewCosine(const mvfxSteeringDef* steering);
+
 // The neighbors of a particle at a place, heading along its velocity.
 mvfxNeighborSums mvfxSearchNeighbors(const mvfxNeighborQuery* query, int32_t particle,
                                      const float place[3], const float velocity[3]);

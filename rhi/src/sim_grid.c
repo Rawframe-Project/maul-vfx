@@ -22,6 +22,10 @@
 #define GRID_VALUES    (GRID_PASSES - 2)
 #define GRID_NEIGHBORS (GRID_PASSES - 1)
 
+// The grid module's bindings: the buffers of GRID_BUFFERS' order with the
+// particles and statistics after the numbers, then the step's tables.
+#define GRID_BINDINGS (GRID_BUFFERS + 3)
+
 static_assert(GRID_RADIX + 2 * MVFX_SORT_PASSES == GRID_VALUES, "a pass for each radix kernel");
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
@@ -88,8 +92,9 @@ void mvfxSimGridNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)
     }
     int32_t s = emitter->gridSource >= 0 ? emitter->gridSource : e;
     const Emitter* source = &sim->emitters[s];
-    mvfxGridNumbers(&sim->views[e], &sim->views[s], plan, emitter->gridMask, source->gridMask,
-                    source->capacity, emitter->gridSource == e, emitter->gridNumberWords);
+    mvfxGridNumbers(&sim->views[e], &sim->views[s], plan, &emitter->tables, emitter->gridMask,
+                    source->gridMask, source->capacity, emitter->gridSource == e,
+                    emitter->gridNumberWords);
 }
 
 // The buffers the grid passes bind for an emitter: its numbers and its
@@ -129,11 +134,11 @@ static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* 
 }
 
 // Whether an emitter's grid pass p runs: the write always, the keys, the
-// sort and the values when it builds, the query when it finds.
+// sort and the values when it builds, the query when it finds or steers.
 static bool Runs(const Emitter* emitter, int32_t p)
 {
     uint32_t needs = p == GRID_WRITE       ? emitter->gridFlags
-                     : p == GRID_NEIGHBORS ? MVFX_GRID_FINDS
+                     : p == GRID_NEIGHBORS ? MVFX_GRID_FINDS | MVFX_GRID_STEERS
                                            : MVFX_GRID_BUILDS;
     return (emitter->gridFlags & needs) != 0;
 }
@@ -160,7 +165,7 @@ bool mvfxAddSimGridPasses(mvfxGpuSim* sim, Emitter* emitter)
     const mrhiAccess written[2] = {
         {.resource = g[GRID_NUMBERS], .kind = mrhi_accessCopyDestination},
         {.resource = g[GRID_COUNT], .kind = mrhi_accessCopyDestination}};
-    const mrhiAccess used[GRID_BUFFERS + 2] = {
+    const mrhiAccess used[GRID_BINDINGS] = {
         {.resource = g[GRID_NUMBERS], .kind = mrhi_accessUniform},
         {.resource = r[BUFFER_CURRENT], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessStorageReadWrite},
@@ -168,7 +173,8 @@ bool mvfxAddSimGridPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = g[GRID_DIGITS], .kind = mrhi_accessStorageReadWrite},
         {.resource = g[GRID_COUNT], .kind = mrhi_accessStorageReadWrite},
         {.resource = g[GRID_SOURCE_WORDS], .kind = mrhi_accessStorageRead},
-        {.resource = g[GRID_SOURCE_COUNT], .kind = mrhi_accessStorageRead}};
+        {.resource = g[GRID_SOURCE_COUNT], .kind = mrhi_accessStorageRead},
+        {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessStorageRead}};
     const mrhiAccess sorted[3] = {
         {.resource = g[GRID_COUNT], .kind = mrhi_accessStorageRead},
         {.resource = g[GRID_WORDS], .kind = mrhi_accessStorageReadWrite},
@@ -180,19 +186,32 @@ bool mvfxAddSimGridPasses(mvfxGpuSim* sim, Emitter* emitter)
     {
         bool radix = p >= GRID_RADIX && p < GRID_VALUES;
         added = !Runs(emitter, p) || AddPass(sim, mrhi_passGraphics, radix ? sorted : used,
-                                             radix ? 3 : GRID_BUFFERS + 2, &emitter->gridPasses[p]);
+                                             radix ? 3 : GRID_BINDINGS, &emitter->gridPasses[p]);
     }
     return added;
 }
 
+// The words of an emitter's grid numbers a step after the first changes:
+// the clock's and the shift's, and for one that steers on to its path's
+// last point.
+static uint32_t StepWords(const Emitter* emitter)
+{
+    if ((emitter->gridFlags & MVFX_GRID_STEERS) == 0)
+    {
+        return MVFX_GRID_STEER - MVFX_GRID_CLOCK;
+    }
+    uint32_t points = emitter->gridNumberWords[MVFX_GRID_STEER + 1];
+    return MVFX_GRID_STEER + 32u + 4u * points - MVFX_GRID_CLOCK;
+}
+
 // Records the write of the grid's numbers: all of them at the first step,
-// the clock's words after; its count emptied at the first.
+// those a step changes after; its count emptied at the first.
 static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->gridPasses[GRID_WRITE];
     const mrhiResourceId* g = emitter->gridResources;
     uint32_t first = emitter->gridNumbersWritten ? MVFX_GRID_CLOCK : 0u;
-    uint32_t words = emitter->gridNumbersWritten ? 2u : MVFX_GRID_WORDS;
+    uint32_t words = emitter->gridNumbersWritten ? StepWords(emitter) : MVFX_GRID_WORDS;
     bool empties = (emitter->gridFlags & MVFX_GRID_BUILDS) != 0 && !emitter->gridEmptied;
     bool recorded =
         mrhiBeginPass(sim->device, pass) == mrhi_success &&
@@ -212,7 +231,7 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
                          const mrhiResourceId* bound, int32_t count, const uint32_t* root,
                          uint32_t groups)
 {
-    mrhiBinding bindings[GRID_BUFFERS + 2];
+    mrhiBinding bindings[GRID_BINDINGS];
     for (int32_t b = 0; b < count; ++b)
     {
         bindings[b] =
@@ -254,12 +273,12 @@ bool mvfxRecordSimGrid(mvfxGpuSim* sim, Emitter* emitter)
     }
     const mrhiResourceId* g = emitter->gridResources;
     const mrhiResourceId* r = emitter->resources;
-    const mrhiResourceId bound[GRID_BUFFERS + 2] = {
-        g[GRID_NUMBERS], r[BUFFER_CURRENT], r[BUFFER_STATISTICS], g[GRID_WORDS],
-        g[GRID_DIGITS],  g[GRID_COUNT],     g[GRID_SOURCE_WORDS], g[GRID_SOURCE_COUNT]};
+    const mrhiResourceId bound[GRID_BINDINGS] = {
+        g[GRID_NUMBERS], r[BUFFER_CURRENT],    r[BUFFER_STATISTICS], g[GRID_WORDS],  g[GRID_DIGITS],
+        g[GRID_COUNT],   g[GRID_SOURCE_WORDS], g[GRID_SOURCE_COUNT], r[BUFFER_GRIDS]};
     const uint32_t* words = emitter->gridNumberWords;
     const mrhiPassId* passes = emitter->gridPasses;
-    int32_t count = GRID_BUFFERS + 2;
+    int32_t count = GRID_BINDINGS;
     bool recorded = RecordWrite(sim, emitter);
     if (recorded && Runs(emitter, GRID_KEYS))
     {

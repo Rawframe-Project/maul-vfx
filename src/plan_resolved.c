@@ -8,6 +8,7 @@
 #include "depth.h"
 #include "force.h"
 #include "kill.h"
+#include "steer.h"
 #include "velocity_modules.h"
 
 #include <math.h>
@@ -102,6 +103,8 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
     plan->killOnCollision = collision->killOnCollision;
     memcpy(plan->parameters, instance->parameters, sizeof plan->parameters);
     mvfxResolveBeam(instance, emitter, &plan->beam);
+    // At the plan's start, as its step began.
+    mvfxResolveSteering(instance, emitter, &instance->planFrom, &plan->steering);
     plan->depth = (mvfxPlannedDepth){0};
     if (state->hasDepth)
     {

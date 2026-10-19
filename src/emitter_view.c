@@ -237,6 +237,10 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->sprite = e->sprite;
     viewOut->neighbors = e->neighbors;
     viewOut->gridCell = e->gridCell;
+    viewOut->steering = e->steering;
+    viewOut->steering.path.points = e->steering.enabled ? &e->pathPoints[0][0] : nullptr;
+    viewOut->pairRadius = e->pairRadius;
+    viewOut->pairStrength = LifeOf(&e->pairStrength);
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
         .breakDistance = e->ribbonBreakDistance,

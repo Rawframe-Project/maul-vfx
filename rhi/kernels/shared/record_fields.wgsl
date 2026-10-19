@@ -3,7 +3,6 @@
 // particle's values become a record's fields in a layout of the host's.
 
 const NONE: u32 = 0xFFFFFFFFu;
-const CURVE_SAMPLES: u32 = 256u;
 
 const ORDER_REVERSED: u32 = 1u;
 const ORDER_SORTED: u32 = 2u;
@@ -138,22 +137,7 @@ fn vectorAt(first: u32, i: u32) -> vec3<f32> {
     return vec3<f32>(floatAt(first, i), floatAt(first + 1u, i), floatAt(first + 2u, i));
 }
 
-// A baked table's binary32 at a word of the grids buffer.
-fn tableAt(at: u32) -> f32 {
-    return bitcast<f32>(grids[at]);
-}
-
-// A baked curve's value at a time, as the core blends it.
-fn curveAt(first: u32, time: f32) -> f32 {
-    let last = f32(CURVE_SAMPLES - 1u);
-    var position = (time - tableAt(first + CURVE_SAMPLES)) * tableAt(first + CURVE_SAMPLES + 1u);
-    position = select(position, 0.0, position < 0.0);
-    position = select(position, last, position > last);
-    let index = min(u32(position), CURVE_SAMPLES - 2u);
-    let fraction = position - f32(index);
-    let low = tableAt(first + index);
-    return low + (tableAt(first + index + 1u) - low) * fraction;
-}
+// include: shared/curve.wgsl
 
 // A baked gradient's linear RGBA at t in [0, 1].
 fn gradientAt(first: u32, t: f32) -> vec4<f32> {

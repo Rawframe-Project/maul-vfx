@@ -45,7 +45,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
      MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
-     MVFX_FEATURE_NEIGHBORS)
+     MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -217,7 +217,8 @@ static_assert(MVFX_GPU_EVENTS_WRITTEN == MVFX_RECORD_EVENTS, "the events' count,
 static_assert(MVFX_GPU_EVENT_SERIALS == MVFX_RECORD_EVENT_SERIALS,
               "the event births' serials, as the record's");
 
-static_assert(MVFX_GPU_TABLES >= 2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES + 1 + MVFX_RECORD_LIVES,
+static_assert(MVFX_GPU_TABLES >=
+                  2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES + 1 + MVFX_RECORD_LIVES + 2 + 1,
               "room for every table");
 
 // Places the baked tables of an emitter's sources and values over life,
@@ -255,6 +256,9 @@ static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
         mvfxAddTable(layout, ribbons ? view->ribbon.width.curve : nullptr, MVFX_CURVE_SAMPLES + 2);
     emitter->tables.ribbonColor =
         mvfxAddTable(layout, ribbons ? view->ribbon.color : nullptr, 4 * MVFX_CURVE_SAMPLES);
+    emitter->tables.pairStrength =
+        mvfxAddTable(layout, view->pairRadius > 0.0f ? view->pairStrength.curve : nullptr,
+                     MVFX_CURVE_SAMPLES + 2);
 }
 
 // Sizes an emitter's memory by its plan and makes it: the host's
