@@ -277,7 +277,10 @@ void mvfxSpawnNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     head[4] = (uint32_t)plan->owed;
     head[5] = (uint32_t)(plan->owed >> 32u);
     head[6] = 6u * (uint32_t)plan->capacity + 4u * (uint32_t)hostRecords;
-    head[7] = 2u * (uint32_t)plan->capacity;
+    // The births' room, twice the capacity, in units for an emitter of
+    // units (a birth a unit).
+    head[7] =
+        2u * (uint32_t)plan->capacity / (uint32_t)(view->unitPoints > 1 ? view->unitPoints : 1);
     const double* anchor = sourcePlan->anchorAfter;
     const double* own = plan->anchorAfter;
     const double* start = plan->from.origin;

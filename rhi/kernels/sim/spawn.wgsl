@@ -82,7 +82,7 @@ fn birthCount() -> u32 {
     if (!spawning()) {
         return params.counts.y * unitPoints();
     }
-    return events[spawnWord(SPAWN_BIRTHS)];
+    return events[spawnWord(SPAWN_BIRTHS)] * unitPoints();
 }
 
 // The points a birth gives: a unit's, 1 for a particle.

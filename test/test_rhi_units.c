@@ -135,7 +135,12 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.colliderCount = 1;
     emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
     emitter.eventCapacity = 4096;
+    // Sizes over life, which a contact's event takes at the life it met
+    // the contact with.
+    emitter.overLife.size = (mvfxSizeOverLife){
+        .enabled = true, .size = {{.value = 1, .curve = {.keys = keys, .keyCount = 2}}}};
     Met(gpu, kernels, &emitter, false, "chains' births, deaths and first contacts");
+    emitter.overLife.size = (mvfxSizeOverLife){0};
     emitter.colliders = own;
     emitter.colliderCount = 2;
     emitter.events = 0;
@@ -244,6 +249,36 @@ static void TestHostBirths(Gpu* gpu, mvfxGpu* kernels)
            "the host's chains");
 }
 
+static void TestEventBirths(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Chains born from a sprite emitter's deaths, a birth a chain, in the
+    // world's space and the instance's.
+    mvfxEmitterDef emitters[2] = {Sprite(), Chains(4, 2)};
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 4096;
+    emitters[1].rate = 0.0f;
+    emitters[1].burstCount = 0;
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventDeath,
+                                              .minCount = 1,
+                                              .maxCount = 2,
+                                              .inheritVelocity = 0.5f,
+                                              .capacity = 128};
+    Beside(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2},
+           "chains born from another emitter's deaths");
+    emitters[0].space = mvfx_spaceWorld;
+    emitters[1].space = mvfx_spaceWorld;
+    Beside(gpu, kernels,
+           &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .pace = 0.001},
+           "chains born from deaths, in the world's space");
+    // Room for 16 chains: births past it refused whole.
+    emitters[1].capacity = 64;
+    emitters[1].eventSpawn.capacity = 16;
+    Beside(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .secondLeast = 48},
+           "chains born from deaths past their room");
+}
+
 // Whether a planned instance of an effect of one emitter is refused on the
 // GPU for its units.
 static bool RefusedForUnits(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
@@ -301,6 +336,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestNeighbors(gpu, kernels);
     TestContacts(gpu, kernels);
     TestHostBirths(gpu, kernels);
+    TestEventBirths(gpu, kernels);
 }
 
 int main(void)

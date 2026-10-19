@@ -53,7 +53,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 // What units do not run beside yet: colliders, kill rules and events,
 // which a substep's move would meet on its own span; ribbons and beams;
 // the grid's readers; the host's particles.
-#define UNITS_BESIDE (MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
+#define UNITS_BESIDE (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
 // names, and none pinned, attached, blown by the air, colliding with

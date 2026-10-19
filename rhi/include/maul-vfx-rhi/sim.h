@@ -69,7 +69,7 @@ extern "C"
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Units (MVFX_FEATURE_UNITS) are refused pinned or
     // attached, in the air (normal or tangent drag), colliding with
-    // themselves or tearing, spawning from events, or drawn as ribbons.
+    // themselves or tearing, or drawn as ribbons.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;

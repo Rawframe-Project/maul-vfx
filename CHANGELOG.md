@@ -891,6 +891,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   of its capacity for its particles' facts, 12 more than before.
 - The GPU part runs units beside neighbors, steering, a pair force,
   contacts and the host's births.
+- The GPU part runs units born from another emitter's events, a birth a
+  unit, their room counted in units.
 
 ### Fixed
 

@@ -345,7 +345,7 @@ fn wholeUnit(first: u32, local: u32) {
 // as the core's RemoveKilled takes the units it appended.
 fn wholeBirths(group: u32, local: u32) {
     let points = unitPoints();
-    for (var b = group; b < params.counts.y; b += params.units.w) {
+    for (var b = group; b < birthCount() / points; b += params.units.w) {
         let first = b * points;
         if (local == 0u) {
             atomicExchange(&unitKilled, 0u);
