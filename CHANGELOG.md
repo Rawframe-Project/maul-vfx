@@ -915,6 +915,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxAttributeArrays` gains the torn edges. On both paths a unit's
   tear events now join the step's after its substeps with its contacts,
   point by point (its contact, its tear across, its tear down).
+- The GPU part draws units as ribbons: each unit is a ribbon of its
+  first point's serial with its points' distances along it, and a torn
+  chain's ribbon splits where it tore, as on the CPU path.
 
 ### Fixed
 

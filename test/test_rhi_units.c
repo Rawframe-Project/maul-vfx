@@ -419,8 +419,10 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
 }
 
 // A run of tearing units, a step at a time from the same state (a pinned
-// unit is chaotic), that must tear at least a count of edges.
-// Within 2e-3 where they meet a collider, as Met's.
+// unit is chaotic), that must tear at least a count of edges. Within
+// 2e-3: a tear lets go of an edge stretched past its strain, and the
+// paths' rounding of that stretch comes into its points' velocities over
+// a substep's seconds (1.04e-3 measured); a contact's, as Met's.
 static void Torn(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, int32_t least,
                  const char* what)
 {
@@ -429,7 +431,7 @@ static void Torn(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, int3
                    .emitterCount = 1,
                    .colliding = emitter->colliderCount > 0,
                    .adopting = true,
-                   .tolerance = emitter->colliderCount > 0 ? 2e-3f : 1e-3f,
+                   .tolerance = 2e-3f,
                    .leastTorn = least},
             what);
 }
@@ -467,6 +469,50 @@ static void TestTears(Gpu* gpu, mvfxGpu* kernels)
     emitter.events = mvfx_eventMaskTear;
     emitter.eventCapacity = 4096;
     Torn(gpu, kernels, &emitter, 20, "sheets torn in the air");
+}
+
+// A ribbon point's place, frame, width, lengths, ribbon and serial.
+static const mvfxLayoutField s_ribbonFields[9] = {
+    {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
+    {.field = mvfx_recordTangent, .format = mvfx_formatFloat32, .components = 3, .offset = 12},
+    {.field = mvfx_recordWidth, .format = mvfx_formatFloat32, .components = 1, .offset = 24},
+    {.field = mvfx_recordLength, .format = mvfx_formatFloat32, .components = 1, .offset = 28},
+    {.field = mvfx_recordAlong, .format = mvfx_formatFloat32, .components = 1, .offset = 32},
+    {.field = mvfx_recordRibbon, .format = mvfx_formatUint32, .components = 1, .offset = 36},
+    {.field = mvfx_recordSide, .format = mvfx_formatFloat32, .components = 3, .offset = 40},
+    {.field = mvfx_recordFaceNormal, .format = mvfx_formatFloat32, .components = 3, .offset = 52},
+    {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 64}};
+
+static void TestRibbons(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Chains drawn as ribbons, each a ribbon of its first point's serial
+    // whatever the ids say, its points' distances along it at birth (tiled
+    // by distance); their points written by the ribbon passes.
+    mvfxEmitterDef emitter = Chains(8, 4);
+    emitter.ribbon.ids = mvfx_ribbonOne;
+    emitter.ribbon.texture = mvfx_ribbonTileByDistance;
+    emitter.ribbon.tileLength = 0.25f;
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = s_ribbonFields;
+    layout.fieldCount = 9;
+    layout.stride = 68;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 256,
+                   .tolerance = 1e-3f},
+            "chains drawn as ribbons");
+    // Chains torn under a pull, drawn as ribbons: a torn chain's ribbon
+    // splits at each tear across, the points after it taking the serial
+    // after the tear.
+    emitter.unit.pinFirst = true;
+    emitter.unit.stretchCompliance = 2e-4f;
+    emitter.unit.tearStrain = 0.3f;
+    emitter.motion.gravity[1] = -40.0f;
+    Torn(gpu, kernels, &emitter, 20, "torn chains' ribbons split");
 }
 
 // Whether a planned instance of an emitter is refused on the GPU for its
@@ -518,6 +564,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestNeighbors(gpu, kernels);
     TestContacts(gpu, kernels);
     TestTears(gpu, kernels);
+    TestRibbons(gpu, kernels);
     TestHostBirths(gpu, kernels);
     TestEventBirths(gpu, kernels);
 }

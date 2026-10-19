@@ -68,7 +68,7 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Units (MVFX_FEATURE_UNITS) are refused colliding
-    // with themselves or drawn as ribbons.
+    // with themselves or in a beam.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;

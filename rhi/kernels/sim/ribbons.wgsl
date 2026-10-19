@@ -102,16 +102,24 @@ fn birthPlace(first: u32, j: u32) -> vec3<f32> {
 }
 
 // Whether birth j takes the counter's ribbon: every birth by the counter,
-// one not of an event by source, none by batch.
+// one not of an event by source, none by batch, none of a unit.
 fn takesCounter(j: u32) -> bool {
+    if (unitPoints() > 1u) {
+        return false;
+    }
     let ids = params.ribbon.x;
     return ids == RIBBON_ONE || (ids == RIBBON_PER_SOURCE && birthWord(j, 2u).w == 0u);
 }
 
-// Birth j's fixed id: its batch's first serial (its serial less its batch
-// index; an event birth's batch index is 0), or by source its event's
-// particle's serial (in its host record's free word).
+// Birth j's fixed id: a unit's point its unit's first point's serial (a
+// unit is a ribbon, as the core's AssignRibbon); its batch's first serial
+// (its serial less its batch index; an event birth's batch index is 0),
+// or by source its event's particle's serial (in its host record's free
+// word).
 fn fixedId(j: u32) -> u32 {
+    if (unitPoints() > 1u) {
+        return birthWord(j, 0u).x * unitPoints();
+    }
     if (params.ribbon.x == RIBBON_PER_SOURCE) {
         let host = birthWord(j, 2u).y;
         return births[6u * params.counts.x + 4u * host + 3u].w & ~RIBBON_COUNTER_TAG;

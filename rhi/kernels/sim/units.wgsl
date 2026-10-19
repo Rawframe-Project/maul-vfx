@@ -594,6 +594,21 @@ fn tearPoint(first: u32, q: u32, scale: f32, tick: u32) {
     }
 }
 
+// A torn chain's ribbon at point q of the unit from its first point, as
+// the core's SplitRibbons walks it: the serial of the point after the
+// nearest torn edge across before it, else its first point's id.
+fn splitRibbon(first: u32, q: u32) {
+    let c = params.counts.x;
+    var id = source[params.words.ribbon * c + first];
+    for (var k = q; k >= 1u; k--) {
+        if ((tornOf(first + k - 1u) & 1u) != 0u) {
+            id = source[params.words.serial * c + first + k];
+            break;
+        }
+    }
+    source[params.words.ribbon * c + first + q] = id;
+}
+
 // Projects the distance between points a and b of weights wa and wb
 // toward rest, as the core's Project.
 fn projectPair(a: u32, b: u32, rest: f32, compliance: f32, wa: f32, wb: f32) {
@@ -740,6 +755,15 @@ fn units(@builtin(local_invocation_index) local: u32,
             if (params.unitTears.x != NONE) {
                 for (var q = local; q < points; q += CHUNK) {
                     tearPoint(first, q, scale, to);
+                }
+            }
+            if (params.unitTears.x != NONE && params.words.ribbon != NONE) {
+                // A torn unit drawn as ribbons splits them where it tore;
+                // its first point's id never changes.
+                storageBarrier();
+                workgroupBarrier();
+                for (var q = max(local, 1u); atomicLoad(&unitTore) != 0u && q < points; q += CHUNK) {
+                    splitRibbon(first, q);
                 }
             }
             // The integrator's velocity and the constraints' correction over

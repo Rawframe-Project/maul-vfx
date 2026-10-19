@@ -50,10 +50,9 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
-// What units do not run beside yet: colliders, kill rules and events,
-// which a substep's move would meet on its own span; ribbons and beams;
-// the grid's readers; the host's particles.
-#define UNITS_BESIDE (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
+// What units do not run beside: a beam, whose points are placed, not
+// moved.
+#define UNITS_BESIDE MVFX_FEATURE_BEAM
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
 // names or colliding with themselves.
