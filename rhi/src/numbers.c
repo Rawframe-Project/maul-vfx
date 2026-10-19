@@ -794,6 +794,33 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
     words[31] = 0xFFFFFFFFu;
 }
 
+// The rigid particles (sim/rigid.wgsl's numbers): the shape, the
+// substeps (0 for particles that are not rigid), the sleep's first word,
+// a hull's vertices; the density, the sleep speed and time, a hull's
+// volume at a size of 1; its second moments; how the size goes over life
+// (whether, its input, whether a value an axis) and the hull's table, its
+// speed range, and the sizes over life (a value and its table each).
+static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t rigid[32])
+{
+    const mvfxRigidDef* r = &view->rigid;
+    const uint32_t head[4] = {r->shape, r->enabled ? (uint32_t)r->substeps : 0u,
+                              mvfxWordOf(view->arrays.sleep), (uint32_t)view->hullVertexCount};
+    memcpy(rigid, head, sizeof head);
+    mvfxFloatWords(rigid + 4, r->density, r->sleepSpeed, r->sleepTime, view->hullVolume);
+    mvfxFloatWords(rigid + 8, view->hullMoments[0], view->hullMoments[1], view->hullMoments[2],
+                   view->hullMoments[3]);
+    mvfxFloatWords(rigid + 12, view->hullMoments[4], view->hullMoments[5], 0.0f, 0.0f);
+    const mvfxOverLifeView* o = &view->overLife;
+    const uint32_t size[4] = {o->size ? 1u : 0u, o->sizeInput, o->perAxis ? 1u : 0u, tables->hull};
+    memcpy(rigid + 16, size, sizeof size);
+    mvfxFloatWords(rigid + 20, o->sizeRange[0], o->sizeRange[1], 0.0f, 0.0f);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        memcpy(&rigid[24 + 2 * k], &o->sizes[k].value, sizeof(float));
+        rigid[25 + 2 * k] = tables->recordLives[1 + k];
+    }
+}
+
 // The beam as resolved for the step (sim.wgsl's beam, beamNoise and
 // beamPoints): none without one.
 static void Beam(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t* at)
@@ -941,5 +968,6 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     uint32_t* ribbon = words + MVFX_RIBBON_FIRST;
     ribbon[0] = view->ribbon.ids;
     memcpy(&ribbon[1], &view->ribbon.breakDistance, sizeof(float));
+    Rigid(view, tables, words + MVFX_RIGID_FIRST);
     Units(view, plan, words + MVFX_UNITS_FIRST);
 }

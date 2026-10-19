@@ -98,6 +98,7 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSelf, "selfGather"},
     {mvfx_containerSelf, "selfPart"},
     {mvfx_containerSelf, "selfCommit"},
+    {mvfx_containerSim, "rigid"},
 };
 
 struct mvfxGpu

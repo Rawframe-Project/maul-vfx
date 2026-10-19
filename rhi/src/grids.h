@@ -22,8 +22,9 @@
 // of its 16 sources, a curve for each of its 6 values over life the step
 // reads, its colour's gradient over life, a curve for each of the 12
 // values over life its records read, its ribbons' width curve and colour
-// gradient, and its pair force's strength curve.
-#define MVFX_GPU_TABLES 54
+// gradient, its pair force's strength curve and its rigid hull's
+// vertices.
+#define MVFX_GPU_TABLES 55
 
 // A baked table in the buffer: its values (the effect's) and words, and
 // its first word.

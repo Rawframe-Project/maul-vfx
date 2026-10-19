@@ -273,6 +273,21 @@ struct Step {
     // How births join ribbons: the ids (mvfxRibbonIds, 0 for none), the
     // break distance (binary32 bits); unused.
     ribbon: vec4<u32>,
+    // Its rigid particles (rhi/kernels/sim/rigid.wgsl): the shape
+    // (mvfxRigidShape), the substeps (0 for particles that are not
+    // rigid), the sleep's first word (NONE for none), a hull's vertices;
+    // the density, the sleep speed and time, a hull's volume at a size of
+    // 1; its second moments of volume (xx, yy, zz, xy, xz, yz); how the
+    // size goes over life (whether, its input, whether a value an axis)
+    // and the hull's vertices' table (three words a vertex at a size of 1),
+    // its speed range; the sizes over life (a value's bits and its table's
+    // first word each).
+    rigid: vec4<u32>,
+    rigidMass: vec4<f32>,
+    rigidMoments: array<vec4<f32>, 2>,
+    rigidSize: vec4<u32>,
+    rigidSizeRange: vec4<f32>,
+    rigidLives: array<vec4<u32>, 2>,
     // Its units (rhi/kernels/sim/units.wgsl): the points a unit has (1
     // for particles) and across a row, the substeps, the unit pass's
     // workgroups; the step
@@ -372,3 +387,5 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/beam.wgsl
 
 // include: sim/units.wgsl
+
+// include: sim/rigid.wgsl

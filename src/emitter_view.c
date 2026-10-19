@@ -8,6 +8,9 @@
 #include "emitter_view.h"
 
 #include "effect_api.h"
+#include "hull.h"
+
+#include <string.h>
 
 // A bit when a part is used.
 static uint64_t If(bool used, uint64_t bit)
@@ -210,6 +213,7 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
         .attachFlags = ArrayOf(plan, mvfx_attributeAttachFlags),
         .attachSource = ArrayOf(plan, mvfx_attributeAttachSource),
         .torn = ArrayOf(plan, mvfx_attributeTorn),
+        .sleep = ArrayOf(plan, mvfx_attributeSleep),
         .count = plan->arrayCount,
     };
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
@@ -270,6 +274,14 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     for (int32_t k = 0; k < 4; ++k)
     {
         viewOut->unitRests[k] = e->unitRests[k];
+    }
+    viewOut->rigid = e->rigid;
+    if (e->hull != nullptr)
+    {
+        viewOut->hullVertexCount = e->hull->vertexCount;
+        viewOut->hullVertices = &e->hull->vertices[0][0];
+        viewOut->hullVolume = e->hull->volume;
+        memcpy(viewOut->hullMoments, e->hull->moments, sizeof viewOut->hullMoments);
     }
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,

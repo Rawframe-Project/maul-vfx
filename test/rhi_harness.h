@@ -115,7 +115,7 @@ typedef struct Run
     bool exact;
     const mvfxView* view;
     // A mesh made in the run's context for its emitters of a mesh shape
-    // (none for NULL); new positions it takes at half time, as a skinned
+    // and its rigid hulls' (none for NULL); new positions it takes at half time, as a skinned
     // mesh does (none for NULL); a second mesh both instances' first
     // emitter is bound to at half time (none for NULL); and the bytes the
     // simulation keeps for a mesh beyond the first.
@@ -185,11 +185,13 @@ typedef struct Run
     // 0).
     int32_t leastLinks;
     int32_t leastDropped;
-    // Whether the CPU path takes the GPU's places and velocities after
-    // each step, which then compares one step from the same state:
-    // contacts decide on places the paths hold within the tolerance, and
-    // a pair that close to touching may touch on one path only, which
-    // would part the paths for the rest of the run.
+    // Whether the CPU path takes the GPU's places and velocities (and a
+    // rigid body's orientation, angular velocity and sleep) after each
+    // step, which then compares one step from the same state: contacts
+    // decide on places the paths hold within the tolerance, and a pair
+    // that close to touching may touch on one path only, which would part
+    // the paths for the rest of the run; a body tumbling about its middle
+    // axis carries a rounding's difference further each step.
     bool adopting;
 } Run;
 

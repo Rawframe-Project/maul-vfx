@@ -29,9 +29,9 @@ fn moveLive(i: u32) {
         return;
     }
     let start = readVector(0u, i, params.words.place) + params.shift.xyz;
-    if (unitPoints() > 1u) {
-        // A unit's point: shifted and turned here, moved by the unit pass
-        // (sim/units.wgsl) after.
+    if (unitPoints() > 1u || params.rigid.y > 0u) {
+        // A unit's point or a rigid body: shifted here, moved by the unit
+        // pass (sim/units.wgsl) or the rigid pass (sim/rigid.wgsl) after.
         holdUnitPoint(i, start);
         return;
     }
@@ -362,7 +362,12 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
         moved_place = born;
         moved_velocity = vec3<f32>(0.0);
     }
-    storeBirthPlaces(j, born, moved_place);
+    let rigid = params.rigid.y > 0u;
+    if (rigid) {
+        // A rigid body is written as born, then moved by its substeps.
+        moved_place = born;
+        moved_velocity = bornVelocity;
+    }
     var birth = vec2<u32>(0u);
     var death = vec2<u32>(0u);
     birthTicks(b0, b1, &birth, &death);
@@ -387,9 +392,18 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
         moved[params.unitTears.x * c + at] = 0u;
     }
     storeValues(j, at);
-    // Born at age 0, turned over the rest of the plan.
-    let angular = factors(bitcast<f32>(params.turns.y), remainderOf(j)).xy;
-    turn(1u, at, angular, lifeAt(LIFE_ROTATION, 0.0));
+    if (rigid) {
+        // Awake, as the core's births.
+        for (var k = 0u; params.rigid.z != NONE && k < 4u; k++) {
+            moved[(params.rigid.z + k) * c + at] = 0u;
+        }
+        moved_place = rigidNewborn(at, b0.z);
+    } else {
+        // Born at age 0, turned over the rest of the plan.
+        let angular = factors(bitcast<f32>(params.turns.y), remainderOf(j)).xy;
+        turn(1u, at, angular, lifeAt(LIFE_ROTATION, 0.0));
+    }
+    storeBirthPlaces(j, born, moved_place);
     return moved_place;
 }
 

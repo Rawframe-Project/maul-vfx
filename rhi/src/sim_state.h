@@ -45,7 +45,8 @@ enum
     PASS_UPDATE = 2,
     PASS_KILL = 3,
     // Its units moved by substeps and its births of units killed whole
-    // (sim/units.wgsl), when it has units.
+    // (sim/units.wgsl), when it has units; or its rigid particles moved by
+    // substeps (sim/rigid.wgsl).
     PASS_UNITS = 4,
     PASS_REDUCE = 5,
     PASS_OFFSETS = 6,
@@ -221,6 +222,8 @@ typedef struct Emitter
     // pass's workgroups.
     bool units;
     uint32_t unitGroups;
+    // Whether its particles are rigid bodies (sim/rigid.wgsl).
+    bool rigid;
     bool contacts;
     int32_t contactIterations;
     mrhiBufferId contactBuffers[CONTACT_BUFFERS];

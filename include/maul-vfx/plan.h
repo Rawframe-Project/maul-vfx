@@ -472,6 +472,11 @@ extern "C"
         int16_t attachFlags;
         int16_t attachSource;
         int16_t torn;
+        // A rigid body's sleep (mvfxRigidDef.sleepSpeed): its still time in
+        // seconds, or below 0 asleep (-1 before its first sleeping substep,
+        // -2 after), then the acceleration its forces gave it as it fell
+        // asleep (3); four words in all.
+        int16_t sleep;
         int32_t count;
     } mvfxAttributeArrays;
 
@@ -707,6 +712,17 @@ extern "C"
         int32_t unitPoints;
         int32_t unitWidth;
         float unitRests[4];
+        // Its rigid particles (mvfxEmitterDef's rigid; not enabled for
+        // none), and for a hull its shape at a size of 1 on each axis about
+        // its centroid, which a body's size scales along its axes: its
+        // vertices (x, y and z each; NULL for none, owned by the effect),
+        // its volume and its second moments of volume (xx, yy, zz, xy, xz,
+        // yz).
+        mvfxRigidDef rigid;
+        int32_t hullVertexCount;
+        const float* hullVertices;
+        float hullVolume;
+        float hullMoments[6];
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

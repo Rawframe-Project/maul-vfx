@@ -932,6 +932,13 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   substep a pass between the unit pass's halves moving each point by its
   touching pairs' mean. `MVFX_GPU_SELF_CAPPED` counts the points whose
   candidates passed the most (`MVFX_GPU_STATISTICS_WORDS` is now 52).
+- The GPU part runs rigid particles that meet nothing (not colliding, beside
+  nothing that kills within a step): each body's substeps turn its angular
+  velocity by the gyroscopic term with its shape's mass at its size, move
+  it as a particle and hold it asleep; a newborn takes the rest of its
+  step's substeps; a body alone falls asleep once still for the sleep time.
+  `mvfxEmitterView` gains the rigid def and a hull's vertices, volume and
+  second moments, and `mvfxAttributeArrays` a rigid body's sleep.
 
 ### Fixed
 

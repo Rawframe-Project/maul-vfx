@@ -46,7 +46,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
      MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
-     MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS)
+     MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -65,6 +65,12 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                              (view->kills ||
                               (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
                          ? MVFX_FEATURE_CONTACTS
+                         : 0) |
+                    // Rigid particles meet nothing yet, and their births
+                    // are not killed in their first step's substeps.
+                    ((view->features & MVFX_FEATURE_RIGID) != 0 &&
+                             ((view->features & MVFX_FEATURE_COLLISION) != 0 || view->kills)
+                         ? MVFX_FEATURE_RIGID
                          : 0),
     };
     return refusal->features == 0;
@@ -209,7 +215,7 @@ static_assert(MVFX_GPU_EVENT_SERIALS == MVFX_RECORD_EVENT_SERIALS,
               "the event births' serials, as the record's");
 
 static_assert(MVFX_GPU_TABLES >=
-                  2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES + 1 + MVFX_RECORD_LIVES + 2 + 1,
+                  2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES + 1 + MVFX_RECORD_LIVES + 2 + 1 + 1,
               "room for every table");
 
 // Places the baked tables of an emitter's sources and values over life,
@@ -250,6 +256,8 @@ static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
     emitter->tables.pairStrength =
         mvfxAddTable(layout, view->pairRadius > 0.0f ? view->pairStrength.curve : nullptr,
                      MVFX_CURVE_SAMPLES + 2);
+    emitter->tables.hull =
+        mvfxAddTable(layout, view->hullVertices, 3u * (uint32_t)view->hullVertexCount);
 }
 
 // Allocates an emitter's staging of its host births and its host's
@@ -294,6 +302,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     // A unit a workgroup of the unit pass, at most a dispatch's.
     int32_t points = sim->views[e].unitPoints;
     emitter->units = points > 1 && plan.capacity > 0;
+    emitter->rigid = sim->views[e].rigid.enabled && plan.capacity > 0;
     int32_t units = points > 1 ? plan.capacity / points : 0;
     emitter->unitGroups = (uint32_t)(units < 65535 ? (units > 0 ? units : 1) : 65535);
     emitter->pinsHead = sim->views[e].ribbon.pinHead;
@@ -507,7 +516,7 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
     {
         if ((p != PASS_RIBBONS || emitter->ribbons) && (p != PASS_BEAM || emitter->beam) &&
             (p != PASS_REBOX || emitter->contacts) &&
-            (p != PASS_UNITS || (emitter->units && !emitter->selfCollides)))
+            (p != PASS_UNITS || (emitter->units && !emitter->selfCollides) || emitter->rigid))
         {
             order[count++] = p;
         }
@@ -907,6 +916,8 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
         mvfxRecordSimGrid(sim, emitter) &&
         mvfxRecordSimKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
         mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
+        (!emitter->rigid ||
+         mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelRigid, groups)) &&
         (!emitter->units ||
          (emitter->selfCollides ? mvfxRecordSimSelf(sim, emitter)
                                 : mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelUnits,

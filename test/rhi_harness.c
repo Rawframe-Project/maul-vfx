@@ -40,9 +40,9 @@
 // device's first frame may compile the kernels it dispatches (lavapipe
 // does, without its shader cache, a minute on a loaded machine; the unit
 // pass alone took 25 s), and a run's first dispatches every kernel the
-// run does, those the warm-up does not among them (units' and
-// self-collision's); and every frame after it, so a kernel that hangs
-// fails in seconds.
+// run does, those the warm-up does not among them (units', rigid
+// particles', self-collision's); and every frame after it, so a kernel
+// that hangs fails in seconds.
 #define WARM_WAIT_NS  300000000000ull
 #define FRAME_WAIT_NS 20000000000ull
 static uint64_t s_waitNs = WARM_WAIT_NS;
@@ -513,7 +513,8 @@ static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
                 SameValue(cpu, e, g, c, a->spin, mvfx_attributeSpin, 1, false) &&
                 SameValue(cpu, e, g, c, a->orientation, mvfx_attributeOrientationX, 4, false) &&
                 SameValue(cpu, e, g, c, a->angular, mvfx_attributeAngularX, 3, false) &&
-                SameValue(cpu, e, g, c, a->drag, mvfx_attributeDrag, 1, false);
+                SameValue(cpu, e, g, c, a->drag, mvfx_attributeDrag, 1, false) &&
+                SameValue(cpu, e, g, c, a->sleep, mvfx_attributeSleep, 4, false);
     for (int32_t n = 0; same && n < compiled->customCount; ++n)
     {
         same = SameValue(cpu, e, g, c, a->custom[n], mvfx_attributeCustom + 4 * n,
@@ -1519,8 +1520,9 @@ static bool SwapOutputPlaces(bool in)
     return true;
 }
 
-// Gives the CPU path's emitter the GPU's places and velocities, read back
-// last: false when its pool is not the GPU's, serial by serial.
+// Gives the CPU path's emitter the GPU's places and velocities (and a
+// rigid body's turn and sleep), read back last: false when its pool is
+// not the GPU's, serial by serial.
 static bool AdoptGpu(int32_t e)
 {
     mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
@@ -1536,15 +1538,27 @@ static bool AdoptGpu(int32_t e)
         printf("the pools differ: %d particles, GPU %u\n", count, s_record[0]);
         return false;
     }
-    for (int32_t k = 0; k < 3; ++k)
+    // Places and velocities; a rigid body's orientation, angular velocity
+    // and sleep where it stores them.
+    const struct
     {
-        float* places = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributePositionX + k));
-        float* velocities =
-            mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeVelocityX + k));
-        for (int32_t i = 0; i < count; ++i)
+        int16_t first;
+        mvfxAttribute attribute;
+        int32_t components;
+    } adopted[5] = {{s_arrays.position, mvfx_attributePositionX, 3},
+                    {s_arrays.velocity, mvfx_attributeVelocityX, 3},
+                    {s_arrays.orientation, mvfx_attributeOrientationX, 4},
+                    {s_arrays.angular, mvfx_attributeAngularX, 3},
+                    {s_arrays.sleep, mvfx_attributeSleep, 4}};
+    for (int32_t a = 0; a < 5; ++a)
+    {
+        for (int32_t k = 0; adopted[a].first >= 0 && k < adopted[a].components; ++k)
         {
-            places[i] = FloatOf(s_arrays.position + k, i);
-            velocities[i] = FloatOf(s_arrays.velocity + k, i);
+            float* values = mvfxAttributeArray(cpu, e, (mvfxAttribute)(adopted[a].attribute + k));
+            for (int32_t i = 0; i < count; ++i)
+            {
+                values[i] = FloatOf(adopted[a].first + k, i);
+            }
         }
     }
     return true;
@@ -2293,6 +2307,11 @@ static const mvfxEmitterDef* WithGrid(const Run* run)
         if (run->mesh != NULL && s_emitters[e].shape.kind == mvfx_shapeMesh)
         {
             s_emitters[e].shape.mesh = s_mesh;
+        }
+        if (run->mesh != NULL && s_emitters[e].rigid.enabled &&
+            s_emitters[e].rigid.shape == mvfx_rigidHull)
+        {
+            s_emitters[e].rigid.hull = s_mesh;
         }
         for (int32_t f = 0; f < s_emitters[e].forceCount; ++f)
         {

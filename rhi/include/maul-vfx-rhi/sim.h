@@ -67,7 +67,8 @@ extern "C"
     // within a step (kill rules, colliders that kill, an attractor's kill
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
-    // move the births.
+    // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
+    // colliding or beside anything that kills within a step.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -787,9 +788,9 @@ extern "C"
     /// spawning from events, 4 more each for one drawn as ribbons, finding
     /// neighbors, with contacts, of units that tear and of units that
     /// collide with themselves, and 8 more for one with plexus links; at
-    /// the first step,
-    /// its sources' 1,424 and the effect's baked tables its values read
-    /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
+    /// the first step, its sources' 1,552 and the effect's baked tables
+    /// its values read (1,032 a curve, 4,096 a gradient, 12 a vertex of a
+    /// rigid hull); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,
     /// after each move in the room the def keeps; and a mesh shape's mesh

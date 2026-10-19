@@ -121,6 +121,8 @@ typedef enum mvfxKernel
     mvfx_kernelSelfGather = 49,
     mvfx_kernelSelfPart = 50,
     mvfx_kernelSelfCommit = 51,
+    // An emitter's rigid particles moved by substeps (sim.wgsl).
+    mvfx_kernelRigid = 52,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 
