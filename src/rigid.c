@@ -7,6 +7,7 @@
 #include "collide.h"
 #include "depth.h"
 #include "direction.h"
+#include "event.h"
 #include "integrate.h"
 #include "rigid_body.h"
 #include "rigid_contact.h"
@@ -643,6 +644,8 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
     int32_t count = state->count;
     mvfxRigidSolve s = SolveOf(instance, emitter);
     memset(state->rigidFlags, 0, (size_t)count);
+    // Strikes join the step's events body by body after the substeps.
+    mvfxBeginHeldEvents(instance, emitter, count);
     for (int32_t k = 0; k < s.rigid->substeps; ++k)
     {
         int64_t from = SubstepTick(instance, s.rigid->substeps, k);
@@ -652,6 +655,7 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
             Substep(&s, 0, count, from, to, true);
         }
     }
+    mvfxEndHeldEvents(instance, emitter, count);
     if (s.sleep != nullptr)
     {
         int64_t ticks = instance->clock - instance->stepStart;

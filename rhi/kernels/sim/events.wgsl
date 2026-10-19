@@ -185,11 +185,17 @@ struct Event {
 
 // Writes an event at its place, in the world, unless past the capacity.
 fn writeEvent(at: u32, e: Event) {
+    writeEventAt(at, e, planTick(e.tick));
+}
+
+// writeEvent at an absolute tick (two words) in place of its tick of the
+// plan: an ended death's, which may lie before the plan (a strike's life
+// loss moved it into the rest of the last step).
+fn writeEventAt(at: u32, e: Event, tick: vec2<u32>) {
     if (at >= params.fateHead.z) {
         return;
     }
     let w = params.fateHead.w + EVENT_WORDS * at;
-    let tick = planTick(e.tick);
     let place = worldPlace(e.place, e.placeTick);
     let velocity = worldVector(e.velocity, e.placeTick);
     var normal = vec3<f32>(0.0);
@@ -251,8 +257,7 @@ fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
     if (g.x > 0u) {
         // Ended: where the step found it, at its death tick.
         var e = liveEvent(i, EVENT_DEATH, 0u, place + params.shift.xyz, velocity);
-        e.tick = liveDeath(i).x - params.start.x;
-        writeEvent((*at).x, e);
+        writeEventAt((*at).x, e, liveDeath(i));
         (*at).x += 1u;
         return;
     }
@@ -317,7 +322,8 @@ fn writeBirthEvents(j: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
     var bornVelocity = vec3<f32>(0.0);
     var place = vec3<f32>(0.0);
     var velocity = vec3<f32>(0.0);
-    let fate = bornFacts(j, &born, &bornVelocity, &place, &velocity);
+    var turning = Turning();
+    let fate = bornFacts(j, &born, &bornVelocity, &place, &velocity, &turning);
     var birth = vec2<u32>(0u);
     var death = vec2<u32>(0u);
     birthTicks(b0, b1, &birth, &death);
@@ -330,9 +336,14 @@ fn writeBirthEvents(j: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
     if (writes(EVENT_COLLISION) && (accepted[j] & BIRTH_CONTACT) != 0u) {
         e.kind = EVENT_COLLISION;
         e.tick = contactTick(b0.z, params.counts.z - b0.z, fate.first.t);
+        e.velocity = velocity;
+        if (fate.tick != 0u) {
+            // A rigid body's first strike, as it was.
+            e.tick = fate.tick;
+            e.velocity = fate.velocity;
+        }
         e.placeTick = e.tick;
         e.place = fate.first.point;
-        e.velocity = velocity;
         e.normal = fate.first.normal;
         writeEvent((*at).z, e);
         (*at).z += 1u;

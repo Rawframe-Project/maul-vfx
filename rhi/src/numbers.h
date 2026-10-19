@@ -54,10 +54,12 @@ static inline uint32_t mvfxWordOf(int16_t array)
 // unchanged from step to step and uploaded once, 16 a source, 8 of the
 // frame's and mesh index's draws, 4 of the bounds' growth by size, 4 of
 // how particles turn and move, 12 of the values over life, 12 of how it
-// spawns from events, 16 of the shape, 4 of how births join ribbons, 32
+// spawns from events, 16 of the shape, 4 of how births join ribbons, 36
 // of the rigid particles and 40 of the units, but for their last 4 (their
 // frames', which the host's frames change from step to step, uploaded each
-// step for units held to them).
+// step for units held to them). The layout plan budgets them at 16 KiB:
+// they grow only for what the sim kernel's own entries read, a solver
+// with kernels of its own carrying its own numbers.
 #define MVFX_VALUES_FIRST     (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
 #define MVFX_VALUES_WORDS     140
 #define MVFX_BEAM_WORDS       24
@@ -69,10 +71,11 @@ static inline uint32_t mvfxWordOf(int16_t array)
 #define MVFX_SHAPE_FIRST      (MVFX_SPAWN_RULE_FIRST + 12)
 #define MVFX_RIBBON_FIRST     (MVFX_SHAPE_FIRST + 16)
 #define MVFX_RIGID_FIRST      (MVFX_RIBBON_FIRST + 4)
-#define MVFX_UNITS_FIRST      (MVFX_RIGID_FIRST + 32)
+#define MVFX_UNITS_FIRST      (MVFX_RIGID_FIRST + 36)
 #define MVFX_UNIT_TEARS       (MVFX_UNITS_FIRST + 32)
 #define MVFX_UNIT_FRAMES      (MVFX_UNITS_FIRST + 36)
 #define MVFX_STEP_WORDS       (MVFX_UNITS_FIRST + 40)
+static_assert(MVFX_STEP_WORDS * 4 <= 16384, "the step's numbers within their 16 KiB");
 // The words of a host frame for units held to the host's frames: its
 // origin, then its rotation.
 #define MVFX_FRAME_WORDS 8u

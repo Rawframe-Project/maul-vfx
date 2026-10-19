@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Rigid particles that meet nothing on a real device (lavapipe on CI)
-// beside the CPU path, compared after every step (rhi_harness.h): their
-// places, velocities, orientations, angular velocities and sleep within
-// the tolerance (masses and the gyroscopic turn take square roots and
-// division). Covered: spheres, capsules, boxes and hulls of sizes unequal
-// along their axes tumbling under gravity and drag over several substeps
-// (the gyroscopic term turning those of unequal inertias), newborns
-// taking the rest of their step's substeps, sizes over life by age and by
-// speed, in the world's space under a moving instance, and bodies coming
-// to rest in a drag and falling asleep alone; what is still refused
-// (collision, kills within a step). Skips (77) without an adapter, unless
-// MVFX_RHI_REQUIRED is set.
+// Rigid particles on a real device (lavapipe on CI) beside the CPU path,
+// compared after every step (rhi_harness.h): their places, velocities,
+// orientations, angular velocities and sleep within the tolerance (masses
+// and the gyroscopic turn take square roots and division). Covered:
+// spheres, capsules, boxes and hulls of sizes unequal along their axes
+// tumbling under gravity and drag over several substeps (the gyroscopic
+// term turning those of unequal inertias), newborns taking the rest of
+// their step's substeps, sizes over life by age and by speed, in the
+// world's space under a moving instance, and bodies coming to rest in a
+// drag and falling asleep alone; spheres and capsules meeting planes,
+// spheres and boxes from outside and in, the emitter's and the
+// instance's, bouncing, rubbing and rolling, their strikes' events,
+// counts and life lost (killing at once or past their age), newborns
+// striking in their first step, and the contacts past the most dropped
+// and counted; what is still refused (boxes and hulls colliding, grids,
+// depth images, bodies meeting each other, kills within a step). Skips
+// (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
@@ -62,6 +67,41 @@ static void Tumbled(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, b
             what);
 }
 
+// Bodies of a shape thrown down at colliders, living a second, bouncing
+// back a share of their speed, their births, deaths and collisions
+// written.
+static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* colliders, int32_t count)
+{
+    mvfxEmitterDef emitter = Bodies(shape);
+    emitter.lifetime = mvfxRangeSource(0.8f, 1.2f);
+    emitter.velocity.direction[1] = -1.0f;
+    emitter.colliders = colliders;
+    emitter.colliderCount = count;
+    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.rigid.restitution = 0.4f;
+    emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
+    emitter.eventCapacity = 4096;
+    return emitter;
+}
+
+// Compares colliding bodies a step at a time from the same state: a
+// contact's friction holds or lets go, and a strike bounces or not, by its
+// load and speed, which the paths' masses (binary32 here) part by their
+// rounding, and a capsule lying flat on a face has its deepest point
+// anywhere along it; a body near a collider may go apart (rhi_apart.h),
+// at most 48 of the scene's, about 400 near at a step: an error in the
+// solve parts most of them.
+static void Met(Gpu* gpu, mvfxGpu* kernels, const Run* scene, const char* what)
+{
+    Run run = *scene;
+    run.emitterCount = 1;
+    run.colliding = !run.killing;
+    run.adopting = true;
+    run.tolerance = 1e-3f;
+    run.mostApart = 48;
+    Compare(gpu, kernels, &run, what);
+}
+
 static void TestShapes(Gpu* gpu, mvfxGpu* kernels)
 {
     static const char* const names[4] = {"spheres tumbling", "capsules tumbling", "boxes tumbling",
@@ -104,6 +144,110 @@ static void TestSizes(Gpu* gpu, mvfxGpu* kernels)
     Tumbled(gpu, kernels, &emitter, false, "boxes sized by their speed");
 }
 
+static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Spheres and capsules thrown down on a sloped floor: they bounce,
+    // then roll or slide down it, held by friction where it holds.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0.2f}};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, &floor, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres bounced off a sloped floor");
+    emitter = Thrown(mvfx_rigidCapsule, &floor, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules bounced off a sloped floor");
+    // Five floors through one line, each its own patch: a capsule lying on
+    // them has ten contacts, two past the most.
+    static const mvfxCollider floors[5] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}},
+        {.kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0.002f, 1, 0}},
+        {.kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {-0.002f, 1, 0}},
+        {.kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0.002f}},
+        {.kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, -0.002f}}};
+    emitter = Thrown(mvfx_rigidCapsule, floors, 5);
+    emitter.events = 0;
+    Met(gpu, kernels, &(Run){.emitters = &emitter, .leastRigidCapped = 1},
+        "capsules lying on five floors, contacts dropped");
+}
+
+static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Kept within a sphere and within a turned box, each face of it its
+    // own patch.
+    static const mvfxCollider bowl = {.kind = mvfx_colliderSphere, .inside = true, .radius = 0.9f};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidCapsule, &bowl, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules within a sphere");
+    static const mvfxCollider crate = {.kind = mvfx_colliderBox,
+                                       .inside = true,
+                                       .halfExtents = {0.8f, 0.8f, 0.8f},
+                                       .rotation = {0, 0.19866933f, 0, 0.98006658f}};
+    emitter = Thrown(mvfx_rigidSphere, &crate, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres within a turned box");
+    emitter = Thrown(mvfx_rigidCapsule, &crate, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules within a turned box");
+    // Kept out of a sphere and a turned box over a floor: capsules landing
+    // across the box's edges rest on the lines where their cores cross
+    // its faces.
+    static const mvfxCollider obstacles[3] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -0.9f, 0}, .normal = {0, 1, 0}},
+        {.kind = mvfx_colliderSphere, .center = {0.3f, -0.6f, 0}, .radius = 0.25f},
+        {.kind = mvfx_colliderBox,
+         .center = {-0.25f, -0.7f, 0.1f},
+         .halfExtents = {0.3f, 0.15f, 0.25f},
+         .rotation = {0.0499792f, 0.0998334f, 0, 0.99374f}}};
+    emitter = Thrown(mvfx_rigidSphere, obstacles, 3);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres on a sphere and a box");
+    emitter = Thrown(mvfx_rigidCapsule, obstacles, 3);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules on a sphere and a box");
+    // The instance's floor too, in the world's space under a moving
+    // instance.
+    static const mvfxCollider ground = {
+        .kind = mvfx_colliderPlane, .center = {0, -1.0f, 0}, .normal = {0, 1, 0}};
+    emitter = Thrown(mvfx_rigidCapsule, obstacles + 1, 2);
+    emitter.space = mvfx_spaceWorld;
+    emitter.collision.hostColliders = true;
+    Met(gpu, kernels,
+        &(Run){.emitters = &emitter,
+               .moving = true,
+               .pace = 0.001,
+               .hostColliders = &ground,
+               .hostColliderCount = 1},
+        "capsules in the world on the instance's floor, the instance moving");
+}
+
+static void TestStrikes(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Each strike takes a share of the life left: bodies bouncing on a
+    // floor die past their age, their sizes over life at the life left.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
+    static const mvfxCurveKey grow[2] = {
+        {.time = 0, .value = 0.5f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 1.5f, .interpolation = mvfx_interpolationLinear}};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, &floor, 1);
+    emitter.collision.lifeLoss = 0.9f;
+    emitter.rigid.restitution = 0.8f;
+    emitter.overLife.size = (mvfxSizeOverLife){
+        .enabled = true, .size = {{.value = 1.0f, .curve = {.keys = grow, .keyCount = 2}}}};
+    Met(gpu, kernels, &(Run){.emitters = &emitter, .killing = true},
+        "spheres losing life at each strike");
+    // A strike taking all of it kills at once; newborns thrown fast from
+    // just above the floor strike in their first step.
+    emitter = Thrown(mvfx_rigidCapsule, &floor, 1);
+    emitter.collision.lifeLoss = 1.0f;
+    emitter.shape.radius = 0.1f;
+    emitter.shape.offset[1] = -0.35f;
+    emitter.velocity.speed = (mvfxRange){20, 30};
+    Met(gpu, kernels, &(Run){.emitters = &emitter, .killing = true, .least = -1},
+        "capsules killed by their first strike, newborns too");
+}
+
+// Compares bodies coming to rest over the whole run, neither path taking
+// the other's state: a settling scene is not chaotic, so the masses'
+// rounding (binary32 here) must not carry them apart.
+static void Settled(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, const char* what)
+{
+    Compare(gpu, kernels, &(Run){.emitters = emitter, .emitterCount = 1, .tolerance = 1e-4f}, what);
+}
+
 static void TestSleep(Gpu* gpu, mvfxGpu* kernels)
 {
     // No gravity and a strong drag: bodies come to rest within their life
@@ -115,7 +259,20 @@ static void TestSleep(Gpu* gpu, mvfxGpu* kernels)
     emitter.lifetime = mvfxRangeSource(1.0f, 1.5f);
     emitter.rigid.sleepSpeed = 0.05f;
     emitter.rigid.sleepTime = 0.1f;
-    Tumbled(gpu, kernels, &emitter, false, "capsules falling asleep in a drag");
+    Settled(gpu, kernels, &emitter, "capsules falling asleep in a drag, the whole run");
+    emitter.rigid.shape = mvfx_rigidBox;
+    Settled(gpu, kernels, &emitter, "boxes falling asleep in a drag, the whole run");
+    // Capsules coming to rest on a floor fall asleep there, held in place
+    // against gravity.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
+    emitter = Thrown(mvfx_rigidCapsule, &floor, 1);
+    emitter.rigid.restitution = 0.0f;
+    emitter.rigid.sleepSpeed = 0.1f;
+    emitter.rigid.sleepTime = 0.1f;
+    emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
+    emitter.events = 0;
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules falling asleep on a floor");
 }
 
 // Whether a planned instance of an emitter is refused on the GPU for its
@@ -152,7 +309,19 @@ static void TestRefused(mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = Bodies(mvfx_rigidBox);
     emitter.collision.enabled = true;
-    CHECK(RefusedForRigid(kernels, &emitter), "colliding rigid particles refused");
+    CHECK(RefusedForRigid(kernels, &emitter), "colliding boxes refused");
+    emitter = Bodies(mvfx_rigidCapsule);
+    emitter.collision.enabled = true;
+    emitter.rigid.bodyContacts = 4;
+    CHECK(RefusedForRigid(kernels, &emitter), "bodies meeting each other refused");
+    emitter.rigid.bodyContacts = 0;
+    emitter.collision.depthImage = true;
+    emitter.collision.depthThickness = 0.3f;
+    emitter.collision.depthSamples = 16;
+    CHECK(RefusedForRigid(kernels, &emitter), "bodies meeting a depth image refused");
+    emitter.collision.depthImage = false;
+    emitter.collision.killOnCollision = true;
+    CHECK(RefusedForRigid(kernels, &emitter), "bodies a contact kills refused");
     static const mvfxKillRule rule = {.kind = mvfx_killPastPlane, .normal = {0, 1, 0}};
     emitter = Bodies(mvfx_rigidBox);
     emitter.killRules = &rule;
@@ -160,12 +329,47 @@ static void TestRefused(mvfxGpu* kernels)
     CHECK(RefusedForRigid(kernels, &emitter), "rigid particles killed within a step refused");
 }
 
+static void TestHostGrid(Gpu* gpu, mvfxGpu* kernels)
+{
+    // The instance's heightfield, which bodies do not meet on the GPU yet:
+    // the step refused, no pass added.
+    static const float heights[4] = {0};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, NULL, 0);
+    emitter.collision.hostColliders = true;
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(
+        kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .hostGridBytes = 4096}, &effect);
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 2;
+    def.size[2] = 2;
+    def.values = heights;
+    mvfxCollider ground = {.kind = mvfx_colliderHeightfield,
+                           .center = {0, -0.5f, 0},
+                           .halfExtents = {1, 0.1f, 1},
+                           .rotation = {0, 0, 0, 1}};
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    CHECK(mvfxCreateGrid(RunContext(), &def, &ground.grid) == mvfx_success &&
+              mvfxInstance_SetColliders(RunContext(), PlannedInstance(), &ground, 1) ==
+                  mvfx_success &&
+              mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success &&
+              mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+              mvfxGpuSim_AddPasses(sim) == mvfx_errorState,
+          "bodies meeting the instance's heightfield refused at the step");
+    (void)mrhiDropFrame(gpu->device);
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(RunContext());
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
+    TestHostGrid(gpu, kernels);
     TestShapes(gpu, kernels);
     TestSizes(gpu, kernels);
     TestSleep(gpu, kernels);
+    TestFloor(gpu, kernels);
+    TestColliders(gpu, kernels);
+    TestStrikes(gpu, kernels);
 }
 
 int main(void)

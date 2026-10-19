@@ -420,13 +420,22 @@ void mvfxStrikeBody(const mvfxRigidSolve* s, int32_t i, const float point[3], co
     if ((s->flags[i] & MVFX_RIGID_EVENTED) == 0)
     {
         s->flags[i] |= MVFX_RIGID_EVENTED;
-        mvfxRecordEvent(instance, s->emitter,
-                        &(mvfxEventFact){.kind = mvfx_eventCollision,
-                                         .particle = i,
-                                         .tick = s->tick,
-                                         .placeTick = s->tick,
-                                         .point = point,
-                                         .normal = normal});
+        const mvfxEventFact fact = {.kind = mvfx_eventCollision,
+                                    .particle = i,
+                                    .tick = s->tick,
+                                    .placeTick = s->tick,
+                                    .point = point,
+                                    .normal = normal};
+        // A live body's held over its substeps (event.h), a newborn's
+        // recorded after its birth's.
+        if (instance->emitters[s->emitter].holdingContacts)
+        {
+            mvfxHoldContact(instance, s->emitter, &fact);
+        }
+        else
+        {
+            mvfxRecordEvent(instance, s->emitter, &fact);
+        }
     }
     bool killed = collision->killOnCollision || collision->lifeLoss >= 1.0f ||
                   (collision->lifeLoss > 0.0f && LoseLife(s, i, collision->lifeLoss));

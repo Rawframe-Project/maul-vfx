@@ -396,6 +396,31 @@ static void TestStrikeEvents(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestHeldStrikes(void)
+{
+    // Two spheres striking the floor in their second step, the second
+    // first: their events come body by body after the substeps, each at
+    // its strike.
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1, 1, 1);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.events = mvfx_eventMaskCollision;
+    emitter.eventCapacity = 16;
+    static const double places[6] = {-2, 0.59, 0, 2, 0.555, 0};
+    static const float velocities[6] = {0, -3, 0, 0, -3, 0};
+    Open(&emitter, places, velocities);
+    mvfxSpawnRequest second = {.count = 1, .positions = places + 3, .velocities = velocities + 3};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &second) == mvfx_success,
+          "the second spawned");
+    Steps(2);
+    const mvfxEvent* events = NULL;
+    int32_t n = 0;
+    CHECK(mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0, &events, &n) ==
+                  mvfx_success &&
+              n == 2 && events[0].serial < events[1].serial && events[0].tick > events[1].tick,
+          "strikes' events body by body");
+    mvfxDestroyContext(s_scene.context);
+}
+
 // A box collider of half sizes about center, turned by angle about axis
 // x (0) or z (2).
 static mvfxCollider Box(float x, float y, float z, const float center[3], int32_t axis, float angle)
@@ -1062,6 +1087,7 @@ int main(void)
     TestDeepest();
     TestInsideBox();
     TestStrikeEvents();
+    TestHeldStrikes();
     TestTable();
     TestEdges();
     TestBeam();

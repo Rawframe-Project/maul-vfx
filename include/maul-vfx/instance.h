@@ -511,7 +511,8 @@ extern "C"
     /// in the order the step met them: deaths by age at its start, then as
     /// particles move (collisions; a unit's points' first contacts and
     /// tears after its substeps, point by point, each point's contact, its
-    /// tear across, its tear down) and are born (births, their collisions),
+    /// tear across, its tear down; a rigid body's first strike after its
+    /// substeps, body by body) and are born (births, their collisions),
     /// then deaths by kills at its end. They stay until the next step or a
     /// restart; a finished instance's step clears them.
     ///

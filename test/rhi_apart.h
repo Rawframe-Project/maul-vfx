@@ -4,11 +4,14 @@
 // Particles whose contacts the two paths may decide differently, as sim.h
 // states (rhi_apart.c): contacts are decided on places, which the GPU
 // holds to a tolerance of the CPU path's, so a particle whose path passes
-// that close to a surface may touch it on one path only. The CPU path's
-// particle is near when it ends a step within that tolerance of one of
-// the plan's colliders; one near at the end of a step or of the last may
-// go apart once, and is compared no more, nor are its events. Every other
-// particle is compared exactly as before.
+// that close to a surface may touch it on one path only; a rigid body's
+// friction holds or lets go, and its strikes bounce or not, by loads and
+// speeds its masses part by their rounding. The CPU path's particle is
+// near when it ends a step within that tolerance of one of the plan's
+// colliders (a rigid body's surface, anywhere within its radius of its
+// center); one near at the end of a step or of the last may go apart
+// once, and is compared no more, nor are its events. Every other particle
+// is compared exactly as before.
 
 #ifndef MAUL_VFX_TEST_RHI_APART_H
 #define MAUL_VFX_TEST_RHI_APART_H
@@ -24,9 +27,10 @@ void ApartReset(void);
 // Takes the CPU path's particles of an emitter at a step's end, in serial
 // order: their serials and places (offsets in the particles' space), and
 // the plan whose colliders they end near or not, within the relative
-// tolerance places are compared to.
+// tolerance places are compared to and the radius a rigid body's surface
+// reaches at most from its center (0 for particles).
 void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const places[3],
-                   int32_t count, const mvfxEmitterPlan* plan, float tolerance);
+                   int32_t count, const mvfxEmitterPlan* plan, float tolerance, float radius);
 
 // Whether a particle of the emitter is apart already; whether it may go
 // apart now (near at this step's end or the last), making it so.

@@ -68,7 +68,9 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
-    // colliding or beside anything that kills within a step.
+    // beside anything that kills within a step, and colliding as boxes or
+    // hulls, with heightfields, distance grids or a depth image, or meeting
+    // each other (bodyContacts above 0).
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -97,25 +99,30 @@ extern "C"
     // whose path passes that close to a surface may touch it on one path
     // only, and with it its collision event, the life or the kill the
     // contact takes, and the births a spawner gives for it; contacts
-    // clear of a surface are the CPU path's. A contact's tick is found from
-    // its share of the move in binary32, within a thousandth of a step of
-    // the CPU path's: births a spawner gives for a contact whose tick
-    // differs may differ in count and values, those for every other event
-    // are the CPU path's but for their serials, moved by the births that
-    // differ (mvfxEventSpawn). A ribbon's break by distance is decided on
-    // places too: a birth whose gap to its ribbon's youngest point lies
+    // clear of a surface are the CPU path's. A rigid body's friction holds
+    // or lets go, and its strikes bounce or not, by its contacts' loads and
+    // speeds, which its masses (binary32 here, binary64 on the CPU path)
+    // part by their rounding, and a capsule lying flat on a box's face
+    // meets it at a deepest point anywhere along it: a body touching a
+    // surface may take the other on one path, and with it its velocities,
+    // its strike's event and the life the strike takes. A contact's tick is
+    // found from its share of the move in binary32, within a thousandth of
+    // a step of the CPU path's: births a spawner gives for a contact whose
+    // tick differs may differ in count and values, those for every other
+    // event are the CPU path's but for their serials, moved by the births
+    // that differ (mvfxEventSpawn). A ribbon's break by distance is decided
+    // on places too: a birth whose gap to its ribbon's youngest point lies
     // that close to the break distance may break the ribbon on one path
     // only, its ribbon then joined or started apart from the CPU path's,
     // and every id the counter gives after it one apart; the ribbons are
-    // the CPU path's but for their ids and at such births. Distances
-    // along a ribbon are within the tolerance of the CPU path's. Its
-    // plexus links of the step, when it has them (a null buffer
-    // otherwise): two words each, the owner's index in the particles then
-    // the other's, as many as the statistics record's word MVFX_GPU_LINKS
-    // (at most linkCapacity, the def's maxLinks), in the order the CPU
-    // path's links take. Links are decided on places too: a pair that
-    // close to the distance may link on one path only; from the same
-    // places the links are the CPU path's.
+    // the CPU path's but for their ids and at such births. Distances along
+    // a ribbon are within the tolerance of the CPU path's. Its plexus links
+    // of the step, when it has them (a null buffer otherwise): two words
+    // each, the owner's index in the particles then the other's, as many as
+    // the statistics record's word MVFX_GPU_LINKS (at most linkCapacity,
+    // the def's maxLinks), in the order the CPU path's links take. Links
+    // are decided on places too: a pair that close to the distance may link
+    // on one path only; from the same places the links are the CPU path's.
     typedef struct mvfxGpuParticles
     {
         mrhiBufferId particles;
@@ -179,10 +186,15 @@ extern "C"
 // cleared (mvfxEmitterStats.selfContactsCapped on the CPU path).
 #define MVFX_GPU_SELF_CAPPED 51
 
+// For an emitter of rigid particles, the statistics record's word counting
+// their contacts dropped past the most a body takes since the instance was
+// last cleared (mvfxEmitterStats.rigidContactsCapped on the CPU path).
+#define MVFX_GPU_RIGID_CAPPED 52
+
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 52
+#define MVFX_GPU_STATISTICS_WORDS 53
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -348,8 +360,10 @@ extern "C"
     ///         `mvfx_errorState` when the device refuses a pass or an
     ///         import (no frame open), or when an emitter meets the
     ///         instance's depth image and no depth texture was given
-    ///         (mvfxGpuSim_SetDepthTextures), or while it is destroyed (a
-    ///         call from its allocator); `mvfx_errorCapacity` when the
+    ///         (mvfxGpuSim_SetDepthTextures), or when an emitter's rigid
+    ///         particles meet a heightfield or a distance grid among the
+    ///         instance's colliders, or while it is destroyed (a call from
+    ///         its allocator); `mvfx_errorCapacity` when the
     ///         grids the instance's colliders read pass the def's
     ///         hostGridBytes, or a mesh shape's mesh its room.
     /// @par Thread safety
@@ -786,11 +800,11 @@ extern "C"
     /// the host's frames 32 a frame and 16 for the frames' numbers; at the
     /// first step and after a clear, 12 for its counts, 16 more for one
     /// spawning from events, 4 more each for one drawn as ribbons, finding
-    /// neighbors, with contacts, of units that tear and of units that
-    /// collide with themselves, and 8 more for one with plexus links; at
-    /// the first step, its sources' 1,552 and the effect's baked tables
-    /// its values read (1,032 a curve, 4,096 a gradient, 12 a vertex of a
-    /// rigid hull); and the values of each grid its
+    /// neighbors, with contacts, of units that tear, of units that collide
+    /// with themselves and of rigid particles, and 8 more for one with
+    /// plexus links; at the first step, its sources' 1,568 and the effect's
+    /// baked tables its values read (1,032 a curve, 4,096 a gradient, 12 a
+    /// vertex of a rigid hull); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,
     /// after each move in the room the def keeps; and a mesh shape's mesh

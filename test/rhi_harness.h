@@ -180,6 +180,10 @@ typedef struct Run
     // whose candidates passed the most the first emitter must have counted
     // over the run (none needed for 0).
     int32_t leastSelfCapped;
+    // For an emitter of rigid particles that collide, the contacts past
+    // the most a body takes the first emitter must have dropped over the
+    // run (none needed for 0).
+    int32_t leastRigidCapped;
     // The most links the first emitter must have written at some step,
     // and the drops it must have counted over the run (none needed for
     // 0).
@@ -193,6 +197,10 @@ typedef struct Run
     // the paths for the rest of the run; a body tumbling about its middle
     // axis carries a rounding's difference further each step.
     bool adopting;
+    // For colliding particles, the most that may go apart over the run (no
+    // bound but the harness's for 0): rigid bodies' friction and strikes
+    // decided apart.
+    int32_t mostApart;
 } Run;
 
 // The scenes a test runs on the device.

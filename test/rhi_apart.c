@@ -48,9 +48,36 @@ void ApartReset(void)
     s_uncertainCount = 0;
 }
 
+// The distance from a place to a box collider's surface, in its frame.
+static double BoxDistance(const float place[3], const mvfxPlannedCollider* collider)
+{
+    const float* q = collider->rotation;
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = (double)place[k] - (double)collider->center[k];
+    }
+    // Turned back by the conjugate: v + 2 w (u x v) + 2 u x (u x v), u = -q.
+    double u[3] = {-(double)q[0], -(double)q[1], -(double)q[2]};
+    double t[3] = {2.0 * (u[1] * d[2] - u[2] * d[1]), 2.0 * (u[2] * d[0] - u[0] * d[2]),
+                   2.0 * (u[0] * d[1] - u[1] * d[0])};
+    double outside = 0.0;
+    double inside = (double)INFINITY;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int32_t a = (k + 1) % 3;
+        int32_t b = (k + 2) % 3;
+        double local = d[k] + (double)q[3] * t[k] + (u[a] * t[b] - u[b] * t[a]);
+        double past = fabs(local) - (double)collider->halfExtents[k];
+        outside += past > 0.0 ? past * past : 0.0;
+        inside = fmin(inside, -past);
+    }
+    return outside > 0.0 ? sqrt(outside) : inside;
+}
+
 // The distance from a place to a collider's surface, in the particles'
-// space; infinity for a kind whose surface is not measured here (planes
-// and spheres are), which no particle is near.
+// space; infinity for a kind whose surface is not measured here (planes,
+// spheres and boxes are), which no particle is near.
 static double Distance(const float place[3], const mvfxPlannedCollider* collider)
 {
     double d = 0.0;
@@ -68,13 +95,15 @@ static double Distance(const float place[3], const mvfxPlannedCollider* collider
         return fabs(d) / sqrt(length);
     case mvfx_colliderSphere:
         return fabs(sqrt(d) - (double)collider->radius);
+    case mvfx_colliderBox:
+        return BoxDistance(place, collider);
     default:
         return (double)INFINITY;
     }
 }
 
 void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const places[3],
-                   int32_t count, const mvfxEmitterPlan* plan, float tolerance)
+                   int32_t count, const mvfxEmitterPlan* plan, float tolerance, float radius)
 {
     s_now[emitter] = 1 - s_now[emitter];
     Near* near = &s_near[emitter][s_now[emitter]];
@@ -92,6 +121,8 @@ void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const 
         {
             nearest = fmin(nearest, Distance(place, &plan->colliders[c]));
         }
+        // A body's surface may lie anywhere within its radius.
+        nearest = fmax(nearest - (double)radius, 0.0);
         if (nearest <= reach)
         {
             near->shares[near->count] = (float)(nearest / reach);

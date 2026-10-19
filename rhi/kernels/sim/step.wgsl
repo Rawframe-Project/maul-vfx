@@ -164,6 +164,30 @@ fn reduce(@builtin(local_invocation_index) local: u32,
 // The statistics record's word counting units' tears (MVFX_GPU_TORN).
 const STATISTICS_TORN: u32 = 50u;
 
+// The statistics record's word counting rigid bodies' contacts dropped
+// past the most (MVFX_GPU_RIGID_CAPPED).
+const STATISTICS_RIGID_CAPPED: u32 = 52u;
+
+// Adds the step's rigid contacts dropped past the most to the count, in one
+// workgroup: each live body's, which the rigid pass left in its alive word
+// of the other buffer, and each birth's, which killBirths left above its
+// mark.
+fn countRigidCapped(local: u32) {
+    let c = params.counts.x;
+    var mine = 0u;
+    for (var i = local; i < counts[0]; i += CHUNK) {
+        mine += moved[params.words.alive * c + i];
+    }
+    for (var j = local; j < birthCount(); j += CHUNK) {
+        mine += accepted[j] >> 8u;
+    }
+    let before = exclusiveScan(local, mine);
+    if (local == CHUNK - 1u) {
+        counts[STATISTICS_RIGID_CAPPED] += before + mine;
+    }
+    workgroupBarrier();
+}
+
 // Adds the step's tears to the count, in one workgroup: each live unit's
 // tally, which the unit pass left in its first point's alive word of the
 // other buffer.
@@ -191,6 +215,9 @@ fn offsets(@builtin(local_invocation_index) local: u32) {
     let c = params.counts.x;
     if (params.unitTears.x != NONE) {
         countTears(local);
+    }
+    if (params.rigid.y > 0u && params.collisionHead.z != 0u) {
+        countRigidCapped(local);
     }
     let n = blockCount();
     if (local == 0u) {
@@ -247,7 +274,8 @@ fn birthTicks(b0: vec4<u32>, b1: vec4<u32>, birth: ptr<function, vec2<u32>>,
 fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
     var born = vec3<f32>(0.0);
     var bornVelocity = vec3<f32>(0.0);
-    return bornFacts(j, &born, &bornVelocity, place, velocity);
+    var turning = Turning();
+    return bornFacts(j, &born, &bornVelocity, place, velocity, &turning);
 }
 
 // A birth's place at its tick, before its move, and its velocity then
@@ -298,9 +326,11 @@ fn bornPlace(j: u32, withVelocity: bool, place: ptr<function, vec3<f32>>,
 }
 
 // bornAt with the birth's place and velocity at its tick, before its
-// move, as its birth event gives them.
+// move, as its birth event gives them; a rigid body's turn after its
+// substeps (the birth's as drawn for other particles, turned after).
 fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function, vec3<f32>>,
-             place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
+             place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>,
+             turning: ptr<function, Turning>) -> Fate {
     let b0 = birthWord(j, 0u);
     let b1 = birthWord(j, 1u);
     var p = vec3<f32>(0.0);
@@ -308,6 +338,16 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
     bornPlace(j, true, &p, &v);
     *born = p;
     *bornVelocity = v;
+    if (params.rigid.y > 0u) {
+        // A rigid body takes the rest of its step's substeps.
+        var b = Body();
+        let fate = rigidNewborn(j, p, v, &b);
+        *place = b.moving.place;
+        *velocity = b.moving.velocity;
+        *turning = b.moving.turning;
+        return fate;
+    }
+    *turning = bornTurning(j);
     var a = vec3<f32>(0.0);
     var wind = 0.0;
     forcesAt(p, secondsOf(vec2<u32>(b0.z, 0u)), &a, &wind);
@@ -355,18 +395,13 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     var moved_velocity = vec3<f32>(0.0);
     var born = vec3<f32>(0.0);
     var bornVelocity = vec3<f32>(0.0);
-    let fate = bornFacts(j, &born, &bornVelocity, &moved_place, &moved_velocity);
+    var turning = Turning();
+    let fate = bornFacts(j, &born, &bornVelocity, &moved_place, &moved_velocity, &turning);
     if (params.unitArrays.x != NONE && isPinned(j % unitPoints())) {
         // A pinned point stays where it was born, as the core's AppendPoint
         // (its move's contacts and kills still count).
         moved_place = born;
         moved_velocity = vec3<f32>(0.0);
-    }
-    let rigid = params.rigid.y > 0u;
-    if (rigid) {
-        // A rigid body is written as born, then moved by its substeps.
-        moved_place = born;
-        moved_velocity = bornVelocity;
     }
     var birth = vec2<u32>(0u);
     var death = vec2<u32>(0u);
@@ -392,12 +427,12 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
         moved[params.unitTears.x * c + at] = 0u;
     }
     storeValues(j, at);
-    if (rigid) {
-        // Awake, as the core's births.
+    if (params.rigid.y > 0u) {
+        // Turned by its substeps, awake, as the core's births.
+        storeTurning(1u, at, turning);
         for (var k = 0u; params.rigid.z != NONE && k < 4u; k++) {
             moved[(params.rigid.z + k) * c + at] = 0u;
         }
-        moved_place = rigidNewborn(at, b0.z);
     } else {
         // Born at age 0, turned over the rest of the plan.
         let angular = factors(bitcast<f32>(params.turns.y), remainderOf(j)).xy;
@@ -569,33 +604,65 @@ fn setWordIn(buffer: u32, at: u32, value: u32) {
     }
 }
 
-// Turns particle i of a buffer as the core's MoveAngular: its angle by
-// its spin and its orientation by its angular velocity, over the angular
-// factors (decay, carry), the carry scaled by the rotation speed; its
-// spin and angular velocity decayed.
-fn turn(buffer: u32, i: u32, f: vec2<f32>, scale: f32) {
+// What a particle's turn changes: its angle and spin, its orientation and
+// angular velocity (as stored: zero where the emitter stores none).
+struct Turning {
+    angle: f32,
+    spin: f32,
+    orientation: vec4<f32>,
+    angular: vec3<f32>,
+}
+
+fn loadTurning(buffer: u32, i: u32) -> Turning {
+    let c = params.counts.x;
+    let w = params.words;
+    var t = Turning(0.0, 0.0, vec4<f32>(0.0, 0.0, 0.0, 1.0), vec3<f32>(0.0));
+    if (w.angle != NONE) {
+        t.angle = bitcast<f32>(wordIn(buffer, w.angle * c + i));
+        t.spin = bitcast<f32>(wordIn(buffer, w.spin * c + i));
+    }
+    if (w.orientation != NONE) {
+        for (var k = 0u; k < 4u; k++) {
+            t.orientation[k] = bitcast<f32>(wordIn(buffer, (w.orientation + k) * c + i));
+        }
+        t.angular = readVector(buffer, i, w.angular);
+    }
+    return t;
+}
+
+fn storeTurning(buffer: u32, i: u32, t: Turning) {
     let c = params.counts.x;
     let w = params.words;
     if (w.angle != NONE) {
-        let angle = bitcast<f32>(wordIn(buffer, w.angle * c + i));
-        let spin = bitcast<f32>(wordIn(buffer, w.spin * c + i));
-        setWordIn(buffer, w.angle * c + i, bitcast<u32>(angle + spin * (f.y * scale)));
-        setWordIn(buffer, w.spin * c + i, bitcast<u32>(spin * f.x));
+        setWordIn(buffer, w.angle * c + i, bitcast<u32>(t.angle));
+        setWordIn(buffer, w.spin * c + i, bitcast<u32>(t.spin));
     }
     if (w.orientation != NONE) {
-        var q = vec4<f32>(0.0);
         for (var k = 0u; k < 4u; k++) {
-            q[k] = bitcast<f32>(wordIn(buffer, (w.orientation + k) * c + i));
-        }
-        let omega = readVector(buffer, i, w.angular);
-        q = turnBy(q, omega * (f.y * scale));
-        for (var k = 0u; k < 4u; k++) {
-            setWordIn(buffer, (w.orientation + k) * c + i, bitcast<u32>(q[k]));
+            setWordIn(buffer, (w.orientation + k) * c + i, bitcast<u32>(t.orientation[k]));
         }
         for (var k = 0u; k < 3u; k++) {
-            setWordIn(buffer, (w.angular + k) * c + i, bitcast<u32>(omega[k] * f.x));
+            setWordIn(buffer, (w.angular + k) * c + i, bitcast<u32>(t.angular[k]));
         }
     }
+}
+
+// A turn as the core's MoveAngular: the angle by the spin and the
+// orientation by the angular velocity, over the angular factors (decay,
+// carry), the carry scaled by the rotation speed; the spin and angular
+// velocity decayed.
+fn turnState(t: Turning, f: vec2<f32>, scale: f32) -> Turning {
+    var out = t;
+    out.angle = t.angle + t.spin * (f.y * scale);
+    out.spin = t.spin * f.x;
+    out.orientation = turnBy(t.orientation, t.angular * (f.y * scale));
+    out.angular = t.angular * f.x;
+    return out;
+}
+
+// Turns particle i of a buffer (0 the current, 1 the other) by turnState.
+fn turn(buffer: u32, i: u32, f: vec2<f32>, scale: f32) {
+    storeTurning(buffer, i, turnState(loadTurning(buffer, i), f, scale));
 }
 
 // A unit quaternion turned by a rotation vector (the turn's axis times
@@ -649,6 +716,24 @@ fn orientationOf(age: f32, words: vec4<u32>) -> vec4<f32> {
     return vec4<f32>(0.0, 0.0, 0.0, 1.0);
 }
 
+// A birth's angle, spin, orientation and angular velocity as drawn, those
+// the emitter stores, as the core's AppendValues draws them.
+fn bornTurning(j: u32) -> Turning {
+    let k = birthKey(j);
+    let age = bitcast<f32>(birthWord(j, 2u).x);
+    let w = params.words;
+    var t = Turning(0.0, 0.0, vec4<f32>(0.0, 0.0, 0.0, 1.0), vec3<f32>(0.0));
+    if (w.angle != NONE) {
+        t.angle = drawVector(SOURCE_ANGLE, age, draw(ANGLE_SALT, k.x, k.y)).x;
+        t.spin = drawVector(SOURCE_SPIN, age, draw(SPIN_SALT, k.x, k.y)).x;
+    }
+    if (w.orientation != NONE) {
+        t.orientation = orientationOf(age, draw(ORIENTATION_SALT, k.x, k.y));
+        t.angular = drawVector(SOURCE_ANGULAR, age, draw(ANGULAR_SALT, k.x, k.y)).xyz;
+    }
+    return t;
+}
+
 // A birth's drawn values, each the emitter stores, as the core's
 // AppendValues and StoreWords draw them: size, colour, angle and spin,
 // orientation and angular velocity, drag scale and custom values over
@@ -670,16 +755,7 @@ fn storeValues(j: u32, at: u32) {
     if (w.mesh != NONE) {
         moved[w.mesh * c + at] = drawIndex(params.draws[1], MESH_SALT, k.x, k.y);
     }
-    if (w.angle != NONE) {
-        moved[w.angle * c + at] =
-            bitcast<u32>(drawVector(SOURCE_ANGLE, age, draw(ANGLE_SALT, k.x, k.y)).x);
-        moved[w.spin * c + at] =
-            bitcast<u32>(drawVector(SOURCE_SPIN, age, draw(SPIN_SALT, k.x, k.y)).x);
-    }
-    if (w.orientation != NONE) {
-        storeValue(w.orientation, 4u, at, orientationOf(age, draw(ORIENTATION_SALT, k.x, k.y)));
-        storeValue(w.angular, 3u, at, drawVector(SOURCE_ANGULAR, age, draw(ANGULAR_SALT, k.x, k.y)));
-    }
+    storeTurning(1u, at, bornTurning(j));
     if (w.drag != NONE) {
         moved[w.drag * c + at] = bitcast<u32>(dragScaleOf(j));
     }
@@ -754,7 +830,8 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         var v = vec3<f32>(0.0);
         var born = vec3<f32>(0.0);
         var bornVelocity = vec3<f32>(0.0);
-        let fate = bornFacts(j, &born, &bornVelocity, &p, &v);
+        var turning = Turning();
+        let fate = bornFacts(j, &born, &bornVelocity, &p, &v, &turning);
         var mark = 1u;
         if (fate.killed || !outlives(fate.death.x, fate.death.y)) {
             mark = 2u;
@@ -762,8 +839,9 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
             storeBirthPlaces(j, born, p);
         }
         // Its contacts make an event (BIRTH_CONTACT), for the events'
-        // count.
-        accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted);
+        // count; a rigid body's contacts dropped past the most above, which
+        // offsets sums (MVFX_GPU_RIGID_CAPPED).
+        accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted) | (fate.capped << 8u);
     }
 }
 

@@ -49,6 +49,8 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
+// The colliders rigid particles meet on the GPU: planes, spheres, boxes.
+#define RIGID_COLLIDERS 0x7u
 
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
@@ -66,10 +68,14 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                               (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
                          ? MVFX_FEATURE_CONTACTS
                          : 0) |
-                    // Rigid particles meet nothing yet, and their births
-                    // are not killed in their first step's substeps.
+                    // Rigid particles meet only planes, spheres and boxes,
+                    // as spheres and capsules, not each other, and are
+                    // killed by their strikes' life alone.
                     ((view->features & MVFX_FEATURE_RIGID) != 0 &&
-                             ((view->features & MVFX_FEATURE_COLLISION) != 0 || view->kills)
+                             (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
+                                              (view->rigid.shape > mvfx_rigidCapsule ||
+                                               view->rigid.bodyContacts > 0 || view->depthImage ||
+                                               (view->colliderKinds & ~RIGID_COLLIDERS) != 0)))
                          ? MVFX_FEATURE_RIGID
                          : 0),
     };
@@ -671,6 +677,13 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
         {
             return mvfx_errorState;
         }
+        for (int32_t c = 0; emitter->rigid && c < plan.colliderCount; ++c)
+        {
+            if (plan.colliders[c].kind > mvfx_colliderBox)
+            {
+                return mvfx_errorState;
+            }
+        }
         if (emitter->capacity > 0 &&
             !mvfxPlaceHostGrids(sim->context, &plan, plan.ownColliderCount, &emitter->gridLayout))
         {
@@ -802,36 +815,6 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
     return written;
 }
 
-// Records the counts a clear empties: the record's own, and each word of
-// the GPU's an emitter keeps (an event spawn's serials, the ribbons'
-// breaks, the neighbors', contacts' and self-contacts' caps, the tears,
-// the links and their drops).
-static bool ClearCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
-{
-    static const uint32_t zeros[4] = {0};
-    const struct
-    {
-        bool kept;
-        uint32_t word;
-        uint32_t words;
-    } counts[8] = {{true, MVFX_RECORD_COUNT, MVFX_RECORD_PAST + 1},
-                   {emitter->spawnSource >= 0, MVFX_GPU_EVENT_SERIALS, 4},
-                   {emitter->ribbons, MVFX_GPU_RIBBON_BREAKS, 1},
-                   {(emitter->gridFlags & MVFX_GRID_FINDS) != 0, MVFX_GPU_NEIGHBORS_CAPPED, 1},
-                   {emitter->contacts, MVFX_GPU_CONTACTS_CAPPED, 1},
-                   {emitter->tears, MVFX_GPU_TORN, 1},
-                   {emitter->selfCollides, MVFX_GPU_SELF_CAPPED, 1},
-                   {emitter->plexus, MVFX_GPU_LINKS, 2}};
-    bool written = true;
-    for (int32_t c = 0; written && emitter->cleared && c < 8; ++c)
-    {
-        written = !counts[c].kept || mvfxUpload(sim->device, &sim->uploaded, pass,
-                                                emitter->resources[BUFFER_STATISTICS],
-                                                counts[c].word * 4u, zeros, counts[c].words * 4u);
-    }
-    return written;
-}
-
 // Records the pass writing the plan's bytes: its numbers, its births and
 // its host births after the births' room, the record's map, the counts
 // emptied after a clear, and the grids changed.
@@ -857,7 +840,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         (!emitter->pinsHead ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_RECORD_HEAD * sizeof(uint32_t), emitter->head, sizeof emitter->head)) &&
-        ClearCounts(sim, pass, emitter) &&
+        mvfxClearSimCounts(sim, pass, emitter) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
         mvfxWriteSimMesh(sim, pass, emitter) &&

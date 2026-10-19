@@ -25,7 +25,12 @@
 // head shows at the step's end and its place in the world (binary64);
 // then the GPU's: the neighbor caps (MVFX_GPU_NEIGHBORS_CAPPED), the
 // contact caps (MVFX_GPU_CONTACTS_CAPPED), the step's links and the links
-// dropped (MVFX_GPU_LINKS, MVFX_GPU_LINKS_DROPPED).
+// dropped (MVFX_GPU_LINKS, MVFX_GPU_LINKS_DROPPED), the tears
+// (MVFX_GPU_TORN), the self-contacts' caps (MVFX_GPU_SELF_CAPPED) and the
+// rigid contacts' (MVFX_GPU_RIGID_CAPPED). The layout plan budgets the
+// record at 64 words.
+static_assert(MVFX_GPU_STATISTICS_WORDS <= 64, "the statistics record within its 64 words");
+
 enum
 {
     MVFX_RECORD_COUNT = 0,

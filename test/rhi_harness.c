@@ -325,6 +325,9 @@ static uint32_t s_words[MOST_WORDS * (1 << 17)];
 static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
 static mvfxAttributeArrays s_arrays;
 static mvfxAttributeArrays s_runArrays[2];
+// How far a rigid body's surface reaches from its center at most, each
+// emitter's (0 for particles): half its largest size's diagonal.
+static float s_bodyRadius[2];
 
 static int32_t s_capacity;
 
@@ -793,7 +796,7 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
         printf("no plan, or births refused: %u\n", s_record[2]);
         return false;
     }
-    ApartTakeStep(e, serial, places, state->count, &plan, s_tolerance);
+    ApartTakeStep(e, serial, places, state->count, &plan, s_tolerance, s_bodyRadius[e]);
     int32_t held = (int32_t)s_record[0];
     bool same = true;
     int32_t g = 0;
@@ -1217,7 +1220,9 @@ static bool SameEvents(int32_t emitter)
             break;
         }
         const uint32_t* w = s_eventWords + g++ * MVFX_GPU_EVENT_WORDS;
-        same = SameEvent(w, &events[e], plan.anchorAfter);
+        // A near particle's event decided apart takes it apart.
+        same = SameEvent(w, &events[e], plan.anchorAfter) ||
+               (w[1] == events[e].serial && GoApart(emitter, events[e].serial));
         int64_t tick = (int64_t)(((uint64_t)w[3] << 32u) | w[2]);
         if (tick != events[e].tick && spawned)
         {
@@ -2130,6 +2135,27 @@ static bool SameSelfCapped(int32_t e)
     return same;
 }
 
+// The rigid bodies' contacts dropped past the most, counted by the GPU, at
+// the run's last step.
+static uint32_t s_rigidCapped;
+
+// Whether an emitter's rigid contacts dropped past the most, counted by
+// the GPU, are the CPU path's.
+static bool SameRigidCapped(int32_t e)
+{
+    mvfxEmitterStats stats;
+    uint32_t capped = s_record[MVFX_GPU_RIGID_CAPPED];
+    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
+                stats.rigidContactsCapped == capped;
+    if (!same)
+    {
+        printf("rigid contacts capped: GPU %u, the CPU path's %llu\n", capped,
+               (unsigned long long)stats.rigidContactsCapped);
+    }
+    s_rigidCapped = capped > s_rigidCapped ? capped : s_rigidCapped;
+    return same;
+}
+
 // The tears the GPU counted over a run, the last emitter's that tears.
 static uint32_t s_torn;
 
@@ -2389,6 +2415,11 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
         mvfxEmitterView view;
         CHECK(mvfxEffect_GetEmitterView(s_context, *effectOut, e, &view) == mvfx_success, "a view");
         s_runArrays[e] = view.arrays;
+        const float* most = view.sizeBounds;
+        s_bodyRadius[e] =
+            view.rigid.enabled
+                ? 0.5f * sqrtf(most[0] * most[0] + most[1] * most[1] + most[2] * most[2])
+                : 0.0f;
     }
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = *effectOut;
@@ -2431,6 +2462,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_capped = 0;
     s_contactsCapped = 0;
     s_selfCapped = 0;
+    s_rigidCapped = 0;
     s_torn = 0;
     s_mostLinks = 0;
     s_linksDropped = 0;
@@ -2560,6 +2592,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (!run->emitters[e].contacts.enabled || SameContactsCapped(e)) &&
                    (!(run->emitters[e].unit.tearStrain > 0.0f) || SameTorn(e)) &&
                    (!(run->emitters[e].unit.selfThickness > 0.0f) || SameSelfCapped(e)) &&
+                   (!run->emitters[e].rigid.enabled || !run->emitters[e].collision.enabled ||
+                    SameRigidCapped(e)) &&
                    (!run->emitters[e].plexus.enabled || SameLinks(gpu, sim, e)) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
                    (!run->adopting || AdoptGpu(e));
@@ -2605,6 +2639,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                "step; the farthest at %.3f of the reach)\n",
                (unsigned long long)s_contacts, ApartCount(), MostNear(), (double)LargestShare());
         CHECK(s_contacts > 0, "contacts");
+        CHECK(run->mostApart == 0 || ApartCount() <= run->mostApart, "particles apart");
     }
     if (run->leastBreaks > 0)
     {
@@ -2645,6 +2680,11 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     {
         printf("  self-contacts capped: %u (at least %d)\n", s_selfCapped, run->leastSelfCapped);
         CHECK(s_selfCapped >= (uint32_t)run->leastSelfCapped, "self-contacts capped");
+    }
+    if (run->emitters[0].rigid.enabled && run->emitters[0].collision.enabled)
+    {
+        printf("  rigid contacts capped: %u (at least %d)\n", s_rigidCapped, run->leastRigidCapped);
+        CHECK(s_rigidCapped >= (uint32_t)run->leastRigidCapped, "rigid contacts capped");
     }
     if (run->emitters[0].plexus.enabled)
     {

@@ -2,10 +2,13 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A simulation's record, ribbon and lights passes: a def checked, the frame's
-// particles they read, the pass added with its numbers; and the bounds a
-// statistics record gives.
+// particles they read, the pass added with its numbers; the counts of a
+// statistics record a clear empties, and the bounds it gives.
 
+#include "numbers.h"
+#include "record.h"
 #include "sim_state.h"
+#include "upload.h"
 
 #include "maul-rhi/resources.h"
 
@@ -457,6 +460,37 @@ mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def
 mvfxResult mvfxGpuSim_ExpandSheets(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
     return ExpandQuads(sim, def, MVFX_SINK_SHEETS);
+}
+
+// Records the counts a clear empties: the record's own, and each word of
+// the GPU's an emitter keeps (an event spawn's serials, the ribbons'
+// breaks, the neighbors', contacts', self-contacts' and rigid contacts'
+// caps, the tears, the links and their drops).
+bool mvfxClearSimCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
+{
+    static const uint32_t zeros[4] = {0};
+    const struct
+    {
+        bool kept;
+        uint32_t word;
+        uint32_t words;
+    } counts[9] = {{true, MVFX_RECORD_COUNT, MVFX_RECORD_PAST + 1},
+                   {emitter->spawnSource >= 0, MVFX_GPU_EVENT_SERIALS, 4},
+                   {emitter->ribbons, MVFX_GPU_RIBBON_BREAKS, 1},
+                   {(emitter->gridFlags & MVFX_GRID_FINDS) != 0, MVFX_GPU_NEIGHBORS_CAPPED, 1},
+                   {emitter->contacts, MVFX_GPU_CONTACTS_CAPPED, 1},
+                   {emitter->tears, MVFX_GPU_TORN, 1},
+                   {emitter->selfCollides, MVFX_GPU_SELF_CAPPED, 1},
+                   {emitter->rigid, MVFX_GPU_RIGID_CAPPED, 1},
+                   {emitter->plexus, MVFX_GPU_LINKS, 2}};
+    bool written = true;
+    for (int32_t c = 0; written && emitter->cleared && c < 9; ++c)
+    {
+        written = !counts[c].kept || mvfxUpload(sim->device, &sim->uploaded, pass,
+                                                emitter->resources[BUFFER_STATISTICS],
+                                                counts[c].word * 4u, zeros, counts[c].words * 4u);
+    }
+    return written;
 }
 
 mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,

@@ -1,7 +1,7 @@
 // The sim kernel's rigid particles (spliced into sim.wgsl), as the core's
-// mvfxStepRigid (src/rigid.c) for bodies that meet nothing: an invocation
-// a body (striding over them), the ended (marked by update) skipped, each
-// of its substeps
+// mvfxStepRigid (src/rigid.c) for bodies that meet no other: an
+// invocation a body (striding over them), the ended (marked by update)
+// skipped, each of its substeps
 //  - turning its angular velocity by the gyroscopic term about its own
 //    axes, its momentum's size kept (an awake body);
 //  - moving it as a particle over the substep (forces, drag, the speed
@@ -9,6 +9,8 @@
 //    velocity with the angular drag), as the unit pass moves a point;
 //  - holding a sleeping body at its start pose, woken where its forces
 //    changed by more than the sleep speed over the sleep time;
+//  - meeting the world, an awake body, when it collides
+//    (sim/rigid_contacts.wgsl);
 // then its still time over the step and, alone (its own island: it meets
 // no other), its sleep once it has been still the sleep time.
 // A body's mass and inertia come from its shape at its size at the step's
@@ -28,10 +30,11 @@ const SLEEP_HELD: f32 = -2.0;
 const SIZE_AT_SPEED: u32 = 1u;
 
 // A body's mass: its inertia and inverse inertia about its own axes (xx,
-// yy, zz, xy, xz, yz).
+// yy, zz, xy, xz, yz), its inverse mass (1 for a shape of no volume).
 struct Mass {
     inertia: array<f32, 6>,
     inverse: array<f32, 6>,
+    inverseMass: f32,
 }
 
 // A size over life k (0 to 2) at an input, as the core's mvfxLifeAt.
@@ -45,21 +48,53 @@ fn rigidLifeAt(k: u32, t: f32) -> f32 {
     return value * curveAt(first, t);
 }
 
-// Body i of a buffer's size at the step's end, as the core's
-// mvfxSizeOf: its stored size (ones for none) times its sizes over life
-// at its age then or at its speed's share of their range.
-fn rigidSizeOf(buffer: u32, i: u32) -> vec3<f32> {
+// A rigid body as its substeps hold it: what a span's move changes of
+// it, its stored size (ones for none), and its sleep words (its still
+// time, or below 0 asleep; the acceleration its forces gave it as it fell
+// asleep), none where it does not sleep.
+struct Body {
+    moving: Moving,
+    size: vec3<f32>,
+    sleep: f32,
+    rest: vec3<f32>,
+}
+
+// Live body i of the current buffer.
+fn loadBody(i: u32) -> Body {
     let c = params.counts.x;
-    var size = vec3<f32>(1.0);
+    var b = Body();
+    b.moving = loadMoving(0u, i);
+    b.size = vec3<f32>(1.0);
     if (params.words.size != NONE) {
-        size = readVector(buffer, i, params.words.size);
+        b.size = readVector(0u, i, params.words.size);
     }
+    if (params.rigid.z != NONE) {
+        b.sleep = bitcast<f32>(source[params.rigid.z * c + i]);
+        b.rest = readVector(0u, i, params.rigid.z + 1u);
+    }
+    return b;
+}
+
+fn storeBody(i: u32, b: Body) {
+    let c = params.counts.x;
+    storeMoving(0u, i, b.moving);
+    if (params.rigid.z != NONE) {
+        source[params.rigid.z * c + i] = bitcast<u32>(b.sleep);
+        setVector(params.rigid.z + 1u, i, b.rest);
+    }
+}
+
+// A body's size at the step's end, as the core's mvfxSizeOf: its stored
+// size times its sizes over life at its age then or at its speed's share
+// of their range.
+fn rigidSizeOf(b: Body) -> vec3<f32> {
+    var size = b.size;
     if (params.rigidSize.x == 0u) {
         return size;
     }
     var t = 0.0;
     if (params.rigidSize.y == SIZE_AT_SPEED) {
-        let v = readVector(buffer, i, params.words.velocity);
+        let v = b.moving.velocity;
         var speed = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
         let scale = select(1.0, params.toOrigin.w, params.start.w == 0u);
         if (scale != 1.0) {
@@ -69,10 +104,7 @@ fn rigidSizeOf(buffer: u32, i: u32) -> vec3<f32> {
         let share = quotient(speed - range.x, range.y - range.x);
         t = select(min(share, 1.0), 0.0, !(share > 0.0));
     } else {
-        let birth = vec2<u32>(wordIn(buffer, params.words.birth * c + i),
-                              wordIn(buffer, (params.words.birth + 1u) * c + i));
-        let inverseLife = bitcast<f32>(wordIn(buffer, params.words.inverseLife * c + i));
-        t = spanAge(planTick(params.counts.z), birth, inverseLife);
+        t = spanAge(planTick(params.counts.z), b.moving.birth, b.moving.inverseLife);
     }
     let scale = rigidLifeAt(0u, t);
     for (var k = 0u; k < 3u; k++) {
@@ -177,6 +209,7 @@ fn rigidMass(size: vec3<f32>) -> Mass {
                           m[3] * m[5] - m[4] * m[1], m[3] * m[4] - m[0] * m[5]);
     let det = m[0] * c[0] + m[3] * c[3] + m[4] * c[4];
     var out = Mass();
+    out.inverseMass = select(1.0, 1.0 / mass, mass > 0.0);
     for (var k = 0u; k < 6u; k++) {
         out.inertia[k] = select(0.0, m[k], mass > 0.0);
         out.inverse[k] = select(0.0, c[k] / det, mass > 0.0 && det > 0.0);
@@ -190,34 +223,17 @@ fn symmetricTimes(m: array<f32, 6>, v: vec3<f32>) -> vec3<f32> {
                      m[4] * v.x + m[5] * v.y + m[2] * v.z);
 }
 
-fn orientationOfBody(buffer: u32, i: u32) -> vec4<f32> {
-    let c = params.counts.x;
-    var q = vec4<f32>(0.0);
-    for (var k = 0u; k < 4u; k++) {
-        q[k] = bitcast<f32>(wordIn(buffer, (params.words.orientation + k) * c + i));
-    }
-    return q;
+fn isAsleep(b: Body) -> bool {
+    return params.rigid.z != NONE && b.sleep < 0.0;
 }
 
-fn sleepOf(i: u32) -> f32 {
-    return bitcast<f32>(source[params.rigid.z * params.counts.x + i]);
-}
-
-fn setSleep(i: u32, value: f32) {
-    source[params.rigid.z * params.counts.x + i] = bitcast<u32>(value);
-}
-
-fn isAsleep(i: u32) -> bool {
-    return params.rigid.z != NONE && sleepOf(i) < 0.0;
-}
-
-// Turns body i of a buffer's angular velocity by the gyroscopic term
-// over h about its own axes, w += h I^-1 (I w x w), held to its
-// momentum's size, as the core's Spin.
-fn spinBody(buffer: u32, i: u32, mass: Mass, h: f32) {
-    let q = orientationOfBody(buffer, i);
+// Turns a body's angular velocity by the gyroscopic term over h about its
+// own axes, w += h I^-1 (I w x w), held to its momentum's size, as the
+// core's Spin.
+fn spinBody(b: ptr<function, Body>, mass: Mass, h: f32) {
+    let q = (*b).moving.turning.orientation;
     let inverse = vec4<f32>(-q.xyz, q.w);
-    var w = rotate(inverse, readVector(buffer, i, params.words.angular));
+    var w = rotate(inverse, (*b).moving.turning.angular);
     var momentum = symmetricTimes(mass.inertia, w);
     let torque = cross(momentum, w);
     let before = sqrt(dot(momentum, momentum));
@@ -227,56 +243,50 @@ fn spinBody(buffer: u32, i: u32, mass: Mass, h: f32) {
     if (after > 0.0) {
         w *= before / after;
     }
-    setVectorIn(buffer, params.words.angular, i, rotate(q, w));
+    (*b).moving.turning.angular = rotate(q, w);
 }
 
-// Holds a sleeping body i at its start pose over a substep of h, its
+// Holds a sleeping body at its start pose over a substep of h, its
 // velocities none, as the core's mvfxHoldSleeping: its forces'
 // acceleration (its velocity over h, from rest) taken as it first sleeps,
 // and a change past the sleep speed over the sleep time wakes it.
-fn holdSleeping(i: u32, x0: vec3<f32>, q0: vec4<f32>, h: f32) {
-    let c = params.counts.x;
+fn holdSleeping(b: ptr<function, Body>, x0: vec3<f32>, q0: vec4<f32>, h: f32) {
     let change = quotient(params.rigidMass.y, params.rigidMass.z);
-    let rest = params.rigid.z + 1u;
     var a = vec3<f32>(0.0);
     var moved = 0.0;
-    let v = readVector(0u, i, params.words.velocity);
     for (var k = 0u; k < 3u; k++) {
-        a[k] = quotient(v[k], h);
-        let d = a[k] - bitcast<f32>(source[(rest + k) * c + i]);
+        a[k] = quotient((*b).moving.velocity[k], h);
+        let d = a[k] - (*b).rest[k];
         moved += d * d;
     }
-    if (sleepOf(i) == SLEEP_NEW) {
-        setVector(rest, i, a);
-        setSleep(i, SLEEP_HELD);
+    if ((*b).sleep == SLEEP_NEW) {
+        (*b).rest = a;
+        (*b).sleep = SLEEP_HELD;
     } else if (!(moved <= change * change)) {
-        setSleep(i, 0.0);
+        (*b).sleep = 0.0;
     }
-    setVector(params.words.place, i, x0);
-    setVector(params.words.velocity, i, vec3<f32>(0.0));
-    setVector(params.words.angular, i, vec3<f32>(0.0));
-    for (var k = 0u; k < 4u; k++) {
-        source[(params.words.orientation + k) * c + i] = bitcast<u32>(q0[k]);
-    }
+    (*b).moving.place = x0;
+    (*b).moving.velocity = vec3<f32>(0.0);
+    (*b).moving.turning.angular = vec3<f32>(0.0);
+    (*b).moving.turning.orientation = q0;
 }
 
-// Settles body i after the step's seconds, as the core's
+// Settles a body after the step's seconds, as the core's
 // mvfxSettleBodies for a body alone: an awake one's still time grows
 // while its farthest point is slower than the sleep speed, else is 0; one
 // still the sleep time falls asleep, its velocities none.
-fn settleBody(i: u32, size: vec3<f32>, seconds: f32) {
-    if (isAsleep(i)) {
+fn settleBody(b: ptr<function, Body>, seconds: f32) {
+    if (isAsleep(*b)) {
         return;
     }
-    let v = readVector(0u, i, params.words.velocity);
-    let w = readVector(0u, i, params.words.angular);
-    let speed = sqrt(dot(v, v)) + sqrt(dot(w, w)) * rigidReach(size);
-    let still = select(0.0, sleepOf(i) + seconds, speed < params.rigidMass.y);
-    setSleep(i, still);
-    if (!(still < params.rigidMass.z)) {
-        setSleep(i, SLEEP_NEW);
-        setVector(params.words.velocity, i, vec3<f32>(0.0));
-        setVector(params.words.angular, i, vec3<f32>(0.0));
+    let v = (*b).moving.velocity;
+    let w = (*b).moving.turning.angular;
+    let speed = sqrt(dot(v, v)) + sqrt(dot(w, w)) * rigidReach(rigidSizeOf(*b));
+    (*b).sleep = select(0.0, (*b).sleep + seconds, speed < params.rigidMass.y);
+    if (!((*b).sleep < params.rigidMass.z)) {
+        (*b).sleep = SLEEP_NEW;
+        (*b).moving.velocity = vec3<f32>(0.0);
+        (*b).moving.turning.angular = vec3<f32>(0.0);
     }
 }
 
@@ -288,54 +298,178 @@ fn rigidSpan(s: u32) -> vec2<u32> {
     return vec2<u32>(since, ticks * (s + 1u) / substeps - since);
 }
 
+// A body's substep since a tick of the plan for ticks, as the core's
+// Substep: its start pose kept, an awake body spun, it moved as a
+// particle, a sleeping one held, an awake one meeting the world; its
+// strike's fate.
+fn rigidSubstep(b: ptr<function, Body>, since: u32, ticks: u32) -> Fate {
+    let h = secondsOf(vec2<u32>(ticks, 0u));
+    let x0 = (*b).moving.place;
+    let q0 = (*b).moving.turning.orientation;
+    if (!isAsleep(*b)) {
+        spinBody(b, rigidMass(rigidSizeOf(*b)), h);
+    }
+    // Through a variable of its own: a pointer to a member is not passed.
+    var moving = (*b).moving;
+    _ = moveState(&moving, since, ticks);
+    (*b).moving = moving;
+    if (isAsleep(*b)) {
+        holdSleeping(b, x0, q0, h);
+        return Fate();
+    }
+    if (params.collisionHead.z == 0u) {
+        return Fate();
+    }
+    return meetWorld(b, x0, q0, h, since + ticks);
+}
+
+// A body that struck the world at a tick of the plan, as the core's
+// mvfxStrikeBody: counted, its event the step's first strike's (its
+// velocity then), killed or its life shortened as the collision says.
+fn strikeBody(b: ptr<function, Body>, c: Contact, tick: u32) -> Fate {
+    var fate = Fate();
+    fate.contacts = 1u;
+    fate.contacted = true;
+    fate.first = Hit(0.0, c.surface, c.normal);
+    fate.tick = tick;
+    fate.velocity = (*b).moving.velocity;
+    let count = (*b).moving.contacts;
+    (*b).moving.contacts = select(count + 1u, count, count == 0xFFFFFFFFu);
+    let loss = params.response.z;
+    if (params.collisionHead.y != 0u) {
+        (*b).moving.killed = true;
+    } else if (loss > 0.0) {
+        // Its share of the life left, killed past its age then.
+        (*b).moving.inverseLife = divide((*b).moving.inverseLife, 1.0 - loss);
+        (*b).moving.death = deathAfter((*b).moving.birth, (*b).moving.inverseLife);
+        (*b).moving.killed = (*b).moving.killed || !isAfter((*b).moving.death, planTick(tick));
+    }
+    return fate;
+}
+
+// An awake body meeting the world at its predicted pose over a substep of
+// h from its start pose, ending at a tick of the plan, as the core's Meet
+// for a body without pairs: its contacts with the colliders at its shape
+// and size then (those past the most counted); touched, its prediction
+// symplectic Euler's, then the stabilizing, pressing, its velocities from
+// its pose's change, restitution and its strike, its first contact struck
+// faster than twice gravity's speed over the substep.
+fn meetWorld(b: ptr<function, Body>, x0: vec3<f32>, q0: vec4<f32>, h: f32, tick: u32) -> Fate {
+    let size = rigidSizeOf(*b);
+    let m = (*b).moving;
+    var list = gatherContacts(m.place, m.turning.orientation, shapeOf(size), rigidReach(size));
+    var fate = Fate();
+    fate.capped = list.capped;
+    if (list.count == 0u) {
+        return fate;
+    }
+    let mass = rigidMass(size);
+    var body = Solid(m.place, m.velocity, m.turning.angular, x0, m.turning.orientation, q0,
+                     mass.inverseMass, mass.inverse);
+    speedsOf(body, &list);
+    body.x = x0 + body.v * h;
+    stabilizePasses(&body, &list);
+    pressPasses(&body, &list, h);
+    correctBody(&body, h);
+    let still = 2.0 * params.gravity.w * h;
+    bouncePasses(&body, &list, h, still);
+    (*b).moving.place = body.x;
+    (*b).moving.velocity = body.v;
+    (*b).moving.turning.angular = body.w;
+    (*b).moving.turning.orientation = body.q;
+    for (var j = 0u; j < list.count; j++) {
+        let c = list.items[j];
+        if (c.lambda > 0.0 && c.speed < -still) {
+            let struck = strikeBody(b, c, tick);
+            fate.contacts = struck.contacts;
+            fate.contacted = true;
+            fate.first = struck.first;
+            fate.tick = struck.tick;
+            fate.velocity = struck.velocity;
+            break;
+        }
+    }
+    return fate;
+}
+
+// A step's fate gaining a substep's: its strikes and drops summed, its
+// first strike kept.
+fn joinFates(fate: ptr<function, Fate>, moved: Fate) {
+    (*fate).contacts += moved.contacts;
+    (*fate).capped += moved.capped;
+    if (moved.contacted && !(*fate).contacted) {
+        (*fate).contacted = true;
+        (*fate).first = moved.first;
+        (*fate).tick = moved.tick;
+        (*fate).velocity = moved.velocity;
+    }
+}
+
 // Rigid: each live body's substeps and its settling, the ended (marked by
-// update) skipped.
+// update) skipped; its first strike noted for its event, and the contacts
+// it dropped past the most in its alive word of the other buffer, free
+// until the scatter, which offsets sums (MVFX_GPU_RIGID_CAPPED).
 @compute @workgroup_size(64, 1, 1)
 fn rigid(@builtin(global_invocation_id) id: vec3<u32>) {
     let c = params.counts.x;
     let live = counts[0];
     for (var i = id.x; i < live; i += params.modes.z * 64u) {
+        moved[params.words.alive * c + i] = 0u;
         if (source[params.words.alive * c + i] == LIVE_ENDED) {
             continue;
         }
+        var b = loadBody(i);
+        // Its event's life the step's first: only a strike shortens it.
+        let inverseLife = b.moving.inverseLife;
+        var fate = Fate();
         for (var s = 0u; s < params.rigid.y; s++) {
             let span = rigidSpan(s);
-            if (span.y == 0u) {
-                continue;
-            }
-            let h = secondsOf(vec2<u32>(span.y, 0u));
-            let x0 = readVector(0u, i, params.words.place);
-            let q0 = orientationOfBody(0u, i);
-            if (!isAsleep(i)) {
-                spinBody(0u, i, rigidMass(rigidSizeOf(0u, i)), h);
-            }
-            moveSpan(0u, i, span.x, span.y);
-            if (isAsleep(i)) {
-                holdSleeping(i, x0, q0, h);
+            if (span.y > 0u) {
+                joinFates(&fate, rigidSubstep(&b, span.x, span.y));
             }
         }
         if (params.rigid.z != NONE) {
-            settleBody(i, rigidSizeOf(0u, i), secondsOf(vec2<u32>(params.counts.z, 0u)));
+            settleBody(&b, secondsOf(vec2<u32>(params.counts.z, 0u)));
         }
+        if (fate.contacted) {
+            noteUnitContact(i, fate.tick, fate.first, fate.velocity, inverseLife);
+        }
+        moved[params.words.alive * c + i] = fate.capped;
+        storeBody(i, b);
     }
 }
 
-// A rigid body born at a tick of the plan, at place at of the other
-// buffer, its values drawn: its substeps from its birth, each from the
-// later of its start and the birth, as the core's
-// mvfxIntegrateRigidNewborn (awake, meeting nothing); the place it ends
-// at. One born at the plan's end takes none, as the core's newborn there
-// moves over no time.
-fn rigidNewborn(at: u32, born: u32) -> vec3<f32> {
+// A rigid body born at a tick of the plan as birth j draws it, at its
+// place and velocity at its tick: its substeps from its birth, each from
+// the later of its start and the birth, as the core's
+// mvfxIntegrateRigidNewborn (awake, meeting the world alone), the step's
+// fate of its strikes. One born at the plan's end takes none, as the core's newborn
+// there moves over no time.
+fn rigidNewborn(j: u32, place: vec3<f32>, velocity: vec3<f32>, b: ptr<function, Body>) -> Fate {
+    let b0 = birthWord(j, 0u);
+    let b1 = birthWord(j, 1u);
+    (*b).moving.place = place;
+    (*b).moving.velocity = velocity;
+    (*b).moving.turning = bornTurning(j);
+    var birth = vec2<u32>(0u);
+    var death = vec2<u32>(0u);
+    birthTicks(b0, b1, &birth, &death);
+    (*b).moving.birth = birth;
+    (*b).moving.death = death;
+    (*b).moving.inverseLife = bitcast<f32>(b1.y);
+    (*b).moving.dragScale = dragScaleOf(j);
+    (*b).size = bornSize(j);
+    var fate = Fate();
     for (var s = 0u; s < params.rigid.y; s++) {
         let span = rigidSpan(s);
-        let since = max(span.x, born);
+        let since = max(span.x, b0.z);
         let to = span.x + span.y;
         if (to > since) {
-            let ticks = to - since;
-            spinBody(1u, at, rigidMass(rigidSizeOf(1u, at)), secondsOf(vec2<u32>(ticks, 0u)));
-            moveSpan(1u, at, since, ticks);
+            joinFates(&fate, rigidSubstep(b, since, to - since));
         }
     }
-    return readVector(1u, at, params.words.place);
+    fate.killed = (*b).moving.killed;
+    fate.inverseLife = (*b).moving.inverseLife;
+    fate.death = (*b).moving.death;
+    return fate;
 }

@@ -939,6 +939,17 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   step's substeps; a body alone falls asleep once still for the sleep time.
   `mvfxEmitterView` gains the rigid def and a hull's vertices, volume and
   second moments, and `mvfxAttributeArrays` a rigid body's sleep.
+- The GPU part runs rigid spheres and capsules that meet the world:
+  planes, spheres and boxes from outside and in, the emitter's and the
+  instance's, with the CPU path's contacts, stabilizing, pressing, patch
+  friction, restitution and strikes (their events, counts and life lost);
+  newborns meet them in their first step. Boxes and hulls that collide,
+  grids, depth images, bodies meeting each other and kills within a step
+  stay refused; the instance's heightfield or distance grid refuses the
+  step (`mvfx_errorState`). `MVFX_GPU_RIGID_CAPPED` counts the contacts
+  dropped past a body's most (`MVFX_GPU_STATISTICS_WORDS` is now 53).
+- A rigid body's strike events are held over its substeps and join the
+  step's body by body, as a unit's points' contacts do.
 
 ### Fixed
 

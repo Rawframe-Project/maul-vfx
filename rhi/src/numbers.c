@@ -7,6 +7,7 @@
 
 #include "numbers.h"
 
+#include <math.h>
 #include <string.h>
 
 // e^-x for x >= 0: x halved until small, a series, squared back.
@@ -799,8 +800,9 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 // a hull's vertices; the density, the sleep speed and time, a hull's
 // volume at a size of 1; its second moments; how the size goes over life
 // (whether, its input, whether a value an axis) and the hull's table, its
-// speed range, and the sizes over life (a value and its table each).
-static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t rigid[32])
+// speed range, the sizes over life (a value and its table each); the
+// restitution and the static and dynamic friction.
+static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t rigid[36])
 {
     const mvfxRigidDef* r = &view->rigid;
     const uint32_t head[4] = {r->shape, r->enabled ? (uint32_t)r->substeps : 0u,
@@ -819,6 +821,7 @@ static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uin
         memcpy(&rigid[24 + 2 * k], &o->sizes[k].value, sizeof(float));
         rigid[25 + 2 * k] = tables->recordLives[1 + k];
     }
+    mvfxFloatWords(rigid + 32, r->restitution, r->staticFriction, r->dynamicFriction, 0.0f);
 }
 
 // The beam as resolved for the step (sim.wgsl's beam, beamNoise and
@@ -926,7 +929,9 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     mvfxFloatWords(words + 16, factors[0], factors[1], factors[2], view->drag);
     float gravity[3];
     Gravity(view, &plan->from, gravity);
-    mvfxFloatWords(words + 20, gravity[0], gravity[1], gravity[2], 0.0f);
+    // Its size as the core's rigid solve takes it, in binary32.
+    float size = sqrtf(gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2]);
+    mvfxFloatWords(words + 20, gravity[0], gravity[1], gravity[2], size);
     const float* m = view->shape.matrix;
     for (int32_t r = 0; r < 3; ++r)
     {

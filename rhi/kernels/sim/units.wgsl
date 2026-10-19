@@ -112,64 +112,123 @@ fn isAfter(tick: vec2<u32>, end: vec2<u32>) -> bool {
     return tick.y > end.y || (tick.y == end.y && tick.x > end.x);
 }
 
-// Particle i of a buffer (0 the current, 1 the other) moved as the core's
-// mvfxIntegrateRange moves it over a substep since a tick of the plan for
-// ticks: in the current buffer its predicted place, also kept in the
-// other, and the first contact of the step noted for its event; its
-// contacts with the colliders, the life they take, a kill (by a contact,
-// the life lost, a kill rule or an attractor's kill radius) held as its
-// kept word 0 for the rest of the step, and its turn over the substep.
-fn moveSpan(buffer: u32, i: u32, since: u32, ticks: u32) {
+// What a span's move reads and changes of a particle, held apart from its
+// buffer: its place, velocity and turn, its birth and death ticks, its
+// inverse life, its drag scale (1 where it stores none), its contacts'
+// count (where it stores one, else 0) and whether a kill took it.
+struct Moving {
+    place: vec3<f32>,
+    velocity: vec3<f32>,
+    turning: Turning,
+    birth: vec2<u32>,
+    death: vec2<u32>,
+    inverseLife: f32,
+    dragScale: f32,
+    contacts: u32,
+    killed: bool,
+}
+
+fn loadMoving(buffer: u32, i: u32) -> Moving {
     let c = params.counts.x;
     let w = params.words;
-    let start = readVector(buffer, i, w.place);
+    var m = Moving();
+    m.place = readVector(buffer, i, w.place);
+    m.velocity = readVector(buffer, i, w.velocity);
+    m.turning = loadTurning(buffer, i);
+    m.birth = vec2<u32>(wordIn(buffer, w.birth * c + i), wordIn(buffer, (w.birth + 1u) * c + i));
+    m.death = vec2<u32>(wordIn(buffer, w.death * c + i), wordIn(buffer, (w.death + 1u) * c + i));
+    m.inverseLife = bitcast<f32>(wordIn(buffer, w.inverseLife * c + i));
+    m.dragScale = 1.0;
+    if (w.drag != NONE) {
+        m.dragScale = bitcast<f32>(wordIn(buffer, w.drag * c + i));
+    }
+    if (w.collisions != NONE) {
+        m.contacts = wordIn(buffer, w.collisions * c + i);
+    }
+    return m;
+}
+
+// Writes what a span's move changes back; a kill holds as the kept word 0
+// for the rest of the step.
+fn storeMoving(buffer: u32, i: u32, m: Moving) {
+    let c = params.counts.x;
+    let w = params.words;
+    setVectorIn(buffer, w.place, i, m.place);
+    setVectorIn(buffer, w.velocity, i, m.velocity);
+    storeTurning(buffer, i, m.turning);
+    setWordIn(buffer, w.inverseLife * c + i, bitcast<u32>(m.inverseLife));
+    setWordIn(buffer, w.death * c + i, m.death.x);
+    setWordIn(buffer, (w.death + 1u) * c + i, m.death.y);
+    if (w.collisions != NONE) {
+        setWordIn(buffer, w.collisions * c + i, m.contacts);
+    }
+    if (m.killed) {
+        setWordIn(buffer, w.alive * c + i, 0u);
+    }
+}
+
+// A particle moved as the core's mvfxIntegrateRange moves it over a
+// substep since a tick of the plan for ticks: its contacts with the
+// colliders (the step's fate, its first contact for its event), the life
+// they take, a kill (by a contact, the life lost, a kill rule or an
+// attractor's kill radius), and its turn over the substep.
+fn moveState(m: ptr<function, Moving>, since: u32, ticks: u32) -> Fate {
+    let start = (*m).place;
     var a = vec3<f32>(0.0);
     var wind = 0.0;
     forcesAt(start, secondsOf(vec2<u32>(since, 0u)), &a, &wind);
-    var scale = 1.0;
-    if (w.drag != NONE) {
-        scale = bitcast<f32>(wordIn(buffer, w.drag * c + i));
-    }
     let seconds = secondsOf(vec2<u32>(ticks, 0u));
-    let f = factorsFor(wind, scale, seconds, false);
-    let birth = vec2<u32>(wordIn(buffer, w.birth * c + i), wordIn(buffer, (w.birth + 1u) * c + i));
-    let inverseLife = bitcast<f32>(wordIn(buffer, w.inverseLife * c + i));
+    let f = factorsFor(wind, (*m).dragScale, seconds, false);
+    let birth = (*m).birth;
+    let inverseLife = (*m).inverseLife;
     let tick = planTick(since);
-    let v0 = limitSpeed(readVector(buffer, i, w.velocity), spanAge(tick, birth, inverseLife),
+    let v0 = limitSpeed((*m).velocity, spanAge(tick, birth, inverseLife),
                         factors(bitcast<f32>(params.turns.w), seconds).x);
     var p = moveByModules(start, start + v0 * f.y + a * f.z, spanAge(tick, birth, inverseLife),
                           seconds);
     var v = v0 * f.x + a * f.y;
-    let death = vec2<u32>(wordIn(buffer, w.death * c + i), wordIn(buffer, (w.death + 1u) * c + i));
-    let fate = meet(start, &p, &v, birth, inverseLife, death);
-    if (fate.contacted && buffer == 0u) {
-        noteUnitContact(i, contactTick(since, ticks, fate.first.t), fate.first, v, inverseLife);
+    // A rigid body meets the colliders at its shape, in its own solve.
+    var fate = Fate();
+    fate.inverseLife = inverseLife;
+    fate.death = (*m).death;
+    if (params.rigid.y == 0u) {
+        fate = meet(start, &p, &v, birth, inverseLife, (*m).death);
     }
-    setVectorIn(buffer, w.place, i, p);
-    setVectorIn(buffer, w.velocity, i, v);
-    if (buffer == 0u) {
-        setVectorIn(1u, w.place, i, p);
+    (*m).place = p;
+    (*m).velocity = v;
+    if (params.words.collisions != NONE) {
+        let count = (*m).contacts;
+        (*m).contacts =
+            select(count + fate.contacts, 0xFFFFFFFFu, count > 0xFFFFFFFFu - fate.contacts);
     }
-    var contacts = 0u;
-    if (w.collisions != NONE) {
-        let count = wordIn(buffer, w.collisions * c + i);
-        contacts = select(count + fate.contacts, 0xFFFFFFFFu, count > 0xFFFFFFFFu - fate.contacts);
-        setWordIn(buffer, w.collisions * c + i, contacts);
-    }
-    setWordIn(buffer, w.inverseLife * c + i, bitcast<u32>(fate.inverseLife));
-    setWordIn(buffer, w.death * c + i, fate.death.x);
-    setWordIn(buffer, (w.death + 1u) * c + i, fate.death.y);
+    (*m).inverseLife = fate.inverseLife;
+    (*m).death = fate.death;
     let end = planTick(since + ticks);
     // The life a contact takes kills only at the contact, as the core's
     // Collide: a later point's own death is past its unit's (liveDeath).
-    if (fate.killed || (fate.contacts > 0u && !isAfter(fate.death, end)) ||
-        killed(start, p, v, subtract64(end, birth), contacts)) {
-        setWordIn(buffer, w.alive * c + i, 0u);
-    }
+    (*m).killed = (*m).killed || fate.killed || (fate.contacts > 0u && !isAfter(fate.death, end)) ||
+                  killed(start, p, v, subtract64(end, birth), (*m).contacts);
     // Turned over the substep at its age then, with the life its contacts
     // left.
     let angular = factors(params.unitAcross.w, seconds);
-    turn(buffer, i, angular.xy, lifeAt(LIFE_ROTATION, spanAge(tick, birth, fate.inverseLife)));
+    (*m).turning = turnState((*m).turning, angular.xy,
+                             lifeAt(LIFE_ROTATION, spanAge(tick, birth, fate.inverseLife)));
+    return fate;
+}
+
+// Particle i moved by moveState, its predicted place also kept in the
+// other buffer, free until the scatter, and the first contact of the step
+// noted for its event.
+fn moveSpan(i: u32, since: u32, ticks: u32) {
+    var m = loadMoving(0u, i);
+    let inverseLife = m.inverseLife;
+    let fate = moveState(&m, since, ticks);
+    if (fate.contacted) {
+        noteUnitContact(i, contactTick(since, ticks, fate.first.t), fate.first, m.velocity,
+                        inverseLife);
+    }
+    storeMoving(0u, i, m);
+    setVectorIn(1u, params.words.place, i, m.place);
 }
 
 // A particle's normalized age at a tick, held to [0, 1].
@@ -751,7 +810,7 @@ fn substepMove(first: u32, local: u32, s: u32, scale: f32) {
         blowSheet(first, local, secondsOf(vec2<u32>(span.x, 0u)), h);
     }
     for (var q = local; q < unitPoints(); q += CHUNK) {
-        moveSpan(0u, first + q, span.x, span.y);
+        moveSpan(first + q, span.x, span.y);
         if (isHeld(q)) {
             pinPoint(first + q, span.x, span.x + span.y, h);
         }

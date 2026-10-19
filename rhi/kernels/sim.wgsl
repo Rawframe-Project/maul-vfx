@@ -167,7 +167,7 @@ struct Step {
     shift: vec4<f32>,
     // the step's drag factors over the plan: decay, carry, push; the drag
     factors: vec4<f32>,
-    // gravity in the particles' space; unused
+    // gravity in the particles' space, its size
     gravity: vec4<f32>,
     // the shape's matrix's rows, its offset and radius, its thickness
     shapeRow0: vec4<f32>,
@@ -281,13 +281,15 @@ struct Step {
     // size goes over life (whether, its input, whether a value an axis)
     // and the hull's vertices' table (three words a vertex at a size of 1),
     // its speed range; the sizes over life (a value's bits and its table's
-    // first word each).
+    // first word each); the restitution, the static and dynamic friction,
+    // unused.
     rigid: vec4<u32>,
     rigidMass: vec4<f32>,
     rigidMoments: array<vec4<f32>, 2>,
     rigidSize: vec4<u32>,
     rigidSizeRange: vec4<f32>,
     rigidLives: array<vec4<u32>, 2>,
+    rigidContact: vec4<f32>,
     // Its units (rhi/kernels/sim/units.wgsl): the points a unit has (1
     // for particles) and across a row, the substeps, the unit pass's
     // workgroups; the step
@@ -389,3 +391,5 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/units.wgsl
 
 // include: sim/rigid.wgsl
+
+// include: sim/rigid_contacts.wgsl

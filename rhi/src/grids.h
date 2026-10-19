@@ -23,8 +23,9 @@
 // reads, its colour's gradient over life, a curve for each of the 12
 // values over life its records read, its ribbons' width curve and colour
 // gradient, its pair force's strength curve and its rigid hull's
-// vertices.
+// vertices. The layout plan budgets them at 64.
 #define MVFX_GPU_TABLES 55
+static_assert(MVFX_GPU_TABLES <= 64, "the baked tables within their 64 slots");
 
 // A baked table in the buffer: its values (the effect's) and words, and
 // its first word.

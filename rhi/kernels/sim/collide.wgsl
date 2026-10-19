@@ -614,13 +614,21 @@ struct Fate {
     // kills it), the first of them.
     contacted: bool,
     first: Hit,
+    // A rigid body's first strike: its tick of the plan (0 for a move's
+    // contact, whose tick is its share of the move) and its velocity
+    // then; the contacts its substeps dropped past the most.
+    tick: u32,
+    velocity: vec3<f32>,
+    capped: u32,
 }
 
 // A move from start met with the colliders, for a particle born at birth
 // with inverse life inverse, dying at death.
 fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>,
         birth: vec2<u32>, inverse: f32, death: vec2<u32>) -> Fate {
-    var fate = Fate(0u, false, inverse, death, false, Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0)));
+    var fate = Fate();
+    fate.inverseLife = inverse;
+    fate.death = death;
     if (params.collisionHead.z == 0u) {
         return fate;
     }

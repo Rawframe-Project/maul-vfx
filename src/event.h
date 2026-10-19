@@ -38,12 +38,13 @@ void mvfxRecordEvent(mvfxInstance* instance, int32_t emitter, const mvfxEventFac
 #define MVFX_HELD_TEAR_ACROSS 2u
 #define MVFX_HELD_TEAR_DOWN   4u
 
-// Begins holding an emitter's units' events over their substeps, each
-// built when it happens: a unit's point writes one collision event a step,
-// its first contact's (mvfxHoldsContacts), and an event a tear, at most
-// one an edge (mvfxHoldsTears). The held events join the step's after the
-// substeps point by point, each point's contact, then its tear across,
-// then its tear down (a unit's substeps are its one move). Begins holding
+// Begins holding an emitter's units' or rigid bodies' events over their
+// substeps, each built when it happens: a unit's point or a body writes
+// one collision event a step, its first contact's or strike's
+// (mvfxHoldsContacts), and a point an event a tear, at most one an edge
+// (mvfxHoldsTears). The held events join the step's after the substeps
+// point by point, each point's contact, then its tear across, then its
+// tear down (a unit's or a body's substeps are its one move). Begins holding
 // the events of an emitter's first count points, when it holds any; until
 // the end, a collision or a tear is held, not recorded.
 void mvfxBeginHeldEvents(mvfxInstance* instance, int32_t emitter, int32_t count);

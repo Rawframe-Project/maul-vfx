@@ -345,12 +345,12 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def);
 mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
                               const mvfxAllocator* allocator);
 
-// Whether an emitter holds its units' contacts over their substeps
-// (event.h): an emitter of units that collides and writes collision
-// events.
+// Whether an emitter holds its units' contacts or its rigid bodies'
+// strikes over their substeps (event.h): an emitter of units or of rigid
+// particles that collides and writes collision events.
 static inline bool mvfxHoldsContacts(const mvfxCompiledEmitter* emitter)
 {
-    return emitter->unitPoints > 1 && emitter->collision.enabled &&
+    return (emitter->unitPoints > 1 || emitter->rigid.enabled) && emitter->collision.enabled &&
            (emitter->events & mvfx_eventMaskCollision) != 0;
 }
 
