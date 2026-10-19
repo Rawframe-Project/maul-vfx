@@ -815,9 +815,9 @@ static void ShapeRest(const mvfxEmitterView* view, const mvfxStepTables* tables,
 }
 
 // The units: a step across and down as the core's UnitStep takes it before
-// the instance's turn and scale, and the angular drag the unit pass turns
-// its points by a substep.
-static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[20])
+// the instance's turn and scale, the angular drag the unit pass turns its
+// points by a substep, and the pins' arrays and kinds.
+static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[28])
 {
     const mvfxUnitDef* u = &view->unit;
     units[0] = (uint32_t)(view->unitPoints > 1 ? view->unitPoints : 1);
@@ -834,6 +834,15 @@ static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint
                    view->unitRests[3]);
     mvfxFloatWords(units + 16, u->stretchCompliance, u->shearCompliance, u->bendCompliance,
                    u->damping);
+    const mvfxAttributeArrays* a = &view->arrays;
+    units[20] = mvfxWordOf(a->anchor);
+    units[21] = mvfxWordOf(a->attach);
+    units[22] = mvfxWordOf(a->attachRotation);
+    units[23] = mvfxWordOf(a->attachFlags);
+    units[24] =
+        (u->pinFirst ? MVFX_UNIT_PIN_FIRST : 0u) | (u->pinFirstRow ? MVFX_UNIT_PIN_ROW : 0u);
+    units[25] = (uint32_t)u->attach;
+    units[26] = mvfxWordOf(a->attachSource);
 }
 
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,

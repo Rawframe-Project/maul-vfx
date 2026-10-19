@@ -893,6 +893,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   contacts and the host's births.
 - The GPU part runs units born from another emitter's events, a birth a
   unit, their room counted in units.
+- The GPU part runs pinned units: a chain's first point or a sheet's
+  first row held where it was born, or to the instance, weighing nothing
+  in the constraints. `mvfxAttributeArrays` gains the anchor, the unit
+  frame's origin and rotation, its flags and its source.
 
 ### Fixed
 

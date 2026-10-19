@@ -28,6 +28,12 @@ struct Family {
     compliance: f32,
 }
 
+// The points of a unit pinned (params.unitPins.x), and what they are
+// held to (params.unitPins.y, mvfxAttachKind).
+const UNIT_PIN_FIRST: u32 = 1u;
+const UNIT_PIN_ROW: u32 = 2u;
+const ATTACH_INSTANCE: u32 = 1u;
+
 var<workgroup> unitEnded: u32;
 var<workgroup> unitKilled: atomic<u32>;
 
@@ -173,9 +179,49 @@ fn constraintEnds(f: Family, s: u32, n: u32, width: u32, rows: u32) -> vec2<u32>
     return vec2<u32>((r + f.ends.y) * width + c + f.ends.x, (r + f.ends.w) * width + c + f.ends.z);
 }
 
-// Projects the distance between points a and b toward rest, as the core's
-// Project with both points free.
-fn projectPair(a: u32, b: u32, rest: f32, compliance: f32) {
+// Whether point q of a unit is pinned, as the core's mvfxIsPinnedPoint
+// for an emitter with anchors; its weight (0 pinned, 1 free).
+fn isPinned(q: u32) -> bool {
+    let pins = params.unitPins.x;
+    return params.unitArrays.x != NONE &&
+           (((pins & UNIT_PIN_FIRST) != 0u && q == 0u) || ((pins & UNIT_PIN_ROW) != 0u && q < params.units.y));
+}
+
+fn pointWeight(i: u32, first: u32) -> f32 {
+    return select(1.0, 0.0, isPinned(i - first));
+}
+
+// A pinned point's place at a tick of the plan, as the core's
+// mvfxPinPlace: its anchor, held in the particles' space, or for units
+// held to the instance in its space, mapped by the instance then.
+fn pinPlace(i: u32, tick: u32) -> vec3<f32> {
+    let anchor = readVector(0u, i, params.unitArrays.x);
+    if (params.unitPins.y != ATTACH_INSTANCE) {
+        return anchor;
+    }
+    var origin = vec3<f32>(0.0);
+    var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    let scale = placeAt(tick, &origin, &rotation);
+    return origin + rotate(rotation, anchor * scale);
+}
+
+// Pins point i over a substep from a tick of the plan to another of h
+// seconds, as the core's Pin: at its place at the end, moving from its
+// place at the start.
+fn pinPoint(i: u32, since: u32, to: u32, h: f32) {
+    let before = pinPlace(i, since);
+    let after = pinPlace(i, to);
+    var v = vec3<f32>(0.0);
+    for (var k = 0u; k < 3u; k++) {
+        v[k] = quotient(after[k] - before[k], h);
+    }
+    setVector(params.words.place, i, after);
+    setVector(params.words.velocity, i, v);
+}
+
+// Projects the distance between points a and b of weights wa and wb
+// toward rest, as the core's Project.
+fn projectPair(a: u32, b: u32, rest: f32, compliance: f32, wa: f32, wb: f32) {
     let pa = pointPlace(a);
     let pb = pointPlace(b);
     var d = vec3<f32>(0.0);
@@ -185,8 +231,8 @@ fn projectPair(a: u32, b: u32, rest: f32, compliance: f32) {
         square += d[k] * d[k];
     }
     let length = sqrt(square);
-    let sum = 1.0 + 1.0 + compliance;
-    if (!(length > 0.0)) {
+    let sum = wa + wb + compliance;
+    if (!(length > 0.0) || !(sum > 0.0)) {
         return;
     }
     let step = quotient(-(length - rest), sum);
@@ -194,16 +240,16 @@ fn projectPair(a: u32, b: u32, rest: f32, compliance: f32) {
     var nb = pb;
     for (var k = 0u; k < 3u; k++) {
         let n = quotient(d[k], length);
-        na[k] += 1.0 * step * n;
-        nb[k] -= 1.0 * step * n;
+        na[k] += wa * step * n;
+        nb[k] -= wb * step * n;
     }
     setVector(params.words.place, a, na);
     setVector(params.words.place, b, nb);
 }
 
-// Damps the relative velocity of points a and b along the line between
-// them by a share, as the core's Damp with both points free.
-fn dampPair(a: u32, b: u32, share: f32) {
+// Damps the relative velocity of points a and b of weights wa and wb
+// along the line between them by a share, as the core's Damp.
+fn dampPair(a: u32, b: u32, share: f32, wa: f32, wb: f32) {
     let pa = pointPlace(a);
     let pb = pointPlace(b);
     var d = vec3<f32>(0.0);
@@ -213,7 +259,7 @@ fn dampPair(a: u32, b: u32, share: f32) {
         square += d[k] * d[k];
     }
     let length = sqrt(square);
-    if (!(length > 0.0)) {
+    if (!(length > 0.0) || !(wa + wb > 0.0)) {
         return;
     }
     let va = readVector(0u, a, params.words.velocity);
@@ -222,16 +268,16 @@ fn dampPair(a: u32, b: u32, share: f32) {
     for (var k = 0u; k < 3u; k++) {
         along += quotient((vb[k] - va[k]) * d[k], length);
     }
-    let change = quotient(share * along, 1.0 + 1.0);
-    var wa = va;
-    var wb = vb;
+    let change = quotient(share * along, wa + wb);
+    var ua = va;
+    var ub = vb;
     for (var k = 0u; k < 3u; k++) {
         let n = quotient(d[k], length);
-        wa[k] += 1.0 * change * n;
-        wb[k] -= 1.0 * change * n;
+        ua[k] += wa * change * n;
+        ub[k] -= wb * change * n;
     }
-    setVector(params.words.velocity, a, wa);
-    setVector(params.words.velocity, b, wb);
+    setVector(params.words.velocity, a, ua);
+    setVector(params.words.velocity, b, ub);
 }
 
 // Every set of every family over a unit from its first point, projected
@@ -245,10 +291,12 @@ fn solveSets(first: u32, local: u32, scale: f32, inverseSquare: f32, share: f32)
             let count = setCount(family, s, width, rows);
             for (var n = local; n < count; n += CHUNK) {
                 let ends = constraintEnds(family, s, n, width, rows) + vec2<u32>(first);
+                let wa = pointWeight(ends.x, first);
+                let wb = pointWeight(ends.y, first);
                 if (share > 0.0) {
-                    dampPair(ends.x, ends.y, share);
+                    dampPair(ends.x, ends.y, share, wa, wb);
                 } else {
-                    projectPair(ends.x, ends.y, family.rest, family.compliance);
+                    projectPair(ends.x, ends.y, family.rest, family.compliance, wa, wb);
                 }
             }
             storageBarrier();
@@ -291,14 +339,20 @@ fn units(@builtin(local_invocation_index) local: u32,
             let h = secondsOf(vec2<u32>(to - since, 0u));
             for (var q = local; q < points; q += CHUNK) {
                 moveSpan(first + q, since, to - since);
+                if (isPinned(q)) {
+                    pinPoint(first + q, since, to, h);
+                }
             }
             storageBarrier();
             workgroupBarrier();
             solveSets(first, local, scale, divide(1.0, h * h), 0.0);
             // The integrator's velocity and the constraints' correction over
-            // the substep.
+            // the substep; a pinned point's the pin's.
             for (var q = local; q < points; q += CHUNK) {
                 let i = first + q;
+                if (isPinned(q)) {
+                    continue;
+                }
                 let p = pointPlace(i);
                 let predicted = readVector(1u, i, params.words.place);
                 var v = readVector(0u, i, params.words.velocity);

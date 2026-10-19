@@ -280,12 +280,18 @@ struct Step {
     // times the spacing, in the emitter's space), the angular drag with
     // the first (its factors a substep's); the rest lengths before
     // the instance's scale (across, down, the two diagonals); the
-    // compliances of stretch, shear and bending and the damping.
+    // compliances of stretch, shear and bending and the damping; the
+    // first words of the pins' arrays (the anchor, the frame's origin and
+    // rotation, its flags; NONE for none); the points pinned (UNIT_PIN_*
+    // bits), what they are held to (mvfxAttachKind) and the source's
+    // array's first word.
     units: vec4<u32>,
     unitAcross: vec4<f32>,
     unitDown: vec4<f32>,
     unitRests: vec4<f32>,
     unitStiffness: vec4<f32>,
+    unitArrays: vec4<u32>,
+    unitPins: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;

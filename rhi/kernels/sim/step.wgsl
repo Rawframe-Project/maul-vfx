@@ -78,12 +78,19 @@ fn moveLive(i: u32) {
 }
 
 // A live unit's point at the plan's start: its place shifted with the
-// anchor, no facts yet, and kept until the unit pass's substeps kill it.
+// anchor (and its pin's anchor, held in the particles' space), no facts
+// yet, and kept until the unit pass's substeps kill it.
 fn holdUnitPoint(i: u32, start: vec3<f32>) {
     let c = params.counts.x;
     noteFacts(i, 0u, Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0)), 0.0);
     for (var k = 0u; k < 3u; k++) {
         source[(params.words.place + k) * c + i] = bitcast<u32>(start[k]);
+    }
+    if (params.unitArrays.x != NONE && params.unitPins.y == 0u) {
+        let anchor = readVector(0u, i, params.unitArrays.x) + params.shift.xyz;
+        for (var k = 0u; k < 3u; k++) {
+            source[(params.unitArrays.x + k) * c + i] = bitcast<u32>(anchor[k]);
+        }
     }
     source[params.words.alive * c + i] = 1u;
 }
@@ -316,6 +323,12 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     var born = vec3<f32>(0.0);
     var bornVelocity = vec3<f32>(0.0);
     let fate = bornFacts(j, &born, &bornVelocity, &moved_place, &moved_velocity);
+    if (params.unitArrays.x != NONE && isPinned(j % unitPoints())) {
+        // A pinned point stays where it was born, as the core's AppendPoint
+        // (its move's contacts and kills still count).
+        moved_place = born;
+        moved_velocity = vec3<f32>(0.0);
+    }
     storeBirthPlaces(j, born, moved_place);
     var birth = vec2<u32>(0u);
     var death = vec2<u32>(0u);
@@ -333,11 +346,29 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     if (params.words.collisions != NONE) {
         moved[params.words.collisions * c + at] = fate.contacts;
     }
+    if (params.unitArrays.x != NONE) {
+        storeAnchor(j, at, born);
+    }
     storeValues(j, at);
     // Born at age 0, turned over the rest of the plan.
     let angular = factors(bitcast<f32>(params.turns.y), remainderOf(j)).xy;
     turn(1u, at, angular, lifeAt(LIFE_ROTATION, 0.0));
     return moved_place;
+}
+
+// A born unit point's anchor, its place at birth, as the core's
+// AppendPoint; for units held to the instance, a pinned point's in the
+// instance's space at the plan's end, as the core's AnchorInInstance.
+fn storeAnchor(j: u32, at: u32, born: vec3<f32>) {
+    let c = params.counts.x;
+    var anchor = born;
+    if (params.unitPins.y == ATTACH_INSTANCE && isPinned(j % unitPoints())) {
+        let q = params.toRotation;
+        anchor = rotate(vec4<f32>(-q.xyz, q.w), born - params.toOrigin.xyz) * (1.0 / params.toOrigin.w);
+    }
+    for (var k = 0u; k < 3u; k++) {
+        moved[(params.unitArrays.x + k) * c + at] = bitcast<u32>(anchor[k]);
+    }
 }
 
 // The seconds from a birth of the plan to the plan's end.

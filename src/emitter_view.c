@@ -204,6 +204,11 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
         .neighborCount = ArrayOf(plan, mvfx_attributeNeighborCount),
         .neighborCenter = ArrayOf(plan, mvfx_attributeNeighborCenterX),
         .neighborVelocity = ArrayOf(plan, mvfx_attributeNeighborVelocityX),
+        .anchor = ArrayOf(plan, mvfx_attributeAnchorX),
+        .attach = ArrayOf(plan, mvfx_attributeAttachX),
+        .attachRotation = ArrayOf(plan, mvfx_attributeAttachRotationX),
+        .attachFlags = ArrayOf(plan, mvfx_attributeAttachFlags),
+        .attachSource = ArrayOf(plan, mvfx_attributeAttachSource),
         .count = plan->arrayCount,
     };
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)

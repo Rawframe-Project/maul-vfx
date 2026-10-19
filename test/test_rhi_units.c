@@ -272,11 +272,61 @@ static void TestEventBirths(Gpu* gpu, mvfxGpu* kernels)
     Beside(gpu, kernels,
            &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .pace = 0.001},
            "chains born from deaths, in the world's space");
-    // Room for 16 chains: births past it refused whole.
-    emitters[1].capacity = 64;
-    emitters[1].eventSpawn.capacity = 16;
-    Beside(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .secondLeast = 48},
+    // Room for 4 chains, 8 births a step: the sprite's deaths give more,
+    // refused whole.
+    emitters[1].capacity = 16;
+    emitters[1].eventSpawn.capacity = 4;
+    Beside(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .secondLeast = 16},
            "chains born from deaths past their room");
+    // Chains born from deaths that a kill sphere kills whole, even in
+    // the step they are born.
+    static const mvfxKillRule sphere = {
+        .kind = mvfx_killInsideSphere, .center = {0, 0.3f, 0}, .radius = 0.3f};
+    emitters[1].capacity = 1024;
+    emitters[1].eventSpawn.capacity = 128;
+    emitters[1].killRules = &sphere;
+    emitters[1].killRuleCount = 1;
+    Beside(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2},
+           "chains born from deaths killed whole");
+}
+
+// A run of pinned units, the CPU path taking the GPU's places and
+// velocities each step: a chain hanging from a pinned point is a
+// pendulum of many links, which parts the two paths' rounding over steps
+// as fast as any chaotic motion (1.3e-3 in velocity by step 9 run free);
+// a step from the same state stays within 1e-3.
+static void Pinned(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, bool moving,
+                   const char* what)
+{
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitter,
+                   .emitterCount = 1,
+                   .moving = moving,
+                   .pace = 0.001,
+                   .adopting = true,
+                   .tolerance = 1e-3f},
+            what);
+}
+
+static void TestPins(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Chains hanging from their first points, held where they were born.
+    mvfxEmitterDef emitter = Chains(8, 4);
+    emitter.unit.pinFirst = true;
+    Pinned(gpu, kernels, &emitter, false, "chains hanging from their first points");
+    // Sheets hanging from their first rows in the world, the instance
+    // moving away from them.
+    emitter = Sheets(8, 4, 2);
+    emitter.unit.pinFirstRow = true;
+    emitter.space = mvfx_spaceWorld;
+    Pinned(gpu, kernels, &emitter, true, "sheets hanging from their first rows in the world");
+    // Chains held to the instance, its first points carried as it moves,
+    // turns and scales.
+    emitter = Chains(8, 4);
+    emitter.unit.pinFirst = true;
+    emitter.unit.attach = mvfx_attachInstance;
+    emitter.space = mvfx_spaceWorld;
+    Pinned(gpu, kernels, &emitter, true, "chains held to the moving instance");
 }
 
 // Whether a planned instance of an effect of one emitter is refused on the
@@ -313,7 +363,9 @@ static void TestRefused(mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = Chains(4, 2);
     emitter.unit.pinFirst = true;
-    CHECK(RefusedForUnits(kernels, &emitter), "pinned units refused");
+    emitter.unit.attach = mvfx_attachHost;
+    emitter.unit.attachFrameCapacity = 4;
+    CHECK(RefusedForUnits(kernels, &emitter), "units held to the host's frames refused");
     emitter = Chains(4, 2);
     emitter.unit.tearStrain = 0.5f;
     CHECK(RefusedForUnits(kernels, &emitter), "tearing units refused");
@@ -331,6 +383,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestRefused(kernels);
     TestChains(gpu, kernels);
     TestSheets(gpu, kernels);
+    TestPins(gpu, kernels);
     TestColliders(gpu, kernels);
     TestKills(gpu, kernels);
     TestNeighbors(gpu, kernels);

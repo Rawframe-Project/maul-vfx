@@ -67,9 +67,9 @@ extern "C"
     // within a step (kill rules, colliders that kill, an attractor's kill
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
-    // move the births. Units (MVFX_FEATURE_UNITS) are refused pinned or
-    // attached, in the air (normal or tangent drag), colliding with
-    // themselves or tearing, or drawn as ribbons.
+    // move the births. Units (MVFX_FEATURE_UNITS) are refused held to the
+    // host's frames or a source's particles, in the air (normal or tangent
+    // drag), colliding with themselves or tearing, or drawn as ribbons.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -747,7 +747,7 @@ extern "C"
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts, 16 more for one spawning from events and 4 more for one
     /// finding neighbors; at the first step,
-    /// its sources' 1,344 and the effect's baked tables its values read
+    /// its sources' 1,376 and the effect's baked tables its values read
     /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,
