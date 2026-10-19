@@ -200,8 +200,9 @@ extern "C"
     /// of 1,024 of them for its contact grid's sorted keys and digit
     /// counts, and 2,016 more for its numbers and counts; one with plexus
     /// links 12 bytes a particle of its capacity, 18,432 a block of 1,024
-    /// of them for its link grid's sorted keys and digit counts, 8 a link
-    /// of its most (mvfxPlexusDef.maxLinks) and 48 for its numbers.
+    /// of them for its link grid's sorted keys and digit counts, 112 a
+    /// link of its most (mvfxPlexusDef.maxLinks: the links, and the
+    /// scratch their output takes) and 48 for its numbers.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -660,6 +661,44 @@ extern "C"
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim,
                                                                   const mvfxGpuExpandDef* def);
+
+    /// Adds the passes writing an emitter's plexus links of the last
+    /// recorded step to the frame the host builds, as two-point ribbons,
+    /// as mvfxInstance_WritePlexus writes them on the CPU path: a transfer
+    /// pass, a pass in one workgroup taking the links and one writing
+    /// their points. Each link the step wrote (mvfxGpuParticles.links, in
+    /// their order) is a ribbon of its two particles' records, owner
+    /// first, straight, the coordinate along 0 and 1, facing the eye, of
+    /// the plexus width, its id the link's index; with the plexus fade its
+    /// alpha is times one less its length over the distance (a sqrt and a
+    /// division in binary32, within a relative 1e-4 of the CPU path's).
+    /// The links that fit whole are written, none after the first that
+    /// does not. What a host may rely on otherwise, where the passes come
+    /// and what they count among: as mvfxGpuSim_AddRibbons. An emitter
+    /// without particles at the instance's quality level, or without
+    /// plexus links, writes no point; its counts, if asked for, are 0.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the links go, from mvfxDefaultGpuRibbonsDef.
+    /// @return As mvfxGpuSim_AddRibbons.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPlexus(mvfxGpuSim* sim,
+                                                                const mvfxGpuRibbonsDef* def);
+
+    /// Adds the passes expanding an emitter's plexus links into triangle
+    /// strips, as mvfxInstance_ExpandPlexus expands them on the CPU path:
+    /// the passes of mvfxGpuSim_AddPlexus, each link four vertices and six
+    /// indices, as mvfxGpuSim_ExpandRibbons expands a ribbon. The def's
+    /// tube is not read.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the strips go, from mvfxDefaultGpuExpandDef.
+    /// @return As mvfxGpuSim_ExpandRibbons.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandPlexus(mvfxGpuSim* sim,
+                                                                   const mvfxGpuExpandDef* def);
 
     /// Adds the passes expanding an emitter's particles into quads to the
     /// frame the host builds, as mvfxInstance_ExpandSprites expands them on

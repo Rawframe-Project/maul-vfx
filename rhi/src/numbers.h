@@ -290,6 +290,19 @@ typedef struct mvfxRibbonSink
 void mvfxSpriteNumbers(const mvfxEmitterView* view, const mvfxView* frame,
                        const mvfxRibbonSink* sink, uint32_t words[MVFX_RIBBON_WORDS]);
 
+// The span of an emitter's plexus link elements, two a link of its most,
+// in whole sort blocks: the links buffer holds the links, then the
+// ribbon kernels' scratch arrays of this span (ribbon_records.wgsl's
+// SCRATCH_*), fourteen spans in all.
+uint32_t mvfxLinkSpan(int32_t maxLinks);
+
+// Writes a plexus pass's ribbon numbers in link mode: no ribbon ids or
+// distances, stretched, facing the eye, of the plexus width without a
+// curve or gradient, one piece, no head; the fade's distance (0 for
+// none); the sink's kind, capacity and counts' word, the links' span.
+void mvfxLinkNumbers(const mvfxEmitterView* view, const mvfxRibbonSink* sink,
+                     uint32_t words[MVFX_RIBBON_WORDS]);
+
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxStepTables* tables, const mvfxRibbonSink* sink,
                        uint32_t words[MVFX_RIBBON_WORDS]);

@@ -148,3 +148,29 @@ void mvfxPlexusNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     memcpy(words, head, sizeof head);
     mvfxFloatWords(words + 8, 1.0f / x->distance, x->distance * x->distance, 0.0f, 0.0f);
 }
+
+uint32_t mvfxLinkSpan(int32_t maxLinks)
+{
+    return ((2u * (uint32_t)maxLinks + MVFX_SORT_BLOCK - 1u) / MVFX_SORT_BLOCK) * MVFX_SORT_BLOCK;
+}
+
+void mvfxLinkNumbers(const mvfxEmitterView* view, const mvfxRibbonSink* sink,
+                     uint32_t words[MVFX_RIBBON_WORDS])
+{
+    const mvfxPlexusDef* x = &view->plexus;
+    memset(words, 0, MVFX_RIBBON_WORDS * sizeof(uint32_t));
+    const uint32_t arrays[4] = {0xFFFFFFFFu, 0xFFFFFFFFu, mvfx_ribbonStretch,
+                                mvfx_ribbonFaceCamera};
+    memcpy(words, arrays, sizeof arrays);
+    mvfxFloatWords(words + 4, 1.0f, 0.0f, x->width, 0.0f);
+    mvfxFloatWords(words + 8, 0.0f, 0.0f, 0.0f, x->fade ? x->distance : 0.0f);
+    words[12] = 0xFFFFFFFFu;
+    words[13] = 0xFFFFFFFFu;
+    words[14] =
+        (uint32_t)(sink->capacity < (int64_t)UINT32_MAX ? sink->capacity : (int64_t)UINT32_MAX);
+    words[15] = sink->countWord;
+    words[16] = 1u;
+    const uint32_t sinks[4] = {sink->kind, sink->sides, sink->caps ? 1u : 0u,
+                               mvfxLinkSpan(x->maxLinks)};
+    memcpy(words + 24, sinks, sizeof sinks);
+}

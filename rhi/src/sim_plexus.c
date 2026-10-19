@@ -50,7 +50,8 @@ bool mvfxCreateSimPlexus(mvfxGpuSim* sim, int32_t e)
         return true;
     }
     // Keys and indices twice over the sort's blocks; two sets of digit
-    // counts; found, owned and first slot a particle; two indices a link.
+    // counts; found, owned and first slot a particle; two indices a link,
+    // and the ribbon kernels' scratch for a plexus pass (mvfxLinkSpan).
     uint64_t c = (uint64_t)emitter->capacity;
     uint64_t blocks = mvfxSortBlocks(emitter->capacity);
     mrhiBufferId* b = emitter->plexusBuffers;
@@ -60,7 +61,7 @@ bool mvfxCreateSimPlexus(mvfxGpuSim* sim, int32_t e)
                         &b[PLEXUS_SORT]) &&
            CreateBuffer(sim, 4u * 2u * 256u * blocks, mrhi_bufferStorage, &b[PLEXUS_DIGITS]) &&
            CreateBuffer(sim, 4u * 3u * c, mrhi_bufferStorage, &b[PLEXUS_COUNTS]) &&
-           CreateBuffer(sim, 8u * (uint64_t)def->maxLinks,
+           CreateBuffer(sim, 4u * 14u * (uint64_t)mvfxLinkSpan(def->maxLinks),
                         mrhi_bufferStorage | mrhi_bufferCopySource, &b[PLEXUS_LINKS]);
 }
 

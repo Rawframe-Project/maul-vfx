@@ -202,8 +202,10 @@ mvfxResult mvfxGpuSim_AddLights(mvfxGpuSim* sim, const mvfxGpuLightsDef* def)
 
 // Adds a ribbon pass writing what kind of sink asks (points with the list,
 // strips with indices in the def's ribbons buffer, its capacity theirs),
-// from a def checked.
-static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfxRibbonSink sink)
+// from a def checked: of the emitter's ribbons, or of its plexus links
+// (their buffer bound for the sort's, read as chains of two).
+static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfxRibbonSink sink,
+                             bool links)
 {
     if (sim->ending)
     {
@@ -227,10 +229,11 @@ static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfx
         return result;
     }
     const mvfxEmitterView* view = &sim->views[def->emitter];
-    if (emitter->capacity == 0 || view->ribbon.ids == mvfx_ribbonNone)
+    if (emitter->capacity == 0 ||
+        (links ? !view->plexus.enabled : view->ribbon.ids == mvfx_ribbonNone))
     {
-        // No particles at the instance's quality level, or no ribbons:
-        // counts of 0.
+        // No particles at the instance's quality level, or no ribbons or
+        // links: counts of 0.
         return def->counts.index1 == 0 ||
                        mvfxAddEmptyRecordPass(sim->device, &emitter->records, def->counts,
                                               (uint32_t)(def->countsOffset / 4u),
@@ -240,7 +243,9 @@ static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfx
     }
     mvfxRecordResources resources = {
         .records = def->points, .count = def->counts, .list = def->ribbons};
-    if (!PassInputs(sim, emitter, &resources))
+    if (!PassInputs(sim, emitter, &resources) ||
+        (links && mrhiImportBuffer(sim->device, emitter->plexusBuffers[PLEXUS_LINKS],
+                                   &resources.sort) != mrhi_success))
     {
         return mvfx_errorState;
     }
@@ -257,9 +262,16 @@ static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfx
     uint32_t ribbonWords[MVFX_RIBBON_WORDS];
     sink.capacity = def->ribbonCapacity;
     sink.countWord = def->counts.index1 != 0 ? (uint32_t)(def->countsOffset / 4u) : 0u;
-    mvfxRibbonNumbers(view, &plan, &emitter->tables, &sink, ribbonWords);
+    if (links)
+    {
+        mvfxLinkNumbers(view, &sink, ribbonWords);
+    }
+    else
+    {
+        mvfxRibbonNumbers(view, &plan, &emitter->tables, &sink, ribbonWords);
+    }
     return mvfxAddRibbonPass(sim->device, &emitter->records, &resources, words, ribbonWords,
-                             plan.capacity)
+                             links ? 2 * (int64_t)view->plexus.maxLinks : plan.capacity)
                ? mvfx_success
                : mvfx_errorState;
 }
@@ -270,7 +282,16 @@ mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
     {
         return mvfx_errorInvalid;
     }
-    return AddRibbons(sim, def, (mvfxRibbonSink){.kind = MVFX_SINK_POINTS});
+    return AddRibbons(sim, def, (mvfxRibbonSink){.kind = MVFX_SINK_POINTS}, false);
+}
+
+mvfxResult mvfxGpuSim_AddPlexus(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
+{
+    if (sim == nullptr || def == nullptr || !IsRibbonsDefValid(sim, def))
+    {
+        return mvfx_errorInvalid;
+    }
+    return AddRibbons(sim, def, (mvfxRibbonSink){.kind = MVFX_SINK_POINTS}, true);
 }
 
 mvfxGpuExpandDef mvfxDefaultGpuExpandDef(void)
@@ -279,8 +300,8 @@ mvfxGpuExpandDef mvfxDefaultGpuExpandDef(void)
 }
 
 // Adds the passes expanding ribbons into strips, or into tubes of the
-// def's sides (strips for 0) when tubes.
-static mvfxResult Expand(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, bool tubes)
+// def's sides (strips for 0) when tubes; or plexus links into strips.
+static mvfxResult Expand(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, bool tubes, bool links)
 {
     if (sim == nullptr || def == nullptr || def->cookie != MVFX_GPU_EXPAND_DEF_COOKIE)
     {
@@ -311,17 +332,22 @@ static mvfxResult Expand(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, bool tube
     const mvfxRibbonSink sink = {.kind = sides > 0 ? MVFX_SINK_TUBES : MVFX_SINK_STRIPS,
                                  .sides = (uint32_t)sides,
                                  .caps = sides > 0 && def->tube.caps};
-    return AddRibbons(sim, &ribbons, sink);
+    return AddRibbons(sim, &ribbons, sink, links);
 }
 
 mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
-    return Expand(sim, def, false);
+    return Expand(sim, def, false, false);
 }
 
 mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
-    return Expand(sim, def, true);
+    return Expand(sim, def, true, false);
+}
+
+mvfxResult mvfxGpuSim_ExpandPlexus(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+{
+    return Expand(sim, def, false, true);
 }
 
 mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)

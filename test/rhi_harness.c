@@ -841,6 +841,7 @@ static uint32_t s_gpuCount[4];
 #define LIST_FIRST   4
 static bool s_ribbonPoints;
 static bool s_strips;
+static bool s_plexus;
 static mvfxTubeDef s_tube;
 static bool s_sprites;
 static int32_t s_recordEmitter;
@@ -910,7 +911,8 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     ribbons.counts = count;
     if (!s_strips)
     {
-        return mvfxGpuSim_AddRibbons(sim, &ribbons) == mvfx_success;
+        return (s_plexus ? mvfxGpuSim_AddPlexus(sim, &ribbons)
+                         : mvfxGpuSim_AddRibbons(sim, &ribbons)) == mvfx_success;
     }
     mvfxGpuExpandDef strips = mvfxDefaultGpuExpandDef();
     strips.emitter = s_recordEmitter;
@@ -927,6 +929,10 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     if (s_sprites)
     {
         return mvfxGpuSim_ExpandSprites(sim, &strips) == mvfx_success;
+    }
+    if (s_plexus)
+    {
+        return mvfxGpuSim_ExpandPlexus(sim, &strips) == mvfx_success;
     }
     return (s_tube.sides > 0 ? mvfxGpuSim_ExpandTubes(sim, &strips)
                              : mvfxGpuSim_ExpandRibbons(sim, &strips)) == mvfx_success;
@@ -1475,6 +1481,25 @@ static bool SwapPlaces(bool in)
     return true;
 }
 
+// SwapPlaces for an output, and for plexus links their links found again
+// from the places swapped in (the drops kept), so both paths write the
+// same links.
+static bool SwapOutputPlaces(bool in)
+{
+    if (!SwapPlaces(in))
+    {
+        return false;
+    }
+    if (s_plexus)
+    {
+        mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
+        uint64_t kept = cpu->emitters[s_recordEmitter].linksDropped;
+        mvfxFindLinks(cpu, s_recordEmitter);
+        cpu->emitters[s_recordEmitter].linksDropped = kept;
+    }
+    return true;
+}
+
 // Gives the CPU path's emitter the GPU's places and velocities, read back
 // last: false when its pool is not the GPU's, serial by serial.
 static bool AdoptGpu(int32_t e)
@@ -1524,12 +1549,17 @@ static bool SameStrips(int64_t* writtenOut)
                                        .scratchBytes = sizeof s_sortScratch};
     int64_t vertices = 0;
     int64_t count = 0;
-    if (!SwapPlaces(true))
+    if (!SwapOutputPlaces(true))
     {
         return false;
     }
     mvfxResult expanded = mvfx_success;
-    if (s_sprites)
+    if (s_plexus)
+    {
+        expanded = mvfxInstance_ExpandPlexus(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
+                                             &buffers, &vertices, &count);
+    }
+    else if (s_sprites)
     {
         int64_t quads = 0;
         expanded = mvfxInstance_ExpandSprites(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
@@ -1545,7 +1575,7 @@ static bool SameStrips(int64_t* writtenOut)
                        : mvfxInstance_ExpandRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
                                                     &s_view, &buffers, &vertices, &count);
     }
-    if (!SwapPlaces(false) || expanded != mvfx_success)
+    if (!SwapOutputPlaces(false) || expanded != mvfx_success)
     {
         return false;
     }
@@ -1589,13 +1619,16 @@ static bool SameRibbonList(int64_t* writtenOut)
                                        .scratchBytes = sizeof s_sortScratch};
     int64_t points = 0;
     int64_t ribbons = 0;
-    if (!SwapPlaces(true))
+    if (!SwapOutputPlaces(true))
     {
         return false;
     }
-    mvfxResult written = mvfxInstance_WriteRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
-                                                   &s_view, &buffers, &points, &ribbons);
-    if (!SwapPlaces(false) || written != mvfx_success)
+    mvfxResult written =
+        s_plexus ? mvfxInstance_WritePlexus(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
+                                            &buffers, &points, &ribbons)
+                 : mvfxInstance_WriteRibbons(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
+                                             &buffers, &points, &ribbons);
+    if (!SwapOutputPlaces(false) || written != mvfx_success)
     {
         return false;
     }
@@ -2268,6 +2301,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_stepsApart = 0;
     s_ribbonPoints = run->ribbons;
     s_strips = run->strips;
+    s_plexus = run->plexus;
     s_tube = run->tube;
     s_sprites = run->sprites;
     s_recordEmitter = run->recordEmitter;

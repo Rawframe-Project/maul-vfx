@@ -867,6 +867,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   count and the drops in the statistics record (`MVFX_GPU_LINKS`,
   `MVFX_GPU_LINKS_DROPPED`; `MVFX_GPU_STATISTICS_WORDS` is now 50). An
   emitter's view gives its plexus def (`mvfxEmitterView.plexus`).
+- The GPU part writes plexus links as two-point ribbons
+  (`mvfxGpuSim_AddPlexus`) and expands them into strips
+  (`mvfxGpuSim_ExpandPlexus`), as `mvfxInstance_WritePlexus` and
+  `mvfxInstance_ExpandPlexus` do: through the ribbon passes, the links
+  read as chains of two. An emitter with plexus links keeps 112 bytes a
+  link of its most for them and their output.
 
 ### Fixed
 

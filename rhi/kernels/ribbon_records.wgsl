@@ -4,7 +4,12 @@
 // An emitter's ribbons: its live particles chained by ribbon id, each
 // chain of two or more points written into a buffer of the host's as the
 // CPU path's mvfxInstance_WriteRibbons writes them, with the list of the
-// chains written and the counts. ribbonKeys gives each live particle its
+// chains written and the counts. In link mode (a plexus pass, sink.w the
+// links' span) the elements are an emitter's plexus links, bound where
+// the sort goes: element 2l is link l's owner and 2l + 1 its other
+// particle, already chained in order, so no keys or radix passes run; a
+// link is straight, facing the eye, its alpha times its fade.
+// ribbonKeys gives each live particle its
 // id as a key for sort.wgsl's four radix passes, stable, so a chain's
 // particles keep the pool's order (oldest first) and chains come in the
 // ids' order; ribbonChains, in one workgroup, finds the chains, those
@@ -39,7 +44,8 @@ struct Ribbons {
     // The tile length, the scroll's offset at the clock (rounded from the
     // core's binary64 product), the width's value, unused.
     values: vec4<f32>,
-    // The normal it faces across in the particles' space, unused.
+    // The normal it faces across in the particles' space; in link mode
+    // the distance a link's fade is over (0 for no fade).
     normal: vec4<f32>,
     // The width curve's first word and the colour gradient's in the grids
     // (NONE for none), the list's capacity in ribbons, the counts' first
@@ -54,7 +60,7 @@ struct Ribbons {
     // What is written: points with the list (SINK_POINTS), strips of
     // two vertices a point with their triangles' indices (SINK_STRIPS),
     // or tubes of a ring a point (SINK_TUBES); a tube's sides, whether its
-    // ends are capped; unused.
+    // ends are capped; in link mode the links' span, else 0.
     sink: vec4<u32>,
     // The cosine of the turn k + 1 pieces allow, at bends[k / 4][k % 4].
     bends: array<vec4<f32>, 4>,
@@ -117,15 +123,32 @@ const COUNT_POINTS_WRITTEN: u32 = 2u;
 const COUNT_RIBBONS_WRITTEN: u32 = 3u;
 
 // The statistics record's count of the ribbon breaks the GPU made
-// (MVFX_GPU_RIBBON_BREAKS).
+// (MVFX_GPU_RIBBON_BREAKS), and of the step's plexus links
+// (MVFX_GPU_LINKS).
 const RIBBON_BREAKS: u32 = 38u;
+const STATISTICS_LINKS: u32 = 48u;
 
 var<workgroup> runScan: array<u32, CHUNK>;
 var<workgroup> runSums: array<f32, CHUNK>;
 var<workgroup> chainTotal: u32;
 
+fn isLinks() -> bool {
+    return ribbon.sink.w != 0u;
+}
+
 fn sortSpan() -> u32 {
+    if (isLinks()) {
+        return ribbon.sink.w;
+    }
     return (params.head.x + BLOCK - 1u) / BLOCK * BLOCK;
+}
+
+// The elements chained: the live particles, or twice the step's links.
+fn elementCount() -> u32 {
+    if (isLinks()) {
+        return 2u * statistics[STATISTICS_LINKS];
+    }
+    return statistics[0];
 }
 
 fn scratchWord(array: u32, k: u32) -> u32 {
@@ -134,10 +157,16 @@ fn scratchWord(array: u32, k: u32) -> u32 {
 
 // Element e of the sorted chain order: its key (the id) and particle.
 fn keyAt(e: u32) -> u32 {
+    if (isLinks()) {
+        return e / 2u;
+    }
     return sortWords[e];
 }
 
 fn particleOf(e: u32) -> u32 {
+    if (isLinks()) {
+        return sortWords[e];
+    }
     return sortWords[sortSpan() + e];
 }
 
@@ -229,7 +258,7 @@ fn ribbonKeys(@builtin(local_invocation_index) local: u32,
 @compute @workgroup_size(256, 1, 1)
 fn ribbonChains(@builtin(local_invocation_index) local: u32) {
     if (local == 0u) {
-        liveCount = statistics[0];
+        liveCount = elementCount();
     }
     let live = workgroupUniformLoad(&liveCount);
     findChains(local, live);
@@ -386,7 +415,7 @@ fn piecesOf(e: u32) -> u32 {
 
 fn spanOf(e: u32) -> f32 {
     if (ribbon.cut.x <= 1u) {
-        return length(nextLess(e, statistics[0], particleOf(e))) / params.scales.x;
+        return length(nextLess(e, elementCount(), particleOf(e))) / params.scales.x;
     }
     return bitcast<f32>(sortWords[scratchWord(SCRATCH_SPAN, e)]);
 }
@@ -570,7 +599,7 @@ struct Point {
 // written, the workgroups striding over the elements.
 @compute @workgroup_size(64, 1, 1)
 fn ribbonPoints(@builtin(global_invocation_id) id: vec3<u32>) {
-    let live = statistics[0];
+    let live = elementCount();
     let tubes = ribbon.sink.x == SINK_TUBES;
     for (var e = id.x; e < live; e += params.shape.y * 64u) {
         let chain = sortWords[scratchWord(SCRATCH_CHAIN, e)];
@@ -676,6 +705,9 @@ fn writeSegment(e: u32, live: u32, chain: u32, first: u32, frame: ptr<function, 
         if (ribbon.tables.y != NONE) {
             point.color = gradientAt(ribbon.tables.y, point.length);
         }
+        if (isLinks() && ribbon.normal.w > 0.0) {
+            point.color.w = fadeOf(chain);
+        }
         point.ribbon = sortWords[scratchWord(SCRATCH_RIBBON, chain)];
         let world = origin + rotate(params.turn, here) / params.scales.x;
         var across = params.eye.xyz - world;
@@ -695,6 +727,15 @@ fn writeSegment(e: u32, live: u32, chain: u32, first: u32, frame: ptr<function, 
             after = nextPlace;
         }
     }
+}
+
+// A link's fade: one less its length over the distance, its length in
+// the particles' space summed as the core's (other less owner).
+fn fadeOf(chain: u32) -> f32 {
+    let e = sortWords[scratchWord(SCRATCH_START, chain)];
+    let d = placeLess(particleOf(e + 1u), particleOf(e));
+    let square = d.x * d.x + d.y * d.y + d.z * d.z;
+    return 1.0 - sqrt(square) / ribbon.normal.w;
 }
 
 // A point's texture coordinate along, a fraction of segment s of its

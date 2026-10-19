@@ -91,7 +91,10 @@ static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
         .resources = *resources, .ribbons = ribbonWords != nullptr && !sprites, .sprites = sprites};
     bool numbered = ribbonWords != nullptr;
     memcpy(pass->words, words, sizeof pass->words);
-    pass->sorted = pass->ribbons || words[MVFX_RECORD_ORDER] == MVFX_ORDER_SORTED;
+    // Plexus links (a links span in the ribbon numbers' sink.w) come
+    // chained already: no keys or radix passes.
+    bool links = ribbonWords != nullptr && !sprites && ribbonWords[27] != 0u;
+    pass->sorted = pass->ribbons ? !links : words[MVFX_RECORD_ORDER] == MVFX_ORDER_SORTED;
     // One invocation a record, 64 a workgroup, at most a dispatch's.
     int64_t groups = (capacity + 63) / 64;
     pass->groups = (uint32_t)(groups < 65535 ? groups : 65535);

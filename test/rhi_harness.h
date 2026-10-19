@@ -138,6 +138,11 @@ typedef struct Run
     // mvfxInstance_ExpandTubes) for sides past 0.
     bool strips;
     mvfxTubeDef tube;
+    // Whether those ribbons are the first emitter's plexus links instead
+    // (mvfxGpuSim_AddPlexus or mvfxGpuSim_ExpandPlexus, and the CPU
+    // path's mvfxInstance_WritePlexus or mvfxInstance_ExpandPlexus with
+    // its links found from the GPU's places).
+    bool plexus;
     // Whether the strips' buffers take the particles expanded into quads
     // instead (mvfxGpuSim_ExpandSprites and mvfxInstance_ExpandSprites;
     // strips and ribbons set too).
