@@ -889,6 +889,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   kills, and a point's first contact a step at its substep, with its
   velocity then. An emitter that writes events keeps 48 bytes a particle
   of its capacity for its particles' facts, 12 more than before.
+- The GPU part runs units beside neighbors, steering, a pair force,
+  contacts and the host's births.
 
 ### Fixed
 

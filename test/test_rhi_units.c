@@ -173,6 +173,77 @@ static void TestKills(Gpu* gpu, mvfxGpu* kernels)
     Met(gpu, kernels, &emitter, true, "sheets an attractor's kill radius kills whole");
 }
 
+// A run within 2e-3 (neighbors' forces and contacts turn by the places'
+// differences over their distances, and a unit carries a point's to the
+// rest), of one or two emitters.
+static void Beside(Gpu* gpu, mvfxGpu* kernels, const Run* base, const char* what)
+{
+    Run run = *base;
+    run.tolerance = 2e-3f;
+    Compare(gpu, kernels, &run, what);
+}
+
+static void TestNeighbors(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Chains flocking by their points' neighbors, then pushed and pulled
+    // by a pair force, the CPU path taking the GPU's places and velocities
+    // each step: a chain's own points are its neighbors, its constraints
+    // take back most of their kick, and what is left is the rounding,
+    // which runs apart over steps.
+    mvfxEmitterDef emitter = Chains(8, 4);
+    emitter.neighbors =
+        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.3f, .maxNeighbors = 32};
+    emitter.steering = (mvfxSteeringDef){.enabled = true,
+                                         .separation = 0.5f,
+                                         .separationRadius = 0.15f,
+                                         .alignment = 0.4f,
+                                         .alignmentRadius = 0.3f,
+                                         .cohesion = 0.3f,
+                                         .cohesionRadius = 0.25f,
+                                         .viewAngle = 2.0f};
+    Beside(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .adopting = true},
+           "chains steered by their neighbors");
+    emitter.steering = (mvfxSteeringDef){0};
+    emitter.pairForce = (mvfxPairForceDef){
+        .enabled = true, .radius = 0.2f, .strength = (mvfxLifeCurve){.value = -2.0f}};
+    Beside(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .adopting = true},
+           "chains under a pair force");
+}
+
+static void TestContacts(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Sheets whose points are kept apart from other sheets' after the
+    // births, as particles' are. Their radii (at most 0.02) stay below
+    // half the spacing: a sheet's own points held at the spacing by its
+    // constraints and pushed to their radii by contacts would rest at the
+    // contact's edge, met on one path only by rounding. Contacts enough
+    // for every point (a sheet's points lie at equal distances, so a cap
+    // would choose among ties by rounding).
+    mvfxEmitterDef emitter = Sheets(8, 4, 2);
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.02f, 0.02f, 0.02f}, .max = {0.04f, 0.04f, 0.04f}};
+    emitter.contacts = (mvfxContactDef){.enabled = true,
+                                        .radiusScale = 0.5f,
+                                        .iterations = 2,
+                                        .maxContacts = 32,
+                                        .restitution = 0.3f,
+                                        .friction = 0.2f};
+    Beside(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .adopting = true},
+           "sheets whose points are kept apart");
+}
+
+static void TestHostBirths(Gpu* gpu, mvfxGpu* kernels)
+{
+    // The host's chains at its places, beside the emitter's own.
+    static const double positions[3 * 4] = {0.5, 0, 0, -0.5, 0.2, 0, 0, 0.3, 0.4, 0, 0, 0};
+    static const float velocities[3 * 4] = {1, 2, 0, 0, 3, 1, -1, 2, 0, 0, 1, 0};
+    const mvfxSpawnRequest given = {.count = 4, .positions = positions, .velocities = velocities};
+    mvfxEmitterDef emitter = Chains(8, 2);
+    emitter.hostSpawnCapacity = 4;
+    Beside(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .spawn = &given},
+           "the host's chains");
+}
+
 // Whether a planned instance of an effect of one emitter is refused on the
 // GPU for its units.
 static bool RefusedForUnits(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
@@ -227,6 +298,9 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestSheets(gpu, kernels);
     TestColliders(gpu, kernels);
     TestKills(gpu, kernels);
+    TestNeighbors(gpu, kernels);
+    TestContacts(gpu, kernels);
+    TestHostBirths(gpu, kernels);
 }
 
 int main(void)
