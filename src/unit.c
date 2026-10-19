@@ -371,6 +371,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
     int64_t ticks = instance->clock - instance->stepStart;
     int32_t substeps = unit->substeps;
     mvfxBeginAttachments(instance, emitter);
+    mvfxBeginHeldContacts(instance, emitter, count);
     mvfxFindSelfContacts(instance, emitter, (double)ticks / (double)MVFX_TICKS_PER_SECOND);
     for (int32_t s = 0; s < substeps; ++s)
     {
@@ -416,5 +417,6 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
             SolveAll(&p, families, PASS_DAMP, share);
         }
     }
+    mvfxEndHeldContacts(instance, emitter, count);
     mvfxEndAttachments(instance, emitter);
 }

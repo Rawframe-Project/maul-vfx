@@ -888,6 +888,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 
 ### Fixed
 
+- A unit's point writes one collision event a step, its first contact's,
+  as the header says and a particle does; it wrote one at each substep
+  it touched. The events of a unit's points follow its substeps in point
+  order, each taken at its contact.
 - A unit ends whole, with its first point: a contact's life loss on a
   later point alone ended that point by itself, leaving its unit split
   (a chain of three left with two points).

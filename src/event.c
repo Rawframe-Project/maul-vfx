@@ -9,27 +9,19 @@
 #include "instance_api.h"
 #include "space.h"
 
+#include <string.h>
+
 void mvfxBeginEvents(mvfxInstance* instance, int32_t emitter)
 {
     instance->emitters[emitter].eventCount = 0;
 }
 
-void mvfxRecordEvent(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact)
+// Builds the event a fact records, its values taken now.
+static void BuildEvent(const mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact,
+                       mvfxEvent* event)
 {
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    mvfxEmitterState* state = &instance->emitters[emitter];
-    if ((compiled->events & (1u << fact->kind)) == 0)
-    {
-        return;
-    }
-    if (state->eventCount == compiled->eventCapacity)
-    {
-        state->eventsDropped = mvfxSaturatingAdd(state->eventsDropped, 1);
-        return;
-    }
     int32_t i = fact->particle;
     const uint32_t* serial = mvfxAttributeArray(instance, emitter, mvfx_attributeSerial);
-    mvfxEvent* event = &state->events[state->eventCount++];
     *event = (mvfxEvent){
         .kind = fact->kind,
         .killed = fact->killed,
@@ -60,6 +52,73 @@ void mvfxRecordEvent(mvfxInstance* instance, int32_t emitter, const mvfxEventFac
     }
     mvfxColorOf(instance, emitter, i, event->color);
     mvfxSizeOf(instance, emitter, i, event->size);
+}
+
+// Whether an emitter writes events of a kind.
+static bool Writes(const mvfxInstance* instance, int32_t emitter, mvfxEventKind kind)
+{
+    return (instance->effect->emitters[emitter].events & (1u << kind)) != 0;
+}
+
+// Appends an event, or counts it dropped when the buffer is full.
+static void Append(mvfxInstance* instance, int32_t emitter, const mvfxEvent* event)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (state->eventCount == instance->effect->emitters[emitter].eventCapacity)
+    {
+        state->eventsDropped = mvfxSaturatingAdd(state->eventsDropped, 1);
+        return;
+    }
+    state->events[state->eventCount++] = *event;
+}
+
+void mvfxRecordEvent(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact)
+{
+    if (!Writes(instance, emitter, fact->kind))
+    {
+        return;
+    }
+    mvfxEvent event;
+    BuildEvent(instance, emitter, fact, &event);
+    Append(instance, emitter, &event);
+}
+
+void mvfxBeginHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    state->holdingContacts = mvfxHoldsContacts(&instance->effect->emitters[emitter]);
+    if (state->holdingContacts)
+    {
+        memset(state->unitContactHeld, 0, (size_t)count);
+    }
+}
+
+void mvfxHoldContact(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    int32_t i = fact->particle;
+    if (state->unitContactHeld[i] == 0)
+    {
+        BuildEvent(instance, emitter, fact, &state->unitContacts[i]);
+        state->unitContactHeld[i] = 1;
+    }
+}
+
+void mvfxEndHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (!state->holdingContacts)
+    {
+        return;
+    }
+    state->holdingContacts = false;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        if (state->unitContactHeld[i] != 0)
+        {
+            Append(instance, emitter, &state->unitContacts[i]);
+        }
+    }
 }
 
 mvfxResult mvfxInstance_GetEvents(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,

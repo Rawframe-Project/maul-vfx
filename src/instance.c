@@ -42,6 +42,8 @@ typedef struct EmitterAt
     size_t plexusLinks;
     uint32_t plexusMask;
     size_t unitPrevious;
+    size_t unitContacts;
+    size_t unitContactHeld;
     size_t attachFrames;
     size_t attachTargets;
     size_t selfTable;
@@ -80,15 +82,18 @@ uint32_t mvfxGridTableSize(int32_t capacity)
     return size;
 }
 
-// Adds an emitter of units' room: the places the integrator predicts, and
-// for units held to frames the host's frames and each unit's frame at the
-// step's end.
+// Adds an emitter of units' room: the places the integrator predicts, the
+// contacts' events held over the substeps, and for units held to frames the host's frames and each
+// unit's frame at the step's end.
 static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
                      const int32_t* capacities, EmitterAt* at)
 {
     const mvfxCompiledEmitter* compiled = &effect->emitters[e];
     size_t previous = compiled->unitPoints > 1 ? 3u * (size_t)capacities[e] : 0;
     at->unitPrevious = mvfxLayoutAdd(layout, previous, sizeof(float), alignof(float));
+    size_t held = mvfxHoldsContacts(compiled) ? (size_t)capacities[e] : 0;
+    at->unitContacts = mvfxLayoutAdd(layout, held, sizeof(mvfxEvent), alignof(mvfxEvent));
+    at->unitContactHeld = mvfxLayoutAdd(layout, held, sizeof(uint8_t), alignof(uint8_t));
     mvfxAttachKind kind = compiled->unitPoints > 1 ? compiled->unit.attach : mvfx_attachNone;
     size_t frames = kind == mvfx_attachHost ? (size_t)compiled->unit.attachFrameCapacity : 0;
     at->attachFrames =
@@ -368,6 +373,8 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
             .links = (int32_t*)(block + at[e].plexusLinks),
         };
         instance->emitters[e].unitPrevious = (float*)(block + at[e].unitPrevious);
+        instance->emitters[e].unitContacts = (mvfxEvent*)(block + at[e].unitContacts);
+        instance->emitters[e].unitContactHeld = (uint8_t*)(block + at[e].unitContactHeld);
         instance->emitters[e].attachFrames = (mvfxAttachFrame*)(block + at[e].attachFrames);
         instance->emitters[e].attachTargets = (float*)(block + at[e].attachTargets);
         instance->emitters[e].selfGrid = (mvfxNeighborGrid){

@@ -328,13 +328,21 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
     int64_t tick =
         r->tick +
         (int64_t)floor((double)first.t * r->seconds * (double)MVFX_TICKS_PER_SECOND + 0.5);
-    mvfxRecordEvent(r->instance, r->emitter,
-                    &(mvfxEventFact){.kind = mvfx_eventCollision,
-                                     .particle = i,
-                                     .tick = tick,
-                                     .placeTick = tick,
-                                     .point = first.point,
-                                     .normal = first.normal});
+    const mvfxEventFact fact = {.kind = mvfx_eventCollision,
+                                .particle = i,
+                                .tick = tick,
+                                .placeTick = tick,
+                                .point = first.point,
+                                .normal = first.normal};
+    // A unit's point over its substeps: its first contact held (event.h).
+    if (state->holdingContacts)
+    {
+        mvfxHoldContact(r->instance, r->emitter, &fact);
+    }
+    else
+    {
+        mvfxRecordEvent(r->instance, r->emitter, &fact);
+    }
     if (collision->killOnCollision || collision->lifeLoss >= 1.0f)
     {
         return true;

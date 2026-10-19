@@ -191,6 +191,12 @@ typedef struct mvfxEmitterState
     // For an emitter of units, its points' places the integrator predicts
     // in a substep, three arrays of the capacity.
     float* unitPrevious;
+    // For one that holds its contacts (mvfxHoldsContacts): each point's
+    // first contact's event of the step and whether it holds one, and
+    // whether its substeps are running.
+    mvfxEvent* unitContacts;
+    uint8_t* unitContactHeld;
+    bool holdingContacts;
     // For units held to frames: the host's frames and how many are set,
     // and each unit's frame at the step's end (seven floats a unit: its
     // origin, then its orientation).

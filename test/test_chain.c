@@ -439,6 +439,46 @@ static void TestLifeLossKeepsUnitsWhole(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestCollisionEvents(void)
+{
+    // A chain lying on a floor over four substeps, touching it in each:
+    // one collision event a point a step (its first contact), in point
+    // order, as a particle's.
+    mvfxEmitterDef emitter = Chain(3);
+    emitter.unit.pinFirst = false;
+    emitter.unit.direction[0] = 1.0f;
+    emitter.unit.direction[1] = 0.0f;
+    emitter.unit.substeps = 4;
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.01f, 0}, .normal = {0, 1, 0}};
+    emitter.colliders = &floor;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.events = mvfx_eventMaskCollision;
+    emitter.eventCapacity = 64;
+    Open(&emitter, NULL, 0);
+    static const double root[3] = {0, 0, 0};
+    Spawn(1, root, NULL);
+    bool once = true;
+    int32_t most = 0;
+    for (int32_t s = 0; s < 20; ++s)
+    {
+        Steps(1, MVFX_TICKS_PER_SECOND / 60);
+        const mvfxEvent* events = NULL;
+        int32_t count = 0;
+        CHECK(mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0, &events, &count) ==
+                  mvfx_success,
+              "events");
+        for (int32_t e = 1; e < count; ++e)
+        {
+            once = once && events[e].serial > events[e - 1].serial;
+        }
+        most = count > most ? count : most;
+    }
+    CHECK(once && most == 3, "a collision event a point a step, in point order");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestParticlesUnread(void)
 {
     // A particle emitter's unit is not read: a stray pin leaves its
@@ -554,6 +594,7 @@ int main(void)
     TestQuality();
     TestKillInSubsteps();
     TestLifeLossKeepsUnitsWhole();
+    TestCollisionEvents();
     TestParticlesUnread();
     TestChecks();
     return s_failures == 0 ? 0 : 1;

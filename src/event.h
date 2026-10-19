@@ -32,4 +32,20 @@ void mvfxBeginEvents(mvfxInstance* instance, int32_t emitter);
 // dropped when the buffer is full.
 void mvfxRecordEvent(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact);
 
+// Begins holding an emitter's units' contacts over their substeps
+// (mvfxHoldsContacts): a unit's point writes one collision event a step,
+// its first contact's, built at the contact; the held events join the
+// step's after the substeps, in point order (a unit's substeps are its
+// one move). Begins holding the contacts of an emitter's first count
+// points, when it holds them; until the end, a collision is held, not
+// recorded.
+void mvfxBeginHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count);
+
+// Holds a collision fact's event, built now, unless its point holds one.
+void mvfxHoldContact(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact);
+
+// Appends the held events in point order, those past the buffer counted
+// dropped, and stops holding.
+void mvfxEndHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count);
+
 #endif

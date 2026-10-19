@@ -345,6 +345,15 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def);
 mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
                               const mvfxAllocator* allocator);
 
+// Whether an emitter holds its units' contacts over their substeps
+// (event.h): an emitter of units that collides and writes collision
+// events.
+static inline bool mvfxHoldsContacts(const mvfxCompiledEmitter* emitter)
+{
+    return emitter->unitPoints > 1 && emitter->collision.enabled &&
+           (emitter->events & mvfx_eventMaskCollision) != 0;
+}
+
 // Whether a unit's point (its index in its unit) is pinned: a pinned first
 // point, or one of a pinned first row.
 static inline bool mvfxIsPinnedPoint(const mvfxCompiledEmitter* emitter, int32_t point)
