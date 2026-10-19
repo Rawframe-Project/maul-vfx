@@ -372,8 +372,9 @@ extern "C"
 
 // The counts a ribbon pass writes, 32-bit words: the points and the
 // ribbons there are, as mvfxInstance_WriteRibbons counts them, and the
-// points and the ribbons written. The ribbons left out are the
-// difference, the room a host lacks.
+// points and the ribbons written (for strips, mvfxGpuSim_ExpandRibbons,
+// the vertices and the indices). What is left out is the difference, the
+// room a host lacks.
 #define MVFX_GPU_RIBBON_COUNTS 4
 
     // Where an emitter's ribbons go (mvfxGpuSim_AddRibbons). Build it with
@@ -466,6 +467,66 @@ extern "C"
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim,
                                                                  const mvfxGpuRibbonsDef* def);
+
+    // Where an emitter's ribbons expanded go (mvfxGpuSim_ExpandRibbons).
+    // Build it with mvfxDefaultGpuExpandDef.
+    typedef struct mvfxGpuExpandDef
+    {
+        uint32_t cookie;
+        // The emitter, the vertices' layout (as a ribbons def's) and the
+        // view.
+        int32_t emitter;
+        mvfxLayoutId layout;
+        mvfxView view;
+        // A storage buffer of the frame open the vertices go into, from a
+        // byte that is a multiple of 4, at most vertexCapacity of them.
+        mrhiResourceId vertices;
+        uint64_t vertexOffset;
+        int64_t vertexCapacity;
+        // A storage buffer of the frame the 32-bit indices go into (from 0
+        // at the first vertex), from a byte that is a multiple of 4, at
+        // most indexCapacity of them.
+        mrhiResourceId indices;
+        uint64_t indexOffset;
+        int64_t indexCapacity;
+        // Optionally a storage buffer of the frame and a byte (a multiple
+        // of 4) the counts go to, MVFX_GPU_RIBBON_COUNTS words; a null id
+        // for none.
+        mrhiResourceId counts;
+        uint64_t countsOffset;
+    } mvfxGpuExpandDef;
+
+// The cookie of an expand def, which its default sets and the expanding
+// calls check.
+#define MVFX_GPU_EXPAND_DEF_COOKIE 0x6D767265u
+
+    /// Returns the default expand def: emitter 0, no buffer yet.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API mvfxGpuExpandDef mvfxDefaultGpuExpandDef(void);
+
+    /// Adds the passes expanding an emitter's ribbons into triangle strips
+    /// to the frame the host builds, as mvfxInstance_ExpandRibbons expands
+    /// them on the CPU path: the passes of mvfxGpuSim_AddRibbons, each
+    /// point two vertices across its width along its side (corner 0 on the
+    /// side's back, 1 on it, the coordinate along as the corner's first),
+    /// each segment six indices. Ribbons are taken whole while both
+    /// buffers hold them; the counts are the vertices and indices there
+    /// are and those written. What a host may rely on, where the passes
+    /// come and what they count among: as mvfxGpuSim_AddRibbons.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the strips go, from mvfxDefaultGpuExpandDef.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, or a def mvfxGpuSim_AddRibbons
+    ///         refuses as invalid read with its vertices as points and its
+    ///         indices as the list; else as mvfxGpuSim_AddRibbons.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim,
+                                                                    const mvfxGpuExpandDef* def);
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing

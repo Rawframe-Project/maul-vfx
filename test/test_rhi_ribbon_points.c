@@ -277,8 +277,9 @@ static void TestHead(Gpu* gpu, mvfxGpu* kernels)
 {
     // The current ribbon ends at a head pinned to the shape's offset in a
     // moving, turning instance, tiled by distance, in the instance's space
-    // and the world's; then cut into pieces, the host breaking it; then
-    // the emitter stops spawning at half the run, the head gone after.
+    // and the world's, then broken by distance; then cut into pieces, the
+    // host breaking it; then the emitter stops spawning at half the run,
+    // the head gone after.
     const mvfxLayoutDef layout = PointLayout();
     mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
     emitter.ribbon.pinHead = true;
@@ -305,6 +306,20 @@ static void TestHead(Gpu* gpu, mvfxGpu* kernels)
                    .ribbons = true,
                    .ribbonCapacity = 64},
             "points to a pinned head in the world's space");
+    // Broken by distance on the GPU: the head ends the ribbon the breaks
+    // made current.
+    emitter.ribbon.breakDistance = 0.6f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .leastBreaks = 5,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points to a pinned head, broken by distance");
+    emitter.ribbon.breakDistance = 0.0f;
     emitter.space = mvfx_spaceLocal;
     emitter.ribbon.pieces = 4;
     emitter.ribbon.texture = mvfx_ribbonTilePerSegment;
@@ -329,6 +344,73 @@ static void TestHead(Gpu* gpu, mvfxGpu* kernels)
                    .ribbons = true,
                    .ribbonCapacity = 64},
             "points to a pinned head until the emitter stops");
+}
+
+static void TestStrips(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Strips of two vertices a point and two triangles a segment: one
+    // ribbon facing the eye; cut into pieces by the bend and ending at a
+    // pinned head, in the instance's space; by batch, the vertices too few,
+    // then the indices.
+    const mvfxLayoutDef layout = PointLayout();
+    mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 2 * CAPACITY,
+                   .ribbons = true,
+                   .strips = true,
+                   .ribbonCapacity = 6 * CAPACITY},
+            "strips of one ribbon facing the eye");
+    emitter.space = mvfx_spaceLocal;
+    emitter.ribbon.pieces = 4;
+    emitter.ribbon.bendAngle = 0.2f;
+    emitter.ribbon.pinHead = true;
+    emitter.ribbon.texture = mvfx_ribbonTilePerSegment;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 8000,
+                   .ribbons = true,
+                   .strips = true,
+                   .ribbonCapacity = 16000},
+            "strips of pieces to a pinned head in the instance's space");
+    static const mvfxBurst bursts[1] = {{.time = 0,
+                                         .minCount = 4,
+                                         .maxCount = 8,
+                                         .cycles = 0,
+                                         .interval = 0.02f,
+                                         .probability = 1}};
+    emitter = Ribboned(mvfx_ribbonPerBatch);
+    emitter.capacity = 4096;
+    emitter.bursts = bursts;
+    emitter.burstCount = 1;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .least = 200,
+                   .layout = &layout,
+                   .recordCapacity = 120,
+                   .ribbons = true,
+                   .strips = true,
+                   .ribbonCapacity = 16000},
+            "strips by batch, the vertices too few");
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .least = 200,
+                   .layout = &layout,
+                   .recordCapacity = 2 * CAPACITY,
+                   .ribbons = true,
+                   .strips = true,
+                   .ribbonCapacity = 100},
+            "strips by batch, the indices too few");
 }
 
 static void TestAtRest(Gpu* gpu, mvfxGpu* kernels)
@@ -524,6 +606,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestPieces(gpu, kernels);
     TestAtRest(gpu, kernels);
     TestHead(gpu, kernels);
+    TestStrips(gpu, kernels);
     TestNone(gpu, kernels);
     TestRefused(gpu, kernels);
 }

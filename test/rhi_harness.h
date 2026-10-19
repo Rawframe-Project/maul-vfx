@@ -127,6 +127,10 @@ typedef struct Run
     // lists and counts every step, and the most ribbons the list holds.
     bool ribbons;
     int64_t ribbonCapacity;
+    // Whether those ribbons are expanded into strips instead
+    // (mvfxGpuSim_ExpandRibbons and mvfxInstance_ExpandRibbons), the list
+    // their indices and ribbonCapacity the indices it holds.
+    bool strips;
     // The emitter whose records are written (the first for 0).
     int32_t recordEmitter;
 } Run;

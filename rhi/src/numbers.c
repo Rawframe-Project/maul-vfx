@@ -409,8 +409,8 @@ static void HeadInParticles(const mvfxEmitterView* view, const mvfxEmitterPlan* 
 }
 
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
-                       const mvfxStepTables* tables, int64_t listCapacity, uint32_t countWord,
-                       uint32_t words[MVFX_RIBBON_WORDS])
+                       const mvfxStepTables* tables, uint32_t sink, int64_t listCapacity,
+                       uint32_t countWord, uint32_t words[MVFX_RIBBON_WORDS])
 {
     const mvfxRibbonView* r = &view->ribbon;
     const uint32_t arrays[4] = {WordOf(view->arrays.ribbon), WordOf(view->arrays.ribbonDistance),
@@ -434,7 +434,9 @@ void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
         HeadInParticles(view, plan, head);
     }
     memcpy(words + 20, head, sizeof head);
-    memcpy(words + 24, r->bendCosines, MVFX_MAX_RIBBON_PIECES * sizeof(float));
+    const uint32_t sinks[4] = {sink, 0u, 0u, 0u};
+    memcpy(words + 24, sinks, sizeof sinks);
+    memcpy(words + 28, r->bendCosines, MVFX_MAX_RIBBON_PIECES * sizeof(float));
 }
 
 // Where a particle's values are for the record pass (records.wgsl's

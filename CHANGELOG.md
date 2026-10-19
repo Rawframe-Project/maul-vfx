@@ -787,6 +787,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   pieces along the spline as the bend asks, the current ribbon ending at
   its pinned head. Its passes count among an emitter's
   `MVFX_GPU_RECORD_PASSES`.
+- The GPU part expands an emitter's ribbons into triangle strips as
+  `mvfxInstance_ExpandRibbons` does (`mvfxGpuSim_ExpandRibbons`,
+  `mvfxGpuExpandDef`): two vertices a point across its width, six
+  indices a segment, ribbons taken whole while both buffers hold them,
+  the counts the vertices and indices there are and those written.
 - A plan gives an emitter's pinned head as the CPU path's ribbons find it
   (`mvfxEmitterPlan.ribbonHead`, `ribbonHeadPlace`), and the GPU part's
   bounds join it as `mvfxInstance_GetBounds` does: the statistics record

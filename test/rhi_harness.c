@@ -789,18 +789,21 @@ static uint8_t s_gpuRecords[RECORD_BYTES];
 static uint8_t s_cpuRecords[RECORD_BYTES];
 static uint32_t s_gpuCount[4];
 
-// A run's ribbon points instead (s_ribbonPoints): the list's buffer (the
-// list from its word LIST_FIRST), the most ribbons it holds, the GPU's
-// list read back and the CPU path's, filled first as the records are.
+// A run's ribbon points instead (s_ribbonPoints), or strips (s_strips):
+// the list's buffer (the list or the indices from its word LIST_FIRST),
+// the most ribbons or indices it holds, the GPU's read back and the CPU
+// path's, filled first as the records are.
 #define LIST_RIBBONS 4096
 #define LIST_FIRST   4
 static bool s_ribbonPoints;
+static bool s_strips;
 static int32_t s_recordEmitter;
 static mrhiBufferId s_listBuffer;
 static mrhiResourceId s_listResource;
 static int64_t s_ribbonCapacity;
 static uint32_t s_gpuList[4 * LIST_RIBBONS + LIST_FIRST];
 static mvfxRibbon s_cpuList[LIST_RIBBONS];
+static uint32_t s_cpuIndices[4 * LIST_RIBBONS];
 
 // The fill's bytes: written before the GPU's records each step.
 static uint32_t s_fillBytes[RECORD_BYTES / 4];
@@ -852,7 +855,22 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     ribbons.ribbonOffset = 4u * LIST_FIRST;
     ribbons.ribbonCapacity = s_ribbonCapacity;
     ribbons.counts = count;
-    return mvfxGpuSim_AddRibbons(sim, &ribbons) == mvfx_success;
+    if (!s_strips)
+    {
+        return mvfxGpuSim_AddRibbons(sim, &ribbons) == mvfx_success;
+    }
+    mvfxGpuExpandDef strips = mvfxDefaultGpuExpandDef();
+    strips.emitter = s_recordEmitter;
+    strips.layout = s_layout;
+    strips.view = s_view;
+    strips.vertices = s_recordResource;
+    strips.vertexOffset = 64;
+    strips.vertexCapacity = s_recordCapacity;
+    strips.indices = s_listResource;
+    strips.indexOffset = 4u * LIST_FIRST;
+    strips.indexCapacity = s_ribbonCapacity;
+    strips.counts = count;
+    return mvfxGpuSim_ExpandRibbons(sim, &strips) == mvfx_success;
 }
 
 // Adds the fill of the records and list buffers and the first emitter's
@@ -1350,8 +1368,62 @@ static bool SwapPlaces(bool in)
 // Writes the CPU path's ribbon points and list from the GPU's places:
 // whether they and the counts are the GPU's (the list exactly), the points
 // written.
+// The CPU path's strips and indices from the GPU's places: whether they
+// and the counts are the GPU's (the indices exactly), the vertices
+// written (those the indices name).
+static bool SameStrips(int64_t* writtenOut)
+{
+    uint32_t* indices = s_cpuIndices;
+    memset(s_cpuIndices, RECORD_FILL, sizeof s_cpuIndices);
+    const mvfxExpandBuffers buffers = {.vertices = s_cpuRecords + 64,
+                                       .vertexCapacity = s_recordCapacity,
+                                       .indices = indices,
+                                       .indexCapacity = s_ribbonCapacity,
+                                       .scratch = s_sortScratch,
+                                       .scratchBytes = sizeof s_sortScratch};
+    int64_t vertices = 0;
+    int64_t count = 0;
+    if (!SwapPlaces(true))
+    {
+        return false;
+    }
+    mvfxResult expanded = mvfxInstance_ExpandRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
+                                                     &s_view, &buffers, &vertices, &count);
+    if (!SwapPlaces(false) || expanded != mvfx_success)
+    {
+        return false;
+    }
+    int64_t written = 0;
+    int64_t named = 0;
+    while (written < s_ribbonCapacity && indices[written] != RECORD_FILL * 0x01010101u)
+    {
+        named = indices[written] + 1 > named ? indices[written] + 1 : named;
+        ++written;
+    }
+    *writtenOut = named;
+    bool same = s_gpuCount[0] == (uint32_t)vertices && s_gpuCount[1] == (uint32_t)count &&
+                s_gpuCount[2] == (uint32_t)named && s_gpuCount[3] == (uint32_t)written &&
+                memcmp(s_cpuIndices, s_gpuList + LIST_FIRST, sizeof s_cpuIndices) == 0;
+    for (int32_t w = 0; same && w < LIST_FIRST; ++w)
+    {
+        same = s_gpuList[w] == RECORD_FILL * 0x01010101u;
+    }
+    if (!same)
+    {
+        printf("strips differ: vertices %lld (GPU %u), indices %lld (GPU %u), written %lld and "
+               "%lld (GPU %u and %u)\n",
+               (long long)vertices, s_gpuCount[0], (long long)count, s_gpuCount[1],
+               (long long)named, (long long)written, s_gpuCount[2], s_gpuCount[3]);
+    }
+    return same;
+}
+
 static bool SameRibbonList(int64_t* writtenOut)
 {
+    if (s_strips)
+    {
+        return SameStrips(writtenOut);
+    }
     memset(s_cpuList, RECORD_FILL, sizeof s_cpuList);
     const mvfxRibbonBuffers buffers = {.points = s_cpuRecords + 64,
                                        .pointCapacity = s_recordCapacity,
@@ -1845,6 +1917,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
     s_stepsApart = 0;
     s_ribbonPoints = run->ribbons;
+    s_strips = run->strips;
     s_recordEmitter = run->recordEmitter;
     s_ribbonCapacity = run->ribbonCapacity;
     if (run->layout != NULL)

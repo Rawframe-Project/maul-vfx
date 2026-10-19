@@ -146,12 +146,11 @@ mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
                : mvfx_errorState;
 }
 
-mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
+// Adds a ribbon pass writing what sink asks (points with the list, or
+// strips with indices in the def's ribbons buffer, its capacity theirs),
+// from a def checked.
+static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, uint32_t sink)
 {
-    if (sim == nullptr || def == nullptr || !IsRibbonsDefValid(sim, def))
-    {
-        return mvfx_errorInvalid;
-    }
     if (sim->ending)
     {
         return mvfx_errorState;
@@ -191,8 +190,8 @@ mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
     {
         return mvfx_errorState;
     }
-    // The points' numbers as a record pass's, the list's first word
-    // beside them.
+    // The points' numbers as a record pass's, the list's (or the
+    // indices') first word beside them.
     mvfxGpuRecordsDef records = mvfxDefaultGpuRecordsDef();
     records.emitter = def->emitter;
     records.view = def->view;
@@ -202,13 +201,53 @@ mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
     mvfxRecordNumbers(view, &plan, &layout, &records, &emitter->tables, sim->srgb, words);
     words[7] = (uint32_t)(def->ribbonOffset / 4u);
     uint32_t ribbonWords[MVFX_RIBBON_WORDS];
-    mvfxRibbonNumbers(view, &plan, &emitter->tables, def->ribbonCapacity,
+    mvfxRibbonNumbers(view, &plan, &emitter->tables, sink, def->ribbonCapacity,
                       def->counts.index1 != 0 ? (uint32_t)(def->countsOffset / 4u) : 0u,
                       ribbonWords);
     return mvfxAddRibbonPass(sim->device, &emitter->records, &resources, words, ribbonWords,
                              plan.capacity)
                ? mvfx_success
                : mvfx_errorState;
+}
+
+mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
+{
+    if (sim == nullptr || def == nullptr || !IsRibbonsDefValid(sim, def))
+    {
+        return mvfx_errorInvalid;
+    }
+    return AddRibbons(sim, def, MVFX_SINK_POINTS);
+}
+
+mvfxGpuExpandDef mvfxDefaultGpuExpandDef(void)
+{
+    return (mvfxGpuExpandDef){.cookie = MVFX_GPU_EXPAND_DEF_COOKIE};
+}
+
+mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+{
+    if (sim == nullptr || def == nullptr || def->cookie != MVFX_GPU_EXPAND_DEF_COOKIE)
+    {
+        return mvfx_errorInvalid;
+    }
+    // A ribbons def of the same buffers, its list the indices.
+    mvfxGpuRibbonsDef ribbons = {.cookie = MVFX_GPU_RIBBONS_DEF_COOKIE,
+                                 .emitter = def->emitter,
+                                 .layout = def->layout,
+                                 .view = def->view,
+                                 .points = def->vertices,
+                                 .pointOffset = def->vertexOffset,
+                                 .pointCapacity = def->vertexCapacity,
+                                 .ribbons = def->indices,
+                                 .ribbonOffset = def->indexOffset,
+                                 .ribbonCapacity = def->indexCapacity,
+                                 .counts = def->counts,
+                                 .countsOffset = def->countsOffset};
+    if (!IsRibbonsDefValid(sim, &ribbons))
+    {
+        return mvfx_errorInvalid;
+    }
+    return AddRibbons(sim, &ribbons, MVFX_SINK_STRIPS);
 }
 
 mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,
