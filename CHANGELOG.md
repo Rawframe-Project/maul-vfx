@@ -784,5 +784,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxGpuRibbonsDef`): its points in the host's layout, the list of the
   ribbons written and their counts (`MVFX_GPU_RIBBON_COUNTS`: the points
   and ribbons there are and those written), each segment cut into its
-  pieces along the spline as the bend asks, no pinned head yet. Its
-  passes count among an emitter's `MVFX_GPU_RECORD_PASSES`.
+  pieces along the spline as the bend asks, the current ribbon ending at
+  its pinned head. Its passes count among an emitter's
+  `MVFX_GPU_RECORD_PASSES`.
+- A plan gives an emitter's pinned head as the CPU path's ribbons find it
+  (`mvfxEmitterPlan.ribbonHead`, `ribbonHeadPlace`), and the GPU part's
+  bounds join it as `mvfxInstance_GetBounds` does: the statistics record
+  holds it (`MVFX_GPU_STATISTICS_WORDS` is 46), the step uploading 28
+  bytes more for such an emitter.

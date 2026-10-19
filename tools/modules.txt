@@ -3,7 +3,7 @@ beam: direction elementary instance noise
 tube: elementary output
 ribbon: appearance context direction gradient instance instance_api layout_api output sort spawn tube
 sort:
-bounds: appearance direction instance ribbon space
+bounds: appearance direction instance space spawn
 view: bounds context gas_api instance instance_api water_api
 layout: allocator elementary half
 layout_api: context layout slots
@@ -48,7 +48,7 @@ hull: allocator
 appearance: effect gradient instance life over_life
 instance: allocator collide depth effect force gas gas_pressure gas_splat kill rigid_shape
 death_heap:
-spawn: instance random
+spawn: direction instance random
 space: force instance
 event: appearance context direction instance instance_api space
 birth: attach direction elementary event instance integrate random rigid shape value velocity

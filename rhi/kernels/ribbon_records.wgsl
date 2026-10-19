@@ -44,8 +44,11 @@ struct Ribbons {
     // word in the count buffer.
     tables: vec4<u32>,
     // The most pieces a segment is cut into, whether the bend decides
-    // them, unused.
+    // them, whether the current ribbon ends at a pinned head, the plan's
+    // ribbon counter (the current ribbon's id less the GPU's breaks).
     cut: vec4<u32>,
+    // The pinned head's place in the particles' space, unused.
+    head: vec4<f32>,
     // The cosine of the turn k + 1 pieces allow, at bends[k / 4][k % 4].
     bends: array<vec4<f32>, 4>,
 }
@@ -80,6 +83,10 @@ const COUNT_POINTS: u32 = 0u;
 const COUNT_RIBBONS: u32 = 1u;
 const COUNT_POINTS_WRITTEN: u32 = 2u;
 const COUNT_RIBBONS_WRITTEN: u32 = 3u;
+
+// The statistics record's count of the ribbon breaks the GPU made
+// (MVFX_GPU_RIBBON_BREAKS).
+const RIBBON_BREAKS: u32 = 38u;
 
 var<workgroup> runScan: array<u32, CHUNK>;
 var<workgroup> runSums: array<f32, CHUNK>;
@@ -294,6 +301,27 @@ fn isLast(e: u32, live: u32) -> bool {
     return e + 1u == live || isHead(e + 1u);
 }
 
+// Whether element e's chain ends at the pinned head: the current ribbon's
+// (the plan's counter and the breaks since), while it has one.
+fn endsAtHead(e: u32) -> bool {
+    return ribbon.cut.z != 0u && keyAt(e) == ribbon.cut.w + statistics[RIBBON_BREAKS];
+}
+
+// Whether element e has a segment to a point after it: the next
+// particle's, or for the last of a chain ending at the head the head's.
+fn hasNext(e: u32, live: u32) -> bool {
+    return !isLast(e, live) || endsAtHead(e);
+}
+
+// The place of the point after element e (its next particle's, or the
+// head's) less particle i's, in the particles' space.
+fn nextLess(e: u32, live: u32, i: u32) -> vec3<f32> {
+    if (isLast(e, live)) {
+        return ribbon.head.xyz - vectorAt(params.words.place, i);
+    }
+    return placeLess(particleOf(e + 1u), i);
+}
+
 // The pieces and world length of element e's segment to the next point
 // of its chain: one piece, the distance to it, where no pass cut them.
 fn piecesOf(e: u32) -> u32 {
@@ -305,8 +333,7 @@ fn piecesOf(e: u32) -> u32 {
 
 fn spanOf(e: u32) -> f32 {
     if (ribbon.cut.x <= 1u) {
-        let d = offsetBetween(particleOf(e), particleOf(e + 1u));
-        return sqrt(dot(d, d));
+        return length(nextLess(e, statistics[0], particleOf(e))) / params.scales.x;
     }
     return bitcast<f32>(sortWords[scratchWord(SCRATCH_SPAN, e)]);
 }
@@ -344,9 +371,16 @@ fn walkChains(local: u32, live: u32) {
         sortWords[scratchWord(SCRATCH_WALKED, e)] = bitcast<u32>(walked);
         sortWords[scratchWord(SCRATCH_POINT, e)] = point;
         if (isLast(e, live)) {
+            // The segment to the head after the last particle, its point.
+            var reach = walked;
+            var points = point + 1u;
+            if (endsAtHead(e)) {
+                reach += spanOf(e);
+                points += piecesOf(e);
+            }
             let chain = sortWords[scratchWord(SCRATCH_CHAIN, e)];
-            sortWords[scratchWord(SCRATCH_LENGTH, chain)] = bitcast<u32>(walked);
-            sortWords[scratchWord(SCRATCH_COUNT, chain)] = point + 1u;
+            sortWords[scratchWord(SCRATCH_LENGTH, chain)] = bitcast<u32>(reach);
+            sortWords[scratchWord(SCRATCH_COUNT, chain)] = points;
         }
     }
 }
@@ -357,7 +391,8 @@ fn placeLess(j: u32, i: u32) -> vec3<f32> {
     return vectorAt(params.words.place, j) - vectorAt(params.words.place, i);
 }
 
-// The four places about element e's segment (e - 1 to e + 2) less e's
+// The four places about element e's segment (e - 1 to e + 2, the head
+// after a chain's last particle where it ends at one) less e's
 // particle's, in the particles' space: the spline's control points, past
 // either end of the chain the end's mirrored through it from its
 // neighbour (the core's PlaceOf).
@@ -365,16 +400,16 @@ fn controlsOf(e: u32, live: u32) -> array<vec3<f32>, 4> {
     let i = particleOf(e);
     var p: array<vec3<f32>, 4>;
     p[1] = vec3<f32>(0.0);
-    p[2] = placeLess(particleOf(e + 1u), i);
+    p[2] = nextLess(e, live, i);
     if (isHead(e)) {
         p[0] = -p[2];
     } else {
         p[0] = placeLess(particleOf(e - 1u), i);
     }
-    if (isLast(e + 1u, live)) {
+    if (isLast(e, live) || !hasNext(e + 1u, live)) {
         p[3] = 2.0 * p[2];
     } else {
-        p[3] = placeLess(particleOf(e + 2u), i);
+        p[3] = nextLess(e + 1u, live, i);
     }
     return p;
 }
@@ -436,7 +471,7 @@ fn ribbonPieces(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < live; e += params.shape.y * 64u) {
         var pieces = 0u;
         var span = 0.0;
-        if (!isLast(e, live)) {
+        if (hasNext(e, live)) {
             let p = controlsOf(e, live);
             pieces = cutOf(p);
             var before = p[1];
@@ -502,20 +537,42 @@ fn pointBefore(e: u32, live: u32) -> vec3<f32> {
     return back + splineAt(controlsOf(e - 1u, live), f32(pieces - 1u) / f32(pieces));
 }
 
-// Element e's points: its particle's and its segment's pieces, or a
-// chain's last particle's; each with its frame from the places before
-// and after it, its distance walked along the chain.
+// Element e's points: its particle's and its segment's pieces, a chain's
+// last particle's alone, or with the head after it the head's too; each
+// with its frame from the places before and after it, its distance
+// walked along the chain.
 fn writeSegment(e: u32, live: u32, chain: u32, first: u32) {
     let i = particleOf(e);
     let last = isLast(e, live);
-    let pieces = select(piecesOf(e), 1u, last);
+    let segment = hasNext(e, live);
+    let pieces = select(1u, piecesOf(e), segment);
+    // The head's point after the segment's pieces.
+    let points = pieces + select(0u, 1u, last && segment);
     var p: array<vec3<f32>, 4>;
-    if (!last && pieces > 1u) {
+    if (segment && pieces > 1u) {
         p = controlsOf(e, live);
     }
-    var next = particleOf(min(e + 1u, live - 1u));
-    if (last) {
-        next = i;
+    // The particle the pieces blend toward (a chain's last itself, as the
+    // head takes the youngest's values), and the distance at the point
+    // after (the head's the youngest's and the way to it).
+    var next = i;
+    var nextPlace = vec3<f32>(0.0);
+    let stored = ribbon.words.y != NONE;
+    var own = 0.0;
+    if (stored) {
+        own = floatAt(ribbon.words.y, i);
+    }
+    var ahead = own;
+    if (segment) {
+        nextPlace = nextLess(e, live, i);
+        if (last) {
+            ahead = own + length(nextPlace);
+        } else {
+            next = particleOf(e + 1u);
+            if (stored) {
+                ahead = floatAt(ribbon.words.y, next);
+            }
+        }
     }
     // The places before, at and after the point, less e's particle's.
     var before = vec3<f32>(0.0);
@@ -525,8 +582,8 @@ fn writeSegment(e: u32, live: u32, chain: u32, first: u32) {
     var here = vec3<f32>(0.0);
     // A chain's last point's after is itself, as the core's walk ends.
     var after = vec3<f32>(0.0);
-    if (!last) {
-        after = select(placeLess(next, i), splineAt(p, 1.0 / f32(pieces)), pieces > 1u);
+    if (segment) {
+        after = select(nextPlace, splineAt(p, 1.0 / f32(pieces)), pieces > 1u);
     }
     var walked = bitcast<f32>(sortWords[scratchWord(SCRATCH_WALKED, e)]);
     let total = bitcast<f32>(sortWords[scratchWord(SCRATCH_LENGTH, chain)]);
@@ -534,14 +591,17 @@ fn writeSegment(e: u32, live: u32, chain: u32, first: u32) {
     let g = sortWords[scratchWord(SCRATCH_POINT, e)];
     let s = e - sortWords[scratchWord(SCRATCH_START, chain)];
     let origin = placeOf(i);
-    for (var q = 0u; q < pieces; q++) {
+    for (var q = 0u; q < points; q++) {
         if (q > 0u) {
             walked += length(here - before) / params.scales.x;
         }
-        let fraction = f32(q) / f32(pieces);
+        // The head's point: the segment's end, its particle the youngest.
+        let atHead = q == pieces;
+        let fraction = select(f32(q) / f32(pieces), 0.0, atHead);
         var point: Point;
         point.length = select(f32(g + q) / f32(n - 1u), walked / total, total > 0.0);
-        point.along = alongOf(i, next, s, fraction, point.length);
+        point.along = select(alongOf(own, ahead, s, fraction, point.length),
+                             alongOf(ahead, ahead, s + 1u, 0.0, point.length), atHead);
         point.width = ribbon.values.z;
         if (ribbon.tables.x != NONE) {
             point.width *= curveAt(ribbon.tables.x, point.length);
@@ -565,26 +625,25 @@ fn writeSegment(e: u32, live: u32, chain: u32, first: u32) {
         if (q + 2u < pieces) {
             after = splineAt(p, f32(q + 2u) / f32(pieces));
         } else if (q + 2u == pieces) {
-            after = placeLess(next, i);
+            after = nextPlace;
         }
     }
 }
 
-// A point's texture coordinate along, a fraction of its segment from
-// particle i to particle next, segment s of its chain, at a share t of
-// its length: t, its segment's place, or its distance over the tile;
+// A point's texture coordinate along, a fraction of segment s of its
+// chain between points of distances own and ahead, at a share t of its
+// length: t, its segment's place, or its distance over the tile;
 // scrolled.
-fn alongOf(i: u32, next: u32, s: u32, fraction: f32, t: f32) -> f32 {
+fn alongOf(own: f32, ahead: f32, s: u32, fraction: f32, t: f32) -> f32 {
     var along = t;
     if (ribbon.words.z == TEXTURE_PER_SEGMENT) {
         along = f32(s) + fraction;
     } else if (ribbon.words.z == TEXTURE_BY_DISTANCE) {
-        let own = floatAt(ribbon.words.y, i);
-        var ahead = own;
+        var to = own;
         if (fraction > 0.0) {
-            ahead = floatAt(ribbon.words.y, next);
+            to = ahead;
         }
-        along = (own + (ahead - own) * fraction) / ribbon.values.x;
+        along = (own + (to - own) * fraction) / ribbon.values.x;
     }
     return along + ribbon.values.y;
 }

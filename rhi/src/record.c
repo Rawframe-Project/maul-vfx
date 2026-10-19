@@ -17,6 +17,13 @@ void mvfxRecordMap(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     memcpy(&at[MVFX_RECORD_ROTATION], plan->to.rotation, 4 * sizeof(float));
 }
 
+void mvfxRecordHead(const mvfxEmitterPlan* plan, uint32_t words[MVFX_RECORD_HEAD_WORDS])
+{
+    uint32_t* at = words - MVFX_RECORD_HEAD;
+    at[MVFX_RECORD_HEAD] = plan->ribbonHead ? 1u : 0u;
+    memcpy(&at[MVFX_RECORD_HEAD_PLACE], plan->ribbonHeadPlace, 3 * sizeof(double));
+}
+
 // The instance's place at the record's step: origin, rotation, scale.
 typedef struct Place
 {
@@ -104,18 +111,32 @@ mvfxBounds mvfxRecordBounds(const mvfxEmitterView* view, const uint32_t* record)
         low[k] -= growth;
         high[k] += growth;
     }
+    mvfxBounds out = {.empty = false};
     if (record[MVFX_RECORD_SPACE] != (uint32_t)mvfx_spaceWorld)
     {
-        return AroundCorners(&place, low, high);
+        out = AroundCorners(&place, low, high);
     }
-    // In the world, offsets from the anchor.
-    double anchor[3];
-    memcpy(anchor, &record[MVFX_RECORD_ANCHOR], sizeof anchor);
-    mvfxBounds out = {.empty = false};
-    for (int32_t k = 0; k < 3; ++k)
+    else
     {
-        out.min[k] = anchor[k] + (double)low[k];
-        out.max[k] = anchor[k] + (double)high[k];
+        // In the world, offsets from the anchor.
+        double anchor[3];
+        memcpy(anchor, &record[MVFX_RECORD_ANCHOR], sizeof anchor);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out.min[k] = anchor[k] + (double)low[k];
+            out.max[k] = anchor[k] + (double)high[k];
+        }
+    }
+    // A ribbon's pinned head joins its particles' box, as the CPU path's.
+    if (view->ribbon.pinHead && record[MVFX_RECORD_HEAD] != 0)
+    {
+        double head[3];
+        memcpy(head, &record[MVFX_RECORD_HEAD_PLACE], sizeof head);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out.min[k] = fmin(out.min[k], head[k]);
+            out.max[k] = fmax(out.max[k], head[k]);
+        }
     }
     return out;
 }

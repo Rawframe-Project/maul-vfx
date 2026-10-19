@@ -296,6 +296,12 @@ extern "C"
         // adds the breaks it finds itself, the planned instance finding
         // none.
         uint32_t ribbonCounter;
+        // Whether the current ribbon ends at a pinned head now (its def's
+        // pinHead, while the emitter may still spawn), and the head's
+        // place in the world: as mvfxInstance_WriteRibbons would find them
+        // when the plan is read.
+        bool ribbonHead;
+        double ribbonHeadPlace[3];
     } mvfxEmitterPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape

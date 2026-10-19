@@ -91,8 +91,10 @@ typedef struct Emitter
     mrhiBufferId events;
     bool writesEvents;
     // Whether its births join ribbons (the ribbons pass, and its words
-    // after the births' marks).
+    // after the births' marks), and whether they pin a head (its words in
+    // the record).
     bool ribbons;
+    bool pinsHead;
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
     // Whether all its event numbers were written: after, only the words a
@@ -115,6 +117,7 @@ typedef struct Emitter
     mvfxStepTables tables;
     bool sourcesWritten;
     uint32_t map[MVFX_RECORD_MAP_WORDS];
+    uint32_t head[MVFX_RECORD_HEAD_WORDS];
     const mvfxPlannedBirth* plannedBirths;
     int32_t birthCount;
     // Its record passes of the frame open, and its sort's keys and indices

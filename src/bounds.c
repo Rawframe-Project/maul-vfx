@@ -5,8 +5,8 @@
 
 #include "appearance.h"
 #include "direction.h"
-#include "ribbon.h"
 #include "space.h"
+#include "spawn.h"
 
 #include <math.h>
 

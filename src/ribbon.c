@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 
-#include "ribbon.h"
-
 #include "appearance.h"
 #include "context.h"
 #include "direction.h"
@@ -648,26 +646,6 @@ static Totals WriteLinks(const mvfxInstance* instance, int32_t emitter, const mv
         TakeChain(&chain, (uint32_t)l, sink, &totals);
     }
     return totals;
-}
-
-bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter, double out[3])
-{
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    if (!compiled->ribbonPinHead || !mvfxHasBirthsAhead(instance, emitter))
-    {
-        return false;
-    }
-    const mvfxTransform* to = &instance->to;
-    const double offset[3] = {(double)compiled->shape.offset[0] * (double)to->scale,
-                              (double)compiled->shape.offset[1] * (double)to->scale,
-                              (double)compiled->shape.offset[2] * (double)to->scale};
-    double turned[3];
-    mvfxRotateDouble(to->rotation, offset, turned);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        out[k] = to->origin[k] + turned[k];
-    }
-    return true;
 }
 
 // The checks both ribbon outputs share: the instance, emitter and layout

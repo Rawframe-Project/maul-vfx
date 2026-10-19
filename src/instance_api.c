@@ -383,6 +383,7 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     };
     SpawnWindow(live, emitter, planOut);
     mvfxPlanResolved(live, emitter, planOut);
+    planOut->ribbonHead = mvfxRibbonHeadPlace(live, emitter, planOut->ribbonHeadPlace);
     for (int32_t k = 0; k < 3; ++k)
     {
         planOut->anchorBefore[k] = state->planAnchor[k];

@@ -19,7 +19,10 @@
 // then the GPU's again: the events written and dropped, four words of
 // its own, and for an emitter that spawns from events the serials its
 // event births took (two words), those refused in the step and the births
-// past its room (MVFX_GPU_EVENT_SERIALS).
+// past its room (MVFX_GPU_EVENT_SERIALS), and for an emitter drawn as
+// ribbons the GPU's breaks (MVFX_GPU_RIBBON_BREAKS); then for an emitter
+// whose ribbons pin a head the step's transfer pass's again: whether the
+// head shows at the step's end and its place in the world (binary64).
 enum
 {
     MVFX_RECORD_COUNT = 0,
@@ -38,13 +41,21 @@ enum
     MVFX_RECORD_EVENTS = 28,
     MVFX_RECORD_EVENT_SERIALS = 34,
     // The words the transfer pass writes, from MVFX_RECORD_SPACE on.
-    MVFX_RECORD_MAP_WORDS = 18
+    MVFX_RECORD_MAP_WORDS = 18,
+    MVFX_RECORD_HEAD = 39,
+    MVFX_RECORD_HEAD_PLACE = 40,
+    // The head's words the transfer pass writes, from MVFX_RECORD_HEAD on.
+    MVFX_RECORD_HEAD_WORDS = 7
 };
 
 // Writes the map of a plan's step to the world, the record's words from
 // MVFX_RECORD_SPACE on.
 void mvfxRecordMap(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                    uint32_t words[MVFX_RECORD_MAP_WORDS]);
+
+// Writes a plan's pinned head, the record's words from MVFX_RECORD_HEAD
+// on.
+void mvfxRecordHead(const mvfxEmitterPlan* plan, uint32_t words[MVFX_RECORD_HEAD_WORDS]);
 
 // An emitter's bounds in the world from its view and a record.
 mvfxBounds mvfxRecordBounds(const mvfxEmitterView* view, const uint32_t* record);

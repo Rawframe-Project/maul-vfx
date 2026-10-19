@@ -163,7 +163,7 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
 
 // The words of a ribbon pass's own numbers (ribbon_records.wgsl's
 // Ribbons), beside its record numbers.
-#define MVFX_RIBBON_WORDS 36
+#define MVFX_RIBBON_WORDS 40
 
 // Whether a layout is one the ribbon pass writes: its stride a multiple
 // of 4 bytes, no neighbor field.
@@ -174,7 +174,9 @@ bool mvfxIsRibbonLayout(const mvfxLayoutView* layout);
 // length, the scroll's offset at the plan's end, the width, the normal,
 // the width's and colour's tables, the list's capacity and the counts'
 // first word; the most pieces a segment is cut into, whether the bend
-// decides them, and the bend's cosines.
+// decides them, whether the current ribbon ends at a pinned head and the
+// plan's ribbon counter, the head's place in the particles' space, and
+// the bend's cosines.
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxStepTables* tables, int64_t listCapacity, uint32_t countWord,
                        uint32_t words[MVFX_RIBBON_WORDS]);

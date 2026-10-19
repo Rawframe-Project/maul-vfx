@@ -270,6 +270,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
                            (spawn->enabled ? (spawn->capacity < room ? spawn->capacity : room) : 0);
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
     emitter->ribbons = sim->views[e].ribbon.ids != mvfx_ribbonNone;
+    emitter->pinsHead = sim->views[e].ribbon.pinHead;
     if (result == mvfx_success && emitter->hostCapacity > 0)
     {
         emitter->hostWords = mvfxRhiAllocate(&sim->allocator, HostBytes(emitter), 4);
@@ -719,6 +720,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     }
     emitter->spans = mvfxStepSpansOf(&plan);
     mvfxRecordMap(&sim->views[e], &plan, emitter->map);
+    mvfxRecordHead(&plan, emitter->head);
     EventNumbers(sim, e, &plan);
     emitter->plannedBirths = plan.births;
     emitter->birthCount = plan.birthCount;
@@ -827,6 +829,9 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
                     (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u)) &&
         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                    MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map, sizeof emitter->map) &&
+        (!emitter->pinsHead ||
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
+                    MVFX_RECORD_HEAD * sizeof(uint32_t), emitter->head, sizeof emitter->head)) &&
         (!emitter->cleared || mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS], 0,
                                          empty, sizeof empty)) &&
         (!emitter->cleared || !spawns ||
@@ -976,21 +981,5 @@ mvfxResult mvfxGpuSim_UploadBytes(const mvfxGpuSim* sim, int64_t* bytesOut)
         return mvfx_errorInvalid;
     }
     *bytesOut = (int64_t)sim->uploaded;
-    return mvfx_success;
-}
-
-mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,
-                               mvfxBounds* boundsOut)
-{
-    if (boundsOut != nullptr)
-    {
-        *boundsOut = (mvfxBounds){.empty = true};
-    }
-    if (sim == nullptr || record == nullptr || boundsOut == nullptr || emitter < 0 ||
-        emitter >= sim->emitterCount)
-    {
-        return mvfx_errorInvalid;
-    }
-    *boundsOut = mvfxRecordBounds(&sim->views[emitter], record);
     return mvfx_success;
 }

@@ -273,6 +273,64 @@ static void TestPieces(Gpu* gpu, mvfxGpu* kernels)
             "points of 6 pieces by batch, the points too few");
 }
 
+static void TestHead(Gpu* gpu, mvfxGpu* kernels)
+{
+    // The current ribbon ends at a head pinned to the shape's offset in a
+    // moving, turning instance, tiled by distance, in the instance's space
+    // and the world's; then cut into pieces, the host breaking it; then
+    // the emitter stops spawning at half the run, the head gone after.
+    const mvfxLayoutDef layout = PointLayout();
+    mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
+    emitter.ribbon.pinHead = true;
+    emitter.ribbon.texture = mvfx_ribbonTileByDistance;
+    emitter.ribbon.tileLength = 0.25f;
+    emitter.shape.offset[0] = 0.4f;
+    emitter.shape.offset[1] = -0.2f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points to a pinned head");
+    emitter.space = mvfx_spaceWorld;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points to a pinned head in the world's space");
+    emitter.space = mvfx_spaceLocal;
+    emitter.ribbon.pieces = 4;
+    emitter.ribbon.texture = mvfx_ribbonTilePerSegment;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .breaking = true,
+                   .layout = &layout,
+                   .recordCapacity = 4 * CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points of pieces to a pinned head, broken by the host");
+    emitter.duration = 0.35f;
+    emitter.loops = 1;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 4 * CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points to a pinned head until the emitter stops");
+}
+
 static void TestAtRest(Gpu* gpu, mvfxGpu* kernels)
 {
     // Particles at rest at one point, in a still instance: a ribbon of
@@ -451,13 +509,9 @@ static int32_t Refused(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter
 
 static void TestRefused(Gpu* gpu, mvfxGpu* kernels)
 {
-    // Each malformed def refused; then the valid def for ribbons with a
-    // pinned head, which this part does not write yet; then taken.
+    // Each malformed def refused; the valid def taken.
     mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
     CHECK(Refused(gpu, kernels, &emitter, 1, BAD_DEFS + 1) == BAD_DEFS, "ribbons defs refused");
-    emitter.ribbon.pinHead = true;
-    CHECK(Refused(gpu, kernels, &emitter, 0, 1) == 1, "a pinned head refused");
-    emitter.ribbon.pinHead = false;
     CHECK(Refused(gpu, kernels, &emitter, 0, 1) == 0, "the valid def taken");
 }
 
@@ -469,6 +523,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestSources(gpu, kernels);
     TestPieces(gpu, kernels);
     TestAtRest(gpu, kernels);
+    TestHead(gpu, kernels);
     TestNone(gpu, kernels);
     TestRefused(gpu, kernels);
 }

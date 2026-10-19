@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A simulation's record and ribbon passes: a def checked, the frame's
-// particles they read, the pass added with its numbers.
+// particles they read, the pass added with its numbers; and the bounds a
+// statistics record gives.
 
 #include "sim_state.h"
 
@@ -41,19 +42,14 @@ static bool IsRecordsDefValid(const mvfxGpuSim* sim, const mvfxGpuRecordsDef* de
            def->countOffset % 4u == 0 && def->capacity >= 0 && IsViewWithin(&def->view);
 }
 
-// Whether a ribbons def is one a pass can be added from, past its layout:
-// its emitter's ribbons without a pinned head.
+// Whether a ribbons def is one a pass can be added from, past its layout.
 static bool IsRibbonsDefValid(const mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
 {
-    if (def->cookie != MVFX_GPU_RIBBONS_DEF_COOKIE || def->emitter < 0 ||
-        def->emitter >= sim->emitterCount)
-    {
-        return false;
-    }
-    const mvfxRibbonView* ribbon = &sim->views[def->emitter].ribbon;
-    return def->points.index1 != 0 && def->ribbons.index1 != 0 && def->pointOffset % 4u == 0 &&
-           def->ribbonOffset % 4u == 0 && def->countsOffset % 4u == 0 && def->pointCapacity >= 0 &&
-           def->ribbonCapacity >= 0 && IsViewWithin(&def->view) && !ribbon->pinHead;
+    return def->cookie == MVFX_GPU_RIBBONS_DEF_COOKIE && def->emitter >= 0 &&
+           def->emitter < sim->emitterCount && def->points.index1 != 0 &&
+           def->ribbons.index1 != 0 && def->pointOffset % 4u == 0 && def->ribbonOffset % 4u == 0 &&
+           def->countsOffset % 4u == 0 && def->pointCapacity >= 0 && def->ribbonCapacity >= 0 &&
+           IsViewWithin(&def->view);
 }
 
 // The frame's particles, statistics and grids of an emitter a record pass
@@ -213,4 +209,20 @@ mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
                              plan.capacity)
                ? mvfx_success
                : mvfx_errorState;
+}
+
+mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,
+                               mvfxBounds* boundsOut)
+{
+    if (boundsOut != nullptr)
+    {
+        *boundsOut = (mvfxBounds){.empty = true};
+    }
+    if (sim == nullptr || record == nullptr || boundsOut == nullptr || emitter < 0 ||
+        emitter >= sim->emitterCount)
+    {
+        return mvfx_errorInvalid;
+    }
+    *boundsOut = mvfxRecordBounds(&sim->views[emitter], record);
+    return mvfx_success;
 }

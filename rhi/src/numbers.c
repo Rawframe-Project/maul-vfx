@@ -374,14 +374,48 @@ bool mvfxIsRibbonLayout(const mvfxLayoutView* layout)
     return written;
 }
 
+// The pinned head's place in the particles' space, from the plan's in the
+// world in binary64 (records.wgsl's map undone): from the anchor in the
+// world's space, else from the instance's origin turned back and scaled.
+static void HeadInParticles(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, float out[3])
+{
+    bool world = view->space == mvfx_spaceWorld;
+    const double* from = world ? plan->anchorAfter : plan->to.origin;
+    double d[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        d[k] = plan->ribbonHeadPlace[k] - from[k];
+    }
+    if (world)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[k] = (float)d[k];
+        }
+        return;
+    }
+    // The turn's inverse: v + w t + u x t, t = 2 u x v, u the axis negated.
+    const float* q = plan->to.rotation;
+    const double u[3] = {-(double)q[0], -(double)q[1], -(double)q[2]};
+    const double t[3] = {2.0 * (u[1] * d[2] - u[2] * d[1]), 2.0 * (u[2] * d[0] - u[0] * d[2]),
+                         2.0 * (u[0] * d[1] - u[1] * d[0])};
+    const double turned[3] = {d[0] + (double)q[3] * t[0] + (u[1] * t[2] - u[2] * t[1]),
+                              d[1] + (double)q[3] * t[1] + (u[2] * t[0] - u[0] * t[2]),
+                              d[2] + (double)q[3] * t[2] + (u[0] * t[1] - u[1] * t[0])};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = (float)(turned[k] / (double)plan->to.scale);
+    }
+}
+
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxStepTables* tables, int64_t listCapacity, uint32_t countWord,
                        uint32_t words[MVFX_RIBBON_WORDS])
 {
     const mvfxRibbonView* r = &view->ribbon;
-    const uint32_t head[4] = {WordOf(view->arrays.ribbon), WordOf(view->arrays.ribbonDistance),
-                              r->texture, r->facing};
-    memcpy(words, head, sizeof head);
+    const uint32_t arrays[4] = {WordOf(view->arrays.ribbon), WordOf(view->arrays.ribbonDistance),
+                                r->texture, r->facing};
+    memcpy(words, arrays, sizeof arrays);
     // The core's offset, a binary64 product at the clock rounded once.
     double seconds = (double)(plan->start + plan->ticks) / (double)MVFX_TICKS_PER_SECOND;
     Floats(words + 4, r->tileLength, (float)((double)r->scroll * seconds), r->width.value, 0.0f);
@@ -391,9 +425,16 @@ void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     words[14] = (uint32_t)(listCapacity < (int64_t)UINT32_MAX ? listCapacity : (int64_t)UINT32_MAX);
     words[15] = countWord;
     const uint32_t cut[4] = {r->pieces > 1 ? (uint32_t)r->pieces : 1u,
-                             r->bendCosines[0] >= -1.5f ? 1u : 0u, 0u, 0u};
+                             r->bendCosines[0] >= -1.5f ? 1u : 0u, plan->ribbonHead ? 1u : 0u,
+                             plan->ribbonCounter};
     memcpy(words + 16, cut, sizeof cut);
-    memcpy(words + 20, r->bendCosines, MVFX_MAX_RIBBON_PIECES * sizeof(float));
+    float head[4] = {0};
+    if (plan->ribbonHead)
+    {
+        HeadInParticles(view, plan, head);
+    }
+    memcpy(words + 20, head, sizeof head);
+    memcpy(words + 24, r->bendCosines, MVFX_MAX_RIBBON_PIECES * sizeof(float));
 }
 
 // Where a particle's values are for the record pass (records.wgsl's

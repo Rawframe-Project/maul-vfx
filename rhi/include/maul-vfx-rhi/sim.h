@@ -133,8 +133,10 @@ extern "C"
 // plus it.
 #define MVFX_GPU_RIBBON_BREAKS 38
 
-// The words of an emitter's statistics record.
-#define MVFX_GPU_STATISTICS_WORDS 39
+// The words of an emitter's statistics record (for an emitter whose
+// ribbons pin a head, its last words hold the head, which
+// mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
+#define MVFX_GPU_STATISTICS_WORDS 46
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -442,14 +444,15 @@ extern "C"
     /// pass's would (mvfxGpuSim_AddRecords), and count among its
     /// MVFX_GPU_RECORD_PASSES an emitter a frame. An emitter without
     /// particles at the instance's quality level, or not drawn as ribbons,
-    /// writes no point; its counts, if asked for, are 0. This part writes
-    /// no pinned head yet: an emitter whose ribbons have one is refused.
+    /// writes no point; its counts, if asked for, are 0. A pinned head ends
+    /// the current ribbon as the plan read now gives it
+    /// (mvfxEmitterPlan.ribbonHead), the youngest particle's values at its
+    /// place.
     ///
     /// @param sim  The simulation.
     /// @param def  Where the ribbons go, from mvfxDefaultGpuRibbonsDef.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
-    ///         def without its cookie, an emitter out of range or whose
-    ///         ribbons have a pinned head, a layout whose stride
+    ///         def without its cookie, an emitter out of range, a layout whose stride
     ///         is not a multiple of 4 or with a neighbor field, an offset
     ///         not a multiple of 4, a negative capacity, a null points or
     ///         ribbons buffer, or a view whose origin or eye is out of range
@@ -468,7 +471,8 @@ extern "C"
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
     /// when it added none. The bytes are the frame's uploads
     /// (mvfxGpuSim_UploadBytes counts them): 1,944 an emitter (its
-    /// numbers' 1,872 and its record map's 72), 432 a force, 128 a collider
+    /// numbers' 1,872 and its record map's 72; 28 more for one whose
+    /// ribbons pin a head), 432 a force, 128 a collider
     /// and 80 a kill rule it has (8,088 at most), and 96 more for one
     /// that writes events (its events' values over life: the clock and
     /// the map, all 1,952 at the first step); 48 a planned
@@ -527,8 +531,9 @@ extern "C"
     /// the instance's transform at that step; else empty with no
     /// particles, or the box of its places at that step's end grown by the
     /// largest size any can have, through the map to the world at that
-    /// step. The record holds that step's map, so a late read is exact
-    /// for its step.
+    /// step, joined by a ribbon's pinned head where it shows. The record
+    /// holds that step's map and head, so a late read is exact for its
+    /// step.
     ///
     /// @param sim        The simulation.
     /// @param emitter    The emitter's index in its effect.

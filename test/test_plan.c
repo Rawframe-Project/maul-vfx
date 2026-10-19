@@ -797,6 +797,28 @@ static void TestRibbonView(void)
               view.ribbon.width.value == 2.0f && view.ribbon.color != NULL &&
               view.ribbon.color[0] == 1.0f && view.ribbon.color[2] == 0.0f,
           "a ribbon's drawing as compiled");
+    // Its pinned head in the plan: the shape's offset through the
+    // instance's place at the step's end, while it may spawn; none after
+    // it stops.
+    ribboned.shape.offset[0] = 0.5f;
+    drawn = Effect(context, &ribboned);
+    instanceDef.effect = drawn;
+    static const double origin[3] = {1.0, 2.0, 3.0};
+    static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    mvfxInstanceId pinned = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &pinned) == mvfx_success &&
+              mvfxInstance_SetTransform(context, pinned, origin, quarter, 2.0f, true) ==
+                  mvfx_success &&
+              mvfxContext_StepTicks(context, 1) == mvfx_success &&
+              mvfxInstance_GetEmitterPlan(context, pinned, 0, &plan) == mvfx_success &&
+              plan.ribbonHead && fabs(plan.ribbonHeadPlace[0] - 1.0) < 1e-6 &&
+              fabs(plan.ribbonHeadPlace[1] - 3.0) < 1e-6 && plan.ribbonHeadPlace[2] == 3.0,
+          "a pinned head in the plan");
+    CHECK(mvfxInstance_Stop(context, pinned, mvfx_stopEmitting) == mvfx_success &&
+              mvfxContext_StepTicks(context, 1) == mvfx_success &&
+              mvfxInstance_GetEmitterPlan(context, pinned, 0, &plan) == mvfx_success &&
+              !plan.ribbonHead,
+          "no head once the emitter stops");
     mvfxDestroyContext(context);
 }
 
