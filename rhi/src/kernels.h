@@ -73,6 +73,11 @@ typedef enum mvfxKernel
     mvfx_kernelRibbonPieces = 24,
     // A beam's points placed (sim.wgsl).
     mvfx_kernelBeam = 25,
+    // An emitter's lights (records.wgsl): each block's carriers counted,
+    // the counts scanned, the lights written.
+    mvfx_kernelLightCount = 26,
+    mvfx_kernelLightOffsets = 27,
+    mvfx_kernelLightWrite = 28,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

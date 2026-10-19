@@ -163,6 +163,18 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxStepTables* tables, const float srgb[MVFX_SRGB_STEPS],
                        uint32_t words[MVFX_RECORD_WORDS]);
 
+// The first word of a lights pass's own numbers, in the fields' place (it
+// writes none): the light def's every, whether alpha scales, the
+// workgroups of its block passes, unused; its intensity, radius and
+// radius by size (binary32 bits), unused.
+#define MVFX_RECORD_LIGHT 348
+
+// Writes a lights pass's numbers: a record pass's without fields, in the
+// pool's order, the light def's beside them.
+void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                      const mvfxGpuLightsDef* def, const mvfxStepTables* tables,
+                      const float srgb[MVFX_SRGB_STEPS], uint32_t words[MVFX_RECORD_WORDS]);
+
 // The words of a ribbon pass's own numbers (ribbon_records.wgsl's
 // Ribbons), beside its record numbers.
 #define MVFX_RIBBON_WORDS 44

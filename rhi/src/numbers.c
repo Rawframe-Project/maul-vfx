@@ -605,6 +605,30 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     RecordOrder(view, plan, &def->view, words + MVFX_RECORD_ORDER);
 }
 
+void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                      const mvfxGpuLightsDef* def, const mvfxStepTables* tables,
+                      const float srgb[MVFX_SRGB_STEPS], uint32_t words[MVFX_RECORD_WORDS])
+{
+    mvfxGpuRecordsDef records = mvfxDefaultGpuRecordsDef();
+    records.emitter = def->emitter;
+    records.view = def->view;
+    records.offset = def->offset;
+    records.capacity = def->capacity;
+    records.count = def->count;
+    records.countOffset = def->countOffset;
+    const mvfxLayoutView layout = {.stride = (uint32_t)sizeof(mvfxLight)};
+    mvfxRecordNumbers(view, plan, &layout, &records, tables, srgb, words);
+    words[MVFX_RECORD_ORDER] = MVFX_ORDER_POOL;
+    const mvfxLightDef* light = &view->light;
+    uint32_t blocks = mvfxSortBlocks(plan->capacity);
+    uint32_t* at = words + MVFX_RECORD_LIGHT;
+    at[0] = (uint32_t)light->every;
+    at[1] = light->alphaScales ? 1u : 0u;
+    at[2] = blocks < 65535u ? (blocks > 0u ? blocks : 1u) : 65535u;
+    at[3] = 0u;
+    Floats(at + 4, light->intensity, light->radius, light->radiusBySize, 0.0f);
+}
+
 void mvfxLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_GPU_LIVES])
 {
     const mvfxModulesView* m = &view->modules;

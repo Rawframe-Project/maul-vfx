@@ -619,6 +619,9 @@ extern "C"
         // How its points are struck and placed as a beam (mvfxEmitterDef's
         // beam; not enabled for none).
         mvfxBeamDef beam;
+        // The lights its particles carry (mvfxEmitterDef's light; not
+        // enabled for none).
+        mvfxLightDef light;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

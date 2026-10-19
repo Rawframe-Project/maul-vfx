@@ -811,3 +811,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxPlannedBeam`: its curve's points and the noise's time), and an
   emitter's view its def (`mvfxEmitterView.beam`); a beam's step uploads
   96 bytes more.
+- The GPU part writes an emitter's lights (`mvfxGpuSim_AddLights`,
+  `mvfxGpuLightsDef`) as `mvfxInstance_WriteLights` does: every particle
+  whose serial is a multiple of the light def's `every`, in the pool's
+  order, as `mvfxLight`, the first capacity of them and the count of all.
+  Lights are no longer refused (`MVFX_FEATURE_LIGHT`), and an emitter's
+  view gives its light def (`mvfxEmitterView.light`).

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A simulation's record and ribbon passes: a def checked, the frame's
+// A simulation's record, ribbon and lights passes: a def checked, the frame's
 // particles they read, the pass added with its numbers; and the bounds a
 // statistics record gives.
 
@@ -14,6 +14,11 @@
 mvfxGpuRecordsDef mvfxDefaultGpuRecordsDef(void)
 {
     return (mvfxGpuRecordsDef){.cookie = MVFX_GPU_RECORDS_DEF_COOKIE};
+}
+
+mvfxGpuLightsDef mvfxDefaultGpuLightsDef(void)
+{
+    return (mvfxGpuLightsDef){.cookie = MVFX_GPU_LIGHTS_DEF_COOKIE};
 }
 
 mvfxGpuRibbonsDef mvfxDefaultGpuRibbonsDef(void)
@@ -84,16 +89,18 @@ static bool RecordInputs(mvfxGpuSim* sim, Emitter* emitter, mvfxRecordResources*
 
 // The frame's resources a pass binds past the host's records and count:
 // its inputs, the simulation's own count word where the host gives none,
-// the emitter's sort words or the simulation's own for one without.
+// the emitter's sort words and digit counts or the simulation's own for
+// one without (one with lights alone has digit counts).
 static bool PassInputs(mvfxGpuSim* sim, Emitter* emitter, mvfxRecordResources* resources)
 {
     bool sorts = emitter->sort.index1 != 0;
+    bool counts = emitter->digits.index1 != 0;
     return RecordInputs(sim, emitter, resources) &&
            (resources->count.index1 != 0 ||
             mrhiImportBuffer(sim->device, sim->ownCount, &resources->count) == mrhi_success) &&
            mrhiImportBuffer(sim->device, sorts ? emitter->sort : sim->ownSort, &resources->sort) ==
                mrhi_success &&
-           mrhiImportBuffer(sim->device, sorts ? emitter->digits : sim->ownDigits,
+           mrhiImportBuffer(sim->device, counts ? emitter->digits : sim->ownDigits,
                             &resources->digits) == mrhi_success;
 }
 
@@ -144,6 +151,53 @@ mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
     return mvfxAddRecordPass(sim->device, &emitter->records, &resources, words, def->capacity)
                ? mvfx_success
                : mvfx_errorState;
+}
+
+mvfxResult mvfxGpuSim_AddLights(mvfxGpuSim* sim, const mvfxGpuLightsDef* def)
+{
+    if (sim == nullptr || def == nullptr || def->cookie != MVFX_GPU_LIGHTS_DEF_COOKIE ||
+        def->emitter < 0 || def->emitter >= sim->emitterCount || def->lights.index1 == 0 ||
+        def->offset % 4u != 0 || def->countOffset % 4u != 0 || def->capacity < 0 ||
+        !IsViewWithin(&def->view))
+    {
+        return mvfx_errorInvalid;
+    }
+    if (sim->ending)
+    {
+        return mvfx_errorState;
+    }
+    Emitter* emitter = &sim->emitters[def->emitter];
+    if (emitter->records.count == MVFX_GPU_RECORD_PASSES)
+    {
+        return mvfx_errorLimit;
+    }
+    mvfxEmitterPlan plan;
+    mvfxResult result =
+        mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, &plan);
+    if (result != mvfx_success)
+    {
+        return result;
+    }
+    const mvfxEmitterView* view = &sim->views[def->emitter];
+    if (emitter->capacity == 0 || !view->light.enabled)
+    {
+        // No particles at the instance's quality level, or no lights: a
+        // count of 0.
+        return def->count.index1 == 0 ||
+                       mvfxAddEmptyRecordPass(sim->device, &emitter->records, def->count,
+                                              (uint32_t)(def->countOffset / 4u), 1u)
+                   ? mvfx_success
+                   : mvfx_errorState;
+    }
+    mvfxRecordResources resources = {.records = def->lights, .count = def->count};
+    if (!PassInputs(sim, emitter, &resources))
+    {
+        return mvfx_errorState;
+    }
+    uint32_t words[MVFX_RECORD_WORDS];
+    mvfxLightNumbers(view, &plan, def, &emitter->tables, sim->srgb, words);
+    return mvfxAddLightPass(sim->device, &emitter->records, &resources, words) ? mvfx_success
+                                                                               : mvfx_errorState;
 }
 
 // Adds a ribbon pass writing what kind of sink asks (points with the list,

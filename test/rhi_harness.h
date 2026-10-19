@@ -140,6 +140,12 @@ typedef struct Run
     mvfxTubeDef tube;
     // The emitter whose records are written (the first for 0).
     int32_t recordEmitter;
+    // Whether the records are its lights instead (mvfxGpuSim_AddLights
+    // and mvfxInstance_WriteLights, recordCapacity the most the buffer
+    // holds; no layout needed), and the most lights it must have carried
+    // at some step.
+    bool lights;
+    int32_t leastLights;
 } Run;
 
 // The scenes a test runs on the device.

@@ -806,6 +806,13 @@ static uint32_t s_gpuList[4 * LIST_RIBBONS + LIST_FIRST];
 static mvfxRibbon s_cpuList[LIST_RIBBONS];
 static uint32_t s_cpuIndices[4 * LIST_RIBBONS];
 
+// Whether a run's records are lights, its layout then the harness's own
+// (positions, read by none); the most lights at a step of the run.
+static bool s_lights;
+static int64_t s_mostLights;
+static const mvfxLayoutField s_lightField = {
+    .field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3, .offset = 0};
+
 // The fill's bytes: written before the GPU's records each step.
 static uint32_t s_fillBytes[RECORD_BYTES / 4];
 
@@ -899,6 +906,19 @@ static bool AddRecordPasses(mvfxGpuSim* sim, mrhiDevice* device, mrhiPassId* fil
     if (s_ribbonPoints)
     {
         return mrhiAddPass(device, &def, fill) == mrhi_success && AddRibbonPass(sim, count);
+    }
+    if (s_lights)
+    {
+        mvfxGpuLightsDef lights = mvfxDefaultGpuLightsDef();
+        lights.emitter = s_recordEmitter;
+        lights.view = s_view;
+        lights.lights = s_recordResource;
+        lights.offset = 64;
+        lights.capacity = s_recordCapacity;
+        lights.count = count;
+        lights.countOffset = 4;
+        return mrhiAddPass(device, &def, fill) == mrhi_success &&
+               mvfxGpuSim_AddLights(sim, &lights) == mvfx_success;
     }
     mvfxGpuRecordsDef records = mvfxDefaultGpuRecordsDef();
     records.emitter = s_recordEmitter;
@@ -1539,8 +1559,60 @@ static double FacingSlack(const mvfxLayoutField* field, const uint8_t* cpu)
     return (double)s_tolerance / fmax(sine, 1e-6);
 }
 
+// Whether the GPU's lights are the CPU path's (mvfxInstance_WriteLights
+// on the CPU instance): the count, each light's serial exactly and its
+// values within the tolerance, the fill everywhere else.
+static bool SameLights(void)
+{
+    static mvfxLight cpu[RECORD_BYTES / sizeof(mvfxLight)];
+    int64_t capacity = s_recordCapacity;
+    int64_t count = 0;
+    if (capacity > (int64_t)(RECORD_BYTES / sizeof(mvfxLight)) - 4 ||
+        mvfxInstance_WriteLights(s_context, s_cpu, s_recordEmitter, &s_view, cpu, capacity,
+                                 &count) != mvfx_success)
+    {
+        return false;
+    }
+    bool same = (int64_t)s_gpuCount[1] == count;
+    if (!same)
+    {
+        printf("lights: %lld, GPU %u\n", (long long)count, s_gpuCount[1]);
+    }
+    int64_t written = count < capacity ? count : capacity;
+    for (int64_t j = 0; same && j < written; ++j)
+    {
+        mvfxLight gpu;
+        memcpy(&gpu, s_gpuRecords + 64 + j * (int64_t)sizeof gpu, sizeof gpu);
+        const mvfxLight* c = &cpu[j];
+        same = gpu.serial == c->serial && Near(gpu.radius, c->radius);
+        for (int32_t k = 0; same && k < 3; ++k)
+        {
+            same = Near(gpu.position[k], c->position[k]) && Near(gpu.color[k], c->color[k]);
+        }
+        if (!same)
+        {
+            printf("light %lld of %lld differs: serial %u (GPU %u), radius %g (GPU %g), "
+                   "position %g (GPU %g), red %g (GPU %g)\n",
+                   (long long)j, (long long)written, c->serial, gpu.serial, (double)c->radius,
+                   (double)gpu.radius, (double)c->position[0], (double)gpu.position[0],
+                   (double)c->color[0], (double)gpu.color[0]);
+        }
+    }
+    int64_t end = 64 + written * (int64_t)sizeof(mvfxLight);
+    for (int64_t b = 0; same && b < RECORD_BYTES; ++b)
+    {
+        same = (b >= 64 && b < end) || s_gpuRecords[b] == RECORD_FILL;
+    }
+    s_mostLights = count > s_mostLights ? count : s_mostLights;
+    return same;
+}
+
 static bool SameRecords(void)
 {
+    if (s_lights)
+    {
+        return SameLights();
+    }
     int64_t count = 0;
     int64_t scratch = 0;
     int64_t written = 0;
@@ -1944,9 +2016,17 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_tube = run->tube;
     s_recordEmitter = run->recordEmitter;
     s_ribbonCapacity = run->ribbonCapacity;
-    if (run->layout != NULL)
+    s_lights = run->lights;
+    s_mostLights = 0;
+    const mvfxLayoutDef lightLayout = {.cookie = mvfxDefaultLayoutDef().cookie,
+                                       .fields = &s_lightField,
+                                       .fieldCount = 1,
+                                       .stride = 16};
+    bool records = run->layout != NULL || run->lights;
+    if (records)
     {
-        CHECK(OpenRecords(gpu, run->layout, run->recordCapacity, run->view),
+        CHECK(OpenRecords(gpu, run->layout != NULL ? run->layout : &lightLayout,
+                          run->recordCapacity, run->view),
               "the records' buffers");
     }
     s_sorted = run->emitters[0].sortMode >= mvfx_sortBackToFront && !run->tied;
@@ -2048,10 +2128,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         }
         // The emitter whose records are written read back last, as the
         // ribbons take the GPU's places.
-        same = same && (run->layout == NULL ||
-                        ((!run->ribbons || run->recordEmitter == run->emitterCount - 1 ||
-                          ReadBack(gpu, sim, run->recordEmitter)) &&
-                         ReadRecords(gpu) && SameRecords()));
+        same =
+            same && (!records || ((!run->ribbons || run->recordEmitter == run->emitterCount - 1 ||
+                                   ReadBack(gpu, sim, run->recordEmitter)) &&
+                                  ReadRecords(gpu) && SameRecords()));
     }
     if (!same)
     {
@@ -2106,7 +2186,13 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         printf("  killed: %llu\n", (unsigned long long)state->killed);
         CHECK(state->killed > 0, "kills");
     }
-    if (run->layout != NULL)
+    if (run->lights)
+    {
+        printf("  most lights at a step: %lld (at least %d)\n", (long long)s_mostLights,
+               run->leastLights);
+        CHECK(s_mostLights >= run->leastLights, "lights carried");
+    }
+    if (records)
     {
         printf("  records a step apart: %lld\n", (long long)s_stepsApart);
         CloseRecords(gpu);

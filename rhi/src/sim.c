@@ -44,7 +44,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_ORIENTATION | MVFX_FEATURE_DRAG_SCALE | MVFX_FEATURE_VELOCITY_MODULES |          \
      MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
      MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
-     MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
+     MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -159,15 +159,18 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 
 // Creates an emitter's sort buffers when it sorts by place or is drawn
 // as ribbons: keys and indices twice over its blocks (and for ribbons the
-// chains' words after them), and two sets of digit counts.
+// chains' words after them), and two sets of digit counts. One that
+// carries lights alone takes digit counts of two words a block (its
+// lights' counts and offsets).
 static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
 {
     bool ribbons = view->ribbon.ids != mvfx_ribbonNone;
+    uint64_t blocks = mvfxSortBlocks(emitter->capacity);
     if (mvfxRecordOrder(view) != MVFX_ORDER_SORTED && !ribbons)
     {
-        return true;
+        return !view->light.enabled || CreateBuffer(sim, 2u * (blocks > 0 ? blocks : 1u) * 4u,
+                                                    mrhi_bufferStorage, &emitter->digits);
     }
-    uint64_t blocks = mvfxSortBlocks(emitter->capacity);
     uint64_t words = ribbons ? MVFX_RIBBON_SORT_WORDS : 4u;
     return CreateBuffer(sim, 4u * words * blocks * MVFX_SORT_BLOCK, mrhi_bufferStorage,
                         &emitter->sort) &&
@@ -956,7 +959,10 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         .ribbonKeys = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonKeys),
         .ribbonChains = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonChains),
         .ribbonPoints = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPoints),
-        .ribbonPieces = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPieces)};
+        .ribbonPieces = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPieces),
+        .lightCount = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightCount),
+        .lightOffsets = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightOffsets),
+        .lightWrite = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightWrite)};
     for (int32_t n = 0; n < sim->emitterCount; ++n)
     {
         Emitter* emitter = &sim->emitters[sim->order[n]];

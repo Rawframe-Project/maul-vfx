@@ -5,7 +5,8 @@
 // numbers, for a sort by place a keys pass and four radix passes of two
 // kernels each, and a compute pass writing the records into the host's
 // buffer. A ribbon pass is one too: its keys the ribbon ids, then a pass
-// finding the chains and one writing their points.
+// finding the chains and one writing their points; so is a lights pass:
+// each block's carriers counted, the counts scanned, the lights written.
 
 #ifndef MAUL_VFX_RHI_SRC_RECORDS_H
 #define MAUL_VFX_RHI_SRC_RECORDS_H
@@ -48,25 +49,31 @@ typedef struct mvfxRecordPipelines
     mrhiComputePipelineId ribbonChains;
     mrhiComputePipelineId ribbonPoints;
     mrhiComputePipelineId ribbonPieces;
+    mrhiComputePipelineId lightCount;
+    mrhiComputePipelineId lightOffsets;
+    mrhiComputePipelineId lightWrite;
 } mvfxRecordPipelines;
 
 // A record pass added to the frame open: its passes (only the transfer
 // pass, writing counts of 0, for an emitter without particles at the
 // instance's quality level or a ribbon pass of one not drawn as ribbons;
 // the sort's for one that sorts or a ribbon pass; the chains' for a
-// ribbon pass, and the pieces' for ribbons of more pieces than one),
-// resources, numbers and workgroups.
+// ribbon pass, and the pieces' for ribbons of more pieces than one; a
+// lights pass's counts and offsets), resources, numbers and workgroups.
 typedef struct mvfxRecordPass
 {
     bool empty;
     bool sorted;
     bool ribbons;
     bool cut;
+    bool lights;
     mrhiPassId write;
     mrhiPassId keys;
     mrhiPassId radix[2 * MVFX_SORT_PASSES];
     mrhiPassId pieces;
     mrhiPassId chains;
+    mrhiPassId lightCount;
+    mrhiPassId lightOffsets;
     mrhiPassId kernel;
     mrhiResourceId numbers;
     mrhiResourceId ribbonNumbers;
@@ -106,6 +113,11 @@ bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
 bool mvfxAddRibbonPass(mrhiDevice* device, mvfxRecordPasses* passes,
                        const mvfxRecordResources* resources, const uint32_t* words,
                        const uint32_t* ribbonWords, int64_t capacity);
+
+// Adds a lights pass of these numbers over these resources; false when
+// the device refuses an import or a pass.
+bool mvfxAddLightPass(mrhiDevice* device, mvfxRecordPasses* passes,
+                      const mvfxRecordResources* resources, const uint32_t* words);
 
 // Adds a pass writing counts of 0 (at most 4) from a word of the host's
 // count buffer, for an emitter without particles or one not drawn as

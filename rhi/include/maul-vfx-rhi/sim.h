@@ -149,7 +149,8 @@ extern "C"
     /// Makes a simulation of a planned instance: each emitter's buffers on
     /// the GPU object's device; an emitter that sorts its records by place
     /// keeps 16 bytes a particle of its capacity and 2,048 a block of 1,024
-    /// of them for the sort, one that writes events 36 bytes a particle of
+    /// of them for the sort (one that carries lights and does not sort, 8
+    /// a block for its lights' counts), one that writes events 36 bytes a particle of
     /// its capacity, 16 a block of its scan (a block for 1,024 of three
     /// times its capacity), 112 an event of its capacity of them and 1,952
     /// for their numbers; one that spawns from another's events the same
@@ -370,6 +371,66 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim,
                                                                  const mvfxGpuRecordsDef* def);
 
+    // Where an emitter's lights go (mvfxGpuSim_AddLights). Build it with
+    // mvfxDefaultGpuLightsDef.
+    typedef struct mvfxGpuLightsDef
+    {
+        uint32_t cookie;
+        int32_t emitter;
+        // The view the lights' positions are made relative to (its
+        // origin's coordinates each at most 2^52 in size).
+        mvfxView view;
+        // A storage buffer of the frame open the lights go into, as
+        // mvfxLight (32 bytes each), from a byte that is a multiple of 4,
+        // at most capacity of them.
+        mrhiResourceId lights;
+        uint64_t offset;
+        int64_t capacity;
+        // Optionally a storage buffer of the frame and a byte (a multiple
+        // of 4) the light count goes to as a 32-bit word: every light there
+        // is, as mvfxInstance_WriteLights counts them; a null id for none.
+        mrhiResourceId count;
+        uint64_t countOffset;
+    } mvfxGpuLightsDef;
+
+// The cookie of a lights def, which its default sets and
+// mvfxGpuSim_AddLights checks.
+#define MVFX_GPU_LIGHTS_DEF_COOKIE 0x6D76726Cu
+
+    /// Returns the default lights def: emitter 0, no buffer yet.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API mvfxGpuLightsDef mvfxDefaultGpuLightsDef(void);
+
+    /// Adds the passes writing the lights an emitter's particles carry to
+    /// the frame the host builds, as mvfxInstance_WriteLights writes them
+    /// on the CPU path: every particle whose serial's low word is a
+    /// multiple of its light def's every, in the pool's order, the first
+    /// capacity of them: a transfer pass and three compute passes (each
+    /// block's carriers counted, the counts scanned, the lights written).
+    /// It is a record pass of the emitter's (MVFX_GPU_RECORD_PASSES), the
+    /// same frames and order as mvfxGpuSim_AddRecords. An emitter without
+    /// lights or without particles at the instance's quality level writes
+    /// none; its count, if asked for, is 0.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the lights go, from mvfxDefaultGpuLightsDef.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, an emitter out of range, an offset
+    ///         not a multiple of 4, a negative capacity, a null lights
+    ///         buffer, or a view whose origin is out of range;
+    ///         `mvfx_errorStale` for an instance that is gone;
+    ///         `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the
+    ///         emitter this frame; `mvfx_errorState` when the device refuses
+    ///         a pass or an import (no frame open), or while it is destroyed
+    ///         (a call from its allocator).
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddLights(mvfxGpuSim* sim,
+                                                                const mvfxGpuLightsDef* def);
+
 // The counts a ribbon pass writes, 32-bit words: the points and the
 // ribbons there are, as mvfxInstance_WriteRibbons counts them, and the
 // points and the ribbons written (for strips, mvfxGpuSim_ExpandRibbons,
@@ -588,8 +649,9 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);
 
     /// Counts the bytes the last mvfxGpuSim_Record uploaded: its step
-    /// passes' as it states them, and its record passes' (1,952 a pass, 4 for
-    /// one of an emitter with no particles) and ribbon passes' (2,096 a
+    /// passes' as it states them, and its record passes' (1,952 a pass,
+    /// lights passes' too, 4 for one of an emitter with no particles or
+    /// lights) and ribbon passes' (2,096 a
     /// pass, 16 for one that writes no point), so a host can hold its
     /// frameUploadBytes to what its effects take.
     ///
