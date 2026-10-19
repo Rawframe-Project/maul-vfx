@@ -36,15 +36,21 @@
 #include <string.h>
 #include <time.h>
 
-// The longest a frame of the warm-up is waited for: a device's first
-// frame may compile the kernels it dispatches (lavapipe does, without its
-// shader cache, a minute on a loaded machine); and every frame after it,
-// so a kernel that hangs fails in seconds.
+// The longest a frame of the warm-up, or a run's first, is waited for: a
+// device's first frame may compile the kernels it dispatches (lavapipe
+// does, without its shader cache, a minute on a loaded machine; the unit
+// pass alone took 25 s), and a run's first dispatches every kernel the
+// run does, those the warm-up does not among them (units' and
+// self-collision's); and every frame after it, so a kernel that hangs
+// fails in seconds.
 #define WARM_WAIT_NS  300000000000ull
 #define FRAME_WAIT_NS 20000000000ull
 static uint64_t s_waitNs = WARM_WAIT_NS;
+// Whether the warm-up is over.
+static bool s_warm;
 
-// The longest a frame after the warm-up took, in seconds.
+// The longest a frame after the warm-up and after a run's first took, in
+// seconds.
 static double s_longestFrame;
 
 // The ticks a step of the run takes.
@@ -2507,6 +2513,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
             BreakRibbons();
         }
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
+        s_waitNs = s_warm && s > 0 ? FRAME_WAIT_NS : WARM_WAIT_NS;
         same = Simulate(gpu, sim);
         if (!same)
         {
@@ -2738,6 +2745,7 @@ int RunSuite(SceneSuite suite)
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     CHECK(MakeFill(&gpu), "the depth-writing pipeline");
     WarmUp(&gpu, kernels);
+    s_warm = true;
     s_waitNs = FRAME_WAIT_NS;
     suite(&gpu, kernels);
     printf("longest frame after the warm-up: %.3f s\n", s_longestFrame);
