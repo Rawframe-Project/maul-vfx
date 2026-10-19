@@ -15,7 +15,8 @@
 // instance's, bouncing, rubbing and rolling, their strikes' events,
 // counts and life lost (killing at once or past their age), newborns
 // striking in their first step, and the contacts past the most dropped
-// and counted; what is still refused (boxes and hulls colliding, grids,
+// and counted; boxes meeting the same, a box collider face to face, edge
+// to edge or on an edge; what is still refused (hulls colliding, grids,
 // depth images, bodies meeting each other, kills within a step). Skips
 // (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
@@ -46,11 +47,13 @@ static mvfxEmitterDef Bodies(mvfxRigidShape shape)
     return emitter;
 }
 
+// The lopsided hull's mesh.
+static const mvfxMeshDef s_hull = {
+    .cookie = MVFX_MESH_DEF_COOKIE, .positions = s_lopsided, .vertexCount = 7};
+
 static void Tumbled(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, bool moving,
                     const char* what)
 {
-    static const mvfxMeshDef hull = {
-        .cookie = MVFX_MESH_DEF_COOKIE, .positions = s_lopsided, .vertexCount = 7};
     // A step at a time from the same state, within 1e-3: the inertias are
     // binary32 here and binary64 on the CPU path, and the gyroscopic turn
     // carries their rounding into the angular velocity a substep at a
@@ -63,7 +66,7 @@ static void Tumbled(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, b
                    .pace = 0.001,
                    .adopting = true,
                    .tolerance = 1e-3f,
-                   .mesh = emitter->rigid.shape == mvfx_rigidHull ? &hull : NULL},
+                   .mesh = emitter->rigid.shape == mvfx_rigidHull ? &s_hull : NULL},
             what);
 }
 
@@ -154,6 +157,8 @@ static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
     Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres bounced off a sloped floor");
     emitter = Thrown(mvfx_rigidCapsule, &floor, 1);
     Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules bounced off a sloped floor");
+    emitter = Thrown(mvfx_rigidBox, &floor, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes bounced off a sloped floor");
     // Five floors through one line, each its own patch: a capsule lying on
     // them has ten contacts, two past the most.
     static const mvfxCollider floors[5] = {
@@ -166,6 +171,10 @@ static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
     emitter.events = 0;
     Met(gpu, kernels, &(Run){.emitters = &emitter, .leastRigidCapped = 1},
         "capsules lying on five floors, contacts dropped");
+    // A box lying on them has twenty.
+    emitter.rigid.shape = mvfx_rigidBox;
+    Met(gpu, kernels, &(Run){.emitters = &emitter, .leastRigidCapped = 1},
+        "boxes lying on five floors, contacts dropped");
 }
 
 static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
@@ -175,6 +184,8 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     static const mvfxCollider bowl = {.kind = mvfx_colliderSphere, .inside = true, .radius = 0.9f};
     mvfxEmitterDef emitter = Thrown(mvfx_rigidCapsule, &bowl, 1);
     Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules within a sphere");
+    emitter = Thrown(mvfx_rigidBox, &bowl, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes within a sphere");
     static const mvfxCollider crate = {.kind = mvfx_colliderBox,
                                        .inside = true,
                                        .halfExtents = {0.8f, 0.8f, 0.8f},
@@ -183,6 +194,8 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres within a turned box");
     emitter = Thrown(mvfx_rigidCapsule, &crate, 1);
     Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules within a turned box");
+    emitter = Thrown(mvfx_rigidBox, &crate, 1);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes within a turned box");
     // Kept out of a sphere and a turned box over a floor: capsules landing
     // across the box's edges rest on the lines where their cores cross
     // its faces.
@@ -197,6 +210,10 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres on a sphere and a box");
     emitter = Thrown(mvfx_rigidCapsule, obstacles, 3);
     Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules on a sphere and a box");
+    // Boxes meet the box face to face (a face clipped by the other's),
+    // edge to edge or on an edge, and the sphere at their nearest point.
+    emitter = Thrown(mvfx_rigidBox, obstacles, 3);
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes on a sphere and a box");
     // The instance's floor too, in the world's space under a moving
     // instance.
     static const mvfxCollider ground = {
@@ -276,14 +293,19 @@ static void TestSleep(Gpu* gpu, mvfxGpu* kernels)
 }
 
 // Whether a planned instance of an emitter is refused on the GPU for its
-// rigid particles.
+// rigid particles (a hull's the lopsided one).
 static bool RefusedForRigid(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef def = *emitter;
+    if (def.rigid.shape == mvfx_rigidHull)
+    {
+        CHECK(mvfxCreateMesh(context, &s_hull, &def.rigid.hull) == mvfx_success, "the hull");
+    }
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitter;
+    effectDef.emitters = &def;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -309,7 +331,8 @@ static void TestRefused(mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = Bodies(mvfx_rigidBox);
     emitter.collision.enabled = true;
-    CHECK(RefusedForRigid(kernels, &emitter), "colliding boxes refused");
+    emitter.rigid.shape = mvfx_rigidHull;
+    CHECK(RefusedForRigid(kernels, &emitter), "colliding hulls refused");
     emitter = Bodies(mvfx_rigidCapsule);
     emitter.collision.enabled = true;
     emitter.rigid.bodyContacts = 4;

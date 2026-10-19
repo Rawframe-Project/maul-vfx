@@ -2140,13 +2140,19 @@ static bool SameSelfCapped(int32_t e)
 static uint32_t s_rigidCapped;
 
 // Whether an emitter's rigid contacts dropped past the most, counted by
-// the GPU, are the CPU path's.
+// the GPU, are the CPU path's within a hundredth of them (at least one):
+// a contact is one within the margin of a surface, decided on places, so
+// a corner at the margin may count on one path only, and the counts sum
+// over the run.
 static bool SameRigidCapped(int32_t e)
 {
     mvfxEmitterStats stats;
     uint32_t capped = s_record[MVFX_GPU_RIGID_CAPPED];
-    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
-                stats.rigidContactsCapped == capped;
+    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success;
+    uint64_t apart = capped > stats.rigidContactsCapped ? capped - stats.rigidContactsCapped
+                                                        : stats.rigidContactsCapped - capped;
+    uint64_t slack = stats.rigidContactsCapped / 100u;
+    same = same && apart <= (slack > 1u ? slack : 1u);
     if (!same)
     {
         printf("rigid contacts capped: GPU %u, the CPU path's %llu\n", capped,

@@ -950,6 +950,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   dropped past a body's most (`MVFX_GPU_STATISTICS_WORDS` is now 53).
 - A rigid body's strike events are held over its substeps and join the
   step's body by body, as a unit's points' contacts do.
+- The GPU part runs rigid boxes that meet the world as well: their
+  corners against planes, spheres kept within and boxes kept within, the
+  nearest point against spheres kept out of, and the separating axes
+  against boxes kept out of (a face clipped by the other's or two edges'
+  nearest points), as the CPU path's. Colliding hulls stay refused.
 
 ### Fixed
 

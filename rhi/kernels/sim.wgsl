@@ -393,3 +393,5 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/rigid.wgsl
 
 // include: sim/rigid_contacts.wgsl
+
+// include: sim/rigid_box.wgsl

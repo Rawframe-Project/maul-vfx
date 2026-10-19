@@ -9,8 +9,8 @@
 // second), its velocities from its pose's change, eight passes of
 // restitution with dynamic friction, and its strike. Every step of it
 // moves the body alone, so a body is an invocation's, in the core's
-// order. Spheres and capsules (a capsule's core between its two end
-// points).
+// order. Spheres, capsules (a capsule's core between its two end points)
+// and boxes (their corners; kept out of a box by sim/rigid_box.wgsl).
 
 const CONTACT_MARGIN: f32 = 0.02;
 const MOST_CONTACTS: u32 = 8u;
@@ -51,7 +51,8 @@ struct Contacts {
 }
 
 // A body's shape at its size: its kind, its points (a sphere's center,
-// a capsule's core's ends), its radius, a capsule's half core along Y.
+// a capsule's core's ends, a box's corners), its radius (none for a box),
+// a capsule's half core along Y or a box's half sizes.
 struct Shape {
     kind: u32,
     count: u32,
@@ -93,12 +94,21 @@ fn shapeOf(size: vec3<f32>) -> Shape {
     if (s.kind == RIGID_CAPSULE) {
         s.half.y = 0.5 * max(a.y - 2.0 * s.radius, 0.0);
         s.count = 2u;
+    } else if (s.kind == RIGID_BOX) {
+        s.radius = 0.0;
+        s.count = 8u;
+        s.half = 0.5 * a;
     }
     return s;
 }
 
 // A shape's point i in its frame, as the core's mvfxShapePoint.
 fn shapePoint(s: Shape, i: u32) -> vec3<f32> {
+    if (s.kind == RIGID_BOX) {
+        // Corner i's bit k says which side along axis k.
+        let bits = (vec3<u32>(i) >> vec3<u32>(0u, 1u, 2u)) & vec3<u32>(1u);
+        return select(-s.half, s.half, bits != vec3<u32>(0u));
+    }
     return vec3<f32>(0.0, select(-s.half.y, s.half.y, i == 0u), 0.0) *
            select(0.0, 1.0, s.kind == RIGID_CAPSULE);
 }
@@ -294,15 +304,39 @@ fn insideBoxContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
     (*list).collider = area;
 }
 
-// Keeping a sphere or a capsule out of a sphere: by the nearest point of
-// its core.
+// The box's point nearest a sphere's center (in its frame) and the way out
+// it is pushed; for a center inside, the nearest face's.
+fn boxNearest(s: Shape, center: vec3<f32>, point: ptr<function, vec3<f32>>,
+              way: ptr<function, vec3<f32>>) -> f32 {
+    *point = min(max(center, -s.half), s.half);
+    if (any(*point != center)) {
+        return wayFrom(center, *point, way);
+    }
+    var face = 0u;
+    for (var k = 1u; k < 3u; k++) {
+        face = select(face, k, s.half[k] - abs(center[k]) < s.half[face] - abs(center[face]));
+    }
+    let side = select(-1.0, 1.0, center[face] >= 0.0);
+    (*point)[face] = side * s.half[face];
+    *way = vec3<f32>(0.0);
+    (*way)[face] = -side;
+    return -(s.half[face] - abs(center[face]));
+}
+
+// Keeping the shape out of a sphere: by the nearest point of a box, or of
+// a sphere's or a capsule's core.
 fn outsideContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
                    list: ptr<function, Contacts>) {
     let center = rotate(conjugate(q), c.center.xyz - x);
     var point = vec3<f32>(0.0, min(max(center.y, -s.half.y), s.half.y), 0.0);
     var local = vec3<f32>(0.0);
-    let distance = wayFrom(center, point, &local) - s.radius;
-    point -= s.radius * local;
+    var distance = 0.0;
+    if (s.kind == RIGID_BOX) {
+        distance = boxNearest(s, center, &point, &local);
+    } else {
+        distance = wayFrom(center, point, &local) - s.radius;
+        point -= s.radius * local;
+    }
     addContact(list, contactAt(point, x + rotate(q, point), rotate(q, local),
                                distance - c.center.w));
 }
@@ -324,6 +358,8 @@ fn gatherContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, reach: f32) -> Contacts 
             outsideContacts(x, q, s, c, &list);
         } else if (c.modes.x == COLLIDER_BOX && inside) {
             insideBoxContacts(x, q, s, c, &list);
+        } else if (c.modes.x == COLLIDER_BOX && s.kind == RIGID_BOX) {
+            boxBoxContacts(x, q, s, c, &list);
         } else if (c.modes.x == COLLIDER_BOX) {
             coreBoxContacts(x, q, s, c, &list);
         }

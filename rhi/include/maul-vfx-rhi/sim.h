@@ -68,9 +68,9 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
-    // beside anything that kills within a step, and colliding as boxes or
-    // hulls, with heightfields, distance grids or a depth image, or meeting
-    // each other (bodyContacts above 0).
+    // beside anything that kills within a step, and colliding as hulls,
+    // with heightfields, distance grids or a depth image, or meeting each
+    // other (bodyContacts above 0).
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -188,7 +188,9 @@ extern "C"
 
 // For an emitter of rigid particles, the statistics record's word counting
 // their contacts dropped past the most a body takes since the instance was
-// last cleared (mvfxEmitterStats.rigidContactsCapped on the CPU path).
+// last cleared (mvfxEmitterStats.rigidContactsCapped on the CPU path; a
+// contact is decided on places, so one at the margin of a surface may
+// count on one path only).
 #define MVFX_GPU_RIGID_CAPPED 52
 
 // The words of an emitter's statistics record (for an emitter whose

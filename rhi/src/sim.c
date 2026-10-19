@@ -69,13 +69,13 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                          ? MVFX_FEATURE_CONTACTS
                          : 0) |
                     // Rigid particles meet only planes, spheres and boxes,
-                    // as spheres and capsules, not each other, and are
-                    // killed by their strikes' life alone.
+                    // as spheres, capsules and boxes, not each other, and
+                    // are killed by their strikes' life alone.
                     ((view->features & MVFX_FEATURE_RIGID) != 0 &&
-                             (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
-                                              (view->rigid.shape > mvfx_rigidCapsule ||
-                                               view->rigid.bodyContacts > 0 || view->depthImage ||
-                                               (view->colliderKinds & ~RIGID_COLLIDERS) != 0)))
+                             (view->kills ||
+                              ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
+                               (view->rigid.shape > mvfx_rigidBox || view->rigid.bodyContacts > 0 ||
+                                view->depthImage || (view->colliderKinds & ~RIGID_COLLIDERS) != 0)))
                          ? MVFX_FEATURE_RIGID
                          : 0),
     };
