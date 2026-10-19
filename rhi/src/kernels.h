@@ -20,6 +20,7 @@ typedef enum mvfxContainer
     mvfx_containerSort = 3,
     mvfx_containerRibbonRecords = 4,
     mvfx_containerGrid = 5,
+    mvfx_containerContacts = 6,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -86,6 +87,17 @@ typedef enum mvfxKernel
     mvfx_kernelGridKeys = 30,
     mvfx_kernelGridValues = 31,
     mvfx_kernelNeighbors = 32,
+    // An emitter's particle contacts (contacts.wgsl): their radii, keys
+    // before sort.wgsl's passes, projections and their commits, impulses
+    // and their kick.
+    mvfx_kernelContactRadii = 33,
+    mvfx_kernelContactKeys = 34,
+    mvfx_kernelContactProject = 35,
+    mvfx_kernelContactCommit = 36,
+    mvfx_kernelContactImpulses = 37,
+    mvfx_kernelContactKick = 38,
+    // An emitter's blocks' boxes taken again after its contacts (sim.wgsl).
+    mvfx_kernelRebox = 39,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

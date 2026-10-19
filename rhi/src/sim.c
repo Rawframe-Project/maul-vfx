@@ -45,7 +45,8 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_RATE_CURVE | MVFX_FEATURE_DISTANCE |                   \
      MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
-     MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE)
+     MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
+     MVFX_FEATURE_CONTACTS)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -57,6 +58,13 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                     ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
                     ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
                          ? MVFX_FEATURE_COLLISION
+                         : 0) |
+                    // Contacts see the particles a step kills, and move births
+                    // after ribbons and beams take their places.
+                    ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
+                             (view->kills ||
+                              (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
+                         ? MVFX_FEATURE_CONTACTS
                          : 0),
     };
     return refusal->features == 0;
@@ -304,7 +312,8 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     if (result == mvfx_success && emitter->capacity > 0 &&
         (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
          !CreateSortBuffers(sim, &sim->views[e], emitter) ||
-         !CreateEventBuffer(sim, &sim->views[e], emitter) || !mvfxCreateSimGrid(sim, e)))
+         !CreateEventBuffer(sim, &sim->views[e], emitter) || !mvfxCreateSimGrid(sim, e) ||
+         !mvfxCreateSimContacts(sim, e)))
     {
         result = mvfx_errorState;
     }
@@ -416,6 +425,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->events);
         DestroyBuffer(sim, emitter->eventNumbers);
         mvfxDestroySimGrid(sim, emitter);
+        mvfxDestroySimContacts(sim, emitter);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
     }
@@ -484,7 +494,8 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
     for (int32_t p = PASS_ROOM; p < (emitter->writesEvents ? PASS_EVENT_VALUES : PASS_EVENT_COUNT);
          ++p)
     {
-        if ((p != PASS_RIBBONS || emitter->ribbons) && (p != PASS_BEAM || emitter->beam))
+        if ((p != PASS_RIBBONS || emitter->ribbons) && (p != PASS_BEAM || emitter->beam) &&
+            (p != PASS_REBOX || emitter->contacts))
         {
             order[count++] = p;
         }
@@ -552,6 +563,8 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         // The neighbor grid's passes after room's, which tells them whether
         // the births fit.
         added = added && (p != PASS_ROOM || mvfxAddSimGridPasses(sim, emitter));
+        // The particle contacts' after the scatter, on the pool it leaves.
+        added = added && (p != PASS_SCATTER || mvfxAddSimContactPasses(sim, emitter));
         if (!added)
         {
             return false;
@@ -683,6 +696,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     mvfxRecordHead(&plan, emitter->head);
     mvfxSimEventNumbers(sim, e, &plan);
     mvfxSimGridNumbers(sim, e, &plan);
+    mvfxSimContactNumbers(sim, e, &plan);
     emitter->plannedBirths = plan.births;
     emitter->birthCount = plan.birthCount;
     emitter->hostCount = plan.hostBirthCount;
@@ -748,7 +762,8 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
 
 // Records the pass writing the plan's bytes: its numbers, its births and
 // its host births after the births' room, the record's map, the counts
-// emptied after a clear (the neighbors' caps too), and the grids changed.
+// emptied after a clear (the neighbors' and contacts' caps too), and the
+// grids changed.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     static const uint32_t empty[MVFX_RECORD_PAST + 1] = {0};
@@ -783,6 +798,9 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         (!emitter->cleared || (emitter->gridFlags & MVFX_GRID_FINDS) == 0 ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_GPU_NEIGHBORS_CAPPED * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
+        (!emitter->cleared || !emitter->contacts ||
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
+                    MVFX_GPU_CONTACTS_CAPPED * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
         mvfxWriteSimMesh(sim, pass, emitter) &&
@@ -837,6 +855,9 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
         mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
         mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
         mvfxRecordSimKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&
+        mvfxRecordSimContacts(sim, emitter) &&
+        (!emitter->contacts ||
+         mvfxRecordSimKernel(sim, emitter, PASS_REBOX, mvfx_kernelRebox, blocks)) &&
         (!emitter->ribbons ||
          mvfxRecordSimKernel(sim, emitter, PASS_RIBBONS, mvfx_kernelRibbons, 1)) &&
         (!emitter->beam || mvfxRecordSimKernel(sim, emitter, PASS_BEAM, mvfx_kernelBeam, 1)) &&

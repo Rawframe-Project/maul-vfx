@@ -696,6 +696,40 @@ fn growthOf(at: u32) -> f32 {
     return max(g.x, max(g.y, g.z));
 }
 
+// Rebox, for an emitter whose contacts moved its particles after the
+// scatter: each block's box again from the places of the compacted pool,
+// a block of it a workgroup (dispatched a block each), the blocks past the
+// pool's empty; the growth by size stays the scatter's (contacts change
+// no size).
+@compute @workgroup_size(256, 1, 1)
+fn rebox(@builtin(local_invocation_index) local: u32,
+         @builtin(workgroup_id) group: vec3<u32>) {
+    let c = params.counts.x;
+    let live = counts[0];
+    let n = blockCount();
+    for (var g = group.x; g < n; g += n) {
+        var low = vec3<f32>(EMPTY_LOW);
+        var high = vec3<f32>(-EMPTY_LOW);
+        for (var k = 0u; k < ITEMS; k++) {
+            let i = g * BLOCK + local * ITEMS + k;
+            if (i < live) {
+                let p = readVector(1u, i, params.words.place);
+                low = lowerOf(low, p);
+                high = higherOf(high, p);
+            }
+        }
+        reduceBox(local, low, high, 0.0);
+        if (local == 0u) {
+            let box = n + 6u * g;
+            for (var k = 0u; k < 3u; k++) {
+                blocks[box + k] = bitcast<u32>(boxLow[0][k]);
+                blocks[box + 3u + k] = bitcast<u32>(boxHigh[0][k]);
+            }
+        }
+        workgroupBarrier();
+    }
+}
+
 // Measure, in one workgroup: the blocks' boxes reduced by a fixed tree to
 // the emitter's, in the particles' space, into the statistics record with
 // the growth by the largest size, with its margin.

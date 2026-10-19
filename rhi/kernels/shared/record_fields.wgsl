@@ -110,20 +110,9 @@ struct Records {
     forward: vec4<f32>,
 }
 
-@group(0) @binding(0) var<uniform> params: Records;
-@group(0) @binding(1) var<storage, read> particles: array<u32>;
-@group(0) @binding(2) var<storage, read> statistics: array<u32>;
-@group(0) @binding(3) var<storage, read> grids: array<u32>;
-@group(0) @binding(4) var<storage, read_write> recordWords: array<u32>;
-@group(0) @binding(5) var<storage, read_write> count: array<u32>;
-// The emitter's sort (an emitter that sorts; a word of the simulation's
-// otherwise): keys, then indices, twice over its blocks; and two sets of
-// digit counts, 256 a block each, digit-major.
-@group(0) @binding(6) var<storage, read_write> sortWords: array<u32>;
-@group(0) @binding(7) var<storage, read_write> digits: array<u32>;
-
-var<workgroup> tally: array<atomic<u32>, CHUNK>;
-var<workgroup> liveCount: u32;
+// The bindings (records.wgsl's and ribbon_records.wgsl's
+// shared/record_bindings.wgsl, or a kernel's own of the same names): the
+// fields read params, particles and grids and write recordWords.
 
 fn wordAt(first: u32, i: u32) -> u32 {
     return particles[first * params.head.x + i];

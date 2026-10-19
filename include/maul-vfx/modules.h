@@ -414,10 +414,11 @@ extern "C"
     // Particles of an emitter kept apart (position-based, Macklin et al.
     // 2014): after motion each step, pairs closer than their radii's sum
     // are moved apart along the line between them, each by half the
-    // overlap averaged over its contacts, for a set number of Jacobi
-    // passes; then each pair still touching and closing gets an impulse
-    // from restitution and friction, also averaged. The projection itself
-    // changes no velocity.
+    // overlap to a rest distance 0.05% past the sum (so a parted pair
+    // rests clear of touching), averaged over its contacts, for a set
+    // number of Jacobi passes; then each pair touching within 0.1% past
+    // the sum and closing gets an impulse from restitution and friction,
+    // also averaged. The projection itself changes no velocity.
     typedef struct mvfxContactDef
     {
         bool enabled;

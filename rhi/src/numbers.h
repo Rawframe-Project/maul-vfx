@@ -10,6 +10,21 @@
 #include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/plan.h"
 
+#include <string.h>
+
+// Writes four floats' bits at words.
+static inline void mvfxFloatWords(uint32_t* words, float a, float b, float c, float d)
+{
+    const float f[4] = {a, b, c, d};
+    memcpy(words, f, sizeof f);
+}
+
+// A value's first word, or all ones for one not stored.
+static inline uint32_t mvfxWordOf(int16_t array)
+{
+    return array >= 0 ? (uint32_t)array : 0xFFFFFFFFu;
+}
+
 // The sources: the births' size, colour, angle, spin, orientation,
 // angular velocity, drag scale, custom values and lifetime.
 #define MVFX_GPU_SOURCES        16
@@ -126,6 +141,17 @@ typedef struct mvfxStepTables
 
 // Whether steering flocks (grid/steer.wgsl's STEER_FLOCK).
 #define MVFX_STEER_FLOCK 2u
+
+// The mask of a grid's keys for a capacity, as the core's tables (the
+// least power of two at least twice it, at least 2, less one).
+uint32_t mvfxTableMask(int32_t capacity);
+
+// Writes an emitter's contact numbers (contacts.wgsl's Contacts): its
+// capacity, the most contacts a pass takes, the workgroups of the block
+// passes and the others; the grid's mask; the radius scale, restitution
+// and friction.
+void mvfxContactNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                        uint32_t words[12]);
 
 // What an emitter does with a neighbor grid (MVFX_GRID_*, 0 for nothing),
 // own when its source is itself.

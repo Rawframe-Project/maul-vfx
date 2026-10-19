@@ -1,0 +1,24 @@
+{
+  "root_block_bytes": 16,
+  "entries": [
+    {"name": "contactRadii", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "contactKeys", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1028},
+    {"name": "contactProject", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "contactCommit", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "contactImpulses", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "contactKick", "stage": "compute", "workgroup": [64, 1, 1]}
+  ],
+  "bindings": [
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 1952},
+    {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 3, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 4, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 6, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 7, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 8, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 48}
+  ],
+  "constants": []
+}

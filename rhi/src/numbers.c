@@ -75,24 +75,12 @@ static void Gravity(const mvfxEmitterView* view, const mvfxPlanPlace* from, floa
     }
 }
 
-// Writes four floats' bits at words.
-static void Floats(uint32_t* words, float a, float b, float c, float d)
-{
-    const float f[4] = {a, b, c, d};
-    memcpy(words, f, sizeof f);
-}
-
-// A value's first word, or NONE (all ones) for one not stored.
-static uint32_t WordOf(int16_t array)
-{
-    return array >= 0 ? (uint32_t)array : 0xFFFFFFFFu;
-}
-
 // A place's origin from the anchor, and its scale, then its rotation.
 static void Place(uint32_t* words, const mvfxPlanPlace* place, const double anchor[3])
 {
-    Floats(words, (float)(place->origin[0] - anchor[0]), (float)(place->origin[1] - anchor[1]),
-           (float)(place->origin[2] - anchor[2]), place->scale);
+    mvfxFloatWords(words, (float)(place->origin[0] - anchor[0]),
+                   (float)(place->origin[1] - anchor[1]), (float)(place->origin[2] - anchor[2]),
+                   place->scale);
     memcpy(words + 4, place->rotation, 4 * sizeof(float));
 }
 
@@ -135,16 +123,16 @@ static void Field(const mvfxPlannedForce* force, const uint32_t grid[5], uint32_
     memcpy(words, force->rotation, 4 * sizeof(float));
     words[4] = (uint32_t)force->octaves;
     words[5] = force->seed;
-    Floats(words + 8, force->sigma, force->gain, 0.0f, 0.0f);
-    Floats(words + 12, force->scroll[0], force->scroll[1], force->scroll[2], 0.0f);
+    mvfxFloatWords(words + 8, force->sigma, force->gain, 0.0f, 0.0f);
+    mvfxFloatWords(words + 12, force->scroll[0], force->scroll[1], force->scroll[2], 0.0f);
     memcpy(words + 16, force->frequency, MVFX_MAX_OCTAVES * sizeof(float));
     for (int32_t o = 0; o < MVFX_MAX_OCTAVES; ++o)
     {
         memcpy(words + 24 + 4 * o, force->cell[o], 3 * sizeof(uint32_t));
         memcpy(words + 56 + 4 * o, force->fraction[o], 3 * sizeof(float));
     }
-    Floats(words + 88, force->boxOrigin[0], force->boxOrigin[1], force->boxOrigin[2], 0.0f);
-    Floats(words + 92, force->boxSize[0], force->boxSize[1], force->boxSize[2], 0.0f);
+    mvfxFloatWords(words + 88, force->boxOrigin[0], force->boxOrigin[1], force->boxOrigin[2], 0.0f);
+    mvfxFloatWords(words + 92, force->boxSize[0], force->boxSize[1], force->boxSize[2], 0.0f);
     memcpy(words + 96, force->boxRotation, 4 * sizeof(float));
     memcpy(words + 100, grid, 4 * sizeof(uint32_t));
     words[104] = grid[4];
@@ -164,11 +152,13 @@ static void Forces(const mvfxEmitterPlan* plan, float sharedDrag, const uint32_t
         at[0] = force->kind;
         at[1] = force->falloff;
         at[2] = force->fieldMode;
-        Floats(at + 4, force->vector[0], force->vector[1], force->vector[2], force->strength);
-        Floats(at + 8, force->point[0], force->point[1], force->point[2], force->softening);
-        Floats(at + 12, force->center[0], force->center[1], force->center[2], force->radius);
-        Floats(at + 16, force->axis[0], force->axis[1], force->axis[2], force->cosine);
-        Floats(at + 20, force->killRadius, force->pull, force->exponent, force->tightness);
+        mvfxFloatWords(at + 4, force->vector[0], force->vector[1], force->vector[2],
+                       force->strength);
+        mvfxFloatWords(at + 8, force->point[0], force->point[1], force->point[2], force->softening);
+        mvfxFloatWords(at + 12, force->center[0], force->center[1], force->center[2],
+                       force->radius);
+        mvfxFloatWords(at + 16, force->axis[0], force->axis[1], force->axis[2], force->cosine);
+        mvfxFloatWords(at + 20, force->killRadius, force->pull, force->exponent, force->tightness);
         kills = kills || (force->kind == mvfx_forceAttractor && force->killRadius > 0.0f);
         Field(force, gridWords[f], words + 4 + 24 * MVFX_MAX_FORCES + 108 * f);
     }
@@ -200,27 +190,27 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
                                   normals ? 1u : 0u,
                                   0u};
         memcpy(words + 8, head, sizeof head);
-        Floats(words + 16, depth->radius, depth->thickness, 0.0f, 0.0f);
+        mvfxFloatWords(words + 16, depth->radius, depth->thickness, 0.0f, 0.0f);
         memcpy(words + 20, depth->normalTurn, 4 * sizeof(float));
         memcpy(words + 24, depth->toClip, 16 * sizeof(float));
         memcpy(words + 40, depth->fromClip, 16 * sizeof(float));
     }
-    Floats(words + 4, plan->restitution, plan->friction, plan->lifeLoss, plan->restSpeed);
+    mvfxFloatWords(words + 4, plan->restitution, plan->friction, plan->lifeLoss, plan->restSpeed);
     for (int32_t c = 0; c < plan->colliderCount; ++c)
     {
         const mvfxPlannedCollider* collider = &plan->colliders[c];
         uint32_t* at = words + 56 + 32 * c;
         at[0] = collider->kind;
         at[1] = collider->inside ? 1u : 0u;
-        Floats(at + 4, collider->center[0], collider->center[1], collider->center[2],
-               collider->radius);
-        Floats(at + 8, collider->normal[0], collider->normal[1], collider->normal[2], 0.0f);
-        Floats(at + 12, collider->halfExtents[0], collider->halfExtents[1],
-               collider->halfExtents[2], 0.0f);
+        mvfxFloatWords(at + 4, collider->center[0], collider->center[1], collider->center[2],
+                       collider->radius);
+        mvfxFloatWords(at + 8, collider->normal[0], collider->normal[1], collider->normal[2], 0.0f);
+        mvfxFloatWords(at + 12, collider->halfExtents[0], collider->halfExtents[1],
+                       collider->halfExtents[2], 0.0f);
         memcpy(at + 16, collider->rotation, 4 * sizeof(float));
         memcpy(at + 20, grids[c], 4 * sizeof(uint32_t));
         at[24] = grids[c][4];
-        Floats(at + 28, collider->scale, collider->grow, 0.0f, 0.0f);
+        mvfxFloatWords(at + 28, collider->scale, collider->grow, 0.0f, 0.0f);
     }
 }
 
@@ -292,12 +282,12 @@ void mvfxSpawnNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     const double* own = plan->anchorAfter;
     const double* start = plan->from.origin;
     const double* end = plan->to.origin;
-    Floats(head + 8, (float)(anchor[0] - own[0]), (float)(anchor[1] - own[1]),
-           (float)(anchor[2] - own[2]), 0.0f);
-    Floats(head + 12, (float)(anchor[0] - start[0]), (float)(anchor[1] - start[1]),
-           (float)(anchor[2] - start[2]), 0.0f);
-    Floats(head + 16, (float)(end[0] - start[0]), (float)(end[1] - start[1]),
-           (float)(end[2] - start[2]), 0.0f);
+    mvfxFloatWords(head + 8, (float)(anchor[0] - own[0]), (float)(anchor[1] - own[1]),
+                   (float)(anchor[2] - own[2]), 0.0f);
+    mvfxFloatWords(head + 12, (float)(anchor[0] - start[0]), (float)(anchor[1] - start[1]),
+                   (float)(anchor[2] - start[2]), 0.0f);
+    mvfxFloatWords(head + 16, (float)(end[0] - start[0]), (float)(end[1] - start[1]),
+                   (float)(end[2] - start[2]), 0.0f);
     uint32_t* rule = words + MVFX_SPAWN_RULE_FIRST;
     uint64_t delay = (uint64_t)view->delayTicks;
     uint64_t loop = (uint64_t)view->loopTicks;
@@ -332,12 +322,12 @@ void mvfxHostBirthWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
             place[k] =
                 (float)(world ? host->position[k] - plan->anchorAfter[k] : host->position[k]);
         }
-        Floats(at, place[0], place[1], place[2], 0.0f);
+        mvfxFloatWords(at, place[0], place[1], place[2], 0.0f);
         at[3] = host->given;
         const float* v = host->velocity;
-        Floats(at + 4, v[0], v[1], v[2], 0.0f);
+        mvfxFloatWords(at + 4, v[0], v[1], v[2], 0.0f);
         memcpy(at + 8, host->color, 4 * sizeof(float));
-        Floats(at + 12, host->size[0], host->size[1], host->size[2], 0.0f);
+        mvfxFloatWords(at + 12, host->size[0], host->size[1], host->size[2], 0.0f);
     }
 }
 
@@ -414,13 +404,14 @@ void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        uint32_t words[MVFX_RIBBON_WORDS])
 {
     const mvfxRibbonView* r = &view->ribbon;
-    const uint32_t arrays[4] = {WordOf(view->arrays.ribbon), WordOf(view->arrays.ribbonDistance),
-                                r->texture, r->facing};
+    const uint32_t arrays[4] = {mvfxWordOf(view->arrays.ribbon),
+                                mvfxWordOf(view->arrays.ribbonDistance), r->texture, r->facing};
     memcpy(words, arrays, sizeof arrays);
     // The core's offset, a binary64 product at the clock rounded once.
     double seconds = (double)(plan->start + plan->ticks) / (double)MVFX_TICKS_PER_SECOND;
-    Floats(words + 4, r->tileLength, (float)((double)r->scroll * seconds), r->width.value, 0.0f);
-    Floats(words + 8, r->normal[0], r->normal[1], r->normal[2], 0.0f);
+    mvfxFloatWords(words + 4, r->tileLength, (float)((double)r->scroll * seconds), r->width.value,
+                   0.0f);
+    mvfxFloatWords(words + 8, r->normal[0], r->normal[1], r->normal[2], 0.0f);
     words[12] = tables->ribbonWidth;
     words[13] = tables->ribbonColor;
     words[14] =
@@ -445,7 +436,7 @@ void mvfxSpriteNumbers(const mvfxEmitterView* view, const mvfxView* frame,
                        const mvfxRibbonSink* sink, uint32_t words[MVFX_RIBBON_WORDS])
 {
     memset(words, 0, MVFX_RIBBON_WORDS * sizeof(uint32_t));
-    Floats(words + 8, frame->up[0], frame->up[1], frame->up[2], view->sprite.stretch);
+    mvfxFloatWords(words + 8, frame->up[0], frame->up[1], frame->up[2], view->sprite.stretch);
     words[12] = 0xFFFFFFFFu;
     words[13] = 0xFFFFFFFFu;
     words[14] =
@@ -459,14 +450,15 @@ void mvfxSpriteNumbers(const mvfxEmitterView* view, const mvfxView* frame,
 // Words).
 static void RecordWords(const mvfxAttributeArrays* a, uint32_t* words)
 {
-    const uint32_t head[12] = {WordOf(a->position), WordOf(a->velocity),    WordOf(a->serial),
-                               WordOf(a->birth),    WordOf(a->inverseLife), WordOf(a->size),
-                               WordOf(a->color),    WordOf(a->angle),       WordOf(a->orientation),
-                               WordOf(a->frame),    WordOf(a->mesh),        0xFFFFFFFFu};
+    const uint32_t head[12] = {
+        mvfxWordOf(a->position), mvfxWordOf(a->velocity),    mvfxWordOf(a->serial),
+        mvfxWordOf(a->birth),    mvfxWordOf(a->inverseLife), mvfxWordOf(a->size),
+        mvfxWordOf(a->color),    mvfxWordOf(a->angle),       mvfxWordOf(a->orientation),
+        mvfxWordOf(a->frame),    mvfxWordOf(a->mesh),        0xFFFFFFFFu};
     memcpy(words, head, sizeof head);
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
     {
-        words[12 + i] = WordOf(a->custom[i]);
+        words[12 + i] = mvfxWordOf(a->custom[i]);
     }
 }
 
@@ -482,15 +474,16 @@ static void RecordMap(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     const double* from = world ? plan->anchorAfter : to->origin;
     if (world)
     {
-        Floats(words, 0.0f, 0.0f, 0.0f, 1.0f);
+        mvfxFloatWords(words, 0.0f, 0.0f, 0.0f, 1.0f);
     }
     else
     {
         memcpy(words, to->rotation, 4 * sizeof(float));
     }
-    Floats(words + 4, (float)(from[0] - origin[0]), (float)(from[1] - origin[1]),
-           (float)(from[2] - origin[2]), 0.0f);
-    Floats(words + 8, world ? 1.0f : 1.0f / to->scale, world ? to->scale : 1.0f, 0.0f, 0.0f);
+    mvfxFloatWords(words + 4, (float)(from[0] - origin[0]), (float)(from[1] - origin[1]),
+                   (float)(from[2] - origin[2]), 0.0f);
+    mvfxFloatWords(words + 8, world ? 1.0f : 1.0f / to->scale, world ? to->scale : 1.0f, 0.0f,
+                   0.0f);
 }
 
 // The values over life records show (records.wgsl's color to lives).
@@ -501,10 +494,10 @@ static void RecordOverLife(const mvfxEmitterView* view, const mvfxStepTables* ta
     const uint32_t color[4] = {o->color ? 1u : 0u, o->colorInput, tables->gradient,
                                o->scaleAlpha ? 1u : 0u};
     memcpy(words, color, sizeof color);
-    Floats(words + 4, o->colorRange[0], o->colorRange[1], 0.0f, 0.0f);
+    mvfxFloatWords(words + 4, o->colorRange[0], o->colorRange[1], 0.0f, 0.0f);
     const uint32_t size[4] = {o->size ? 1u : 0u, o->sizeInput, o->perAxis ? 1u : 0u, 0u};
     memcpy(words + 8, size, sizeof size);
-    Floats(words + 12, o->sizeRange[0], o->sizeRange[1], 0.0f, 0.0f);
+    mvfxFloatWords(words + 12, o->sizeRange[0], o->sizeRange[1], 0.0f, 0.0f);
     uint32_t components = 0;
     uint32_t scaled = 0;
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
@@ -619,104 +612,6 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     RecordOrder(view, plan, &def->view, words + MVFX_RECORD_ORDER);
 }
 
-uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own)
-{
-    bool finds = view->neighbors.enabled;
-    bool steers = view->steering.enabled || view->pairRadius > 0.0f;
-    return (view->gridCell > 0.0f ? MVFX_GRID_BUILDS : 0u) | (finds ? MVFX_GRID_FINDS : 0u) |
-           (finds && own ? MVFX_GRID_OWN : 0u) | (steers ? MVFX_GRID_STEERS : 0u);
-}
-
-// The square of a flocking rule's radius where its weight counts, 0
-// otherwise, as the core's query takes it.
-static float RuleSquared(float weight, float radius)
-{
-    return weight > 0.0f ? radius * radius : 0.0f;
-}
-
-// Steering's and the pair force's numbers (grid.wgsl's): whether it
-// flocks, the path's points and segments, the strength's table; the cruise
-// speed, the most force, the plan's seconds, the view's cosine; the rules'
-// weights and the strength's value; their radii squared and the pair
-// force's; the seek and flee points with their weights; their radii and
-// the path's weight and radius; the lookahead, the perimeter, the pair
-// force's inverse radius and whether the path is closed; the path's
-// points.
-static void SteeringWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
-                          const mvfxStepTables* tables, uint32_t* words)
-{
-    const mvfxSteeringDef* s = &view->steering;
-    const mvfxPlannedSteering* t = &plan->steering;
-    bool flock = s->enabled && (s->separation > 0.0f || s->alignment > 0.0f || s->cohesion > 0.0f);
-    words[0] = flock ? MVFX_STEER_FLOCK : 0u;
-    words[1] = (uint32_t)t->pointCount;
-    words[2] = (uint32_t)t->segmentCount;
-    words[3] = tables->pairStrength;
-    float seconds = (float)((double)plan->ticks / (double)MVFX_TICKS_PER_SECOND);
-    Floats(words + 4, s->cruiseSpeed, s->maxForce, seconds, t->viewCosine);
-    Floats(words + 8, s->separation, s->alignment, s->cohesion, view->pairStrength.value);
-    float pair = view->pairRadius;
-    Floats(words + 12, RuleSquared(s->separation, s->separationRadius),
-           RuleSquared(s->alignment, s->alignmentRadius),
-           RuleSquared(s->cohesion, s->cohesionRadius), pair * pair);
-    Floats(words + 16, t->seek[0], t->seek[1], t->seek[2], s->seek.weight);
-    Floats(words + 20, t->flee[0], t->flee[1], t->flee[2], s->flee.weight);
-    Floats(words + 24, s->seek.radius, s->flee.radius, s->path.weight, s->path.radius);
-    Floats(words + 28, s->path.lookahead, t->perimeter, pair > 0.0f ? 1.0f / pair : 0.0f,
-           s->path.closed ? 1.0f : 0.0f);
-    for (int32_t i = 0; i < t->pointCount; ++i)
-    {
-        Floats(words + 32 + 4 * i, t->path[i][0], t->path[i][1], t->path[i][2], 0.0f);
-    }
-}
-
-void mvfxGridNumbers(const mvfxEmitterView* view, const mvfxEmitterView* source,
-                     const mvfxEmitterPlan* plan, const mvfxStepTables* tables, uint32_t mask,
-                     uint32_t sourceMask, int32_t sourceCapacity, bool own,
-                     uint32_t words[MVFX_GRID_WORDS])
-{
-    memset(words, 0, MVFX_GRID_WORDS * sizeof(uint32_t));
-    const mvfxNeighborDef* n = &view->neighbors;
-    uint32_t flags = mvfxGridFlags(view, own);
-    bool finds = (flags & MVFX_GRID_FINDS) != 0;
-    bool builds = (flags & MVFX_GRID_BUILDS) != 0;
-    words[0] = (uint32_t)plan->capacity;
-    words[1] = (uint32_t)sourceCapacity;
-    uint32_t blocks = mvfxSortBlocks(plan->capacity);
-    uint32_t groups = mvfxUpdateGroups(plan->capacity);
-    words[2] = blocks < 65535u ? (blocks > 0u ? blocks : 1u) : 65535u;
-    words[3] = groups > 0u ? groups : 1u;
-    words[4] = builds ? mask : 0u;
-    words[5] = flags;
-    words[6] = finds ? (uint32_t)n->maxNeighbors : 0u;
-    words[7] = finds ? sourceMask : 0u;
-    Floats(words + 8, builds ? 1.0f / view->gridCell : 0.0f, finds ? 1.0f / source->gridCell : 0.0f,
-           finds ? n->radius * n->radius : 0.0f, 0.0f);
-    const mvfxAttributeArrays* a = &view->arrays;
-    const uint32_t arrays[8] = {WordOf(a->position),
-                                WordOf(a->velocity),
-                                (uint32_t)a->count,
-                                WordOf(a->neighborCount),
-                                WordOf(a->neighborCenter),
-                                WordOf(a->neighborVelocity),
-                                0u,
-                                0u};
-    memcpy(words + 12, arrays, sizeof arrays);
-    uint64_t end = (uint64_t)(plan->start + plan->ticks);
-    words[MVFX_GRID_CLOCK] = (uint32_t)end;
-    words[MVFX_GRID_CLOCK + 1] = (uint32_t)(end >> 32u);
-    // The anchor's shift, as the step's: the core's step moves the places
-    // by it before it builds the grid.
-    const double* before = plan->anchorBefore;
-    const double* after = plan->anchorAfter;
-    Floats(words + MVFX_GRID_SHIFT, (float)(before[0] - after[0]), (float)(before[1] - after[1]),
-           (float)(before[2] - after[2]), 0.0f);
-    if ((flags & MVFX_GRID_STEERS) != 0)
-    {
-        SteeringWords(view, plan, tables, words + MVFX_GRID_STEER);
-    }
-}
-
 void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                       const mvfxGpuLightsDef* def, const mvfxStepTables* tables,
                       const float srgb[MVFX_SRGB_STEPS], uint32_t words[MVFX_RECORD_WORDS])
@@ -737,7 +632,7 @@ void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     at[1] = light->alphaScales ? 1u : 0u;
     at[2] = blocks < 65535u ? (blocks > 0u ? blocks : 1u) : 65535u;
     at[3] = 0u;
-    Floats(at + 4, light->intensity, light->radius, light->radiusBySize, 0.0f);
+    mvfxFloatWords(at + 4, light->intensity, light->radius, light->radiusBySize, 0.0f);
 }
 
 void mvfxLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_GPU_LIVES])
@@ -812,10 +707,10 @@ static void Sources(const mvfxEmitterView* view, const mvfxStepTables* tables, u
 static void Modules(const mvfxPlannedModules* m, uint32_t* words)
 {
     const float* d = m->addedDirection;
-    Floats(words, d[0], d[1], d[2], m->sigma);
-    Floats(words + 4, m->orbitAxis[0], m->orbitAxis[1], m->orbitAxis[2], 0.0f);
-    Floats(words + 8, m->orbitCenter[0], m->orbitCenter[1], m->orbitCenter[2], 0.0f);
-    Floats(words + 12, m->radialCenter[0], m->radialCenter[1], m->radialCenter[2], 0.0f);
+    mvfxFloatWords(words, d[0], d[1], d[2], m->sigma);
+    mvfxFloatWords(words + 4, m->orbitAxis[0], m->orbitAxis[1], m->orbitAxis[2], 0.0f);
+    mvfxFloatWords(words + 8, m->orbitCenter[0], m->orbitCenter[1], m->orbitCenter[2], 0.0f);
+    mvfxFloatWords(words + 12, m->radialCenter[0], m->radialCenter[1], m->radialCenter[2], 0.0f);
 }
 
 // The kill rules' head (their count) and each rule's 20 words (sim.wgsl's
@@ -835,10 +730,10 @@ static void KillRules(const mvfxEmitterPlan* plan, uint32_t* words)
         at[3] = (uint32_t)(rule->minimumAgeTicks >> 32u);
         const float* c = rule->center;
         const float* h = rule->halfExtents;
-        Floats(at + 4, c[0], c[1], c[2], rule->radius);
-        Floats(at + 8, h[0], h[1], h[2], rule->speed);
+        mvfxFloatWords(at + 4, c[0], c[1], c[2], rule->radius);
+        mvfxFloatWords(at + 8, h[0], h[1], h[2], rule->speed);
         memcpy(at + 12, rule->rotation, 4 * sizeof(float));
-        Floats(at + 16, rule->normal[0], rule->normal[1], rule->normal[2], 0.0f);
+        mvfxFloatWords(at + 16, rule->normal[0], rule->normal[1], rule->normal[2], 0.0f);
     }
 }
 
@@ -848,34 +743,34 @@ static void KillRules(const mvfxEmitterPlan* plan, uint32_t* words)
 static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 {
     uint32_t count = (uint32_t)arrays->count;
-    const uint32_t head[20] = {WordOf(arrays->position),
-                               WordOf(arrays->velocity),
-                               WordOf(arrays->serial),
-                               WordOf(arrays->birth),
-                               WordOf(arrays->inverseLife),
-                               WordOf(arrays->collisions),
+    const uint32_t head[20] = {mvfxWordOf(arrays->position),
+                               mvfxWordOf(arrays->velocity),
+                               mvfxWordOf(arrays->serial),
+                               mvfxWordOf(arrays->birth),
+                               mvfxWordOf(arrays->inverseLife),
+                               mvfxWordOf(arrays->collisions),
                                count,
                                count + 2u,
-                               WordOf(arrays->size),
-                               WordOf(arrays->color),
-                               WordOf(arrays->angle),
-                               WordOf(arrays->spin),
-                               WordOf(arrays->orientation),
-                               WordOf(arrays->angular),
-                               WordOf(arrays->frame),
-                               WordOf(arrays->drag),
-                               WordOf(arrays->mesh),
+                               mvfxWordOf(arrays->size),
+                               mvfxWordOf(arrays->color),
+                               mvfxWordOf(arrays->angle),
+                               mvfxWordOf(arrays->spin),
+                               mvfxWordOf(arrays->orientation),
+                               mvfxWordOf(arrays->angular),
+                               mvfxWordOf(arrays->frame),
+                               mvfxWordOf(arrays->drag),
+                               mvfxWordOf(arrays->mesh),
                                count,
-                               WordOf(arrays->ribbon),
-                               WordOf(arrays->ribbonDistance)};
+                               mvfxWordOf(arrays->ribbon),
+                               mvfxWordOf(arrays->ribbonDistance)};
     memcpy(words, head, sizeof head);
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
     {
-        words[20 + i] = WordOf(arrays->custom[i]);
+        words[20 + i] = mvfxWordOf(arrays->custom[i]);
     }
-    words[28] = WordOf(arrays->neighborCount);
-    words[29] = WordOf(arrays->neighborCenter);
-    words[30] = WordOf(arrays->neighborVelocity);
+    words[28] = mvfxWordOf(arrays->neighborCount);
+    words[29] = mvfxWordOf(arrays->neighborCenter);
+    words[30] = mvfxWordOf(arrays->neighborVelocity);
     words[31] = 0xFFFFFFFFu;
 }
 
@@ -891,11 +786,12 @@ static void Beam(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint3
     at[0] = (uint32_t)beam->segments;
     at[1] = (uint32_t)beam->controlCount;
     at[2] = plan->beam.timeCell;
-    Floats(at + 4, beam->noiseAmplitude, beam->noiseFrequency, plan->beam.timeFraction, 0.0f);
+    mvfxFloatWords(at + 4, beam->noiseAmplitude, beam->noiseFrequency, plan->beam.timeFraction,
+                   0.0f);
     for (int32_t p = 0; p < 4; ++p)
     {
         const float* point = plan->beam.points[p];
-        Floats(at + 8 + 4 * p, point[0], point[1], point[2], 0.0f);
+        mvfxFloatWords(at + 8 + 4 * p, point[0], point[1], point[2], 0.0f);
     }
 }
 
@@ -922,31 +818,31 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     // whose anchor stays).
     const double* before = plan->anchorBefore;
     const double* after = plan->anchorAfter;
-    Floats(words + 12, (float)(before[0] - after[0]), (float)(before[1] - after[1]),
-           (float)(before[2] - after[2]), view->inheritVelocity);
+    mvfxFloatWords(words + 12, (float)(before[0] - after[0]), (float)(before[1] - after[1]),
+                   (float)(before[2] - after[2]), view->inheritVelocity);
     float sharedDrag = SharedDrag(view, plan);
     float factors[3];
     DragFactors((double)sharedDrag, (double)plan->ticks / (double)MVFX_TICKS_PER_SECOND, factors);
-    Floats(words + 16, factors[0], factors[1], factors[2], view->drag);
+    mvfxFloatWords(words + 16, factors[0], factors[1], factors[2], view->drag);
     float gravity[3];
     Gravity(view, &plan->from, gravity);
-    Floats(words + 20, gravity[0], gravity[1], gravity[2], 0.0f);
+    mvfxFloatWords(words + 20, gravity[0], gravity[1], gravity[2], 0.0f);
     const float* m = view->shape.matrix;
     for (int32_t r = 0; r < 3; ++r)
     {
-        Floats(words + 24 + 4 * r, m[3 * r], m[3 * r + 1], m[3 * r + 2], 0.0f);
+        mvfxFloatWords(words + 24 + 4 * r, m[3 * r], m[3 * r + 1], m[3 * r + 2], 0.0f);
     }
     const mvfxShapeView* s = &view->shape;
-    Floats(words + 36, s->offset[0], s->offset[1], s->offset[2], s->radius);
-    Floats(words + 40, s->thickness, 0.0f, 0.0f, 0.0f);
+    mvfxFloatWords(words + 36, s->offset[0], s->offset[1], s->offset[2], s->radius);
+    mvfxFloatWords(words + 40, s->thickness, 0.0f, 0.0f, 0.0f);
     const mvfxVelocityView* v = &view->velocity;
-    Floats(words + 44, v->direction[0], v->direction[1], v->direction[2], v->coneCosine);
-    Floats(words + 48, v->tangentA[0], v->tangentA[1], v->tangentA[2], v->randomize);
-    Floats(words + 52, v->tangentB[0], v->tangentB[1], v->tangentB[2], v->speedMin);
-    Floats(words + 56, v->speedMax, 0.0f, 0.0f, 0.0f);
+    mvfxFloatWords(words + 44, v->direction[0], v->direction[1], v->direction[2], v->coneCosine);
+    mvfxFloatWords(words + 48, v->tangentA[0], v->tangentA[1], v->tangentA[2], v->randomize);
+    mvfxFloatWords(words + 52, v->tangentB[0], v->tangentB[1], v->tangentB[2], v->speedMin);
+    mvfxFloatWords(words + 56, v->speedMax, 0.0f, 0.0f, 0.0f);
     Place(words + 60, &plan->from, after);
     Place(words + 68, &plan->to, after);
-    Floats(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
+    mvfxFloatWords(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
     Forces(plan, sharedDrag, forceGrids, words + 80);
     Colliders(plan, colliderGrids, normals, words + 84 + 132 * MVFX_MAX_FORCES);
     uint32_t* at = words + MVFX_VALUES_FIRST;
@@ -957,7 +853,7 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     DragFactors((double)view->angularDrag, seconds, angular);
     float limit[3];
     DragFactors((double)view->modules.limitDampen, seconds, limit);
-    Floats(at + 96, angular[0], angular[1], limit[0], 0.0f);
+    mvfxFloatWords(at + 96, angular[0], angular[1], limit[0], 0.0f);
     Modules(&plan->modules, at + 100);
     Beam(view, plan, at + 116);
     KillRules(plan, words + MVFX_KILLS_FIRST);
@@ -970,8 +866,8 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     // The shape beyond the sphere's numbers, and the delay its arc's age
     // is from.
     uint32_t* shape = words + MVFX_SHAPE_FIRST;
-    Floats(shape, s->length, s->halfExtents[0], s->halfExtents[1], s->halfExtents[2]);
-    Floats(shape + 4, s->arc, s->arcSpeed, s->tangent, 0.0f);
+    mvfxFloatWords(shape, s->length, s->halfExtents[0], s->halfExtents[1], s->halfExtents[2]);
+    mvfxFloatWords(shape + 4, s->arc, s->arcSpeed, s->tangent, 0.0f);
     uint64_t delay = (uint64_t)view->delayTicks;
     shape[8] = s->arcMode;
     shape[9] = s->coneVolume ? 1u : 0u;

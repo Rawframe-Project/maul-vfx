@@ -17,8 +17,12 @@
 #include <string.h>
 
 // How far past their radii's sum two particles still touch for impulses,
-// as a share of the sum: a projected pair ends at the sum within rounding.
+// as a share of the sum; and where projection parts a pair to, halfway
+// into the slop, so that a parted pair ends clear of both edges (the
+// projection's touch at the sum, the impulses' past the slop) rather
+// than on one, where rounding alone would decide its next contact.
 #define CONTACT_SLOP 1e-3f
+#define CONTACT_REST (1.0f + 0.5f * CONTACT_SLOP)
 
 // A pass over the contacts: the grid, the places it was built from (for
 // each particle's cells) and the places now.
@@ -104,7 +108,8 @@ static bool LineOf(const Pass* p, int32_t i, int32_t j, float n[3], float* lengt
 }
 
 // One projection pass: each particle's place moved by half of each overlap
-// along the line from the other, averaged, into moved.
+// (to the rest distance) along the line from the other, averaged, into
+// moved.
 static void Project(const Pass* p, int32_t count, float* const moved[3], uint64_t* capped)
 {
     int32_t touching[MVFX_MAX_NEIGHBORS];
@@ -125,7 +130,7 @@ static void Project(const Pass* p, int32_t count, float* const moved[3], uint64_
                 // No direction to part them along.
                 continue;
             }
-            float half = 0.5f * (p->radii[i] + p->radii[j] - length);
+            float half = 0.5f * ((p->radii[i] + p->radii[j]) * CONTACT_REST - length);
             for (int32_t k = 0; k < 3; ++k)
             {
                 shift[k] += half * line[k];

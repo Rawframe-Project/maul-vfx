@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A simulation's state, which its files share (sim.c, sim_records.c,
-// sim_spawn.c, sim_mesh.c, sim_events.c, sim_grid.c): an emitter's
+// sim_spawn.c, sim_mesh.c, sim_events.c, sim_grid.c, sim_contacts.c): an emitter's
 // buffers, passes and numbers, and the simulation's own.
 
 #ifndef MAUL_VFX_RHI_SRC_SIM_STATE_H
@@ -46,30 +46,56 @@ enum
     PASS_REDUCE = 4,
     PASS_OFFSETS = 5,
     PASS_SCATTER = 6,
+    // Its blocks' boxes taken again, when its contacts moved its particles.
+    PASS_REBOX = 7,
     // Its births' ribbons, when it has ribbons.
-    PASS_RIBBONS = 7,
+    PASS_RIBBONS = 8,
     // Its points placed, when it is a beam.
-    PASS_BEAM = 8,
-    PASS_MEASURE = 9,
+    PASS_BEAM = 9,
+    PASS_MEASURE = 10,
     // An emitter's events, when it writes any.
-    PASS_EVENT_COUNT = 10,
-    PASS_EVENT_OFFSETS = 11,
-    PASS_EVENT_WRITE = 12,
-    PASS_EVENT_VALUES = 13,
+    PASS_EVENT_COUNT = 11,
+    PASS_EVENT_OFFSETS = 12,
+    PASS_EVENT_WRITE = 13,
+    PASS_EVENT_VALUES = 14,
     // Its births from events, when it spawns from them, after the plan's
     // bytes: the source's events copied in, then the kernels.
-    PASS_SPAWN_COPY = 14,
-    PASS_SPAWN_COUNT = 15,
-    PASS_SPAWN_SORT = 16,
-    PASS_SPAWN_SCAN = 17,
-    PASS_SPAWN_MERGE = 18,
-    PASS_COUNT = 19
+    PASS_SPAWN_COPY = 15,
+    PASS_SPAWN_COUNT = 16,
+    PASS_SPAWN_SORT = 17,
+    PASS_SPAWN_SCAN = 18,
+    PASS_SPAWN_MERGE = 19,
+    PASS_COUNT = 20
 };
 
 // The passes of an emitter's neighbor grid (sim_grid.c), after its room
 // pass: its numbers' write, its keys, the sort's four radix passes
 // (offsets and scatter each), its values, the query.
 #define GRID_PASSES 12
+
+// The passes of an emitter's particle contacts (sim_contacts.c), after
+// its scatter: its numbers' write, its radii, its keys, the sort's four
+// radix passes, a projection and its commit for each of the most
+// iterations, its impulses and its kick.
+#define CONTACT_PASSES (11 + 2 * MVFX_MAX_CONTACT_ITERATIONS + 2)
+
+// The words of an emitter's contact numbers (contacts.wgsl's Contacts).
+#define CONTACT_WORDS 12
+
+// The buffers its contact passes bind (with its particles, statistics and
+// grids): its record numbers (for its sizes over life), its contact
+// numbers, its scratch words, its keys and indices, its digit counts and
+// its counts.
+enum
+{
+    CONTACT_RECORD = 0,
+    CONTACT_NUMBERS = 1,
+    CONTACT_SCRATCH = 2,
+    CONTACT_SORT = 3,
+    CONTACT_DIGITS = 4,
+    CONTACT_COUNT = 5,
+    CONTACT_BUFFERS = 6
+};
 
 // The buffers of an emitter's grid the grid passes bind (with its
 // particles and statistics after the numbers): its numbers, its words,
@@ -137,6 +163,17 @@ typedef struct Emitter
     mrhiResourceId gridResources[GRID_BUFFERS];
     uint32_t gridNumberWords[MVFX_GRID_WORDS];
     mrhiPassId gridPasses[GRID_PASSES];
+    // Its particle contacts (sim_contacts.c): whether it has them and its
+    // projections a step; its buffers; whether its numbers were all
+    // written; the frame's ids of its buffers, its numbers, its passes.
+    bool contacts;
+    int32_t contactIterations;
+    mrhiBufferId contactBuffers[CONTACT_BUFFERS];
+    bool contactWritten;
+    mrhiResourceId contactResources[CONTACT_BUFFERS];
+    uint32_t contactRecordWords[MVFX_RECORD_WORDS];
+    uint32_t contactWords[CONTACT_WORDS];
+    mrhiPassId contactPasses[CONTACT_PASSES];
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
     // Whether all its event numbers were written: after, only the words a
@@ -256,6 +293,16 @@ void mvfxDestroySimGrid(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimGridNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 bool mvfxAddSimGridPasses(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSimGrid(mvfxGpuSim* sim, Emitter* emitter);
+
+// An emitter's particle contacts (sim_contacts.c): its buffers made at
+// the simulation's creation (false when the device refuses), and
+// destroyed; its numbers written for a step's plan; its passes added
+// after its scatter; recorded.
+bool mvfxCreateSimContacts(mvfxGpuSim* sim, int32_t e);
+void mvfxDestroySimContacts(mvfxGpuSim* sim, Emitter* emitter);
+void mvfxSimContactNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+bool mvfxAddSimContactPasses(mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxRecordSimContacts(mvfxGpuSim* sim, Emitter* emitter);
 
 // A mesh shape's region (sim_mesh.c): laid out after emitter e's tables,
 // with the host's copy, at the simulation's creation (mvfx_errorStale for

@@ -126,13 +126,15 @@ static int64_t GridBytes(const mvfxEmitterDef* emitter)
 }
 
 // The bytes an emitter's step uploads after the first, from its plan,
-// whether it writes events, whether it is a beam and its grid numbers', as
-// mvfxGpuSim_Record states them.
-static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam, int64_t grid)
+// whether it writes events, whether it is a beam, whether it has contacts
+// and its grid numbers', as mvfxGpuSim_Record states them.
+static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam, bool contacts,
+                         int64_t grid)
 {
-    return 1960 + (events ? 96 : 0) + (beam ? 96 : 0) + grid + 432 * (int64_t)plan->forceCount +
-           128 * (int64_t)plan->colliderCount + 80 * (int64_t)plan->killRuleCount +
-           48 * (int64_t)plan->birthCount + 64 * (int64_t)plan->hostBirthCount;
+    return 1960 + (events ? 96 : 0) + (beam ? 96 : 0) + (contacts ? 96 : 0) + grid +
+           432 * (int64_t)plan->forceCount + 128 * (int64_t)plan->colliderCount +
+           80 * (int64_t)plan->killRuleCount + 48 * (int64_t)plan->birthCount +
+           64 * (int64_t)plan->hostBirthCount;
 }
 
 // Steps an effect's planned instance on the device, the host spawning
@@ -202,13 +204,20 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
                 mvfxGpuSim_Record(sim) == mvfx_success &&
                 mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
                 mrhiWaitFrame(gpu->device, token, 1000000000ull) == mrhi_success;
+        // Each frame's answer taken, so the scenes' frames never fill the
+        // device's queue.
+        mrhiDeviceNotification record;
+        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        {
+            (void)mvfxGpu_Notify(kernels, &record);
+        }
         int64_t expected = 0;
         for (int32_t e = 0; exact && e < count; ++e)
         {
             mvfxEmitterPlan plan;
             exact = mvfxInstance_GetEmitterPlan(context, instance, e, &plan) == mvfx_success;
             expected += StepBytes(&plan, emitters[e].events != 0, emitters[e].beam.enabled,
-                                  GridBytes(&emitters[e]));
+                                  emitters[e].contacts.enabled, GridBytes(&emitters[e]));
             births += plan.birthCount + plan.hostBirthCount;
         }
         int64_t uploaded = -1;
@@ -289,6 +298,10 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
         .cruiseSpeed = 2.0f,
         .path = {.weight = 1.0f, .points = path, .pointCount = 3, .lookahead = 0.2f}};
     Measure(gpu, kernels, &neighbors, 1, "an emitter steering along a path");
+    mvfxEmitterDef touching = Sprite();
+    touching.contacts =
+        (mvfxContactDef){.enabled = true, .radiusScale = 0.02f, .iterations = 2, .maxContacts = 8};
+    Measure(gpu, kernels, &touching, 1, "an emitter keeping its particles apart");
 }
 
 static void TestRefusals(void)

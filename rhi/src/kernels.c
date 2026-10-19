@@ -5,6 +5,7 @@
 
 #include "allocator.h"
 
+#include "../kernels/contacts_container.h"
 #include "../kernels/grid_container.h"
 #include "../kernels/pcg4d_container.h"
 #include "../kernels/records_container.h"
@@ -30,6 +31,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_sortContainer, sizeof s_sortContainer},
     {s_ribbonRecordsContainer, sizeof s_ribbonRecordsContainer},
     {s_gridContainer, sizeof s_gridContainer},
+    {s_contactsContainer, sizeof s_contactsContainer},
 };
 
 // A kernel's container and entry.
@@ -73,6 +75,13 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerGrid, "gridKeys"},
     {mvfx_containerGrid, "gridValues"},
     {mvfx_containerGrid, "neighbors"},
+    {mvfx_containerContacts, "contactRadii"},
+    {mvfx_containerContacts, "contactKeys"},
+    {mvfx_containerContacts, "contactProject"},
+    {mvfx_containerContacts, "contactCommit"},
+    {mvfx_containerContacts, "contactImpulses"},
+    {mvfx_containerContacts, "contactKick"},
+    {mvfx_containerSim, "rebox"},
 };
 
 struct mvfxGpu

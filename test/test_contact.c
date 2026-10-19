@@ -90,12 +90,13 @@ static bool Near(float a, double b)
 
 static void TestPair(void)
 {
-    // At rest 0.6 apart, radii 0.5: each moves 0.2 out, ending 1 apart.
+    // At rest 0.6 apart, radii 0.5: each moves 0.20025 out, ending at the
+    // rest distance, 1.0005 apart.
     mvfxEmitterDef emitter = Emitter();
     static const double places[6] = {0, 0, 0, 0.6, 0, 0};
     static const float rest[6] = {0};
     Run(&emitter, places, rest, 2);
-    CHECK(Near(s_seen.place[0][0], -0.2) && Near(s_seen.place[1][0], 0.8) &&
+    CHECK(Near(s_seen.place[0][0], -0.20025) && Near(s_seen.place[1][0], 0.80025) &&
               s_seen.place[0][1] == 0.0f && s_seen.velocity[0][0] == 0.0f,
           "parted in one pass, no velocity from it");
     mvfxDestroyContext(s_context);
@@ -144,19 +145,20 @@ static void TestEdges(void)
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {2, 2, 2, 0}, .max = {2, 2, 2, 0}};
     static const double places[6] = {0, 0, 0, 0.6, 0, 0};
     Run(&emitter, places, rest, 2);
-    CHECK(Near(s_seen.place[0][0], -0.2) && Near(s_seen.place[1][0], 0.8), "radii from sizes");
+    CHECK(Near(s_seen.place[0][0], -0.20025) && Near(s_seen.place[1][0], 0.80025),
+          "radii from sizes");
     mvfxDestroyContext(s_context);
 }
 
 static void TestBoundaries(void)
 {
-    // A touching B exactly, C overlapping B by 0.4: B moves 0.2 from C
-    // alone, A's touch not counted in its average.
+    // A touching B exactly, C overlapping B by 0.4: B moves 0.20025 from C
+    // alone (to the rest distance), A's touch not counted in its average.
     mvfxEmitterDef emitter = Emitter();
     static const double line[9] = {0, 0, 0, 1, 0, 0, 1.6, 0, 0};
     static const float rest[9] = {0};
     Run(&emitter, line, rest, 3);
-    CHECK(Near(s_seen.place[1][0], 0.8), "touching exactly is not a contact");
+    CHECK(Near(s_seen.place[1][0], 0.79975), "touching exactly is not a contact");
     mvfxDestroyContext(s_context);
     // A and B moving together (not closing), C closing on B: B's impulse
     // from C alone stops it.

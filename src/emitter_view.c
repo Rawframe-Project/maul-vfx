@@ -104,6 +104,20 @@ static mvfxSourceView ScalarSourceOf(const mvfxCompiledScalar* source)
 }
 
 // A value over life as the view gives it.
+// Whether an emitter's particles may be killed within a step.
+static bool Kills(const mvfxCompiledEmitter* e)
+{
+    bool kills =
+        e->killRuleCount > 0 ||
+        (e->collision.enabled && (e->collision.killOnCollision || e->collision.killOutsideView));
+    for (int32_t f = 0; f < e->forceCount; ++f)
+    {
+        kills =
+            kills || (e->forces[f].kind == mvfx_forceAttractor && e->forces[f].killRadius > 0.0f);
+    }
+    return kills;
+}
+
 static mvfxLifeView LifeOf(const mvfxCompiledLife* life)
 {
     return (mvfxLifeView){.value = life->value,
@@ -241,6 +255,8 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->steering.path.points = e->steering.enabled ? &e->pathPoints[0][0] : nullptr;
     viewOut->pairRadius = e->pairRadius;
     viewOut->pairStrength = LifeOf(&e->pairStrength);
+    viewOut->contacts = e->contacts;
+    viewOut->kills = Kills(e);
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
         .breakDistance = e->ribbonBreakDistance,

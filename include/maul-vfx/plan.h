@@ -668,6 +668,13 @@ extern "C"
         mvfxSteeringDef steering;
         float pairRadius;
         mvfxLifeView pairStrength;
+        // How its particles are kept apart (mvfxEmitterDef's contacts; not
+        // enabled for none).
+        mvfxContactDef contacts;
+        // Whether its particles may be killed within a step: by kill rules,
+        // colliders that kill (a depth image's view too) or an attractor's
+        // kill radius.
+        bool kills;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

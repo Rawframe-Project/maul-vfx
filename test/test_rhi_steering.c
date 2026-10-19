@@ -7,7 +7,8 @@
 // differently), the neighbor attributes and the caps. Covered: flocking
 // within a view cone and a full view, the force held, seeking with
 // arrival and fleeing within a radius toward targets in the world and in
-// the emitter's space under a moving instance, open and closed paths,
+// the emitter's space under a moving instance, open and closed paths (one
+// shorter than the lookahead's distance),
 // steering with no neighbors, and the pair force pulling and pushing by a
 // curve. Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
@@ -61,6 +62,11 @@ static void TestTargets(Gpu* gpu, mvfxGpu* kernels)
     emitter.space = mvfx_spaceLocal;
     Steered(gpu, kernels, &emitter,
             "seeking and fleeing with no neighbors, in the instance's space");
+    // Seeking a point the particles pass, within its arrival radius.
+    emitter.steering.seek =
+        (mvfxSteerPoint){.weight = 2.0f, .space = 1, .point = {0.0f, 0.8f, 0.0f}, .radius = 1.0f};
+    emitter.steering.flee = (mvfxSteerPoint){0};
+    Steered(gpu, kernels, &emitter, "seeking a point within its arrival radius");
 }
 
 static void TestPaths(Gpu* gpu, mvfxGpu* kernels)
@@ -80,6 +86,17 @@ static void TestPaths(Gpu* gpu, mvfxGpu* kernels)
     emitter.steering.path.closed = true;
     emitter.steering.path.space = 0;
     Steered(gpu, kernels, &emitter, "following a closed path in the world");
+    // A closed path shorter than the lookahead's distance: around it more
+    // than once.
+    static const float small[9] = {0, 0.5f, 0, 0.1f, 0.6f, 0, -0.1f, 0.6f, 0.05f};
+    emitter.steering.path = (mvfxSteerPath){.weight = 1.5f,
+                                            .space = 1,
+                                            .points = small,
+                                            .pointCount = 3,
+                                            .closed = true,
+                                            .radius = 0.05f,
+                                            .lookahead = 2.0f};
+    Steered(gpu, kernels, &emitter, "following a closed path shorter than the lookahead");
 }
 
 static void TestPairForce(Gpu* gpu, mvfxGpu* kernels)

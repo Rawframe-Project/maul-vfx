@@ -1472,6 +1472,37 @@ static bool SwapPlaces(bool in)
     return true;
 }
 
+// Gives the CPU path's emitter the GPU's places and velocities, read back
+// last: false when its pool is not the GPU's, serial by serial.
+static bool AdoptGpu(int32_t e)
+{
+    mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
+    int32_t count = cpu->emitters[e].count;
+    const uint32_t* serials = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
+    bool alike = (int32_t)s_record[0] == count;
+    for (int32_t i = 0; alike && i < count; ++i)
+    {
+        alike = Word(s_arrays.serial, i) == serials[i];
+    }
+    if (!alike)
+    {
+        printf("the pools differ: %d particles, GPU %u\n", count, s_record[0]);
+        return false;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float* places = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributePositionX + k));
+        float* velocities =
+            mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeVelocityX + k));
+        for (int32_t i = 0; i < count; ++i)
+        {
+            places[i] = FloatOf(s_arrays.position + k, i);
+            velocities[i] = FloatOf(s_arrays.velocity + k, i);
+        }
+    }
+    return true;
+}
+
 // Writes the CPU path's ribbon points and list from the GPU's places:
 // whether they and the counts are the GPU's (the list exactly), the points
 // written.
@@ -1949,6 +1980,27 @@ static bool SameCapped(int32_t e)
     return same;
 }
 
+// The particles whose contacts passed the most, counted by the GPU, at
+// the run's last step.
+static uint32_t s_contactsCapped;
+
+// Whether an emitter's particles whose contacts passed the most, counted
+// by the GPU, are the CPU path's.
+static bool SameContactsCapped(int32_t e)
+{
+    mvfxEmitterStats stats;
+    uint32_t capped = s_record[MVFX_GPU_CONTACTS_CAPPED];
+    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
+                stats.contactsCapped == capped;
+    if (!same)
+    {
+        printf("contacts capped: GPU %u, the CPU path's %llu\n", capped,
+               (unsigned long long)stats.contactsCapped);
+    }
+    s_contactsCapped = capped > s_contactsCapped ? capped : s_contactsCapped;
+    return same;
+}
+
 // Whether an emitter's ribbon counter on the GPU (its plan's, the host's
 // breaks, plus the breaks the GPU made) is the CPU path's.
 static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
@@ -2142,6 +2194,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_exactNeighbors = run->exactNeighbors;
     s_neighborsCompared = 0;
     s_capped = 0;
+    s_contactsCapped = 0;
     const mvfxLayoutDef lightLayout = {.cookie = mvfxDefaultLayoutDef().cookie,
                                        .fields = &s_lightField,
                                        .fieldCount = 1,
@@ -2255,7 +2308,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
             same = SameAsCpu(cpu, e) && (s_leftOut[e] || SameBounds(sim, e)) &&
                    (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(cpu, e)) &&
                    (!run->emitters[e].neighbors.enabled || SameCapped(e)) &&
-                   (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e)));
+                   (!run->emitters[e].contacts.enabled || SameContactsCapped(e)) &&
+                   (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
+                   (!run->adopting || AdoptGpu(e));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
         // The emitter whose records are written read back last, as the
@@ -2323,6 +2378,11 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         printf("  neighbor attributes compared: %lld; queries capped: %u (at least %d)\n",
                (long long)s_neighborsCompared, s_capped, run->leastCapped);
         CHECK(s_capped >= (uint32_t)run->leastCapped, "queries capped");
+    }
+    if (run->emitters[0].contacts.enabled)
+    {
+        printf("  contacts capped: %u (at least %d)\n", s_contactsCapped, run->leastContactsCapped);
+        CHECK(s_contactsCapped >= (uint32_t)run->leastContactsCapped, "contacts capped");
     }
     if (run->lights)
     {

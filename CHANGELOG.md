@@ -845,6 +845,20 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   steering def and pair force (`mvfxEmitterView.steering`, `pairRadius`,
   `pairStrength`). A grid's step uploads 32 bytes, one that steers 160
   and 16 a point of its path.
+- The GPU part keeps particles apart (`MVFX_FEATURE_CONTACTS`) as the
+  CPU path does, for an emitter that kills nothing within a step and has
+  no ribbons or beam: after the step's compaction, a grid of the places
+  after motion, the projection passes, then the impulses; the bounds are
+  taken of the places contacts moved. The statistics record counts the
+  particles whose contacts passed the most (`MVFX_GPU_CONTACTS_CAPPED`;
+  `MVFX_GPU_STATISTICS_WORDS` is now 48). An emitter's view gives its
+  contact def and whether its particles may be killed within a step
+  (`mvfxEmitterView.contacts`, `kills`). Its step uploads 96 bytes more.
+- Changed: particle contacts part a pair to a rest distance 0.05% past
+  its radii's sum rather than to the sum, so a parted pair rests clear
+  of touching instead of on its edge, where rounding decided whether it
+  counted in the next pass's average; the golden state hashes change
+  with it.
 
 ### Fixed
 

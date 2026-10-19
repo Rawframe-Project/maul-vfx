@@ -8,6 +8,8 @@
 
 // include: shared/record_fields.wgsl
 
+// include: shared/record_bindings.wgsl
+
 // The words of one of the sort's arrays: its blocks' elements.
 fn sortSpan() -> u32 {
     return (params.head.x + BLOCK - 1u) / BLOCK * BLOCK;

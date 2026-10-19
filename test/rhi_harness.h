@@ -159,6 +159,15 @@ typedef struct Run
     // A quality level both instances play at (the full one for NULL): an
     // emitter it leaves out has no room on either path.
     const mvfxQualityLevel* quality;
+    // The particles whose contacts passed the most the first emitter must
+    // have counted over the run (none needed for 0).
+    int32_t leastContactsCapped;
+    // Whether the CPU path takes the GPU's places and velocities after
+    // each step, which then compares one step from the same state:
+    // contacts decide on places the paths hold within the tolerance, and
+    // a pair that close to touching may touch on one path only, which
+    // would part the paths for the rest of the run.
+    bool adopting;
 } Run;
 
 // The scenes a test runs on the device.

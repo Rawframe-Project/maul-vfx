@@ -139,10 +139,16 @@ extern "C"
 // path).
 #define MVFX_GPU_NEIGHBORS_CAPPED 46
 
+// For an emitter with particle contacts (mvfxContactDef), the statistics
+// record's word counting the particles whose contacts in a step's first
+// pass were more than the most, since the instance was last cleared
+// (mvfxEmitterStats.contactsCapped on the CPU path).
+#define MVFX_GPU_CONTACTS_CAPPED 47
+
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 47
+#define MVFX_GPU_STATISTICS_WORDS 48
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -167,7 +173,10 @@ extern "C"
     /// whose particles are queried for neighbors 24 bytes a particle of
     /// its capacity, 18,432 a block of 1,024 of them for its grid's sorted
     /// keys and digit counts, and 756 more; one that finds neighbors in
-    /// another's grid, or steers, 752 for its numbers.
+    /// another's grid, or steers, 752 for its numbers; one that keeps its
+    /// particles apart 28 bytes a particle of its capacity, 18,432 a block
+    /// of 1,024 of them for its contact grid's sorted keys and digit
+    /// counts, and 2,016 more for its numbers and counts.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -663,7 +672,9 @@ extern "C"
     /// curve and noise), and 32 more for one with a neighbor grid (its
     /// clock and the anchor's shift) or 160 for one that steers or has a
     /// pair force (its targets too), and 16 a point of its path (all 752
-    /// at the first step); 48 a planned
+    /// at the first step); 96 more for one with contacts (its sizes'
+    /// clock and map; all 1,952, and its contact numbers' 48, at the
+    /// first step); 48 a planned
     /// birth (a plan holds at most twice the emitter's capacity) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts, 16 more for one spawning from events and 4 more for one
