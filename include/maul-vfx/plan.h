@@ -675,6 +675,8 @@ extern "C"
         // colliders that kill (a depth image's view too) or an attractor's
         // kill radius.
         bool kills;
+        // Its plexus links (mvfxEmitterDef's plexus; not enabled for none).
+        mvfxPlexusDef plexus;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

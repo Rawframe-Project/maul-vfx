@@ -859,6 +859,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   of touching instead of on its edge, where rounding decided whether it
   counted in the next pass's average; the golden state hashes change
   with it.
+- The GPU part finds plexus links (`MVFX_FEATURE_PLEXUS`) as the CPU
+  path does: after the bounds, a grid of the places at the step's end,
+  each particle's links counted, their slots scanned in pool order and
+  the links written in the CPU path's order. They are in a buffer of
+  the emitter's (`mvfxGpuParticles.links`, `linkCapacity`), the step's
+  count and the drops in the statistics record (`MVFX_GPU_LINKS`,
+  `MVFX_GPU_LINKS_DROPPED`; `MVFX_GPU_STATISTICS_WORDS` is now 50). An
+  emitter's view gives its plexus def (`mvfxEmitterView.plexus`).
 
 ### Fixed
 

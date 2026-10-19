@@ -21,6 +21,7 @@ typedef enum mvfxContainer
     mvfx_containerRibbonRecords = 4,
     mvfx_containerGrid = 5,
     mvfx_containerContacts = 6,
+    mvfx_containerPlexus = 7,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -98,6 +99,12 @@ typedef enum mvfxKernel
     mvfx_kernelContactKick = 38,
     // An emitter's blocks' boxes taken again after its contacts (sim.wgsl).
     mvfx_kernelRebox = 39,
+    // An emitter's plexus links (plexus.wgsl): their keys before
+    // sort.wgsl's passes, each particle's count, the slots, the links.
+    mvfx_kernelPlexusKeys = 40,
+    mvfx_kernelPlexusCount = 41,
+    mvfx_kernelPlexusOffsets = 42,
+    mvfx_kernelPlexusWrite = 43,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

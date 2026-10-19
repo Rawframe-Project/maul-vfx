@@ -302,6 +302,11 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     touching.contacts =
         (mvfxContactDef){.enabled = true, .radiusScale = 0.02f, .iterations = 2, .maxContacts = 8};
     Measure(gpu, kernels, &touching, 1, "an emitter keeping its particles apart");
+    // Its plexus numbers go up at the first step alone.
+    mvfxEmitterDef linked = Sprite();
+    linked.plexus = (mvfxPlexusDef){
+        .enabled = true, .distance = 0.2f, .maxLinks = 256, .maxPerParticle = 4, .width = 1.0f};
+    Measure(gpu, kernels, &linked, 1, "an emitter linking its particles");
 }
 
 static void TestRefusals(void)

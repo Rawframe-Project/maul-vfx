@@ -16,6 +16,7 @@
 #include "instance.h"
 #include "instance_api.h"
 #include "output.h"
+#include "plexus.h"
 #include "rhi_apart.h"
 #include "test_harness.h"
 
@@ -1050,29 +1051,19 @@ static uint64_t s_dropped[MVFX_MAX_EMITTERS];
 // The CPU path's events over the run.
 static uint64_t s_events;
 
-// Reads an emitter's events back, when it writes any.
-static bool ReadEvents(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
+// Reads bytes of a buffer from a byte into out, of room bytes.
+static bool ReadRange(Gpu* gpu, mrhiBufferId source, uint64_t first, uint64_t bytes, void* out,
+                      size_t room)
 {
-    mvfxGpuParticles particles;
-    if (mvfxGpuSim_GetParticles(sim, emitter, &particles) != mvfx_success ||
-        particles.eventCapacity > MOST_EVENTS)
-    {
-        return false;
-    }
-    if (particles.events.index1 == 0)
-    {
-        return true;
-    }
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     mrhiResourceId buffer = {0};
     mrhiPassId pass = {0};
     mrhiRequestId read = {0};
-    uint64_t bytes = (uint64_t)particles.eventCapacity * MVFX_GPU_EVENT_WORDS * sizeof(uint32_t);
-    if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+    if (bytes > room || mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
     }
-    bool recorded = mrhiImportBuffer(gpu->device, particles.events, &buffer) == mrhi_success;
+    bool recorded = mrhiImportBuffer(gpu->device, source, &buffer) == mrhi_success;
     const mrhiAccess reading[1] = {{.resource = buffer, .kind = mrhi_accessCopySource}};
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = mrhi_passTransfer;
@@ -1082,8 +1073,7 @@ static bool ReadEvents(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
     recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
                mrhiCompileFrame(gpu->device) == mrhi_success &&
                mrhiBeginPass(gpu->device, pass) == mrhi_success &&
-               mrhiReadBuffer(gpu->device, pass, buffer, 4u * (uint64_t)particles.eventFirst, bytes,
-                              &read) == mrhi_success &&
+               mrhiReadBuffer(gpu->device, pass, buffer, first, bytes, &read) == mrhi_success &&
                mrhiEndPass(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
@@ -1091,10 +1081,23 @@ static bool ReadEvents(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
         return false;
     }
     size_t taken = 0;
-    return Finish(gpu) &&
-           mrhiTakeReadback(gpu->device, read, s_eventWords, sizeof s_eventWords, &taken) ==
-               mrhi_success &&
+    return Finish(gpu) && mrhiTakeReadback(gpu->device, read, out, room, &taken) == mrhi_success &&
            taken == bytes;
+}
+
+// Reads an emitter's events back, when it writes any.
+static bool ReadEvents(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
+{
+    mvfxGpuParticles particles;
+    if (mvfxGpuSim_GetParticles(sim, emitter, &particles) != mvfx_success ||
+        particles.eventCapacity > MOST_EVENTS)
+    {
+        return false;
+    }
+    uint64_t bytes = (uint64_t)particles.eventCapacity * MVFX_GPU_EVENT_WORDS * sizeof(uint32_t);
+    return particles.events.index1 == 0 ||
+           ReadRange(gpu, particles.events, 4u * (uint64_t)particles.eventFirst, bytes,
+                     s_eventWords, sizeof s_eventWords);
 }
 
 // Whether two floats agree within the run's tolerance, relative to the
@@ -2001,6 +2004,85 @@ static bool SameContactsCapped(int32_t e)
     return same;
 }
 
+// The links the GPU wrote at a step, read back; the most at a step and
+// the drops over the run; the GPU's drops at the last step (0 after a
+// clear), each emitter's.
+#define MOST_LINKS 16384
+static uint32_t s_linkWords[2 * MOST_LINKS];
+static uint32_t s_mostLinks;
+static uint64_t s_linksDropped;
+static uint32_t s_lastDrops[MVFX_MAX_EMITTERS];
+
+// Whether an emitter's links on the GPU are the CPU path's from the same
+// places: the CPU path's emitter takes the GPU's places at the step's end
+// (read back last; its pool the GPU's, serial by serial), finds its links
+// again with the core's function, and they and the step's drops must be
+// the GPU's word for word; then its places, links and drops are put
+// back. Links are decided on places, which the paths hold within the
+// tolerance; from the same places the distance test, a sum of squared
+// differences, rounds alike.
+static bool SameLinks(Gpu* gpu, const mvfxGpuSim* sim, int32_t e)
+{
+    mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
+    mvfxEmitterState* state = &cpu->emitters[e];
+    int32_t count = state->count;
+    uint32_t written = s_record[MVFX_GPU_LINKS];
+    uint32_t drops = s_record[MVFX_GPU_LINKS_DROPPED] - s_lastDrops[e];
+    s_lastDrops[e] = s_record[MVFX_GPU_LINKS_DROPPED];
+    mvfxGpuParticles held;
+    const uint32_t* serials = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
+    bool alike = (int32_t)s_record[0] == count && count <= MOST_POINTS && written <= MOST_LINKS &&
+                 mvfxGpuSim_GetParticles(sim, e, &held) == mvfx_success &&
+                 (written == 0 || ReadRange(gpu, held.links, 0, 8u * (uint64_t)written, s_linkWords,
+                                            sizeof s_linkWords));
+    for (int32_t i = 0; alike && i < count; ++i)
+    {
+        alike = Word(s_arrays.serial, i) == serials[i];
+    }
+    if (!alike)
+    {
+        printf("links: the pools differ or were not read (%d particles, GPU %u, %u links)\n", count,
+               s_record[0], written);
+        return false;
+    }
+    float* places[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        places[k] = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributePositionX + k));
+        for (int32_t i = 0; i < count; ++i)
+        {
+            s_keptPlaces[k][i] = places[k][i];
+            places[k][i] = FloatOf(s_arrays.position + k, i);
+        }
+    }
+    uint64_t kept = state->linksDropped;
+    state->linksDropped = 0;
+    mvfxFindLinks(cpu, e);
+    bool same = state->plexus.linkCount == (int32_t)written && state->linksDropped == drops;
+    for (int32_t l = 0; same && l < 2 * (int32_t)written; ++l)
+    {
+        same = (uint32_t)state->plexus.links[l] == s_linkWords[l];
+    }
+    if (!same)
+    {
+        printf("links: GPU %u, dropped %u; the CPU path's from the GPU's places %d, dropped "
+               "%llu\n",
+               written, drops, state->plexus.linkCount, (unsigned long long)state->linksDropped);
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        for (int32_t i = 0; i < count; ++i)
+        {
+            places[k][i] = s_keptPlaces[k][i];
+        }
+    }
+    mvfxFindLinks(cpu, e);
+    state->linksDropped = kept;
+    s_mostLinks = written > s_mostLinks ? written : s_mostLinks;
+    s_linksDropped += drops;
+    return same;
+}
+
 // Whether an emitter's ribbon counter on the GPU (its plan's, the host's
 // breaks, plus the breaks the GPU made) is the CPU path's.
 static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
@@ -2022,8 +2104,9 @@ static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
 
 static void Clear(void)
 {
-    // Both counters start again from 0.
+    // Both counters start again from 0, and the drops.
     memset(s_ribbons, 0, sizeof s_ribbons);
+    memset(s_lastDrops, 0, sizeof s_lastDrops);
     mvfxInstanceId both[2] = {s_cpu, s_planned};
     for (int32_t i = 0; i < 2; ++i)
     {
@@ -2195,6 +2278,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_neighborsCompared = 0;
     s_capped = 0;
     s_contactsCapped = 0;
+    s_mostLinks = 0;
+    s_linksDropped = 0;
+    memset(s_lastDrops, 0, sizeof s_lastDrops);
     const mvfxLayoutDef lightLayout = {.cookie = mvfxDefaultLayoutDef().cookie,
                                        .fields = &s_lightField,
                                        .fieldCount = 1,
@@ -2309,6 +2395,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(cpu, e)) &&
                    (!run->emitters[e].neighbors.enabled || SameCapped(e)) &&
                    (!run->emitters[e].contacts.enabled || SameContactsCapped(e)) &&
+                   (!run->emitters[e].plexus.enabled || SameLinks(gpu, sim, e)) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
                    (!run->adopting || AdoptGpu(e));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
@@ -2383,6 +2470,14 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     {
         printf("  contacts capped: %u (at least %d)\n", s_contactsCapped, run->leastContactsCapped);
         CHECK(s_contactsCapped >= (uint32_t)run->leastContactsCapped, "contacts capped");
+    }
+    if (run->emitters[0].plexus.enabled)
+    {
+        printf("  links: at most %u at a step (at least %d), %llu dropped (at least %d)\n",
+               s_mostLinks, run->leastLinks, (unsigned long long)s_linksDropped, run->leastDropped);
+        CHECK(s_mostLinks >= (uint32_t)run->leastLinks &&
+                  s_linksDropped >= (uint64_t)run->leastDropped,
+              "links");
     }
     if (run->lights)
     {

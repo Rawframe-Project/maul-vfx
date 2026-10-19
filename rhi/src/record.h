@@ -23,7 +23,9 @@
 // ribbons the GPU's breaks (MVFX_GPU_RIBBON_BREAKS); then for an emitter
 // whose ribbons pin a head the step's transfer pass's again: whether the
 // head shows at the step's end and its place in the world (binary64);
-// then the GPU's: the neighbor caps (MVFX_GPU_NEIGHBORS_CAPPED).
+// then the GPU's: the neighbor caps (MVFX_GPU_NEIGHBORS_CAPPED), the
+// contact caps (MVFX_GPU_CONTACTS_CAPPED), the step's links and the links
+// dropped (MVFX_GPU_LINKS, MVFX_GPU_LINKS_DROPPED).
 enum
 {
     MVFX_RECORD_COUNT = 0,

@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A simulation's state, which its files share (sim.c, sim_records.c,
-// sim_spawn.c, sim_mesh.c, sim_events.c, sim_grid.c, sim_contacts.c): an emitter's
-// buffers, passes and numbers, and the simulation's own.
+// sim_spawn.c, sim_mesh.c, sim_events.c, sim_grid.c, sim_contacts.c,
+// sim_plexus.c): an emitter's buffers, passes and numbers, and the
+// simulation's own.
 
 #ifndef MAUL_VFX_RHI_SRC_SIM_STATE_H
 #define MAUL_VFX_RHI_SRC_SIM_STATE_H
@@ -97,6 +98,27 @@ enum
     CONTACT_BUFFERS = 6
 };
 
+// The passes of an emitter's plexus links (sim_plexus.c), after its
+// bounds: its numbers' write (at the first step), its keys, the sort's
+// four radix passes, its counts, its slots and its links.
+#define PLEXUS_PASSES 13
+
+// The words of an emitter's plexus numbers (plexus.wgsl's Plexus).
+#define PLEXUS_WORDS 12
+
+// The buffers its plexus passes bind (with its particles and statistics):
+// its numbers, its keys and indices, its digit counts, its counts and
+// slots, its links.
+enum
+{
+    PLEXUS_NUMBERS = 0,
+    PLEXUS_SORT = 1,
+    PLEXUS_DIGITS = 2,
+    PLEXUS_COUNTS = 3,
+    PLEXUS_LINKS = 4,
+    PLEXUS_BUFFERS = 5
+};
+
 // The buffers of an emitter's grid the grid passes bind (with its
 // particles and statistics after the numbers): its numbers, its words,
 // digit counts and count, its source's words and count.
@@ -174,6 +196,16 @@ typedef struct Emitter
     uint32_t contactRecordWords[MVFX_RECORD_WORDS];
     uint32_t contactWords[CONTACT_WORDS];
     mrhiPassId contactPasses[CONTACT_PASSES];
+    // Its plexus links (sim_plexus.c): whether it has them; its buffers;
+    // whether its numbers were written, and whether this step writes
+    // them; the frame's ids of its buffers, its numbers, its passes.
+    bool plexus;
+    mrhiBufferId plexusBuffers[PLEXUS_BUFFERS];
+    bool plexusWritten;
+    bool plexusWriting;
+    mrhiResourceId plexusResources[PLEXUS_BUFFERS];
+    uint32_t plexusWords[PLEXUS_WORDS];
+    mrhiPassId plexusPasses[PLEXUS_PASSES];
     mrhiBufferId eventNumbers;
     uint32_t eventWords[MVFX_RECORD_WORDS];
     // Whether all its event numbers were written: after, only the words a
@@ -303,6 +335,16 @@ void mvfxDestroySimContacts(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimContactNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 bool mvfxAddSimContactPasses(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSimContacts(mvfxGpuSim* sim, Emitter* emitter);
+
+// An emitter's plexus links (sim_plexus.c): its buffers made at the
+// simulation's creation (false when the device refuses), and destroyed;
+// its numbers taken from its plan; its passes added after its bounds;
+// recorded.
+bool mvfxCreateSimPlexus(mvfxGpuSim* sim, int32_t e);
+void mvfxDestroySimPlexus(mvfxGpuSim* sim, Emitter* emitter);
+void mvfxSimPlexusNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxRecordSimPlexus(mvfxGpuSim* sim, Emitter* emitter);
 
 // A mesh shape's region (sim_mesh.c): laid out after emitter e's tables,
 // with the host's copy, at the simulation's creation (mvfx_errorStale for

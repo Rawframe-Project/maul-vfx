@@ -107,7 +107,14 @@ extern "C"
     // only, its ribbon then joined or started apart from the CPU path's,
     // and every id the counter gives after it one apart; the ribbons are
     // the CPU path's but for their ids and at such births. Distances
-    // along a ribbon are within the tolerance of the CPU path's.
+    // along a ribbon are within the tolerance of the CPU path's. Its
+    // plexus links of the step, when it has them (a null buffer
+    // otherwise): two words each, the owner's index in the particles then
+    // the other's, as many as the statistics record's word MVFX_GPU_LINKS
+    // (at most linkCapacity, the def's maxLinks), in the order the CPU
+    // path's links take. Links are decided on places too: a pair that
+    // close to the distance may link on one path only; from the same
+    // places the links are the CPU path's.
     typedef struct mvfxGpuParticles
     {
         mrhiBufferId particles;
@@ -117,6 +124,8 @@ extern "C"
         mrhiBufferId events;
         uint32_t eventFirst;
         int32_t eventCapacity;
+        mrhiBufferId links;
+        int32_t linkCapacity;
     } mvfxGpuParticles;
 
 // The words of an event in an events buffer, and the statistics record's
@@ -150,10 +159,18 @@ extern "C"
 // (mvfxEmitterStats.contactsCapped on the CPU path).
 #define MVFX_GPU_CONTACTS_CAPPED 47
 
+// For an emitter with plexus links (mvfxPlexusDef), the statistics
+// record's words holding the step's links (the first of the links
+// buffer's, at most its capacity) and the links dropped past either most
+// since the instance was last cleared (mvfxEmitterStats.linksDropped on
+// the CPU path).
+#define MVFX_GPU_LINKS         48
+#define MVFX_GPU_LINKS_DROPPED 49
+
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 48
+#define MVFX_GPU_STATISTICS_WORDS 50
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -181,7 +198,10 @@ extern "C"
     /// another's grid, or steers, 752 for its numbers; one that keeps its
     /// particles apart 28 bytes a particle of its capacity, 18,432 a block
     /// of 1,024 of them for its contact grid's sorted keys and digit
-    /// counts, and 2,016 more for its numbers and counts.
+    /// counts, and 2,016 more for its numbers and counts; one with plexus
+    /// links 12 bytes a particle of its capacity, 18,432 a block of 1,024
+    /// of them for its link grid's sorted keys and digit counts, 8 a link
+    /// of its most (mvfxPlexusDef.maxLinks) and 48 for its numbers.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -679,7 +699,8 @@ extern "C"
     /// pair force (its targets too), and 16 a point of its path (all 752
     /// at the first step); 96 more for one with contacts (its sizes'
     /// clock and map; all 1,952, and its contact numbers' 48, at the
-    /// first step); 48 a planned
+    /// first step), and 48 at the first step for one with plexus links
+    /// (its plexus numbers); 48 a planned
     /// birth (a plan holds at most twice the emitter's capacity) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts, 16 more for one spawning from events and 4 more for one

@@ -8,6 +8,7 @@
 #include "../kernels/contacts_container.h"
 #include "../kernels/grid_container.h"
 #include "../kernels/pcg4d_container.h"
+#include "../kernels/plexus_container.h"
 #include "../kernels/records_container.h"
 #include "../kernels/ribbon_records_container.h"
 #include "../kernels/sim_container.h"
@@ -32,6 +33,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_ribbonRecordsContainer, sizeof s_ribbonRecordsContainer},
     {s_gridContainer, sizeof s_gridContainer},
     {s_contactsContainer, sizeof s_contactsContainer},
+    {s_plexusContainer, sizeof s_plexusContainer},
 };
 
 // A kernel's container and entry.
@@ -82,6 +84,10 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerContacts, "contactImpulses"},
     {mvfx_containerContacts, "contactKick"},
     {mvfx_containerSim, "rebox"},
+    {mvfx_containerPlexus, "plexusKeys"},
+    {mvfx_containerPlexus, "plexusCount"},
+    {mvfx_containerPlexus, "plexusOffsets"},
+    {mvfx_containerPlexus, "plexusWrite"},
 };
 
 struct mvfxGpu

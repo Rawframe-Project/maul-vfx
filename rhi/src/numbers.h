@@ -153,6 +153,14 @@ uint32_t mvfxTableMask(int32_t capacity);
 void mvfxContactNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                         uint32_t words[12]);
 
+// Writes an emitter's plexus numbers (plexus.wgsl's Plexus): its
+// capacity, the most links a particle owns and the emitter keeps, the
+// workgroups of the block passes; the grid's mask, the places' first
+// word, the workgroups of the particle passes; one over the distance and
+// the distance squared, rounded as the core's.
+void mvfxPlexusNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
+                       uint32_t words[12]);
+
 // What an emitter does with a neighbor grid (MVFX_GRID_*, 0 for nothing),
 // own when its source is itself.
 uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own);

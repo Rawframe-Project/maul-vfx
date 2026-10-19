@@ -1,0 +1,21 @@
+{
+  "root_block_bytes": 0,
+  "entries": [
+    {"name": "plexusKeys", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 1028},
+    {"name": "plexusCount", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "plexusOffsets", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 2048},
+    {"name": "plexusWrite", "stage": "compute", "workgroup": [64, 1, 1]}
+  ],
+  "bindings": [
+    {"table": 0, "slot": 0, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 200},
+    {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 4, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 8},
+    {"table": 0, "slot": 6, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 48}
+  ],
+  "constants": []
+}

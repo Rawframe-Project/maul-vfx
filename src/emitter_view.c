@@ -257,6 +257,7 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->pairStrength = LifeOf(&e->pairStrength);
     viewOut->contacts = e->contacts;
     viewOut->kills = Kills(e);
+    viewOut->plexus = e->plexus;
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
         .breakDistance = e->ribbonBreakDistance,

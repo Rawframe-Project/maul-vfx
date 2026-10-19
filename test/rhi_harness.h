@@ -162,6 +162,11 @@ typedef struct Run
     // The particles whose contacts passed the most the first emitter must
     // have counted over the run (none needed for 0).
     int32_t leastContactsCapped;
+    // The most links the first emitter must have written at some step,
+    // and the drops it must have counted over the run (none needed for
+    // 0).
+    int32_t leastLinks;
+    int32_t leastDropped;
     // Whether the CPU path takes the GPU's places and velocities after
     // each step, which then compares one step from the same state:
     // contacts decide on places the paths hold within the tolerance, and

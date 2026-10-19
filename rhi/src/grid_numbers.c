@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The numbers of an emitter's grids on the GPU: the neighbor grid's, with
-// steering's and the pair force's, and the contacts'.
+// steering's and the pair force's, the contacts' and the plexus links'.
 
 #include "numbers.h"
 
@@ -133,4 +133,18 @@ void mvfxGridNumbers(const mvfxEmitterView* view, const mvfxEmitterView* source,
     {
         SteeringWords(view, plan, tables, words + MVFX_GRID_STEER);
     }
+}
+
+void mvfxPlexusNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t words[12])
+{
+    const mvfxPlexusDef* x = &view->plexus;
+    uint32_t blocks = mvfxSortBlocks(plan->capacity);
+    uint32_t groups = mvfxUpdateGroups(plan->capacity);
+    const uint32_t head[8] = {
+        (uint32_t)plan->capacity,      (uint32_t)x->maxPerParticle,
+        (uint32_t)x->maxLinks,         blocks < 65535u ? (blocks > 0u ? blocks : 1u) : 65535u,
+        mvfxTableMask(plan->capacity), mvfxWordOf(view->arrays.position),
+        groups > 0u ? groups : 1u,     0u};
+    memcpy(words, head, sizeof head);
+    mvfxFloatWords(words + 8, 1.0f / x->distance, x->distance * x->distance, 0.0f, 0.0f);
 }

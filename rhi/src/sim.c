@@ -46,7 +46,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
      MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
-     MVFX_FEATURE_CONTACTS)
+     MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -313,7 +313,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
         (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
          !CreateSortBuffers(sim, &sim->views[e], emitter) ||
          !CreateEventBuffer(sim, &sim->views[e], emitter) || !mvfxCreateSimGrid(sim, e) ||
-         !mvfxCreateSimContacts(sim, e)))
+         !mvfxCreateSimContacts(sim, e) || !mvfxCreateSimPlexus(sim, e)))
     {
         result = mvfx_errorState;
     }
@@ -426,6 +426,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         DestroyBuffer(sim, emitter->eventNumbers);
         mvfxDestroySimGrid(sim, emitter);
         mvfxDestroySimContacts(sim, emitter);
+        mvfxDestroySimPlexus(sim, emitter);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
     }
@@ -469,6 +470,8 @@ mvfxResult mvfxGpuSim_GetParticles(const mvfxGpuSim* sim, int32_t emitter,
         .events = e->writesEvents ? e->events : (mrhiBufferId){0},
         .eventFirst = e->writesEvents ? mvfxEventFirst(e->capacity) : 0,
         .eventCapacity = e->writesEvents ? sim->views[emitter].eventCapacity : 0,
+        .links = e->plexus ? e->plexusBuffers[PLEXUS_LINKS] : (mrhiBufferId){0},
+        .linkCapacity = e->plexus ? sim->views[emitter].plexus.maxLinks : 0,
     };
     return mvfx_success;
 }
@@ -501,6 +504,17 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
         }
     }
     return count;
+}
+
+// Adds the passes an emitter's pass p is followed by: the neighbor grid's
+// after room's, which tells them whether the births fit; the particle
+// contacts' after the scatter, on the pool it leaves; the plexus links'
+// after the bounds, of the places at the step's end.
+static bool AddPassesAfter(mvfxGpuSim* sim, Emitter* emitter, int32_t p)
+{
+    return (p != PASS_ROOM || mvfxAddSimGridPasses(sim, emitter)) &&
+           (p != PASS_SCATTER || mvfxAddSimContactPasses(sim, emitter)) &&
+           (p != PASS_MEASURE || mvfxAddSimPlexusPasses(sim, emitter));
 }
 
 // Adds an emitter's passes: one writing the plan's bytes, one a kernel.
@@ -560,11 +574,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         bool added = p == PASS_SPAWN_COPY
                          ? mvfxAddSpawnCopyPass(sim, emitter)
                          : mrhiAddPass(sim->device, &def, &emitter->passes[p]) == mrhi_success;
-        // The neighbor grid's passes after room's, which tells them whether
-        // the births fit.
-        added = added && (p != PASS_ROOM || mvfxAddSimGridPasses(sim, emitter));
-        // The particle contacts' after the scatter, on the pool it leaves.
-        added = added && (p != PASS_SCATTER || mvfxAddSimContactPasses(sim, emitter));
+        added = added && AddPassesAfter(sim, emitter, p);
         if (!added)
         {
             return false;
@@ -697,6 +707,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     mvfxSimEventNumbers(sim, e, &plan);
     mvfxSimGridNumbers(sim, e, &plan);
     mvfxSimContactNumbers(sim, e, &plan);
+    mvfxSimPlexusNumbers(sim, e, &plan);
     emitter->plannedBirths = plan.births;
     emitter->birthCount = plan.birthCount;
     emitter->hostCount = plan.hostBirthCount;
@@ -762,7 +773,8 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
 
 // Records the pass writing the plan's bytes: its numbers, its births and
 // its host births after the births' room, the record's map, the counts
-// emptied after a clear (the neighbors' and contacts' caps too), and the
+// emptied after a clear (the neighbors' and contacts' caps and the links'
+// drops too), and the
 // grids changed.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
@@ -801,6 +813,9 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         (!emitter->cleared || !emitter->contacts ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_GPU_CONTACTS_CAPPED * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
+        (!emitter->cleared || !emitter->plexus ||
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
+                    MVFX_GPU_LINKS * sizeof(uint32_t), noSerials, 2 * sizeof(uint32_t))) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
         mvfxWriteSimMesh(sim, pass, emitter) &&
@@ -862,7 +877,7 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
          mvfxRecordSimKernel(sim, emitter, PASS_RIBBONS, mvfx_kernelRibbons, 1)) &&
         (!emitter->beam || mvfxRecordSimKernel(sim, emitter, PASS_BEAM, mvfx_kernelBeam, 1)) &&
         mvfxRecordSimKernel(sim, emitter, PASS_MEASURE, mvfx_kernelMeasure, 1) &&
-        mvfxRecordSimEvents(sim, emitter, blocks);
+        mvfxRecordSimPlexus(sim, emitter) && mvfxRecordSimEvents(sim, emitter, blocks);
     emitter->current = recorded ? 1 - emitter->current : emitter->current;
     return recorded;
 }
