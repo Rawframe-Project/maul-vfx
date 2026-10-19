@@ -43,30 +43,32 @@ enum
     PASS_WRITE = 0,
     PASS_ROOM = 1,
     PASS_UPDATE = 2,
-    PASS_KILL = 3,
-    PASS_REDUCE = 4,
-    PASS_OFFSETS = 5,
-    PASS_SCATTER = 6,
+    // Its units moved by substeps (sim/units.wgsl), when it has units.
+    PASS_UNITS = 3,
+    PASS_KILL = 4,
+    PASS_REDUCE = 5,
+    PASS_OFFSETS = 6,
+    PASS_SCATTER = 7,
     // Its blocks' boxes taken again, when its contacts moved its particles.
-    PASS_REBOX = 7,
+    PASS_REBOX = 8,
     // Its births' ribbons, when it has ribbons.
-    PASS_RIBBONS = 8,
+    PASS_RIBBONS = 9,
     // Its points placed, when it is a beam.
-    PASS_BEAM = 9,
-    PASS_MEASURE = 10,
+    PASS_BEAM = 10,
+    PASS_MEASURE = 11,
     // An emitter's events, when it writes any.
-    PASS_EVENT_COUNT = 11,
-    PASS_EVENT_OFFSETS = 12,
-    PASS_EVENT_WRITE = 13,
-    PASS_EVENT_VALUES = 14,
+    PASS_EVENT_COUNT = 12,
+    PASS_EVENT_OFFSETS = 13,
+    PASS_EVENT_WRITE = 14,
+    PASS_EVENT_VALUES = 15,
     // Its births from events, when it spawns from them, after the plan's
     // bytes: the source's events copied in, then the kernels.
-    PASS_SPAWN_COPY = 15,
-    PASS_SPAWN_COUNT = 16,
-    PASS_SPAWN_SORT = 17,
-    PASS_SPAWN_SCAN = 18,
-    PASS_SPAWN_MERGE = 19,
-    PASS_COUNT = 20
+    PASS_SPAWN_COPY = 16,
+    PASS_SPAWN_COUNT = 17,
+    PASS_SPAWN_SORT = 18,
+    PASS_SPAWN_SCAN = 19,
+    PASS_SPAWN_MERGE = 20,
+    PASS_COUNT = 21
 };
 
 // The passes of an emitter's neighbor grid (sim_grid.c), after its room
@@ -188,6 +190,10 @@ typedef struct Emitter
     // Its particle contacts (sim_contacts.c): whether it has them and its
     // projections a step; its buffers; whether its numbers were all
     // written; the frame's ids of its buffers, its numbers, its passes.
+    // Whether its particles are units (sim/units.wgsl), and the unit
+    // pass's workgroups.
+    bool units;
+    uint32_t unitGroups;
     bool contacts;
     int32_t contactIterations;
     mrhiBufferId contactBuffers[CONTACT_BUFFERS];

@@ -196,17 +196,6 @@ struct Touches {
     capped: bool,
 }
 
-// a / b as the core's division gives it, for positive normal b: the exact
-// division on a's magnitude, the sign put back; zero and subnormal a
-// (whose quotient is not normal) left to the device.
-fn quotient(a: f32, b: f32) -> f32 {
-    let magnitude = abs(a);
-    if (magnitude < 1.17549435e-38) {
-        return a / b;
-    }
-    return select(divide(magnitude, b), -divide(magnitude, b), a < 0.0);
-}
-
 // The unit line from j to i into line and its length; false when they
 // share a place.
 fn lineOf(at: vec3<f32>, j: u32, line: ptr<function, vec3<f32>>,

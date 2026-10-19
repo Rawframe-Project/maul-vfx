@@ -261,7 +261,7 @@ if(MAUL_VFX_BUILD_TESTS)
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
                 rhi_ribbon_points rhi_beams rhi_lights rhi_sprites rhi_neighbors rhi_steering
-                rhi_contacts rhi_plexus)
+                rhi_contacts rhi_plexus rhi_units)
             maul_add_test(${suite} WHITEBOX)
             target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c)

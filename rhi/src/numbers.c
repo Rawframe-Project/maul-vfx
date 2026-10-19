@@ -795,6 +795,43 @@ static void Beam(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint3
     }
 }
 
+// The shape beyond the sphere's numbers, and the delay its arc's age is
+// from.
+static void ShapeRest(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t shape[16])
+{
+    const mvfxShapeView* s = &view->shape;
+    mvfxFloatWords(shape, s->length, s->halfExtents[0], s->halfExtents[1], s->halfExtents[2]);
+    mvfxFloatWords(shape + 4, s->arc, s->arcSpeed, s->tangent, 0.0f);
+    uint64_t delay = (uint64_t)view->delayTicks;
+    shape[8] = s->arcMode;
+    shape[9] = s->coneVolume ? 1u : 0u;
+    shape[10] = (uint32_t)delay;
+    shape[11] = (uint32_t)(delay >> 32u);
+    shape[12] = tables->mesh;
+    shape[13] = s->meshMode;
+}
+
+// The units: a step across and down as the core's UnitStep takes it before
+// the instance's turn and scale.
+static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[20])
+{
+    const mvfxUnitDef* u = &view->unit;
+    units[0] = (uint32_t)(view->unitPoints > 1 ? view->unitPoints : 1);
+    units[1] = (uint32_t)(view->unitWidth > 1 ? view->unitWidth : 1);
+    units[2] = (uint32_t)(u->substeps > 1 ? u->substeps : 1);
+    // The unit pass's workgroups, a unit each, at most a dispatch's.
+    int64_t unitCount = (int64_t)plan->capacity / (view->unitPoints > 1 ? view->unitPoints : 1);
+    units[3] = (uint32_t)(unitCount < 65535 ? (unitCount > 0 ? unitCount : 1) : 65535);
+    mvfxFloatWords(units + 4, u->direction[0] * u->spacing, u->direction[1] * u->spacing,
+                   u->direction[2] * u->spacing, 0.0f);
+    mvfxFloatWords(units + 8, u->downDirection[0] * u->spacing, u->downDirection[1] * u->spacing,
+                   u->downDirection[2] * u->spacing, 0.0f);
+    mvfxFloatWords(units + 12, view->unitRests[0], view->unitRests[1], view->unitRests[2],
+                   view->unitRests[3]);
+    mvfxFloatWords(units + 16, u->stretchCompliance, u->shearCompliance, u->bendCompliance,
+                   u->damping);
+}
+
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
                      const uint32_t (*forceGrids)[5], const uint32_t (*colliderGrids)[5],
                      bool normals, const mvfxStepTables* tables, uint32_t words[MVFX_STEP_WORDS])
@@ -863,19 +900,9 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     words[MVFX_KILLS_FIRST + 2] = (uint32_t)view->eventCapacity;
     words[MVFX_KILLS_FIRST + 3] = mvfxEventFirst(plan->capacity);
     Sources(view, tables, words + MVFX_SOURCES_FIRST);
-    // The shape beyond the sphere's numbers, and the delay its arc's age
-    // is from.
-    uint32_t* shape = words + MVFX_SHAPE_FIRST;
-    mvfxFloatWords(shape, s->length, s->halfExtents[0], s->halfExtents[1], s->halfExtents[2]);
-    mvfxFloatWords(shape + 4, s->arc, s->arcSpeed, s->tangent, 0.0f);
-    uint64_t delay = (uint64_t)view->delayTicks;
-    shape[8] = s->arcMode;
-    shape[9] = s->coneVolume ? 1u : 0u;
-    shape[10] = (uint32_t)delay;
-    shape[11] = (uint32_t)(delay >> 32u);
-    shape[12] = tables->mesh;
-    shape[13] = s->meshMode;
+    ShapeRest(view, tables, words + MVFX_SHAPE_FIRST);
     uint32_t* ribbon = words + MVFX_RIBBON_FIRST;
     ribbon[0] = view->ribbon.ids;
     memcpy(&ribbon[1], &view->ribbon.breakDistance, sizeof(float));
+    Units(view, plan, words + MVFX_UNITS_FIRST);
 }

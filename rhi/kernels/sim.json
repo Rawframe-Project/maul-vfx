@@ -14,6 +14,8 @@
      "workgroup_storage_bytes": 8192},
     {"name": "rebox", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 8192},
+    {"name": "units", "stage": "compute", "workgroup": [256, 1, 1],
+     "workgroup_storage_bytes": 8192},
     {"name": "killBirths", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "eventCount", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 1024},
@@ -34,7 +36,7 @@
      "workgroup_storage_bytes": 8196}
   ],
   "bindings": [
-    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9328},
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9408},
     {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 16},
     {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},

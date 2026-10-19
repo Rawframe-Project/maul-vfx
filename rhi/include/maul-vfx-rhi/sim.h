@@ -740,11 +740,12 @@ extern "C"
     /// clock and map; all 1,952, and its contact numbers' 48, at the
     /// first step), and 48 at the first step for one with plexus links
     /// (its plexus numbers); 48 a planned
-    /// birth (a plan holds at most twice the emitter's capacity) and 64 a
+    /// birth (a plan holds at most twice the emitter's capacity, in units for
+    /// an emitter of units) and 64 a
     /// host's particle; at the first step and after a clear, 12 for its
     /// counts, 16 more for one spawning from events and 4 more for one
     /// finding neighbors; at the first step,
-    /// its sources' 1,248 and the effect's baked tables its values read
+    /// its sources' 1,344 and the effect's baked tables its values read
     /// (1,032 a curve, 4,096 a gradient); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,

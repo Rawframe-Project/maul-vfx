@@ -154,6 +154,17 @@ fn divide(a: f32, b: f32) -> f32 {
     return bitcast<f32>((u32(exponent) << 23u) | (kept & 0x007FFFFFu));
 }
 
+// a / b as the core's division gives it, for positive normal b: the exact
+// division on a's magnitude, the sign put back; zero and subnormal a
+// (whose quotient is not normal) left to the device.
+fn quotient(a: f32, b: f32) -> f32 {
+    let magnitude = abs(a);
+    if (magnitude < 1.17549435e-38) {
+        return a / b;
+    }
+    return select(divide(magnitude, b), -divide(magnitude, b), a < 0.0);
+}
+
 // The binary32 age of a count of ticks, as the core's: the count rounded
 // once, times 2^-20.
 fn secondsOf(ticks: vec2<u32>) -> f32 {

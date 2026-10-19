@@ -105,6 +105,8 @@ typedef enum mvfxKernel
     mvfx_kernelPlexusCount = 41,
     mvfx_kernelPlexusOffsets = 42,
     mvfx_kernelPlexusWrite = 43,
+    // An emitter's units moved by substeps (sim.wgsl).
+    mvfx_kernelUnits = 44,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

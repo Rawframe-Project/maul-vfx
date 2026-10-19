@@ -28,6 +28,12 @@ fn moveLive(i: u32) {
         return;
     }
     let start = readVector(0u, i, params.words.place) + params.shift.xyz;
+    if (unitPoints() > 1u) {
+        // A unit's point: shifted and turned here, moved by the unit pass
+        // (sim/units.wgsl) after.
+        holdUnitPoint(i, start);
+        return;
+    }
     var a = vec3<f32>(0.0);
     var wind = 0.0;
     forcesAt(start, 0.0, &a, &wind);
@@ -70,6 +76,20 @@ fn moveLive(i: u32) {
                            !killed(start, p, v, ageTicks, contacts));
 }
 
+// A live unit's point at the plan's start: its place shifted with the
+// anchor, its turn over the plan, and kept (units meet no colliders or
+// kill rules on the GPU yet).
+fn holdUnitPoint(i: u32, start: vec3<f32>) {
+    let c = params.counts.x;
+    for (var k = 0u; k < 3u; k++) {
+        source[(params.words.place + k) * c + i] = bitcast<u32>(start[k]);
+    }
+    let birth = vec2<u32>(source[params.words.birth * c + i], source[(params.words.birth + 1u) * c + i]);
+    let inverseLife = bitcast<f32>(source[params.words.inverseLife * c + i]);
+    turn(0u, i, params.angular.xy, lifeAt(LIFE_ROTATION, ageAt(birth, inverseLife)));
+    source[params.words.alive * c + i] = 1u;
+}
+
 // Adds keep's values of the workgroup in order: each invocation's sum of
 // those before it.
 fn exclusiveScan(local: u32, keep: u32) -> u32 {
@@ -101,8 +121,8 @@ fn keepAt(i: u32, live: u32) -> u32 {
     if (j >= birthCount()) {
         return 0u;
     }
-    let b0 = births[3u * j];
-    let b1 = births[3u * j + 1u];
+    let b0 = birthWord(j, 0u);
+    let b1 = birthWord(j, 1u);
     return select(0u, 1u, (accepted[j] & 3u) == 1u && (b1.x > 0u || b0.w > params.counts.z));
 }
 
@@ -196,7 +216,7 @@ fn bornAt(j: u32, place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<
 // when withVelocity is set (drawn: none otherwise).
 fn bornPlace(j: u32, withVelocity: bool, place: ptr<function, vec3<f32>>,
              velocity: ptr<function, vec3<f32>>) {
-    let b0 = births[3u * j];
+    let b0 = birthWord(j, 0u);
     let k = birthKey(j);
     var normal = vec3<f32>(0.0);
     let shapeWords = draw(SHAPE_SALT, k.x, k.y);
@@ -207,7 +227,7 @@ fn bornPlace(j: u32, withVelocity: bool, place: ptr<function, vec3<f32>>,
         v = drawVelocity(draw(VELOCITY_SALT, k.x, k.y), local_place, normal);
     }
     var p = drawn;
-    let host = births[3u * j + 2u].y;
+    let host = birthWord(j, 2u).y;
     if (host != NONE) {
         // The host's particle: its place and velocity as the core gives them.
         let record = hostBirthAt(host);
@@ -220,6 +240,21 @@ fn bornPlace(j: u32, withVelocity: bool, place: ptr<function, vec3<f32>>,
         p = origin + rotate(rotation, drawn * scale);
         v = rotate(rotation, v * scale) + params.shift.w * params.instanceVelocity.xyz;
     }
+    if (unitPoints() > 1u) {
+        // A unit's point across and down from its root, by steps turned
+        // and scaled with the instance at its tick in the world's space.
+        var across = params.unitAcross.xyz;
+        var down = params.unitDown.xyz;
+        if (params.start.w == 0u) {
+            var origin = vec3<f32>(0.0);
+            var rotation = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            let scale = placeAt(b0.z, &origin, &rotation);
+            across = rotate(rotation, across * scale);
+            down = rotate(rotation, down * scale);
+        }
+        let at = unitPlace(j);
+        p = p + across * at.x + down * at.y;
+    }
     *place = p;
     *velocity = v;
 }
@@ -228,8 +263,8 @@ fn bornPlace(j: u32, withVelocity: bool, place: ptr<function, vec3<f32>>,
 // move, as its birth event gives them.
 fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function, vec3<f32>>,
              place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) -> Fate {
-    let b0 = births[3u * j];
-    let b1 = births[3u * j + 1u];
+    let b0 = birthWord(j, 0u);
+    let b1 = birthWord(j, 1u);
     var p = vec3<f32>(0.0);
     var v = vec3<f32>(0.0);
     bornPlace(j, true, &p, &v);
@@ -276,8 +311,8 @@ const HOST_GIVES_SIZE: u32 = 2u;
 // A birth written to place at of the other buffer; its place.
 fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     let c = params.counts.x;
-    let b0 = births[3u * j];
-    let b1 = births[3u * j + 1u];
+    let b0 = birthWord(j, 0u);
+    let b1 = birthWord(j, 1u);
     var moved_place = vec3<f32>(0.0);
     var moved_velocity = vec3<f32>(0.0);
     var born = vec3<f32>(0.0);
@@ -291,7 +326,7 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
         moved[(params.words.place + k) * c + at] = bitcast<u32>(moved_place[k]);
         moved[(params.words.velocity + k) * c + at] = bitcast<u32>(moved_velocity[k]);
     }
-    moved[params.words.serial * c + at] = b0.x;
+    moved[params.words.serial * c + at] = birthSerial(j);
     moved[params.words.birth * c + at] = birth.x;
     moved[(params.words.birth + 1u) * c + at] = birth.y;
     moved[params.words.death * c + at] = fate.death.x;
@@ -309,7 +344,7 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
 
 // The seconds from a birth of the plan to the plan's end.
 fn remainderOf(j: u32) -> f32 {
-    return secondsOf(vec2<u32>(params.counts.z - births[3u * j].z, 0u));
+    return secondsOf(vec2<u32>(params.counts.z - birthWord(j, 0u).z, 0u));
 }
 
 // A birth's drag scale, as the core draws it (1 when the emitter has
@@ -319,7 +354,7 @@ fn dragScaleOf(j: u32) -> f32 {
         return 1.0;
     }
     let k = birthKey(j);
-    let age = bitcast<f32>(births[3u * j + 2u].x);
+    let age = bitcast<f32>(birthWord(j, 2u).x);
     return drawVector(SOURCE_DRAG, age, draw(DRAG_SALT, k.x, k.y)).x;
 }
 
@@ -487,7 +522,7 @@ fn orientationOf(age: f32, words: vec4<u32>) -> vec4<f32> {
 fn storeValues(j: u32, at: u32) {
     let c = params.counts.x;
     let k = birthKey(j);
-    let age = bitcast<f32>(births[3u * j + 2u].x);
+    let age = bitcast<f32>(birthWord(j, 2u).x);
     let w = params.words;
     if (w.size != NONE) {
         storeValue(w.size, 3u, at, vec4<f32>(bornSize(j), 0.0));
@@ -536,7 +571,7 @@ fn bornColor(j: u32) -> vec4<f32> {
     if (params.words.color == NONE) {
         return vec4<f32>(1.0);
     }
-    let host = births[3u * j + 2u].y;
+    let host = birthWord(j, 2u).y;
     if (host != NONE) {
         let record = hostBirthAt(host);
         if ((bitcast<u32>(record.place.w) & HOST_GIVES_COLOR) != 0u) {
@@ -544,7 +579,7 @@ fn bornColor(j: u32) -> vec4<f32> {
         }
     }
     let k = birthKey(j);
-    let age = bitcast<f32>(births[3u * j + 2u].x);
+    let age = bitcast<f32>(birthWord(j, 2u).x);
     return drawVector(SOURCE_COLOR, age, draw(COLOR_SALT, k.x, k.y));
 }
 
@@ -553,7 +588,7 @@ fn bornSize(j: u32) -> vec3<f32> {
     if (params.words.size == NONE) {
         return vec3<f32>(1.0);
     }
-    let host = births[3u * j + 2u].y;
+    let host = birthWord(j, 2u).y;
     if (host != NONE) {
         let record = hostBirthAt(host);
         if ((bitcast<u32>(record.place.w) & HOST_GIVES_SIZE) != 0u) {
@@ -561,7 +596,7 @@ fn bornSize(j: u32) -> vec3<f32> {
         }
     }
     let k = birthKey(j);
-    let age = bitcast<f32>(births[3u * j + 2u].x);
+    let age = bitcast<f32>(birthWord(j, 2u).x);
     return drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, k.x, k.y)).xyz;
 }
 
@@ -761,8 +796,8 @@ fn measure(@builtin(local_invocation_index) local: u32) {
 // Whether a birth of the plan dies by tick t of the plan, its death in two
 // words from the plan's start.
 fn birthDiesBy(j: u32, t: u32) -> bool {
-    let b0 = births[3u * j];
-    let b1 = births[3u * j + 1u];
+    let b0 = birthWord(j, 0u);
+    let b1 = birthWord(j, 1u);
     return b1.x == 0u && b0.w <= t;
 }
 
@@ -805,8 +840,8 @@ fn liveDeathsByBirth(local: u32, live: u32, count: u32) -> u32 {
     for (var j = lo; j < hi; j++) {
         accepted[j] = 0u;
     }
-    let before = select(0u, births[3u * (max(lo, 1u) - 1u)].z, lo > 0u);
-    let last = select(0u, births[3u * (max(hi, 1u) - 1u)].z, hi > lo);
+    let before = select(0u, birthWord((max(lo, 1u) - 1u), 0u).z, lo > 0u);
+    let last = select(0u, birthWord((max(hi, 1u) - 1u), 0u).z, hi > lo);
     var base = 0u;
     for (var tile = 0u; tile < live; tile += CHUNK) {
         let i = tile + local;
@@ -829,7 +864,7 @@ fn liveDeathsByBirth(local: u32, live: u32, count: u32) -> u32 {
                 var b = hi - 1u;
                 while (a < b) {
                     let m = (a + b) / 2u;
-                    if (births[3u * m].z >= d) {
+                    if (birthWord(m, 0u).z >= d) {
                         b = m;
                     } else {
                         a = m + 1u;
@@ -900,7 +935,7 @@ fn roomByWalk(local: u32, live: u32, count: u32) {
     if (local != 0u) {
         return;
     }
-    let last = births[3u * (count - 1u)].z;
+    let last = birthWord((count - 1u), 0u).z;
     var held = live;
     for (var p = 0u; p < count; p++) {
         held -= accepted[p];
@@ -911,12 +946,12 @@ fn roomByWalk(local: u32, live: u32, count: u32) {
         }
         held += 1u;
         if (birthDiesBy(p, last)) {
-            let d = births[3u * p].w;
+            let d = birthWord(p, 0u).w;
             var a = p + 1u;
             var b = count;
             while (a < b) {
                 let m = (a + b) / 2u;
-                if (births[3u * m].z >= d) {
+                if (birthWord(m, 0u).z >= d) {
                     b = m;
                 } else {
                     a = m + 1u;
@@ -951,7 +986,7 @@ fn room(@builtin(local_invocation_index) local: u32) {
         }
         return;
     }
-    let lastTick = births[3u * (count - 1u)].z;
+    let lastTick = birthWord((count - 1u), 0u).z;
     var within = 0u;
     for (var j = local; j < count; j += CHUNK) {
         within += select(0u, 1u, birthDiesBy(j, lastTick));

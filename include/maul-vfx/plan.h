@@ -269,8 +269,9 @@ extern "C"
         double anchorBefore[3];
         double anchorAfter[3];
         // The births owed, in tick order. Past the plan's room (the
-        // capacity's births at one tick, twice the capacity in a plan) a
-        // birth is refused here, still owed; refused counts them. For an
+        // capacity's births at one tick, twice the capacity in a plan; in
+        // units for an emitter of units, a birth a unit) a birth is refused
+        // here, still owed; refused counts them. For an
         // emitter that spawns from events they are its own and the host's
         // only: the simulation builds the births events give and numbers
         // them all (mvfxPlannedBirth).
@@ -677,6 +678,15 @@ extern "C"
         bool kills;
         // Its plexus links (mvfxEmitterDef's plexus; not enabled for none).
         mvfxPlexusDef plexus;
+        // Its units (mvfxEmitterDef's unit): the def, its directions
+        // normalized; the points a unit has (1 for particles) and across a
+        // row; the rest lengths of its constraints before the instance's
+        // scale (across, down, along the diagonal across and down and
+        // along the other; bending takes twice the first two).
+        mvfxUnitDef unit;
+        int32_t unitPoints;
+        int32_t unitWidth;
+        float unitRests[4];
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

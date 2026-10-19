@@ -244,6 +244,43 @@ static void TestRoom(void)
     CHECK(plan.birthCount == 8 && plan.refused == stats.owed - 8 && stats.owed > 90,
           "twice the capacity in a plan");
     mvfxDestroyContext(context);
+
+    // Chains of three points in a capacity of 12: a birth is a unit, so 4
+    // at one tick and 8 in a plan.
+    const mvfxUnitDef chain = {.kind = mvfx_unitChain,
+                               .points = 3,
+                               .spacing = 0.1f,
+                               .direction = {1, 0, 0},
+                               .downDirection = {0, 1, 0},
+                               .substeps = 1};
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    emitter = Emitter(12);
+    emitter.rate = 0.0f;
+    emitter.unit = chain;
+    effect = Effect(context, &emitter);
+    planned = Instance(context, effect, true);
+    refused = 0;
+    births = 0;
+    for (int32_t s = 0; s < 8; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+        refused += plan.refused;
+        births += plan.birthCount;
+    }
+    CHECK(births == 4 && refused == 8, "the capacity's units at one tick");
+    mvfxDestroyContext(context);
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    emitter = Emitter(12);
+    emitter.rate = 6000.0f;
+    emitter.burstCount = 0;
+    emitter.unit = chain;
+    effect = Effect(context, &emitter);
+    planned = Instance(context, effect, true);
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+    CHECK(plan.birthCount == 8, "twice the capacity's units in a plan");
+    mvfxDestroyContext(context);
 }
 
 // Steps a CPU instance and a planned one of an emitter side by side for

@@ -273,6 +273,18 @@ struct Step {
     // How births join ribbons: the ids (mvfxRibbonIds, 0 for none), the
     // break distance (binary32 bits); unused.
     ribbon: vec4<u32>,
+    // Its units (rhi/kernels/sim/units.wgsl): the points a unit has (1
+    // for particles) and across a row, the substeps, the unit pass's
+    // workgroups; the step
+    // from a point to the next across and down at birth (the direction
+    // times the spacing, in the emitter's space); the rest lengths before
+    // the instance's scale (across, down, the two diagonals); the
+    // compliances of stretch, shear and bending and the damping.
+    units: vec4<u32>,
+    unitAcross: vec4<f32>,
+    unitDown: vec4<f32>,
+    unitRests: vec4<f32>,
+    unitStiffness: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -326,3 +338,5 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/ribbons.wgsl
 
 // include: sim/beam.wgsl
+
+// include: sim/units.wgsl

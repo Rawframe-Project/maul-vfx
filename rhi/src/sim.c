@@ -46,26 +46,49 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_HOST_SPAWN | MVFX_FEATURE_SORT | MVFX_FEATURE_EVENTS |                           \
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
      MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
-     MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS)
+     MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
+
+// What units do not run beside yet: colliders, kill rules and events,
+// which a substep's move would meet on its own span; ribbons and beams;
+// the grid's readers; the host's particles.
+#define UNITS_BESIDE                                                                               \
+    (MVFX_FEATURE_COLLISION | MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_EVENTS |                      \
+     MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_NEIGHBORS | \
+     MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE | MVFX_FEATURE_CONTACTS |                     \
+     MVFX_FEATURE_HOST_SPAWN)
+
+// Whether the part runs an emitter's units: none beside what UNITS_BESIDE
+// names or a kill within a step, and none pinned, attached, blown by the
+// air, colliding with themselves or tearing.
+static bool UnitsRun(const mvfxEmitterView* view)
+{
+    const mvfxUnitDef* u = &view->unit;
+    return (view->features & UNITS_BESIDE) == 0 && !view->kills && !u->pinFirst &&
+           !u->pinFirstRow && u->attach == mvfx_attachNone && u->normalDrag == 0.0f &&
+           u->tangentDrag == 0.0f && u->selfThickness == 0.0f && u->tearStrain == 0.0f;
+}
 
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
-        .features = (view->features & ~RUN_FEATURES) |
-                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
-                    ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
-                         ? MVFX_FEATURE_COLLISION
-                         : 0) |
-                    // Contacts see the particles a step kills, and move births
-                    // after ribbons and beams take their places.
-                    ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
-                             (view->kills ||
-                              (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
-                         ? MVFX_FEATURE_CONTACTS
-                         : 0),
+        .features =
+            (view->features & ~RUN_FEATURES) |
+            ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
+            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
+                 ? MVFX_FEATURE_COLLISION
+                 : 0) |
+            // Contacts see the particles a step kills, and move births
+            // after ribbons and beams take their places.
+            ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
+                     (view->kills ||
+                      (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
+                 ? MVFX_FEATURE_CONTACTS
+                 : 0) |
+            ((view->features & MVFX_FEATURE_UNITS) != 0 && !UnitsRun(view) ? MVFX_FEATURE_UNITS
+                                                                           : 0),
     };
     return refusal->features == 0;
 }
@@ -287,6 +310,11 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
     emitter->ribbons = sim->views[e].ribbon.ids != mvfx_ribbonNone;
     emitter->beam = sim->views[e].beam.enabled;
+    // A unit a workgroup of the unit pass, at most a dispatch's.
+    int32_t points = sim->views[e].unitPoints;
+    emitter->units = points > 1 && plan.capacity > 0;
+    int32_t units = points > 1 ? plan.capacity / points : 0;
+    emitter->unitGroups = (uint32_t)(units < 65535 ? (units > 0 ? units : 1) : 65535);
     emitter->pinsHead = sim->views[e].ribbon.pinHead;
     emitter->gridMask = plan.gridMask;
     if (result == mvfx_success && emitter->hostCapacity > 0)
@@ -498,7 +526,7 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
          ++p)
     {
         if ((p != PASS_RIBBONS || emitter->ribbons) && (p != PASS_BEAM || emitter->beam) &&
-            (p != PASS_REBOX || emitter->contacts))
+            (p != PASS_REBOX || emitter->contacts) && (p != PASS_UNITS || emitter->units))
         {
             order[count++] = p;
         }
@@ -866,6 +894,8 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
         mvfxRecordSimKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
         mvfxRecordSimGrid(sim, emitter) &&
         mvfxRecordSimKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
+        (!emitter->units ||
+         mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelUnits, emitter->unitGroups)) &&
         mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
         mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
         mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&

@@ -112,8 +112,8 @@ fn drawIndex(d: vec4<u32>, salt: u32, serialLow: u32, serialHigh: u32) -> u32 {
 // The key birth j draws its values by: an event birth's, set in its
 // record's last words (the top bit of its high word set), else its serial.
 fn birthKey(j: u32) -> vec2<u32> {
-    let b2 = births[3u * j + 2u];
-    return select(births[3u * j].xy, b2.zw, b2.w != 0u);
+    let b2 = birthWord(j, 2u);
+    return select(birthWord(j, 0u).xy, b2.zw, b2.w != 0u);
 }
 
 // The words of a purpose at a serial, as the core draws them.

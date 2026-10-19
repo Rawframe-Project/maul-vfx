@@ -30,8 +30,8 @@ fn eventBlocks() -> u32 {
 // unmet (it may be killed on its way).
 fn appended(j: u32) -> bool {
     let mark = accepted[j] & 3u;
-    let b0 = births[3u * j];
-    let b1 = births[3u * j + 1u];
+    let b0 = birthWord(j, 0u);
+    let b1 = birthWord(j, 1u);
     return (mark == 1u || mark == 2u) && (b1.x > 0u || b0.w > params.counts.z);
 }
 
@@ -278,8 +278,8 @@ fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
 
 // Birth j's events of its groups, at their places.
 fn writeBirthEvents(j: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
-    let b0 = births[3u * j];
-    let b1 = births[3u * j + 1u];
+    let b0 = birthWord(j, 0u);
+    let b1 = birthWord(j, 1u);
     var born = vec3<f32>(0.0);
     var bornVelocity = vec3<f32>(0.0);
     var place = vec3<f32>(0.0);
@@ -288,7 +288,7 @@ fn writeBirthEvents(j: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
     var birth = vec2<u32>(0u);
     var death = vec2<u32>(0u);
     birthTicks(b0, b1, &birth, &death);
-    var e = Event(EVENT_BIRTH, false, b0.x, b0.z, b0.z, born, bornVelocity, vec3<f32>(0.0),
+    var e = Event(EVENT_BIRTH, false, birthSerial(j), b0.z, b0.z, born, bornVelocity, vec3<f32>(0.0),
                   bornColor(j), bornSize(j), birth, bitcast<f32>(b1.y));
     if (writes(EVENT_BIRTH)) {
         writeEvent((*at).z, e);

@@ -75,13 +75,38 @@ fn spawnArray(a: u32) -> u32 {
     return params.spawnHead.w + SPAWN_EVENTS + EVENT_WORDS * capacity + a * capacity;
 }
 
-// The births the step's kernels take: the plan's, or for an emitter that
-// spawns from events the merged ones.
+// The births the step's kernels take, by element: the plan's, or for an
+// emitter that spawns from events the merged ones; an emitter of units
+// takes each birth's points as its elements (unitPoints).
 fn birthCount() -> u32 {
     if (!spawning()) {
-        return params.counts.y;
+        return params.counts.y * unitPoints();
     }
     return events[spawnWord(SPAWN_BIRTHS)];
+}
+
+// The points a birth gives: a unit's, 1 for a particle.
+fn unitPoints() -> u32 {
+    return params.units.x;
+}
+
+// Word k of the birth element j belongs to: birth j / unitPoints() (a
+// unit's points share its birth); a particle's own.
+fn birthWord(j: u32, k: u32) -> vec4<u32> {
+    return births[3u * (j / unitPoints()) + k];
+}
+
+// Birth element j's serial's low word: a unit's points take the unit's
+// serial times its points plus their place, as the core's.
+fn birthSerial(j: u32) -> u32 {
+    let points = unitPoints();
+    return birthWord(j, 0u).x * points + j % points;
+}
+
+// Birth element j's point in its unit, across and down.
+fn unitPlace(j: u32) -> vec2<f32> {
+    let point = j % unitPoints();
+    return vec2<f32>(f32(point % params.units.y), f32(point / params.units.y));
 }
 
 // A copied source event's word.

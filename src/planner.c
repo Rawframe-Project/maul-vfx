@@ -102,11 +102,19 @@ static uint8_t GivenOf(const mvfxInstance* instance, int32_t emitter, const mvfx
 // the capacity at the instance's quality level no simulation could take
 // them at one tick, so they are refused. The room a live particle leaves
 // is the simulation's to judge, as for any birth.
+// The births an emitter holds at most: its particles, or for an emitter
+// of units its units (a birth is a unit, its points born together).
+static int32_t UnitCapacity(const mvfxInstance* instance, int32_t emitter)
+{
+    return instance->emitters[emitter].capacity / instance->effect->emitters[emitter].unitPoints;
+}
+
 static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
     int64_t start = instance->stepStart;
-    int32_t taken = state->hostCount < state->capacity ? state->hostCount : state->capacity;
+    int32_t units = UnitCapacity(instance, emitter);
+    int32_t taken = state->hostCount < units ? state->hostCount : units;
     for (int32_t h = 0; h < taken; ++h)
     {
         const mvfxHostBirth* host = &state->hostQueue[h];
@@ -226,13 +234,14 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
     PlanHostBirths(instance, emitter);
     mvfxBirths births;
     mvfxOpenBirths(instance, emitter, &births);
-    int64_t room = 2 * (int64_t)state->capacity;
+    int32_t units = UnitCapacity(instance, emitter);
+    int64_t room = 2 * (int64_t)units;
     int64_t tick = 0;
     int64_t count = 0;
     while ((count = mvfxNextBirths(&births, instance->clock, &tick)) > 0)
     {
         // At one tick no more than the capacity fits, whatever has died.
-        int64_t taken = count < state->capacity ? count : state->capacity;
+        int64_t taken = count < units ? count : units;
         taken = taken < room - state->planCount ? taken : room - state->planCount;
         for (int64_t i = 0; i < taken; ++i)
         {

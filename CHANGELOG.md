@@ -873,9 +873,20 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxInstance_ExpandPlexus` do: through the ribbon passes, the links
   read as chains of two. An emitter with plexus links keeps 112 bytes a
   link of its most for them and their output.
+- The GPU part runs chains and sheets (`mvfxUnitDef`) without pins,
+  aerodynamics, self-collision or tearing, beside nothing that kills,
+  collides, spawns from events, steers or touches neighbors: a workgroup
+  a unit takes its substeps, the core's sixteen constraint sets in its
+  order with the damping, and a unit is born, dies and is counted for
+  room whole. The planner counts an emitter of units' room in units, a
+  birth a unit, and `mvfxEmitterView` gains the unit, its points, its
+  width and its rest lengths.
 
 ### Fixed
 
+- The GPU part's documented first-step upload counts an emitter's
+  sources' words with their ribbon words (the bytes it gave were 16
+  short).
 - The GPU part's neighbor grid moves a world-space emitter's places by
   the anchor's shift before it reads them, as the CPU path's step does;
   a moving instance's grid was built from the places before the shift.

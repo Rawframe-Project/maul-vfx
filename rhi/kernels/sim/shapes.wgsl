@@ -77,7 +77,7 @@ fn turnsFraction(ticks: vec2<u32>, speed: f32, halved: bool) -> f32 {
 fn arcFraction(j: u32, words: vec4<u32>) -> f32 {
     let mode = params.shapeModes.x;
     if (mode == ARC_LOOP || mode == ARC_PING_PONG) {
-        let tickLow = params.start.x + births[3u * j].z;
+        let tickLow = params.start.x + birthWord(j, 0u).z;
         let tick = vec2<u32>(tickLow, params.start.y + select(0u, 1u, tickLow < params.start.x));
         let delay = params.shapeModes.zw;
         var age = vec2<u32>(0u);
@@ -91,7 +91,7 @@ fn arcFraction(j: u32, words: vec4<u32>) -> f32 {
         return select(2.0 - there, there, there <= 1.0);
     }
     if (mode == ARC_BURST_SPREAD) {
-        let batch = births[3u * j + 1u];
+        let batch = birthWord(j, 1u);
         return select(0.0, ratio(vec2<u32>(batch.z, 0u), vec2<u32>(batch.w, 0u)), batch.w > 1u);
     }
     return unitFloat(words.w);

@@ -105,7 +105,7 @@ fn birthPlace(first: u32, j: u32) -> vec3<f32> {
 // one not of an event by source, none by batch.
 fn takesCounter(j: u32) -> bool {
     let ids = params.ribbon.x;
-    return ids == RIBBON_ONE || (ids == RIBBON_PER_SOURCE && births[3u * j + 2u].w == 0u);
+    return ids == RIBBON_ONE || (ids == RIBBON_PER_SOURCE && birthWord(j, 2u).w == 0u);
 }
 
 // Birth j's fixed id: its batch's first serial (its serial less its batch
@@ -113,10 +113,10 @@ fn takesCounter(j: u32) -> bool {
 // particle's serial (in its host record's free word).
 fn fixedId(j: u32) -> u32 {
     if (params.ribbon.x == RIBBON_PER_SOURCE) {
-        let host = births[3u * j + 2u].y;
+        let host = birthWord(j, 2u).y;
         return births[6u * params.counts.x + 4u * host + 3u].w & ~RIBBON_COUNTER_TAG;
     }
-    return births[3u * j].x - births[3u * j + 1u].z;
+    return birthWord(j, 0u).x - birthWord(j, 1u).z;
 }
 
 fn counterTag() -> u32 {

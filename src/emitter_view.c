@@ -258,6 +258,13 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->contacts = e->contacts;
     viewOut->kills = Kills(e);
     viewOut->plexus = e->plexus;
+    viewOut->unit = e->unit;
+    viewOut->unitPoints = e->unitPoints;
+    viewOut->unitWidth = e->unitWidth;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        viewOut->unitRests[k] = e->unitRests[k];
+    }
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
         .breakDistance = e->ribbonBreakDistance,
