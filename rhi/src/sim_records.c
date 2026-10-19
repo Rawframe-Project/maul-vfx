@@ -42,7 +42,7 @@ static bool IsRecordsDefValid(const mvfxGpuSim* sim, const mvfxGpuRecordsDef* de
 }
 
 // Whether a ribbons def is one a pass can be added from, past its layout:
-// its emitter's ribbons one piece a segment without a pinned head.
+// its emitter's ribbons without a pinned head.
 static bool IsRibbonsDefValid(const mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
 {
     if (def->cookie != MVFX_GPU_RIBBONS_DEF_COOKIE || def->emitter < 0 ||
@@ -53,8 +53,7 @@ static bool IsRibbonsDefValid(const mvfxGpuSim* sim, const mvfxGpuRibbonsDef* de
     const mvfxRibbonView* ribbon = &sim->views[def->emitter].ribbon;
     return def->points.index1 != 0 && def->ribbons.index1 != 0 && def->pointOffset % 4u == 0 &&
            def->ribbonOffset % 4u == 0 && def->countsOffset % 4u == 0 && def->pointCapacity >= 0 &&
-           def->ribbonCapacity >= 0 && IsViewWithin(&def->view) && ribbon->pieces <= 1 &&
-           !ribbon->pinHead;
+           def->ribbonCapacity >= 0 && IsViewWithin(&def->view) && !ribbon->pinHead;
 }
 
 // The frame's particles, statistics and grids of an emitter a record pass

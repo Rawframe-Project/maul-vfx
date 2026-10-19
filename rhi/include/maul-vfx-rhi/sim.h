@@ -420,8 +420,10 @@ extern "C"
 
     /// Adds the passes writing an emitter's ribbons to the frame the host
     /// builds, as mvfxInstance_WriteRibbons writes them on the CPU path: a
-    /// transfer pass, a keys pass, 8 radix passes, a pass in one workgroup
-    /// finding the chains and one writing their points. Its live particles
+    /// transfer pass, a keys pass, 8 radix passes, for ribbons of more
+    /// pieces than one a pass cutting each segment into its pieces, a pass
+    /// in one workgroup finding the chains and one writing their points.
+    /// Its live particles
     /// are chained by ribbon id, oldest first, in the ids' order; each
     /// chain of two or more points is a ribbon, and those that fit whole
     /// after the ones before are written, none after the first that does
@@ -431,20 +433,23 @@ extern "C"
     /// summed and turned in binary32, within a relative 1e-4 of what the
     /// CPU path's binary64 makes of the same particles (the paths'
     /// particles differ within their own tolerance, and a point's frame
-    /// turns with that over its neighbours' distance). The passes come
-    /// where a record pass's would
-    /// (mvfxGpuSim_AddRecords), and count among its MVFX_GPU_RECORD_PASSES
-    /// an emitter a frame. An emitter without particles at the instance's
-    /// quality level, or not drawn as ribbons, writes no point; its counts,
-    /// if asked for, are 0. This part writes a segment as one piece and no
-    /// pinned head yet: an emitter whose ribbons have more pieces or a
-    /// pinned head is refused.
+    /// turns with that over its neighbours' distance, a side and a face
+    /// normal more as the tangent nears the direction faced across, by
+    /// the sine between them). A segment's pieces are decided by the
+    /// bend's cosine in binary32: one whose cosine lies within its
+    /// rounding of a limit may be cut into a count one apart, the points
+    /// after it in the chain moved by that. The passes come where a record
+    /// pass's would (mvfxGpuSim_AddRecords), and count among its
+    /// MVFX_GPU_RECORD_PASSES an emitter a frame. An emitter without
+    /// particles at the instance's quality level, or not drawn as ribbons,
+    /// writes no point; its counts, if asked for, are 0. This part writes
+    /// no pinned head yet: an emitter whose ribbons have one is refused.
     ///
     /// @param sim  The simulation.
     /// @param def  Where the ribbons go, from mvfxDefaultGpuRibbonsDef.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         def without its cookie, an emitter out of range or whose
-    ///         ribbons have pieces or a pinned head, a layout whose stride
+    ///         ribbons have a pinned head, a layout whose stride
     ///         is not a multiple of 4 or with a neighbor field, an offset
     ///         not a multiple of 4, a negative capacity, a null points or
     ///         ribbons buffer, or a view whose origin or eye is out of range
@@ -490,7 +495,7 @@ extern "C"
 
     /// Counts the bytes the last mvfxGpuSim_Record uploaded: its step
     /// passes' as it states them, and its record passes' (1,952 a pass, 4 for
-    /// one of an emitter with no particles) and ribbon passes' (2,016 a
+    /// one of an emitter with no particles) and ribbon passes' (2,096 a
     /// pass, 16 for one that writes no point), so a host can hold its
     /// frameUploadBytes to what its effects take.
     ///

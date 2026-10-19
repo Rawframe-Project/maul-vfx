@@ -11,9 +11,11 @@
 #include "rhi_harness.h"
 
 #include "emitter_step.h"
+#include "force.h"
 #include "half.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "output.h"
 #include "rhi_apart.h"
 #include "test_harness.h"
 
@@ -787,16 +789,17 @@ static uint8_t s_gpuRecords[RECORD_BYTES];
 static uint8_t s_cpuRecords[RECORD_BYTES];
 static uint32_t s_gpuCount[4];
 
-// A run's ribbon points instead (s_ribbonPoints): the list's buffer, the most
-// ribbons it holds, the GPU's list read back and the CPU path's, filled
-// first as the records are.
+// A run's ribbon points instead (s_ribbonPoints): the list's buffer (the
+// list from its word LIST_FIRST), the most ribbons it holds, the GPU's
+// list read back and the CPU path's, filled first as the records are.
 #define LIST_RIBBONS 4096
+#define LIST_FIRST   4
 static bool s_ribbonPoints;
 static int32_t s_recordEmitter;
 static mrhiBufferId s_listBuffer;
 static mrhiResourceId s_listResource;
 static int64_t s_ribbonCapacity;
-static uint32_t s_gpuList[4 * LIST_RIBBONS];
+static uint32_t s_gpuList[4 * LIST_RIBBONS + LIST_FIRST];
 static mvfxRibbon s_cpuList[LIST_RIBBONS];
 
 // The fill's bytes: written before the GPU's records each step.
@@ -846,6 +849,7 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     ribbons.pointOffset = 64;
     ribbons.pointCapacity = s_recordCapacity;
     ribbons.ribbons = s_listResource;
+    ribbons.ribbonOffset = 4u * LIST_FIRST;
     ribbons.ribbonCapacity = s_ribbonCapacity;
     ribbons.counts = count;
     return mvfxGpuSim_AddRibbons(sim, &ribbons) == mvfx_success;
@@ -1168,7 +1172,8 @@ static int64_t s_stepsApart;
 // Whether the run's records must match exactly.
 static bool s_exactRecords;
 
-static bool SameField(const mvfxLayoutField* field, const uint8_t* cpu, const uint8_t* gpu)
+static bool SameField(const mvfxLayoutField* field, const uint8_t* cpu, const uint8_t* gpu,
+                      double slack)
 {
     uint32_t bytes = FieldBytes(field->format);
     bool same = true;
@@ -1183,7 +1188,7 @@ static bool SameField(const mvfxLayoutField* field, const uint8_t* cpu, const ui
             same = a == b;
             break;
         case mvfx_formatFloat32:
-            same = apart <= (double)s_tolerance * (1.0 + fabs(a));
+            same = apart <= (double)s_tolerance * (1.0 + fabs(a)) + slack;
             break;
         case mvfx_formatFloat16:
             same = apart <= fmax(fabs(a) * 0x1p-10, (double)s_tolerance * (1.0 + fabs(a)));
@@ -1283,7 +1288,7 @@ static bool SameSorted(int64_t written)
                                         fabs(MeasureOf(gpu) - last) <= 1e-5 * (1.0 + fabs(last))));
         for (int32_t f = 0; same && cpu != NULL && f < s_layoutView.fieldCount; ++f)
         {
-            same = SameField(&s_layoutView.fields[f], cpu, gpu);
+            same = SameField(&s_layoutView.fields[f], cpu, gpu, 0.0);
         }
         if (!same)
         {
@@ -1375,7 +1380,12 @@ static bool SameRibbonList(int64_t* writtenOut)
     *writtenOut = taken;
     bool same = s_gpuCount[0] == (uint32_t)points && s_gpuCount[1] == (uint32_t)ribbons &&
                 s_gpuCount[2] == (uint32_t)taken && s_gpuCount[3] == (uint32_t)listed &&
-                memcmp(s_cpuList, s_gpuList, sizeof s_gpuList) == 0;
+                memcmp(s_cpuList, s_gpuList + LIST_FIRST, sizeof s_cpuList) == 0;
+    // The words before the list: the fill's.
+    for (int32_t w = 0; same && w < LIST_FIRST; ++w)
+    {
+        same = s_gpuList[w] == RECORD_FILL * 0x01010101u;
+    }
     if (!same)
     {
         printf("ribbons differ: points %lld (GPU %u), ribbons %lld (GPU %u), written %lld and "
@@ -1384,6 +1394,69 @@ static bool SameRibbonList(int64_t* writtenOut)
                (long long)taken, (long long)listed, s_gpuCount[2], s_gpuCount[3]);
     }
     return same;
+}
+
+// A float32 vector field of a record, its first three components (0 for
+// a field the layout lacks).
+static void VectorField(const uint8_t* record, mvfxField kind, double out[3])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = 0.0;
+    }
+    for (int32_t f = 0; f < s_layoutView.fieldCount; ++f)
+    {
+        const mvfxLayoutField* field = &s_layoutView.fields[f];
+        for (uint32_t k = 0; field->field == kind && k < 3 && k < field->components; ++k)
+        {
+            out[k] = Decoded(field->format, record + field->offset + 4u * k);
+        }
+    }
+}
+
+// What a ribbon point's side and face normal may differ by past the
+// tolerance: units of the tangent crossed with the direction it faces
+// across (the eye's from its place, or the emitter's normal in the
+// world), they are the tangent's tolerance over the sine between the two
+// apart, which grows as the tangent nears that direction. From the CPU
+// path's record.
+static double FacingSlack(const mvfxLayoutField* field, const uint8_t* cpu)
+{
+    if (!s_ribbonPoints ||
+        (field->field != mvfx_recordSide && field->field != mvfx_recordFaceNormal))
+    {
+        return 0.0;
+    }
+    const mvfxInstance* instance = mvfxContextInstance(s_context, s_cpu);
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[s_recordEmitter];
+    double place[3];
+    double tangent[3];
+    VectorField(cpu, mvfx_recordPosition, place);
+    VectorField(cpu, mvfx_recordTangent, tangent);
+    double across[3];
+    if (compiled->ribbonFacing == mvfx_ribbonFaceNormal)
+    {
+        mvfxRecordSource source = mvfxOpenRecordSource(instance, s_recordEmitter, s_view.origin);
+        float normal[3];
+        mvfxUnmapVector(&source.map, compiled->ribbonNormal, normal);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            across[k] = (double)normal[k];
+        }
+    }
+    else
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            across[k] = s_view.eye[k] - s_view.origin[k] - place[k];
+        }
+    }
+    double cross[3] = {tangent[1] * across[2] - tangent[2] * across[1],
+                       tangent[2] * across[0] - tangent[0] * across[2],
+                       tangent[0] * across[1] - tangent[1] * across[0]};
+    double sine = sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]) /
+                  sqrt(across[0] * across[0] + across[1] * across[1] + across[2] * across[2]);
+    return (double)s_tolerance / fmax(sine, 1e-6);
 }
 
 static bool SameRecords(void)
@@ -1427,7 +1500,7 @@ static bool SameRecords(void)
         for (int32_t f = 0; same && f < s_layoutView.fieldCount; ++f)
         {
             const mvfxLayoutField* field = &s_layoutView.fields[f];
-            same = s_sorted || SameField(field, cpu, gpu);
+            same = s_sorted || SameField(field, cpu, gpu, FacingSlack(field, cpu));
             if (!same)
             {
                 printf("field %d (kind %u) differs: %g, GPU %g\n", f, field->field,

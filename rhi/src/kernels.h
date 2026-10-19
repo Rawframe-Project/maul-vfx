@@ -69,6 +69,8 @@ typedef enum mvfxKernel
     mvfx_kernelRibbonKeys = 21,
     mvfx_kernelRibbonChains = 22,
     mvfx_kernelRibbonPoints = 23,
+    // Each segment of ribbons of more pieces than one cut into pieces.
+    mvfx_kernelRibbonPieces = 24,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

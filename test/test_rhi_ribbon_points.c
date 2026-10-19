@@ -17,8 +17,9 @@
 
 #include <math.h>
 
-// A point of every ribbon field, its colour, corner and serial.
-static const mvfxLayoutField s_fields[12] = {
+// A point of every ribbon field, its colour, corner and serial; its
+// velocity, age and orientation, which pieces blend.
+static const mvfxLayoutField s_fields[15] = {
     {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
     {.field = mvfx_recordTangent, .format = mvfx_formatFloat32, .components = 3, .offset = 12},
     {.field = mvfx_recordWidth, .format = mvfx_formatFloat32, .components = 1, .offset = 24},
@@ -30,14 +31,20 @@ static const mvfxLayoutField s_fields[12] = {
     {.field = mvfx_recordColor, .format = mvfx_formatUnorm8, .components = 4, .offset = 64},
     {.field = mvfx_recordCorner, .format = mvfx_formatFloat32, .components = 2, .offset = 68},
     {.field = mvfx_recordSerial, .format = mvfx_formatUint32, .components = 1, .offset = 76},
-    {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 2, .offset = 80}};
+    {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 2, .offset = 80},
+    {.field = mvfx_recordVelocity, .format = mvfx_formatFloat32, .components = 3, .offset = 84},
+    {.field = mvfx_recordAge, .format = mvfx_formatFloat32, .components = 1, .offset = 96},
+    {.field = mvfx_recordOrientation,
+     .format = mvfx_formatFloat32,
+     .components = 4,
+     .offset = 100}};
 
 static mvfxLayoutDef PointLayout(void)
 {
     mvfxLayoutDef layout = mvfxDefaultLayoutDef();
     layout.fields = s_fields;
-    layout.fieldCount = 12;
-    layout.stride = 84;
+    layout.fieldCount = 15;
+    layout.stride = 116;
     return layout;
 }
 
@@ -210,6 +217,92 @@ static void TestSources(Gpu* gpu, mvfxGpu* kernels)
             "points of ribbons by source");
 }
 
+static void TestPieces(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Each segment cut into 4 pieces along the spline, by segment, the
+    // particles turning so orientations blend; then up to 8 as the bend
+    // asks, tiled by distance; then ribbons by batch of 6 pieces, the
+    // points too few for all.
+    const mvfxLayoutDef layout = PointLayout();
+    mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
+    emitter.ribbon.pieces = 4;
+    emitter.ribbon.texture = mvfx_ribbonTilePerSegment;
+    emitter.orientationMode = mvfx_orientationRandom;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 4 * CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points of 4 pieces a segment");
+    emitter.ribbon.pieces = 8;
+    emitter.ribbon.bendAngle = 0.15f;
+    emitter.ribbon.texture = mvfx_ribbonTileByDistance;
+    emitter.ribbon.tileLength = 0.3f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .layout = &layout,
+                   .recordCapacity = 8 * CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points of up to 8 pieces as the bend asks");
+    static const mvfxBurst bursts[1] = {{.time = 0,
+                                         .minCount = 4,
+                                         .maxCount = 8,
+                                         .cycles = 0,
+                                         .interval = 0.02f,
+                                         .probability = 1}};
+    emitter = Ribboned(mvfx_ribbonPerBatch);
+    emitter.capacity = 4096;
+    emitter.bursts = bursts;
+    emitter.burstCount = 1;
+    emitter.ribbon.pieces = 6;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .least = 200,
+                   .layout = &layout,
+                   .recordCapacity = 300,
+                   .ribbons = true,
+                   .ribbonCapacity = 4096},
+            "points of 6 pieces by batch, the points too few");
+}
+
+static void TestAtRest(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Particles at rest at one point, in a still instance: a ribbon of
+    // no length, its share of it by its points; then cut into pieces,
+    // the spline's knots meeting and the bend's ways of no length.
+    const mvfxLayoutDef layout = PointLayout();
+    mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
+    emitter.shape = (mvfxShape){.kind = mvfx_shapePoint, .rotation = {0, 0, 0, 1}};
+    emitter.velocity.speed = (mvfxRange){0.0f, 0.0f};
+    emitter.motion.gravity[1] = 0.0f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .layout = &layout,
+                   .recordCapacity = CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points of a ribbon at rest at one point");
+    emitter.ribbon.pieces = 3;
+    emitter.ribbon.bendAngle = 0.2f;
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .layout = &layout,
+                   .recordCapacity = 3 * CAPACITY,
+                   .ribbons = true,
+                   .ribbonCapacity = 64},
+            "points of pieces at rest at one point");
+}
+
 static void TestNone(Gpu* gpu, mvfxGpu* kernels)
 {
     // An emitter not drawn as ribbons: counts of 0, no point.
@@ -358,14 +451,10 @@ static int32_t Refused(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter
 
 static void TestRefused(Gpu* gpu, mvfxGpu* kernels)
 {
-    // Each malformed def refused; then the valid def for ribbons of more
-    // pieces a segment, or with a pinned head, which this part does not
-    // write yet; then taken.
+    // Each malformed def refused; then the valid def for ribbons with a
+    // pinned head, which this part does not write yet; then taken.
     mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne);
     CHECK(Refused(gpu, kernels, &emitter, 1, BAD_DEFS + 1) == BAD_DEFS, "ribbons defs refused");
-    emitter.ribbon.pieces = 4;
-    CHECK(Refused(gpu, kernels, &emitter, 0, 1) == 1, "ribbons of pieces refused");
-    emitter.ribbon.pieces = 1;
     emitter.ribbon.pinHead = true;
     CHECK(Refused(gpu, kernels, &emitter, 0, 1) == 1, "a pinned head refused");
     emitter.ribbon.pinHead = false;
@@ -378,6 +467,8 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestDistance(gpu, kernels);
     TestBatches(gpu, kernels);
     TestSources(gpu, kernels);
+    TestPieces(gpu, kernels);
+    TestAtRest(gpu, kernels);
     TestNone(gpu, kernels);
     TestRefused(gpu, kernels);
 }

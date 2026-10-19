@@ -390,6 +390,10 @@ void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     words[13] = tables->ribbonColor;
     words[14] = (uint32_t)(listCapacity < (int64_t)UINT32_MAX ? listCapacity : (int64_t)UINT32_MAX);
     words[15] = countWord;
+    const uint32_t cut[4] = {r->pieces > 1 ? (uint32_t)r->pieces : 1u,
+                             r->bendCosines[0] >= -1.5f ? 1u : 0u, 0u, 0u};
+    memcpy(words + 16, cut, sizeof cut);
+    memcpy(words + 20, r->bendCosines, MVFX_MAX_RIBBON_PIECES * sizeof(float));
 }
 
 // Where a particle's values are for the record pass (records.wgsl's

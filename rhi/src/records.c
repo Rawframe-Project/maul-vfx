@@ -103,6 +103,8 @@ static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
     if (ribbonWords != nullptr)
     {
         memcpy(pass->ribbonWords, ribbonWords, sizeof pass->ribbonWords);
+        // The most pieces a segment is cut into (ribbon_records.wgsl's cut).
+        pass->cut = ribbonWords[16] > 1u;
     }
     const mrhiAccess written[2] = {
         {.resource = pass->numbers, .kind = mrhi_accessCopyDestination},
@@ -129,6 +131,10 @@ static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
     {
         added = added && AddKernelPass(device, used, bound, &pass->keys) &&
                 AddRadixPasses(device, pass);
+    }
+    if (pass->cut)
+    {
+        added = added && AddKernelPass(device, used, bound, &pass->pieces);
     }
     if (pass->ribbons)
     {
@@ -257,6 +263,11 @@ static bool RecordPass(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordP
                                 pass->ribbons ? pipelines->ribbonKeys : pipelines->keys, bound,
                                 count, nullptr, SortGroups(pass)) &&
                    RecordRadix(device, pipelines, pass);
+    }
+    if (recorded && pass->cut)
+    {
+        recorded = RecordKernel(device, pass->pieces, pipelines->ribbonPieces, bound, count,
+                                nullptr, pass->words[5]);
     }
     if (recorded && pass->ribbons)
     {

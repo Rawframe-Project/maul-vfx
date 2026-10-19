@@ -783,6 +783,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxInstance_WriteRibbons` does (`mvfxGpuSim_AddRibbons`,
   `mvfxGpuRibbonsDef`): its points in the host's layout, the list of the
   ribbons written and their counts (`MVFX_GPU_RIBBON_COUNTS`: the points
-  and ribbons there are and those written), a segment as one piece and
-  no pinned head yet. Its passes count among an emitter's
-  `MVFX_GPU_RECORD_PASSES`.
+  and ribbons there are and those written), each segment cut into its
+  pieces along the spline as the bend asks, no pinned head yet. Its
+  passes count among an emitter's `MVFX_GPU_RECORD_PASSES`.

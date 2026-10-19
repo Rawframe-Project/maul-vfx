@@ -141,10 +141,10 @@ uint32_t mvfxRecordOrder(const mvfxEmitterView* view);
 // The elements of a sort's block; the blocks of a capacity. An emitter
 // that sorts keeps keys and indices twice over its blocks (4 words an
 // element) and two sets of digit counts (256 words a block each); one
-// drawn as ribbons keeps the chains' 7 words an element after them
+// drawn as ribbons keeps the chains' 10 words an element after them
 // (ribbon_records.wgsl's scratch).
 #define MVFX_SORT_BLOCK        1024u
-#define MVFX_RIBBON_SORT_WORDS 11u
+#define MVFX_RIBBON_SORT_WORDS 14u
 uint32_t mvfxSortBlocks(int32_t capacity);
 
 // Whether a layout is one the record pass writes: its stride a multiple of
@@ -163,7 +163,7 @@ void mvfxRecordNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
 
 // The words of a ribbon pass's own numbers (ribbon_records.wgsl's
 // Ribbons), beside its record numbers.
-#define MVFX_RIBBON_WORDS 16
+#define MVFX_RIBBON_WORDS 36
 
 // Whether a layout is one the ribbon pass writes: its stride a multiple
 // of 4 bytes, no neighbor field.
@@ -173,7 +173,8 @@ bool mvfxIsRibbonLayout(const mvfxLayoutView* layout);
 // distance are, the texture coordinate along and the facing, the tile
 // length, the scroll's offset at the plan's end, the width, the normal,
 // the width's and colour's tables, the list's capacity and the counts'
-// first word.
+// first word; the most pieces a segment is cut into, whether the bend
+// decides them, and the bend's cosines.
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxStepTables* tables, int64_t listCapacity, uint32_t countWord,
                        uint32_t words[MVFX_RIBBON_WORDS]);

@@ -947,7 +947,8 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         .scatter = mvfxGpuPipeline(sim->gpu, mvfx_kernelSortScatter),
         .ribbonKeys = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonKeys),
         .ribbonChains = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonChains),
-        .ribbonPoints = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPoints)};
+        .ribbonPoints = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPoints),
+        .ribbonPieces = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPieces)};
     for (int32_t n = 0; n < sim->emitterCount; ++n)
     {
         Emitter* emitter = &sim->emitters[sim->order[n]];

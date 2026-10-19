@@ -3,6 +3,7 @@
   "entries": [
     {"name": "ribbonKeys", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 1028},
+    {"name": "ribbonPieces", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "ribbonChains", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 2056},
     {"name": "ribbonPoints", "stage": "compute", "workgroup": [64, 1, 1]}
@@ -17,7 +18,7 @@
     {"table": 0, "slot": 6, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 7, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 8, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
-    {"table": 0, "slot": 9, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 64}
+    {"table": 0, "slot": 9, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 144}
   ],
   "constants": []
 }

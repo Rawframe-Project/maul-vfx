@@ -47,21 +47,25 @@ typedef struct mvfxRecordPipelines
     mrhiComputePipelineId ribbonKeys;
     mrhiComputePipelineId ribbonChains;
     mrhiComputePipelineId ribbonPoints;
+    mrhiComputePipelineId ribbonPieces;
 } mvfxRecordPipelines;
 
 // A record pass added to the frame open: its passes (only the transfer
 // pass, writing counts of 0, for an emitter without particles at the
 // instance's quality level or a ribbon pass of one not drawn as ribbons;
 // the sort's for one that sorts or a ribbon pass; the chains' for a
-// ribbon pass), resources, numbers and workgroups.
+// ribbon pass, and the pieces' for ribbons of more pieces than one),
+// resources, numbers and workgroups.
 typedef struct mvfxRecordPass
 {
     bool empty;
     bool sorted;
     bool ribbons;
+    bool cut;
     mrhiPassId write;
     mrhiPassId keys;
     mrhiPassId radix[2 * MVFX_SORT_PASSES];
+    mrhiPassId pieces;
     mrhiPassId chains;
     mrhiPassId kernel;
     mrhiResourceId numbers;
