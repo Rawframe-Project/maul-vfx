@@ -8,7 +8,7 @@
 // ticks; a held throttle's steps gathered in one plan; the anchors before
 // and after; the plan's room at one tick and in a plan; finishing at the
 // latest death; clears; the forces and colliders resolved as the CPU
-// path resolves them; and the refusals.
+// path resolves them; a beam's strikes; and the refusals.
 
 #include "collide.h"
 #include "context.h"
@@ -27,6 +27,10 @@
 
 #include <math.h>
 #include <string.h>
+
+// Plans and views are held in static storage where a test reads one: the
+// tests inline into main, whose frame the web build's 64 KiB stack must
+// hold beside the library's.
 
 #define STEPS      90
 #define STEP_TICKS (MVFX_TICKS_PER_SECOND / 60)
@@ -172,7 +176,7 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
     for (int32_t s = 0; s < STEPS; ++s)
     {
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        mvfxEmitterPlan plan;
+        static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         const mvfxInstance* live = mvfxContextInstance(context, planned);
         same = same && plan.start + plan.ticks == live->clock && plan.refused == 0 &&
@@ -211,7 +215,7 @@ static void TestRoom(void)
     emitter.rate = 0.0f;
     mvfxEffectId effect = Effect(context, &emitter);
     mvfxInstanceId planned = Instance(context, effect, true);
-    mvfxEmitterPlan plan;
+    static mvfxEmitterPlan plan;
     uint64_t refused = 0;
     int32_t births = 0;
     for (int32_t s = 0; s < 8; ++s)
@@ -310,7 +314,7 @@ static void TestCleared(void)
     mvfxEffectId effect = Effect(context, &emitter);
     mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
-    mvfxEmitterPlan plan;
+    static mvfxEmitterPlan plan;
     bool cleared = true;
     for (int32_t s = 0; s < 3; ++s)
     {
@@ -381,7 +385,7 @@ static void TestAnchors(void)
                       mvfx_success,
               "moved");
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        mvfxEmitterPlan plan;
+        static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         double last = 300.0 * (s > 0 ? s - 1 : 0);
         same = same && plan.capacity == 1000 && plan.seed == 7 && plan.from.origin[0] == last &&
@@ -426,7 +430,7 @@ static void TestHighWords(void)
     for (int32_t s = 0; s < 6; ++s)
     {
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        mvfxEmitterPlan plan;
+        static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         Gather(&plan, mvfxContextInstance(context, planned)->clock);
         same = same && SameAsHeld(mvfxContextInstance(context, cpu));
@@ -451,7 +455,7 @@ static void TestRefusals(void)
     mvfxEffectId effect = Effect(context, &emitter);
     mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
-    mvfxEmitterPlan plan;
+    static mvfxEmitterPlan plan;
     bool refused = mvfxInstance_GetEmitterPlan(context, cpu, 0, &plan) == mvfx_errorState &&
                    mvfxInstance_GetEmitterPlan(NULL, planned, 0, &plan) == mvfx_errorInvalid &&
                    mvfxInstance_GetEmitterPlan(context, planned, 0, NULL) == mvfx_errorInvalid &&
@@ -526,7 +530,7 @@ static void TestHostBirths(void)
               "spawned");
     }
     CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-    mvfxEmitterPlan plan;
+    static mvfxEmitterPlan plan;
     CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
     const mvfxInstance* core = mvfxContextInstance(context, cpu);
     const float* v[3] = {mvfxAttributeArray(core, 0, mvfx_attributeVelocityX),
@@ -599,7 +603,7 @@ static void TestEventSpawn(void)
     def.emitterCount = 2;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 1, &view) == mvfx_success &&
               view.lifetime.kind == mvfx_sourceRange && view.lifetime.components == 1 &&
               view.lifetime.min[0] == 0.3f && view.lifetime.max[0] == 0.5f &&
@@ -619,7 +623,7 @@ static void TestEventSpawn(void)
               mvfxInstance_Spawn(context, planned, 1, &drawn) == mvfx_success,
           "spawned");
     CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-    mvfxEmitterPlan plan;
+    static mvfxEmitterPlan plan;
     CHECK(mvfxInstance_GetEmitterPlan(context, planned, 1, &plan) == mvfx_success, "a plan");
     // Before its delay, the host's births alone.
     bool numbered = plan.hostBirthCount == 4 && plan.birthCount == 4 && plan.owed == 4 &&
@@ -669,6 +673,84 @@ static void TestEventSpawn(void)
     mvfxDestroyContext(context);
 }
 
+// Steps a CPU beam and a planned one by the given ticks, the plans
+// gathered and compared with the CPU path's points after each step; the
+// instances stopped from step stopAt (none when negative). Returns the
+// births planned, or -1 when a step differed.
+static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, int32_t stepCount,
+                           int32_t stopAt)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEffectId effect = Effect(context, emitter);
+    mvfxInstanceId cpu = Instance(context, effect, false);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    s_heldCount = 0;
+    bool same = true;
+    int32_t births = 0;
+    for (int32_t s = 0; same && s < stepCount; ++s)
+    {
+        if (s == stopAt)
+        {
+            CHECK(mvfxInstance_Stop(context, cpu, mvfx_stopEmitting) == mvfx_success &&
+                      mvfxInstance_Stop(context, planned, mvfx_stopEmitting) == mvfx_success,
+                  "stopped");
+        }
+        CHECK(mvfxContext_StepTicks(context, steps[s]) == mvfx_success, "stepped");
+        static mvfxEmitterPlan plan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+        const mvfxInstance* live = mvfxContextInstance(context, planned);
+        same = plan.refused == 0 && BatchesWhole(&plan) &&
+               (plan.birthCount == 0 || plan.birthCount == emitter->beam.segments + 1);
+        births += plan.birthCount;
+        Gather(&plan, live->clock);
+        mvfxEmitterStats a;
+        mvfxEmitterStats b;
+        CHECK(mvfxInstance_GetEmitterStats(context, cpu, 0, &a) == mvfx_success &&
+                  mvfxInstance_GetEmitterStats(context, planned, 0, &b) == mvfx_success,
+              "stats");
+        same = same && SameAsHeld(mvfxContextInstance(context, cpu)) && a.owed == b.owed &&
+               a.status == b.status &&
+               mvfxContextInstance(context, cpu)->emitters[0].beamStrike ==
+                   live->emitters[0].beamStrike;
+    }
+    mvfxDestroyContext(context);
+    return same ? births : -1;
+}
+
+// A planned beam's strikes are the stepped one's: their ticks, serials and
+// lives, the strikes skipped within a long step, the 64 a step works
+// through, a stop.
+static void TestBeams(void)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.capacity = 6;
+    emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
+    emitter.ribbon.ids = mvfx_ribbonOne;
+    emitter.beam = (mvfxBeamDef){
+        .enabled = true, .segments = 5, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
+    int64_t steps[64];
+    for (int32_t s = 0; s < 64; ++s)
+    {
+        // Ticks one at a time, frames, and steps longer than a life.
+        steps[s] = s < 8 ? 1 : (s % 5 == 0 ? MVFX_TICKS_PER_SECOND / 2 : STEP_TICKS);
+    }
+    int32_t births = CompareBeam(&emitter, steps, 64, -1);
+    CHECK(births > 6 * 20, "a planned beam's strikes are the stepped one's");
+    // Lives far shorter than a step: past 64 strikes the next is struck at
+    // the step's end.
+    emitter.lifetime = mvfxRangeSource(0.001f, 0.004f);
+    int64_t seconds[4] = {MVFX_TICKS_PER_SECOND, 3, MVFX_TICKS_PER_SECOND, STEP_TICKS};
+    births = CompareBeam(&emitter, seconds, 4, -1);
+    CHECK(births >= 6 * 3, "64 strikes a step, as the stepped beam's");
+    // Stopped, no strike follows the one living.
+    emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
+    births = CompareBeam(&emitter, steps, 64, 30);
+    CHECK(births > 0, "a stopped planned beam strikes as the stepped one");
+}
+
 // Whether a planned instance of an effect is refused, its id null.
 static bool PlannedRefused(mvfxContext* context, const mvfxEffectDef* def)
 {
@@ -687,30 +769,22 @@ static void TestCannotBePlanned(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    // A beam.
-    mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), Emitter(16)};
-    emitters[0].rate = 0.0f;
-    emitters[0].capacity = 8;
-    emitters[0].ribbon.ids = mvfx_ribbonOne;
-    emitters[0].beam = (mvfxBeamDef){
-        .enabled = true, .segments = 4, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
-    mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = emitters;
-    def.emitterCount = 1;
-    bool refused = PlannedRefused(context, &def);
     // A gas, and a water surface.
+    mvfxEmitterDef emitter = Emitter(16);
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
     def.emitterCount = 1;
     const mvfxGasDef gas = mvfxDefaultGasDef();
     def.gases = &gas;
     def.gasCount = 1;
-    refused = refused && PlannedRefused(context, &def);
+    bool refused = PlannedRefused(context, &def);
     def.gasCount = 0;
     def.gases = NULL;
     const mvfxWaterDef water = mvfxDefaultWaterDef();
     def.waters = &water;
     def.waterCount = 1;
     refused = refused && PlannedRefused(context, &def);
-    CHECK(refused, "beams, gases and water surfaces refused");
+    CHECK(refused, "gases and water surfaces refused");
     mvfxDestroyContext(context);
 }
 
@@ -722,7 +796,7 @@ static uint64_t FeaturesOf(mvfxContext* context, const mvfxEmitterDef* emitter)
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     if (mvfxCreateEffect(context, &def, &effect) != mvfx_success ||
         mvfxEffect_GetEmitterView(context, effect, 0, &view) != mvfx_success)
     {
@@ -745,7 +819,7 @@ static void TestRibbonView(void)
     ribboned.ribbon.texture = mvfx_ribbonTileByDistance;
     ribboned.ribbon.breakDistance = 0.5f;
     mvfxEffectId ribbons = Effect(context, &ribboned);
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     const mvfxAttributeArrays* arrays = &view.arrays;
     CHECK(mvfxEffect_GetEmitterView(context, ribbons, 0, &view) == mvfx_success &&
               arrays->ribbon >= 10 && arrays->ribbonDistance > arrays->ribbon &&
@@ -757,7 +831,7 @@ static void TestRibbonView(void)
     instanceDef.effect = ribbons;
     instanceDef.planned = true;
     mvfxInstanceId planned = {0};
-    mvfxEmitterPlan plan;
+    static mvfxEmitterPlan plan;
     CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success &&
               mvfxContext_StepTicks(context, 1) == mvfx_success &&
               mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
@@ -833,7 +907,7 @@ static void TestView(void)
         .mode = mvfx_directionCone, .direction = {0, 1, 0}, .coneAngle = 0.4f, .speed = {2, 4}};
     emitter.motion.drag = 0.5f;
     mvfxEffectId effect = Effect(context, &emitter);
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
     const mvfxVelocityView* v = &view.velocity;
     float dots[3] = {v->tangentA[0] * v->tangentB[0] + v->tangentA[1] * v->tangentB[1] +
@@ -1119,7 +1193,7 @@ static void TestForces(void)
                   "moved");
         }
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        mvfxEmitterPlan plan;
+        static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
         const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
         same = plan.forceCount == 6;
@@ -1132,7 +1206,7 @@ static void TestForces(void)
                SameBox(&plan.forces[5], &state->forces[5]);
     }
     CHECK(same, "the plan's forces are the CPU path's");
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               view.forceKinds == 0x3Fu && view.forceGrids[5].index1 == grid.index1 &&
               view.forceGrids[5].generation == grid.generation && view.forceGrids[4].index1 == 0,
@@ -1225,7 +1299,7 @@ static void TestColliders(void)
                   "moved");
         }
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        mvfxEmitterPlan plan;
+        static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
         const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
         same = plan.colliderCount == (s < 5 ? 6 : 5) && plan.colliderCount == state->colliderCount;
@@ -1243,7 +1317,7 @@ static void TestColliders(void)
                plan.restSpeed == 0.2f * state->velocityModules.sigma;
     }
     CHECK(same, "the plan's colliders are the CPU path's");
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               view.colliderKinds == 0xFu && view.colliderGrids[3].index1 == grid.index1 &&
               view.colliderGrids[0].index1 == 0 && !view.sceneQueries && !view.depthImage,
@@ -1322,7 +1396,7 @@ static void TestModulesAndKills(void)
                   "moved");
         }
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-        mvfxEmitterPlan plan;
+        static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
         const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
         const mvfxResolvedVelocityModules* m = &state->velocityModules;
@@ -1340,7 +1414,7 @@ static void TestModulesAndKills(void)
         }
     }
     CHECK(same, "the plan's velocity modules and kill rules are the CPU path's");
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
     const mvfxModulesView* m = &view.modules;
     CHECK(m->limitSpeed && m->limitDampen == 4.0f && m->moves && m->motionScale.value == 0.5f &&
@@ -1392,7 +1466,7 @@ static void TestOverLifeView(void)
     emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
     emitter.eventCapacity = 77;
     mvfxEffectId effect = Effect(context, &emitter);
-    mvfxEmitterView view;
+    static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
     const mvfxOverLifeView* o = &view.overLife;
     CHECK(o->color && o->colorInput == mvfx_overSpeed && o->colorRange[0] == 1.0f &&
@@ -1547,7 +1621,7 @@ static void TestDepth(void)
                       "moved");
             }
             CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-            mvfxEmitterPlan plan;
+            static mvfxEmitterPlan plan;
             CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success,
                   "a plan");
             const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
@@ -1571,6 +1645,7 @@ int main(void)
     TestHostBirths();
     TestEventSpawn();
     TestCannotBePlanned();
+    TestBeams();
     TestView();
     TestRibbonView();
     TestForces();

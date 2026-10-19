@@ -801,3 +801,6 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   bounds join it as `mvfxInstance_GetBounds` does: the statistics record
   holds it (`MVFX_GPU_STATISTICS_WORDS` is 46), the step uploading 28
   bytes more for such an emitter.
+- A planned instance may hold beams: a plan gives a beam's strikes as the
+  CPU path strikes them (each at the tick the last one's points die, the
+  points with the first's life), their ticks, serials and lives the same.

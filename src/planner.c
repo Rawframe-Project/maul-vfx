@@ -46,15 +46,15 @@ static bool NumberedElsewhere(const mvfxInstance* instance, int32_t emitter)
     return instance->effect->emitters[emitter].eventSpawn.enabled;
 }
 
-// Writes a kept birth into the emitter's plan, the host's particle it is
-// (all ones for one of its own); its death tick and inverse life 0 when
-// the simulation numbers it.
-static void Write(mvfxInstance* instance, int32_t emitter, uint64_t serial, int64_t tick,
-                  int64_t batchIndex, int64_t batchCount, uint32_t host)
+// Writes a kept birth with the given inverse life into the emitter's
+// plan, the host's particle it is (all ones for one of its own); its
+// death tick and inverse life 0 when the simulation numbers it.
+static void WriteLived(mvfxInstance* instance, int32_t emitter, uint64_t serial, int64_t tick,
+                       int64_t batchIndex, int64_t batchCount, uint32_t host, float inverseLife)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
     bool elsewhere = NumberedElsewhere(instance, emitter);
-    float inverseLife = elsewhere ? 0.0f : mvfxInverseLifeOf(instance, emitter, serial, tick);
+    inverseLife = elsewhere ? 0.0f : inverseLife;
     int64_t death = elsewhere ? instance->planStart : mvfxDeathTick(tick, inverseLife);
     uint64_t deathFromStart = (uint64_t)(death - instance->planStart);
     state->plan[state->planCount++] = (mvfxPlannedBirth){
@@ -70,6 +70,16 @@ static void Write(mvfxInstance* instance, int32_t emitter, uint64_t serial, int6
         .host = host,
     };
     state->lastDeath = death > state->lastDeath ? death : state->lastDeath;
+}
+
+// Writes a kept birth, its life drawn from its serial.
+static void Write(mvfxInstance* instance, int32_t emitter, uint64_t serial, int64_t tick,
+                  int64_t batchIndex, int64_t batchCount, uint32_t host)
+{
+    float inverseLife = NumberedElsewhere(instance, emitter)
+                            ? 0.0f
+                            : mvfxInverseLifeOf(instance, emitter, serial, tick);
+    WriteLived(instance, emitter, serial, tick, batchIndex, batchCount, host, inverseLife);
 }
 
 // The values a host's particle gives as a plan names them, and how its
@@ -182,6 +192,23 @@ static void BoundLastDeath(mvfxInstance* instance, int32_t emitter)
     }
 }
 
+// A beam's strike by the plan's end, as the step strikes it: by the
+// clock alone, since a strike's tick is the last one's death, by which
+// every point has ended. A strike fits: the capacity holds its points.
+static void PlanStrike(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxStrike strike;
+    if (!mvfxNextStrike(instance, emitter, &strike))
+    {
+        return;
+    }
+    for (int32_t i = 0; i < strike.points; ++i)
+    {
+        WriteLived(instance, emitter, mvfxSaturatingAdd(strike.first, (uint64_t)i), strike.tick, i,
+                   strike.points, UINT32_MAX, strike.inverseLife);
+    }
+}
+
 void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
@@ -216,6 +243,7 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
         state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)(count - taken));
     }
     mvfxSaveBirths(instance, &births);
+    PlanStrike(instance, emitter);
     BoundLastDeath(instance, emitter);
     mvfxEndDistance(instance, emitter);
 }

@@ -83,8 +83,7 @@ extern "C"
         int32_t offscreenInterval;
         // Whether its particles are simulated elsewhere (maul-vfx/plan.h):
         // it then holds none, and each step writes its emitters' plans. An
-        // effect with gases, water surfaces, beams or emitters spawning
-        // from events cannot be planned yet.
+        // effect with gases or water surfaces cannot be planned yet.
         bool planned;
     } mvfxInstanceDef;
 

@@ -208,23 +208,17 @@ static void AppendEventBirthsBy(mvfxInstance* instance, int32_t emitter, int64_t
 // this in a step of any length.
 #define MAX_STRIKES_A_STEP 64
 
-// A beam's strikes by the step's end: each at the tick the last one's
-// points die (its first at the emitter's start), while the instance has
-// not stopped; a strike's points all take its first's lifetime, and one
-// that dies within the step is skipped, its serials still owed. Past
-// MAX_STRIKES_A_STEP strikes the next is struck at the step's end.
-static void StrikeBeam(mvfxInstance* instance, int32_t emitter)
+bool mvfxNextStrike(mvfxInstance* instance, int32_t emitter, mvfxStrike* strike)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
     if (!compiled->beam.enabled)
     {
-        return;
+        return false;
     }
     int32_t points = compiled->beam.segments + 1;
-    for (int32_t strikes = 0; state->count == 0 && state->beamStrike <= instance->clock &&
-                              state->beamStrike < instance->stopTick;
-         ++strikes)
+    for (int32_t strikes = 0;
+         state->beamStrike <= instance->clock && state->beamStrike < instance->stopTick; ++strikes)
     {
         if (strikes == MAX_STRIKES_A_STEP)
         {
@@ -235,18 +229,32 @@ static void StrikeBeam(mvfxInstance* instance, int32_t emitter)
         float inverseLife = mvfxInverseLifeOf(instance, emitter, first, tick);
         int64_t death = mvfxDeathTick(tick, inverseLife);
         state->beamStrike = death;
-        if (death <= instance->clock)
+        state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)points);
+        if (death > instance->clock)
         {
-            state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)points);
-            continue;
+            *strike = (mvfxStrike){first, tick, inverseLife, points};
+            return true;
         }
-        for (int32_t i = 0; i < points; ++i)
-        {
-            uint64_t k = state->owed;
-            state->owed = mvfxSaturatingAdd(state->owed, 1);
-            mvfxBirth birth = {k, tick, i, points, -1, 0};
-            mvfxAppendBirth(instance, emitter, &birth, inverseLife);
-        }
+    }
+    return false;
+}
+
+// A beam's strike by the step's end, when the emitter holds no particle:
+// its points born in order. When a strike's tick has come the last one's
+// points have ended (their death is that tick), so the emitter's count is
+// 0 then whatever else took them.
+static void StrikeBeam(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxStrike strike;
+    if (instance->emitters[emitter].count != 0 || !mvfxNextStrike(instance, emitter, &strike))
+    {
+        return;
+    }
+    for (int32_t i = 0; i < strike.points; ++i)
+    {
+        mvfxBirth birth = {
+            mvfxSaturatingAdd(strike.first, (uint64_t)i), strike.tick, i, strike.points, -1, 0};
+        mvfxAppendBirth(instance, emitter, &birth, strike.inverseLife);
     }
 }
 

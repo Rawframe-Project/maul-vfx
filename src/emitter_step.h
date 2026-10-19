@@ -17,6 +17,25 @@
 // times its inverse life reaches 1, by the test the step removes it by.
 int64_t mvfxDeathTick(int64_t birth, float inverseLife);
 
+// A beam's strike: segments + 1 births at one tick, all with the first's
+// lifetime.
+typedef struct mvfxStrike
+{
+    uint64_t first;
+    int64_t tick;
+    float inverseLife;
+    int32_t points;
+} mvfxStrike;
+
+// Moves a beam's strikes on to the instance's clock: each at the tick the
+// last one's points die (its first at the emitter's start), while the
+// instance has not stopped; one that dies by the clock is skipped, its
+// serials still owed. Past MAX_STRIKES_A_STEP strikes the next is struck
+// at the clock. Returns whether a strike lives past the clock (at most
+// one does: the next is at its death), with its serials taken. The step
+// strikes by it and the planner alike.
+bool mvfxNextStrike(mvfxInstance* instance, int32_t emitter, mvfxStrike* strike);
+
 // Steps emitter e of instance to the instance's clock.
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter);
 
