@@ -2071,6 +2071,25 @@ static bool SameContactsCapped(int32_t e)
     return same;
 }
 
+// The tears the GPU counted over a run, the last emitter's that tears.
+static uint32_t s_torn;
+
+// Whether an emitter's units' tears, counted by the GPU, are the CPU
+// path's.
+static bool SameTorn(int32_t e)
+{
+    mvfxEmitterStats stats;
+    uint32_t torn = s_record[MVFX_GPU_TORN];
+    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
+                stats.torn == torn;
+    if (!same)
+    {
+        printf("tears: GPU %u, the CPU path's %llu\n", torn, (unsigned long long)stats.torn);
+    }
+    s_torn = torn;
+    return same;
+}
+
 // The links the GPU wrote at a step, read back; the most at a step and
 // the drops over the run; the GPU's drops at the last step (0 after a
 // clear), each emitter's.
@@ -2346,6 +2365,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_neighborsCompared = 0;
     s_capped = 0;
     s_contactsCapped = 0;
+    s_torn = 0;
     s_mostLinks = 0;
     s_linksDropped = 0;
     memset(s_lastDrops, 0, sizeof s_lastDrops);
@@ -2471,6 +2491,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(cpu, e)) &&
                    (!run->emitters[e].neighbors.enabled || SameCapped(e)) &&
                    (!run->emitters[e].contacts.enabled || SameContactsCapped(e)) &&
+                   (!(run->emitters[e].unit.tearStrain > 0.0f) || SameTorn(e)) &&
                    (!run->emitters[e].plexus.enabled || SameLinks(gpu, sim, e)) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
                    (!run->adopting || AdoptGpu(e));
@@ -2541,6 +2562,11 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         printf("  neighbor attributes compared: %lld; queries capped: %u (at least %d)\n",
                (long long)s_neighborsCompared, s_capped, run->leastCapped);
         CHECK(s_capped >= (uint32_t)run->leastCapped, "queries capped");
+    }
+    if (run->leastTorn > 0)
+    {
+        printf("  torn: %u (at least %d)\n", s_torn, run->leastTorn);
+        CHECK(s_torn >= (uint32_t)run->leastTorn, "torn");
     }
     if (run->emitters[0].contacts.enabled)
     {

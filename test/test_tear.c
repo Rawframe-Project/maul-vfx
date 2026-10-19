@@ -4,8 +4,8 @@
 // Tearing: a two-point chain's edge tearing under gravity, its event at
 // the middle along the edge, the freed point falling; a chain pulled
 // apart splitting into two ribbons; a sheet pulled apart across, its
-// across edges torn and its mesh's quads gone, sparks spawned at each
-// tear; no tear below the strain; torn edges set by hand against the
+// across edges torn and its mesh's quads gone, the tears' events in point
+// order, sparks spawned at each tear; no tear below the strain; torn edges set by hand against the
 // mesh's quads and a hanging sheet's motion; a sheet born again whole in
 // the slots of a torn one; a restart's count; the checks.
 
@@ -263,7 +263,24 @@ static void TestSheet(void)
                                                   .maxCount = 1,
                                                   .capacity = 16};
         Open(emitters, 2);
-        Steps(4);
+        // The tears' events, held to each step's end, in point order.
+        int32_t tears = 0;
+        bool ordered = true;
+        for (int32_t s = 0; s < 4; ++s)
+        {
+            Steps(1);
+            const mvfxEvent* events = NULL;
+            int32_t count = 0;
+            CHECK(mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0, &events, &count) ==
+                      mvfx_success,
+                  "events");
+            for (int32_t e = 1; e < count; ++e)
+            {
+                ordered = ordered && events[e].serial > events[e - 1].serial;
+            }
+            tears += count;
+        }
+        CHECK(ordered && tears == (kicked ? 6 : 0), "the tears' events in point order");
         static Record vertices[MOST];
         static uint32_t indices[MOST];
         mvfxExpandBuffers buffers = {.vertices = vertices,

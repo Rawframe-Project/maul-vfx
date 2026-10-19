@@ -170,6 +170,9 @@ typedef struct Run
     // The particles whose contacts passed the most the first emitter must
     // have counted over the run (none needed for 0).
     int32_t leastContactsCapped;
+    // For an emitter of units that tear, the tears the run must count at
+    // least.
+    int32_t leastTorn;
     // The most links the first emitter must have written at some step,
     // and the drops it must have counted over the run (none needed for
     // 0).

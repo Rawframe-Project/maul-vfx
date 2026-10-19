@@ -285,7 +285,10 @@ struct Step {
     // rotation, its flags; NONE for none); the points pinned (UNIT_PIN_*
     // bits), what they are held to (mvfxAttachKind) and the source's
     // array's first word; the air's normal and tangent drag
-    // (mvfxUnitDef's normalDrag and tangentDrag); for units held to the
+    // (mvfxUnitDef's normalDrag and tangentDrag, 0 for chains) and the
+    // tear strain; the torn edges' array's first word (NONE for none) and
+    // the tears' facts' first word in the events buffer (0 for none:
+    // MVFX_TEAR_FACTS a point, 11 an edge); for units held to the
     // host's frames, the frames' first vector in the births buffer (two a frame: its origin, then its
     // rotation) and how many the host set; for units held to a source's
     // particles, the first vector of their copy in the births buffer (its
@@ -300,6 +303,7 @@ struct Step {
     unitArrays: vec4<u32>,
     unitPins: vec4<u32>,
     unitAero: vec4<f32>,
+    unitTears: vec4<u32>,
     unitFrames: vec4<u32>,
 }
 

@@ -509,7 +509,9 @@ extern "C"
 
     /// Reads the events an emitter of an instance wrote in the last step,
     /// in the order the step met them: deaths by age at its start, then as
-    /// particles move (collisions) and are born (births, their collisions),
+    /// particles move (collisions; a unit's points' first contacts and
+    /// tears after its substeps, point by point, each point's contact, its
+    /// tear across, its tear down) and are born (births, their collisions),
     /// then deaths by kills at its end. They stay until the next step or a
     /// restart; a finished instance's step clears them.
     ///

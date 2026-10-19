@@ -463,12 +463,15 @@ extern "C"
         int16_t neighborVelocity;
         // A unit's pinned points' anchors (3), and at a unit's first point
         // its frame's origin (3) and rotation (4), its flags and its
-        // source (a word each; mvfxUnitDef's pins and attach).
+        // source (a word each; mvfxUnitDef's pins and attach); a unit's
+        // point's torn edges (a word: 1 across, 2 down; mvfxUnitDef's
+        // tearStrain).
         int16_t anchor;
         int16_t attach;
         int16_t attachRotation;
         int16_t attachFlags;
         int16_t attachSource;
+        int16_t torn;
         int32_t count;
     } mvfxAttributeArrays;
 

@@ -32,20 +32,32 @@ void mvfxBeginEvents(mvfxInstance* instance, int32_t emitter);
 // dropped when the buffer is full.
 void mvfxRecordEvent(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact);
 
-// Begins holding an emitter's units' contacts over their substeps
-// (mvfxHoldsContacts): a unit's point writes one collision event a step,
-// its first contact's, built at the contact; the held events join the
-// step's after the substeps, in point order (a unit's substeps are its
-// one move). Begins holding the contacts of an emitter's first count
-// points, when it holds them; until the end, a collision is held, not
-// recorded.
-void mvfxBeginHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count);
+// Which events a unit's point holds: its first contact, its tear across,
+// its tear down.
+#define MVFX_HELD_CONTACT     1u
+#define MVFX_HELD_TEAR_ACROSS 2u
+#define MVFX_HELD_TEAR_DOWN   4u
+
+// Begins holding an emitter's units' events over their substeps, each
+// built when it happens: a unit's point writes one collision event a step,
+// its first contact's (mvfxHoldsContacts), and an event a tear, at most
+// one an edge (mvfxHoldsTears). The held events join the step's after the
+// substeps point by point, each point's contact, then its tear across,
+// then its tear down (a unit's substeps are its one move). Begins holding
+// the events of an emitter's first count points, when it holds any; until
+// the end, a collision or a tear is held, not recorded.
+void mvfxBeginHeldEvents(mvfxInstance* instance, int32_t emitter, int32_t count);
 
 // Holds a collision fact's event, built now, unless its point holds one.
 void mvfxHoldContact(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact);
 
-// Appends the held events in point order, those past the buffer counted
+// Holds a tear fact's event, built now, as its point's tear across or down
+// (MVFX_HELD_TEAR_*), when the emitter holds tears.
+void mvfxHoldTear(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact,
+                  uint32_t edge);
+
+// Appends the held events point by point, those past the buffer counted
 // dropped, and stops holding.
-void mvfxEndHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count);
+void mvfxEndHeldEvents(mvfxInstance* instance, int32_t emitter, int32_t count);
 
 #endif

@@ -818,8 +818,9 @@ static void ShapeRest(const mvfxEmitterView* view, const mvfxStepTables* tables,
 
 // The units: a step across and down as the core's UnitStep takes it before
 // the instance's turn and scale, the angular drag the unit pass turns its
-// points by a substep, the pins' arrays and kinds, and the air's drag.
-static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[32])
+// points by a substep, the pins' arrays and kinds, the air's drag, and how
+// they tear (the strain, the torn edges' array).
+static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[33])
 {
     const mvfxUnitDef* u = &view->unit;
     units[0] = (uint32_t)(view->unitPoints > 1 ? view->unitPoints : 1);
@@ -847,8 +848,9 @@ static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint
     units[26] = mvfxWordOf(a->attachSource);
     // The air blows sheets alone, as the core's mvfxBlowSheets.
     bool sheet = u->kind == mvfx_unitSheet;
-    mvfxFloatWords(units + 28, sheet ? u->normalDrag : 0.0f, sheet ? u->tangentDrag : 0.0f, 0.0f,
-                   0.0f);
+    mvfxFloatWords(units + 28, sheet ? u->normalDrag : 0.0f, sheet ? u->tangentDrag : 0.0f,
+                   u->tearStrain, 0.0f);
+    units[32] = mvfxWordOf(a->torn);
 }
 
 void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, int32_t emitter,
@@ -913,9 +915,10 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Modules(&plan->modules, at + 100);
     Beam(view, plan, at + 116);
     KillRules(plan, words + MVFX_KILLS_FIRST);
-    // The events the GPU writes (births, deaths, collisions), how many, and
-    // where in the events buffer.
-    words[MVFX_KILLS_FIRST + 1] = view->events & 7u;
+    // The events the GPU writes (births, deaths, collisions, tears), how
+    // many, and where in the events buffer.
+    words[MVFX_KILLS_FIRST + 1] = view->events & (mvfx_eventMaskBirth | mvfx_eventMaskDeath |
+                                                  mvfx_eventMaskCollision | mvfx_eventMaskTear);
     words[MVFX_KILLS_FIRST + 2] = (uint32_t)view->eventCapacity;
     words[MVFX_KILLS_FIRST + 3] = mvfxEventFirst(plan->capacity);
     Sources(view, tables, words + MVFX_SOURCES_FIRST);

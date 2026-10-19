@@ -657,11 +657,15 @@ fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<functio
 // The words of a live particle's facts in the events buffer, and its
 // flags: its life ended within the plan; its contacts make an event; the
 // contact is a unit point's first of its substeps, its tick of the plan
-// in place of its share of the move and its velocity then kept.
+// in place of its share of the move and its velocity then kept; a unit
+// point's edge across or down tore (its facts after the spawn region,
+// units.wgsl's noteTear).
 const EVENT_FACTS: u32 = 12u;
 const EVENT_ENDED: u32 = 1u;
 const EVENT_CONTACT: u32 = 2u;
 const EVENT_SUBSTEP: u32 = 4u;
+const EVENT_TEAR_ACROSS: u32 = 8u;
+const EVENT_TEAR_DOWN: u32 = 16u;
 
 // Notes a live particle's facts of the step for its events, when the
 // emitter writes any: its flags, its first contact, the inverse life it
@@ -687,7 +691,9 @@ fn noteUnitContact(i: u32, tick: u32, first: Hit, velocity: vec3<f32>, inverse: 
     if (params.fateHead.y == 0u || (events[EVENT_FACTS * i] & EVENT_CONTACT) != 0u) {
         return;
     }
-    noteFacts(i, EVENT_CONTACT | EVENT_SUBSTEP, first, inverse);
+    // Its tears of earlier substeps kept.
+    let tore = events[EVENT_FACTS * i] & (EVENT_TEAR_ACROSS | EVENT_TEAR_DOWN);
+    noteFacts(i, EVENT_CONTACT | EVENT_SUBSTEP | tore, first, inverse);
     let at = EVENT_FACTS * i;
     events[at + 1u] = tick;
     for (var k = 0u; k < 3u; k++) {

@@ -56,12 +56,10 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 #define UNITS_BESIDE (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
-// names, colliding with themselves or tearing.
+// names or colliding with themselves.
 static bool UnitsRun(const mvfxEmitterView* view)
 {
-    const mvfxUnitDef* u = &view->unit;
-    return (view->features & UNITS_BESIDE) == 0 && u->selfThickness == 0.0f &&
-           u->tearStrain == 0.0f;
+    return (view->features & UNITS_BESIDE) == 0 && view->unit.selfThickness == 0.0f;
 }
 
 // Whether the part runs an emitter; what it does not, in refusal.
@@ -215,6 +213,11 @@ static bool CreateEventBuffer(mvfxGpuSim* sim, const mvfxEmitterView* view, Emit
     }
     uint64_t words = mvfxEventBufferWords(emitter->capacity, view->eventCapacity) +
                      (spawns ? mvfxSpawnWords(sim->views[emitter->spawnSource].eventCapacity) : 0);
+    // A unit's point's tears of a step, its edges' facts after the rest.
+    bool tears = view->unitPoints > 1 && view->unit.tearStrain > 0.0f &&
+                 (view->events & mvfx_eventMaskTear) != 0;
+    emitter->tearFacts = tears ? (uint32_t)words : 0u;
+    words += tears ? (uint64_t)MVFX_TEAR_FACTS * (uint64_t)emitter->capacity : 0u;
     mrhiBufferUsage usage = mrhi_bufferStorage | mrhi_bufferCopySource |
                             (spawns ? mrhi_bufferCopyDestination : (mrhiBufferUsage)0);
     return CreateBuffer(sim, 4u * words, usage, &emitter->events) &&
@@ -322,6 +325,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->framesAt = StagedBirths(emitter) + (spawn->enabled ? BirthBytes(emitter) : 0);
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
     emitter->ribbons = sim->views[e].ribbon.ids != mvfx_ribbonNone;
+    emitter->tears = sim->views[e].unitPoints > 1 && sim->views[e].unit.tearStrain > 0.0f;
     emitter->beam = sim->views[e].beam.enabled;
     // A unit a workgroup of the unit pass, at most a dispatch's.
     int32_t points = sim->views[e].unitPoints;
@@ -735,6 +739,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
         return result;
     }
     StepNumbers(sim, e, &plan);
+    emitter->words[MVFX_UNIT_TEARS + 1] = emitter->tearFacts;
     result = mvfxSpawnStepNumbers(sim, e, &plan);
     if (result != mvfx_success)
     {
@@ -860,6 +865,9 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         (!emitter->cleared || !emitter->contacts ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_GPU_CONTACTS_CAPPED * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
+        (!emitter->cleared || !emitter->tears ||
+         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
+                    MVFX_GPU_TORN * sizeof(uint32_t), noSerials, sizeof(uint32_t))) &&
         (!emitter->cleared || !emitter->plexus ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_GPU_LINKS * sizeof(uint32_t), noSerials, 2 * sizeof(uint32_t))) &&

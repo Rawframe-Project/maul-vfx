@@ -83,13 +83,15 @@ void mvfxRecordEvent(mvfxInstance* instance, int32_t emitter, const mvfxEventFac
     Append(instance, emitter, &event);
 }
 
-void mvfxBeginHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count)
+void mvfxBeginHeldEvents(mvfxInstance* instance, int32_t emitter, int32_t count)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
-    state->holdingContacts = mvfxHoldsContacts(&instance->effect->emitters[emitter]);
-    if (state->holdingContacts)
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    state->holdingContacts = mvfxHoldsContacts(compiled);
+    state->holdingTears = mvfxHoldsTears(compiled);
+    if (state->holdingContacts || state->holdingTears)
     {
-        memset(state->unitContactHeld, 0, (size_t)count);
+        memset(state->unitHeld, 0, (size_t)count);
     }
 }
 
@@ -97,26 +99,49 @@ void mvfxHoldContact(mvfxInstance* instance, int32_t emitter, const mvfxEventFac
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
     int32_t i = fact->particle;
-    if (state->unitContactHeld[i] == 0)
+    if ((state->unitHeld[i] & MVFX_HELD_CONTACT) == 0)
     {
         BuildEvent(instance, emitter, fact, &state->unitContacts[i]);
-        state->unitContactHeld[i] = 1;
+        state->unitHeld[i] |= MVFX_HELD_CONTACT;
     }
 }
 
-void mvfxEndHeldContacts(mvfxInstance* instance, int32_t emitter, int32_t count)
+void mvfxHoldTear(mvfxInstance* instance, int32_t emitter, const mvfxEventFact* fact, uint32_t edge)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
-    if (!state->holdingContacts)
+    if (!state->holdingTears)
+    {
+        return;
+    }
+    int32_t i = fact->particle;
+    int32_t down = edge == MVFX_HELD_TEAR_DOWN ? 1 : 0;
+    BuildEvent(instance, emitter, fact, &state->unitTears[2 * i + down]);
+    state->unitHeld[i] |= (uint8_t)edge;
+}
+
+void mvfxEndHeldEvents(mvfxInstance* instance, int32_t emitter, int32_t count)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (!state->holdingContacts && !state->holdingTears)
     {
         return;
     }
     state->holdingContacts = false;
+    state->holdingTears = false;
     for (int32_t i = 0; i < count; ++i)
     {
-        if (state->unitContactHeld[i] != 0)
+        uint8_t held = state->unitHeld[i];
+        if ((held & MVFX_HELD_CONTACT) != 0)
         {
             Append(instance, emitter, &state->unitContacts[i]);
+        }
+        if ((held & MVFX_HELD_TEAR_ACROSS) != 0)
+        {
+            Append(instance, emitter, &state->unitTears[2 * i]);
+        }
+        if ((held & MVFX_HELD_TEAR_DOWN) != 0)
+        {
+            Append(instance, emitter, &state->unitTears[2 * i + 1]);
         }
     }
 }

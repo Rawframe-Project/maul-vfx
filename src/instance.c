@@ -43,7 +43,8 @@ typedef struct EmitterAt
     uint32_t plexusMask;
     size_t unitPrevious;
     size_t unitContacts;
-    size_t unitContactHeld;
+    size_t unitTears;
+    size_t unitHeld;
     size_t attachFrames;
     size_t planFrames;
     size_t attachTargets;
@@ -92,9 +93,12 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     const mvfxCompiledEmitter* compiled = &effect->emitters[e];
     size_t previous = compiled->unitPoints > 1 ? 3u * (size_t)capacities[e] : 0;
     at->unitPrevious = mvfxLayoutAdd(layout, previous, sizeof(float), alignof(float));
-    size_t held = mvfxHoldsContacts(compiled) ? (size_t)capacities[e] : 0;
-    at->unitContacts = mvfxLayoutAdd(layout, held, sizeof(mvfxEvent), alignof(mvfxEvent));
-    at->unitContactHeld = mvfxLayoutAdd(layout, held, sizeof(uint8_t), alignof(uint8_t));
+    size_t contacts = mvfxHoldsContacts(compiled) ? (size_t)capacities[e] : 0;
+    size_t tears = mvfxHoldsTears(compiled) ? 2u * (size_t)capacities[e] : 0;
+    size_t held = contacts > 0 || tears > 0 ? (size_t)capacities[e] : 0;
+    at->unitContacts = mvfxLayoutAdd(layout, contacts, sizeof(mvfxEvent), alignof(mvfxEvent));
+    at->unitTears = mvfxLayoutAdd(layout, tears, sizeof(mvfxEvent), alignof(mvfxEvent));
+    at->unitHeld = mvfxLayoutAdd(layout, held, sizeof(uint8_t), alignof(uint8_t));
     mvfxAttachKind kind = compiled->unitPoints > 1 ? compiled->unit.attach : mvfx_attachNone;
     size_t frames = kind == mvfx_attachHost ? (size_t)compiled->unit.attachFrameCapacity : 0;
     at->attachFrames =
@@ -376,7 +380,8 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
         };
         instance->emitters[e].unitPrevious = (float*)(block + at[e].unitPrevious);
         instance->emitters[e].unitContacts = (mvfxEvent*)(block + at[e].unitContacts);
-        instance->emitters[e].unitContactHeld = (uint8_t*)(block + at[e].unitContactHeld);
+        instance->emitters[e].unitTears = (mvfxEvent*)(block + at[e].unitTears);
+        instance->emitters[e].unitHeld = (uint8_t*)(block + at[e].unitHeld);
         instance->emitters[e].attachFrames = (mvfxAttachFrame*)(block + at[e].attachFrames);
         instance->emitters[e].planFrames = (float*)(block + at[e].planFrames);
         instance->emitters[e].attachTargets = (float*)(block + at[e].attachTargets);

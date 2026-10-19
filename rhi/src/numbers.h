@@ -54,7 +54,7 @@ static inline uint32_t mvfxWordOf(int16_t array)
 // unchanged from step to step and uploaded once, 16 a source, 8 of the
 // frame's and mesh index's draws, 4 of the bounds' growth by size, 4 of
 // how particles turn and move, 12 of the values over life, 12 of how it
-// spawns from events, 16 of the shape, 4 of how births join ribbons and 36
+// spawns from events, 16 of the shape, 4 of how births join ribbons and 40
 // of the units, but for their last 4 (their frames', which the host's
 // frames change from step to step, uploaded each step for units held to
 // them).
@@ -69,8 +69,9 @@ static inline uint32_t mvfxWordOf(int16_t array)
 #define MVFX_SHAPE_FIRST      (MVFX_SPAWN_RULE_FIRST + 12)
 #define MVFX_RIBBON_FIRST     (MVFX_SHAPE_FIRST + 16)
 #define MVFX_UNITS_FIRST      (MVFX_RIBBON_FIRST + 4)
-#define MVFX_UNIT_FRAMES      (MVFX_UNITS_FIRST + 32)
-#define MVFX_STEP_WORDS       (MVFX_UNITS_FIRST + 36)
+#define MVFX_UNIT_TEARS       (MVFX_UNITS_FIRST + 32)
+#define MVFX_UNIT_FRAMES      (MVFX_UNITS_FIRST + 36)
+#define MVFX_STEP_WORDS       (MVFX_UNITS_FIRST + 40)
 // The words of a host frame for units held to the host's frames: its
 // origin, then its rotation.
 #define MVFX_FRAME_WORDS 8u
@@ -194,9 +195,12 @@ void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECO
 
 // An emitter's events buffer (sim.wgsl's events): EVENT_FACTS words a
 // particle of its capacity, four a block of its scan, then its events,
-// MVFX_EVENT_WORDS each; the events' first word, and the words in all.
+// MVFX_EVENT_WORDS each; the events' first word, and the words in all
+// (before an emitter's spawn region and its units' tears' facts,
+// MVFX_TEAR_FACTS a point: 11 an edge across, then down).
 #define MVFX_EVENT_FACTS 12u
 #define MVFX_EVENT_WORDS 28u
+#define MVFX_TEAR_FACTS  22u
 uint32_t mvfxEventFirst(int32_t capacity);
 uint64_t mvfxEventBufferWords(int32_t capacity, int32_t eventCapacity);
 

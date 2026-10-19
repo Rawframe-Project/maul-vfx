@@ -909,6 +909,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part blows sheets in the air (`mvfxUnitDef`'s `normalDrag` and
   `tangentDrag`): each point sums its triangles' drag in the CPU path's
   order, the air's velocity taken from the forces that drag.
+- The GPU part tears units (`mvfxUnitDef.tearStrain`): each point tests
+  its edges after the projection, a torn edge breaks its constraints and
+  quads, the tears' events are written and `MVFX_GPU_TORN` counts them.
+  `mvfxAttributeArrays` gains the torn edges. On both paths a unit's
+  tear events now join the step's after its substeps with its contacts,
+  point by point (its contact, its tear across, its tear down).
 
 ### Fixed
 

@@ -354,6 +354,14 @@ static inline bool mvfxHoldsContacts(const mvfxCompiledEmitter* emitter)
            (emitter->events & mvfx_eventMaskCollision) != 0;
 }
 
+// Whether an emitter holds its units' tears over their substeps
+// (event.h): an emitter of units that tears and writes tear events.
+static inline bool mvfxHoldsTears(const mvfxCompiledEmitter* emitter)
+{
+    return emitter->unitPoints > 1 && emitter->unit.tearStrain > 0.0f &&
+           (emitter->events & mvfx_eventMaskTear) != 0;
+}
+
 // Whether a unit's point (its index in its unit) is pinned: a pinned first
 // point, or one of a pinned first row.
 static inline bool mvfxIsPinnedPoint(const mvfxCompiledEmitter* emitter, int32_t point)

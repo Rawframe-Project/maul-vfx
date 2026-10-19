@@ -161,12 +161,37 @@ fn reduce(@builtin(local_invocation_index) local: u32,
     }
 }
 
+// The statistics record's word counting units' tears (MVFX_GPU_TORN).
+const STATISTICS_TORN: u32 = 50u;
+
+// Adds the step's tears to the count, in one workgroup: each live unit's
+// tally, which the unit pass left in its first point's alive word of the
+// other buffer.
+fn countTears(local: u32) {
+    let c = params.counts.x;
+    let points = unitPoints();
+    let units = counts[0] / points;
+    var mine = 0u;
+    for (var u = local; u < units; u += CHUNK) {
+        mine += moved[params.words.alive * c + u * points];
+    }
+    let before = exclusiveScan(local, mine);
+    if (local == CHUNK - 1u) {
+        counts[STATISTICS_TORN] += before + mine;
+    }
+    workgroupBarrier();
+}
+
 // Offsets, in one workgroup: the blocks' counts made each block's first
 // place, in order; the live count before the step kept in counts[1], the
-// new one in counts[0], those past the capacity in counts[2].
+// new one in counts[0], those past the capacity in counts[2]; for units
+// that tear, the step's tears counted first.
 @compute @workgroup_size(256, 1, 1)
 fn offsets(@builtin(local_invocation_index) local: u32) {
     let c = params.counts.x;
+    if (params.unitTears.x != NONE) {
+        countTears(local);
+    }
     let n = blockCount();
     if (local == 0u) {
         carried = 0u;
@@ -356,6 +381,10 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
     }
     if (params.unitArrays.x != NONE) {
         storeAnchor(j, at, born);
+    }
+    if (params.unitTears.x != NONE) {
+        // Born whole, as the core's AppendPoint.
+        moved[params.unitTears.x * c + at] = 0u;
     }
     storeValues(j, at);
     // Born at age 0, turned over the rest of the plan.

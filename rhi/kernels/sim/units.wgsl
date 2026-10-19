@@ -1,7 +1,6 @@
 // The sim kernel's units (spliced into sim.wgsl), as the core's
-// mvfxStepUnits (src/unit.c), for units without self-collision or
-// tearing: a workgroup a live unit (striding over them), each of its
-// substeps
+// mvfxStepUnits (src/unit.c), for units without self-collision: a
+// workgroup a live unit (striding over them), each of its substeps
 //  - blowing a sheet's points in the air (its triangles' normal and
 //    tangent drag);
 //  - moving its points as particles over the substep (forces, drag, the
@@ -12,7 +11,9 @@
 //  - projecting its six families of distance constraints in sixteen sets
 //    in the core's order, a barrier between sets: within a set no two
 //    constraints share a point, so solving one at once is the core's
-//    loop over it;
+//    loop over it, skipping those a torn edge breaks;
+//  - tearing each point's edges across and down stretched past their
+//    strain (its tears' facts held for their events after the step);
 //  - adding the correction over the substep to the velocities, then
 //    damping the relative velocities along the same sets;
 // then its points killed together when one is, each with the first
@@ -54,6 +55,8 @@ var<workgroup> unitTo: array<vec4<f32>, 2>;
 // Whether the unit is let go, its pinned points free.
 var<workgroup> unitLetGo: u32;
 var<workgroup> unitKilled: atomic<u32>;
+// The unit's tears over its substeps.
+var<workgroup> unitTore: atomic<u32>;
 
 // Family f of the core's FamiliesOf: stretch across and down, shear along
 // both diagonals, bending across and down two points apart.
@@ -428,9 +431,51 @@ fn triangleChange(a: u32, b: u32, c: u32, seconds: f32, h: f32) -> vec3<f32> {
     return d;
 }
 
+// Point i's torn edges (1 across, 2 down), 0 for units that do not tear.
+fn tornOf(i: u32) -> u32 {
+    if (params.unitTears.x == NONE) {
+        return 0u;
+    }
+    return source[params.unitTears.x * params.counts.x + i];
+}
+
+// Whether a sheet's quad from point i (w across) is whole, none of its
+// four edges torn, as the core's mvfxIsQuadWhole.
+fn isQuadWhole(i: u32, w: u32) -> bool {
+    let t = tornOf(i);
+    return ((t | tornOf(i + w)) & 1u) == 0u && ((t | tornOf(i + 1u)) & 2u) == 0u;
+}
+
+// Whether family f's constraint from point i (w across) is broken by a
+// torn edge, as the core's IsBroken: a stretch constraint torn; a quad's
+// diagonals with any of its four edges; a bending pair with either edge
+// it spans.
+fn isBroken(f: u32, i: u32, w: u32) -> bool {
+    if (params.unitTears.x == NONE) {
+        return false;
+    }
+    switch f {
+        case 0u: {
+            return (tornOf(i) & 1u) != 0u;
+        }
+        case 1u: {
+            return (tornOf(i) & 2u) != 0u;
+        }
+        case 2u, 3u: {
+            return !isQuadWhole(i, w);
+        }
+        case 4u: {
+            return ((tornOf(i) | tornOf(i + 1u)) & 1u) != 0u;
+        }
+        default: {
+            return ((tornOf(i) | tornOf(i + w)) & 2u) != 0u;
+        }
+    }
+}
+
 // The air's change to point q of the unit from its first point over a
-// substep, as the core's BlowSheet sums it: the triangles of the quads it
-// is a corner of, in the quads' row-major order (the quad up and left,
+// substep, as the core's BlowSheet sums it: the triangles of the whole
+// quads it is a corner of, in the quads' row-major order (the quad up and left,
 // its second triangle; the quad up, both; the quad left, both; its own,
 // its first).
 fn airChange(first: u32, q: u32, seconds: f32, h: f32) -> vec3<f32> {
@@ -439,21 +484,21 @@ fn airChange(first: u32, q: u32, seconds: f32, h: f32) -> vec3<f32> {
     let c = q % w;
     let r = q / w;
     var d = vec3<f32>(0.0);
-    if (c >= 1u && r >= 1u) {
+    if (c >= 1u && r >= 1u && isQuadWhole(first + q - w - 1u, w)) {
         let p = first + q - w - 1u;
         d += triangleChange(p + w, p + 1u, p + w + 1u, seconds, h);
     }
-    if (c + 1u < w && r >= 1u) {
+    if (c + 1u < w && r >= 1u && isQuadWhole(first + q - w, w)) {
         let p = first + q - w;
         d += triangleChange(p, p + 1u, p + w, seconds, h);
         d += triangleChange(p + w, p + 1u, p + w + 1u, seconds, h);
     }
-    if (c >= 1u && r + 1u < rows) {
+    if (c >= 1u && r + 1u < rows && isQuadWhole(first + q - 1u, w)) {
         let p = first + q - 1u;
         d += triangleChange(p, p + 1u, p + w, seconds, h);
         d += triangleChange(p + w, p + 1u, p + w + 1u, seconds, h);
     }
-    if (c + 1u < w && r + 1u < rows) {
+    if (c + 1u < w && r + 1u < rows && isQuadWhole(first + q, w)) {
         let p = first + q;
         d += triangleChange(p, p + 1u, p + w, seconds, h);
     }
@@ -482,6 +527,71 @@ fn blowSheet(first: u32, local: u32, seconds: f32, h: f32) {
     }
     storageBarrier();
     workgroupBarrier();
+}
+
+// Notes point a's tear of an edge (0 across, 1 down) at a tick of the
+// plan for its event, when the emitter writes tear events: its flag, the
+// tick, the edge's middle and direction, and the point's velocity and
+// inverse life then (MVFX_TEAR_FACTS a point, after the spawn region).
+fn noteTear(a: u32, edge: u32, tick: u32, middle: vec3<f32>, along: vec3<f32>) {
+    if (params.unitTears.y == 0u) {
+        return;
+    }
+    let c = params.counts.x;
+    events[EVENT_FACTS * a] |= EVENT_TEAR_ACROSS << edge;
+    let at = params.unitTears.y + 22u * a + 11u * edge;
+    let v = readVector(0u, a, params.words.velocity);
+    events[at] = tick;
+    for (var k = 0u; k < 3u; k++) {
+        events[at + 1u + k] = bitcast<u32>(middle[k]);
+        events[at + 4u + k] = bitcast<u32>(along[k]);
+        events[at + 7u + k] = bitcast<u32>(v[k]);
+    }
+    events[at + 10u] = source[params.words.inverseLife * c + a];
+}
+
+// Tears the edge from point a to point b (bit of a's torn edges) longer
+// than longest at a tick of the plan, as the core's TearEdge: a's bit
+// set, the unit's tally counted, its event's facts noted.
+fn tearEdge(a: u32, b: u32, bit: u32, longest: f32, tick: u32) {
+    let pa = pointPlace(a);
+    let pb = pointPlace(b);
+    var d = vec3<f32>(0.0);
+    var square = 0.0;
+    for (var k = 0u; k < 3u; k++) {
+        d[k] = pb[k] - pa[k];
+        square += d[k] * d[k];
+    }
+    let torn = tornOf(a);
+    if ((torn & bit) != 0u || !(square > longest * longest)) {
+        return;
+    }
+    source[params.unitTears.x * params.counts.x + a] = torn | bit;
+    atomicAdd(&unitTore, 1u);
+    let length = sqrt(square);
+    var middle = vec3<f32>(0.0);
+    var along = vec3<f32>(0.0);
+    for (var k = 0u; k < 3u; k++) {
+        middle[k] = pa[k] + 0.5 * d[k];
+        along[k] = quotient(d[k], length);
+    }
+    noteTear(a, bit - 1u, tick, middle, along);
+}
+
+// Tears point q's edges across and down of the unit from its first point
+// stretched past their rests times 1 + tearStrain at a substep's end (a
+// tick of the plan), as the core's Tear: each point its own edges, the
+// places no one writes then.
+fn tearPoint(first: u32, q: u32, scale: f32, tick: u32) {
+    let w = params.units.y;
+    let rows = unitPoints() / w;
+    let stretch = 1.0 + params.unitAero.z;
+    if (q % w + 1u < w) {
+        tearEdge(first + q, first + q + 1u, 1u, familyOf(0u, scale, 0.0).rest * stretch, tick);
+    }
+    if (q / w + 1u < rows) {
+        tearEdge(first + q, first + q + w, 2u, familyOf(1u, scale, 0.0).rest * stretch, tick);
+    }
 }
 
 // Projects the distance between points a and b of weights wa and wb
@@ -556,6 +666,9 @@ fn solveSets(first: u32, local: u32, scale: f32, inverseSquare: f32, share: f32)
             let count = setCount(family, s, width, rows);
             for (var n = local; n < count; n += CHUNK) {
                 let ends = constraintEnds(family, s, n, width, rows) + vec2<u32>(first);
+                if (isBroken(f, ends.x - family.ends.y * width - family.ends.x, width)) {
+                    continue;
+                }
                 let wa = pointWeight(ends.x, first);
                 let wb = pointWeight(ends.y, first);
                 if (share > 0.0) {
@@ -591,6 +704,7 @@ fn units(@builtin(local_invocation_index) local: u32,
         if (local == 0u) {
             unitEnded = select(0u, 1u, source[params.words.alive * c + first] == LIVE_ENDED);
             atomicExchange(&unitKilled, 0u);
+            atomicExchange(&unitTore, 0u);
             unitLetGo = 0u;
             if (isFramed()) {
                 unitFrom = storedFrame(first);
@@ -599,6 +713,9 @@ fn units(@builtin(local_invocation_index) local: u32,
             }
         }
         if (workgroupUniformLoad(&unitEnded) != 0u) {
+            if (local == 0u && params.unitTears.x != NONE) {
+                moved[params.words.alive * c + first] = 0u;
+            }
             continue;
         }
         for (var s = 0u; s < substeps; s++) {
@@ -620,6 +737,11 @@ fn units(@builtin(local_invocation_index) local: u32,
             storageBarrier();
             workgroupBarrier();
             solveSets(first, local, scale, divide(1.0, h * h), 0.0);
+            if (params.unitTears.x != NONE) {
+                for (var q = local; q < points; q += CHUNK) {
+                    tearPoint(first, q, scale, to);
+                }
+            }
             // The integrator's velocity and the constraints' correction over
             // the substep; a held point's the pin's.
             for (var q = local; q < points; q += CHUNK) {
@@ -645,6 +767,13 @@ fn units(@builtin(local_invocation_index) local: u32,
         if (local == 0u && isFramed()) {
             // The frame at its target, as the core's EndAttachments.
             storeFrame(first, unitTo);
+        }
+        workgroupBarrier();
+        if (local == 0u && params.unitTears.x != NONE) {
+            // Its tears' tally, which offsets sums (MVFX_GPU_TORN), in its
+            // first point's alive word of the other buffer, free until the
+            // scatter.
+            moved[params.words.alive * c + first] = atomicLoad(&unitTore);
         }
         wholeUnit(first, local);
     }

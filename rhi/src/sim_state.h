@@ -162,11 +162,16 @@ typedef struct Emitter
     // beside the step's.
     mrhiBufferId events;
     bool writesEvents;
+    // For units that tear and write tear events, the first word of their
+    // tears' facts in the events buffer (after its spawn region); else 0.
+    uint32_t tearFacts;
     // Whether its births join ribbons (the ribbons pass, and its words
     // after the births' marks), and whether they pin a head (its words in
     // the record).
     bool ribbons;
     bool pinsHead;
+    // Whether its units tear (MVFX_GPU_TORN).
+    bool tears;
     // Whether it is a beam, its points placed after the step.
     bool beam;
     // Its neighbor grid (sim_grid.c): its mask (0 for none: no emitter

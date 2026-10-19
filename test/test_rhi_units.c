@@ -418,6 +418,57 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
             "chains held to the particles whose contacts bore them");
 }
 
+// A run of tearing units, a step at a time from the same state (a pinned
+// unit is chaotic), that must tear at least a count of edges.
+// Within 2e-3 where they meet a collider, as Met's.
+static void Torn(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, int32_t least,
+                 const char* what)
+{
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitter,
+                   .emitterCount = 1,
+                   .colliding = emitter->colliderCount > 0,
+                   .adopting = true,
+                   .tolerance = emitter->colliderCount > 0 ? 2e-3f : 1e-3f,
+                   .leastTorn = least},
+            what);
+}
+
+static void TestTears(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Chains hanging from their first points, stretchy under a strong pull
+    // down, their edges tearing past the strain: the tears' events and
+    // count, the constraints a torn edge breaks; a floor's contacts, a
+    // point's contact event before its tear's.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.3f, 0}, .normal = {0, 1, 0}};
+    mvfxEmitterDef emitter = Chains(8, 4);
+    emitter.unit.pinFirst = true;
+    emitter.unit.stretchCompliance = 2e-4f;
+    emitter.unit.tearStrain = 0.3f;
+    emitter.motion.gravity[1] = -40.0f;
+    emitter.colliders = &floor;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.3f, .radius = 0.01f};
+    emitter.events = mvfx_eventMaskTear | mvfx_eventMaskCollision;
+    emitter.eventCapacity = 4096;
+    Torn(gpu, kernels, &emitter, 20, "chains torn under a pull, their tears' events");
+    // Sheets hanging from their first rows in the air, torn the same way:
+    // a quad a torn edge bounds takes no air and no shear.
+    static const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {6, 0, 2}, .strength = 0.01f};
+    emitter = Sheets(8, 4, 2);
+    emitter.unit.pinFirstRow = true;
+    emitter.unit.stretchCompliance = 2e-4f;
+    emitter.unit.tearStrain = 0.3f;
+    emitter.unit.normalDrag = 2000.0f;
+    emitter.motion.gravity[1] = -40.0f;
+    emitter.forces = &wind;
+    emitter.forceCount = 1;
+    emitter.events = mvfx_eventMaskTear;
+    emitter.eventCapacity = 4096;
+    Torn(gpu, kernels, &emitter, 20, "sheets torn in the air");
+}
+
 // Whether a planned instance of an emitter is refused on the GPU for its
 // units.
 static bool RefusedForUnits(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
@@ -451,9 +502,6 @@ static bool RefusedForUnits(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
 static void TestRefused(mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = Chains(4, 2);
-    emitter.unit.tearStrain = 0.5f;
-    CHECK(RefusedForUnits(kernels, &emitter), "tearing units refused");
-    emitter = Chains(4, 2);
     emitter.unit.selfThickness = 0.02f;
     emitter.unit.selfContacts = 8;
     CHECK(RefusedForUnits(kernels, &emitter), "self-colliding units refused");
@@ -469,6 +517,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestKills(gpu, kernels);
     TestNeighbors(gpu, kernels);
     TestContacts(gpu, kernels);
+    TestTears(gpu, kernels);
     TestHostBirths(gpu, kernels);
     TestEventBirths(gpu, kernels);
 }

@@ -2,14 +2,15 @@
 // particles did, counted, scanned and written in the CPU path's order.
 
 // Events: what the step's particles did, written in the CPU path's order
-// (ended deaths, the live particles' collisions, the births with their
-// birth and collision events, the killed), at most the emitter's capacity
+// (ended deaths, the live particles' collisions and a unit's points'
+// tears, the births with their birth and collision events, the killed), at most the emitter's capacity
 // of them, the rest dropped. Each element of the step's sequence (live
 // particles, then births) counts its events in four groups; a scan of
 // each group gives an event's place after the groups before it.
 const EVENT_BIRTH: u32 = 0u;
 const EVENT_DEATH: u32 = 1u;
 const EVENT_COLLISION: u32 = 2u;
+const EVENT_TEAR: u32 = 3u;
 // An event's words: kind | killed << 8, serial, tick (two words), place
 // (an offset from the plan's anchor after, in the world), velocity,
 // normal, colour, size; then the particle's birth tick (two words),
@@ -47,7 +48,9 @@ fn eventCounts(e: u32, live: u32) -> vec4<u32> {
             g.x = select(0u, 1u, writes(EVENT_DEATH));
             return g;
         }
-        g.y = select(0u, 1u, writes(EVENT_COLLISION) && (flags & EVENT_CONTACT) != 0u);
+        g.y = select(0u, 1u, writes(EVENT_COLLISION) && (flags & EVENT_CONTACT) != 0u) +
+              select(0u, countOneBits(flags & (EVENT_TEAR_ACROSS | EVENT_TEAR_DOWN)),
+                     writes(EVENT_TEAR));
         g.w = select(0u, 1u, writes(EVENT_DEATH) && (source[params.words.alive * c + e] & 1u) == 0u);
         return g;
     }
@@ -253,7 +256,8 @@ fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
         (*at).x += 1u;
         return;
     }
-    if (g.y > 0u) {
+    let flags = events[EVENT_FACTS * i];
+    if (g.y > 0u && (flags & EVENT_CONTACT) != 0u && writes(EVENT_COLLISION)) {
         let facts = EVENT_FACTS * i;
         let t = bitcast<f32>(events[facts + 1u]);
         var point = vec3<f32>(0.0);
@@ -274,6 +278,26 @@ fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
         var e = liveEvent(i, EVENT_COLLISION, tick, point, moving);
         e.normal = normal;
         e.inverseLife = bitcast<f32>(events[facts + 8u]);
+        writeEvent((*at).y, e);
+        (*at).y += 1u;
+    }
+    for (var edge = 0u; writes(EVENT_TEAR) && edge < 2u; edge++) {
+        if ((flags & (EVENT_TEAR_ACROSS << edge)) == 0u) {
+            continue;
+        }
+        // A unit point's tear across, then down, as it was (noteTear).
+        let facts = params.unitTears.y + 22u * i + 11u * edge;
+        var middle = vec3<f32>(0.0);
+        var along = vec3<f32>(0.0);
+        var moving = vec3<f32>(0.0);
+        for (var k = 0u; k < 3u; k++) {
+            middle[k] = bitcast<f32>(events[facts + 1u + k]);
+            along[k] = bitcast<f32>(events[facts + 4u + k]);
+            moving[k] = bitcast<f32>(events[facts + 7u + k]);
+        }
+        var e = liveEvent(i, EVENT_TEAR, events[facts], middle, moving);
+        e.normal = along;
+        e.inverseLife = bitcast<f32>(events[facts + 10u]);
         writeEvent((*at).y, e);
         (*at).y += 1u;
     }

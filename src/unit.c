@@ -226,7 +226,8 @@ static void SolveAll(const Points* p, const Family families[6], Pass pass, float
 }
 
 // Tears the edge from point a to point b (bit of a's torn edges) if it is
-// longer than rest: counted, and an event at its middle along it.
+// longer than rest: counted, and an event at its middle along it, held to
+// the substeps' end (event.h).
 static bool TearEdge(mvfxInstance* instance, int32_t emitter, const Points* p, int32_t a, int32_t b,
                      uint32_t bit, float longest, int64_t tick)
 {
@@ -251,13 +252,14 @@ static bool TearEdge(mvfxInstance* instance, int32_t emitter, const Points* p, i
         middle[k] = p->x[k][a] + 0.5f * d[k];
         along[k] = d[k] / length;
     }
-    mvfxRecordEvent(instance, emitter,
-                    &(mvfxEventFact){.kind = mvfx_eventTear,
-                                     .particle = a,
-                                     .tick = tick,
-                                     .placeTick = tick,
-                                     .point = middle,
-                                     .normal = along});
+    mvfxHoldTear(instance, emitter,
+                 &(mvfxEventFact){.kind = mvfx_eventTear,
+                                  .particle = a,
+                                  .tick = tick,
+                                  .placeTick = tick,
+                                  .point = middle,
+                                  .normal = along},
+                 bit == 1u ? MVFX_HELD_TEAR_ACROSS : MVFX_HELD_TEAR_DOWN);
     return true;
 }
 
@@ -371,7 +373,7 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
     int64_t ticks = instance->clock - instance->stepStart;
     int32_t substeps = unit->substeps;
     mvfxBeginAttachments(instance, emitter);
-    mvfxBeginHeldContacts(instance, emitter, count);
+    mvfxBeginHeldEvents(instance, emitter, count);
     mvfxFindSelfContacts(instance, emitter, (double)ticks / (double)MVFX_TICKS_PER_SECOND);
     for (int32_t s = 0; s < substeps; ++s)
     {
@@ -417,6 +419,6 @@ void mvfxStepUnits(mvfxInstance* instance, int32_t emitter)
             SolveAll(&p, families, PASS_DAMP, share);
         }
     }
-    mvfxEndHeldContacts(instance, emitter, count);
+    mvfxEndHeldEvents(instance, emitter, count);
     mvfxEndAttachments(instance, emitter);
 }
