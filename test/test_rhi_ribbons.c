@@ -89,6 +89,39 @@ static void TestSources(Gpu* gpu, mvfxGpu* kernels)
             "ribbons by source, from another's deaths");
 }
 
+static void TestSourcesFarApart(Gpu* gpu, mvfxGpu* kernels)
+{
+    // By source, some 500 births from another emitter's deaths a step
+    // between births of the emitter's own a step apart: an own birth's
+    // ribbon's point before lies past the look-back's 256, so it starts
+    // the ribbon afresh, as the CPU path finds none.
+    mvfxEmitterDef emitters[2] = {Sprite(), Ribboned(mvfx_ribbonPerSource, 0.3f)};
+    emitters[0].capacity = 16384;
+    emitters[0].rate = 30000.0f;
+    emitters[0].burstCount = 0;
+    emitters[0].lifetime = mvfxRangeSource(0.1f, 0.2f);
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 4096;
+    emitters[1].capacity = 16384;
+    emitters[1].rate = 60.0f;
+    emitters[1].burstCount = 0;
+    emitters[1].lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventDeath,
+                                              .minCount = 1,
+                                              .maxCount = 1,
+                                              .capacity = 1024};
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters,
+                   .emitterCount = 2,
+                   .steps = 30,
+                   .least = 1000,
+                   .secondLeast = 1000,
+                   .moving = true},
+            "by source, the own births past the look-back");
+}
+
 static void TestKilled(Gpu* gpu, mvfxGpu* kernels)
 {
     // Births killed on their way and particles killed in their move stay
@@ -168,6 +201,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestCounter(gpu, kernels);
     TestBatches(gpu, kernels);
     TestSources(gpu, kernels);
+    TestSourcesFarApart(gpu, kernels);
     TestKilled(gpu, kernels);
     TestEnded(gpu, kernels);
     TestMany(gpu, kernels);
