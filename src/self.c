@@ -7,10 +7,13 @@
 // the rest shape are filtered out (their constraints keep them apart).
 // As in Macklin et al., "Small Steps in Physics Simulation" (SCA 2019),
 // candidates are found once a step, within the thickness plus what two
-// points may close in it, and each substep projects the pairs in a fixed
-// order, after the constraints: a pair's overlap is shared by the points'
-// inverse masses, then its sliding over the substep is taken away up to
-// friction times the overlap (Coulomb's law on positions).
+// points may close in it, and each substep, after the constraints, parts
+// the pairs in one Jacobi pass with Macklin's constraint averaging (as
+// the particle contacts do): each pair touching, from the same places,
+// shares its overlap by the points' inverse masses, then takes away its
+// sliding over the substep up to friction times the overlap (Coulomb's
+// law on positions); each point moves by its pairs' mean. Every point
+// moves only itself, so the GPU's pass is this loop.
 
 #include "self.h"
 
@@ -86,8 +89,8 @@ static float ClosingOf(const mvfxInstance* instance, int32_t emitter, double sec
     return 2.0f * (sqrtf(fastest) * t + 0.5f * pull * t * t);
 }
 
-// Gathers point i's candidates: later points within reach, not near it at
-// rest; false when it has more than the most.
+// Gathers point i's candidates: other points within reach, not near it
+// at rest; false when it has more than the most.
 static bool Gather(mvfxInstance* instance, int32_t emitter, int32_t i, const float* const x[3],
                    float reach, float thickness)
 {
@@ -125,7 +128,7 @@ static bool Gather(mvfxInstance* instance, int32_t emitter, int32_t i, const flo
                 float d = x[k][i] - x[k][j];
                 square += d * d;
             }
-            if (j <= i || !(square < reach * reach) ||
+            if (j == i || !(square < reach * reach) ||
                 IsNearAtRest(instance, emitter, i, j, thickness))
             {
                 continue;
@@ -190,9 +193,12 @@ typedef struct Pair
     float friction;
 } Pair;
 
-// Parts points i and j of weights wi and wj, then takes away their
-// sliding up to friction times the overlap.
-static void Part(const Pair* p, int32_t i, int32_t j, float wi, float wj)
+// Point i's move from its pair with point j of weights wi and wj: its
+// share of their overlap along their line, less its share of their
+// sliding since the substep's start (both points' overlap shares taken
+// first) up to friction times the overlap; false where they do not
+// touch.
+static bool PartOf(const Pair* p, int32_t i, int32_t j, float wi, float wj, float out[3])
 {
     float d[3];
     float square = 0.0f;
@@ -205,7 +211,7 @@ static void Part(const Pair* p, int32_t i, int32_t j, float wi, float wj)
     float sum = wi + wj;
     if (!(length < p->thickness) || !(length > 0.0f) || !(sum > 0.0f))
     {
-        return;
+        return false;
     }
     float overlap = p->thickness - length;
     float n[3];
@@ -214,9 +220,9 @@ static void Part(const Pair* p, int32_t i, int32_t j, float wi, float wj)
     for (int32_t k = 0; k < 3; ++k)
     {
         n[k] = d[k] / length;
-        p->x[k][i] += wi / sum * overlap * n[k];
-        p->x[k][j] -= wj / sum * overlap * n[k];
-        slide[k] = (p->x[k][i] - p->start[k][i]) - (p->x[k][j] - p->start[k][j]);
+        float xi = p->x[k][i] + wi / sum * overlap * n[k];
+        float xj = p->x[k][j] - wj / sum * overlap * n[k];
+        slide[k] = (xi - p->start[k][i]) - (xj - p->start[k][j]);
         along += slide[k] * n[k];
     }
     float tangent = 0.0f;
@@ -230,9 +236,9 @@ static void Part(const Pair* p, int32_t i, int32_t j, float wi, float wj)
     float share = tangent > 0.0f ? (tangent < limit ? 1.0f : limit / tangent) : 0.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
-        p->x[k][i] -= wi / sum * share * slide[k];
-        p->x[k][j] += wj / sum * share * slide[k];
+        out[k] = wi / sum * overlap * n[k] - wi / sum * share * slide[k];
     }
+    return true;
 }
 
 void mvfxSolveSelfContacts(mvfxInstance* instance, int32_t emitter)
@@ -255,14 +261,38 @@ void mvfxSolveSelfContacts(mvfxInstance* instance, int32_t emitter)
                                 ? mvfxAttributeArray(instance, emitter, mvfx_attributeAttachFlags)
                                 : nullptr;
     int32_t most = compiled->unit.selfContacts;
+    size_t stride = (size_t)state->capacity;
     for (int32_t i = 0; i < state->count; ++i)
     {
         const int32_t* pairs = state->selfPairs + (size_t)i * (size_t)most;
         float wi = mvfxPointWeight(compiled, flags, pinned, i);
+        float sum[3] = {0.0f, 0.0f, 0.0f};
+        int32_t touching = 0;
         for (int32_t c = 0; c < state->selfCounts[i]; ++c)
         {
             int32_t j = pairs[c];
-            Part(&p, i, j, wi, mvfxPointWeight(compiled, flags, pinned, j));
+            float move[3];
+            if (PartOf(&p, i, j, wi, mvfxPointWeight(compiled, flags, pinned, j), move))
+            {
+                for (int32_t k = 0; k < 3; ++k)
+                {
+                    sum[k] += move[k];
+                }
+                touching += 1;
+            }
+        }
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            state->selfMoves[(size_t)k * stride + (size_t)i] =
+                touching > 0 ? sum[k] / (float)touching : 0.0f;
+        }
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        const float* moves = state->selfMoves + (size_t)k * stride;
+        for (int32_t i = 0; i < state->count; ++i)
+        {
+            p.x[k][i] += moves[i];
         }
     }
 }

@@ -213,10 +213,10 @@ typedef struct mvfxEmitterState
     // Its units' stretch constraints torn.
     uint64_t torn;
     // Its units' self-collision room: a grid of the places at the step's
-    // start (keeping no values), the places at a substep's start (three
-    // arrays of the capacity), each point's candidates (selfContacts each,
-    // of later points) and their count; and the points whose candidates
-    // were capped.
+    // start (keeping no values), the places at a substep's start and each
+    // point's move in a substep's pass (three arrays of the capacity each),
+    // each point's candidates (selfContacts each, of other points) and
+    // their count; and the points whose candidates were capped.
     mvfxNeighborGrid selfGrid;
     // For rigid particles: seven arrays of the capacity, their places and
     // orientations at a substep's start; five, their inverse masses,
@@ -242,6 +242,7 @@ typedef struct mvfxEmitterState
     int32_t* rigidIslands;
     uint32_t depthSerial;
     float* selfStart;
+    float* selfMoves;
     int32_t* selfPairs;
     int32_t* selfCounts;
     uint64_t selfContactsCapped;

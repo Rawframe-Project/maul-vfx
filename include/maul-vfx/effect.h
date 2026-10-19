@@ -548,10 +548,11 @@ extern "C"
         // found once a step, those within the thickness plus twice the
         // farthest a point goes in the step at its speed and gravity, at most
         // selfContacts of them (1 to MVFX_MAX_NEIGHBORS; a point with more is
-        // counted, mvfxEmitterStats.selfContactsCapped); each pair closer
-        // than the thickness is parted in each substep after the
-        // constraints, and its sliding over the substep slowed by up to
-        // selfFriction (0 to 1) times its overlap.
+        // counted, mvfxEmitterStats.selfContactsCapped); in each substep
+        // after the constraints, each pair closer than the thickness is
+        // parted and its sliding over the substep slowed by up to
+        // selfFriction (0 to 1) times its overlap, all pairs from the same
+        // places, each point moved by its pairs' mean.
         float selfThickness;
         float selfFriction;
         int32_t selfContacts;

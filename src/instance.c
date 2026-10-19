@@ -53,6 +53,7 @@ typedef struct EmitterAt
     size_t selfIndex;
     uint32_t selfMask;
     size_t selfStart;
+    size_t selfMoves;
     size_t selfPairs;
     size_t selfCounts;
     size_t rigidStart;
@@ -116,6 +117,7 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
     at->selfKeys = mvfxLayoutAdd(layout, capacity, sizeof(uint32_t), alignof(uint32_t));
     at->selfIndex = mvfxLayoutAdd(layout, capacity, sizeof(int32_t), alignof(int32_t));
     at->selfStart = mvfxLayoutAdd(layout, 3u * capacity, sizeof(float), alignof(float));
+    at->selfMoves = mvfxLayoutAdd(layout, 3u * capacity, sizeof(float), alignof(float));
     size_t most = self ? (size_t)compiled->unit.selfContacts : 0u;
     at->selfPairs = mvfxLayoutAdd(layout, most * capacity, sizeof(int32_t), alignof(int32_t));
     at->selfCounts = mvfxLayoutAdd(layout, capacity, sizeof(int32_t), alignof(int32_t));
@@ -393,6 +395,7 @@ static void StartStates(mvfxInstance* instance, unsigned char* block, mvfxBurstC
             .mask = at[e].selfMask,
         };
         instance->emitters[e].selfStart = (float*)(block + at[e].selfStart);
+        instance->emitters[e].selfMoves = (float*)(block + at[e].selfMoves);
         instance->emitters[e].selfPairs = (int32_t*)(block + at[e].selfPairs);
         instance->emitters[e].selfCounts = (int32_t*)(block + at[e].selfCounts);
         StartRigid(&instance->emitters[e], block, &at[e], capacities[e]);

@@ -922,6 +922,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   the GPU as `mvfxInstance_ExpandSheets` does: a vertex a point with its
   frame from its neighbours, six indices a whole quad, the first whole
   sheets that fit.
+- Self-collision parts each substep's pairs in one Jacobi pass with
+  constraint averaging, as particle contacts do: a point's candidates
+  are gathered both ways and it moves by its touching pairs' mean,
+  computed from the same places, instead of pair after pair. The golden
+  scene's hashes change from its third step.
 
 ### Fixed
 
