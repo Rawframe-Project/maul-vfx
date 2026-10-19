@@ -802,6 +802,8 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
             s_contacts += collisions != NULL ? collisions[c] : 0u;
             same = SameParticle(cpu, e, g, c) && SameRibbon(cpu, e, g, c);
         }
+        // One path holds it alone: only one that may go apart.
+        same = same && (gs == cs || apart);
         bool gone = !same && GoApart(e, at);
         s_leftOut[e] = s_leftOut[e] || apart || gone || gs != cs;
         same = same || apart || gone;
@@ -1113,19 +1115,25 @@ static bool Near(float gpu, float cpu)
     return fabsf(gpu - cpu) <= s_tolerance * (1.0f + fabsf(cpu));
 }
 
+// How far apart a collision's ticks may be on the two paths: a thousandth
+// of the step's ticks (at least one: its share of the move is a float of
+// the GPU's, and a short move's share is the least sure); for an emitter
+// of units, a substep's ticks, as a unit point's place parts from the CPU
+// path's by the projections' rounding and the share of its move moves by
+// that over its speed, unbounded for a slow point (its place is compared
+// within the tolerance).
+static int64_t s_contactSlack;
+
 // Whether an event the GPU wrote (its words) is the CPU path's: words
-// equal, a collision's tick within a thousandth of the step's ticks (at
-// least one: its share of the move is a float of the GPU's, and a short
-// move's share is the least sure), the rest within the tolerance, the
-// place from the plan's anchor after.
+// equal, a collision's tick within the contact slack, the rest within the
+// tolerance, the place from the plan's anchor after.
 static bool SameEvent(const uint32_t* w, const mvfxEvent* cpu, const double anchor[3])
 {
     uint64_t tick = ((uint64_t)w[3] << 32u) | w[2];
     int64_t apart = (int64_t)tick - cpu->tick;
-    bool same = (w[0] & 0xFFu) == cpu->kind && ((w[0] >> 8u) != 0) == cpu->killed &&
-                w[1] == cpu->serial &&
-                (apart == 0 ||
-                 (cpu->kind == mvfx_eventCollision && llabs(apart) <= 1 + s_stepTicks / 1000));
+    bool same =
+        (w[0] & 0xFFu) == cpu->kind && ((w[0] >> 8u) != 0) == cpu->killed && w[1] == cpu->serial &&
+        (apart == 0 || (cpu->kind == mvfx_eventCollision && llabs(apart) <= s_contactSlack));
     float values[20];
     memcpy(values, w + 4, sizeof values);
     for (int32_t k = 0; k < 3; ++k)
@@ -2353,6 +2361,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_boundsError = 0.0;
     s_tolerance = run->tolerance > 0.0f ? run->tolerance : 1e-4f;
     s_deathTicks = run->deathTicks;
+    const mvfxUnitDef* unit = &run->emitters[0].unit;
+    s_contactSlack = unit->kind != mvfx_unitParticle && unit->substeps > 0
+                         ? s_stepTicks / unit->substeps
+                         : 1 + s_stepTicks / 1000;
     s_pastAge = 0;
     s_deathsApart = 0;
     s_deathsWithin = true;

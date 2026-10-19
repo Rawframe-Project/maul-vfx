@@ -79,8 +79,8 @@ fn isAfter(tick: vec2<u32>, end: vec2<u32>) -> bool {
 
 // Particle i moved as the core's mvfxIntegrateRange moves it over a
 // substep since a tick of the plan for ticks: its predicted place, also
-// kept in the other buffer; its contacts with the colliders, the life
-// they take, a kill (by a contact, the life lost, a kill rule or an
+// kept in the other buffer; its contacts with the colliders (the first of
+// the step noted for its event), the life they take, a kill (by a contact, the life lost, a kill rule or an
 // attractor's kill radius) held as its kept word 0 for the rest of the
 // step, and its turn over the substep.
 fn moveSpan(i: u32, since: u32, ticks: u32) {
@@ -107,6 +107,9 @@ fn moveSpan(i: u32, since: u32, ticks: u32) {
     let death = vec2<u32>(source[params.words.death * c + i],
                           source[(params.words.death + 1u) * c + i]);
     let fate = meet(start, &p, &v, birth, inverseLife, death);
+    if (fate.contacted) {
+        noteUnitContact(i, contactTick(since, ticks, fate.first.t), fate.first, v, inverseLife);
+    }
     setVector(params.words.place, i, p);
     setVector(params.words.velocity, i, v);
     for (var k = 0u; k < 3u; k++) {
@@ -122,7 +125,9 @@ fn moveSpan(i: u32, since: u32, ticks: u32) {
     source[params.words.death * c + i] = fate.death.x;
     source[(params.words.death + 1u) * c + i] = fate.death.y;
     let end = planTick(since + ticks);
-    if (fate.killed || !isAfter(fate.death, end) ||
+    // The life a contact takes kills only at the contact, as the core's
+    // Collide: a later point's own death is past its unit's (liveDeath).
+    if (fate.killed || (fate.contacts > 0u && !isAfter(fate.death, end)) ||
         killed(start, p, v, subtract64(end, birth), contacts)) {
         source[params.words.alive * c + i] = 0u;
     }

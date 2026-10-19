@@ -54,9 +54,9 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 // which a substep's move would meet on its own span; ribbons and beams;
 // the grid's readers; the host's particles.
 #define UNITS_BESIDE                                                                               \
-    (MVFX_FEATURE_EVENTS | MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM |    \
-     MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
-     MVFX_FEATURE_CONTACTS | MVFX_FEATURE_HOST_SPAWN)
+    (MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_NEIGHBORS | \
+     MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE | MVFX_FEATURE_CONTACTS |                     \
+     MVFX_FEATURE_HOST_SPAWN)
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
 // names, and none pinned, attached, blown by the air, colliding with

@@ -655,10 +655,13 @@ fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<functio
 }
 
 // The words of a live particle's facts in the events buffer, and its
-// flags: its life ended within the plan; its contacts make an event.
-const EVENT_FACTS: u32 = 9u;
+// flags: its life ended within the plan; its contacts make an event; the
+// contact is a unit point's first of its substeps, its tick of the plan
+// in place of its share of the move and its velocity then kept.
+const EVENT_FACTS: u32 = 12u;
 const EVENT_ENDED: u32 = 1u;
 const EVENT_CONTACT: u32 = 2u;
+const EVENT_SUBSTEP: u32 = 4u;
 
 // Notes a live particle's facts of the step for its events, when the
 // emitter writes any: its flags, its first contact, the inverse life it
@@ -675,4 +678,19 @@ fn noteFacts(i: u32, flags: u32, first: Hit, inverse: f32) {
         events[at + 5u + k] = bitcast<u32>(first.normal[k]);
     }
     events[at + 8u] = bitcast<u32>(inverse);
+}
+
+// Notes a unit point's contact at a tick of the plan for its events, when
+// the emitter writes any and the point noted none this step: the
+// contact, the velocity it left and the inverse life it met it with.
+fn noteUnitContact(i: u32, tick: u32, first: Hit, velocity: vec3<f32>, inverse: f32) {
+    if (params.fateHead.y == 0u || (events[EVENT_FACTS * i] & EVENT_CONTACT) != 0u) {
+        return;
+    }
+    noteFacts(i, EVENT_CONTACT | EVENT_SUBSTEP, first, inverse);
+    let at = EVENT_FACTS * i;
+    events[at + 1u] = tick;
+    for (var k = 0u; k < 3u; k++) {
+        events[at + 9u + k] = bitcast<u32>(velocity[k]);
+    }
 }

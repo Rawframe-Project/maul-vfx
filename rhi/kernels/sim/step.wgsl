@@ -78,9 +78,10 @@ fn moveLive(i: u32) {
 }
 
 // A live unit's point at the plan's start: its place shifted with the
-// anchor, and kept until the unit pass's substeps kill it.
+// anchor, no facts yet, and kept until the unit pass's substeps kill it.
 fn holdUnitPoint(i: u32, start: vec3<f32>) {
     let c = params.counts.x;
+    noteFacts(i, 0u, Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0)), 0.0);
     for (var k = 0u; k < 3u; k++) {
         source[(params.words.place + k) * c + i] = bitcast<u32>(start[k]);
     }

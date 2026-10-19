@@ -69,9 +69,8 @@ extern "C"
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Units (MVFX_FEATURE_UNITS) are refused pinned or
     // attached, in the air (normal or tangent drag), colliding with
-    // themselves or tearing, and beside events, spawning from events,
-    // ribbons, beams, neighbors, steering, a pair force, contacts or the
-    // host's births.
+    // themselves or tearing, and beside spawning from events, ribbons, beams, neighbors, steering,
+    // a pair force, contacts or the host's births.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -188,11 +187,11 @@ extern "C"
     /// the GPU object's device; an emitter that sorts its records by place
     /// keeps 16 bytes a particle of its capacity and 2,048 a block of 1,024
     /// of them for the sort (one that carries lights and does not sort, 8
-    /// a block for its lights' counts), one that writes events 36 bytes a particle of
+    /// a block for its lights' counts), one that writes events 48 bytes a particle of
     /// its capacity, 16 a block of its scan (a block for 1,024 of three
     /// times its capacity), 112 an event of its capacity of them and 1,952
     /// for their numbers; one that spawns from another's events the same
-    /// 36 and 16 where it writes none, 140 an event of its source's event
+    /// 48 and 16 where it writes none, 140 an event of its source's event
     /// capacity and 64 more for the region's counts, 96 more a particle of
     /// its capacity for its plan's births staged, and 64 a birth from
     /// events a step takes (to twice its capacity) for their records; one

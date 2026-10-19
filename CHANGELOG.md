@@ -885,6 +885,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   contact that kills), kill rules and attractors' kill radii in each
   substep, a point's kill killing its unit, a newborn unit's too, and
   turn a substep at a time; a unit's death is its first point's.
+- The GPU part writes the events of units: births, deaths by age and by
+  kills, and a point's first contact a step at its substep, with its
+  velocity then. An emitter that writes events keeps 48 bytes a particle
+  of its capacity for its particles' facts, 12 more than before.
 
 ### Fixed
 

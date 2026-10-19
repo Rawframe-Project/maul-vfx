@@ -305,8 +305,9 @@ struct Step {
 @group(0) @binding(10) var normalImage: texture_2d<f32>;
 // An emitter's events (a word of the simulation's for one that writes
 // none): each live particle's facts of the step, EVENT_FACTS words (the
-// flags EVENT_ENDED and EVENT_CONTACT, the first contact's share, point
-// and normal, the inverse life it met); each block of the sequence's
+// flags EVENT_ENDED, EVENT_CONTACT and EVENT_SUBSTEP, the first contact's
+// share of the move or a unit point's tick, point and normal, the inverse
+// life it met, a unit point's velocity then); each block of the sequence's
 // counts of the four groups' events, then their first places; the
 // events, EVENT_WORDS each.
 @group(0) @binding(8) var<storage, read_write> events: array<u32>;

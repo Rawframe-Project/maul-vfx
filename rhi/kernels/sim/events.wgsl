@@ -258,11 +258,20 @@ fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
         let t = bitcast<f32>(events[facts + 1u]);
         var point = vec3<f32>(0.0);
         var normal = vec3<f32>(0.0);
+        var tick = contactTick(0u, params.counts.z, t);
+        var moving = velocity;
         for (var k = 0u; k < 3u; k++) {
             point[k] = bitcast<f32>(events[facts + 2u + k]);
             normal[k] = bitcast<f32>(events[facts + 5u + k]);
         }
-        var e = liveEvent(i, EVENT_COLLISION, contactTick(0u, params.counts.z, t), point, velocity);
+        if ((events[facts] & EVENT_SUBSTEP) != 0u) {
+            // A unit point's first contact over its substeps, as it was.
+            tick = events[facts + 1u];
+            for (var k = 0u; k < 3u; k++) {
+                moving[k] = bitcast<f32>(events[facts + 9u + k]);
+            }
+        }
+        var e = liveEvent(i, EVENT_COLLISION, tick, point, moving);
         e.normal = normal;
         e.inverseLife = bitcast<f32>(events[facts + 8u]);
         writeEvent((*at).y, e);

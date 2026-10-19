@@ -9,7 +9,9 @@
 // instance in the world's space, a capacity that binds (whole units
 // refused), colliders with life lost and turns, kills by contacts, kill
 // rules and kill radii (a unit killed whole), and what units are still
-// refused beside (pins, tearing, aerodynamics, self-collision, events).
+// refused beside (pins, tearing, aerodynamics, self-collision, spawning
+// from events); their events (births, deaths, a point's first contact a
+// step).
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -125,9 +127,24 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.overLife.rotation = (mvfxRotationOverLife){
         .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
     Met(gpu, kernels, &emitter, false, "chains bounced off a floor and a sphere, life lost");
-    // Contacts that kill: a unit goes whole.
+    // Their events: births, deaths by age and a point's first contact a
+    // step, taken at its substep, off the sphere alone (points resting on
+    // a floor graze it each substep, where the paths' places, apart by
+    // their tolerance, touch it on one path only).
+    emitter.colliders = own + 1;
+    emitter.colliderCount = 1;
+    emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
+    emitter.eventCapacity = 4096;
+    Met(gpu, kernels, &emitter, false, "chains' births, deaths and first contacts");
+    emitter.colliders = own;
+    emitter.colliderCount = 2;
+    emitter.events = 0;
+    // Contacts that kill: a unit goes whole; or that take the life left
+    // (a second contact ends any of these lives).
     emitter.collision = (mvfxCollision){.enabled = true, .killOnCollision = true};
     Met(gpu, kernels, &emitter, true, "chains a contact kills whole");
+    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f, .lifeLoss = 0.9f};
+    Met(gpu, kernels, &emitter, true, "chains the life a contact takes kills whole");
 }
 
 static void TestKills(Gpu* gpu, mvfxGpu* kernels)
@@ -140,6 +157,10 @@ static void TestKills(Gpu* gpu, mvfxGpu* kernels)
     emitter.killRules = &sphere;
     emitter.killRuleCount = 1;
     Met(gpu, kernels, &emitter, true, "sheets a kill rule kills whole");
+    emitter.events = mvfx_eventMaskDeath;
+    emitter.eventCapacity = 4096;
+    Met(gpu, kernels, &emitter, true, "the deaths of sheets killed whole");
+    emitter.events = 0;
     static const mvfxForce attractor = {.kind = mvfx_forceAttractor,
                                         .point = {-0.2f, 0.6f, 0},
                                         .strength = 2.0f,
@@ -197,10 +218,6 @@ static void TestRefused(mvfxGpu* kernels)
     emitter.unit.selfThickness = 0.02f;
     emitter.unit.selfContacts = 8;
     CHECK(RefusedForUnits(kernels, &emitter), "self-colliding units refused");
-    emitter = Chains(4, 2);
-    emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
-    emitter.eventCapacity = 256;
-    CHECK(RefusedForUnits(kernels, &emitter), "units writing events refused");
 }
 
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
