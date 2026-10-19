@@ -277,7 +277,8 @@ struct Step {
     // for particles) and across a row, the substeps, the unit pass's
     // workgroups; the step
     // from a point to the next across and down at birth (the direction
-    // times the spacing, in the emitter's space); the rest lengths before
+    // times the spacing, in the emitter's space), the angular drag with
+    // the first (its factors a substep's); the rest lengths before
     // the instance's scale (across, down, the two diagonals); the
     // compliances of stretch, shear and bending and the damping.
     units: vec4<u32>,

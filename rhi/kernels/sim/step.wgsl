@@ -22,7 +22,8 @@ const LIVE_ENDED: u32 = 2u;
 
 fn moveLive(i: u32) {
     let c = params.counts.x;
-    if (!outlives(source[params.words.death * c + i], source[(params.words.death + 1u) * c + i])) {
+    let ending = liveDeath(i);
+    if (!outlives(ending.x, ending.y)) {
         source[params.words.alive * c + i] = LIVE_ENDED;
         noteFacts(i, EVENT_ENDED, Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0)), 0.0);
         return;
@@ -77,16 +78,12 @@ fn moveLive(i: u32) {
 }
 
 // A live unit's point at the plan's start: its place shifted with the
-// anchor, its turn over the plan, and kept (units meet no colliders or
-// kill rules on the GPU yet).
+// anchor, and kept until the unit pass's substeps kill it.
 fn holdUnitPoint(i: u32, start: vec3<f32>) {
     let c = params.counts.x;
     for (var k = 0u; k < 3u; k++) {
         source[(params.words.place + k) * c + i] = bitcast<u32>(start[k]);
     }
-    let birth = vec2<u32>(source[params.words.birth * c + i], source[(params.words.birth + 1u) * c + i]);
-    let inverseLife = bitcast<f32>(source[params.words.inverseLife * c + i]);
-    turn(0u, i, params.angular.xy, lifeAt(LIFE_ROTATION, ageAt(birth, inverseLife)));
     source[params.words.alive * c + i] = 1u;
 }
 
@@ -801,11 +798,21 @@ fn birthDiesBy(j: u32, t: u32) -> bool {
     return b1.x == 0u && b0.w <= t;
 }
 
+// A live particle's death tick, absolute in two words: a unit point's its
+// unit's first point's, as all of a unit's points die together (a
+// contact's life loss can move a later point's alone).
+fn liveDeath(i: u32) -> vec2<u32> {
+    let c = params.counts.x;
+    let first = i - i % unitPoints();
+    return vec2<u32>(source[params.words.death * c + first],
+                     source[(params.words.death + 1u) * c + first]);
+}
+
 // Whether a live particle dies by tick t of the plan, its death absolute.
 fn liveDiesBy(i: u32, t: u32) -> bool {
-    let c = params.counts.x;
-    let low = source[params.words.death * c + i];
-    let high = source[(params.words.death + 1u) * c + i];
+    let death = liveDeath(i);
+    let low = death.x;
+    let high = death.y;
     let tickLow = params.start.x + t;
     let tickHigh = params.start.y + select(0u, 1u, tickLow < params.start.x);
     return high < tickHigh || (high == tickHigh && low <= tickLow);
@@ -816,9 +823,7 @@ fn liveDiesBy(i: u32, t: u32) -> bool {
 const ROOM_NEVER: u32 = 0xFFFFFFFFu;
 
 fn liveDeathTick(i: u32) -> u32 {
-    let c = params.counts.x;
-    let death = vec2<u32>(source[params.words.death * c + i],
-                          source[(params.words.death + 1u) * c + i]);
+    let death = liveDeath(i);
     let start = params.start.xy;
     if (death.y < start.y || (death.y == start.y && death.x < start.x)) {
         return 0u;

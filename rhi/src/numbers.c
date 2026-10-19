@@ -812,7 +812,8 @@ static void ShapeRest(const mvfxEmitterView* view, const mvfxStepTables* tables,
 }
 
 // The units: a step across and down as the core's UnitStep takes it before
-// the instance's turn and scale.
+// the instance's turn and scale, and the angular drag the unit pass turns
+// its points by a substep.
 static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t units[20])
 {
     const mvfxUnitDef* u = &view->unit;
@@ -823,7 +824,7 @@ static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint
     int64_t unitCount = (int64_t)plan->capacity / (view->unitPoints > 1 ? view->unitPoints : 1);
     units[3] = (uint32_t)(unitCount < 65535 ? (unitCount > 0 ? unitCount : 1) : 65535);
     mvfxFloatWords(units + 4, u->direction[0] * u->spacing, u->direction[1] * u->spacing,
-                   u->direction[2] * u->spacing, 0.0f);
+                   u->direction[2] * u->spacing, view->angularDrag);
     mvfxFloatWords(units + 8, u->downDirection[0] * u->spacing, u->downDirection[1] * u->spacing,
                    u->downDirection[2] * u->spacing, 0.0f);
     mvfxFloatWords(units + 12, view->unitRests[0], view->unitRests[1], view->unitRests[2],

@@ -54,20 +54,19 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 // which a substep's move would meet on its own span; ribbons and beams;
 // the grid's readers; the host's particles.
 #define UNITS_BESIDE                                                                               \
-    (MVFX_FEATURE_COLLISION | MVFX_FEATURE_KILL_RULES | MVFX_FEATURE_EVENTS |                      \
-     MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_NEIGHBORS | \
-     MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE | MVFX_FEATURE_CONTACTS |                     \
-     MVFX_FEATURE_HOST_SPAWN)
+    (MVFX_FEATURE_EVENTS | MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM |    \
+     MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
+     MVFX_FEATURE_CONTACTS | MVFX_FEATURE_HOST_SPAWN)
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
-// names or a kill within a step, and none pinned, attached, blown by the
-// air, colliding with themselves or tearing.
+// names, and none pinned, attached, blown by the air, colliding with
+// themselves or tearing.
 static bool UnitsRun(const mvfxEmitterView* view)
 {
     const mvfxUnitDef* u = &view->unit;
-    return (view->features & UNITS_BESIDE) == 0 && !view->kills && !u->pinFirst &&
-           !u->pinFirstRow && u->attach == mvfx_attachNone && u->normalDrag == 0.0f &&
-           u->tangentDrag == 0.0f && u->selfThickness == 0.0f && u->tearStrain == 0.0f;
+    return (view->features & UNITS_BESIDE) == 0 && !u->pinFirst && !u->pinFirstRow &&
+           u->attach == mvfx_attachNone && u->normalDrag == 0.0f && u->tangentDrag == 0.0f &&
+           u->selfThickness == 0.0f && u->tearStrain == 0.0f;
 }
 
 // Whether the part runs an emitter; what it does not, in refusal.
@@ -894,9 +893,9 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
         mvfxRecordSimKernel(sim, emitter, PASS_ROOM, mvfx_kernelRoom, 1) &&
         mvfxRecordSimGrid(sim, emitter) &&
         mvfxRecordSimKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
+        mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
         (!emitter->units ||
          mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelUnits, emitter->unitGroups)) &&
-        mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
         mvfxRecordSimKernel(sim, emitter, PASS_REDUCE, mvfx_kernelReduce, blocks) &&
         mvfxRecordSimKernel(sim, emitter, PASS_OFFSETS, mvfx_kernelOffsets, 1) &&
         mvfxRecordSimKernel(sim, emitter, PASS_SCATTER, mvfx_kernelScatter, blocks) &&

@@ -3,14 +3,17 @@
 // self-collision or tearing: a workgroup a live unit (striding over them),
 // each of its substeps
 //  - moving its points as particles over the substep (forces, drag, the
-//    speed limit and the velocity modules), the predicted places kept in
-//    the other buffer, free until the scatter;
+//    speed limit, the velocity modules, the colliders and the life their
+//    contacts take, kills and turns), the predicted places kept in the
+//    other buffer, free until the scatter;
 //  - projecting its six families of distance constraints in sixteen sets
 //    in the core's order, a barrier between sets: within a set no two
 //    constraints share a point, so solving one at once is the core's
 //    loop over it;
 //  - adding the correction over the substep to the velocities, then
-//    damping the relative velocities along the same sets.
+//    damping the relative velocities along the same sets;
+// then its points killed together when one is, each with the first
+// point's death.
 // The square root, the divisions in the projections and the damping's
 // exponential differ from the core's within their rounding.
 
@@ -26,6 +29,7 @@ struct Family {
 }
 
 var<workgroup> unitEnded: u32;
+var<workgroup> unitKilled: atomic<u32>;
 
 // Family f of the core's FamiliesOf: stretch across and down, shear along
 // both diagonals, bending across and down two points apart.
@@ -68,9 +72,17 @@ fn setVector(first: u32, i: u32, v: vec3<f32>) {
     }
 }
 
+// Whether a 64-bit tick (two words) is past another.
+fn isAfter(tick: vec2<u32>, end: vec2<u32>) -> bool {
+    return tick.y > end.y || (tick.y == end.y && tick.x > end.x);
+}
+
 // Particle i moved as the core's mvfxIntegrateRange moves it over a
 // substep since a tick of the plan for ticks: its predicted place, also
-// kept in the other buffer.
+// kept in the other buffer; its contacts with the colliders, the life
+// they take, a kill (by a contact, the life lost, a kill rule or an
+// attractor's kill radius) held as its kept word 0 for the rest of the
+// step, and its turn over the substep.
 fn moveSpan(i: u32, since: u32, ticks: u32) {
     let c = params.counts.x;
     let start = pointPlace(i);
@@ -86,18 +98,44 @@ fn moveSpan(i: u32, since: u32, ticks: u32) {
     let birth = vec2<u32>(source[params.words.birth * c + i],
                           source[(params.words.birth + 1u) * c + i]);
     let inverseLife = bitcast<f32>(source[params.words.inverseLife * c + i]);
-    let tickLow = params.start.x + since;
-    let tick = vec2<u32>(tickLow, params.start.y + select(0u, 1u, tickLow < params.start.x));
-    var age = secondsOf(subtract64(tick, birth)) * inverseLife;
-    age = select(min(age, 1.0), 0.0, !(age > 0.0));
-    let v0 = limitSpeed(readVector(0u, i, params.words.velocity), age,
+    let tick = planTick(since);
+    let v0 = limitSpeed(readVector(0u, i, params.words.velocity), spanAge(tick, birth, inverseLife),
                         factors(bitcast<f32>(params.turns.w), seconds).x);
-    let p = moveByModules(start, start + v0 * f.y + a * f.z, age, seconds);
+    var p = moveByModules(start, start + v0 * f.y + a * f.z, spanAge(tick, birth, inverseLife),
+                          seconds);
+    var v = v0 * f.x + a * f.y;
+    let death = vec2<u32>(source[params.words.death * c + i],
+                          source[(params.words.death + 1u) * c + i]);
+    let fate = meet(start, &p, &v, birth, inverseLife, death);
     setVector(params.words.place, i, p);
-    setVector(params.words.velocity, i, v0 * f.x + a * f.y);
+    setVector(params.words.velocity, i, v);
     for (var k = 0u; k < 3u; k++) {
         moved[(params.words.place + k) * c + i] = bitcast<u32>(p[k]);
     }
+    var contacts = 0u;
+    if (params.words.collisions != NONE) {
+        let count = source[params.words.collisions * c + i];
+        contacts = select(count + fate.contacts, 0xFFFFFFFFu, count > 0xFFFFFFFFu - fate.contacts);
+        source[params.words.collisions * c + i] = contacts;
+    }
+    source[params.words.inverseLife * c + i] = bitcast<u32>(fate.inverseLife);
+    source[params.words.death * c + i] = fate.death.x;
+    source[(params.words.death + 1u) * c + i] = fate.death.y;
+    let end = planTick(since + ticks);
+    if (fate.killed || !isAfter(fate.death, end) ||
+        killed(start, p, v, subtract64(end, birth), contacts)) {
+        source[params.words.alive * c + i] = 0u;
+    }
+    // Turned over the substep at its age then, with the life its contacts
+    // left.
+    let angular = factors(params.unitAcross.w, seconds);
+    turn(0u, i, angular.xy, lifeAt(LIFE_ROTATION, spanAge(tick, birth, fate.inverseLife)));
+}
+
+// A particle's normalized age at a tick, held to [0, 1].
+fn spanAge(tick: vec2<u32>, birth: vec2<u32>, inverseLife: f32) -> f32 {
+    let age = secondsOf(subtract64(tick, birth)) * inverseLife;
+    return select(min(age, 1.0), 0.0, !(age > 0.0));
 }
 
 // The constraints of set s of family f in a unit of width and rows, and
@@ -214,8 +252,8 @@ fn solveSets(first: u32, local: u32, scale: f32, inverseSquare: f32, share: f32)
     }
 }
 
-// Units: each live unit's substeps, a workgroup a unit; the ended (marked
-// by update) are skipped.
+// Units: each live unit's substeps, a workgroup a unit, the ended (marked
+// by update) skipped; then the plan's births of units, killed whole.
 @compute @workgroup_size(256, 1, 1)
 fn units(@builtin(local_invocation_index) local: u32,
          @builtin(workgroup_id) group: vec3<u32>) {
@@ -234,6 +272,7 @@ fn units(@builtin(local_invocation_index) local: u32,
         let first = u * points;
         if (local == 0u) {
             unitEnded = select(0u, 1u, source[params.words.alive * c + first] == LIVE_ENDED);
+            atomicExchange(&unitKilled, 0u);
         }
         if (workgroupUniformLoad(&unitEnded) != 0u) {
             continue;
@@ -270,5 +309,56 @@ fn units(@builtin(local_invocation_index) local: u32,
                 solveSets(first, local, scale, 0.0, share);
             }
         }
+        wholeUnit(first, local);
+    }
+    wholeBirths(group.x, local);
+}
+
+// A unit's points die together: a kill of one kills all, as the core's
+// RemoveKilled takes a unit (its death is its first point's, liveDeath).
+fn wholeUnit(first: u32, local: u32) {
+    let c = params.counts.x;
+    let points = unitPoints();
+    for (var q = local; q < points; q += CHUNK) {
+        if (source[params.words.alive * c + first + q] == 0u) {
+            atomicOr(&unitKilled, 1u);
+        }
+    }
+    storageBarrier();
+    workgroupBarrier();
+    if (atomicLoad(&unitKilled) != 0u) {
+        for (var q = local; q < points; q += CHUNK) {
+            source[params.words.alive * c + first + q] = 0u;
+        }
+    }
+    storageBarrier();
+    workgroupBarrier();
+}
+
+// The plan's births of whole units: a birth killed on its way to the
+// plan's end (killBirths, before this pass) kills its unit's every point,
+// as the core's RemoveKilled takes the units it appended.
+fn wholeBirths(group: u32, local: u32) {
+    let points = unitPoints();
+    for (var b = group; b < params.counts.y; b += params.units.w) {
+        let first = b * points;
+        if (local == 0u) {
+            atomicExchange(&unitKilled, 0u);
+        }
+        workgroupBarrier();
+        for (var q = local; q < points; q += CHUNK) {
+            if ((accepted[first + q] & 3u) == 2u) {
+                atomicOr(&unitKilled, 1u);
+            }
+        }
+        workgroupBarrier();
+        let killed = atomicLoad(&unitKilled) != 0u;
+        for (var q = local; q < points; q += CHUNK) {
+            let mark = accepted[first + q];
+            if (killed && (mark & 3u) == 1u) {
+                accepted[first + q] = (mark & ~3u) | 2u;
+            }
+        }
+        workgroupBarrier();
     }
 }

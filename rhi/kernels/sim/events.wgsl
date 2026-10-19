@@ -248,7 +248,7 @@ fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
     if (g.x > 0u) {
         // Ended: where the step found it, at its death tick.
         var e = liveEvent(i, EVENT_DEATH, 0u, place + params.shift.xyz, velocity);
-        e.tick = source[w.death * c + i] - params.start.x;
+        e.tick = liveDeath(i).x - params.start.x;
         writeEvent((*at).x, e);
         (*at).x += 1u;
         return;

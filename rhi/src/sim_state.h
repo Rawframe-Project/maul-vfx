@@ -43,9 +43,10 @@ enum
     PASS_WRITE = 0,
     PASS_ROOM = 1,
     PASS_UPDATE = 2,
-    // Its units moved by substeps (sim/units.wgsl), when it has units.
-    PASS_UNITS = 3,
-    PASS_KILL = 4,
+    PASS_KILL = 3,
+    // Its units moved by substeps and its births of units killed whole
+    // (sim/units.wgsl), when it has units.
+    PASS_UNITS = 4,
     PASS_REDUCE = 5,
     PASS_OFFSETS = 6,
     PASS_SCATTER = 7,

@@ -881,6 +881,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   room whole. The planner counts an emitter of units' room in units, a
   birth a unit, and `mvfxEmitterView` gains the unit, its points, its
   width and its rest lengths.
+- The GPU part's units meet colliders (the life their contacts take, a
+  contact that kills), kill rules and attractors' kill radii in each
+  substep, a point's kill killing its unit, a newborn unit's too, and
+  turn a substep at a time; a unit's death is its first point's.
 
 ### Fixed
 
