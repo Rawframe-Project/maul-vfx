@@ -111,6 +111,22 @@ static void TestKilled(Gpu* gpu, mvfxGpu* kernels)
             "ribbons with the killed and the ended about");
 }
 
+static void TestEnded(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Three births in four steps living one to five steps: the ribbon's
+    // youngest particle often ends before the step's moves, and the
+    // step's first birth looks back past it to the one before, as the CPU
+    // path takes the ended out first.
+    mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne, 0.0f);
+    emitter.rate = 45.0f;
+    emitter.burstCount = 0;
+    emitter.lifetime = mvfxRangeSource(0.02f, 0.08f);
+    Compare(
+        gpu, kernels,
+        &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 120, .least = 2, .moving = true},
+        "a sparse ribbon whose youngest particles end");
+}
+
 static void TestMany(Gpu* gpu, mvfxGpu* kernels)
 {
     // Hundreds of births a step, past a workgroup's chunk of the scans and
@@ -153,6 +169,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestBatches(gpu, kernels);
     TestSources(gpu, kernels);
     TestKilled(gpu, kernels);
+    TestEnded(gpu, kernels);
     TestMany(gpu, kernels);
 }
 
