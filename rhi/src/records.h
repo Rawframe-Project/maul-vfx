@@ -6,7 +6,9 @@
 // kernels each, and a compute pass writing the records into the host's
 // buffer. A ribbon pass is one too: its keys the ribbon ids, then a pass
 // finding the chains and one writing their points; so is a lights pass:
-// each block's carriers counted, the counts scanned, the lights written.
+// each block's carriers counted, the counts scanned, the lights written;
+// and a sprite pass: the records' sort, then a pass writing quads with
+// the ribbon numbers.
 
 #ifndef MAUL_VFX_RHI_SRC_RECORDS_H
 #define MAUL_VFX_RHI_SRC_RECORDS_H
@@ -52,6 +54,7 @@ typedef struct mvfxRecordPipelines
     mrhiComputePipelineId lightCount;
     mrhiComputePipelineId lightOffsets;
     mrhiComputePipelineId lightWrite;
+    mrhiComputePipelineId spriteQuads;
 } mvfxRecordPipelines;
 
 // A record pass added to the frame open: its passes (only the transfer
@@ -67,6 +70,7 @@ typedef struct mvfxRecordPass
     bool ribbons;
     bool cut;
     bool lights;
+    bool sprites;
     mrhiPassId write;
     mrhiPassId keys;
     mrhiPassId radix[2 * MVFX_SORT_PASSES];
@@ -83,8 +87,8 @@ typedef struct mvfxRecordPass
     uint32_t ribbonWords[MVFX_RIBBON_WORDS];
 } mvfxRecordPass;
 
-// An emitter's record passes: a numbers buffer each (and a ribbon numbers
-// buffer each for an emitter drawn as ribbons), those added this frame.
+// An emitter's record passes: a numbers buffer and a ribbon numbers
+// buffer each (read by ribbon and sprite passes), those added this frame.
 typedef struct mvfxRecordPasses
 {
     mrhiBufferId numbers[MVFX_GPU_RECORD_PASSES];
@@ -93,9 +97,8 @@ typedef struct mvfxRecordPasses
     int32_t count;
 } mvfxRecordPasses;
 
-// Creates the numbers buffers, the ribbon numbers too for an emitter
-// drawn as ribbons; false when the device refuses one.
-bool mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes, bool ribbons);
+// Creates the numbers buffers; false when the device refuses one.
+bool mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes);
 
 // Destroys the buffers made.
 void mvfxDestroyRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes);
@@ -113,6 +116,13 @@ bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
 bool mvfxAddRibbonPass(mrhiDevice* device, mvfxRecordPasses* passes,
                        const mvfxRecordResources* resources, const uint32_t* words,
                        const uint32_t* ribbonWords, int64_t capacity);
+
+// Adds a sprite pass of these numbers and sprite numbers over these
+// resources, its quads' workgroups for capacity particles; false when the
+// device refuses an import or a pass.
+bool mvfxAddSpritePass(mrhiDevice* device, mvfxRecordPasses* passes,
+                       const mvfxRecordResources* resources, const uint32_t* words,
+                       const uint32_t* spriteWords, int64_t capacity);
 
 // Adds a lights pass of these numbers over these resources; false when
 // the device refuses an import or a pass.

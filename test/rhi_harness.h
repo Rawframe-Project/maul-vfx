@@ -138,6 +138,10 @@ typedef struct Run
     // mvfxInstance_ExpandTubes) for sides past 0.
     bool strips;
     mvfxTubeDef tube;
+    // Whether the strips' buffers take the particles expanded into quads
+    // instead (mvfxGpuSim_ExpandSprites and mvfxInstance_ExpandSprites;
+    // strips and ribbons set too).
+    bool sprites;
     // The emitter whose records are written (the first for 0).
     int32_t recordEmitter;
     // Whether the records are its lights instead (mvfxGpuSim_AddLights

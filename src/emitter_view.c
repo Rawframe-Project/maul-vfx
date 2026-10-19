@@ -231,6 +231,7 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->loopTicks = e->duration;
     viewOut->beam = e->beam;
     viewOut->light = e->light;
+    viewOut->sprite = e->sprite;
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
         .breakDistance = e->ribbonBreakDistance,

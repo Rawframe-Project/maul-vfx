@@ -622,6 +622,9 @@ extern "C"
         // The lights its particles carry (mvfxEmitterDef's light; not
         // enabled for none).
         mvfxLightDef light;
+        // How its particles are expanded into quads (mvfxEmitterDef's
+        // sprite).
+        mvfxSpriteDef sprite;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

@@ -617,6 +617,30 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim,
                                                                   const mvfxGpuExpandDef* def);
 
+    /// Adds the passes expanding an emitter's particles into quads to the
+    /// frame the host builds, as mvfxInstance_ExpandSprites expands them on
+    /// the CPU path: four vertices a particle (left bottom, right bottom,
+    /// left top, right top, at the corners' places with their corner
+    /// fields) and six indices, in the order its records take, each quad
+    /// turned as its sprite def's billboard says (the view's eye, forward
+    /// and up its axes'). The first quads that fit both buffers are
+    /// written; the counts are the strips': the vertices and indices there
+    /// are (four and six a live particle) and those written. A transfer
+    /// pass and a compute pass, 9
+    /// more for a sort by place; a record pass of the emitter's
+    /// (MVFX_GPU_RECORD_PASSES), the same frames and order as
+    /// mvfxGpuSim_AddRecords. The def's tube is not read. An emitter
+    /// without particles at the instance's quality level writes none; its
+    /// counts, if asked for, are 0.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the quads go, from mvfxDefaultGpuExpandDef.
+    /// @return As mvfxGpuSim_ExpandRibbons.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim,
+                                                                    const mvfxGpuExpandDef* def);
+
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
     /// when it added none. The bytes are the frame's uploads

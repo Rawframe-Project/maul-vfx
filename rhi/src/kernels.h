@@ -78,6 +78,8 @@ typedef enum mvfxKernel
     mvfx_kernelLightCount = 26,
     mvfx_kernelLightOffsets = 27,
     mvfx_kernelLightWrite = 28,
+    // An emitter's particles expanded into quads (ribbon_records.wgsl).
+    mvfx_kernelSpriteQuads = 29,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

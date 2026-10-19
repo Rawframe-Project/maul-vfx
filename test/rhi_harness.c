@@ -798,6 +798,7 @@ static uint32_t s_gpuCount[4];
 static bool s_ribbonPoints;
 static bool s_strips;
 static mvfxTubeDef s_tube;
+static bool s_sprites;
 static int32_t s_recordEmitter;
 static mrhiBufferId s_listBuffer;
 static mrhiResourceId s_listResource;
@@ -879,6 +880,10 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     strips.indexCapacity = s_ribbonCapacity;
     strips.counts = count;
     strips.tube = s_tube;
+    if (s_sprites)
+    {
+        return mvfxGpuSim_ExpandSprites(sim, &strips) == mvfx_success;
+    }
     return (s_tube.sides > 0 ? mvfxGpuSim_ExpandTubes(sim, &strips)
                              : mvfxGpuSim_ExpandRibbons(sim, &strips)) == mvfx_success;
 }
@@ -1302,38 +1307,74 @@ static const uint8_t* CpuRecordOf(uint32_t serial, int64_t written)
     return found != NULL ? s_cpuRecords + 64 + found->record * s_layoutView.stride : NULL;
 }
 
-// Each of the GPU's records against the CPU path's of its serial: the CPU
-// path's measure of the GPU's record at each place the same as of its own
-// within 1e-5 (so the orders differ only where measures do by less, as
-// sim.h states; the places, held to the tolerance, are the fields'); a
-// serial the CPU path did not write only at the cut, its measure within
-// that of the last record's.
+// The records a sorted unit takes: a quad's four vertices for sprites,
+// else one; a unit's measure, of its place (a quad's: the midpoint of its
+// first and last corners, its center).
+static int64_t UnitRecords(void)
+{
+    return s_sprites ? 4 : 1;
+}
+
+static double UnitMeasure(const uint8_t* unit)
+{
+    if (!s_sprites)
+    {
+        return MeasureOf(unit);
+    }
+    float first[3];
+    float last[3];
+    memcpy(first, unit, sizeof first);
+    memcpy(last, unit + 3 * s_layoutView.stride, sizeof last);
+    uint8_t center[3 * sizeof(float)];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float mid = (float)(0.5 * ((double)first[k] + (double)last[k]));
+        memcpy(center + k * sizeof(float), &mid, sizeof mid);
+    }
+    return MeasureOf(center);
+}
+
+// Each of the GPU's units (records, or quads of four) against the CPU
+// path's of its serial: the CPU path's measure of the GPU's unit at each
+// place the same as of its own within 1e-5 (so the orders differ only
+// where measures do by less, as sim.h states; the places, held to the
+// tolerance, are the fields'); a serial the CPU path did not write only
+// at the cut, its measure within that of the last unit's.
 static bool SameSorted(int64_t written)
 {
-    uint32_t stride = s_layoutView.stride;
-    for (int64_t c = 0; c < written; ++c)
+    int64_t size = UnitRecords() * s_layoutView.stride;
+    int64_t units = written / UnitRecords();
+    int64_t room = s_sprites ? (s_recordCapacity / 4 < s_ribbonCapacity / 6 ? s_recordCapacity / 4
+                                                                            : s_ribbonCapacity / 6)
+                             : s_recordCapacity;
+    for (int64_t c = 0; c < units; ++c)
     {
-        s_serials[c] = (Serial){.serial = SerialOf(s_cpuRecords + 64 + c * stride), .record = c};
+        s_serials[c] =
+            (Serial){.serial = SerialOf(s_cpuRecords + 64 + c * size), .record = c * UnitRecords()};
     }
-    qsort(s_serials, (size_t)written, sizeof s_serials[0], BySerial);
+    qsort(s_serials, (size_t)units, sizeof s_serials[0], BySerial);
     bool same = true;
-    for (int64_t r = 0; same && r < written; ++r)
+    for (int64_t r = 0; same && r < units; ++r)
     {
-        const uint8_t* gpu = s_gpuRecords + 64 + r * stride;
-        const uint8_t* cpu = CpuRecordOf(SerialOf(gpu), written);
-        double cpuMeasure = MeasureOf(s_cpuRecords + 64 + r * stride);
-        double measure = MeasureOf(cpu != NULL ? cpu : gpu);
+        const uint8_t* gpu = s_gpuRecords + 64 + r * size;
+        const uint8_t* cpu = CpuRecordOf(SerialOf(gpu), units);
+        double cpuMeasure = UnitMeasure(s_cpuRecords + 64 + r * size);
+        double measure = UnitMeasure(cpu != NULL ? cpu : gpu);
         same = fabs(measure - cpuMeasure) <= 1e-5 * (1.0 + fabs(cpuMeasure));
-        double last = MeasureOf(s_cpuRecords + 64 + (written - 1) * stride);
-        same = same && (cpu != NULL || (written == s_recordCapacity &&
-                                        fabs(MeasureOf(gpu) - last) <= 1e-5 * (1.0 + fabs(last))));
-        for (int32_t f = 0; same && cpu != NULL && f < s_layoutView.fieldCount; ++f)
+        double last = UnitMeasure(s_cpuRecords + 64 + (units - 1) * size);
+        same = same && (cpu != NULL || (units == room && fabs(UnitMeasure(gpu) - last) <=
+                                                             1e-5 * (1.0 + fabs(last))));
+        for (int64_t v = 0; same && cpu != NULL && v < UnitRecords(); ++v)
         {
-            same = SameField(&s_layoutView.fields[f], cpu, gpu, 0.0);
+            for (int32_t f = 0; same && f < s_layoutView.fieldCount; ++f)
+            {
+                same = SameField(&s_layoutView.fields[f], cpu + v * s_layoutView.stride,
+                                 gpu + v * s_layoutView.stride, 0.0);
+            }
         }
         if (!same)
         {
-            printf("sorted record %lld of %lld differs\n", (long long)r, (long long)written);
+            printf("sorted record %lld of %lld differs\n", (long long)r, (long long)units);
         }
     }
     return same;
@@ -1410,11 +1451,23 @@ static bool SameStrips(int64_t* writtenOut)
     {
         return false;
     }
-    mvfxResult expanded =
-        s_tube.sides > 0 ? mvfxInstance_ExpandTubes(s_context, s_cpu, s_recordEmitter, s_layout,
-                                                    &s_view, &s_tube, &buffers, &vertices, &count)
-                         : mvfxInstance_ExpandRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
-                                                      &s_view, &buffers, &vertices, &count);
+    mvfxResult expanded = mvfx_success;
+    if (s_sprites)
+    {
+        int64_t quads = 0;
+        expanded = mvfxInstance_ExpandSprites(s_context, s_cpu, s_recordEmitter, s_layout, &s_view,
+                                              &buffers, &quads);
+        vertices = 4 * quads;
+        count = 6 * quads;
+    }
+    else
+    {
+        expanded = s_tube.sides > 0
+                       ? mvfxInstance_ExpandTubes(s_context, s_cpu, s_recordEmitter, s_layout,
+                                                  &s_view, &s_tube, &buffers, &vertices, &count)
+                       : mvfxInstance_ExpandRibbons(s_context, s_cpu, s_recordEmitter, s_layout,
+                                                    &s_view, &buffers, &vertices, &count);
+    }
     if (!SwapPlaces(false) || expanded != mvfx_success)
     {
         return false;
@@ -2014,6 +2067,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_ribbonPoints = run->ribbons;
     s_strips = run->strips;
     s_tube = run->tube;
+    s_sprites = run->sprites;
     s_recordEmitter = run->recordEmitter;
     s_ribbonCapacity = run->ribbonCapacity;
     s_lights = run->lights;

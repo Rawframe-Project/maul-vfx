@@ -441,6 +441,20 @@ void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
     memcpy(words + 28, r->bendCosines, MVFX_MAX_RIBBON_PIECES * sizeof(float));
 }
 
+void mvfxSpriteNumbers(const mvfxEmitterView* view, const mvfxView* frame,
+                       const mvfxRibbonSink* sink, uint32_t words[MVFX_RIBBON_WORDS])
+{
+    memset(words, 0, MVFX_RIBBON_WORDS * sizeof(uint32_t));
+    Floats(words + 8, frame->up[0], frame->up[1], frame->up[2], view->sprite.stretch);
+    words[12] = 0xFFFFFFFFu;
+    words[13] = 0xFFFFFFFFu;
+    words[14] =
+        (uint32_t)(sink->capacity < (int64_t)UINT32_MAX ? sink->capacity : (int64_t)UINT32_MAX);
+    words[15] = sink->countWord;
+    words[24] = MVFX_SINK_SPRITES;
+    words[25] = view->sprite.billboard;
+}
+
 // Where a particle's values are for the record pass (records.wgsl's
 // Words).
 static void RecordWords(const mvfxAttributeArrays* a, uint32_t* words)

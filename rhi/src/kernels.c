@@ -67,6 +67,7 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerRecords, "lightCount"},
     {mvfx_containerRecords, "lightOffsets"},
     {mvfx_containerRecords, "lightWrite"},
+    {mvfx_containerRibbonRecords, "spriteQuads"},
 };
 
 struct mvfxGpu

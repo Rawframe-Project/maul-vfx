@@ -18,13 +18,13 @@ static bool CreateNumbers(mrhiDevice* device, uint32_t words, mrhiBufferId* buff
     return mrhiCreateBuffer(device, &def, bufferOut) == mrhi_success;
 }
 
-bool mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes, bool ribbons)
+bool mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes)
 {
     bool made = true;
     for (int32_t p = 0; made && p < MVFX_GPU_RECORD_PASSES; ++p)
     {
         made = CreateNumbers(device, MVFX_RECORD_WORDS, &passes->numbers[p]) &&
-               (!ribbons || CreateNumbers(device, MVFX_RIBBON_WORDS, &passes->ribbonNumbers[p]));
+               CreateNumbers(device, MVFX_RIBBON_WORDS, &passes->ribbonNumbers[p]);
     }
     return made;
 }
@@ -79,15 +79,17 @@ static bool AddRadixPasses(mrhiDevice* device, mvfxRecordPass* pass)
     return added;
 }
 
-// Adds a record or ribbon pass (with ribbon numbers) of these numbers
-// over these resources, its workgroups for capacity records or
-// particles.
+// Adds a record, ribbon or sprite pass (the last two with ribbon
+// numbers) of these numbers over these resources, its workgroups for
+// capacity records or particles.
 static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
                     const mvfxRecordResources* resources, const uint32_t* words,
-                    const uint32_t* ribbonWords, int64_t capacity)
+                    const uint32_t* ribbonWords, int64_t capacity, bool sprites)
 {
     mvfxRecordPass* pass = &passes->passes[passes->count];
-    *pass = (mvfxRecordPass){.resources = *resources, .ribbons = ribbonWords != nullptr};
+    *pass = (mvfxRecordPass){
+        .resources = *resources, .ribbons = ribbonWords != nullptr && !sprites, .sprites = sprites};
+    bool numbered = ribbonWords != nullptr;
     memcpy(pass->words, words, sizeof pass->words);
     pass->sorted = pass->ribbons || words[MVFX_RECORD_ORDER] == MVFX_ORDER_SORTED;
     // One invocation a record, 64 a workgroup, at most a dispatch's.
@@ -95,16 +97,16 @@ static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
     pass->groups = (uint32_t)(groups < 65535 ? groups : 65535);
     pass->words[5] = pass->groups > 0 ? pass->groups : 1;
     if (mrhiImportBuffer(device, passes->numbers[passes->count], &pass->numbers) != mrhi_success ||
-        (pass->ribbons && mrhiImportBuffer(device, passes->ribbonNumbers[passes->count],
-                                           &pass->ribbonNumbers) != mrhi_success))
+        (numbered && mrhiImportBuffer(device, passes->ribbonNumbers[passes->count],
+                                      &pass->ribbonNumbers) != mrhi_success))
     {
         return false;
     }
-    if (ribbonWords != nullptr)
+    if (numbered)
     {
         memcpy(pass->ribbonWords, ribbonWords, sizeof pass->ribbonWords);
         // The most pieces a segment is cut into (ribbon_records.wgsl's cut).
-        pass->cut = ribbonWords[16] > 1u;
+        pass->cut = pass->ribbons && ribbonWords[16] > 1u;
     }
     const mrhiAccess written[2] = {
         {.resource = pass->numbers, .kind = mrhi_accessCopyDestination},
@@ -120,11 +122,11 @@ static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
         {.resource = resources->digits, .kind = mrhi_accessStorageReadWrite},
         {.resource = resources->list, .kind = mrhi_accessStorageReadWrite},
         {.resource = pass->ribbonNumbers, .kind = mrhi_accessUniform}};
-    int32_t bound = pass->ribbons ? RIBBON_BINDINGS : RECORD_BINDINGS;
+    int32_t bound = numbered ? RIBBON_BINDINGS : RECORD_BINDINGS;
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = mrhi_passTransfer;
     def.accesses = written;
-    def.accessCount = pass->ribbons ? 2 : 1;
+    def.accessCount = numbered ? 2 : 1;
     def.neverCull = true;
     bool added = mrhiAddPass(device, &def, &pass->write) == mrhi_success;
     if (pass->sorted)
@@ -149,14 +151,21 @@ bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
                        const mvfxRecordResources* resources, const uint32_t* words,
                        int64_t capacity)
 {
-    return AddPass(device, passes, resources, words, nullptr, capacity);
+    return AddPass(device, passes, resources, words, nullptr, capacity, false);
 }
 
 bool mvfxAddRibbonPass(mrhiDevice* device, mvfxRecordPasses* passes,
                        const mvfxRecordResources* resources, const uint32_t* words,
                        const uint32_t* ribbonWords, int64_t capacity)
 {
-    return AddPass(device, passes, resources, words, ribbonWords, capacity);
+    return AddPass(device, passes, resources, words, ribbonWords, capacity, false);
+}
+
+bool mvfxAddSpritePass(mrhiDevice* device, mvfxRecordPasses* passes,
+                       const mvfxRecordResources* resources, const uint32_t* words,
+                       const uint32_t* spriteWords, int64_t capacity)
+{
+    return AddPass(device, passes, resources, words, spriteWords, capacity, true);
 }
 
 bool mvfxAddLightPass(mrhiDevice* device, mvfxRecordPasses* passes,
@@ -279,23 +288,24 @@ static bool RecordPass(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordP
     {
         return RecordEmpty(device, uploaded, pass);
     }
-    bool recorded =
-        mrhiBeginPass(device, pass->write) == mrhi_success &&
-        mvfxUpload(device, uploaded, pass->write, pass->numbers, 0, pass->words,
-                   sizeof pass->words) &&
-        (!pass->ribbons || mvfxUpload(device, uploaded, pass->write, pass->ribbonNumbers, 0,
-                                      pass->ribbonWords, sizeof pass->ribbonWords));
+    bool recorded = mrhiBeginPass(device, pass->write) == mrhi_success &&
+                    mvfxUpload(device, uploaded, pass->write, pass->numbers, 0, pass->words,
+                               sizeof pass->words) &&
+                    (!(pass->ribbons || pass->sprites) ||
+                     mvfxUpload(device, uploaded, pass->write, pass->ribbonNumbers, 0,
+                                pass->ribbonWords, sizeof pass->ribbonWords));
     recorded = mrhiEndPass(device, pass->write) == mrhi_success && recorded;
     const mvfxRecordResources* r = &pass->resources;
     const mrhiResourceId bound[RIBBON_BINDINGS] = {
         pass->numbers, r->particles, r->statistics, r->grids, r->records,
         r->count,      r->sort,      r->digits,     r->list,  pass->ribbonNumbers};
-    int32_t count = pass->ribbons ? RIBBON_BINDINGS : RECORD_BINDINGS;
+    int32_t count = pass->ribbons || pass->sprites ? RIBBON_BINDINGS : RECORD_BINDINGS;
     if (recorded && pass->sorted)
     {
-        recorded = RecordKernel(device, pass->keys,
-                                pass->ribbons ? pipelines->ribbonKeys : pipelines->keys, bound,
-                                count, nullptr, SortGroups(pass)) &&
+        // A sprite pass's keys are the records' (their module's bindings).
+        recorded = RecordKernel(
+                       device, pass->keys, pass->ribbons ? pipelines->ribbonKeys : pipelines->keys,
+                       bound, pass->ribbons ? count : RECORD_BINDINGS, nullptr, SortGroups(pass)) &&
                    RecordRadix(device, pipelines, pass);
     }
     if (recorded && pass->cut)
@@ -318,9 +328,11 @@ static bool RecordPass(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordP
                RecordKernel(device, pass->kernel, pipelines->lightWrite, bound, count, nullptr,
                             pass->groups);
     }
-    return recorded && RecordKernel(device, pass->kernel,
-                                    pass->ribbons ? pipelines->ribbonPoints : pipelines->records,
-                                    bound, count, nullptr, pass->words[5]);
+    mrhiComputePipelineId kernel = pass->ribbons   ? pipelines->ribbonPoints
+                                   : pass->sprites ? pipelines->spriteQuads
+                                                   : pipelines->records;
+    return recorded &&
+           RecordKernel(device, pass->kernel, kernel, bound, count, nullptr, pass->words[5]);
 }
 
 bool mvfxRecordRecordPasses(mrhiDevice* device, uint64_t* uploaded,

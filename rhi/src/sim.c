@@ -296,9 +296,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
         result = mvfxLaySimMesh(sim, def, e);
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
-        (!CreateBuffers(sim, emitter) ||
-         !mvfxCreateRecordBuffers(sim->device, &emitter->records,
-                                  sim->views[e].ribbon.ids != mvfx_ribbonNone) ||
+        (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
          !CreateSortBuffers(sim, &sim->views[e], emitter) ||
          !CreateEventBuffer(sim, &sim->views[e], emitter)))
     {
@@ -962,7 +960,8 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         .ribbonPieces = mvfxGpuPipeline(sim->gpu, mvfx_kernelRibbonPieces),
         .lightCount = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightCount),
         .lightOffsets = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightOffsets),
-        .lightWrite = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightWrite)};
+        .lightWrite = mvfxGpuPipeline(sim->gpu, mvfx_kernelLightWrite),
+        .spriteQuads = mvfxGpuPipeline(sim->gpu, mvfx_kernelSpriteQuads)};
     for (int32_t n = 0; n < sim->emitterCount; ++n)
     {
         Emitter* emitter = &sim->emitters[sim->order[n]];

@@ -194,6 +194,9 @@ bool mvfxIsRibbonLayout(const mvfxLayoutView* layout);
 #define MVFX_SINK_POINTS 0u
 #define MVFX_SINK_STRIPS 1u
 #define MVFX_SINK_TUBES  2u
+// Quads a particle (ribbon_records/sprites.wgsl), the sprite's numbers in
+// the ribbons' place.
+#define MVFX_SINK_SPRITES 3u
 
 // What a ribbon pass writes: points with the list, strips or tubes (of
 // sides, capped or not) with indices; the list's or the indices'
@@ -206,6 +209,12 @@ typedef struct mvfxRibbonSink
     int64_t capacity;
     uint32_t countWord;
 } mvfxRibbonSink;
+
+// Writes a sprite pass's numbers in a ribbon pass's place: its billboard,
+// the view's up and the stretch, the indices' capacity and the counts'
+// first word (the sink's).
+void mvfxSpriteNumbers(const mvfxEmitterView* view, const mvfxView* frame,
+                       const mvfxRibbonSink* sink, uint32_t words[MVFX_RIBBON_WORDS]);
 
 void mvfxRibbonNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                        const mvfxStepTables* tables, const mvfxRibbonSink* sink,

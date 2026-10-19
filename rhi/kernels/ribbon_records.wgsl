@@ -845,3 +845,5 @@ fn writePoint(r: u32, a: u32, b: u32, fraction: f32, place: vec3<f32>, point: Po
 }
 
 // include: ribbon_records/tubes.wgsl
+
+// include: ribbon_records/sprites.wgsl

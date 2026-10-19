@@ -817,3 +817,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   order, as `mvfxLight`, the first capacity of them and the count of all.
   Lights are no longer refused (`MVFX_FEATURE_LIGHT`), and an emitter's
   view gives its light def (`mvfxEmitterView.light`).
+- The GPU part expands an emitter's particles into quads
+  (`mvfxGpuSim_ExpandSprites`, taking an `mvfxGpuExpandDef`) as
+  `mvfxInstance_ExpandSprites` does: four vertices and six indices a
+  particle in its records' order, turned by its billboard, the first
+  quads that fit both buffers, and the strips' counts. An emitter's view
+  gives its sprite def (`mvfxEmitterView.sprite`).
