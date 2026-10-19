@@ -67,9 +67,9 @@ extern "C"
     // within a step (kill rules, colliders that kill, an attractor's kill
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
-    // move the births. Units (MVFX_FEATURE_UNITS) are refused held to a
-    // source's particles, in the air (normal or tangent drag), colliding
-    // with themselves or tearing, or drawn as ribbons.
+    // move the births. Units (MVFX_FEATURE_UNITS) are refused in the air
+    // (normal or tangent drag), colliding with themselves or tearing, or
+    // drawn as ribbons.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;

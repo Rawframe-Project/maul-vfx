@@ -55,7 +55,9 @@ static inline uint32_t mvfxWordOf(int16_t array)
 // frame's and mesh index's draws, 4 of the bounds' growth by size, 4 of
 // how particles turn and move, 12 of the values over life, 12 of how it
 // spawns from events, 16 of the shape, 4 of how births join ribbons and 32
-// of the units.
+// of the units, but for their last 4 (their frames', which the host's
+// frames change from step to step, uploaded each step for units held to
+// them).
 #define MVFX_VALUES_FIRST     (84 + 132 * MVFX_MAX_FORCES + 56 + 64 * MVFX_MAX_COLLIDERS)
 #define MVFX_VALUES_WORDS     140
 #define MVFX_BEAM_WORDS       24
@@ -67,6 +69,7 @@ static inline uint32_t mvfxWordOf(int16_t array)
 #define MVFX_SHAPE_FIRST      (MVFX_SPAWN_RULE_FIRST + 12)
 #define MVFX_RIBBON_FIRST     (MVFX_SHAPE_FIRST + 16)
 #define MVFX_UNITS_FIRST      (MVFX_RIBBON_FIRST + 4)
+#define MVFX_UNIT_FRAMES      (MVFX_UNITS_FIRST + 28)
 #define MVFX_STEP_WORDS       (MVFX_UNITS_FIRST + 32)
 // The words of a host frame for units held to the host's frames: its
 // origin, then its rotation.

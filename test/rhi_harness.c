@@ -1952,18 +1952,23 @@ static void SpawnFor(const Run* run, int32_t s)
     }
 }
 
-// Sets the first emitter's host frames of both instances at step s: frame
-// f a little along x from the last, rising, turning about y.
+// Sets the first emitter's host frames of both instances at step s: a
+// frame more each 4 steps up to the run's (units born on one not yet set
+// stay held after), frame f a little along x from the last, rising,
+// turning about y, its rotation's sign flipped every other step (the same
+// turn, which a unit's frame eases to the shorter way).
 static void FramesFor(const Run* run, int32_t s)
 {
     mvfxAttachFrame frames[8];
     int32_t count = run->attachFrames < 8 ? run->attachFrames : 8;
+    count = count < 1 + s / 4 ? count : 1 + s / 4;
     for (int32_t f = 0; f < count; ++f)
     {
         float angle = 0.05f * (float)(s * (f + 1));
+        float sign = (s + f) % 2 == 0 ? 1.0f : -1.0f;
         frames[f] = (mvfxAttachFrame){
             .position = {0.4 * (double)f - 0.6, 0.5 + 0.02 * (double)s, 0.1 * (double)f},
-            .rotation = {0.0f, sinf(angle), 0.0f, cosf(angle)}};
+            .rotation = {0.0f, sign * sinf(angle), 0.0f, sign * cosf(angle)}};
     }
     mvfxInstanceId both[2] = {s_cpu, s_planned};
     for (int32_t i = 0; i < 2; ++i)

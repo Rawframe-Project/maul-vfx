@@ -286,7 +286,11 @@ struct Step {
     // bits), what they are held to (mvfxAttachKind) and the source's
     // array's first word; for units held to the host's frames, the frames'
     // first vector in the births buffer (two a frame: its origin, then its
-    // rotation) and how many the host set.
+    // rotation) and how many the host set; for units held to a source's
+    // particles, the first vector of their copy in the births buffer (its
+    // live count, then its serials, places and orientations, an array of
+    // its capacity each), the source's capacity and whether it stores
+    // orientations.
     units: vec4<u32>,
     unitAcross: vec4<f32>,
     unitDown: vec4<f32>,

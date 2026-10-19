@@ -262,6 +262,11 @@ typedef struct Emitter
     int32_t frameCapacity;
     int32_t frameCount;
     uint64_t framesAt;
+    // For units held to a source's particles, the source's capacity of
+    // particles copied after the births (its live count, serials, places
+    // and, where it stores them, orientations) and whether it turns.
+    int32_t sourceCopy;
+    bool sourceTurned;
     bool cleared;
 } Emitter;
 
@@ -318,12 +323,17 @@ bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSpawn(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups);
 mvfxResult mvfxSpawnStepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 
-// An emitter's units held to the host's frames (sim_attach.c): the bytes
-// the frames take in the births buffer; the step's frames staged and
-// their numbers written for a plan; their upload in the write pass.
+// An emitter's units held to frames (sim_attach.c): the frames sized (the
+// host's, or a source's particles copied); the bytes they take in the
+// births buffer; the step's host frames staged and the frames' numbers
+// written for a plan; the host frames' upload in the write pass; the copy
+// of a source's particles recorded in the spawn copy pass.
+mvfxResult mvfxSizeSimFrames(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t e,
+                             int32_t capacity);
 uint64_t mvfxSimFrameBytes(const Emitter* emitter);
-void mvfxSimFrameNumbers(Emitter* emitter, const mvfxEmitterPlan* plan);
+void mvfxSimFrameNumbers(mvfxGpuSim* sim, Emitter* emitter, const mvfxEmitterPlan* plan);
 bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass);
+bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass);
 
 // An emitter's events (sim_events.c): the numbers of their values over
 // life written for a step's plan; what the pass giving them binds beside

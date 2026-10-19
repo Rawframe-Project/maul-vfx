@@ -56,14 +56,12 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 #define UNITS_BESIDE (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)
 
 // Whether the part runs an emitter's units: none beside what UNITS_BESIDE
-// names, none held to a source's particles, blown by the air, colliding
-// with themselves or tearing.
+// names, blown by the air, colliding with themselves or tearing.
 static bool UnitsRun(const mvfxEmitterView* view)
 {
     const mvfxUnitDef* u = &view->unit;
-    return (view->features & UNITS_BESIDE) == 0 && u->attach != mvfx_attachParticles &&
-           u->normalDrag == 0.0f && u->tangentDrag == 0.0f && u->selfThickness == 0.0f &&
-           u->tearStrain == 0.0f;
+    return (view->features & UNITS_BESIDE) == 0 && u->normalDrag == 0.0f &&
+           u->tangentDrag == 0.0f && u->selfThickness == 0.0f && u->tearStrain == 0.0f;
 }
 
 // Whether the part runs an emitter; what it does not, in refusal.
@@ -313,9 +311,6 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     mvfxResult result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
     emitter->capacity = plan.capacity;
     emitter->hostCapacity = plan.capacity > 0 ? sim->views[e].hostSpawnCapacity : 0;
-    const mvfxUnitDef* unit = &sim->views[e].unit;
-    emitter->frameCapacity =
-        plan.capacity > 0 && unit->attach == mvfx_attachHost ? unit->attachFrameCapacity : 0;
     const mvfxEventSpawn* spawn = &sim->views[e].eventSpawn;
     emitter->spawnSource = spawn->enabled ? spawn->source : -1;
     // Event births past the births' room are never written.
@@ -335,6 +330,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->unitGroups = (uint32_t)(units < 65535 ? (units > 0 ? units : 1) : 65535);
     emitter->pinsHead = sim->views[e].ribbon.pinHead;
     emitter->gridMask = plan.gridMask;
+    result = result == mvfx_success ? mvfxSizeSimFrames(sim, def, e, plan.capacity) : result;
     result = result == mvfx_success ? AllocateStaging(sim, emitter) : result;
     uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
     if (result == mvfx_success &&
@@ -758,10 +754,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     {
         mvfxHostBirthWords(&sim->views[e], &plan, emitter->hostWords);
     }
-    if (emitter->frameCapacity > 0)
-    {
-        mvfxSimFrameNumbers(emitter, &plan);
-    }
+    mvfxSimFrameNumbers(sim, emitter, &plan);
     emitter->cleared = plan.cleared;
     if (!AddEmitterPasses(sim, emitter))
     {
@@ -814,6 +807,12 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
                              emitter->words + MVFX_SOURCES_FIRST,
                              (MVFX_STEP_WORDS - MVFX_SOURCES_FIRST) * 4u);
         emitter->sourcesWritten = written;
+    }
+    // The units' frames, which the host's frames change from step to step.
+    if (written && emitter->frameCapacity > 0)
+    {
+        written = mvfxUpload(sim->device, &sim->uploaded, pass, step, MVFX_UNIT_FRAMES * 4u,
+                             emitter->words + MVFX_UNIT_FRAMES, 4u * 4u);
     }
     return written;
 }

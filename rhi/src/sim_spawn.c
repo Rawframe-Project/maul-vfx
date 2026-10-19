@@ -31,18 +31,35 @@ void mvfxOrderSimEmitters(mvfxGpuSim* sim)
 }
 
 // Adds the pass copying the source's events, as many as it wrote, into an
-// emitter's spawn region (none when the source is left out).
+// emitter's spawn region (none when the source is left out), and for units
+// held to the source's particles those particles into its births buffer.
 bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter)
 {
     const Emitter* source = &sim->emitters[emitter->spawnSource];
-    const mrhiAccess copied[3] = {
-        {.resource = emitter->resources[BUFFER_EVENTS], .kind = mrhi_accessCopyDestination},
-        {.resource = source->resources[BUFFER_EVENTS], .kind = mrhi_accessCopySource},
-        {.resource = source->resources[BUFFER_STATISTICS], .kind = mrhi_accessCopySource}};
+    mrhiAccess copied[5] = {
+        {.resource = emitter->resources[BUFFER_EVENTS], .kind = mrhi_accessCopyDestination}};
+    int32_t count = 1;
+    if (emitter->sourceCopy > 0)
+    {
+        copied[count++] = (mrhiAccess){.resource = emitter->resources[BUFFER_BIRTHS],
+                                       .kind = mrhi_accessCopyDestination};
+    }
+    if (source->capacity > 0)
+    {
+        copied[count++] = (mrhiAccess){.resource = source->resources[BUFFER_EVENTS],
+                                       .kind = mrhi_accessCopySource};
+        copied[count++] = (mrhiAccess){.resource = source->resources[BUFFER_STATISTICS],
+                                       .kind = mrhi_accessCopySource};
+    }
+    if (source->capacity > 0 && emitter->sourceCopy > 0)
+    {
+        copied[count++] = (mrhiAccess){.resource = source->resources[BUFFER_OTHER],
+                                       .kind = mrhi_accessCopySource};
+    }
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = mrhi_passTransfer;
     def.accesses = copied;
-    def.accessCount = source->capacity > 0 ? 3 : 1;
+    def.accessCount = count;
     def.neverCull = true;
     return mrhiAddPass(sim->device, &def, &emitter->passes[PASS_SPAWN_COPY]) == mrhi_success;
 }
@@ -75,6 +92,7 @@ static bool RecordSpawnCopy(mvfxGpuSim* sim, const Emitter* emitter)
         recorded = recorded && mvfxUpload(sim->device, &sim->uploaded, pass, into,
                                           first + 4u * MVFX_SPAWN_SOURCE, &none, sizeof none);
     }
+    recorded = recorded && mvfxRecordSourceCopy(sim, emitter, pass);
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 

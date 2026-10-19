@@ -902,6 +902,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   through it. `mvfxEmitterPlan` gains the host's frames at the plan's
   end (`attachFrames`, `attachFrameCount`) and `mvfxPlannedHostBirth`
   the unit's frame.
+- The GPU part runs units held to a source emitter's particles: the
+  source's particles are copied after its step, each unit finds its
+  particle by serial and follows its place and orientation, and a unit
+  whose particle is gone is let go.
 
 ### Fixed
 

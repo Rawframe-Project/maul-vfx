@@ -87,11 +87,11 @@ fn holdUnitPoint(i: u32, start: vec3<f32>) {
         source[(params.words.place + k) * c + i] = bitcast<u32>(start[k]);
     }
     // The anchors held in the particles' space move with the places, as
-    // the frames' origins do for units held to the host's frames.
+    // the frames' origins do for units held to frames.
     var held = NONE;
     if (params.unitArrays.x != NONE && params.unitPins.y == 0u) {
         held = params.unitArrays.x;
-    } else if (params.unitPins.y == ATTACH_HOST) {
+    } else if (isFramed()) {
         held = params.unitArrays.y;
     }
     if (held != NONE) {
@@ -367,8 +367,8 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
 // A born unit point's anchor, its place at birth, as the core's
 // AppendPoint; for units held to the instance, a pinned point's in the
 // instance's space at the plan's end, as the core's AnchorInInstance; for
-// units held to the host's frames, a pinned point's in its unit's new
-// frame, which the unit's first point stores (bornFrame).
+// units held to frames, a pinned point's in its unit's new frame, which
+// the unit's first point stores (bornFrame).
 fn storeAnchor(j: u32, at: u32, born: vec3<f32>) {
     let c = params.counts.x;
     var anchor = born;
@@ -376,7 +376,7 @@ fn storeAnchor(j: u32, at: u32, born: vec3<f32>) {
         let q = params.toRotation;
         anchor = rotate(vec4<f32>(-q.xyz, q.w), born - params.toOrigin.xyz) * (1.0 / params.toOrigin.w);
     }
-    if (params.unitPins.y == ATTACH_HOST) {
+    if (isFramed()) {
         let frame = bornFrame(j, at);
         if (isPinned(j % unitPoints())) {
             let q = frame[1];
@@ -388,22 +388,37 @@ fn storeAnchor(j: u32, at: u32, born: vec3<f32>) {
     }
 }
 
-// A born unit's frame at the plan's end, as the core's NewFrame for the
-// host's frames: the host's frame its birth names (frame 0 for the
-// emitter's own), or held at no turn where the host set no such frame.
-// Its first point stores the frame, its flags and its frame's index.
+// A born unit's frame at the plan's end, as the core's NewFrame: for the
+// host's frames the one its birth names (frame 0 for the emitter's own),
+// or held at no turn where the host set no such frame; for a source's
+// particles, one born of an event the frame of the event's particle (its
+// serial in its host record's last word; at no turn when that is gone,
+// let go at the next step's start), any other held at no turn. Its first
+// point stores the frame, its flags and its frame's index or particle's
+// serial.
 fn bornFrame(j: u32, at: u32) -> array<vec4<f32>, 2> {
     let c = params.counts.x;
     let host = birthWord(j, 2u).y;
     var f = 0u;
-    if (host != NONE) {
-        f = bitcast<u32>(hostBirthAt(host).velocity.w);
-    }
     var frame = array<vec4<f32>, 2>(vec4<f32>(0.0), vec4<f32>(0.0, 0.0, 0.0, 1.0));
     var flags = UNIT_HELD;
-    if (f < params.unitFrames.y) {
-        frame = hostFrame(f);
-        flags = 0u;
+    if (params.unitPins.y == ATTACH_PARTICLES) {
+        if (host != NONE && host >= params.spawnHead.z) {
+            f = bitcast<u32>(hostBirthAt(host).size.w);
+            flags = UNIT_EVENT;
+            let i = findSource(f);
+            if (i != NONE) {
+                frame = sourceFrame(i);
+            }
+        }
+    } else {
+        if (host != NONE) {
+            f = bitcast<u32>(hostBirthAt(host).velocity.w);
+        }
+        if (f < params.unitFrames.y) {
+            frame = hostFrame(f);
+            flags = 0u;
+        }
     }
     if (j % unitPoints() == 0u) {
         for (var k = 0u; k < 3u; k++) {

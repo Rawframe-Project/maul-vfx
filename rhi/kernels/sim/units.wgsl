@@ -34,16 +34,22 @@ const UNIT_PIN_FIRST: u32 = 1u;
 const UNIT_PIN_ROW: u32 = 2u;
 const ATTACH_INSTANCE: u32 = 1u;
 const ATTACH_HOST: u32 = 2u;
-// A unit's flags (the core's MVFX_ATTACH_*): held where it is, its frame
-// never moving; let go, its points free.
+const ATTACH_PARTICLES: u32 = 3u;
+// A unit's flags (the core's MVFX_ATTACH_*): born of an event; held where
+// it is, its frame never moving; let go, its points free.
+const UNIT_EVENT: u32 = 2u;
 const UNIT_HELD: u32 = 4u;
 const UNIT_LET_GO: u32 = 8u;
+// The words before a source's copied arrays (its live count, padded).
+const SOURCE_HEAD: u32 = 4u;
 
 var<workgroup> unitEnded: u32;
 // For units held to frames, the unit's frame at the plan's start and its
 // target at the end (each an origin, then a rotation).
 var<workgroup> unitFrom: array<vec4<f32>, 2>;
 var<workgroup> unitTo: array<vec4<f32>, 2>;
+// Whether the unit is let go, its pinned points free.
+var<workgroup> unitLetGo: u32;
 var<workgroup> unitKilled: atomic<u32>;
 
 // Family f of the core's FamiliesOf: stretch across and down, shear along
@@ -196,8 +202,21 @@ fn isPinned(q: u32) -> bool {
            (((pins & UNIT_PIN_FIRST) != 0u && q == 0u) || ((pins & UNIT_PIN_ROW) != 0u && q < params.units.y));
 }
 
+// Whether point q of the unit a workgroup runs is held, pinned and its
+// unit not let go, as the core's mvfxPointWeight; its weight (0 held, 1
+// free).
+fn isHeld(q: u32) -> bool {
+    return isPinned(q) && unitLetGo == 0u;
+}
+
 fn pointWeight(i: u32, first: u32) -> f32 {
-    return select(1.0, 0.0, isPinned(i - first));
+    return select(1.0, 0.0, isHeld(i - first));
+}
+
+// Whether the units are held to frames (the host's or a source's
+// particles'), each unit keeping one.
+fn isFramed() -> bool {
+    return params.unitPins.y >= ATTACH_HOST;
 }
 
 // Unit point i's stored frame (at its unit's first point): its origin and
@@ -217,14 +236,72 @@ fn hostFrame(f: u32) -> array<vec4<f32>, 2> {
     return array<vec4<f32>, 2>(bitcast<vec4<f32>>(births[at]), bitcast<vec4<f32>>(births[at + 1u]));
 }
 
-// A unit's frame's target at the plan's end, as the core's TargetOf for
-// the host's frames: the host's frame it names, its stored frame when
-// held or let go or its frame is not set.
+// Word w of the source's particles copied after its step: its live
+// count, then its serials, places and orientations, an array of its
+// capacity each.
+fn copiedWord(w: u32) -> u32 {
+    let at = 4u * params.unitFrames.x + w;
+    return births[at >> 2u][at & 3u];
+}
+
+// The source's particle with a serial, or NONE, as the core's FindSource:
+// its live particles are in the order of their births, so their serials
+// ascend modulo 2^32 from the oldest's.
+fn findSource(serial: u32) -> u32 {
+    let count = copiedWord(0u);
+    if (count == 0u) {
+        return NONE;
+    }
+    let base = copiedWord(SOURCE_HEAD);
+    let wanted = serial - base;
+    var low = 0u;
+    var high = count;
+    while (low < high) {
+        let middle = low + (high - low) / 2u;
+        if (copiedWord(SOURCE_HEAD + middle) - base < wanted) {
+            low = middle + 1u;
+        } else {
+            high = middle;
+        }
+    }
+    return select(NONE, low, low < count && copiedWord(SOURCE_HEAD + low) == serial);
+}
+
+// The frame of the source's particle i, as the core's SourceFrame: its
+// place and, where its emitter stores one, its orientation.
+fn sourceFrame(i: u32) -> array<vec4<f32>, 2> {
+    let c = params.unitFrames.y;
+    var frame = array<vec4<f32>, 2>(vec4<f32>(0.0), vec4<f32>(0.0, 0.0, 0.0, 1.0));
+    for (var k = 0u; k < 3u; k++) {
+        frame[0][k] = bitcast<f32>(copiedWord(SOURCE_HEAD + (1u + k) * c + i));
+    }
+    for (var k = 0u; params.unitFrames.z != 0u && k < 4u; k++) {
+        frame[1][k] = bitcast<f32>(copiedWord(SOURCE_HEAD + (4u + k) * c + i));
+    }
+    return frame;
+}
+
+// A unit's frame's target at the plan's end, as the core's TargetOf: its
+// stored frame when held or let go; for the host's frames the one it
+// names, its stored frame when that is not set; for a source's particles
+// the frame of the one it names, and a unit whose particle is gone let go
+// (its flags marked), as the core's BeginAttachments.
 fn frameTarget(first: u32, stored: array<vec4<f32>, 2>) -> array<vec4<f32>, 2> {
     let c = params.counts.x;
     let flags = source[params.unitArrays.w * c + first];
     let f = source[params.unitPins.z * c + first];
-    if ((flags & (UNIT_HELD | UNIT_LET_GO)) != 0u || f >= params.unitFrames.y) {
+    if ((flags & (UNIT_HELD | UNIT_LET_GO)) != 0u) {
+        return stored;
+    }
+    if (params.unitPins.y == ATTACH_PARTICLES) {
+        let i = findSource(f);
+        if (i == NONE) {
+            source[params.unitArrays.w * c + first] = flags | UNIT_LET_GO;
+            return stored;
+        }
+        return sourceFrame(i);
+    }
+    if (f >= params.unitFrames.y) {
         return stored;
     }
     return hostFrame(f);
@@ -260,10 +337,10 @@ fn easedFrame(f: f32) -> array<vec4<f32>, 2> {
 // A pinned point's place at a tick of the plan, as the core's
 // mvfxPinPlace: its anchor, held in the particles' space; for units held
 // to the instance, in its space mapped by the instance then; for units
-// held to the host's frames, in the unit's frame eased that far.
+// held to frames, in the unit's frame eased that far.
 fn pinPlace(i: u32, tick: u32) -> vec3<f32> {
     let anchor = readVector(0u, i, params.unitArrays.x);
-    if (params.unitPins.y == ATTACH_HOST) {
+    if (isFramed()) {
         let frame = easedFrame(select(1.0, f32(tick) / f32(params.counts.z), params.counts.z > 0u));
         return rotate(frame[1], anchor) + frame[0].xyz;
     }
@@ -397,9 +474,11 @@ fn units(@builtin(local_invocation_index) local: u32,
         if (local == 0u) {
             unitEnded = select(0u, 1u, source[params.words.alive * c + first] == LIVE_ENDED);
             atomicExchange(&unitKilled, 0u);
-            if (params.unitPins.y == ATTACH_HOST) {
+            unitLetGo = 0u;
+            if (isFramed()) {
                 unitFrom = storedFrame(first);
                 unitTo = frameTarget(first, unitFrom);
+                unitLetGo = source[params.unitArrays.w * c + first] & UNIT_LET_GO;
             }
         }
         if (workgroupUniformLoad(&unitEnded) != 0u) {
@@ -414,7 +493,7 @@ fn units(@builtin(local_invocation_index) local: u32,
             let h = secondsOf(vec2<u32>(to - since, 0u));
             for (var q = local; q < points; q += CHUNK) {
                 moveSpan(first + q, since, to - since);
-                if (isPinned(q)) {
+                if (isHeld(q)) {
                     pinPoint(first + q, since, to, h);
                 }
             }
@@ -422,10 +501,10 @@ fn units(@builtin(local_invocation_index) local: u32,
             workgroupBarrier();
             solveSets(first, local, scale, divide(1.0, h * h), 0.0);
             // The integrator's velocity and the constraints' correction over
-            // the substep; a pinned point's the pin's.
+            // the substep; a held point's the pin's.
             for (var q = local; q < points; q += CHUNK) {
                 let i = first + q;
-                if (isPinned(q)) {
+                if (isHeld(q)) {
                     continue;
                 }
                 let p = pointPlace(i);
@@ -443,7 +522,7 @@ fn units(@builtin(local_invocation_index) local: u32,
                 solveSets(first, local, scale, 0.0, share);
             }
         }
-        if (local == 0u && params.unitPins.y == ATTACH_HOST) {
+        if (local == 0u && isFramed()) {
             // The frame at its target, as the core's EndAttachments.
             storeFrame(first, unitTo);
         }

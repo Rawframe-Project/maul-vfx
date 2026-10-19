@@ -8,10 +8,11 @@
 // substeps with damping, sheets with shear and bending under a moving
 // instance in the world's space, a capacity that binds (whole units
 // refused), colliders with life lost and turns, kills by contacts, kill
-// rules and kill radii (a unit killed whole), and what units are still
-// refused beside (pins, tearing, aerodynamics, self-collision, spawning
-// from events); their events (births, deaths, a point's first contact a
-// step).
+// rules and kill radii (a unit killed whole), units born from events,
+// pins held still, to the instance, the host's frames and a source's
+// particles, and what units are still refused (tearing, aerodynamics,
+// self-collision); their events (births, deaths, a point's first contact
+// a step).
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -320,6 +321,22 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
     emitter.unit.pinFirstRow = true;
     emitter.space = mvfx_spaceWorld;
     Pinned(gpu, kernels, &emitter, true, "sheets hanging from their first rows in the world");
+    // Past the rebase distance (by step 46 of 80), the anchors moving with
+    // the places. Within 2e-2: born under the moving instance, the sheets
+    // lie up to the rebase distance from the anchor, where a place's last
+    // unit (1.2e-4 at 1,024 m) over a substep of 1/120 s is 1.5e-2 m/s on
+    // either path (1.2e-2 measured); an anchor left unshifted parts by the
+    // whole shift.
+    emitter.lifetime = mvfxRangeSource(0.1f, 0.1f);
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter,
+                   .emitterCount = 1,
+                   .moving = true,
+                   .pace = 0.25,
+                   .steps = 80,
+                   .adopting = true,
+                   .tolerance = 2e-2f},
+            "sheets hanging from their first rows past the rebase distance");
     // Chains held to the instance, its first points carried as it moves,
     // turns and scales.
     emitter = Chains(8, 4);
@@ -329,7 +346,8 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
     Pinned(gpu, kernels, &emitter, true, "chains held to the moving instance");
     // Chains held to the host's frames, two set as the host's chains are
     // born on them, a third the emitter's own take (frame 0) and none
-    // past them (held where they are); the frames moving and turning.
+    // past them (held where they are, as are those born on frame 1 before
+    // the host sets it); the frames moving and turning.
     static const double places[3 * 4] = {0.5, 0, 0, -0.5, 0.2, 0, 0, 0.3, 0.4, 0, 0, 0};
     static const int32_t onFrames[4] = {0, 1, 1, 5};
     const mvfxSpawnRequest given = {.count = 4, .positions = places, .attachFrames = onFrames};
@@ -346,18 +364,46 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
                    .adopting = true,
                    .tolerance = 1e-3f},
             "chains held to the host's moving frames");
+    // Chains born on a sprite emitter's contacts with a floor, a chain a
+    // contact, held to the particle that met it: their first points follow
+    // the bouncing, turning particle until it dies and lets them go. The
+    // emitter's own chains are held where they are born.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.4f, 0}, .normal = {0, 1, 0}};
+    mvfxEmitterDef pair[2] = {Sprite(), Chains(4, 2)};
+    pair[0].colliders = &floor;
+    pair[0].colliderCount = 1;
+    pair[0].collision = (mvfxCollision){.enabled = true, .restitution = 0.6f, .radius = 0.02f};
+    pair[0].lifetime = mvfxRangeSource(0.4f, 0.8f);
+    pair[0].angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, -3, -3, 0}, .max = {3, 3, 3, 0}};
+    pair[0].events = mvfx_eventMaskCollision;
+    pair[0].eventCapacity = 4096;
+    pair[1].rate = 30.0f;
+    pair[1].burstCount = 0;
+    pair[1].unit.pinFirst = true;
+    pair[1].unit.attach = mvfx_attachParticles;
+    pair[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                          .source = 0,
+                                          .kind = mvfx_eventCollision,
+                                          .minCount = 1,
+                                          .maxCount = 1,
+                                          .capacity = 128};
+    Compare(gpu, kernels,
+            &(Run){.emitters = pair, .emitterCount = 2, .adopting = true, .tolerance = 1e-3f},
+            "chains held to the particles whose contacts bore them");
 }
 
-// Whether a planned instance of an effect is refused on the GPU for its
-// last emitter's units.
-static bool RefusedAmong(mvfxGpu* kernels, const mvfxEmitterDef* emitters, int32_t count)
+// Whether a planned instance of an emitter is refused on the GPU for its
+// units.
+static bool RefusedForUnits(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitters;
-    effectDef.emitterCount = count;
+    effectDef.emitters = emitter;
+    effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.planned = true;
@@ -373,31 +419,13 @@ static bool RefusedAmong(mvfxGpu* kernels, const mvfxEmitterDef* emitters, int32
     mvfxGpuSim* sim = NULL;
     mvfxGpuRefusal refusal;
     bool refused = made && mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState &&
-                   sim == NULL && refusal.emitter == count - 1 &&
-                   refusal.features == MVFX_FEATURE_UNITS;
+                   sim == NULL && refusal.emitter == 0 && refusal.features == MVFX_FEATURE_UNITS;
     mvfxDestroyContext(context);
     return refused;
 }
 
-static bool RefusedForUnits(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
-{
-    return RefusedAmong(kernels, emitter, 1);
-}
-
 static void TestRefused(mvfxGpu* kernels)
 {
-    mvfxEmitterDef pair[2] = {Sprite(), Chains(4, 2)};
-    pair[0].events = mvfx_eventMaskDeath;
-    pair[0].eventCapacity = 64;
-    pair[1].unit.pinFirst = true;
-    pair[1].unit.attach = mvfx_attachParticles;
-    pair[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
-                                          .source = 0,
-                                          .kind = mvfx_eventDeath,
-                                          .minCount = 1,
-                                          .maxCount = 1,
-                                          .capacity = 4};
-    CHECK(RefusedAmong(kernels, pair, 2), "units held to a source's particles refused");
     mvfxEmitterDef emitter = Chains(4, 2);
     emitter.unit.tearStrain = 0.5f;
     CHECK(RefusedForUnits(kernels, &emitter), "tearing units refused");
