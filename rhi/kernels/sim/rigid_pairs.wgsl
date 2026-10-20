@@ -178,35 +178,50 @@ fn pairWait() {
     workgroupBarrier();
 }
 
-// A substep's start for body i, as rigidSubstep to its meeting and the
-// core's Prepare: its start pose kept, an awake body spun and moved, a
-// sleeping one held; an awake one meeting the world gathers its contacts;
-// its solve stored (a sleeping body immovable), with its reach and
-// whether it sleeps.
-fn pairStart(i: u32, since: u32, ticks: u32) {
+// A substep's start for body i, as rigidSubstep to its meeting: its start
+// pose kept, an awake body spun and moved, a sleeping one held, then
+// prepared (pairPrepare); again, a body woken by touch prepared anew at
+// the pose it was held at, as the core prepares the woken.
+fn pairStart(i: u32, since: u32, ticks: u32, again: bool) {
     var b = loadBody(i);
+    if (again && (blocks[infoAt(i) + 1u] & FLAG_WOKEN) == 0u) {
+        return;
+    }
     var fate = loadFate(i);
     let h = secondsOf(vec2<u32>(ticks, 0u));
     let x0 = b.moving.place;
     let q0 = b.moving.turning.orientation;
     let asleep = isAsleep(b);
-    if (!asleep) {
+    if (!asleep && !again) {
         spinBody(&b, rigidMass(rigidSizeOf(b)), h);
     }
-    var moving = b.moving;
-    _ = moveState(&moving, since, ticks);
-    b.moving = moving;
+    if (!again) {
+        var moving = b.moving;
+        _ = moveState(&moving, since, ticks);
+        b.moving = moving;
+    }
     if (asleep) {
         holdSleeping(&b, x0, q0, h);
     }
+    pairPrepare(i, b, x0, q0, &fate);
+    storeFate(i, fate);
+    storeBody(i, b);
+}
+
+// Body i's preparing at its pose from the start pose, as the core's
+// Prepare: an awake one meeting the world gathers its contacts; its solve
+// stored (a sleeping body immovable), with its reach and whether it
+// sleeps.
+fn pairPrepare(i: u32, b: Body, x0: vec3<f32>, q0: vec4<f32>, fate: ptr<function, Fate>) {
+    let asleep = isAsleep(b);
     let size = rigidSizeOf(b);
     let m = b.moving;
     var list = Contacts();
     if (!asleep && params.collisionHead.z != 0u) {
         list = gatherContacts(m.place, m.turning.orientation, x0, q0, shapeOf(size),
                               rigidReach(size));
-        fate.capped += list.capped;
-        fate.searches += list.searches;
+        (*fate).capped += list.capped;
+        (*fate).searches += list.searches;
     }
     var mass = rigidMass(size);
     if (asleep) {
@@ -222,8 +237,6 @@ fn pairStart(i: u32, since: u32, ticks: u32) {
     blocks[at] = bitcast<u32>(rigidReach(size));
     blocks[at + 1u] = select(0u, FLAG_ASLEEP, asleep);
     blocks[at + 9u] = 0u;
-    storeFate(i, fate);
-    storeBody(i, b);
 }
 
 // Whether body i met the world or another body this substep.
@@ -337,15 +350,25 @@ fn pairLive(i: u32) -> bool {
 // bodies' predictions, the stages' rounds (the world's contacts then the
 // pairs' colours forward, the reverse backward, a wait after each), and
 // each body's end.
-fn pairSubstep(t: u32, live: u32, span: vec2<u32>) {
+fn pairSubstep(t: u32, live: u32, span: vec2<u32>) -> vec3<u32> {
     let h = secondsOf(vec2<u32>(span.y, 0u));
     let still = 2.0 * params.gravity.w * h;
-    for (var i = t; i < live; i += PAIR_GROUP) {
-        if (pairLive(i)) {
-            pairStart(i, span.x, span.y);
+    // The start, then (sleeping on) waking by touch and the woken
+    // prepared anew, in one loop so the gathering is inlined once.
+    let starts = select(1u, 2u, params.rigid.z != NONE && params.collisionHead.z != 0u);
+    for (var round = 0u; round < starts; round++) {
+        if (round == 1u) {
+            if (!pairWake(t, live)) {
+                break;
+            }
         }
+        for (var i = t; i < live; i += PAIR_GROUP) {
+            if (pairLive(i)) {
+                pairStart(i, span.x, span.y, round == 1u);
+            }
+        }
+        pairWait();
     }
-    pairWait();
     var found = vec3<u32>(0u);
     if (params.collisionHead.z != 0u) {
         found.z = pairFind(t, live);
@@ -384,12 +407,14 @@ fn pairSubstep(t: u32, live: u32, span: vec2<u32>) {
         }
     }
     pairWait();
+    return found;
 }
 
 // Rigid pairs: the rigid pass for an emitter whose bodies meet each other,
 // in one workgroup. Each live body's fate cleared and its life's inverse
-// kept; each substep taken by every body; then each body's settling, its
-// first strike's event and its drops, as the rigid pass.
+// kept; each substep taken by every body; with sleeping, the islands of
+// the last substep's pairs settled; then each body's first strike's event
+// and its drops, as the rigid pass.
 @compute @workgroup_size(256, 1, 1)
 fn rigidPairs(@builtin(local_invocation_index) t: u32) {
     let c = params.counts.x;
@@ -400,20 +425,21 @@ fn rigidPairs(@builtin(local_invocation_index) t: u32) {
         blocks[pairBase() + FATE_WORDS * i + 15u] = bitcast<u32>(loadMoving(0u, i).inverseLife);
     }
     pairWait();
+    var last = vec3<u32>(0u);
     for (var s = 0u; s < params.rigid.y; s++) {
         let span = rigidSpan(s);
         if (span.y > 0u) {
-            pairSubstep(t, live, span);
+            last = pairSubstep(t, live, span);
         }
+    }
+    if (params.rigid.z != NONE) {
+        pairSettle(t, live, last, secondsOf(vec2<u32>(params.counts.z, 0u)));
     }
     for (var i = t; i < live; i += PAIR_GROUP) {
         if (source[params.words.alive * c + i] == LIVE_ENDED) {
             continue;
         }
-        var b = loadBody(i);
-        if (params.rigid.z != NONE) {
-            settleBody(&b, secondsOf(vec2<u32>(params.counts.z, 0u)));
-        }
+        let b = loadBody(i);
         let fate = loadFate(i);
         if (fate.contacted) {
             let inverseLife = bitcast<f32>(blocks[pairBase() + FATE_WORDS * i + 15u]);

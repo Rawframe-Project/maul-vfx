@@ -184,6 +184,12 @@ typedef struct Run
     // the most a body takes the first emitter must have dropped over the
     // run (none needed for 0).
     int32_t leastRigidCapped;
+    // For an emitter of rigid particles that sleep, the most bodies the
+    // first emitter must have held asleep at some step, and those it must
+    // have woken over the run (asleep at a step, awake at the next; none
+    // needed for 0).
+    int32_t leastAsleep;
+    int32_t leastWoken;
     // The most links the first emitter must have written at some step,
     // and the drops it must have counted over the run (none needed for
     // 0).

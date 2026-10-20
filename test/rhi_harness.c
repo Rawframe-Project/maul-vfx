@@ -1528,6 +1528,31 @@ static bool SwapOutputPlaces(bool in)
     return true;
 }
 
+// The most rigid bodies of the first emitter the GPU held asleep at a
+// step over a run, those it woke (asleep at a step, awake at the next),
+// and which serials (modulo SLEEP_SERIALS) were asleep at the last step.
+#define SLEEP_SERIALS 4096
+static int32_t s_mostAsleep;
+static int32_t s_woken;
+static uint8_t s_wasAsleep[SLEEP_SERIALS];
+
+// Counts the GPU's sleeping bodies of the first emitter at this step.
+static void CountSleep(int32_t count)
+{
+    static uint8_t asleep[SLEEP_SERIALS];
+    memset(asleep, 0, sizeof asleep);
+    int32_t now = 0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        uint32_t serial = Word(s_arrays.serial, i) % SLEEP_SERIALS;
+        asleep[serial] = FloatOf(s_arrays.sleep, i) < 0.0f;
+        now += asleep[serial];
+        s_woken += s_wasAsleep[serial] && !asleep[serial];
+    }
+    memcpy(s_wasAsleep, asleep, sizeof asleep);
+    s_mostAsleep = now > s_mostAsleep ? now : s_mostAsleep;
+}
+
 // Gives the CPU path's emitter the GPU's places and velocities (and a
 // rigid body's turn and sleep), read back last: false when its pool is
 // not the GPU's, serial by serial.
@@ -1545,6 +1570,10 @@ static bool AdoptGpu(int32_t e)
     {
         printf("the pools differ: %d particles, GPU %u\n", count, s_record[0]);
         return false;
+    }
+    if (e == 0 && s_arrays.sleep >= 0)
+    {
+        CountSleep(count);
     }
     // Places and velocities; a rigid body's orientation, angular velocity
     // and sleep where it stores them.
@@ -2534,6 +2563,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_contactsCapped = 0;
     s_selfCapped = 0;
     s_rigidCapped = 0;
+    s_mostAsleep = 0;
+    s_woken = 0;
+    memset(s_wasAsleep, 0, sizeof s_wasAsleep);
     s_torn = 0;
     s_mostLinks = 0;
     s_linksDropped = 0;
@@ -2760,6 +2792,12 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     {
         printf("  rigid contacts capped: %u (at least %d)\n", s_rigidCapped, run->leastRigidCapped);
         CHECK(s_rigidCapped >= (uint32_t)run->leastRigidCapped, "rigid contacts capped");
+    }
+    if (run->emitters[0].rigid.enabled && run->emitters[0].rigid.sleepSpeed > 0.0f)
+    {
+        printf("  bodies asleep: at most %d at a step (at least %d), %d woken (at least %d)\n",
+               s_mostAsleep, run->leastAsleep, s_woken, run->leastWoken);
+        CHECK(s_mostAsleep >= run->leastAsleep && s_woken >= run->leastWoken, "bodies asleep");
     }
     if (run->emitters[0].plexus.enabled)
     {

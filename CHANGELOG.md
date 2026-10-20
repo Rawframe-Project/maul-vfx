@@ -987,6 +987,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part's rigid capsules and hulls meet each other too: capsules by
   their cores' nearest points and each core's ends, hulls as two
   polytopes, as the CPU path's.
+- The GPU part's rigid bodies that meet each other sleep too: sleepers an
+  awake body reaches wake by touch, and at a step's end the bodies joined
+  by the last substep's pairs sleep or stay awake as one island, as the
+  CPU path's.
 
 ### Fixed
 

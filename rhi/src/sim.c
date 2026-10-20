@@ -57,13 +57,6 @@ static bool MeetsBodies(const mvfxEmitterView* view)
     return (view->features & MVFX_FEATURE_COLLISION) != 0 && view->rigid.bodyContacts > 0;
 }
 
-// Whether an emitter's bodies meet each other as the GPU does not run them
-// yet: with sleeping on.
-static bool PairsRefused(const mvfxEmitterView* view)
-{
-    return MeetsBodies(view) && view->rigid.sleepSpeed > 0.0f;
-}
-
 // The least power of two at least n.
 static uint64_t PowerAbove(uint64_t n)
 {
@@ -110,9 +103,7 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                  : 0) |
             // Rigid particles are killed by their strikes' life
             // alone.
-            ((view->features & MVFX_FEATURE_RIGID) != 0 && (view->kills || PairsRefused(view))
-                 ? MVFX_FEATURE_RIGID
-                 : 0),
+            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0),
     };
     return refusal->features == 0;
 }

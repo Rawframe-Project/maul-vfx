@@ -279,15 +279,22 @@ fn settleBody(b: ptr<function, Body>, seconds: f32) {
     if (isAsleep(*b)) {
         return;
     }
-    let v = (*b).moving.velocity;
-    let w = (*b).moving.turning.angular;
-    let speed = sqrt(dot(v, v)) + sqrt(dot(w, w)) * rigidReach(rigidSizeOf(*b));
-    (*b).sleep = select(0.0, (*b).sleep + seconds, speed < params.rigidMass.y);
+    stillBody(b, seconds);
     if (!((*b).sleep < params.rigidMass.z)) {
         (*b).sleep = SLEEP_NEW;
         (*b).moving.velocity = vec3<f32>(0.0);
         (*b).moving.turning.angular = vec3<f32>(0.0);
     }
+}
+
+// An awake body's still time over the step's seconds, as the core's
+// Still: grown while its farthest point is slower than the sleep speed,
+// else 0.
+fn stillBody(b: ptr<function, Body>, seconds: f32) {
+    let v = (*b).moving.velocity;
+    let w = (*b).moving.turning.angular;
+    let speed = sqrt(dot(v, v)) + sqrt(dot(w, w)) * rigidReach(rigidSizeOf(*b));
+    (*b).sleep = select(0.0, (*b).sleep + seconds, speed < params.rigidMass.y);
 }
 
 // Substep s of the step's rigid substeps: its first tick and its ticks.

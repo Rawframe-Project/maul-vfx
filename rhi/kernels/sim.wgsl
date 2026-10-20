@@ -402,3 +402,4 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/rigid_pair_colour.wgsl
 // include: sim/rigid_pair_solve.wgsl
 // include: sim/rigid_pair_shapes.wgsl
+// include: sim/rigid_pair_sleep.wgsl

@@ -4,12 +4,14 @@
 // candidates in index order, and the pool filled in the bodies' order up
 // to its room.
 
-// A body's words beside its solve: its reach, its flags (FLAG_*), its
+// A body's words beside its solve: its reach, its flags (FLAG_*: asleep,
+// woken by touch this substep), its
 // rank among the bodies the step moves (the core's index, the ended taken
 // out), its level in the pair grid and its cell there, its pair
 // contacts' count and first place in the pool, whether a pair touched it.
 const INFO_WORDS: u32 = 12u;
 const FLAG_ASLEEP: u32 = 1u;
+const FLAG_WOKEN: u32 = 2u;
 // The grid's levels at most (the core's MOST_LEVELS) and its keys' salt
 // (MVFX_GRID_SALT).
 const MOST_LEVELS: u32 = 24u;
@@ -146,8 +148,9 @@ struct PairGrid {
 
 // Whether body b, met at level and cell from a's search, is a's to find
 // as the core's CandidatesAt: of that level and cell, after a or of a
-// higher level, not two asleep, within their reaches.
-fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32) -> bool {
+// higher level, wanted (not two asleep; waking, one asleep and one not),
+// within their reaches.
+fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32, waking: bool) -> bool {
     let ib = infoAt(b);
     if (blocks[ib + 3u] != level || blocks[ib + 4u] != u32(cell.x) ||
         blocks[ib + 5u] != u32(cell.y) || blocks[ib + 6u] != u32(cell.z)) {
@@ -157,7 +160,9 @@ fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32) -> bool {
         return false;
     }
     let ia = infoAt(a);
-    if ((blocks[ia + 1u] & blocks[ib + 1u] & FLAG_ASLEEP) != 0u) {
+    let both = (blocks[ia + 1u] & blocks[ib + 1u] & FLAG_ASLEEP) != 0u;
+    let either = ((blocks[ia + 1u] | blocks[ib + 1u]) & FLAG_ASLEEP) != 0u;
+    if (select(both, !either || both, waking)) {
         return false;
     }
     let reach = bitcast<f32>(blocks[ia]) + bitcast<f32>(blocks[ib]);
@@ -174,7 +179,7 @@ fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32) -> bool {
 // a's least candidate from index past on, NONE for none: over the
 // levels from its own, each of the 27 cells about it there, the first
 // sorted entry of that cell's key not below from that passes.
-fn nextCandidate(a: u32, past: u32, grid: PairGrid) -> u32 {
+fn nextCandidate(a: u32, past: u32, grid: PairGrid, waking: bool) -> u32 {
     let own = blocks[infoAt(a) + 3u];
     let x = loadVector(solidAt(a));
     let entries = powerAbove(grid.live);
@@ -193,7 +198,7 @@ fn nextCandidate(a: u32, past: u32, grid: PairGrid) -> u32 {
                 if (blocks[gridAt() + 2u * e] != key || b >= best) {
                     break;
                 }
-                if (isCandidate(a, b, level, around, own)) {
+                if (isCandidate(a, b, level, around, own, waking)) {
                     best = b;
                     break;
                 }
@@ -313,7 +318,13 @@ fn pairVisit(a: u32, grid: PairGrid, writing: bool, room: u32) {
     var at = blocks[infoAt(a) + 8u];
     var count = 0u;
     var fate = loadFate(a);
-    for (var b = nextCandidate(a, 0u, grid); b != NONE; b = nextCandidate(a, b + 1u, grid)) {
+    var past = 0u;
+    loop {
+        let b = nextCandidate(a, past, grid, false);
+        if (b == NONE) {
+            break;
+        }
+        past = b + 1u;
         let low = min(a, b);
         let high = max(a, b);
         var list = pairGather(low, high);

@@ -9,8 +9,7 @@
 // ending within the run (pairs' priorities of the bodies' ranks); boxes of
 // sizes apart (the pair grid's levels); a pool too small for them, its
 // contacts past the room dropped and counted; capsules by their cores and
-// hulls as polytopes; what is still refused (bodies meeting each other
-// that sleep).
+// hulls as polytopes; sleeping by islands and waking by touch.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -60,6 +59,8 @@ static const mvfxMeshDef s_hull = {
 
 static const mvfxCollider s_floor = {
     .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0.2f}};
+static const mvfxCollider s_level = {
+    .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
 
 // Compares bodies a step at a time from the same state (rhi_harness.h's
 // adopting): a body near the floor or another body may go apart, at most
@@ -110,6 +111,25 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
     Met(gpu, kernels,
         &(Run){.mostApart = 4, .steps = 15, .least = 30, .emitters = &emitter, .mesh = &s_hull},
         "hulls meeting the floor and each other");
+    // Sleeping, over two seconds on a level floor: 15 boxes a second,
+    // spread over 3 and living 3 seconds, sleep by islands once still a
+    // tenth of a second, and those landing on them wake them by touch (on
+    // lavapipe 31 asleep at most, 176 woken; the CPU path against itself
+    // parts none, 2 without sleeping).
+    emitter = Thrown(mvfx_rigidBox, &s_level, 8);
+    emitter.shape.radius = 3.0f;
+    emitter.rate = 15.0f;
+    emitter.lifetime = mvfxRangeSource(3.0f, 3.5f);
+    emitter.rigid.sleepSpeed = 2.0f;
+    emitter.rigid.sleepTime = 0.1f;
+    Met(gpu, kernels,
+        &(Run){.mostApart = 5,
+               .steps = 120,
+               .least = 45,
+               .emitters = &emitter,
+               .leastAsleep = 10,
+               .leastWoken = 20},
+        "boxes meeting each other, sleeping by islands and woken by touch");
     // Three contacts a body: those past the pool's room are dropped and
     // counted.
     emitter = Thrown(mvfx_rigidBox, &s_floor, 3);
@@ -118,48 +138,8 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
         "boxes meeting each other, the pool's contacts dropped");
 }
 
-// Whether the GPU part refuses an emitter for its rigid particles.
-static bool RefusedForRigid(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
-{
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitter;
-    effectDef.emitterCount = 1;
-    mvfxEffectId effect = {0};
-    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    instanceDef.planned = true;
-    mvfxInstanceId planned = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
-    instanceDef.effect = effect;
-    made = made && mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success;
-    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
-    simDef.gpu = kernels;
-    simDef.context = context;
-    simDef.effect = effect;
-    simDef.instance = planned;
-    mvfxGpuSim* sim = NULL;
-    mvfxGpuRefusal refusal;
-    bool refused = made && mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState &&
-                   sim == NULL && refusal.emitter == 0 && refusal.features == MVFX_FEATURE_RIGID;
-    mvfxDestroyContext(context);
-    return refused;
-}
-
-static void TestRefused(mvfxGpu* kernels)
-{
-    mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, &s_floor, 4);
-    emitter.rigid.sleepSpeed = 0.05f;
-    emitter.rigid.sleepTime = 0.5f;
-    CHECK(RefusedForRigid(kernels, &emitter), "spheres meeting each other asleep refused");
-    emitter.rigid.bodyContacts = 0;
-    CHECK(!RefusedForRigid(kernels, &emitter), "spheres sleeping alone run");
-}
-
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
-    TestRefused(kernels);
     TestMeeting(gpu, kernels);
 }
 
