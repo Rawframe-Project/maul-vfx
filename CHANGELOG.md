@@ -984,6 +984,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   coloured and solved colour by colour as the CPU path's, their strikes'
   events included. Capsules and hulls meeting each other, and bodies
   meeting each other with sleeping on, stay refused.
+- The GPU part's rigid capsules and hulls meet each other too: capsules by
+  their cores' nearest points and each core's ends, hulls as two
+  polytopes, as the CPU path's.
 
 ### Fixed
 

@@ -8,8 +8,9 @@
 // core's and solved colour by colour, their pair strikes' events; bodies
 // ending within the run (pairs' priorities of the bodies' ranks); boxes of
 // sizes apart (the pair grid's levels); a pool too small for them, its
-// contacts past the room dropped and counted; what is still refused
-// (capsules meeting each other, bodies meeting each other that sleep).
+// contacts past the room dropped and counted; capsules by their cores and
+// hulls as polytopes; what is still refused (bodies meeting each other
+// that sleep).
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -51,6 +52,12 @@ static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* floor, in
     return emitter;
 }
 
+// A lopsided hull: a wedge with a spike, and its mesh.
+static const float s_lopsided[21] = {0,    0, 0,    1, 0, 0,    0, 0.6f, 0,    0,   0,
+                                     0.3f, 1, 0.1f, 0, 0, 0.4f, 0, 0.7f, 0.8f, 1.1f};
+static const mvfxMeshDef s_hull = {
+    .cookie = MVFX_MESH_DEF_COOKIE, .positions = s_lopsided, .vertexCount = 7};
+
 static const mvfxCollider s_floor = {
     .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0.2f}};
 
@@ -90,6 +97,19 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
         .kind = mvfx_sourceRange, .min = {0.1f, 0.1f, 0.1f}, .max = {1.0f, 0.6f, 0.8f}};
     Met(gpu, kernels, &(Run){.mostApart = 66, .emitters = &emitter},
         "boxes of sizes apart meeting each other");
+    // Capsules by their cores (the CPU path against itself, sizes moved
+    // by a binary32 unit each step, parts 17).
+    emitter = Thrown(mvfx_rigidCapsule, &s_floor, 8);
+    Met(gpu, kernels, &(Run){.mostApart = 38, .emitters = &emitter},
+        "capsules meeting the floor and each other");
+    // Hulls as polytopes, over the first 15 steps: a hull's face against
+    // another's turns on rounding (a cube's hull parts 99 of 119 over 40
+    // steps on the CPU path against itself, places moved by 2e-6, where
+    // boxes part 10; 7 over 15).
+    emitter = Thrown(mvfx_rigidHull, &s_floor, 8);
+    Met(gpu, kernels,
+        &(Run){.mostApart = 4, .steps = 15, .least = 30, .emitters = &emitter, .mesh = &s_hull},
+        "hulls meeting the floor and each other");
     // Three contacts a body: those past the pool's room are dropped and
     // counted.
     emitter = Thrown(mvfx_rigidBox, &s_floor, 3);
@@ -129,9 +149,7 @@ static bool RefusedForRigid(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
 
 static void TestRefused(mvfxGpu* kernels)
 {
-    mvfxEmitterDef emitter = Thrown(mvfx_rigidCapsule, &s_floor, 4);
-    CHECK(RefusedForRigid(kernels, &emitter), "capsules meeting each other refused");
-    emitter = Thrown(mvfx_rigidSphere, &s_floor, 4);
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, &s_floor, 4);
     emitter.rigid.sleepSpeed = 0.05f;
     emitter.rigid.sleepTime = 0.5f;
     CHECK(RefusedForRigid(kernels, &emitter), "spheres meeting each other asleep refused");

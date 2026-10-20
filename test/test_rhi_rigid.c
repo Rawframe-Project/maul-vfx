@@ -22,8 +22,8 @@
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
 // they are kept out of, and born into a box; what is still refused
-// (bodies meeting each other, kills within a step). Skips (77) without an
-// adapter, unless MVFX_RHI_REQUIRED is set.
+// (kills within a step; bodies meeting each other are rhi_pairs'). Skips
+// (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
@@ -459,9 +459,6 @@ static void TestRefused(mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = Bodies(mvfx_rigidCapsule);
     emitter.collision.enabled = true;
-    emitter.rigid.bodyContacts = 4;
-    CHECK(RefusedForRigid(kernels, &emitter), "bodies meeting each other refused");
-    emitter.rigid.bodyContacts = 0;
     emitter.collision.depthImage = true;
     emitter.collision.depthThickness = 0.3f;
     emitter.collision.depthSamples = 16;

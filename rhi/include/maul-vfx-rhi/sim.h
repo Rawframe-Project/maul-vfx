@@ -69,11 +69,10 @@ extern "C"
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
     // beside anything that kills within a step, and meeting each other
-    // (bodyContacts above 0) as capsules or hulls, or with sleeping on
-    // (sleepSpeed above 0). Spheres and boxes that meet each other run an
-    // emitter's step in one workgroup (its pairs found and solved colour
-    // by colour, as the CPU path's), so they use one compute unit of the
-    // device however many there are.
+    // (bodyContacts above 0) with sleeping on (sleepSpeed above 0). Bodies
+    // that meet each other run an emitter's step in one workgroup (its
+    // pairs found and solved colour by colour, as the CPU path's), so they
+    // use one compute unit of the device however many there are.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;

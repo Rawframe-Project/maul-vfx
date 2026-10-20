@@ -58,11 +58,10 @@ static bool MeetsBodies(const mvfxEmitterView* view)
 }
 
 // Whether an emitter's bodies meet each other as the GPU does not run them
-// yet: as capsules or hulls, or with sleeping on.
+// yet: with sleeping on.
 static bool PairsRefused(const mvfxEmitterView* view)
 {
-    bool shaped = view->rigid.shape == mvfx_rigidSphere || view->rigid.shape == mvfx_rigidBox;
-    return MeetsBodies(view) && (!shaped || view->rigid.sleepSpeed > 0.0f);
+    return MeetsBodies(view) && view->rigid.sleepSpeed > 0.0f;
 }
 
 // The least power of two at least n.

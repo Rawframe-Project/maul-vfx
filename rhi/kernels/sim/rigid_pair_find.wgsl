@@ -203,9 +203,9 @@ fn nextCandidate(a: u32, past: u32, grid: PairGrid) -> u32 {
     return best;
 }
 
-// Two bodies' contacts, the lower against the higher as a sphere or a box
-// it is kept out of, as the core's mvfxGatherPairContacts for spheres and
-// boxes.
+// Two bodies' contacts, the lower against the higher, as the core's
+// mvfxGatherPairContacts: two hulls as polytopes, two capsules by their
+// cores, else the higher as a sphere or a box the lower is kept out of.
 fn pairGather(low: u32, high: u32) -> Contacts {
     let a = loadBody(low);
     let b = loadBody(high);
@@ -222,7 +222,11 @@ fn pairGather(low: u32, high: u32) -> Contacts {
     c.rotation = b.moving.turning.orientation;
     let x = a.moving.place;
     let q = a.moving.turning.orientation;
-    if (sa.kind == RIGID_BOX) {
+    if (sa.kind == RIGID_HULL) {
+        hullPair(x, q, sa, b.moving.place, c.rotation, sb, &list);
+    } else if (sa.kind == RIGID_CAPSULE) {
+        capsulePair(x, q, sa, b.moving.place, c.rotation, sb, &list);
+    } else if (sa.kind == RIGID_BOX) {
         boxBoxContacts(x, q, sa, c, &list);
     } else {
         outsideContacts(x, q, sa, c, &list);
@@ -301,11 +305,63 @@ fn pairLevels(t: u32, live: u32) -> PairGrid {
     return grid;
 }
 
+// Body a's pairs, as the core's PairsOf: counting, its candidates'
+// contacts summed into its info; else written from its place in the pool,
+// those past the room dropped and counted against it, both bodies of a
+// pair with contacts touched.
+fn pairVisit(a: u32, grid: PairGrid, writing: bool, room: u32) {
+    var at = blocks[infoAt(a) + 8u];
+    var count = 0u;
+    var fate = loadFate(a);
+    for (var b = nextCandidate(a, 0u, grid); b != NONE; b = nextCandidate(a, b + 1u, grid)) {
+        let low = min(a, b);
+        let high = max(a, b);
+        var list = pairGather(low, high);
+        count += list.count;
+        if (!writing) {
+            continue;
+        }
+        fate.capped += list.capped;
+        fate.searches += list.searches;
+        if (list.count > 0u) {
+            blocks[infoAt(low) + 9u] = 1u;
+            blocks[infoAt(high) + 9u] = 1u;
+        }
+        let bodyB = loadSolid(high);
+        let bodyA = loadSolid(low);
+        for (var j = 0u; j < list.count; j++) {
+            if (at >= room) {
+                fate.capped += list.count - j;
+                break;
+            }
+            let item = list.items[j];
+            var c = PairContact();
+            c.a = low;
+            c.b = high;
+            c.onA = item.body;
+            c.onB = rotate(conjugate(bodyB.q), item.surface - bodyB.x);
+            c.normal = item.normal;
+            var ra = vec3<f32>(0.0);
+            var rb = vec3<f32>(0.0);
+            _ = pairDepth(c, bodyA, bodyB, false, &ra, &rb);
+            c.speed = pairSpeed(c, bodyA, bodyB, ra, rb);
+            storePair(poolAt(at), c);
+            at += 1u;
+        }
+    }
+    if (writing) {
+        storeFate(a, fate);
+    } else {
+        blocks[infoAt(a) + 7u] = count;
+    }
+}
+
 // The pairs of the step's bodies, as the core's mvfxFindBodyPairs: each
 // body's candidates' contacts counted, their places in the pool by the
-// bodies' order, then each body's pairs in its candidates' order written,
-// those past the pool's room dropped and counted against it. Returns the
-// pool's contacts.
+// bodies' order, then each body's pairs in its candidates' order written
+// (one visit a body each round: lavapipe inlines every call, and the
+// pairs' contacts are the kernel's largest code). Returns the pool's
+// contacts.
 fn pairFind(t: u32, live: u32) -> u32 {
     if (bodyContacts() == 0u) {
         return 0u;
@@ -314,59 +370,18 @@ fn pairFind(t: u32, live: u32) -> u32 {
     if (grid.count < 2u) {
         return 0u;
     }
-    for (var a = t; a < live; a += PAIR_GROUP) {
-        if (isEnded(a)) {
-            continue;
-        }
-        var count = 0u;
-        for (var b = nextCandidate(a, 0u, grid); b != NONE; b = nextCandidate(a, b + 1u, grid)) {
-            count += pairGather(min(a, b), max(a, b)).count;
-        }
-        blocks[infoAt(a) + 7u] = count;
-    }
-    pairWait();
-    let total = pairUniform(t, pairScan(t, live, 1u, 8u));
     let room = bodyContacts() * grid.count;
-    for (var a = t; a < live; a += PAIR_GROUP) {
-        if (isEnded(a)) {
-            continue;
+    var total = 0u;
+    for (var round = 0u; round < 2u; round++) {
+        if (round == 1u) {
+            total = pairUniform(t, pairScan(t, live, 1u, 8u));
         }
-        var at = blocks[infoAt(a) + 8u];
-        var fate = loadFate(a);
-        for (var b = nextCandidate(a, 0u, grid); b != NONE; b = nextCandidate(a, b + 1u, grid)) {
-            let low = min(a, b);
-            let high = max(a, b);
-            var list = pairGather(low, high);
-            fate.capped += list.capped;
-            fate.searches += list.searches;
-            if (list.count > 0u) {
-                blocks[infoAt(low) + 9u] = 1u;
-                blocks[infoAt(high) + 9u] = 1u;
-            }
-            let bodyB = loadSolid(high);
-            let bodyA = loadSolid(low);
-            for (var j = 0u; j < list.count; j++) {
-                if (at >= room) {
-                    fate.capped += list.count - j;
-                    break;
-                }
-                let item = list.items[j];
-                var c = PairContact();
-                c.a = low;
-                c.b = high;
-                c.onA = item.body;
-                c.onB = rotate(conjugate(bodyB.q), item.surface - bodyB.x);
-                c.normal = item.normal;
-                var ra = vec3<f32>(0.0);
-                var rb = vec3<f32>(0.0);
-                _ = pairDepth(c, bodyA, bodyB, false, &ra, &rb);
-                c.speed = pairSpeed(c, bodyA, bodyB, ra, rb);
-                storePair(poolAt(at), c);
-                at += 1u;
+        for (var a = t; a < live; a += PAIR_GROUP) {
+            if (!isEnded(a)) {
+                pairVisit(a, grid, round == 1u, room);
             }
         }
-        storeFate(a, fate);
+        pairWait();
     }
-    pairWait();
     return min(total, room);
 }
