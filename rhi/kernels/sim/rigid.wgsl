@@ -357,7 +357,8 @@ fn strikeBody(b: ptr<function, Body>, c: Contact, tick: u32) -> Fate {
 fn meetWorld(b: ptr<function, Body>, x0: vec3<f32>, q0: vec4<f32>, h: f32, tick: u32) -> Fate {
     let size = rigidSizeOf(*b);
     let m = (*b).moving;
-    var list = gatherContacts(m.place, m.turning.orientation, shapeOf(size), rigidReach(size));
+    var list = gatherContacts(m.place, m.turning.orientation, x0, q0, shapeOf(size),
+                              rigidReach(size));
     var fate = Fate();
     fate.capped = list.capped;
     if (list.count == 0u) {

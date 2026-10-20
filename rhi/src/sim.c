@@ -65,13 +65,13 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                               (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
                          ? MVFX_FEATURE_CONTACTS
                          : 0) |
-                    // Rigid particles meet the colliders as spheres,
-                    // capsules and boxes, not a depth image or each other,
+                    // Rigid particles meet the colliders and the depth
+                    // image as spheres, capsules and boxes, not each other,
                     // and are killed by their strikes' life alone.
                     ((view->features & MVFX_FEATURE_RIGID) != 0 &&
-                             (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
-                                              (view->rigid.shape > mvfx_rigidBox ||
-                                               view->rigid.bodyContacts > 0 || view->depthImage)))
+                             (view->kills ||
+                              ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
+                               (view->rigid.shape > mvfx_rigidBox || view->rigid.bodyContacts > 0)))
                          ? MVFX_FEATURE_RIGID
                          : 0),
     };

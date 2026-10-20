@@ -959,6 +959,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   the CPU path's samples (a sphere's center, a capsule's core, a box's
   corners, face centers and edges) probed in the grid's field. A depth
   image and colliding hulls stay refused.
+- The GPU part's rigid bodies meet the depth image too, by the same
+  samples along their way over each substep, within twice the shape's
+  radius, as the CPU path's. Colliding hulls stay refused, and so does
+  killing bodies outside the view.
 
 ### Fixed
 

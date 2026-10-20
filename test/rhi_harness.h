@@ -222,6 +222,16 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut);
 // Runs an effect on both paths, compared after every step; what names it.
 void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what);
 
+// A projection's device depth at a view depth z (negative ahead); an
+// image of 64 by 64 pixels of a surface at view depth far with a square
+// of columns 24 to 39 and rows 16 to 31 at view depth near, normals (when
+// given) far's and near's in the view's space; a pixel of the last such
+// image set to a device depth.
+float DeviceDepth(const float projection[16], float z);
+mvfxDepthImage Terraces(const float projection[16], float far, float near, const float* farNormal,
+                        const float* nearNormal);
+void SetDepthPixel(int32_t column, int32_t row, float depth);
+
 // Simulates the context's last step on the device, the frame submitted
 // and waited for; submits the frame recorded and waits for it; reads an
 // emitter's particles and statistics record back.

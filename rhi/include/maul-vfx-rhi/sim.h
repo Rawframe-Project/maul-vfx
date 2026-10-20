@@ -68,8 +68,8 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
-    // beside anything that kills within a step, and colliding as hulls,
-    // with a depth image, or meeting each other (bodyContacts above 0).
+    // beside anything that kills within a step, and colliding as hulls or
+    // meeting each other (bodyContacts above 0).
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;

@@ -406,15 +406,40 @@ fn fieldDistance(c: Collider, world: vec3<f32>, n: ptr<function, vec3<f32>>) -> 
     return select(f, f * abs(g.y), c.modes.x == COLLIDER_HEIGHTFIELD);
 }
 
-// Whether a sample meets a grid collider, and its contact: of the
-// shape's radius, along the normal at its center's distance.
-fn probeSample(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider, sample: vec3<f32>,
+// What samples meet, as the core's Probe: a grid collider's field, or
+// the depth image seen from the start pose x0, q0.
+struct Probe {
+    c: Collider,
+    depth: bool,
+    x0: vec3<f32>,
+    q0: vec4<f32>,
+}
+
+// Whether a sample meets the probe's surface, and its contact: of the
+// shape's radius, along the normal at its center's distance. The depth
+// image is met along the sample's way over the substep, within twice the
+// shape's radius (the core's DepthContacts: off the camera's axis the
+// image's depth is longer than across the surface), the distance across
+// the surface from its point grown by that radius.
+fn probeSample(x: vec3<f32>, q: vec4<f32>, s: Shape, probe: Probe, sample: vec3<f32>,
                out: ptr<function, Contact>) -> bool {
     let world = rotate(q, sample) + x;
-    var n = vec3<f32>(0.0);
-    let distance = fieldDistance(c, world, &n);
-    if (!(distance < LARGEST)) {
-        return false;
+    var n = vec3<f32>(0.0, 1.0, 0.0);
+    var distance = LARGEST;
+    if (probe.depth) {
+        let radius = 2.0 * s.radius;
+        var p: Projected;
+        var surface = vec3<f32>(0.0);
+        if (firstMeeting(rotate(probe.q0, sample) + probe.x0, world, radius, &p, &surface) < 0.0) {
+            return false;
+        }
+        n = depthNormal(p);
+        distance = dot3(world - (surface + radius * n), n) + radius;
+    } else {
+        distance = fieldDistance(probe.c, world, &n);
+        if (!(distance < LARGEST)) {
+            return false;
+        }
     }
     let inward = -s.radius * n;
     *out = contactAt(sample + rotate(conjugate(q), inward), world + inward, n,
@@ -444,7 +469,7 @@ fn centerMet(corners: ptr<function, Corners>, i: u32, depth: f32) -> bool {
 // Adds each of a box's edges' deepest inner point (a quarter, a half and
 // three quarters along) where the surface bulges under it, deeper than
 // each of its corners found.
-fn edgeContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
+fn edgeContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, probe: Probe,
                 corners: ptr<function, Corners>, list: ptr<function, Contacts>) {
     for (var i = 0u; i < 8u; i++) {
         for (var k = 0u; k < 3u; k++) {
@@ -460,7 +485,8 @@ fn edgeContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
             for (var quarter = 1u; quarter <= 3u; quarter++) {
                 var contact = Contact();
                 let point = a + 0.25 * f32(quarter) * (b - a);
-                let hit = probeSample(x, q, s, c, point, &contact) && contact.depth < deepest.depth;
+                let hit = probeSample(x, q, s, probe, point, &contact) &&
+                          contact.depth < deepest.depth;
                 if (hit) {
                     deepest = contact;
                 }
@@ -475,17 +501,17 @@ fn edgeContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
     }
 }
 
-// A heightfield or a distance grid, by its field at the samples in order,
-// corners first, as the core's GridContacts: only the corners' depths are
-// kept, for their faces' centers and their edges.
-fn gridContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
-                list: ptr<function, Contacts>) {
+// A heightfield, a distance grid or the depth image, by the probe at the
+// samples in order, corners first, as the core's SampleContacts: only the
+// corners' depths are kept, for their faces' centers and their edges.
+fn sampleContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, probe: Probe,
+                  list: ptr<function, Contacts>) {
     var corners = Corners();
     var cornerCount = 0u;
     let count = sampleCount(s, &cornerCount);
     for (var i = 0u; i < count; i++) {
         var contact = Contact();
-        let hit = probeSample(x, q, s, c, sampleOf(s, i), &contact);
+        let hit = probeSample(x, q, s, probe, sampleOf(s, i), &contact);
         if (i < cornerCount) {
             corners.found[i] = hit;
             corners.depths[i] = select(LARGEST, contact.depth, hit);
@@ -495,13 +521,16 @@ fn gridContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
         }
     }
     if (s.kind == RIGID_BOX) {
-        edgeContacts(x, q, s, c, &corners, list);
+        edgeContacts(x, q, s, probe, &corners, list);
     }
 }
 
-// A body's contacts with the colliders at its pose, as the core's
-// mvfxGatherBodyContacts, its reach's share the margin.
-fn gatherContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, reach: f32) -> Contacts {
+// A body's contacts with the colliders and the depth image at its pose x,
+// q from its start pose x0, q0, as the core's mvfxGatherBodyContacts, its
+// reach's share the margin (no scene plane: the GPU runs no scene
+// queries).
+fn gatherContacts(x: vec3<f32>, q: vec4<f32>, x0: vec3<f32>, q0: vec4<f32>, s: Shape,
+                  reach: f32) -> Contacts {
     var list = Contacts();
     list.margin = CONTACT_MARGIN * reach;
     for (var i = 0u; i < params.collisionHead.x; i++) {
@@ -521,8 +550,12 @@ fn gatherContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, reach: f32) -> Contacts 
         } else if (c.modes.x == COLLIDER_BOX) {
             coreBoxContacts(x, q, s, c, &list);
         } else {
-            gridContacts(x, q, s, c, &list);
+            sampleContacts(x, q, s, Probe(c, false, x0, q0), &list);
         }
+    }
+    if (params.depth.head.x != 0u) {
+        list.collider = 8u * params.collisionHead.x + 8u;
+        sampleContacts(x, q, s, Probe(params.colliders[0], true, x0, q0), &list);
     }
     return list;
 }

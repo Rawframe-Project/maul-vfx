@@ -17,9 +17,9 @@
 // striking in their first step, and the contacts past the most dropped
 // and counted; boxes meeting the same, a box collider face to face, edge
 // to edge or on an edge; spheres, capsules and boxes on heightfields and
-// distance grids, the emitter's and the instance's; what is still refused
-// (hulls colliding, depth images, bodies meeting each other, kills within
-// a step). Skips
+// distance grids, the emitter's and the instance's, and on a depth
+// image's terraces and wall; what is still refused (hulls colliding,
+// bodies meeting each other, kills within a step). Skips
 // (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -396,8 +396,10 @@ static void TestRefused(mvfxGpu* kernels)
     emitter.collision.depthImage = true;
     emitter.collision.depthThickness = 0.3f;
     emitter.collision.depthSamples = 16;
-    CHECK(RefusedForRigid(kernels, &emitter), "bodies meeting a depth image refused");
+    emitter.collision.killOutsideView = true;
+    CHECK(RefusedForRigid(kernels, &emitter), "bodies killed out of the view refused");
     emitter.collision.depthImage = false;
+    emitter.collision.killOutsideView = false;
     emitter.collision.killOnCollision = true;
     CHECK(RefusedForRigid(kernels, &emitter), "bodies a contact kills refused");
     static const mvfxKillRule rule = {.kind = mvfx_killPastPlane, .normal = {0, 1, 0}};
@@ -486,6 +488,53 @@ static void TestGrids(Gpu* gpu, mvfxGpu* kernels)
         "boxes on the instance's grids, swapped at half time");
 }
 
+static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Terraces of an orthographic depth image looking down, a raised
+    // square on a floor, met by the same samples along their way over the
+    // substep, within twice the shape's radius; then a wall of reversed
+    // depth before a camera turned 10 degrees about Y, normals given.
+    static const float orthographic[16] = {0.5f, 0,           0, 0, 0, 0.5f,         0, 0, 0,
+                                           0,    -0.1010101f, 0, 0, 0, -0.01010101f, 1};
+    mvfxDepthImage image = Terraces(orthographic, -3.6f, -3.3f, NULL, NULL);
+    image.origin[1] = 3.0;
+    image.rotation[0] = -0.70710678f;
+    image.rotation[3] = 0.70710678f;
+    static const char* const names[3] = {"spheres on terraces of a depth image",
+                                         "capsules on terraces of a depth image",
+                                         "boxes on terraces of a depth image"};
+    static const int32_t bounds[3] = {4, 26, 62};
+    for (int32_t shape = 0; shape < 3; ++shape)
+    {
+        mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, NULL, 0);
+        emitter.collision.depthImage = true;
+        emitter.collision.depthThickness = 0.3f;
+        emitter.collision.depthSamples = 16;
+        Met(gpu, kernels, &(Run){.mostApart = bounds[shape], .emitters = &emitter, .depth = &image},
+            names[shape]);
+    }
+    static const float reversed[16] = {3, 0, 0,         0,  0, 3, 0,          0,
+                                       0, 0, 0.002004f, -1, 0, 0, 0.1002004f, 0};
+    static const float tilted[3] = {0, 0.6f, 0.8f};
+    static const float square[3] = {0, 0, 1};
+    image = Terraces(reversed, -5.5f, -5.0f, tilted, square);
+    image.reversed = true;
+    image.origin[0] = 0.7;
+    image.origin[1] = 0.5;
+    image.origin[2] = 4.0;
+    image.rotation[1] = 0.08715574f;
+    image.rotation[3] = 0.99619470f;
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidBox, NULL, 0);
+    emitter.velocity.direction[1] = 0;
+    emitter.velocity.direction[2] = -1;
+    emitter.velocity.speed = (mvfxRange){2, 3};
+    emitter.collision.depthImage = true;
+    emitter.collision.depthThickness = 0.3f;
+    emitter.collision.depthSamples = 16;
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .depth = &image},
+        "boxes at a wall of reversed depth, normals given");
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
@@ -496,6 +545,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestColliders(gpu, kernels);
     TestStrikes(gpu, kernels);
     TestGrids(gpu, kernels);
+    TestDepth(gpu, kernels);
 }
 
 int main(void)

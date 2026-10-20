@@ -692,52 +692,6 @@ static void TestKillRules(Gpu* gpu, mvfxGpu* kernels)
     }
 }
 
-// A depth image's pixels and normals, 64 a side.
-static float s_pixels[DEPTH_SIDE * DEPTH_SIDE];
-static float s_viewNormals[3 * DEPTH_SIDE * DEPTH_SIDE];
-
-// A projection's device depth at a view depth z (negative ahead).
-static float DeviceDepth(const float projection[16], float z)
-{
-    return (projection[10] * z + projection[14]) / (projection[11] * z + projection[15]);
-}
-
-// An image of 64 by 64 pixels of a surface at view depth far, with a
-// square of columns 24 to 39 and rows 16 to 31 at view depth near (off the
-// middle row, so rows read upside down are seen); normals (when given)
-// far's and near's, in the view's space.
-static mvfxDepthImage Terraces(const float projection[16], float far, float near,
-                               const float* farNormal, const float* nearNormal)
-{
-    float d[2] = {DeviceDepth(projection, far), DeviceDepth(projection, near)};
-    for (int32_t p = 0; p < DEPTH_SIDE * DEPTH_SIDE; ++p)
-    {
-        int32_t c = p % DEPTH_SIDE;
-        int32_t r = p / DEPTH_SIDE;
-        int32_t square = c >= 24 && c < 40 && r >= 16 && r < 32 ? 1 : 0;
-        s_pixels[p] = d[square];
-        for (int32_t k = 0; farNormal != NULL && k < 3; ++k)
-        {
-            s_viewNormals[3 * p + k] = square != 0 ? nearNormal[k] : farNormal[k];
-        }
-    }
-    mvfxDepthImage image = {.pixels = s_pixels,
-                            .byteCount = sizeof s_pixels,
-                            .width = DEPTH_SIDE,
-                            .height = DEPTH_SIDE,
-                            .stride = DEPTH_SIDE * 4,
-                            .format = mvfx_depthFloat32,
-                            .rotation = {0, 0, 0, 1}};
-    memcpy(image.projection, projection, sizeof image.projection);
-    if (farNormal != NULL)
-    {
-        image.normals = s_viewNormals;
-        image.normalByteCount = sizeof s_viewNormals;
-        image.normalStride = DEPTH_SIDE * 12;
-    }
-    return image;
-}
-
 static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
 {
     // A wall square to a perspective camera's axis, a nearer square on it
@@ -811,8 +765,8 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     float pole = DeviceDepth(perspective, -4.0f);
     for (int32_t r = 0; r < DEPTH_SIDE; ++r)
     {
-        s_pixels[r * DEPTH_SIDE + 30] = pole;
-        s_pixels[r * DEPTH_SIDE + 31] = pole;
+        SetDepthPixel(30, r, pole);
+        SetDepthPixel(31, r, pole);
     }
     image.origin[2] = 5.0;
     emitter = Sprite();

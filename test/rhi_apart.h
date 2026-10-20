@@ -26,9 +26,10 @@ void ApartReset(void);
 
 // Takes the CPU path's particles of an emitter at a step's end, in serial
 // order: their serials and places (offsets in the particles' space), and
-// the plan whose colliders they end near or not, within the relative
-// tolerance places are compared to and the radius a rigid body's surface
-// reaches at most from its center (0 for particles).
+// the plan whose colliders they end near or not (a body is near a depth
+// image wherever), within the relative tolerance places are compared to
+// and the radius a rigid body's surface reaches at most from its center
+// (0 for particles).
 void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const places[3],
                    int32_t count, const mvfxEmitterPlan* plan, float tolerance, float radius);
 

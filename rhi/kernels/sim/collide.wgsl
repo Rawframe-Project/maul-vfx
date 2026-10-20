@@ -442,11 +442,11 @@ fn depthNormal(p: Projected) -> vec3<f32> {
     return sign * n / length;
 }
 
-// Whether a place meets the image: along its ray, within the radius in
-// front of the pixel's surface or less than the thickness behind it; the
+// Whether a place meets the image: along its ray, within radius in front
+// of the pixel's surface or less than the thickness behind it; the
 // surface's place on that ray.
-fn meetsDepth(place: vec3<f32>, p: ptr<function, Projected>, surface: ptr<function, vec3<f32>>)
-    -> bool {
+fn meetsDepth(place: vec3<f32>, radius: f32, p: ptr<function, Projected>,
+              surface: ptr<function, vec3<f32>>) -> bool {
     var d = 0.0;
     if (!project(place, p) || !depthAt((*p).column, (*p).row, &d) ||
         !unproject((*p).ndc.x, (*p).ndc.y, d, surface)) {
@@ -454,7 +454,7 @@ fn meetsDepth(place: vec3<f32>, p: ptr<function, Projected>, surface: ptr<functi
     }
     let toward = towardCamera((*p).ndc.x, (*p).ndc.y);
     let behind = -dot3(place - *surface, toward) / sqrt(dot3(toward, toward));
-    return behind > -params.depth.sizes.x && behind < params.depth.sizes.y;
+    return behind > -radius && behind < params.depth.sizes.y;
 }
 
 // The samples a segment takes: one a pixel it crosses and one each half
@@ -477,14 +477,15 @@ fn depthSamples(s: vec3<f32>, e: vec3<f32>) -> u32 {
 // The halvings that find a crossing between two samples.
 const DEPTH_HALVINGS: u32 = 10u;
 
-// The first share of the segment that meets the image, sampled and then
-// halved toward from the sample before; -1 when none does.
-fn firstMeeting(s: vec3<f32>, e: vec3<f32>, p: ptr<function, Projected>,
+// The first share of the segment that meets the image within radius,
+// sampled and then halved toward from the sample before; -1 when none
+// does.
+fn firstMeeting(s: vec3<f32>, e: vec3<f32>, radius: f32, p: ptr<function, Projected>,
                 surface: ptr<function, vec3<f32>>) -> f32 {
     let n = depthSamples(s, e);
     for (var i = 0u; i <= n; i++) {
         var hi = f32(i) / f32(n);
-        if (!meetsDepth(s + hi * (e - s), p, surface)) {
+        if (!meetsDepth(s + hi * (e - s), radius, p, surface)) {
             continue;
         }
         var lo = select(hi, f32(i - 1u) / f32(n), i > 0u);
@@ -492,7 +493,7 @@ fn firstMeeting(s: vec3<f32>, e: vec3<f32>, p: ptr<function, Projected>,
             let middle = 0.5 * (lo + hi);
             var q: Projected;
             var at = vec3<f32>(0.0);
-            if (meetsDepth(s + middle * (e - s), &q, &at)) {
+            if (meetsDepth(s + middle * (e - s), radius, &q, &at)) {
                 hi = middle;
                 *p = q;
                 *surface = at;
@@ -510,7 +511,7 @@ fn firstMeeting(s: vec3<f32>, e: vec3<f32>, p: ptr<function, Projected>,
 fn hitDepth(s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> bool {
     var p: Projected;
     var surface = vec3<f32>(0.0);
-    let at = firstMeeting(s, e, &p, &surface);
+    let at = firstMeeting(s, e, params.depth.sizes.x, &p, &surface);
     if (at < 0.0) {
         return false;
     }
