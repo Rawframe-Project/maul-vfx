@@ -22,11 +22,12 @@
 // A gas's buffers: its numbers, its fields (each buffer's faces then its
 // scalars), its solve's levels (pressures, right-hand sides, scratches,
 // weights, areas and coefficients), the grids its forces read.
-#define GAS_NUMBERS 0
-#define GAS_FIELDS  1
-#define GAS_SOLVE   2
-#define GAS_GRIDS   3
-#define GAS_BUFFERS 4
+#define GAS_NUMBERS    0
+#define GAS_FIELDS     1
+#define GAS_SOLVE      2
+#define GAS_GRIDS      3
+#define GAS_STATISTICS 4
+#define GAS_BUFFERS    5
 
 // A dispatch of a gas's step: its kernel, root words and workgroups.
 typedef struct GasDispatch
@@ -63,6 +64,9 @@ typedef struct SimGas
     // The buffer current now, and whether the levels' areas and
     // coefficients are made (not since the start or a clear).
     uint32_t now;
+    // The statistics record the step's write starts with: nothing held,
+    // the step's end.
+    uint32_t record[MVFX_GPU_GAS_STATISTICS_WORDS];
     bool prepared;
     // The step's dispatches and their passes (the first pass writing the
     // numbers), the most a step takes, and whether it clears first.

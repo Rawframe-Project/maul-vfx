@@ -250,8 +250,8 @@ extern "C"
     /// the larger of 4 bytes a face and 12 a cell, and 4 more; 16 a cell
     /// and 8 a face of each level of its multigrid (its own the first) for
     /// its solve; the grids its forces read (mvfxGridView's bytes, each
-    /// rounded up to 4, each grid once); and 6,256 for its numbers and
-    /// reads.
+    /// rounded up to 4, each grid once); and 6,272 for its numbers,
+    /// statistics and reads.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -582,9 +582,12 @@ extern "C"
     /// Returns the passes a gas's step adds at most (mvfxGpuSim_AddPasses),
     /// for a host to size its device's frame by (mrhiDeviceLimits'
     /// framePasses): a transfer pass, two compute passes a level of its
-    /// multigrid at its first step and after a clear, and for each
-    /// substep five, with a solve one more and six a level above the
-    /// levels of at most 512 cells and one for those a cycle.
+    /// multigrid at its first step and after a clear, one for its holds,
+    /// and for each substep five (two more under vorticity confinement,
+    /// four more carrying by MacCormack's, one more with a burn), with a
+    /// solve one more (two in a sealed box whose burn expands) and six a
+    /// level above the levels of at most 512 cells and one for those a
+    /// cycle.
     ///
     /// @param sim  The simulation.
     /// @param gas  The gas's index in its effect.
@@ -592,6 +595,53 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread.
     MVFX_RHI_API int32_t mvfxGpuSim_GasPasses(const mvfxGpuSim* sim, int32_t gas);
+
+// A gas's statistics record, 32-bit words, which its step writes: whether
+// it holds anything at the step's end (a scalar past MVFX_GAS_EMPTY, 1 or
+// 0) and that end's tick (two words, the low first).
+#define MVFX_GPU_GAS_HOLDS            0
+#define MVFX_GPU_GAS_TICK             1
+#define MVFX_GPU_GAS_STATISTICS_WORDS 4
+
+    // A gas's buffers a host reads: its statistics record.
+    typedef struct mvfxGpuGas
+    {
+        mrhiBufferId statistics;
+    } mvfxGpuGas;
+
+    /// Returns a gas's buffers, whose statistics record the host reads back
+    /// any frames after a step, as an emitter's.
+    ///
+    /// @param sim     The simulation.
+    /// @param gas     The gas's index in its effect.
+    /// @param gasOut  Receives the buffers; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         gas out of range.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetGas(const mvfxGpuSim* sim, int32_t gas,
+                                                             mvfxGpuGas* gasOut);
+
+    /// Hands a gas's statistics record, read back from its buffer any
+    /// frames after its step, to the planned instance
+    /// (mvfxInstance_SetGasHolds): whether it held anything at that step's
+    /// end, which decides when a stopped instance finishes. A host that
+    /// never reports leaves a stopped instance running.
+    ///
+    /// @param sim      The simulation.
+    /// @param context  The context the simulation was made in.
+    /// @param gas      The gas's index in its effect.
+    /// @param record   The record, MVFX_GPU_GAS_STATISTICS_WORDS words.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         context not the simulation's or a gas out of range; else
+    ///         what mvfxInstance_SetGasHolds returns for the record's tick
+    ///         and holds.
+    /// @par Thread safety
+    /// Safe from any thread; the context and the device are used by one
+    /// thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ReportGas(const mvfxGpuSim* sim,
+                                                                mvfxContext* context, int32_t gas,
+                                                                const uint32_t* record);
 
 // The counts a ribbon pass writes, 32-bit words: the points and the
 // ribbons there are, as mvfxInstance_WriteRibbons counts them, and the

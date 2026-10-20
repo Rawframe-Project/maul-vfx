@@ -17,7 +17,9 @@
 //    (the residual summed over a coarse cell's children), gasProlong, and
 //    gasTail running the levels of at most TAIL_CELLS cells in one
 //    workgroup; gasCorrect closes the walls and takes the pressure's
-//    rise off each open face.
+//    rise off each open face;
+//  - at the step's end gasHolds marks the statistics record when any
+//    scalar holds anything.
 // The fields live in one buffer (faces then cells, two of each, then the
 // work and the expansion's mean, offsets in the numbers), the solve's
 // levels in another.
@@ -59,6 +61,9 @@ struct Root {
 @group(0) @binding(2) var<storage, read_write> solve: array<f32>;
 // The grids its forces read (rhi/src/grids.c).
 @group(0) @binding(3) var<storage, read> grids: array<u32>;
+// Its statistics record (MVFX_GPU_GAS_STATISTICS_WORDS), whose holds word
+// the host's write starts at 0.
+@group(0) @binding(4) var<storage, read_write> statistics: array<atomic<u32>>;
 
 // Force n's field among the gas's numbers (shared/forces.wgsl).
 fn fieldOf(n: u32) -> Field {
@@ -1078,4 +1083,30 @@ fn gasCorrect(@builtin(global_invocation_id) id: vec3<u32>) {
         after = solve[level.at.x + cell];
     }
     fields[i] = fields[i] - select(1.0, 2.0, low || high) * (after - before);
+}
+
+var<workgroup> heldHere: atomic<u32>;
+
+// Whether any scalar of a cell of the current buffer is past nothing, as
+// the core's HoldsAny: a workgroup's cells joined, then one mark a
+// workgroup into the statistics record's holds word.
+@compute @workgroup_size(64, 1, 1)
+fn gasHolds(@builtin(global_invocation_id) id: vec3<u32>,
+            @builtin(local_invocation_index) lane: u32) {
+    // Workgroup memory starts at 0.
+    let point = id.x + id.y * ROW;
+    let empty = bitcast<f32>(gas.modes.w);
+    if (point < cellCount(sizeOf())) {
+        var held = false;
+        for (var f = 0u; f < 3u; f++) {
+            held = held || abs(fields[arrayAt(root.now, 3u, f) + point]) > empty;
+        }
+        if (held) {
+            atomicMax(&heldHere, 1u);
+        }
+    }
+    workgroupBarrier();
+    if (lane == 0u && atomicLoad(&heldHere) != 0u) {
+        atomicMax(&statistics[0], 1u);
+    }
 }

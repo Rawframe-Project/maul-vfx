@@ -1015,6 +1015,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   force code), MacCormack's carry, vorticity confinement and the burn,
   its expansion less its mean in a sealed box; a gas with obstacles is
   still refused.
+- A smoke gas on the GPU writes a statistics record each step (whether
+  it holds anything, at which tick), which `mvfxGpuSim_GetGas` names for
+  the host to read back and `mvfxGpuSim_ReportGas` hands to the planned
+  instance, so a stopped instance finishes when its gas empties.
+  `MVFX_GAS_EMPTY` is public.
 
 ### Fixed
 

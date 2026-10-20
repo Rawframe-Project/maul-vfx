@@ -154,9 +154,6 @@ typedef struct mvfxGasState
     mvfxResolvedForce planForces[MVFX_MAX_FORCES];
 } mvfxGasState;
 
-// A scalar at most this is nothing.
-#define MVFX_GAS_EMPTY 1e-6f
-
 // Whether a gas has a field: a surface gas only its distance, held as its
 // first scalar; another, every field but the distance.
 static inline bool mvfxIsGasFieldOf(const mvfxCompiledGas* gas, mvfxGasField field)

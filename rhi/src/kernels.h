@@ -130,7 +130,8 @@ typedef enum mvfxKernel
     // A smoke gas's step (gas.wgsl): its levels' areas and coefficients
     // once; each substep's sources, faces, confinement, carries, burn and
     // expansion's mean; the projection's divergence, sweeps,
-    // restrictions, prolongations and tail; the correction.
+    // restrictions, prolongations and tail; the correction; the holds at
+    // the step's end.
     mvfx_kernelGasAreas = 54,
     mvfx_kernelGasCoefficients = 55,
     mvfx_kernelGasPourCells = 56,
@@ -147,8 +148,9 @@ typedef enum mvfxKernel
     mvfx_kernelGasProlong = 67,
     mvfx_kernelGasTail = 68,
     mvfx_kernelGasCorrect = 69,
+    mvfx_kernelGasHolds = 70,
     // A smoke gas's field written in a host's format (gas_read.wgsl).
-    mvfx_kernelGasRead = 70,
+    mvfx_kernelGasRead = 71,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

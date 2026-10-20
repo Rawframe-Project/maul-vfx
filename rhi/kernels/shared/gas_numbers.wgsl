@@ -60,6 +60,7 @@ struct Gas {
     // confinement's strength.
     burn: vec4<f32>,
     // Whether it carries by MacCormack's, its burn expands, and its walls
-    // are all closed.
+    // are all closed; the bits of the size past which a scalar holds
+    // anything (MVFX_GAS_EMPTY).
     modes: vec4<u32>,
 }

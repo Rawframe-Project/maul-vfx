@@ -7,7 +7,8 @@
 // size. Covered: sources pouring and setting velocity, buoyancy, decay,
 // closed and open walls, levels above the tail and in it, no solve, a
 // 2D gas, a clear; every force; MacCormack's carry, vorticity
-// confinement, the burn expanding (less its mean in a sealed box); reads
+// confinement, the burn expanding (less its mean in a sealed box); the
+// holds read back and reported, a stopped instance finishing; reads
 // in every format over a box with padded pitches, the padding kept; the
 // refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
@@ -167,6 +168,46 @@ static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint6
     return done;
 }
 
+// Reads gas 0's statistics record back and reports it to the planned
+// instance, as a host does any frames after a step.
+static bool ReportHolds(Gpu* gpu, const Scene* scene)
+{
+    mvfxGpuGas buffers;
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    mrhiResourceId statistics = {0};
+    mrhiPassId pass = {0};
+    mrhiRequestId request = {0};
+    if (mvfxGpuSim_GetGas(scene->sim, 0, &buffers) != mvfx_success ||
+        mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+    {
+        return false;
+    }
+    bool recorded = mrhiImportBuffer(gpu->device, buffers.statistics, &statistics) == mrhi_success;
+    const mrhiAccess reading = {.resource = statistics, .kind = mrhi_accessCopySource};
+    mrhiPassDef def = mrhiDefaultPassDef();
+    def.passClass = mrhi_passTransfer;
+    def.accesses = &reading;
+    def.accessCount = 1;
+    def.neverCull = true;
+    uint32_t record[MVFX_GPU_GAS_STATISTICS_WORDS];
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+        mrhiCompileFrame(gpu->device) == mrhi_success &&
+        mrhiBeginPass(gpu->device, pass) == mrhi_success &&
+        mrhiReadBuffer(gpu->device, pass, statistics, 0, sizeof record, &request) == mrhi_success &&
+        mrhiEndPass(gpu->device, pass) == mrhi_success;
+    if (!recorded)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        return false;
+    }
+    size_t got = 0;
+    return Finish(gpu) &&
+           mrhiTakeReadback(gpu->device, request, record, sizeof record, &got) == mrhi_success &&
+           got == sizeof record &&
+           mvfxGpuSim_ReportGas(scene->sim, scene->context, 0, record) == mvfx_success;
+}
+
 // The whole gas's field as float32 on both paths; the largest difference
 // relative to one more than the CPU path's value into worst.
 static bool SameField(Gpu* gpu, const Scene* scene, const mvfxGasDef* gas, mvfxGasField field,
@@ -206,8 +247,13 @@ static float MostDensity(const Scene* scene, const mvfxGasDef* gas)
     return most;
 }
 
-// Steps a gas on both paths, each field compared after every
-// step; with clearing, stopped and cleared at half time and restarted.
+// The step a scene stops both instances emitting at, -1 for none.
+static int32_t s_stopAt = -1;
+
+// Steps a gas on both paths, each field compared after every step, its
+// holds reported and both instances finished alike; with clearing,
+// stopped and cleared at half time and restarted; at s_stopAt stopped
+// emitting, until finished.
 static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* grid,
                   int32_t steps, bool clearing, const char* what)
 {
@@ -219,9 +265,17 @@ static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxG
     bool same = true;
     float worst = 0.0f;
     float most = 0.0f;
+    int32_t finished = -1;
     LongFrames(true);
-    for (int32_t s = 0; same && s < steps; ++s)
+    for (int32_t s = 0; same && finished < 0 && s < steps; ++s)
     {
+        if (s == s_stopAt)
+        {
+            CHECK(mvfxInstance_Stop(scene.context, scene.cpu, mvfx_stopEmitting) == mvfx_success &&
+                      mvfxInstance_Stop(scene.context, scene.planned, mvfx_stopEmitting) ==
+                          mvfx_success,
+                  "stopped emitting");
+        }
         if (clearing && s == steps / 2)
         {
             CHECK(mvfxInstance_Stop(scene.context, scene.cpu, mvfx_stopAndClear) == mvfx_success &&
@@ -243,10 +297,22 @@ static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxG
             }
         }
         most = fmaxf(most, MostDensity(&scene, gas));
+        CHECK(!same || ReportHolds(gpu, &scene), "the holds reported");
+        bool ended = mvfxInstance_IsFinished(scene.context, scene.cpu);
+        if (same && ended != mvfxInstance_IsFinished(scene.context, scene.planned))
+        {
+            printf("  step %d: finished on one path\n", s);
+            same = false;
+        }
+        finished = ended ? s : -1;
     }
     printf("%s: largest relative difference %g, most density %g, %d passes a step\n", what,
            (double)worst, (double)most, mvfxGpuSim_GasPasses(scene.sim, 0));
-    CHECK(same && most > 0.1f, what);
+    if (s_stopAt >= 0)
+    {
+        printf("  stopped at step %d, finished at %d on both paths\n", s_stopAt, finished);
+    }
+    CHECK(same && most > 0.1f && (finished >= 0) == (s_stopAt >= 0), what);
     Close(&scene);
 }
 
@@ -444,8 +510,27 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
         refused = refused && mvfxGpuSim_AddGasRead(scene.sim, &bad[b]) == mvfx_errorInvalid;
     }
     CHECK(refused && mvfxGpuSim_GasPasses(scene.sim, 1) == 0 &&
-              mvfxGpuSim_GasPasses(NULL, 0) == 0 && mvfxGpuSim_GasPasses(scene.sim, 0) == 73,
+              mvfxGpuSim_GasPasses(NULL, 0) == 0 && mvfxGpuSim_GasPasses(scene.sim, 0) == 74,
           "a gas read's refusals");
+    // A gas's buffers and its report: refused for a NULL argument, a gas
+    // out of range or another context.
+    mvfxGpuGas buffers = {.statistics = {1, 1}};
+    const uint32_t record[MVFX_GPU_GAS_STATISTICS_WORDS] = {0};
+    mvfxContext* other = NULL;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxGpuSim_GetGas(NULL, 0, &buffers) == mvfx_errorInvalid &&
+              buffers.statistics.index1 == 0 &&
+              mvfxGpuSim_GetGas(scene.sim, 1, &buffers) == mvfx_errorInvalid &&
+              mvfxGpuSim_GetGas(scene.sim, 0, NULL) == mvfx_errorInvalid &&
+              mvfxGpuSim_GetGas(scene.sim, 0, &buffers) == mvfx_success &&
+              buffers.statistics.index1 != 0 &&
+              mvfxCreateContext(&contextDef, &other) == mvfx_success &&
+              mvfxGpuSim_ReportGas(scene.sim, other, 0, record) == mvfx_errorInvalid &&
+              mvfxGpuSim_ReportGas(NULL, scene.context, 0, record) == mvfx_errorInvalid &&
+              mvfxGpuSim_ReportGas(scene.sim, scene.context, 1, record) == mvfx_errorInvalid &&
+              mvfxGpuSim_ReportGas(scene.sim, scene.context, 0, NULL) == mvfx_errorInvalid,
+          "a gas's buffers and report refused");
+    mvfxDestroyContext(other);
     Close(&scene);
 }
 
@@ -551,11 +636,25 @@ static void TestBurns(Gpu* gpu, mvfxGpu* kernels)
     Steps(gpu, kernels, &gas, NULL, 30, false, "a sealed fire by MacCormack's, confined");
 }
 
+static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A plume stopped emitting, its scalars decaying fast: finished on
+    // the step its last scalar falls to nothing, on both paths alike.
+    mvfxGasDef gas = Plume(16, 16, 16, &s_sphere);
+    gas.densityDecay = 20.0f;
+    gas.temperatureDecay = 20.0f;
+    gas.fuelDecay = 20.0f;
+    s_stopAt = 10;
+    Steps(gpu, kernels, &gas, NULL, 120, false, "a plume stopped and finishing");
+    s_stopAt = -1;
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestPlumes(gpu, kernels);
     TestForces(gpu, kernels);
     TestBurns(gpu, kernels);
+    TestFinishing(gpu, kernels);
     TestReads(gpu, kernels);
 }
 

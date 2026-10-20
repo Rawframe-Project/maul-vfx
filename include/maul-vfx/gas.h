@@ -44,6 +44,10 @@ extern "C"
 // The most V cycles a gas's pressure solve takes a substep.
 #define MVFX_MAX_GAS_CYCLES 16
 
+// A smoke gas's scalar at most this in size is nothing: a gas holds
+// anything while one is past it.
+#define MVFX_GAS_EMPTY 1e-6f
+
 // The most a surface's kernel reaches, in its particles' radii.
 #define MVFX_MAX_SURFACE_REACH 8.0f
 

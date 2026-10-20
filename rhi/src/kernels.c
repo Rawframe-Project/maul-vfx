@@ -127,6 +127,7 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerGas, "gasProlong"},
     {mvfx_containerGas, "gasTail"},
     {mvfx_containerGas, "gasCorrect"},
+    {mvfx_containerGas, "gasHolds"},
     {mvfx_containerGasRead, "gasRead"},
 };
 
