@@ -68,8 +68,9 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
-    // beside anything that kills within a step, and colliding as hulls or
-    // meeting each other (bodyContacts above 0).
+    // beside anything that kills within a step, as hulls kept out of a
+    // sphere or a box of their own (the instance's refuse the step,
+    // mvfxGpuSim_AddPasses), or meeting each other (bodyContacts above 0).
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -361,8 +362,10 @@ extern "C"
     ///         `mvfx_errorState` when the device refuses a pass or an
     ///         import (no frame open), or when an emitter meets the
     ///         instance's depth image and no depth texture was given
-    ///         (mvfxGpuSim_SetDepthTextures), or while it is destroyed (a
-    ///         call from its allocator); `mvfx_errorCapacity` when the
+    ///         (mvfxGpuSim_SetDepthTextures), or when an emitter's rigid
+    ///         hulls are kept out of a sphere or a box among the
+    ///         instance's colliders, or while it is destroyed (a call from
+    ///         its allocator); `mvfx_errorCapacity` when the
     ///         grids the instance's colliders read pass the def's
     ///         hostGridBytes, or a mesh shape's mesh its room.
     /// @par Thread safety

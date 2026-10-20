@@ -199,8 +199,10 @@ static void CoreContact(const mvfxBodyPose* b, const mvfxBodyShape* s,
     mvfxAddContact(list, &contact);
 }
 
-// The share of a capsule's reach by which its core's deepest point must
-// lie deeper than both its ends to be met.
+// The share of a body's reach by which an inner point (a capsule's core's
+// deepest point, a face's center, an edge's inner points) must lie deeper
+// than the ends or corners it lies between to be met: on a flat surface
+// they are as deep, and rounding would decide.
 #define DEEPEST_MARGIN 1e-4f
 
 // A sphere or a capsule kept out of a box: its core's ends and its
@@ -460,11 +462,12 @@ static mvfxBodyContact SampleContact(const mvfxBodyPose* b, const mvfxBodyShape*
 }
 
 // Whether face center i, at depth, is met: only where the surface bulges
-// under it, deeper than each corner of its face found. On a flat surface
-// the corners carry a face; a fifth contact amid them shifts the load the
-// one pass gives each and unsettled a box held on a slope.
+// under it, deeper than each corner of its face found by more than clear.
+// On a flat surface the corners carry a face; a fifth contact amid them
+// shifts the load the one pass gives each and unsettled a box held on a
+// slope.
 static bool CenterMet(const mvfxBodyShape* s, const float* depths, const bool* found, int32_t i,
-                      float depth)
+                      float depth, float clear)
 {
     bool met = true;
     if (s->kind == mvfx_rigidBox)
@@ -474,7 +477,7 @@ static bool CenterMet(const mvfxBodyShape* s, const float* depths, const bool* f
         for (int32_t c = 0; met && c < 8; ++c)
         {
             bool onFace = (c >> k & 1) == side;
-            met = !onFace || !found[c] || depth < depths[c];
+            met = !onFace || !found[c] || depth < depths[c] - clear;
         }
     }
     else
@@ -484,7 +487,7 @@ static bool CenterMet(const mvfxBodyShape* s, const float* depths, const bool* f
         for (int32_t j = hull->faceStart[f]; met && j < hull->faceStart[f + 1]; ++j)
         {
             int32_t c = hull->loop[j];
-            met = !found[c] || depth < depths[c];
+            met = !found[c] || depth < depths[c] - clear;
         }
     }
     return met;
@@ -576,11 +579,13 @@ static int32_t EdgesOf(const mvfxBodyShape* s, uint8_t edges[MOST_EDGES][2])
 
 // Adds each edge's deepest inner point (a quarter, a half and three
 // quarters along) where the surface bulges under it, deeper than each of
-// its corners found: an edge laid across a crest, its corners clear of
+// its corners found by more than clear: an edge laid across a crest, its
+// corners clear of
 // the ground on either side, rests on the crest. On a flat surface the
 // corners carry the edge, as they do the faces.
 static void EdgeContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBodyShape* s,
-                         const float* depths, const bool* found, mvfxBodyContacts* list)
+                         const float* depths, const bool* found, float clear,
+                         mvfxBodyContacts* list)
 {
     uint8_t edges[MOST_EDGES][2];
     int32_t count = EdgesOf(s, edges);
@@ -606,7 +611,7 @@ static void EdgeContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBodySh
         for (int32_t k = 0; k < 2 && met; ++k)
         {
             int32_t c = edges[e][k];
-            met = !found[c] || deepest.depth < depths[c];
+            met = !found[c] || deepest.depth < depths[c] - clear;
         }
         if (met)
         {
@@ -623,6 +628,7 @@ static void SampleContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBody
 {
     float depths[MVFX_MAX_HULL_VERTICES];
     bool found[MVFX_MAX_HULL_VERTICES];
+    float clear = DEEPEST_MARGIN * mvfxBodyReach(s);
     int32_t corners = 0;
     int32_t count = SampleCount(s, &corners);
     for (int32_t i = 0; i < count; ++i)
@@ -636,14 +642,14 @@ static void SampleContacts(const Probe* p, const mvfxBodyPose* b, const mvfxBody
             found[i] = hit;
             depths[i] = hit ? contact.depth : INFINITY;
         }
-        if (hit && (i < corners || CenterMet(s, depths, found, i, contact.depth)))
+        if (hit && (i < corners || CenterMet(s, depths, found, i, contact.depth, clear)))
         {
             mvfxAddContact(list, &contact);
         }
     }
     if (s->kind == mvfx_rigidBox || s->kind == mvfx_rigidHull)
     {
-        EdgeContacts(p, b, s, depths, found, list);
+        EdgeContacts(p, b, s, depths, found, clear, list);
     }
 }
 

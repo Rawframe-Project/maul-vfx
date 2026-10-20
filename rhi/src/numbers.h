@@ -136,8 +136,10 @@ typedef struct mvfxStepTables
     uint32_t ribbonColor;
     // The pair force's strength over the distance.
     uint32_t pairStrength;
-    // A rigid hull's vertices at a size of 1.
+    // A rigid hull's vertices at a size of 1, and its faces: their
+    // hullFaceCount + 1 starts, then their corners' vertices.
     uint32_t hull;
+    uint32_t hullFaces;
 } mvfxStepTables;
 
 // The words of a grid pass's numbers (grid.wgsl's Grid): 28 of the grid,

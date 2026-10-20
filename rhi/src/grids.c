@@ -202,7 +202,7 @@ static bool Upload(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass, mrhi
     return written;
 }
 
-uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words)
+uint32_t mvfxAddTable(mvfxGpuGrids* grids, const void* values, uint32_t words)
 {
     if (values == nullptr || grids->tableCount == MVFX_GPU_TABLES)
     {

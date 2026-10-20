@@ -49,31 +49,37 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
+// The colliders a rigid hull may not be kept out of: spheres and boxes.
+#define RIGID_HULL_OUTSIDE (1u << mvfx_colliderSphere | 1u << mvfx_colliderBox)
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
-        .features = (view->features & ~RUN_FEATURES) |
-                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
-                    ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
-                         ? MVFX_FEATURE_COLLISION
-                         : 0) |
-                    // Contacts see the particles a step kills, and move births
-                    // after ribbons and beams take their places.
-                    ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
-                             (view->kills ||
-                              (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
-                         ? MVFX_FEATURE_CONTACTS
-                         : 0) |
-                    // Rigid particles meet the colliders and the depth
-                    // image as spheres, capsules and boxes, not each other,
-                    // and are killed by their strikes' life alone.
-                    ((view->features & MVFX_FEATURE_RIGID) != 0 &&
-                             (view->kills ||
-                              ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
-                               (view->rigid.shape > mvfx_rigidBox || view->rigid.bodyContacts > 0)))
-                         ? MVFX_FEATURE_RIGID
-                         : 0),
+        .features =
+            (view->features & ~RUN_FEATURES) |
+            ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
+            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
+                 ? MVFX_FEATURE_COLLISION
+                 : 0) |
+            // Contacts see the particles a step kills, and move births
+            // after ribbons and beams take their places.
+            ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
+                     (view->kills ||
+                      (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
+                 ? MVFX_FEATURE_CONTACTS
+                 : 0) |
+            // Rigid particles meet the colliders and the depth
+            // image as spheres, capsules, boxes and hulls (not
+            // spheres and boxes kept out of, RIGID_HULL_OUTSIDE),
+            // not each other, and are killed by their strikes'
+            // life alone.
+            ((view->features & MVFX_FEATURE_RIGID) != 0 &&
+                     (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
+                                      ((view->rigid.shape == mvfx_rigidHull &&
+                                        (view->outsideColliderKinds & RIGID_HULL_OUTSIDE) != 0) ||
+                                       view->rigid.bodyContacts > 0)))
+                 ? MVFX_FEATURE_RIGID
+                 : 0),
     };
     return refusal->features == 0;
 }
@@ -216,52 +222,6 @@ static_assert(MVFX_GPU_EVENTS_WRITTEN == MVFX_RECORD_EVENTS, "the events' count,
 static_assert(MVFX_GPU_EVENT_SERIALS == MVFX_RECORD_EVENT_SERIALS,
               "the event births' serials, as the record's");
 
-static_assert(MVFX_GPU_TABLES >=
-                  2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES + 1 + MVFX_RECORD_LIVES + 2 + 1 + 1,
-              "room for every table");
-
-// Places the baked tables of an emitter's sources and values over life,
-// its step's and its records', after its grids.
-static void LayTables(const mvfxEmitterView* view, Emitter* emitter)
-{
-    mvfxGpuGrids* layout = &emitter->gridLayout;
-    mvfxSourceView sources[MVFX_GPU_SOURCES];
-    mvfxSourcesOf(view, sources);
-    for (int32_t s = 0; s < MVFX_GPU_SOURCES; ++s)
-    {
-        emitter->tables.sources[s][0] =
-            mvfxAddTable(layout, sources[s].curve, MVFX_CURVE_SAMPLES + 2);
-        emitter->tables.sources[s][1] =
-            mvfxAddTable(layout, sources[s].gradient, 4 * MVFX_CURVE_SAMPLES);
-    }
-    mvfxLifeView lives[MVFX_GPU_LIVES];
-    mvfxLivesOf(view, lives);
-    for (int32_t k = 0; k < MVFX_GPU_LIVES; ++k)
-    {
-        emitter->tables.lives[k] = mvfxAddTable(layout, lives[k].curve, MVFX_CURVE_SAMPLES + 2);
-    }
-    emitter->tables.gradient =
-        mvfxAddTable(layout, view->overLife.gradient, 4 * MVFX_CURVE_SAMPLES);
-    mvfxLifeView recordLives[MVFX_RECORD_LIVES];
-    mvfxRecordLivesOf(view, recordLives);
-    for (int32_t k = 0; k < MVFX_RECORD_LIVES; ++k)
-    {
-        emitter->tables.recordLives[k] =
-            mvfxAddTable(layout, recordLives[k].curve, MVFX_CURVE_SAMPLES + 2);
-    }
-    emitter->tables.mesh = 0xFFFFFFFFu;
-    bool ribbons = view->ribbon.ids != mvfx_ribbonNone;
-    emitter->tables.ribbonWidth =
-        mvfxAddTable(layout, ribbons ? view->ribbon.width.curve : nullptr, MVFX_CURVE_SAMPLES + 2);
-    emitter->tables.ribbonColor =
-        mvfxAddTable(layout, ribbons ? view->ribbon.color : nullptr, 4 * MVFX_CURVE_SAMPLES);
-    emitter->tables.pairStrength =
-        mvfxAddTable(layout, view->pairRadius > 0.0f ? view->pairStrength.curve : nullptr,
-                     MVFX_CURVE_SAMPLES + 2);
-    emitter->tables.hull =
-        mvfxAddTable(layout, view->hullVertices, 3u * (uint32_t)view->hullVertexCount);
-}
-
 // Allocates an emitter's staging of its host births and its host's
 // frames, as many as it holds.
 static mvfxResult AllocateStaging(mvfxGpuSim* sim, Emitter* emitter)
@@ -311,6 +271,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->gridMask = plan.gridMask;
     result = result == mvfx_success ? mvfxSizeSimFrames(sim, def, e, plan.capacity) : result;
     result = result == mvfx_success ? AllocateStaging(sim, emitter) : result;
+    result = result == mvfx_success ? mvfxHoldSimHullFaces(sim, &sim->views[e], emitter) : result;
     uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
     if (result == mvfx_success &&
         !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
@@ -319,7 +280,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     }
     if (result == mvfx_success)
     {
-        LayTables(&sim->views[e], emitter);
+        mvfxLaySimTables(&sim->views[e], emitter);
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
         sim->views[e].shape.kind == mvfx_shapeMesh)
@@ -448,6 +409,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->frameWords, mvfxSimFrameBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
+        mvfxRhiRelease(&sim->allocator, emitter->hullFaces, 4u * emitter->hullFaceWords, 4);
     }
     DestroyBuffer(sim, sim->ownCount);
     DestroyBuffer(sim, sim->ownSort);
@@ -672,6 +634,16 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
         if (emitter->capacity > 0 && plan.depth.enabled && sim->hostDepth.index1 == 0)
         {
             return mvfx_errorState;
+        }
+        for (int32_t c = 0; emitter->rigid && sim->views[e].rigid.shape == mvfx_rigidHull &&
+                            c < plan.colliderCount;
+             ++c)
+        {
+            if (!plan.colliders[c].inside &&
+                (RIGID_HULL_OUTSIDE & 1u << plan.colliders[c].kind) != 0)
+            {
+                return mvfx_errorState;
+            }
         }
         if (emitter->capacity > 0 &&
             !mvfxPlaceHostGrids(sim->context, &plan, plan.ownColliderCount, &emitter->gridLayout))

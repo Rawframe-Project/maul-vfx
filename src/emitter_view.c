@@ -282,6 +282,9 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
         viewOut->hullVertices = &e->hull->vertices[0][0];
         viewOut->hullVolume = e->hull->volume;
         memcpy(viewOut->hullMoments, e->hull->moments, sizeof viewOut->hullMoments);
+        viewOut->hullFaceCount = e->hull->faceCount;
+        viewOut->hullFaceStart = e->hull->faceStart;
+        viewOut->hullLoop = e->hull->loop;
     }
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
@@ -358,6 +361,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
     for (int32_t c = 0; e->collision.enabled && c < e->colliderCount; ++c)
     {
         viewOut->colliderKinds |= 1u << e->colliders[c].kind;
+        viewOut->outsideColliderKinds |= e->colliders[c].inside ? 0u : 1u << e->colliders[c].kind;
         viewOut->colliderGrids[c] = e->colliders[c].grid;
     }
     for (int32_t f = 0; f < e->forceCount; ++f)

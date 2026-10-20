@@ -963,6 +963,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   samples along their way over each substep, within twice the shape's
   radius, as the CPU path's. Colliding hulls stay refused, and so does
   killing bodies outside the view.
+- The GPU part's rigid hulls meet planes, the spheres and boxes that keep
+  them within, heightfields, distance grids and the depth image, by their
+  vertices, then their faces' centers and edges where deeper, as the CPU
+  path's. A hull kept out of a sphere or a box stays refused: an
+  emitter's own refuse the simulation, the instance's the step.
+- `mvfxEmitterView` gives a rigid hull's faces (`hullFaceCount`,
+  `hullFaceStart`, `hullLoop`) and the kinds of its own colliders that
+  keep its particles out (`outsideColliderKinds`).
 
 ### Fixed
 
@@ -986,3 +994,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   edge or a corner).
 - The GPU part's comparison suites have 900 seconds each: on a slow CI
   runner the longest passed the 300 a run gives by default.
+- A box's or a hull's face center and an edge's inner points meet a grid
+  or the depth image only where deeper than their corners by more than
+  1e-4 of the body's reach: on a flat surface they were as deep, and
+  rounding decided whether they met, so the CPU and GPU paths gave a body
+  different contacts.

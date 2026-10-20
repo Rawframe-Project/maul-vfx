@@ -291,6 +291,10 @@ typedef struct Emitter
     uint64_t meshSerial;
     uint64_t meshPending;
     uint32_t meshPendingBytes;
+    // A rigid hull's faces as words (mvfxStepTables' hullFaces), and how
+    // many; none for other shapes.
+    uint32_t* hullFaces;
+    uint32_t hullFaceWords;
     // Its host births in the kernels' form, room for its host queue's.
     uint32_t* hostWords;
     int32_t hostCount;
@@ -437,6 +441,12 @@ void mvfxDestroySimPlexus(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimPlexusNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter);
 bool mvfxRecordSimPlexus(mvfxGpuSim* sim, Emitter* emitter);
+
+// An emitter's baked tables (sim_tables.c): its rigid hull's faces held as
+// words (mvfx_errorCapacity when the allocator fails; none for another
+// shape), then its tables placed after its grids.
+mvfxResult mvfxHoldSimHullFaces(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter);
+void mvfxLaySimTables(const mvfxEmitterView* view, Emitter* emitter);
 
 // A mesh shape's region (sim_mesh.c): laid out after emitter e's tables,
 // with the host's copy, at the simulation's creation (mvfx_errorStale for

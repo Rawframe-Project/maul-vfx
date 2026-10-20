@@ -54,8 +54,9 @@ struct Contacts {
 }
 
 // A body's shape at its size: its kind, its points (a sphere's center,
-// a capsule's core's ends, a box's corners), its radius (none for a box),
-// a capsule's half core along Y or a box's half sizes.
+// a capsule's core's ends, a box's corners, a hull's vertices), its radius
+// (none for a box or a hull), a capsule's half core along Y, a box's half
+// sizes or a hull's scale along its axes.
 struct Shape {
     kind: u32,
     count: u32,
@@ -101,12 +102,19 @@ fn shapeOf(size: vec3<f32>) -> Shape {
         s.radius = 0.0;
         s.count = 8u;
         s.half = 0.5 * a;
+    } else if (s.kind == RIGID_HULL) {
+        s.radius = 0.0;
+        s.count = params.rigid.w;
+        s.half = a;
     }
     return s;
 }
 
 // A shape's point i in its frame, as the core's mvfxShapePoint.
 fn shapePoint(s: Shape, i: u32) -> vec3<f32> {
+    if (s.kind == RIGID_HULL) {
+        return hullVertex(i, s.half);
+    }
     if (s.kind == RIGID_BOX) {
         // Corner i's bit k says which side along axis k.
         let bits = (vec3<u32>(i) >> vec3<u32>(0u, 1u, 2u)) & vec3<u32>(1u);
@@ -359,28 +367,60 @@ fn coreSpans(s: Shape) -> u32 {
     return u32(ceil(min(2.0 * s.half.y / s.radius, 8.0)));
 }
 
-// The most corners a shape meets a grid by: a capsule's core's points.
-const MOST_CORNERS: u32 = 9u;
+// The most corners a shape meets a grid by: a hull's vertices
+// (MVFX_MAX_HULL_VERTICES).
+const MOST_CORNERS: u32 = 64u;
+
+// A hull's faces (the rigid numbers' size range holds their count and
+// their table): face f's first corner in the loop, and the loop's corner
+// j, a vertex.
+fn hullFaceCount() -> u32 {
+    return bitcast<u32>(params.rigidSizeRange.z);
+}
+
+fn hullFaceStart(f: u32) -> u32 {
+    return grids[bitcast<u32>(params.rigidSizeRange.w) + f];
+}
+
+fn hullLoop(j: u32) -> u32 {
+    return grids[bitcast<u32>(params.rigidSizeRange.w) + hullFaceCount() + 1u + j];
+}
 
 // How many points (in its frame) a shape meets a grid by, as spheres of
 // its radius, and how many of them are corners, met plainly: a sphere's
 // center; a capsule's core, its points at most its radius apart; a box's
-// eight corners, then its faces' six centers.
+// eight corners, then its faces' six centers; a hull's vertices, then its
+// faces' centers.
 fn sampleCount(s: Shape, corners: ptr<function, u32>) -> u32 {
     if (s.kind == RIGID_BOX) {
         *corners = 8u;
         return 14u;
+    }
+    if (s.kind == RIGID_HULL) {
+        *corners = s.count;
+        return s.count + hullFaceCount();
     }
     *corners = coreSpans(s) + 1u;
     return *corners;
 }
 
 // A shape's sample i: a box's corners (bit k of i set for +k), then its
-// faces' centers (8 + 2k for +k, 9 + 2k for -k); a core's points in
-// order.
+// faces' centers (8 + 2k for +k, 9 + 2k for -k); a hull's vertices, then
+// its faces' centers, as the core's HullSample (each corner's share
+// summed); a core's points in order.
 fn sampleOf(s: Shape, i: u32) -> vec3<f32> {
-    if (s.kind == RIGID_BOX && i < 8u) {
+    if ((s.kind == RIGID_BOX && i < 8u) || (s.kind == RIGID_HULL && i < s.count)) {
         return shapePoint(s, i);
+    }
+    if (s.kind == RIGID_HULL) {
+        let f = i - s.count;
+        let first = hullFaceStart(f);
+        let corners = hullFaceStart(f + 1u) - first;
+        var center = vec3<f32>(0.0);
+        for (var j = 0u; j < corners; j++) {
+            center += shapePoint(s, hullLoop(first + j)) / f32(corners);
+        }
+        return center;
     }
     if (s.kind == RIGID_BOX) {
         let k = (i - 8u) / 2u;
@@ -407,12 +447,15 @@ fn fieldDistance(c: Collider, world: vec3<f32>, n: ptr<function, vec3<f32>>) -> 
 }
 
 // What samples meet, as the core's Probe: a grid collider's field, or
-// the depth image seen from the start pose x0, q0.
+// the depth image seen from the start pose x0, q0; and by how much a face's
+// center or an edge's inner point must lie deeper than its corners
+// (DEEPEST_MARGIN of the body's reach, as the core's SampleContacts).
 struct Probe {
     c: Collider,
     depth: bool,
     x0: vec3<f32>,
     q0: vec4<f32>,
+    clear: f32,
 }
 
 // Whether a sample meets the probe's surface, and its contact: of the
@@ -453,50 +496,74 @@ struct Corners {
     found: array<bool, MOST_CORNERS>,
 }
 
-// Whether a box's face center i at depth is met: only where the surface
-// bulges under it, deeper than each corner of its face found.
-fn centerMet(corners: ptr<function, Corners>, i: u32, depth: f32) -> bool {
+// Whether a box's or a hull's face center i at depth is met: only where
+// the surface bulges under it, deeper than each corner of its face found
+// by more than clear.
+fn centerMet(s: Shape, corners: ptr<function, Corners>, i: u32, depth: f32, clear: f32) -> bool {
+    var met = true;
+    if (s.kind == RIGID_HULL) {
+        let f = i - s.count;
+        for (var j = hullFaceStart(f); met && j < hullFaceStart(f + 1u); j++) {
+            let c = hullLoop(j);
+            met = !(*corners).found[c] || depth < (*corners).depths[c] - clear;
+        }
+        return met;
+    }
     let k = (i - 8u) / 2u;
     let side = select(0u, 1u, (i - 8u) % 2u == 0u);
-    var met = true;
     for (var c = 0u; met && c < 8u; c++) {
         let onFace = ((c >> k) & 1u) == side;
-        met = !onFace || !(*corners).found[c] || depth < (*corners).depths[c];
+        met = !onFace || !(*corners).found[c] || depth < (*corners).depths[c] - clear;
     }
     return met;
 }
 
-// Adds each of a box's edges' deepest inner point (a quarter, a half and
-// three quarters along) where the surface bulges under it, deeper than
-// each of its corners found.
+// Adds each of a box's or a hull's edges' deepest inner point (a quarter,
+// a half and three quarters along) where the surface bulges under it,
+// deeper than each of its corners found by the probe's clear. The edges in
+// the core's order (EdgesOf), one a slot: a box's corner i and axis k at
+// 3 i + k, those past no corner skipped; a hull's loop at each of its
+// corners, to the next about its face, each edge once from its lower
+// vertex.
 fn edgeContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, probe: Probe,
                 corners: ptr<function, Corners>, list: ptr<function, Contacts>) {
-    for (var i = 0u; i < 8u; i++) {
-        for (var k = 0u; k < 3u; k++) {
-            let j = i | (1u << k);
-            if (j == i) {
-                continue;
+    let hull = s.kind == RIGID_HULL;
+    let slots = select(24u, hullFaceStart(hullFaceCount()), hull);
+    var face = 0u;
+    for (var at = 0u; at < slots; at++) {
+        var i = at / 3u;
+        var j = i | (1u << (at % 3u));
+        if (hull) {
+            while (at >= hullFaceStart(face + 1u)) {
+                face += 1u;
             }
-            let a = sampleOf(s, i);
-            let b = sampleOf(s, j);
-            var deepest = Contact();
-            deepest.depth = LARGEST;
-            var met = false;
-            for (var quarter = 1u; quarter <= 3u; quarter++) {
-                var contact = Contact();
-                let point = a + 0.25 * f32(quarter) * (b - a);
-                let hit = probeSample(x, q, s, probe, point, &contact) &&
-                          contact.depth < deepest.depth;
-                if (hit) {
-                    deepest = contact;
-                }
-                met = met || hit;
+            let first = hullFaceStart(face);
+            let next = select(at + 1u, first, at + 1u == hullFaceStart(face + 1u));
+            i = hullLoop(at);
+            j = hullLoop(next);
+        }
+        if ((!hull && j == i) || (hull && i >= j)) {
+            continue;
+        }
+        let a = sampleOf(s, i);
+        let b = sampleOf(s, j);
+        var deepest = Contact();
+        deepest.depth = LARGEST;
+        var met = false;
+        for (var quarter = 1u; quarter <= 3u; quarter++) {
+            var contact = Contact();
+            let point = a + 0.25 * f32(quarter) * (b - a);
+            let hit =
+                probeSample(x, q, s, probe, point, &contact) && contact.depth < deepest.depth;
+            if (hit) {
+                deepest = contact;
             }
-            met = met && (!(*corners).found[i] || deepest.depth < (*corners).depths[i]);
-            met = met && (!(*corners).found[j] || deepest.depth < (*corners).depths[j]);
-            if (met) {
-                addContact(list, deepest);
-            }
+            met = met || hit;
+        }
+        met = met && (!(*corners).found[i] || deepest.depth < (*corners).depths[i] - probe.clear);
+        met = met && (!(*corners).found[j] || deepest.depth < (*corners).depths[j] - probe.clear);
+        if (met) {
+            addContact(list, deepest);
         }
     }
 }
@@ -516,11 +583,11 @@ fn sampleContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, probe: Probe,
             corners.found[i] = hit;
             corners.depths[i] = select(LARGEST, contact.depth, hit);
         }
-        if (hit && (i < cornerCount || centerMet(&corners, i, contact.depth))) {
+        if (hit && (i < cornerCount || centerMet(s, &corners, i, contact.depth, probe.clear))) {
             addContact(list, contact);
         }
     }
-    if (s.kind == RIGID_BOX) {
+    if (s.kind == RIGID_BOX || s.kind == RIGID_HULL) {
         edgeContacts(x, q, s, probe, &corners, list);
     }
 }
@@ -533,6 +600,7 @@ fn gatherContacts(x: vec3<f32>, q: vec4<f32>, x0: vec3<f32>, q0: vec4<f32>, s: S
                   reach: f32) -> Contacts {
     var list = Contacts();
     list.margin = CONTACT_MARGIN * reach;
+    let clear = DEEPEST_MARGIN * reach;
     for (var i = 0u; i < params.collisionHead.x; i++) {
         let c = params.colliders[i];
         list.collider = 8u * i;
@@ -550,12 +618,12 @@ fn gatherContacts(x: vec3<f32>, q: vec4<f32>, x0: vec3<f32>, q0: vec4<f32>, s: S
         } else if (c.modes.x == COLLIDER_BOX) {
             coreBoxContacts(x, q, s, c, &list);
         } else {
-            sampleContacts(x, q, s, Probe(c, false, x0, q0), &list);
+            sampleContacts(x, q, s, Probe(c, false, x0, q0, clear), &list);
         }
     }
     if (params.depth.head.x != 0u) {
         list.collider = 8u * params.collisionHead.x + 8u;
-        sampleContacts(x, q, s, Probe(params.colliders[0], true, x0, q0), &list);
+        sampleContacts(x, q, s, Probe(params.colliders[0], true, x0, q0, clear), &list);
     }
     return list;
 }

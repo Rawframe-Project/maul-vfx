@@ -23,15 +23,15 @@
 // reads, its colour's gradient over life, a curve for each of the 12
 // values over life its records read, its ribbons' width curve and colour
 // gradient, its pair force's strength curve and its rigid hull's
-// vertices. The layout plan budgets them at 64.
-#define MVFX_GPU_TABLES 55
+// vertices and faces. The layout plan budgets them at 64.
+#define MVFX_GPU_TABLES 56
 static_assert(MVFX_GPU_TABLES <= 64, "the baked tables within their 64 slots");
 
-// A baked table in the buffer: its values (the effect's) and words, and
-// its first word.
+// A baked table in the buffer: its values (the effect's, or the
+// simulation's own) and words, and its first word.
 typedef struct mvfxGpuTable
 {
-    const float* values;
+    const void* values;
     uint32_t words;
     uint32_t first;
 } mvfxGpuTable;
@@ -90,7 +90,7 @@ bool mvfxHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders
 
 // Adds a baked table of words values after the buffer's other words (once
 // the grids are laid out): its first word; all ones for NULL values.
-uint32_t mvfxAddTable(mvfxGpuGrids* grids, const float* values, uint32_t words);
+uint32_t mvfxAddTable(mvfxGpuGrids* grids, const void* values, uint32_t words);
 
 // Adds room of words after the buffer's other words: its first word.
 uint32_t mvfxAddRoom(mvfxGpuGrids* grids, uint32_t words);

@@ -800,7 +800,8 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 // a hull's vertices; the density, the sleep speed and time, a hull's
 // volume at a size of 1; its second moments; how the size goes over life
 // (whether, its input, whether a value an axis) and the hull's table, its
-// speed range, the sizes over life (a value and its table each); the
+// speed range, a hull's face count and its faces' table (words, in the
+// range's last two); the sizes over life (a value and its table each); the
 // restitution and the static and dynamic friction.
 static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t rigid[36])
 {
@@ -816,6 +817,8 @@ static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uin
     const uint32_t size[4] = {o->size ? 1u : 0u, o->sizeInput, o->perAxis ? 1u : 0u, tables->hull};
     memcpy(rigid + 16, size, sizeof size);
     mvfxFloatWords(rigid + 20, o->sizeRange[0], o->sizeRange[1], 0.0f, 0.0f);
+    rigid[22] = (uint32_t)view->hullFaceCount;
+    rigid[23] = tables->hullFaces;
     for (int32_t k = 0; k < 3; ++k)
     {
         memcpy(&rigid[24 + 2 * k], &o->sizes[k].value, sizeof(float));
