@@ -1024,6 +1024,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part's documented first-step upload counts an emitter's
   sources' words with their ribbon words (the bytes it gave were 16
   short).
+- The GPU part's rigid bodies wake those they touch and settle their
+  islands in at most a round a body; a state that never settles can no
+  longer hold the workgroup in a loop.
 - The GPU part's neighbor grid moves a world-space emitter's places by
   the anchor's shift before it reads them, as the CPU path's step does;
   a moving instance's grid was built from the places before the shift.

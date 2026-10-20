@@ -7,9 +7,10 @@
 var<workgroup> pairWoken: atomic<u32>;
 
 // Wakes the sleepers an awake body reaches, as the core's
-// mvfxWakeTouching: rounds until one wakes none, a body woken in one
-// waking those it reaches in the next (the same sleepers in any order);
-// whether one woke. A woken body's sleep is 0 and its flags say so.
+// mvfxWakeTouching: rounds until one wakes none (at most a round a
+// body), a body woken in one waking those it reaches in the next (the
+// same sleepers in any order); whether one woke. A woken body's sleep is
+// 0 and its flags say so.
 fn pairWake(t: u32, live: u32) -> bool {
     if (bodyContacts() == 0u) {
         return false;
@@ -32,8 +33,9 @@ fn pairWake(t: u32, live: u32) -> bool {
     if (asleep == grid.count) {
         return false;
     }
+    // A round that goes on wakes a sleeper, so live rounds wake them all.
     var woke = false;
-    loop {
+    for (var round = 0u; round < live; round++) {
         if (t == 0u) {
             _ = atomicExchange(&pairWoken, 0u);
         }
@@ -70,9 +72,10 @@ fn pairWake(t: u32, live: u32) -> bool {
 // Settles the step's bodies, as the core's mvfxSettleBodies: each awake
 // body's still time grown; the islands of the last substep's pairs (each
 // body's label lowered to its runs' partners' in rounds until none
-// changes: the least index of its island, the core's union-find root);
-// an island with a body awake and not still the sleep time awake whole,
-// its sleepers woken; the rest asleep, their velocities none.
+// changes, at most a round a body: the least index of its island, the
+// core's union-find root); an island with a body awake and not still the
+// sleep time awake whole, its sleepers woken; the rest asleep, their
+// velocities none.
 fn pairSettle(t: u32, live: u32, found: vec3<u32>, seconds: f32) {
     for (var i = t; i < live; i += PAIR_GROUP) {
         if (isEnded(i)) {
@@ -86,7 +89,9 @@ fn pairSettle(t: u32, live: u32, found: vec3<u32>, seconds: f32) {
         blocks[infoAt(i) + 10u] = i;
     }
     pairWait();
-    loop {
+    // A label falls to its island's least index in fewer rounds than
+    // there are bodies, and a last round changes none.
+    for (var round = 0u; round <= live; round++) {
         if (t == 0u) {
             _ = atomicExchange(&pairWoken, 0u);
         }
