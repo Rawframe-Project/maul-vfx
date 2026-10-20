@@ -224,6 +224,11 @@ mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId insta
         mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
+    if (live->planned)
+    {
+        // Its fields are the simulation's.
+        return mvfx_errorState;
+    }
     const mvfxGasState* state = &live->gases[gas];
     if (field >= mvfx_gasVelocityX && field <= mvfx_gasVelocityZ)
     {

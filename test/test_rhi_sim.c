@@ -1217,7 +1217,7 @@ static void Untouched(const mvfxModuleCall* call, void* user)
 static void TestRefused(mvfxGpu* kernels)
 {
     // An emitter it does not run, after one it does: refused, named (a
-    // feature it does not run, the host's modules).
+    // feature it does not run, the host's modules); a gas.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1250,6 +1250,22 @@ static void TestRefused(mvfxGpu* kernels)
     simDef.instance = cpu;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorInvalid && refusal.emitter == -1,
           "an instance that is not planned");
+    // A smoke gas: its effect is planned, its gas not run yet.
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = 4;
+    gas.size[1] = 4;
+    gas.size[2] = 4;
+    effectDef.emitterCount = 1;
+    effectDef.gases = &gas;
+    effectDef.gasCount = 1;
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a gas's effect");
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "a gas planned");
+    simDef.effect = effect;
+    simDef.instance = planned;
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
+              refusal.emitter == -1 && refusal.gas == 0 && refusal.features == 0,
+          "a gas refused, named");
     mvfxDestroyContext(context);
 }
 

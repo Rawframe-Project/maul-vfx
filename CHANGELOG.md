@@ -991,6 +991,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   awake body reaches wake by touch, and at a step's end the bodies joined
   by the last substep's pairs sleep or stay awake as one island, as the
   CPU path's.
+- Effects with smoke gases can be planned: `mvfxInstance_GetGasPlan`
+  gives each smoke gas's step (its span, gravity, forces and obstacles,
+  resolved where the CPU path resolves them), and
+  `mvfxInstance_SetGasHolds` tells a planned instance whether its
+  simulation's gas still holds anything, which a stopped instance waits
+  on. A planned instance's gases are not read on the CPU path
+  (`mvfxInstance_ReadGas`, `mvfxInstance_ReadGasAs` and
+  `mvfxInstance_SampleGas` refuse it). `mvfxGpuRefusal` names a gas the
+  GPU part does not run yet (`gas`).
 
 ### Fixed
 

@@ -87,6 +87,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/float_mode.c
     src/gas.c
     src/gas_api.c
+    src/gas_plan.c
     src/gas_forces.c
     src/gas_lattice.c
     src/gas_liquid.c
@@ -195,6 +196,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(elementary WHITEBOX)
     maul_add_test(emitter_step WHITEBOX)
     maul_add_test(plan WHITEBOX)
+    maul_add_test(plan_gas WHITEBOX)
     maul_add_test(event WHITEBOX)
     maul_add_test(event_spawn WHITEBOX)
     maul_add_test(expand)

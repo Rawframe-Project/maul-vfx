@@ -72,11 +72,14 @@ extern "C"
     // other (bodyContacts above 0) run an emitter's step in one workgroup
     // (its pairs found and solved colour by colour, its sleepers woken by
     // touch and its islands settled, as the CPU path's), so they use one
-    // compute unit of the device however many there are.
+    // compute unit of the device however many there are. Gases are not
+    // run yet: gas is the first an instance's effect has (a smoke gas's
+    // lets it be planned), -1 for none, and emitter is then -1.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
         uint64_t features;
+        int32_t gas;
     } mvfxGpuRefusal;
 
     // An emitter's particles: a buffer of 32-bit words, arrays of the

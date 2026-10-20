@@ -82,8 +82,10 @@ extern "C"
         mvfxOffscreen offscreen;
         int32_t offscreenInterval;
         // Whether its particles are simulated elsewhere (maul-vfx/plan.h):
-        // it then holds none, and each step writes its emitters' plans. An
-        // effect with gases or water surfaces cannot be planned yet.
+        // it then holds none, and each step writes its emitters' plans and
+        // its smoke gases', whose fields the simulation holds. An effect
+        // with a liquid or surface gas or a water surface cannot be
+        // planned yet.
         bool planned;
     } mvfxInstanceDef;
 
@@ -828,7 +830,9 @@ extern "C"
     ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas index
     ///         or field out of range (a surface's only field its distance,
     ///         which no other gas has) or a count not the gas's cells,
-    ///         which counts as misuse when the context is given.
+    ///         which counts as misuse when the context is given;
+    ///         `mvfx_errorState` for a planned instance, whose gases'
+    ///         fields its simulation holds.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGas(const mvfxContext* context,

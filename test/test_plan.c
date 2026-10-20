@@ -822,22 +822,16 @@ static void TestCannotBePlanned(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    // A gas, and a water surface.
+    // A water surface (smoke gases are planned, test_plan_gas.c, and
+    // liquid gases refused there).
     mvfxEmitterDef emitter = Emitter(16);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
-    const mvfxGasDef gas = mvfxDefaultGasDef();
-    def.gases = &gas;
-    def.gasCount = 1;
-    bool refused = PlannedRefused(context, &def);
-    def.gasCount = 0;
-    def.gases = NULL;
     const mvfxWaterDef water = mvfxDefaultWaterDef();
     def.waters = &water;
     def.waterCount = 1;
-    refused = refused && PlannedRefused(context, &def);
-    CHECK(refused, "gases and water surfaces refused");
+    CHECK(PlannedRefused(context, &def), "water surfaces refused");
     mvfxDestroyContext(context);
 }
 

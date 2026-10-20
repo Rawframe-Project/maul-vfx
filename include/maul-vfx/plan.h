@@ -354,6 +354,40 @@ extern "C"
         uint32_t gridMask;
     } mvfxEmitterPlan;
 
+    // A smoke gas's step as resolved for a plan (mvfxInstance_GetGasPlan),
+    // in its box's frame (mvfxInstance_GetGasInfo places the box): what
+    // the CPU path's gas step takes from the instance, resolved once at
+    // the end of the context's step, as the CPU path resolves it there.
+    typedef struct mvfxGasPlan
+    {
+        // The first tick the plan covers and how many (the emitters'
+        // plans'), which the gas's substeps split; a substep starting
+        // before the instance's stop tick pours the gas's sources.
+        int64_t start;
+        int64_t ticks;
+        int64_t stopTick;
+        // Whether the instance was cleared before the plan (stopped with
+        // mvfx_stopAndClear, restarted, or just created): the simulation
+        // empties the gas first.
+        bool cleared;
+        // The gravity in the box's frame.
+        float gravity[3];
+        // Its forces as resolved for the step, in the box's frame: a
+        // face takes them at its place.
+        int32_t forceCount;
+        mvfxPlannedForce forces[MVFX_MAX_FORCES];
+        // Its obstacles as resolved at the step's end, its own then the
+        // instance's (with its def's hostObstacles), the first
+        // ownObstacleCount its own; and as resolved at the last plan's
+        // end, which obstaclesKnown says (not after a clear or a
+        // teleport): a solid's velocity is its move between the two.
+        int32_t obstacleCount;
+        int32_t ownObstacleCount;
+        mvfxPlannedCollider obstacles[2 * MVFX_MAX_COLLIDERS];
+        bool obstaclesKnown;
+        mvfxPlannedCollider obstaclesBefore[2 * MVFX_MAX_COLLIDERS];
+    } mvfxGasPlan;
+
 // What an emitter uses beyond spawning by rate and bursts from a shape
 // with a velocity, its lifetimes, gravity and drag: one bit for each part
 // of an emitter def, for a simulation to refuse what it does not run.
@@ -785,6 +819,51 @@ extern "C"
                                                                    mvfxInstanceId instance,
                                                                    int32_t emitter,
                                                                    mvfxEmitterPlan* planOut);
+
+    /// Returns a smoke gas's plan for the context's last step.
+    ///
+    /// @param context  The context.
+    /// @param instance A planned instance.
+    /// @param gas      The gas's index in its effect.
+    /// @param planOut  Receives the plan; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or
+    ///         a gas out of range; `mvfx_errorStale` for an instance that
+    ///         is gone; `mvfx_errorState` for an instance that is not
+    ///         planned.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context,
+                                                               mvfxInstanceId instance, int32_t gas,
+                                                               mvfxGasPlan* planOut);
+
+    /// Tells a planned instance whether its simulation's gas holds
+    /// anything (a value of a field past nothing) at the end of a step: a
+    /// stopped instance runs while a gas holds anything, which only the
+    /// simulation knows. A planned gas holds until told otherwise, so an
+    /// instance whose simulation never reports runs on after it stops,
+    /// and one whose does finishes as late as the report comes. That a
+    /// gas holds always counts; that it holds nothing counts only for a
+    /// step that ended at or after the instance's stop tick and every
+    /// last death the plans give the emitters splatting into the gas,
+    /// past which nothing pours into it, and is otherwise ignored.
+    ///
+    /// @param context  The context.
+    /// @param instance A planned instance.
+    /// @param gas      The gas's index in its effect.
+    /// @param tick     The tick of the step's end the report is of, at
+    ///                 most the instance's clock.
+    /// @param holds    Whether the gas held anything then.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, a
+    ///         gas out of range or a tick past the clock or below 0, which
+    ///         counts as misuse when the context is given;
+    ///         `mvfx_errorStale` for an instance that is gone;
+    ///         `mvfx_errorState` for an instance that is not planned.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context,
+                                                                mvfxInstanceId instance,
+                                                                int32_t gas, int64_t tick,
+                                                                bool holds);
 
 #ifdef __cplusplus
 }

@@ -86,6 +86,11 @@ mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId ins
         mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
+    if (live->planned)
+    {
+        // Its fields are the simulation's.
+        return mvfx_errorState;
+    }
     const mvfxGasState* state = &live->gases[gas];
     const mvfxLayoutField field = {.format = read->format, .components = 1};
     uint32_t size = mvfxReadFormatBytes(read->format);
@@ -155,6 +160,10 @@ mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId ins
     {
         mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
+    }
+    if (live->planned)
+    {
+        return mvfx_errorState;
     }
     const mvfxGasState* state = &live->gases[gas];
     mvfxSpaceMap map = mvfxGasMap(live, gas, mvfx_spaceWorld);

@@ -12,6 +12,7 @@
 #include "force.h"
 #include "gas_api.h"
 #include "gas_liquid.h"
+#include "gas_plan.h"
 #include "gas_step.h"
 #include "gas_surface.h"
 #include "instance.h"
@@ -206,8 +207,9 @@ static void StepGases(mvfxInstance* instance, const mvfxTasks* tasks)
 void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
 {
     // A second step in one of the context's steps: the first's gases go
-    // now, serially, in this instance's task.
-    if (instance->gasesDue)
+    // now, serially, in this instance's task (a planned instance's are
+    // planned once, at the context's step's end).
+    if (instance->gasesDue && !instance->planned)
     {
         static const mvfxTasks serial = {0};
         StepGases(instance, &serial);
@@ -265,7 +267,7 @@ static bool IsDue(mvfxInstance* instance)
 // first, so the count reads the velocities they leave on every path.
 static void StepSplit(mvfxInstance* instance, int64_t ticks)
 {
-    if (instance->gasesDue)
+    if (instance->gasesDue && !instance->planned)
     {
         static const mvfxTasks serial = {0};
         StepGases(instance, &serial);
@@ -348,7 +350,11 @@ void mvfxStepDueGases(mvfxContext* context)
     for (uint32_t i = 0; i < context->instances.capacity; ++i)
     {
         mvfxInstance* instance = context->instances.slots[i].object;
-        if (instance != nullptr && instance->gasesDue)
+        if (instance != nullptr && instance->gasesDue && instance->planned)
+        {
+            mvfxPlanGases(instance);
+        }
+        else if (instance != nullptr && instance->gasesDue)
         {
             StepGases(instance, &context->tasks);
         }

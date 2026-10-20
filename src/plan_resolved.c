@@ -14,8 +14,7 @@
 #include <math.h>
 #include <string.h>
 
-// A resolved collider as a plan hands it over, with its def's grid.
-static mvfxPlannedCollider PlannedCollider(const mvfxResolvedCollider* c, mvfxGridId grid)
+mvfxPlannedCollider mvfxPlannedColliderOf(const mvfxResolvedCollider* c, mvfxGridId grid)
 {
     mvfxPlannedCollider out = {.kind = c->kind,
                                .inside = c->inside,
@@ -94,7 +93,7 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
         // The emitter's own, then the instance's.
         mvfxGridId grid =
             c < own ? compiled->colliders[c].grid : instance->hostColliders[c - own].grid;
-        plan->colliders[c] = PlannedCollider(&state->colliders[c], grid);
+        plan->colliders[c] = mvfxPlannedColliderOf(&state->colliders[c], grid);
     }
     plan->restitution = collision->restitution;
     plan->friction = collision->friction;

@@ -97,11 +97,12 @@ gas_step: elementary force gas gas_forces gas_lattice gas_pressure gas_solid gas
 gas_api: box collide context direction force gas instance instance_api
 instance_api: collide context depth effect_api gas grid_api instance mesh plan_resolved rigid_wake slots spawn
 instance_inputs: context instance instance_api mesh_api rigid_wake spawn
-step: context effect emitter_step event float_mode force gas_api gas_liquid gas_splat gas_step gas_surface instance instance_api planner tasks water_step
+step: context effect emitter_step event float_mode force gas_api gas_liquid gas_plan gas_splat gas_step gas_surface instance instance_api planner tasks water_step
 curve:
 curve_integral: curve
 grid: allocator half
 force: direction elementary gas_lattice grid noise
 plan_resolved: beam collide depth force instance kill steer velocity_modules
+gas_plan: context force gas gas_api instance instance_api plan_resolved
 gradient:
 elementary:

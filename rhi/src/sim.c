@@ -88,6 +88,7 @@ static uint64_t RigidPairWords(const mvfxEmitterView* view, int32_t capacity)
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
+        .gas = -1,
         .features =
             (view->features & ~RUN_FEATURES) |
             ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
@@ -130,7 +131,7 @@ static mvfxResult ReadViews(mvfxGpuSim* sim, mvfxEffectId effect, mvfxGpuRefusal
             return mvfx_errorState;
         }
     }
-    *refusal = (mvfxGpuRefusal){.emitter = -1};
+    *refusal = (mvfxGpuRefusal){.emitter = -1, .gas = -1};
     mvfxOrderSimEmitters(sim);
     return mvfx_success;
 }
@@ -336,7 +337,7 @@ static bool IsDefValid(const mvfxGpuSimDef* def)
 mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
                             mvfxGpuRefusal* refusalOut)
 {
-    mvfxGpuRefusal refusal = {.emitter = -1};
+    mvfxGpuRefusal refusal = {.emitter = -1, .gas = -1};
     if (simOut != nullptr)
     {
         *simOut = nullptr;
@@ -354,6 +355,17 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     if (planned != mvfx_success)
     {
         return planned == mvfx_errorState ? mvfx_errorInvalid : planned;
+    }
+    // A smoke gas lets an instance be planned; the part runs none yet.
+    mvfxGasPlan gasPlan;
+    if (mvfxInstance_GetGasPlan(def->context, def->instance, 0, &gasPlan) == mvfx_success)
+    {
+        refusal.gas = 0;
+        if (refusalOut != nullptr)
+        {
+            *refusalOut = refusal;
+        }
+        return mvfx_errorState;
     }
     mvfxGpuSim* sim = mvfxRhiAllocate(&def->allocator, sizeof *sim, alignof(mvfxGpuSim));
     if (sim == nullptr)

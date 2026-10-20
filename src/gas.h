@@ -147,6 +147,11 @@ typedef struct mvfxGasState
     bool holds;
     // A liquid or surface gas's room (all NULL for smoke).
     mvfxLiquidGasRoom room;
+    // In a planned instance, what its step would take, resolved at the
+    // end of the context's step (mvfxPlanGases): its gravity and forces
+    // in the box's frame (its obstacles resolved into obstacles above).
+    float planGravity[3];
+    mvfxResolvedForce planForces[MVFX_MAX_FORCES];
 } mvfxGasState;
 
 // A scalar at most this is nothing.

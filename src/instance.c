@@ -723,6 +723,9 @@ void mvfxResetInstance(mvfxInstance* instance)
     {
         mvfxGasState* gas = &instance->gases[g];
         mvfxClearGas(gas, &instance->effect->gases[g]);
+        // A planned gas holds until its simulation says otherwise
+        // (mvfxInstance_SetGasHolds).
+        gas->holds = instance->planned;
         // A world gas's box stays where the instance starts.
         for (int32_t k = 0; k < 3; ++k)
         {
