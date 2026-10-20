@@ -78,6 +78,16 @@ enum
 // (offsets and scatter each), its values, the query.
 #define GRID_PASSES 12
 
+// The words a rigid body takes in the blocks' buffer when its emitter's
+// bodies meet each other (sim/rigid_pairs.wgsl): its fate over the step,
+// its solve, its contacts with the world and its info beside them
+// (FATE_WORDS, SOLID_WORDS, WORLD_WORDS, INFO_WORDS).
+#define MVFX_RIGID_BODY_WORDS (16u + 28u + 1u + 8u * 18u + 12u)
+
+// The words of a pair contact in the pool (sim/rigid_pairs.wgsl's
+// PAIR_WORDS).
+#define MVFX_RIGID_PAIR_WORDS 18u
+
 // The passes of an emitter's particle contacts (sim_contacts.c), after
 // its scatter: its numbers' write, its radii, its keys, the sort's four
 // radix passes, a projection and its commit for each of the most
@@ -222,8 +232,12 @@ typedef struct Emitter
     // pass's workgroups.
     bool units;
     uint32_t unitGroups;
-    // Whether its particles are rigid bodies (sim/rigid.wgsl).
+    // Whether its particles are rigid bodies (sim/rigid.wgsl); whether
+    // they meet each other (sim/rigid_pairs.wgsl), and the words their
+    // arrays take in the blocks' buffer after the blocks'.
     bool rigid;
+    bool rigidPairs;
+    uint64_t rigidPairWords;
     bool contacts;
     int32_t contactIterations;
     mrhiBufferId contactBuffers[CONTACT_BUFFERS];

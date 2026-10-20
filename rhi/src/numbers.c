@@ -802,7 +802,7 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 // (whether, its input, whether a value an axis) and the hull's table, its
 // speed range, a hull's face count and its faces' table (words, in the
 // range's last two); the sizes over life (a value and its table each); the
-// restitution and the static and dynamic friction.
+// restitution, the static and dynamic friction and the body contacts.
 static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t rigid[36])
 {
     const mvfxRigidDef* r = &view->rigid;
@@ -825,6 +825,7 @@ static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uin
         rigid[25 + 2 * k] = tables->recordLives[1 + k];
     }
     mvfxFloatWords(rigid + 32, r->restitution, r->staticFriction, r->dynamicFriction, 0.0f);
+    rigid[35] = (uint32_t)r->bodyContacts;
 }
 
 // The beam as resolved for the step (sim.wgsl's beam, beamNoise and

@@ -979,6 +979,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   colour none of its neighbours has, and the passes go colour by colour,
   so that the GPU part can take a colour's pairs at once in the same
   order. Stacks and piles settle by a different order than before.
+- The GPU part's rigid spheres and boxes meet each other: an emitter whose
+  bodies meet runs its substeps in one workgroup, its pairs found,
+  coloured and solved colour by colour as the CPU path's, their strikes'
+  events included. Capsules and hulls meeting each other, and bodies
+  meeting each other with sleeping on, stay refused.
 
 ### Fixed
 

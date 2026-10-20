@@ -326,8 +326,10 @@ static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
 static mvfxAttributeArrays s_arrays;
 static mvfxAttributeArrays s_runArrays[2];
 // How far a rigid body's surface reaches from its center at most, each
-// emitter's (0 for particles): half its largest size's diagonal.
+// emitter's (0 for particles): half its largest size's diagonal; whether
+// its bodies meet each other.
 static float s_bodyRadius[2];
+static bool s_bodiesMeet[2];
 
 static int32_t s_capacity;
 
@@ -796,7 +798,8 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
         printf("no plan, or births refused: %u\n", s_record[2]);
         return false;
     }
-    ApartTakeStep(e, serial, places, state->count, &plan, s_tolerance, s_bodyRadius[e]);
+    ApartTakeStep(e, serial, places, state->count, &plan, s_tolerance, s_bodyRadius[e],
+                  s_bodiesMeet[e]);
     int32_t held = (int32_t)s_record[0];
     bool same = true;
     int32_t g = 0;
@@ -2486,6 +2489,8 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
             view.rigid.enabled
                 ? 0.5f * sqrtf(most[0] * most[0] + most[1] * most[1] + most[2] * most[2])
                 : 0.0f;
+        s_bodiesMeet[e] = view.rigid.enabled && view.rigid.bodyContacts > 0 &&
+                          (view.features & MVFX_FEATURE_COLLISION) != 0;
     }
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = *effectOut;

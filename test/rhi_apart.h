@@ -9,7 +9,9 @@
 // speeds its masses part by their rounding. The CPU path's particle is
 // near when it ends a step within that tolerance of one of the plan's
 // colliders (a rigid body's surface, anywhere within its radius of its
-// center); one near at the end of a step or of the last may go apart
+// center), or of another body where bodies meet each other (their pairs'
+// contacts decided on places too); one near at the end of a step or of
+// the last may go apart
 // once, and is compared no more, nor are its events. Every other particle
 // is compared exactly as before.
 
@@ -29,9 +31,11 @@ void ApartReset(void);
 // the plan whose colliders they end near or not (a body is near a depth
 // image wherever), within the relative tolerance places are compared to
 // and the radius a rigid body's surface reaches at most from its center
-// (0 for particles).
+// (0 for particles); bodies that meet each other are near one another
+// within twice that radius.
 void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const places[3],
-                   int32_t count, const mvfxEmitterPlan* plan, float tolerance, float radius);
+                   int32_t count, const mvfxEmitterPlan* plan, float tolerance, float radius,
+                   bool meet);
 
 // Whether a particle of the emitter is apart already; whether it may go
 // apart now (near at this step's end or the last), making it so.

@@ -185,7 +185,7 @@ fn gridField(c: Collider, local: vec3<f32>) -> f32 {
 
 // The span between a grid's points along the axes it varies on, the least
 // of them; 0 for a grid of one point.
-fn cellOf(c: Collider) -> f32 {
+fn gridSpan(c: Collider) -> f32 {
     var cell = LARGEST;
     for (var k = 0u; k < 3u; k++) {
         let n = c.grid[1u + k];
@@ -199,7 +199,7 @@ fn cellOf(c: Collider) -> f32 {
 // The field's gradient at a local place, unit length, toward the allowed
 // side; the box's up where it is flat or a difference leaves the box.
 fn gradientAt(c: Collider, local: vec3<f32>) -> vec3<f32> {
-    let cell = cellOf(c);
+    let cell = gridSpan(c);
     let h = select(0.5 * c.halfExtents.x, 0.5 * cell, cell > 0.0);
     let f0 = gridField(c, local);
     var g = vec3<f32>(0.0);
@@ -282,7 +282,7 @@ fn crossField(c: Collider, a: vec3<f32>, b: vec3<f32>, t: ptr<function, f32>) ->
     }
     let d = b - a;
     let length = sqrt(dot3(d, d)) * (high - low);
-    let cell = cellOf(c);
+    let cell = gridSpan(c);
     let wanted = select(1.0, ceil(length / (0.5 * cell)), cell > 0.0);
     let n = u32(min(max(wanted, 1.0), f32(FIELD_SAMPLES)));
     var before = low;

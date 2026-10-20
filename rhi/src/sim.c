@@ -49,30 +49,71 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
+
+// Whether an emitter's rigid bodies meet each other: they collide and
+// keep body contacts.
+static bool MeetsBodies(const mvfxEmitterView* view)
+{
+    return (view->features & MVFX_FEATURE_COLLISION) != 0 && view->rigid.bodyContacts > 0;
+}
+
+// Whether an emitter's bodies meet each other as the GPU does not run them
+// yet: as capsules or hulls, or with sleeping on.
+static bool PairsRefused(const mvfxEmitterView* view)
+{
+    bool shaped = view->rigid.shape == mvfx_rigidSphere || view->rigid.shape == mvfx_rigidBox;
+    return MeetsBodies(view) && (!shaped || view->rigid.sleepSpeed > 0.0f);
+}
+
+// The least power of two at least n.
+static uint64_t PowerAbove(uint64_t n)
+{
+    uint64_t p = 1u;
+    while (p < n)
+    {
+        p <<= 1u;
+    }
+    return p;
+}
+
+// The words an emitter's rigid pairs take in the blocks' buffer after the
+// blocks' (sim/rigid_pairs.wgsl): its bodies' words and the grid's sorted
+// entries, the pool's room, the runs' four arrays and their two sorted
+// lists; none for an emitter whose bodies do not meet each other.
+static uint64_t RigidPairWords(const mvfxEmitterView* view, int32_t capacity)
+{
+    if (!view->rigid.enabled || capacity <= 0 || !MeetsBodies(view))
+    {
+        return 0u;
+    }
+    uint64_t c = (uint64_t)capacity;
+    uint64_t room = (uint64_t)view->rigid.bodyContacts * c;
+    return MVFX_RIGID_BODY_WORDS * c + 2u * PowerAbove(c) + MVFX_RIGID_PAIR_WORDS * room +
+           4u * room + 2u * PowerAbove(2u * room) + 2u * PowerAbove(room);
+}
+
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
-        .features = (view->features & ~RUN_FEATURES) |
-                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
-                    ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
-                         ? MVFX_FEATURE_COLLISION
-                         : 0) |
-                    // Contacts see the particles a step kills, and move births
-                    // after ribbons and beams take their places.
-                    ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
-                             (view->kills ||
-                              (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
-                         ? MVFX_FEATURE_CONTACTS
-                         : 0) |
-                    // Rigid particles meet the colliders and the depth
-                    // image, not each other, and are killed by their strikes'
-                    // life alone.
-                    ((view->features & MVFX_FEATURE_RIGID) != 0 &&
-                             (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
-                                              view->rigid.bodyContacts > 0))
-                         ? MVFX_FEATURE_RIGID
-                         : 0),
+        .features =
+            (view->features & ~RUN_FEATURES) |
+            ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
+            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
+                 ? MVFX_FEATURE_COLLISION
+                 : 0) |
+            // Contacts see the particles a step kills, and move births
+            // after ribbons and beams take their places.
+            ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
+                     (view->kills ||
+                      (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
+                 ? MVFX_FEATURE_CONTACTS
+                 : 0) |
+            // Rigid particles are killed by their strikes' life
+            // alone.
+            ((view->features & MVFX_FEATURE_RIGID) != 0 && (view->kills || PairsRefused(view))
+                 ? MVFX_FEATURE_RIGID
+                 : 0),
     };
     return refusal->features == 0;
 }
@@ -166,7 +207,9 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
                         &emitter->statistics) &&
            CreateBuffer(sim, AcceptedWords(emitter) * sizeof(uint32_t), mrhi_bufferStorage,
                         &emitter->accepted) &&
-           CreateBuffer(sim, 8u * mvfxScanBlocks(emitter->capacity) * sizeof(uint32_t),
+           CreateBuffer(sim,
+                        (8u * mvfxScanBlocks(emitter->capacity) + emitter->rigidPairWords) *
+                            sizeof(uint32_t),
                         mrhi_bufferStorage, &emitter->blocks) &&
            CreateBuffer(sim, 4u * (emitter->gridLayout.words > 0 ? emitter->gridLayout.words : 1u),
                         written, &emitter->grids);
@@ -258,6 +301,8 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     int32_t points = sim->views[e].unitPoints;
     emitter->units = points > 1 && plan.capacity > 0;
     emitter->rigid = sim->views[e].rigid.enabled && plan.capacity > 0;
+    emitter->rigidPairWords = RigidPairWords(&sim->views[e], plan.capacity);
+    emitter->rigidPairs = emitter->rigidPairWords > 0u;
     int32_t units = points > 1 ? plan.capacity / points : 0;
     emitter->unitGroups = (uint32_t)(units < 65535 ? (units > 0 ? units : 1) : 65535);
     emitter->pinsHead = sim->views[e].ribbon.pinHead;
@@ -844,7 +889,9 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
         mvfxRecordSimKernel(sim, emitter, PASS_UPDATE, mvfx_kernelUpdate, groups) &&
         mvfxRecordSimKernel(sim, emitter, PASS_KILL, mvfx_kernelKillBirths, groups) &&
         (!emitter->rigid ||
-         mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelRigid, groups)) &&
+         (emitter->rigidPairs
+              ? mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelRigidPairs, 1)
+              : mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelRigid, groups))) &&
         (!emitter->units ||
          (emitter->selfCollides ? mvfxRecordSimSelf(sim, emitter)
                                 : mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelUnits,

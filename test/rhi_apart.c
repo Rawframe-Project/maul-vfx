@@ -106,8 +106,27 @@ static double Distance(const float place[3], const mvfxPlannedCollider* collider
     }
 }
 
+// The distance from body i's surface to the nearest other body's, each
+// reaching at most radius from its center; infinity for none.
+static double BodyDistance(const float* const places[3], int32_t count, int32_t i, float radius)
+{
+    double nearest = (double)INFINITY;
+    for (int32_t j = 0; j < count; ++j)
+    {
+        double square = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double d = (double)places[k][i] - (double)places[k][j];
+            square += d * d;
+        }
+        nearest = j != i ? fmin(nearest, sqrt(square) - (double)radius) : nearest;
+    }
+    return nearest;
+}
+
 void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const places[3],
-                   int32_t count, const mvfxEmitterPlan* plan, float tolerance, float radius)
+                   int32_t count, const mvfxEmitterPlan* plan, float tolerance, float radius,
+                   bool meet)
 {
     s_now[emitter] = 1 - s_now[emitter];
     Near* near = &s_near[emitter][s_now[emitter]];
@@ -125,6 +144,7 @@ void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const 
         {
             nearest = fmin(nearest, Distance(place, &plan->colliders[c], radius > 0.0f));
         }
+        nearest = meet ? fmin(nearest, BodyDistance(places, count, i, radius)) : nearest;
         // A body's surface may lie anywhere within its radius; a body may
         // meet a depth image anywhere it sees (each scene's bound limits
         // how many go apart).

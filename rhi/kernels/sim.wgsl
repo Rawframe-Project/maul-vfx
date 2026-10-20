@@ -282,7 +282,7 @@ struct Step {
     // and the hull's vertices' table (three words a vertex at a size of 1),
     // its speed range; the sizes over life (a value's bits and its table's
     // first word each); the restitution, the static and dynamic friction,
-    // unused.
+    // the body contacts (a word's bits, sim/rigid_pairs.wgsl).
     rigid: vec4<u32>,
     rigidMass: vec4<f32>,
     rigidMoments: array<vec4<f32>, 2>,
@@ -396,3 +396,8 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 
 // include: sim/rigid_box.wgsl
 // include: sim/convex.wgsl
+
+// include: sim/rigid_pairs.wgsl
+// include: sim/rigid_pair_find.wgsl
+// include: sim/rigid_pair_colour.wgsl
+// include: sim/rigid_pair_solve.wgsl
