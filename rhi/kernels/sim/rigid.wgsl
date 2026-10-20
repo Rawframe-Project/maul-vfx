@@ -361,6 +361,7 @@ fn meetWorld(b: ptr<function, Body>, x0: vec3<f32>, q0: vec4<f32>, h: f32, tick:
                               rigidReach(size));
     var fate = Fate();
     fate.capped = list.capped;
+    fate.searches = list.searches;
     if (list.count == 0u) {
         return fate;
     }
@@ -398,12 +399,21 @@ fn meetWorld(b: ptr<function, Body>, x0: vec3<f32>, q0: vec4<f32>, h: f32, tick:
 fn joinFates(fate: ptr<function, Fate>, moved: Fate) {
     (*fate).contacts += moved.contacts;
     (*fate).capped += moved.capped;
+    (*fate).searches += moved.searches;
     if (moved.contacted && !(*fate).contacted) {
         (*fate).contacted = true;
         (*fate).first = moved.first;
         (*fate).tick = moved.tick;
         (*fate).velocity = moved.velocity;
     }
+}
+
+// A body's step's drops past the most and its searches stopped at their
+// cap in a word, as offsets sums them (MVFX_GPU_RIGID_CAPPED and
+// MVFX_GPU_RIGID_SEARCHES): the drops in the low 24 bits, the searches
+// in the high 8, each held at its most.
+fn rigidCounts(fate: Fate) -> u32 {
+    return min(fate.capped, 0xFFFFFFu) | (min(fate.searches, 0xFFu) << 24u);
 }
 
 // Rigid: each live body's substeps and its settling, the ended (marked by
@@ -435,7 +445,7 @@ fn rigid(@builtin(global_invocation_id) id: vec3<u32>) {
         if (fate.contacted) {
             noteUnitContact(i, fate.tick, fate.first, fate.velocity, inverseLife);
         }
-        moved[params.words.alive * c + i] = fate.capped;
+        moved[params.words.alive * c + i] = rigidCounts(fate);
         storeBody(i, b);
     }
 }

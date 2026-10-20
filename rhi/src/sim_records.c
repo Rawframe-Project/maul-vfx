@@ -481,7 +481,7 @@ bool mvfxClearSimCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter
                    {emitter->contacts, MVFX_GPU_CONTACTS_CAPPED, 1},
                    {emitter->tears, MVFX_GPU_TORN, 1},
                    {emitter->selfCollides, MVFX_GPU_SELF_CAPPED, 1},
-                   {emitter->rigid, MVFX_GPU_RIGID_CAPPED, 1},
+                   {emitter->rigid, MVFX_GPU_RIGID_CAPPED, 2},
                    {emitter->plexus, MVFX_GPU_LINKS, 2}};
     bool written = true;
     for (int32_t c = 0; written && emitter->cleared && c < 9; ++c)

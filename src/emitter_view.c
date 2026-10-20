@@ -223,6 +223,24 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
     return arrays;
 }
 
+// A rigid hull's shape, volume, moments and faces as the view gives them
+// (none without one).
+static void HullOf(const mvfxHull* hull, mvfxEmitterView* viewOut)
+{
+    if (hull == nullptr)
+    {
+        return;
+    }
+    viewOut->hullVertexCount = hull->vertexCount;
+    viewOut->hullVertices = &hull->vertices[0][0];
+    viewOut->hullVolume = hull->volume;
+    memcpy(viewOut->hullMoments, hull->moments, sizeof viewOut->hullMoments);
+    viewOut->hullFaceCount = hull->faceCount;
+    viewOut->hullFaceStart = hull->faceStart;
+    viewOut->hullLoop = hull->loop;
+    viewOut->hullPlanes = &hull->planes[0][0];
+}
+
 // Where an emitter's particles keep their values, how its births draw
 // them, how their sizes grow its bounds, how they turn and how its
 // velocity modules move them.
@@ -276,16 +294,7 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
         viewOut->unitRests[k] = e->unitRests[k];
     }
     viewOut->rigid = e->rigid;
-    if (e->hull != nullptr)
-    {
-        viewOut->hullVertexCount = e->hull->vertexCount;
-        viewOut->hullVertices = &e->hull->vertices[0][0];
-        viewOut->hullVolume = e->hull->volume;
-        memcpy(viewOut->hullMoments, e->hull->moments, sizeof viewOut->hullMoments);
-        viewOut->hullFaceCount = e->hull->faceCount;
-        viewOut->hullFaceStart = e->hull->faceStart;
-        viewOut->hullLoop = e->hull->loop;
-    }
+    HullOf(e->hull, viewOut);
     viewOut->ribbon = (mvfxRibbonView){
         .ids = e->ribbonIds,
         .breakDistance = e->ribbonBreakDistance,
@@ -361,7 +370,6 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
     for (int32_t c = 0; e->collision.enabled && c < e->colliderCount; ++c)
     {
         viewOut->colliderKinds |= 1u << e->colliders[c].kind;
-        viewOut->outsideColliderKinds |= e->colliders[c].inside ? 0u : 1u << e->colliders[c].kind;
         viewOut->colliderGrids[c] = e->colliders[c].grid;
     }
     for (int32_t f = 0; f < e->forceCount; ++f)

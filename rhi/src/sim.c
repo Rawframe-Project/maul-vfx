@@ -49,37 +49,30 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
-// The colliders a rigid hull may not be kept out of: spheres and boxes.
-#define RIGID_HULL_OUTSIDE (1u << mvfx_colliderSphere | 1u << mvfx_colliderBox)
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
-        .features =
-            (view->features & ~RUN_FEATURES) |
-            ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
-            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
-                 ? MVFX_FEATURE_COLLISION
-                 : 0) |
-            // Contacts see the particles a step kills, and move births
-            // after ribbons and beams take their places.
-            ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
-                     (view->kills ||
-                      (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
-                 ? MVFX_FEATURE_CONTACTS
-                 : 0) |
-            // Rigid particles meet the colliders and the depth
-            // image as spheres, capsules, boxes and hulls (not
-            // spheres and boxes kept out of, RIGID_HULL_OUTSIDE),
-            // not each other, and are killed by their strikes'
-            // life alone.
-            ((view->features & MVFX_FEATURE_RIGID) != 0 &&
-                     (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
-                                      ((view->rigid.shape == mvfx_rigidHull &&
-                                        (view->outsideColliderKinds & RIGID_HULL_OUTSIDE) != 0) ||
-                                       view->rigid.bodyContacts > 0)))
-                 ? MVFX_FEATURE_RIGID
-                 : 0),
+        .features = (view->features & ~RUN_FEATURES) |
+                    ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
+                    ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
+                         ? MVFX_FEATURE_COLLISION
+                         : 0) |
+                    // Contacts see the particles a step kills, and move births
+                    // after ribbons and beams take their places.
+                    ((view->features & MVFX_FEATURE_CONTACTS) != 0 &&
+                             (view->kills ||
+                              (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
+                         ? MVFX_FEATURE_CONTACTS
+                         : 0) |
+                    // Rigid particles meet the colliders and the depth
+                    // image, not each other, and are killed by their strikes'
+                    // life alone.
+                    ((view->features & MVFX_FEATURE_RIGID) != 0 &&
+                             (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
+                                              view->rigid.bodyContacts > 0))
+                         ? MVFX_FEATURE_RIGID
+                         : 0),
     };
     return refusal->features == 0;
 }
@@ -634,16 +627,6 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
         if (emitter->capacity > 0 && plan.depth.enabled && sim->hostDepth.index1 == 0)
         {
             return mvfx_errorState;
-        }
-        for (int32_t c = 0; emitter->rigid && sim->views[e].rigid.shape == mvfx_rigidHull &&
-                            c < plan.colliderCount;
-             ++c)
-        {
-            if (!plan.colliders[c].inside &&
-                (RIGID_HULL_OUTSIDE & 1u << plan.colliders[c].kind) != 0)
-            {
-                return mvfx_errorState;
-            }
         }
         if (emitter->capacity > 0 &&
             !mvfxPlaceHostGrids(sim->context, &plan, plan.ownColliderCount, &emitter->gridLayout))

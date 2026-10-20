@@ -966,11 +966,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part's rigid hulls meet planes, the spheres and boxes that keep
   them within, heightfields, distance grids and the depth image, by their
   vertices, then their faces' centers and edges where deeper, as the CPU
-  path's. A hull kept out of a sphere or a box stays refused: an
-  emitter's own refuse the simulation, the instance's the step.
+  path's.
+- The GPU part's rigid hulls kept out of spheres and boxes meet them by
+  the CPU path's polytope searches in binary32: GJK for a sphere's
+  nearest point, GJK and EPA for a box, then the faces' manifold. The
+  searches stopped at their cap are counted (`MVFX_GPU_RIGID_SEARCHES`,
+  word 53; `MVFX_GPU_STATISTICS_WORDS` is now 54).
 - `mvfxEmitterView` gives a rigid hull's faces (`hullFaceCount`,
-  `hullFaceStart`, `hullLoop`) and the kinds of its own colliders that
-  keep its particles out (`outsideColliderKinds`).
+  `hullFaceStart`, `hullLoop`, `hullPlanes`).
 
 ### Fixed
 

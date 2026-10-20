@@ -604,12 +604,10 @@ extern "C"
         uint32_t forceKinds;
         mvfxGridId forceGrids[MVFX_MAX_FORCES];
         // A bit for each kind of collider of its own (1 <<
-        // mvfx_colliderPlane and so on), and for each kind of those that
-        // keep its particles out (not inside), the grid each reads (a
+        // mvfx_colliderPlane and so on), the grid each reads (a
         // heightfield's or a distance grid's; the null id for the others),
         // and whether it collides with the host's scene or a depth image.
         uint32_t colliderKinds;
-        uint32_t outsideColliderKinds;
         mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS];
         bool sceneQueries;
         bool depthImage;
@@ -721,7 +719,9 @@ extern "C"
         // its volume and its second moments of volume (xx, yy, zz, xy, xz,
         // yz), and its faces: face f's corners are the vertices
         // hullLoop[hullFaceStart[f]] up to hullFaceStart[f + 1],
-        // counterclockwise seen from outside (hullFaceCount + 1 starts).
+        // counterclockwise seen from outside (hullFaceCount + 1 starts),
+        // its plane hullPlanes[4 f] on (its outward unit normal and its
+        // offset, n . x = d on it).
         mvfxRigidDef rigid;
         int32_t hullVertexCount;
         const float* hullVertices;
@@ -730,6 +730,7 @@ extern "C"
         int32_t hullFaceCount;
         const uint16_t* hullFaceStart;
         const uint8_t* hullLoop;
+        const float* hullPlanes;
     } mvfxEmitterView;
 
     /// Returns an emitter of an effect as compiled.

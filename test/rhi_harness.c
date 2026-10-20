@@ -2190,11 +2190,11 @@ static bool SameSelfCapped(int32_t e)
 // the run's last step.
 static uint32_t s_rigidCapped;
 
-// Whether an emitter's rigid contacts dropped past the most, counted by
-// the GPU, are the CPU path's within a hundredth of them (at least one):
-// a contact is one within the margin of a surface, decided on places, so
-// a corner at the margin may count on one path only, and the counts sum
-// over the run.
+// Whether an emitter's rigid contacts dropped past the most and its
+// searches stopped at their cap, counted by the GPU, are the CPU path's
+// within a hundredth of them (at least one): a contact is one within the
+// margin of a surface, decided on places, so a corner at the margin may
+// count on one path only, and the counts sum over the run.
 static bool SameRigidCapped(int32_t e)
 {
     mvfxEmitterStats stats;
@@ -2204,10 +2204,19 @@ static bool SameRigidCapped(int32_t e)
                                                         : stats.rigidContactsCapped - capped;
     uint64_t slack = stats.rigidContactsCapped / 100u;
     same = same && apart <= (slack > 1u ? slack : 1u);
+    // The searches stopped at their cap, alike (binary32 here: one near
+    // its cap may stop on one path only, within the same slack).
+    uint32_t searches = s_record[MVFX_GPU_RIGID_SEARCHES];
+    uint64_t searchesApart = searches > stats.rigidSearchesCapped
+                                 ? searches - stats.rigidSearchesCapped
+                                 : stats.rigidSearchesCapped - searches;
+    uint64_t searchesSlack = stats.rigidSearchesCapped / 100u;
+    same = same && searchesApart <= (searchesSlack > 1u ? searchesSlack : 1u);
     if (!same)
     {
-        printf("rigid contacts capped: GPU %u, the CPU path's %llu\n", capped,
-               (unsigned long long)stats.rigidContactsCapped);
+        printf("rigid contacts capped: GPU %u, the CPU path's %llu; searches GPU %u, CPU %llu\n",
+               capped, (unsigned long long)stats.rigidContactsCapped, searches,
+               (unsigned long long)stats.rigidSearchesCapped);
     }
     s_rigidCapped = capped > s_rigidCapped ? capped : s_rigidCapped;
     return same;

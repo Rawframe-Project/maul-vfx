@@ -9,6 +9,8 @@
 #include "grids.h"
 #include "sim_state.h"
 
+#include <string.h>
+
 static_assert(MVFX_GPU_TABLES >=
                   2 * MVFX_GPU_SOURCES + MVFX_GPU_LIVES + 1 + MVFX_RECORD_LIVES + 2 + 1 + 2,
               "room for every table");
@@ -56,8 +58,8 @@ void mvfxLaySimTables(const mvfxEmitterView* view, Emitter* emitter)
     emitter->tables.hullFaces = mvfxAddTable(layout, emitter->hullFaces, emitter->hullFaceWords);
 }
 
-// Holds a rigid hull's faces as words for its table: the starts, then the
-// corners' vertices.
+// Holds a rigid hull's faces as words for its table: the starts, the
+// corners' vertices, then the planes (binary32, four a face).
 mvfxResult mvfxHoldSimHullFaces(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
 {
     if (view->hullFaceCount == 0 || !emitter->rigid)
@@ -66,12 +68,13 @@ mvfxResult mvfxHoldSimHullFaces(mvfxGpuSim* sim, const mvfxEmitterView* view, Em
     }
     uint32_t starts = (uint32_t)view->hullFaceCount + 1u;
     uint32_t corners = view->hullFaceStart[view->hullFaceCount];
-    emitter->hullFaces = mvfxRhiAllocate(&sim->allocator, (starts + corners) * 4u, 4);
+    uint32_t planes = 4u * (uint32_t)view->hullFaceCount;
+    emitter->hullFaces = mvfxRhiAllocate(&sim->allocator, (starts + corners + planes) * 4u, 4);
     if (emitter->hullFaces == nullptr)
     {
         return mvfx_errorCapacity;
     }
-    emitter->hullFaceWords = starts + corners;
+    emitter->hullFaceWords = starts + corners + planes;
     for (uint32_t f = 0; f < starts; ++f)
     {
         emitter->hullFaces[f] = view->hullFaceStart[f];
@@ -80,5 +83,6 @@ mvfxResult mvfxHoldSimHullFaces(mvfxGpuSim* sim, const mvfxEmitterView* view, Em
     {
         emitter->hullFaces[starts + j] = view->hullLoop[j];
     }
+    memcpy(emitter->hullFaces + starts + corners, view->hullPlanes, planes * sizeof(float));
     return mvfx_success;
 }

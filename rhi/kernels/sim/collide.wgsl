@@ -617,10 +617,12 @@ struct Fate {
     first: Hit,
     // A rigid body's first strike: its tick of the plan (0 for a move's
     // contact, whose tick is its share of the move) and its velocity
-    // then; the contacts its substeps dropped past the most.
+    // then; the contacts its substeps dropped past the most, and its
+    // polytope searches stopped at their cap.
     tick: u32,
     velocity: vec3<f32>,
     capped: u32,
+    searches: u32,
 }
 
 // A move from start met with the colliders, for a particle born at birth

@@ -164,26 +164,35 @@ fn reduce(@builtin(local_invocation_index) local: u32,
 // The statistics record's word counting units' tears (MVFX_GPU_TORN).
 const STATISTICS_TORN: u32 = 50u;
 
-// The statistics record's word counting rigid bodies' contacts dropped
-// past the most (MVFX_GPU_RIGID_CAPPED).
+// The statistics record's words counting rigid bodies' contacts dropped
+// past the most and their polytope searches stopped at their cap
+// (MVFX_GPU_RIGID_CAPPED, MVFX_GPU_RIGID_SEARCHES).
 const STATISTICS_RIGID_CAPPED: u32 = 52u;
+const STATISTICS_RIGID_SEARCHES: u32 = 53u;
 
-// Adds the step's rigid contacts dropped past the most to the count, in one
-// workgroup: each live body's, which the rigid pass left in its alive word
-// of the other buffer, and each birth's, which killBirths left above its
-// mark.
+// Adds the step's rigid contacts dropped past the most and searches
+// capped to the counts, in one workgroup: each live body's, which the
+// rigid pass left in its alive word of the other buffer (rigidCounts), and
+// each birth's, which killBirths left above its mark (bits 8 to 23, and
+// 24 on).
 fn countRigidCapped(local: u32) {
     let c = params.counts.x;
     var mine = 0u;
+    var searches = 0u;
     for (var i = local; i < counts[0]; i += CHUNK) {
-        mine += moved[params.words.alive * c + i];
+        let word = moved[params.words.alive * c + i];
+        mine += word & 0xFFFFFFu;
+        searches += word >> 24u;
     }
     for (var j = local; j < birthCount(); j += CHUNK) {
-        mine += accepted[j] >> 8u;
+        mine += (accepted[j] >> 8u) & 0xFFFFu;
+        searches += accepted[j] >> 24u;
     }
     let before = exclusiveScan(local, mine);
+    let searchesBefore = exclusiveScan(local, searches);
     if (local == CHUNK - 1u) {
         counts[STATISTICS_RIGID_CAPPED] += before + mine;
+        counts[STATISTICS_RIGID_SEARCHES] += searchesBefore + searches;
     }
     workgroupBarrier();
 }
@@ -841,7 +850,8 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         // Its contacts make an event (BIRTH_CONTACT), for the events'
         // count; a rigid body's contacts dropped past the most above, which
         // offsets sums (MVFX_GPU_RIGID_CAPPED).
-        accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted) | (fate.capped << 8u);
+        accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted) |
+                      (min(fate.capped, 0xFFFFu) << 8u) | (min(fate.searches, 0xFFu) << 24u);
     }
 }
 

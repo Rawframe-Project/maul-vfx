@@ -137,7 +137,8 @@ typedef struct mvfxStepTables
     // The pair force's strength over the distance.
     uint32_t pairStrength;
     // A rigid hull's vertices at a size of 1, and its faces: their
-    // hullFaceCount + 1 starts, then their corners' vertices.
+    // hullFaceCount + 1 starts, their corners' vertices, then their
+    // planes at a size of 1 (four words a face).
     uint32_t hull;
     uint32_t hullFaces;
 } mvfxStepTables;

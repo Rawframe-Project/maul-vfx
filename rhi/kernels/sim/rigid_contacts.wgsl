@@ -51,6 +51,7 @@ struct Contacts {
     capped: u32,
     collider: u32,
     margin: f32,
+    searches: u32,
 }
 
 // A body's shape at its size: its kind, its points (a sphere's center,
@@ -609,6 +610,9 @@ fn gatherContacts(x: vec3<f32>, q: vec4<f32>, x0: vec3<f32>, q0: vec4<f32>, s: S
             planeContacts(x, q, s, c.center.xyz, c.normal.xyz, &list);
         } else if (c.modes.x == COLLIDER_SPHERE && inside) {
             insideContacts(x, q, s, c, &list);
+        } else if ((c.modes.x == COLLIDER_SPHERE || c.modes.x == COLLIDER_BOX) && !inside &&
+                   s.kind == RIGID_HULL) {
+            hullPolyContacts(x, q, s, c, &list);
         } else if (c.modes.x == COLLIDER_SPHERE) {
             outsideContacts(x, q, s, c, &list);
         } else if (c.modes.x == COLLIDER_BOX && inside) {

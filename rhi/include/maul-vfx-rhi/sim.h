@@ -68,9 +68,8 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
-    // beside anything that kills within a step, as hulls kept out of a
-    // sphere or a box of their own (the instance's refuse the step,
-    // mvfxGpuSim_AddPasses), or meeting each other (bodyContacts above 0).
+    // beside anything that kills within a step, or meeting each other
+    // (bodyContacts above 0).
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -193,10 +192,17 @@ extern "C"
 // count on one path only).
 #define MVFX_GPU_RIGID_CAPPED 52
 
+// For an emitter of rigid hulls, the statistics record's word counting
+// their polytope searches stopped at their cap since the instance was last
+// cleared (mvfxEmitterStats.rigidSearchesCapped on the CPU path; the GPU's
+// searches run in binary32, so one near its cap may stop on one path
+// only).
+#define MVFX_GPU_RIGID_SEARCHES 53
+
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 53
+#define MVFX_GPU_STATISTICS_WORDS 54
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
@@ -362,10 +368,8 @@ extern "C"
     ///         `mvfx_errorState` when the device refuses a pass or an
     ///         import (no frame open), or when an emitter meets the
     ///         instance's depth image and no depth texture was given
-    ///         (mvfxGpuSim_SetDepthTextures), or when an emitter's rigid
-    ///         hulls are kept out of a sphere or a box among the
-    ///         instance's colliders, or while it is destroyed (a call from
-    ///         its allocator); `mvfx_errorCapacity` when the
+    ///         (mvfxGpuSim_SetDepthTextures), or while it is destroyed (a
+    ///         call from its allocator); `mvfx_errorCapacity` when the
     ///         grids the instance's colliders read pass the def's
     ///         hostGridBytes, or a mesh shape's mesh its room.
     /// @par Thread safety

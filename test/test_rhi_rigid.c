@@ -20,9 +20,9 @@
 // edge, and a sphere's center within them; hulls meeting planes and what
 // keeps them within; spheres, capsules, boxes and hulls on heightfields
 // and distance grids, the emitter's and the instance's, and on a depth
-// image's terraces (and boxes at its wall); what is still refused (hulls
-// kept out of spheres and boxes, the emitter's or the instance's, bodies
-// meeting each other, kills within a step). Skips (77) without an
+// image's terraces (and boxes at its wall); hulls on a sphere and a box
+// they are kept out of, and born into a box; what is still refused
+// (bodies meeting each other, kills within a step). Skips (77) without an
 // adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -255,6 +255,11 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     // edge to edge or on an edge, and the sphere at their nearest point.
     emitter = Thrown(mvfx_rigidBox, obstacles, 3);
     Met(gpu, kernels, &(Run){.mostApart = 15, .emitters = &emitter}, "boxes on a sphere and a box");
+    // Hulls meet the sphere at their nearest point (GJK) and the box by
+    // the polytopes' search (GJK, EPA) and the faces' manifold.
+    emitter = Thrown(mvfx_rigidHull, obstacles, 3);
+    Met(gpu, kernels, &(Run){.mostApart = 26, .emitters = &emitter, .mesh = &s_hull},
+        "hulls on a sphere and a box");
     // Born into a turned box they are kept out of: pushed out from their
     // first substep without the push becoming velocity, a capsule's core
     // point within the box leaving by its nearest face.
@@ -267,6 +272,9 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     Met(gpu, kernels, &(Run){.mostApart = 45, .emitters = &emitter}, "capsules born into a box");
     emitter = Thrown(mvfx_rigidBox, core, 2);
     Met(gpu, kernels, &(Run){.mostApart = 21, .emitters = &emitter}, "boxes born into a box");
+    emitter = Thrown(mvfx_rigidHull, core, 2);
+    Met(gpu, kernels, &(Run){.mostApart = 15, .emitters = &emitter, .mesh = &s_hull},
+        "hulls born into a box");
     // Spheres the host places at rest well within it, each near one face
     // (a tenth from it, a quarter from those beside): each leaves by that
     // face. (A capsule there lies nearly flat on the face, its deepest
@@ -449,14 +457,7 @@ static bool RefusedForRigid(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
 
 static void TestRefused(mvfxGpu* kernels)
 {
-    static const mvfxCollider ball = {.kind = mvfx_colliderSphere, .radius = 0.25f};
-    mvfxEmitterDef emitter = Thrown(mvfx_rigidHull, &ball, 1);
-    CHECK(RefusedForRigid(kernels, &emitter), "hulls kept out of a sphere refused");
-    static const mvfxCollider block = {
-        .kind = mvfx_colliderBox, .halfExtents = {0.3f, 0.3f, 0.3f}, .rotation = {0, 0, 0, 1}};
-    emitter.colliders = &block;
-    CHECK(RefusedForRigid(kernels, &emitter), "hulls kept out of a box refused");
-    emitter = Bodies(mvfx_rigidCapsule);
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidCapsule);
     emitter.collision.enabled = true;
     emitter.rigid.bodyContacts = 4;
     CHECK(RefusedForRigid(kernels, &emitter), "bodies meeting each other refused");
@@ -609,30 +610,6 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
         "boxes at a wall of reversed depth, normals given");
 }
 
-static void TestHostSphere(Gpu* gpu, mvfxGpu* kernels)
-{
-    // The instance's sphere, which hulls are not kept out of on the GPU
-    // yet: the step refused, no pass added.
-    mvfxEmitterDef emitter = Thrown(mvfx_rigidHull, NULL, 0);
-    emitter.collision.hostColliders = true;
-    mvfxEffectId effect = {0};
-    mvfxGpuSim* sim =
-        OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .mesh = &s_hull}, &effect);
-    static const mvfxCollider ball = {
-        .kind = mvfx_colliderSphere, .center = {0, -0.5f, 0}, .radius = 0.25f};
-    mrhiFrameDef frame = mrhiDefaultFrameDef();
-    CHECK(sim != NULL &&
-              mvfxInstance_SetColliders(RunContext(), PlannedInstance(), &ball, 1) ==
-                  mvfx_success &&
-              mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success &&
-              mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
-              mvfxGpuSim_AddPasses(sim) == mvfx_errorState,
-          "hulls kept out of the instance's sphere refused at the step");
-    (void)mrhiDropFrame(gpu->device);
-    mvfxDestroyGpuSim(sim);
-    mvfxDestroyContext(RunContext());
-}
-
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
@@ -644,7 +621,6 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestStrikes(gpu, kernels);
     TestGrids(gpu, kernels);
     TestDepth(gpu, kernels);
-    TestHostSphere(gpu, kernels);
 }
 
 int main(void)
