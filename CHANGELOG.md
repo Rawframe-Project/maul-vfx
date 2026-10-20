@@ -984,3 +984,5 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   core's deepest point, so the CPU and GPU paths solved it apart. The
   middle point counts where it is clearly deeper than both ends (over an
   edge or a corner).
+- The GPU part's comparison suites have 900 seconds each: on a slow CI
+  runner the longest passed the 300 a run gives by default.

@@ -266,7 +266,10 @@ if(MAUL_VFX_BUILD_TESTS)
             target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi)
-            set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77)
+            # Each compares a step at a time on lavapipe: the longest take
+            # over 200 seconds on CI's runners, which vary by half again,
+            # so they get 900 in place of a run's default.
+            set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
         endforeach()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.
