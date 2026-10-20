@@ -233,6 +233,20 @@ typedef struct mvfxEmitterState
     mvfxNeighborGrid rigidGrid;
     mvfxPairContact* rigidPairs;
     int32_t rigidPairCount;
+    // The pool's runs (a pair's contacts) coloured for the passes
+    // (rigid_pair.c): each run's first contact, the runs in the passes'
+    // order, their priorities and colours, each body's runs (where its
+    // list starts, then the lists) and the stamps a least free colour is
+    // found by, all laid out with the pool; how many runs and colours.
+    int32_t* rigidRunStart;
+    int32_t* rigidRunOrder;
+    uint64_t* rigidRunKeys;
+    int32_t* rigidRunColours;
+    int32_t* rigidBodyRunsAt;
+    int32_t* rigidBodyRuns;
+    int32_t* rigidStamps;
+    int32_t rigidRunCount;
+    int32_t rigidColourCount;
     // A body's candidates for pairs as the grid finds them (an array of
     // the capacity), and the grid's entries the search has examined.
     int32_t* rigidCandidates;

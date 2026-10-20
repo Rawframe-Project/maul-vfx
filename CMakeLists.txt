@@ -125,6 +125,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/rigid.c
     src/rigid_body.c
     src/rigid_box.c
+    src/rigid_colour.c
     src/rigid_contact.c
     src/rigid_pair.c
     src/rigid_shape.c

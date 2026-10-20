@@ -974,6 +974,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   word 53; `MVFX_GPU_STATISTICS_WORDS` is now 54).
 - `mvfxEmitterView` gives a rigid hull's faces (`hullFaceCount`,
   `hullFaceStart`, `hullLoop`, `hullPlanes`).
+- Rigid bodies' pair contacts are solved a colour at a time: each pair of
+  bodies gets a priority from a hash of the two indices and the least
+  colour none of its neighbours has, and the passes go colour by colour,
+  so that the GPU part can take a colour's pairs at once in the same
+  order. Stacks and piles settle by a different order than before.
 
 ### Fixed
 

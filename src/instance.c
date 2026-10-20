@@ -68,6 +68,13 @@ typedef struct EmitterAt
     size_t rigidIndex;
     uint32_t rigidMask;
     size_t rigidPairs;
+    size_t rigidRunStart;
+    size_t rigidRunOrder;
+    size_t rigidRunKeys;
+    size_t rigidRunColours;
+    size_t rigidBodyRunsAt;
+    size_t rigidBodyRuns;
+    size_t rigidStamps;
     size_t liquidTable;
     size_t liquidKeys;
     size_t liquidIndex;
@@ -151,6 +158,16 @@ static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, in
     at->rigidCandidates = mvfxLayoutAdd(layout, grid, sizeof(int32_t), alignof(int32_t));
     at->rigidPairs =
         mvfxLayoutAdd(layout, pairs, sizeof(mvfxPairContact), alignof(mvfxPairContact));
+    // The runs' colouring: at most a run a contact.
+    at->rigidRunStart = mvfxLayoutAdd(layout, pairs, sizeof(int32_t), alignof(int32_t));
+    at->rigidRunOrder = mvfxLayoutAdd(layout, pairs, sizeof(int32_t), alignof(int32_t));
+    at->rigidRunKeys = mvfxLayoutAdd(layout, pairs, sizeof(uint64_t), alignof(uint64_t));
+    at->rigidRunColours = mvfxLayoutAdd(layout, pairs, sizeof(int32_t), alignof(int32_t));
+    at->rigidBodyRunsAt =
+        mvfxLayoutAdd(layout, grid > 0u ? grid + 1u : 0u, sizeof(int32_t), alignof(int32_t));
+    at->rigidBodyRuns = mvfxLayoutAdd(layout, 2u * pairs, sizeof(int32_t), alignof(int32_t));
+    at->rigidStamps =
+        mvfxLayoutAdd(layout, pairs > 0u ? pairs + 1u : 0u, sizeof(int32_t), alignof(int32_t));
 }
 
 // Adds an emitter's liquid room to the block, for one whose particles are
@@ -300,6 +317,13 @@ static void StartRigid(mvfxEmitterState* state, unsigned char* block, const Emit
         .mask = at->rigidMask,
     };
     state->rigidPairs = (mvfxPairContact*)(block + at->rigidPairs);
+    state->rigidRunStart = (int32_t*)(block + at->rigidRunStart);
+    state->rigidRunOrder = (int32_t*)(block + at->rigidRunOrder);
+    state->rigidRunKeys = (uint64_t*)(block + at->rigidRunKeys);
+    state->rigidRunColours = (int32_t*)(block + at->rigidRunColours);
+    state->rigidBodyRunsAt = (int32_t*)(block + at->rigidBodyRunsAt);
+    state->rigidBodyRuns = (int32_t*)(block + at->rigidBodyRuns);
+    state->rigidStamps = (int32_t*)(block + at->rigidStamps);
 }
 
 static void StartLiquid(mvfxEmitterState* state, unsigned char* block, const EmitterAt* at,

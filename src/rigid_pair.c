@@ -6,6 +6,7 @@
 #include "appearance.h"
 #include "direction.h"
 #include "neighbor.h"
+#include "rigid_colour.h"
 #include "rigid_contact.h"
 #include "rigid_sleep.h"
 
@@ -307,6 +308,7 @@ void mvfxFindBodyPairs(const mvfxRigidSolve* s, int32_t count)
     {
         PairsOf(s, a, &levels);
     }
+    mvfxColourBodyPairs(state, count);
 }
 
 bool mvfxWakeTouching(const mvfxRigidSolve* s, int32_t count)
@@ -594,26 +596,15 @@ static void PassPair(const mvfxRigidSolve* s, int32_t first, int32_t end, mvfxCo
 void mvfxPairPass(const mvfxRigidSolve* s, mvfxContactStage stage, bool backward)
 {
     const mvfxEmitterState* state = &s->instance->emitters[s->emitter];
-    const mvfxPairContact* pairs = state->rigidPairs;
-    int32_t count = state->rigidPairCount;
-    // Each pair's contacts are a run: forward from the first, backward
-    // from the last.
-    for (int32_t at = 0; at < count;)
+    int32_t runs = state->rigidPairCount > 0 ? state->rigidRunCount : 0;
+    // Each pair's contacts are a run, the runs in their colours' order
+    // (rigid_colour.h): forward from the first, backward from the last.
+    for (int32_t k = 0; k < runs; ++k)
     {
-        int32_t first = backward ? count - 1 - at : at;
-        int32_t end = first + 1;
-        while (!backward && end < count && pairs[end].a == pairs[first].a &&
-               pairs[end].b == pairs[first].b)
-        {
-            ++end;
-        }
-        while (backward && first > 0 && pairs[first - 1].a == pairs[first].a &&
-               pairs[first - 1].b == pairs[first].b)
-        {
-            --first;
-        }
+        int32_t r = state->rigidRunOrder[backward ? runs - 1 - k : k];
+        int32_t first = state->rigidRunStart[r];
+        int32_t end = r + 1 < runs ? state->rigidRunStart[r + 1] : state->rigidPairCount;
         PassPair(s, first, end, stage, backward);
-        at += end - first;
     }
 }
 
