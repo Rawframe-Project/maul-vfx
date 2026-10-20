@@ -16,6 +16,14 @@
 // series, squared back.
 double mvfxExpMinus(double x);
 
+// A collider's words as the kernels read them
+// (shared/collider_numbers.wgsl): its kind and inside; center and radius;
+// normal; half extents; rotation; its grid (first word, size), the grid's
+// format; its scale and grow; the words between them 0.
+#define MVFX_COLLIDER_WORDS 32
+void mvfxColliderWords(const mvfxPlannedCollider* collider, const uint32_t grid[5],
+                       uint32_t words[MVFX_COLLIDER_WORDS]);
+
 // The forces' words as the kernels read them (shared/forces.wgsl): a head
 // (their count, whether any kills, the drag every point has), 24 words
 // each, then each one's field of 108 at 4 + 24 MVFX_MAX_FORCES; each

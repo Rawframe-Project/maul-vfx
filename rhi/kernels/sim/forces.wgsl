@@ -339,14 +339,6 @@ fn factorsFor(wind: f32, scale: f32, seconds: f32, whole: bool) -> vec3<f32> {
     return factors(drag, seconds);
 }
 
-const COLLIDER_PLANE: u32 = 0u;
-const COLLIDER_SPHERE: u32 = 1u;
-const COLLIDER_BOX: u32 = 2u;
-const COLLIDER_HEIGHTFIELD: u32 = 3u;
-const COLLIDER_DISTANCE: u32 = 4u;
 const MAX_CONTACTS: u32 = 4u;
-const LARGEST: f32 = 3.40282347e38;
 
-fn dot3(a: vec3<f32>, b: vec3<f32>) -> f32 {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
+// include: shared/colliders.wgsl

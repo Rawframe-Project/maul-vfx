@@ -202,10 +202,17 @@ static bool ReportHolds(Gpu* gpu, const Scene* scene)
         return false;
     }
     size_t got = 0;
-    return Finish(gpu) &&
-           mrhiTakeReadback(gpu->device, request, record, sizeof record, &got) == mrhi_success &&
-           got == sizeof record &&
-           mvfxGpuSim_ReportGas(scene->sim, scene->context, 0, record) == mvfx_success;
+    static mvfxGasPlan plan;
+    bool read =
+        Finish(gpu) &&
+        mrhiTakeReadback(gpu->device, request, record, sizeof record, &got) == mrhi_success &&
+        got == sizeof record &&
+        mvfxInstance_GetGasPlan(scene->context, scene->planned, 0, &plan) == mvfx_success;
+    // The record is of the step the plan spans.
+    uint64_t tick = (uint64_t)record[MVFX_GPU_GAS_TICK] | (uint64_t)record[MVFX_GPU_GAS_TICK + 1]
+                                                              << 32u;
+    CHECK(!read || tick == (uint64_t)(plan.start + plan.ticks), "the record's tick");
+    return read && mvfxGpuSim_ReportGas(scene->sim, scene->context, 0, record) == mvfx_success;
 }
 
 // The whole gas's field as float32 on both paths; the largest difference
@@ -638,11 +645,12 @@ static void TestBurns(Gpu* gpu, mvfxGpu* kernels)
 
 static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
 {
-    // A plume stopped emitting, its scalars decaying fast: finished on
-    // the step its last scalar falls to nothing, on both paths alike.
+    // A plume stopped emitting, its scalars decaying fast, its
+    // temperature the last to fall to nothing: finished on that step, on
+    // both paths alike.
     mvfxGasDef gas = Plume(16, 16, 16, &s_sphere);
     gas.densityDecay = 20.0f;
-    gas.temperatureDecay = 20.0f;
+    gas.temperatureDecay = 12.0f;
     gas.fuelDecay = 20.0f;
     s_stopAt = 10;
     Steps(gpu, kernels, &gas, NULL, 120, false, "a plume stopped and finishing");

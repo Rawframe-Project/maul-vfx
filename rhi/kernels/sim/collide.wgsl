@@ -167,67 +167,6 @@ fn hitBox(c: Collider, s: vec3<f32>, e: vec3<f32>, hit: ptr<function, Hit>) -> b
 const FIELD_SAMPLES: u32 = 256u;
 const FIELD_HALVINGS: u32 = 10u;
 
-// A grid collider's field at a place in its box's frame: at or above 0 on
-// the allowed side; LARGEST (allowed) outside its box.
-fn gridField(c: Collider, local: vec3<f32>) -> f32 {
-    var u = local / (2.0 * c.halfExtents.xyz) + 0.5;
-    let height = c.modes.x == COLLIDER_HEIGHTFIELD;
-    if (height) {
-        u.y = 0.5;
-    }
-    var value = vec3<f32>(0.0);
-    if (!sampleGrid(c.grid, c.gridModes.x, 1u, u, BORDER_NONE, &value)) {
-        return LARGEST;
-    }
-    let v = select(value.x * c.scales.x, local.y - value.x * c.scales.x, height);
-    return select(v, -v, c.modes.y != 0u) - c.scales.y;
-}
-
-// The span between a grid's points along the axes it varies on, the least
-// of them; 0 for a grid of one point.
-fn gridSpan(c: Collider) -> f32 {
-    var cell = LARGEST;
-    for (var k = 0u; k < 3u; k++) {
-        let n = c.grid[1u + k];
-        if (n > 1u) {
-            cell = min(cell, 2.0 * c.halfExtents[k] / f32(n - 1u));
-        }
-    }
-    return select(0.0, cell, cell < LARGEST);
-}
-
-// The field's gradient at a local place, unit length, toward the allowed
-// side; the box's up where it is flat or a difference leaves the box.
-fn gradientAt(c: Collider, local: vec3<f32>) -> vec3<f32> {
-    let cell = gridSpan(c);
-    let h = select(0.5 * c.halfExtents.x, 0.5 * cell, cell > 0.0);
-    let f0 = gridField(c, local);
-    var g = vec3<f32>(0.0);
-    var lost = false;
-    for (var k = 0u; k < 3u; k++) {
-        var a = local;
-        var b = local;
-        a[k] += h;
-        b[k] -= h;
-        let fa = gridField(c, a);
-        let fb = gridField(c, b);
-        let aIn = fa < LARGEST;
-        let bIn = fb < LARGEST;
-        // At the box's edge one side is outside: a one-sided difference.
-        if (aIn && bIn) {
-            g[k] = (fa - fb) / (2.0 * h);
-        } else if (aIn || bIn) {
-            lost = lost || !(f0 < LARGEST);
-            g[k] = select((f0 - fb) / h, (fa - f0) / h, aIn);
-        }
-    }
-    let square = dot3(g, g);
-    if (lost || !(square > 0.0 && square <= LARGEST)) {
-        return vec3<f32>(0.0, 1.0, 0.0);
-    }
-    return g * (1.0 / sqrt(square));
-}
-
 // A local place on the wrong side put back on the surface: straight up or
 // down onto a heightfield, along the gradient out of a distance grid.
 fn pushOutOfField(c: Collider, start: vec3<f32>) -> vec3<f32> {

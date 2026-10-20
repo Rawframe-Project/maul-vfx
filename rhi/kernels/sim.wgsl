@@ -36,20 +36,7 @@ const EVENT_SALT: u32 = 0x45564E54u;
 
 // include: shared/force_numbers.wgsl
 
-// A collider as resolved for the step, in the particles' space: its
-// kind and whether it keeps them inside; its center and radius; a plane's
-// normal; a box's half extents and turn; a grid collider's grid (first
-// word, size), its format, and the scale of its values and its grow.
-struct Collider {
-    modes: vec4<u32>,
-    center: vec4<f32>,
-    normal: vec4<f32>,
-    halfExtents: vec4<f32>,
-    rotation: vec4<f32>,
-    grid: vec4<u32>,
-    gridModes: vec4<u32>,
-    scales: vec4<f32>,
-}
+// include: shared/collider_numbers.wgsl
 
 // The depth image as resolved for the step: whether it is met, its size
 // and the samples a step takes at most; whether it is reversed, whether

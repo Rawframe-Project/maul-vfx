@@ -125,10 +125,6 @@ fn shapePoint(s: Shape, i: u32) -> vec3<f32> {
            select(0.0, 1.0, s.kind == RIGID_CAPSULE);
 }
 
-fn conjugate(q: vec4<f32>) -> vec4<f32> {
-    return vec4<f32>(-q.xyz, q.w);
-}
-
 // The quaternion product a b, as the core's mvfxMultiplyRotations.
 fn multiplyRotations(a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -431,20 +427,6 @@ fn sampleOf(s: Shape, i: u32) -> vec3<f32> {
     }
     let spans = coreSpans(s);
     return coreAt(s, select(0.5, f32(i) / f32(spans), spans > 0u));
-}
-
-// A grid collider's distance at a place and its unit normal there, as
-// the core's mvfxFieldDistance: LARGEST outside its box; a heightfield's
-// gap along its Y times the slope's cosine.
-fn fieldDistance(c: Collider, world: vec3<f32>, n: ptr<function, vec3<f32>>) -> f32 {
-    let local = rotate(conjugate(c.rotation), world - c.center.xyz);
-    let f = gridField(c, local);
-    if (!(f < LARGEST)) {
-        return LARGEST;
-    }
-    let g = gradientAt(c, local);
-    *n = rotate(c.rotation, g);
-    return select(f, f * abs(g.y), c.modes.x == COLLIDER_HEIGHTFIELD);
 }
 
 // What samples meet, as the core's Probe: a grid collider's field, or
