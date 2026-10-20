@@ -2,7 +2,7 @@
 // force's acceleration and drag at a place): spliced where a kernel names
 // it, after shared/pcg4d_hash.wgsl, shared/force_numbers.wgsl and the
 // kernel's fieldOf(n), a force's field among its own numbers, beside a
-// storage buffer of words named grids that vector fields read.
+// storage buffer of words named grids that vector fields and gases read.
 
 fn rotate(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
     let t = 2.0 * cross(q.xyz, v);
@@ -14,6 +14,7 @@ const FORCE_WIND: u32 = 1u;
 const FORCE_ATTRACTOR: u32 = 2u;
 const FORCE_VORTEX: u32 = 3u;
 const FORCE_TURBULENCE: u32 = 4u;
+const FORCE_GAS: u32 = 6u;
 const FIELD_VELOCITY: u32 = 1u;
 const FALLOFF_NONE: u32 = 0u;
 const FALLOFF_TUBE: u32 = 2u;
@@ -246,6 +247,79 @@ fn vectorField(n: u32, x: vec3<f32>, out: ptr<function, vec3<f32>>) -> bool {
     return true;
 }
 
+// A gas's faces across axis at place p (in cells), from word start of the
+// grids, as the core's mvfxGasSample: trilinear, p held within the
+// array's points (a 2D array's four terms alone, which are the trilinear
+// sum's bit for bit).
+fn gasSample(start: u32, n: vec3<u32>, axis: u32, p: vec3<f32>) -> f32 {
+    var m = n;
+    m[axis] += 1u;
+    var low: vec3<u32>;
+    var high: vec3<u32>;
+    var t: vec3<f32>;
+    for (var k = 0u; k < 3u; k++) {
+        let shift = select(0.5, 0.0, k == axis);
+        let place = min(max(p[k] - shift, 0.0), f32(m[k] - 1u));
+        low[k] = u32(place);
+        high[k] = select(low[k], low[k] + 1u, low[k] + 1u < m[k]);
+        t[k] = place - f32(low[k]);
+    }
+    var wx = vec2<f32>(1.0 - t.x, t.x);
+    var wy = vec2<f32>(1.0 - t.y, t.y);
+    var x = vec2<u32>(low.x, high.x);
+    if (m.z == 1u) {
+        let lower = start + low.y * m.x;
+        let upper = start + high.y * m.x;
+        var sum = 0.0;
+        sum += wx[0] * wy[0] * bitcast<f32>(grids[lower + x[0]]);
+        sum += wx[1] * wy[0] * bitcast<f32>(grids[lower + x[1]]);
+        sum += wx[0] * wy[1] * bitcast<f32>(grids[upper + x[0]]);
+        sum += wx[1] * wy[1] * bitcast<f32>(grids[upper + x[1]]);
+        return sum;
+    }
+    var wz = vec2<f32>(1.0 - t.z, t.z);
+    var y = vec2<u32>(low.y, high.y);
+    var z = vec2<u32>(low.z, high.z);
+    var sum = 0.0;
+    for (var corner = 0u; corner < 8u; corner++) {
+        let a = corner & 1u;
+        let b = (corner >> 1u) & 1u;
+        let d = corner >> 2u;
+        let weight = wx[a] * wy[b] * wz[d];
+        sum += weight * bitcast<f32>(grids[start + (z[d] * m.y + y[b]) * m.x + x[a]]);
+    }
+    return sum;
+}
+
+// A gas's velocity at x in its own space (the core's SampleGas): x in
+// cells of the box, the faces copied to the grids at grid.x, each axis's
+// array in turn; false outside the box (a 2D gas's Z reaches without
+// end).
+fn gasField(n: u32, x: vec3<f32>, out: ptr<function, vec3<f32>>) -> bool {
+    var field = fieldOf(n);
+    let q = field.rotation;
+    let place = rotate(vec4<f32>(-q.xyz, q.w), x) / field.scales.x + field.box.xyz;
+    let size = field.grid.yzw;
+    var p: vec3<f32>;
+    for (var k = 0u; k < 3u; k++) {
+        p[k] = place[k] / field.boxSize.x + 0.5 * f32(size[k]);
+        if (size[k] > 1u && !(p[k] >= 0.0 && p[k] <= f32(size[k]))) {
+            return false;
+        }
+    }
+    let cells = size.x * size.y * size.z;
+    var start = field.grid.x;
+    var value = vec3<f32>(0.0);
+    for (var k = 0u; k < 3u; k++) {
+        if (size[k] > 1u) {
+            value[k] = gasSample(start, size, k, p);
+        }
+        start += cells + cells / size[k];
+    }
+    *out = value;
+    return true;
+}
+
 // A field's vector at x added to a, or, as a velocity, its pull and its
 // drag.
 fn fieldAt(n: u32, f: Force, x: vec3<f32>, seconds: f32, weight: f32,
@@ -254,6 +328,10 @@ fn fieldAt(n: u32, f: Force, x: vec3<f32>, seconds: f32, weight: f32,
     var value = vec3<f32>(0.0);
     if (f.modes.x == FORCE_TURBULENCE) {
         value = turbulence(n, x, seconds);
+    } else if (f.modes.x == FORCE_GAS) {
+        if (!gasField(n, x, &value)) {
+            return;
+        }
     } else if (!vectorField(n, x, &value)) {
         return;
     }

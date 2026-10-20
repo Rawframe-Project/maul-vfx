@@ -1025,6 +1025,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   step, emptied, closing the solve's faces, and pushing the gas with
   their motion. `mvfxGasPlan.obstacleMoved` says which obstacles moved
   since the plan before. A gas the GPU part runs is no longer refused.
+- The GPU part runs the gas force: particles follow a smoke gas's
+  velocity as its last step left it, copied each step into the
+  emitter's grids. `mvfxEmitterView.forceGases` names each force's gas.
 
 ### Fixed
 

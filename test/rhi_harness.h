@@ -42,6 +42,10 @@ typedef struct Run
 {
     const mvfxEmitterDef* emitters;
     int32_t emitterCount;
+    // The effect's gases, which its emitters' gas forces follow (none for
+    // NULL).
+    const mvfxGasDef* gases;
+    int32_t gasCount;
     bool moving;
     bool clearing;
     // Its steps, STEPS for 0; the most the first emitter must hold at

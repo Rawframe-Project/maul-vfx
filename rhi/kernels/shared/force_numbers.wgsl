@@ -32,7 +32,9 @@ struct Field {
     fraction: array<vec4<f32>, 8>,
     // a vector field's box: the particles' origin mapped back less its
     // center; its size; its turn; its grid's first word in the grids and
-    // size; the grid's format (1 for binary16) and the border
+    // size; the grid's format (1 for binary16) and the border. A gas's:
+    // the origin in the box's frame; its cell's edge; no turn; its faces'
+    // first word and its cells
     box: vec4<f32>,
     boxSize: vec4<f32>,
     boxRotation: vec4<f32>,

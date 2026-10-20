@@ -103,4 +103,11 @@ bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas);
 // The passes a gas's step takes at most.
 int32_t mvfxSimGasPasses(const mvfxGasView* view);
 
+// The floats of a gas's faces a gas force reads: each axis's array in
+// turn, through the last axis of more than one cell.
+uint32_t mvfxSimGasFaces(const mvfxGasView* view);
+
+// The first float of a gas's current faces in its fields.
+uint32_t mvfxSimGasFacesAt(const SimGas* gas);
+
 #endif

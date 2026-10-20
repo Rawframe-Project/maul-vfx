@@ -2508,6 +2508,8 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = WithGrid(run);
     effectDef.emitterCount = run->emitterCount;
+    effectDef.gases = run->gases;
+    effectDef.gasCount = run->gasCount;
     effectDef.parameters = run->parameters;
     effectDef.parameterCount = run->parameterCount;
     effectDef.qualityLevels = run->quality;

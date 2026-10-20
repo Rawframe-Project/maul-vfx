@@ -166,6 +166,23 @@ int32_t mvfxSimGasPasses(const mvfxGasView* view)
     return 1 + mark + 2 * view->levelCount + def->substeps * substep + 1;
 }
 
+uint32_t mvfxSimGasFaces(const mvfxGasView* view)
+{
+    uint32_t floats = 0;
+    uint32_t read = 0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        floats += (uint32_t)view->faces[k];
+        read = view->def.size[k] > 1 ? floats : read;
+    }
+    return read;
+}
+
+uint32_t mvfxSimGasFacesAt(const SimGas* gas)
+{
+    return gas->words[WORD_FACES + 4u * gas->now];
+}
+
 // The fields' and the solve's floats, writing each array's first float
 // into the numbers.
 static void Lay(SimGas* gas, uint64_t* fields, uint64_t* solve)
@@ -312,7 +329,8 @@ bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords)
     mrhiBufferUsage numbers = mrhi_bufferUniform | mrhi_bufferCopyDestination;
     bool created = gas->dispatches != nullptr && gas->passes != nullptr &&
                    CreateBuffer(sim, 4u * MVFX_GAS_WORDS, numbers, &gas->buffers[GAS_NUMBERS]) &&
-                   CreateBuffer(sim, 4u * fields, written, &gas->buffers[GAS_FIELDS]) &&
+                   CreateBuffer(sim, 4u * fields, written | mrhi_bufferCopySource,
+                                &gas->buffers[GAS_FIELDS]) &&
                    CreateBuffer(sim, 4u * solve, written, &gas->buffers[GAS_SOLVE]) &&
                    CreateBuffer(sim, 4u * (gas->grids.words > 0 ? gas->grids.words : 1u), written,
                                 &gas->buffers[GAS_GRIDS]) &&

@@ -326,6 +326,12 @@ typedef struct Emitter
     int32_t sourceCopy;
     bool sourceTurned;
     bool cleared;
+    // The gases its forces follow: each one's region in the grids buffer
+    // that its current faces are copied to (UINT32_MAX for a gas it does
+    // not follow), and for the step the first float of the faces copied
+    // (UINT32_MAX to clear the region).
+    uint32_t gasRooms[MVFX_MAX_GASES];
+    uint32_t gasSources[MVFX_MAX_GASES];
 } Emitter;
 
 struct mvfxGpuSim
@@ -475,5 +481,19 @@ void mvfxLaySimTables(const mvfxEmitterView* view, Emitter* emitter);
 mvfxResult mvfxLaySimMesh(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t e);
 mvfxResult mvfxPlaceSimMesh(mvfxGpuSim* sim, int32_t e);
 bool mvfxWriteSimMesh(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
+
+// Emitters following gases (sim_follow.c): a region of emitter e's grids
+// for each gas its forces follow, laid out after its tables; its gas
+// forces' grid words, the region and the gas's cells; for a step, each
+// gas's faces as its last step left them, none after a clear, taken
+// before the gases' steps are added; the gases' fields brought into the
+// frame, each an access of the step's write pass; and the copies, or the
+// regions cleared, recorded into that pass.
+void mvfxLaySimFollow(mvfxGpuSim* sim, int32_t e);
+void mvfxSimFollowGrids(const mvfxGpuSim* sim, int32_t e, uint32_t forceGrids[][5]);
+void mvfxSimFollowSources(const mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxImportSimFollow(mvfxGpuSim* sim, const Emitter* emitter, mrhiAccess* accesses,
+                         int32_t* count);
+bool mvfxCopySimFollow(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
 
 #endif

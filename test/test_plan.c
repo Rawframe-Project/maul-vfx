@@ -1256,7 +1256,8 @@ static void TestForces(void)
     static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               view.forceKinds == 0x3Fu && view.forceGrids[5].index1 == grid.index1 &&
-              view.forceGrids[5].generation == grid.generation && view.forceGrids[4].index1 == 0,
+              view.forceGrids[5].generation == grid.generation && view.forceGrids[4].index1 == 0 &&
+              view.forceGases[0] == -1 && view.forceGases[MVFX_MAX_FORCES - 1] == -1,
           "the view's force kinds");
     mvfxDestroyContext(context);
 }

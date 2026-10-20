@@ -758,10 +758,60 @@ static void TestObstacles(Gpu* gpu, mvfxGpu* kernels)
     s_hostCount = 1;
     Steps(gpu, kernels, &gas, NULL, 30, true, "a 2D gas about a moving sphere, cleared");
     s_hostCount = 0;
+    // A plume kept inside a sphere and a box: the sphere takes the box's
+    // corners, the box the sphere's sides.
+    const mvfxCollider within[2] = {{.kind = mvfx_colliderSphere,
+                                     .space = mvfx_spaceLocal,
+                                     .radius = 0.9f,
+                                     .rotation = {0, 0, 0, 1},
+                                     .inside = true},
+                                    {.kind = mvfx_colliderBox,
+                                     .space = mvfx_spaceLocal,
+                                     .halfExtents = {0.7f, 1.0f, 0.7f},
+                                     .rotation = {0, 0, 0, 1},
+                                     .inside = true}};
+    gas = Plume(16, 24, 16, &s_sphere);
+    gas.obstacles = within;
+    gas.obstacleCount = 2;
+    Steps(gpu, kernels, &gas, NULL, 30, false, "a plume inside a sphere and a box");
+}
+
+// Emitters following a gas: world particles pulled toward a moving
+// plume's velocity, and local ones pushed by it from below its box; then
+// a 2D gas's, cleared at half time.
+static void TestFollowing(Gpu* gpu, mvfxGpu* kernels)
+{
+    static const mvfxForce pulled = {.kind = mvfx_forceGas,
+                                     .strength = 1.0f,
+                                     .fieldMode = mvfx_fieldVelocity,
+                                     .tightness = 8.0f};
+    static const mvfxForce pushed = {
+        .kind = mvfx_forceGas, .strength = 2.0f, .fieldMode = mvfx_fieldAcceleration};
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    emitters[0].space = mvfx_spaceWorld;
+    emitters[0].forces = &pulled;
+    emitters[0].forceCount = 1;
+    emitters[1].shape.offset[1] = -1.6f;
+    emitters[1].forces = &pushed;
+    emitters[1].forceCount = 1;
+    mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
+    Run run = {.emitters = emitters,
+               .emitterCount = 2,
+               .gases = &gas,
+               .gasCount = 1,
+               .moving = true,
+               .pace = 0.002};
+    Compare(gpu, kernels, &run, "particles following a moving plume");
+    gas = Plume(40, 32, 1, &s_box);
+    emitters[0].space = mvfx_spaceLocal;
+    run = (Run){
+        .emitters = emitters, .emitterCount = 2, .gases = &gas, .gasCount = 1, .clearing = true};
+    Compare(gpu, kernels, &run, "particles following a 2D gas, cleared");
 }
 
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
+    TestFollowing(gpu, kernels);
     TestPlumes(gpu, kernels);
     TestForces(gpu, kernels);
     TestBurns(gpu, kernels);

@@ -553,6 +553,21 @@ static void PlanBox(const mvfxResolvedForce* force, mvfxPlannedForce* out)
     out->border = source->border;
 }
 
+// A gas force's box for a plan: the particles' origin in the gas's box's
+// frame, and its cell's edge along each axis.
+static void PlanGas(const mvfxResolvedForce* force, mvfxPlannedForce* out)
+{
+    static const float origin[3] = {0.0f, 0.0f, 0.0f};
+    double place[3];
+    mvfxUnmapPoint(&force->map, origin, place);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->boxOrigin[k] = (float)place[k];
+        out->boxSize[k] = force->gasLattice.cell;
+    }
+    out->boxRotation[3] = 1.0f;
+}
+
 mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force, double time)
 {
     mvfxPlannedForce out = {
@@ -587,6 +602,10 @@ mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force, double time)
     if (force->kind == mvfx_forceVectorField)
     {
         PlanBox(force, &out);
+    }
+    if (force->kind == mvfx_forceGas)
+    {
+        PlanGas(force, &out);
     }
     return out;
 }

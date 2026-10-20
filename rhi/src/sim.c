@@ -36,7 +36,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 // The features the part runs (values over life are applied where
 // particles are read, but for the rotation's speed, which it runs), the
 // kinds of force (constant, wind, attractor, vortex, turbulence, vector
-// field) and of collider (plane, sphere, box, heightfield, distance grid).
+// field, gas) and of collider (plane, sphere, box, heightfield, distance grid).
 #define RUN_FEATURES                                                                               \
     (MVFX_FEATURE_INHERIT_VELOCITY | MVFX_FEATURE_FORCES | MVFX_FEATURE_COLLISION |                \
      MVFX_FEATURE_SIZE | MVFX_FEATURE_COLOR | MVFX_FEATURE_CUSTOM | MVFX_FEATURE_FRAME |           \
@@ -47,7 +47,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
      MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID)
-#define RUN_FORCES    0x3Fu
+#define RUN_FORCES    0x7Fu
 #define RUN_COLLIDERS 0x1Fu
 
 // Whether an emitter's rigid bodies meet each other: they collide and
@@ -311,6 +311,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     if (result == mvfx_success)
     {
         mvfxLaySimTables(&sim->views[e], emitter);
+        mvfxLaySimFollow(sim, e);
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
         sim->views[e].shape.kind == mvfx_shapeMesh)
@@ -572,12 +573,17 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         return false;
     }
     const mrhiResourceId* r = emitter->resources;
-    const mrhiAccess written[5] = {
+    mrhiAccess written[5 + MVFX_MAX_GASES] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_GRIDS], .kind = mrhi_accessCopyDestination},
         {.resource = emitter->eventResources[0], .kind = mrhi_accessCopyDestination}};
+    int32_t writes = events ? 5 : 4;
+    if (!mvfxImportSimFollow(sim, emitter, written, &writes))
+    {
+        return false;
+    }
     const mrhiAccess used[BUFFER_COUNT + 2] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessUniform},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessStorageReadWrite},
@@ -598,7 +604,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         mrhiPassDef def = mrhiDefaultPassDef();
         def.passClass = p == PASS_WRITE ? mrhi_passTransfer : mrhi_passGraphics;
         def.accesses = p == PASS_WRITE ? written : used;
-        def.accessCount = p == PASS_WRITE ? (events ? 5 : 4) : BUFFER_COUNT + 2;
+        def.accessCount = p == PASS_WRITE ? writes : BUFFER_COUNT + 2;
         // Its writes outlive the frame, read by the next step or the host.
         def.neverCull = true;
         bool added = p == PASS_SPAWN_COPY
@@ -704,6 +710,7 @@ static void StepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)
     {
         mvfxForceGridWords(&emitter->gridLayout, f, forceGrids[f]);
     }
+    mvfxSimFollowGrids(sim, e, forceGrids);
     uint32_t colliderGrids[2 * MVFX_MAX_COLLIDERS][5];
     for (int32_t c = 0; c < plan->colliderCount; ++c)
     {
@@ -750,6 +757,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     }
     mvfxSimFrameNumbers(sim, emitter, &plan);
     emitter->cleared = plan.cleared;
+    mvfxSimFollowSources(sim, emitter);
     if (!AddEmitterPasses(sim, emitter))
     {
         return mvfx_errorState;
@@ -818,7 +826,7 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
 
 // Records the pass writing the plan's bytes: its numbers, its births and
 // its host births after the births' room, the record's map, the counts
-// emptied after a clear, and the grids changed.
+// emptied after a clear, the grids changed and the gases' faces.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->passes[PASS_WRITE];
@@ -844,7 +852,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
         mvfxClearSimCounts(sim, pass, emitter) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
-        mvfxWriteSimMesh(sim, pass, emitter) &&
+        mvfxWriteSimMesh(sim, pass, emitter) && mvfxCopySimFollow(sim, pass, emitter) &&
         (!emitter->writesEvents || mvfxWriteEventNumbers(sim, pass, emitter));
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }

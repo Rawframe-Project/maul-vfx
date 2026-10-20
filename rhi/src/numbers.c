@@ -104,7 +104,8 @@ static float SharedDrag(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
     for (int32_t f = 0; f < plan->forceCount; ++f)
     {
         const mvfxPlannedForce* force = &plan->forces[f];
-        bool field = force->kind == mvfx_forceTurbulence || force->kind == mvfx_forceVectorField;
+        bool field = force->kind == mvfx_forceTurbulence || force->kind == mvfx_forceVectorField ||
+                     force->kind == mvfx_forceGas;
         float drag = force->kind == mvfx_forceWind                     ? force->strength
                      : field && force->fieldMode == mvfx_fieldVelocity ? force->tightness
                                                                        : 0.0f;
@@ -115,9 +116,9 @@ static float SharedDrag(const mvfxEmitterView* view, const mvfxEmitterPlan* plan
 
 // A field's 108 words: its map's turn; its octaves and seed; its scale
 // and the octaves' gain; its scroll; the octaves' frequencies (8), cells
-// (8 of 4 words) and fractions (8 of 4); a vector field's box (origin,
-// size, turn), its grid (first word, size) and the grid's format and
-// border.
+// (8 of 4 words) and fractions (8 of 4); a vector field's or a gas's box
+// (origin, size, turn), its grid (first word, size: a gas's faces and
+// cells) and the grid's format and border.
 static void Field(const mvfxPlannedForce* force, const uint32_t grid[5], uint32_t* words)
 {
     memcpy(words, force->rotation, 4 * sizeof(float));

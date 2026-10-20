@@ -110,7 +110,9 @@ extern "C"
         float fraction[MVFX_MAX_OCTAVES][3];
         // A vector field's box: the particles' origin mapped back into
         // its own space, less the box's center; its size, its turn, and
-        // the border its grid reads past it.
+        // the border its grid reads past it. A gas force's: the particles'
+        // origin in the gas's box's frame, and its cell's edge along each
+        // axis (its turn none).
         float boxOrigin[3];
         float boxSize[3];
         float boxRotation[4];
@@ -637,10 +639,12 @@ extern "C"
         float drag;
         // A bit for each kind of force it has (1 << mvfx_forceConstant
         // and so on), for a simulation to refuse a kind it does not run,
-        // and the grid each of its forces reads (a vector field's; the
-        // null id for the others).
+        // the grid each of its forces reads (a vector field's; the null id
+        // for the others), and the gas each follows (a gas force's index
+        // in the effect; -1 for the others).
         uint32_t forceKinds;
         mvfxGridId forceGrids[MVFX_MAX_FORCES];
+        int32_t forceGases[MVFX_MAX_FORCES];
         // A bit for each kind of collider of its own (1 <<
         // mvfx_colliderPlane and so on), the grid each reads (a
         // heightfield's or a distance grid's; the null id for the others),

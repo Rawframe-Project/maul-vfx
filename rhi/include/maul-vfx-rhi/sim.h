@@ -245,11 +245,14 @@ extern "C"
     /// that collide with themselves 28 bytes a particle of its capacity
     /// and 4 more a candidate of its most (mvfxUnitDef.selfContacts),
     /// 18,432 a block of 1,024 of them for its self grid's sorted keys and
-    /// digit counts, and 112 for its numbers and counts. A smoke gas keeps
-    /// 8 bytes a face (each axis's faces across it, an axis of one cell
-    /// none) and 24 a cell of its own for its fields, 4 more a cell with
-    /// obstacles for their solids and, for its work, the larger of 4 bytes
-    /// a face and 12 a cell, and 4 more; 16 a cell and 8 a face of each
+    /// digit counts, and 112 for its numbers and counts; one whose forces
+    /// follow a gas 4 bytes a face of each gas it follows (each axis's
+    /// faces across it, through the last axis of more than one cell), its
+    /// faces copied there each step. A smoke gas keeps 8 bytes a face
+    /// (each axis's faces across it) and 24 a cell of its own for its
+    /// fields, 4 more a cell with obstacles for their solids and, for its
+    /// work, the larger of 4 bytes a face (an axis of one cell none) and
+    /// 12 a cell, and 4 more; 16 a cell and 8 a face of each
     /// level of its multigrid (its own the first) for its solve; the grids
     /// its forces and its own obstacles read (mvfxGridView's bytes, each
     /// rounded up to 4, each grid once) and, taking the instance's

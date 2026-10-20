@@ -319,6 +319,28 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->sizeMargin = e->overLife.sizeMargin;
 }
 
+// An emitter's forces' kinds, and the grid each vector field reads and the
+// gas each gas force follows.
+static void ForcesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* out)
+{
+    for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)
+    {
+        out->forceGases[f] = -1;
+    }
+    for (int32_t f = 0; f < e->forceCount; ++f)
+    {
+        out->forceKinds |= 1u << e->forces[f].kind;
+        if (e->forces[f].kind == mvfx_forceVectorField)
+        {
+            out->forceGrids[f] = e->forces[f].grid;
+        }
+        if (e->forces[f].kind == mvfx_forceGas)
+        {
+            out->forceGases[f] = e->forces[f].gas;
+        }
+    }
+}
+
 mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId effect,
                                      int32_t emitter, mvfxEmitterView* viewOut)
 {
@@ -372,14 +394,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
         viewOut->colliderKinds |= 1u << e->colliders[c].kind;
         viewOut->colliderGrids[c] = e->colliders[c].grid;
     }
-    for (int32_t f = 0; f < e->forceCount; ++f)
-    {
-        viewOut->forceKinds |= 1u << e->forces[f].kind;
-        if (e->forces[f].kind == mvfx_forceVectorField)
-        {
-            viewOut->forceGrids[f] = e->forces[f].grid;
-        }
-    }
+    ForcesOf(e, viewOut);
     ValuesOf(e, viewOut);
     for (int32_t k = 0; k < 9; ++k)
     {
