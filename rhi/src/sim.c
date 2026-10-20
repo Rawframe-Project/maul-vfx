@@ -380,7 +380,9 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     }
     for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
     {
-        result = mvfxCreateSimGas(sim, &sim->gases[g]) ? mvfx_success : mvfx_errorState;
+        result = mvfxCreateSimGas(sim, &sim->gases[g], (uint32_t)((def->hostGridBytes + 3) / 4))
+                     ? mvfx_success
+                     : mvfx_errorState;
     }
     mvfxSrgbSteps(sim->srgb);
     if (result == mvfx_success &&
@@ -678,7 +680,8 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
             return mvfx_errorState;
         }
         if (emitter->capacity > 0 &&
-            !mvfxPlaceHostGrids(sim->context, &plan, plan.ownColliderCount, &emitter->gridLayout))
+            !mvfxPlaceHostGrids(sim->context, plan.colliders, plan.colliderCount,
+                                plan.ownColliderCount, &emitter->gridLayout))
         {
             return mvfx_errorCapacity;
         }
@@ -704,7 +707,7 @@ static void StepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)
     uint32_t colliderGrids[2 * MVFX_MAX_COLLIDERS][5];
     for (int32_t c = 0; c < plan->colliderCount; ++c)
     {
-        mvfxColliderGridWords(&emitter->gridLayout, plan, plan->ownColliderCount, c,
+        mvfxColliderGridWords(&emitter->gridLayout, plan->colliders, plan->ownColliderCount, c,
                               colliderGrids[c]);
     }
     mvfxStepNumbers(&sim->views[e], plan, e, (const uint32_t (*)[5])forceGrids,

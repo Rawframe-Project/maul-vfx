@@ -10,14 +10,17 @@
 
 #include "grids.h"
 #include "kernels.h"
+#include "numbers.h"
 
 #include "maul-rhi/frame.h"
 #include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/plan.h"
 
 // The words of a gas's numbers (gas.wgsl's Gas): its own, its forces'
-// (rhi/src/numbers.h's MVFX_FORCE_WORDS), then its burn's and modes.
-#define MVFX_GAS_WORDS (416u + 4u + 132u * MVFX_MAX_FORCES + 8u)
+// (rhi/src/numbers.h's MVFX_FORCE_WORDS), its burn's and modes, then its
+// obstacles' head and its obstacles now and before.
+#define MVFX_GAS_WORDS                                                                             \
+    (416u + 4u + 132u * MVFX_MAX_FORCES + 8u + 4u + 4u * MVFX_MAX_COLLIDERS * MVFX_COLLIDER_WORDS)
 
 // A gas's buffers: its numbers, its fields (each buffer's faces then its
 // scalars), its solve's levels (pressures, right-hand sides, scratches,
@@ -89,7 +92,8 @@ mvfxResult mvfxReadSimGases(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refus
 
 // Makes a gas's buffers and dispatch room; false when the device or the
 // allocator refuses.
-bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas);
+// The instance's obstacles' grids take hostWords of its grids' buffer.
+bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords);
 void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas);
 
 // Adds a gas's step's passes for its plan, then records them.

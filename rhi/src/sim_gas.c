@@ -27,22 +27,30 @@
 #define TAIL_CELLS 512
 
 // The first words of the numbers' parts (gas.wgsl's Gas).
-#define WORD_FACES    16u
-#define WORD_CELLS    24u
-#define WORD_LEVELS   32u
-#define WORD_SUBSTEPS 192u
-#define WORD_SOURCES  288u
-#define WORD_FORCES   416u
-#define WORD_BURN     (WORD_FORCES + MVFX_FORCE_WORDS)
+#define WORD_FACES     16u
+#define WORD_CELLS     24u
+#define WORD_LEVELS    32u
+#define WORD_SUBSTEPS  192u
+#define WORD_SOURCES   288u
+#define WORD_FORCES    416u
+#define WORD_BURN      (WORD_FORCES + MVFX_FORCE_WORDS)
+#define WORD_OBSTACLES (WORD_BURN + 8u)
+// Where the obstacles before start among the obstacles' words.
+#define BEFORE_WORDS (4u + 2u * MVFX_MAX_COLLIDERS * MVFX_COLLIDER_WORDS)
 
 // The words of a substep's numbers (gas.wgsl's Substep).
 #define SUBSTEP_WORDS 12u
 
-// Whether the part runs a gas: smoke, without what later slices add.
+// Whether the part runs a gas: smoke.
 static bool Runs(const mvfxGasView* view)
 {
-    const mvfxGasDef* def = &view->def;
-    return def->kind == mvfx_gasSmoke && def->obstacleCount == 0 && !def->hostObstacles;
+    return view->def.kind == mvfx_gasSmoke;
+}
+
+// Whether a gas has obstacles: its own, or the instance's colliders.
+static bool HasObstacles(const mvfxGasDef* def)
+{
+    return def->obstacleCount > 0 || def->hostObstacles;
 }
 
 // Whether a gas's burn expands it.
@@ -152,8 +160,10 @@ int32_t mvfxSimGasPasses(const mvfxGasView* view)
     int32_t confine = def->vorticity != 0.0f ? 2 : 0;
     int32_t burn = def->burnRate != 0.0f ? 1 : 0;
     int32_t mean = solves && Expands(def) && IsSealed(def) ? 1 : 0;
-    int32_t substep = 2 + confine + 2 * CarryPasses(def) + burn + mean + solve + 1;
-    return 1 + 2 * view->levelCount + def->substeps * substep + 1;
+    int32_t solids = HasObstacles(def) ? 2 : 0;
+    int32_t substep = 2 + confine + 2 * CarryPasses(def) + solids + burn + mean + solve + 1;
+    int32_t mark = HasObstacles(def) ? 1 : 0;
+    return 1 + mark + 2 * view->levelCount + def->substeps * substep + 1;
 }
 
 // The fields' and the solve's floats, writing each array's first float
@@ -179,8 +189,11 @@ static void Lay(SimGas* gas, uint64_t* fields, uint64_t* solve)
             at += (uint32_t)view->cells;
         }
     }
-    // The work: a curl's three arrays, MacCormack's trace ahead of every
-    // face or of the three scalars, or the expansion; then its mean.
+    // The cells' solids, with obstacles; the work: a curl's three arrays,
+    // MacCormack's trace ahead of every face or of the three scalars, or
+    // the expansion; then its mean.
+    w[WORD_FACES + 3u] = at;
+    at += HasObstacles(&view->def) ? (uint32_t)view->cells : 0u;
     uint32_t scalars = 3u * (uint32_t)view->cells;
     uint32_t faces = AllFaces(view, 0);
     w[WORD_CELLS + 3u] = at;
@@ -267,16 +280,21 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
 }
 
-bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas)
+bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords)
 {
     const mvfxGasDef* def = &gas->view.def;
     mvfxGridId forceGrids[MVFX_MAX_FORCES] = {0};
-    const mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS] = {0};
+    mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS] = {0};
     for (int32_t f = 0; f < def->forceCount; ++f)
     {
         forceGrids[f] = def->forces[f].grid;
     }
-    if (!mvfxLayGrids(sim->context, forceGrids, colliderGrids, 0, &gas->grids))
+    for (int32_t c = 0; c < def->obstacleCount; ++c)
+    {
+        colliderGrids[c] = def->obstacles[c].grid;
+    }
+    if (!mvfxLayGrids(sim->context, forceGrids, colliderGrids, def->hostObstacles ? hostWords : 0,
+                      &gas->grids))
     {
         return false;
     }
@@ -420,9 +438,17 @@ static uint32_t SubstepPasses(SimGas* gas, uint32_t u, uint32_t now)
     }
     Carry(gas, def, u, now, faces, cells);
     now = 1u - now;
+    if (HasObstacles(def))
+    {
+        Push(gas, mvfx_kernelGasEmpty, u, now, 0, 0, cells);
+    }
     if (def->burnRate != 0.0f)
     {
         Push(gas, mvfx_kernelGasBurn, u, now, 0, 0, cells);
+    }
+    if (HasObstacles(def))
+    {
+        Push(gas, mvfx_kernelGasMove, u, now, 0, 0, faces);
     }
     if (def->pressureCycles > 0 && Expands(def) && IsSealed(def))
     {
@@ -438,6 +464,32 @@ static uint32_t SubstepPasses(SimGas* gas, uint32_t u, uint32_t now)
     }
     Push(gas, mvfx_kernelGasCorrect, u, now, 0, 0, faces);
     return now;
+}
+
+// The step's obstacles as the plan gives them: their count, those that
+// moved (over a step of some length), the step's seconds; each with its
+// grid where the grids' buffer holds it, and as it was before.
+static void ObstacleNumbers(SimGas* gas, const mvfxGasPlan* plan)
+{
+    uint32_t* w = gas->words + WORD_OBSTACLES;
+    memset(w, 0, (BEFORE_WORDS + 2u * MVFX_MAX_COLLIDERS * MVFX_COLLIDER_WORDS) * sizeof(uint32_t));
+    w[0] = (uint32_t)plan->obstacleCount;
+    float seconds = (float)((double)plan->ticks / (double)MVFX_TICKS_PER_SECOND);
+    memcpy(&w[2], &seconds, sizeof seconds);
+    const uint32_t none[5] = {0};
+    for (int32_t c = 0; c < plan->obstacleCount; ++c)
+    {
+        uint32_t grid[5];
+        mvfxColliderGridWords(&gas->grids, plan->obstacles, plan->ownObstacleCount, c, grid);
+        mvfxColliderWords(&plan->obstacles[c], grid, w + 4u + MVFX_COLLIDER_WORDS * (uint32_t)c);
+        bool moved = plan->obstacleMoved[c] && plan->ticks > 0;
+        w[1] |= moved ? 1u << (uint32_t)c : 0u;
+        if (moved)
+        {
+            mvfxColliderWords(&plan->obstaclesBefore[c], none,
+                              w + BEFORE_WORDS + MVFX_COLLIDER_WORDS * (uint32_t)c);
+        }
+    }
 }
 
 // The step's substeps' numbers and dispatches, as the core's mvfxStepGas
@@ -462,7 +514,14 @@ static void Plan(SimGas* gas, const mvfxGasPlan* plan)
         gas->now = 0;
         gas->prepared = false;
     }
-    for (int32_t l = 0; !gas->prepared && l < view->levelCount; ++l)
+    // Obstacles mark the solids each step, and the levels' areas follow.
+    bool solids = HasObstacles(def);
+    if (solids)
+    {
+        ObstacleNumbers(gas, plan);
+        Push(gas, mvfx_kernelGasMark, 0, gas->now, 0, 0, Groups((uint32_t)view->cells));
+    }
+    for (int32_t l = 0; (!gas->prepared || solids) && l < view->levelCount; ++l)
     {
         uint32_t faces = AllFaces(view, l);
         Push(gas, mvfx_kernelGasAreas, 0, 0, (uint32_t)l, 0, Groups(faces));
@@ -505,6 +564,12 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
     if (result != mvfx_success)
     {
         return result;
+    }
+    if (HasObstacles(&gas->view.def) &&
+        !mvfxPlaceHostGrids(sim->context, plan.obstacles, plan.obstacleCount, plan.ownObstacleCount,
+                            &gas->grids))
+    {
+        return mvfx_errorCapacity;
     }
     Plan(gas, &plan);
     mrhiResourceId* r = gas->resources;

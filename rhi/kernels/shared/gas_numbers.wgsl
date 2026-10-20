@@ -3,6 +3,8 @@
 
 // include: shared/force_numbers.wgsl
 
+// include: shared/collider_numbers.wgsl
+
 // A level of the solve: its cells along each axis and in all; where its
 // pressure, right-hand side, scratch and weights start; where its areas
 // across each axis start, and how many fine cells a cell spans; where its
@@ -44,8 +46,8 @@ struct Gas {
     // The gravity in the box's frame.
     gravity: vec4<f32>,
     // Where each buffer's faces across each axis start, and its density,
-    // temperature and fuel; where the work starts, and the expansion's
-    // mean.
+    // temperature and fuel; where the cells' solids start, the work, and
+    // the expansion's mean.
     faces: array<vec4<u32>, 2>,
     cells: array<vec4<u32>, 2>,
     levels: array<Level, 10>,
@@ -63,4 +65,10 @@ struct Gas {
     // are all closed; the bits of the size past which a scalar holds
     // anything (MVFX_GAS_EMPTY).
     modes: vec4<u32>,
+    // Its obstacles: their count, the bits of those that moved since the
+    // step before (rhi/src/sim_gas.c decides it as the core's IsMoved),
+    // the step's seconds' bits; each now and as it was before.
+    obstacleHead: vec4<u32>,
+    obstacles: array<Collider, 16>,
+    before: array<Collider, 16>,
 }

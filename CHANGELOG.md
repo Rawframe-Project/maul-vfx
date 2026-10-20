@@ -1020,6 +1020,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   the host to read back and `mvfxGpuSim_ReportGas` hands to the planned
   instance, so a stopped instance finishes when its gas empties.
   `MVFX_GAS_EMPTY` is public.
+- The GPU part runs a smoke gas's obstacles, its own and the instance's
+  colliders, still and moving, of every kind: their solids marked each
+  step, emptied, closing the solve's faces, and pushing the gas with
+  their motion. `mvfxGasPlan.obstacleMoved` says which obstacles moved
+  since the plan before. A gas the GPU part runs is no longer refused.
 
 ### Fixed
 

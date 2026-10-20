@@ -4,7 +4,7 @@
     {"name": "gasRead", "stage": "compute", "workgroup": [64, 1, 1]}
   ],
   "bindings": [
-    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 5936},
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 10048},
     {"table": 0, "slot": 1, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 2, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 80},
     {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4}

@@ -40,7 +40,8 @@ extern "C"
         const mvfxContext* context;
         mvfxEffectId effect;
         mvfxInstanceId instance;
-        // The bytes each emitter keeps for the grids its instance's
+        // The bytes each emitter, and each gas taking the instance's
+        // colliders as obstacles, keeps for the grids its instance's
         // colliders read (mvfxInstance_SetColliders: heightfields and
         // distance grids), their values as stored (mvfxGridView's bytes,
         // each rounded up to 4, each grid once), as
@@ -72,9 +73,9 @@ extern "C"
     // other (bodyContacts above 0) run an emitter's step in one workgroup
     // (its pairs found and solved colour by colour, its sleepers woken by
     // touch and its islands settled, as the CPU path's), so they use one
-    // compute unit of the device however many there are. A gas with
-    // obstacles is not run yet: gas is the first such an instance's effect
-    // has, -1 for none, and emitter is then -1.
+    // compute unit of the device however many there are. gas names the
+    // first gas the part does not run, -1 for none (every gas of an effect
+    // that can be planned runs), and emitter is then -1.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -246,12 +247,14 @@ extern "C"
     /// 18,432 a block of 1,024 of them for its self grid's sorted keys and
     /// digit counts, and 112 for its numbers and counts. A smoke gas keeps
     /// 8 bytes a face (each axis's faces across it, an axis of one cell
-    /// none) and 24 a cell of its own for its fields and, for its work,
-    /// the larger of 4 bytes a face and 12 a cell, and 4 more; 16 a cell
-    /// and 8 a face of each level of its multigrid (its own the first) for
-    /// its solve; the grids its forces read (mvfxGridView's bytes, each
-    /// rounded up to 4, each grid once); and 6,272 for its numbers,
-    /// statistics and reads.
+    /// none) and 24 a cell of its own for its fields, 4 more a cell with
+    /// obstacles for their solids and, for its work, the larger of 4 bytes
+    /// a face and 12 a cell, and 4 more; 16 a cell and 8 a face of each
+    /// level of its multigrid (its own the first) for its solve; the grids
+    /// its forces and its own obstacles read (mvfxGridView's bytes, each
+    /// rounded up to 4, each grid once) and, taking the instance's
+    /// colliders as obstacles, the room hostGridBytes says; and 10,384 for
+    /// its numbers, statistics and reads.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -582,12 +585,13 @@ extern "C"
     /// Returns the passes a gas's step adds at most (mvfxGpuSim_AddPasses),
     /// for a host to size its device's frame by (mrhiDeviceLimits'
     /// framePasses): a transfer pass, two compute passes a level of its
-    /// multigrid at its first step and after a clear, one for its holds,
-    /// and for each substep five (two more under vorticity confinement,
-    /// four more carrying by MacCormack's, one more with a burn), with a
-    /// solve one more (two in a sealed box whose burn expands) and six a
-    /// level above the levels of at most 512 cells and one for those a
-    /// cycle.
+    /// multigrid at its first step and after a clear (each step with
+    /// obstacles, after one marking their solids), one for its holds, and
+    /// for each substep five (two more under vorticity confinement, four
+    /// more carrying by MacCormack's, one more with a burn, two more with
+    /// obstacles), with a solve one more (two in a sealed box whose burn
+    /// expands) and six a level above the levels of at most 512 cells and
+    /// one for those a cycle.
     ///
     /// @param sim  The simulation.
     /// @param gas  The gas's index in its effect.

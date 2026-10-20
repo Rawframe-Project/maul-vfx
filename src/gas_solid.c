@@ -110,21 +110,24 @@ static void Before(const mvfxResolvedCollider* now, const mvfxResolvedCollider* 
     }
 }
 
+bool mvfxGasObstacleMoved(const mvfxGasState* state, int32_t c)
+{
+    int32_t was = 1 - state->obstaclesNow;
+    return state->obstaclesKnown && c < state->obstacleCount[was] &&
+           IsMoved(&state->obstacles[state->obstaclesNow][c], &state->obstacles[was][c]);
+}
+
 // An obstacle's velocity across axis k at p over a step of seconds.
 static float SolidVelocity(const mvfxGasState* state, int32_t c, int32_t k, const float p[3],
                            double seconds)
 {
-    int32_t was = 1 - state->obstaclesNow;
-    if (!state->obstaclesKnown || c >= state->obstacleCount[was] || !(seconds > 0.0))
+    if (!(seconds > 0.0) || !mvfxGasObstacleMoved(state, c))
     {
         return 0.0f;
     }
+    int32_t was = 1 - state->obstaclesNow;
     const mvfxResolvedCollider* now = &state->obstacles[state->obstaclesNow][c];
     const mvfxResolvedCollider* before = &state->obstacles[was][c];
-    if (!IsMoved(now, before))
-    {
-        return 0.0f;
-    }
     float from[3];
     Before(now, before, p, from);
     return (float)((double)(p[k] - from[k]) / seconds);

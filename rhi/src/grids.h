@@ -72,16 +72,17 @@ bool mvfxLayGrids(const mvfxContext* context, const mvfxGridId forceGrids[MVFX_M
                   const mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS], uint32_t hostWords,
                   mvfxGpuGrids* grids);
 
-// Places the grids the plan's instance colliders read in the region, in
-// order, each once; false when one is gone or they pass the region.
-bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxEmitterPlan* plan,
-                        int32_t ownColliders, mvfxGpuGrids* grids);
+// Places the grids a plan's instance colliders (its colliders from
+// ownColliders on) read in the region, in order, each once; false when
+// one is gone or they pass the region.
+bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxPlannedCollider* colliders,
+                        int32_t count, int32_t ownColliders, mvfxGpuGrids* grids);
 
 // Writes a grid as the step's numbers give it: its first word, its size
 // along X, Y and Z, its format (all 0 for none): force f's, or the plan's
-// collider c's.
+// collider c's, its first ownColliders its own.
 void mvfxForceGridWords(const mvfxGpuGrids* grids, int32_t f, uint32_t out[5]);
-void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxEmitterPlan* plan,
+void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxPlannedCollider* colliders,
                            int32_t ownColliders, int32_t c, uint32_t out[5]);
 
 // The bytes the room for the instance's grids needs for colliders: each

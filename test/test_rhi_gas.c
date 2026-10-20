@@ -8,7 +8,8 @@
 // closed and open walls, levels above the tail and in it, no solve, a
 // 2D gas, a clear; every force; MacCormack's carry, vorticity
 // confinement, the burn expanding (less its mean in a sealed box); the
-// holds read back and reported, a stopped instance finishing; reads
+// holds read back and reported, a stopped instance finishing; obstacles
+// still and moving, of every kind; reads
 // in every format over a box with padded pitches, the padding kept; the
 // refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
@@ -51,7 +52,7 @@ static mvfxEmitterDef Beside(void)
 }
 
 // Opens a run of a gas; with a grid, made in the run's context and read
-// by the gas's vector fields.
+// by the gas's vector fields and grid obstacles.
 static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* grid, Scene* scene)
 {
     *scene = (Scene){0};
@@ -70,6 +71,15 @@ static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* gri
         forces[f].grid = forces[f].kind == mvfx_forceVectorField ? gridId : forces[f].grid;
     }
     made.forces = gas->forceCount > 0 ? forces : NULL;
+    static mvfxCollider obstacles[MVFX_MAX_COLLIDERS];
+    for (int32_t c = 0; c < gas->obstacleCount; ++c)
+    {
+        obstacles[c] = gas->obstacles[c];
+        bool gridded = obstacles[c].kind == mvfx_colliderHeightfield ||
+                       obstacles[c].kind == mvfx_colliderDistance;
+        obstacles[c].grid = gridded ? gridId : obstacles[c].grid;
+    }
+    made.obstacles = gas->obstacleCount > 0 ? obstacles : NULL;
     mvfxEmitterDef emitter = Beside();
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
@@ -257,6 +267,25 @@ static float MostDensity(const Scene* scene, const mvfxGasDef* gas)
 // The step a scene stops both instances emitting at, -1 for none.
 static int32_t s_stopAt = -1;
 
+// The instance's colliders a scene sets on both instances before each
+// step, moved by the step: a sphere crossing the box and a box turning.
+static int32_t s_hostCount;
+
+static void HostColliders(int32_t s, mvfxCollider out[2])
+{
+    float turn = 0.12f * (float)s;
+    out[0] = (mvfxCollider){.kind = mvfx_colliderSphere,
+                            .space = mvfx_spaceLocal,
+                            .center = {-0.6f + 0.06f * (float)s, 0.1f, 0.05f},
+                            .radius = 0.22f,
+                            .rotation = {0, 0, 0, 1}};
+    out[1] = (mvfxCollider){.kind = mvfx_colliderBox,
+                            .space = mvfx_spaceLocal,
+                            .center = {0.3f, 0.7f, -0.1f},
+                            .halfExtents = {0.25f, 0.06f, 0.15f},
+                            .rotation = {0, 0, sinf(turn), cosf(turn)}};
+}
+
 // Steps a gas on both paths, each field compared after every step, its
 // holds reported and both instances finished alike; with clearing,
 // stopped and cleared at half time and restarted; at s_stopAt stopped
@@ -282,6 +311,16 @@ static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxG
                       mvfxInstance_Stop(scene.context, scene.planned, mvfx_stopEmitting) ==
                           mvfx_success,
                   "stopped emitting");
+        }
+        if (s_hostCount > 0)
+        {
+            mvfxCollider hosts[2];
+            HostColliders(s, hosts);
+            CHECK(mvfxInstance_SetColliders(scene.context, scene.cpu, hosts, s_hostCount) ==
+                          mvfx_success &&
+                      mvfxInstance_SetColliders(scene.context, scene.planned, hosts, s_hostCount) ==
+                          mvfx_success,
+                  "the instance's colliders");
         }
         if (clearing && s == steps / 2)
         {
@@ -657,12 +696,77 @@ static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
     s_stopAt = -1;
 }
 
+// A ball's distances over a grid of 9 points a side, 0.1 apart: radius
+// 0.3 about the grid's center.
+static float s_ball[9 * 9 * 9];
+
+static mvfxGridDef BallGrid(void)
+{
+    for (int32_t p = 0; p < 9 * 9 * 9; ++p)
+    {
+        float x = 0.1f * (float)(p % 9) - 0.4f;
+        float y = 0.1f * (float)(p / 9 % 9) - 0.4f;
+        float z = 0.1f * (float)(p / 81) - 0.4f;
+        s_ball[p] = sqrtf(x * x + y * y + z * z) - 0.3f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 9;
+    def.size[1] = 9;
+    def.size[2] = 9;
+    def.values = s_ball;
+    return def;
+}
+
+static void TestObstacles(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A plume about its own still obstacles: a sphere over the source, a
+    // turned box, a distance grid's ball, and a plane taking the box's top
+    // cells.
+    const mvfxCollider obstacles[4] = {{.kind = mvfx_colliderSphere,
+                                        .space = mvfx_spaceLocal,
+                                        .center = {0.0f, 0.15f, 0.0f},
+                                        .radius = 0.25f,
+                                        .rotation = {0, 0, 0, 1}},
+                                       {.kind = mvfx_colliderBox,
+                                        .space = mvfx_spaceLocal,
+                                        .center = {-0.35f, 0.6f, 0.1f},
+                                        .halfExtents = {0.2f, 0.05f, 0.3f},
+                                        .rotation = {0, 0, 0.2588190f, 0.9659258f}},
+                                       {.kind = mvfx_colliderDistance,
+                                        .space = mvfx_spaceLocal,
+                                        .center = {0.4f, -0.3f, -0.2f},
+                                        .halfExtents = {0.4f, 0.4f, 0.4f},
+                                        .rotation = {0, 0, 0, 1}},
+                                       {.kind = mvfx_colliderPlane,
+                                        .space = mvfx_spaceLocal,
+                                        .center = {0.0f, 1.0f, 0.0f},
+                                        .normal = {0, -1, 0},
+                                        .rotation = {0, 0, 0, 1}}};
+    mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
+    gas.obstacles = obstacles;
+    gas.obstacleCount = 4;
+    mvfxGridDef ball = BallGrid();
+    Steps(gpu, kernels, &gas, &ball, 30, false, "a plume about still obstacles");
+    // The same with the instance's colliders moving through it: a sphere
+    // crossing it and a box turning, their faces pushing the gas.
+    gas.hostObstacles = true;
+    s_hostCount = 2;
+    Steps(gpu, kernels, &gas, &ball, 30, false, "a plume about moving obstacles");
+    // A 2D gas about a sphere crossing it, cleared and restarted.
+    gas = Plume(40, 32, 1, &s_box);
+    gas.hostObstacles = true;
+    s_hostCount = 1;
+    Steps(gpu, kernels, &gas, NULL, 30, true, "a 2D gas about a moving sphere, cleared");
+    s_hostCount = 0;
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestPlumes(gpu, kernels);
     TestForces(gpu, kernels);
     TestBurns(gpu, kernels);
     TestFinishing(gpu, kernels);
+    TestObstacles(gpu, kernels);
     TestReads(gpu, kernels);
 }
 

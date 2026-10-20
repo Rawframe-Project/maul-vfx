@@ -122,6 +122,33 @@ static void Move(mvfxContext* context, mvfxInstanceId instance, int32_t s)
           "moved");
 }
 
+// The obstacles a plan says moved and did not, over a run.
+static int32_t s_moved;
+static int32_t s_unmoved;
+
+// Whether each obstacle reads as moved just when the one before of its
+// index is known and has its kind, side, sizes and grid.
+static bool MovedAsBefore(const mvfxGasPlan* plan, int32_t before)
+{
+    bool all = true;
+    for (int32_t c = 0; c < plan->obstacleCount; ++c)
+    {
+        const mvfxPlannedCollider* a = &plan->obstacles[c];
+        const mvfxPlannedCollider* b = &plan->obstaclesBefore[c];
+        bool same = plan->obstaclesKnown && c < before && a->kind == b->kind &&
+                    a->inside == b->inside && a->radius == b->radius &&
+                    a->grid.index1 == b->grid.index1 && a->grid.generation == b->grid.generation;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && a->halfExtents[k] == b->halfExtents[k];
+        }
+        all = all && plan->obstacleMoved[c] == same;
+        s_moved += same ? 1 : 0;
+        s_unmoved += same ? 0 : 1;
+    }
+    return all;
+}
+
 // Whether a gas plan is what the CPU path's gas step took: its span, its
 // gravity, its forces and obstacles as the CPU instance resolved them.
 static bool SameAsStepped(const mvfxGasPlan* plan, const mvfxInstance* cpu, mvfxGridId grid)
@@ -148,6 +175,7 @@ static bool SameAsStepped(const mvfxGasPlan* plan, const mvfxInstance* cpu, mvfx
     {
         same = SameCollider(&plan->obstacles[c], &state->obstacles[now][c]);
     }
+    same = same && MovedAsBefore(plan, state->obstacleCount[1 - now]);
     for (int32_t c = 0; same && plan->obstaclesKnown && c < state->obstacleCount[1 - now]; ++c)
     {
         same = SameCollider(&plan->obstaclesBefore[c], &state->obstacles[1 - now][c]);
@@ -228,14 +256,14 @@ static void TestResolved(void)
                plan.obstacleCount == (s < 5 ? 4 : 3) && plan.cleared == (s == 0);
         known = known || plan.obstaclesKnown;
     }
-    CHECK(same && known, "the gas plan is the CPU path's step's");
+    CHECK(same && known && s_moved > 0 && s_unmoved > 0, "the gas plan is the CPU path's step's");
     // A teleport: the obstacles before are not known.
     const double far[3] = {-100, 0, 0};
     const float still[4] = {0, 0, 0, 1};
     CHECK(mvfxInstance_SetTransform(context, planned, far, still, 1.0f, true) == mvfx_success &&
               mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
               mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success &&
-              !plan.obstaclesKnown,
+              !plan.obstaclesKnown && MovedAsBefore(&plan, 0),
           "a teleport's obstacles before unknown");
     mvfxDestroyContext(context);
 }

@@ -1250,8 +1250,8 @@ static void TestRefused(mvfxGpu* kernels)
     simDef.instance = cpu;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorInvalid && refusal.emitter == -1,
           "an instance that is not planned");
-    // A smoke gas about an obstacle: its effect is planned, its gas not
-    // run yet.
+    // A smoke gas about an obstacle: its effect is planned and its gas
+    // run, no gas named.
     static const mvfxCollider ball = {
         .kind = mvfx_colliderSphere, .radius = 0.1f, .rotation = {0, 0, 0, 1}};
     mvfxGasDef gas = mvfxDefaultGasDef();
@@ -1268,9 +1268,10 @@ static void TestRefused(mvfxGpu* kernels)
     CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "a gas planned");
     simDef.effect = effect;
     simDef.instance = planned;
-    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
-              refusal.emitter == -1 && refusal.gas == 0 && refusal.features == 0,
-          "a gas refused, named");
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_success && sim != NULL &&
+              refusal.emitter == -1 && refusal.gas == -1 && refusal.features == 0,
+          "a gas with an obstacle run");
+    mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);
 }
 

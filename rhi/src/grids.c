@@ -90,8 +90,8 @@ bool mvfxLayGrids(const mvfxContext* context, const mvfxGridId forceGrids[MVFX_M
     return ok;
 }
 
-bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxEmitterPlan* plan,
-                        int32_t ownColliders, mvfxGpuGrids* grids)
+bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxPlannedCollider* colliders,
+                        int32_t count, int32_t ownColliders, mvfxGpuGrids* grids)
 {
     // The region as the last step left it, kept where a grid stays.
     mvfxGpuGrid was[MVFX_MAX_COLLIDERS];
@@ -99,9 +99,9 @@ bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxEmitterPlan* plan,
     memcpy(was, &grids->grids[grids->fixedCount], (size_t)wasCount * sizeof was[0]);
     grids->count = grids->fixedCount;
     uint32_t used = 0;
-    for (int32_t c = ownColliders; c < plan->colliderCount; ++c)
+    for (int32_t c = ownColliders; c < count; ++c)
     {
-        mvfxGridId id = plan->colliders[c].grid;
+        mvfxGridId id = colliders[c].grid;
         if (id.index1 == 0 || Find(grids, grids->fixedCount, grids->count, id) >= 0)
         {
             continue;
@@ -175,10 +175,10 @@ void mvfxForceGridWords(const mvfxGpuGrids* grids, int32_t f, uint32_t out[5])
     Words(grids, grids->forceGrid[f], out);
 }
 
-void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxEmitterPlan* plan,
+void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxPlannedCollider* colliders,
                            int32_t ownColliders, int32_t c, uint32_t out[5])
 {
-    mvfxGridId id = plan->colliders[c].grid;
+    mvfxGridId id = colliders[c].grid;
     int32_t g = c < ownColliders ? grids->colliderGrid[c]
                 : id.index1 != 0 ? Find(grids, grids->fixedCount, grids->count, id)
                                  : -1;

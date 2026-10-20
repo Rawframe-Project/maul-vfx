@@ -7,6 +7,7 @@
 #include "force.h"
 #include "gas.h"
 #include "gas_api.h"
+#include "gas_solid.h"
 #include "instance_api.h"
 #include "plan_resolved.h"
 
@@ -94,6 +95,7 @@ mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId in
         for (int32_t c = 0; c < planOut->obstacleCount; ++c)
         {
             planOut->obstacles[c] = PlannedObstacle(live, gas, &state->obstacles[now][c], c);
+            planOut->obstacleMoved[c] = mvfxGasObstacleMoved(state, c);
         }
         for (int32_t c = 0; state->obstaclesKnown && c < state->obstacleCount[1 - now]; ++c)
         {

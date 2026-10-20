@@ -47,6 +47,8 @@ const CARRY_CORRECT: u32 = 3u;
 
 // include: shared/forces.wgsl
 
+// include: shared/colliders.wgsl
+
 // What a pass works on: the substep, the buffer current at its start, a
 // level, and a pass's own word.
 struct Root {
@@ -298,7 +300,18 @@ fn fineArea(k: u32, at: vec3<u32>) -> f32 {
     let high = at[k] == n[k];
     let closed = (low && (walls & (1u << (2u * k))) != 0u) ||
                  (high && (walls & (2u << (2u * k))) != 0u);
-    return select(1.0, 0.0, closed);
+    let stride = vec3<u32>(1u, n.x, n.x * n.y);
+    let cell = at.z * stride.z + at.y * stride.y + at.x;
+    var beside = false;
+    if (gas.obstacleHead.x > 0u) {
+        beside = (!low && solidAt(cell - stride[k]) != 0u) || (!high && solidAt(cell) != 0u);
+    }
+    return select(1.0, 0.0, closed || beside);
+}
+
+// A cell's solid: 1 + the obstacle it lies in, 0 for none.
+fn solidAt(i: u32) -> u32 {
+    return u32(fields[gas.faces[0].w + i]);
 }
 
 // The open area of a face across k of level l > 0: its finer faces' on
@@ -1109,4 +1122,93 @@ fn gasHolds(@builtin(global_invocation_id) id: vec3<u32>,
     if (lane == 0u && atomicLoad(&heldHere) != 0u) {
         atomicMax(&statistics[0], 1u);
     }
+}
+
+// Each cell's solid, as the core's mvfxMarkGasSolids: 1 + the first
+// obstacle its center lies on the wrong side of, 0 for none.
+@compute @workgroup_size(64, 1, 1)
+fn gasMark(@builtin(global_invocation_id) id: vec3<u32>) {
+    let point = id.x + id.y * ROW;
+    let n = sizeOf();
+    if (point >= cellCount(n)) {
+        return;
+    }
+    let local = localOf(3u, pointOf(n, point));
+    var solid = 0u;
+    for (var c = 0u; c < gas.obstacleHead.x; c++) {
+        if (colliderGap(gas.obstacles[c], local) < 0.0) {
+            solid = c + 1u;
+            break;
+        }
+    }
+    fields[gas.faces[0].w + point] = f32(solid);
+}
+
+// Each solid cell's scalars of the current buffer emptied
+// (mvfxEmptyGasSolids).
+@compute @workgroup_size(64, 1, 1)
+fn gasEmpty(@builtin(global_invocation_id) id: vec3<u32>) {
+    let point = id.x + id.y * ROW;
+    if (point >= cellCount(sizeOf()) || solidAt(point) == 0u) {
+        return;
+    }
+    for (var f = 0u; f < 3u; f++) {
+        fields[arrayAt(root.now, 3u, f) + point] = 0.0;
+    }
+}
+
+// Where an obstacle's motion from before to now carried the place p that
+// now lies at p, as the core's Before: a plane moved along its normal, a
+// sphere moved, any other moved and turned as its frame was.
+fn placeBefore(now: Collider, before: Collider, p: vec3<f32>) -> vec3<f32> {
+    let d = p - now.center.xyz;
+    if (now.modes.x == COLLIDER_PLANE) {
+        var along = 0.0;
+        for (var k = 0u; k < 3u; k++) {
+            along += (now.center[k] - before.center[k]) * now.normal[k];
+        }
+        return p - along * now.normal.xyz;
+    }
+    if (now.modes.x == COLLIDER_SPHERE) {
+        return before.center.xyz + d;
+    }
+    let local = rotate(conjugate(now.rotation), d);
+    return before.center.xyz + rotate(before.rotation, local);
+}
+
+// Each face beside a solid given its obstacle's velocity across it over
+// the step (0 for one that did not move), as the core's
+// mvfxMoveGasSolids: the solid below it, else the one above.
+@compute @workgroup_size(64, 1, 1)
+fn gasMove(@builtin(global_invocation_id) id: vec3<u32>) {
+    let point = id.x + id.y * ROW;
+    let n = sizeOf();
+    let face = faceAxis(n, point);
+    if (face.x == 3u) {
+        return;
+    }
+    let k = face.x;
+    let at = pointOf(pointsOf(n, k), face.y);
+    let stride = vec3<u32>(1u, n.x, n.x * n.y);
+    let cell = at.z * stride.z + at.y * stride.y + at.x;
+    var below = 0u;
+    if (at[k] > 0u) {
+        below = solidAt(cell - stride[k]);
+    }
+    var above = 0u;
+    if (at[k] < n[k]) {
+        above = solidAt(cell);
+    }
+    let solid = select(above, below, below != 0u);
+    if (solid == 0u) {
+        return;
+    }
+    let c = solid - 1u;
+    var v = 0.0;
+    if ((gas.obstacleHead.y & (1u << c)) != 0u) {
+        let p = localOf(k, at);
+        let origin = placeBefore(gas.obstacles[c], gas.before[c], p);
+        v = (p[k] - origin[k]) / bitcast<f32>(gas.obstacleHead.z);
+    }
+    fields[arrayAt(root.now, k, 0u) + face.y] = v;
 }

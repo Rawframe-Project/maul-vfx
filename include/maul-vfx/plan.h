@@ -386,6 +386,10 @@ extern "C"
         mvfxPlannedCollider obstacles[2 * MVFX_MAX_COLLIDERS];
         bool obstaclesKnown;
         mvfxPlannedCollider obstaclesBefore[2 * MVFX_MAX_COLLIDERS];
+        // Whether each obstacle is the last plan's of its index moved
+        // (that one known, of the same kind, sizes and grid): only such a
+        // one's solid has a velocity, else 0.
+        bool obstacleMoved[2 * MVFX_MAX_COLLIDERS];
     } mvfxGasPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
