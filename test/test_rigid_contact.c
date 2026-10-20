@@ -6,9 +6,10 @@
 // smaller box's face meeting it at the eight corners of their overlap; a
 // box's face on a turned box's edge meeting it there, on the collider's
 // face toward the body; a capsule over a box's corner meeting it by its
-// deepest point; boxes stacked face to face meeting at their four corners
-// once each, square or a little turned; a box just above a plane met
-// within the margin and not past it; capsules crossed meeting at their
+// deepest point, and lying flat on a box's face by its ends only; boxes
+// stacked face to face meeting at their four corners once each, square or
+// a little turned; a box just above a plane met within the margin and not
+// past it; capsules crossed meeting at their
 // crossing, and side by side at both ends; a box's and a hull's edge laid
 // across a heightfield's crest meeting it there; passes alternating their
 // order; a twist held by static friction while it can; two bodies on a
@@ -152,6 +153,28 @@ static void TestCapsuleCorner(void)
         deepest = fminf(deepest, list.items[i].depth);
     }
     CHECK(list.count >= 1 && fabsf(deepest + 0.01f) <= 1e-3f, "a capsule over a corner");
+}
+
+static void TestCapsuleFlat(void)
+{
+    // A capsule of length 2 lying along x on a wide box's top, 0.01 into
+    // it: its core is as deep all along, so it meets the box at its ends
+    // only, never at a middle point rounding would place.
+    static const mvfxRigidDef capsule = {
+        .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
+    mvfxBodyPose pose = {.x = {0.1f, 0.5f + 0.25f - 0.01f, 0.2f}};
+    TurnAbout(2, 1.5707963f, pose.q);
+    static const float identity[4] = {0, 0, 0, 1};
+    mvfxResolvedCollider c = BoxCollider(2.0f, 0.5f, 2.0f, identity);
+    static const float rod[3] = {0.5f, 2, 0.5f};
+    mvfxBodyContacts list = Gather(&c, &pose, &capsule, rod);
+    bool ends = list.count == 2;
+    for (int32_t i = 0; ends && i < list.count; ++i)
+    {
+        ends = fabsf(list.items[i].depth + 0.01f) <= 1e-4f &&
+               fabsf(fabsf(list.items[i].surface[0] - 0.1f) - 0.75f) <= 1e-4f;
+    }
+    CHECK(ends, "a capsule lying flat by its ends");
 }
 
 // A heightfield of three points a side over x and z from -2 to 2: flat,
@@ -458,6 +481,7 @@ int main(void)
     TestOverlap();
     TestFaceOnEdge();
     TestCapsuleCorner();
+    TestCapsuleFlat();
     TestFaceToFace();
     TestMargin();
     TestCapsulePairs();

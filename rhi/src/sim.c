@@ -49,9 +49,6 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID)
 #define RUN_FORCES    0x3Fu
 #define RUN_COLLIDERS 0x1Fu
-// The colliders rigid particles meet on the GPU: planes, spheres, boxes.
-#define RIGID_COLLIDERS 0x7u
-
 // Whether the part runs an emitter; what it does not, in refusal.
 static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
@@ -68,14 +65,13 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                               (view->features & (MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM)) != 0)
                          ? MVFX_FEATURE_CONTACTS
                          : 0) |
-                    // Rigid particles meet only planes, spheres and boxes,
-                    // as spheres, capsules and boxes, not each other, and
-                    // are killed by their strikes' life alone.
+                    // Rigid particles meet the colliders as spheres,
+                    // capsules and boxes, not a depth image or each other,
+                    // and are killed by their strikes' life alone.
                     ((view->features & MVFX_FEATURE_RIGID) != 0 &&
-                             (view->kills ||
-                              ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
-                               (view->rigid.shape > mvfx_rigidBox || view->rigid.bodyContacts > 0 ||
-                                view->depthImage || (view->colliderKinds & ~RIGID_COLLIDERS) != 0)))
+                             (view->kills || ((view->features & MVFX_FEATURE_COLLISION) != 0 &&
+                                              (view->rigid.shape > mvfx_rigidBox ||
+                                               view->rigid.bodyContacts > 0 || view->depthImage)))
                          ? MVFX_FEATURE_RIGID
                          : 0),
     };
@@ -676,13 +672,6 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
         if (emitter->capacity > 0 && plan.depth.enabled && sim->hostDepth.index1 == 0)
         {
             return mvfx_errorState;
-        }
-        for (int32_t c = 0; emitter->rigid && c < plan.colliderCount; ++c)
-        {
-            if (plan.colliders[c].kind > mvfx_colliderBox)
-            {
-                return mvfx_errorState;
-            }
         }
         if (emitter->capacity > 0 &&
             !mvfxPlaceHostGrids(sim->context, &plan, plan.ownColliderCount, &emitter->gridLayout))

@@ -16,12 +16,16 @@
 // counts and life lost (killing at once or past their age), newborns
 // striking in their first step, and the contacts past the most dropped
 // and counted; boxes meeting the same, a box collider face to face, edge
-// to edge or on an edge; what is still refused (hulls colliding, grids,
-// depth images, bodies meeting each other, kills within a step). Skips
+// to edge or on an edge; spheres, capsules and boxes on heightfields and
+// distance grids, the emitter's and the instance's; what is still refused
+// (hulls colliding, depth images, bodies meeting each other, kills within
+// a step). Skips
 // (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
+
+#include <math.h>
 
 // A lopsided hull: a wedge with a spike.
 static const float s_lopsided[21] = {0,    0, 0,    1, 0, 0,    0, 0.6f, 0,    0,   0,
@@ -92,16 +96,17 @@ static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* colliders
 // load and speed, which the paths' masses (binary32 here) part by their
 // rounding, and a capsule lying flat on a face has its deepest point
 // anywhere along it; a body near a collider may go apart (rhi_apart.h),
-// at most 48 of the scene's, about 400 near at a step: an error in the
-// solve parts most of them.
+// at most the scene's bound, half again the count measured on lavapipe
+// (at least 4): a change to one feature of the solve parts the bodies at
+// it, past the bound, though most bodies never meet it.
 static void Met(Gpu* gpu, mvfxGpu* kernels, const Run* scene, const char* what)
 {
+    CHECK(scene->mostApart > 0, "a scene's bound on the bodies apart");
     Run run = *scene;
     run.emitterCount = 1;
     run.colliding = !run.killing;
     run.adopting = true;
     run.tolerance = 1e-3f;
-    run.mostApart = 48;
     Compare(gpu, kernels, &run, what);
 }
 
@@ -154,11 +159,14 @@ static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
     static const mvfxCollider floor = {
         .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0.2f}};
     mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, &floor, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres bounced off a sloped floor");
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter},
+        "spheres bounced off a sloped floor");
     emitter = Thrown(mvfx_rigidCapsule, &floor, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules bounced off a sloped floor");
+    Met(gpu, kernels, &(Run){.mostApart = 8, .emitters = &emitter},
+        "capsules bounced off a sloped floor");
     emitter = Thrown(mvfx_rigidBox, &floor, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes bounced off a sloped floor");
+    Met(gpu, kernels, &(Run){.mostApart = 11, .emitters = &emitter},
+        "boxes bounced off a sloped floor");
     // Five floors through one line, each its own patch: a capsule lying on
     // them has ten contacts, two past the most.
     static const mvfxCollider floors[5] = {
@@ -169,11 +177,11 @@ static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
         {.kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, -0.002f}}};
     emitter = Thrown(mvfx_rigidCapsule, floors, 5);
     emitter.events = 0;
-    Met(gpu, kernels, &(Run){.emitters = &emitter, .leastRigidCapped = 1},
+    Met(gpu, kernels, &(Run){.mostApart = 9, .emitters = &emitter, .leastRigidCapped = 1},
         "capsules lying on five floors, contacts dropped");
     // A box lying on them has twenty.
     emitter.rigid.shape = mvfx_rigidBox;
-    Met(gpu, kernels, &(Run){.emitters = &emitter, .leastRigidCapped = 1},
+    Met(gpu, kernels, &(Run){.mostApart = 21, .emitters = &emitter, .leastRigidCapped = 1},
         "boxes lying on five floors, contacts dropped");
 }
 
@@ -183,19 +191,19 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     // own patch.
     static const mvfxCollider bowl = {.kind = mvfx_colliderSphere, .inside = true, .radius = 0.9f};
     mvfxEmitterDef emitter = Thrown(mvfx_rigidCapsule, &bowl, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules within a sphere");
+    Met(gpu, kernels, &(Run){.mostApart = 15, .emitters = &emitter}, "capsules within a sphere");
     emitter = Thrown(mvfx_rigidBox, &bowl, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes within a sphere");
+    Met(gpu, kernels, &(Run){.mostApart = 15, .emitters = &emitter}, "boxes within a sphere");
     static const mvfxCollider crate = {.kind = mvfx_colliderBox,
                                        .inside = true,
                                        .halfExtents = {0.8f, 0.8f, 0.8f},
                                        .rotation = {0, 0.19866933f, 0, 0.98006658f}};
     emitter = Thrown(mvfx_rigidSphere, &crate, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres within a turned box");
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter}, "spheres within a turned box");
     emitter = Thrown(mvfx_rigidCapsule, &crate, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules within a turned box");
+    Met(gpu, kernels, &(Run){.mostApart = 9, .emitters = &emitter}, "capsules within a turned box");
     emitter = Thrown(mvfx_rigidBox, &crate, 1);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes within a turned box");
+    Met(gpu, kernels, &(Run){.mostApart = 15, .emitters = &emitter}, "boxes within a turned box");
     // Kept out of a sphere and a turned box over a floor: capsules landing
     // across the box's edges rest on the lines where their cores cross
     // its faces.
@@ -207,13 +215,58 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
          .halfExtents = {0.3f, 0.15f, 0.25f},
          .rotation = {0.0499792f, 0.0998334f, 0, 0.99374f}}};
     emitter = Thrown(mvfx_rigidSphere, obstacles, 3);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres on a sphere and a box");
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter},
+        "spheres on a sphere and a box");
     emitter = Thrown(mvfx_rigidCapsule, obstacles, 3);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules on a sphere and a box");
+    Met(gpu, kernels, &(Run){.mostApart = 48, .emitters = &emitter},
+        "capsules on a sphere and a box");
     // Boxes meet the box face to face (a face clipped by the other's),
     // edge to edge or on an edge, and the sphere at their nearest point.
     emitter = Thrown(mvfx_rigidBox, obstacles, 3);
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes on a sphere and a box");
+    Met(gpu, kernels, &(Run){.mostApart = 15, .emitters = &emitter}, "boxes on a sphere and a box");
+    // Born into a turned box they are kept out of: pushed out from their
+    // first substep without the push becoming velocity, a capsule's core
+    // point within the box leaving by its nearest face.
+    static const mvfxCollider core[2] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -0.9f, 0}, .normal = {0, 1, 0}},
+        {.kind = mvfx_colliderBox,
+         .halfExtents = {0.25f, 0.25f, 0.25f},
+         .rotation = {0.0499792f, 0.0998334f, 0, 0.99374f}}};
+    emitter = Thrown(mvfx_rigidCapsule, core, 2);
+    Met(gpu, kernels, &(Run){.mostApart = 45, .emitters = &emitter}, "capsules born into a box");
+    emitter = Thrown(mvfx_rigidBox, core, 2);
+    Met(gpu, kernels, &(Run){.mostApart = 21, .emitters = &emitter}, "boxes born into a box");
+    // Spheres the host places at rest well within it, each near one face
+    // (a tenth from it, a quarter from those beside): each leaves by that
+    // face. (A capsule there lies nearly flat on the face, its deepest
+    // point anywhere along its core, and its push out turns it apart.)
+    static const double within[12] = {0.15, 0, 0, -0.15, 0, 0, 0, 0.15, 0, 0, 0, -0.15};
+    static const float still[12] = {0};
+    static const mvfxSpawnRequest placed = {.count = 4, .positions = within, .velocities = still};
+    emitter = Thrown(mvfx_rigidSphere, core, 2);
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .spawn = &placed, .least = -1},
+        "spheres placed within a box");
+    // Capsules placed at rest tilted through the box's top face, one end of
+    // the core within and one without: the core's depth changes along it,
+    // so its deepest point is its inner end, and where it crosses the face
+    // holds it too.
+    static const double across[12] = {0, 0.25, 0, 0.1, 0.25, 0.1, -0.1, 0.25, 0, 0, 0.25, -0.1};
+    static const mvfxSpawnRequest tilted = {.count = 4, .positions = across, .velocities = still};
+    emitter = Thrown(mvfx_rigidCapsule, core, 2);
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.1f, 0.4f, 0.1f}, .max = {0.1f, 0.4f, 0.1f}};
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 0.6f}, .max = {0, 0, 0.6f}};
+    emitter.angularVelocity = (mvfxVectorSource){0};
+    Met(gpu, kernels, &(Run){.mostApart = 36, .emitters = &emitter, .spawn = &tilted, .least = -1},
+        "capsules placed through a box's face");
     // The instance's floor too, in the world's space under a moving
     // instance.
     static const mvfxCollider ground = {
@@ -222,7 +275,8 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.space = mvfx_spaceWorld;
     emitter.collision.hostColliders = true;
     Met(gpu, kernels,
-        &(Run){.emitters = &emitter,
+        &(Run){.mostApart = 14,
+               .emitters = &emitter,
                .moving = true,
                .pace = 0.001,
                .hostColliders = &ground,
@@ -244,7 +298,7 @@ static void TestStrikes(Gpu* gpu, mvfxGpu* kernels)
     emitter.rigid.restitution = 0.8f;
     emitter.overLife.size = (mvfxSizeOverLife){
         .enabled = true, .size = {{.value = 1.0f, .curve = {.keys = grow, .keyCount = 2}}}};
-    Met(gpu, kernels, &(Run){.emitters = &emitter, .killing = true},
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .killing = true},
         "spheres losing life at each strike");
     // A strike taking all of it kills at once; newborns thrown fast from
     // just above the floor strike in their first step.
@@ -253,7 +307,7 @@ static void TestStrikes(Gpu* gpu, mvfxGpu* kernels)
     emitter.shape.radius = 0.1f;
     emitter.shape.offset[1] = -0.35f;
     emitter.velocity.speed = (mvfxRange){20, 30};
-    Met(gpu, kernels, &(Run){.emitters = &emitter, .killing = true, .least = -1},
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .killing = true, .least = -1},
         "capsules killed by their first strike, newborns too");
 }
 
@@ -289,7 +343,8 @@ static void TestSleep(Gpu* gpu, mvfxGpu* kernels)
     emitter.rigid.sleepTime = 0.1f;
     emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
     emitter.events = 0;
-    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules falling asleep on a floor");
+    Met(gpu, kernels, &(Run){.mostApart = 32, .emitters = &emitter},
+        "capsules falling asleep on a floor");
 }
 
 // Whether a planned instance of an emitter is refused on the GPU for its
@@ -352,47 +407,95 @@ static void TestRefused(mvfxGpu* kernels)
     CHECK(RefusedForRigid(kernels, &emitter), "rigid particles killed within a step refused");
 }
 
-static void TestHostGrid(Gpu* gpu, mvfxGpu* kernels)
+// Heights over 9 by 9 points, a gentle swell; signed distances over 8
+// points each way to a sphere of radius 0.25 at the middle of a box of
+// half size 0.4.
+static float s_heights[81];
+static float s_distances[512];
+
+static void MakeGrids(mvfxGridDef grids[2])
 {
-    // The instance's heightfield, which bodies do not meet on the GPU yet:
-    // the step refused, no pass added.
-    static const float heights[4] = {0};
-    mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, NULL, 0);
+    for (int32_t p = 0; p < 81; ++p)
+    {
+        s_heights[p] = 0.15f * sinf(1.3f * (float)(p % 9)) + 0.1f * cosf(0.9f * (float)(p / 9));
+    }
+    for (int32_t p = 0; p < 512; ++p)
+    {
+        float x = -0.4f + 0.8f * (float)(p % 8) / 7.0f;
+        float y = -0.4f + 0.8f * (float)(p / 8 % 8) / 7.0f;
+        float z = -0.4f + 0.8f * (float)(p / 64) / 7.0f;
+        s_distances[p] = sqrtf(x * x + y * y + z * z) - 0.25f;
+    }
+    grids[0] = mvfxDefaultGridDef();
+    grids[0].size[0] = 9;
+    grids[0].size[2] = 9;
+    grids[0].values = s_heights;
+    grids[1] = mvfxDefaultGridDef();
+    grids[1].size[0] = 8;
+    grids[1].size[1] = 8;
+    grids[1].size[2] = 8;
+    grids[1].values = s_distances;
+}
+
+static void TestGrids(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A heightfield floor and a turned ball of a distance grid in the
+    // bodies' way, met by samples: a sphere's center, a capsule's core, a
+    // box's corners, its faces' centers and its edges where the surface
+    // bulges under them.
+    mvfxGridDef grids[2];
+    MakeGrids(grids);
+    static const mvfxCollider own[2] = {{.kind = mvfx_colliderHeightfield,
+                                         .center = {0, -0.8f, 0},
+                                         .halfExtents = {1, 0.1f, 1},
+                                         .rotation = {0, 0, 0, 1},
+                                         .grid = {.index1 = 1}},
+                                        {.kind = mvfx_colliderDistance,
+                                         .center = {-0.2f, -0.5f, 0.1f},
+                                         .halfExtents = {0.4f, 0.4f, 0.4f},
+                                         .rotation = {0, 0.19509032f, 0, 0.98078528f},
+                                         .grid = {.index1 = 2}}};
+    static const char* const names[3] = {"spheres on a heightfield and a distance grid",
+                                         "capsules on a heightfield and a distance grid",
+                                         "boxes on a heightfield and a distance grid"};
+    static const int32_t bounds[3] = {4, 12, 27};
+    for (int32_t shape = 0; shape < 3; ++shape)
+    {
+        mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, own, 2);
+        Met(gpu, kernels,
+            &(Run){.mostApart = bounds[shape],
+                   .emitters = &emitter,
+                   .colliderGrids = grids,
+                   .colliderGridCount = 2},
+            names[shape]);
+    }
+    // The instance's, swapped at half time.
+    static const mvfxCollider swapped[2] = {own[1], own[0]};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidBox, NULL, 0);
     emitter.collision.hostColliders = true;
-    mvfxEffectId effect = {0};
-    mvfxGpuSim* sim = OpenRun(
-        kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .hostGridBytes = 4096}, &effect);
-    mvfxGridDef def = mvfxDefaultGridDef();
-    def.size[0] = 2;
-    def.size[2] = 2;
-    def.values = heights;
-    mvfxCollider ground = {.kind = mvfx_colliderHeightfield,
-                           .center = {0, -0.5f, 0},
-                           .halfExtents = {1, 0.1f, 1},
-                           .rotation = {0, 0, 0, 1}};
-    mrhiFrameDef frame = mrhiDefaultFrameDef();
-    CHECK(mvfxCreateGrid(RunContext(), &def, &ground.grid) == mvfx_success &&
-              mvfxInstance_SetColliders(RunContext(), PlannedInstance(), &ground, 1) ==
-                  mvfx_success &&
-              mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success &&
-              mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
-              mvfxGpuSim_AddPasses(sim) == mvfx_errorState,
-          "bodies meeting the instance's heightfield refused at the step");
-    (void)mrhiDropFrame(gpu->device);
-    mvfxDestroyGpuSim(sim);
-    mvfxDestroyContext(RunContext());
+    Met(gpu, kernels,
+        &(Run){.mostApart = 29,
+               .emitters = &emitter,
+               .colliderGrids = grids,
+               .colliderGridCount = 2,
+               .hostColliders = own,
+               .hostColliderCount = 2,
+               .hostGridBytes = 4 * 81 + 4 * 512,
+               .laterHostColliders = swapped,
+               .laterHostColliderCount = 2},
+        "boxes on the instance's grids, swapped at half time");
 }
 
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
-    TestHostGrid(gpu, kernels);
     TestShapes(gpu, kernels);
     TestSizes(gpu, kernels);
     TestSleep(gpu, kernels);
     TestFloor(gpu, kernels);
     TestColliders(gpu, kernels);
     TestStrikes(gpu, kernels);
+    TestGrids(gpu, kernels);
 }
 
 int main(void)

@@ -955,6 +955,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   nearest point against spheres kept out of, and the separating axes
   against boxes kept out of (a face clipped by the other's or two edges'
   nearest points), as the CPU path's. Colliding hulls stay refused.
+- The GPU part's rigid bodies meet heightfields and distance grids, by
+  the CPU path's samples (a sphere's center, a capsule's core, a box's
+  corners, face centers and edges) probed in the grid's field. A depth
+  image and colliding hulls stay refused.
 
 ### Fixed
 
@@ -971,3 +975,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part's neighbor grid moves a world-space emitter's places by
   the anchor's shift before it reads them, as the CPU path's step does;
   a moving instance's grid was built from the places before the shift.
+- A capsule lying flat on a box's face meets it at its core's two ends
+  only; it also met it at a middle point wherever rounding placed the
+  core's deepest point, so the CPU and GPU paths solved it apart. The
+  middle point counts where it is clearly deeper than both ends (over an
+  edge or a corner).

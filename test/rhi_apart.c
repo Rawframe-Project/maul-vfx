@@ -48,8 +48,9 @@ void ApartReset(void)
     s_uncertainCount = 0;
 }
 
-// The distance from a place to a box collider's surface, in its frame.
-static double BoxDistance(const float place[3], const mvfxPlannedCollider* collider)
+// The distance from a place to a box collider's surface, in its frame;
+// with within, 0 inside it (a grid's box, whose surface lies within).
+static double BoxDistance(const float place[3], const mvfxPlannedCollider* collider, bool within)
 {
     const float* q = collider->rotation;
     double d[3];
@@ -68,17 +69,20 @@ static double BoxDistance(const float place[3], const mvfxPlannedCollider* colli
         int32_t a = (k + 1) % 3;
         int32_t b = (k + 2) % 3;
         double local = d[k] + (double)q[3] * t[k] + (u[a] * t[b] - u[b] * t[a]);
-        double past = fabs(local) - (double)collider->halfExtents[k];
+        // A heightfield's surface lies anywhere along its Y.
+        bool along = within && k == 1 && collider->kind == mvfx_colliderHeightfield;
+        double past = along ? -(double)INFINITY : fabs(local) - (double)collider->halfExtents[k];
         outside += past > 0.0 ? past * past : 0.0;
         inside = fmin(inside, -past);
     }
-    return outside > 0.0 ? sqrt(outside) : inside;
+    return outside > 0.0 ? sqrt(outside) : (within ? 0.0 : inside);
 }
 
 // The distance from a place to a collider's surface, in the particles'
-// space; infinity for a kind whose surface is not measured here (planes,
-// spheres and boxes are), which no particle is near.
-static double Distance(const float place[3], const mvfxPlannedCollider* collider)
+// space; for a rigid body (bodies), a grid's box's as its surface's, which
+// lies anywhere within it; infinity for a grid's otherwise, which no
+// particle is near.
+static double Distance(const float place[3], const mvfxPlannedCollider* collider, bool bodies)
 {
     double d = 0.0;
     double length = 0.0;
@@ -96,9 +100,9 @@ static double Distance(const float place[3], const mvfxPlannedCollider* collider
     case mvfx_colliderSphere:
         return fabs(sqrt(d) - (double)collider->radius);
     case mvfx_colliderBox:
-        return BoxDistance(place, collider);
+        return BoxDistance(place, collider, false);
     default:
-        return (double)INFINITY;
+        return bodies ? BoxDistance(place, collider, true) : (double)INFINITY;
     }
 }
 
@@ -119,7 +123,7 @@ void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const 
         double nearest = (double)INFINITY;
         for (int32_t c = 0; c < plan->colliderCount; ++c)
         {
-            nearest = fmin(nearest, Distance(place, &plan->colliders[c]));
+            nearest = fmin(nearest, Distance(place, &plan->colliders[c], radius > 0.0f));
         }
         // A body's surface may lie anywhere within its radius.
         nearest = fmax(nearest - (double)radius, 0.0);

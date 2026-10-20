@@ -2645,7 +2645,11 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                "step; the farthest at %.3f of the reach)\n",
                (unsigned long long)s_contacts, ApartCount(), MostNear(), (double)LargestShare());
         CHECK(s_contacts > 0, "contacts");
-        CHECK(run->mostApart == 0 || ApartCount() <= run->mostApart, "particles apart");
+    }
+    if (run->mostApart > 0)
+    {
+        printf("  particles apart: %d (at most %d)\n", ApartCount(), run->mostApart);
+        CHECK(ApartCount() <= run->mostApart, "particles apart");
     }
     if (run->leastBreaks > 0)
     {

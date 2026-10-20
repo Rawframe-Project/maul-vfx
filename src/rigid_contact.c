@@ -199,9 +199,16 @@ static void CoreContact(const mvfxBodyPose* b, const mvfxBodyShape* s,
     mvfxAddContact(list, &contact);
 }
 
+// The share of a capsule's reach by which its core's deepest point must
+// lie deeper than both its ends to be met.
+#define DEEPEST_MARGIN 1e-4f
+
 // A sphere or a capsule kept out of a box: its core's ends and its
 // deepest point between (the box's signed distance is convex along the
-// core, so a ternary search finds it).
+// core, so a ternary search finds it) where clearly deeper than both ends:
+// along a face the distance is linear and its least is at an end, so
+// there the deepest point is any point of a flat run, which rounding
+// picked, and a capsule lying on a box rocked on it.
 static void CoreBoxContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
                             const mvfxResolvedCollider* c, mvfxBodyContacts* list)
 {
@@ -223,9 +230,15 @@ static void CoreBoxContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
         low = lower ? low : t0;
     }
     float deepest = 0.5f * (low + high);
+    float point[3];
+    float way[3];
+    float endDepth =
+        fminf(CoreDistance(b, s, c, 0.0f, point, way), CoreDistance(b, s, c, 1.0f, point, way));
+    bool clear = CoreDistance(b, s, c, deepest, point, way) <
+                 endDepth - DEEPEST_MARGIN * (s->half[1] + s->radius);
     CoreContact(b, s, c, 0.0f, list);
     CoreContact(b, s, c, 1.0f, list);
-    if (deepest > 1e-3f && deepest < 1.0f - 1e-3f)
+    if (clear && deepest > 1e-3f && deepest < 1.0f - 1e-3f)
     {
         CoreContact(b, s, c, deepest, list);
     }

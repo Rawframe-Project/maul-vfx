@@ -13,6 +13,9 @@
 // and boxes (their corners; kept out of a box by sim/rigid_box.wgsl).
 
 const CONTACT_MARGIN: f32 = 0.02;
+// The share of a capsule's reach by which its core's deepest point must lie
+// deeper than both its ends to be met.
+const DEEPEST_MARGIN: f32 = 1e-4;
 const MOST_CONTACTS: u32 = 8u;
 const POSITION_PASSES: u32 = 3u;
 const RESTITUTION_PASSES: u32 = 8u;
@@ -265,9 +268,15 @@ fn coreBoxContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
         low = select(t0, low, lower);
     }
     let deepest = 0.5 * (low + high);
+    // Met only where clearly deeper than both ends, as the core's: along a
+    // face the least distance is at an end.
+    let endDepth = min(coreDistance(x, q, s, c, 0.0, &world, &n),
+                       coreDistance(x, q, s, c, 1.0, &world, &n));
+    let clear = coreDistance(x, q, s, c, deepest, &world, &n) <
+                endDepth - DEEPEST_MARGIN * (s.half.y + s.radius);
     coreContact(x, q, s, c, 0.0, list);
     coreContact(x, q, s, c, 1.0, list);
-    if (deepest > 1e-3 && deepest < 1.0 - 1e-3) {
+    if (clear && deepest > 1e-3 && deepest < 1.0 - 1e-3) {
         coreContact(x, q, s, c, deepest, list);
     }
     var ends = array<vec3<f32>, 2>();
@@ -341,6 +350,155 @@ fn outsideContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
                                distance - c.center.w));
 }
 
+// A capsule's spans between its core's samples, at most its radius long
+// (at most eight); none for a sphere.
+fn coreSpans(s: Shape) -> u32 {
+    if (s.kind != RIGID_CAPSULE || !(s.radius > 0.0)) {
+        return 0u;
+    }
+    return u32(ceil(min(2.0 * s.half.y / s.radius, 8.0)));
+}
+
+// The most corners a shape meets a grid by: a capsule's core's points.
+const MOST_CORNERS: u32 = 9u;
+
+// How many points (in its frame) a shape meets a grid by, as spheres of
+// its radius, and how many of them are corners, met plainly: a sphere's
+// center; a capsule's core, its points at most its radius apart; a box's
+// eight corners, then its faces' six centers.
+fn sampleCount(s: Shape, corners: ptr<function, u32>) -> u32 {
+    if (s.kind == RIGID_BOX) {
+        *corners = 8u;
+        return 14u;
+    }
+    *corners = coreSpans(s) + 1u;
+    return *corners;
+}
+
+// A shape's sample i: a box's corners (bit k of i set for +k), then its
+// faces' centers (8 + 2k for +k, 9 + 2k for -k); a core's points in
+// order.
+fn sampleOf(s: Shape, i: u32) -> vec3<f32> {
+    if (s.kind == RIGID_BOX && i < 8u) {
+        return shapePoint(s, i);
+    }
+    if (s.kind == RIGID_BOX) {
+        let k = (i - 8u) / 2u;
+        var out = vec3<f32>(0.0);
+        out[k] = select(-s.half[k], s.half[k], (i - 8u) % 2u == 0u);
+        return out;
+    }
+    let spans = coreSpans(s);
+    return coreAt(s, select(0.5, f32(i) / f32(spans), spans > 0u));
+}
+
+// A grid collider's distance at a place and its unit normal there, as
+// the core's mvfxFieldDistance: LARGEST outside its box; a heightfield's
+// gap along its Y times the slope's cosine.
+fn fieldDistance(c: Collider, world: vec3<f32>, n: ptr<function, vec3<f32>>) -> f32 {
+    let local = rotate(conjugate(c.rotation), world - c.center.xyz);
+    let f = gridField(c, local);
+    if (!(f < LARGEST)) {
+        return LARGEST;
+    }
+    let g = gradientAt(c, local);
+    *n = rotate(c.rotation, g);
+    return select(f, f * abs(g.y), c.modes.x == COLLIDER_HEIGHTFIELD);
+}
+
+// Whether a sample meets a grid collider, and its contact: of the
+// shape's radius, along the normal at its center's distance.
+fn probeSample(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider, sample: vec3<f32>,
+               out: ptr<function, Contact>) -> bool {
+    let world = rotate(q, sample) + x;
+    var n = vec3<f32>(0.0);
+    let distance = fieldDistance(c, world, &n);
+    if (!(distance < LARGEST)) {
+        return false;
+    }
+    let inward = -s.radius * n;
+    *out = contactAt(sample + rotate(conjugate(q), inward), world + inward, n,
+                     distance - s.radius);
+    return true;
+}
+
+// A box's corners' depths and whether each met the grid.
+struct Corners {
+    depths: array<f32, MOST_CORNERS>,
+    found: array<bool, MOST_CORNERS>,
+}
+
+// Whether a box's face center i at depth is met: only where the surface
+// bulges under it, deeper than each corner of its face found.
+fn centerMet(corners: ptr<function, Corners>, i: u32, depth: f32) -> bool {
+    let k = (i - 8u) / 2u;
+    let side = select(0u, 1u, (i - 8u) % 2u == 0u);
+    var met = true;
+    for (var c = 0u; met && c < 8u; c++) {
+        let onFace = ((c >> k) & 1u) == side;
+        met = !onFace || !(*corners).found[c] || depth < (*corners).depths[c];
+    }
+    return met;
+}
+
+// Adds each of a box's edges' deepest inner point (a quarter, a half and
+// three quarters along) where the surface bulges under it, deeper than
+// each of its corners found.
+fn edgeContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
+                corners: ptr<function, Corners>, list: ptr<function, Contacts>) {
+    for (var i = 0u; i < 8u; i++) {
+        for (var k = 0u; k < 3u; k++) {
+            let j = i | (1u << k);
+            if (j == i) {
+                continue;
+            }
+            let a = sampleOf(s, i);
+            let b = sampleOf(s, j);
+            var deepest = Contact();
+            deepest.depth = LARGEST;
+            var met = false;
+            for (var quarter = 1u; quarter <= 3u; quarter++) {
+                var contact = Contact();
+                let point = a + 0.25 * f32(quarter) * (b - a);
+                let hit = probeSample(x, q, s, c, point, &contact) && contact.depth < deepest.depth;
+                if (hit) {
+                    deepest = contact;
+                }
+                met = met || hit;
+            }
+            met = met && (!(*corners).found[i] || deepest.depth < (*corners).depths[i]);
+            met = met && (!(*corners).found[j] || deepest.depth < (*corners).depths[j]);
+            if (met) {
+                addContact(list, deepest);
+            }
+        }
+    }
+}
+
+// A heightfield or a distance grid, by its field at the samples in order,
+// corners first, as the core's GridContacts: only the corners' depths are
+// kept, for their faces' centers and their edges.
+fn gridContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
+                list: ptr<function, Contacts>) {
+    var corners = Corners();
+    var cornerCount = 0u;
+    let count = sampleCount(s, &cornerCount);
+    for (var i = 0u; i < count; i++) {
+        var contact = Contact();
+        let hit = probeSample(x, q, s, c, sampleOf(s, i), &contact);
+        if (i < cornerCount) {
+            corners.found[i] = hit;
+            corners.depths[i] = select(LARGEST, contact.depth, hit);
+        }
+        if (hit && (i < cornerCount || centerMet(&corners, i, contact.depth))) {
+            addContact(list, contact);
+        }
+    }
+    if (s.kind == RIGID_BOX) {
+        edgeContacts(x, q, s, c, &corners, list);
+    }
+}
+
 // A body's contacts with the colliders at its pose, as the core's
 // mvfxGatherBodyContacts, its reach's share the margin.
 fn gatherContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, reach: f32) -> Contacts {
@@ -362,6 +520,8 @@ fn gatherContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, reach: f32) -> Contacts 
             boxBoxContacts(x, q, s, c, &list);
         } else if (c.modes.x == COLLIDER_BOX) {
             coreBoxContacts(x, q, s, c, &list);
+        } else {
+            gridContacts(x, q, s, c, &list);
         }
     }
     return list;
