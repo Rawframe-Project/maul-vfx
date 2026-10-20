@@ -16,6 +16,14 @@
 // series, squared back.
 double mvfxExpMinus(double x);
 
+// The forces' words as the kernels read them (shared/forces.wgsl): a head
+// (their count, whether any kills, the drag every point has), 24 words
+// each, then each one's field of 108 at 4 + 24 MVFX_MAX_FORCES; each
+// force's grid as mvfxForceGridWords gives it.
+#define MVFX_FORCE_WORDS (4 + 132 * MVFX_MAX_FORCES)
+void mvfxForceWords(const mvfxPlannedForce* forces, int32_t count, float sharedDrag,
+                    const uint32_t (*gridWords)[5], uint32_t* words);
+
 // Writes four floats' bits at words.
 static inline void mvfxFloatWords(uint32_t* words, float a, float b, float c, float d)
 {

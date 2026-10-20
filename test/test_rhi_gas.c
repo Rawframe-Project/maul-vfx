@@ -6,8 +6,10 @@
 // mvfxGpuSim_AddGasRead against mvfxInstance_ReadGas's, relative to its
 // size. Covered: sources pouring and setting velocity, buoyancy, decay,
 // closed and open walls, levels above the tail and in it, no solve, a
-// 2D gas, a clear; reads in every format over a box with padded pitches,
-// the padding kept; the refusals.
+// 2D gas, a clear; every force; MacCormack's carry, vorticity
+// confinement, the burn expanding (less its mean in a sealed box); reads
+// in every format over a box with padded pitches, the padding kept; the
+// refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -47,16 +49,31 @@ static mvfxEmitterDef Beside(void)
     return emitter;
 }
 
-static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, Scene* scene)
+// Opens a run of a gas; with a grid, made in the run's context and read
+// by the gas's vector fields.
+static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* grid, Scene* scene)
 {
     *scene = (Scene){0};
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &scene->context) == mvfx_success, "a context");
+    mvfxGasDef made = *gas;
+    static mvfxForce forces[MVFX_MAX_FORCES];
+    mvfxGridId gridId = {0};
+    if (grid != NULL)
+    {
+        CHECK(mvfxCreateGrid(scene->context, grid, &gridId) == mvfx_success, "a field's grid");
+    }
+    for (int32_t f = 0; f < gas->forceCount; ++f)
+    {
+        forces[f] = gas->forces[f];
+        forces[f].grid = forces[f].kind == mvfx_forceVectorField ? gridId : forces[f].grid;
+    }
+    made.forces = gas->forceCount > 0 ? forces : NULL;
     mvfxEmitterDef emitter = Beside();
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
-    def.gases = gas;
+    def.gases = &made;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(scene->context, &def, &effect) == mvfx_success, "a gas's effect");
@@ -74,9 +91,9 @@ static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, Scene* scene)
     simDef.effect = effect;
     simDef.instance = scene->planned;
     mvfxGpuRefusal refusal;
-    mvfxResult made = mvfxCreateGpuSim(&simDef, &scene->sim, &refusal);
-    CHECK(made == mvfx_success, "a gas's simulation");
-    return made == mvfx_success;
+    mvfxResult opened = mvfxCreateGpuSim(&simDef, &scene->sim, &refusal);
+    CHECK(opened == mvfx_success, "a gas's simulation");
+    return opened == mvfx_success;
 }
 
 static void Close(Scene* scene)
@@ -191,11 +208,11 @@ static float MostDensity(const Scene* scene, const mvfxGasDef* gas)
 
 // Steps a gas on both paths, each field compared after every
 // step; with clearing, stopped and cleared at half time and restarted.
-static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, int32_t steps, bool clearing,
-                  const char* what)
+static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* grid,
+                  int32_t steps, bool clearing, const char* what)
 {
     Scene scene;
-    if (!Open(kernels, gas, &scene))
+    if (!Open(kernels, gas, grid, &scene))
     {
         return;
     }
@@ -273,22 +290,22 @@ static const mvfxGasSource s_box = {.shape = mvfx_gasBox,
 static void TestPlumes(Gpu* gpu, mvfxGpu* kernels)
 {
     mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
-    Steps(gpu, kernels, &gas, 30, false, "a plume of 16 by 24 by 16, its levels in the tail");
+    Steps(gpu, kernels, &gas, NULL, 30, false, "a plume of 16 by 24 by 16, its levels in the tail");
     // Levels of 48 by 48 by 32 (73,728 cells) and 24 by 24 by 16 above the
     // tail, which takes 12 by 12 by 8 down; every wall closed, four
     // substeps.
     gas = Plume(48, 48, 32, &s_sphere);
     gas.closedWalls = 63;
     gas.substeps = 4;
-    Steps(gpu, kernels, &gas, 12, false, "a plume of 48 by 48 by 32, closed");
+    Steps(gpu, kernels, &gas, NULL, 12, false, "a plume of 48 by 48 by 32, closed");
     // A 2D gas from a box, three cycles, cleared and restarted.
     gas = Plume(40, 32, 1, &s_box);
     gas.pressureCycles = 3;
-    Steps(gpu, kernels, &gas, 30, true, "a 2D gas from a box, cleared");
+    Steps(gpu, kernels, &gas, NULL, 30, true, "a 2D gas from a box, cleared");
     // No solve: the walls closed alone.
     gas = Plume(16, 16, 16, &s_sphere);
     gas.pressureCycles = 0;
-    Steps(gpu, kernels, &gas, 20, false, "a gas without a solve");
+    Steps(gpu, kernels, &gas, NULL, 20, false, "a gas without a solve");
 }
 
 // The bytes of a read in each path's buffer, filled alike first: the
@@ -372,7 +389,7 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
     // from byte 8 of the buffer; then the reads refused.
     mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
     Scene scene;
-    if (!Open(kernels, &gas, &scene))
+    if (!Open(kernels, &gas, NULL, &scene))
     {
         return;
     }
@@ -432,9 +449,113 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
     Close(&scene);
 }
 
+// A vector field's grid of 4 by 3 by 3 points, three components each.
+static float s_field[3 * 4 * 3 * 3];
+
+static mvfxGridDef FieldGrid(void)
+{
+    for (int32_t p = 0; p < 36; ++p)
+    {
+        float px = (float)(p % 4);
+        float py = (float)(p / 4 % 3);
+        float pz = (float)(p / 12);
+        s_field[3 * p] = sinf(0.9f * py + 0.3f * pz);
+        s_field[3 * p + 1] = 0.5f * cosf(0.7f * px - 0.4f * pz);
+        s_field[3 * p + 2] = sinf(0.5f * px + 0.8f * py) - 0.25f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 4;
+    def.size[1] = 3;
+    def.size[2] = 3;
+    def.components = 3;
+    def.values = s_field;
+    return def;
+}
+
+static void TestForces(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A plume under a world wind fading over a sphere, a local turbulence,
+    // a vortex, an attractor and a vector field pulling toward its
+    // velocity (each face pushed at its place, a drag's exponential decay
+    // its own).
+    const mvfxForce forces[5] = {{.kind = mvfx_forceWind,
+                                  .space = mvfx_spaceWorld,
+                                  .vector = {1, 0, 0.5f},
+                                  .strength = 0.8f,
+                                  .falloff = {.kind = mvfx_falloffSphere,
+                                              .center = {0, 0.2f, 0},
+                                              .radius = 1.2f,
+                                              .exponent = 1.5f}},
+                                 {.kind = mvfx_forceTurbulence,
+                                  .space = mvfx_spaceLocal,
+                                  .strength = 2.0f,
+                                  .noise = {.frequency = 1.5f,
+                                            .octaves = 2,
+                                            .lacunarity = 2.0f,
+                                            .gain = 0.5f,
+                                            .scroll = {0.3f, -0.2f, 0.1f},
+                                            .seed = 9}},
+                                 {.kind = mvfx_forceVortex,
+                                  .space = mvfx_spaceLocal,
+                                  .vector = {0, 1, 0},
+                                  .point = {0.1f, 0, -0.1f},
+                                  .strength = 1.5f,
+                                  .pull = 0.25f},
+                                 {.kind = mvfx_forceAttractor,
+                                  .space = mvfx_spaceLocal,
+                                  .point = {0.3f, 0.5f, 0},
+                                  .strength = 1.0f,
+                                  .softening = 0.2f},
+                                 {.kind = mvfx_forceVectorField,
+                                  .space = mvfx_spaceLocal,
+                                  .point = {0, 0.3f, 0},
+                                  .strength = 2.0f,
+                                  .fieldMode = mvfx_fieldVelocity,
+                                  .tightness = 3.0f,
+                                  .boxSize = {1.6f, 1.6f, 1.6f},
+                                  .boxRotation = {0, 0, 0, 1},
+                                  .border = mvfx_borderClamp}};
+    mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
+    gas.forces = forces;
+    gas.forceCount = 5;
+    mvfxGridDef grid = FieldGrid();
+    Steps(gpu, kernels, &gas, &grid, 30, false, "a plume under every force");
+}
+
+static void TestBurns(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A plume carried by MacCormack's under vorticity confinement.
+    mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
+    gas.advection = mvfx_gasMacCormack;
+    gas.vorticity = 0.4f;
+    Steps(gpu, kernels, &gas, NULL, 30, false, "a plume by MacCormack's, confined");
+    // A 2D gas the same, cleared and restarted.
+    gas = Plume(40, 32, 1, &s_box);
+    gas.advection = mvfx_gasMacCormack;
+    gas.vorticity = 0.6f;
+    Steps(gpu, kernels, &gas, NULL, 30, true, "a 2D gas by MacCormack's, confined, cleared");
+    // A fire: the sphere's fuel burning where it is hot enough, heating,
+    // smoking and expanding, open above.
+    gas = Plume(16, 24, 16, &s_sphere);
+    gas.ignitionTemperature = 0.5f;
+    gas.burnRate = 4.0f;
+    gas.burnHeat = 1.5f;
+    gas.burnSmoke = 0.5f;
+    gas.burnExpansion = 0.3f;
+    Steps(gpu, kernels, &gas, NULL, 30, false, "a fire, expanding");
+    // The same sealed, its expansion less its mean, by MacCormack's and
+    // confined.
+    gas.closedWalls = 63;
+    gas.advection = mvfx_gasMacCormack;
+    gas.vorticity = 0.3f;
+    Steps(gpu, kernels, &gas, NULL, 30, false, "a sealed fire by MacCormack's, confined");
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestPlumes(gpu, kernels);
+    TestForces(gpu, kernels);
+    TestBurns(gpu, kernels);
     TestReads(gpu, kernels);
 }
 

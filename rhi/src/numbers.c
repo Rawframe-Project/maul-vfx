@@ -139,15 +139,13 @@ static void Field(const mvfxPlannedForce* force, const uint32_t grid[5], uint32_
     words[105] = force->border;
 }
 
-// The forces: a head (their count, whether any kills, the shared drag),
-// 24 words each, then each one's field.
-static void Forces(const mvfxEmitterPlan* plan, float sharedDrag, const uint32_t (*gridWords)[5],
-                   uint32_t* words)
+void mvfxForceWords(const mvfxPlannedForce* forces, int32_t count, float sharedDrag,
+                    const uint32_t (*gridWords)[5], uint32_t* words)
 {
     bool kills = false;
-    for (int32_t f = 0; f < plan->forceCount; ++f)
+    for (int32_t f = 0; f < count; ++f)
     {
-        const mvfxPlannedForce* force = &plan->forces[f];
+        const mvfxPlannedForce* force = &forces[f];
         uint32_t* at = words + 4 + 24 * f;
         at[0] = force->kind;
         at[1] = force->falloff;
@@ -162,7 +160,7 @@ static void Forces(const mvfxEmitterPlan* plan, float sharedDrag, const uint32_t
         kills = kills || (force->kind == mvfx_forceAttractor && force->killRadius > 0.0f);
         Field(force, gridWords[f], words + 4 + 24 * MVFX_MAX_FORCES + 108 * f);
     }
-    words[0] = (uint32_t)plan->forceCount;
+    words[0] = (uint32_t)count;
     words[1] = kills ? 1u : 0u;
     memcpy(&words[2], &sharedDrag, sizeof sharedDrag);
 }
@@ -951,7 +949,7 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Place(words + 60, &plan->from, after);
     Place(words + 68, &plan->to, after);
     mvfxFloatWords(words + 76, plan->velocity[0], plan->velocity[1], plan->velocity[2], 0.0f);
-    Forces(plan, sharedDrag, forceGrids, words + 80);
+    mvfxForceWords(plan->forces, plan->forceCount, sharedDrag, forceGrids, words + 80);
     Colliders(plan, colliderGrids, normals, words + 84 + 132 * MVFX_MAX_FORCES);
     uint32_t* at = words + MVFX_VALUES_FIRST;
     Words(&view->arrays, at);

@@ -7,15 +7,20 @@
 //  - gasAreas and gasCoefficients make each level's open areas, then its
 //    faces' coefficients and cells' weights (mvfxGasAreas), once;
 //  - each substep: gasPourCells (the sources into the cells), gasFaces
-//    (the sources' velocities, then buoyancy), gasCarry and
-//    gasCarryCells (semi-Lagrangian into the other buffers), then the
-//    projection: gasDivergence, a V-cycle's gasJacobi sweeps, gasRestrict
+//    (the sources' velocities, buoyancy, the forces), gasCurl and
+//    gasConfine (vorticity confinement), gasCarry and gasCarryCells
+//    (semi-Lagrangian into the other buffers, or MacCormack's three
+//    stages), gasBurn (the fuel burning, its expansion into the work),
+//    gasMean (a sealed box's mean expansion), then the projection:
+//    gasDivergence (less the expansion), a V-cycle's gasJacobi sweeps,
+//    gasRestrict
 //    (the residual summed over a coarse cell's children), gasProlong, and
 //    gasTail running the levels of at most TAIL_CELLS cells in one
 //    workgroup; gasCorrect closes the walls and takes the pressure's
 //    rise off each open face.
-// The fields live in one buffer (faces then cells, two of each, offsets
-// in the numbers), the solve's levels in another.
+// The fields live in one buffer (faces then cells, two of each, then the
+// work and the expansion's mean, offsets in the numbers), the solve's
+// levels in another.
 
 const NONE: u32 = 0xFFFFFFFFu;
 const GROUP: u32 = 64u;
@@ -26,8 +31,19 @@ const TAIL_GROUP: u32 = 256u;
 const SMOOTH_PASSES: u32 = 2u;
 const COARSEST_PASSES: u32 = 64u;
 const SPHERE: u32 = 0u;
+// The stages of a carry (root.word): semi-Lagrangian times the keep;
+// MacCormack's semi-Lagrangian, its trace ahead into the work, and its
+// correction times the keep.
+const CARRY_PLAIN: u32 = 0u;
+const CARRY_BACK: u32 = 1u;
+const CARRY_AHEAD: u32 = 2u;
+const CARRY_CORRECT: u32 = 3u;
 
 // include: shared/gas_numbers.wgsl
+
+// include: shared/pcg4d_hash.wgsl
+
+// include: shared/forces.wgsl
 
 // What a pass works on: the substep, the buffer current at its start, a
 // level, and a pass's own word.
@@ -41,6 +57,13 @@ struct Root {
 @group(0) @binding(0) var<uniform> gas: Gas;
 @group(0) @binding(1) var<storage, read_write> fields: array<f32>;
 @group(0) @binding(2) var<storage, read_write> solve: array<f32>;
+// The grids its forces read (rhi/src/grids.c).
+@group(0) @binding(3) var<storage, read> grids: array<u32>;
+
+// Force n's field among the gas's numbers (shared/forces.wgsl).
+fn fieldOf(n: u32) -> Field {
+    return gas.fields[n];
+}
 
 var<immediate> root: Root;
 
@@ -432,11 +455,235 @@ fn gasFaces(@builtin(global_invocation_id) id: vec3<u32>) {
         let scale = step.span.x * gas.gravity[k];
         v += scale * sum;
     }
+    if (gas.forceHead.x > 0u) {
+        v = pushed(k, localOf(k, at), step, v);
+    }
     fields[i] = v;
 }
 
-// Each face carried semi-Lagrangian from the current buffer into the
-// other, times the velocity's keep.
+// A face's velocity across k at x after the forces over the substep, as
+// the core's Pushed: v e^(-dh) + a / d (1 - e^(-dh)) under a drag d, else
+// v + a h.
+fn pushed(k: u32, x: vec3<f32>, step: Substep, v: f32) -> f32 {
+    var a = vec3<f32>(0.0);
+    var drag = 0.0;
+    for (var n = 0u; n < gas.forceHead.x; n++) {
+        let f = gas.forces[n];
+        let weight = falloffAt(f, x);
+        if (weight > 0.0) {
+            forceAt(n, f, x, step.span.w, weight, &a, &drag);
+        }
+    }
+    let h = step.span.x;
+    if (!(drag > 0.0)) {
+        return v + a[k] * h;
+    }
+    let keep = exp(-drag * h);
+    return v * keep + a[k] / drag * (1.0 - keep);
+}
+
+// The cell-centered velocity's component c at cell at of the current
+// buffer: the mean of its two faces across c (0 along a 2D gas's Z).
+fn centered(c: u32, at: vec3<u32>) -> f32 {
+    let n = sizeOf();
+    if (n[c] == 1u) {
+        return 0.0;
+    }
+    let m = pointsOf(n, c);
+    let stride = vec3<u32>(1u, m.x, m.x * m.y);
+    let low = arrayAt(root.now, c, 0u) + indexOf(m, at);
+    return 0.5 * (fields[low] + fields[low + stride[c]]);
+}
+
+// The derivative along a of the centered velocity's component c at a
+// cell: a central difference, one-sided at the box's edges (0 across a
+// 2D gas's Z).
+fn derivative(c: u32, a: u32, at: vec3<u32>) -> f32 {
+    let n = sizeOf();
+    if (n[a] == 1u || n[c] == 1u) {
+        return 0.0;
+    }
+    var low = at;
+    var high = at;
+    low[a] = select(at[a], at[a] - 1u, at[a] > 0u);
+    high[a] = select(at[a], at[a] + 1u, at[a] + 1u < n[a]);
+    let span = f32(high[a] - low[a]) * gas.lattice.x;
+    return (centered(c, high) - centered(c, low)) / span;
+}
+
+// Each cell's curl into the work: a 2D gas's about Z alone, a 3D gas's
+// three components one array after another.
+@compute @workgroup_size(64, 1, 1)
+fn gasCurl(@builtin(global_invocation_id) id: vec3<u32>) {
+    let point = id.x + id.y * ROW;
+    let n = sizeOf();
+    let cells = cellCount(n);
+    if (point >= cells) {
+        return;
+    }
+    let at = pointOf(n, point);
+    let work = gas.cells[0].w;
+    let about = derivative(1u, 0u, at) - derivative(0u, 1u, at);
+    if (n.z == 1u) {
+        fields[work + point] = about;
+        return;
+    }
+    fields[work + point] = derivative(2u, 1u, at) - derivative(1u, 2u, at);
+    fields[work + cells + point] = derivative(0u, 2u, at) - derivative(2u, 0u, at);
+    fields[work + 2u * cells + point] = about;
+}
+
+// The curl's components at cell at (a 2D gas's about Z alone).
+fn curlAt(at: vec3<u32>) -> vec3<f32> {
+    let n = sizeOf();
+    let cells = cellCount(n);
+    let i = gas.cells[0].w + indexOf(n, at);
+    if (n.z == 1u) {
+        return vec3<f32>(0.0, 0.0, fields[i]);
+    }
+    return vec3<f32>(fields[i], fields[i + cells], fields[i + 2u * cells]);
+}
+
+// The curl's size at a cell.
+fn curlSize(at: vec3<u32>) -> f32 {
+    let w = curlAt(at);
+    return sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+}
+
+// Vorticity confinement's force at a cell, as the core's ConfineAt:
+// epsilon h (N x w), N the curl's size's gradient over the larger of its
+// own size and 1e-4 of its scale.
+fn confineAt(at: vec3<u32>) -> vec3<f32> {
+    let n = sizeOf();
+    var gradient = vec3<f32>(0.0);
+    var peak = 0.0;
+    for (var a = 0u; a < 3u; a++) {
+        if (n[a] == 1u) {
+            continue;
+        }
+        var low = at;
+        var high = at;
+        low[a] = select(at[a], at[a] - 1u, at[a] > 0u);
+        high[a] = select(at[a], at[a] + 1u, at[a] + 1u < n[a]);
+        let below = curlSize(low);
+        let above = curlSize(high);
+        peak = max(peak, max(below, above));
+        gradient[a] = (above - below) / (f32(high[a] - low[a]) * gas.lattice.x);
+    }
+    let size = sqrt(gradient[0] * gradient[0] + gradient[1] * gradient[1] +
+                    gradient[2] * gradient[2]);
+    let w = curlAt(at);
+    let least = 1e-4 * peak / gas.lattice.x;
+    var scale = 0.0;
+    if (peak > 0.0) {
+        scale = gas.burn.w * gas.lattice.x / max(size, least);
+    }
+    return vec3<f32>(scale * (gradient[1] * w[2] - gradient[2] * w[1]),
+                     scale * (gradient[2] * w[0] - gradient[0] * w[2]),
+                     scale * (gradient[0] * w[1] - gradient[1] * w[0]));
+}
+
+// Each face given confinement over the substep: the mean of the cells'
+// forces beside it, or a wall face's one.
+@compute @workgroup_size(64, 1, 1)
+fn gasConfine(@builtin(global_invocation_id) id: vec3<u32>) {
+    let point = id.x + id.y * ROW;
+    let n = sizeOf();
+    let face = faceAxis(n, point);
+    if (face.x == 3u) {
+        return;
+    }
+    let k = face.x;
+    let at = pointOf(pointsOf(n, k), face.y);
+    var sum = 0.0;
+    var count = 0u;
+    if (at[k] > 0u) {
+        var low = at;
+        low[k] -= 1u;
+        sum += confineAt(low)[k];
+        count += 1u;
+    }
+    if (at[k] < n[k]) {
+        sum += confineAt(at)[k];
+        count += 1u;
+    }
+    if (count == 2u) {
+        sum = 0.5 * sum;
+    }
+    let i = arrayAt(root.now, k, 0u) + face.y;
+    fields[i] += gas.substeps[root.substep].span.x * sum;
+}
+
+// A lattice's values at place p as sampleAt in all eight corners' order
+// (mvfxGasSampleRange), and the least and most of the values it took.
+fn sampleRange(start: u32, axis: u32, p: vec3<f32>) -> vec3<f32> {
+    let m = pointsOf(sizeOf(), axis);
+    var low: vec3<u32>;
+    var high: vec3<u32>;
+    var t: vec3<f32>;
+    for (var k = 0u; k < 3u; k++) {
+        let shift = select(0.5, 0.0, k == axis);
+        let place = min(max(p[k] - shift, 0.0), f32(m[k] - 1u));
+        low[k] = u32(place);
+        high[k] = select(low[k], low[k] + 1u, low[k] + 1u < m[k]);
+        t[k] = place - f32(low[k]);
+    }
+    var sum = 0.0;
+    var least = 0.0;
+    var most = 0.0;
+    for (var corner = 0u; corner < 8u; corner++) {
+        var at: vec3<u32>;
+        var weight = 1.0;
+        for (var k = 0u; k < 3u; k++) {
+            let up = ((corner >> k) & 1u) != 0u;
+            at[k] = select(low[k], high[k], up);
+            weight *= select(1.0 - t[k], t[k], up);
+        }
+        let value = fields[start + (at.z * m.y + at.y) * m.x + at.x];
+        sum += weight * value;
+        least = select(min(least, value), value, corner == 0u);
+        most = select(max(most, value), value, corner == 0u);
+    }
+    return vec3<f32>(sum, least, most);
+}
+
+// The point i of an array along axis, traced to back, carried by stage
+// root.word from the current buffer's array (starting at origin) into the
+// other's (at into), MacCormack's trace ahead into the work's float work
+// instead; times keep where the stage takes it.
+fn carryPoint(axis: u32, back: vec3<f32>, i: u32, origin: u32, into: u32, work: u32,
+              keep: f32) {
+    switch root.word {
+        case CARRY_PLAIN: {
+            fields[into + i] = keep * sampleAt(origin, axis, back);
+        }
+        case CARRY_BACK: {
+            fields[into + i] = sampleAt(origin, axis, back);
+        }
+        case CARRY_AHEAD: {
+            fields[work] = sampleAt(into, axis, back);
+        }
+        default: {
+            // Half the error taken back, the plain value kept where the
+            // result leaves the points sampled from.
+            let plain = sampleRange(origin, axis, back);
+            let sharp = plain.x + 0.5 * (fields[origin + i] - fields[work]);
+            let within = sharp >= plain.y && sharp <= plain.z;
+            fields[into + i] = keep * select(plain.x, sharp, within);
+        }
+    }
+}
+
+// Where the point at p of a carry's stage traces to through the current
+// buffer's velocity: back over the substep, or ahead for MacCormack's
+// trace ahead.
+fn traced(p: vec3<f32>) -> vec3<f32> {
+    let h = gas.substeps[root.substep].span.x;
+    return traceBack(root.now, p, select(h, -h, root.word == CARRY_AHEAD));
+}
+
+// Each face carried by a stage (root.word) from the current buffer into
+// the other, times the velocity's keep.
 @compute @workgroup_size(64, 1, 1)
 fn gasCarry(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
@@ -447,27 +694,103 @@ fn gasCarry(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     let k = face.x;
     let at = pointOf(pointsOf(n, k), face.y);
-    let step = gas.substeps[root.substep];
-    let back = traceBack(root.now, placeOf(k, at), step.span.x);
-    let value = sampleAt(arrayAt(root.now, k, 0u), k, back);
-    fields[arrayAt(1u - root.now, k, 0u) + face.y] = step.span.y * value;
+    let back = traced(placeOf(k, at));
+    carryPoint(k, back, face.y, arrayAt(root.now, k, 0u), arrayAt(1u - root.now, k, 0u),
+               gas.cells[0].w + point, gas.substeps[root.substep].span.y);
 }
 
-// Each cell's scalars carried semi-Lagrangian from the current buffer
-// into the other, each times its keep, one trace for all.
+// Each cell's scalars carried by a stage (root.word) from the current
+// buffer into the other, each times its keep, one trace for all.
 @compute @workgroup_size(64, 1, 1)
 fn gasCarryCells(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
     let n = sizeOf();
-    if (point >= cellCount(n)) {
+    let cells = cellCount(n);
+    if (point >= cells) {
         return;
     }
     let step = gas.substeps[root.substep];
-    let at = pointOf(n, point);
-    let back = traceBack(root.now, placeOf(3u, at), step.span.x);
+    let back = traced(placeOf(3u, pointOf(n, point)));
     for (var f = 0u; f < 3u; f++) {
-        let value = sampleAt(arrayAt(root.now, 3u, f), 3u, back);
-        fields[arrayAt(1u - root.now, 3u, f) + point] = step.keeps[f] * value;
+        carryPoint(3u, back, point, arrayAt(root.now, 3u, f), arrayAt(1u - root.now, 3u, f),
+                   gas.cells[0].w + f * cells + point, step.keeps[f]);
+    }
+}
+
+// The fuel burning over the substep in each cell of the current buffer
+// hot enough, adding its heat and smoke; the divergence it asks for into
+// the work when the burn expands.
+@compute @workgroup_size(64, 1, 1)
+fn gasBurn(@builtin(global_invocation_id) id: vec3<u32>) {
+    let point = id.x + id.y * ROW;
+    if (point >= cellCount(sizeOf())) {
+        return;
+    }
+    let step = gas.substeps[root.substep];
+    let density = arrayAt(root.now, 3u, 0u) + point;
+    let temperature = arrayAt(root.now, 3u, 1u) + point;
+    let fuel = arrayAt(root.now, 3u, 2u) + point;
+    let held = fields[fuel];
+    var burned = 0.0;
+    if (fields[temperature] >= gas.burn.x && held > 0.0) {
+        burned = held * step.burn.x;
+    }
+    fields[fuel] = held - burned;
+    fields[temperature] += gas.burn.y * burned;
+    fields[density] += gas.burn.z * burned;
+    if (gas.modes.y != 0u) {
+        fields[gas.cells[0].w + point] = step.burn.y * burned;
+    }
+}
+
+// A binary32 pair's exact sum and its error (Knuth's two-sum).
+fn twoSum(a: f32, b: f32) -> vec2<f32> {
+    let s = a + b;
+    let part = s - a;
+    return vec2<f32>(s, (a - (s - part)) + (b - part));
+}
+
+// Two sums held as pairs added, the result a pair again.
+fn addPairs(x: vec2<f32>, y: vec2<f32>) -> vec2<f32> {
+    let s = twoSum(x.x, y.x);
+    return twoSum(s.x, s.y + (x.y + y.y));
+}
+
+var<workgroup> sums: array<vec2<f32>, 256>;
+var<workgroup> opens: array<u32, 256>;
+
+// A sealed box's expansion's mean over its open cells: summed as pairs of
+// binary32 in one workgroup, standing for the core's binary64 sum.
+@compute @workgroup_size(256, 1, 1)
+fn gasMean(@builtin(local_invocation_index) lane: u32) {
+    let n = sizeOf();
+    let cells = cellCount(n);
+    let work = gas.cells[0].w;
+    var sum = vec2<f32>(0.0);
+    var open = 0u;
+    for (var i = lane; i < cells; i += TAIL_GROUP) {
+        if (isOpen(pointOf(n, i))) {
+            sum = addPairs(sum, vec2<f32>(fields[work + i], 0.0));
+            open += 1u;
+        }
+    }
+    sums[lane] = sum;
+    opens[lane] = open;
+    workgroupBarrier();
+    for (var half = TAIL_GROUP / 2u; half > 0u; half >>= 1u) {
+        if (lane < half) {
+            sums[lane] = addPairs(sums[lane], sums[lane + half]);
+            opens[lane] += opens[lane + half];
+        }
+        workgroupBarrier();
+    }
+    if (lane == 0u) {
+        let total = sums[0];
+        var mean = 0.0;
+        if (opens[0] > 0u) {
+            mean = (total.x + total.y) / f32(opens[0]);
+        }
+        fields[gas.cells[1].w] = mean;
     }
 }
 
@@ -488,8 +811,24 @@ fn walledFace(b: u32, k: u32, at: vec3<u32>) -> f32 {
     return fields[arrayAt(b, k, 0u) + indexOf(pointsOf(sizeOf(), k), at)];
 }
 
-// Each open cell's divergence (the core's after closing the walls) into
-// the first level's right-hand side; 0 for a cell nothing passes into.
+// Whether a cell of the gas has an open face across an axis of more than
+// one cell (IsOpen).
+fn isOpen(at: vec3<u32>) -> bool {
+    let n = sizeOf();
+    let level = gas.levels[0];
+    let stride = vec3<u32>(1u, n.x, n.x * n.y);
+    var open = false;
+    for (var k = 0u; k < 3u; k++) {
+        let low = indexOf(pointsOf(n, k), at);
+        open = open || (n[k] > 1u && (solve[level.areas[k] + low] > 0.0 ||
+                                      solve[level.areas[k] + low + stride[k]] > 0.0));
+    }
+    return open;
+}
+
+// Each open cell's divergence (the core's after closing the walls) less
+// the burn's expansion (less its mean in a sealed box) into the first
+// level's right-hand side; 0 for a cell nothing passes into.
 @compute @workgroup_size(64, 1, 1)
 fn gasDivergence(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
@@ -497,11 +836,8 @@ fn gasDivergence(@builtin(global_invocation_id) id: vec3<u32>) {
     if (point >= cellCount(n)) {
         return;
     }
-    let level = gas.levels[0];
     let at = pointOf(n, point);
-    let stride = vec3<u32>(1u, n.x, n.x * n.y);
     var out = 0.0;
-    var open = false;
     for (var k = 0u; k < 3u; k++) {
         var up = at;
         up[k] += 1u;
@@ -510,11 +846,17 @@ fn gasDivergence(@builtin(global_invocation_id) id: vec3<u32>) {
         } else {
             out += 0.0;
         }
-        let low = indexOf(pointsOf(n, k), at);
-        open = open || (n[k] > 1u && (solve[level.areas[k] + low] > 0.0 ||
-                                      solve[level.areas[k] + low + stride[k]] > 0.0));
     }
-    solve[level.at.y + point] = select(0.0, out, open);
+    let open = isOpen(at);
+    var rhs = select(0.0, out, open);
+    if (gas.modes.y != 0u) {
+        var mean = 0.0;
+        if (gas.modes.z != 0u) {
+            mean = fields[gas.cells[1].w];
+        }
+        rhs -= select(0.0, fields[gas.cells[0].w + point] - mean, open);
+    }
+    solve[gas.levels[0].at.y + point] = rhs;
 }
 
 // A level's pressure's neighbors about cell at, weighted by their faces'

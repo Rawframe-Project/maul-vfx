@@ -5,8 +5,12 @@
     {"name": "gasCoefficients", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "gasPourCells", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "gasFaces", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "gasCurl", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "gasConfine", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "gasCarry", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "gasCarryCells", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "gasBurn", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "gasMean", "stage": "compute", "workgroup": [256, 1, 1]},
     {"name": "gasDivergence", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "gasJacobi", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "gasRestrict", "stage": "compute", "workgroup": [64, 1, 1]},
@@ -15,9 +19,10 @@
     {"name": "gasCorrect", "stage": "compute", "workgroup": [64, 1, 1]}
   ],
   "bindings": [
-    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 1536},
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 5936},
     {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
-    {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4}
+    {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 3, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4}
   ],
   "constants": []
 }

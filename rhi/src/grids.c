@@ -69,18 +69,19 @@ static int32_t Fixed(const mvfxContext* context, mvfxGridId id, mvfxGpuGrids* gr
     return grids->count - 1;
 }
 
-bool mvfxLayGrids(const mvfxContext* context, const mvfxEmitterView* view, uint32_t hostWords,
+bool mvfxLayGrids(const mvfxContext* context, const mvfxGridId forceGrids[MVFX_MAX_FORCES],
+                  const mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS], uint32_t hostWords,
                   mvfxGpuGrids* grids)
 {
     *grids = (mvfxGpuGrids){0};
     bool ok = true;
     for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)
     {
-        grids->forceGrid[f] = Fixed(context, view->forceGrids[f], grids, &ok);
+        grids->forceGrid[f] = Fixed(context, forceGrids[f], grids, &ok);
     }
     for (int32_t c = 0; c < MVFX_MAX_COLLIDERS; ++c)
     {
-        grids->colliderGrid[c] = Fixed(context, view->colliderGrids[c], grids, &ok);
+        grids->colliderGrid[c] = Fixed(context, colliderGrids[c], grids, &ok);
     }
     grids->fixedCount = grids->count;
     grids->hostFirst = grids->words;

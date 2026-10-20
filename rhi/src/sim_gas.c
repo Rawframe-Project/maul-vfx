@@ -31,15 +31,39 @@
 #define WORD_CELLS    24u
 #define WORD_LEVELS   32u
 #define WORD_SUBSTEPS 192u
-#define WORD_SOURCES  256u
+#define WORD_SOURCES  288u
+#define WORD_FORCES   416u
+#define WORD_BURN     (WORD_FORCES + MVFX_FORCE_WORDS)
+
+// The words of a substep's numbers (gas.wgsl's Substep).
+#define SUBSTEP_WORDS 12u
 
 // Whether the part runs a gas: smoke, without what later slices add.
 static bool Runs(const mvfxGasView* view)
 {
     const mvfxGasDef* def = &view->def;
-    return def->kind == mvfx_gasSmoke && def->forceCount == 0 && def->obstacleCount == 0 &&
-           !def->hostObstacles && def->advection != mvfx_gasMacCormack && def->vorticity == 0.0f &&
-           def->burnRate == 0.0f;
+    return def->kind == mvfx_gasSmoke && def->obstacleCount == 0 && !def->hostObstacles;
+}
+
+// Whether a gas's burn expands it.
+static bool Expands(const mvfxGasDef* def)
+{
+    return def->burnExpansion > 0.0f && def->burnRate > 0.0f;
+}
+
+// Whether every wall a gas meets is closed: its expansion then less its
+// mean (a smoke gas has no air).
+static bool IsSealed(const mvfxGasDef* def)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        uint32_t both = 3u << (2 * k);
+        if (def->size[k] > 1 && (def->closedWalls & both) != both)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 mvfxResult mvfxReadSimGases(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refusal)
@@ -114,11 +138,21 @@ static int32_t CyclePasses(const mvfxGasView* view)
     return 6 * (int32_t)TailOf(view) + 1;
 }
 
+// The dispatches of a carry: one, or MacCormack's three.
+static int32_t CarryPasses(const mvfxGasDef* def)
+{
+    return def->advection == mvfx_gasMacCormack ? 3 : 1;
+}
+
 int32_t mvfxSimGasPasses(const mvfxGasView* view)
 {
     const mvfxGasDef* def = &view->def;
-    int32_t solve = def->pressureCycles > 0 ? 1 + def->pressureCycles * CyclePasses(view) : 0;
-    int32_t substep = 4 + solve + 1;
+    bool solves = def->pressureCycles > 0;
+    int32_t solve = solves ? 1 + def->pressureCycles * CyclePasses(view) : 0;
+    int32_t confine = def->vorticity != 0.0f ? 2 : 0;
+    int32_t burn = def->burnRate != 0.0f ? 1 : 0;
+    int32_t mean = solves && Expands(def) && IsSealed(def) ? 1 : 0;
+    int32_t substep = 2 + confine + 2 * CarryPasses(def) + burn + mean + solve + 1;
     return 1 + 2 * view->levelCount + def->substeps * substep;
 }
 
@@ -145,6 +179,14 @@ static void Lay(SimGas* gas, uint64_t* fields, uint64_t* solve)
             at += (uint32_t)view->cells;
         }
     }
+    // The work: a curl's three arrays, MacCormack's trace ahead of every
+    // face or of the three scalars, or the expansion; then its mean.
+    uint32_t scalars = 3u * (uint32_t)view->cells;
+    uint32_t faces = AllFaces(view, 0);
+    w[WORD_CELLS + 3u] = at;
+    at += faces > scalars ? faces : scalars;
+    w[WORD_CELLS + 7u] = at;
+    at += 1u;
     *fields = at;
     at = 0;
     for (int32_t l = 0; l < view->levelCount; ++l)
@@ -207,6 +249,12 @@ static void StaticNumbers(SimGas* gas)
         mvfxFloatWords(at + 12, source->velocity[0], source->velocity[1], source->velocity[2],
                        source->setsVelocity ? 1.0f : 0.0f);
     }
+    mvfxFloatWords(w + WORD_BURN, def->ignitionTemperature, def->burnHeat, def->burnSmoke,
+                   def->vorticity);
+    w[WORD_BURN + 4u] = def->advection == mvfx_gasMacCormack ? 1u : 0u;
+    w[WORD_BURN + 5u] = Expands(def) ? 1u : 0u;
+    w[WORD_BURN + 6u] = IsSealed(def) ? 1u : 0u;
+    w[WORD_BURN + 7u] = 0u;
 }
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
@@ -220,6 +268,17 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
 
 bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas)
 {
+    const mvfxGasDef* def = &gas->view.def;
+    mvfxGridId forceGrids[MVFX_MAX_FORCES] = {0};
+    const mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS] = {0};
+    for (int32_t f = 0; f < def->forceCount; ++f)
+    {
+        forceGrids[f] = def->forces[f].grid;
+    }
+    if (!mvfxLayGrids(sim->context, forceGrids, colliderGrids, 0, &gas->grids))
+    {
+        return false;
+    }
     gas->tail = TailOf(&gas->view);
     uint64_t fields = 0;
     uint64_t solve = 0;
@@ -235,7 +294,9 @@ bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas)
     bool created = gas->dispatches != nullptr && gas->passes != nullptr &&
                    CreateBuffer(sim, 4u * MVFX_GAS_WORDS, numbers, &gas->buffers[GAS_NUMBERS]) &&
                    CreateBuffer(sim, 4u * fields, written, &gas->buffers[GAS_FIELDS]) &&
-                   CreateBuffer(sim, 4u * solve, written, &gas->buffers[GAS_SOLVE]);
+                   CreateBuffer(sim, 4u * solve, written, &gas->buffers[GAS_SOLVE]) &&
+                   CreateBuffer(sim, 4u * (gas->grids.words > 0 ? gas->grids.words : 1u), written,
+                                &gas->buffers[GAS_GRIDS]);
     for (int32_t r = 0; created && r < MVFX_GPU_GAS_READS; ++r)
     {
         created = CreateBuffer(sim, 4u * GAS_READ_WORDS, numbers, &gas->reads[r].numbers);
@@ -300,6 +361,28 @@ static void Cycle(SimGas* gas, uint32_t s, uint32_t now)
     }
 }
 
+// A substep's carries of the velocity and of the scalars: semi-Lagrangian,
+// or MacCormack's trace back, trace ahead and correction (gas.wgsl's
+// CARRY_ stages).
+static void Carry(SimGas* gas, const mvfxGasDef* def, uint32_t s, uint32_t now, uint32_t faces,
+                  uint32_t cells)
+{
+    if (def->advection != mvfx_gasMacCormack)
+    {
+        Push(gas, mvfx_kernelGasCarry, s, now, 0, 0, faces);
+        Push(gas, mvfx_kernelGasCarryCells, s, now, 0, 0, cells);
+        return;
+    }
+    for (uint32_t stage = 1; stage <= 3; ++stage)
+    {
+        Push(gas, mvfx_kernelGasCarry, s, now, 0, stage, faces);
+    }
+    for (uint32_t stage = 1; stage <= 3; ++stage)
+    {
+        Push(gas, mvfx_kernelGasCarryCells, s, now, 0, stage, cells);
+    }
+}
+
 // The step's substeps' numbers and dispatches, as the core's mvfxStepGas
 // splits the plan's ticks.
 static void Plan(SimGas* gas, const mvfxGasPlan* plan)
@@ -308,6 +391,13 @@ static void Plan(SimGas* gas, const mvfxGasPlan* plan)
     const mvfxGasDef* def = &view->def;
     uint32_t* w = gas->words;
     mvfxFloatWords(w + 12, plan->gravity[0], plan->gravity[1], plan->gravity[2], 0.0f);
+    uint32_t forceGrids[MVFX_MAX_FORCES][5];
+    for (int32_t f = 0; f < MVFX_MAX_FORCES; ++f)
+    {
+        mvfxForceGridWords(&gas->grids, f, forceGrids[f]);
+    }
+    mvfxForceWords(plan->forces, plan->forceCount, 0.0f, (const uint32_t (*)[5])forceGrids,
+                   w + WORD_FORCES);
     gas->count = 0;
     gas->clears = plan->cleared;
     if (plan->cleared)
@@ -336,18 +426,35 @@ static void Plan(SimGas* gas, const mvfxGasPlan* plan)
             continue;
         }
         float h = (float)((double)(end - start) / (double)MVFX_TICKS_PER_SECOND);
-        uint32_t* step = w + WORD_SUBSTEPS + 8u * (uint32_t)s;
+        uint32_t* step = w + WORD_SUBSTEPS + SUBSTEP_WORDS * (uint32_t)s;
         float keep = (float)mvfxExpMinus((double)(def->velocityDecay * h));
-        mvfxFloatWords(step, h, keep, start < plan->stopTick ? 1.0f : 0.0f, 0.0f);
+        float since = (float)((double)(start - from) / (double)MVFX_TICKS_PER_SECOND);
+        mvfxFloatWords(step, h, keep, start < plan->stopTick ? 1.0f : 0.0f, since);
         mvfxFloatWords(step + 4, (float)mvfxExpMinus((double)(def->densityDecay * h)),
                        (float)mvfxExpMinus((double)(def->temperatureDecay * h)),
                        (float)mvfxExpMinus((double)(def->fuelDecay * h)), 0.0f);
+        // The burn's share and the divergence a unit burned asks for, as
+        // the core's mvfxGasBurn makes them.
+        float share = 1.0f - (float)mvfxExpMinus((double)(def->burnRate * h));
+        mvfxFloatWords(step + 8, share, def->burnExpansion * def->cellSize / h, 0.0f, 0.0f);
         uint32_t u = (uint32_t)s;
         Push(gas, mvfx_kernelGasPourCells, u, now, 0, 0, cells);
         Push(gas, mvfx_kernelGasFaces, u, now, 0, 0, faces);
-        Push(gas, mvfx_kernelGasCarry, u, now, 0, 0, faces);
-        Push(gas, mvfx_kernelGasCarryCells, u, now, 0, 0, cells);
+        if (def->vorticity != 0.0f)
+        {
+            Push(gas, mvfx_kernelGasCurl, u, now, 0, 0, cells);
+            Push(gas, mvfx_kernelGasConfine, u, now, 0, 0, faces);
+        }
+        Carry(gas, def, u, now, faces, cells);
         now = 1u - now;
+        if (def->burnRate != 0.0f)
+        {
+            Push(gas, mvfx_kernelGasBurn, u, now, 0, 0, cells);
+        }
+        if (def->pressureCycles > 0 && Expands(def) && IsSealed(def))
+        {
+            Push(gas, mvfx_kernelGasMean, u, now, 0, 0, 1);
+        }
         if (def->pressureCycles > 0)
         {
             Push(gas, mvfx_kernelGasDivergence, u, now, 0, 0, cells);
@@ -387,11 +494,13 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
     const mrhiAccess written[GAS_BUFFERS] = {
         {.resource = r[GAS_NUMBERS], .kind = mrhi_accessCopyDestination},
         {.resource = r[GAS_FIELDS], .kind = mrhi_accessCopyDestination},
-        {.resource = r[GAS_SOLVE], .kind = mrhi_accessCopyDestination}};
+        {.resource = r[GAS_SOLVE], .kind = mrhi_accessCopyDestination},
+        {.resource = r[GAS_GRIDS], .kind = mrhi_accessCopyDestination}};
     const mrhiAccess used[GAS_BUFFERS] = {
         {.resource = r[GAS_NUMBERS], .kind = mrhi_accessUniform},
         {.resource = r[GAS_FIELDS], .kind = mrhi_accessStorageReadWrite},
-        {.resource = r[GAS_SOLVE], .kind = mrhi_accessStorageReadWrite}};
+        {.resource = r[GAS_SOLVE], .kind = mrhi_accessStorageReadWrite},
+        {.resource = r[GAS_GRIDS], .kind = mrhi_accessStorageRead}};
     for (int32_t p = -1; p < gas->count; ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
@@ -430,6 +539,8 @@ static bool RecordWrite(mvfxGpuSim* sim, SimGas* gas)
     {
         recorded = mrhiClearBuffer(sim->device, pass, r[b], 0, MRHI_WHOLE_SIZE) == mrhi_success;
     }
+    recorded = recorded && mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[GAS_GRIDS],
+                                          sim->context, &gas->grids);
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 

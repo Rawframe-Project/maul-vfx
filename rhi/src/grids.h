@@ -65,9 +65,11 @@ typedef struct mvfxGpuGrids
     uint32_t words;
 } mvfxGpuGrids;
 
-// Lays out an emitter's fixed grids from its view and the instance's
-// region of hostWords; false when a grid is gone.
-bool mvfxLayGrids(const mvfxContext* context, const mvfxEmitterView* view, uint32_t hostWords,
+// Lays out a reader's fixed grids (each force's and own collider's; a
+// null id for none: an emitter's view's, or a gas's def's) and the
+// instance's region of hostWords; false when a grid is gone.
+bool mvfxLayGrids(const mvfxContext* context, const mvfxGridId forceGrids[MVFX_MAX_FORCES],
+                  const mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS], uint32_t hostWords,
                   mvfxGpuGrids* grids);
 
 // Places the grids the plan's instance colliders read in the region, in

@@ -8,22 +8,25 @@
 #ifndef MAUL_VFX_RHI_SRC_SIM_GAS_H
 #define MAUL_VFX_RHI_SRC_SIM_GAS_H
 
+#include "grids.h"
 #include "kernels.h"
 
 #include "maul-rhi/frame.h"
 #include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/plan.h"
 
-// The words of a gas's numbers (gas.wgsl's Gas).
-#define MVFX_GAS_WORDS 384u
+// The words of a gas's numbers (gas.wgsl's Gas): its own, its forces'
+// (rhi/src/numbers.h's MVFX_FORCE_WORDS), then its burn's and modes.
+#define MVFX_GAS_WORDS (416u + 4u + 132u * MVFX_MAX_FORCES + 8u)
 
 // A gas's buffers: its numbers, its fields (each buffer's faces then its
 // scalars), its solve's levels (pressures, right-hand sides, scratches,
-// weights, areas and coefficients).
+// weights, areas and coefficients), the grids its forces read.
 #define GAS_NUMBERS 0
 #define GAS_FIELDS  1
 #define GAS_SOLVE   2
-#define GAS_BUFFERS 3
+#define GAS_GRIDS   3
+#define GAS_BUFFERS 4
 
 // A dispatch of a gas's step: its kernel, root words and workgroups.
 typedef struct GasDispatch
@@ -54,6 +57,7 @@ typedef struct SimGas
     mrhiBufferId buffers[GAS_BUFFERS];
     mrhiResourceId resources[GAS_BUFFERS];
     uint32_t words[MVFX_GAS_WORDS];
+    mvfxGpuGrids grids;
     // The first level the tail runs in one workgroup.
     uint32_t tail;
     // The buffer current now, and whether the levels' areas and

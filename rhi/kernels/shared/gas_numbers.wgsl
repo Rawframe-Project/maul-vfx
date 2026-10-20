@@ -1,6 +1,8 @@
 // A smoke gas's numbers (rhi/src/sim_gas.c writes them), which gas.wgsl
 // and gas_read.wgsl read: spliced where a kernel names it.
 
+// include: shared/force_numbers.wgsl
+
 // A level of the solve: its cells along each axis and in all; where its
 // pressure, right-hand side, scratch and weights start; where its areas
 // across each axis start, and how many fine cells a cell spans; where its
@@ -13,10 +15,13 @@ struct Level {
 }
 
 // A substep: its span in seconds, the velocity's keep over it, whether
-// the sources pour; each scalar's keep.
+// the sources pour, its start in seconds after the plan's; each scalar's
+// keep; the share of the fuel burning over it and the divergence a unit
+// burned asks for.
 struct Substep {
     span: vec4<f32>,
     keeps: vec4<f32>,
+    burn: vec4<f32>,
 }
 
 // A source in the box's frame: its center and shape, its half extents and
@@ -39,10 +44,22 @@ struct Gas {
     // The gravity in the box's frame.
     gravity: vec4<f32>,
     // Where each buffer's faces across each axis start, and its density,
-    // temperature and fuel.
+    // temperature and fuel; where the work starts, and the expansion's
+    // mean.
     faces: array<vec4<u32>, 2>,
     cells: array<vec4<u32>, 2>,
     levels: array<Level, 10>,
     substeps: array<Substep, 8>,
     sources: array<Source, 8>,
+    // Its forces (mvfxForceWords): their count, unused; each force, each
+    // one's field.
+    forceHead: vec4<u32>,
+    forces: array<Force, 8>,
+    fields: array<Field, 8>,
+    // The burn's ignition temperature, heat and smoke a unit; vorticity
+    // confinement's strength.
+    burn: vec4<f32>,
+    // Whether it carries by MacCormack's, its burn expands, and its walls
+    // are all closed.
+    modes: vec4<u32>,
 }

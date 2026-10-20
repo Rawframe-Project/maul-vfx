@@ -303,7 +303,8 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     result = result == mvfx_success ? mvfxHoldSimHullFaces(sim, &sim->views[e], emitter) : result;
     uint32_t hostWords = (uint32_t)((def->hostGridBytes + 3) / 4);
     if (result == mvfx_success &&
-        !mvfxLayGrids(def->context, &sim->views[e], hostWords, &emitter->gridLayout))
+        !mvfxLayGrids(def->context, sim->views[e].forceGrids, sim->views[e].colliderGrids,
+                      hostWords, &emitter->gridLayout))
     {
         result = mvfx_errorStale;
     }

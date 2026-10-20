@@ -128,23 +128,27 @@ typedef enum mvfxKernel
     mvfx_kernelRigid = 52,
     mvfx_kernelRigidPairs = 53,
     // A smoke gas's step (gas.wgsl): its levels' areas and coefficients
-    // once; each substep's sources, faces and carries; the projection's
-    // divergence, sweeps, restrictions, prolongations and tail; the
-    // correction.
+    // once; each substep's sources, faces, confinement, carries, burn and
+    // expansion's mean; the projection's divergence, sweeps,
+    // restrictions, prolongations and tail; the correction.
     mvfx_kernelGasAreas = 54,
     mvfx_kernelGasCoefficients = 55,
     mvfx_kernelGasPourCells = 56,
     mvfx_kernelGasFaces = 57,
-    mvfx_kernelGasCarry = 58,
-    mvfx_kernelGasCarryCells = 59,
-    mvfx_kernelGasDivergence = 60,
-    mvfx_kernelGasJacobi = 61,
-    mvfx_kernelGasRestrict = 62,
-    mvfx_kernelGasProlong = 63,
-    mvfx_kernelGasTail = 64,
-    mvfx_kernelGasCorrect = 65,
+    mvfx_kernelGasCurl = 58,
+    mvfx_kernelGasConfine = 59,
+    mvfx_kernelGasCarry = 60,
+    mvfx_kernelGasCarryCells = 61,
+    mvfx_kernelGasBurn = 62,
+    mvfx_kernelGasMean = 63,
+    mvfx_kernelGasDivergence = 64,
+    mvfx_kernelGasJacobi = 65,
+    mvfx_kernelGasRestrict = 66,
+    mvfx_kernelGasProlong = 67,
+    mvfx_kernelGasTail = 68,
+    mvfx_kernelGasCorrect = 69,
     // A smoke gas's field written in a host's format (gas_read.wgsl).
-    mvfx_kernelGasRead = 66,
+    mvfx_kernelGasRead = 70,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

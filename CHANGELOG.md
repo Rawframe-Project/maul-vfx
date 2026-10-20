@@ -1011,6 +1011,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   unanswered, each answer `mvfxGpu_Notify` takes requesting the next
   kernel's, so a device holding fewer creations at once can still build
   every kernel.
+- The GPU part runs a smoke gas's forces (shared with the particles'
+  force code), MacCormack's carry, vorticity confinement and the burn,
+  its expansion less its mean in a sealed box; a gas with obstacles is
+  still refused.
 
 ### Fixed
 
