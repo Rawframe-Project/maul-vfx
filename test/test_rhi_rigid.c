@@ -10,17 +10,18 @@
 // term turning those of unequal inertias), newborns taking the rest of
 // their step's substeps, sizes over life by age and by speed, in the
 // world's space under a moving instance, and bodies coming to rest in a
-// drag and falling asleep alone; spheres and capsules meeting planes,
-// spheres and boxes from outside and in, the emitter's and the
-// instance's, bouncing, rubbing and rolling, their strikes' events,
-// counts and life lost (killing at once or past their age), newborns
-// striking in their first step, and the contacts past the most dropped
-// and counted; boxes meeting the same, a box collider face to face, edge
-// to edge or on an edge; spheres, capsules and boxes on heightfields and
-// distance grids, the emitter's and the instance's, and on a depth
-// image's terraces and wall; what is still refused (hulls colliding,
-// bodies meeting each other, kills within a step). Skips
-// (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
+// drag and falling asleep alone, held in the air under gravity; spheres
+// and capsules meeting planes, spheres and boxes from outside and in, the
+// emitter's and the instance's, bouncing, rubbing and rolling, their
+// strikes' events, counts and life lost (killing at once, past their age
+// or in the rest of the step), newborns striking in their first step, and
+// the contacts past the most dropped and counted, newborns' too; boxes
+// meeting the same, a box collider face to face, edge to edge or on an
+// edge; spheres, capsules and boxes on heightfields and distance grids,
+// the emitter's and the instance's, and on a depth image's terraces and
+// wall; what is still refused (hulls colliding, bodies meeting each
+// other, kills within a step). Skips (77) without an adapter, unless
+// MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
@@ -183,6 +184,25 @@ static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
     emitter.rigid.shape = mvfx_rigidBox;
     Met(gpu, kernels, &(Run){.mostApart = 21, .emitters = &emitter, .leastRigidCapped = 1},
         "boxes lying on five floors, contacts dropped");
+    // Capsules born lying on them, 5 mm in, drop two of their ten
+    // contacts in their first step; living a fifth of a second, a tenth
+    // of the bodies are newborns, their drops counted with the rest.
+    emitter = Thrown(mvfx_rigidCapsule, floors, 5);
+    emitter.events = 0;
+    emitter.lifetime = mvfxRangeSource(0.15f, 0.25f);
+    emitter.shape = (mvfxShape){.kind = mvfx_shapeBox,
+                                .rotation = {0, 0, 0, 1},
+                                .offset = {0, -0.605f, 0},
+                                .halfExtents = {0.5f, 0, 0.5f}};
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.2f, 0.6f, 0.2f}, .max = {0.2f, 0.6f, 0.2f}};
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0, 0, 1.5707963f}, .max = {0, 0, 1.5707963f}};
+    emitter.angularVelocity = (mvfxVectorSource){0};
+    emitter.velocity.speed = (mvfxRange){0.1f, 0.2f};
+    Met(gpu, kernels, &(Run){.mostApart = 36, .emitters = &emitter, .leastRigidCapped = 1},
+        "capsules born lying on five floors, contacts dropped");
 }
 
 static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
@@ -300,6 +320,17 @@ static void TestStrikes(Gpu* gpu, mvfxGpu* kernels)
         .enabled = true, .size = {{.value = 1.0f, .curve = {.keys = grow, .keyCount = 2}}}};
     Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .killing = true},
         "spheres losing life at each strike");
+    // A strike scales the life: born just above the floor, living a
+    // second, they strike at 15 to 50 ms of age, left 40 ms of life; many
+    // die in the rest of the strike's step, their deaths written the next
+    // step at their ticks, before its start.
+    emitter = Thrown(mvfx_rigidSphere, &floor, 1);
+    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.shape.radius = 0.1f;
+    emitter.shape.offset[1] = -0.45f;
+    emitter.collision.lifeLoss = 0.96f;
+    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .killing = true, .least = 10},
+        "spheres dying in the rest of a strike's step");
     // A strike taking all of it kills at once; newborns thrown fast from
     // just above the floor strike in their first step.
     emitter = Thrown(mvfx_rigidCapsule, &floor, 1);
@@ -333,6 +364,12 @@ static void TestSleep(Gpu* gpu, mvfxGpu* kernels)
     Settled(gpu, kernels, &emitter, "capsules falling asleep in a drag, the whole run");
     emitter.rigid.shape = mvfx_rigidBox;
     Settled(gpu, kernels, &emitter, "boxes falling asleep in a drag, the whole run");
+    // Under gravity the drag holds them at a third of a meter a second,
+    // below the sleep speed: asleep, they are held in the air.
+    emitter.rigid.shape = mvfx_rigidCapsule;
+    emitter.motion.gravity[1] = -9.8f;
+    emitter.rigid.sleepSpeed = 0.5f;
+    Settled(gpu, kernels, &emitter, "capsules falling asleep in a drag, held in the air");
     // Capsules coming to rest on a floor fall asleep there, held in place
     // against gravity.
     static const mvfxCollider floor = {
