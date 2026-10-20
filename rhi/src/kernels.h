@@ -23,6 +23,8 @@ typedef enum mvfxContainer
     mvfx_containerContacts = 6,
     mvfx_containerPlexus = 7,
     mvfx_containerSelf = 8,
+    mvfx_containerGas = 9,
+    mvfx_containerGasRead = 10,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -125,6 +127,24 @@ typedef enum mvfxKernel
     // those that meet each other, in one workgroup.
     mvfx_kernelRigid = 52,
     mvfx_kernelRigidPairs = 53,
+    // A smoke gas's step (gas.wgsl): its levels' areas and coefficients
+    // once; each substep's sources, faces and carries; the projection's
+    // divergence, sweeps, restrictions, prolongations and tail; the
+    // correction.
+    mvfx_kernelGasAreas = 54,
+    mvfx_kernelGasCoefficients = 55,
+    mvfx_kernelGasPourCells = 56,
+    mvfx_kernelGasFaces = 57,
+    mvfx_kernelGasCarry = 58,
+    mvfx_kernelGasCarryCells = 59,
+    mvfx_kernelGasDivergence = 60,
+    mvfx_kernelGasJacobi = 61,
+    mvfx_kernelGasRestrict = 62,
+    mvfx_kernelGasProlong = 63,
+    mvfx_kernelGasTail = 64,
+    mvfx_kernelGasCorrect = 65,
+    // A smoke gas's field written in a host's format (gas_read.wgsl).
+    mvfx_kernelGasRead = 66,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

@@ -767,6 +767,30 @@ extern "C"
         const float* hullPlanes;
     } mvfxEmitterView;
 
+// The most levels of a gas's multigrid: from MVFX_MAX_GAS_SIZE cells along
+// an axis halved to 2.
+#define MVFX_MAX_GAS_LEVELS 10
+
+    // A gas of an effect as compiled (mvfxEffect_GetGasView), for a
+    // simulation elsewhere.
+    typedef struct mvfxGasView
+    {
+        // Its def as compiled: its sources, forces and obstacles point at
+        // the effect's copies, valid while the effect lives.
+        mvfxGasDef def;
+        // Its cells, and along each axis its faces across that axis.
+        int64_t cells;
+        int64_t faces[3];
+        // Its multigrid's levels, the first its own cells: each level's
+        // cells along each axis (an axis halved, rounding up, while every
+        // axis of more than one cell keeps at least 2).
+        int32_t levelCount;
+        int32_t levels[MVFX_MAX_GAS_LEVELS][3];
+        // For a liquid gas the emitter whose particles move on it, for a
+        // surface gas the one whose particles it wraps; -1 for smoke.
+        int32_t emitter;
+    } mvfxGasView;
+
     /// Returns an emitter of an effect as compiled.
     ///
     /// @param context  The context.
@@ -819,6 +843,21 @@ extern "C"
                                                                    mvfxInstanceId instance,
                                                                    int32_t emitter,
                                                                    mvfxEmitterPlan* planOut);
+
+    /// Returns a gas of an effect as compiled.
+    ///
+    /// @param context  The context.
+    /// @param effect   The effect.
+    /// @param gas      The gas's index in the effect.
+    /// @param viewOut  Receives the view; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or
+    ///         a gas out of range; `mvfx_errorStale` for an effect that is
+    ///         gone.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxEffect_GetGasView(const mvfxContext* context,
+                                                             mvfxEffectId effect, int32_t gas,
+                                                             mvfxGasView* viewOut);
 
     /// Returns a smoke gas's plan for the context's last step.
     ///

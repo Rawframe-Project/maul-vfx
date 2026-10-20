@@ -6,6 +6,8 @@
 #include "allocator.h"
 
 #include "../kernels/contacts_container.h"
+#include "../kernels/gas_container.h"
+#include "../kernels/gas_read_container.h"
 #include "../kernels/grid_container.h"
 #include "../kernels/pcg4d_container.h"
 #include "../kernels/plexus_container.h"
@@ -18,6 +20,13 @@
 
 #include <stdalign.h>
 #include <string.h>
+
+// The pipeline requests an object holds unanswered at once: each of its
+// answers requests the next kernel's, so a device answering into a queue
+// of its own room (Maul RHI's mrhi_errorCapacity) or a driver holding a
+// few creations at a time is never asked for every kernel at once.
+#define PENDING_REQUESTS 32
+static_assert(PENDING_REQUESTS <= MVFX_KERNEL_COUNT, "a window within the kernels");
 
 // A container's bytes.
 typedef struct Container
@@ -36,6 +45,8 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_contactsContainer, sizeof s_contactsContainer},
     {s_plexusContainer, sizeof s_plexusContainer},
     {s_selfContainer, sizeof s_selfContainer},
+    {s_gasContainer, sizeof s_gasContainer},
+    {s_gasReadContainer, sizeof s_gasReadContainer},
 };
 
 // A kernel's container and entry.
@@ -100,6 +111,19 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSelf, "selfCommit"},
     {mvfx_containerSim, "rigid"},
     {mvfx_containerSim, "rigidPairs"},
+    {mvfx_containerGas, "gasAreas"},
+    {mvfx_containerGas, "gasCoefficients"},
+    {mvfx_containerGas, "gasPourCells"},
+    {mvfx_containerGas, "gasFaces"},
+    {mvfx_containerGas, "gasCarry"},
+    {mvfx_containerGas, "gasCarryCells"},
+    {mvfx_containerGas, "gasDivergence"},
+    {mvfx_containerGas, "gasJacobi"},
+    {mvfx_containerGas, "gasRestrict"},
+    {mvfx_containerGas, "gasProlong"},
+    {mvfx_containerGas, "gasTail"},
+    {mvfx_containerGas, "gasCorrect"},
+    {mvfx_containerGasRead, "gasRead"},
 };
 
 struct mvfxGpu
@@ -110,6 +134,12 @@ struct mvfxGpu
     mrhiComputePipelineId pipelines[MVFX_KERNEL_COUNT];
     mrhiRequestId requests[MVFX_KERNEL_COUNT];
     bool built[MVFX_KERNEL_COUNT];
+    bool answered[MVFX_KERNEL_COUNT];
+    // The next kernel to request, the requests unanswered, and whether
+    // the device refused one after creation (never ready then).
+    int32_t next;
+    int32_t pending;
+    bool refused;
 };
 
 mvfxGpuDef mvfxDefaultGpuDef(void)
@@ -161,10 +191,11 @@ mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut)
     {
         made = CreateShader(gpu, c);
     }
-    for (int32_t k = 0; made && k < MVFX_KERNEL_COUNT; ++k)
+    for (; made && gpu->next < PENDING_REQUESTS; ++gpu->next)
     {
-        made = Request(gpu, k);
+        made = Request(gpu, gpu->next);
     }
+    gpu->pending = gpu->next;
     if (!made)
     {
         mvfxDestroyGpu(gpu);
@@ -212,6 +243,19 @@ bool mvfxGpu_Notify(mvfxGpu* gpu, const mrhiDeviceNotification* notification)
             notification->request.generation == gpu->requests[k].generation)
         {
             gpu->built[k] = notification->outcome == mrhi_success;
+            if (!gpu->answered[k])
+            {
+                gpu->answered[k] = true;
+                --gpu->pending;
+            }
+            // The next requests, while the window has room.
+            while (!gpu->refused && gpu->pending < PENDING_REQUESTS &&
+                   gpu->next < MVFX_KERNEL_COUNT)
+            {
+                gpu->refused = !Request(gpu, gpu->next);
+                gpu->pending += gpu->refused ? 0 : 1;
+                gpu->next += gpu->refused ? 0 : 1;
+            }
             return true;
         }
     }
@@ -220,7 +264,7 @@ bool mvfxGpu_Notify(mvfxGpu* gpu, const mrhiDeviceNotification* notification)
 
 bool mvfxGpu_IsReady(const mvfxGpu* gpu)
 {
-    bool ready = gpu != nullptr;
+    bool ready = gpu != nullptr && !gpu->refused;
     for (int32_t k = 0; ready && k < MVFX_KERNEL_COUNT; ++k)
     {
         ready = gpu->built[k];

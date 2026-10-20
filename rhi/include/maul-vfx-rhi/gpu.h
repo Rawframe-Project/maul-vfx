@@ -52,7 +52,9 @@ extern "C"
     MVFX_RHI_API mvfxGpuDef mvfxDefaultGpuDef(void);
 
     /// Creates a GPU object: the part's kernels as shaders, their pipelines
-    /// requested from the device, built asynchronously.
+    /// requested from the device, built asynchronously. It holds at most 32
+    /// requests unanswered: each answer mvfxGpu_Notify takes requests the
+    /// next kernel's pipeline.
     ///
     /// @param def     The def, from mvfxDefaultGpuDef, naming a device.
     /// @param gpuOut  Receives the object; NULL on failure.
@@ -74,7 +76,9 @@ extern "C"
     MVFX_RHI_API void mvfxDestroyGpu(mvfxGpu* gpu);
 
     /// Takes a device notification: a pipeline of the object built, or
-    /// failed to build.
+    /// failed to build; then requests the next kernels' pipelines. A
+    /// request the device refuses here leaves the object never ready, as a
+    /// pipeline that failed does.
     ///
     /// @param gpu           The object.
     /// @param notification  A notification from mrhiNextDeviceNotification.
@@ -87,7 +91,8 @@ extern "C"
     /// Returns whether every kernel's pipeline is built.
     ///
     /// @param gpu  The object.
-    /// @return Whether it is ready; false for NULL or a pipeline that failed.
+    /// @return Whether it is ready; false for NULL, a pipeline that failed,
+    ///         or a request the device refused.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_RHI_API bool mvfxGpu_IsReady(const mvfxGpu* gpu);

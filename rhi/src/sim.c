@@ -356,17 +356,6 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     {
         return planned == mvfx_errorState ? mvfx_errorInvalid : planned;
     }
-    // A smoke gas lets an instance be planned; the part runs none yet.
-    mvfxGasPlan gasPlan;
-    if (mvfxInstance_GetGasPlan(def->context, def->instance, 0, &gasPlan) == mvfx_success)
-    {
-        refusal.gas = 0;
-        if (refusalOut != nullptr)
-        {
-            *refusalOut = refusal;
-        }
-        return mvfx_errorState;
-    }
     mvfxGpuSim* sim = mvfxRhiAllocate(&def->allocator, sizeof *sim, alignof(mvfxGpuSim));
     if (sim == nullptr)
     {
@@ -380,9 +369,17 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
         .instance = def->instance,
     };
     mvfxResult result = ReadViews(sim, def->effect, &refusal);
+    if (result == mvfx_success)
+    {
+        result = mvfxReadSimGases(sim, def->effect, &refusal.gas);
+    }
     for (int32_t e = 0; result == mvfx_success && e < sim->emitterCount; ++e)
     {
         result = PrepareEmitter(sim, def, e);
+    }
+    for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
+    {
+        result = mvfxCreateSimGas(sim, &sim->gases[g]) ? mvfx_success : mvfx_errorState;
     }
     mvfxSrgbSteps(sim->srgb);
     if (result == mvfx_success &&
@@ -450,6 +447,10 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         mvfxRhiRelease(&sim->allocator, emitter->frameWords, mvfxSimFrameBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
         mvfxRhiRelease(&sim->allocator, emitter->hullFaces, 4u * emitter->hullFaceWords, 4);
+    }
+    for (int32_t g = 0; g < sim->gasCount; ++g)
+    {
+        mvfxDestroySimGas(sim, &sim->gases[g]);
     }
     DestroyBuffer(sim, sim->ownCount);
     DestroyBuffer(sim, sim->ownSort);
@@ -771,10 +772,15 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
     {
         result = mvfx_errorState;
     }
-    // In step order: an emitter's source's passes before its own.
+    // In step order: an emitter's source's passes before its own; the
+    // gases after them all.
     for (int32_t n = 0; result == mvfx_success && n < sim->emitterCount; ++n)
     {
         result = AddStep(sim, sim->order[n]);
+    }
+    for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
+    {
+        result = mvfxAddSimGasPasses(sim, g);
     }
     return result;
 }
@@ -945,6 +951,13 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         // The step's passes, then the record passes after them.
         if (!RecordStep(sim, emitter) ||
             !mvfxRecordRecordPasses(sim->device, &sim->uploaded, &pipelines, &emitter->records))
+        {
+            return mvfx_errorState;
+        }
+    }
+    for (int32_t g = 0; g < sim->gasCount; ++g)
+    {
+        if (!mvfxRecordSimGas(sim, &sim->gases[g]))
         {
             return mvfx_errorState;
         }

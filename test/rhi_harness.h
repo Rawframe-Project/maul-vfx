@@ -243,6 +243,9 @@ void SetDepthPixel(int32_t column, int32_t row, float depth);
 // emitter's particles and statistics record back.
 bool Simulate(Gpu* gpu, mvfxGpuSim* sim);
 bool Finish(Gpu* gpu);
+// Whether frames wait as long as the warm-up's: a run of kernels the
+// warm-up does not compile compiles them at its first frame.
+void LongFrames(bool slow);
 bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter);
 
 // The run open: its context, its planned instance, the ticks a step takes

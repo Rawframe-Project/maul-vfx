@@ -6,7 +6,7 @@
 // throttled plan's obstacles before are the last plan's; a planned gas
 // holds until its simulation reports it empty past the stop and the
 // splatting emitters' deaths; its fields are not read on the CPU path;
-// liquid gases stay unplannable.
+// liquid gases stay unplannable; a gas's view.
 
 #include "collide.h"
 #include "force.h"
@@ -405,11 +405,55 @@ static void TestLiquidRefused(void)
     mvfxDestroyContext(context);
 }
 
+static void TestView(void)
+{
+    // A gas of 64 by 20 by 6 cells with a source and a force: its view
+    // has its def, its copies and its levels (an axis halved, rounding
+    // up, while every axis of more than one cell has at least 4: 6 halves
+    // to 3, the last).
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxGasDef gas = Smoke();
+    gas.size[0] = 64;
+    gas.size[1] = 20;
+    gas.size[2] = 6;
+    const mvfxGasSource source = {.shape = mvfx_gasSphere, .radius = 0.5f, .density = 2.0f};
+    gas.sources = &source;
+    gas.sourceCount = 1;
+    const mvfxForce force = {.kind = mvfx_forceConstant, .vector = {0, 1, 0}};
+    gas.forces = &force;
+    gas.forceCount = 1;
+    mvfxEmitterDef emitter = Emitter(false);
+    mvfxEffectId effect = Effect(context, &emitter, &gas);
+    static mvfxGasView view;
+    CHECK(mvfxEffect_GetGasView(context, effect, 0, &view) == mvfx_success, "a view");
+    static const int32_t levels[2][3] = {{64, 20, 6}, {32, 10, 3}};
+    bool same = view.levelCount == 2 && view.cells == 64 * 20 * 6 && view.faces[0] == 65 * 20 * 6 &&
+                view.faces[1] == 64 * 21 * 6 && view.faces[2] == 64 * 20 * 7 && view.emitter == -1;
+    for (int32_t l = 0; same && l < 2; ++l)
+    {
+        same = memcmp(view.levels[l], levels[l], sizeof levels[l]) == 0;
+    }
+    same = same && view.def.sourceCount == 1 && view.def.sources != &source &&
+           view.def.sources[0].density == 2.0f && view.def.forceCount == 1 &&
+           view.def.forces != &force && view.def.forces[0].vector[1] == 1.0f &&
+           view.def.obstacles == NULL && view.def.cellSize == gas.cellSize;
+    CHECK(same, "a gas's view");
+    CHECK(mvfxEffect_GetGasView(context, effect, 1, &view) == mvfx_errorInvalid &&
+              mvfxEffect_GetGasView(NULL, effect, 0, &view) == mvfx_errorInvalid &&
+              mvfxEffect_GetGasView(context, effect, 0, NULL) == mvfx_errorInvalid &&
+              mvfxEffect_GetGasView(context, (mvfxEffectId){0}, 0, &view) == mvfx_errorStale,
+          "a gas view's refusals");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestResolved();
     TestThrottled();
     TestHolds();
     TestLiquidRefused();
+    TestView();
     return s_failures == 0 ? 0 : 1;
 }

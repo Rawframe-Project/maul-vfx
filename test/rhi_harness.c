@@ -137,6 +137,11 @@ bool Finish(Gpu* gpu)
     return done;
 }
 
+void LongFrames(bool slow)
+{
+    s_waitNs = slow ? WARM_WAIT_NS : FRAME_WAIT_NS;
+}
+
 // The test's depth-writing pipeline, and a run's depth image on the GPU:
 // its pixels in a buffer (the width's bits first), rendered into a depth
 // texture at every frame, and its normals, four binary32 a pixel, written

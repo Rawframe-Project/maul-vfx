@@ -10,8 +10,7 @@
 #include <math.h>
 #include <string.h>
 
-// e^-x for x >= 0: x halved until small, a series, squared back.
-static double ExpMinus(double x)
+double mvfxExpMinus(double x)
 {
     int32_t halvings = 0;
     while (x > 0x1p-10 && halvings < 64)
@@ -32,7 +31,7 @@ static double ExpMinus(double x)
 static void DragFactors(double drag, double seconds, float out[3])
 {
     double x = drag * seconds;
-    double decay = ExpMinus(x);
+    double decay = mvfxExpMinus(x);
     double phi1 = x < 1e-6 ? 1.0 - 0.5 * x : (1.0 - decay) / x;
     double phi2 = x < 1e-6 ? 0.5 - x / 6.0 : (1.0 - phi1) / x;
     out[0] = (float)decay;

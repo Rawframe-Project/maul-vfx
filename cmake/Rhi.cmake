@@ -21,7 +21,7 @@ endif()
 
 add_library(maul-vfx-rhi STATIC rhi/src/allocator.c rhi/src/grid_numbers.c rhi/src/grids.c
     rhi/src/kernels.c rhi/src/mesh_image.c rhi/src/numbers.c rhi/src/record.c rhi/src/records.c
-    rhi/src/sim.c rhi/src/sim_contacts.c rhi/src/sim_events.c rhi/src/sim_grid.c
+    rhi/src/sim.c rhi/src/sim_contacts.c rhi/src/sim_events.c rhi/src/sim_gas.c rhi/src/sim_grid.c
     rhi/src/sim_attach.c rhi/src/sim_mesh.c rhi/src/sim_plexus.c rhi/src/sim_records.c
     rhi/src/sim_self.c rhi/src/sim_spawn.c rhi/src/sim_tables.c)
 add_library(maul-vfx-rhi::maul-vfx-rhi ALIAS maul-vfx-rhi)

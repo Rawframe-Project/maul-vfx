@@ -12,6 +12,10 @@
 
 #include <string.h>
 
+// e^-x for x >= 0, the part's own in binary64: x halved until small, a
+// series, squared back.
+double mvfxExpMinus(double x);
+
 // Writes four floats' bits at words.
 static inline void mvfxFloatWords(uint32_t* words, float a, float b, float c, float d)
 {

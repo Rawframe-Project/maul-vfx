@@ -13,13 +13,13 @@
 #include "gas_lattice.h"
 
 #include "maul-vfx/gas.h"
+#include "maul-vfx/plan.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
-// The most levels of a gas's multigrid: from 512 cells along an axis
-// halved to 2.
-#define MVFX_GAS_LEVELS 10
+// The most levels of a gas's multigrid (maul-vfx/plan.h).
+#define MVFX_GAS_LEVELS MVFX_MAX_GAS_LEVELS
 
 // A gas's def as compiled: its sources copied in.
 typedef struct mvfxCompiledGas

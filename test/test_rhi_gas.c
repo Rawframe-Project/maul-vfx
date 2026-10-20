@@ -1,0 +1,445 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Smoke gases on a real device (lavapipe on CI) beside the CPU path,
+// compared after every step: each field the GPU writes through
+// mvfxGpuSim_AddGasRead against mvfxInstance_ReadGas's, relative to its
+// size. Covered: sources pouring and setting velocity, buoyancy, decay,
+// closed and open walls, levels above the tail and in it, no solve, a
+// 2D gas, a clear; reads in every format over a box with padded pitches,
+// the padding kept; the refusals.
+// Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
+
+#include "rhi_harness.h"
+#include "test_harness.h"
+
+#include "maul-rhi/encoder.h"
+#include "maul-rhi/resources.h"
+#include "maul-vfx/output.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+// The most cells a scene's gas has, and the tolerance of a value relative
+// to one more than its size.
+#define MOST_CELLS (48 * 48 * 32)
+#define TOLERANCE  1e-4f
+
+static float s_cpu[MOST_CELLS];
+static float s_gpu[MOST_CELLS];
+
+// A run: its context, its instances, the planned one's simulation.
+typedef struct Scene
+{
+    mvfxContext* context;
+    mvfxInstanceId cpu;
+    mvfxInstanceId planned;
+    mvfxGpuSim* sim;
+} Scene;
+
+// A sprite beside the gas: an effect has an emitter.
+static mvfxEmitterDef Beside(void)
+{
+    mvfxEmitterDef emitter = Sprite();
+    emitter.capacity = 64;
+    emitter.rate = 0.0f;
+    return emitter;
+}
+
+static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, Scene* scene)
+{
+    *scene = (Scene){0};
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &scene->context) == mvfx_success, "a context");
+    mvfxEmitterDef emitter = Beside();
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    def.gases = gas;
+    def.gasCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(scene->context, &def, &effect) == mvfx_success, "a gas's effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.seed = 3;
+    CHECK(mvfxCreateInstance(scene->context, &instanceDef, &scene->cpu) == mvfx_success,
+          "a CPU instance");
+    instanceDef.planned = true;
+    CHECK(mvfxCreateInstance(scene->context, &instanceDef, &scene->planned) == mvfx_success,
+          "a planned instance");
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    simDef.gpu = kernels;
+    simDef.context = scene->context;
+    simDef.effect = effect;
+    simDef.instance = scene->planned;
+    mvfxGpuRefusal refusal;
+    mvfxResult made = mvfxCreateGpuSim(&simDef, &scene->sim, &refusal);
+    CHECK(made == mvfx_success, "a gas's simulation");
+    return made == mvfx_success;
+}
+
+static void Close(Scene* scene)
+{
+    mvfxDestroyGpuSim(scene->sim);
+    mvfxDestroyContext(scene->context);
+}
+
+// Writes a read of gas 0 from a byte of a buffer of bytes, filled with
+// fill first, and reads the buffer back into out.
+static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint64_t bytes,
+                    uint64_t offset, uint8_t fill, void* out)
+{
+    mrhiBufferDef bufferDef = mrhiDefaultBufferDef();
+    bufferDef.size = bytes;
+    bufferDef.usage = mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
+    mrhiBufferId buffer = {0};
+    if (mrhiCreateBuffer(gpu->device, &bufferDef, &buffer) != mrhi_success)
+    {
+        return false;
+    }
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    mrhiResourceId target = {0};
+    mrhiPassId passes[2] = {{0}, {0}};
+    mrhiRequestId request = {0};
+    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+                    mrhiImportBuffer(gpu->device, buffer, &target) == mrhi_success;
+    const mrhiAccess filled = {.resource = target, .kind = mrhi_accessCopyDestination};
+    const mrhiAccess taken = {.resource = target, .kind = mrhi_accessCopySource};
+    mrhiPassDef def = mrhiDefaultPassDef();
+    def.passClass = mrhi_passTransfer;
+    def.accesses = &filled;
+    def.accessCount = 1;
+    def.neverCull = true;
+    mvfxGpuGasReadDef readDef = mvfxDefaultGpuGasReadDef();
+    readDef.read = *read;
+    readDef.target = target;
+    readDef.offset = offset;
+    readDef.bytes = bytes - offset;
+    recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[0]) == mrhi_success &&
+               mvfxGpuSim_AddGasRead(scene->sim, &readDef) == mvfx_success;
+    def.accesses = &taken;
+    recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
+               mrhiCompileFrame(gpu->device) == mrhi_success &&
+               mrhiBeginPass(gpu->device, passes[0]) == mrhi_success &&
+               mrhiClearBuffer(gpu->device, passes[0], target, 0, MRHI_WHOLE_SIZE) == mrhi_success;
+    // The fill: words of fill bytes over the buffer, cleared first.
+    static uint8_t fills[1 << 16];
+    memset(fills, fill, sizeof fills);
+    for (uint64_t at = 0; recorded && at < bytes; at += sizeof fills)
+    {
+        uint64_t span = bytes - at < sizeof fills ? bytes - at : sizeof fills;
+        recorded = mrhiWriteBuffer(gpu->device, passes[0], target, at, fills, span) == mrhi_success;
+    }
+    recorded = recorded && mrhiEndPass(gpu->device, passes[0]) == mrhi_success &&
+               mvfxGpuSim_Record(scene->sim) == mvfx_success &&
+               mrhiBeginPass(gpu->device, passes[1]) == mrhi_success &&
+               mrhiReadBuffer(gpu->device, passes[1], target, 0, bytes, &request) == mrhi_success &&
+               mrhiEndPass(gpu->device, passes[1]) == mrhi_success;
+    if (!recorded)
+    {
+        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDestroyBuffer(gpu->device, buffer);
+        return false;
+    }
+    size_t got = 0;
+    bool done = Finish(gpu) &&
+                mrhiTakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+                got == bytes;
+    (void)mrhiDestroyBuffer(gpu->device, buffer);
+    return done;
+}
+
+// The whole gas's field as float32 on both paths; the largest difference
+// relative to one more than the CPU path's value into worst.
+static bool SameField(Gpu* gpu, const Scene* scene, const mvfxGasDef* gas, mvfxGasField field,
+                      float* worst)
+{
+    int64_t cells = (int64_t)gas->size[0] * gas->size[1] * gas->size[2];
+    const mvfxGasRead read = {.field = field,
+                              .format = mvfx_formatFloat32,
+                              .size = {gas->size[0], gas->size[1], gas->size[2]}};
+    if (mvfxInstance_ReadGas(scene->context, scene->cpu, 0, field, s_cpu, cells) != mvfx_success ||
+        !ReadGpu(gpu, scene, &read, 4u * (uint64_t)cells, 0, 0, s_gpu))
+    {
+        return false;
+    }
+    bool same = true;
+    for (int64_t i = 0; i < cells; ++i)
+    {
+        float apart = fabsf(s_gpu[i] - s_cpu[i]) / (1.0f + fabsf(s_cpu[i]));
+        *worst = fmaxf(*worst, apart);
+        same = same && apart <= TOLERANCE;
+    }
+    return same;
+}
+
+// The largest density the CPU path holds.
+static float MostDensity(const Scene* scene, const mvfxGasDef* gas)
+{
+    int64_t cells = (int64_t)gas->size[0] * gas->size[1] * gas->size[2];
+    float most = 0.0f;
+    CHECK(mvfxInstance_ReadGas(scene->context, scene->cpu, 0, mvfx_gasDensity, s_cpu, cells) ==
+              mvfx_success,
+          "the CPU path's density");
+    for (int64_t i = 0; i < cells; ++i)
+    {
+        most = fmaxf(most, s_cpu[i]);
+    }
+    return most;
+}
+
+// Steps a gas on both paths, each field compared after every
+// step; with clearing, stopped and cleared at half time and restarted.
+static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, int32_t steps, bool clearing,
+                  const char* what)
+{
+    Scene scene;
+    if (!Open(kernels, gas, &scene))
+    {
+        return;
+    }
+    bool same = true;
+    float worst = 0.0f;
+    float most = 0.0f;
+    LongFrames(true);
+    for (int32_t s = 0; same && s < steps; ++s)
+    {
+        if (clearing && s == steps / 2)
+        {
+            CHECK(mvfxInstance_Stop(scene.context, scene.cpu, mvfx_stopAndClear) == mvfx_success &&
+                      mvfxInstance_Stop(scene.context, scene.planned, mvfx_stopAndClear) ==
+                          mvfx_success &&
+                      mvfxInstance_Restart(scene.context, scene.cpu) == mvfx_success &&
+                      mvfxInstance_Restart(scene.context, scene.planned) == mvfx_success,
+                  "cleared and restarted");
+        }
+        CHECK(mvfxContext_StepTicks(scene.context, StepTicks()) == mvfx_success, "stepped");
+        same = Simulate(gpu, scene.sim);
+        LongFrames(false);
+        for (int32_t f = mvfx_gasDensity; same && f <= mvfx_gasVelocityZ; ++f)
+        {
+            same = SameField(gpu, &scene, gas, (mvfxGasField)f, &worst);
+            if (!same)
+            {
+                printf("  step %d: field %d apart\n", s, f);
+            }
+        }
+        most = fmaxf(most, MostDensity(&scene, gas));
+    }
+    printf("%s: largest relative difference %g, most density %g, %d passes a step\n", what,
+           (double)worst, (double)most, mvfxGpuSim_GasPasses(scene.sim, 0));
+    CHECK(same && most > 0.1f, what);
+    Close(&scene);
+}
+
+// A smoke gas of n cells along each axis rising from a sphere at its
+// floor, hot and setting its velocity, its floor closed.
+static mvfxGasDef Plume(int32_t x, int32_t y, int32_t z, const mvfxGasSource* source)
+{
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = x;
+    gas.size[1] = y;
+    gas.size[2] = z;
+    gas.cellSize = 0.1f;
+    gas.substeps = 2;
+    gas.pressureCycles = 2;
+    gas.closedWalls = mvfx_gasWallMinY;
+    gas.heatLift = 1.5f;
+    gas.densityWeight = 0.25f;
+    gas.gravity[1] = -9.8f;
+    gas.densityDecay = 0.2f;
+    gas.temperatureDecay = 0.5f;
+    gas.velocityDecay = 0.1f;
+    gas.sources = source;
+    gas.sourceCount = 1;
+    return gas;
+}
+
+static const mvfxGasSource s_sphere = {.shape = mvfx_gasSphere,
+                                       .center = {0.05f, -0.8f, 0.0f},
+                                       .radius = 0.3f,
+                                       .density = 4.0f,
+                                       .temperature = 2.0f,
+                                       .fuel = 1.0f,
+                                       .setsVelocity = true,
+                                       .velocity = {0.2f, 1.0f, -0.1f}};
+static const mvfxGasSource s_box = {.shape = mvfx_gasBox,
+                                    .center = {-0.4f, -1.0f, 0.0f},
+                                    .halfExtents = {0.3f, 0.2f, 0.5f},
+                                    .density = 3.0f,
+                                    .temperature = 1.0f};
+
+static void TestPlumes(Gpu* gpu, mvfxGpu* kernels)
+{
+    mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
+    Steps(gpu, kernels, &gas, 30, false, "a plume of 16 by 24 by 16, its levels in the tail");
+    // Levels of 48 by 48 by 32 (73,728 cells) and 24 by 24 by 16 above the
+    // tail, which takes 12 by 12 by 8 down; every wall closed, four
+    // substeps.
+    gas = Plume(48, 48, 32, &s_sphere);
+    gas.closedWalls = 63;
+    gas.substeps = 4;
+    Steps(gpu, kernels, &gas, 12, false, "a plume of 48 by 48 by 32, closed");
+    // A 2D gas from a box, three cycles, cleared and restarted.
+    gas = Plume(40, 32, 1, &s_box);
+    gas.pressureCycles = 3;
+    Steps(gpu, kernels, &gas, 30, true, "a 2D gas from a box, cleared");
+    // No solve: the walls closed alone.
+    gas = Plume(16, 16, 16, &s_sphere);
+    gas.pressureCycles = 0;
+    Steps(gpu, kernels, &gas, 20, false, "a gas without a solve");
+}
+
+// The bytes of a read in each path's buffer, filled alike first: the
+// padding kept on both, each value within the tolerance (a normalized
+// one within a step).
+static uint8_t s_cpuBytes[1 << 16];
+static uint8_t s_gpuBytes[1 << 16];
+
+// A value of a format at bytes, decoded.
+static float Decoded(mvfxFormat format, const uint8_t* at)
+{
+    switch (format)
+    {
+    case mvfx_formatUnorm8:
+        return (float)at[0] / 255.0f;
+    case mvfx_formatSnorm8:
+        return (float)(int8_t)at[0] / 127.0f;
+    case mvfx_formatUnorm16:
+        return (float)(uint16_t)(at[0] | at[1] << 8) / 65535.0f;
+    case mvfx_formatSnorm16:
+        return (float)(int16_t)(uint16_t)(at[0] | at[1] << 8) / 32767.0f;
+    case mvfx_formatFloat16:
+    {
+        uint16_t h = (uint16_t)(at[0] | at[1] << 8);
+        float magnitude = ldexpf((float)((h & 0x3FFu) | ((h >> 10 & 0x1Fu) != 0 ? 0x400u : 0u)),
+                                 (int)(h >> 10 & 0x1Fu) - 25 + ((h >> 10 & 0x1Fu) == 0 ? 1 : 0));
+        return (h & 0x8000u) != 0 ? -magnitude : magnitude;
+    }
+    default:
+    {
+        float f;
+        memcpy(&f, at, sizeof f);
+        return f;
+    }
+    }
+}
+
+// Whether a read's bytes agree on both paths: every byte off the values
+// the fill, each value within the format's step of the CPU path's.
+static bool SameRead(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint64_t offset,
+                     uint64_t bytes, int32_t size)
+{
+    memset(s_cpuBytes, 0xA5, sizeof s_cpuBytes);
+    if (mvfxInstance_ReadGasAs(scene->context, scene->cpu, 0, read, s_cpuBytes + offset,
+                               (int64_t)(bytes - offset)) != mvfx_success ||
+        !ReadGpu(gpu, scene, read, bytes, offset, 0xA5, s_gpuBytes))
+    {
+        return false;
+    }
+    float step = read->format == mvfx_formatFloat32 || read->format == mvfx_formatFloat16
+                     ? 0.0f
+                     : 1.0f / 127.0f;
+    bool same = true;
+    for (uint64_t b = 0; same && b < bytes; ++b)
+    {
+        uint64_t rel = b - offset;
+        uint64_t row = rel % read->layerBytes % read->rowBytes;
+        bool value = b >= offset && rel / read->layerBytes < (uint64_t)read->size[2] &&
+                     rel % read->layerBytes / read->rowBytes < (uint64_t)read->size[1] &&
+                     row < (uint64_t)(read->size[0] * size);
+        if (!value)
+        {
+            same = s_cpuBytes[b] == s_gpuBytes[b] && s_gpuBytes[b] == 0xA5;
+        }
+        else if (row % (uint64_t)size == 0)
+        {
+            float c = Decoded(read->format, s_cpuBytes + b);
+            float g = Decoded(read->format, s_gpuBytes + b);
+            float allowed =
+                read->format == mvfx_formatFloat16 ? 1e-3f * (1.0f + fabsf(c)) : step + TOLERANCE;
+            same = fabsf(c - g) <= allowed;
+        }
+    }
+    return same;
+}
+
+static void TestReads(Gpu* gpu, mvfxGpu* kernels)
+{
+    // After 15 steps of a plume: each format over a box from (2, 3, 1) of
+    // 5 by 7 by 4 cells, its rows padded by 3 bytes and its layers by 6,
+    // from byte 8 of the buffer; then the reads refused.
+    mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
+    Scene scene;
+    if (!Open(kernels, &gas, &scene))
+    {
+        return;
+    }
+    LongFrames(true);
+    for (int32_t s = 0; s < 15; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(scene.context, StepTicks()) == mvfx_success &&
+                  Simulate(gpu, scene.sim),
+              "stepped");
+        LongFrames(false);
+    }
+    static const mvfxFormat formats[6] = {mvfx_formatFloat32, mvfx_formatFloat16,
+                                          mvfx_formatUnorm8,  mvfx_formatSnorm8,
+                                          mvfx_formatUnorm16, mvfx_formatSnorm16};
+    static const int32_t sizes[6] = {4, 2, 1, 1, 2, 2};
+    bool same = true;
+    for (int32_t f = 0; same && f < 6; ++f)
+    {
+        uint32_t row = (uint32_t)(5 * sizes[f] + 3);
+        uint32_t layer = 7u * row + 6u;
+        const mvfxGasRead read = {.field = f % 2 == 0 ? mvfx_gasDensity : mvfx_gasVelocityY,
+                                  .format = formats[f],
+                                  .first = {2, 3, 1},
+                                  .size = {5, 7, 4},
+                                  .low = -1.0f,
+                                  .high = 2.0f,
+                                  .rowBytes = row,
+                                  .layerBytes = layer};
+        same = SameRead(gpu, &scene, &read, 8, 8u + 4u * layer, sizes[f]);
+        if (!same)
+        {
+            printf("  format %d apart\n", f);
+        }
+    }
+    CHECK(same, "a gas's reads in every format");
+    mvfxGpuGasReadDef def = mvfxDefaultGpuGasReadDef();
+    def.target = (mrhiResourceId){.index1 = 1};
+    def.bytes = 4;
+    mvfxGpuGasReadDef bad[8] = {def, def, def, def, def, def, def, def};
+    bad[0].cookie = 0;
+    bad[1].gas = 1;
+    bad[2].read.field = mvfx_gasDistance;
+    bad[3].read.size[0] = 17;
+    bad[4].read.format = mvfx_formatUnorm8;
+    bad[5].offset = 2;
+    bad[6].bytes = 3;
+    bad[7].target = (mrhiResourceId){0};
+    bool refused = mvfxGpuSim_AddGasRead(NULL, &def) == mvfx_errorInvalid &&
+                   mvfxGpuSim_AddGasRead(scene.sim, NULL) == mvfx_errorInvalid;
+    for (int32_t b = 0; b < 8; ++b)
+    {
+        refused = refused && mvfxGpuSim_AddGasRead(scene.sim, &bad[b]) == mvfx_errorInvalid;
+    }
+    CHECK(refused && mvfxGpuSim_GasPasses(scene.sim, 1) == 0 &&
+              mvfxGpuSim_GasPasses(NULL, 0) == 0 && mvfxGpuSim_GasPasses(scene.sim, 0) == 73,
+          "a gas read's refusals");
+    Close(&scene);
+}
+
+static void Suite(Gpu* gpu, mvfxGpu* kernels)
+{
+    TestPlumes(gpu, kernels);
+    TestReads(gpu, kernels);
+}
+
+int main(void)
+{
+    int result = RunSuite(Suite);
+    return result == 77 ? 77 : (result == 0 && s_failures == 0 ? 0 : 1);
+}

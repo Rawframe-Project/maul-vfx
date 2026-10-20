@@ -240,9 +240,13 @@ static void TestFailures(void)
     Close(&gpu);
 
     // A device failing its objects after a few: refused with the state
-    // error and all returned, until the device makes enough.
+    // error and all returned, until the device makes the shaders and the
+    // first requests; made then, but ready only once it makes every
+    // kernel's pipeline (the later ones requested as the first are
+    // answered).
     int32_t refusedCount = 0;
     int32_t madeCount = 0;
+    bool readyAsMade = true;
     for (uint32_t objects = 1; objects <= MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + 2; ++objects)
     {
         CHECK(Open(&gpu, mrhi_success, objects), "a device failing objects");
@@ -251,6 +255,13 @@ static void TestFailures(void)
         mvfxResult result = mvfxCreateGpu(&def, &kernels);
         refusedCount += result == mvfx_errorState && kernels == NULL && s_held == 0;
         madeCount += result == mvfx_success;
+        if (result == mvfx_success)
+        {
+            mrhiDeviceNotification last = {0};
+            (void)Pump(&gpu, kernels, &last);
+            bool every = objects >= MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT;
+            readyAsMade = readyAsMade && mvfxGpu_IsReady(kernels) == every;
+        }
         mvfxDestroyGpu(result == mvfx_success ? kernels : NULL);
         CHECK(s_held == 0, "its memory returned");
         Close(&gpu);
@@ -258,6 +269,8 @@ static void TestFailures(void)
     CHECK(refusedCount > 0 && madeCount > 0 &&
               refusedCount + madeCount == MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + 2,
           "refused while the device fails, made once it does not");
+    CHECK(readyAsMade && refusedCount < MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT,
+          "made with its first requests, ready once every pipeline is");
 }
 
 int main(void)

@@ -1000,6 +1000,17 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   (`mvfxInstance_ReadGas`, `mvfxInstance_ReadGasAs` and
   `mvfxInstance_SampleGas` refuse it). `mvfxGpuRefusal` names a gas the
   GPU part does not run yet (`gas`).
+- The GPU part runs smoke gases: their sources, buoyancy and decay,
+  their carries and their pressure solve by multigrid, the levels of at
+  most 512 cells in one workgroup, as the CPU path's step runs them
+  (forces, obstacles, MacCormack, confinement, burning and splats still
+  refused). `mvfxGpuSim_AddGasRead` writes a gas's field into a buffer
+  as `mvfxInstance_ReadGasAs` does, `mvfxGpuSim_GasPasses` gives the
+  passes a gas's step takes at most, and `mvfxEffect_GetGasView` gives a
+  gas as compiled. A GPU object now holds at most 32 pipeline requests
+  unanswered, each answer `mvfxGpu_Notify` takes requesting the next
+  kernel's, so a device holding fewer creations at once can still build
+  every kernel.
 
 ### Fixed
 

@@ -15,6 +15,7 @@
 #include "numbers.h"
 #include "record.h"
 #include "records.h"
+#include "sim_gas.h"
 
 #include "maul-rhi/frame.h"
 #include "maul-vfx-rhi/sim.h"
@@ -360,6 +361,9 @@ struct mvfxGpuSim
     // emitter that builds none.
     mrhiBufferId ownEvents;
     mrhiBufferId ownGrid[3];
+    // Its gases, stepped after every emitter.
+    int32_t gasCount;
+    SimGas gases[MVFX_MAX_GASES];
     // The bytes the last mvfxGpuSim_Record uploaded.
     uint64_t uploaded;
     // Whether it is being destroyed: its changing calls from its
