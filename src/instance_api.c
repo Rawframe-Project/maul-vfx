@@ -336,13 +336,6 @@ mvfxResult mvfxInstance_GetEmitterMesh(const mvfxContext* context, mvfxInstanceI
     return mvfx_success;
 }
 
-// The steps an instance's plans hold: one, or for an effect with a liquid
-// gas each step it took (one of no ticks when it took none).
-static int32_t StepCount(const mvfxInstance* live)
-{
-    return live->stepped && live->planSteps > 1 ? live->planSteps : 1;
-}
-
 // An emitter's plan of step s as the CPU path takes it: its span and its
 // births; the instance's move over the first step alone, still after it.
 static void StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxEmitterPlan* planOut)
@@ -350,8 +343,9 @@ static void StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxE
     const mvfxEmitterState* state = &live->emitters[emitter];
     bool split = live->stepped && live->planSteps > 0;
     int32_t last = live->planSteps - 1;
-    int64_t start = split ? live->planStepStart[s] : live->planStart;
-    int64_t end = split && s < last ? live->planStepStart[s + 1] : live->clock;
+    int64_t start = 0;
+    int64_t end = 0;
+    mvfxPlanStepSpan(live, s, &start, &end);
     int32_t first = split ? state->planStepFirst[s] : 0;
     int32_t past = split && s < last ? state->planStepFirst[s + 1] : state->planCount;
     uint64_t refusedBefore = split && s > 0 ? state->planStepRefused[s - 1] : 0;
@@ -432,7 +426,7 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     {
         return result;
     }
-    if (StepCount(live) > 1)
+    if (mvfxPlanStepCount(live) > 1)
     {
         // Each step has its own plan.
         return mvfx_errorState;
@@ -458,7 +452,7 @@ mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context, mvfxInsta
     {
         return result;
     }
-    if (step < 0 || step >= StepCount(live))
+    if (step < 0 || step >= mvfxPlanStepCount(live))
     {
         return mvfx_errorInvalid;
     }
@@ -486,7 +480,7 @@ mvfxResult mvfxInstance_GetPlanSteps(const mvfxContext* context, mvfxInstanceId 
     {
         return mvfx_errorState;
     }
-    *countOut = StepCount(live);
+    *countOut = mvfxPlanStepCount(live);
     return mvfx_success;
 }
 

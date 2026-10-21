@@ -1058,11 +1058,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   (`MVFX_GPU_GAS_FASTEST`, handed over by `mvfxGpuSim_ReportGas`). A
   gas plan names its liquid's map (`mvfxGasPlan.liquid`) and the
   emitter view its affine matrices (`mvfxAttributeArrays.affine`).
+- A planned instance hands over a gas's plan a substep
+  (`mvfxInstance_GetGasStepPlan`): its span, a clear and its obstacles'
+  move in the first alone, its forces at its start.
 
 ### Changed
 
-- `mvfxInstance_GetEmitterPlan` refuses (`mvfx_errorState`) an instance
-  whose plans hold more than one step; each has its own plan.
+- `mvfxInstance_GetEmitterPlan` and `mvfxInstance_GetGasPlan` refuse
+  (`mvfx_errorState`) an instance whose plans hold more than one step;
+  each has its own plan.
 
 ### Fixed
 

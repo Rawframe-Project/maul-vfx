@@ -901,7 +901,8 @@ extern "C"
     /// instance took, cut into substeps by its liquid gases
     /// (mvfxGasDef.courant), at most MVFX_MAX_PLAN_STEPS. A simulation runs
     /// them in turn, each step every emitter's plan of it
-    /// (mvfxInstance_GetEmitterStepPlan) and then the gases'.
+    /// (mvfxInstance_GetEmitterStepPlan) and then the gases'
+    /// (mvfxInstance_GetGasStepPlan).
     ///
     /// @param context   The context.
     /// @param instance  A planned instance.
@@ -976,7 +977,7 @@ extern "C"
                                                              mvfxEffectId effect, int32_t gas,
                                                              mvfxGasView* viewOut);
 
-    /// Returns a smoke gas's plan for the context's last step.
+    /// Returns a gas's plan for the context's last step.
     ///
     /// @param context  The context.
     /// @param instance A planned instance.
@@ -985,12 +986,37 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or
     ///         a gas out of range; `mvfx_errorStale` for an instance that
     ///         is gone; `mvfx_errorState` for an instance that is not
-    ///         planned.
+    ///         planned or whose plans hold more than one step
+    ///         (mvfxInstance_GetPlanSteps), each with its own plan.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context,
                                                                mvfxInstanceId instance, int32_t gas,
                                                                mvfxGasPlan* planOut);
+
+    /// Returns a gas's plan for one step of the context's last
+    /// (mvfxInstance_GetPlanSteps), as the CPU path takes that step: its
+    /// span; a clear in the first step alone; its obstacles before the
+    /// step the last plan's in the first, then those the first left, the
+    /// instance standing still after it; its forces resolved at its start;
+    /// the rest as at the plan's end. With one step it is the plan
+    /// mvfxInstance_GetGasPlan returns.
+    ///
+    /// @param context  The context.
+    /// @param instance A planned instance.
+    /// @param gas      The gas's index in its effect.
+    /// @param step     The step's index, below the plans' step count.
+    /// @param planOut  Receives the plan; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         gas or a step out of range; `mvfx_errorStale` for an
+    ///         instance that is gone; `mvfx_errorState` for an instance
+    ///         that is not planned.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetGasStepPlan(const mvfxContext* context,
+                                                                   mvfxInstanceId instance,
+                                                                   int32_t gas, int32_t step,
+                                                                   mvfxGasPlan* planOut);
 
     /// Tells a planned instance whether its simulation's gas holds
     /// anything (a value of a field past nothing) at the end of a step: a

@@ -6,7 +6,8 @@
 // its simulation reports (the CPU path's own when reported each step; the
 // gravity's alone with no particle alive; the most before any report),
 // and hands over a plan a substep: the span, the move over the first
-// alone, the births by their substep's start, the serials owed. The speed
+// alone, the births by their substep's start, the serials owed; the
+// gas's plan of each substep spans it, the whole plans refused. The speed
 // setter's refusals; births past a plan's room refused; a liquid gas's
 // plan maps its particles; a surface gas still unplannable.
 
@@ -126,6 +127,7 @@ static void CheckSteps(mvfxContext* context, mvfxInstanceId planned, int64_t sta
                        const float velocity[3], uint64_t* serial, Broken* broken)
 {
     static mvfxEmitterPlan plan;
+    static mvfxGasPlan gasPlan;
     int64_t done = 0;
     for (int32_t k = 0; k < count; ++k)
     {
@@ -133,6 +135,10 @@ static void CheckSteps(mvfxContext* context, mvfxInstanceId planned, int64_t sta
         CHECK(mvfxInstance_GetEmitterStepPlan(context, planned, 0, k, &plan) == mvfx_success,
               "a step's plan");
         broken->spans += plan.start != start + done || plan.ticks != to - done;
+        // The gas's plan of the step spans it too.
+        CHECK(mvfxInstance_GetGasStepPlan(context, planned, 0, k, &gasPlan) == mvfx_success,
+              "a gas's step's plan");
+        broken->spans += gasPlan.start != plan.start || gasPlan.ticks != plan.ticks;
         for (int32_t b = 0; b < plan.birthCount; ++b)
         {
             const mvfxPlannedBirth* birth = &plan.births[b];
@@ -154,8 +160,16 @@ static void CheckSteps(mvfxContext* context, mvfxInstanceId planned, int64_t sta
     // The whole query is refused while the plans hold more steps.
     mvfxResult whole = mvfxInstance_GetEmitterPlan(context, planned, 0, &plan);
     broken->whole += count > 1 ? whole != mvfx_errorState : whole != mvfx_success;
+    whole = mvfxInstance_GetGasPlan(context, planned, 0, &gasPlan);
+    broken->whole += count > 1 ? whole != mvfx_errorState : whole != mvfx_success;
     CHECK(mvfxInstance_GetEmitterStepPlan(context, planned, 0, count, &plan) == mvfx_errorInvalid &&
-              mvfxInstance_GetEmitterStepPlan(context, planned, 1, 0, &plan) == mvfx_errorInvalid,
+              mvfxInstance_GetEmitterStepPlan(context, planned, 1, 0, &plan) == mvfx_errorInvalid &&
+              mvfxInstance_GetGasStepPlan(context, planned, 0, count, &gasPlan) ==
+                  mvfx_errorInvalid &&
+              mvfxInstance_GetGasStepPlan(context, planned, 0, -1, &gasPlan) == mvfx_errorInvalid &&
+              mvfxInstance_GetGasStepPlan(context, planned, 99, 0, &gasPlan) == mvfx_errorInvalid &&
+              mvfxInstance_GetGasStepPlan(context, planned, 0, 0, NULL) == mvfx_errorInvalid &&
+              mvfxInstance_GetGasStepPlan(NULL, planned, 0, 0, &gasPlan) == mvfx_errorInvalid,
           "a step's plan's refusals");
 }
 

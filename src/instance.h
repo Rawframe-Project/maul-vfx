@@ -440,6 +440,23 @@ uint32_t mvfxGridTableSize(int32_t capacity);
 // Returns an instance's block.
 void mvfxReleaseInstance(mvfxInstance* instance, const mvfxAllocator* allocator);
 
+// The steps a planned instance's plans hold: one, or for an effect with a
+// liquid gas each step it took (one of no ticks when it took none).
+static inline int32_t mvfxPlanStepCount(const mvfxInstance* instance)
+{
+    return instance->stepped && instance->planSteps > 1 ? instance->planSteps : 1;
+}
+
+// A planned instance's step s's first tick and the tick it ends at (the
+// clock ends the last).
+static inline void mvfxPlanStepSpan(const mvfxInstance* instance, int32_t s, int64_t* start,
+                                    int64_t* end)
+{
+    bool split = instance->stepped && instance->planSteps > 0;
+    *start = split ? instance->planStepStart[s] : instance->planStart;
+    *end = split && s < instance->planSteps - 1 ? instance->planStepStart[s + 1] : instance->clock;
+}
+
 // The array of an attribute of an emitter's particles.
 static inline void* mvfxAttributeArray(const mvfxInstance* instance, int32_t emitter,
                                        mvfxAttribute attribute)

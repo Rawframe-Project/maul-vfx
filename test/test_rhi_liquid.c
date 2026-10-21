@@ -129,8 +129,10 @@ static mvfxEmitterDef Pour(void)
 
 static void TestLiquidGas(Gpu* gpu, mvfxGpu* kernels)
 {
-    // One substep a step: a step split into substeps is refused yet.
+    // One substep a step: a step split into substeps is refused yet. A
+    // fill time past the step's, which the expansion grows over.
     mvfxGasDef gas = Tank(4.0f);
+    gas.fillTime = 0.05f;
     mvfxEmitterDef emitter = Pour();
     Compared(gpu, kernels,
              &(Run){.mostApart = 4, .emitters = &emitter, .gases = &gas, .gasCount = 1},

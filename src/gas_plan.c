@@ -87,40 +87,27 @@ static mvfxPlannedCollider PlannedObstacle(const mvfxInstance* live, int32_t g,
     return mvfxPlannedColliderOf(resolved, grid);
 }
 
-mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                   mvfxGasPlan* planOut)
+// Gas g's plan of step s, as the CPU path takes that step: its span; a
+// clear in the first step alone; its obstacles before the step the last
+// plan's in the first, then where the first left them (the instance
+// stands still after it), the same ones (moved by nothing, as the CPU
+// path resolves them again each step); its forces resolved at its start;
+// the rest as at the plan's end.
+static void StepPlan(const mvfxInstance* live, int32_t g, int32_t s, mvfxGasPlan* planOut)
 {
-    if (planOut != nullptr)
-    {
-        *planOut = (mvfxGasPlan){0};
-    }
-    if (context == nullptr || planOut == nullptr)
-    {
-        return mvfx_errorInvalid;
-    }
-    const mvfxInstance* live = mvfxContextInstance(context, instance);
-    if (live == nullptr)
-    {
-        return mvfx_errorStale;
-    }
-    if (gas < 0 || gas >= live->effect->gasCount)
-    {
-        return mvfx_errorInvalid;
-    }
-    if (!live->planned)
-    {
-        return mvfx_errorState;
-    }
-    const mvfxCompiledGas* compiled = &live->effect->gases[gas];
-    const mvfxGasState* state = &live->gases[gas];
+    const mvfxCompiledGas* compiled = &live->effect->gases[g];
+    const mvfxGasState* state = &live->gases[g];
+    int64_t start = 0;
+    int64_t end = 0;
+    mvfxPlanStepSpan(live, s, &start, &end);
     *planOut = (mvfxGasPlan){
-        .start = live->planStart,
-        .ticks = live->clock - live->planStart,
+        .start = start,
+        .ticks = end - start,
         .stopTick = live->stopTick,
-        .cleared = live->planCleared,
+        .cleared = s == 0 && live->planCleared,
         .forceCount = compiled->def.forceCount,
         .ownObstacleCount = compiled->hasObstacles ? compiled->def.obstacleCount : 0,
-        .obstaclesKnown = state->obstaclesKnown,
+        .obstaclesKnown = state->obstaclesKnown || s > 0,
         .pourCount = state->planPourCount,
         .liquid = state->planLiquid,
     };
@@ -132,26 +119,89 @@ mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId in
     {
         planOut->gravity[k] = state->planGravity[k];
     }
-    double time = (double)live->planStart / (double)MVFX_TICKS_PER_SECOND;
+    double time = (double)start / (double)MVFX_TICKS_PER_SECOND;
     for (int32_t f = 0; f < planOut->forceCount; ++f)
     {
         planOut->forces[f] = mvfxPlannedForceOf(&state->planForces[f], time);
     }
     if (compiled->hasObstacles && state->obstaclesResolved)
     {
+        // After the first step the obstacles stand where it left them.
         int32_t now = state->obstaclesNow;
+        int32_t before = s == 0 ? 1 - now : now;
         planOut->obstacleCount = state->obstacleCount[now];
         for (int32_t c = 0; c < planOut->obstacleCount; ++c)
         {
-            planOut->obstacles[c] = PlannedObstacle(live, gas, &state->obstacles[now][c], c);
-            planOut->obstacleMoved[c] = mvfxGasObstacleMoved(state, c);
+            planOut->obstacles[c] = PlannedObstacle(live, g, &state->obstacles[now][c], c);
+            planOut->obstacleMoved[c] = s > 0 || mvfxGasObstacleMoved(state, c);
         }
-        for (int32_t c = 0; state->obstaclesKnown && c < state->obstacleCount[1 - now]; ++c)
+        for (int32_t c = 0; planOut->obstaclesKnown && c < state->obstacleCount[before]; ++c)
         {
-            planOut->obstaclesBefore[c] =
-                PlannedObstacle(live, gas, &state->obstacles[1 - now][c], c);
+            planOut->obstaclesBefore[c] = PlannedObstacle(live, g, &state->obstacles[before][c], c);
         }
     }
+}
+
+// A planned instance holding gas g, or NULL with why not in result.
+static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId instance, int32_t g,
+                                     mvfxResult* result)
+{
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    *result = live == nullptr                        ? mvfx_errorStale
+              : g < 0 || g >= live->effect->gasCount ? mvfx_errorInvalid
+              : !live->planned                       ? mvfx_errorState
+                                                     : mvfx_success;
+    return *result == mvfx_success ? live : nullptr;
+}
+
+mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                   mvfxGasPlan* planOut)
+{
+    if (planOut != nullptr)
+    {
+        *planOut = (mvfxGasPlan){0};
+    }
+    if (context == nullptr || planOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult result = mvfx_success;
+    const mvfxInstance* live = PlannedOf(context, instance, gas, &result);
+    if (live == nullptr)
+    {
+        return result;
+    }
+    if (mvfxPlanStepCount(live) > 1)
+    {
+        // Each step has its own plan.
+        return mvfx_errorState;
+    }
+    StepPlan(live, gas, 0, planOut);
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetGasStepPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t gas, int32_t step, mvfxGasPlan* planOut)
+{
+    if (planOut != nullptr)
+    {
+        *planOut = (mvfxGasPlan){0};
+    }
+    if (context == nullptr || planOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult result = mvfx_success;
+    const mvfxInstance* live = PlannedOf(context, instance, gas, &result);
+    if (live == nullptr)
+    {
+        return result;
+    }
+    if (step < 0 || step >= mvfxPlanStepCount(live))
+    {
+        return mvfx_errorInvalid;
+    }
+    StepPlan(live, gas, step, planOut);
     return mvfx_success;
 }
 
