@@ -1061,6 +1061,18 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A planned instance hands over a gas's plan a substep
   (`mvfxInstance_GetGasStepPlan`): its span, a clear and its obstacles'
   move in the first alone, its forces at its start.
+- An effect with water surfaces can be planned: a planned instance hands
+  over each surface's plan (`mvfxInstance_GetWaterPlan`, a substep at a
+  time with `mvfxInstance_GetWaterStepPlan`): its substeps, the host's
+  pushes in its frame, its sources' depths and its terrain resolved;
+  its simulation reports shallow water's speed
+  (`mvfxInstance_SetWaterSpeed`), from which the next step's substeps
+  are counted, and whether the surface still moves
+  (`mvfxInstance_SetWaterHolds`: a stopped planned instance runs while
+  it does). Reads and samples of a planned surface are refused
+  (`mvfx_errorState`), as a planned gas's are. The GPU part refuses a
+  water surface for now, named in `mvfxGpuRefusal.water`. A surface's
+  def as compiled is read with `mvfxEffect_GetWaterView`.
 - The GPU part runs frames that split into steps (an effect with a
   liquid gas whose courant number cuts the instance's step): each step
   every emitter's passes and then every gas's, from that step's plans,

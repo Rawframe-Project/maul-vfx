@@ -82,10 +82,9 @@ extern "C"
         mvfxOffscreen offscreen;
         int32_t offscreenInterval;
         // Whether its particles are simulated elsewhere (maul-vfx/plan.h):
-        // it then holds none, and each step writes its emitters' plans and
-        // its smoke gases', whose fields the simulation holds. An effect
-        // with a liquid or surface gas or a water surface cannot be
-        // planned yet.
+        // it then holds none, and each step writes its emitters' plans, its
+        // gases' and its water surfaces', whose fields the simulation
+        // holds. An effect with a surface gas cannot be planned yet.
         bool planned;
     } mvfxInstanceDef;
 
@@ -885,7 +884,8 @@ extern "C"
         // that leans on either moves slower than its water would. And the
         // volume particles poured into shallow water (mvfxEmitterDef.water),
         // in the world's lengths cubed at each pour, which no host push
-        // adds.
+        // adds. A planned instance's surface steps in its simulation, so
+        // these stay 0.
         uint64_t stepsSlowed;
         uint64_t facesHeld;
         double volumePoured;

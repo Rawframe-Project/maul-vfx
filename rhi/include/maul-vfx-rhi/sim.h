@@ -75,12 +75,15 @@ extern "C"
     // touch and its islands settled, as the CPU path's), so they use one
     // compute unit of the device however many there are. gas names the
     // first gas the part does not run, -1 for none (every gas of an effect
-    // that can be planned runs), and emitter is then -1.
+    // that can be planned runs), and emitter is then -1; water names the
+    // first water surface it does not run (none yet), -1 for none, and
+    // emitter and gas are then -1.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
         uint64_t features;
         int32_t gas;
+        int32_t water;
     } mvfxGpuRefusal;
 
     // An emitter's particles: a buffer of 32-bit words, arrays of the

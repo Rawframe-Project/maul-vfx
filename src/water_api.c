@@ -190,6 +190,11 @@ mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId ins
         mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
+    if (live->planned)
+    {
+        // Its fields are the simulation's.
+        return mvfx_errorState;
+    }
     const mvfxWaterState* state = &live->waters[water];
     const mvfxLayoutField field = {.format = read->format, .components = 1};
     uint32_t size = mvfxReadFormatBytes(read->format);
@@ -374,6 +379,11 @@ mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId i
     {
         mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
+    }
+    if (live->planned)
+    {
+        // Its fields are the simulation's.
+        return mvfx_errorState;
     }
     mvfxBoxPlace place = mvfxWaterPlace(live, water);
     mvfxSpaceMap map = mvfxBoxMap(live, &place, mvfx_spaceWorld);

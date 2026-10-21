@@ -15,4 +15,15 @@
 // split over tasks; then whether it moves and how far it reaches.
 void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks);
 
+// Lowers the cells within radius of a point (in the surface's frame, X
+// and Z) of heights u by depth times (1 - r^2)^2; returns the sum of what
+// they sank, in binary64 cell by cell. With u NULL it only sums.
+double mvfxSinkWaves(const mvfxCompiledWater* water, float* u, const float at[2], float radius,
+                     float depth);
+
+// The substeps a waves surface's step of seconds takes and their length
+// in *dt: equal, each at most 0.9 h / (c sqrt 2), none for no time; past
+// MVFX_MAX_WATER_SUBSTEPS that many of the longest, the step slowed.
+int32_t mvfxWaveSubsteps(const mvfxCompiledWater* water, double seconds, float* dt, bool* slowed);
+
 #endif

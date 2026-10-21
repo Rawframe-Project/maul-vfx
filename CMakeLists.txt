@@ -101,6 +101,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/water_shallow.c
     src/water_ground.c
     src/water_couple.c
+    src/water_plan.c
     src/file.c
     src/file_codec.c
     src/file_fields.c
@@ -200,6 +201,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(plan WHITEBOX)
     maul_add_test(plan_gas WHITEBOX)
     maul_add_test(plan_liquid WHITEBOX)
+    maul_add_test(plan_water WHITEBOX)
     maul_add_test(event WHITEBOX)
     maul_add_test(event_spawn WHITEBOX)
     maul_add_test(expand)

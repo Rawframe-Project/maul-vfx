@@ -804,37 +804,6 @@ static void TestBeams(void)
     CHECK(births > 0, "a stopped planned beam strikes as the stepped one");
 }
 
-// Whether a planned instance of an effect is refused, its id null.
-static bool PlannedRefused(mvfxContext* context, const mvfxEffectDef* def)
-{
-    mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, def, &effect) == mvfx_success, "an effect");
-    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    instanceDef.effect = effect;
-    instanceDef.planned = true;
-    mvfxInstanceId instance = {0};
-    return mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_errorState &&
-           instance.index1 == 0;
-}
-
-static void TestCannotBePlanned(void)
-{
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    // A water surface (smoke gases are planned, test_plan_gas.c, and
-    // liquid gases refused there).
-    mvfxEmitterDef emitter = Emitter(16);
-    mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = &emitter;
-    def.emitterCount = 1;
-    const mvfxWaterDef water = mvfxDefaultWaterDef();
-    def.waters = &water;
-    def.waterCount = 1;
-    CHECK(PlannedRefused(context, &def), "water surfaces refused");
-    mvfxDestroyContext(context);
-}
-
 // The features of an emitter in an effect of its own, or ~0 when the
 // effect is refused.
 static uint64_t FeaturesOf(mvfxContext* context, const mvfxEmitterDef* emitter)
@@ -1693,7 +1662,6 @@ int main(void)
     TestRefusals();
     TestHostBirths();
     TestEventSpawn();
-    TestCannotBePlanned();
     TestBeams();
     TestView();
     TestRibbonView();

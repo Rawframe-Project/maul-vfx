@@ -311,12 +311,18 @@ static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
     // Shallow water counts the substeps of each of this context step's
     // steps from the state the last one left (a plan can, from the speed
     // the simulation reports for it).
-    for (int32_t w = 0; !instance->planned && w < instance->effect->waterCount; ++w)
+    for (int32_t w = 0; w < instance->effect->waterCount; ++w)
     {
         const mvfxCompiledWater* water = &instance->effect->waters[w];
         mvfxWaterState* state = &instance->waters[w];
-        state->stepSpeed =
-            water->def.model == mvfx_waterShallow ? mvfxShallowFastest(water, state) : 0.0f;
+        bool shallow = water->def.model == mvfx_waterShallow;
+        // A planned surface: none before its first step (no water), the
+        // speed reported, or not known.
+        float reported = state->reportedTick >= 0 ? state->reportedSpeed : INFINITY;
+        state->stepSpeed = !shallow             ? 0.0f
+                           : !instance->planned ? mvfxShallowFastest(water, state)
+                           : state->filled      ? reported
+                                                : 0.0f;
     }
     if (paused)
     {

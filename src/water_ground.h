@@ -8,8 +8,16 @@
 #ifndef MAUL_VFX_SRC_WATER_GROUND_H
 #define MAUL_VFX_SRC_WATER_GROUND_H
 
+#include "collide.h"
 #include "instance.h"
 #include "tasks.h"
+
+// Resolves shallow water surface w's terrain into its frame where it
+// stands now, and its grid: the def's, or the instance's first
+// heightfield collider when the def takes the host's; false for the
+// floor.
+bool mvfxResolveWaterTerrain(const mvfxInstance* instance, int32_t w,
+                             mvfxResolvedCollider* terrainOut, mvfxGridId* gridOut);
 
 // Reads shallow water surface w's ground at its cells' centers, in its
 // frame: its terrain (the def's, or the instance's first heightfield

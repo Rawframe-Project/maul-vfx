@@ -11,6 +11,7 @@
 #include "force.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/plan.h"
 #include "maul-vfx/water.h"
 
 #include <stdbool.h>
@@ -66,7 +67,9 @@ typedef struct mvfxWaterCrossing
 // moves at all (a rate, or a slope), and its largest displacement's size
 // (the surface's height); shallow water's fastest speed as the last
 // context step left it, which each of this one's steps counts its
-// substeps from; the counts mvfxWaterInfo reads.
+// substeps from; the counts mvfxWaterInfo reads. A planned instance's:
+// the speed its simulation reported last and the tick it is of (-1 for
+// none), and its plan's pushes and terrain as resolved.
 typedef struct mvfxWaterState
 {
     float* heights[2];
@@ -89,6 +92,12 @@ typedef struct mvfxWaterState
     bool holds;
     float reach;
     float stepSpeed;
+    float reportedSpeed;
+    int64_t reportedTick;
+    int32_t planPushCount;
+    mvfxPlannedWaterPush planPushes[MVFX_MAX_WATER_PUSHES];
+    bool planHasTerrain;
+    mvfxPlannedCollider planTerrain;
     uint64_t stepsSlowed;
     uint64_t facesHeld;
     double volumePoured;

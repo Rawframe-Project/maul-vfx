@@ -17,6 +17,7 @@
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
+#include "maul-vfx/water.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -447,6 +448,70 @@ extern "C"
         // pour's (no rates or drag); emitter -1 for smoke.
         mvfxPlannedPour liquid;
     } mvfxGasPlan;
+
+    // A host's push on a water surface (mvfxInstance_PushWater) as resolved
+    // for a plan, in the surface's frame where it stands at the step's end:
+    // the point's X and Z, the radius and depth in the surface's lengths.
+    typedef struct mvfxPlannedWaterPush
+    {
+        float at[2];
+        float radius;
+        float depth;
+    } mvfxPlannedWaterPush;
+
+    // A water surface's step as resolved for a plan
+    // (mvfxInstance_GetWaterPlan), in its frame (mvfxInstance_GetWaterInfo
+    // places it): what the CPU path's water step takes from the instance,
+    // resolved where it steps, after every emitter of the step.
+    typedef struct mvfxWaterPlan
+    {
+        // The first tick the plan covers and how many; a shallow water's
+        // step starting before the instance's stop tick pours its sources.
+        int64_t start;
+        int64_t ticks;
+        int64_t stopTick;
+        // Whether the instance was cleared before the plan (stopped with
+        // mvfx_stopAndClear, restarted, or just created): the simulation
+        // stills and empties the surface first, and shallow water fills it
+        // again at this step.
+        bool cleared;
+        // Its substeps, each one's length in seconds, and whether the step
+        // is slowed (its time past MVFX_MAX_WATER_SUBSTEPS of the longest
+        // stable substep): the waves' from the def, shallow water's from
+        // the speed reported (mvfxInstance_SetWaterSpeed).
+        int32_t substeps;
+        float dt;
+        bool slowed;
+        // The host's pushes this step, in order; for waves, the sum of what
+        // they sink over the cells (binary64, cell by cell, push by push,
+        // as the CPU path sums it), which the surface then rises by evenly
+        // over its cells with what the particles' crossings sink.
+        int32_t pushCount;
+        mvfxPlannedWaterPush pushes[MVFX_MAX_WATER_PUSHES];
+        double pushSank;
+        // Shallow water: the depth each source adds this step (rate times
+        // the step's seconds, rounded once), 0 for each from the stop tick
+        // on.
+        float sourceDepths[MVFX_MAX_WATER_SOURCES];
+        // Shallow water's ground: its terrain resolved into the surface's
+        // frame (its own, or with hostTerrain the instance's first
+        // heightfield collider), or none (hasTerrain false) for the flat
+        // floor at the grid's center.
+        bool hasTerrain;
+        mvfxPlannedCollider terrain;
+    } mvfxWaterPlan;
+
+    // A water surface of an effect as compiled (mvfxEffect_GetWaterView),
+    // for a simulation elsewhere.
+    typedef struct mvfxWaterView
+    {
+        // Its def as compiled: its sources point at the effect's copies,
+        // valid while the effect lives.
+        mvfxWaterDef def;
+        // Its cells, and shallow water's faces across X and across Z.
+        int64_t cells;
+        int64_t faces[2];
+    } mvfxWaterView;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
 // with a velocity, its lifetimes, gravity and drag: one bit for each part
@@ -1076,6 +1141,121 @@ extern "C"
                                                                    mvfxInstanceId instance,
                                                                    int32_t gas, int64_t tick,
                                                                    float speed);
+
+    /// Returns a water surface of an effect as compiled.
+    ///
+    /// @param context  The context.
+    /// @param effect   The effect.
+    /// @param water    The surface's index in the effect.
+    /// @param viewOut  Receives the view; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or
+    ///         a surface out of range; `mvfx_errorStale` for an effect that
+    ///         is gone.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxEffect_GetWaterView(const mvfxContext* context,
+                                                               mvfxEffectId effect, int32_t water,
+                                                               mvfxWaterView* viewOut);
+
+    /// Returns a water surface's plan for the context's last step.
+    ///
+    /// @param context  The context.
+    /// @param instance A planned instance.
+    /// @param water    The surface's index in its effect.
+    /// @param planOut  Receives the plan; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         surface out of range; `mvfx_errorStale` for an instance that
+    ///         is gone; `mvfx_errorState` for an instance that is not
+    ///         planned or whose plans hold more than one step
+    ///         (mvfxInstance_GetPlanSteps), each with its own plan.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetWaterPlan(const mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 int32_t water,
+                                                                 mvfxWaterPlan* planOut);
+
+    /// Returns a water surface's plan for one step of the context's last
+    /// (mvfxInstance_GetPlanSteps), as the CPU path takes that step after
+    /// the step's emitters: its span and substeps; a clear and the host's
+    /// pushes in the first step alone; its sources' depths over its span;
+    /// the rest as at the plan's end. With one step it is the plan
+    /// mvfxInstance_GetWaterPlan returns.
+    ///
+    /// @param context  The context.
+    /// @param instance A planned instance.
+    /// @param water    The surface's index in its effect.
+    /// @param step     The step's index, below the plans' step count.
+    /// @param planOut  Receives the plan; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         surface or a step out of range; `mvfx_errorStale` for an
+    ///         instance that is gone; `mvfx_errorState` for an instance
+    ///         that is not planned.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetWaterStepPlan(const mvfxContext* context,
+                                                                     mvfxInstanceId instance,
+                                                                     int32_t water, int32_t step,
+                                                                     mvfxWaterPlan* planOut);
+
+    /// Tells a planned instance whether a water surface moved at the end of
+    /// a step (a rate, or a slope that will make one; for shallow water a
+    /// flow), which only its simulation knows: a stopped instance runs
+    /// while a surface moves. A planned surface moves until told
+    /// otherwise, so an instance whose simulation never reports runs on
+    /// after it stops. That a surface moves always counts; that it is
+    /// still counts only for a step that ended at or after the instance's
+    /// stop tick and every last death the plans give the emitters whose
+    /// particles meet it, past which nothing stirs it but the host's
+    /// pushes, and is otherwise ignored.
+    ///
+    /// @param context  The context.
+    /// @param instance A planned instance.
+    /// @param water    The surface's index in its effect.
+    /// @param tick     The tick of the step's end the report is of, at
+    ///                 most the instance's clock.
+    /// @param holds    Whether the surface moved then.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, a
+    ///         surface out of range or a tick past the clock or below 0,
+    ///         which counts as misuse when the context is given;
+    ///         `mvfx_errorStale` for an instance that is gone;
+    ///         `mvfx_errorState` for an instance that is not planned.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context,
+                                                                  mvfxInstanceId instance,
+                                                                  int32_t water, int64_t tick,
+                                                                  bool holds);
+
+    /// Tells a planned instance a shallow water surface's fastest speed
+    /// (its largest face speed plus sqrt(g deepest)) at the end of a step,
+    /// which its simulation measures: each step of the next context step
+    /// counts its substeps from the speed of the latest step reported, as
+    /// an instance it simulates counts them from its own state then. A
+    /// surface's first step after a clear counts from no water (one
+    /// substep); a later step with nothing reported yet takes
+    /// MVFX_MAX_WATER_SUBSTEPS. A report older than the latest one is
+    /// ignored.
+    ///
+    /// @param context  The context.
+    /// @param instance A planned instance.
+    /// @param water    A shallow water surface's index in its effect.
+    /// @param tick     The tick of the step's end the report is of, at
+    ///                 most the instance's clock.
+    /// @param speed    The speed then, in the surface's lengths a second,
+    ///                 finite and at least 0.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, a
+    ///         surface out of range or not shallow water, a tick past the
+    ///         clock or below 0 or a speed not finite or below 0, which
+    ///         counts as misuse when the context is given;
+    ///         `mvfx_errorStale` for an instance that is gone;
+    ///         `mvfx_errorState` for an instance that is not planned.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterSpeed(mvfxContext* context,
+                                                                  mvfxInstanceId instance,
+                                                                  int32_t water, int64_t tick,
+                                                                  float speed);
 
 #ifdef __cplusplus
 }

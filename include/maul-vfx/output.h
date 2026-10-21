@@ -758,7 +758,8 @@ extern "C"
     ///         instance; `mvfx_errorInvalid` for a NULL argument, a surface
     ///         index, field, format, box, range or pitch out of range, or
     ///         bytes too few, which counts as misuse when the context is
-    ///         given.
+    ///         given; `mvfx_errorState` for a planned instance, whose
+    ///         fields are its simulation's.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
@@ -795,7 +796,9 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, a surface
     ///         index out of range, a count out of range or a point not
-    ///         finite, which counts as misuse when the context is given.
+    ///         finite, which counts as misuse when the context is given;
+    ///         `mvfx_errorState` for a planned instance, whose fields are
+    ///         its simulation's.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.

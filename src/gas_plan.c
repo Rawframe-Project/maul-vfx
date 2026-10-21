@@ -10,6 +10,7 @@
 #include "gas_solid.h"
 #include "instance_api.h"
 #include "plan_resolved.h"
+#include "water_plan.h"
 
 #include "maul-vfx/plan.h"
 
@@ -74,6 +75,7 @@ void mvfxPlanGases(mvfxInstance* instance)
         }
         PlanPours(instance, g, state);
     }
+    mvfxPlanWaters(instance);
     instance->gasesDue = false;
 }
 

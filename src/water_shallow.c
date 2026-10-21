@@ -390,6 +390,13 @@ int32_t mvfxShallowSubsteps(const mvfxCompiledWater* water, float fastest, doubl
     {
         return 0;
     }
+    if (isinf(fastest))
+    {
+        // Not known (a planned instance before its first report): the
+        // most, equal, the step not slowed.
+        *dt = (float)(seconds / MVFX_MAX_WATER_SUBSTEPS);
+        return MVFX_MAX_WATER_SUBSTEPS;
+    }
     double longest = fastest > 0.0f ? 0.5 * (double)water->def.cellSize / (double)fastest : seconds;
     double count = fmax(ceil(seconds / longest), 1.0);
     *slowed = count > (double)MVFX_MAX_WATER_SUBSTEPS;

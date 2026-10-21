@@ -90,6 +90,7 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
         .gas = -1,
+        .water = -1,
         .features =
             (view->features & ~RUN_FEATURES) |
             ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
@@ -132,7 +133,7 @@ static mvfxResult ReadViews(mvfxGpuSim* sim, mvfxEffectId effect, mvfxGpuRefusal
             return mvfx_errorState;
         }
     }
-    *refusal = (mvfxGpuRefusal){.emitter = -1, .gas = -1};
+    *refusal = (mvfxGpuRefusal){.emitter = -1, .gas = -1, .water = -1};
     mvfxOrderSimEmitters(sim);
     return mvfx_success;
 }
@@ -338,10 +339,23 @@ static bool IsDefValid(const mvfxGpuSimDef* def)
            mvfxGpu_IsReady(def->gpu) && mvfxRhiIsAllocatorValid(&def->allocator);
 }
 
+// Refuses an instance holding a water surface, which the part does not
+// run yet: the first surface in refusal.
+static mvfxResult ReadWaters(const mvfxGpuSimDef* def, int32_t* refusal)
+{
+    mvfxWaterInfo water;
+    if (mvfxInstance_GetWaterInfo(def->context, def->instance, 0, &water) == mvfx_success)
+    {
+        *refusal = 0;
+        return mvfx_errorState;
+    }
+    return mvfx_success;
+}
+
 mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
                             mvfxGpuRefusal* refusalOut)
 {
-    mvfxGpuRefusal refusal = {.emitter = -1, .gas = -1};
+    mvfxGpuRefusal refusal = {.emitter = -1, .gas = -1, .water = -1};
     if (simOut != nullptr)
     {
         *simOut = nullptr;
@@ -377,6 +391,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     {
         result = mvfxReadSimGases(sim, def->effect, &refusal.gas);
     }
+    result = result == mvfx_success ? ReadWaters(def, &refusal.water) : result;
     for (int32_t e = 0; result == mvfx_success && e < sim->emitterCount; ++e)
     {
         result = PrepareEmitter(sim, def, e);

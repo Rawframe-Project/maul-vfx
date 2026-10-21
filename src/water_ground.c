@@ -122,25 +122,35 @@ static void GroundRows(int32_t start, int32_t end, void* context)
     }
 }
 
-void mvfxReadWaterGround(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
+bool mvfxResolveWaterTerrain(const mvfxInstance* instance, int32_t w,
+                             mvfxResolvedCollider* terrainOut, mvfxGridId* gridOut)
 {
-    const mvfxCompiledWater* water = &instance->effect->waters[w];
-    mvfxWaterState* state = &instance->waters[w];
     const mvfxGrid* grid = nullptr;
     const mvfxCollider* terrain = TerrainOf(instance, w, &grid);
     if (terrain == nullptr || grid == nullptr)
     {
-        memset(state->ground, 0, (size_t)water->cells * sizeof(float));
-        return;
+        return false;
     }
     // A terrain's space: 0 the world's, 1 the instance's frame.
     mvfxBoxPlace place = mvfxWaterPlace(instance, w);
     mvfxSpaceMap map =
         mvfxBoxMap(instance, &place, terrain->space == 0 ? mvfx_spaceWorld : mvfx_spaceLocal);
-    Ground g = {.terrain = mvfxResolveCollider(terrain, grid, &map, 0.0f),
-                .n = water->def.size,
-                .cell = water->def.cellSize,
-                .out = state->ground};
+    *terrainOut = mvfxResolveCollider(terrain, grid, &map, 0.0f);
+    *gridOut = terrain->grid;
+    return true;
+}
+
+void mvfxReadWaterGround(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
+{
+    const mvfxCompiledWater* water = &instance->effect->waters[w];
+    mvfxWaterState* state = &instance->waters[w];
+    Ground g = {.n = water->def.size, .cell = water->def.cellSize, .out = state->ground};
+    mvfxGridId grid = {0};
+    if (!mvfxResolveWaterTerrain(instance, w, &g.terrain, &grid))
+    {
+        memset(state->ground, 0, (size_t)water->cells * sizeof(float));
+        return;
+    }
     mvfxRunTasks(tasks, GroundRows, water->def.size[1], ROW_RANGE, &g);
 }
 

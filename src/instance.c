@@ -759,6 +759,9 @@ void mvfxResetInstance(mvfxInstance* instance)
     {
         mvfxWaterState* water = &instance->waters[w];
         mvfxClearWater(water, &instance->effect->waters[w]);
+        // A planned surface holds until its simulation says otherwise
+        // (mvfxInstance_SetWaterHolds).
+        water->holds = instance->planned;
         // A world surface's grid stays where the instance starts.
         for (int32_t k = 0; k < 3; ++k)
         {

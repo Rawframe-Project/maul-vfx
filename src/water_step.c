@@ -116,14 +116,11 @@ static void OpenWalls(const Waves* w)
     }
 }
 
-// Lowers the cells within radius of a point (in the surface's frame, X
-// and Z) by depth times the falloff; returns the sum of what they sank.
-static double Sink(const mvfxCompiledWater* water, mvfxWaterState* state, const float at[2],
-                   float radius, float depth)
+double mvfxSinkWaves(const mvfxCompiledWater* water, float* u, const float at[2], float radius,
+                     float depth)
 {
     const int32_t* n = water->def.size;
     float h = water->def.cellSize;
-    float* u = state->heights[state->current];
     // The cells' centers within the radius: along each axis, by index.
     float cx = at[0] / h + 0.5f * (float)n[0] - 0.5f;
     float cz = at[1] / h + 0.5f * (float)n[1] - 0.5f;
@@ -141,7 +138,10 @@ static double Sink(const mvfxCompiledWater* water, mvfxWaterState* state, const 
             float dz = ((float)z - cz) / reach;
             float s = 1.0f - (dx * dx + dz * dz);
             float by = s > 0.0f ? depth * s * s : 0.0f;
-            u[(int64_t)z * n[0] + x] -= by;
+            if (u != nullptr)
+            {
+                u[(int64_t)z * n[0] + x] -= by;
+            }
             sank += (double)by;
         }
     }
@@ -197,6 +197,22 @@ static void Settle(const mvfxCompiledWater* water, mvfxWaterState* state)
     state->holds = highest - lowest > MVFX_WATER_STILL || fastest > MVFX_WATER_STILL;
 }
 
+int32_t mvfxWaveSubsteps(const mvfxCompiledWater* water, double seconds, float* dt, bool* slowed)
+{
+    *dt = 0.0f;
+    *slowed = false;
+    if (!(seconds > 0.0))
+    {
+        return 0;
+    }
+    // The longest stable substep, and the step's count of them.
+    double longest = 0.9 * (double)water->def.cellSize / ((double)water->def.waveSpeed * sqrt(2.0));
+    double count = ceil(seconds / longest);
+    *slowed = count > (double)MVFX_MAX_WATER_SUBSTEPS;
+    *dt = (float)(*slowed ? longest : seconds / count);
+    return *slowed ? MVFX_MAX_WATER_SUBSTEPS : (int32_t)count;
+}
+
 void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
 {
     if (instance->effect->waters[w].def.model == mvfx_waterShallow)
@@ -216,12 +232,14 @@ void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
         float local[3];
         mvfxMapPointDouble(&map, push->point, local);
         const float at[2] = {local[0], local[2]};
-        sank += Sink(water, state, at, push->radius * map.sigma, push->depth * map.sigma);
+        sank += mvfxSinkWaves(water, state->heights[state->current], at, push->radius * map.sigma,
+                              push->depth * map.sigma);
     }
     for (int64_t c = 0; c < state->crossingCount; ++c)
     {
         const mvfxWaterCrossing* crossing = &state->crossings[c];
-        sank += Sink(water, state, crossing->at, crossing->radius, crossing->depth);
+        sank += mvfxSinkWaves(water, state->heights[state->current], crossing->at, crossing->radius,
+                              crossing->depth);
     }
     if (state->pushCount > 0 || state->crossingCount > 0)
     {
@@ -231,19 +249,16 @@ void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
     state->crossingCount = 0;
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
-    if (seconds <= 0.0)
+    float dt = 0.0f;
+    bool slowed = false;
+    int32_t substeps = mvfxWaveSubsteps(water, seconds, &dt, &slowed);
+    if (substeps == 0)
     {
         Settle(water, state);
         return;
     }
     float h = water->def.cellSize;
     float c = water->def.waveSpeed;
-    // The longest stable substep, and the step's count of them.
-    double longest = 0.9 * (double)h / ((double)c * sqrt(2.0));
-    double count = ceil(seconds / longest);
-    bool slowed = count > (double)MVFX_MAX_WATER_SUBSTEPS;
-    int32_t substeps = slowed ? MVFX_MAX_WATER_SUBSTEPS : (int32_t)count;
-    float dt = (float)(slowed ? longest : seconds / count);
     state->stepsSlowed += slowed ? 1u : 0u;
     Waves waves = {.n = water->def.size,
                    .stiffness = dt * c * c / (h * h),

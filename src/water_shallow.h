@@ -27,7 +27,8 @@ float mvfxShallowFastest(const mvfxCompiledWater* water, const mvfxWaterState* s
 // one its simulation reported), and their length in *dt: equal, each at most
 // half a cell at that speed, at least one, none for no time; past
 // MVFX_MAX_WATER_SUBSTEPS that many of the longest length, the step
-// slowed (*slowed).
+// slowed (*slowed); for an infinite speed (not known) that many, equal,
+// not slowed.
 int32_t mvfxShallowSubsteps(const mvfxCompiledWater* water, float fastest, double seconds,
                             float* dt, bool* slowed);
 

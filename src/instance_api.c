@@ -116,7 +116,9 @@ static int32_t LevelThatFits(const mvfxContext* context, const mvfxEffect* effec
 
 // Whether an effect's steps can be written as plans: its gases smoke or
 // liquid (mvfxGasPlan; a liquid's split by the speeds its simulation
-// reports, mvfxInstance_SetLiquidSpeed), and no water surfaces. Births
+// reports, mvfxInstance_SetLiquidSpeed), its water surfaces any
+// (mvfxWaterPlan; shallow water's substeps by the speeds its simulation
+// reports, mvfxInstance_SetWaterSpeed). Births
 // from events are the simulation's to build and number
 // (mvfxPlannedBirth); a beam's strikes are planned by the clock alone.
 static bool CanBePlanned(const mvfxEffect* effect)
@@ -128,7 +130,7 @@ static bool CanBePlanned(const mvfxEffect* effect)
             return false;
         }
     }
-    return effect->waterCount == 0;
+    return true;
 }
 
 mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
