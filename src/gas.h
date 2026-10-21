@@ -149,9 +149,12 @@ typedef struct mvfxGasState
     mvfxLiquidGasRoom room;
     // In a planned instance, what its step would take, resolved at the
     // end of the context's step (mvfxPlanGases): its gravity and forces
-    // in the box's frame (its obstacles resolved into obstacles above).
+    // in the box's frame (its obstacles resolved into obstacles above),
+    // and the emitters pouring into it.
     float planGravity[3];
     mvfxResolvedForce planForces[MVFX_MAX_FORCES];
+    int32_t planPourCount;
+    mvfxPlannedPour planPours[MVFX_MAX_EMITTERS];
 } mvfxGasState;
 
 // Whether a gas has a field: a surface gas only its distance, held as its

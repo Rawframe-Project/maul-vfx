@@ -1028,6 +1028,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - The GPU part runs the gas force: particles follow a smoke gas's
   velocity as its last step left it, copied each step into the
   emitter's grids. `mvfxEmitterView.forceGases` names each force's gas.
+- A gas plan names the emitters pouring into the gas
+  (`mvfxGasPlan.pours`, `mvfxPlannedPour`): each one's map from its
+  particles' space into the box, its splat's rates and drag.
 
 ### Fixed
 

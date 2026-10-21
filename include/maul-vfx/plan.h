@@ -356,6 +356,23 @@ extern "C"
         uint32_t gridMask;
     } mvfxEmitterPlan;
 
+    // An emitter pouring into a gas (its mvfxGasSplat) as resolved for a
+    // gas plan: the map of its particles into the box's frame as they are
+    // stored at the step's end (a world emitter's offsets from its anchor
+    // after the step), a place p going to origin + rotation (sigma p) and
+    // a velocity v to rotation (sigma v), the origin rounded from
+    // binary64; its splat's rates a second (density, temperature, fuel)
+    // and drag.
+    typedef struct mvfxPlannedPour
+    {
+        int32_t emitter;
+        float origin[3];
+        float rotation[4];
+        float sigma;
+        float rates[3];
+        float drag;
+    } mvfxPlannedPour;
+
     // A smoke gas's step as resolved for a plan (mvfxInstance_GetGasPlan),
     // in its box's frame (mvfxInstance_GetGasInfo places the box): what
     // the CPU path's gas step takes from the instance, resolved once at
@@ -392,6 +409,11 @@ extern "C"
         // (that one known, of the same kind, sizes and grid): only such a
         // one's solid has a velocity, else 0.
         bool obstacleMoved[2 * MVFX_MAX_COLLIDERS];
+        // The emitters pouring into it, in the effect's order: each
+        // substep splats each one's live particles, in its pool's order,
+        // after the sources.
+        int32_t pourCount;
+        mvfxPlannedPour pours[MVFX_MAX_EMITTERS];
     } mvfxGasPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape

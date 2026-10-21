@@ -13,6 +13,40 @@
 
 #include "maul-vfx/plan.h"
 
+// The emitters pouring into gas g as the CPU path's step would pour
+// them (step.c's PoursInto): every one splatting into it, its live
+// particles the simulation's to count.
+static void PlanPours(const mvfxInstance* instance, int32_t g, mvfxGasState* state)
+{
+    static const double origin[3] = {0.0, 0.0, 0.0};
+    state->planPourCount = 0;
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        const mvfxCompiledEmitter* emitter = &instance->effect->emitters[e];
+        const mvfxGasSplat* splat = &emitter->gasSplat;
+        if (!splat->enabled || splat->gas != g)
+        {
+            continue;
+        }
+        bool world = emitter->space == mvfx_spaceWorld;
+        mvfxSpaceMap map = mvfxGasMap(instance, g, world ? mvfx_spaceWorld : mvfx_spaceLocal);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            map.before[k] -= world ? instance->emitters[e].anchor[k] : 0.0;
+        }
+        mvfxPlannedPour* pour = &state->planPours[state->planPourCount++];
+        *pour = (mvfxPlannedPour){.emitter = e,
+                                  .sigma = map.sigma,
+                                  .rates = {splat->density, splat->temperature, splat->fuel},
+                                  .drag = splat->drag};
+        mvfxMapPointDouble(&map, origin, pour->origin);
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            pour->rotation[k] = map.rotation[k];
+        }
+    }
+}
+
 void mvfxPlanGases(mvfxInstance* instance)
 {
     for (int32_t g = 0; g < instance->effect->gasCount; ++g)
@@ -30,6 +64,7 @@ void mvfxPlanGases(mvfxInstance* instance)
         {
             mvfxResolveGasObstacles(instance, g);
         }
+        PlanPours(instance, g, state);
     }
     instance->gasesDue = false;
 }
@@ -78,7 +113,12 @@ mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId in
         .forceCount = compiled->def.forceCount,
         .ownObstacleCount = compiled->hasObstacles ? compiled->def.obstacleCount : 0,
         .obstaclesKnown = state->obstaclesKnown,
+        .pourCount = state->planPourCount,
     };
+    for (int32_t p = 0; p < state->planPourCount; ++p)
+    {
+        planOut->pours[p] = state->planPours[p];
+    }
     for (int32_t k = 0; k < 3; ++k)
     {
         planOut->gravity[k] = state->planGravity[k];

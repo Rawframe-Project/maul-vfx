@@ -5,10 +5,12 @@
 // are the CPU path's step's, under a moving, turning, growing instance; a
 // throttled plan's obstacles before are the last plan's; a planned gas
 // holds until its simulation reports it empty past the stop and the
-// splatting emitters' deaths; its fields are not read on the CPU path;
+// splatting emitters' deaths; the emitters pouring into it map as the
+// core's splat; its fields are not read on the CPU path;
 // liquid gases stay unplannable; a gas's view.
 
 #include "collide.h"
+#include "direction.h"
 #include "force.h"
 #include "gas.h"
 #include "gas_api.h"
@@ -268,6 +270,88 @@ static void TestResolved(void)
     mvfxDestroyContext(context);
 }
 
+// Whether a planned pour maps places as the core's splat maps them: the
+// map of its gas from its emitter's space, a world emitter's anchor taken
+// off, to within the rounding of the origin; its rates and drag the
+// splat's.
+static bool SamePour(const mvfxPlannedPour* pour, const mvfxInstance* live, int32_t e)
+{
+    const mvfxCompiledEmitter* emitter = &live->effect->emitters[e];
+    bool world = emitter->space == mvfx_spaceWorld;
+    mvfxSpaceMap map = mvfxGasMap(live, 0, world ? mvfx_spaceWorld : mvfx_spaceLocal);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        map.before[k] -= world ? live->emitters[e].anchor[k] : 0.0;
+    }
+    const mvfxGasSplat* splat = &emitter->gasSplat;
+    bool same = pour->emitter == e && pour->sigma == map.sigma && pour->drag == splat->drag &&
+                pour->rates[0] == splat->density && pour->rates[1] == splat->temperature &&
+                pour->rates[2] == splat->fuel;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && pour->rotation[k] == map.rotation[k];
+    }
+    static const float places[3][3] = {{0, 0, 0}, {0.5f, -1.25f, 2}, {-3, 0.75f, 0.1f}};
+    for (int32_t i = 0; same && i < 3; ++i)
+    {
+        float expected[3];
+        mvfxMapPoint(&map, places[i], expected);
+        const float scaled[3] = {pour->sigma * places[i][0], pour->sigma * places[i][1],
+                                 pour->sigma * places[i][2]};
+        float turned[3];
+        mvfxRotate(pour->rotation, scaled, turned);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float got = pour->origin[k] + turned[k];
+            same = same && fabsf(got - expected[k]) <= 1e-5f * (1.0f + fabsf(expected[k]));
+        }
+    }
+    return same;
+}
+
+static void TestPours(void)
+{
+    // A world emitter and a local one splatting, and one not, under a
+    // moving, turning, growing instance.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitters[3] = {Emitter(true), Emitter(false), Emitter(true)};
+    emitters[0].space = mvfx_spaceWorld;
+    emitters[2].space = mvfx_spaceLocal;
+    emitters[2].gasSplat = (mvfxGasSplat){
+        .enabled = true, .density = 0.5f, .temperature = 2.0f, .fuel = 0.25f, .drag = 3.0f};
+    mvfxGasDef gas = Smoke();
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 3;
+    def.gases = &gas;
+    def.gasCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceId planned = Instance(context, effect, true);
+    static mvfxGasPlan plan;
+    bool same = true;
+    bool anchored = false;
+    for (int32_t s = 0; s < 8 && same; ++s)
+    {
+        // Past MVFX_REBASE_DISTANCE: the world emitter's anchor moves.
+        const double origin[3] = {2000.0 + 2.0 * s, 0.25 * s, 1.0};
+        const float rotation[4] = {sinf(0.04f * (float)s), 0.0f, 0.0f, cosf(0.04f * (float)s)};
+        CHECK(mvfxInstance_SetTransform(context, planned, origin, rotation, 1.0f + 0.1f * (float)s,
+                                        false) == mvfx_success,
+              "moved");
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+        const mvfxInstance* live = mvfxContextInstance(context, planned);
+        same = plan.pourCount == 2 && SamePour(&plan.pours[0], live, 0) &&
+               SamePour(&plan.pours[1], live, 2);
+        anchored = anchored || live->emitters[0].anchor[0] > 1000.0;
+    }
+    CHECK(same && anchored, "the planned pours map as the core's splat");
+    mvfxDestroyContext(context);
+}
+
 static void TestThrottled(void)
 {
     // Unseen, stepping every third step of 0.4 seconds: a plan gathers
@@ -479,6 +563,7 @@ static void TestView(void)
 int main(void)
 {
     TestResolved();
+    TestPours();
     TestThrottled();
     TestHolds();
     TestLiquidRefused();
