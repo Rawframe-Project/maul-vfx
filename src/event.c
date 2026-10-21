@@ -11,9 +11,16 @@
 
 #include <string.h>
 
-void mvfxBeginEvents(mvfxInstance* instance, int32_t emitter)
+void mvfxClearEvents(mvfxInstance* instance, int32_t emitter)
 {
     instance->emitters[emitter].eventCount = 0;
+    instance->emitters[emitter].eventStepFirst = 0;
+}
+
+void mvfxBeginEvents(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    state->eventStepFirst = state->eventCount;
 }
 
 // Builds the event a fact records, its values taken now.

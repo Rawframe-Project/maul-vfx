@@ -1049,9 +1049,10 @@ extern "C"
         // mvfx_eventMaskBirth, mvfx_eventMaskDeath, mvfx_eventMaskCollision
         // (collisions only where they collide), mvfx_eventMaskTear (tears
         // only of units that tear) and mvfx_eventMaskWater (crossings only
-        // where they meet a water surface), at most eventCapacity a step
-        // (from 1 to MVFX_MAX_EVENTS when any is asked; the rest counted
-        // dropped). The host reads them after the step
+        // where they meet a water surface), at most eventCapacity a
+        // context step, whatever steps the instance took in it (a liquid
+        // gas's substeps; from 1 to MVFX_MAX_EVENTS when any is asked; the
+        // rest counted dropped). The host reads them after the context step
         // (mvfxInstance_GetEvents).
         uint8_t events;
         int32_t eventCapacity;

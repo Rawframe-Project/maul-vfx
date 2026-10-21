@@ -399,8 +399,8 @@ struct mvfxGpuSim
     SimGas gases[MVFX_MAX_GASES];
     // An effect that splits its steps (one with a liquid gas): its
     // emitters' and gases' lanes of each step (sim_lanes.c), NULL for
-    // another; the steps of the frame added and the one added now (the
-    // last after them, the first before any).
+    // another; the steps of the frame added and the one added or
+    // recorded now (the last after them, the first before any).
     SimLanes* lanes;
     int32_t steps;
     int32_t step;

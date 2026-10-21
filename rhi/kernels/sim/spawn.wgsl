@@ -20,7 +20,8 @@
 // The spawn region's words: the events kept, their births, those kept
 // and refused; the serials event births took before the step (two
 // words); the step's births and those past the room; the source's events
-// written, the latest tick kept, which set holds the order; the source's
+// written and the first of its step's (after a split frame's steps
+// before), the latest tick kept, which set holds the order; the source's
 // events from SPAWN_EVENTS, then seven arrays of its event capacity.
 const SPAWN_MATCHED: u32 = 0u;
 const SPAWN_TOTAL: u32 = 1u;
@@ -30,8 +31,9 @@ const SPAWN_BASE: u32 = 4u;
 const SPAWN_BIRTHS: u32 = 6u;
 const SPAWN_DROPPED: u32 = 7u;
 const SPAWN_SOURCE: u32 = 8u;
-const SPAWN_LATEST: u32 = 9u;
-const SPAWN_SET: u32 = 10u;
+const SPAWN_FROM: u32 = 9u;
+const SPAWN_LATEST: u32 = 10u;
+const SPAWN_SET: u32 = 11u;
 const SPAWN_EVENTS: u32 = 16u;
 // The arrays: two sets of keys (ticks) and indices into the kept events
 // for the sort, the counts, the first places, the source's event each
@@ -142,8 +144,9 @@ fn spawnCount(@builtin(local_invocation_index) local: u32) {
         carried = 0u;
         _ = atomicExchange(&spawnLatest, 0u);
     }
+    // The source's events of the step alone, as the CPU path's.
     let n = min(spawnUniform(local, SPAWN_SOURCE), params.spawnRule[1].w);
-    for (var start = 0u; start < n; start += CHUNK) {
+    for (var start = spawnUniform(local, SPAWN_FROM); start < n; start += CHUNK) {
         let e = start + local;
         var tick = 0u;
         let keep = e < n && spawnsFrom(e, &tick);

@@ -6,7 +6,8 @@
 // linearly with depth; a turning disk keeping its angular momentum with
 // APIC better than with PIC; a dam break's front against Martin and
 // Moyce's measurements and Ritter's frictionless speed, its volume kept;
-// a pour the same whatever its emitter's room.
+// a pour the same whatever its emitter's room; a split step's events the
+// whole step's.
 
 #include "gas.h"
 #include "gas_liquid.h"
@@ -824,6 +825,125 @@ static int32_t Pour(int32_t capacity, float rate, float* places)
     return count;
 }
 
+// Two instances in one context of an effect with a liquid gas of a
+// courant number, an emitter whose lives, longer than a step, write
+// their deaths, and one spawning two children a death: the effects, then
+// the instances.
+static void OpenTwins(const float courant[2], mvfxInstanceId out[2])
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        mvfxGasDef gas = Gas(8, 8, 0.1f);
+        gas.courant = courant[k];
+        mvfxEmitterDef emitters[3] = {Emitter(0.05f, NULL, 64), mvfxDefaultEmitterDef(),
+                                      mvfxDefaultEmitterDef()};
+        emitters[0].motion.gravity[1] = -9.81f;
+        emitters[1].rate = 600.0f;
+        emitters[1].lifetime = mvfxRangeSource(0.02f, 0.05f);
+        emitters[1].events = mvfx_eventMaskDeath;
+        emitters[1].eventCapacity = 64;
+        // Two children a death, from their step's deaths alone.
+        emitters[2].rate = 0.0f;
+        emitters[2].burstCount = 0;
+        emitters[2].capacity = 512;
+        emitters[2].lifetime = mvfxRangeSource(1.0f, 1.0f);
+        emitters[2].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                                  .source = 1,
+                                                  .kind = mvfx_eventDeath,
+                                                  .minCount = 2,
+                                                  .maxCount = 2,
+                                                  .capacity = 64};
+        mvfxEffectDef def = mvfxDefaultEffectDef();
+        def.emitters = emitters;
+        def.emitterCount = 3;
+        def.gases = &gas;
+        def.gasCount = 1;
+        mvfxEffectId effect = {0};
+        CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+        mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+        instanceDef.effect = effect;
+        // One seed: the same draws.
+        instanceDef.seed = 7;
+        CHECK(mvfxCreateInstance(s_context, &instanceDef, &out[k]) == mvfx_success, "instance");
+    }
+}
+
+// An event's tick and serial as one key, for the order of a sort.
+static int CompareEvents(const void* a, const void* b)
+{
+    const mvfxEvent* x = a;
+    const mvfxEvent* y = b;
+    if (x->tick != y->tick)
+    {
+        return x->tick < y->tick ? -1 : 1;
+    }
+    return x->serial < y->serial ? -1 : (x->serial > y->serial ? 1 : 0);
+}
+
+// Whether two instances' events of a step are the same ones, whatever
+// their order.
+static bool SameEvents(const mvfxEvent* const events[2], const int32_t counts[2])
+{
+    static mvfxEvent sorted[2][64];
+    if (counts[0] != counts[1] || counts[0] > 64)
+    {
+        return false;
+    }
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        if (counts[k] > 0)
+        {
+            memcpy(sorted[k], events[k], sizeof(mvfxEvent) * (size_t)counts[k]);
+            qsort(sorted[k], (size_t)counts[k], sizeof(mvfxEvent), CompareEvents);
+        }
+    }
+    bool same = true;
+    for (int32_t e = 0; same && e < counts[0]; ++e)
+    {
+        same = sorted[0][e].serial == sorted[1][e].serial &&
+               sorted[0][e].tick == sorted[1][e].tick && sorted[0][e].kind == sorted[1][e].kind;
+    }
+    return same;
+}
+
+static void TestSplitEvents(void)
+{
+    // An instance whose steps split into substeps writes the deaths of
+    // the whole context step, those of one that does not split (births
+    // and deaths fall on the same ticks; the order differs, deaths by age
+    // coming at a step's start), not its last substep's alone; the
+    // children of those deaths, each born from its own substep's.
+    const float courant[2] = {4.0f, 0.05f};
+    mvfxInstanceId twins[2];
+    OpenTwins(courant, twins);
+    bool same = true;
+    int32_t deaths = 0;
+    int32_t most = 0;
+    for (int32_t s = 0; s < 30; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "step");
+        const mvfxEvent* events[2] = {NULL, NULL};
+        int32_t counts[2] = {0, 0};
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            CHECK(mvfxInstance_GetEvents(s_context, twins[k], 1, &events[k], &counts[k]) ==
+                      mvfx_success,
+                  "events");
+        }
+        same = same && SameEvents(events, counts) &&
+               mvfxContextInstance(s_context, twins[0])->emitters[2].count ==
+                   mvfxContextInstance(s_context, twins[1])->emitters[2].count;
+        deaths += counts[0];
+        int32_t substeps = mvfxLiquidSubsteps(mvfxContextInstance(s_context, twins[1]),
+                                              MVFX_TICKS_PER_SECOND / 60);
+        most = substeps > most ? substeps : most;
+    }
+    mvfxDestroyContext(s_context);
+    CHECK(same && deaths > 100 && most > 1, "a split step's events are the whole step's");
+}
+
 static void TestCapacity(void)
 {
     // A pour's births join the liquid while its first particles carry
@@ -876,6 +996,7 @@ int main(void)
     TestExpansion();
     TestDamBreak();
     TestCapacity();
+    TestSplitEvents();
     TestSubsteps();
     TestSubstepPaths();
     return s_failures;

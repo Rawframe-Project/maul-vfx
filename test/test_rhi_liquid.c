@@ -12,7 +12,9 @@
 // into a tank (its particles carried by the gas's velocity, their affine
 // matrices read back, the fastest speed reported and splitting the next
 // step as the CPU path's), and onto its floor; frames split into
-// substeps, the tank's alone and beside a smoke gas splatted into.
+// substeps, the tank's alone, beside a smoke gas splatted into, and
+// beside an emitter's events gathered over the substeps and the births
+// they give.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "gas_liquid.h"
@@ -223,6 +225,53 @@ static void TestSplitBeside(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels, &run, "a split liquid gas beside a smoke splatted into");
 }
 
+static void TestSplitEvents(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A split frame's events gathered over its substeps: an emitter's
+    // births and deaths, each substep's after those before and given their
+    // sizes over life once; a spawner taking two children a death from
+    // its source's substep's deaths alone. Then a bound of 7 the substeps
+    // fill together, the rest dropped.
+    static const mvfxCurveKey keys[2] = {
+        {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
+    const mvfxCurve curve = {.keys = keys, .keyCount = 2};
+    mvfxGasDef gas = Tank(0.2f);
+    mvfxEmitterDef emitters[3] = {Pour(), Sprite(), Sprite()};
+    emitters[0].velocity.direction[1] = -1.0f;
+    emitters[0].velocity.speed = (mvfxRange){1.0f, 1.5f};
+    emitters[1].capacity = 512;
+    emitters[1].rate = 600.0f;
+    emitters[1].burstCount = 0;
+    emitters[1].lifetime = mvfxRangeSource(0.02f, 0.05f);
+    emitters[1].events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
+    emitters[1].eventCapacity = 256;
+    emitters[1].overLife =
+        (mvfxOverLife){.size = {.enabled = true, .size = {{.value = 2, .curve = curve}}}};
+    emitters[2].capacity = 1024;
+    emitters[2].rate = 0.0f;
+    emitters[2].burstCount = 0;
+    emitters[2].lifetime = mvfxRangeSource(0.2f, 0.2f);
+    emitters[2].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 1,
+                                              .kind = mvfx_eventDeath,
+                                              .minCount = 2,
+                                              .maxCount = 2,
+                                              .capacity = 256};
+    // The short lives hold about 20 at once.
+    Run run = {.mostApart = 4,
+               .emitters = emitters,
+               .emitterCount = 3,
+               .gases = &gas,
+               .gasCount = 1,
+               .secondLeast = 10,
+               .adopting = true,
+               .tolerance = 1e-3f};
+    Compare(gpu, kernels, &run, "a split frame's events and the births they give");
+    emitters[1].eventCapacity = 7;
+    Compare(gpu, kernels, &run, "a split frame's events past the bound dropped");
+}
+
 static void TestFastest(Gpu* gpu, mvfxGpu* kernels)
 {
     // The fastest speed the device reports after the first step splits
@@ -278,6 +327,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestLiquidGas(gpu, kernels);
     TestSplit(gpu, kernels);
     TestSplitBeside(gpu, kernels);
+    TestSplitEvents(gpu, kernels);
     TestFastest(gpu, kernels);
 }
 

@@ -3,10 +3,12 @@
 
 // Events: what the step's particles did, written in the CPU path's order
 // (ended deaths, the live particles' collisions and a unit's points'
-// tears, the births with their birth and collision events, the killed), at most the emitter's capacity
-// of them, the rest dropped. Each element of the step's sequence (live
-// particles, then births) counts its events in four groups; a scan of
-// each group gives an event's place after the groups before it.
+// tears, the births with their birth and collision events, the killed)
+// after a split frame's steps before, at most the emitter's capacity of
+// them over the frame, the rest dropped. Each element of the step's
+// sequence (live particles, then births) counts its events in four
+// groups; a scan of each group gives an event's place after the groups
+// before it.
 const EVENT_BIRTH: u32 = 0u;
 const EVENT_DEATH: u32 = 1u;
 const EVENT_COLLISION: u32 = 2u;
@@ -88,15 +90,20 @@ fn eventCount(@builtin(local_invocation_index) local: u32,
 
 // Event offsets, in one workgroup: each group's blocks' counts made each
 // block's first place in the group, in order; the groups' first places
-// (statistics words 30 to 33), the events written (word 28, at most the
-// capacity) and those dropped (word 29).
+// (statistics words 30 to 33) after the events the frame's steps before
+// wrote (word 28, zero at its first step), the events written (at most the
+// capacity) and those dropped added to the steps' before (word 29).
 @compute @workgroup_size(256, 1, 1)
 fn eventOffsets(@builtin(local_invocation_index) local: u32) {
     if (params.fateHead.y == 0u) {
         return;
     }
     let n = blockCount();
+    // Invocation 0 alone reads and writes the statistics words.
     var base = 0u;
+    if (local == 0u) {
+        base = counts[28];
+    }
     for (var g = 0u; g < 4u; g++) {
         if (local == 0u) {
             carried = 0u;
@@ -126,7 +133,7 @@ fn eventOffsets(@builtin(local_invocation_index) local: u32) {
     if (local == 0u) {
         let written = min(base, params.fateHead.z);
         counts[28] = written;
-        counts[29] = base - written;
+        counts[29] += base - written;
     }
 }
 

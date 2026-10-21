@@ -25,7 +25,9 @@ typedef struct mvfxEventFact
     const float* normal;
 } mvfxEventFact;
 
-// Clears an emitter's events for a new step.
+// Clears an emitter's events for a new context step; begins a step's,
+// after those the context step's earlier steps wrote.
+void mvfxClearEvents(mvfxInstance* instance, int32_t emitter);
 void mvfxBeginEvents(mvfxInstance* instance, int32_t emitter);
 
 // Records an event when the emitter writes its kind, or counts it

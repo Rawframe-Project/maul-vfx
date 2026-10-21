@@ -682,6 +682,7 @@ static void ResetEmitter(mvfxInstance* instance, int32_t e)
     state->queryCount = 0;
     state->queriesDropped = 0;
     state->eventCount = 0;
+    state->eventStepFirst = 0;
     state->eventsDropped = 0;
     state->neighborsCapped = 0;
     state->contactsCapped = 0;

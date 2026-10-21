@@ -335,12 +335,12 @@ static bool RecordDepthPasses(Gpu* gpu)
 static uint32_t s_words[MOST_WORDS * (1 << 17)];
 static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
 static mvfxAttributeArrays s_arrays;
-static mvfxAttributeArrays s_runArrays[2];
+static mvfxAttributeArrays s_runArrays[RUN_EMITTERS];
 // How far a rigid body's surface reaches from its center at most, each
 // emitter's (0 for particles): half its largest size's diagonal; whether
 // its bodies meet each other.
-static float s_bodyRadius[2];
-static bool s_bodiesMeet[2];
+static float s_bodyRadius[RUN_EMITTERS];
+static bool s_bodiesMeet[RUN_EMITTERS];
 
 static int32_t s_capacity;
 
@@ -563,7 +563,7 @@ typedef struct RibbonState
     float cpuAlong;
 } RibbonState;
 
-static RibbonState s_ribbons[2];
+static RibbonState s_ribbons[RUN_EMITTERS];
 static int32_t s_breaksApart;
 
 // Whether an emitter's ribbon id is the counter's: every id by the
@@ -725,7 +725,7 @@ static int64_t CpuBirth(const mvfxInstance* cpu, int32_t e, int32_t c)
 // step, born from uncertain events, over the run; and whether each
 // emitter's step left any particle out, whose bounds then go uncompared.
 static int32_t s_childrenLeft;
-static bool s_leftOut[2];
+static bool s_leftOut[RUN_EMITTERS];
 
 // Whether a spawning emitter's particles on the GPU are the CPU path's:
 // those born at an uncertain event's tick (rhi_apart.h) left out on both
@@ -2427,9 +2427,9 @@ static void Clear(void)
 static mvfxGridId s_grid;
 static mvfxGridId s_colliderGrids[4];
 static mvfxMeshId s_mesh;
-static mvfxEmitterDef s_emitters[2];
-static mvfxForce s_forces[2][MVFX_MAX_FORCES];
-static mvfxCollider s_colliders[2][MVFX_MAX_COLLIDERS];
+static mvfxEmitterDef s_emitters[RUN_EMITTERS];
+static mvfxForce s_forces[RUN_EMITTERS][MVFX_MAX_FORCES];
+static mvfxCollider s_colliders[RUN_EMITTERS][MVFX_MAX_COLLIDERS];
 
 // Colliders of a run with their grids: {.index1 = n} the run's nth.
 static const mvfxCollider* WithColliderGrids(const mvfxCollider* colliders, int32_t count,
@@ -2535,6 +2535,12 @@ static void Animate(const mvfxGridDef* def)
 
 mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
 {
+    if (run->emitterCount < 1 || run->emitterCount > RUN_EMITTERS)
+    {
+        // Past the harness's tables.
+        printf("FAIL: a run of %d emitters (1 to %d)\n", run->emitterCount, RUN_EMITTERS);
+        exit(1);
+    }
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
@@ -2754,7 +2760,11 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     }
     printf("%s: largest relative differences, place %g, velocity %g, bounds %g\n", what,
            (double)s_placeError, (double)s_velocityError, s_boundsError);
-    bool eventful = run->emitters[0].events != 0;
+    bool eventful = false;
+    for (int32_t e = 0; e < run->emitterCount; ++e)
+    {
+        eventful = eventful || run->emitters[e].events != 0;
+    }
     if (eventful)
     {
         printf("  events: %llu\n", (unsigned long long)s_events);

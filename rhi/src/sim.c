@@ -920,14 +920,17 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         mvfxStoreSimSteps(sim, sim->steps);
     }
     bool recorded = true;
+    int32_t added = sim->step;
     for (int32_t s = 0; recorded && s < (split ? sim->steps : 1); ++s)
     {
         if (split)
         {
             mvfxRecallSimStep(sim, s);
         }
+        sim->step = s;
         recorded = RecordSteps(sim);
     }
+    sim->step = added;
     for (int32_t n = 0; recorded && n < sim->emitterCount; ++n)
     {
         recorded = mvfxRecordRecordPasses(sim->device, &sim->uploaded, &pipelines,

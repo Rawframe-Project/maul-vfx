@@ -45,8 +45,9 @@ enum
     MVFX_RECORD_ORIGIN = 18,
     MVFX_RECORD_ROTATION = 24,
     // The events written and those dropped (MVFX_GPU_EVENTS_WRITTEN), then
-    // the kernels' words.
+    // the kernels' words, the first the step's first event.
     MVFX_RECORD_EVENTS = 28,
+    MVFX_RECORD_EVENT_FROM = 30,
     MVFX_RECORD_EVENT_SERIALS = 34,
     // The words the transfer pass writes, from MVFX_RECORD_SPACE on.
     MVFX_RECORD_MAP_WORDS = 18,

@@ -131,7 +131,7 @@ static int64_t GridBytes(const mvfxEmitterDef* emitter)
 static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam, bool contacts,
                          int64_t grid)
 {
-    return 1960 + (events ? 96 : 0) + (beam ? 96 : 0) + (contacts ? 96 : 0) + grid +
+    return 1960 + (events ? 104 : 0) + (beam ? 96 : 0) + (contacts ? 96 : 0) + grid +
            432 * (int64_t)plan->forceCount + 128 * (int64_t)plan->colliderCount +
            80 * (int64_t)plan->killRuleCount + 48 * (int64_t)plan->birthCount +
            64 * (int64_t)plan->hostBirthCount;

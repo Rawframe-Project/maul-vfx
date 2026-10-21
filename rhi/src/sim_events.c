@@ -108,9 +108,18 @@ bool mvfxAddEventValuesPass(mvfxGpuSim* sim, Emitter* emitter)
 }
 
 // Records the writes of the events' numbers their pass reads: all of them
-// at the first step, the words a plan changes after.
+// at the first step, the words a plan changes after; and at a frame's
+// first step its events written and dropped emptied, its steps after
+// adding theirs.
 bool mvfxWriteEventNumbers(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter)
 {
+    static const uint32_t zeros[2] = {0};
+    if (sim->step == 0 &&
+        !mvfxUpload(sim->device, &sim->uploaded, pass, emitter->resources[BUFFER_STATISTICS],
+                    4u * MVFX_GPU_EVENTS_WRITTEN, zeros, sizeof zeros))
+    {
+        return false;
+    }
     mrhiResourceId numbers = emitter->eventResources[0];
     if (!emitter->eventNumbersWritten)
     {

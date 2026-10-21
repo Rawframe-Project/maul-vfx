@@ -174,7 +174,8 @@ void mvfxBuildEventBirths(mvfxInstance* instance, int32_t emitter)
     }
     const mvfxEmitterState* source = &instance->emitters[spawn->source];
     int32_t order = 0;
-    for (int32_t e = 0; e < source->eventCount; ++e)
+    // Its source's events of this step alone, after its earlier steps'.
+    for (int32_t e = source->eventStepFirst; e < source->eventCount; ++e)
     {
         const mvfxEvent* event = &source->events[e];
         if (event->kind != spawn->kind || !IsSpawning(instance, compiled, event->tick))

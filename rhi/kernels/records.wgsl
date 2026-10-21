@@ -103,14 +103,15 @@ fn keys(@builtin(local_invocation_index) local: u32,
 // An event's words in an emitter's events buffer, as sim.wgsl's.
 const EVENT_WORDS: u32 = 28u;
 
-// Event values: each of the step's events (statistics word 28) given its
-// colour and size with the values over life, at the age and speed it
-// keeps in its last words; the events from word head.z of the events
-// buffer bound for the records.
+// Event values: each of the step's events (from statistics word 30, its
+// first, to word 28, the frame's written; a split frame's steps before
+// gave theirs) given its colour and size with the values over life, at
+// the age and speed it keeps in its last words; the events from word
+// head.z of the events buffer bound for the records.
 @compute @workgroup_size(64, 1, 1)
 fn eventValues(@builtin(global_invocation_id) id: vec3<u32>) {
     let n = statistics[28];
-    for (var e = id.x; e < n; e += params.shape.y * 64u) {
+    for (var e = statistics[30] + id.x; e < n; e += params.shape.y * 64u) {
         let w = params.head.z + EVENT_WORDS * e;
         let age = ageAt(vec2<u32>(recordWords[w + 20u], recordWords[w + 21u]),
                         bitcast<f32>(recordWords[w + 22u]));

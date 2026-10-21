@@ -25,6 +25,9 @@
 #define STEP_TICKS (MVFX_TICKS_PER_SECOND / 60)
 #define DEPTH_SIDE 64
 
+// The most emitters a run holds.
+#define RUN_EMITTERS 3
+
 // The byte a records buffer is filled with before each step's records.
 #define RECORD_FILL 0xEEu
 
@@ -40,6 +43,7 @@ typedef struct Gpu
 // half time when clearing.
 typedef struct Run
 {
+    // Its emitters, at most RUN_EMITTERS.
     const mvfxEmitterDef* emitters;
     int32_t emitterCount;
     // The effect's gases, which its emitters' gas forces follow (none for

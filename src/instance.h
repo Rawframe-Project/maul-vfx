@@ -180,9 +180,12 @@ typedef struct mvfxEmitterState
     // one and one is set.
     mvfxResolvedDepth depth;
     bool hasDepth;
-    // Its events from the last step, and those dropped.
+    // Its events from the context's last step, each step the instance
+    // took in it after the one before (a liquid gas's substeps, a held
+    // step), the first of the latest step's, and those dropped.
     struct mvfxEvent* events;
     int32_t eventCount;
+    int32_t eventStepFirst;
     uint64_t eventsDropped;
     // Its grid (for an emitter queried), and the queries that were capped.
     mvfxNeighborGrid grid;

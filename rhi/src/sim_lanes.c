@@ -260,15 +260,6 @@ bool mvfxEnterSimStep(mvfxGpuSim* sim, int32_t step)
     {
         return false;
     }
-    // Events written over a split step are refused yet: the host reads
-    // one step's.
-    for (int32_t e = 0; e < lanes->emitterCount; ++e)
-    {
-        if (sim->emitters[e].writesEvents || sim->emitters[e].spawnSource >= 0)
-        {
-            return false;
-        }
-    }
     // The step before kept as added; this one goes on from it, its
     // particles where that one's step leaves them.
     for (int32_t e = 0; e < lanes->emitterCount; ++e)

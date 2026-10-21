@@ -402,9 +402,11 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
 uint32_t mvfxSpawnFirst(int32_t capacity, int32_t eventCapacity);
 uint64_t mvfxSpawnWords(int32_t sourceEventCapacity);
 
-// The spawn region's word of the source's events written, and of its
-// copied events.
+// The spawn region's words of the source's events written and the first
+// of its step's (after a split frame's steps before), and of its copied
+// events.
 #define MVFX_SPAWN_SOURCE 8u
+#define MVFX_SPAWN_FROM   9u
 #define MVFX_SPAWN_EVENTS 16u
 
 // Writes an emitter's numbers for spawning from events, beside its step's

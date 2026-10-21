@@ -509,14 +509,17 @@ extern "C"
                                                                int32_t emitter,
                                                                const float center[3], float radius);
 
-    /// Reads the events an emitter of an instance wrote in the last step,
-    /// in the order the step met them: deaths by age at its start, then as
-    /// particles move (collisions; a unit's points' first contacts and
-    /// tears after its substeps, point by point, each point's contact, its
-    /// tear across, its tear down; a rigid body's first strike after its
-    /// substeps, body by body) and are born (births, their collisions),
-    /// then deaths by kills at its end. They stay until the next step or a
-    /// restart; a finished instance's step clears them.
+    /// Reads the events an emitter of an instance wrote in the context's last
+    /// step: those of every step the instance took in it (a liquid gas's
+    /// substeps, mvfxInstance_GetPlanSteps; a step of the ticks it held off
+    /// screen), one step's after another's, each in the order the step met
+    /// them: deaths by age at its start, then as particles move
+    /// (collisions; a unit's points' first contacts and tears after its
+    /// substeps, point by point, each point's contact, its tear across, its
+    /// tear down; a rigid body's first strike after its substeps, body by
+    /// body) and are born (births, their collisions), then deaths by kills
+    /// at its end. They stay until the context's next step or a restart; a
+    /// finished instance's step clears them.
     ///
     /// @param context    The context that owns the instance.
     /// @param instance   The instance.

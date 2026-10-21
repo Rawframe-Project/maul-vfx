@@ -93,7 +93,9 @@ extern "C"
     // count first, then what the step uses and the bounds, which
     // mvfxGpuSim_BoundsOf reads. A world-space emitter's places are
     // offsets from its anchor (its plan's anchor after). Its events of the
-    // step, when it writes any (a null buffer otherwise): from word
+    // frame, when it writes any (a null buffer otherwise; a frame split
+    // into steps gives theirs one after another, as the CPU path's
+    // context step): from word
     // eventFirst of the events buffer, MVFX_GPU_EVENT_WORDS words each, as
     // many as the statistics record's word MVFX_GPU_EVENTS_WRITTEN (at
     // most eventCapacity; those past it in the next word): kind | killed
@@ -143,7 +145,7 @@ extern "C"
     } mvfxGpuParticles;
 
 // The words of an event in an events buffer, and the statistics record's
-// word holding the step's count of events written (the next, those
+// word holding the frame's count of events written (the next, those
 // dropped).
 #define MVFX_GPU_EVENT_WORDS    28
 #define MVFX_GPU_EVENTS_WRITTEN 28
@@ -984,9 +986,10 @@ extern "C"
     /// (mvfxGpuSim_UploadBytes counts them): 1,960 an emitter (its
     /// numbers' 1,888 and its record map's 72; 28 more for one whose
     /// ribbons pin a head), 432 a force, 128 a collider
-    /// and 80 a kill rule it has (8,104 at most), 96 more for one that
+    /// and 80 a kill rule it has (8,104 at most), 104 more for one that
     /// writes events (its events' values over life: the clock and the
-    /// map, all 1,952 at the first step), 96 more for a beam (its
+    /// map, all 1,952 at the first step; its counts written and dropped
+    /// emptied at the frame's first step), 96 more for a beam (its
     /// curve and noise), and 32 more for one with a neighbor grid (its
     /// clock and the anchor's shift) or 160 for one that steers or has a
     /// pair force (its targets too), and 16 a point of its path (all 752

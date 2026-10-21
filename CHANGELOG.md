@@ -1066,8 +1066,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   every emitter's passes and then every gas's, from that step's plans,
   as the CPU path takes them; the records after the last. Such an
   effect keeps its emitters' and gases' host state once more a step it
-  may split into, and its frames take their passes once a step. Events
-  written over a split frame are refused yet.
+  may split into, and its frames take their passes once a step. A split
+  frame's events follow one another over its steps as the CPU path's
+  (each step's after those before, aged once, up to the capacity over
+  the frame), and an emitter spawning from them takes its source's step
+  alone.
 
 ### Changed
 
@@ -1077,6 +1080,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 
 ### Fixed
 
+- An emitter's events gather over every step an instance takes in a
+  context step (a liquid gas's substeps, the ticks an instance held off
+  screen): each step began them afresh, so the host read the last
+  step's alone. Its event capacity counts the context step's; an
+  emitter spawning from another's events takes those of its own step.
 - A grid liquid's particles keep their own affine matrices: the CPU
   step read and wrote them as nine floats a particle where they are
   nine arrays, so a birth zeroed parts of other particles' matrices and

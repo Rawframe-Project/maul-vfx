@@ -229,7 +229,7 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
         int32_t e = instance->effect->stepOrder[n];
         if (finished)
         {
-            // Nothing happens to it: the last step's events go.
+            // Nothing happens to it: it writes no events.
             mvfxBeginEvents(instance, e);
             continue;
         }
@@ -301,13 +301,11 @@ static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
     }
     bool due = IsDue(instance);
     bool paused = !due && instance->offscreen == mvfx_offscreenPause;
-    if (!due)
+    // The context step the events came from is over; this one's steps
+    // write theirs one after another.
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
-        // The step the events came from is over.
-        for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
-        {
-            mvfxBeginEvents(instance, e);
-        }
+        mvfxClearEvents(instance, e);
     }
     if (paused)
     {
@@ -451,6 +449,11 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
     for (int32_t i = 0; i < maxSteps && left > 0; ++i)
     {
         int64_t ticks = left < step ? left : step;
+        // Each prewarm step's events its own, as a context step's.
+        for (int32_t e = 0; e < live->effect->emitterCount; ++e)
+        {
+            mvfxClearEvents(live, e);
+        }
         StepSplit(live, ticks);
         left -= ticks;
     }
