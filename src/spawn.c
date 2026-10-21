@@ -310,12 +310,12 @@ void mvfxEndDistance(mvfxInstance* instance, int32_t emitter)
     state->distanceNext = 0;
 }
 
-void mvfxEventSpawnWindow(const mvfxInstance* instance, int32_t emitter, int64_t* first,
-                          int64_t* last)
+void mvfxEventSpawnWindow(const mvfxInstance* instance, int32_t emitter, int64_t from, int64_t to,
+                          int64_t* first, int64_t* last)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
-    *first = compiled->delay > instance->planStart ? compiled->delay : instance->planStart;
-    *last = instance->stopTick < instance->clock ? instance->stopTick : instance->clock;
+    *first = compiled->delay > from ? compiled->delay : from;
+    *last = instance->stopTick < to ? instance->stopTick : to;
     if (compiled->loops > 0)
     {
         int64_t end = compiled->delay + (int64_t)compiled->loops * compiled->duration;

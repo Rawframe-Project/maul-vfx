@@ -7,7 +7,7 @@
 // holds until its simulation reports it empty past the stop and the
 // splatting emitters' deaths; the emitters pouring into it map as the
 // core's splat; its fields are not read on the CPU path;
-// liquid gases stay unplannable; a gas's view.
+// a gas's view.
 
 #include "collide.h"
 #include "direction.h"
@@ -496,32 +496,6 @@ static void TestHolds(void)
     mvfxDestroyContext(context);
 }
 
-static void TestLiquidRefused(void)
-{
-    // A liquid gas still keeps its effect unplannable.
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxGasDef gas = Smoke();
-    gas.kind = mvfx_gasLiquid;
-    gas.size[2] = 1;
-    mvfxEmitterDef emitter = Emitter(false);
-    emitter.burstCount = 0;
-    emitter.hostSpawnCapacity = 16;
-    emitter.liquid.enabled = true;
-    emitter.liquid.solver = mvfx_liquidGrid;
-    emitter.liquid.gas = 0;
-    emitter.liquid.spacing = 0.1f;
-    mvfxEffectId effect = Effect(context, &emitter, &gas);
-    mvfxInstanceDef def = mvfxDefaultInstanceDef();
-    def.effect = effect;
-    def.planned = true;
-    mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &def, &instance) == mvfx_errorState && instance.index1 == 0,
-          "a liquid gas unplannable");
-    mvfxDestroyContext(context);
-}
-
 static void TestView(void)
 {
     // A gas of 64 by 20 by 6 cells with a source and a force: its view
@@ -571,7 +545,6 @@ int main(void)
     TestPours();
     TestThrottled();
     TestHolds();
-    TestLiquidRefused();
     TestView();
     return s_failures == 0 ? 0 : 1;
 }

@@ -557,6 +557,19 @@ static void AddEmitterBlocks(mvfxLayout* layout, const mvfxEffect* effect, const
 
 // Points each planned emitter at its plan, and gives it back its capacity,
 // its rooms having been laid out for none.
+// Whether an effect has a liquid gas, which cuts its instances' steps.
+static bool HasLiquidGas(const mvfxEffect* effect)
+{
+    for (int32_t g = 0; g < effect->gasCount; ++g)
+    {
+        if (effect->gases[g].def.kind == mvfx_gasLiquid)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void StartPlans(mvfxInstance* instance, unsigned char* block, const size_t plansAt[],
                        const size_t hostsAt[], const int32_t capacities[])
 {
@@ -566,6 +579,7 @@ static void StartPlans(mvfxInstance* instance, unsigned char* block, const size_
         instance->emitters[e].plan = (mvfxPlannedBirth*)(block + plansAt[e]);
         instance->emitters[e].planHosts = (mvfxPlannedHostBirth*)(block + hostsAt[e]);
     }
+    instance->stepped = HasLiquidGas(instance->effect);
 }
 
 mvfxInstance* mvfxCreateInstanceBlock(mvfxEffect* effect, int32_t quality,
@@ -726,6 +740,9 @@ void mvfxResetInstance(mvfxInstance* instance)
         // A planned gas holds until its simulation says otherwise
         // (mvfxInstance_SetGasHolds).
         gas->holds = instance->planned;
+        // Nor has it told a liquid's speed (mvfxInstance_SetLiquidSpeed).
+        gas->reportedSpeed = 0.0f;
+        gas->reportedTick = -1;
         // A world gas's box stays where the instance starts.
         for (int32_t k = 0; k < 3; ++k)
         {

@@ -1043,6 +1043,17 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `mvfxPlannedLiquid`), the emitter view its def (`liquid`), and
   `mvfxGpuSim_EmitterPasses` reports the passes an emitter's step takes,
   thousands for a liquid at its most, for a host to size its device by.
+- Liquid gases can be planned. A planned instance cuts its steps into
+  the substeps the CPU path cuts them into, counted from the fastest
+  particle speed its simulation reports (`mvfxInstance_SetLiquidSpeed`),
+  and hands over a plan a substep (`mvfxInstance_GetPlanSteps`,
+  `mvfxInstance_GetEmitterStepPlan`, `MVFX_MAX_PLAN_STEPS`): its span,
+  the move over the first alone, its births from its start.
+
+### Changed
+
+- `mvfxInstance_GetEmitterPlan` refuses (`mvfx_errorState`) an instance
+  whose plans hold more than one step; each has its own plan.
 
 ### Fixed
 

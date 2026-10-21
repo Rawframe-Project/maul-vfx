@@ -114,15 +114,16 @@ static int32_t LevelThatFits(const mvfxContext* context, const mvfxEffect* effec
     return -1;
 }
 
-// Whether an effect's steps can be written as plans: its gases smoke
-// (mvfxGasPlan), and no water surfaces. Births from events are the
-// simulation's to build and number (mvfxPlannedBirth); a beam's strikes
-// are planned by the clock alone.
+// Whether an effect's steps can be written as plans: its gases smoke or
+// liquid (mvfxGasPlan; a liquid's split by the speeds its simulation
+// reports, mvfxInstance_SetLiquidSpeed), and no water surfaces. Births
+// from events are the simulation's to build and number
+// (mvfxPlannedBirth); a beam's strikes are planned by the clock alone.
 static bool CanBePlanned(const mvfxEffect* effect)
 {
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {
-        if (effect->gases[g].def.kind != mvfx_gasSmoke)
+        if (effect->gases[g].def.kind == mvfx_gasSurface)
         {
             return false;
         }
@@ -301,9 +302,10 @@ static void SpawnWindow(const mvfxInstance* instance, int32_t emitter, mvfxEmitt
     int64_t last = 0;
     if (instance->effect->emitters[emitter].eventSpawn.enabled)
     {
-        mvfxEventSpawnWindow(instance, emitter, &first, &last);
-        first -= instance->planStart;
-        last -= instance->planStart;
+        mvfxEventSpawnWindow(instance, emitter, plan->start, plan->start + plan->ticks, &first,
+                             &last);
+        first -= plan->start;
+        last -= plan->start;
     }
     plan->spawnFirst = first;
     plan->spawnLast = last;
@@ -334,6 +336,85 @@ mvfxResult mvfxInstance_GetEmitterMesh(const mvfxContext* context, mvfxInstanceI
     return mvfx_success;
 }
 
+// The steps an instance's plans hold: one, or for an effect with a liquid
+// gas each step it took (one of no ticks when it took none).
+static int32_t StepCount(const mvfxInstance* live)
+{
+    return live->stepped && live->planSteps > 1 ? live->planSteps : 1;
+}
+
+// An emitter's plan of step s as the CPU path takes it: its span and its
+// births; the instance's move over the first step alone, still after it.
+static void StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxEmitterPlan* planOut)
+{
+    const mvfxEmitterState* state = &live->emitters[emitter];
+    bool split = live->stepped && live->planSteps > 0;
+    int32_t last = live->planSteps - 1;
+    int64_t start = split ? live->planStepStart[s] : live->planStart;
+    int64_t end = split && s < last ? live->planStepStart[s + 1] : live->clock;
+    int32_t first = split ? state->planStepFirst[s] : 0;
+    int32_t past = split && s < last ? state->planStepFirst[s + 1] : state->planCount;
+    uint64_t refusedBefore = split && s > 0 ? state->planStepRefused[s - 1] : 0;
+    const mvfxTransform* from = s == 0 ? &live->planFrom : &live->to;
+    const mvfxTransform* to = &live->to;
+    *planOut = (mvfxEmitterPlan){
+        .capacity = state->capacity,
+        .seed = live->seed,
+        .ribbonCounter = state->ribbonCounter,
+        .from = {.scale = from->scale},
+        .to = {.scale = to->scale},
+        .start = start,
+        .ticks = end - start,
+        .births = state->plan + first,
+        .birthCount = past - first,
+        .refused = (split ? state->planStepRefused[s] : state->planRefused) - refusedBefore,
+        // The host's particles are born at the first step's start.
+        .hostBirths = state->planHosts,
+        .hostBirthCount = s == 0 ? state->planHostCount : 0,
+        .attachFrames = state->planFrames,
+        .attachFrameCount = live->effect->emitters[emitter].unit.attach == mvfx_attachHost
+                                ? state->attachFrameCount
+                                : 0,
+        .cleared = s == 0 && live->planCleared,
+        .owed = split ? state->planStepOwed[s] : state->owed,
+    };
+    SpawnWindow(live, emitter, planOut);
+    mvfxPlanResolved(live, emitter, from, planOut);
+    planOut->ribbonHead = mvfxRibbonHeadPlace(live, emitter, planOut->ribbonHeadPlace);
+    // Its neighbor grid's mask at its capacity (a planned instance's own
+    // grid is laid out for no particles).
+    planOut->gridMask = live->effect->emitters[emitter].gridCell > 0.0f
+                            ? mvfxGridTableSize(state->capacity) - 1u
+                            : 0u;
+    const float* velocity = live->stepped ? live->planVelocity : live->velocity;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        planOut->anchorBefore[k] = s == 0 ? state->planAnchor[k] : state->anchor[k];
+        planOut->anchorAfter[k] = state->anchor[k];
+        planOut->from.origin[k] = from->origin[k];
+        planOut->to.origin[k] = to->origin[k];
+        planOut->velocity[k] = s == 0 ? velocity[k] : 0.0f;
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        planOut->from.rotation[k] = from->rotation[k];
+        planOut->to.rotation[k] = to->rotation[k];
+    }
+}
+
+// The planned instance an emitter's plan query reads; NULL with the
+// result on failure.
+static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId instance,
+                                     int32_t emitter, mvfxResult* result)
+{
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    *result = live == nullptr                                        ? mvfx_errorStale
+              : emitter < 0 || emitter >= live->effect->emitterCount ? mvfx_errorInvalid
+              : !live->planned                                       ? mvfx_errorState
+                                                                     : mvfx_success;
+    return *result == mvfx_success ? live : nullptr;
+}
+
 mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance,
                                        int32_t emitter, mvfxEmitterPlan* planOut)
 {
@@ -345,63 +426,67 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     {
         return mvfx_errorInvalid;
     }
+    mvfxResult result = mvfx_success;
+    const mvfxInstance* live = PlannedOf(context, instance, emitter, &result);
+    if (live == nullptr)
+    {
+        return result;
+    }
+    if (StepCount(live) > 1)
+    {
+        // Each step has its own plan.
+        return mvfx_errorState;
+    }
+    StepPlan(live, emitter, 0, planOut);
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                           int32_t emitter, int32_t step, mvfxEmitterPlan* planOut)
+{
+    if (planOut != nullptr)
+    {
+        *planOut = (mvfxEmitterPlan){0};
+    }
+    if (context == nullptr || planOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult result = mvfx_success;
+    const mvfxInstance* live = PlannedOf(context, instance, emitter, &result);
+    if (live == nullptr)
+    {
+        return result;
+    }
+    if (step < 0 || step >= StepCount(live))
+    {
+        return mvfx_errorInvalid;
+    }
+    StepPlan(live, emitter, step, planOut);
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetPlanSteps(const mvfxContext* context, mvfxInstanceId instance,
+                                     int32_t* countOut)
+{
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
+    if (context == nullptr || countOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
     const mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
     {
         return mvfx_errorStale;
     }
-    if (emitter < 0 || emitter >= live->effect->emitterCount)
-    {
-        return mvfx_errorInvalid;
-    }
     if (!live->planned)
     {
         return mvfx_errorState;
     }
-    const mvfxEmitterState* state = &live->emitters[emitter];
-    const mvfxTransform* from = &live->planFrom;
-    const mvfxTransform* to = &live->to;
-    *planOut = (mvfxEmitterPlan){
-        .capacity = state->capacity,
-        .seed = live->seed,
-        .ribbonCounter = state->ribbonCounter,
-        .from = {.scale = from->scale},
-        .to = {.scale = to->scale},
-        .start = live->planStart,
-        .ticks = live->clock - live->planStart,
-        .births = state->plan,
-        .birthCount = state->planCount,
-        .refused = state->planRefused,
-        .hostBirths = state->planHosts,
-        .hostBirthCount = state->planHostCount,
-        .attachFrames = state->planFrames,
-        .attachFrameCount = live->effect->emitters[emitter].unit.attach == mvfx_attachHost
-                                ? state->attachFrameCount
-                                : 0,
-        .cleared = live->planCleared,
-        .owed = state->owed,
-    };
-    SpawnWindow(live, emitter, planOut);
-    mvfxPlanResolved(live, emitter, planOut);
-    planOut->ribbonHead = mvfxRibbonHeadPlace(live, emitter, planOut->ribbonHeadPlace);
-    // Its neighbor grid's mask at its capacity (a planned instance's own
-    // grid is laid out for no particles).
-    planOut->gridMask = live->effect->emitters[emitter].gridCell > 0.0f
-                            ? mvfxGridTableSize(state->capacity) - 1u
-                            : 0u;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        planOut->anchorBefore[k] = state->planAnchor[k];
-        planOut->anchorAfter[k] = state->anchor[k];
-        planOut->from.origin[k] = from->origin[k];
-        planOut->to.origin[k] = to->origin[k];
-        planOut->velocity[k] = live->velocity[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        planOut->from.rotation[k] = from->rotation[k];
-        planOut->to.rotation[k] = to->rotation[k];
-    }
+    *countOut = StepCount(live);
     return mvfx_success;
 }
 

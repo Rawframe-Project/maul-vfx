@@ -98,11 +98,12 @@ static mvfxPlannedLiquid PlannedLiquid(const mvfxInstance* instance, int32_t emi
                                .sigma = sigma};
 }
 
-void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitterPlan* plan)
+void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, const mvfxTransform* from,
+                      mvfxEmitterPlan* plan)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxEmitterState* state = &instance->emitters[emitter];
-    double time = (double)instance->planStart / (double)MVFX_TICKS_PER_SECOND;
+    double time = (double)plan->start / (double)MVFX_TICKS_PER_SECOND;
     plan->forceCount = compiled->forceCount;
     for (int32_t f = 0; f < plan->forceCount; ++f)
     {
@@ -128,7 +129,7 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
     memcpy(plan->parameters, instance->parameters, sizeof plan->parameters);
     mvfxResolveBeam(instance, emitter, &plan->beam);
     // At the plan's start, as its step began.
-    mvfxResolveSteering(instance, emitter, &instance->planFrom, &plan->steering);
+    mvfxResolveSteering(instance, emitter, from, &plan->steering);
     plan->liquid = PlannedLiquid(instance, emitter);
     plan->depth = (mvfxPlannedDepth){0};
     if (state->hasDepth)

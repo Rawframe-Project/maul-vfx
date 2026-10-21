@@ -24,6 +24,8 @@
 void mvfxBeginPlans(mvfxInstance* instance)
 {
     instance->planStart = instance->clock;
+    instance->planBase = instance->clock;
+    instance->planSteps = 0;
     instance->planFrom = instance->from;
     instance->planCleared = instance->clearPending;
     instance->clearPending = false;
@@ -37,6 +39,42 @@ void mvfxBeginPlans(mvfxInstance* instance)
         {
             state->planAnchor[k] = state->anchor[k];
         }
+    }
+}
+
+void mvfxBeginPlanStep(mvfxInstance* instance)
+{
+    // A context's step takes at most two splits of the instance's step;
+    // past the most, a step joins the last (never reached).
+    if (instance->planSteps == MVFX_MAX_PLAN_STEPS)
+    {
+        return;
+    }
+    int32_t s = instance->planSteps++;
+    instance->planStepStart[s] = instance->stepStart;
+    instance->planBase = instance->stepStart;
+    if (s == 0)
+    {
+        // The instance moves over its first step alone.
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            instance->planVelocity[k] = instance->velocity[k];
+        }
+    }
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        instance->emitters[e].planStepFirst[s] = instance->emitters[e].planCount;
+    }
+}
+
+void mvfxEndPlanStep(mvfxInstance* instance)
+{
+    int32_t s = instance->planSteps - 1;
+    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    {
+        mvfxEmitterState* state = &instance->emitters[e];
+        state->planStepOwed[s] = state->owed;
+        state->planStepRefused[s] = state->planRefused;
     }
 }
 
@@ -56,12 +94,12 @@ static void WriteLived(mvfxInstance* instance, int32_t emitter, uint64_t serial,
     mvfxEmitterState* state = &instance->emitters[emitter];
     bool elsewhere = NumberedElsewhere(instance, emitter);
     inverseLife = elsewhere ? 0.0f : inverseLife;
-    int64_t death = elsewhere ? instance->planStart : mvfxDeathTick(tick, inverseLife);
-    uint64_t deathFromStart = (uint64_t)(death - instance->planStart);
+    int64_t death = elsewhere ? instance->planBase : mvfxDeathTick(tick, inverseLife);
+    uint64_t deathFromStart = (uint64_t)(death - instance->planBase);
     state->plan[state->planCount++] = (mvfxPlannedBirth){
         .serialLow = (uint32_t)serial,
         .serialHigh = (uint32_t)(serial >> 32u),
-        .tick = (uint32_t)(tick - instance->planStart),
+        .tick = (uint32_t)(tick - instance->planBase),
         .deathLow = (uint32_t)deathFromStart,
         .deathHigh = (uint32_t)(deathFromStart >> 32u),
         .inverseLife = inverseLife,
@@ -193,7 +231,7 @@ static void BoundLastDeath(mvfxInstance* instance, int32_t emitter)
         &instance->emitters[instance->effect->emitters[emitter].eventSpawn.source];
     int64_t first = 0;
     int64_t last = 0;
-    mvfxEventSpawnWindow(instance, emitter, &first, &last);
+    mvfxEventSpawnWindow(instance, emitter, instance->planStart, instance->clock, &first, &last);
     bool sourceWrites = first <= last && (source->lastDeath > first || source->planCount > 0);
     if (state->planCount > 0 || sourceWrites)
     {

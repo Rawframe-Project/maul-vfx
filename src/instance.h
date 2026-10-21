@@ -148,6 +148,11 @@ typedef struct mvfxEmitterState
     double planAnchor[3];
     mvfxPlannedHostBirth* planHosts;
     int32_t planHostCount;
+    // For an effect with a liquid gas, each of the plan's steps' first
+    // birth, and its serials owed and births refused by its end.
+    int32_t planStepFirst[MVFX_MAX_PLAN_STEPS];
+    uint64_t planStepOwed[MVFX_MAX_PLAN_STEPS];
+    uint64_t planStepRefused[MVFX_MAX_PLAN_STEPS];
     // The latest tick a planned birth dies at: the emitter holds
     // particles elsewhere until then, as far as the core knows.
     int64_t lastDeath;
@@ -347,6 +352,16 @@ typedef struct mvfxInstance
     int64_t planStart;
     // Where it was when its plans began.
     mvfxTransform planFrom;
+    // For an effect with a liquid gas (stepped), the plans' steps: how
+    // many, each one's first tick (the clock ends the last), and the
+    // instance's velocity over the first, the one it moves in.
+    bool stepped;
+    int32_t planSteps;
+    int64_t planStepStart[MVFX_MAX_PLAN_STEPS];
+    float planVelocity[3];
+    // The tick a plan's births and deaths count from: its start, or for
+    // an effect with a liquid gas its step's.
+    int64_t planBase;
     // Whether the host cleared it (a stop that clears, a restart) since
     // the last plans began, and whether the last plans begin after a clear.
     bool clearPending;

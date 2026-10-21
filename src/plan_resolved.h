@@ -12,9 +12,11 @@
 
 #include "maul-vfx/plan.h"
 
-// Writes what the plan's step resolved into the plan: the forces, the
-// colliders and the collision's response.
-void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitterPlan* plan);
+// Writes what the plan's step resolved into the plan: the forces at the
+// plan's start (plan->start), the colliders and the collision's response,
+// the steering from where the instance was then (from).
+void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, const mvfxTransform* from,
+                      mvfxEmitterPlan* plan);
 
 // A resolved collider as a plan hands it over, with its def's grid.
 mvfxPlannedCollider mvfxPlannedColliderOf(const mvfxResolvedCollider* c, mvfxGridId grid);

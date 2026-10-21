@@ -499,9 +499,19 @@ MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterMesh(const mvfxContext
 Returns the mesh an instance's emitter spawns from now (its effect's, or the one mvfxInstance_SetEmitterMesh gave it), as mvfxMesh_GetView gives a mesh: its serial tells a change of the mesh or another mesh.  @param context   The context. @param instance  The instance. @param emitter   The emitter's index in its effect, a mesh shape's. @param viewOut   Receives the view; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an emitter out of range or one whose shape is not a mesh; `mvfx_errorStale` for an instance that is gone. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetPlanSteps(const mvfxContext* context, mvfxInstanceId instance, int32_t* countOut);
+```
+Returns how many steps a planned instance's plans for the context's last step hold: 1, or for an effect with a liquid gas each step the instance took, cut into substeps by its liquid gases (mvfxGasDef.courant), at most MVFX_MAX_PLAN_STEPS. A simulation runs them in turn, each step every emitter's plan of it (mvfxInstance_GetEmitterStepPlan) and then the gases'.  @param context   The context. @param instance  A planned instance. @param countOut  Receives the count; 0 on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter, int32_t step, mvfxEmitterPlan* planOut);
+```
+Returns an emitter's plan for one step of the context's last (mvfxInstance_GetPlanSteps), as the CPU path takes that step: its span; the instance's move over the first step alone, standing still after it; its births, their ticks and deaths from its start; the serials owed and births refused by its end; its forces resolved at its start; the rest as at the plan's end. With one step it is the plan mvfxInstance_GetEmitterPlan returns. The births stay valid until the context's next step or the instance's destruction.  @param context   The context. @param instance  A planned instance. @param emitter   The emitter's index in its effect. @param step      The step's index, below the plans' step count. @param planOut   Receives the plan; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an emitter or a step out of range; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxEmitterPlan* planOut);
 ```
-Returns an emitter's plan for the context's last step. The births stay valid until the context's next step or the instance's destruction.  @param context   The context. @param instance  A planned instance. @param emitter   The emitter's index in its effect. @param planOut   Receives the plan; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Returns an emitter's plan for the context's last step. The births stay valid until the context's next step or the instance's destruction.  @param context   The context. @param instance  A planned instance. @param emitter   The emitter's index in its effect. @param planOut   Receives the plan; zeroed on failure. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or an emitter out of range; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned or whose plans hold more than one step (mvfxInstance_GetPlanSteps), each with its own plan. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MVFX_NODISCARD MVFX_API mvfxResult mvfxEffect_GetGasView(const mvfxContext* context, mvfxEffectId effect, int32_t gas, mvfxGasView* viewOut);
@@ -517,6 +527,11 @@ Returns a smoke gas's plan for the context's last step.  @param context  The con
 MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context, mvfxInstanceId instance, int32_t gas, int64_t tick, bool holds);
 ```
 Tells a planned instance whether its simulation's gas holds anything (a value of a field past nothing) at the end of a step: a stopped instance runs while a gas holds anything, which only the simulation knows. A planned gas holds until told otherwise, so an instance whose simulation never reports runs on after it stops, and one whose does finishes as late as the report comes. That a gas holds always counts; that it holds nothing counts only for a step that ended at or after the instance's stop tick and every last death the plans give the emitters splatting into the gas, past which nothing pours into it, and is otherwise ignored.  @param context  The context. @param instance A planned instance. @param gas      The gas's index in its effect. @param tick     The tick of the step's end the report is of, at most the instance's clock. @param holds    Whether the gas held anything then. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, a gas out of range or a tick past the clock or below 0, which counts as misuse when the context is given; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
+MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetLiquidSpeed(mvfxContext* context, mvfxInstanceId instance, int32_t gas, int64_t tick, float speed);
+```
+Tells a planned instance its liquid gas's fastest particle speed at the end of a step, which its simulation measures: the instance counts the substeps it cuts its steps into (mvfxGasDef.courant) from the speed of the latest step reported, as an instance it simulates counts them from its particles' speeds at each step's start. While no particle of the gas's emitter lives the speed is 0, as there; while one lives and nothing is reported yet, each step takes MVFX_MAX_LIQUID_SUBSTEPS. A report older than the latest one is ignored.  @param context  The context. @param instance A planned instance. @param gas      A liquid gas's index in its effect. @param tick     The tick of the step's end the report is of, at most the instance's clock. @param speed    The fastest particle's speed then, in its emitter's units a second, finite and at least 0. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, a gas out of range or not a liquid, a tick past the clock or below 0 or a speed not finite or below 0, which counts as misuse when the context is given; `mvfx_errorStale` for an instance that is gone; `mvfx_errorState` for an instance that is not planned. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ## `value.h`
 
@@ -728,4 +743,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-133 functions across 17 headers.
+136 functions across 17 headers.

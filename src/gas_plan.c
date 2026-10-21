@@ -13,6 +13,8 @@
 
 #include "maul-vfx/plan.h"
 
+#include <math.h>
+
 // The emitters pouring into gas g as the CPU path's step would pour
 // them (step.c's PoursInto): every one splatting into it, its live
 // particles the simulation's to count.
@@ -188,5 +190,37 @@ mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context, mvfxInstanceId instanc
     }
     mvfxGasState* state = &live->gases[gas];
     state->holds = holds || (state->holds && !IsPouringOver(live, gas, tick));
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetLiquidSpeed(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                       int64_t tick, float speed)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (gas < 0 || gas >= live->effect->gasCount ||
+        live->effect->gases[gas].def.kind != mvfx_gasLiquid || tick < 0 || tick > live->clock ||
+        !isfinite(speed) || speed < 0.0f)
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    if (!live->planned)
+    {
+        return mvfx_errorState;
+    }
+    mvfxGasState* state = &live->gases[gas];
+    if (tick >= state->reportedTick)
+    {
+        state->reportedSpeed = speed;
+        state->reportedTick = tick;
+    }
     return mvfx_success;
 }

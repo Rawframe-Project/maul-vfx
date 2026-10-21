@@ -231,7 +231,8 @@ extern "C"
         // step, its speed and gravity's pull over the step taken together,
         // above 0 and at most MVFX_MAX_GAS_SIZE; a longer step is taken in
         // equal substeps (at most MVFX_MAX_LIQUID_SUBSTEPS), the instance's
-        // whole step each time.
+        // whole step each time. A planned instance counts them from the
+        // speed its simulation reported (mvfxInstance_SetLiquidSpeed).
         float courant;
         // From 1 to MVFX_MAX_GAS_SUBSTEPS: each a share of the step.
         int32_t substeps;

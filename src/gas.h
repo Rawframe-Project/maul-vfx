@@ -145,6 +145,12 @@ typedef struct mvfxGasState
     float rotation[4];
     float scale;
     bool holds;
+    // In a planned instance, a liquid gas's fastest particle speed at the
+    // end of the latest step its simulation reported, and that step's
+    // tick (mvfxInstance_SetLiquidSpeed); none reported yet when
+    // reportedTick is below 0.
+    float reportedSpeed;
+    int64_t reportedTick;
     // A liquid or surface gas's room (all NULL for smoke).
     mvfxLiquidGasRoom room;
     // In a planned instance, what its step would take, resolved at the

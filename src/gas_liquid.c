@@ -510,11 +510,21 @@ static Step StepOf(mvfxInstance* instance, int32_t g, double seconds)
     return s;
 }
 
-// The cells liquid gas g's fastest particle would cross in seconds.
-static float Crossing(const mvfxInstance* instance, int32_t g, float seconds)
+// The square of liquid gas g's fastest particle speed at the step's
+// start: its particles', or in a planned instance the speed its simulation
+// reported (infinite while a particle lives and nothing is reported).
+static float Fastest(const mvfxInstance* instance, int32_t g)
 {
-    const mvfxCompiledGas* gas = &instance->effect->gases[g];
-    int32_t e = gas->emitter;
+    int32_t e = instance->effect->gases[g].emitter;
+    if (instance->planned)
+    {
+        const mvfxGasState* state = &instance->gases[g];
+        if (instance->emitters[e].lastDeath <= instance->clock)
+        {
+            return 0.0f;
+        }
+        return state->reportedTick < 0 ? INFINITY : state->reportedSpeed * state->reportedSpeed;
+    }
     const float* v[3];
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -525,6 +535,15 @@ static float Crossing(const mvfxInstance* instance, int32_t g, float seconds)
     {
         fastest = fmaxf(fastest, v[0][i] * v[0][i] + v[1][i] * v[1][i] + v[2][i] * v[2][i]);
     }
+    return fastest;
+}
+
+// The cells liquid gas g's fastest particle would cross in seconds.
+static float Crossing(const mvfxInstance* instance, int32_t g, float seconds)
+{
+    const mvfxCompiledGas* gas = &instance->effect->gases[g];
+    int32_t e = gas->emitter;
+    float fastest = Fastest(instance, g);
     const mvfxCompiledEmitter* emitter = &instance->effect->emitters[e];
     const float* gravity = emitter->gravity;
     mvfxSpaceMap pull = mvfxSpaceMapAt(instance, e, emitter->gravitySpace, &instance->to);
@@ -534,7 +553,8 @@ static float Crossing(const mvfxInstance* instance, int32_t g, float seconds)
     float toGas = mvfxGasParticleMap(instance, g, e).sigma;
     float cell = gas->def.cellSize / toGas;
     float speed = sqrtf(fastest) + sqrtf(5.0f * cell * sqrtf(g2) * pull.sigma);
-    return speed * seconds / cell;
+    // No time crosses nothing, an unknown speed's too.
+    return seconds > 0.0f ? speed * seconds / cell : 0.0f;
 }
 
 int32_t mvfxLiquidSubsteps(const mvfxInstance* instance, int64_t ticks)

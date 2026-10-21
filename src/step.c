@@ -219,6 +219,10 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
     // owed.
     bool finished = mvfxIsInstanceFinished(instance);
     BeginStep(instance, ticks);
+    if (instance->stepped)
+    {
+        mvfxBeginPlanStep(instance);
+    }
     for (int32_t n = 0; n < instance->effect->emitterCount; ++n)
     {
         // Sources before the emitters spawning from their events.
@@ -235,6 +239,10 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
             continue;
         }
         mvfxStepEmitter(instance, e);
+    }
+    if (instance->stepped)
+    {
+        mvfxEndPlanStep(instance);
     }
     instance->gasesDue = !finished && instance->effect->gasCount + instance->effect->waterCount > 0;
     EndStep(instance);

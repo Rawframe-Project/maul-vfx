@@ -66,11 +66,12 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter);
 // longer spawn.
 bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter, double out[3]);
 
-// The ticks of the instance's plan whose events give an emitter births,
-// as its step takes them (from its delay, within its loops, up to the
-// instance's stop): from *first to *last, none when *first is past *last.
-void mvfxEventSpawnWindow(const mvfxInstance* instance, int32_t emitter, int64_t* first,
-                          int64_t* last);
+// The ticks from from to to (a plan's or one of its steps') whose
+// events give an emitter births, as its step takes them (from its delay,
+// within its loops, up to the instance's stop): from *first to *last, none
+// when *first is past *last.
+void mvfxEventSpawnWindow(const mvfxInstance* instance, int32_t emitter, int64_t from, int64_t to,
+                          int64_t* first, int64_t* last);
 
 // The tick in a loop of the j-th rate birth (from 0), at least 0, when the
 // loops before it owed their whole integrals; MVFX_NO_TICK when the rate
