@@ -19,6 +19,7 @@
 #include "instance_api.h"
 #include "planner.h"
 #include "tasks.h"
+#include "water_shallow.h"
 #include "water_step.h"
 
 #include <math.h>
@@ -306,6 +307,16 @@ static void StepByPolicy(mvfxInstance* instance, int64_t ticks)
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
         mvfxClearEvents(instance, e);
+    }
+    // Shallow water counts the substeps of each of this context step's
+    // steps from the state the last one left (a plan can, from the speed
+    // the simulation reports for it).
+    for (int32_t w = 0; !instance->planned && w < instance->effect->waterCount; ++w)
+    {
+        const mvfxCompiledWater* water = &instance->effect->waters[w];
+        mvfxWaterState* state = &instance->waters[w];
+        state->stepSpeed =
+            water->def.model == mvfx_waterShallow ? mvfxShallowFastest(water, state) : 0.0f;
     }
     if (paused)
     {

@@ -1074,6 +1074,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 
 ### Changed
 
+- Shallow water counts a step's substeps at its start, from the state
+  the last step left, and makes them equal; each substep was sized by
+  the flow then, which only the running step knew. A flow that speeds
+  up within a step is held to the substep's bound instead, and a
+  surface's first step (before its fill) takes one substep.
 - `mvfxInstance_GetEmitterPlan` and `mvfxInstance_GetGasPlan` refuse
   (`mvfx_errorState`) an instance whose plans hold more than one step;
   each has its own plan.

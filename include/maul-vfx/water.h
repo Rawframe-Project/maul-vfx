@@ -53,7 +53,10 @@ extern "C"
         // and its four outflows by the virtual pipe model (Mei, Decaudin and
         // Hu 2007), driven by the surface's fall to each neighbor under
         // gravity; the volume exact in a closed basin, depths never below 0,
-        // a lake at rest still over any terrain.
+        // a lake at rest still over any terrain. A step's substeps are equal,
+        // counted at its start from the state the last step left (each at
+        // most half a cell at its fastest speed, the faces' velocities held
+        // within that), so a planned instance's plan can count them too.
         mvfx_waterShallow = 1,
     };
 

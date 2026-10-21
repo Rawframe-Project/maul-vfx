@@ -308,7 +308,7 @@ static void DepthRows(int32_t start, int32_t end, void* context)
 
 // The fastest anything moves: the most face speed and the deepest
 // water's wave speed, sqrt(g d).
-static float Fastest(const mvfxCompiledWater* water, const mvfxWaterState* state)
+float mvfxShallowFastest(const mvfxCompiledWater* water, const mvfxWaterState* state)
 {
     const float* d = state->heights[state->current];
     float deepest = 0.0f;
@@ -381,12 +381,34 @@ static void Substep(const mvfxCompiledWater* water, mvfxWaterState* state, float
     state->faceCurrent = 1 - now;
 }
 
+int32_t mvfxShallowSubsteps(const mvfxCompiledWater* water, float fastest, double seconds,
+                            float* dt, bool* slowed)
+{
+    *dt = 0.0f;
+    *slowed = false;
+    if (!(seconds > 0.0))
+    {
+        return 0;
+    }
+    double longest = fastest > 0.0f ? 0.5 * (double)water->def.cellSize / (double)fastest : seconds;
+    double count = fmax(ceil(seconds / longest), 1.0);
+    *slowed = count > (double)MVFX_MAX_WATER_SUBSTEPS;
+    *dt = (float)(*slowed ? longest : seconds / count);
+    return *slowed ? MVFX_MAX_WATER_SUBSTEPS : (int32_t)count;
+}
+
 void mvfxStepShallow(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
 {
     const mvfxCompiledWater* water = &instance->effect->waters[w];
     mvfxWaterState* state = &instance->waters[w];
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
+    // Counted before the fill, pours and pushes, from the speed of the
+    // state the last context step left, as a planned instance counts from
+    // the speed reported.
+    float dt = 0.0f;
+    bool slowed = false;
+    int32_t substeps = mvfxShallowSubsteps(water, state->stepSpeed, seconds, &dt, &slowed);
     mvfxReadWaterGround(instance, w, tasks);
     if (!state->filled)
     {
@@ -398,16 +420,10 @@ void mvfxStepShallow(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
         mvfxPourWaterSources(instance, w, seconds);
     }
     mvfxPushShallow(instance, w);
-    double left = seconds;
-    for (int32_t s = 0; s < MVFX_MAX_WATER_SUBSTEPS && left > 0.0; ++s)
+    for (int32_t s = 0; s < substeps; ++s)
     {
-        // Within half a cell a substep for the fastest flow or wave.
-        float fastest = Fastest(water, state);
-        double l = (double)water->def.cellSize;
-        double dt = fastest > 0.0f ? fmin(left, 0.5 * l / (double)fastest) : left;
-        Substep(water, state, (float)dt, tasks);
-        left -= dt;
+        Substep(water, state, dt, tasks);
     }
-    state->stepsSlowed += left > 0.0 ? 1u : 0u;
+    state->stepsSlowed += slowed ? 1u : 0u;
     Settle(water, state);
 }

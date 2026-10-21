@@ -64,7 +64,9 @@ typedef struct mvfxWaterCrossing
 // meet it, each crossing once a step) for the next step; where a world
 // surface's grid was put (the instance's place at its start); whether it
 // moves at all (a rate, or a slope), and its largest displacement's size
-// (the surface's height); the counts mvfxWaterInfo reads.
+// (the surface's height); shallow water's fastest speed as the last
+// context step left it, which each of this one's steps counts its
+// substeps from; the counts mvfxWaterInfo reads.
 typedef struct mvfxWaterState
 {
     float* heights[2];
@@ -86,6 +88,7 @@ typedef struct mvfxWaterState
     float scale;
     bool holds;
     float reach;
+    float stepSpeed;
     uint64_t stepsSlowed;
     uint64_t facesHeld;
     double volumePoured;

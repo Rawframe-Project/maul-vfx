@@ -7,11 +7,14 @@
 // dry bed against Ritter's solution; a lake at rest still over a sloped
 // terrain, the effect's or the host's; a leaned terrain's ground; a fall
 // off a cliff as its mirror's; reads and samples of a lake; friction;
-// pushes at their edges; a stopped instance finishing once still.
+// pushes at their edges; a stopped instance finishing once still; a
+// step's substeps counted from the state the last step left.
 
 #include "instance.h"
 #include "instance_api.h"
 #include "test_harness.h"
+#include "water.h"
+#include "water_shallow.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/grid.h"
@@ -790,6 +793,43 @@ static void TestSlowed(void)
     Close();
 }
 
+static void TestSubsteps(void)
+{
+    // Equal substeps of at most half a cell at the speed, at least one,
+    // none for no time, the most of the longest past them (slowed).
+    mvfxWaterDef def = Shallow(8, 8, 0.1f);
+    mvfxCompiledWater water = mvfxCompileWater(&def);
+    float dt = -1.0f;
+    bool slowed = true;
+    CHECK(mvfxShallowSubsteps(&water, 5.0f, 0.0, &dt, &slowed) == 0 && dt == 0.0f && !slowed,
+          "no time, no substep");
+    CHECK(mvfxShallowSubsteps(&water, 0.0f, 0.5, &dt, &slowed) == 1 && dt == 0.5f && !slowed,
+          "still water, one substep");
+    CHECK(mvfxShallowSubsteps(&water, 5.0f, 0.1, &dt, &slowed) == 10 && dt == 0.01f && !slowed,
+          "ten of half a cell");
+    CHECK(mvfxShallowSubsteps(&water, 5.0f, 0.1001, &dt, &slowed) == 11 &&
+              dt == (float)(0.1001 / 11.0) && !slowed,
+          "a part past them, one more");
+    CHECK(mvfxShallowSubsteps(&water, 5.0f, 1.0, &dt, &slowed) == MVFX_MAX_WATER_SUBSTEPS &&
+              dt == 0.01f && slowed,
+          "past the most, slowed");
+    // A basin's first step of a second counts from its state before the
+    // fill (still, one substep): not slowed, though its 3 deep waves are
+    // 5.4 a second; its next takes the most and is.
+    def.fillLevel = 3.0f;
+    CHECK(Open(&def, 1), "opened");
+    Steps(1, 1.0);
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              info.stepsSlowed == 0,
+          "the first step counted before the fill");
+    Steps(1, 1.0);
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              info.stepsSlowed == 1,
+          "the next from the filled basin");
+    Close();
+}
+
 static void TestFinish(void)
 {
     // A stopped instance's surface still moving keeps it from finishing
@@ -824,6 +864,7 @@ int main(void)
     TestPushRing();
     TestPushEdges();
     TestSlowed();
+    TestSubsteps();
     TestFinish();
     return s_failures;
 }

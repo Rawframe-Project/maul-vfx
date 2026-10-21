@@ -185,6 +185,7 @@ void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water)
     state->crossingCount = 0;
     state->holds = false;
     state->reach = 0.0f;
+    state->stepSpeed = 0.0f;
     state->stepsSlowed = 0;
     state->facesHeld = 0;
     state->volumePoured = 0.0;
