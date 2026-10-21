@@ -1031,6 +1031,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A gas plan names the emitters pouring into the gas
   (`mvfxGasPlan.pours`, `mvfxPlannedPour`): each one's map from its
   particles' space into the box, its splat's rates and drag.
+- The GPU part runs an emitter's splat into a smoke gas: each step its
+  particles are sorted by gas cell, and each substep every cell and face
+  gathers the particles reaching it in the pool's order, as the core's
+  splat adds and pulls them. `mvfxEmitterView.splatGas` names the gas.
 
 ### Fixed
 

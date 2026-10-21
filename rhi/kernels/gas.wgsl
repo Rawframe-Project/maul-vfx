@@ -428,8 +428,14 @@ fn lift(b: u32, i: u32) -> f32 {
            gas.lattice.w * fields[arrayAt(b, 3u, 1u) + i];
 }
 
+// What gasFaces does (root.word): the sources and what follows them; with
+// emitters splatting between, the sources alone, then what follows.
+const FACES_ALL: u32 = 0u;
+const FACES_SOURCES: u32 = 1u;
+const FACES_AFTER: u32 = 2u;
+
 // Each face: the sources' velocities (the last that holds it), then
-// buoyancy over the substep.
+// buoyancy and the forces over the substep.
 @compute @workgroup_size(64, 1, 1)
 fn gasFaces(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
@@ -443,7 +449,7 @@ fn gasFaces(@builtin(global_invocation_id) id: vec3<u32>) {
     let step = gas.substeps[root.substep];
     let i = arrayAt(root.now, k, 0u) + face.y;
     var v = fields[i];
-    if (step.span.z != 0.0) {
+    if (step.span.z != 0.0 && root.word != FACES_AFTER) {
         let local = localOf(k, at);
         for (var s = 0u; s < gas.walls.z; s++) {
             let source = gas.sources[s];
@@ -451,6 +457,10 @@ fn gasFaces(@builtin(global_invocation_id) id: vec3<u32>) {
                 v = source.velocity[k];
             }
         }
+    }
+    if (root.word == FACES_SOURCES) {
+        fields[i] = v;
+        return;
     }
     let lifts = gas.lattice.z != 0.0 || gas.lattice.w != 0.0;
     if (lifts && gas.gravity[k] != 0.0) {

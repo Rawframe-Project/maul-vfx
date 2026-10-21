@@ -1,0 +1,19 @@
+{
+  "root_block_bytes": 16,
+  "entries": [
+    {"name": "splatKeys", "stage": "compute", "workgroup": [256, 1, 1]},
+    {"name": "splatRuns", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "splatCells", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "splatFaces", "stage": "compute", "workgroup": [64, 1, 1]}
+  ],
+  "bindings": [
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 10048},
+    {"table": 0, "slot": 1, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 96},
+    {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 3, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 4, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 6, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4}
+  ],
+  "constants": []
+}

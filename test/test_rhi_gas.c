@@ -51,6 +51,9 @@ static mvfxEmitterDef Beside(void)
     return emitter;
 }
 
+// An emitter splatting into the scenes' gas, beside it when NULL.
+static const mvfxEmitterDef* s_splatter;
+
 // Opens a run of a gas; with a grid, made in the run's context and read
 // by the gas's vector fields and grid obstacles.
 static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* grid, Scene* scene)
@@ -80,7 +83,7 @@ static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* gri
         obstacles[c].grid = gridded ? gridId : obstacles[c].grid;
     }
     made.obstacles = gas->obstacleCount > 0 ? obstacles : NULL;
-    mvfxEmitterDef emitter = Beside();
+    mvfxEmitterDef emitter = s_splatter != NULL ? *s_splatter : Beside();
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
@@ -809,8 +812,35 @@ static void TestFollowing(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels, &run, "particles following a 2D gas, cleared");
 }
 
+// Emitters splatting into a gas, their particles kept well inside its box
+// (one pouring on one path alone, at a face, would set the paths apart
+// by its whole splat): a local one into a plume, rising and pulling the
+// faces; a world one into a 2D gas, cleared at half time.
+static void TestSplats(Gpu* gpu, mvfxGpu* kernels)
+{
+    mvfxEmitterDef splatter = Sprite();
+    splatter.capacity = 512;
+    splatter.rate = 300.0f;
+    splatter.burstCount = 0;
+    splatter.lifetime = mvfxRangeSource(0.3f, 0.6f);
+    splatter.shape.radius = 0.3f;
+    splatter.velocity.speed = (mvfxRange){0.5f, 1.0f};
+    splatter.motion.gravity[1] = 0.0f;
+    splatter.space = mvfx_spaceLocal;
+    splatter.gasSplat = (mvfxGasSplat){
+        .enabled = true, .density = 2.0f, .temperature = 1.0f, .fuel = 0.5f, .drag = 4.0f};
+    s_splatter = &splatter;
+    mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
+    Steps(gpu, kernels, &gas, NULL, 30, false, "a plume splatted into");
+    splatter.space = mvfx_spaceWorld;
+    gas = Plume(40, 32, 1, &s_box);
+    Steps(gpu, kernels, &gas, NULL, 30, true, "a 2D gas splatted into, cleared");
+    s_splatter = NULL;
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
+    TestSplats(gpu, kernels);
     TestFollowing(gpu, kernels);
     TestPlumes(gpu, kernels);
     TestForces(gpu, kernels);

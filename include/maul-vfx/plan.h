@@ -667,6 +667,9 @@ extern "C"
         uint32_t forceKinds;
         mvfxGridId forceGrids[MVFX_MAX_FORCES];
         int32_t forceGases[MVFX_MAX_FORCES];
+        // The gas it pours into (its mvfxGasSplat's index in the effect;
+        // -1 for none).
+        int32_t splatGas;
         // A bit for each kind of collider of its own (1 <<
         // mvfx_colliderPlane and so on), the grid each reads (a
         // heightfield's or a distance grid's; the null id for the others),

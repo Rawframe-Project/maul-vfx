@@ -248,7 +248,11 @@ extern "C"
     /// digit counts, and 112 for its numbers and counts; one whose forces
     /// follow a gas 4 bytes a face of each gas it follows (each axis's
     /// faces across it, through the last axis of more than one cell), its
-    /// faces copied there each step. A smoke gas keeps 8 bytes a face
+    /// faces copied there each step; one splatting into a gas 40 bytes a
+    /// particle of its capacity (rounded up to blocks of 1,024) and 2,048
+    /// a block for its particles in the box and their sort by cell, 8 a
+    /// cell of the gas and 8 more for the cells' runs, and 96 for its
+    /// numbers. A smoke gas keeps 8 bytes a face
     /// (each axis's faces across it) and 24 a cell of its own for its
     /// fields, 4 more a cell with obstacles for their solids and, for its
     /// work, the larger of 4 bytes a face (an axis of one cell none) and
@@ -594,7 +598,9 @@ extern "C"
     /// more carrying by MacCormack's, one more with a burn, two more with
     /// obstacles), with a solve one more (two in a sealed box whose burn
     /// expands) and six a level above the levels of at most 512 cells and
-    /// one for those a cycle.
+    /// one for those a cycle; with emitters splatting into it, ten a step
+    /// for each (its particles keyed, sorted and their runs found) and,
+    /// each substep, one more and two for each.
     ///
     /// @param sim  The simulation.
     /// @param gas  The gas's index in its effect.

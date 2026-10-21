@@ -329,6 +329,11 @@ static void TestPours(void)
     def.gasCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    static mvfxEmitterView views[2];
+    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &views[0]) == mvfx_success &&
+              mvfxEffect_GetEmitterView(context, effect, 1, &views[1]) == mvfx_success &&
+              views[0].splatGas == 0 && views[1].splatGas == -1,
+          "the views name the gas poured into");
     mvfxInstanceId planned = Instance(context, effect, true);
     static mvfxGasPlan plan;
     bool same = true;

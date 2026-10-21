@@ -25,6 +25,7 @@ typedef enum mvfxContainer
     mvfx_containerSelf = 8,
     mvfx_containerGas = 9,
     mvfx_containerGasRead = 10,
+    mvfx_containerSplat = 11,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -154,6 +155,13 @@ typedef enum mvfxKernel
     mvfx_kernelGasMove = 73,
     // A smoke gas's field written in a host's format (gas_read.wgsl).
     mvfx_kernelGasRead = 74,
+    // An emitter splatting into a smoke gas (splat.wgsl): its particles
+    // mapped into the box and keyed by cell, each cell's run in the sorted
+    // order, then each substep the gather into the cells and the faces.
+    mvfx_kernelSplatKeys = 75,
+    mvfx_kernelSplatRuns = 76,
+    mvfx_kernelSplatCells = 77,
+    mvfx_kernelSplatFaces = 78,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

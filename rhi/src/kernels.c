@@ -16,6 +16,7 @@
 #include "../kernels/self_container.h"
 #include "../kernels/sim_container.h"
 #include "../kernels/sort_container.h"
+#include "../kernels/splat_container.h"
 #include "maul-rhi/shader.h"
 
 #include <stdalign.h>
@@ -47,6 +48,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_selfContainer, sizeof s_selfContainer},
     {s_gasContainer, sizeof s_gasContainer},
     {s_gasReadContainer, sizeof s_gasReadContainer},
+    {s_splatContainer, sizeof s_splatContainer},
 };
 
 // A kernel's container and entry.
@@ -132,6 +134,10 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerGas, "gasEmpty"},
     {mvfx_containerGas, "gasMove"},
     {mvfx_containerGasRead, "gasRead"},
+    {mvfx_containerSplat, "splatKeys"},
+    {mvfx_containerSplat, "splatRuns"},
+    {mvfx_containerSplat, "splatCells"},
+    {mvfx_containerSplat, "splatFaces"},
 };
 
 struct mvfxGpu

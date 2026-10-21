@@ -19,11 +19,7 @@
 #include <stdalign.h>
 #include <string.h>
 
-// The workgroups of a point pass, those of a row of its dispatch (a
-// device takes 65,535 along a dimension; gas.wgsl's ROW invocations), and
-// the most cells a level of the tail has.
-#define GAS_GROUP  64u
-#define GAS_ROW    32768u
+// The most cells a level of the tail has.
 #define TAIL_CELLS 512
 
 // The first words of the numbers' parts (gas.wgsl's Gas).
@@ -40,6 +36,12 @@
 
 // The words of a substep's numbers (gas.wgsl's Substep).
 #define SUBSTEP_WORDS 12u
+
+// What gasFaces does (gas.wgsl's FACES_*): the sources and what follows,
+// the sources alone, or what follows them.
+#define FACES_ALL     0u
+#define FACES_SOURCES 1u
+#define FACES_AFTER   2u
 
 // Whether the part runs a gas: smoke.
 static bool Runs(const mvfxGasView* view)
@@ -152,7 +154,7 @@ static int32_t CarryPasses(const mvfxGasDef* def)
     return def->advection == mvfx_gasMacCormack ? 3 : 1;
 }
 
-int32_t mvfxSimGasPasses(const mvfxGasView* view)
+int32_t mvfxSimGasPasses(const mvfxGasView* view, int32_t splats)
 {
     const mvfxGasDef* def = &view->def;
     bool solves = def->pressureCycles > 0;
@@ -163,7 +165,8 @@ int32_t mvfxSimGasPasses(const mvfxGasView* view)
     int32_t solids = HasObstacles(def) ? 2 : 0;
     int32_t substep = 2 + confine + 2 * CarryPasses(def) + solids + burn + mean + solve + 1;
     int32_t mark = HasObstacles(def) ? 1 : 0;
-    return 1 + mark + 2 * view->levelCount + def->substeps * substep + 1;
+    return 1 + mark + 2 * view->levelCount + def->substeps * substep + 1 +
+           mvfxSimSplatPasses(splats, def->substeps);
 }
 
 uint32_t mvfxSimGasFaces(const mvfxGasView* view)
@@ -320,7 +323,11 @@ bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords)
     uint64_t solve = 0;
     Lay(gas, &fields, &solve);
     StaticNumbers(gas);
-    gas->capacity = mvfxSimGasPasses(&gas->view);
+    if (!mvfxCreateSimSplats(sim, gas, (int32_t)(gas - sim->gases)))
+    {
+        return false;
+    }
+    gas->capacity = mvfxSimGasPasses(&gas->view, gas->splatRoom);
     gas->dispatches = mvfxRhiAllocate(&sim->allocator, (size_t)gas->capacity * sizeof(GasDispatch),
                                       alignof(GasDispatch));
     gas->passes = mvfxRhiAllocate(&sim->allocator, (size_t)gas->capacity * sizeof(mrhiPassId),
@@ -359,6 +366,7 @@ void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas)
             (void)mrhiDestroyBuffer(sim->device, gas->reads[r].numbers);
         }
     }
+    mvfxDestroySimSplats(sim, gas);
     size_t count = (size_t)gas->capacity;
     mvfxRhiRelease(&sim->allocator, gas->dispatches, count * sizeof(GasDispatch),
                    alignof(GasDispatch));
@@ -448,7 +456,15 @@ static uint32_t SubstepPasses(SimGas* gas, uint32_t u, uint32_t now)
     uint32_t cells = Groups((uint32_t)gas->view.cells);
     uint32_t faces = Groups(AllFaces(&gas->view, 0));
     Push(gas, mvfx_kernelGasPourCells, u, now, 0, 0, cells);
-    Push(gas, mvfx_kernelGasFaces, u, now, 0, 0, faces);
+    if (gas->splatCount > 0)
+    {
+        // The sources' faces, the splats, then what follows the sources.
+        float h;
+        memcpy(&h, &gas->words[WORD_SUBSTEPS + SUBSTEP_WORDS * u], sizeof h);
+        Push(gas, mvfx_kernelGasFaces, u, now, 0, FACES_SOURCES, faces);
+        mvfxSimSplatSubstep(gas, u, h, now, cells, faces);
+    }
+    Push(gas, mvfx_kernelGasFaces, u, now, 0, gas->splatCount > 0 ? FACES_AFTER : FACES_ALL, faces);
     if (def->vorticity != 0.0f)
     {
         Push(gas, mvfx_kernelGasCurl, u, now, 0, 0, cells);
@@ -512,7 +528,7 @@ static void ObstacleNumbers(SimGas* gas, const mvfxGasPlan* plan)
 
 // The step's substeps' numbers and dispatches, as the core's mvfxStepGas
 // splits the plan's ticks.
-static void Plan(SimGas* gas, const mvfxGasPlan* plan)
+static void Plan(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan)
 {
     const mvfxGasView* view = &gas->view;
     const mvfxGasDef* def = &view->def;
@@ -546,6 +562,7 @@ static void Plan(SimGas* gas, const mvfxGasPlan* plan)
         Push(gas, mvfx_kernelGasCoefficients, 0, 0, (uint32_t)l, 0,
              Groups(faces + LevelCells(view, l)));
     }
+    mvfxPlanSimSplats(sim, gas, plan);
     int64_t from = plan->start;
     int64_t to = plan->start + plan->ticks;
     uint32_t now = gas->now;
@@ -589,7 +606,7 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
     {
         return mvfx_errorCapacity;
     }
-    Plan(gas, &plan);
+    Plan(sim, gas, &plan);
     mrhiResourceId* r = gas->resources;
     for (int32_t b = 0; b < GAS_BUFFERS; ++b)
     {
@@ -599,6 +616,10 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
         }
     }
     gas->imported = true;
+    if (!mvfxImportSimSplats(sim, gas))
+    {
+        return mvfx_errorState;
+    }
     const mrhiAccess written[GAS_BUFFERS] = {
         {.resource = r[GAS_NUMBERS], .kind = mrhi_accessCopyDestination},
         {.resource = r[GAS_FIELDS], .kind = mrhi_accessCopyDestination},
@@ -611,12 +632,23 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
         {.resource = r[GAS_SOLVE], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[GAS_GRIDS], .kind = mrhi_accessStorageRead},
         {.resource = r[GAS_STATISTICS], .kind = mrhi_accessStorageReadWrite}};
+    // The write pass's accesses with the splats' after the gas's.
+    const mrhiAccess* writes = written;
+    int32_t writeCount = GAS_BUFFERS;
+    if (gas->splatCount > 0)
+    {
+        memcpy(gas->writes, written, sizeof written);
+        writeCount += mvfxSimSplatWrites(gas, gas->writes + GAS_BUFFERS);
+        writes = gas->writes;
+    }
     for (int32_t p = -1; p < gas->count; ++p)
     {
+        mrhiAccess accesses[GAS_BUFFERS + SPLAT_BUFFERS];
+        int32_t count = p < 0 ? 0 : mvfxSimSplatAccesses(gas, &gas->dispatches[p], used, accesses);
         mrhiPassDef def = mrhiDefaultPassDef();
         def.passClass = p < 0 ? mrhi_passTransfer : mrhi_passGraphics;
-        def.accesses = p < 0 ? written : used;
-        def.accessCount = GAS_BUFFERS;
+        def.accesses = p < 0 ? writes : accesses;
+        def.accessCount = p < 0 ? (uint32_t)writeCount : (uint32_t)count;
         // Its writes outlive the frame, read by the next step or the host.
         def.neverCull = true;
         if (mrhiAddPass(sim->device, &def, &gas->passes[p + 1]) != mrhi_success)
@@ -653,6 +685,7 @@ static bool RecordWrite(mvfxGpuSim* sim, SimGas* gas)
                                           sim->context, &gas->grids);
     recorded = recorded && mvfxUpload(sim->device, &sim->uploaded, pass, r[GAS_STATISTICS], 0,
                                       gas->record, sizeof gas->record);
+    recorded = recorded && mvfxWriteSimSplats(sim, pass, gas);
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 
@@ -661,20 +694,23 @@ static bool RecordStep(mvfxGpuSim* sim, SimGas* gas)
 {
     bool recorded = RecordWrite(sim, gas);
     const mrhiResourceId* r = gas->resources;
-    mrhiBinding bindings[GAS_BUFFERS];
+    mrhiBinding own[GAS_BUFFERS];
     for (int32_t b = 0; b < GAS_BUFFERS; ++b)
     {
-        bindings[b] = (mrhiBinding){.slot = (uint32_t)b, .resource = r[b], .size = MRHI_WHOLE_SIZE};
+        own[b] = (mrhiBinding){.slot = (uint32_t)b, .resource = r[b], .size = MRHI_WHOLE_SIZE};
     }
     for (int32_t p = 0; recorded && p < gas->count; ++p)
     {
         const GasDispatch* d = &gas->dispatches[p];
         mrhiPassId pass = gas->passes[p + 1];
+        mrhiBinding splat[GAS_BUFFERS + 2];
+        bool owns = d->binds == GAS_BINDS_GAS;
+        uint32_t count = owns ? GAS_BUFFERS : (uint32_t)mvfxSimSplatBindings(gas, d, splat);
         bool ran =
             mrhiBeginPass(sim->device, pass) == mrhi_success &&
             mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, d->kernel)) ==
                 mrhi_success &&
-            mrhiSetBindings(sim->device, pass, 0, bindings, GAS_BUFFERS) == mrhi_success &&
+            mrhiSetBindings(sim->device, pass, 0, owns ? own : splat, count) == mrhi_success &&
             mrhiSetRootBlock(sim->device, pass, 0, d->root, sizeof d->root) == mrhi_success &&
             Dispatch(sim, pass, d->groups);
         recorded = mrhiEndPass(sim->device, pass) == mrhi_success && ran;
@@ -855,7 +891,7 @@ int32_t mvfxGpuSim_GasPasses(const mvfxGpuSim* sim, int32_t gas)
     {
         return 0;
     }
-    return mvfxSimGasPasses(&sim->gases[gas].view);
+    return mvfxSimGasPasses(&sim->gases[gas].view, sim->gases[gas].splatRoom);
 }
 
 mvfxResult mvfxGpuSim_GetGas(const mvfxGpuSim* sim, int32_t gas, mvfxGpuGas* gasOut)
