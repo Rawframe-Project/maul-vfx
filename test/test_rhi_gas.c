@@ -781,7 +781,7 @@ static void TestObstacles(Gpu* gpu, mvfxGpu* kernels)
 
 // Emitters following a gas: world particles pulled toward a moving
 // plume's velocity, and local ones pushed by it from below its box; then
-// a 2D gas's, cleared at half time.
+// a 2D gas's, cleared at half time; then one emitter following two.
 static void TestFollowing(Gpu* gpu, mvfxGpu* kernels)
 {
     static const mvfxForce pulled = {.kind = mvfx_forceGas,
@@ -810,6 +810,21 @@ static void TestFollowing(Gpu* gpu, mvfxGpu* kernels)
     run = (Run){
         .emitters = emitters, .emitterCount = 2, .gases = &gas, .gasCount = 1, .clearing = true};
     Compare(gpu, kernels, &run, "particles following a 2D gas, cleared");
+    // One emitter following two gases, pulled by the first and pushed by
+    // the second, whose faces sit past the first's in its grids.
+    static const mvfxForce both[2] = {
+        {.kind = mvfx_forceGas,
+         .strength = 1.0f,
+         .fieldMode = mvfx_fieldVelocity,
+         .tightness = 8.0f},
+        {.kind = mvfx_forceGas, .strength = 2.0f, .fieldMode = mvfx_fieldAcceleration, .gas = 1}};
+    mvfxGasDef gases[2] = {Plume(16, 24, 16, &s_sphere), Plume(16, 24, 16, &s_sphere)};
+    gases[1].center[1] = -1.0f;
+    emitters[0].forces = both;
+    emitters[0].forceCount = 2;
+    emitters[0].shape.offset[1] = -0.8f;
+    run = (Run){.emitters = emitters, .emitterCount = 1, .gases = gases, .gasCount = 2};
+    Compare(gpu, kernels, &run, "particles following two gases");
 }
 
 // Emitters splatting into a gas, their particles kept well inside its box
