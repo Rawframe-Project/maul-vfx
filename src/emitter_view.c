@@ -214,6 +214,7 @@ static mvfxAttributeArrays ArraysOf(const mvfxAttributePlan* plan)
         .attachSource = ArrayOf(plan, mvfx_attributeAttachSource),
         .torn = ArrayOf(plan, mvfx_attributeTorn),
         .sleep = ArrayOf(plan, mvfx_attributeSleep),
+        .affine = ArrayOf(plan, mvfx_attributeAffine),
         .count = plan->arrayCount,
     };
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)

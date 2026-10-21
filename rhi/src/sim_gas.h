@@ -38,8 +38,12 @@ typedef enum GasBinding
 {
     GAS_BINDS_GAS = 0,
     GAS_BINDS_SPLAT = 1,
-    GAS_BINDS_SORT = 2
+    GAS_BINDS_SORT = 2,
+    GAS_BINDS_LIQUID = 3
 } GasBinding;
+
+// The splat a dispatch of a liquid gas's own names: its liquid.
+#define LIQUID_SPLAT (-2)
 
 // A dispatch of a gas's step: its kernel, root words and workgroups, what
 // it binds and the splat whose buffers (-1 for none).
@@ -67,14 +71,16 @@ typedef struct GasDispatch
 #define SPLAT_STATISTICS 4
 #define SPLAT_BUFFERS    5
 
-// An emitter splatting into a gas: its index, the words of one of its
-// sort's arrays and its capacity; its buffers and the frame's ids of them
-// and of its emitter's; its numbers; its drag (the plan's).
+// An emitter splatting into a gas, or a liquid gas's emitter: its index,
+// the words of one of its sort's arrays and its capacity, whether it is a
+// liquid's; its buffers and the frame's ids of them and of its emitter's;
+// its numbers; its drag (the plan's).
 typedef struct SimSplat
 {
     int32_t emitter;
     uint32_t span;
     uint32_t capacity;
+    bool liquid;
     mrhiBufferId buffers[3];
     mrhiResourceId resources[SPLAT_BUFFERS];
     uint32_t words[SPLAT_NUMBER_WORDS];
@@ -136,6 +142,10 @@ typedef struct SimGas
     int32_t splatCount;
     int32_t splatRoom;
     mrhiAccess* writes;
+    // A liquid gas's emitter (sim_liquid_gas.c), its sorted words theirs:
+    // whether it has one with room.
+    SimSplat liquid;
+    bool hasLiquid;
 } SimGas;
 
 // Reads an effect's gases into the simulation; mvfx_errorState with the
@@ -154,6 +164,15 @@ bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas);
 
 // The passes a gas's step takes at most, with splats splatting into it.
 int32_t mvfxSimGasPasses(const mvfxGasView* view, int32_t splats);
+
+// A step's projection's dispatches (gas.wgsl) at substep u from buffer now.
+void mvfxSimGasProject(SimGas* gas, uint32_t u, uint32_t now);
+
+// A liquid gas's step (sim_liquid_gas.c): the passes it takes about a
+// projection of the given passes, and its dispatches for a plan from
+// buffer now (the projection's alone without an emitter with room).
+int32_t mvfxSimLiquidGasPasses(const mvfxGasView* view, int32_t projection);
+void mvfxPlanSimLiquid(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan, uint32_t now);
 
 // Emitters splatting into a gas (sim_splat.c): made with the gas, gas g,
 // for each emitter splatting into it that has room (false when the device
@@ -175,7 +194,10 @@ int32_t mvfxSimSplatAccesses(const SimGas* gas, const GasDispatch* d, const mrhi
                              mrhiAccess out[GAS_BUFFERS + SPLAT_BUFFERS]);
 bool mvfxWriteSimSplats(mvfxGpuSim* sim, mrhiPassId pass, SimGas* gas);
 int32_t mvfxSimSplatBindings(const SimGas* gas, const GasDispatch* d,
-                             mrhiBinding out[GAS_BUFFERS + 2]);
+                             mrhiBinding out[GAS_BUFFERS + 4]);
+// The splat a dispatch names: one splatting into the gas, or its liquid
+// (LIQUID_SPLAT).
+const SimSplat* mvfxSimSplatOf(const SimGas* gas, int32_t splat);
 
 // The floats of a gas's faces a gas force reads: each axis's array in
 // turn, through the last axis of more than one cell.

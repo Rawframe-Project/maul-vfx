@@ -1581,18 +1581,19 @@ static bool AdoptGpu(int32_t e)
         CountSleep(count);
     }
     // Places and velocities; a rigid body's orientation, angular velocity
-    // and sleep where it stores them.
+    // and sleep, and a grid liquid's affine velocity, where it stores them.
     const struct
     {
         int16_t first;
         mvfxAttribute attribute;
         int32_t components;
-    } adopted[5] = {{s_arrays.position, mvfx_attributePositionX, 3},
+    } adopted[6] = {{s_arrays.position, mvfx_attributePositionX, 3},
                     {s_arrays.velocity, mvfx_attributeVelocityX, 3},
                     {s_arrays.orientation, mvfx_attributeOrientationX, 4},
                     {s_arrays.angular, mvfx_attributeAngularX, 3},
-                    {s_arrays.sleep, mvfx_attributeSleep, 4}};
-    for (int32_t a = 0; a < 5; ++a)
+                    {s_arrays.sleep, mvfx_attributeSleep, 4},
+                    {s_arrays.affine, mvfx_attributeAffine, 9}};
+    for (int32_t a = 0; a < 6; ++a)
     {
         for (int32_t k = 0; adopted[a].first >= 0 && k < adopted[a].components; ++k)
         {
@@ -1976,6 +1977,19 @@ mvfxDepthImage Terraces(const float projection[16], float far, float near, const
 void SetDepthPixel(int32_t column, int32_t row, float depth)
 {
     s_pixels[row * DEPTH_SIDE + column] = depth;
+}
+
+bool ReportGases(Gpu* gpu, mvfxGpuSim* sim)
+{
+    mvfxGpuGas gas = {0};
+    bool reported = true;
+    for (int32_t g = 0; reported && mvfxGpuSim_GetGas(sim, g, &gas) == mvfx_success; ++g)
+    {
+        uint32_t record[MVFX_GPU_GAS_STATISTICS_WORDS];
+        reported = ReadRange(gpu, gas.statistics, 0, sizeof record, record, sizeof record) &&
+                   mvfxGpuSim_ReportGas(sim, s_context, g, record) == mvfx_success;
+    }
+    return reported;
 }
 
 bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
@@ -2675,7 +2689,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         }
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         s_waitNs = s_warm && s > 0 ? FRAME_WAIT_NS : WARM_WAIT_NS;
-        same = Simulate(gpu, sim);
+        same = Simulate(gpu, sim) && ReportGases(gpu, sim);
         if (!same)
         {
             printf("step %d: the simulation was not recorded and finished\n", s);
@@ -2833,6 +2847,11 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
 mvfxContext* RunContext(void)
 {
     return s_context;
+}
+
+mvfxInstanceId CpuInstance(void)
+{
+    return s_cpu;
 }
 
 mvfxInstanceId PlannedInstance(void)

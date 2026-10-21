@@ -27,6 +27,7 @@ typedef enum mvfxContainer
     mvfx_containerGasRead = 10,
     mvfx_containerSplat = 11,
     mvfx_containerLiquid = 12,
+    mvfx_containerLiquidGas = 13,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -178,6 +179,19 @@ typedef enum mvfxKernel
     mvfx_kernelLiquidCurls = 86,
     mvfx_kernelLiquidConfine = 87,
     mvfx_kernelLiquidKeep = 88,
+    // A liquid gas's own passes about the projection (liquid_gas.wgsl):
+    // its particles keyed by cell and their runs, the cells marked (the
+    // finest, then a coarse level a pass), the faces gathered, those of
+    // liquid kept, a layer of the extension, the walls, the read back.
+    mvfx_kernelLiquidGasKeys = 89,
+    mvfx_kernelLiquidGasRuns = 90,
+    mvfx_kernelLiquidGasMark = 91,
+    mvfx_kernelLiquidGasCoarse = 92,
+    mvfx_kernelLiquidGasGather = 93,
+    mvfx_kernelLiquidGasKeep = 94,
+    mvfx_kernelLiquidGasExtend = 95,
+    mvfx_kernelLiquidGasWalls = 96,
+    mvfx_kernelLiquidGasRead = 97,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

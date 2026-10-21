@@ -42,8 +42,8 @@ typedef struct Step
     mvfxGasLattice lattice;
     float* x[3];
     float* v[3];
-    float* affine;
-    size_t stride;
+    // The affine matrix's nine arrays, row by row (as the attributes).
+    float* affine[9];
     int32_t count;
     mvfxSpaceMap map;
     // The faces' arrays now, and each axis's first face in the validity
@@ -108,10 +108,15 @@ static void MapRange(int32_t start, int32_t end, void* context)
         const float u[3] = {s->v[0][i], s->v[1][i], s->v[2][i]};
         float local[3];
         float velocity[3];
+        float carried[9];
         float affine[9];
         mvfxMapPoint(&s->map, x, local);
         mvfxMapVector(&s->map, u, s->map.sigma, velocity);
-        Conjugate(s->map.rotation, s->affine + (size_t)9 * (size_t)i, affine);
+        for (int32_t a = 0; a < 9; ++a)
+        {
+            carried[a] = s->affine[a][i];
+        }
+        Conjugate(s->map.rotation, carried, affine);
         for (int32_t k = 0; k < 3; ++k)
         {
             Local(s, k)[i] = local[k] / l->cell + 0.5f * (float)l->n[k];
@@ -474,10 +479,15 @@ static void ReadRange(int32_t start, int32_t end, void* context)
         mvfxUnmapVector(&s->map, velocity, u);
         const float back[4] = {-s->map.rotation[0], -s->map.rotation[1], -s->map.rotation[2],
                                s->map.rotation[3]};
-        Conjugate(back, affine, s->affine + (size_t)9 * (size_t)i);
+        float carried[9];
+        Conjugate(back, affine, carried);
         for (int32_t k = 0; k < 3; ++k)
         {
             s->v[k][i] = u[k];
+        }
+        for (int32_t a = 0; a < 9; ++a)
+        {
+            s->affine[a][i] = carried[a];
         }
     }
 }
@@ -495,7 +505,6 @@ static Step StepOf(mvfxInstance* instance, int32_t g, double seconds)
               .lattice = {.n = {gas->def.size[0], gas->def.size[1], gas->def.size[2]},
                           .cell = gas->def.cellSize,
                           .h = (float)seconds},
-              .affine = mvfxAttributeArray(instance, e, mvfx_attributeAffine),
               .count = emitterState->count,
               .map = mvfxGasParticleMap(instance, g, e)};
     int64_t at = 0;
@@ -506,6 +515,10 @@ static Step StepOf(mvfxInstance* instance, int32_t g, double seconds)
         s.faces[k] = state->velocity[k][state->current];
         s.validAt[k] = at;
         at += gas->faces[k];
+    }
+    for (int32_t a = 0; a < 9; ++a)
+    {
+        s.affine[a] = mvfxAttributeArray(instance, e, (mvfxAttribute)(mvfx_attributeAffine + a));
     }
     return s;
 }

@@ -43,6 +43,8 @@ const CARRY_CORRECT: u32 = 3u;
 
 // include: shared/gas_numbers.wgsl
 
+// include: shared/gas_lattice.wgsl
+
 // include: shared/pcg4d_hash.wgsl
 
 // include: shared/forces.wgsl
@@ -73,59 +75,6 @@ fn fieldOf(n: u32) -> Field {
 }
 
 var<immediate> root: Root;
-
-// The points of an array along each axis: the cells' (axis 3), or the
-// faces' across axis.
-fn pointsOf(n: vec3<u32>, axis: u32) -> vec3<u32> {
-    var m = n;
-    if (axis < 3u) {
-        m[axis] += 1u;
-    }
-    return m;
-}
-
-fn indexOf(m: vec3<u32>, at: vec3<u32>) -> u32 {
-    return (at.z * m.y + at.y) * m.x + at.x;
-}
-
-fn pointOf(m: vec3<u32>, i: u32) -> vec3<u32> {
-    return vec3<u32>(i % m.x, i / m.x % m.y, i / (m.x * m.y));
-}
-
-fn sizeOf() -> vec3<u32> {
-    return gas.size.xyz;
-}
-
-fn cellCount(n: vec3<u32>) -> u32 {
-    return n.x * n.y * n.z;
-}
-
-fn faceCount(n: vec3<u32>, k: u32) -> u32 {
-    let m = pointsOf(n, k);
-    return m.x * m.y * m.z;
-}
-
-// Which axis's faces point i of a pass over every face lies on (3 past
-// them), and its index among them; an axis of one cell has none.
-fn faceAxis(n: vec3<u32>, i: u32) -> vec2<u32> {
-    var first = 0u;
-    for (var k = 0u; k < 3u; k++) {
-        let count = select(0u, faceCount(n, k), n[k] > 1u);
-        if (i < first + count) {
-            return vec2<u32>(k, i - first);
-        }
-        first += count;
-    }
-    return vec2<u32>(3u, 0u);
-}
-
-fn allFaces(n: vec3<u32>) -> u32 {
-    var count = 0u;
-    for (var k = 0u; k < 3u; k++) {
-        count += select(0u, faceCount(n, k), n[k] > 1u);
-    }
-    return count;
-}
 
 // Where buffer b's array of axis (3 for a scalar f) starts.
 fn arrayAt(b: u32, axis: u32, f: u32) -> u32 {
@@ -786,9 +735,11 @@ fn addPairs(x: vec2<f32>, y: vec2<f32>) -> vec2<f32> {
 
 var<workgroup> sums: array<vec2<f32>, 256>;
 var<workgroup> opens: array<u32, 256>;
+var<workgroup> airs: array<u32, 256>;
 
 // A sealed box's expansion's mean over its open cells: summed as pairs of
-// binary32 in one workgroup, standing for the core's binary64 sum.
+// binary32 in one workgroup, standing for the core's binary64 sum; 0 for
+// a liquid holding an open air cell, which holds the pressure (HasAir).
 @compute @workgroup_size(256, 1, 1)
 fn gasMean(@builtin(local_invocation_index) lane: u32) {
     let n = sizeOf();
@@ -796,39 +747,34 @@ fn gasMean(@builtin(local_invocation_index) lane: u32) {
     let work = gas.cells[0].w;
     var sum = vec2<f32>(0.0);
     var open = 0u;
+    var air = 0u;
     for (var i = lane; i < cells; i += TAIL_GROUP) {
         if (isOpen(pointOf(n, i))) {
             sum = addPairs(sum, vec2<f32>(fields[work + i], 0.0));
             open += 1u;
+            air += select(1u, 0u, solvedAt(gas.levels[0], i));
         }
     }
     sums[lane] = sum;
     opens[lane] = open;
+    airs[lane] = air;
     workgroupBarrier();
     for (var half = TAIL_GROUP / 2u; half > 0u; half >>= 1u) {
         if (lane < half) {
             sums[lane] = addPairs(sums[lane], sums[lane + half]);
             opens[lane] += opens[lane + half];
+            airs[lane] += airs[lane + half];
         }
         workgroupBarrier();
     }
     if (lane == 0u) {
         let total = sums[0];
         var mean = 0.0;
-        if (opens[0] > 0u) {
+        if (opens[0] > 0u && airs[0] == 0u) {
             mean = (total.x + total.y) / f32(opens[0]);
         }
         fields[gas.cells[1].w] = mean;
     }
-}
-
-// Whether face index f across k at at lies on a closed wall (an axis of
-// one cell's all do).
-fn isClosed(k: u32, at: vec3<u32>) -> bool {
-    let n = sizeOf();
-    let walls = gas.walls.x;
-    return n[k] == 1u || (at[k] == 0u && (walls & (1u << (2u * k))) != 0u) ||
-           (at[k] == n[k] && (walls & (2u << (2u * k))) != 0u);
 }
 
 // A face's velocity across k in buffer b with the walls closed.
@@ -885,6 +831,10 @@ fn gasDivergence(@builtin(global_invocation_id) id: vec3<u32>) {
         rhs -= select(0.0, fields[gas.cells[0].w + point] - mean, open);
     }
     solve[gas.levels[0].at.y + point] = rhs;
+    // A liquid's air cells start at 0: those it left since the last solve
+    // are air now.
+    let level = gas.levels[0];
+    solve[level.at.x + point] = select(0.0, solve[level.at.x + point], solvedAt(level, point));
 }
 
 // A level's pressure's neighbors about cell at, weighted by their faces'
@@ -912,6 +862,13 @@ fn neighbors(level: Level, origin: u32, at: vec3<u32>, i: u32) -> f32 {
     return sum;
 }
 
+// Whether cell i of a level is solved (IsSolved): every cell of smoke,
+// a liquid's liquid cells (its mask at coefficients.w); an air cell's
+// pressure is held at 0.
+fn solvedAt(level: Level, i: u32) -> bool {
+    return level.coefficients.w == NONE || solve[level.coefficients.w + i] != 0.0;
+}
+
 // One cell's weighted Jacobi on a level, from one buffer into the other.
 fn jacobiAt(level: Level, origin: u32, to: u32, i: u32) {
     let at = pointOf(level.size.xyz, i);
@@ -922,7 +879,8 @@ fn jacobiAt(level: Level, origin: u32, to: u32, i: u32) {
         solved = (sums - solve[level.at.y + i]) / weight;
     }
     let omega = gas.lattice.y;
-    solve[to + i] = (1.0 - omega) * solve[origin + i] + omega * solved;
+    let next = (1.0 - omega) * solve[origin + i] + omega * solved;
+    solve[to + i] = select(0.0, next, solvedAt(level, i));
 }
 
 // A sweep of level root.level, from its pressure into its scratch (word
@@ -1018,7 +976,7 @@ fn prolongAt(l: u32, i: u32) {
         let origin = coarse.at.x + (az[d] * c.y + ay[b]) * c.x + ax[a];
         sum += wx[a] * wy[b] * wz[d] * solve[origin];
     }
-    solve[fine.at.x + i] += sum;
+    solve[fine.at.x + i] += select(0.0, sum, solvedAt(fine, i));
 }
 
 @compute @workgroup_size(64, 1, 1)

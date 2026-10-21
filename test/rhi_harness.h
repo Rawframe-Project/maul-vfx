@@ -247,14 +247,20 @@ void SetDepthPixel(int32_t column, int32_t row, float depth);
 // emitter's particles and statistics record back.
 bool Simulate(Gpu* gpu, mvfxGpuSim* sim);
 bool Finish(Gpu* gpu);
+// Reads each gas's statistics record of a run's simulation back after its
+// step and reports it to the run's planned instance, as a host does a
+// frame or more late: a stopped instance finishes by it, and a liquid's
+// split is counted from its speed.
+bool ReportGases(Gpu* gpu, mvfxGpuSim* sim);
 // Whether frames wait as long as the warm-up's: a run of kernels the
 // warm-up does not compile compiles them at its first frame.
 void LongFrames(bool slow);
 bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter);
 
-// The run open: its context, its planned instance, the ticks a step takes
-// (STEP_TICKS until set), the statistics record last read back.
+// The run open: its context, its CPU and planned instances, the ticks a
+// step takes (STEP_TICKS until set), the statistics record last read back.
 mvfxContext* RunContext(void);
+mvfxInstanceId CpuInstance(void);
 mvfxInstanceId PlannedInstance(void);
 int64_t StepTicks(void);
 void SetStepTicks(int64_t ticks);

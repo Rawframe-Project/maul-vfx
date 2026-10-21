@@ -273,7 +273,8 @@ struct Step {
     unitTears: vec4<u32>,
     unitFrames: vec4<u32>,
     // Its particle liquid (liquid.wgsl): whether its particles are one,
-    // its substeps and its iterations, unused.
+    // its substeps and its iterations; a liquid gas's particles' affine
+    // matrices' first word (NONE for others').
     liquid: vec4<u32>,
 }
 

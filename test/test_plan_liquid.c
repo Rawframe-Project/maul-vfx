@@ -7,10 +7,12 @@
 // gravity's alone with no particle alive; the most before any report),
 // and hands over a plan a substep: the span, the move over the first
 // alone, the births by their substep's start, the serials owed. The speed
-// setter's refusals; births past a plan's room refused; a surface gas
-// still unplannable.
+// setter's refusals; births past a plan's room refused; a liquid gas's
+// plan maps its particles; a surface gas still unplannable.
 
+#include "force.h"
 #include "gas.h"
+#include "gas_api.h"
 #include "gas_liquid.h"
 #include "instance.h"
 #include "instance_api.h"
@@ -316,6 +318,50 @@ static void TestPlanRoom(void)
     mvfxDestroyContext(context);
 }
 
+static void TestLiquidMap(void)
+{
+    // A liquid gas's plan hands its emitter's particles' map into the box
+    // over, as the core's step maps them, under a moved, turned, grown
+    // instance; a smoke gas's names none.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxGasDef gases[2] = {Liquid(), mvfxDefaultGasDef()};
+    gases[0].center[0] = 0.3f;
+    gases[1].size[0] = 4;
+    gases[1].size[1] = 4;
+    mvfxEffectId effect = Effect(context, gases, 2);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    const double origin[3] = {3.0, -1.0, 2.0};
+    const float rotation[4] = {0.0f, 0.0f, sinf(0.3f), cosf(0.3f)};
+    CHECK(mvfxInstance_SetTransform(context, planned, origin, rotation, 1.5f, false) ==
+                  mvfx_success &&
+              mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success,
+          "stepped");
+    static mvfxGasPlan plan;
+    static mvfxGasPlan smoke;
+    CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success &&
+              mvfxInstance_GetGasPlan(context, planned, 1, &smoke) == mvfx_success,
+          "plans");
+    mvfxSpaceMap map = mvfxGasParticleMap(mvfxContextInstance(context, planned), 0, 0);
+    const double zero[3] = {0.0, 0.0, 0.0};
+    float at[3];
+    mvfxMapPointDouble(&map, zero, at);
+    bool same = plan.liquid.emitter == 0 && plan.liquid.sigma == map.sigma &&
+                plan.liquid.rates[0] == 0.0f && plan.liquid.drag == 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && plan.liquid.origin[k] == at[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && plan.liquid.rotation[k] == map.rotation[k];
+    }
+    CHECK(same && map.sigma != 1.0f && smoke.liquid.emitter == -1,
+          "a liquid gas's plan maps its particles");
+    mvfxDestroyContext(context);
+}
+
 static void TestSurfaceRefused(void)
 {
     // A surface gas still keeps its effect unplannable.
@@ -347,6 +393,7 @@ int main(void)
     TestSplit();
     TestSpeedSetter();
     TestPlanRoom();
+    TestLiquidMap();
     TestSurfaceRefused();
     return s_failures == 0 ? 0 : 1;
 }

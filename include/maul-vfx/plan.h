@@ -402,7 +402,7 @@ extern "C"
         float drag;
     } mvfxPlannedPour;
 
-    // A smoke gas's step as resolved for a plan (mvfxInstance_GetGasPlan),
+    // A gas's step as resolved for a plan (mvfxInstance_GetGasPlan),
     // in its box's frame (mvfxInstance_GetGasInfo places the box): what
     // the CPU path's gas step takes from the instance, resolved once at
     // the end of the context's step, as the CPU path resolves it there.
@@ -443,6 +443,9 @@ extern "C"
         // after the sources.
         int32_t pourCount;
         mvfxPlannedPour pours[MVFX_MAX_EMITTERS];
+        // A liquid gas's particles: its emitter's map into the box, as a
+        // pour's (no rates or drag); emitter -1 for smoke.
+        mvfxPlannedPour liquid;
     } mvfxGasPlan;
 
 // What an emitter uses beyond spawning by rate and bursts from a shape
@@ -568,6 +571,10 @@ extern "C"
         // -2 after), then the acceleration its forces gave it as it fell
         // asleep (3); four words in all.
         int16_t sleep;
+        // A grid liquid's particle's affine velocity (APIC's C, nine
+        // values, row by row: row k the gradient of velocity component k),
+        // which its gas reads and gives back (mvfxLiquidDef.solver).
+        int16_t affine;
         int32_t count;
     } mvfxAttributeArrays;
 

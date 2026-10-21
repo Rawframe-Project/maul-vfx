@@ -8,11 +8,21 @@
 // liquid poured onto a floor with viscosity, confinement and the tensile
 // correction, and with four neighbors at most; a planar liquid in the
 // world's space under a moving, turning, growing instance (its kernels
-// scaled with it); the passes a liquid's step takes. Skips (77) without
-// an adapter, unless MVFX_RHI_REQUIRED is set.
+// scaled with it); the passes a liquid's step takes; a liquid gas poured
+// into a tank (its particles carried by the gas's velocity, their affine
+// matrices read back, the fastest speed reported and splitting the next
+// step as the CPU path's). Skips (77) without an adapter, unless
+// MVFX_RHI_REQUIRED is set.
 
+#include "gas_liquid.h"
+#include "instance.h"
+#include "instance_api.h"
 #include "rhi_harness.h"
 #include "test_harness.h"
+
+#include "maul-vfx/plan.h"
+
+#include <string.h>
 
 static const mvfxCollider s_floor = {
     .kind = mvfx_colliderPlane, .center = {0, -0.4f, 0}, .normal = {0, 1, 0}};
@@ -74,6 +84,83 @@ static void TestPoured(Gpu* gpu, mvfxGpu* kernels)
              "a planar liquid under a moving instance");
 }
 
+static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,
+                                    .inside = true,
+                                    .halfExtents = {0.8f, 0.8f, 1.0f},
+                                    .rotation = {0, 0, 0, 1}};
+
+// A 2D liquid gas of 16 by 16 cells of 0.1 about the origin, closed on
+// every side, of a courant number.
+static mvfxGasDef Tank(float courant)
+{
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.kind = mvfx_gasLiquid;
+    gas.size[0] = 16;
+    gas.size[1] = 16;
+    gas.size[2] = 1;
+    gas.cellSize = 0.1f;
+    gas.closedWalls = 63;
+    gas.courant = courant;
+    return gas;
+}
+
+// A liquid poured into the tank's gas from a small sphere, kept in its
+// box.
+static mvfxEmitterDef Pour(void)
+{
+    mvfxEmitterDef emitter = Sprite();
+    emitter.capacity = 512;
+    emitter.rate = 300.0f;
+    emitter.burstCount = 0;
+    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.shape.radius = 0.1f;
+    emitter.velocity.speed = (mvfxRange){0.1f, 0.3f};
+    emitter.motion.drag = 0.0f;
+    emitter.colliders = &s_tank;
+    emitter.colliderCount = 1;
+    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.liquid = mvfxDefaultEmitterDef().liquid;
+    emitter.liquid.enabled = true;
+    emitter.liquid.solver = mvfx_liquidGrid;
+    emitter.liquid.gas = 0;
+    emitter.liquid.spacing = 0.05f;
+    return emitter;
+}
+
+static void TestLiquidGas(Gpu* gpu, mvfxGpu* kernels)
+{
+    // One substep a step: a step split into substeps is refused yet.
+    mvfxGasDef gas = Tank(4.0f);
+    mvfxEmitterDef emitter = Pour();
+    Compared(gpu, kernels,
+             &(Run){.mostApart = 4, .emitters = &emitter, .gases = &gas, .gasCount = 1},
+             "a liquid gas poured into a tank");
+}
+
+static void TestFastest(Gpu* gpu, mvfxGpu* kernels)
+{
+    // The fastest speed the device reports after the first step splits
+    // the next as the CPU path's particles do: into the same substeps,
+    // more than one and fewer than the most (none reported, the most).
+    // No gravity, whose pull over five cells counts besides.
+    mvfxGasDef gas = Tank(0.0125f);
+    mvfxEmitterDef emitter = Pour();
+    memset(emitter.motion.gravity, 0, sizeof emitter.motion.gravity);
+    mvfxEffectId effect = {0};
+    const Run run = {.emitters = &emitter, .emitterCount = 1, .gases = &gas, .gasCount = 1};
+    mvfxGpuSim* sim = OpenRun(kernels, &run, &effect);
+    mvfxContext* context = RunContext();
+    bool stepped = sim != NULL && mvfxContext_StepTicks(context, StepTicks()) == mvfx_success &&
+                   Simulate(gpu, sim) && ReportGases(gpu, sim);
+    int32_t planned =
+        mvfxLiquidSubsteps(mvfxContextInstance(context, PlannedInstance()), StepTicks());
+    int32_t cpu = mvfxLiquidSubsteps(mvfxContextInstance(context, CpuInstance()), StepTicks());
+    CHECK(stepped && planned == cpu && planned > 1 && planned < MVFX_MAX_PLAN_STEPS,
+          "a liquid gas's fastest speed reported");
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(context);
+}
+
 static void TestPasses(mvfxGpu* kernels)
 {
     // A liquid's passes a step, for a host to size its device by: the
@@ -102,6 +189,8 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestPasses(kernels);
     TestPoured(gpu, kernels);
+    TestLiquidGas(gpu, kernels);
+    TestFastest(gpu, kernels);
 }
 
 int main(void)

@@ -10,6 +10,7 @@
 #include "../kernels/gas_read_container.h"
 #include "../kernels/grid_container.h"
 #include "../kernels/liquid_container.h"
+#include "../kernels/liquid_gas_container.h"
 #include "../kernels/pcg4d_container.h"
 #include "../kernels/plexus_container.h"
 #include "../kernels/records_container.h"
@@ -51,6 +52,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_gasReadContainer, sizeof s_gasReadContainer},
     {s_splatContainer, sizeof s_splatContainer},
     {s_liquidContainer, sizeof s_liquidContainer},
+    {s_liquidGasContainer, sizeof s_liquidGasContainer},
 };
 
 // A kernel's container and entry.
@@ -150,6 +152,15 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerLiquid, "liquidCurls"},
     {mvfx_containerLiquid, "liquidConfine"},
     {mvfx_containerLiquid, "liquidKeep"},
+    {mvfx_containerLiquidGas, "liquidGasKeys"},
+    {mvfx_containerLiquidGas, "liquidGasRuns"},
+    {mvfx_containerLiquidGas, "liquidGasMark"},
+    {mvfx_containerLiquidGas, "liquidGasCoarse"},
+    {mvfx_containerLiquidGas, "liquidGasGather"},
+    {mvfx_containerLiquidGas, "liquidGasKeep"},
+    {mvfx_containerLiquidGas, "liquidGasExtend"},
+    {mvfx_containerLiquidGas, "liquidGasWalls"},
+    {mvfx_containerLiquidGas, "liquidGasRead"},
 };
 
 struct mvfxGpu

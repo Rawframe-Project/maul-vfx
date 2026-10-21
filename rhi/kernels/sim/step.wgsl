@@ -49,13 +49,25 @@ fn moveLive(i: u32) {
     let death = vec2<u32>(source[params.words.death * c + i], source[(params.words.death + 1u) * c + i]);
     let inverseLife = bitcast<f32>(source[params.words.inverseLife * c + i]);
     let age = ageAt(birth, inverseLife);
-    let v0 = limitSpeed(readVector(0u, i, params.words.velocity), age, params.angular.z);
+    let carried = readVector(0u, i, params.words.velocity);
+    let v0 = limitSpeed(carried, age, params.angular.z);
     var p = moveByModules(start, start + v0 * f.y + a * f.z, age, seconds);
     var v = v0 * f.x + a * f.y;
     let fate = meet(start, &p, &v, birth, inverseLife, death);
     noteFacts(i, select(0u, EVENT_CONTACT, fate.contacted), fate.first, inverseLife);
+    var placed = p;
+    if (params.liquid.w != NONE) {
+        // A liquid gas's particle (the core's mvfxMoveGridLiquid): moved
+        // by the velocity the gas gave it, followed along the colliders.
+        placed = start + carried * seconds;
+        if (params.collisionHead.z != 0u) {
+            var way = placed - start;
+            var first = Hit(0.0, vec3<f32>(0.0), vec3<f32>(0.0));
+            _ = collideWith(start, &placed, &way, &first, vec4<f32>(0.0));
+        }
+    }
     for (var k = 0u; k < 3u; k++) {
-        source[(params.words.place + k) * c + i] = bitcast<u32>(p[k]);
+        source[(params.words.place + k) * c + i] = bitcast<u32>(placed[k]);
         source[(params.words.velocity + k) * c + i] = bitcast<u32>(v[k]);
     }
     let collisions = params.words.collisions;
@@ -437,6 +449,12 @@ fn spawnAt(j: u32, at: u32) -> vec3<f32> {
         moved[params.unitTears.x * c + at] = 0u;
     }
     storeValues(j, at);
+    // A liquid gas's particle is born with no affine motion, as the core's.
+    if (params.liquid.w != NONE) {
+        for (var k = 0u; k < 9u; k++) {
+            moved[(params.liquid.w + k) * c + at] = 0u;
+        }
+    }
     if (params.rigid.y > 0u) {
         // Turned by its substeps, awake, as the core's births.
         storeTurning(1u, at, turning);

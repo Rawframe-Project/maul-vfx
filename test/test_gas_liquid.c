@@ -5,7 +5,8 @@
 // as its density; a still pool staying still, its pressure rising
 // linearly with depth; a turning disk keeping its angular momentum with
 // APIC better than with PIC; a dam break's front against Martin and
-// Moyce's measurements and Ritter's frictionless speed, its volume kept.
+// Moyce's measurements and Ritter's frictionless speed, its volume kept;
+// a pour the same whatever its emitter's room.
 
 #include "gas.h"
 #include "gas_liquid.h"
@@ -458,7 +459,6 @@ static void TestShear(void)
         CHECK(Open(&emitter, 1, &gas, 1), "opened");
         Block(0.05f, 2, (const int32_t[2]){4, 4}, (const int32_t[2]){12, 12}, Shear);
         Steps(1);
-        const float* affine = Array(mvfx_attributeAffine);
         for (int32_t i = 0; i < Count(); ++i)
         {
             float wx = Array(mvfx_attributePositionX)[i];
@@ -475,7 +475,7 @@ static void TestShear(void)
                 {
                     for (int32_t k = 0; k < 2; ++k)
                     {
-                        float a = affine[9 * i + 3 * r + k];
+                        float a = Array((mvfxAttribute)(mvfx_attributeAffine + 3 * r + k))[i];
                         worst[1] = fmaxf(worst[1], fabsf(a - gradient[2 * r + k]));
                     }
                 }
@@ -796,6 +796,48 @@ static Dam DamBreak(int32_t rate)
     return dam;
 }
 
+// A pour of 1 s from a small sphere at the box's middle, rate a second,
+// the emitter holding capacity: its particles' places into places (two
+// floats each), their count returned.
+static int32_t Pour(int32_t capacity, float rate, float* places)
+{
+    mvfxGasDef gas = Gas(16, 16, 0.1f);
+    mvfxCollider box = BoxOf(&gas);
+    mvfxEmitterDef emitter = Emitter(0.05f, &box, capacity);
+    emitter.rate = rate;
+    emitter.shape.radius = 0.1f;
+    emitter.velocity.speed = (mvfxRange){0.2f, 0.5f};
+    emitter.motion.gravity[1] = -9.81f;
+    s_origin[0] = (double)gas.center[0];
+    s_origin[1] = (double)gas.center[1];
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    s_origin[0] = 0.0;
+    s_origin[1] = 0.0;
+    Steps(120);
+    int32_t count = Count();
+    for (int32_t i = 0; i < count; ++i)
+    {
+        places[2 * i] = Array(mvfx_attributePositionX)[i];
+        places[2 * i + 1] = Array(mvfx_attributePositionY)[i];
+    }
+    mvfxDestroyContext(s_context);
+    return count;
+}
+
+static void TestCapacity(void)
+{
+    // A pour's births join the liquid while its first particles carry
+    // affine motion: the same particles at the same places whatever room
+    // the emitter keeps (each matrix is its particle's, not a span of the
+    // attributes' arrays).
+    static float small[2 * 400];
+    static float large[2 * 400];
+    int32_t count = Pour(300, 240.0f, small);
+    bool same = count > 200 && Pour(400, 240.0f, large) == count &&
+                memcmp(small, large, sizeof(float) * 2u * (size_t)count) == 0;
+    CHECK(same, "a grid liquid's step whatever its emitter's room");
+}
+
 static void TestDamBreak(void)
 {
     // A square column of side a = 0.6 in the corner of a closed box 4.8 by
@@ -833,6 +875,7 @@ int main(void)
     TestShear();
     TestExpansion();
     TestDamBreak();
+    TestCapacity();
     TestSubsteps();
     TestSubstepPaths();
     return s_failures;

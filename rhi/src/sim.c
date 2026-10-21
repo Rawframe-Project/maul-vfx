@@ -105,10 +105,7 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                  : 0) |
             // Rigid particles are killed by their strikes' life
             // alone.
-            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0) |
-            // A liquid gas's particles move on its lattice, not run yet.
-            (view->liquid.enabled && view->liquid.solver == mvfx_liquidGrid ? MVFX_FEATURE_LIQUID
-                                                                            : 0),
+            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0),
     };
     return refusal->features == 0;
 }

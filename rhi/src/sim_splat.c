@@ -19,10 +19,37 @@
 
 // The words a splat keeps: the sort's four arrays, its particles' places
 // and velocities (six), then its cells' runs (two words a cell, the
-// outside's last).
-static uint32_t SortedWords(const SimSplat* splat, uint32_t cells)
+// outside's last); a liquid's its particles' affine matrices besides
+// (nine) and, after the runs, two sets of its faces' flags.
+static uint32_t SortedWords(const SimSplat* splat, const mvfxGasView* view)
 {
-    return 10u * splat->span + 2u * (cells + 1u);
+    uint32_t cells = (uint32_t)view->cells;
+    uint32_t faces = (uint32_t)(view->faces[0] + view->faces[1] + view->faces[2]);
+    return splat->liquid ? 19u * splat->span + 2u * (cells + 1u) + 2u * faces
+                         : 10u * splat->span + 2u * (cells + 1u);
+}
+
+// Where a splat's runs start among its sorted words.
+static uint64_t RunsAt(const SimSplat* splat)
+{
+    return (splat->liquid ? 19u : 10u) * (uint64_t)splat->span;
+}
+
+const SimSplat* mvfxSimSplatOf(const SimGas* gas, int32_t splat)
+{
+    return splat == LIQUID_SPLAT ? &gas->liquid : &gas->splats[splat];
+}
+
+// Splat s of a gas's making, its liquid's past its splats.
+static SimSplat* SplatAt(SimGas* gas, int32_t s)
+{
+    return s < gas->splatCount ? &gas->splats[s] : &gas->liquid;
+}
+
+// Its splats, and its liquid when it has one.
+static int32_t SplatsAndLiquid(const SimGas* gas)
+{
+    return gas->splatCount + (gas->hasLiquid ? 1 : 0);
 }
 
 // A loop's workgroups, at most a row's: the keys and the sort's scatter
@@ -50,70 +77,84 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
 }
 
+// Makes a splat's buffers for emitter e: its numbers, its sorted words,
+// its sort's digit counts.
+static bool MakeSplat(mvfxGpuSim* sim, const SimGas* gas, SimSplat* splat, int32_t e, bool liquid)
+{
+    *splat =
+        (SimSplat){.emitter = e, .capacity = (uint32_t)sim->emitters[e].capacity, .liquid = liquid};
+    uint32_t blocks = mvfxSortBlocks(sim->emitters[e].capacity);
+    splat->span = blocks * MVFX_SORT_BLOCK;
+    mrhiBufferUsage written = mrhi_bufferStorage | mrhi_bufferCopyDestination;
+    return CreateBuffer(sim, 4u * SPLAT_NUMBER_WORDS,
+                        mrhi_bufferUniform | mrhi_bufferCopyDestination,
+                        &splat->buffers[SPLAT_NUMBERS]) &&
+           CreateBuffer(sim, 4u * (uint64_t)SortedWords(splat, &gas->view), written,
+                        &splat->buffers[SPLAT_SORTED]) &&
+           CreateBuffer(sim, 4u * 2u * 256u * (uint64_t)blocks, mrhi_bufferStorage,
+                        &splat->buffers[SPLAT_DIGITS]);
+}
+
 bool mvfxCreateSimSplats(mvfxGpuSim* sim, SimGas* gas, int32_t g)
 {
-    int32_t count = 0;
-    for (int32_t e = 0; e < sim->emitterCount; ++e)
+    // A liquid gas's emitter, with room, is its own; nothing splats into
+    // a liquid, which the core steps without its pours.
+    int32_t e = gas->view.emitter;
+    gas->hasLiquid = e >= 0 && sim->emitters[e].capacity > 0;
+    if (gas->hasLiquid && !MakeSplat(sim, gas, &gas->liquid, e, true))
     {
-        count += sim->views[e].splatGas == g && sim->emitters[e].capacity > 0 ? 1 : 0;
+        return false;
+    }
+    int32_t count = 0;
+    for (int32_t s = 0; e < 0 && s < sim->emitterCount; ++s)
+    {
+        count += sim->views[s].splatGas == g && sim->emitters[s].capacity > 0 ? 1 : 0;
     }
     gas->splatCount = 0;
     gas->splatRoom = count;
+    gas->writes = mvfxRhiAllocate(&sim->allocator,
+                                  (size_t)(GAS_BUFFERS + 2 * (count + 1)) * sizeof(mrhiAccess),
+                                  alignof(mrhiAccess));
+    if (gas->writes == nullptr)
+    {
+        return false;
+    }
     if (count == 0)
     {
         return true;
     }
     gas->splats =
         mvfxRhiAllocate(&sim->allocator, (size_t)count * sizeof(SimSplat), alignof(SimSplat));
-    gas->writes =
-        mvfxRhiAllocate(&sim->allocator, (size_t)(GAS_BUFFERS + 2 * count) * sizeof(mrhiAccess),
-                        alignof(mrhiAccess));
-    if (gas->splats == nullptr || gas->writes == nullptr)
+    bool created = gas->splats != nullptr;
+    for (int32_t s = 0; created && s < sim->emitterCount; ++s)
     {
-        return false;
-    }
-    uint32_t cells = (uint32_t)gas->view.cells;
-    mrhiBufferUsage written = mrhi_bufferStorage | mrhi_bufferCopyDestination;
-    bool created = true;
-    for (int32_t e = 0; created && e < sim->emitterCount; ++e)
-    {
-        if (sim->views[e].splatGas != g || sim->emitters[e].capacity == 0)
+        if (sim->views[s].splatGas == g && sim->emitters[s].capacity > 0)
         {
-            continue;
+            created = MakeSplat(sim, gas, &gas->splats[gas->splatCount++], s, false);
         }
-        SimSplat* splat = &gas->splats[gas->splatCount++];
-        *splat = (SimSplat){.emitter = e, .capacity = (uint32_t)sim->emitters[e].capacity};
-        uint32_t blocks = mvfxSortBlocks(sim->emitters[e].capacity);
-        splat->span = blocks * MVFX_SORT_BLOCK;
-        created = CreateBuffer(sim, 4u * SPLAT_NUMBER_WORDS,
-                               mrhi_bufferUniform | mrhi_bufferCopyDestination,
-                               &splat->buffers[SPLAT_NUMBERS]) &&
-                  CreateBuffer(sim, 4u * (uint64_t)SortedWords(splat, cells), written,
-                               &splat->buffers[SPLAT_SORTED]) &&
-                  CreateBuffer(sim, 4u * 2u * 256u * (uint64_t)blocks, mrhi_bufferStorage,
-                               &splat->buffers[SPLAT_DIGITS]);
     }
     return created;
 }
 
 void mvfxDestroySimSplats(mvfxGpuSim* sim, SimGas* gas)
 {
-    for (int32_t s = 0; s < gas->splatCount; ++s)
+    for (int32_t s = 0; s < SplatsAndLiquid(gas); ++s)
     {
         for (int32_t b = 0; b < 3; ++b)
         {
-            if (gas->splats[s].buffers[b].index1 != 0)
+            if (SplatAt(gas, s)->buffers[b].index1 != 0)
             {
-                (void)mrhiDestroyBuffer(sim->device, gas->splats[s].buffers[b]);
+                (void)mrhiDestroyBuffer(sim->device, SplatAt(gas, s)->buffers[b]);
             }
         }
     }
     size_t room = (size_t)gas->splatRoom;
     mvfxRhiRelease(&sim->allocator, gas->splats, room * sizeof(SimSplat), alignof(SimSplat));
-    mvfxRhiRelease(&sim->allocator, gas->writes, (GAS_BUFFERS + 2u * room) * sizeof(mrhiAccess),
-                   alignof(mrhiAccess));
+    mvfxRhiRelease(&sim->allocator, gas->writes,
+                   (GAS_BUFFERS + 2u * (room + 1u)) * sizeof(mrhiAccess), alignof(mrhiAccess));
     gas->splatCount = 0;
     gas->splatRoom = 0;
+    gas->hasLiquid = false;
 }
 
 int32_t mvfxSimSplatPasses(int32_t splats, int32_t substeps)
@@ -176,9 +217,9 @@ void mvfxSimSplatSubstep(SimGas* gas, uint32_t u, float h, uint32_t now, uint32_
 bool mvfxImportSimSplats(mvfxGpuSim* sim, SimGas* gas)
 {
     bool imported = true;
-    for (int32_t s = 0; imported && s < gas->splatCount; ++s)
+    for (int32_t s = 0; imported && s < SplatsAndLiquid(gas); ++s)
     {
-        SimSplat* splat = &gas->splats[s];
+        SimSplat* splat = SplatAt(gas, s);
         const Emitter* emitter = &sim->emitters[splat->emitter];
         // Its particles as its step leaves them: the other buffer once the
         // step is added.
@@ -198,9 +239,9 @@ bool mvfxImportSimSplats(mvfxGpuSim* sim, SimGas* gas)
 int32_t mvfxSimSplatWrites(const SimGas* gas, mrhiAccess* accesses)
 {
     int32_t count = 0;
-    for (int32_t s = 0; s < gas->splatCount; ++s)
+    for (int32_t s = 0; s < SplatsAndLiquid(gas); ++s)
     {
-        const mrhiResourceId* r = gas->splats[s].resources;
+        const mrhiResourceId* r = SplatAt((SimGas*)gas, s)->resources;
         accesses[count++] =
             (mrhiAccess){.resource = r[SPLAT_NUMBERS], .kind = mrhi_accessCopyDestination};
         accesses[count++] =
@@ -224,11 +265,15 @@ int32_t mvfxSimSplatAccesses(const SimGas* gas, const GasDispatch* d, const mrhi
     {
         return count;
     }
-    const mrhiResourceId* r = gas->splats[d->splat].resources;
-    if (d->binds == GAS_BINDS_SPLAT)
+    const mrhiResourceId* r = mvfxSimSplatOf(gas, d->splat)->resources;
+    if (d->binds == GAS_BINDS_SPLAT || d->binds == GAS_BINDS_LIQUID)
     {
+        // A liquid's read back writes its particles.
         out[count++] = (mrhiAccess){.resource = r[SPLAT_NUMBERS], .kind = mrhi_accessUniform};
-        out[count++] = (mrhiAccess){.resource = r[SPLAT_PARTICLES], .kind = mrhi_accessStorageRead};
+        out[count++] =
+            (mrhiAccess){.resource = r[SPLAT_PARTICLES],
+                         .kind = d->binds == GAS_BINDS_LIQUID ? mrhi_accessStorageReadWrite
+                                                              : mrhi_accessStorageRead};
     }
     out[count++] = (mrhiAccess){.resource = r[SPLAT_STATISTICS], .kind = mrhi_accessStorageRead};
     out[count++] = (mrhiAccess){.resource = r[SPLAT_SORTED], .kind = mrhi_accessStorageReadWrite};
@@ -240,22 +285,22 @@ bool mvfxWriteSimSplats(mvfxGpuSim* sim, mrhiPassId pass, SimGas* gas)
 {
     uint32_t cells = (uint32_t)gas->view.cells;
     bool written = true;
-    for (int32_t s = 0; written && s < gas->splatCount; ++s)
+    for (int32_t s = 0; written && s < SplatsAndLiquid(gas); ++s)
     {
-        SimSplat* splat = &gas->splats[s];
+        SimSplat* splat = SplatAt(gas, s);
         const mrhiResourceId* r = splat->resources;
         written = mvfxUpload(sim->device, &sim->uploaded, pass, r[SPLAT_NUMBERS], 0, splat->words,
                              sizeof splat->words) &&
-                  mrhiClearBuffer(sim->device, pass, r[SPLAT_SORTED], 40u * (uint64_t)splat->span,
+                  mrhiClearBuffer(sim->device, pass, r[SPLAT_SORTED], 4u * RunsAt(splat),
                                   8u * ((uint64_t)cells + 1u)) == mrhi_success;
     }
     return written;
 }
 
 int32_t mvfxSimSplatBindings(const SimGas* gas, const GasDispatch* d,
-                             mrhiBinding out[GAS_BUFFERS + 2])
+                             mrhiBinding out[GAS_BUFFERS + 4])
 {
-    const mrhiResourceId* r = gas->splats[d->splat].resources;
+    const mrhiResourceId* r = mvfxSimSplatOf(gas, d->splat)->resources;
     if (d->binds == GAS_BINDS_SORT)
     {
         const mrhiResourceId sort[3] = {r[SPLAT_STATISTICS], r[SPLAT_SORTED], r[SPLAT_DIGITS]};
@@ -265,16 +310,21 @@ int32_t mvfxSimSplatBindings(const SimGas* gas, const GasDispatch* d,
         }
         return 3;
     }
-    const mrhiResourceId splat[7] = {gas->resources[GAS_NUMBERS],
+    // A liquid's binds the solve's levels and the gas's record besides
+    // (liquid_gas.wgsl).
+    const mrhiResourceId splat[9] = {gas->resources[GAS_NUMBERS],
                                      r[SPLAT_NUMBERS],
                                      gas->resources[GAS_FIELDS],
                                      r[SPLAT_PARTICLES],
                                      r[SPLAT_STATISTICS],
                                      r[SPLAT_SORTED],
-                                     r[SPLAT_DIGITS]};
-    for (uint32_t b = 0; b < 7u; ++b)
+                                     r[SPLAT_DIGITS],
+                                     gas->resources[GAS_SOLVE],
+                                     gas->resources[GAS_STATISTICS]};
+    uint32_t count = d->binds == GAS_BINDS_LIQUID ? 9u : 7u;
+    for (uint32_t b = 0; b < count; ++b)
     {
         out[b] = (mrhiBinding){.slot = b, .resource = splat[b], .size = MRHI_WHOLE_SIZE};
     }
-    return 7;
+    return (int32_t)count;
 }

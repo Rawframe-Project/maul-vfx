@@ -15,38 +15,44 @@
 
 #include <math.h>
 
-// The emitters pouring into gas g as the CPU path's step would pour
-// them (step.c's PoursInto): every one splatting into it, its live
-// particles the simulation's to count.
-static void PlanPours(const mvfxInstance* instance, int32_t g, mvfxGasState* state)
+// Emitter e's particles' map into gas g's box as a plan hands it over
+// (mvfxGasParticleMap), no rates.
+static mvfxPlannedPour MapOf(const mvfxInstance* instance, int32_t g, int32_t e)
 {
     static const double origin[3] = {0.0, 0.0, 0.0};
+    mvfxSpaceMap map = mvfxGasParticleMap(instance, g, e);
+    mvfxPlannedPour out = {.emitter = e, .sigma = map.sigma};
+    mvfxMapPointDouble(&map, origin, out.origin);
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out.rotation[k] = map.rotation[k];
+    }
+    return out;
+}
+
+// The emitters pouring into gas g as the CPU path's step would pour
+// them (step.c's PoursInto): every one splatting into it, its live
+// particles the simulation's to count; and a liquid gas's emitter's map.
+static void PlanPours(const mvfxInstance* instance, int32_t g, mvfxGasState* state)
+{
     state->planPourCount = 0;
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
-        const mvfxCompiledEmitter* emitter = &instance->effect->emitters[e];
-        const mvfxGasSplat* splat = &emitter->gasSplat;
+        const mvfxGasSplat* splat = &instance->effect->emitters[e].gasSplat;
         if (!splat->enabled || splat->gas != g)
         {
             continue;
         }
-        bool world = emitter->space == mvfx_spaceWorld;
-        mvfxSpaceMap map = mvfxGasMap(instance, g, world ? mvfx_spaceWorld : mvfx_spaceLocal);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            map.before[k] -= world ? instance->emitters[e].anchor[k] : 0.0;
-        }
         mvfxPlannedPour* pour = &state->planPours[state->planPourCount++];
-        *pour = (mvfxPlannedPour){.emitter = e,
-                                  .sigma = map.sigma,
-                                  .rates = {splat->density, splat->temperature, splat->fuel},
-                                  .drag = splat->drag};
-        mvfxMapPointDouble(&map, origin, pour->origin);
-        for (int32_t k = 0; k < 4; ++k)
-        {
-            pour->rotation[k] = map.rotation[k];
-        }
+        *pour = MapOf(instance, g, e);
+        pour->rates[0] = splat->density;
+        pour->rates[1] = splat->temperature;
+        pour->rates[2] = splat->fuel;
+        pour->drag = splat->drag;
     }
+    const mvfxCompiledGas* gas = &instance->effect->gases[g];
+    state->planLiquid = gas->def.kind == mvfx_gasLiquid ? MapOf(instance, g, gas->emitter)
+                                                        : (mvfxPlannedPour){.emitter = -1};
 }
 
 void mvfxPlanGases(mvfxInstance* instance)
@@ -116,6 +122,7 @@ mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId in
         .ownObstacleCount = compiled->hasObstacles ? compiled->def.obstacleCount : 0,
         .obstaclesKnown = state->obstaclesKnown,
         .pourCount = state->planPourCount,
+        .liquid = state->planLiquid,
     };
     for (int32_t p = 0; p < state->planPourCount; ++p)
     {

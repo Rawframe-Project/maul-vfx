@@ -161,6 +161,7 @@ typedef struct mvfxGasState
     mvfxResolvedForce planForces[MVFX_MAX_FORCES];
     int32_t planPourCount;
     mvfxPlannedPour planPours[MVFX_MAX_EMITTERS];
+    mvfxPlannedPour planLiquid;
 } mvfxGasState;
 
 // Whether a gas has a field: a surface gas only its distance, held as its

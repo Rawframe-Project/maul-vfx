@@ -1049,6 +1049,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   and hands over a plan a substep (`mvfxInstance_GetPlanSteps`,
   `mvfxInstance_GetEmitterStepPlan`, `MVFX_MAX_PLAN_STEPS`): its span,
   the move over the first alone, its births from its start.
+- The GPU part runs liquid gases (grid liquids, APIC) in steps of one
+  substep: the emitter's particles sorted into the gas's cells, the
+  cells of liquid marked, the particles' velocities and affine matrices
+  gathered onto the faces, the solve with air held at no pressure, the
+  velocity extended into the air and read back by the particles, whose
+  fastest speed the gas's statistics record carries
+  (`MVFX_GPU_GAS_FASTEST`, handed over by `mvfxGpuSim_ReportGas`). A
+  gas plan names its liquid's map (`mvfxGasPlan.liquid`) and the
+  emitter view its affine matrices (`mvfxAttributeArrays.affine`).
 
 ### Changed
 
@@ -1057,6 +1066,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 
 ### Fixed
 
+- A grid liquid's particles keep their own affine matrices: the CPU
+  step read and wrote them as nine floats a particle where they are
+  nine arrays, so a birth zeroed parts of other particles' matrices and
+  a pour depended on its emitter's capacity.
 - A planned instance's plan holds at most twice an emitter's births at
   once: a beam struck in many substeps of a liquid gas's split wrote
   past it; the births past it are refused, still owed.

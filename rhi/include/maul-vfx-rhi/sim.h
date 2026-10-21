@@ -255,13 +255,19 @@ extern "C"
     /// numbers; one with a particle liquid 16 bytes a particle of its
     /// capacity (rounded up to blocks of 1,024) and 2,048 a block for its
     /// grid's sorted keys and digit counts, 28 a particle for its
-    /// multipliers, scratch velocities and curls, and 96 for its numbers.
-    /// A smoke gas keeps 8 bytes a face
+    /// multipliers, scratch velocities and curls, and 96 for its numbers;
+    /// one whose particles are a liquid gas's 76 bytes a particle of its
+    /// capacity (rounded up to blocks of 1,024) and 2,048 a block for its
+    /// particles in the box, their sort by cell and the values they carry,
+    /// 8 a cell of the gas and 8 more for the cells' runs, 8 a face of the
+    /// gas for the faces of liquid, and 96 for its numbers.
+    /// A gas keeps 8 bytes a face
     /// (each axis's faces across it) and 24 a cell of its own for its
     /// fields, 4 more a cell with obstacles for their solids and, for its
     /// work, the larger of 4 bytes a face (an axis of one cell none) and
     /// 12 a cell, and 4 more; 16 a cell and 8 a face of each
-    /// level of its multigrid (its own the first) for its solve; the grids
+    /// level of its multigrid (its own the first) for its solve, and a
+    /// liquid gas 4 more a cell of each for its cells of liquid; the grids
     /// its forces and its own obstacles read (mvfxGridView's bytes, each
     /// rounded up to 4, each grid once) and, taking the instance's
     /// colliders as obstacles, the room hostGridBytes says; and 10,384 for
@@ -621,7 +627,14 @@ extern "C"
     /// expands) and six a level above the levels of at most 512 cells and
     /// one for those a cycle; with emitters splatting into it, ten a step
     /// for each (its particles keyed, sorted and their runs found) and,
-    /// each substep, one more and two for each.
+    /// each substep, one more and two for each. A liquid gas takes one
+    /// step in place of its substeps: ten for its emitter's particles
+    /// keyed, sorted and their runs found, one a level of its multigrid
+    /// marking its cells of liquid, one gathering the particles' velocities
+    /// (one more with obstacles), the solve as a substep's, and five for
+    /// the faces of liquid kept, the velocity extended two cells into the
+    /// air, the walls closed and the particles' velocities read back; its
+    /// read back says whether it holds anything.
     ///
     /// @param sim  The simulation.
     /// @param gas  The gas's index in its effect.
@@ -631,10 +644,13 @@ extern "C"
     MVFX_RHI_API int32_t mvfxGpuSim_GasPasses(const mvfxGpuSim* sim, int32_t gas);
 
 // A gas's statistics record, 32-bit words, which its step writes: whether
-// it holds anything at the step's end (a scalar past MVFX_GAS_EMPTY, 1 or
-// 0) and that end's tick (two words, the low first).
+// it holds anything at the step's end (a scalar past MVFX_GAS_EMPTY, or for
+// a liquid gas a particle of its emitter's, 1 or 0) and that end's tick
+// (two words, the low first); a liquid gas's fastest particle's squared
+// speed then (a binary32's bits), which mvfxGpuSim_ReportGas hands over.
 #define MVFX_GPU_GAS_HOLDS            0
 #define MVFX_GPU_GAS_TICK             1
+#define MVFX_GPU_GAS_FASTEST          3
 #define MVFX_GPU_GAS_STATISTICS_WORDS 4
 
     // A gas's buffers a host reads: its statistics record.
@@ -659,8 +675,11 @@ extern "C"
     /// Hands a gas's statistics record, read back from its buffer any
     /// frames after its step, to the planned instance
     /// (mvfxInstance_SetGasHolds): whether it held anything at that step's
-    /// end, which decides when a stopped instance finishes. A host that
-    /// never reports leaves a stopped instance running.
+    /// end, which decides when a stopped instance finishes; for a liquid
+    /// gas its fastest particle's speed too (mvfxInstance_SetLiquidSpeed),
+    /// which splits its next steps. A host that never reports leaves a
+    /// stopped instance running, and a liquid gas's steps split into the
+    /// most substeps while a particle lives.
     ///
     /// @param sim      The simulation.
     /// @param context  The context the simulation was made in.
@@ -669,7 +688,8 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         context not the simulation's or a gas out of range; else
     ///         what mvfxInstance_SetGasHolds returns for the record's tick
-    ///         and holds.
+    ///         and holds, then for a liquid gas what
+    ///         mvfxInstance_SetLiquidSpeed returns for its speed.
     /// @par Thread safety
     /// Safe from any thread; the context and the device are used by one
     /// thread at a time.

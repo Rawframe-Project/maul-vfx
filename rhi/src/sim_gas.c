@@ -46,7 +46,7 @@
 // Whether the part runs a gas: smoke.
 static bool Runs(const mvfxGasView* view)
 {
-    return view->def.kind == mvfx_gasSmoke;
+    return view->def.kind == mvfx_gasSmoke || view->def.kind == mvfx_gasLiquid;
 }
 
 // Whether a gas has obstacles: its own, or the instance's colliders.
@@ -58,7 +58,7 @@ static bool HasObstacles(const mvfxGasDef* def)
 // Whether a gas's burn expands it.
 static bool Expands(const mvfxGasDef* def)
 {
-    return def->burnExpansion > 0.0f && def->burnRate > 0.0f;
+    return def->kind == mvfx_gasLiquid || (def->burnExpansion > 0.0f && def->burnRate > 0.0f);
 }
 
 // Whether every wall a gas meets is closed: its expansion then less its
@@ -165,6 +165,10 @@ int32_t mvfxSimGasPasses(const mvfxGasView* view, int32_t splats)
     int32_t solids = HasObstacles(def) ? 2 : 0;
     int32_t substep = 2 + confine + 2 * CarryPasses(def) + solids + burn + mean + solve + 1;
     int32_t mark = HasObstacles(def) ? 1 : 0;
+    if (def->kind == mvfx_gasLiquid)
+    {
+        return 1 + mark + 2 * view->levelCount + mvfxSimLiquidGasPasses(view, mean + solve + 1);
+    }
     return 1 + mark + 2 * view->levelCount + def->substeps * substep + 1 +
            mvfxSimSplatPasses(splats, def->substeps);
 }
@@ -247,6 +251,10 @@ static void Lay(SimGas* gas, uint64_t* fields, uint64_t* solve)
             level[12 + k] = at;
             at += LevelFaces(view, l, k);
         }
+        // A liquid's mask (gas.wgsl's solvedAt), none for smoke.
+        bool liquid = view->def.kind == mvfx_gasLiquid;
+        level[15] = liquid ? at : UINT32_MAX;
+        at += liquid ? cells : 0u;
     }
     *solve = at;
 }
@@ -484,6 +492,15 @@ static uint32_t SubstepPasses(SimGas* gas, uint32_t u, uint32_t now)
     {
         Push(gas, mvfx_kernelGasMove, u, now, 0, 0, faces);
     }
+    mvfxSimGasProject(gas, u, now);
+    return now;
+}
+
+void mvfxSimGasProject(SimGas* gas, uint32_t u, uint32_t now)
+{
+    const mvfxGasDef* def = &gas->view.def;
+    uint32_t cells = Groups((uint32_t)gas->view.cells);
+    uint32_t faces = Groups(AllFaces(&gas->view, 0));
     if (def->pressureCycles > 0 && Expands(def) && IsSealed(def))
     {
         Push(gas, mvfx_kernelGasMean, u, now, 0, 0, 1);
@@ -497,7 +514,6 @@ static uint32_t SubstepPasses(SimGas* gas, uint32_t u, uint32_t now)
         Cycle(gas, u, now);
     }
     Push(gas, mvfx_kernelGasCorrect, u, now, 0, 0, faces);
-    return now;
 }
 
 // The step's obstacles as the plan gives them: their count, those that
@@ -562,26 +578,40 @@ static void Plan(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan)
         Push(gas, mvfx_kernelGasCoefficients, 0, 0, (uint32_t)l, 0,
              Groups(faces + LevelCells(view, l)));
     }
-    mvfxPlanSimSplats(sim, gas, plan);
     int64_t from = plan->start;
     int64_t to = plan->start + plan->ticks;
     uint32_t now = gas->now;
-    for (int32_t s = 0; s < def->substeps; ++s)
+    if (def->kind == mvfx_gasLiquid)
     {
-        int64_t start = from + (to - from) * s / def->substeps;
-        int64_t end = from + (to - from) * (s + 1) / def->substeps;
-        if (end <= start)
+        // One step about the projection, as the core's (sim_liquid_gas.c);
+        // its read back says whether it holds anything.
+        if (to > from)
         {
-            continue;
+            SubstepNumbers(gas, plan, 0, from, to);
+            mvfxPlanSimLiquid(sim, gas, plan, now);
         }
-        SubstepNumbers(gas, plan, s, start, end);
-        now = SubstepPasses(gas, (uint32_t)s, now);
     }
-    // Whether anything is held at the step's end, into the record whose
-    // write starts it at nothing held at the end's tick.
-    Push(gas, mvfx_kernelGasHolds, 0, now, 0, 0, Groups((uint32_t)view->cells));
+    else
+    {
+        mvfxPlanSimSplats(sim, gas, plan);
+        for (int32_t s = 0; s < def->substeps; ++s)
+        {
+            int64_t start = from + (to - from) * s / def->substeps;
+            int64_t end = from + (to - from) * (s + 1) / def->substeps;
+            if (end <= start)
+            {
+                continue;
+            }
+            SubstepNumbers(gas, plan, s, start, end);
+            now = SubstepPasses(gas, (uint32_t)s, now);
+        }
+        // Whether anything is held at the step's end, into the record whose
+        // write starts it at nothing held at the end's tick.
+        Push(gas, mvfx_kernelGasHolds, 0, now, 0, 0, Groups((uint32_t)view->cells));
+    }
     uint64_t end = (uint64_t)(plan->start + plan->ticks);
     gas->record[MVFX_GPU_GAS_HOLDS] = 0;
+    gas->record[MVFX_GPU_GAS_FASTEST] = 0;
     gas->record[MVFX_GPU_GAS_TICK] = (uint32_t)end;
     gas->record[MVFX_GPU_GAS_TICK + 1] = (uint32_t)(end >> 32u);
     gas->now = now;
@@ -635,7 +665,7 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
     // The write pass's accesses with the splats' after the gas's.
     const mrhiAccess* writes = written;
     int32_t writeCount = GAS_BUFFERS;
-    if (gas->splatCount > 0)
+    if (gas->splatCount > 0 || gas->hasLiquid)
     {
         memcpy(gas->writes, written, sizeof written);
         writeCount += mvfxSimSplatWrites(gas, gas->writes + GAS_BUFFERS);
@@ -703,7 +733,7 @@ static bool RecordStep(mvfxGpuSim* sim, SimGas* gas)
     {
         const GasDispatch* d = &gas->dispatches[p];
         mrhiPassId pass = gas->passes[p + 1];
-        mrhiBinding splat[GAS_BUFFERS + 2];
+        mrhiBinding splat[GAS_BUFFERS + 4];
         bool owns = d->binds == GAS_BINDS_GAS;
         uint32_t count = owns ? GAS_BUFFERS : (uint32_t)mvfxSimSplatBindings(gas, d, splat);
         bool ran =
@@ -918,6 +948,17 @@ mvfxResult mvfxGpuSim_ReportGas(const mvfxGpuSim* sim, mvfxContext* context, int
     }
     uint64_t tick = (uint64_t)record[MVFX_GPU_GAS_TICK] | (uint64_t)record[MVFX_GPU_GAS_TICK + 1]
                                                               << 32u;
-    return mvfxInstance_SetGasHolds(context, sim->instance, gas, (int64_t)tick,
-                                    record[MVFX_GPU_GAS_HOLDS] != 0);
+    mvfxResult result = mvfxInstance_SetGasHolds(context, sim->instance, gas, (int64_t)tick,
+                                                 record[MVFX_GPU_GAS_HOLDS] != 0);
+    if (result != mvfx_success || sim->gases[gas].view.def.kind != mvfx_gasLiquid)
+    {
+        return result;
+    }
+    // The fastest speed from its square's bits: the core squares it again,
+    // and the root of that square is this root (binary floating point's
+    // correctly rounded square root and product), so its split is the
+    // CPU path's from the same particles.
+    float square;
+    memcpy(&square, &record[MVFX_GPU_GAS_FASTEST], sizeof square);
+    return mvfxInstance_SetLiquidSpeed(context, sim->instance, gas, (int64_t)tick, sqrtf(square));
 }
