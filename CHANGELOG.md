@@ -1057,6 +1057,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 
 ### Fixed
 
+- A planned instance's plan holds at most twice an emitter's births at
+  once: a beam struck in many substeps of a liquid gas's split wrote
+  past it; the births past it are refused, still owed.
 - A unit's point writes one collision event a step, its first contact's,
   as the header says and a particle does; it wrote one at each substep
   it touched. The events of a unit's points follow its substeps in point

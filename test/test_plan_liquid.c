@@ -7,7 +7,8 @@
 // gravity's alone with no particle alive; the most before any report),
 // and hands over a plan a substep: the span, the move over the first
 // alone, the births by their substep's start, the serials owed. The speed
-// setter's refusals; a surface gas still unplannable.
+// setter's refusals; births past a plan's room refused; a surface gas
+// still unplannable.
 
 #include "gas.h"
 #include "gas_liquid.h"
@@ -269,6 +270,52 @@ static void TestSpeedSetter(void)
     mvfxDestroyContext(context);
 }
 
+static void TestPlanRoom(void)
+{
+    // A beam of six points living a millisecond beside a liquid gas: a
+    // step cut into 16 substeps strikes it in each, 96 births, past the
+    // plan's room of twice its capacity; the rest are refused, not
+    // written past it.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxGasDef gas = Liquid();
+    mvfxEmitterDef emitters[2] = {Emitter(), mvfxDefaultEmitterDef()};
+    emitters[1].rate = 0.0f;
+    emitters[1].capacity = 6;
+    emitters[1].lifetime = mvfxRangeSource(0.001f, 0.001f);
+    emitters[1].ribbon.ids = mvfx_ribbonOne;
+    emitters[1].beam = (mvfxBeamDef){
+        .enabled = true, .segments = 5, .start = {.point = {0, 0, 0}}, .end = {.point = {1, 0, 0}}};
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 2;
+    def.gases = &gas;
+    def.gasCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceId planned = Instance(context, effect, true);
+    // The liquid's births in the first step; no report, so the most after.
+    int32_t count = 0;
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+              mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+              mvfxInstance_GetPlanSteps(context, planned, &count) == mvfx_success,
+          "stepped");
+    static mvfxEmitterPlan plan;
+    int32_t written = 0;
+    uint64_t refused = 0;
+    for (int32_t k = 0; k < count; ++k)
+    {
+        CHECK(mvfxInstance_GetEmitterStepPlan(context, planned, 1, k, &plan) == mvfx_success,
+              "a step's plan");
+        written += plan.birthCount;
+        refused += plan.refused;
+    }
+    CHECK(count == MVFX_MAX_LIQUID_SUBSTEPS && written == 12 && refused == 16 * 6 - 12,
+          "a plan's births past its room refused");
+    mvfxDestroyContext(context);
+}
+
 static void TestSurfaceRefused(void)
 {
     // A surface gas still keeps its effect unplannable.
@@ -299,6 +346,7 @@ int main(void)
 {
     TestSplit();
     TestSpeedSetter();
+    TestPlanRoom();
     TestSurfaceRefused();
     return s_failures == 0 ? 0 : 1;
 }

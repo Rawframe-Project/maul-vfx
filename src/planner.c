@@ -85,13 +85,28 @@ static bool NumberedElsewhere(const mvfxInstance* instance, int32_t emitter)
     return instance->effect->emitters[emitter].eventSpawn.enabled;
 }
 
+// The births an emitter holds at most: its particles, or for an emitter
+// of units its units (a birth is a unit, its points born together).
+static int32_t UnitCapacity(const mvfxInstance* instance, int32_t emitter)
+{
+    return instance->emitters[emitter].capacity / instance->effect->emitters[emitter].unitPoints;
+}
+
 // Writes a kept birth with the given inverse life into the emitter's
 // plan, the host's particle it is (all ones for one of its own); its
-// death tick and inverse life 0 when the simulation numbers it.
+// death tick and inverse life 0 when the simulation numbers it. Past the
+// plan's room (twice the births it holds, which a plan of many steps can
+// reach with a beam's strikes) the birth is refused, still owed.
 static void WriteLived(mvfxInstance* instance, int32_t emitter, uint64_t serial, int64_t tick,
                        int64_t batchIndex, int64_t batchCount, uint32_t host, float inverseLife)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
+    if (state->planCount >= 2 * UnitCapacity(instance, emitter))
+    {
+        state->planRefused = mvfxSaturatingAdd(state->planRefused, 1u);
+        state->refused = mvfxSaturatingAdd(state->refused, 1u);
+        return;
+    }
     bool elsewhere = NumberedElsewhere(instance, emitter);
     inverseLife = elsewhere ? 0.0f : inverseLife;
     int64_t death = elsewhere ? instance->planBase : mvfxDeathTick(tick, inverseLife);
@@ -141,13 +156,6 @@ static uint8_t GivenOf(const mvfxInstance* instance, int32_t emitter, const mvfx
 // the capacity at the instance's quality level no simulation could take
 // them at one tick, so they are refused. The room a live particle leaves
 // is the simulation's to judge, as for any birth.
-// The births an emitter holds at most: its particles, or for an emitter
-// of units its units (a birth is a unit, its points born together).
-static int32_t UnitCapacity(const mvfxInstance* instance, int32_t emitter)
-{
-    return instance->emitters[emitter].capacity / instance->effect->emitters[emitter].unitPoints;
-}
-
 static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
