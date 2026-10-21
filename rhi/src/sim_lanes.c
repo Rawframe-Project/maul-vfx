@@ -174,25 +174,33 @@ bool mvfxCreateSimLanes(mvfxGpuSim* sim)
         alignof(EmitterArrays));
     lanes->gasArrays = mvfxRhiAllocate(
         &sim->allocator, steps * (size_t)lanes->gasCount * sizeof(GasArrays), alignof(GasArrays));
+    // The arrays' tables zeroed, the first step's the simulation's, before
+    // anything can fail: the destruction reads them whenever both are.
+    if (lanes->emitterArrays != nullptr)
+    {
+        memset(lanes->emitterArrays, 0,
+               steps * (size_t)lanes->emitterCount * sizeof(EmitterArrays));
+        for (int32_t e = 0; e < lanes->emitterCount; ++e)
+        {
+            lanes->emitterArrays[e].liquidPasses = sim->emitters[e].liquidPasses;
+        }
+    }
+    if (lanes->gasArrays != nullptr)
+    {
+        memset(lanes->gasArrays, 0, steps * (size_t)lanes->gasCount * sizeof(GasArrays));
+        for (int32_t g = 0; g < lanes->gasCount; ++g)
+        {
+            const SimGas* gas = &sim->gases[g];
+            lanes->gasArrays[g] = (GasArrays){.dispatches = gas->dispatches,
+                                              .passes = gas->passes,
+                                              .writes = gas->writes,
+                                              .splats = gas->splats};
+        }
+    }
     if (lanes->emitters == nullptr || lanes->gases == nullptr || lanes->emitterArrays == nullptr ||
         lanes->gasArrays == nullptr)
     {
         return false;
-    }
-    memset(lanes->emitterArrays, 0, steps * (size_t)lanes->emitterCount * sizeof(EmitterArrays));
-    memset(lanes->gasArrays, 0, steps * (size_t)lanes->gasCount * sizeof(GasArrays));
-    // The first step's arrays are the simulation's.
-    for (int32_t e = 0; e < lanes->emitterCount; ++e)
-    {
-        lanes->emitterArrays[e].liquidPasses = sim->emitters[e].liquidPasses;
-    }
-    for (int32_t g = 0; g < lanes->gasCount; ++g)
-    {
-        const SimGas* gas = &sim->gases[g];
-        lanes->gasArrays[g] = (GasArrays){.dispatches = gas->dispatches,
-                                          .passes = gas->passes,
-                                          .writes = gas->writes,
-                                          .splats = gas->splats};
     }
     bool made = true;
     for (int32_t s = 1; made && s < MVFX_MAX_PLAN_STEPS; ++s)

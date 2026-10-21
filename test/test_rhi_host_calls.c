@@ -7,6 +7,9 @@
 // changes the simulation is refused with mvfx_errorState and changes
 // nothing, a second destruction does nothing, a reading call still
 // answers, and the destruction then gives back all the memory taken.
+// And its creation failing at each of its allocations in turn, for an
+// effect with a liquid gas (whose split steps keep lanes): refused, all
+// it took given back.
 
 #include "test_harness.h"
 
@@ -99,6 +102,10 @@ static mvfxGpuSim* s_target;
 static int64_t s_held;
 static int32_t s_made;
 static bool s_refused;
+// The allocation the allocator fails (from 1, 0 for none) and those it
+// was asked for.
+static int32_t s_failAt;
+static int32_t s_calls;
 
 // Calls back in once: each changing call refused, the upload count its
 // last record left unchanged, the destruction doing nothing.
@@ -130,6 +137,10 @@ static void CallBack(void)
 static void* Alloc(size_t size, size_t alignment, void* context)
 {
     (void)context;
+    if (++s_calls == s_failAt)
+    {
+        return NULL;
+    }
     uint8_t* raw = malloc(size + alignment + sizeof(void*));
     if (raw == NULL)
     {
@@ -211,6 +222,66 @@ static void TestCallsBackIn(Gpu* gpu, mvfxGpu* kernels)
     mvfxDestroyContext(context);
 }
 
+static void TestFailedMemory(mvfxGpu* kernels)
+{
+    // A 2D liquid gas of 8 by 8 cells and its liquid emitter.
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.kind = mvfx_gasLiquid;
+    gas.size[0] = 8;
+    gas.size[1] = 8;
+    gas.size[2] = 1;
+    gas.cellSize = 0.1f;
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = 256;
+    emitter.liquid.enabled = true;
+    emitter.liquid.solver = mvfx_liquidGrid;
+    emitter.liquid.gas = 0;
+    emitter.liquid.spacing = 0.05f;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    effectDef.gases = &gas;
+    effectDef.gasCount = 1;
+    mvfxEffectId effect;
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a liquid gas's effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.planned = true;
+    mvfxInstanceId instance;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    simDef.allocator = (mvfxAllocator){.alloc = Alloc, .free = Free};
+    simDef.gpu = kernels;
+    simDef.context = context;
+    simDef.effect = effect;
+    simDef.instance = instance;
+    bool made = false;
+    int32_t failed = 0;
+    for (int32_t n = 1; !made && n < 100000; ++n)
+    {
+        s_failAt = n;
+        s_calls = 0;
+        mvfxGpuSim* sim = NULL;
+        mvfxGpuRefusal refusal;
+        made = mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_success;
+        if (made)
+        {
+            mvfxDestroyGpuSim(sim);
+        }
+        else
+        {
+            CHECK(sim == NULL && s_held == 0, "a failed creation's memory all given back");
+            failed += 1;
+        }
+    }
+    s_failAt = 0;
+    CHECK(made && failed > 0 && s_held == 0, "made once its allocations do not fail");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     Gpu gpu;
@@ -220,6 +291,7 @@ int main(void)
     mvfxGpu* kernels = NULL;
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     TestCallsBackIn(&gpu, kernels);
+    TestFailedMemory(kernels);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
