@@ -7,7 +7,7 @@
 // rules, births and host births, for a plain emitter, one with forces,
 // colliders and kill rules, one the host spawns into, and one writing
 // events with another spawning from them, and one of a mesh shape, its mesh
-// uploaded at the first step alone.
+// uploaded at the first step alone; a water surface's beside one.
 
 #include "test_harness.h"
 
@@ -137,6 +137,10 @@ static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam, bo
            64 * (int64_t)plan->hostBirthCount;
 }
 
+// A water surface the measured effect holds beside its emitters (none for
+// NULL): its numbers and its record, 1,108 bytes a step.
+static const mvfxWaterDef* s_water;
+
 // Steps an effect's planned instance on the device, the host spawning
 // into the first emitter each step when it may; whether every frame after
 // the first uploaded what its emitters' plans say, and some step had
@@ -167,6 +171,8 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = own;
     effectDef.emitterCount = count;
+    effectDef.waters = s_water;
+    effectDef.waterCount = s_water != NULL ? 1 : 0;
     mvfxEffectId effect;
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -211,7 +217,7 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
         {
             (void)mvfxGpu_Notify(kernels, &record);
         }
-        int64_t expected = 0;
+        int64_t expected = s_water != NULL ? 1108 : 0;
         for (int32_t e = 0; exact && e < count; ++e)
         {
             mvfxEmitterPlan plan;
@@ -307,6 +313,10 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     linked.plexus = (mvfxPlexusDef){
         .enabled = true, .distance = 0.2f, .maxLinks = 256, .maxPerParticle = 4, .width = 1.0f};
     Measure(gpu, kernels, &linked, 1, "an emitter linking its particles");
+    const mvfxWaterDef water = mvfxDefaultWaterDef();
+    s_water = &water;
+    Measure(gpu, kernels, &plain, 1, "a water surface beside an emitter");
+    s_water = NULL;
 }
 
 static void TestRefusals(void)

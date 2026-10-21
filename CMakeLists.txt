@@ -269,10 +269,11 @@ if(MAUL_VFX_BUILD_TESTS)
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
                 rhi_ribbon_points rhi_beams rhi_lights rhi_sprites rhi_neighbors rhi_steering
-                rhi_contacts rhi_plexus rhi_units rhi_rigid rhi_pairs rhi_gas rhi_liquid)
+                rhi_contacts rhi_plexus rhi_units rhi_rigid rhi_pairs rhi_gas rhi_liquid
+                rhi_water)
             maul_add_test(${suite} WHITEBOX)
             target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
-                ${PROJECT_SOURCE_DIR}/test/rhi_apart.c)
+                ${PROJECT_SOURCE_DIR}/test/rhi_apart.c ${PROJECT_SOURCE_DIR}/test/rhi_waters.c)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi)
             # Each compares a step at a time on lavapipe: the longest take
             # over 200 seconds on CI's runners, which vary by half again,

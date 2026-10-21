@@ -18,6 +18,7 @@
 #include "output.h"
 #include "plexus.h"
 #include "rhi_apart.h"
+#include "rhi_waters.h"
 #include "test_harness.h"
 
 #include "kernels/depth_fill_container.h"
@@ -1101,8 +1102,8 @@ static uint64_t s_dropped[MVFX_MAX_EMITTERS];
 static uint64_t s_events;
 
 // Reads bytes of a buffer from a byte into out, of room bytes.
-static bool ReadRange(Gpu* gpu, mrhiBufferId source, uint64_t first, uint64_t bytes, void* out,
-                      size_t room)
+bool ReadRange(Gpu* gpu, mrhiBufferId source, uint64_t first, uint64_t bytes, void* out,
+               size_t room)
 {
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     mrhiResourceId buffer = {0};
@@ -2557,6 +2558,8 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     effectDef.emitterCount = run->emitterCount;
     effectDef.gases = run->gases;
     effectDef.gasCount = run->gasCount;
+    effectDef.waters = run->waters;
+    effectDef.waterCount = run->waterCount;
     effectDef.parameters = run->parameters;
     effectDef.parameterCount = run->parameterCount;
     effectDef.qualityLevels = run->quality;
@@ -2640,6 +2643,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_exactRecords = run->exact;
     s_byDepth = run->emitters[0].sortMeasure == mvfx_sortByDepth;
     s_placeError = 0.0f;
+    ResetWaters();
     s_velocityError = 0.0f;
     s_contacts = 0;
     s_events = 0;
@@ -2721,9 +2725,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         {
             BreakRibbons();
         }
+        PushWaters(run, s);
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         s_waitNs = s_warm && s > 0 ? FRAME_WAIT_NS : WARM_WAIT_NS;
-        same = Simulate(gpu, sim) && ReportGases(gpu, sim);
+        same = Simulate(gpu, sim) && ReportGases(gpu, sim) && ReportWaters(gpu, sim);
         if (!same)
         {
             printf("step %d: the simulation was not recorded and finished\n", s);
@@ -2757,6 +2762,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (!run->adopting || AdoptGpu(e));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
+        same = same && SameWaters(gpu, sim, run, s_tolerance);
         // The emitter whose records are written read back last, as the
         // ribbons take the GPU's places.
         same =
@@ -2771,6 +2777,13 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_dropping = false;
     printf("%s: largest relative differences, place %g, velocity %g, bounds %g\n", what,
            (double)s_placeError, (double)s_velocityError, s_boundsError);
+    if (run->waterCount > 0)
+    {
+        // The surfaces moved: the pushes reached them.
+        printf("  water: %g, the most a cell moved %g\n", (double)WaterError(),
+               (double)WaterMoved());
+        CHECK(WaterMoved() > 1e-3f, "the surfaces moved");
+    }
     bool eventful = false;
     for (int32_t e = 0; e < run->emitterCount; ++e)
     {

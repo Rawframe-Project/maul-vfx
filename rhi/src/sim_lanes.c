@@ -3,15 +3,16 @@
 //
 // The steps of a frame that splits (an effect with a liquid gas whose
 // courant number cuts the instance's step into substeps,
-// mvfxInstance_GetPlanSteps): each emitter and gas a lane a step, the
-// first the simulation's own. A lane is an Emitter or a SimGas whole,
-// sharing the first's device buffers and holding its own numbers,
-// births and pass ids; the parts' host arrays of pass ids and dispatches
-// are a lane's own too, kept in a table by step and put into the lane
-// swapped in. Each step's lanes are swapped into the simulation's
-// emitters and gases while the step is added and while it is recorded,
-// so every part reads the step's emitters and gases as it reads one
-// step's. Between frames the simulation's hold the first step's arrays.
+// mvfxInstance_GetPlanSteps): each emitter, gas and water surface a lane a
+// step, the first the simulation's own. A lane is an Emitter, a SimGas or
+// a SimWater whole (a surface's host arrays its own), sharing the first's
+// device buffers and holding its own numbers, births and pass ids; the
+// parts' host arrays of pass ids and dispatches are a lane's own too,
+// kept in a table by step and put into the lane swapped in. Each step's
+// lanes are swapped into the simulation's emitters, gases and surfaces
+// while the step is added and while it is recorded, so every part reads
+// the step's as it reads one step's. Between frames the simulation's hold
+// the first step's arrays.
 
 #include "sim_gas.h"
 #include "sim_state.h"
@@ -37,11 +38,13 @@ struct SimLanes
 {
     int32_t emitterCount;
     int32_t gasCount;
-    // Each step's lanes as added (step s, emitter or gas i at
+    int32_t waterCount;
+    // Each step's lanes as added (step s, emitter, gas or surface i at
     // s * count + i), and each step's own arrays (the first step's the
     // ones the simulation made).
     Emitter* emitters;
     SimGas* gases;
+    SimWater* waters;
     EmitterArrays* emitterArrays;
     GasArrays* gasArrays;
     // Whether a frame of more steps was added and not yet recorded.
@@ -162,13 +165,20 @@ bool mvfxCreateSimLanes(mvfxGpuSim* sim)
     {
         return false;
     }
-    *lanes = (SimLanes){.emitterCount = sim->emitterCount, .gasCount = sim->gasCount};
+    *lanes = (SimLanes){.emitterCount = sim->emitterCount,
+                        .gasCount = sim->gasCount,
+                        .waterCount = sim->waterCount};
     sim->lanes = lanes;
     size_t steps = MVFX_MAX_PLAN_STEPS;
     lanes->emitters = mvfxRhiAllocate(
         &sim->allocator, steps * (size_t)lanes->emitterCount * sizeof(Emitter), alignof(Emitter));
     lanes->gases = mvfxRhiAllocate(
         &sim->allocator, steps * (size_t)lanes->gasCount * sizeof(SimGas), alignof(SimGas));
+    lanes->waters =
+        lanes->waterCount > 0
+            ? mvfxRhiAllocate(&sim->allocator, steps * (size_t)lanes->waterCount * sizeof(SimWater),
+                              alignof(SimWater))
+            : nullptr;
     lanes->emitterArrays = mvfxRhiAllocate(
         &sim->allocator, steps * (size_t)lanes->emitterCount * sizeof(EmitterArrays),
         alignof(EmitterArrays));
@@ -197,7 +207,8 @@ bool mvfxCreateSimLanes(mvfxGpuSim* sim)
                                               .splats = gas->splats};
         }
     }
-    if (lanes->emitters == nullptr || lanes->gases == nullptr || lanes->emitterArrays == nullptr ||
+    if (lanes->emitters == nullptr || lanes->gases == nullptr ||
+        (lanes->waterCount > 0 && lanes->waters == nullptr) || lanes->emitterArrays == nullptr ||
         lanes->gasArrays == nullptr)
     {
         return false;
@@ -231,6 +242,8 @@ void mvfxDestroySimLanes(mvfxGpuSim* sim)
                    steps * (size_t)lanes->emitterCount * sizeof(Emitter), alignof(Emitter));
     mvfxRhiRelease(&sim->allocator, lanes->gases, steps * (size_t)lanes->gasCount * sizeof(SimGas),
                    alignof(SimGas));
+    mvfxRhiRelease(&sim->allocator, lanes->waters,
+                   steps * (size_t)lanes->waterCount * sizeof(SimWater), alignof(SimWater));
     mvfxRhiRelease(&sim->allocator, lanes->emitterArrays,
                    steps * (size_t)lanes->emitterCount * sizeof(EmitterArrays),
                    alignof(EmitterArrays));
@@ -256,6 +269,10 @@ void mvfxBeginSimSteps(mvfxGpuSim* sim)
     for (int32_t g = 0; g < lanes->gasCount; ++g)
     {
         sim->gases[g] = lanes->gases[g];
+    }
+    for (int32_t w = 0; w < lanes->waterCount; ++w)
+    {
+        sim->waters[w] = lanes->waters[w];
     }
     TakeArrays(sim, lanes, 0);
     lanes->pending = false;
@@ -287,6 +304,13 @@ bool mvfxEnterSimStep(mvfxGpuSim* sim, int32_t step)
             memcpy(own->splats, gas->splats, (size_t)gas->splatCount * sizeof(SimSplat));
         }
     }
+    for (int32_t w = 0; w < lanes->waterCount; ++w)
+    {
+        SimWater* water = &sim->waters[w];
+        lanes->waters[(step - 1) * lanes->waterCount + w] = *water;
+        water->now = water->added ? water->after : water->now;
+        water->added = false;
+    }
     TakeArrays(sim, lanes, step);
     lanes->pending = true;
     return true;
@@ -308,6 +332,10 @@ void mvfxStoreSimSteps(mvfxGpuSim* sim, int32_t steps)
     {
         lanes->gases[last * lanes->gasCount + g] = sim->gases[g];
     }
+    for (int32_t w = 0; w < lanes->waterCount; ++w)
+    {
+        lanes->waters[last * lanes->waterCount + w] = sim->waters[w];
+    }
 }
 
 void mvfxRecallSimStep(mvfxGpuSim* sim, int32_t step)
@@ -320,6 +348,10 @@ void mvfxRecallSimStep(mvfxGpuSim* sim, int32_t step)
     for (int32_t g = 0; g < lanes->gasCount; ++g)
     {
         sim->gases[g] = lanes->gases[step * lanes->gasCount + g];
+    }
+    for (int32_t w = 0; w < lanes->waterCount; ++w)
+    {
+        sim->waters[w] = lanes->waters[step * lanes->waterCount + w];
     }
     TakeArrays(sim, lanes, step);
 }
@@ -361,5 +393,14 @@ mvfxResult mvfxSimGasPlan(const mvfxGpuSim* sim, int32_t g, mvfxGasPlan* plan)
     int32_t step = PlanStep(sim, &result);
     return result == mvfx_success
                ? mvfxInstance_GetGasStepPlan(sim->context, sim->instance, g, step, plan)
+               : result;
+}
+
+mvfxResult mvfxSimWaterPlan(const mvfxGpuSim* sim, int32_t w, mvfxWaterPlan* plan)
+{
+    mvfxResult result = mvfx_success;
+    int32_t step = PlanStep(sim, &result);
+    return result == mvfx_success
+               ? mvfxInstance_GetWaterStepPlan(sim->context, sim->instance, w, step, plan)
                : result;
 }

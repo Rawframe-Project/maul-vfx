@@ -16,6 +16,7 @@
 #include "record.h"
 #include "records.h"
 #include "sim_gas.h"
+#include "sim_water.h"
 
 #include "maul-rhi/frame.h"
 #include "maul-vfx-rhi/sim.h"
@@ -397,8 +398,11 @@ struct mvfxGpuSim
     // Its gases, stepped after every emitter.
     int32_t gasCount;
     SimGas gases[MVFX_MAX_GASES];
+    // Its water surfaces, stepped after every gas.
+    int32_t waterCount;
+    SimWater waters[MVFX_MAX_WATERS];
     // An effect that splits its steps (one with a liquid gas): its
-    // emitters' and gases' lanes of each step (sim_lanes.c), NULL for
+    // emitters', gases' and surfaces' lanes of each step (sim_lanes.c), NULL for
     // another; the steps of the frame added and the one added or
     // recorded now (the last after them, the first before any).
     SimLanes* lanes;
@@ -430,10 +434,12 @@ void mvfxEndSimSteps(mvfxGpuSim* sim);
 // frame left cleared; the depth and normal textures bound.
 mvfxResult mvfxPrepareSimFrame(mvfxGpuSim* sim);
 
-// An emitter's plan, and a gas's, of the step the simulation adds (sim_lanes.c):
-// the instance's plan of that step, or of its last when it holds fewer.
+// An emitter's plan, a gas's and a surface's, of the step the simulation
+// adds (sim_lanes.c): the instance's plan of that step, or of its last
+// when it holds fewer.
 mvfxResult mvfxSimEmitterPlan(const mvfxGpuSim* sim, int32_t e, mvfxEmitterPlan* plan);
 mvfxResult mvfxSimGasPlan(const mvfxGpuSim* sim, int32_t g, mvfxGasPlan* plan);
+mvfxResult mvfxSimWaterPlan(const mvfxGpuSim* sim, int32_t w, mvfxWaterPlan* plan);
 
 // Records a kernel's pass p over an emitter's buffers (sim.c), its root
 // block 0; or a kernel in a pass of its own with these root words.

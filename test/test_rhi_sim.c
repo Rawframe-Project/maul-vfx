@@ -1217,8 +1217,8 @@ static void Untouched(const mvfxModuleCall* call, void* user)
 static void TestRefused(mvfxGpu* kernels)
 {
     // An emitter it does not run, after one it does: refused, named (a
-    // feature it does not run, the host's modules); a gas; a water
-    // surface.
+    // feature it does not run, the host's modules); a gas; shallow
+    // water.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1273,8 +1273,9 @@ static void TestRefused(mvfxGpu* kernels)
               refusal.emitter == -1 && refusal.gas == -1 && refusal.features == 0,
           "a gas with an obstacle run");
     mvfxDestroyGpuSim(sim);
-    // A water surface, planned now but not yet run: refused, named.
-    const mvfxWaterDef water = mvfxDefaultWaterDef();
+    // Shallow water, planned now but not yet run: refused, named.
+    mvfxWaterDef water = mvfxDefaultWaterDef();
+    water.model = mvfx_waterShallow;
     effectDef.gasCount = 0;
     effectDef.waters = &water;
     effectDef.waterCount = 1;
@@ -1285,7 +1286,7 @@ static void TestRefused(mvfxGpu* kernels)
     simDef.instance = planned;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
               refusal.water == 0 && refusal.emitter == -1 && refusal.gas == -1,
-          "a water surface refused, named");
+          "shallow water refused, named");
     mvfxDestroyContext(context);
 }
 

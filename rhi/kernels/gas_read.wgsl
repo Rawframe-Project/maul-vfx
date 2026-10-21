@@ -10,6 +10,8 @@
 
 // include: shared/formats.wgsl
 
+// include: shared/format_bits.wgsl
+
 const ROW: u32 = 2097152u;
 
 // A read: the field, its format, the buffer current, the words written;
@@ -49,47 +51,6 @@ fn cellValue(at: vec3<u32>) -> f32 {
     return 0.5 * (fields[low] + fields[low + step[k]]);
 }
 
-// A value mapped from the read's range as a normalized format takes it.
-fn mapped(format: u32, value: f32) -> f32 {
-    let low = query.range.x;
-    let high = query.range.y;
-    switch format {
-        case FORMAT_UNORM8, FORMAT_UNORM16: {
-            return (value - low) / (high - low);
-        }
-        case FORMAT_SNORM8, FORMAT_SNORM16: {
-            return 2.0 * (value - low) / (high - low) - 1.0;
-        }
-        default: {
-            return value;
-        }
-    }
-}
-
-// A value's bits in a format.
-fn bitsOf(format: u32, value: f32) -> u32 {
-    switch format {
-        case FORMAT_FLOAT16: {
-            return halfOf(value);
-        }
-        case FORMAT_UNORM8: {
-            return unormOf(value, 255.0);
-        }
-        case FORMAT_SNORM8: {
-            return snormOf(value, 127.0) & 0xFFu;
-        }
-        case FORMAT_UNORM16: {
-            return unormOf(value, 65535.0);
-        }
-        case FORMAT_SNORM16: {
-            return snormOf(value, 32767.0) & 0xFFFFu;
-        }
-        default: {
-            return bitcast<u32>(value);
-        }
-    }
-}
-
 @compute @workgroup_size(64, 1, 1)
 fn gasRead(@builtin(global_invocation_id) id: vec3<u32>) {
     let w = id.x + id.y * ROW;
@@ -116,7 +77,7 @@ fn gasRead(@builtin(global_invocation_id) id: vec3<u32>) {
             continue;
         }
         let cell = query.first.xyz + vec3<u32>(x, y, z);
-        let value = bitsOf(format, mapped(format, cellValue(cell)));
+        let value = formatBits(format, formatMapped(format, cellValue(cell), query.range.xy));
         let shift = rel % layer % row % bytes * 8u;
         let mask = 0xFFu << (byte * 8u);
         bits = (bits & ~mask) | ((((value >> shift) & 0xFFu) << (byte * 8u)) & mask);

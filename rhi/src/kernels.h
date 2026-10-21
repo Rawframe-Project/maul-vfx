@@ -28,6 +28,8 @@ typedef enum mvfxContainer
     mvfx_containerSplat = 11,
     mvfx_containerLiquid = 12,
     mvfx_containerLiquidGas = 13,
+    mvfx_containerWater = 14,
+    mvfx_containerWaterRead = 15,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -192,6 +194,13 @@ typedef enum mvfxKernel
     mvfx_kernelLiquidGasExtend = 95,
     mvfx_kernelLiquidGasWalls = 96,
     mvfx_kernelLiquidGasRead = 97,
+    // A waves surface's step (water.wgsl): the pushes' sinks and the even
+    // lift, a substep whole, the settle into the statistics record.
+    mvfx_kernelWaterSink = 98,
+    mvfx_kernelWaterSubstep = 99,
+    mvfx_kernelWaterSettle = 100,
+    // A surface's field written into a host's buffer (water_read.wgsl).
+    mvfx_kernelWaterRead = 101,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

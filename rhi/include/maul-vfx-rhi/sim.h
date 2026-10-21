@@ -76,8 +76,8 @@ extern "C"
     // compute unit of the device however many there are. gas names the
     // first gas the part does not run, -1 for none (every gas of an effect
     // that can be planned runs), and emitter is then -1; water names the
-    // first water surface it does not run (none yet), -1 for none, and
-    // emitter and gas are then -1.
+    // first water surface it does not run (shallow water), -1 for none,
+    // and emitter and gas are then -1.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -711,6 +711,128 @@ extern "C"
                                                                 mvfxContext* context, int32_t gas,
                                                                 const uint32_t* record);
 
+    /// Returns the passes a water surface's step adds at most
+    /// (mvfxGpuSim_AddPasses), for a host to size its device's frame by:
+    /// for waves, one writing its numbers, one sinking the host's pushes,
+    /// one a substep (at most MVFX_MAX_WATER_SUBSTEPS) and one settling
+    /// it, 67 in all. A frame of an effect with a liquid gas takes them
+    /// once for each step it splits into (mvfxInstance_GetPlanSteps), at
+    /// most MVFX_MAX_PLAN_STEPS.
+    ///
+    /// @param sim    The simulation.
+    /// @param water  The surface's index in its effect.
+    /// @return The passes; 0 for a NULL simulation or a surface out of
+    ///         range.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API int32_t mvfxGpuSim_WaterPasses(const mvfxGpuSim* sim, int32_t water);
+
+// A water surface's statistics record, 32-bit words, which its step
+// writes: whether it moves at the step's end (1 or 0) and that end's tick
+// (two words, the low first); shallow water's fastest speed then (a
+// binary32's bits, 0 for waves), which mvfxGpuSim_ReportWater hands over;
+// its reach, the largest displacement's size (a binary32's bits).
+#define MVFX_GPU_WATER_HOLDS            0
+#define MVFX_GPU_WATER_TICK             1
+#define MVFX_GPU_WATER_SPEED            3
+#define MVFX_GPU_WATER_REACH            4
+#define MVFX_GPU_WATER_STATISTICS_WORDS 5
+
+    // A water surface's buffers a host reads: its statistics record.
+    typedef struct mvfxGpuWater
+    {
+        mrhiBufferId statistics;
+    } mvfxGpuWater;
+
+    /// Returns a water surface's buffers, whose statistics record the host
+    /// reads back any frames after a step, as a gas's.
+    ///
+    /// @param sim       The simulation.
+    /// @param water     The surface's index in its effect.
+    /// @param waterOut  Receives the buffers; zeroed on failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         surface out of range.
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetWater(const mvfxGpuSim* sim, int32_t water,
+                                                               mvfxGpuWater* waterOut);
+
+    /// Hands a water surface's statistics record, read back from its buffer
+    /// any frames after its step, to the planned instance
+    /// (mvfxInstance_SetWaterHolds): whether it moved at that step's end,
+    /// which decides when a stopped instance finishes. A host that never
+    /// reports leaves a stopped instance running.
+    ///
+    /// @param sim      The simulation.
+    /// @param context  The context the simulation was made in.
+    /// @param water    The surface's index in its effect.
+    /// @param record   The record, MVFX_GPU_WATER_STATISTICS_WORDS words.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         context not the simulation's or a surface out of range; else
+    ///         what mvfxInstance_SetWaterHolds returns for the record's
+    ///         tick and holds.
+    /// @par Thread safety
+    /// Safe from any thread; the context and the device are used by one
+    /// thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ReportWater(const mvfxGpuSim* sim,
+                                                                  mvfxContext* context,
+                                                                  int32_t water,
+                                                                  const uint32_t* record);
+
+// The most reads of a water surface a frame (mvfxGpuSim_AddWaterRead).
+#define MVFX_GPU_WATER_READS 4
+
+    // Where a water surface's field goes (mvfxGpuSim_AddWaterRead): the
+    // surface, the read (mvfxInstance_ReadWater's), and a storage buffer of
+    // the frame open, from a byte that is a multiple of 4, bytes long from
+    // there: at least the read's last value's end.
+    typedef struct mvfxGpuWaterReadDef
+    {
+        uint32_t cookie;
+        int32_t water;
+        mvfxWaterRead read;
+        mrhiResourceId target;
+        uint64_t offset;
+        uint64_t bytes;
+    } mvfxGpuWaterReadDef;
+
+// The cookie of a water read def, which its default sets and
+// mvfxGpuSim_AddWaterRead checks.
+#define MVFX_GPU_WATER_READ_DEF_COOKIE 0x6D767772u
+
+    /// Returns the default water read def: surface 0, its height as float32
+    /// over one cell, no buffer yet.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API mvfxGpuWaterReadDef mvfxDefaultGpuWaterReadDef(void);
+
+    /// Adds the passes writing a water surface's field into a buffer to the
+    /// frame the host builds, as mvfxInstance_ReadWater writes it on the
+    /// CPU path (bytes of the buffer between the values, a pitch's padding,
+    /// kept): a transfer pass and a compute pass, after the step's passes
+    /// of the frame (mvfxGpuSim_AddPasses) or, without them, reading the
+    /// fields the last recorded step left. mvfxGpuSim_Record records them,
+    /// and the next mvfxGpuSim_AddPasses lets go of those of a frame the
+    /// host dropped. At most MVFX_GPU_WATER_READS a surface a frame.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the field goes, from mvfxDefaultGpuWaterReadDef.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, a surface out of range, a read out
+    ///         of range for the surface (its field, format, box, range or
+    ///         pitch, as mvfxInstance_ReadWater checks them), an offset not
+    ///         a multiple of 4, a null buffer or bytes too few;
+    ///         `mvfx_errorLimit` past MVFX_GPU_WATER_READS for the surface
+    ///         this frame; `mvfx_errorState` when the device refuses a pass
+    ///         or an import (no frame open), or while it is destroyed (a
+    ///         call from its allocator).
+    /// @par Thread safety
+    /// Safe from any thread; the device is used by one thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddWaterRead(mvfxGpuSim* sim,
+                                                                   const mvfxGpuWaterReadDef* def);
+
 // The counts a ribbon pass writes, 32-bit words: the points and the
 // ribbons there are, as mvfxInstance_WriteRibbons counts them, and the
 // points and the ribbons written (for strips, mvfxGpuSim_ExpandRibbons,
@@ -1015,8 +1137,9 @@ extern "C"
     /// at the first step, after each change and, for the instance's,
     /// after each move in the room the def keeps; and a mesh shape's mesh
     /// (mvfxGpuSim_MeshBytes) at the first step and after each change of
-    /// it or of the mesh bound: which the device's frameUploadBytes must
-    /// hold.
+    /// it or of the mesh bound; 1,108 a water surface (its numbers' 1,088
+    /// and its record's 20) and 80 a read of it: which the device's
+    /// frameUploadBytes must hold.
     ///
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;

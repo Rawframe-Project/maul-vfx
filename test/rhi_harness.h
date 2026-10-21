@@ -50,6 +50,11 @@ typedef struct Run
     // NULL).
     const mvfxGasDef* gases;
     int32_t gasCount;
+    // The effect's water surfaces (none for NULL), pushed by the host
+    // (rhi_waters.c's PushWaters) and their fields compared after every
+    // step.
+    const mvfxWaterDef* waters;
+    int32_t waterCount;
     bool moving;
     bool clearing;
     // Its steps, STEPS for 0; the most the first emitter must hold at
@@ -264,6 +269,10 @@ bool ReportGases(Gpu* gpu, mvfxGpuSim* sim);
 // warm-up does not compile compiles them at its first frame.
 void LongFrames(bool slow);
 bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter);
+// Reads bytes of a buffer from byte first back into out, which holds
+// room.
+bool ReadRange(Gpu* gpu, mrhiBufferId source, uint64_t first, uint64_t bytes, void* out,
+               size_t room);
 
 // The run open: its context, its CPU and planned instances, the ticks a
 // step takes (STEP_TICKS until set), the statistics record last read back.

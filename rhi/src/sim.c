@@ -339,17 +339,28 @@ static bool IsDefValid(const mvfxGpuSimDef* def)
            mvfxGpu_IsReady(def->gpu) && mvfxRhiIsAllocatorValid(&def->allocator);
 }
 
-// Refuses an instance holding a water surface, which the part does not
-// run yet: the first surface in refusal.
-static mvfxResult ReadWaters(const mvfxGpuSimDef* def, int32_t* refusal)
+// Reads an effect's emitters, gases and surfaces into a simulation and
+// makes each one's buffers; a part it does not run named in refusal.
+static mvfxResult CreateParts(mvfxGpuSim* sim, const mvfxGpuSimDef* def, mvfxGpuRefusal* refusal)
 {
-    mvfxWaterInfo water;
-    if (mvfxInstance_GetWaterInfo(def->context, def->instance, 0, &water) == mvfx_success)
+    mvfxResult result = ReadViews(sim, def->effect, refusal);
+    result = result == mvfx_success ? mvfxReadSimGases(sim, def->effect, &refusal->gas) : result;
+    result = result == mvfx_success ? mvfxReadSimWaters(sim, def->effect, &refusal->water) : result;
+    for (int32_t e = 0; result == mvfx_success && e < sim->emitterCount; ++e)
     {
-        *refusal = 0;
-        return mvfx_errorState;
+        result = PrepareEmitter(sim, def, e);
     }
-    return mvfx_success;
+    for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
+    {
+        result = mvfxCreateSimGas(sim, &sim->gases[g], (uint32_t)((def->hostGridBytes + 3) / 4))
+                     ? mvfx_success
+                     : mvfx_errorState;
+    }
+    for (int32_t w = 0; result == mvfx_success && w < sim->waterCount; ++w)
+    {
+        result = mvfxCreateSimWater(sim, &sim->waters[w]) ? mvfx_success : mvfx_errorState;
+    }
+    return result;
 }
 
 mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
@@ -386,22 +397,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
         .context = def->context,
         .instance = def->instance,
     };
-    mvfxResult result = ReadViews(sim, def->effect, &refusal);
-    if (result == mvfx_success)
-    {
-        result = mvfxReadSimGases(sim, def->effect, &refusal.gas);
-    }
-    result = result == mvfx_success ? ReadWaters(def, &refusal.water) : result;
-    for (int32_t e = 0; result == mvfx_success && e < sim->emitterCount; ++e)
-    {
-        result = PrepareEmitter(sim, def, e);
-    }
-    for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
-    {
-        result = mvfxCreateSimGas(sim, &sim->gases[g], (uint32_t)((def->hostGridBytes + 3) / 4))
-                     ? mvfx_success
-                     : mvfx_errorState;
-    }
+    mvfxResult result = CreateParts(sim, def, &refusal);
     if (result == mvfx_success && !mvfxCreateSimLanes(sim))
     {
         result = mvfx_errorCapacity;
@@ -478,6 +474,10 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
     for (int32_t g = 0; g < sim->gasCount; ++g)
     {
         mvfxDestroySimGas(sim, &sim->gases[g]);
+    }
+    for (int32_t w = 0; w < sim->waterCount; ++w)
+    {
+        mvfxDestroySimWater(sim, &sim->waters[w]);
     }
     DestroyBuffer(sim, sim->ownCount);
     DestroyBuffer(sim, sim->ownSort);
@@ -721,8 +721,8 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
     {
         return mvfx_errorState;
     }
-    // The plans' steps, each a lane of every emitter and gas when there
-    // are more (sim_lanes.c).
+    // The plans' steps, each a lane of every emitter, gas and surface when
+    // there are more (sim_lanes.c).
     mvfxBeginSimSteps(sim);
     sim->step = 0;
     sim->steps = 0;
@@ -737,7 +737,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         }
         sim->step = s;
         // In step order: an emitter's source's passes before its own; the
-        // gases after them all.
+        // gases after them all, then the surfaces.
         for (int32_t n = 0; result == mvfx_success && n < sim->emitterCount; ++n)
         {
             result = AddStep(sim, sim->order[n]);
@@ -745,6 +745,10 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
         for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
         {
             result = mvfxAddSimGasPasses(sim, g);
+        }
+        for (int32_t w = 0; result == mvfx_success && w < sim->waterCount; ++w)
+        {
+            result = mvfxAddSimWaterPasses(sim, w);
         }
     }
     sim->steps = result == mvfx_success ? steps : 0;
@@ -886,7 +890,7 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
     return recorded;
 }
 
-// Records a step's emitters' passes, then its gases'.
+// Records a step's emitters' passes, then its gases', then its surfaces'.
 static bool RecordSteps(mvfxGpuSim* sim)
 {
     bool recorded = true;
@@ -897,6 +901,10 @@ static bool RecordSteps(mvfxGpuSim* sim)
     for (int32_t g = 0; recorded && g < sim->gasCount; ++g)
     {
         recorded = mvfxRecordSimGas(sim, &sim->gases[g]);
+    }
+    for (int32_t w = 0; recorded && w < sim->waterCount; ++w)
+    {
+        recorded = mvfxRecordSimWater(sim, &sim->waters[w]);
     }
     return recorded;
 }
