@@ -115,8 +115,7 @@ mvfxResult mvfxSpawnStepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPla
         return mvfx_success;
     }
     mvfxEmitterPlan sourcePlan;
-    mvfxResult result =
-        mvfxInstance_GetEmitterPlan(sim->context, sim->instance, emitter->spawnSource, &sourcePlan);
+    mvfxResult result = mvfxSimEmitterPlan(sim, emitter->spawnSource, &sourcePlan);
     if (result == mvfx_success)
     {
         mvfxSpawnNumbers(&sim->views[e], plan, &sim->views[emitter->spawnSource], &sourcePlan,

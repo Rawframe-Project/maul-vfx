@@ -11,8 +11,9 @@
 // scaled with it); the passes a liquid's step takes; a liquid gas poured
 // into a tank (its particles carried by the gas's velocity, their affine
 // matrices read back, the fastest speed reported and splitting the next
-// step as the CPU path's). Skips (77) without an adapter, unless
-// MVFX_RHI_REQUIRED is set.
+// step as the CPU path's), and onto its floor; frames split into
+// substeps, the tank's alone and beside a smoke gas splatted into.
+// Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "gas_liquid.h"
 #include "instance.h"
@@ -129,14 +130,97 @@ static mvfxEmitterDef Pour(void)
 
 static void TestLiquidGas(Gpu* gpu, mvfxGpu* kernels)
 {
-    // One substep a step: a step split into substeps is refused yet. A
-    // fill time past the step's, which the expansion grows over.
+    // One substep a step (TestSplit's split them), and a fill time past
+    // the step's, which the expansion grows over.
     mvfxGasDef gas = Tank(4.0f);
     gas.fillTime = 0.05f;
     mvfxEmitterDef emitter = Pour();
     Compared(gpu, kernels,
              &(Run){.mostApart = 4, .emitters = &emitter, .gases = &gas, .gasCount = 1},
              "a liquid gas poured into a tank");
+    // Poured down onto the tank's floor, where the particles pool and
+    // slide along it.
+    emitter.velocity.direction[1] = -1.0f;
+    emitter.velocity.speed = (mvfxRange){1.0f, 1.5f};
+    Compared(gpu, kernels,
+             &(Run){.mostApart = 4, .emitters = &emitter, .gases = &gas, .gasCount = 1},
+             "a liquid gas poured onto a tank's floor");
+}
+
+static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A courant number of 0.2: gravity's pull over five cells alone
+    // crosses 0.37 of a cell a step, so every step splits in two or more
+    // (up to eight here), each substep the emitter's and then the gas's.
+    // Poured down onto the floor; in the short substeps the gas's closed
+    // faces hold the particles off the tank, so the run asks for no
+    // contacts (the floor scene's slide is TestLiquidGas's).
+    mvfxGasDef gas = Tank(0.2f);
+    mvfxEmitterDef emitter = Pour();
+    emitter.velocity.direction[1] = -1.0f;
+    emitter.velocity.speed = (mvfxRange){1.0f, 1.5f};
+    Run run = {.mostApart = 4,
+               .emitters = &emitter,
+               .emitterCount = 1,
+               .gases = &gas,
+               .gasCount = 1,
+               .adopting = true,
+               .tolerance = 1e-3f};
+    Compare(gpu, kernels, &run, "a liquid gas poured into a tank in substeps");
+}
+
+// A 2D smoke gas of 40 by 32 cells of 0.1 about the origin, rising
+// from a hot box at its floor, which it holds closed.
+static mvfxGasDef Smoke(void)
+{
+    static const mvfxGasSource source = {.shape = mvfx_gasBox,
+                                         .center = {-0.4f, -1.0f, 0.0f},
+                                         .halfExtents = {0.3f, 0.2f, 0.5f},
+                                         .density = 3.0f,
+                                         .temperature = 1.0f};
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = 40;
+    gas.size[1] = 32;
+    gas.size[2] = 1;
+    gas.cellSize = 0.1f;
+    gas.substeps = 2;
+    gas.pressureCycles = 2;
+    gas.closedWalls = mvfx_gasWallMinY;
+    gas.heatLift = 1.5f;
+    gas.sources = &source;
+    gas.sourceCount = 1;
+    return gas;
+}
+
+static void TestSplitBeside(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A split frame of a liquid gas beside a smoke gas, and an emitter
+    // splatting into the smoke and pushed by it: each substep the smoke's
+    // passes splat that substep's particles, and the emitter reads the
+    // faces the substep before left.
+    static const mvfxForce pushed = {
+        .kind = mvfx_forceGas, .strength = 2.0f, .fieldMode = mvfx_fieldAcceleration, .gas = 1};
+    mvfxGasDef gases[2] = {Tank(0.2f), Smoke()};
+    mvfxEmitterDef emitters[2] = {Pour(), Sprite()};
+    emitters[1].capacity = 512;
+    emitters[1].rate = 300.0f;
+    emitters[1].burstCount = 0;
+    emitters[1].lifetime = mvfxRangeSource(0.3f, 0.6f);
+    emitters[1].shape.radius = 0.3f;
+    emitters[1].velocity.speed = (mvfxRange){0.5f, 1.0f};
+    emitters[1].motion.gravity[1] = 0.0f;
+    emitters[1].forces = &pushed;
+    emitters[1].forceCount = 1;
+    emitters[1].gasSplat = (mvfxGasSplat){
+        .enabled = true, .gas = 1, .density = 2.0f, .temperature = 1.0f, .drag = 4.0f};
+    Run run = {.mostApart = 4,
+               .emitters = emitters,
+               .emitterCount = 2,
+               .gases = gases,
+               .gasCount = 2,
+               .adopting = true,
+               .tolerance = 1e-3f};
+    Compare(gpu, kernels, &run, "a split liquid gas beside a smoke splatted into");
 }
 
 static void TestFastest(Gpu* gpu, mvfxGpu* kernels)
@@ -192,6 +276,8 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestPasses(kernels);
     TestPoured(gpu, kernels);
     TestLiquidGas(gpu, kernels);
+    TestSplit(gpu, kernels);
+    TestSplitBeside(gpu, kernels);
     TestFastest(gpu, kernels);
 }
 

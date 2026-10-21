@@ -1061,6 +1061,13 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - A planned instance hands over a gas's plan a substep
   (`mvfxInstance_GetGasStepPlan`): its span, a clear and its obstacles'
   move in the first alone, its forces at its start.
+- The GPU part runs frames that split into steps (an effect with a
+  liquid gas whose courant number cuts the instance's step): each step
+  every emitter's passes and then every gas's, from that step's plans,
+  as the CPU path takes them; the records after the last. Such an
+  effect keeps its emitters' and gases' host state once more a step it
+  may split into, and its frames take their passes once a step. Events
+  written over a split frame are refused yet.
 
 ### Changed
 

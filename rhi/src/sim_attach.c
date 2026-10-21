@@ -33,7 +33,8 @@ mvfxResult mvfxSizeSimFrames(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t 
     }
     int32_t source = sim->views[e].eventSpawn.source;
     mvfxEmitterPlan plan;
-    mvfxResult result = mvfxInstance_GetEmitterPlan(def->context, def->instance, source, &plan);
+    mvfxResult result =
+        mvfxInstance_GetEmitterStepPlan(def->context, def->instance, source, 0, &plan);
     emitter->sourceCopy = plan.capacity;
     emitter->sourceTurned = sim->views[source].arrays.orientation >= 0;
     return result;

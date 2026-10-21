@@ -625,7 +625,7 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
     gas->readCount = 0;
     gas->imported = false;
     static mvfxGasPlan plan;
-    mvfxResult result = mvfxInstance_GetGasPlan(sim->context, sim->instance, g, &plan);
+    mvfxResult result = mvfxSimGasPlan(sim, g, &plan);
     if (result != mvfx_success)
     {
         return result;

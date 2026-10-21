@@ -20,6 +20,9 @@
 #include "maul-rhi/frame.h"
 #include "maul-vfx-rhi/sim.h"
 
+// A split effect's lanes (sim_lanes.c).
+typedef struct SimLanes SimLanes;
+
 // The buffers of the step an emitter has: its numbers, its births, its
 // particles in the buffer they are in and the other, its statistics
 // record, which births have room, the scan's blocks with their boxes and
@@ -394,12 +397,43 @@ struct mvfxGpuSim
     // Its gases, stepped after every emitter.
     int32_t gasCount;
     SimGas gases[MVFX_MAX_GASES];
+    // An effect that splits its steps (one with a liquid gas): its
+    // emitters' and gases' lanes of each step (sim_lanes.c), NULL for
+    // another; the steps of the frame added and the one added now (the
+    // last after them, the first before any).
+    SimLanes* lanes;
+    int32_t steps;
+    int32_t step;
     // The bytes the last mvfxGpuSim_Record uploaded.
     uint64_t uploaded;
     // Whether it is being destroyed: its changing calls from its
     // allocator meanwhile are refused (record mvfx-0001).
     bool ending;
 };
+
+// An effect's steps of a frame that splits (sim_lanes.c): its lanes made
+// after its emitters and gases, and released before them; a dropped
+// frame's undone before a frame is added; each step after the first
+// entered while adding (the step before kept), false without lanes; the
+// last kept before recording, each recalled to record it, and the
+// simulation's own arrays back after.
+bool mvfxCreateSimLanes(mvfxGpuSim* sim);
+void mvfxDestroySimLanes(mvfxGpuSim* sim);
+void mvfxBeginSimSteps(mvfxGpuSim* sim);
+bool mvfxEnterSimStep(mvfxGpuSim* sim, int32_t step);
+void mvfxStoreSimSteps(mvfxGpuSim* sim, int32_t steps);
+void mvfxRecallSimStep(mvfxGpuSim* sim, int32_t step);
+void mvfxEndSimSteps(mvfxGpuSim* sim);
+
+// Prepares a frame before its steps (sim_frame.c): every emitter's grids
+// of the instance's colliders and its mesh placed, the passes a dropped
+// frame left cleared; the depth and normal textures bound.
+mvfxResult mvfxPrepareSimFrame(mvfxGpuSim* sim);
+
+// An emitter's plan, and a gas's, of the step the simulation adds (sim_lanes.c):
+// the instance's plan of that step, or of its last when it holds fewer.
+mvfxResult mvfxSimEmitterPlan(const mvfxGpuSim* sim, int32_t e, mvfxEmitterPlan* plan);
+mvfxResult mvfxSimGasPlan(const mvfxGpuSim* sim, int32_t g, mvfxGasPlan* plan);
 
 // Records a kernel's pass p over an emitter's buffers (sim.c), its root
 // block 0; or a kernel in a pass of its own with these root words.

@@ -271,7 +271,12 @@ extern "C"
     /// its forces and its own obstacles read (mvfxGridView's bytes, each
     /// rounded up to 4, each grid once) and, taking the instance's
     /// colliders as obstacles, the room hostGridBytes says; and 10,384 for
-    /// its numbers, statistics and reads.
+    /// its numbers, statistics and reads. An effect with a liquid gas,
+    /// whose frames may split into steps (mvfxInstance_GetPlanSteps), keeps
+    /// from its allocator its host state of each emitter and each gas (about
+    /// 30 KiB an emitter, 13 KiB a gas, with their arrays of passes) once
+    /// more for each step after the first it may split into
+    /// (MVFX_MAX_PLAN_STEPS), every step sharing the device buffers.
     ///
     /// @param def         The def, from mvfxDefaultGpuSimDef.
     /// @param simOut      Receives the simulation; NULL on failure.
@@ -606,7 +611,9 @@ extern "C"
     /// liquid when it has them. A particle liquid adds a pass, then each
     /// substep 11, three an iteration, two with viscosity and three with
     /// confinement: about 100 a step at its defaults, thousands at its
-    /// most.
+    /// most. A frame of an effect with a liquid gas takes them once for
+    /// each step it splits into (mvfxInstance_GetPlanSteps), at most
+    /// MVFX_MAX_PLAN_STEPS.
     ///
     /// @param sim      The simulation.
     /// @param emitter  The emitter's index in its effect.
@@ -634,7 +641,9 @@ extern "C"
     /// (one more with obstacles), the solve as a substep's, and five for
     /// the faces of liquid kept, the velocity extended two cells into the
     /// air, the walls closed and the particles' velocities read back; its
-    /// read back says whether it holds anything.
+    /// read back says whether it holds anything. A frame of an effect with
+    /// a liquid gas takes a gas's passes once for each step it splits into
+    /// (mvfxInstance_GetPlanSteps), at most MVFX_MAX_PLAN_STEPS.
     ///
     /// @param sim  The simulation.
     /// @param gas  The gas's index in its effect.

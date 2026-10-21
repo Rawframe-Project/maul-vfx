@@ -129,7 +129,7 @@ mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
         return mvfx_errorLimit;
     }
     mvfxEmitterPlan plan;
-    result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, &plan);
+    result = mvfxSimEmitterPlan(sim, def->emitter, &plan);
     if (result != mvfx_success)
     {
         return result;
@@ -175,8 +175,7 @@ mvfxResult mvfxGpuSim_AddLights(mvfxGpuSim* sim, const mvfxGpuLightsDef* def)
         return mvfx_errorLimit;
     }
     mvfxEmitterPlan plan;
-    mvfxResult result =
-        mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, &plan);
+    mvfxResult result = mvfxSimEmitterPlan(sim, def->emitter, &plan);
     if (result != mvfx_success)
     {
         return result;
@@ -226,7 +225,7 @@ static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfx
         return mvfx_errorLimit;
     }
     mvfxEmitterPlan plan;
-    result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, &plan);
+    result = mvfxSimEmitterPlan(sim, def->emitter, &plan);
     if (result != mvfx_success)
     {
         return result;
@@ -390,7 +389,7 @@ static mvfxResult CheckQuads(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, mvfxL
     {
         return mvfx_errorLimit;
     }
-    return mvfxInstance_GetEmitterPlan(sim->context, sim->instance, def->emitter, plan);
+    return mvfxSimEmitterPlan(sim, def->emitter, plan);
 }
 
 // Adds the passes expanding an emitter's particles into a sink's quads

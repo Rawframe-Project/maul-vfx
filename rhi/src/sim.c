@@ -273,7 +273,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
 {
     Emitter* emitter = &sim->emitters[e];
     mvfxEmitterPlan plan;
-    mvfxResult result = mvfxInstance_GetEmitterPlan(def->context, def->instance, e, &plan);
+    mvfxResult result = mvfxInstance_GetEmitterStepPlan(def->context, def->instance, e, 0, &plan);
     emitter->capacity = plan.capacity;
     emitter->hostCapacity = plan.capacity > 0 ? sim->views[e].hostSpawnCapacity : 0;
     const mvfxEventSpawn* spawn = &sim->views[e].eventSpawn;
@@ -355,7 +355,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
         return mvfx_errorInvalid;
     }
     mvfxEmitterPlan plan;
-    mvfxResult planned = mvfxInstance_GetEmitterPlan(def->context, def->instance, 0, &plan);
+    mvfxResult planned = mvfxInstance_GetEmitterStepPlan(def->context, def->instance, 0, 0, &plan);
     if (planned != mvfx_success)
     {
         return planned == mvfx_errorState ? mvfx_errorInvalid : planned;
@@ -386,6 +386,10 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
         result = mvfxCreateSimGas(sim, &sim->gases[g], (uint32_t)((def->hostGridBytes + 3) / 4))
                      ? mvfx_success
                      : mvfx_errorState;
+    }
+    if (result == mvfx_success && !mvfxCreateSimLanes(sim))
+    {
+        result = mvfx_errorCapacity;
     }
     mvfxSrgbSteps(sim->srgb);
     if (result == mvfx_success &&
@@ -429,6 +433,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         return;
     }
     sim->ending = true;
+    mvfxDestroySimLanes(sim);
     for (int32_t e = 0; e < sim->emitterCount; ++e)
     {
         Emitter* emitter = &sim->emitters[e];
@@ -624,72 +629,6 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
     return !events || mvfxAddEventValuesPass(sim, emitter);
 }
 
-mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim, mrhiResourceId depth,
-                                       mrhiResourceId normals)
-{
-    if (sim == nullptr)
-    {
-        return mvfx_errorInvalid;
-    }
-    if (sim->ending)
-    {
-        return mvfx_errorState;
-    }
-    sim->hostDepth = depth;
-    sim->hostNormals = depth.index1 != 0 ? normals : (mrhiResourceId){0};
-    return mvfx_success;
-}
-
-// Brings the depth and normal textures the step binds into the frame: the
-// host's, or the simulation's own.
-static bool BindTextures(mvfxGpuSim* sim)
-{
-    const mrhiResourceId host[2] = {sim->hostDepth, sim->hostNormals};
-    const mrhiTextureId own[2] = {sim->ownDepth, sim->ownNormals};
-    bool bound = true;
-    for (int32_t t = 0; bound && t < 2; ++t)
-    {
-        sim->bound[t] = host[t];
-        bound = host[t].index1 != 0 ||
-                mrhiImportTexture(sim->device, own[t], &sim->bound[t]) == mrhi_success;
-    }
-    return bound;
-}
-
-// Places every emitter's grids of the instance's colliders for the step,
-// clearing the passes a frame the host dropped left behind.
-static mvfxResult PlaceGrids(mvfxGpuSim* sim)
-{
-    mvfxEmitterPlan plan;
-    for (int32_t e = 0; e < sim->emitterCount; ++e)
-    {
-        Emitter* emitter = &sim->emitters[e];
-        emitter->added = false;
-        emitter->records.count = 0;
-        mvfxResult result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, e, &plan);
-        if (result != mvfx_success)
-        {
-            return result;
-        }
-        if (emitter->capacity > 0 && plan.depth.enabled && sim->hostDepth.index1 == 0)
-        {
-            return mvfx_errorState;
-        }
-        if (emitter->capacity > 0 &&
-            !mvfxPlaceHostGrids(sim->context, plan.colliders, plan.colliderCount,
-                                plan.ownColliderCount, &emitter->gridLayout))
-        {
-            return mvfx_errorCapacity;
-        }
-        result = emitter->meshImage != nullptr ? mvfxPlaceSimMesh(sim, e) : mvfx_success;
-        if (result != mvfx_success)
-        {
-            return result;
-        }
-    }
-    return mvfx_success;
-}
-
 // Writes an emitter's numbers for its plan's step, with each grid where its
 // layout has it.
 static void StepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)
@@ -718,7 +657,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
 {
     Emitter* emitter = &sim->emitters[e];
     mvfxEmitterPlan plan;
-    mvfxResult result = mvfxInstance_GetEmitterPlan(sim->context, sim->instance, e, &plan);
+    mvfxResult result = mvfxSimEmitterPlan(sim, e, &plan);
     if (result != mvfx_success || emitter->capacity == 0)
     {
         return result;
@@ -767,24 +706,33 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
     {
         return mvfx_errorState;
     }
-    // The instance's colliders change at any step: their grids go in the
-    // room the def sets aside, every emitter's placed before a pass is
-    // added, so a step refused adds none.
-    mvfxResult result = PlaceGrids(sim);
-    if (result == mvfx_success && !BindTextures(sim))
+    // The plans' steps, each a lane of every emitter and gas when there
+    // are more (sim_lanes.c).
+    mvfxBeginSimSteps(sim);
+    sim->step = 0;
+    sim->steps = 0;
+    int32_t steps = 0;
+    mvfxResult result = mvfxInstance_GetPlanSteps(sim->context, sim->instance, &steps);
+    result = result == mvfx_success ? mvfxPrepareSimFrame(sim) : result;
+    for (int32_t s = 0; result == mvfx_success && s < steps; ++s)
     {
-        result = mvfx_errorState;
+        if (s > 0 && !mvfxEnterSimStep(sim, s))
+        {
+            return mvfx_errorState;
+        }
+        sim->step = s;
+        // In step order: an emitter's source's passes before its own; the
+        // gases after them all.
+        for (int32_t n = 0; result == mvfx_success && n < sim->emitterCount; ++n)
+        {
+            result = AddStep(sim, sim->order[n]);
+        }
+        for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
+        {
+            result = mvfxAddSimGasPasses(sim, g);
+        }
     }
-    // In step order: an emitter's source's passes before its own; the
-    // gases after them all.
-    for (int32_t n = 0; result == mvfx_success && n < sim->emitterCount; ++n)
-    {
-        result = AddStep(sim, sim->order[n]);
-    }
-    for (int32_t g = 0; result == mvfx_success && g < sim->gasCount; ++g)
-    {
-        result = mvfxAddSimGasPasses(sim, g);
-    }
+    sim->steps = result == mvfx_success ? steps : 0;
     return result;
 }
 
@@ -923,6 +871,21 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
     return recorded;
 }
 
+// Records a step's emitters' passes, then its gases'.
+static bool RecordSteps(mvfxGpuSim* sim)
+{
+    bool recorded = true;
+    for (int32_t n = 0; recorded && n < sim->emitterCount; ++n)
+    {
+        recorded = RecordStep(sim, &sim->emitters[sim->order[n]]);
+    }
+    for (int32_t g = 0; recorded && g < sim->gasCount; ++g)
+    {
+        recorded = mvfxRecordSimGas(sim, &sim->gases[g]);
+    }
+    return recorded;
+}
+
 mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
 {
     if (sim == nullptr)
@@ -949,22 +912,32 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
         .spriteQuads = mvfxGpuPipeline(sim->gpu, mvfx_kernelSpriteQuads),
         .sheetFit = mvfxGpuPipeline(sim->gpu, mvfx_kernelSheetFit),
         .sheetPoints = mvfxGpuPipeline(sim->gpu, mvfx_kernelSheetPoints)};
-    for (int32_t n = 0; n < sim->emitterCount; ++n)
+    // Each step's emitters and gases, the last step's record passes after
+    // them; a split frame's steps recalled in turn (sim_lanes.c).
+    bool split = sim->steps > 1;
+    if (split)
     {
-        Emitter* emitter = &sim->emitters[sim->order[n]];
-        // The step's passes, then the record passes after them.
-        if (!RecordStep(sim, emitter) ||
-            !mvfxRecordRecordPasses(sim->device, &sim->uploaded, &pipelines, &emitter->records))
-        {
-            return mvfx_errorState;
-        }
+        mvfxStoreSimSteps(sim, sim->steps);
     }
-    for (int32_t g = 0; g < sim->gasCount; ++g)
+    bool recorded = true;
+    for (int32_t s = 0; recorded && s < (split ? sim->steps : 1); ++s)
     {
-        if (!mvfxRecordSimGas(sim, &sim->gases[g]))
+        if (split)
         {
-            return mvfx_errorState;
+            mvfxRecallSimStep(sim, s);
         }
+        recorded = RecordSteps(sim);
+    }
+    for (int32_t n = 0; recorded && n < sim->emitterCount; ++n)
+    {
+        recorded = mvfxRecordRecordPasses(sim->device, &sim->uploaded, &pipelines,
+                                          &sim->emitters[sim->order[n]].records);
+    }
+    mvfxEndSimSteps(sim);
+    sim->steps = 0;
+    if (!recorded)
+    {
+        return mvfx_errorState;
     }
     // The host's textures were the frame's.
     sim->hostDepth = (mrhiResourceId){0};

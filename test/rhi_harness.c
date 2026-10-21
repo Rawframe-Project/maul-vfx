@@ -80,6 +80,12 @@ static bool Open(Gpu* gpu)
     // particles read back.
     deviceDef.deviceLimits.frameUploadBytes = 16u << 20u;
     deviceDef.deviceLimits.readbackBytes = 16u << 20u;
+    // Room for a frame that splits into the most steps
+    // (MVFX_MAX_PLAN_STEPS), each a liquid gas's and its emitter's passes.
+    deviceDef.deviceLimits.framePasses = 2048u;
+    deviceDef.deviceLimits.frameAccesses = 32768u;
+    deviceDef.deviceLimits.frameBarriers = 32768u;
+    deviceDef.deviceLimits.frameCommandBytes = 8u << 20u;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
            mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
            record.outcome == mrhi_success;
@@ -510,7 +516,8 @@ static bool SameNeighbors(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t
 }
 
 // Every value a birth draws, as moved since, of the GPU's particle g
-// against the CPU path's particle c, and its neighbor attributes.
+// against the CPU path's particle c, its affine matrix (a grid liquid's)
+// and its neighbor attributes.
 static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
 {
     const mvfxAttributeArrays* a = &s_arrays;
@@ -524,7 +531,8 @@ static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
                 SameValue(cpu, e, g, c, a->orientation, mvfx_attributeOrientationX, 4, false) &&
                 SameValue(cpu, e, g, c, a->angular, mvfx_attributeAngularX, 3, false) &&
                 SameValue(cpu, e, g, c, a->drag, mvfx_attributeDrag, 1, false) &&
-                SameValue(cpu, e, g, c, a->sleep, mvfx_attributeSleep, 4, false);
+                SameValue(cpu, e, g, c, a->sleep, mvfx_attributeSleep, 4, false) &&
+                SameValue(cpu, e, g, c, a->affine, mvfx_attributeAffine, 9, false);
     for (int32_t n = 0; same && n < compiled->customCount; ++n)
     {
         same = SameValue(cpu, e, g, c, a->custom[n], mvfx_attributeCustom + 4 * n,
@@ -775,6 +783,17 @@ static bool SameChildren(const mvfxInstance* cpu, int32_t e)
     return same;
 }
 
+// The planned instance's plan of an emitter for the last step of the
+// context's (the whole step's when it is one).
+static mvfxResult LastPlan(int32_t e, mvfxEmitterPlan* plan)
+{
+    int32_t steps = 0;
+    mvfxResult result = mvfxInstance_GetPlanSteps(s_context, s_planned, &steps);
+    return result == mvfx_success
+               ? mvfxInstance_GetEmitterStepPlan(s_context, s_planned, e, steps - 1, plan)
+               : result;
+}
+
 // Whether the GPU's particles are the CPU path's, merged by serial (both
 // pools keep serial order): each pair the same (SameParticle), and a
 // particle that differs, or that one path holds alone, only one gone
@@ -797,8 +816,7 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
                               mvfxAttributeArray(cpu, e, mvfx_attributePositionY),
                               mvfxAttributeArray(cpu, e, mvfx_attributePositionZ)};
     mvfxEmitterPlan plan;
-    if (mvfxInstance_GetEmitterPlan(s_context, s_planned, e, &plan) != mvfx_success ||
-        s_record[2] != 0)
+    if (LastPlan(e, &plan) != mvfx_success || s_record[2] != 0)
     {
         printf("no plan, or births refused: %u\n", s_record[2]);
         return false;
@@ -1195,7 +1213,7 @@ static bool SameEvents(int32_t emitter)
     mvfxEmitterPlan plan;
     if (mvfxInstance_GetEvents(s_context, s_cpu, emitter, &events, &count) != mvfx_success ||
         mvfxInstance_GetEmitterStats(s_context, s_cpu, emitter, &stats) != mvfx_success ||
-        mvfxInstance_GetEmitterPlan(s_context, s_planned, emitter, &plan) != mvfx_success)
+        LastPlan(emitter, &plan) != mvfx_success)
     {
         return false;
     }
@@ -2379,7 +2397,7 @@ static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
     uint32_t breaks = s_record[MVFX_GPU_RIBBON_BREAKS];
     const RibbonState* r = &s_ribbons[e];
     uint32_t shift = r->shifts > 0 ? r->shift[r->shifts - 1] : 0;
-    bool same = mvfxInstance_GetEmitterPlan(s_context, s_planned, e, &plan) == mvfx_success &&
+    bool same = LastPlan(e, &plan) == mvfx_success &&
                 plan.ribbonCounter + breaks + shift == cpu->emitters[e].ribbonCounter;
     if (!same)
     {
