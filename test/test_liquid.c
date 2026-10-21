@@ -3,13 +3,15 @@
 //
 // Liquids: the kernels' rest density against a lattice summed in binary64,
 // 3D and planar; a lattice at rest left in place away from its edges; the
-// refusals, the instance's scale, the neighbor cap's count, XSPH,
-// confinement, a 3D liquid, the tensile correction's size and a planar
-// liquid's Z. The flows measured against references are in
+// refusals, the instance's scale, a plan's kernels, the neighbor cap's
+// count, XSPH, confinement, a 3D liquid, the tensile correction's size
+// and a planar liquid's Z. The flows measured against references are in
 // test_liquid_flow.c.
 
 #include "liquid.h"
 #include "liquid_scene.h"
+
+#include "maul-vfx/plan.h"
 
 #include <math.h>
 #include <string.h>
@@ -470,9 +472,60 @@ static void TestPlanar(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestPlanned(void)
+{
+    // A planned instance's plan hands each liquid's kernels over as its
+    // step makes them: a world emitter's at its instance's scale, a local
+    // one's at 1; the view has the def as compiled.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    mvfxEmitterDef emitters[2] = {Emitter(0.05f), Emitter(0.05f)};
+    emitters[0].space = mvfx_spaceWorld;
+    emitters[1].space = mvfx_spaceLocal;
+    emitters[1].liquid.planar = false;
+    emitters[1].liquid.tensile = 0.2f;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 2;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.planned = true;
+    CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
+    const double origin[3] = {0, 0, 0};
+    const float still[4] = {0, 0, 0, 1};
+    CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, still, 2.0f, true) ==
+                  mvfx_success &&
+              mvfxContext_StepTicks(s_context, 1000) == mvfx_success,
+          "a scaled step");
+    bool same = true;
+    static mvfxEmitterPlan plan;
+    static mvfxEmitterView view;
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        float sigma = e == 0 ? 2.0f : 1.0f;
+        CHECK(mvfxInstance_GetEmitterPlan(s_context, s_instance, e, &plan) == mvfx_success &&
+                  mvfxEffect_GetEmitterView(s_context, effect, e, &view) == mvfx_success,
+              "a plan and a view");
+        mvfxLiquidDef compiled = view.liquid;
+        mvfxLiquidKernel k = mvfxLiquidKernelOf(&compiled, sigma);
+        const mvfxPlannedLiquid* l = &plan.liquid;
+        same = same && l->radius == k.radius && l->square == k.square && l->poly6 == k.poly6 &&
+               l->spiky == k.spiky && l->restInverse == k.restInverse &&
+               l->softening == k.softening && l->tensileInverse == k.tensileInverse &&
+               l->tensileScale == k.tensileScale && l->sigma == sigma &&
+               l->spacing == 0.05f * sigma && compiled.enabled &&
+               compiled.planar == emitters[e].liquid.planar && compiled.spacing == 0.05f;
+    }
+    CHECK(same, "a plan's liquid is the step's kernels at its scale");
+    mvfxDestroyContext(s_context);
+}
+
 int main(void)
 {
     TestKernel();
+    TestPlanned();
     TestRefusals();
     TestScale();
     TestCapped();

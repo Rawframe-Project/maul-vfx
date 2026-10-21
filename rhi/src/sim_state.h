@@ -155,6 +155,19 @@ enum
     SELF_BUFFERS = 5
 };
 
+// The buffers of an emitter's particle liquid (sim_liquid.c): its
+// numbers (liquid.wgsl's Liquid, MVFX_LIQUID_WORDS of them), its words
+// (the sort's keys and indices, the multipliers, the scratch velocities
+// and the curls) and its digit counts.
+#define MVFX_LIQUID_WORDS 24
+enum
+{
+    LIQUID_NUMBERS = 0,
+    LIQUID_WORDS = 1,
+    LIQUID_DIGITS = 2,
+    LIQUID_BUFFERS = 3
+};
+
 // The buffers of an emitter's grid the grid passes bind (with its
 // particles and statistics after the numbers): its numbers, its words,
 // digit counts and count, its source's words and count.
@@ -250,6 +263,17 @@ typedef struct Emitter
     // Its units' self-collision (sim_self.c): whether it has it, its
     // substeps and the step's ticks; its buffers; the frame's ids of its
     // buffers, its numbers (written every step), its passes.
+    // Its particle liquid (sim_liquid.c): whether it has one, its passes
+    // a step (the numbers' write, then each substep's) and the frame's
+    // ids of them, its buffers and the frame's ids of them, its numbers,
+    // the step's ticks.
+    bool liquid;
+    int32_t liquidPassCount;
+    mrhiPassId* liquidPasses;
+    mrhiBufferId liquidBuffers[LIQUID_BUFFERS];
+    mrhiResourceId liquidResources[LIQUID_BUFFERS];
+    uint32_t liquidWords[MVFX_LIQUID_WORDS];
+    int64_t liquidTicks;
     bool selfCollides;
     int32_t selfSubsteps;
     int64_t selfTicks;
@@ -471,6 +495,19 @@ bool mvfxRecordSimPlexus(mvfxGpuSim* sim, Emitter* emitter);
 // shape), then its tables placed after its grids.
 mvfxResult mvfxHoldSimHullFaces(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter);
 void mvfxLaySimTables(const mvfxEmitterView* view, Emitter* emitter);
+
+// A particle liquid (sim_liquid.c): the passes an emitter's liquid takes
+// a step at most (0 for none); made with its emitter (false when the
+// device or the allocator refuses) and destroyed; its numbers for a plan;
+// its passes added after the kill pass, the sim kernel's with the step's
+// accesses, then recorded.
+int32_t mvfxSimLiquidPasses(const mvfxEmitterView* view);
+bool mvfxCreateSimLiquid(mvfxGpuSim* sim, int32_t e);
+void mvfxDestroySimLiquid(mvfxGpuSim* sim, Emitter* emitter);
+void mvfxSimLiquidNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
+bool mvfxAddSimLiquidPasses(mvfxGpuSim* sim, Emitter* emitter, const mrhiAccess* used,
+                            int32_t count);
+bool mvfxRecordSimLiquid(mvfxGpuSim* sim, Emitter* emitter);
 
 // A mesh shape's region (sim_mesh.c): laid out after emitter e's tables,
 // with the host's copy, at the simulation's creation (mvfx_errorStale for

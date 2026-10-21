@@ -26,6 +26,7 @@ typedef enum mvfxContainer
     mvfx_containerGas = 9,
     mvfx_containerGasRead = 10,
     mvfx_containerSplat = 11,
+    mvfx_containerLiquid = 12,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -162,6 +163,21 @@ typedef enum mvfxKernel
     mvfx_kernelSplatRuns = 76,
     mvfx_kernelSplatCells = 77,
     mvfx_kernelSplatFaces = 78,
+    // A particle liquid's sim kernel passes (sim/liquid.wgsl): each
+    // substep's move, each iteration's slide along the colliders.
+    mvfx_kernelLiquidMove = 79,
+    mvfx_kernelLiquidSlide = 80,
+    // A particle liquid's own passes (liquid.wgsl): the grid's keys, each
+    // iteration's multipliers and corrections, the velocities' gain,
+    // viscosity, the curls, confinement and the scratch velocities kept.
+    mvfx_kernelLiquidKeys = 81,
+    mvfx_kernelLiquidMultipliers = 82,
+    mvfx_kernelLiquidCorrections = 83,
+    mvfx_kernelLiquidGain = 84,
+    mvfx_kernelLiquidViscosity = 85,
+    mvfx_kernelLiquidCurls = 86,
+    mvfx_kernelLiquidConfine = 87,
+    mvfx_kernelLiquidKeep = 88,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

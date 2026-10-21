@@ -73,6 +73,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/layout_api.c
     src/life.c
     src/liquid.c
+    src/liquid_kernel.c
     src/emitter_step.c
     src/planner.c
     src/plan_resolved.c
@@ -265,7 +266,7 @@ if(MAUL_VFX_BUILD_TESTS)
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
                 rhi_ribbon_points rhi_beams rhi_lights rhi_sprites rhi_neighbors rhi_steering
-                rhi_contacts rhi_plexus rhi_units rhi_rigid rhi_pairs rhi_gas)
+                rhi_contacts rhi_plexus rhi_units rhi_rigid rhi_pairs rhi_gas rhi_liquid)
             maul_add_test(${suite} WHITEBOX)
             target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c)

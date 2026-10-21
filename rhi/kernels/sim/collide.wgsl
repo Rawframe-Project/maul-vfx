@@ -494,17 +494,26 @@ fn firstHit(s: vec3<f32>, e: vec3<f32>, best: ptr<function, Hit>) -> bool {
 
 // A vector bounced off a surface: its part into it reversed by
 // restitution, its part along it cut by friction.
-fn bounce(n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
+fn bounce(n: vec3<f32>, v: vec3<f32>, response: vec4<f32>) -> vec3<f32> {
     let into = dot3(v, n);
-    let normal = select(into, -params.response.x * into, into < 0.0);
-    let keep = 1.0 - params.response.y;
+    let normal = select(into, -response.x * into, into < 0.0);
+    let keep = 1.0 - response.y;
     return normal * n + keep * (v - into * n);
 }
 
-// A move from start to place met with the colliders: the place and the
-// velocity after its contacts (at most MAX_CONTACTS), which it returns.
+// A move from start to place met with the colliders under the emitter's
+// response: the place and the velocity after its contacts (at most
+// MAX_CONTACTS), which it returns.
 fn collide(start: vec3<f32>, place: ptr<function, vec3<f32>>,
            velocity: ptr<function, vec3<f32>>, first: ptr<function, Hit>) -> u32 {
+    return collideWith(start, place, velocity, first, params.response);
+}
+
+// A move met with the colliders under a response (restitution, friction,
+// unused, rest speed), as the core's mvfxCollide.
+fn collideWith(start: vec3<f32>, place: ptr<function, vec3<f32>>,
+               velocity: ptr<function, vec3<f32>>, first: ptr<function, Hit>,
+               response: vec4<f32>) -> u32 {
     var s = start;
     var contacts = 0u;
     var hit: Hit;
@@ -513,12 +522,12 @@ fn collide(start: vec3<f32>, place: ptr<function, vec3<f32>>,
             *first = hit;
         }
         var rest = (*place - s) * (1.0 - hit.t);
-        *velocity = bounce(hit.normal, *velocity);
-        rest = bounce(hit.normal, rest);
+        *velocity = bounce(hit.normal, *velocity, response);
+        rest = bounce(hit.normal, rest, response);
         // Off the surface by a hair, so the next test does not meet it again.
         let p = hit.point;
         let hair = 1e-6 * (1.0 + abs(p.x) + abs(p.y) + abs(p.z));
-        let stops = dot3(*velocity, *velocity) < params.response.w * params.response.w;
+        let stops = dot3(*velocity, *velocity) < response.w * response.w;
         s = p + hair * hit.normal;
         if (stops) {
             *velocity = vec3<f32>(0.0);

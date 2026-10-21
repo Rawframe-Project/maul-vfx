@@ -250,6 +250,27 @@ extern "C"
         float viewCosine;
     } mvfxPlannedSteering;
 
+    // A particle liquid's kernels as resolved for a plan's step (its
+    // lengths in the particles' space: a world-space emitter's scale with
+    // its instance at the step's end): the kernel radius and its square;
+    // poly6's and the spiky gradient's factors; the inverse of the rest
+    // density; the constraint's softening; the tensile correction's
+    // inverse reference and scale; the spacing; the scale. Zeros for an
+    // emitter without one.
+    typedef struct mvfxPlannedLiquid
+    {
+        float radius;
+        float square;
+        float poly6;
+        float spiky;
+        float restInverse;
+        float softening;
+        float tensileInverse;
+        float tensileScale;
+        float spacing;
+        float sigma;
+    } mvfxPlannedLiquid;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -349,6 +370,8 @@ extern "C"
         // Its steering's targets as resolved (zeros for an emitter that
         // does not steer).
         mvfxPlannedSteering steering;
+        // Its particle liquid's kernels as resolved.
+        mvfxPlannedLiquid liquid;
         // The mask of its neighbor grid's keys (a cell's key is pcg4d of
         // its coordinates, the grid's salt, masked): the least power of
         // two at least twice the capacity, less one; 0 when its view's
@@ -670,6 +693,8 @@ extern "C"
         // The gas it pours into (its mvfxGasSplat's index in the effect;
         // -1 for none).
         int32_t splatGas;
+        // Its liquid as compiled.
+        mvfxLiquidDef liquid;
         // A bit for each kind of collider of its own (1 <<
         // mvfx_colliderPlane and so on), the grid each reads (a
         // heightfield's or a distance grid's; the null id for the others),

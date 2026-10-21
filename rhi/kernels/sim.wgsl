@@ -272,6 +272,9 @@ struct Step {
     unitAero: vec4<f32>,
     unitTears: vec4<u32>,
     unitFrames: vec4<u32>,
+    // Its particle liquid (liquid.wgsl): whether its particles are one,
+    // its substeps and its iterations, unused.
+    liquid: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -339,6 +342,8 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/beam.wgsl
 
 // include: sim/units.wgsl
+
+// include: sim/liquid.wgsl
 
 // include: sim/rigid.wgsl
 

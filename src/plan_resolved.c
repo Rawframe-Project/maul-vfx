@@ -8,6 +8,7 @@
 #include "depth.h"
 #include "force.h"
 #include "kill.h"
+#include "liquid_kernel.h"
 #include "steer.h"
 #include "velocity_modules.h"
 
@@ -73,6 +74,30 @@ static mvfxPlannedModules PlannedModules(const mvfxResolvedVelocityModules* m)
     return out;
 }
 
+// A particle liquid's kernels at the step's end, as the core's
+// mvfxStepLiquid makes them.
+static mvfxPlannedLiquid PlannedLiquid(const mvfxInstance* instance, int32_t emitter)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    const mvfxLiquidDef* def = &compiled->liquid;
+    if (!def->enabled || def->solver != mvfx_liquidParticles)
+    {
+        return (mvfxPlannedLiquid){0};
+    }
+    float sigma = compiled->space == mvfx_spaceWorld ? instance->to.scale : 1.0f;
+    mvfxLiquidKernel k = mvfxLiquidKernelOf(def, sigma);
+    return (mvfxPlannedLiquid){.radius = k.radius,
+                               .square = k.square,
+                               .poly6 = k.poly6,
+                               .spiky = k.spiky,
+                               .restInverse = k.restInverse,
+                               .softening = k.softening,
+                               .tensileInverse = k.tensileInverse,
+                               .tensileScale = k.tensileScale,
+                               .spacing = def->spacing * sigma,
+                               .sigma = sigma};
+}
+
 void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitterPlan* plan)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -104,6 +129,7 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, mvfxEmitter
     mvfxResolveBeam(instance, emitter, &plan->beam);
     // At the plan's start, as its step began.
     mvfxResolveSteering(instance, emitter, &instance->planFrom, &plan->steering);
+    plan->liquid = PlannedLiquid(instance, emitter);
     plan->depth = (mvfxPlannedDepth){0};
     if (state->hasDepth)
     {

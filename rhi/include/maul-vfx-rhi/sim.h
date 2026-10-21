@@ -252,7 +252,11 @@ extern "C"
     /// particle of its capacity (rounded up to blocks of 1,024) and 2,048
     /// a block for its particles in the box and their sort by cell, 8 a
     /// cell of the gas and 8 more for the cells' runs, and 96 for its
-    /// numbers. A smoke gas keeps 8 bytes a face
+    /// numbers; one with a particle liquid 16 bytes a particle of its
+    /// capacity (rounded up to blocks of 1,024) and 2,048 a block for its
+    /// grid's sorted keys and digit counts, 28 a particle for its
+    /// multipliers, scratch velocities and curls, and 96 for its numbers.
+    /// A smoke gas keeps 8 bytes a face
     /// (each axis's faces across it) and 24 a cell of its own for its
     /// fields, 4 more a cell with obstacles for their solids and, for its
     /// work, the larger of 4 bytes a face (an axis of one cell none) and
@@ -588,6 +592,23 @@ extern "C"
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddGasRead(mvfxGpuSim* sim,
                                                                  const mvfxGpuGasReadDef* def);
+
+    /// Returns the passes an emitter's step adds at most
+    /// (mvfxGpuSim_AddPasses), for a host to size its device's frame by
+    /// (mrhiDeviceLimits' framePasses): its own, and those of its neighbor
+    /// grid, contacts, plexus links, units' self-collision and particle
+    /// liquid when it has them. A particle liquid adds a pass, then each
+    /// substep 11, three an iteration, two with viscosity and three with
+    /// confinement: about 100 a step at its defaults, thousands at its
+    /// most.
+    ///
+    /// @param sim      The simulation.
+    /// @param emitter  The emitter's index in its effect.
+    /// @return The passes; 0 for a NULL simulation, an emitter out of
+    ///         range or one of no room.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API int32_t mvfxGpuSim_EmitterPasses(const mvfxGpuSim* sim, int32_t emitter);
 
     /// Returns the passes a gas's step adds at most (mvfxGpuSim_AddPasses),
     /// for a host to size its device's frame by (mrhiDeviceLimits'

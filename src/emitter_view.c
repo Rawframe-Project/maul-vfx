@@ -396,6 +396,7 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
     }
     ForcesOf(e, viewOut);
     viewOut->splatGas = e->gasSplat.enabled ? e->gasSplat.gas : -1;
+    viewOut->liquid = e->liquid;
     ValuesOf(e, viewOut);
     for (int32_t k = 0; k < 9; ++k)
     {

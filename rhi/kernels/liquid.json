@@ -1,0 +1,22 @@
+{
+  "root_block_bytes": 16,
+  "entries": [
+    {"name": "liquidKeys", "stage": "compute", "workgroup": [256, 1, 1]},
+    {"name": "liquidMultipliers", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidCorrections", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidGain", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidViscosity", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidCurls", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidConfine", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidKeep", "stage": "compute", "workgroup": [64, 1, 1]}
+  ],
+  "bindings": [
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 96},
+    {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 4, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4}
+  ],
+  "constants": []
+}

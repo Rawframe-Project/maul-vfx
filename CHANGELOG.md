@@ -1035,6 +1035,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   particles are sorted by gas cell, and each substep every cell and face
   gathers the particles reaching it in the pool's order, as the core's
   splat adds and pulls them. `mvfxEmitterView.splatGas` names the gas.
+- The GPU part runs particle liquids (position-based fluids): each
+  substep a move, a grid of the predicted places, the iterations'
+  multipliers, corrections and slides along the colliders, the
+  velocities' gain, viscosity and confinement, each a pass. A plan hands
+  the liquid's kernels over (`mvfxEmitterPlan.liquid`,
+  `mvfxPlannedLiquid`), the emitter view its def (`liquid`), and
+  `mvfxGpuSim_EmitterPasses` reports the passes an emitter's step takes,
+  thousands for a liquid at its most, for a host to size its device by.
 
 ### Fixed
 

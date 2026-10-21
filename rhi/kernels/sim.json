@@ -15,6 +15,8 @@
     {"name": "rebox", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 8192},
     {"name": "rigid", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidMove", "stage": "compute", "workgroup": [64, 1, 1]},
+    {"name": "liquidSlide", "stage": "compute", "workgroup": [64, 1, 1]},
     {"name": "rigidPairs", "stage": "compute", "workgroup": [256, 1, 1]},
     {"name": "units", "stage": "compute", "workgroup": [256, 1, 1],
      "workgroup_storage_bytes": 8192},
@@ -38,7 +40,7 @@
      "workgroup_storage_bytes": 8196}
   ],
   "bindings": [
-    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9632},
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 9648},
     {"table": 0, "slot": 1, "kind": "storage_buffer", "stages": ["compute"], "min_size": 16},
     {"table": 0, "slot": 2, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
     {"table": 0, "slot": 3, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},

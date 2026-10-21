@@ -29,9 +29,10 @@ fn moveLive(i: u32) {
         return;
     }
     let start = readVector(0u, i, params.words.place) + params.shift.xyz;
-    if (unitPoints() > 1u || params.rigid.y > 0u) {
-        // A unit's point or a rigid body: shifted here, moved by the unit
-        // pass (sim/units.wgsl) or the rigid pass (sim/rigid.wgsl) after.
+    if (unitPoints() > 1u || params.rigid.y > 0u || params.liquid.x != 0u) {
+        // A unit's point, a rigid body or a liquid's particle: shifted
+        // here, moved by the unit pass (sim/units.wgsl), the rigid pass
+        // (sim/rigid.wgsl) or the liquid's passes (liquid.wgsl) after.
         holdUnitPoint(i, start);
         return;
     }

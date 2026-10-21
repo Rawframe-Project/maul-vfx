@@ -982,4 +982,10 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     memcpy(&ribbon[1], &view->ribbon.breakDistance, sizeof(float));
     Rigid(view, tables, words + MVFX_RIGID_FIRST);
     Units(view, plan, words + MVFX_UNITS_FIRST);
+    // A particle liquid: its substeps and iterations (liquid.wgsl's).
+    bool liquid = view->liquid.enabled && view->liquid.solver == mvfx_liquidParticles;
+    words[MVFX_LIQUID_HEAD] = liquid ? 1u : 0u;
+    words[MVFX_LIQUID_HEAD + 1] = liquid ? (uint32_t)view->liquid.substeps : 0u;
+    words[MVFX_LIQUID_HEAD + 2] = liquid ? (uint32_t)view->liquid.iterations : 0u;
+    words[MVFX_LIQUID_HEAD + 3] = 0u;
 }

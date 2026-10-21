@@ -47,7 +47,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
      MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID |       \
-     MVFX_FEATURE_GAS_SPLAT)
+     MVFX_FEATURE_GAS_SPLAT | MVFX_FEATURE_LIQUID)
 #define RUN_FORCES    0x7Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -105,7 +105,10 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                  : 0) |
             // Rigid particles are killed by their strikes' life
             // alone.
-            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0),
+            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0) |
+            // A liquid gas's particles move on its lattice, not run yet.
+            (view->liquid.enabled && view->liquid.solver == mvfx_liquidGrid ? MVFX_FEATURE_LIQUID
+                                                                            : 0),
     };
     return refusal->features == 0;
 }
@@ -323,7 +326,8 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
         (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
          !CreateSortBuffers(sim, &sim->views[e], emitter) || !mvfxCreateSimEvents(sim, e) ||
          !mvfxCreateSimGrid(sim, e) || !mvfxCreateSimContacts(sim, e) ||
-         !mvfxCreateSimPlexus(sim, e) || !mvfxCreateSimSelf(sim, e)))
+         !mvfxCreateSimPlexus(sim, e) || !mvfxCreateSimSelf(sim, e) ||
+         !mvfxCreateSimLiquid(sim, e)))
     {
         result = mvfx_errorState;
     }
@@ -448,6 +452,7 @@ void mvfxDestroyGpuSim(mvfxGpuSim* sim)
         mvfxDestroySimContacts(sim, emitter);
         mvfxDestroySimPlexus(sim, emitter);
         mvfxDestroySimSelf(sim, emitter);
+        mvfxDestroySimLiquid(sim, emitter);
         mvfxRhiRelease(&sim->allocator, emitter->hostWords, HostBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->frameWords, mvfxSimFrameBytes(emitter), 4);
         mvfxRhiRelease(&sim->allocator, emitter->meshImage, emitter->meshBytes, 4);
@@ -543,6 +548,8 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
 static bool AddPassesAfter(mvfxGpuSim* sim, Emitter* emitter, int32_t p, const mrhiAccess* used)
 {
     return (p != PASS_ROOM || mvfxAddSimGridPasses(sim, emitter)) &&
+           (p != PASS_KILL || !emitter->liquid ||
+            mvfxAddSimLiquidPasses(sim, emitter, used, BUFFER_COUNT + 2)) &&
            (p != PASS_KILL || !emitter->selfCollides ||
             mvfxAddSimSelfPasses(sim, emitter, used, BUFFER_COUNT + 2)) &&
            (p != PASS_SCATTER || mvfxAddSimContactPasses(sim, emitter)) &&
@@ -618,21 +625,6 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         }
     }
     return !events || mvfxAddEventValuesPass(sim, emitter);
-}
-
-mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context, const mvfxCollider* colliders,
-                                    int32_t count, int64_t* bytesOut)
-{
-    if (bytesOut != nullptr)
-    {
-        *bytesOut = 0;
-    }
-    if (context == nullptr || bytesOut == nullptr || count < 0 || count > MVFX_MAX_COLLIDERS ||
-        (colliders == nullptr && count > 0))
-    {
-        return mvfx_errorInvalid;
-    }
-    return mvfxHostGridBytes(context, colliders, count, bytesOut) ? mvfx_success : mvfx_errorStale;
 }
 
 mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim, mrhiResourceId depth,
@@ -748,6 +740,7 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     mvfxSimGridNumbers(sim, e, &plan);
     mvfxSimContactNumbers(sim, e, &plan);
     mvfxSimSelfNumbers(sim, e, &plan);
+    mvfxSimLiquidNumbers(sim, e, &plan);
     mvfxSimPlexusNumbers(sim, e, &plan);
     emitter->plannedBirths = plan.births;
     emitter->birthCount = plan.birthCount;
@@ -913,6 +906,7 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
          (emitter->rigidPairs
               ? mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelRigidPairs, 1)
               : mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelRigid, groups))) &&
+        (!emitter->liquid || mvfxRecordSimLiquid(sim, emitter)) &&
         (!emitter->units ||
          (emitter->selfCollides ? mvfxRecordSimSelf(sim, emitter)
                                 : mvfxRecordSimKernel(sim, emitter, PASS_UNITS, mvfx_kernelUnits,
