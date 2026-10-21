@@ -211,6 +211,10 @@ typedef struct Run
     // the paths for the rest of the run; a body tumbling about its middle
     // axis carries a rounding's difference further each step.
     bool adopting;
+    // Whether each step's passes are first added and the frame dropped (a
+    // host whose frame failed), then added again: the simulation goes on
+    // as if the dropped frame never was.
+    bool dropping;
     // For colliding particles, the most that may go apart over the run (no
     // bound but the harness's for 0): rigid bodies' friction and strikes
     // decided apart.

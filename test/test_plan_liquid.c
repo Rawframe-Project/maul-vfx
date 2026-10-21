@@ -7,7 +7,9 @@
 // gravity's alone with no particle alive; the most before any report),
 // and hands over a plan a substep: the span, the move over the first
 // alone, the births by their substep's start, the serials owed; the
-// gas's plan of each substep spans it, the whole plans refused. The speed
+// gas's plan of each substep spans it (its clear in the first alone, its
+// obstacles before as the substep before left them, its forces at its
+// start), the whole plans refused. The speed
 // setter's refusals; births past a plan's room refused; a liquid gas's
 // plan maps its particles; a surface gas still unplannable.
 
@@ -22,6 +24,7 @@
 #include "maul-vfx/plan.h"
 
 #include <math.h>
+#include <string.h>
 
 #define STEP_TICKS (MVFX_TICKS_PER_SECOND / 30)
 
@@ -243,6 +246,80 @@ static void TestSplit(void)
     mvfxDestroyContext(t.context);
 }
 
+static void TestGasSteps(void)
+{
+    // A liquid gas of a courant number of 0.2 (every step split) with an
+    // obstacle, beside a smoke gas stirred by a turbulence scrolling with
+    // time: each gas's substep's plan clears in the context's first
+    // step's first alone; the liquid's knows its obstacles before but in
+    // that first substep, in a later substep where the one before left
+    // them and followed (the CPU path resolves them again each substep);
+    // the smoke's takes its forces at its own start.
+    static const mvfxCollider obstacle = {.kind = mvfx_colliderSphere,
+                                          .space = 1,
+                                          .center = {0.3f, 0.0f, 0.0f},
+                                          .radius = 0.2f,
+                                          .rotation = {0, 0, 0, 1}};
+    static const mvfxForce turbulence = {.kind = mvfx_forceTurbulence,
+                                         .strength = 1.0f,
+                                         .noise = {.frequency = 2.0f,
+                                                   .octaves = 2,
+                                                   .lacunarity = 2.0f,
+                                                   .gain = 0.5f,
+                                                   .scroll = {1.0f, 0.0f, -2.0f}}};
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxGasDef gases[2] = {Liquid(), mvfxDefaultGasDef()};
+    gases[0].courant = 0.2f;
+    gases[0].obstacles = &obstacle;
+    gases[0].obstacleCount = 1;
+    gases[1].size[0] = 4;
+    gases[1].size[1] = 4;
+    gases[1].forces = &turbulence;
+    gases[1].forceCount = 1;
+    mvfxEffectId effect = Effect(context, gases, 2);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    const mvfxGasState* smoke = &mvfxContextInstance(context, planned)->gases[1];
+    int32_t split = 0;
+    int32_t cleared = 0;
+    int32_t obstacles = 0;
+    int32_t forces = 0;
+    for (int32_t s = 0; s < 8; ++s)
+    {
+        int32_t count = 0;
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+                  mvfxInstance_GetPlanSteps(context, planned, &count) == mvfx_success,
+              "stepped");
+        split += count > 1;
+        for (int32_t k = 0; k < count; ++k)
+        {
+            static mvfxGasPlan plan;
+            static mvfxGasPlan stirred;
+            CHECK(mvfxInstance_GetGasStepPlan(context, planned, 0, k, &plan) == mvfx_success &&
+                      mvfxInstance_GetGasStepPlan(context, planned, 1, k, &stirred) == mvfx_success,
+                  "the gases' step's plans");
+            cleared += plan.cleared != (s == 0 && k == 0) || stirred.cleared != plan.cleared;
+            bool still = plan.obstaclesKnown && plan.obstacleCount == 1 &&
+                         memcmp(plan.obstaclesBefore[0].center, plan.obstacles[0].center,
+                                sizeof plan.obstacles[0].center) == 0;
+            bool first = s == 0 && k == 0;
+            obstacles += first ? plan.obstaclesKnown || plan.obstacleMoved[0]
+                               : !still || !plan.obstacleMoved[0];
+            mvfxPlannedForce at = mvfxPlannedForceOf(
+                &smoke->planForces[0], (double)stirred.start / (double)MVFX_TICKS_PER_SECOND);
+            forces += stirred.forceCount != 1 ||
+                      memcmp(stirred.forces[0].fraction, at.fraction, sizeof at.fraction) != 0 ||
+                      memcmp(stirred.forces[0].cell, at.cell, sizeof at.cell) != 0;
+        }
+    }
+    CHECK(split == 8, "every step split");
+    CHECK(cleared == 0, "a clear in the first step's first substep alone");
+    CHECK(obstacles == 0, "each substep's obstacles");
+    CHECK(forces == 0, "each substep's forces at its start");
+    mvfxDestroyContext(context);
+}
+
 static void TestSpeedSetter(void)
 {
     // The latest report counts, an older one is ignored; refused for a
@@ -405,6 +482,7 @@ static void TestSurfaceRefused(void)
 int main(void)
 {
     TestSplit();
+    TestGasSteps();
     TestSpeedSetter();
     TestPlanRoom();
     TestLiquidMap();

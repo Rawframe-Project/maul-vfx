@@ -2010,9 +2010,18 @@ bool ReportGases(Gpu* gpu, mvfxGpuSim* sim)
     return reported;
 }
 
+// Whether Simulate drops a frame of the passes first (Run.dropping).
+static bool s_dropping;
+
 bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 {
     mrhiFrameDef frame = mrhiDefaultFrameDef();
+    if (s_dropping &&
+        (mrhiBeginFrame(gpu->device, &frame) != mrhi_success ||
+         mvfxGpuSim_AddPasses(sim) != mvfx_success || mrhiDropFrame(gpu->device) != mrhi_success))
+    {
+        return false;
+    }
     if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
@@ -2592,6 +2601,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
     s_stepsApart = 0;
+    s_dropping = run->dropping;
     s_ribbonPoints = run->ribbons;
     s_strips = run->strips;
     s_plexus = run->plexus;
@@ -2666,7 +2676,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     memset(s_ribbons, 0, sizeof s_ribbons);
     s_breaksApart = 0;
     bool same = sim != NULL;
-    int32_t most[2] = {0, 0};
+    int32_t most[RUN_EMITTERS] = {0};
     int32_t steps = run->steps > 0 ? run->steps : STEPS;
     if (run->far)
     {
@@ -2758,6 +2768,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     {
         printf("  differs at step %d\n", s - 1);
     }
+    s_dropping = false;
     printf("%s: largest relative differences, place %g, velocity %g, bounds %g\n", what,
            (double)s_placeError, (double)s_velocityError, s_boundsError);
     bool eventful = false;

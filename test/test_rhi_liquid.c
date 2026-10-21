@@ -12,9 +12,10 @@
 // into a tank (its particles carried by the gas's velocity, their affine
 // matrices read back, the fastest speed reported and splitting the next
 // step as the CPU path's), and onto its floor; frames split into
-// substeps, the tank's alone, beside a smoke gas splatted into, and
-// beside an emitter's events gathered over the substeps and the births
-// they give.
+// substeps, the tank's alone (and with each frame dropped once first),
+// beside a smoke gas splatted into, beside an emitter's events gathered
+// over the substeps and the births they give, and its records after the
+// last substep.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "gas_liquid.h"
@@ -169,6 +170,56 @@ static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
                .adopting = true,
                .tolerance = 1e-3f};
     Compare(gpu, kernels, &run, "a liquid gas poured into a tank in substeps");
+    // Each frame's passes added and dropped once first: the dropped
+    // frame's steps undone.
+    run.dropping = true;
+    Compare(gpu, kernels, &run, "a liquid gas in substeps, each frame dropped once first");
+}
+
+static void TestSplitRecords(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A split frame's records, written after its last step from that
+    // step's plan: places and velocities, ages, and sizes and colours
+    // over life (each at the frame's end), of the tank's poured liquid.
+    static const mvfxLayoutField fields[5] = {
+        {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
+        {.field = mvfx_recordVelocity, .format = mvfx_formatFloat32, .components = 3, .offset = 12},
+        {.field = mvfx_recordAge, .format = mvfx_formatFloat32, .components = 1, .offset = 24},
+        {.field = mvfx_recordSize, .format = mvfx_formatFloat32, .components = 3, .offset = 28},
+        {.field = mvfx_recordColor, .format = mvfx_formatFloat32, .components = 4, .offset = 40}};
+    static const mvfxCurveKey keys[2] = {
+        {.time = 0, .value = 1, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
+    static const mvfxColorKey colors[2] = {{0, 1, 0.5f, 0}, {1, 0, 0.25f, 1}};
+    static const mvfxAlphaKey alphas[2] = {{0, 1}, {1, 0.5f}};
+    const mvfxCurve curve = {.keys = keys, .keyCount = 2};
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = fields;
+    layout.fieldCount = 5;
+    layout.stride = 56;
+    mvfxGasDef gas = Tank(0.2f);
+    mvfxEmitterDef emitter = Pour();
+    emitter.velocity.direction[1] = -1.0f;
+    emitter.velocity.speed = (mvfxRange){1.0f, 1.5f};
+    emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
+    emitter.overLife =
+        (mvfxOverLife){.color = {.enabled = true,
+                                 .input = mvfx_overAge,
+                                 .gradient = {.colorKeys = colors,
+                                              .colorKeyCount = 2,
+                                              .alphaKeys = alphas,
+                                              .alphaKeyCount = 2}},
+                       .size = {.enabled = true, .size = {{.value = 2, .curve = curve}}}};
+    Run run = {.mostApart = 4,
+               .emitters = &emitter,
+               .emitterCount = 1,
+               .gases = &gas,
+               .gasCount = 1,
+               .adopting = true,
+               .tolerance = 1e-3f,
+               .layout = &layout,
+               .recordCapacity = 512};
+    Compare(gpu, kernels, &run, "a split frame's records");
 }
 
 // A 2D smoke gas of 40 by 32 cells of 0.1 about the origin, rising
@@ -328,6 +379,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestSplit(gpu, kernels);
     TestSplitBeside(gpu, kernels);
     TestSplitEvents(gpu, kernels);
+    TestSplitRecords(gpu, kernels);
     TestFastest(gpu, kernels);
 }
 
