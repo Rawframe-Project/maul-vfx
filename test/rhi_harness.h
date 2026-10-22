@@ -260,6 +260,10 @@ void SetDepthPixel(int32_t column, int32_t row, float depth);
 // emitter's particles and statistics record back.
 bool Simulate(Gpu* gpu, mvfxGpuSim* sim);
 bool Finish(Gpu* gpu);
+// Whether Simulate first adds each step's passes and drops the frame (a
+// host whose frame failed), as a run's dropping does, for a test's own
+// steps.
+void DropFrames(bool dropping);
 // Reads each gas's statistics record of a run's simulation back after its
 // step and reports it to the run's planned instance, as a host does a
 // frame or more late: a stopped instance finishes by it, and a liquid's

@@ -298,6 +298,8 @@ bool mvfxEnterSimStep(mvfxGpuSim* sim, int32_t step)
     {
         SimGas* gas = &sim->gases[g];
         lanes->gases[(step - 1) * lanes->gasCount + g] = *gas;
+        gas->now = gas->added ? gas->after : gas->now;
+        gas->added = false;
         GasArrays* own = &lanes->gasArrays[step * lanes->gasCount + g];
         if (gas->splatCount > 0)
         {

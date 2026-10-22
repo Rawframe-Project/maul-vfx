@@ -7,11 +7,10 @@
 // size. Covered: sources pouring and setting velocity, buoyancy, decay,
 // closed and open walls, levels above the tail and in it, no solve, a
 // 2D gas, a clear; every force; MacCormack's carry, vorticity
-// confinement, the burn expanding (less its mean in a sealed box); the
-// holds read back and reported, a stopped instance finishing; obstacles
-// still and moving, of every kind; reads
-// in every format over a box with padded pitches, the padding kept; the
-// refusals.
+// confinement, the burn expanding (less its mean in a sealed box); frames
+// dropped; the holds read back and reported, a stopped instance
+// finishing; obstacles still and moving, of every kind; reads in every
+// format over a box with padded pitches, the padding kept; the refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -421,6 +420,14 @@ static void TestPlumes(Gpu* gpu, mvfxGpu* kernels)
     gas = Plume(16, 16, 16, &s_sphere);
     gas.pressureCycles = 0;
     Steps(gpu, kernels, &gas, NULL, 20, false, "a gas without a solve");
+    // One substep, which flips the fields' buffers once a step, each
+    // frame's passes added and dropped first: the dropped frame leaves the
+    // gas as it was.
+    gas = Plume(16, 16, 16, &s_sphere);
+    gas.substeps = 1;
+    DropFrames(true);
+    Steps(gpu, kernels, &gas, NULL, 20, false, "a plume of one substep, its frames dropped once");
+    DropFrames(false);
 }
 
 // The bytes of a read in each path's buffer, filled alike first: the

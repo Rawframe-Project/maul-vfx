@@ -561,15 +561,15 @@ static void Plan(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan)
     gas->clears = plan->cleared;
     if (plan->cleared)
     {
-        gas->now = 0;
         gas->prepared = false;
     }
+    uint32_t now = plan->cleared ? 0u : gas->now;
     // Obstacles mark the solids each step, and the levels' areas follow.
     bool solids = HasObstacles(def);
     if (solids)
     {
         ObstacleNumbers(gas, plan);
-        Push(gas, mvfx_kernelGasMark, 0, gas->now, 0, 0, Groups((uint32_t)view->cells));
+        Push(gas, mvfx_kernelGasMark, 0, now, 0, 0, Groups((uint32_t)view->cells));
     }
     for (int32_t l = 0; (!gas->prepared || solids) && l < view->levelCount; ++l)
     {
@@ -580,7 +580,6 @@ static void Plan(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan)
     }
     int64_t from = plan->start;
     int64_t to = plan->start + plan->ticks;
-    uint32_t now = gas->now;
     if (def->kind == mvfx_gasLiquid)
     {
         // One step about the projection, as the core's (sim_liquid_gas.c);
@@ -614,7 +613,7 @@ static void Plan(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan)
     gas->record[MVFX_GPU_GAS_FASTEST] = 0;
     gas->record[MVFX_GPU_GAS_TICK] = (uint32_t)end;
     gas->record[MVFX_GPU_GAS_TICK + 1] = (uint32_t)(end >> 32u);
-    gas->now = now;
+    gas->after = now;
 }
 
 mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
@@ -774,6 +773,7 @@ static bool RecordRead(mvfxGpuSim* sim, const SimGas* gas, const GasRead* read)
 bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas)
 {
     bool recorded = !gas->added || RecordStep(sim, gas);
+    gas->now = gas->added ? gas->after : gas->now;
     gas->added = false;
     for (int32_t r = 0; recorded && r < gas->readCount; ++r)
     {
@@ -844,7 +844,7 @@ static bool ReadWords(const SimGas* gas, const mvfxGpuGasReadDef* def, uint32_t 
     *written = (uint32_t)((def->offset + end + 3u) / 4u - def->offset / 4u);
     const uint32_t head[20] = {(uint32_t)read->field,
                                (uint32_t)read->format,
-                               gas->now,
+                               gas->added ? gas->after : gas->now,
                                *written,
                                (uint32_t)read->first[0],
                                (uint32_t)read->first[1],

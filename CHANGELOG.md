@@ -1105,6 +1105,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 
 ### Fixed
 
+- A smoke gas on the GPU went on from the wrong fields after a frame the
+  host dropped when its step flips them an odd number of times (one
+  substep, the default): the passes added for the dropped frame moved
+  it on. A gas's step now moves it when recorded, so a dropped frame
+  leaves it as it was.
 - An emitter's events gather over every step an instance takes in a
   context step (a liquid gas's substeps, the ticks an instance held off
   screen): each step began them afresh, so the host read the last

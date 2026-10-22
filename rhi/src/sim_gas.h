@@ -116,9 +116,12 @@ typedef struct SimGas
     mvfxGpuGrids grids;
     // The first level the tail runs in one workgroup.
     uint32_t tail;
-    // The buffer current now, and whether the levels' areas and
-    // coefficients are made (not since the start or a clear).
+    // The buffer current now, and after the step added (current once it
+    // is recorded: a frame the host drops leaves the gas as it was); and
+    // whether the levels' areas and coefficients are made (not since the
+    // start or a clear).
     uint32_t now;
+    uint32_t after;
     // The statistics record the step's write starts with: nothing held,
     // the step's end.
     uint32_t record[MVFX_GPU_GAS_STATISTICS_WORDS];

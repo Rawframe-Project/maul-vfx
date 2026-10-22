@@ -2014,6 +2014,11 @@ bool ReportGases(Gpu* gpu, mvfxGpuSim* sim)
 // Whether Simulate drops a frame of the passes first (Run.dropping).
 static bool s_dropping;
 
+void DropFrames(bool dropping)
+{
+    s_dropping = dropping;
+}
+
 bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 {
     mrhiFrameDef frame = mrhiDefaultFrameDef();
