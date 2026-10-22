@@ -955,6 +955,13 @@ extern "C"
         // For a liquid gas the emitter whose particles move on it, for a
         // surface gas the one whose particles it wraps; -1 for smoke.
         int32_t emitter;
+        // A surface gas's buckets of its particles: a bucket's cells along
+        // each axis (its reach in cells rounded up, at least 1), and the
+        // buckets along each axis (along an axis of more than one cell,
+        // those over its cells and one beyond each end; else 1). 0 for
+        // other gases.
+        int32_t bucket;
+        int32_t buckets[3];
     } mvfxGasView;
 
     /// Returns an emitter of an effect as compiled.

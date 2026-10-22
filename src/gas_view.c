@@ -35,6 +35,7 @@ mvfxResult mvfxEffect_GetGasView(const mvfxContext* context, mvfxEffectId effect
         .cells = g->cells,
         .levelCount = g->levelCount,
         .emitter = g->emitter,
+        .bucket = g->bucket,
     };
     viewOut->def.sources = g->def.sourceCount > 0 ? g->sources : nullptr;
     viewOut->def.forces = g->def.forceCount > 0 ? g->forces : nullptr;
@@ -42,6 +43,7 @@ mvfxResult mvfxEffect_GetGasView(const mvfxContext* context, mvfxEffectId effect
     for (int32_t k = 0; k < 3; ++k)
     {
         viewOut->faces[k] = g->faces[k];
+        viewOut->buckets[k] = g->buckets[k];
     }
     for (int32_t l = 0; l < g->levelCount; ++l)
     {

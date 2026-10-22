@@ -19,6 +19,7 @@
 #include "../kernels/sim_container.h"
 #include "../kernels/sort_container.h"
 #include "../kernels/splat_container.h"
+#include "../kernels/surface_gas_container.h"
 #include "../kernels/water_container.h"
 #include "../kernels/water_read_container.h"
 #include "maul-rhi/shader.h"
@@ -57,6 +58,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_liquidGasContainer, sizeof s_liquidGasContainer},
     {s_waterContainer, sizeof s_waterContainer},
     {s_waterReadContainer, sizeof s_waterReadContainer},
+    {s_surfaceGasContainer, sizeof s_surfaceGasContainer},
 };
 
 // A kernel's container and entry.
@@ -176,6 +178,10 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerWater, "shallowDepths"},
     {mvfx_containerWater, "shallowSettle"},
     {mvfx_containerWater, "waterCrossSum"},
+    {mvfx_containerSurfaceGas, "surfaceKeys"},
+    {mvfx_containerSurfaceGas, "surfaceRuns"},
+    {mvfx_containerSurfaceGas, "surfaceField"},
+    {mvfx_containerSurfaceGas, "surfaceSmooth"},
 };
 
 struct mvfxGpu

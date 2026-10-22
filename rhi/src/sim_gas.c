@@ -43,10 +43,11 @@
 #define FACES_SOURCES 1u
 #define FACES_AFTER   2u
 
-// Whether the part runs a gas: smoke.
+// Whether the part runs a gas: smoke, a liquid gas and a surface.
 static bool Runs(const mvfxGasView* view)
 {
-    return view->def.kind == mvfx_gasSmoke || view->def.kind == mvfx_gasLiquid;
+    return view->def.kind == mvfx_gasSmoke || view->def.kind == mvfx_gasLiquid ||
+           view->def.kind == mvfx_gasSurface;
 }
 
 // Whether a gas has obstacles: its own, or the instance's colliders.
@@ -165,6 +166,10 @@ int32_t mvfxSimGasPasses(const mvfxGasView* view, int32_t splats)
     int32_t solids = HasObstacles(def) ? 2 : 0;
     int32_t substep = 2 + confine + 2 * CarryPasses(def) + solids + burn + mean + solve + 1;
     int32_t mark = HasObstacles(def) ? 1 : 0;
+    if (def->kind == mvfx_gasSurface)
+    {
+        return 1 + mvfxSimSurfaceGasPasses(view);
+    }
     if (def->kind == mvfx_gasLiquid)
     {
         return 1 + mark + 2 * view->levelCount + mvfxSimLiquidGasPasses(view, mean + solve + 1);
@@ -190,45 +195,15 @@ uint32_t mvfxSimGasFacesAt(const SimGas* gas)
     return gas->words[WORD_FACES + 4u * gas->now];
 }
 
-// The fields' and the solve's floats, writing each array's first float
-// into the numbers.
-static void Lay(SimGas* gas, uint64_t* fields, uint64_t* solve)
+// The solve's levels' floats, writing each array's first float into the
+// numbers.
+static uint64_t LayLevels(SimGas* gas)
 {
     const mvfxGasView* view = &gas->view;
-    uint32_t* w = gas->words;
     uint32_t at = 0;
-    for (int32_t b = 0; b < 2; ++b)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            w[WORD_FACES + 4u * (uint32_t)b + (uint32_t)k] = at;
-            at += (uint32_t)view->faces[k];
-        }
-    }
-    for (int32_t b = 0; b < 2; ++b)
-    {
-        for (int32_t f = 0; f < 3; ++f)
-        {
-            w[WORD_CELLS + 4u * (uint32_t)b + (uint32_t)f] = at;
-            at += (uint32_t)view->cells;
-        }
-    }
-    // The cells' solids, with obstacles; the work: a curl's three arrays,
-    // MacCormack's trace ahead of every face or of the three scalars, or
-    // the expansion; then its mean.
-    w[WORD_FACES + 3u] = at;
-    at += HasObstacles(&view->def) ? (uint32_t)view->cells : 0u;
-    uint32_t scalars = 3u * (uint32_t)view->cells;
-    uint32_t faces = AllFaces(view, 0);
-    w[WORD_CELLS + 3u] = at;
-    at += faces > scalars ? faces : scalars;
-    w[WORD_CELLS + 7u] = at;
-    at += 1u;
-    *fields = at;
-    at = 0;
     for (int32_t l = 0; l < view->levelCount; ++l)
     {
-        uint32_t* level = w + WORD_LEVELS + 16u * (uint32_t)l;
+        uint32_t* level = gas->words + WORD_LEVELS + 16u * (uint32_t)l;
         uint32_t cells = LevelCells(view, l);
         for (int32_t k = 0; k < 3; ++k)
         {
@@ -256,7 +231,47 @@ static void Lay(SimGas* gas, uint64_t* fields, uint64_t* solve)
         level[15] = liquid ? at : UINT32_MAX;
         at += liquid ? cells : 0u;
     }
-    *solve = at;
+    return at;
+}
+
+// The fields' and the solve's floats, writing each array's first float
+// into the numbers.
+static void Lay(SimGas* gas, uint64_t* fields, uint64_t* solve)
+{
+    const mvfxGasView* view = &gas->view;
+    uint32_t* w = gas->words;
+    uint32_t at = 0;
+    for (int32_t b = 0; b < 2; ++b)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            w[WORD_FACES + 4u * (uint32_t)b + (uint32_t)k] = at;
+            at += (uint32_t)view->faces[k];
+        }
+    }
+    // A surface holds its distance alone, and no work.
+    bool surface = view->def.kind == mvfx_gasSurface;
+    for (int32_t b = 0; b < 2; ++b)
+    {
+        for (int32_t f = 0; f < 3; ++f)
+        {
+            w[WORD_CELLS + 4u * (uint32_t)b + (uint32_t)f] = at;
+            at += surface && f > 0 ? 0u : (uint32_t)view->cells;
+        }
+    }
+    // The cells' solids, with obstacles; the work: a curl's three arrays,
+    // MacCormack's trace ahead of every face or of the three scalars, or
+    // the expansion; then its mean.
+    w[WORD_FACES + 3u] = at;
+    at += HasObstacles(&view->def) ? (uint32_t)view->cells : 0u;
+    uint32_t scalars = surface ? 0u : 3u * (uint32_t)view->cells;
+    uint32_t faces = AllFaces(view, 0);
+    w[WORD_CELLS + 3u] = at;
+    at += faces > scalars ? faces : scalars;
+    w[WORD_CELLS + 7u] = at;
+    at += 1u;
+    *fields = at;
+    *solve = LayLevels(gas);
 }
 
 // The numbers a step does not change: the sizes, walls, lattice and
@@ -342,15 +357,16 @@ bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords)
                                   alignof(mrhiPassId));
     mrhiBufferUsage written = mrhi_bufferStorage | mrhi_bufferCopyDestination;
     mrhiBufferUsage numbers = mrhi_bufferUniform | mrhi_bufferCopyDestination;
-    bool created = gas->dispatches != nullptr && gas->passes != nullptr &&
-                   CreateBuffer(sim, 4u * MVFX_GAS_WORDS, numbers, &gas->buffers[GAS_NUMBERS]) &&
-                   CreateBuffer(sim, 4u * fields, written | mrhi_bufferCopySource,
-                                &gas->buffers[GAS_FIELDS]) &&
-                   CreateBuffer(sim, 4u * solve, written, &gas->buffers[GAS_SOLVE]) &&
-                   CreateBuffer(sim, 4u * (gas->grids.words > 0 ? gas->grids.words : 1u), written,
-                                &gas->buffers[GAS_GRIDS]) &&
-                   CreateBuffer(sim, 4u * MVFX_GPU_GAS_STATISTICS_WORDS,
-                                written | mrhi_bufferCopySource, &gas->buffers[GAS_STATISTICS]);
+    bool created =
+        gas->dispatches != nullptr && gas->passes != nullptr &&
+        CreateBuffer(sim, 4u * MVFX_GAS_WORDS, numbers, &gas->buffers[GAS_NUMBERS]) &&
+        CreateBuffer(sim, 4u * fields, written | mrhi_bufferCopySource,
+                     &gas->buffers[GAS_FIELDS]) &&
+        CreateBuffer(sim, 4u * (solve > 0 ? solve : 1u), written, &gas->buffers[GAS_SOLVE]) &&
+        CreateBuffer(sim, 4u * (gas->grids.words > 0 ? gas->grids.words : 1u), written,
+                     &gas->buffers[GAS_GRIDS]) &&
+        CreateBuffer(sim, 4u * MVFX_GPU_GAS_STATISTICS_WORDS, written | mrhi_bufferCopySource,
+                     &gas->buffers[GAS_STATISTICS]);
     for (int32_t r = 0; created && r < MVFX_GPU_GAS_READS; ++r)
     {
         created = CreateBuffer(sim, 4u * GAS_READ_WORDS, numbers, &gas->reads[r].numbers);
@@ -580,7 +596,13 @@ static void Plan(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan)
     }
     int64_t from = plan->start;
     int64_t to = plan->start + plan->ticks;
-    if (def->kind == mvfx_gasLiquid)
+    if (def->kind == mvfx_gasSurface)
+    {
+        // Its field from its emitter's particles, into the first buffer.
+        mvfxPlanSimSurface(sim, gas, plan);
+        now = 0;
+    }
+    else if (def->kind == mvfx_gasLiquid)
     {
         // One step about the projection, as the core's (sim_liquid_gas.c);
         // its read back says whether it holds anything.
@@ -819,8 +841,12 @@ static bool ReadWords(const SimGas* gas, const mvfxGpuGasReadDef* def, uint32_t 
     const int32_t* n = gas->view.def.size;
     uint32_t bytes = FormatBytes(read->format);
     bool normalized = read->format != mvfx_formatFloat32 && read->format != mvfx_formatFloat16;
+    // A surface's one field, its distance, is its first scalar.
+    bool surface = gas->view.def.kind == mvfx_gasSurface;
+    bool field = surface ? read->field == mvfx_gasDistance
+                         : read->field >= mvfx_gasDensity && read->field <= mvfx_gasVelocityZ;
     bool valid =
-        read->field >= mvfx_gasDensity && read->field <= mvfx_gasVelocityZ && bytes > 0 &&
+        field && bytes > 0 &&
         (!normalized || (isfinite(read->low) && isfinite(read->high) && read->high > read->low));
     for (int32_t k = 0; valid && k < 3; ++k)
     {
@@ -842,7 +868,7 @@ static bool ReadWords(const SimGas* gas, const mvfxGpuGasReadDef* def, uint32_t 
         return false;
     }
     *written = (uint32_t)((def->offset + end + 3u) / 4u - def->offset / 4u);
-    const uint32_t head[20] = {(uint32_t)read->field,
+    const uint32_t head[20] = {surface ? (uint32_t)mvfx_gasDensity : (uint32_t)read->field,
                                (uint32_t)read->format,
                                gas->added ? gas->after : gas->now,
                                *written,

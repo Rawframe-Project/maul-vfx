@@ -18,6 +18,7 @@
 #include "output.h"
 #include "plexus.h"
 #include "rhi_apart.h"
+#include "rhi_surfaces.h"
 #include "rhi_waters.h"
 #include "test_harness.h"
 
@@ -2658,6 +2659,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_byDepth = run->emitters[0].sortMeasure == mvfx_sortByDepth;
     s_placeError = 0.0f;
     ResetWaters();
+    ResetSurfaces();
     s_velocityError = 0.0f;
     s_contacts = 0;
     s_events = 0;
@@ -2776,7 +2778,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (!run->adopting || AdoptGpu(e));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
-        same = same && SameWaters(gpu, sim, run, s_tolerance);
+        same = same && SameWaters(gpu, sim, run, s_tolerance) &&
+               SameSurfaces(gpu, sim, run, SURFACE_TOLERANCE);
         // The emitter whose records are written read back last, as the
         // ribbons take the GPU's places.
         same =
@@ -2797,6 +2800,22 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         printf("  water: %g, the fastest a cell moved %g\n", (double)WaterError(),
                (double)WaterMoved());
         CHECK(WaterMoved() > 1e-3f, "the surfaces moved");
+    }
+    // The surfaces' largest reach: a cell below it has a particle within
+    // reach (unless the first emitter may hold none).
+    float reach = -1.0f;
+    for (int32_t g = 0; g < run->gasCount; ++g)
+    {
+        const mvfxGasSurface* surface = &run->gases[g].surface;
+        reach = run->gases[g].kind == mvfx_gasSurface && surface->reach * surface->radius > reach
+                    ? surface->reach * surface->radius
+                    : reach;
+    }
+    if (reach >= 0.0f)
+    {
+        printf("  surface: %g, the least distance %g\n", (double)SurfaceError(),
+               (double)SurfaceLeast());
+        CHECK(run->least < 0 || SurfaceLeast() < reach, "the surfaces wrapped particles");
     }
     bool eventful = false;
     for (int32_t e = 0; e < run->emitterCount; ++e)

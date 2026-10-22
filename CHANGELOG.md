@@ -1113,6 +1113,18 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   pours' kills, listed for the surface's next step, which pushes it
   (waves sink and lift evenly; shallow water spills and takes the
   poured water).
+- The GPU part runs a surface gas: its emitter's particles mapped into
+  the box and sorted stably into buckets of the reach, each cell's
+  distance gathered from the buckets about it in the CPU path's order
+  (drawn in by Solenthaler's factor, its eigenvalue in closed form in 2D
+  and by three Jacobi sweeps in 3D), then the smoothing passes, within
+  the device's rounding of the CPU path's. A gas read takes its distance
+  (`mvfx_gasDistance`), its record says whether its emitter has
+  particles, and an emitter the quality leaves out leaves the reach in
+  every cell (12 passes a step and 2 a smoothing pass; 8 bytes a cell,
+  30 a particle of its emitter's capacity and 8 a bucket).
+  `mvfxGasView` gives a surface gas's buckets (`bucket`, `buckets`);
+  `mvfxGpuRefusal.gas` names none.
 
 ### Changed
 
@@ -1126,8 +1138,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   each has its own plan.
 - An effect with a surface gas can be planned (`mvfxCreateInstance` no
   longer refuses it): the gas's plan maps the emitter it wraps into its
-  box (`mvfxGasPlan.liquid`). The GPU part names such a gas in its
-  refusal (`mvfxGpuRefusal.gas`) until it runs it.
+  box (`mvfxGasPlan.liquid`).
 
 ### Fixed
 

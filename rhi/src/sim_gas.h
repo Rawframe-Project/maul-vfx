@@ -33,16 +33,19 @@
 #define GAS_BUFFERS    5
 
 // What a dispatch of a gas's step binds: the gas's buffers, a splat's
-// with the gas's, or a splat's sort's (sort.wgsl's).
+// with the gas's, a splat's sort's (sort.wgsl's), a liquid gas's
+// (liquid_gas.wgsl's) or a surface gas's (surface_gas.wgsl's).
 typedef enum GasBinding
 {
     GAS_BINDS_GAS = 0,
     GAS_BINDS_SPLAT = 1,
     GAS_BINDS_SORT = 2,
-    GAS_BINDS_LIQUID = 3
+    GAS_BINDS_LIQUID = 3,
+    GAS_BINDS_SURFACE = 4
 } GasBinding;
 
-// The splat a dispatch of a liquid gas's own names: its liquid.
+// The splat a dispatch of a liquid or surface gas's own names: its
+// emitter's.
 #define LIQUID_SPLAT (-2)
 
 // A dispatch of a gas's step: its kernel, root words and workgroups, what
@@ -60,10 +63,9 @@ typedef struct GasDispatch
 #define SPLAT_NUMBER_WORDS 24u
 
 // A splat's buffers: its numbers, its sorted words (the sort's keys and
-// indices, its particles' places and velocities in the box, its cells'
-// runs), its
-// sort's digit counts; then those of its emitter it reads: its particles
-// after its step and its statistics.
+// indices, what it keeps of its particles, its runs), its sort's digit
+// counts; then those of its emitter it reads: its particles after its
+// step and its statistics.
 #define SPLAT_NUMBERS    0
 #define SPLAT_SORTED     1
 #define SPLAT_DIGITS     2
@@ -71,16 +73,22 @@ typedef struct GasDispatch
 #define SPLAT_STATISTICS 4
 #define SPLAT_BUFFERS    5
 
-// An emitter splatting into a gas, or a liquid gas's emitter: its index,
-// the words of one of its sort's arrays and its capacity, whether it is a
-// liquid's; its buffers and the frame's ids of them and of its emitter's;
-// its numbers; its drag (the plan's).
+// An emitter splatting into a gas, or a liquid or surface gas's
+// emitter: its index, the words of one of its sort's arrays and its
+// capacity; the arrays it keeps of a particle (a splat's places and
+// velocities, a liquid's affine matrices besides, a surface's places
+// alone), its runs (its gas's cells, a surface's buckets) and the words
+// after them (a liquid's two sets of its faces' flags); its buffers and
+// the frame's ids of them and of its emitter's; its numbers; its drag
+// (the plan's).
 typedef struct SimSplat
 {
     int32_t emitter;
     uint32_t span;
     uint32_t capacity;
-    bool liquid;
+    uint32_t kept;
+    uint32_t runs;
+    uint32_t tail;
     mrhiBufferId buffers[3];
     mrhiResourceId resources[SPLAT_BUFFERS];
     uint32_t words[SPLAT_NUMBER_WORDS];
@@ -145,8 +153,9 @@ typedef struct SimGas
     int32_t splatCount;
     int32_t splatRoom;
     mrhiAccess* writes;
-    // A liquid gas's emitter (sim_liquid_gas.c), its sorted words theirs:
-    // whether it has one with room.
+    // A liquid gas's emitter (sim_liquid_gas.c) or the one a surface gas
+    // wraps (sim_surface_gas.c), its sorted words theirs: whether it has
+    // one with room.
     SimSplat liquid;
     bool hasLiquid;
 } SimGas;
@@ -177,6 +186,11 @@ void mvfxSimGasProject(SimGas* gas, uint32_t u, uint32_t now);
 int32_t mvfxSimLiquidGasPasses(const mvfxGasView* view, int32_t projection);
 void mvfxPlanSimLiquid(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan, uint32_t now);
 
+// A surface gas's step (sim_surface_gas.c): the passes it takes, and its
+// dispatches for a plan, into the first buffer.
+int32_t mvfxSimSurfaceGasPasses(const mvfxGasView* view);
+void mvfxPlanSimSurface(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan);
+
 // Emitters splatting into a gas (sim_splat.c): made with the gas, gas g,
 // for each emitter splatting into it that has room (false when the device
 // or the allocator refuses), and destroyed; the passes they take a step;
@@ -198,8 +212,8 @@ int32_t mvfxSimSplatAccesses(const SimGas* gas, const GasDispatch* d, const mrhi
 bool mvfxWriteSimSplats(mvfxGpuSim* sim, mrhiPassId pass, SimGas* gas);
 int32_t mvfxSimSplatBindings(const SimGas* gas, const GasDispatch* d,
                              mrhiBinding out[GAS_BUFFERS + 4]);
-// The splat a dispatch names: one splatting into the gas, or its liquid
-// (LIQUID_SPLAT).
+// The splat a dispatch names: one splatting into the gas, or its own
+// emitter's (LIQUID_SPLAT).
 const SimSplat* mvfxSimSplatOf(const SimGas* gas, int32_t splat);
 
 // The floats of a gas's faces a gas force reads: each axis's array in

@@ -30,6 +30,7 @@ typedef enum mvfxContainer
     mvfx_containerLiquidGas = 13,
     mvfx_containerWater = 14,
     mvfx_containerWaterRead = 15,
+    mvfx_containerSurfaceGas = 16,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -213,6 +214,12 @@ typedef enum mvfxKernel
     // What a surface of waves' crossings sink, summed for the even lift
     // (water.wgsl).
     mvfx_kernelWaterCrossSum = 108,
+    // A surface gas's passes (surface_gas.wgsl): its particles keyed by
+    // bucket and their runs, each cell's distance, a smoothing pass.
+    mvfx_kernelSurfaceKeys = 109,
+    mvfx_kernelSurfaceRuns = 110,
+    mvfx_kernelSurfaceField = 111,
+    mvfx_kernelSurfaceSmooth = 112,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 
