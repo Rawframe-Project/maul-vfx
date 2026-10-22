@@ -879,7 +879,7 @@ extern "C"
     /// @param context   The context that owns the instance.
     /// @param instance  The instance.
     /// @param gas       The surface gas's index in its effect's def.
-    /// @param bytesOut  Receives the bytes.
+    /// @param bytesOut  Receives the bytes; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
     ///         parameter, or a gas out of range or not a surface, which
@@ -917,15 +917,16 @@ extern "C"
     ///                        most 2^52 in size).
     /// @param level           The distance meshed, finite.
     /// @param buffers         The buffers.
-    /// @param vertexCountOut  Receives the mesh's vertices.
-    /// @param indexCountOut   Receives the mesh's indices.
+    /// @param vertexCountOut  Receives the mesh's vertices; 0 on failure.
+    /// @param indexCountOut   Receives the mesh's indices; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
-    ///         nothing live; `mvfx_errorCapacity` for scratch too small,
-    ///         with nothing written; `mvfx_errorInvalid` for a NULL context,
-    ///         origin, buffers or count, a gas out of range or not a
-    ///         surface, an origin or level out of range, a negative size or
-    ///         a NULL or misaligned buffer with a size, which counts as
-    ///         misuse when the context is given.
+    ///         nothing live; `mvfx_errorState` for a planned instance (its
+    ///         fields are its simulation's); `mvfx_errorCapacity` for
+    ///         scratch too small, with nothing written; `mvfx_errorInvalid`
+    ///         for a NULL context, origin, buffers or count, a gas out of
+    ///         range or not a surface, an origin or level out of range, a
+    ///         negative size or a NULL or misaligned buffer with a size,
+    ///         which counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once, each with

@@ -1138,7 +1138,12 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   each has its own plan.
 - An effect with a surface gas can be planned (`mvfxCreateInstance` no
   longer refuses it): the gas's plan maps the emitter it wraps into its
-  box (`mvfxGasPlan.liquid`).
+  box (`mvfxGasPlan.liquid`). Its mesh
+  (`mvfxInstance_WriteSurfaceMesh`) is refused for a planned instance
+  (`mvfx_errorState`), whose fields are its simulation's.
+- `mvfxInstance_WriteSurfaceMesh` and
+  `mvfxInstance_GetSurfaceMeshScratchBytes` clear their outputs on any
+  failure (the family's rule for outputs on failure).
 
 ### Fixed
 

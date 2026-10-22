@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A surface's mesh by marching cubes (and squares): the refusals and the
+// A surface's mesh by marching cubes (and squares): the refusals (a
+// planned instance's among them) with the outputs cleared, and the
 // scratch's size; a lone particle's sphere closed, its Euler
 // characteristic 2, its vertices on the sphere and its normals radial, in
 // a turned instance far from the origin; two drops, characteristic 4;
@@ -27,9 +28,11 @@
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
 
-// The next instance's origin and turn about Z (radians).
+// The next instance's origin and turn about Z (radians), and whether it
+// is planned.
 static double s_origin[3];
 static float s_turn;
+static bool s_planned;
 
 // The mesh's buffers, large enough for every case here.
 #define VERTICES (1 << 16)
@@ -75,6 +78,7 @@ static bool Open(int32_t n, int32_t depth, float cell, float radius, mvfxGasKind
     memcpy(instanceDef.origin, s_origin, sizeof s_origin);
     instanceDef.rotation[2] = sinf(0.5f * s_turn);
     instanceDef.rotation[3] = cosf(0.5f * s_turn);
+    instanceDef.planned = s_planned;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
     return true;
 }
@@ -242,11 +246,13 @@ static mvfxResult Spoiled(int32_t c, int64_t bytes)
 
 static void TestRefusals(void)
 {
-    // A smoke gas; each spoiled call (scratch too small a capacity error,
-    // the others invalid); then a valid call over nothing. The scratch a
-    // 3D and a 2D surface take.
+    // A smoke gas, its outputs cleared; each spoiled call (scratch too
+    // small a capacity error, the others invalid); then a valid call over
+    // nothing. The scratch a 3D and a 2D surface take. A planned
+    // instance's surface: its scratch, its mesh refused, the counts
+    // cleared.
     CHECK(Open(8, 8, 0.1f, 0.1f, mvfx_gasSmoke), "opened");
-    int64_t bytes = 0;
+    int64_t bytes = 5;
     mvfxSurfaceMeshBuffers b = Buffers();
     int64_t v = -1;
     int64_t i = -1;
@@ -254,7 +260,8 @@ static void TestRefusals(void)
     bool right = mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) ==
                      mvfx_errorInvalid &&
                  mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, zero, 0.0f, &b, &v, &i) ==
-                     mvfx_errorInvalid;
+                     mvfx_errorInvalid &&
+                 bytes == 0 && v == 0 && i == 0;
     mvfxDestroyContext(s_context);
     CHECK(Open(8, 8, 0.1f, 0.1f, mvfx_gasSurface), "opened");
     right =
@@ -275,6 +282,19 @@ static void TestRefusals(void)
         right &&
         mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) == mvfx_success &&
         bytes == 24 * 8;
+    mvfxDestroyContext(s_context);
+    s_planned = true;
+    CHECK(Open(8, 8, 0.1f, 0.1f, mvfx_gasSurface), "opened");
+    s_planned = false;
+    v = -1;
+    i = -1;
+    right =
+        right &&
+        mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) == mvfx_success &&
+        bytes == 32 * 64 &&
+        mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, zero, 0.0f, &b, &v, &i) ==
+            mvfx_errorState &&
+        v == 0 && i == 0;
     mvfxDestroyContext(s_context);
     CHECK(right, "a mesh's refusals");
 }
