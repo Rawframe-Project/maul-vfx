@@ -21,6 +21,7 @@
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
+#include "rhi_samples.h"
 #include "rhi_waters.h"
 #include "test_harness.h"
 
@@ -677,7 +678,8 @@ static bool SameSamples(Gpu* gpu, mvfxGpuSim* sim, const double origin[3],
 
 // Steps a run's surface beside its sprite, pushed about its center, the
 // instance at place and then, from half the steps, moved on by a third
-// of a world unit along X and Z; samples it after the last step.
+// of a world unit along X and Z; samples it in the last step's frame
+// (from the buffer the step leaves).
 static void Sampled(Gpu* gpu, mvfxGpu* kernels, const mvfxWaterDef* water, Run run,
                     const double place[3], float scale, int32_t steps, const char* what)
 {
@@ -722,10 +724,12 @@ static void Sampled(Gpu* gpu, mvfxGpu* kernels, const mvfxWaterDef* water, Run r
                 mvfxInstance_PushWater(context, CpuInstance(), 0, &push, 1) == mvfx_success &&
                 mvfxInstance_PushWater(context, PlannedInstance(), 0, &push, 1) == mvfx_success;
         }
+        // The last step simulated in the query's frame.
         stepped = stepped && mvfxContext_StepTicks(context, StepTicks()) == mvfx_success &&
-                  Simulate(gpu, sim) && ReportWaters(gpu, sim);
+                  (s == steps - 1 || (Simulate(gpu, sim) && ReportWaters(gpu, sim)));
         LongFrames(false);
     }
+    SampleWithStep(stepped);
     mvfxWaterInfo info;
     stepped =
         stepped && mvfxInstance_GetWaterInfo(context, CpuInstance(), 0, &info) == mvfx_success;

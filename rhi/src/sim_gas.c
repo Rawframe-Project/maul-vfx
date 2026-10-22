@@ -367,11 +367,7 @@ bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords)
                      &gas->buffers[GAS_GRIDS]) &&
         CreateBuffer(sim, 4u * MVFX_GPU_GAS_STATISTICS_WORDS, written | mrhi_bufferCopySource,
                      &gas->buffers[GAS_STATISTICS]);
-    for (int32_t r = 0; created && r < MVFX_GPU_GAS_READS; ++r)
-    {
-        created = CreateBuffer(sim, 4u * GAS_READ_WORDS, numbers, &gas->reads[r].numbers);
-    }
-    return created;
+    return created && mvfxCreateSimGasReads(sim, gas);
 }
 
 void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas)
@@ -383,13 +379,7 @@ void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas)
             (void)mrhiDestroyBuffer(sim->device, gas->buffers[b]);
         }
     }
-    for (int32_t r = 0; r < MVFX_GPU_GAS_READS; ++r)
-    {
-        if (gas->reads[r].numbers.index1 != 0)
-        {
-            (void)mrhiDestroyBuffer(sim->device, gas->reads[r].numbers);
-        }
-    }
+    mvfxDestroySimGasReads(sim, gas);
     mvfxDestroySimSplats(sim, gas);
     size_t count = (size_t)gas->capacity;
     mvfxRhiRelease(&sim->allocator, gas->dispatches, count * sizeof(GasDispatch),
@@ -638,12 +628,26 @@ static void Plan(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan)
     gas->after = now;
 }
 
+bool mvfxImportSimGas(mvfxGpuSim* sim, SimGas* gas)
+{
+    for (int32_t b = 0; !gas->imported && b < GAS_BUFFERS; ++b)
+    {
+        if (mrhiImportBuffer(sim->device, gas->buffers[b], &gas->resources[b]) != mrhi_success)
+        {
+            return false;
+        }
+    }
+    gas->imported = true;
+    return true;
+}
+
 mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
 {
     SimGas* gas = &sim->gases[g];
-    // The reads of a frame the host dropped go.
+    // The reads and samples of a frame the host dropped go.
     gas->added = false;
     gas->readCount = 0;
+    gas->sampleCount = 0;
     gas->imported = false;
     static mvfxGasPlan plan;
     mvfxResult result = mvfxSimGasPlan(sim, g, &plan);
@@ -659,15 +663,7 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
     }
     Plan(sim, gas, &plan);
     mrhiResourceId* r = gas->resources;
-    for (int32_t b = 0; b < GAS_BUFFERS; ++b)
-    {
-        if (mrhiImportBuffer(sim->device, gas->buffers[b], &r[b]) != mrhi_success)
-        {
-            return mvfx_errorState;
-        }
-    }
-    gas->imported = true;
-    if (!mvfxImportSimSplats(sim, gas))
+    if (!mvfxImportSimGas(sim, gas) || !mvfxImportSimSplats(sim, gas))
     {
         return mvfx_errorState;
     }
@@ -770,175 +766,16 @@ static bool RecordStep(mvfxGpuSim* sim, SimGas* gas)
     return recorded;
 }
 
-// Records a read's passes: its numbers' write, then its words.
-static bool RecordRead(mvfxGpuSim* sim, const SimGas* gas, const GasRead* read)
-{
-    bool recorded = mrhiBeginPass(sim->device, read->passes[0]) == mrhi_success &&
-                    mvfxUpload(sim->device, &sim->uploaded, read->passes[0], read->resource, 0,
-                               read->words, sizeof read->words);
-    recorded = mrhiEndPass(sim->device, read->passes[0]) == mrhi_success && recorded;
-    const mrhiBinding bindings[4] = {
-        {.slot = 0, .resource = gas->resources[GAS_NUMBERS], .size = MRHI_WHOLE_SIZE},
-        {.slot = 1, .resource = gas->resources[GAS_FIELDS], .size = MRHI_WHOLE_SIZE},
-        {.slot = 2, .resource = read->resource, .size = MRHI_WHOLE_SIZE},
-        {.slot = 3, .resource = read->target, .size = MRHI_WHOLE_SIZE}};
-    mrhiPassId pass = read->passes[1];
-    bool ran =
-        recorded && mrhiBeginPass(sim->device, pass) == mrhi_success &&
-        mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, mvfx_kernelGasRead)) ==
-            mrhi_success &&
-        mrhiSetBindings(sim->device, pass, 0, bindings, 4) == mrhi_success &&
-        Dispatch(sim, pass, Groups(read->written));
-    return mrhiEndPass(sim->device, pass) == mrhi_success && ran;
-}
-
 bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas)
 {
     bool recorded = !gas->added || RecordStep(sim, gas);
     gas->now = gas->added ? gas->after : gas->now;
     gas->added = false;
-    for (int32_t r = 0; recorded && r < gas->readCount; ++r)
-    {
-        recorded = RecordRead(sim, gas, &gas->reads[r]);
-    }
+    recorded = recorded && mvfxRecordSimGasReads(sim, gas);
     gas->readCount = 0;
+    gas->sampleCount = 0;
     gas->imported = false;
     return recorded;
-}
-
-mvfxGpuGasReadDef mvfxDefaultGpuGasReadDef(void)
-{
-    return (mvfxGpuGasReadDef){
-        .cookie = MVFX_GPU_GAS_READ_DEF_COOKIE,
-        .read = {.field = mvfx_gasDensity, .format = mvfx_formatFloat32, .size = {1, 1, 1}}};
-}
-
-// A format's bytes a value, 0 for none.
-static uint32_t FormatBytes(mvfxFormat format)
-{
-    switch (format)
-    {
-    case mvfx_formatFloat32:
-        return 4;
-    case mvfx_formatFloat16:
-    case mvfx_formatUnorm16:
-    case mvfx_formatSnorm16:
-        return 2;
-    case mvfx_formatUnorm8:
-    case mvfx_formatSnorm8:
-        return 1;
-    default:
-        return 0;
-    }
-}
-
-// A read's numbers, false for one out of range for the gas or its buffer
-// (as the core's IsReadValid, and its bytes within 32-bit addresses).
-static bool ReadWords(const SimGas* gas, const mvfxGpuGasReadDef* def, uint32_t words[20],
-                      uint32_t* written)
-{
-    const mvfxGasRead* read = &def->read;
-    const int32_t* n = gas->view.def.size;
-    uint32_t bytes = FormatBytes(read->format);
-    bool normalized = read->format != mvfx_formatFloat32 && read->format != mvfx_formatFloat16;
-    // A surface's one field, its distance, is its first scalar.
-    bool surface = gas->view.def.kind == mvfx_gasSurface;
-    bool field = surface ? read->field == mvfx_gasDistance
-                         : read->field >= mvfx_gasDensity && read->field <= mvfx_gasVelocityZ;
-    bool valid =
-        field && bytes > 0 &&
-        (!normalized || (isfinite(read->low) && isfinite(read->high) && read->high > read->low));
-    for (int32_t k = 0; valid && k < 3; ++k)
-    {
-        valid = read->first[k] >= 0 && read->size[k] >= 1 && read->size[k] <= n[k] - read->first[k];
-    }
-    if (!valid)
-    {
-        return false;
-    }
-    uint64_t row = (uint64_t)read->size[0] * bytes;
-    uint64_t rowPitch = read->rowBytes == 0 ? row : read->rowBytes;
-    uint64_t layer = rowPitch * (uint64_t)read->size[1];
-    uint64_t layerPitch = read->layerBytes == 0 ? layer : read->layerBytes;
-    uint64_t end =
-        layerPitch * (uint64_t)(read->size[2] - 1) + rowPitch * (uint64_t)(read->size[1] - 1) + row;
-    if (rowPitch < row || layerPitch < layer || def->offset % 4u != 0 || end > def->bytes ||
-        def->offset + end > UINT32_MAX)
-    {
-        return false;
-    }
-    *written = (uint32_t)((def->offset + end + 3u) / 4u - def->offset / 4u);
-    const uint32_t head[20] = {surface ? (uint32_t)mvfx_gasDensity : (uint32_t)read->field,
-                               (uint32_t)read->format,
-                               gas->added ? gas->after : gas->now,
-                               *written,
-                               (uint32_t)read->first[0],
-                               (uint32_t)read->first[1],
-                               (uint32_t)read->first[2],
-                               0,
-                               (uint32_t)read->size[0],
-                               (uint32_t)read->size[1],
-                               (uint32_t)read->size[2],
-                               bytes,
-                               (uint32_t)rowPitch,
-                               (uint32_t)layerPitch,
-                               (uint32_t)def->offset,
-                               (uint32_t)end};
-    memcpy(words, head, sizeof head);
-    mvfxFloatWords(words + 16, read->low, read->high, 0.0f, 0.0f);
-    return true;
-}
-
-mvfxResult mvfxGpuSim_AddGasRead(mvfxGpuSim* sim, const mvfxGpuGasReadDef* def)
-{
-    if (sim == nullptr || def == nullptr || def->cookie != MVFX_GPU_GAS_READ_DEF_COOKIE ||
-        def->gas < 0 || def->gas >= sim->gasCount || def->target.index1 == 0)
-    {
-        return mvfx_errorInvalid;
-    }
-    if (sim->ending)
-    {
-        return mvfx_errorState;
-    }
-    SimGas* gas = &sim->gases[def->gas];
-    if (gas->readCount == MVFX_GPU_GAS_READS)
-    {
-        return mvfx_errorLimit;
-    }
-    GasRead* read = &gas->reads[gas->readCount];
-    if (!ReadWords(gas, def, read->words, &read->written))
-    {
-        return mvfx_errorInvalid;
-    }
-    read->target = def->target;
-    mrhiResourceId* r = gas->resources;
-    bool imported = mrhiImportBuffer(sim->device, read->numbers, &read->resource) == mrhi_success;
-    for (int32_t b = 0; imported && !gas->imported && b < GAS_BUFFERS; ++b)
-    {
-        imported = mrhiImportBuffer(sim->device, gas->buffers[b], &r[b]) == mrhi_success;
-    }
-    gas->imported = imported;
-    const mrhiAccess written = {.resource = read->resource, .kind = mrhi_accessCopyDestination};
-    const mrhiAccess used[4] = {{.resource = r[GAS_NUMBERS], .kind = mrhi_accessUniform},
-                                {.resource = r[GAS_FIELDS], .kind = mrhi_accessStorageRead},
-                                {.resource = read->resource, .kind = mrhi_accessUniform},
-                                {.resource = def->target, .kind = mrhi_accessStorageReadWrite}};
-    mrhiPassDef pass = mrhiDefaultPassDef();
-    pass.passClass = mrhi_passTransfer;
-    pass.accesses = &written;
-    pass.accessCount = 1;
-    pass.neverCull = true;
-    bool added = imported && mrhiAddPass(sim->device, &pass, &read->passes[0]) == mrhi_success;
-    pass.passClass = mrhi_passGraphics;
-    pass.accesses = used;
-    pass.accessCount = 4;
-    added = added && mrhiAddPass(sim->device, &pass, &read->passes[1]) == mrhi_success;
-    if (!added)
-    {
-        return mvfx_errorState;
-    }
-    gas->readCount += 1;
-    return mvfx_success;
 }
 
 int32_t mvfxGpuSim_GasPasses(const mvfxGpuSim* sim, int32_t gas)

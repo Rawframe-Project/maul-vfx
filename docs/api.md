@@ -747,6 +747,16 @@ MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddWaterSamples(mvfxGpuSim* si
 Adds the passes sampling a water surface at a host's points to the frame the host builds, as mvfxInstance_SampleWater samples it on the CPU path, a planned instance's surface being its simulation's: a transfer pass and a compute pass, after the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them, from the fields the last recorded step left, where the surface stands now (mvfxInstance_GetWaterInfo). The host reads the samples back when its frame is done, a frame or more later, as any query of a GPU's water. mvfxGpuSim_Record records the passes, and the next mvfxGpuSim_AddPasses lets go of those of a frame the host dropped. At most MVFX_GPU_WATER_SAMPLES a surface a frame.  @param sim  The simulation. @param def  The query, from mvfxDefaultGpuWaterSamplesDef. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a surface out of range, an origin out of range or not finite, a count out of range, a null buffer, the points' and the samples' one buffer, an offset not a multiple of 4 or bytes too few; `mvfx_errorLimit` past MVFX_GPU_WATER_SAMPLES for the surface this frame; `mvfx_errorState` when the device refuses a pass or an import (no frame open), or while it is destroyed (a call from its allocator). @par Thread safety Safe from any thread; the context and the device are used by one thread at a time.
 
 ```c
+mvfxGpuGasSamplesDef mvfxDefaultGpuGasSamplesDef(void);
+```
+Returns the default gas samples def: gas 0, its density, the world's origin, no points or buffers yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddGasSamples(mvfxGpuSim* sim, const mvfxGpuGasSamplesDef* def);
+```
+Adds the passes sampling a gas's field at a host's points to the frame the host builds, as mvfxInstance_SampleGas samples it on the CPU path, a planned instance's gas being its simulation's: a transfer pass and a compute pass, after the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them, from the fields the last recorded step left, where the gas stands now (mvfxInstance_GetGasInfo). The host reads the samples back when its frame is done, a frame or more later. mvfxGpuSim_Record records the passes, and the next mvfxGpuSim_AddPasses lets go of those of a frame the host dropped. At most MVFX_GPU_GAS_SAMPLES a gas a frame.  @param sim  The simulation. @param def  The query, from mvfxDefaultGpuGasSamplesDef. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a gas out of range, a field not the gas's, an origin out of range or not finite, a count out of range, a null buffer, the points' and the samples' one buffer, an offset not a multiple of 4 or bytes too few; `mvfx_errorLimit` past MVFX_GPU_GAS_SAMPLES for the gas this frame; `mvfx_errorState` when the device refuses a pass or an import (no frame open), or while it is destroyed (a call from its allocator). @par Thread safety Safe from any thread; the context and the device are used by one thread at a time.
+
+```c
 mvfxGpuRibbonsDef mvfxDefaultGpuRibbonsDef(void);
 ```
 Returns the default ribbons def: emitter 0, no buffer yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
@@ -813,4 +823,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-150 functions across 17 headers.
+152 functions across 17 headers.

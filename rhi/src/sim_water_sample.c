@@ -11,6 +11,7 @@
 
 #include "kernels.h"
 #include "numbers.h"
+#include "samples.h"
 #include "sim_state.h"
 #include "sim_water.h"
 #include "upload.h"
@@ -18,7 +19,6 @@
 #include "maul-rhi/encoder.h"
 #include "maul-vfx/instance.h"
 
-#include <math.h>
 #include <string.h>
 
 // A query's workgroups a row of its dispatch (a device takes 65,535 along
@@ -56,62 +56,16 @@ mvfxGpuWaterSamplesDef mvfxDefaultGpuWaterSamplesDef(void)
     return (mvfxGpuWaterSamplesDef){.cookie = MVFX_GPU_WATER_SAMPLES_DEF_COOKIE};
 }
 
-// Turns a binary64 vector by a unit quaternion, as the core's
-// mvfxRotateDouble.
-static void RotateDouble(const float q[4], const double v[3], double out[3])
-{
-    double x = (double)q[0];
-    double y = (double)q[1];
-    double z = (double)q[2];
-    double w = (double)q[3];
-    double tx = 2.0 * (y * v[2] - z * v[1]);
-    double ty = 2.0 * (z * v[0] - x * v[2]);
-    double tz = 2.0 * (x * v[1] - y * v[0]);
-    out[0] = v[0] + w * tx + (y * tz - z * ty);
-    out[1] = v[1] + w * ty + (z * tx - x * tz);
-    out[2] = v[2] + w * tz + (x * ty - y * tx);
-}
-
-// Whether a query is in range: its origin, its count, its buffers and
-// their bytes.
-static bool IsQueryValid(const mvfxGpuWaterSamplesDef* def)
-{
-    bool valid = def->count >= 0 && def->count <= MVFX_GPU_SAMPLE_POINTS &&
-                 def->points.index1 != 0 && def->target.index1 != 0 &&
-                 def->points.index1 != def->target.index1 && def->pointOffset % 4u == 0 &&
-                 def->offset % 4u == 0 && def->pointOffset <= UINT32_MAX - 4u &&
-                 def->offset <= UINT32_MAX - 4u;
-    for (int32_t k = 0; valid && k < 3; ++k)
-    {
-        valid = fabs(def->origin[k]) <= 0x1p52;
-    }
-    uint64_t count = valid ? (uint64_t)def->count : 0u;
-    return valid && def->pointBytes >= 12u * count &&
-           def->bytes >= 4u * count * MVFX_GPU_WATER_SAMPLE_WORDS;
-}
-
 // A query's numbers (water_sample.wgsl's Sample): its count, the buffer
-// current, its first words; the surface's map into its frame from the
-// world less the origin (the core's mvfxBoxMap of the world: the box's
-// turn back, 1 / scale, its center), rebased on the origin.
+// current, its first words; the surface's map into its frame, and the
+// offset back to the world less the origin.
 static void SampleWords(const SimWater* water, const mvfxGpuWaterSamplesDef* def,
                         const mvfxWaterInfo* info, uint32_t words[WATER_SAMPLE_WORDS])
 {
     const uint32_t head[4] = {(uint32_t)def->count, water->added ? water->after : water->now,
                               (uint32_t)(def->pointOffset / 4u), (uint32_t)(def->offset / 4u)};
     memcpy(words, head, sizeof head);
-    const float turn[4] = {-info->rotation[0], -info->rotation[1], -info->rotation[2],
-                           info->rotation[3]};
-    float sigma = 1.0f / info->scale;
-    double from[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        from[k] = (def->origin[k] - info->center[k]) * (double)sigma;
-    }
-    double into[3];
-    RotateDouble(turn, from, into);
-    memcpy(words + 4, turn, sizeof turn);
-    mvfxFloatWords(words + 8, (float)into[0], (float)into[1], (float)into[2], sigma);
+    mvfxSampleMapWords(def->origin, info->center, info->rotation, info->scale, words + 4);
     mvfxFloatWords(words + 12, (float)(info->center[0] - def->origin[0]),
                    (float)(info->center[1] - def->origin[1]),
                    (float)(info->center[2] - def->origin[2]), 0.0f);
@@ -120,7 +74,19 @@ static void SampleWords(const SimWater* water, const mvfxGpuWaterSamplesDef* def
 mvfxResult mvfxGpuSim_AddWaterSamples(mvfxGpuSim* sim, const mvfxGpuWaterSamplesDef* def)
 {
     if (sim == nullptr || def == nullptr || def->cookie != MVFX_GPU_WATER_SAMPLES_DEF_COOKIE ||
-        def->water < 0 || def->water >= sim->waterCount || !IsQueryValid(def))
+        def->water < 0 || def->water >= sim->waterCount)
+    {
+        return mvfx_errorInvalid;
+    }
+    const SampleQuery asked = {.origin = def->origin,
+                               .points = def->points,
+                               .pointOffset = def->pointOffset,
+                               .pointBytes = def->pointBytes,
+                               .count = def->count,
+                               .target = def->target,
+                               .offset = def->offset,
+                               .bytes = def->bytes};
+    if (!mvfxIsSampleQueryValid(&asked, MVFX_GPU_WATER_SAMPLE_WORDS))
     {
         return mvfx_errorInvalid;
     }

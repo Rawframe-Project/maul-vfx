@@ -1144,6 +1144,13 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   host's frame is done; at most `MVFX_GPU_WATER_SAMPLES` queries a
   surface a frame and `MVFX_GPU_SAMPLE_POINTS` points a query.
   `mvfxWaterInfo.scale` and `mvfxGasInfo.scale` give a box's scale.
+- The GPU part samples a planned instance's gas by query, as
+  `mvfxInstance_SampleGas` does on the CPU path:
+  `mvfxGpuSim_AddGasSamples` takes a field and a host's points (binary32,
+  the world less an origin in binary64) from one storage buffer and
+  writes a binary32 sample a point into another, read back when the
+  host's frame is done; at most `MVFX_GPU_GAS_SAMPLES` queries a gas a
+  frame.
 
 ### Changed
 

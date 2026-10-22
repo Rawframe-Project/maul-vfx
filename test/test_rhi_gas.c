@@ -10,10 +10,14 @@
 // confinement, the burn expanding (less its mean in a sealed box); frames
 // dropped; the holds read back and reported, a stopped instance
 // finishing; obstacles still and moving, of every kind; reads in every
-// format over a box with padded pitches, the padding kept; the refusals.
+// format over a box with padded pitches, the padding kept; every field
+// sampled at points through mvfxGpuSim_AddGasSamples against
+// mvfxInstance_SampleGas's, in an instance far off, turned and scaled,
+// and in a 2D gas, from each buffer; the refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
+#include "rhi_samples.h"
 #include "test_harness.h"
 
 #include "maul-rhi/encoder.h"
@@ -146,7 +150,8 @@ static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint6
     readDef.target = target;
     readDef.offset = offset;
     readDef.bytes = bytes - offset;
-    recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[0]) == mrhi_success &&
+    recorded = recorded && StepInFrame(scene->sim) &&
+               mrhiAddPass(gpu->device, &def, &passes[0]) == mrhi_success &&
                mvfxGpuSim_AddGasRead(scene->sim, &readDef) == mvfx_success;
     def.accesses = &taken;
     recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
@@ -860,6 +865,191 @@ static void TestSplats(Gpu* gpu, mvfxGpu* kernels)
     s_splatter = NULL;
 }
 
+// The samples' points (rhi_samples.c's lattice), the world's, and each
+// path's samples.
+static float s_points[3 * GAS_SAMPLE_POINTS];
+static double s_world[3 * GAS_SAMPLE_POINTS];
+static float s_cpuSamples[GAS_SAMPLE_POINTS];
+static float s_gpuSamples[GAS_SAMPLE_POINTS];
+
+// Whether each field's samples are the CPU instance's, relative to one
+// more than their size within the tolerance; the largest difference into
+// worst, the largest density sampled into most.
+static bool SameSamples(Gpu* gpu, const Scene* scene, const double origin[3], float* worst,
+                        float* most)
+{
+    bool same = true;
+    for (int32_t f = mvfx_gasDensity; same && f <= mvfx_gasVelocityZ; ++f)
+    {
+        same = mvfxInstance_SampleGas(scene->context, scene->cpu, 0, (mvfxGasField)f, s_world,
+                                      GAS_SAMPLE_POINTS, s_cpuSamples) == mvfx_success &&
+               SampleGasGpu(gpu, scene->sim, 0, (mvfxGasField)f, origin, s_points,
+                            GAS_SAMPLE_POINTS, s_gpuSamples);
+        for (int32_t i = 0; same && i < GAS_SAMPLE_POINTS; ++i)
+        {
+            float apart =
+                fabsf(s_gpuSamples[i] - s_cpuSamples[i]) / (1.0f + fabsf(s_cpuSamples[i]));
+            *worst = fmaxf(*worst, apart);
+            *most = f == mvfx_gasDensity ? fmaxf(*most, s_cpuSamples[i]) : *most;
+            same = apart <= TOLERANCE;
+            if (!same)
+            {
+                printf("  field %d, sample %d: %g on the GPU, %g on the CPU\n", f, i,
+                       (double)s_gpuSamples[i], (double)s_cpuSamples[i]);
+            }
+        }
+    }
+    return same;
+}
+
+// Steps a gas in an instance at place, turned and scaled, moved on by a
+// third of a world unit along X and Z from half the steps; samples every
+// field after the last step in frames of their own, the first in the
+// step's frame (from the buffer the step leaves), or with readFirst its
+// density read whole in the step's frame first.
+static void Sampled(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, const double place[3],
+                    float scale, int32_t steps, bool readFirst, const char* what)
+{
+    Scene scene;
+    if (!Open(kernels, gas, NULL, &scene))
+    {
+        return;
+    }
+    const float turn[4] = {0.0f, sinf(0.3f), 0.0f, cosf(0.3f)};
+    bool stepped = mvfxInstance_SetTransform(scene.context, scene.cpu, place, turn, scale, true) ==
+                       mvfx_success &&
+                   mvfxInstance_SetTransform(scene.context, scene.planned, place, turn, scale,
+                                             true) == mvfx_success;
+    const double later[3] = {place[0] + 0.3, place[1], place[2] + 0.3};
+    LongFrames(true);
+    for (int32_t s = 0; stepped && s < steps; ++s)
+    {
+        if (s == steps / 2)
+        {
+            stepped = mvfxInstance_SetTransform(scene.context, scene.cpu, later, turn, scale,
+                                                false) == mvfx_success &&
+                      mvfxInstance_SetTransform(scene.context, scene.planned, later, turn, scale,
+                                                false) == mvfx_success;
+        }
+        // The last step simulated in the first query's frame.
+        stepped = stepped && mvfxContext_StepTicks(scene.context, StepTicks()) == mvfx_success &&
+                  (s == steps - 1 || Simulate(gpu, scene.sim));
+        LongFrames(false);
+    }
+    SampleWithStep(stepped);
+    mvfxGasInfo info;
+    stepped =
+        stepped && mvfxInstance_GetGasInfo(scene.context, scene.cpu, 0, &info) == mvfx_success;
+    // The query's origin near the points, not at the world's.
+    const double origin[3] = {info.center[0] + 0.25, info.center[1] - 0.5, info.center[2] + 1.0};
+    int32_t inside = stepped ? LayGasPoints(&info, origin, s_points, s_world) : 0;
+    float worst = 0.0f;
+    float most = 0.0f;
+    bool same = stepped && (!readFirst || SameField(gpu, &scene, gas, mvfx_gasDensity, &worst)) &&
+                SameSamples(gpu, &scene, origin, &worst, &most);
+    printf("%s: %d of %d points in the box, largest relative difference %g, most density %g\n",
+           what, inside, GAS_SAMPLE_POINTS, (double)worst, (double)most);
+    CHECK(same && inside > 20 && inside < GAS_SAMPLE_POINTS && most > 0.1f, what);
+    Close(&scene);
+}
+
+static void TestSamples(Gpu* gpu, mvfxGpu* kernels)
+{
+    // One substep a step, which flips the fields' buffers once a step, so
+    // a step's frame reads the buffer the step leaves, not the one it
+    // starts from: a plume far off, turned and doubled, an even count of
+    // steps, sampled in the step's frame; a 2D gas an odd count (so the
+    // two are sampled from different buffers), read in the step's frame.
+    // Both pour from a box wide enough for the lattice's points to reach.
+    const double far[3] = {1000.0, 20.0, -500.0};
+    mvfxGasDef gas = Plume(16, 24, 16, &s_box);
+    gas.substeps = 1;
+    Sampled(gpu, kernels, &gas, far, 2.0f, 20, false,
+            "a plume far off, turned and doubled, sampled");
+    gas = Plume(40, 32, 1, &s_box);
+    gas.substeps = 1;
+    const double near[3] = {0.5, 0.0, -0.25};
+    Sampled(gpu, kernels, &gas, near, 1.0f, 15, true, "a 2D gas sampled");
+}
+
+static void TestSampleRefusals(Gpu* gpu, mvfxGpu* kernels)
+{
+    mvfxGasDef gas = Plume(8, 8, 8, &s_sphere);
+    Scene scene;
+    if (!Open(kernels, &gas, NULL, &scene))
+    {
+        return;
+    }
+    mvfxGpuGasSamplesDef good = mvfxDefaultGpuGasSamplesDef();
+    good.points = (mrhiResourceId){.index1 = 1};
+    good.target = (mrhiResourceId){.index1 = 2};
+    good.count = 4;
+    good.pointBytes = 48;
+    good.bytes = 16;
+    mvfxGpuGasSamplesDef bad[15];
+    for (int32_t b = 0; b < 15; ++b)
+    {
+        bad[b] = good;
+    }
+    bad[0].cookie = 0;
+    bad[1].gas = 1;
+    bad[2].gas = -1;
+    bad[3].field = mvfx_gasDistance;
+    bad[4].field = (mvfxGasField)-1;
+    bad[5].count = -1;
+    bad[6].count = MVFX_GPU_SAMPLE_POINTS + 1;
+    bad[7].count = (int64_t)1 << 32;
+    bad[8].points = (mrhiResourceId){0};
+    bad[9].target = bad[9].points;
+    bad[10].pointOffset = 2;
+    bad[11].offset = 6;
+    bad[12].pointBytes = 47;
+    bad[13].bytes = 15;
+    bad[14].origin[1] = 0x1p53;
+    bool refused = mvfxGpuSim_AddGasSamples(NULL, &good) == mvfx_errorInvalid &&
+                   mvfxGpuSim_AddGasSamples(scene.sim, NULL) == mvfx_errorInvalid;
+    for (int32_t b = 0; b < 15; ++b)
+    {
+        bool one = mvfxGpuSim_AddGasSamples(scene.sim, &bad[b]) == mvfx_errorInvalid;
+        if (!one)
+        {
+            printf("  spoiled query %d taken\n", b);
+        }
+        refused = refused && one;
+    }
+    CHECK(refused, "spoiled gas sample queries refused");
+    // A frame's queries past MVFX_GPU_GAS_SAMPLES.
+    mrhiBufferDef bufferDef = mrhiDefaultBufferDef();
+    bufferDef.size = 48;
+    bufferDef.usage = mrhi_bufferStorage;
+    mrhiBufferId buffers[2] = {{0}, {0}};
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    bool opened = mrhiCreateBuffer(gpu->device, &bufferDef, &buffers[0]) == mrhi_success &&
+                  mrhiCreateBuffer(gpu->device, &bufferDef, &buffers[1]) == mrhi_success &&
+                  mrhiBeginFrame(gpu->device, &frame) == mrhi_success;
+    bool taken = opened &&
+                 mrhiImportBuffer(gpu->device, buffers[0], &good.points) == mrhi_success &&
+                 mrhiImportBuffer(gpu->device, buffers[1], &good.target) == mrhi_success;
+    for (int32_t q = 0; taken && q < MVFX_GPU_GAS_SAMPLES; ++q)
+    {
+        taken = mvfxGpuSim_AddGasSamples(scene.sim, &good) == mvfx_success;
+    }
+    CHECK(taken && mvfxGpuSim_AddGasSamples(scene.sim, &good) == mvfx_errorLimit,
+          "a gas's queries past the most a frame");
+    if (opened)
+    {
+        (void)mrhiDropFrame(gpu->device);
+    }
+    for (int32_t b = 0; b < 2; ++b)
+    {
+        if (buffers[b].index1 != 0)
+        {
+            (void)mrhiDestroyBuffer(gpu->device, buffers[b]);
+        }
+    }
+    Close(&scene);
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestSplats(gpu, kernels);
@@ -870,6 +1060,8 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestFinishing(gpu, kernels);
     TestObstacles(gpu, kernels);
     TestReads(gpu, kernels);
+    TestSamples(gpu, kernels);
+    TestSampleRefusals(gpu, kernels);
 }
 
 int main(void)

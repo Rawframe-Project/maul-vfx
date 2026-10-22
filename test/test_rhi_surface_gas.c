@@ -11,10 +11,12 @@
 // the instance; a clear; frames dropped; an emitter left out by the
 // quality (the reach everywhere); the passes; the record read back and
 // reported, a stopped instance finishing; a read in a normalized format;
-// the refusals.
+// the distance sampled at points (mvfxGpuSim_AddGasSamples), the reach
+// past the box; the refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
+#include "rhi_samples.h"
 #include "rhi_surfaces.h"
 #include "test_harness.h"
 
@@ -268,11 +270,18 @@ static bool ReadBytes(Gpu* gpu, mvfxGpuSim* sim, const mvfxGasRead* read, uint64
     return done;
 }
 
+// The samples' points and each path's samples.
+static float s_points[3 * GAS_SAMPLE_POINTS];
+static double s_world[3 * GAS_SAMPLE_POINTS];
+static float s_cpuSamples[GAS_SAMPLE_POINTS];
+static float s_gpuSamples[GAS_SAMPLE_POINTS];
+
 static void TestReads(Gpu* gpu, mvfxGpu* kernels)
 {
     // After a few steps, a box of the distance in 16-bit units over the
-    // reach's span on both paths, each value within a unit; a surface's
-    // other fields and a read past the box refused.
+    // reach's span on both paths, each value within a unit, and the
+    // distance sampled at points; a surface's other fields (read or
+    // sampled) and a read past the box refused.
     mvfxEmitterDef emitter = Drops();
     mvfxGasDef gas = Wrap(24, 24, 16);
     mvfxEffectId effect = {0};
@@ -308,6 +317,31 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
     }
     printf("a surface's distance in 16-bit units: at most %d apart\n", most);
     CHECK(read16 && most <= 1, "a surface's distance read in 16-bit units");
+    // Its distance sampled about the box on both paths, the reach past its
+    // faces.
+    mvfxGasInfo info;
+    bool laid = mvfxInstance_GetGasInfo(context, CpuInstance(), 0, &info) == mvfx_success;
+    const double origin[3] = {info.center[0] - 0.5, info.center[1] + 0.25, info.center[2]};
+    int32_t inside = laid ? LayGasPoints(&info, origin, s_points, s_world) : 0;
+    bool sampled = laid &&
+                   mvfxInstance_SampleGas(context, CpuInstance(), 0, mvfx_gasDistance, s_world,
+                                          GAS_SAMPLE_POINTS, s_cpuSamples) == mvfx_success &&
+                   SampleGasGpu(gpu, sim, 0, mvfx_gasDistance, origin, s_points, GAS_SAMPLE_POINTS,
+                                s_gpuSamples);
+    float worst = 0.0f;
+    int32_t reached = 0;
+    for (int32_t i = 0; sampled && i < GAS_SAMPLE_POINTS; ++i)
+    {
+        worst = fmaxf(worst,
+                      fabsf(s_gpuSamples[i] - s_cpuSamples[i]) / (1.0f + fabsf(s_cpuSamples[i])));
+        reached += s_gpuSamples[i] == reach && s_cpuSamples[i] == reach ? 1 : 0;
+    }
+    printf("a surface sampled: %d of %d points in the box, %d at the reach, largest relative "
+           "difference %g\n",
+           inside, GAS_SAMPLE_POINTS, reached, (double)worst);
+    CHECK(sampled && worst <= 1e-4f && reached >= GAS_SAMPLE_POINTS - inside &&
+              reached < GAS_SAMPLE_POINTS,
+          "a surface's distance sampled");
     mvfxGpuGasReadDef def = mvfxDefaultGpuGasReadDef();
     def.target = (mrhiResourceId){.index1 = 1};
     def.bytes = 1u << 20;
@@ -323,6 +357,10 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
     def.read.field = mvfx_gasDistance;
     def.read.first[0] = 21;
     refused = refused && mvfxGpuSim_AddGasRead(sim, &def) == mvfx_errorInvalid;
+    mvfxGpuGasSamplesDef query = mvfxDefaultGpuGasSamplesDef();
+    query.points = (mrhiResourceId){.index1 = 1};
+    query.target = (mrhiResourceId){.index1 = 2};
+    refused = refused && mvfxGpuSim_AddGasSamples(sim, &query) == mvfx_errorInvalid;
     CHECK(refused, "a surface's other fields and a read past its box refused");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);

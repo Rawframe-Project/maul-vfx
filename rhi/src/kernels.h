@@ -32,6 +32,7 @@ typedef enum mvfxContainer
     mvfx_containerWaterRead = 15,
     mvfx_containerSurfaceGas = 16,
     mvfx_containerWaterSample = 17,
+    mvfx_containerGasSample = 18,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -223,6 +224,8 @@ typedef enum mvfxKernel
     mvfx_kernelSurfaceSmooth = 112,
     // A surface sampled at a host's points (water_sample.wgsl).
     mvfx_kernelWaterSample = 113,
+    // A gas's field sampled at a host's points (gas_sample.wgsl).
+    mvfx_kernelGasSample = 114,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

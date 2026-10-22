@@ -8,6 +8,7 @@
 #include "../kernels/contacts_container.h"
 #include "../kernels/gas_container.h"
 #include "../kernels/gas_read_container.h"
+#include "../kernels/gas_sample_container.h"
 #include "../kernels/grid_container.h"
 #include "../kernels/liquid_container.h"
 #include "../kernels/liquid_gas_container.h"
@@ -61,6 +62,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_waterReadContainer, sizeof s_waterReadContainer},
     {s_surfaceGasContainer, sizeof s_surfaceGasContainer},
     {s_waterSampleContainer, sizeof s_waterSampleContainer},
+    {s_gasSampleContainer, sizeof s_gasSampleContainer},
 };
 
 // A kernel's container and entry.
@@ -185,6 +187,7 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSurfaceGas, "surfaceField"},
     {mvfx_containerSurfaceGas, "surfaceSmooth"},
     {mvfx_containerWaterSample, "waterSample"},
+    {mvfx_containerGasSample, "gasSample"},
 };
 
 struct mvfxGpu

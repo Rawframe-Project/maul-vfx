@@ -115,6 +115,23 @@ typedef struct GasRead
     uint32_t written;
 } GasRead;
 
+// The words of a gas sample query's numbers (gas_sample.wgsl's Sample).
+#define GAS_SAMPLE_WORDS 16u
+
+// A sample query of a gas a frame: its numbers' buffer, the frame's ids
+// of it and of the host's points and samples, its passes, its numbers and
+// its points.
+typedef struct GasSamples
+{
+    mrhiBufferId numbers;
+    mrhiResourceId resource;
+    mrhiResourceId points;
+    mrhiResourceId target;
+    mrhiPassId passes[2];
+    uint32_t words[GAS_SAMPLE_WORDS];
+    uint32_t count;
+} GasSamples;
+
 typedef struct SimGas
 {
     mvfxGasView view;
@@ -147,6 +164,9 @@ typedef struct SimGas
     // The frame's reads.
     GasRead reads[MVFX_GPU_GAS_READS];
     int32_t readCount;
+    // The frame's sample queries.
+    GasSamples samples[MVFX_GPU_GAS_SAMPLES];
+    int32_t sampleCount;
     // The emitters splatting into it (sim_splat.c), how many and the room
     // held for them, and the accesses of its write pass.
     SimSplat* splats;
@@ -173,6 +193,17 @@ void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas);
 // Adds a gas's step's passes for its plan, then records them.
 mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g);
 bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas);
+
+// Imports a gas's buffers into the frame open, once a frame; false when
+// the device refuses.
+bool mvfxImportSimGas(mvfxGpuSim* sim, SimGas* gas);
+
+// A gas's reads and sample queries (sim_gas_read.c): their numbers'
+// buffers made with the gas (false when the device refuses) and
+// destroyed; the frame's recorded, after its step.
+bool mvfxCreateSimGasReads(mvfxGpuSim* sim, SimGas* gas);
+void mvfxDestroySimGasReads(mvfxGpuSim* sim, SimGas* gas);
+bool mvfxRecordSimGasReads(mvfxGpuSim* sim, SimGas* gas);
 
 // The passes a gas's step takes at most, with splats splatting into it.
 int32_t mvfxSimGasPasses(const mvfxGasView* view, int32_t splats);

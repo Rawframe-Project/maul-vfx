@@ -30,12 +30,6 @@ bool ReportWaters(Gpu* gpu, mvfxGpuSim* sim);
 bool ReadWaterGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t water, const mvfxWaterRead* read,
                   uint64_t bytes, uint64_t offset, uint8_t fill, void* out);
 
-// Samples a surface at count points (the world less origin, three
-// binary32 each) through mvfxGpuSim_AddWaterSamples, and reads the
-// samples (MVFX_GPU_WATER_SAMPLE_WORDS words each) back into out.
-bool SampleWaterGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t water, const double origin[3],
-                    const float* points, int64_t count, uint32_t* out);
-
 // Whether each field of each of the run's surfaces is the CPU path's,
 // relative to one more than its size within the tolerance, and its counts
 // and reach as the planned instance's reports left them (the steps
