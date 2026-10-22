@@ -1272,6 +1272,41 @@ static void TestRefused(mvfxGpu* kernels)
               refusal.emitter == -1 && refusal.gas == -1 && refusal.features == 0,
           "a gas with an obstacle run");
     mvfxDestroyGpuSim(sim);
+    // An emitter coupled to a surface: run while its particles only feel
+    // it; refused, named, when they push it, pour into it or write water
+    // events.
+    mvfxWaterDef waters[2] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};
+    waters[1].model = mvfx_waterShallow;
+    effectDef.gasCount = 0;
+    effectDef.waters = waters;
+    effectDef.waterCount = 2;
+    mvfxEmitterDef coupled[4] = {Sprite(), Sprite(), Sprite(), Sprite()};
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        coupled[c].water = (mvfxWaterCoupling){
+            .enabled = true, .water = c == 2 ? 1 : 0, .radius = 0.05f, .drag = 1.0f};
+    }
+    coupled[1].water.push = 0.1f;
+    coupled[2].water.pour = true;
+    coupled[3].events = mvfx_eventMaskWater;
+    coupled[3].eventCapacity = 16;
+    bool runs = true;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        effectDef.emitters = &coupled[c];
+        bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+        instanceDef.effect = effect;
+        made = made && mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success;
+        simDef.effect = effect;
+        simDef.instance = planned;
+        mvfxResult result = mvfxCreateGpuSim(&simDef, &sim, &refusal);
+        runs = runs && made &&
+               (c == 0 ? result == mvfx_success && refusal.features == 0
+                       : result == mvfx_errorState && sim == NULL && refusal.emitter == 0 &&
+                             refusal.features == MVFX_FEATURE_WATER);
+        mvfxDestroyGpuSim(sim);
+    }
+    CHECK(runs, "an emitter coupled to a surface run, and refused where it crosses it");
     mvfxDestroyContext(context);
 }
 

@@ -11,6 +11,7 @@
 #include "liquid_kernel.h"
 #include "steer.h"
 #include "velocity_modules.h"
+#include "water.h"
 
 #include <math.h>
 #include <string.h>
@@ -98,6 +99,32 @@ static mvfxPlannedLiquid PlannedLiquid(const mvfxInstance* instance, int32_t emi
                                .sigma = sigma};
 }
 
+// An emitter's resolved coupling to its water surface as a plan hands it
+// over: its map's origin (the surface's frame's zero mapped in binary64),
+// turn and scale, its up, radius and strength, and the coupling's numbers
+// (the push in the surface's lengths, as a crossing takes it).
+static mvfxPlannedWaterCoupling PlannedWater(const mvfxResolvedWater* water)
+{
+    if (water->coupling == nullptr)
+    {
+        return (mvfxPlannedWaterCoupling){.water = -1};
+    }
+    static const double zero[3] = {0.0, 0.0, 0.0};
+    const mvfxWaterCoupling* coupling = water->coupling;
+    mvfxPlannedWaterCoupling out = {.water = coupling->water,
+                                    .sigma = water->map.sigma,
+                                    .radius = water->radius,
+                                    .strength = water->strength,
+                                    .drag = coupling->drag,
+                                    .buoyancy = coupling->buoyancy,
+                                    .push = coupling->push / water->map.sigma,
+                                    .pour = coupling->pour};
+    mvfxMapPointDouble(&water->map, zero, out.origin);
+    memcpy(out.rotation, water->map.rotation, sizeof out.rotation);
+    memcpy(out.up, water->up, sizeof out.up);
+    return out;
+}
+
 void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, const mvfxTransform* from,
                       mvfxEmitterPlan* plan)
 {
@@ -131,6 +158,7 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, const mvfxT
     // At the plan's start, as its step began.
     mvfxResolveSteering(instance, emitter, from, &plan->steering);
     plan->liquid = PlannedLiquid(instance, emitter);
+    plan->water = PlannedWater(&state->water);
     plan->depth = (mvfxPlannedDepth){0};
     if (state->hasDepth)
     {

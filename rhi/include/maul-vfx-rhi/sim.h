@@ -70,7 +70,10 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
-    // beside anything that kills within a step. Bodies that meet each
+    // beside anything that kills within a step. An emitter coupled to a
+    // water surface (MVFX_FEATURE_WATER) is refused when its particles
+    // cross the surface to some end: pushing it, pouring into it or
+    // writing water events. Bodies that meet each
     // other (bodyContacts above 0) run an emitter's step in one workgroup
     // (its pairs found and solved colour by colour, its sleepers woken by
     // touch and its islands settled, as the CPU path's), so they use one
@@ -255,7 +258,10 @@ extern "C"
     /// digit counts, and 112 for its numbers and counts; one whose forces
     /// follow a gas 4 bytes a face of each gas it follows (each axis's
     /// faces across it, through the last axis of more than one cell), its
-    /// faces copied there each step; one splatting into a gas 40 bytes a
+    /// faces copied there each step; one coupled to a water surface 8
+    /// bytes a cell of it and, of shallow water, 4 a face (each axis's
+    /// faces across it), its fields copied there each step; one
+    /// splatting into a gas 40 bytes a
     /// particle of its capacity (rounded up to blocks of 1,024) and 2,048
     /// a block for its particles in the box and their sort by cell, 8 a
     /// cell of the gas and 8 more for the cells' runs, and 96 for its
@@ -1143,7 +1149,9 @@ extern "C"
     /// spawning from events, 4 more each for one drawn as ribbons, finding
     /// neighbors, with contacts, of units that tear, of units that collide
     /// with themselves and of rigid particles, and 8 more for one with
-    /// plexus links; at the first step, its sources' 1,568 and the effect's
+    /// plexus links; 96 more for one coupled to a water surface (the
+    /// surface's map and the coupling's numbers); at the first step, its
+    /// sources' 1,664 and the effect's
     /// baked tables its values read (1,032 a curve, 4,096 a gradient, 12 a
     /// vertex of a rigid hull); and the values of each grid its
     /// forces and colliders read (mvfxGridView's bytes)

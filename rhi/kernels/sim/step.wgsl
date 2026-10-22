@@ -39,6 +39,10 @@ fn moveLive(i: u32) {
     var a = vec3<f32>(0.0);
     var wind = 0.0;
     forcesAt(start, 0.0, &a, &wind);
+    var touch = Touch(false, vec3<f32>(0.0), 0.0);
+    if (params.water.x != NONE) {
+        touch = waterDrag(start, &a, &wind);
+    }
     var scale = 1.0;
     if (params.words.drag != NONE) {
         scale = bitcast<f32>(source[params.words.drag * c + i]);
@@ -51,6 +55,8 @@ fn moveLive(i: u32) {
     let age = ageAt(birth, inverseLife);
     let carried = readVector(0u, i, params.words.velocity);
     let v0 = limitSpeed(carried, age, params.angular.z);
+    // The water's lift last: solved with the move it makes.
+    waterLift(touch, v0, f.y, f.z, &a);
     var p = moveByModules(start, start + v0 * f.y + a * f.z, age, seconds);
     var v = v0 * f.x + a * f.y;
     let fate = meet(start, &p, &v, birth, inverseLife, death);
@@ -373,10 +379,15 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
     var a = vec3<f32>(0.0);
     var wind = 0.0;
     forcesAt(p, secondsOf(vec2<u32>(b0.z, 0u)), &a, &wind);
+    var touch = Touch(false, vec3<f32>(0.0), 0.0);
+    if (params.water.x != NONE) {
+        touch = waterDrag(p, &a, &wind);
+    }
     let seconds = remainderOf(j);
     let f = factorsFor(wind, dragScaleOf(j), seconds, false);
     // Born at age 0, its speed limit's decay its own.
     v = limitSpeed(v, 0.0, factors(bitcast<f32>(params.turns.w), seconds).x);
+    waterLift(touch, v, f.y, f.z, &a);
     *place = moveByModules(p, p + v * f.y + a * f.z, 0.0, seconds);
     *velocity = v * f.x + a * f.y;
     var birth = vec2<u32>(0u);

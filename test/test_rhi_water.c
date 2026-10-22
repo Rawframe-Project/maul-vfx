@@ -197,6 +197,56 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
     Ponds(gpu, kernels, &water, 1, (Run){.moving = true}, "a basin where a moving instance began");
 }
 
+// Sprites coupled to surface 0, living longer: dragged toward its flow
+// and buoyed (their crossings, which push it, not yet run on the GPU).
+static mvfxEmitterDef Floating(void)
+{
+    mvfxEmitterDef emitter = Sprite();
+    emitter.lifetime = mvfxRangeSource(0.5f, 0.9f);
+    emitter.water =
+        (mvfxWaterCoupling){.enabled = true, .radius = 0.08f, .buoyancy = 2.0f, .drag = 3.0f};
+    return emitter;
+}
+
+// Runs floating sprites over a surface, compared after every step.
+static void Floats(Gpu* gpu, mvfxGpu* kernels, const mvfxWaterDef* water, Run run, const char* what)
+{
+    mvfxEmitterDef emitter = Floating();
+    run.emitters = &emitter;
+    run.emitterCount = 1;
+    run.waters = water;
+    run.waterCount = 1;
+    Compare(gpu, kernels, &run, what);
+}
+
+static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Over waves the host pushes: their heights and rates.
+    mvfxWaterDef water = Pond(48, 40, 0.1f, 1.5f, 15);
+    Floats(gpu, kernels, &water, (Run){0}, "sprites floating on a pond");
+    Floats(gpu, kernels, &water, (Run){.moving = true}, "sprites floating on a moving pond");
+    water.space = mvfx_spaceWorld;
+    Floats(gpu, kernels, &water, (Run){.moving = true},
+           "sprites floating where a moving instance's pond began");
+    water.space = mvfx_spaceLocal;
+    Floats(gpu, kernels, &water, (Run){.clearing = true}, "sprites floating on a pond cleared");
+    Floats(gpu, kernels, &water, (Run){.dropping = true},
+           "sprites floating on a pond, frames dropped");
+    // Over shallow water: its depths, ground and flow; over springs on a
+    // terrain, where the ground rises out of the water.
+    water = Basin(32, 28, 0.1f, 0.2f);
+    Floats(gpu, kernels, &water, (Run){0}, "sprites floating in a basin");
+    const mvfxGridDef ground = Ground();
+    water = Basin(48, 40, 0.06f, 0.05f);
+    water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
+    water.hasTerrain = true;
+    water.terrain = Terrain(0.0f);
+    water.sources = s_springs;
+    water.sourceCount = 2;
+    Run run = {.colliderGrids = &ground, .colliderGridCount = 1, .tolerance = 1e-3f};
+    Floats(gpu, kernels, &water, run, "sprites floating over springs on a terrain");
+}
+
 static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,
                                     .inside = true,
                                     .halfExtents = {0.8f, 0.8f, 1.0f},
@@ -246,6 +296,17 @@ static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
     Compare(gpu, kernels, &run, "a pond and a basin beside a liquid gas, in steps");
     run.dropping = true;
     Compare(gpu, kernels, &run, "a pond and a basin beside a liquid gas, frames dropped");
+    // Sprites floating in the basin beside the liquid: the surface each
+    // step of a split frame leaves read by the next.
+    mvfxEmitterDef floating = Floating();
+    floating.water.water = 1;
+    const mvfxEmitterDef both[2] = {emitter, floating};
+    run.emitters = both;
+    run.emitterCount = 2;
+    run.dropping = false;
+    Compare(gpu, kernels, &run, "sprites floating in a basin beside a liquid gas, in steps");
+    run.dropping = true;
+    Compare(gpu, kernels, &run, "sprites floating beside a liquid gas, frames dropped");
 }
 
 static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
@@ -463,6 +524,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestWaves(gpu, kernels);
     TestHitch(gpu, kernels);
     TestShallow(gpu, kernels);
+    TestCoupled(gpu, kernels);
     TestSplit(gpu, kernels);
     TestFinishing(gpu, kernels);
     TestReads(gpu, kernels);

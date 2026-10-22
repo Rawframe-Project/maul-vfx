@@ -278,6 +278,30 @@ extern "C"
         float sigma;
     } mvfxPlannedLiquid;
 
+    // An emitter's water surface (mvfxEmitterDef.water) as resolved for a
+    // plan: the surface it meets, -1 for none; the map of the surface's
+    // frame, where it stood at the step's start, into the particles' space
+    // as stored, a place p going to origin + rotation (sigma p), the
+    // origin rounded from binary64; the surface's Y in the particles'
+    // space (unit length); the particles' radius in the surface's lengths
+    // and gravity's strength in them; the coupling's drag and buoyancy,
+    // the push a crossing gives in the surface's lengths, and whether a
+    // crossing pours.
+    typedef struct mvfxPlannedWaterCoupling
+    {
+        int32_t water;
+        float origin[3];
+        float rotation[4];
+        float sigma;
+        float up[3];
+        float radius;
+        float strength;
+        float drag;
+        float buoyancy;
+        float push;
+        bool pour;
+    } mvfxPlannedWaterCoupling;
+
     // An emitter's plan for the context's last step.
     typedef struct mvfxEmitterPlan
     {
@@ -379,6 +403,8 @@ extern "C"
         mvfxPlannedSteering steering;
         // Its particle liquid's kernels as resolved.
         mvfxPlannedLiquid liquid;
+        // Its water surface's coupling as resolved (water -1 for none).
+        mvfxPlannedWaterCoupling water;
         // The mask of its neighbor grid's keys (a cell's key is pcg4d of
         // its coordinates, the grid's salt, masked): the least power of
         // two at least twice the capacity, less one; 0 when its view's
@@ -773,6 +799,9 @@ extern "C"
         int32_t splatGas;
         // Its liquid as compiled.
         mvfxLiquidDef liquid;
+        // Its coupling to a water surface as compiled (not enabled for
+        // none).
+        mvfxWaterCoupling water;
         // A bit for each kind of collider of its own (1 <<
         // mvfx_colliderPlane and so on), the grid each reads (a
         // heightfield's or a distance grid's; the null id for the others),

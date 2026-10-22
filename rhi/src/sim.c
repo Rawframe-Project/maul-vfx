@@ -47,7 +47,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
      MVFX_FEATURE_EVENT_SPAWN | MVFX_FEATURE_RIBBON | MVFX_FEATURE_BEAM | MVFX_FEATURE_LIGHT |     \
      MVFX_FEATURE_NEIGHBORS | MVFX_FEATURE_STEERING | MVFX_FEATURE_PAIR_FORCE |                    \
      MVFX_FEATURE_CONTACTS | MVFX_FEATURE_PLEXUS | MVFX_FEATURE_UNITS | MVFX_FEATURE_RIGID |       \
-     MVFX_FEATURE_GAS_SPLAT | MVFX_FEATURE_LIQUID)
+     MVFX_FEATURE_GAS_SPLAT | MVFX_FEATURE_LIQUID | MVFX_FEATURE_WATER)
 #define RUN_FORCES    0x7Fu
 #define RUN_COLLIDERS 0x1Fu
 
@@ -106,7 +106,13 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                  : 0) |
             // Rigid particles are killed by their strikes' life
             // alone.
-            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0),
+            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0) |
+            // A surface's crossings (its pushes, pours and events) are not
+            // run yet.
+            (view->water.enabled && (view->water.push > 0.0f || view->water.pour ||
+                                     (view->events & mvfx_eventMaskWater) != 0)
+                 ? MVFX_FEATURE_WATER
+                 : 0),
     };
     return refusal->features == 0;
 }
@@ -600,7 +606,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         return false;
     }
     const mrhiResourceId* r = emitter->resources;
-    mrhiAccess written[5 + MVFX_MAX_GASES] = {
+    mrhiAccess written[6 + MVFX_MAX_GASES] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination},
@@ -666,6 +672,7 @@ static void StepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)
     mvfxStepNumbers(&sim->views[e], plan, e, (const uint32_t (*)[5])forceGrids,
                     (const uint32_t (*)[5])colliderGrids, sim->hostNormals.index1 != 0,
                     &emitter->tables, emitter->words);
+    mvfxSimFollowWater(sim, e, plan, emitter->words + MVFX_WATER_HEAD);
 }
 
 // Adds an emitter's step: its numbers, map and births from its plan, and
@@ -781,7 +788,7 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
         written = mvfxUpload(sim->device, &sim->uploaded, pass, step, MVFX_UNIT_FRAMES * 4u,
                              emitter->words + MVFX_UNIT_FRAMES, 4u * 4u);
     }
-    return written;
+    return written && mvfxWriteSimFollow(sim, pass, step, emitter);
 }
 
 // Records the pass writing the plan's bytes: its numbers, its births and

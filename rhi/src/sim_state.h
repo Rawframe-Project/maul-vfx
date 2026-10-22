@@ -360,6 +360,12 @@ typedef struct Emitter
     // (UINT32_MAX to clear the region).
     uint32_t gasRooms[MVFX_MAX_GASES];
     uint32_t gasSources[MVFX_MAX_GASES];
+    // The water surface it is coupled to (-1 for none), the region of the
+    // grids buffer its current fields are copied to, and for the step the
+    // first float of each field copied (UINT32_MAX to clear the region).
+    int32_t water;
+    uint32_t waterRoom;
+    uint32_t waterSources[WATER_COPIES];
 } Emitter;
 
 struct mvfxGpuSim
@@ -559,16 +565,23 @@ mvfxResult mvfxLaySimMesh(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t e);
 mvfxResult mvfxPlaceSimMesh(mvfxGpuSim* sim, int32_t e);
 bool mvfxWriteSimMesh(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
 
-// Emitters following gases (sim_follow.c): a region of emitter e's grids
-// for each gas its forces follow, laid out after its tables; its gas
-// forces' grid words, the region and the gas's cells; for a step, each
-// gas's faces as its last step left them, none after a clear, taken
-// before the gases' steps are added; the gases' fields brought into the
-// frame, each an access of the step's write pass; and the copies, or the
-// regions cleared, recorded into that pass.
+// Emitters following gases and water surfaces (sim_follow.c): a region of
+// emitter e's grids for each gas its forces follow and for the surface it
+// is coupled to, laid out after its tables; its gas
+// forces' grid words, the region and the gas's cells; its coupling's
+// words for a step's plan (sim.wgsl's water on); for a step, each gas's
+// faces and the surface's fields as their last steps left them, none
+// after a clear, taken before the gases' and surfaces' steps are added;
+// the coupling's words uploaded into the step's numbers each step; their
+// fields brought into the frame, each an access of the step's write pass;
+// and the copies, or the regions cleared, recorded into that pass.
 void mvfxLaySimFollow(mvfxGpuSim* sim, int32_t e);
 void mvfxSimFollowGrids(const mvfxGpuSim* sim, int32_t e, uint32_t forceGrids[][5]);
+void mvfxSimFollowWater(const mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan,
+                        uint32_t words[MVFX_WATER_COUPLING]);
 void mvfxSimFollowSources(const mvfxGpuSim* sim, Emitter* emitter);
+bool mvfxWriteSimFollow(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
+                        const Emitter* emitter);
 bool mvfxImportSimFollow(mvfxGpuSim* sim, const Emitter* emitter, mrhiAccess* accesses,
                          int32_t* count);
 bool mvfxCopySimFollow(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);

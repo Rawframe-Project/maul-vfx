@@ -303,6 +303,22 @@ static void Plan(SimWater* water, const mvfxWaterPlan* plan)
     water->after = now;
 }
 
+void mvfxSimWaterFields(const SimWater* water, uint32_t now, uint32_t firsts[WATER_COPIES],
+                        uint32_t floats[WATER_COPIES])
+{
+    // The fields' buffer as water.wgsl lays it out.
+    uint32_t cells = (uint32_t)water->view.cells;
+    uint32_t x = (uint32_t)water->view.faces[0];
+    uint32_t z = (uint32_t)water->view.faces[1];
+    bool shallow = IsShallow(water);
+    const uint32_t first[WATER_COPIES] = {
+        now * cells, shallow ? 2u * (cells + x + z) + cells : (2u + now) * cells,
+        2u * cells + now * x, 2u * cells + 2u * x + now * z};
+    const uint32_t count[WATER_COPIES] = {cells, cells, shallow ? x : 0u, shallow ? z : 0u};
+    memcpy(firsts, first, sizeof first);
+    memcpy(floats, count, sizeof count);
+}
+
 // Imports a surface's buffers into the frame open, once a frame.
 static bool Import(mvfxGpuSim* sim, SimWater* water)
 {
@@ -445,6 +461,7 @@ static bool RecordRead(mvfxGpuSim* sim, const SimWater* water, const WaterRead* 
 bool mvfxRecordSimWater(mvfxGpuSim* sim, SimWater* water)
 {
     bool recorded = !water->added || RecordStep(sim, water);
+    water->stepped = water->stepped || (water->added && recorded);
     water->now = water->added ? water->after : water->now;
     water->added = false;
     for (int32_t r = 0; recorded && r < water->readCount; ++r)

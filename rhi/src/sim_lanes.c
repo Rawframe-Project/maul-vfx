@@ -310,6 +310,7 @@ bool mvfxEnterSimStep(mvfxGpuSim* sim, int32_t step)
     {
         SimWater* water = &sim->waters[w];
         lanes->waters[(step - 1) * lanes->waterCount + w] = *water;
+        water->stepped = water->stepped || water->added;
         water->now = water->added ? water->after : water->now;
         water->added = false;
     }

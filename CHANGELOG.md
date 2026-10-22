@@ -1099,6 +1099,18 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   surface keeps its numbers, fields and record on the device (16 bytes
   a cell, 8 a face, and its terrain's grid; `hostGridBytes` covers the
   instance's terrain); `mvfxGpuRefusal.water` names none.
+- A planned instance hands over an emitter's water coupling as resolved
+  (`mvfxEmitterPlan.water`, `mvfxPlannedWaterCoupling`): its map into
+  the surface's frame, the surface's up, the particles' radius and
+  gravity in the surface's lengths, and the coupling's numbers; an
+  emitter's view carries its coupling as compiled
+  (`mvfxEmitterView.water`). The GPU
+  part runs an emitter coupled to a surface: its particles' drag toward
+  the surface's flow and their buoyancy, from the surface's fields as
+  its last step left them, copied each step into the emitter's grids
+  (8 bytes a cell, and 4 a face of shallow water). One whose particles
+  push the surface, pour into it or write water events is refused
+  (`MVFX_FEATURE_WATER`).
 
 ### Changed
 

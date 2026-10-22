@@ -60,9 +60,15 @@ typedef struct WaterRead
     uint32_t written;
 } WaterRead;
 
+// The fields a coupled emitter reads (sim/water.wgsl): waves' heights and
+// rates, or shallow water's depths and ground, then its faces across X and
+// across Z.
+#define WATER_COPIES 4
+
 // A surface: its view, buffers, numbers and its terrain's grid; the buffer
 // current now, and after the step added (current once it is recorded: a
-// frame the host drops leaves the surface as it was); the statistics
+// frame the host drops leaves the surface as it was); whether its fields
+// hold a step's (a step recorded, or added in a lane before); the statistics
 // record the step's write starts with (nothing moving, the step's end);
 // the step's dispatches and their passes (the first pass writing the
 // numbers), held whole so a lane of a split frame (sim_lanes.c) copies it;
@@ -77,6 +83,7 @@ typedef struct SimWater
     mvfxGpuGrids grids;
     uint32_t now;
     uint32_t after;
+    bool stepped;
     uint32_t record[MVFX_GPU_WATER_STATISTICS_WORDS];
     WaterDispatch dispatches[WATER_DISPATCHES];
     mrhiPassId passes[WATER_DISPATCHES + 1];
@@ -95,6 +102,11 @@ mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect);
 // its grids' buffer; false when the device refuses or a grid is gone.
 bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords);
 void mvfxDestroySimWater(mvfxGpuSim* sim, SimWater* water);
+
+// The fields a coupled emitter copies from buffer now: each one's first
+// float and floats (0 for waves' faces).
+void mvfxSimWaterFields(const SimWater* water, uint32_t now, uint32_t firsts[WATER_COPIES],
+                        uint32_t floats[WATER_COPIES]);
 
 // Adds surface w's step's passes for its plan, then records them.
 mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w);

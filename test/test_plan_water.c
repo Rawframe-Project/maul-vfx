@@ -10,9 +10,11 @@
 // its own (the most before a report), its sources' depths while it
 // plays; in a split frame the pushes and clear in the first step alone;
 // a surface's view; a stopped instance running while its surface moves,
-// as its simulation reports; the refusals, and reads of a planned
-// surface refused.
+// as its simulation reports; an emitter's coupling to a surface as
+// resolved; the refusals, and reads of a planned surface refused.
 
+#include "direction.h"
+#include "force.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "plan_resolved.h"
@@ -384,6 +386,74 @@ static void TestHolds(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestCoupling(void)
+{
+    // A world emitter coupled to a shallow surface (a pour's) of a moved,
+    // turned and scaled instance: its plan's map is its resolved map (places mapped alike,
+    // within the origin's rounding), its up, radius and strength the
+    // resolved ones, the coupling's numbers its def's (the push in the
+    // surface's lengths); an emitter without a coupling plans none.
+    NewContext();
+    mvfxWaterDef water = mvfxDefaultWaterDef();
+    water.size[0] = 8;
+    water.size[1] = 8;
+    water.center[1] = 0.3f;
+    water.model = mvfx_waterShallow;
+    mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    emitters[0].space = mvfx_spaceWorld;
+    emitters[0].water = (mvfxWaterCoupling){.enabled = true,
+                                            .water = 0,
+                                            .radius = 0.05f,
+                                            .push = 0.04f,
+                                            .pour = true,
+                                            .buoyancy = 2.0f,
+                                            .drag = 1.5f};
+    const double origin[3] = {1.0, 0.0, -2.0};
+    Open(&water, 1, emitters, 2, NULL, 0, origin, 2.0f);
+    const double moved[3] = {1.5, 0.25, -2.0};
+    const float turn[4] = {0.0f, 0.38268343f, 0.0f, 0.92387953f};
+    mvfxEmitterPlan plan;
+    mvfxEmitterPlan none;
+    bool planned =
+        mvfxInstance_SetTransform(s_context, s_planned, moved, turn, 2.0f, false) == mvfx_success &&
+        mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success &&
+        mvfxInstance_GetEmitterPlan(s_context, s_planned, 0, &plan) == mvfx_success &&
+        mvfxInstance_GetEmitterPlan(s_context, s_planned, 1, &none) == mvfx_success;
+    CHECK(planned, "a coupled emitter planned");
+    if (!planned)
+    {
+        mvfxDestroyContext(s_context);
+        return;
+    }
+    const mvfxResolvedWater* resolved = &Live(s_planned)->emitters[0].water;
+    const mvfxPlannedWaterCoupling* c = &plan.water;
+    static const float places[3][3] = {{0, 0, 0}, {0.4f, -0.1f, 0.25f}, {-1.2f, 0.3f, 0.9f}};
+    float apart = 0.0f;
+    for (int32_t p = 0; p < 3; ++p)
+    {
+        float expected[3];
+        float scaled[3];
+        float turned[3];
+        mvfxMapPoint(&resolved->map, places[p], expected);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            scaled[k] = c->sigma * places[p][k];
+        }
+        mvfxRotate(c->rotation, scaled, turned);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            apart = fmaxf(apart, fabsf(c->origin[k] + turned[k] - expected[k]));
+        }
+    }
+    CHECK(c->water == 0 && apart < 1e-5f && c->sigma == resolved->map.sigma &&
+              memcmp(c->up, resolved->up, sizeof c->up) == 0 && c->radius == resolved->radius &&
+              c->strength == resolved->strength && c->radius == 0.05f / c->sigma &&
+              c->drag == 1.5f && c->buoyancy == 2.0f && c->push == 0.04f / c->sigma && c->pour &&
+              none.water.water == -1,
+          "the planned coupling");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestView(void)
 {
     // A lake's view: its def, its source the effect's copy, its cells and
@@ -472,6 +542,7 @@ int main(void)
     TestUnreported();
     TestSplit();
     TestHolds();
+    TestCoupling();
     TestView();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;

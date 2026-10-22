@@ -276,6 +276,21 @@ struct Step {
     // its substeps and its iterations; a liquid gas's particles' affine
     // matrices' first word (NONE for others').
     liquid: vec4<u32>,
+    // Its water surface (sim/water.wgsl), uploaded each step: the first
+    // word of the region of the grids buffer its fields are copied to
+    // (NONE for an emitter not coupled to one), the grid's cells across X
+    // and Z, whether it is shallow water; the surface's frame's zero in
+    // the particles' space and its scale; its turn; its Y in the
+    // particles' space and the particles' radius in its lengths;
+    // gravity's strength in its lengths, the coupling's drag and
+    // buoyancy, the cell's size; the push in its lengths (bits) and
+    // whether the particles pour, unused.
+    water: vec4<u32>,
+    waterOrigin: vec4<f32>,
+    waterRotation: vec4<f32>,
+    waterUp: vec4<f32>,
+    waterNumbers: vec4<f32>,
+    waterCross: vec4<u32>,
 }
 
 @group(0) @binding(0) var<uniform> params: Step;
@@ -327,6 +342,8 @@ var<workgroup> boxLow: array<vec4<f32>, CHUNK>;
 var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 
 // include: sim/forces.wgsl
+
+// include: sim/water.wgsl
 
 // include: sim/shapes.wgsl
 
