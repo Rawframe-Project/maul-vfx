@@ -11,7 +11,7 @@
 // obstacles before as the substep before left them, its forces at its
 // start), the whole plans refused. The speed
 // setter's refusals; births past a plan's room refused; a liquid gas's
-// plan maps its particles; a surface gas still unplannable.
+// plan maps its particles, as a surface gas's does.
 
 #include "force.h"
 #include "gas.h"
@@ -453,29 +453,56 @@ static void TestLiquidMap(void)
     mvfxDestroyContext(context);
 }
 
-static void TestSurfaceRefused(void)
+static void TestSurfaceMap(void)
 {
-    // A surface gas still keeps its effect unplannable.
+    // A surface gas's plan hands over the map of the emitter it wraps into
+    // the box, as the core's step maps it, under a moved, turned, grown
+    // instance.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxGasDef gas = Liquid();
     gas.kind = mvfx_gasSurface;
+    gas.surface.emitter = 0;
     gas.surface.radius = 0.1f;
-    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = &emitter;
-    effectDef.emitterCount = 1;
-    effectDef.gases = &gas;
-    effectDef.gasCount = 1;
+    gas.center[1] = -0.2f;
+    mvfxEmitterDef emitter = Emitter();
+    emitter.liquid.enabled = false;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    def.gases = &gas;
+    def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
-    mvfxInstanceDef def = mvfxDefaultInstanceDef();
-    def.effect = effect;
-    def.planned = true;
-    mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &def, &instance) == mvfx_errorState && instance.index1 == 0,
-          "a surface gas unplannable");
+    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a surface gas's effect");
+    mvfxInstanceId planned = Instance(context, effect, true);
+    const double origin[3] = {-2.0, 1.0, 0.5};
+    const float rotation[4] = {sinf(0.2f), 0.0f, 0.0f, cosf(0.2f)};
+    if (mvfxContextInstance(context, planned) == NULL ||
+        mvfxInstance_SetTransform(context, planned, origin, rotation, 0.75f, false) !=
+            mvfx_success ||
+        mvfxContext_StepTicks(context, STEP_TICKS) != mvfx_success)
+    {
+        CHECK(false, "a surface gas planned and stepped");
+        mvfxDestroyContext(context);
+        return;
+    }
+    static mvfxGasPlan plan;
+    CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success, "plan");
+    mvfxSpaceMap map = mvfxGasParticleMap(mvfxContextInstance(context, planned), 0, 0);
+    const double zero[3] = {0.0, 0.0, 0.0};
+    float at[3];
+    mvfxMapPointDouble(&map, zero, at);
+    bool same = plan.liquid.emitter == 0 && plan.liquid.sigma == map.sigma;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && plan.liquid.origin[k] == at[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        same = same && plan.liquid.rotation[k] == map.rotation[k];
+    }
+    CHECK(same && map.sigma != 1.0f, "a surface gas's plan maps its particles");
     mvfxDestroyContext(context);
 }
 
@@ -486,6 +513,6 @@ int main(void)
     TestSpeedSetter();
     TestPlanRoom();
     TestLiquidMap();
-    TestSurfaceRefused();
+    TestSurfaceMap();
     return s_failures == 0 ? 0 : 1;
 }

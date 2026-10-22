@@ -1272,6 +1272,20 @@ static void TestRefused(mvfxGpu* kernels)
               refusal.emitter == -1 && refusal.gas == -1 && refusal.features == 0,
           "a gas with an obstacle run");
     mvfxDestroyGpuSim(sim);
+    // A surface gas, planned: named in the refusal, no emitter.
+    gas.obstacleCount = 0;
+    gas.kind = mvfx_gasSurface;
+    gas.surface.emitter = 0;
+    gas.surface.radius = 0.1f;
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a surface gas's effect");
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success,
+          "a surface gas planned");
+    simDef.effect = effect;
+    simDef.instance = planned;
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
+              refusal.emitter == -1 && refusal.gas == 0,
+          "a surface gas refused, named");
     // Emitters coupled to a surface: run, whether their particles only
     // feel it, push it, pour into it or write water events.
     mvfxWaterDef waters[2] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};

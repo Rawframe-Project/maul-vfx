@@ -1124,6 +1124,10 @@ the project uses [Semantic Versioning](https://semver.org/). Before
 - `mvfxInstance_GetEmitterPlan` and `mvfxInstance_GetGasPlan` refuse
   (`mvfx_errorState`) an instance whose plans hold more than one step;
   each has its own plan.
+- An effect with a surface gas can be planned (`mvfxCreateInstance` no
+  longer refuses it): the gas's plan maps the emitter it wraps into its
+  box (`mvfxGasPlan.liquid`). The GPU part names such a gas in its
+  refusal (`mvfxGpuRefusal.gas`) until it runs it.
 
 ### Fixed
 

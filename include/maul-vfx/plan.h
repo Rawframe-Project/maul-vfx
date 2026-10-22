@@ -470,8 +470,9 @@ extern "C"
         // after the sources.
         int32_t pourCount;
         mvfxPlannedPour pours[MVFX_MAX_EMITTERS];
-        // A liquid gas's particles: its emitter's map into the box, as a
-        // pour's (no rates or drag); emitter -1 for smoke.
+        // A liquid gas's particles, or those a surface gas wraps: their
+        // emitter's map into the box, as a pour's (no rates or drag);
+        // emitter -1 for smoke.
         mvfxPlannedPour liquid;
     } mvfxGasPlan;
 

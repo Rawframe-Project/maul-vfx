@@ -84,7 +84,7 @@ extern "C"
         // Whether its particles are simulated elsewhere (maul-vfx/plan.h):
         // it then holds none, and each step writes its emitters' plans, its
         // gases' and its water surfaces', whose fields the simulation
-        // holds. An effect with a surface gas cannot be planned yet.
+        // holds.
         bool planned;
     } mvfxInstanceDef;
 
@@ -122,9 +122,7 @@ extern "C"
     ///         misuse when the context is given; `mvfx_errorStale` for an
     ///         effect id that names no live effect; `mvfx_errorLimit` when the
     ///         context holds its limit of instances; `mvfx_errorCapacity` when
-    ///         the allocator fails or the block's size does not fit;
-    ///         `mvfx_errorState` for a planned instance of an effect that
-    ///         cannot be planned.
+    ///         the allocator fails or the block's size does not fit.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateInstance(mvfxContext* context,

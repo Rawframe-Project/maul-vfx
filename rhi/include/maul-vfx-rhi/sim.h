@@ -75,8 +75,8 @@ extern "C"
     // (its pairs found and solved colour by colour, its sleepers woken by
     // touch and its islands settled, as the CPU path's), so they use one
     // compute unit of the device however many there are. gas names the
-    // first gas the part does not run, -1 for none (every gas of an effect
-    // that can be planned runs), and emitter is then -1; water names the
+    // first gas the part does not run (a surface gas), -1 for none, and
+    // emitter is then -1; water names the
     // first water surface it does not run, -1 for none (every surface of
     // an effect that can be planned runs), and emitter and gas are then
     // -1.

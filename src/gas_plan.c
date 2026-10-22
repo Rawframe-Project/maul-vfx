@@ -33,7 +33,8 @@ static mvfxPlannedPour MapOf(const mvfxInstance* instance, int32_t g, int32_t e)
 
 // The emitters pouring into gas g as the CPU path's step would pour
 // them (step.c's PoursInto): every one splatting into it, its live
-// particles the simulation's to count; and a liquid gas's emitter's map.
+// particles the simulation's to count; and the map of a liquid gas's
+// emitter, or of the one a surface gas wraps.
 static void PlanPours(const mvfxInstance* instance, int32_t g, mvfxGasState* state)
 {
     state->planPourCount = 0;
@@ -52,8 +53,8 @@ static void PlanPours(const mvfxInstance* instance, int32_t g, mvfxGasState* sta
         pour->drag = splat->drag;
     }
     const mvfxCompiledGas* gas = &instance->effect->gases[g];
-    state->planLiquid = gas->def.kind == mvfx_gasLiquid ? MapOf(instance, g, gas->emitter)
-                                                        : (mvfxPlannedPour){.emitter = -1};
+    bool wraps = gas->def.kind == mvfx_gasLiquid || gas->def.kind == mvfx_gasSurface;
+    state->planLiquid = wraps ? MapOf(instance, g, gas->emitter) : (mvfxPlannedPour){.emitter = -1};
 }
 
 void mvfxPlanGases(mvfxInstance* instance)
