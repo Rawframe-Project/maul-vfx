@@ -91,8 +91,15 @@ jobs:
           ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Package
+        # The installed package, used by a separate C17 project that knows
+        # only it (samples/minimal).
         if: matrix.name == 'linux-shared'
-        run: cmake --install build --prefix "$PWD/package"
+        run: |
+          cmake --install build --prefix "$PWD/package"
+          cmake -S samples/minimal -B build-minimal -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_PREFIX_PATH="$PWD/package"
+          cmake --build build-minimal
+          LD_LIBRARY_PATH="$PWD/package/lib" ./build-minimal/minimal
       - name: Size
         # The library's code size, reported, not gated (family record
         # 0013).

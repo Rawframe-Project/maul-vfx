@@ -1160,6 +1160,14 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   are and those written); at most `MVFX_GPU_SURFACE_MESHES` a surface a
   frame. `tools/gen_marching_cubes.py` also writes the tables' words the
   GPU part uploads.
+- The guide (`docs/guide.md`): the ground rules, then a section a part,
+  from a first effect to the GPU part and building; each C block runs
+  in `test/test_guide.c`, or on a device in `test/test_guide_rhi.c`.
+- Samples (`docs/samples.md`, `MAUL_VFX_BUILD_SAMPLES`): a fountain,
+  trails and a beam, fireworks, a flock, cloth, smoke from a fire, a
+  liquid in a tank, a pond, an effect file's round trip and the GPU part
+  beside the CPU path, each run as a test; and `samples/minimal`, a C17
+  project CI builds against the installed package.
 
 ### Changed
 

@@ -16,6 +16,7 @@ project(maul-vfx
 
 option(MAUL_VFX_BUILD_TESTS "Build the test suites" ${PROJECT_IS_TOP_LEVEL})
 option(MAUL_VFX_BUILD_BENCH "Build the benchmarks" ${PROJECT_IS_TOP_LEVEL})
+option(MAUL_VFX_BUILD_SAMPLES "Build the samples" ${PROJECT_IS_TOP_LEVEL})
 option(MAUL_VFX_BUILD_SHARED "Build a shared library instead of a static one" OFF)
 option(MAUL_VFX_INSTALL "Generate install rules" ${PROJECT_IS_TOP_LEVEL})
 option(MAUL_VFX_WERROR "Treat compiler warnings as errors" OFF)
@@ -167,6 +168,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(attach WHITEBOX)
     maul_add_test(base)
     maul_add_test(beam)
+    maul_add_test(guide)
     maul_add_test(chain)
     maul_add_test(self WHITEBOX)
     maul_add_test(sheet)
@@ -295,6 +297,10 @@ if(MAUL_VFX_BUILD_TESTS)
         # Host code calling back into a simulation, refused.
         maul_add_test(rhi_host_calls)
         target_link_libraries(test_rhi_host_calls PRIVATE maul-vfx-rhi)
+        # The guide's GPU part blocks on a device.
+        maul_add_test(guide_rhi)
+        target_link_libraries(test_guide_rhi PRIVATE maul-vfx-rhi)
+        set_tests_properties(guide_rhi PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     maul_add_header_tests()
     # The library keeps within WebAssembly's default 64 KiB stack: on the
@@ -332,6 +338,10 @@ if(MAUL_VFX_FUZZ)
                                                      -fno-sanitize-recover=all)
         target_link_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined)
     endforeach()
+endif()
+
+if(MAUL_VFX_BUILD_SAMPLES)
+    add_subdirectory(samples)
 endif()
 
 if(MAUL_VFX_BUILD_BENCH AND EXISTS ${PROJECT_SOURCE_DIR}/bench/bench_main.c)
