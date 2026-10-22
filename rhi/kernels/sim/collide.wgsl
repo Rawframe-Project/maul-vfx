@@ -629,10 +629,10 @@ const EVENT_TEAR_DOWN: u32 = 16u;
 const EVENT_CROSSED: u32 = 32u;
 
 // Notes a live particle's facts of the step for its events, when the
-// emitter writes any: its flags, its first contact, the inverse life it
-// met it with.
+// emitter writes any or lists its crossings of a water surface: its
+// flags, its first contact, the inverse life it met it with.
 fn noteFacts(i: u32, flags: u32, first: Hit, inverse: f32) {
-    if (params.fateHead.y == 0u) {
+    if (params.fateHead.y == 0u && params.waterCross.w == NONE) {
         return;
     }
     let at = EVENT_FACTS * i;

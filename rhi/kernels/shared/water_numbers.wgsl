@@ -14,7 +14,9 @@ const FLAG_TERRAIN: u32 = 2u;
 // Mur's factor and dt; for shallow water, gravity, the flows' decay, the
 // fill level and dt; the pushes, the model, the sources and the flags;
 // the cell's edge, the even lift what waves' pushes sank gives, the
-// grid's center's Y; shallow water's faces across X and across Z. Then
+// grid's center's Y; shallow water's faces across X and across Z, the
+// emitters coupled to it (their crossings' lists, water.wgsl's
+// crossings). Then
 // the pushes in its frame (X, Z, radius, depth); for shallow water each
 // push's inner and ring weights summed, each source's footprint (its
 // center's X and Z, its reach along X and Z; its shape, the depth it adds

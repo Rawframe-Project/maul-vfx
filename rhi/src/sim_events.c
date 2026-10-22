@@ -14,16 +14,18 @@
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/frame.h"
 
-// Creates an emitter's events buffer when it writes events or spawns from
+// Creates an emitter's events buffer when it writes events, spawns from
 // another's (its spawn region after its own events, as many of the
-// source's as it writes at most), and its events' numbers.
+// source's as it writes at most) or is coupled to a water surface (its
+// crossings' facts and list after the rest), and its events' numbers.
 bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e)
 {
     Emitter* emitter = &sim->emitters[e];
     const mvfxEmitterView* view = &sim->views[e];
     emitter->writesEvents = view->events != 0;
+    emitter->scansEvents = emitter->writesEvents || emitter->water >= 0;
     bool spawns = emitter->spawnSource >= 0;
-    if (!emitter->writesEvents && !spawns)
+    if (!emitter->scansEvents && !spawns)
     {
         return true;
     }
@@ -34,10 +36,13 @@ bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e)
                  (view->events & mvfx_eventMaskTear) != 0;
     emitter->tearFacts = tears ? (uint32_t)words : 0u;
     words += tears ? (uint64_t)MVFX_TEAR_FACTS * (uint64_t)emitter->capacity : 0u;
-    // A particle's crossing of a water surface, for its event, after them.
-    bool crossings = view->water.enabled && (view->events & mvfx_eventMaskWater) != 0;
+    // A particle's crossing of a water surface, then the crossings' list,
+    // after them.
+    bool crossings = emitter->water >= 0;
     emitter->crossingFacts = crossings ? (uint32_t)words : UINT32_MAX;
     words += crossings ? (uint64_t)MVFX_CROSSING_FACTS * (uint64_t)emitter->capacity : 0u;
+    emitter->crossingList = crossings ? (uint32_t)words : UINT32_MAX;
+    words += crossings ? mvfxCrossingListWords(emitter->capacity) : 0u;
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = 4u * words;
     def.usage = mrhi_bufferStorage | mrhi_bufferCopySource |
@@ -165,12 +170,13 @@ static bool RecordEventValues(mvfxGpuSim* sim, const Emitter* emitter)
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 
-// Records an emitter's events kernels, when it writes events.
+// Records an emitter's events kernels, when it writes events or lists its
+// crossings of a water surface; their values' pass when it writes events.
 bool mvfxRecordSimEvents(mvfxGpuSim* sim, const Emitter* emitter, uint32_t blocks)
 {
-    return !emitter->writesEvents ||
+    return !emitter->scansEvents ||
            (mvfxRecordSimKernel(sim, emitter, PASS_EVENT_COUNT, mvfx_kernelEventCount, blocks) &&
             mvfxRecordSimKernel(sim, emitter, PASS_EVENT_OFFSETS, mvfx_kernelEventOffsets, 1) &&
             mvfxRecordSimKernel(sim, emitter, PASS_EVENT_WRITE, mvfx_kernelEventWrite, blocks) &&
-            RecordEventValues(sim, emitter));
+            (!emitter->writesEvents || RecordEventValues(sim, emitter)));
 }

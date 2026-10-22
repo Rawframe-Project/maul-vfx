@@ -1087,7 +1087,7 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   as the CPU path leaves them), the step's end settled into a statistics
   record (`mvfxGpuSim_GetWater`, `MVFX_GPU_WATER_*`) whose report
   (`mvfxGpuSim_ReportWater`) finishes a stopped instance; a frame takes
-  at most 67 passes a surface (`mvfxGpuSim_WaterPasses`). A surface's
+  at most 68 passes a surface (`mvfxGpuSim_WaterPasses`). A surface's
   fields are written into a host's buffer in its formats as
   `mvfxInstance_ReadWater` writes them (`mvfxGpuSim_AddWaterRead`).
 - The GPU part runs shallow water: each step its ground read from its
@@ -1108,10 +1108,11 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   part runs an emitter coupled to a surface: its particles' drag toward
   the surface's flow and their buoyancy, from the surface's fields as
   its last step left them, copied each step into the emitter's grids
-  (8 bytes a cell, and 4 a face of shallow water), and the water events
-  of their crossings (`mvfx_eventWater`) in the CPU path's order. One
-  whose particles push the surface or pour into it is refused
-  (`MVFX_FEATURE_WATER`).
+  (8 bytes a cell, and 4 a face of shallow water); their crossings, in
+  the CPU path's order, with their water events (`mvfx_eventWater`) and
+  pours' kills, listed for the surface's next step, which pushes it
+  (waves sink and lift evenly; shallow water spills and takes the
+  poured water).
 
 ### Changed
 

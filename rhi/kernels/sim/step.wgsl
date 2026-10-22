@@ -96,8 +96,10 @@ fn moveLive(i: u32) {
     let endLow = params.start.x + params.counts.z;
     let endHigh = params.start.y + select(0u, 1u, endLow < params.start.x);
     let ageTicks = vec2<u32>(endLow - birth.x, endHigh - birth.y - select(0u, 1u, endLow < birth.x));
+    // A pour into the water kills it, as the core's mvfxMeetWater does.
+    let poured = crossing.crossed && params.waterCross.y != 0u;
     source[params.words.alive * c + i] =
-        select(0u, 1u, outlives(fate.death.x, fate.death.y) && !fate.killed &&
+        select(0u, 1u, outlives(fate.death.x, fate.death.y) && !fate.killed && !poured &&
                            !killed(start, p, v, ageTicks, contacts));
 }
 
@@ -856,10 +858,11 @@ fn bornSize(j: u32) -> vec3<f32> {
 
 // Kill births: each birth with room killed on its way to the plan's end
 // (a kill rule, an attractor's kill radius, a contact that kills, a
-// contact's life loss that ends its life within the plan) loses its
-// room's mark (2), so the scan keeps it not; it held its room for the
-// step, as a killed particle does until the step's end. One whose
-// contacts make an event is marked so too. The workgroups stride over
+// contact's life loss that ends its life within the plan, a pour into a
+// water surface) loses its room's mark (2), so the scan keeps it not; it
+// held its room for the step, as a killed particle does until the step's
+// end. One whose contacts make an event, or that crossed a water surface,
+// is marked so too. The workgroups stride over
 // the births as update's over the particles.
 @compute @workgroup_size(64, 1, 1)
 fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -877,8 +880,11 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         var bornVelocity = vec3<f32>(0.0);
         var turning = Turning();
         let fate = bornFacts(j, &born, &bornVelocity, &p, &v, &turning);
+        // Its crossing of the water surface, a pour killing it.
+        let crossed = waterMeet(waterTouch(born), born, p).crossed;
         var mark = 1u;
-        if (fate.killed || !outlives(fate.death.x, fate.death.y)) {
+        if (fate.killed || !outlives(fate.death.x, fate.death.y) ||
+            (crossed && params.waterCross.y != 0u)) {
             mark = 2u;
             // Kept by no scatter: its places for the ribbons pass.
             storeBirthPlaces(j, born, p);
@@ -887,7 +893,6 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         // of the water surface (BIRTH_CROSSED), for the events' count; a
         // rigid body's contacts dropped past the most above, which offsets
         // sums (MVFX_GPU_RIGID_CAPPED).
-        let crossed = waterMeet(waterTouch(born), born, p).crossed;
         accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted) |
                       select(0u, BIRTH_CROSSED, crossed) |
                       (min(fate.capped, 0xFFFFu) << 8u) | (min(fate.searches, 0xFFu) << 24u);

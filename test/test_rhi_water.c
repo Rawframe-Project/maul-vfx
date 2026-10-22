@@ -197,14 +197,14 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
     Ponds(gpu, kernels, &water, 1, (Run){.moving = true}, "a basin where a moving instance began");
 }
 
-// Sprites coupled to surface 0, living longer: dragged toward its flow
-// and buoyed (their crossings' pushes not yet run on the GPU).
+// Sprites coupled to surface 0, living longer: dragged toward its flow,
+// buoyed, and pushing it where they cross it.
 static mvfxEmitterDef Floating(void)
 {
     mvfxEmitterDef emitter = Sprite();
     emitter.lifetime = mvfxRangeSource(0.5f, 0.9f);
-    emitter.water =
-        (mvfxWaterCoupling){.enabled = true, .radius = 0.08f, .buoyancy = 2.0f, .drag = 3.0f};
+    emitter.water = (mvfxWaterCoupling){
+        .enabled = true, .radius = 0.08f, .push = 0.03f, .buoyancy = 2.0f, .drag = 3.0f};
     return emitter;
 }
 
@@ -279,6 +279,34 @@ static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
     water = Pond(48, 40, 0.1f, 1.5f, 15);
     Floats(gpu, kernels, crossing, &water, (Run){.colliding = true},
            "sprites thrown down across a pond");
+    // Pouring into shallow water: each crossing spills, then adds its
+    // volume and dies; in a basin, one on a moving instance, and over
+    // springs on a terrain.
+    mvfxEmitterDef pouring = Floating();
+    pouring.water.pour = true;
+    pouring.events = mvfx_eventMaskWater | mvfx_eventMaskDeath;
+    pouring.eventCapacity = 1024;
+    water = Basin(32, 28, 0.1f, 0.2f);
+    Floats(gpu, kernels, pouring, &water, (Run){.killing = true}, "sprites pouring into a basin");
+    mvfxEmitterDef carried = pouring;
+    carried.space = mvfx_spaceLocal;
+    Floats(gpu, kernels, carried, &water, (Run){.moving = true, .killing = true},
+           "sprites carried pouring into a moving basin");
+    water = Basin(48, 40, 0.06f, 0.05f);
+    water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
+    water.hasTerrain = true;
+    water.terrain = Terrain(0.0f);
+    water.sources = s_springs;
+    water.sourceCount = 2;
+    run.killing = true;
+    Floats(gpu, kernels, pouring, &water, run, "sprites pouring over springs on a terrain");
+    // Born just over a basin and thrown down: births pouring and dying in
+    // their first step (never live, so no live particle's kill).
+    pouring.shape.radius = 0.05f;
+    pouring.shape.offset[1] = 0.33f;
+    pouring.velocity.direction[1] = -1.0f;
+    water = Basin(32, 28, 0.1f, 0.2f);
+    Floats(gpu, kernels, pouring, &water, (Run){0}, "sprites thrown down pouring into a basin");
 }
 
 static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,
@@ -480,7 +508,7 @@ static void Refusals(mvfxGpuSim* sim)
         refused = refused && mvfxGpuSim_AddWaterRead(sim, &bad[b]) == mvfx_errorInvalid;
     }
     CHECK(refused && mvfxGpuSim_WaterPasses(sim, 1) == 0 && mvfxGpuSim_WaterPasses(NULL, 0) == 0 &&
-              mvfxGpuSim_WaterPasses(sim, 0) == 67,
+              mvfxGpuSim_WaterPasses(sim, 0) == 68,
           "a water read's refusals, a surface's passes");
     mvfxGpuWater buffers = {.statistics = {1, 1}};
     const uint32_t record[MVFX_GPU_WATER_STATISTICS_WORDS] = {0};

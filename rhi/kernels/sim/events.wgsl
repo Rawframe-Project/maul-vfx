@@ -25,9 +25,32 @@ fn writes(kind: u32) -> bool {
     return (params.fateHead.y & (1u << kind)) != 0u;
 }
 
-// Where the blocks' counts of the four groups are in the events buffer.
+// Where the blocks' counts of the four groups and of the crossings of a
+// water surface are in the events buffer, SCAN_GROUPS words a block.
+const SCAN_GROUPS: u32 = 5u;
+
 fn eventBlocks() -> u32 {
     return EVENT_FACTS * params.counts.x;
+}
+
+// Whether the step scans: its events, or its crossings of a water
+// surface into their list.
+fn scans() -> bool {
+    return params.fateHead.y != 0u || params.waterCross.w != NONE;
+}
+
+// Element e's crossing of the water surface (1 or 0), as eventCounts
+// counts its events.
+fn crossingCount(e: u32, live: u32) -> u32 {
+    if (params.waterCross.w == NONE) {
+        return 0u;
+    }
+    if (e < live) {
+        let flags = events[EVENT_FACTS * e];
+        return select(0u, 1u, (flags & EVENT_ENDED) == 0u && (flags & EVENT_CROSSED) != 0u);
+    }
+    let j = e - live;
+    return select(0u, 1u, j < birthCount() && appended(j) && (accepted[j] & BIRTH_CROSSED) != 0u);
 }
 
 // Whether birth j joins the particles: it had room and outlives the plan
@@ -74,19 +97,22 @@ fn eventCounts(e: u32, live: u32) -> vec4<u32> {
 @compute @workgroup_size(256, 1, 1)
 fn eventCount(@builtin(local_invocation_index) local: u32,
               @builtin(workgroup_id) group: vec3<u32>) {
-    if (params.fateHead.y == 0u) {
+    if (!scans()) {
         return;
     }
     let live = counts[1];
     let first = group.x * BLOCK + local * ITEMS;
     var mine = vec4<u32>(0u);
+    var crossings = 0u;
     for (var k = 0u; k < ITEMS; k++) {
         mine += eventCounts(first + k, live);
+        crossings += crossingCount(first + k, live);
     }
-    for (var g = 0u; g < 4u; g++) {
-        let before = exclusiveScan(local, mine[g]);
+    for (var g = 0u; g < SCAN_GROUPS; g++) {
+        let count = select(crossings, mine[min(g, 3u)], g < 4u);
+        let before = exclusiveScan(local, count);
         if (local == CHUNK - 1u) {
-            events[eventBlocks() + 4u * group.x + g] = before + mine[g];
+            events[eventBlocks() + SCAN_GROUPS * group.x + g] = before + count;
         }
     }
 }
@@ -95,10 +121,11 @@ fn eventCount(@builtin(local_invocation_index) local: u32,
 // block's first place in the group, in order; the groups' first places
 // (statistics words 30 to 33) after the events the frame's steps before
 // wrote (word 28, zero at its first step), the events written (at most the
-// capacity) and those dropped added to the steps' before (word 29).
+// capacity) and those dropped added to the steps' before (word 29); the
+// crossings' places from the list's start, their count into its head.
 @compute @workgroup_size(256, 1, 1)
 fn eventOffsets(@builtin(local_invocation_index) local: u32) {
-    if (params.fateHead.y == 0u) {
+    if (!scans()) {
         return;
     }
     let n = blockCount();
@@ -107,7 +134,7 @@ fn eventOffsets(@builtin(local_invocation_index) local: u32) {
     if (local == 0u) {
         base = counts[28];
     }
-    for (var g = 0u; g < 4u; g++) {
+    for (var g = 0u; g < SCAN_GROUPS; g++) {
         if (local == 0u) {
             carried = 0u;
         }
@@ -116,11 +143,11 @@ fn eventOffsets(@builtin(local_invocation_index) local: u32) {
             let k = start + local;
             var count = 0u;
             if (k < n) {
-                count = events[eventBlocks() + 4u * k + g];
+                count = events[eventBlocks() + SCAN_GROUPS * k + g];
             }
             let before = exclusiveScan(local, count);
             if (k < n) {
-                events[eventBlocks() + 4u * k + g] = carried + before;
+                events[eventBlocks() + SCAN_GROUPS * k + g] = carried + before;
             }
             workgroupBarrier();
             if (local == CHUNK - 1u) {
@@ -128,16 +155,36 @@ fn eventOffsets(@builtin(local_invocation_index) local: u32) {
             }
             workgroupBarrier();
         }
-        if (local == 0u) {
-            counts[30u + g] = base;
+        if (g < 4u) {
+            if (local == 0u) {
+                counts[30u + g] = base;
+            }
+            base += workgroupUniformLoad(&carried);
+        } else if (local == 0u && params.waterCross.w != NONE) {
+            writeCrossingHead(carried);
         }
-        base += workgroupUniformLoad(&carried);
     }
     if (local == 0u) {
         let written = min(base, params.fateHead.z);
         counts[28] = written;
         counts[29] += base - written;
     }
+}
+
+// The crossings' list's head (sim/water.wgsl's): how many, the room's
+// capacity, and each crossing's reach, depth and volume, as the core's
+// mvfxMeetWater makes them.
+fn writeCrossingHead(total: u32) {
+    let at = params.waterCross.w;
+    let r = params.waterUp.w;
+    let reach = max(r, params.waterNumbers.w);
+    let push = bitcast<f32>(params.waterCross.x);
+    let volume = select(0.0, 4.18879020478639 * r * r * r, params.waterCross.y != 0u);
+    events[at] = total;
+    events[at + 1u] = params.counts.x;
+    events[at + 2u] = bitcast<u32>(reach);
+    events[at + 3u] = bitcast<u32>(push * (r / reach) * (r / reach));
+    events[at + 4u] = bitcast<u32>(volume);
 }
 
 // A place, velocity or normal of the particles' space at a tick of the
@@ -405,32 +452,65 @@ fn writeBirthEvents(j: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
 @compute @workgroup_size(256, 1, 1)
 fn eventWrite(@builtin(local_invocation_index) local: u32,
               @builtin(workgroup_id) group: vec3<u32>) {
-    if (params.fateHead.y == 0u) {
+    if (!scans()) {
         return;
     }
     let live = counts[1];
     let first = group.x * BLOCK + local * ITEMS;
     var mine: array<vec4<u32>, ITEMS>;
     var sum = vec4<u32>(0u);
+    // Its elements' crossings, a bit each, and how many.
+    var crossed = 0u;
+    var crossings = 0u;
     for (var k = 0u; k < ITEMS; k++) {
         mine[k] = eventCounts(first + k, live);
         sum += mine[k];
+        let c = crossingCount(first + k, live);
+        crossed |= c << k;
+        crossings += c;
     }
     var at = vec4<u32>(0u);
     for (var g = 0u; g < 4u; g++) {
-        at[g] = counts[30u + g] + events[eventBlocks() + 4u * group.x + g] +
+        at[g] = counts[30u + g] + events[eventBlocks() + SCAN_GROUPS * group.x + g] +
                 exclusiveScan(local, sum[g]);
     }
+    var crossingAt = events[eventBlocks() + SCAN_GROUPS * group.x + 4u] +
+                     exclusiveScan(local, crossings);
     for (var k = 0u; k < ITEMS; k++) {
         let e = first + k;
         let g = mine[k];
-        if (g.x + g.y + g.z + g.w == 0u) {
-            continue;
+        if (g.x + g.y + g.z + g.w > 0u) {
+            if (e < live) {
+                writeLiveEvents(e, g, &at);
+            } else {
+                writeBirthEvents(e - live, g, &at);
+            }
         }
-        if (e < live) {
-            writeLiveEvents(e, g, &at);
-        } else {
-            writeBirthEvents(e - live, g, &at);
+        if (((crossed >> k) & 1u) != 0u) {
+            writeCrossing(e, live, crossingAt);
+            crossingAt += 1u;
         }
     }
+}
+
+// Element e's crossing into the list at its place: where it met the
+// surface (X and Z of the surface's frame), a live particle's from its
+// facts, a birth's found again from its move.
+fn writeCrossing(e: u32, live: u32, at: u32) {
+    var on = vec2<f32>(0.0);
+    if (e < live) {
+        let facts = params.waterCross.z + 6u * e;
+        on = vec2<f32>(bitcast<f32>(events[facts + 4u]), bitcast<f32>(events[facts + 5u]));
+    } else {
+        var born = vec3<f32>(0.0);
+        var bornVelocity = vec3<f32>(0.0);
+        var place = vec3<f32>(0.0);
+        var velocity = vec3<f32>(0.0);
+        var turning = Turning();
+        _ = bornFacts(e - live, &born, &bornVelocity, &place, &velocity, &turning);
+        on = waterMeet(waterTouch(born), born, place).at;
+    }
+    let w = params.waterCross.w + CROSSING_HEAD + 2u * at;
+    events[w] = bitcast<u32>(on.x);
+    events[w + 1u] = bitcast<u32>(on.y);
 }

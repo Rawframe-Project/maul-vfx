@@ -70,9 +70,7 @@ extern "C"
     // radius), whose killed the CPU path's contacts still see, and beside
     // ribbons and beams, whose points the CPU path takes before contacts
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
-    // beside anything that kills within a step. An emitter coupled to a
-    // water surface (MVFX_FEATURE_WATER) is refused when its particles
-    // push the surface or pour into it as they cross it. Bodies that meet
+    // beside anything that kills within a step. Bodies that meet
     // each other (bodyContacts above 0) run an emitter's step in one workgroup
     // (its pairs found and solved colour by colour, its sleepers woken by
     // touch and its islands settled, as the CPU path's), so they use one
@@ -233,11 +231,13 @@ extern "C"
     /// keeps 16 bytes a particle of its capacity and 2,048 a block of 1,024
     /// of them for the sort (one that carries lights and does not sort, 8
     /// a block for its lights' counts), one that writes events 48 bytes a particle of
-    /// its capacity, 16 a block of its scan (a block for 1,024 of three
+    /// its capacity, 20 a block of its scan (a block for 1,024 of three
     /// times its capacity), 112 an event of its capacity of them and 1,952
-    /// for their numbers (24 bytes more a particle of its capacity for
-    /// water events, its crossings' facts); one that spawns from another's events the same
-    /// 48 and 16 where it writes none, 140 an event of its source's event
+    /// for their numbers; one coupled to a water surface the same 48 and
+    /// 20 where it writes none, and 32 bytes more a particle of its
+    /// capacity and 32 more for its crossings' facts and list; one that
+    /// spawns from another's events the same
+    /// 48 and 20 where it writes none, 140 an event of its source's event
     /// capacity and 64 more for the region's counts, 96 more a particle of
     /// its capacity for its plan's births staged, and 64 a birth from
     /// events a step takes (to twice its capacity) for their records; one
@@ -286,7 +286,9 @@ extern "C"
     /// colliders as obstacles, the room hostGridBytes says; and 10,384 for
     /// its numbers, statistics and reads. A water surface keeps 16 bytes a
     /// cell for its fields (shallow water 8 more a face of each axis's
-    /// faces across it), 2,852 for its numbers, statistics and reads, and
+    /// faces across it), 2,852 for its numbers, statistics and reads, 16
+    /// for its crossings' sum and, for each emitter coupled to it, 8 bytes
+    /// a particle of its capacity and 32 more for its crossings' list, and
     /// for shallow water the grid its terrain reads (its own, or the room
     /// hostGridBytes says for the instance's). An effect with a liquid gas,
     /// whose frames may split into steps (mvfxInstance_GetPlanSteps), keeps
@@ -726,11 +728,13 @@ extern "C"
 
     /// Returns the passes a water surface's step adds at most
     /// (mvfxGpuSim_AddPasses), for a host to size its device's frame by:
-    /// for waves, one writing its numbers, one sinking the host's pushes,
-    /// one a substep (at most MVFX_MAX_WATER_SUBSTEPS) and one settling
-    /// it, 67 in all; for shallow water, one writing its numbers, one for
-    /// its ground, fill and sources, one for the host's pushes, three a
-    /// substep and one settling it, 196 in all. A frame of an effect with a liquid gas takes them
+    /// for waves, one writing its numbers, one summing what its coupled
+    /// emitters' crossings sink, one sinking the host's pushes and the
+    /// crossings, one a substep (at most MVFX_MAX_WATER_SUBSTEPS) and one
+    /// settling it, 68 in all; for shallow water, one writing its numbers,
+    /// one for its ground, fill and sources, one for the host's pushes and
+    /// the crossings, three a substep and one settling it, 196 in all. A
+    /// frame of an effect with a liquid gas takes them
     /// once for each step it splits into (mvfxInstance_GetPlanSteps), at
     /// most MVFX_MAX_PLAN_STEPS.
     ///

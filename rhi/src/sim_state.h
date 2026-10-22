@@ -205,13 +205,15 @@ typedef struct Emitter
     mrhiBufferId accepted;
     mrhiBufferId blocks;
     mrhiBufferId grids;
-    // Its events' buffer, when it writes any or spawns from another's
-    // (whose spawn region follows its own events), whether it writes any,
-    // and the numbers the records kernel gives their values over life by
-    // (a record pass's), with the frame's ids of what that pass binds
-    // beside the step's.
+    // Its events' buffer, when it writes any, spawns from another's
+    // (whose spawn region follows its own events) or is coupled to a water
+    // surface; whether it writes any, whether its events' passes run (it
+    // writes events or lists its crossings of a surface), and the numbers
+    // the records kernel gives their values over life by (a record pass's),
+    // with the frame's ids of what that pass binds beside the step's.
     mrhiBufferId events;
     bool writesEvents;
+    bool scansEvents;
     // For units that tear and write tear events, the first word of their
     // tears' facts in the events buffer (after its spawn region); else 0.
     uint32_t tearFacts;
@@ -366,9 +368,10 @@ typedef struct Emitter
     int32_t water;
     uint32_t waterRoom;
     uint32_t waterSources[WATER_COPIES];
-    // The first word of its crossings' facts in its events buffer
-    // (UINT32_MAX for none: it writes no water events).
+    // The first words of its crossings' facts and of their list in its
+    // events buffer (UINT32_MAX for none: it is coupled to no surface).
     uint32_t crossingFacts;
+    uint32_t crossingList;
 } Emitter;
 
 struct mvfxGpuSim

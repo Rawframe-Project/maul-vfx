@@ -243,7 +243,9 @@ void mvfxGridNumbers(const mvfxEmitterView* view, const mvfxEmitterView* source,
 void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECORD_LIVES]);
 
 // An emitter's events buffer (sim.wgsl's events): EVENT_FACTS words a
-// particle of its capacity, four a block of its scan, then its events,
+// particle of its capacity, MVFX_SCAN_GROUPS a block of its scan (its
+// events' four groups and its crossings of a water surface), then its
+// events,
 // MVFX_EVENT_WORDS each; the events' first word, and the words in all
 // (before an emitter's spawn region, its units' tears' facts,
 // MVFX_TEAR_FACTS a point: 11 an edge across, then down, and its
@@ -251,9 +253,16 @@ void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECO
 #define MVFX_EVENT_FACTS 12u
 #define MVFX_EVENT_WORDS 28u
 #define MVFX_TEAR_FACTS  22u
-// A particle's crossing of a water surface for its event
-// (sim/water.wgsl's noteCrossing), after the tears' facts.
+// A particle's crossing of a water surface (sim/water.wgsl's
+// noteCrossing), after the tears' facts; then the crossings' list, a head
+// and two words a particle of the capacity.
+#define MVFX_SCAN_GROUPS    5u
 #define MVFX_CROSSING_FACTS 6u
+#define MVFX_CROSSING_HEAD  8u
+static inline uint64_t mvfxCrossingListWords(int32_t capacity)
+{
+    return MVFX_CROSSING_HEAD + 2u * (uint64_t)capacity;
+}
 uint32_t mvfxEventFirst(int32_t capacity);
 uint64_t mvfxEventBufferWords(int32_t capacity, int32_t eventCapacity);
 

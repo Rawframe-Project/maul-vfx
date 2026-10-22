@@ -210,6 +210,9 @@ typedef enum mvfxKernel
     mvfx_kernelShallowGiving = 105,
     mvfx_kernelShallowDepths = 106,
     mvfx_kernelShallowSettle = 107,
+    // What a surface of waves' crossings sink, summed for the even lift
+    // (water.wgsl).
+    mvfx_kernelWaterCrossSum = 108,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

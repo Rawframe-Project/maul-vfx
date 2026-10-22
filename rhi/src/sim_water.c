@@ -36,6 +36,10 @@
 // The workgroups of a cell pass.
 #define WATER_GROUP 64u
 
+// The crossings buffer's first list (water.wgsl's CROSSINGS_FIRST): after
+// the waves' crossings' sum.
+#define CROSSINGS_FIRST 4u
+
 // A read's workgroups a row of its dispatch (a device takes 65,535 along
 // a dimension; water_read.wgsl's ROW invocations).
 #define READ_ROW 32768u
@@ -73,6 +77,27 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
 }
 
+// Lays out the lists of the emitters coupled to surface w in the crossings
+// buffer, in their step order (each a head and two words a particle of its
+// capacity); its words in all.
+static uint32_t LayCrossings(const mvfxGpuSim* sim, SimWater* water, int32_t w)
+{
+    uint32_t words = CROSSINGS_FIRST;
+    water->couplings = 0;
+    for (int32_t n = 0; n < sim->emitterCount; ++n)
+    {
+        int32_t e = sim->order[n];
+        const Emitter* emitter = &sim->emitters[e];
+        if (emitter->water == w && emitter->capacity > 0)
+        {
+            water->coupled[water->couplings] = e;
+            water->lists[water->couplings++] = words;
+            words += (uint32_t)mvfxCrossingListWords(emitter->capacity);
+        }
+    }
+    return words;
+}
+
 bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords)
 {
     const mvfxWaterDef* def = &water->view.def;
@@ -95,6 +120,8 @@ bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords)
     w[WORD_HEAD + 1] = def->model;
     w[WORD_FACES] = (uint32_t)water->view.faces[0];
     w[WORD_FACES + 1] = (uint32_t)water->view.faces[1];
+    uint32_t crossings = LayCrossings(sim, water, (int32_t)(water - sim->waters));
+    w[WORD_FACES + 2] = (uint32_t)water->couplings;
     mvfxFloatWords(w + WORD_SINK, def->cellSize, 0.0f, def->center[1], 0.0f);
     // Waves: heights and rates, two each; shallow water: depths and two
     // of each axis's faces, the givers' scales and the ground.
@@ -109,7 +136,8 @@ bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords)
                      &water->buffers[WATER_FIELDS]) &&
         CreateBuffer(sim, 4u * MVFX_GPU_WATER_STATISTICS_WORDS, written | mrhi_bufferCopySource,
                      &water->buffers[WATER_STATISTICS]) &&
-        CreateBuffer(sim, 4u * gridWords, written, &water->buffers[WATER_GRIDS]);
+        CreateBuffer(sim, 4u * gridWords, written, &water->buffers[WATER_GRIDS]) &&
+        CreateBuffer(sim, 4u * (uint64_t)crossings, written, &water->buffers[WATER_CROSSINGS]);
     for (int32_t r = 0; created && r < MVFX_GPU_WATER_READS; ++r)
     {
         created = CreateBuffer(sim, 4u * WATER_READ_WORDS, numbers, &water->reads[r].numbers);
@@ -166,7 +194,12 @@ static uint32_t PlanWaves(SimWater* water, const mvfxWaterPlan* plan, uint32_t n
                        push->depth);
     }
     uint32_t groups = ((uint32_t)water->view.cells + WATER_GROUP - 1u) / WATER_GROUP;
-    if (plan->pushCount > 0)
+    // The crossings' sunk water for the lift, then the sinks.
+    if (water->couplings > 0)
+    {
+        Push(water, mvfx_kernelWaterCrossSum, now, 1);
+    }
+    if (plan->pushCount > 0 || water->couplings > 0)
     {
         Push(water, mvfx_kernelWaterSink, now, groups);
     }
@@ -271,7 +304,7 @@ static uint32_t PlanShallow(SimWater* water, const mvfxWaterPlan* plan, uint32_t
     uint32_t cells = ((uint32_t)water->view.cells + WATER_GROUP - 1u) / WATER_GROUP;
     uint32_t faces = (uint32_t)(water->view.faces[0] + water->view.faces[1]);
     Push(water, mvfx_kernelShallowStart, now, cells);
-    if (plan->pushCount > 0)
+    if (plan->pushCount > 0 || water->couplings > 0)
     {
         Push(water, mvfx_kernelShallowSpill, now, 1);
     }
@@ -358,22 +391,31 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
         return mvfx_errorState;
     }
     const mrhiResourceId* r = water->resources;
-    const mrhiAccess written[WATER_BUFFERS] = {
+    // The write pass copies in the coupled emitters' lists.
+    mrhiAccess written[WATER_BUFFERS + MVFX_MAX_EMITTERS] = {
         {.resource = r[WATER_NUMBERS], .kind = mrhi_accessCopyDestination},
         {.resource = r[WATER_FIELDS], .kind = mrhi_accessCopyDestination},
         {.resource = r[WATER_STATISTICS], .kind = mrhi_accessCopyDestination},
-        {.resource = r[WATER_GRIDS], .kind = mrhi_accessCopyDestination}};
+        {.resource = r[WATER_GRIDS], .kind = mrhi_accessCopyDestination},
+        {.resource = r[WATER_CROSSINGS], .kind = mrhi_accessCopyDestination}};
+    for (int32_t k = 0; k < water->couplings; ++k)
+    {
+        written[WATER_BUFFERS + k] =
+            (mrhiAccess){.resource = sim->emitters[water->coupled[k]].resources[BUFFER_EVENTS],
+                         .kind = mrhi_accessCopySource};
+    }
     const mrhiAccess used[WATER_BUFFERS] = {
         {.resource = r[WATER_NUMBERS], .kind = mrhi_accessUniform},
         {.resource = r[WATER_FIELDS], .kind = mrhi_accessStorageReadWrite},
         {.resource = r[WATER_STATISTICS], .kind = mrhi_accessStorageReadWrite},
-        {.resource = r[WATER_GRIDS], .kind = mrhi_accessStorageRead}};
+        {.resource = r[WATER_GRIDS], .kind = mrhi_accessStorageRead},
+        {.resource = r[WATER_CROSSINGS], .kind = mrhi_accessStorageReadWrite}};
     for (int32_t p = -1; p < water->count; ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
         def.passClass = p < 0 ? mrhi_passTransfer : mrhi_passGraphics;
         def.accesses = p < 0 ? written : used;
-        def.accessCount = WATER_BUFFERS;
+        def.accessCount = p < 0 ? WATER_BUFFERS + water->couplings : WATER_BUFFERS;
         // Its writes outlive the frame, read by the next step or the host.
         def.neverCull = true;
         if (mrhiAddPass(sim->device, &def, &water->passes[p + 1]) != mrhi_success)
@@ -385,9 +427,26 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
     return mvfx_success;
 }
 
+// Records the copies of the coupled emitters' crossings' lists, each its
+// room whole (its count the device's).
+static bool CopyCrossings(mvfxGpuSim* sim, mrhiPassId pass, const SimWater* water)
+{
+    bool copied = true;
+    for (int32_t k = 0; copied && k < water->couplings; ++k)
+    {
+        const Emitter* emitter = &sim->emitters[water->coupled[k]];
+        copied = mrhiCopyBuffer(sim->device, pass, emitter->resources[BUFFER_EVENTS],
+                                4u * (uint64_t)emitter->crossingList,
+                                water->resources[WATER_CROSSINGS], 4u * (uint64_t)water->lists[k],
+                                4u * mvfxCrossingListWords(emitter->capacity)) == mrhi_success;
+    }
+    return copied;
+}
+
 // Records the pass writing the numbers (waves' up to their pushes, the
 // rest shallow water's), the record and the terrain's grid when it
-// changed, and the fields emptied after a clear.
+// changed, the coupled emitters' crossings, and the fields emptied after a
+// clear.
 static bool RecordWrite(mvfxGpuSim* sim, SimWater* water)
 {
     mrhiPassId pass = water->passes[0];
@@ -399,7 +458,8 @@ static bool RecordWrite(mvfxGpuSim* sim, SimWater* water)
                     mvfxUpload(sim->device, &sim->uploaded, pass, r[WATER_STATISTICS], 0,
                                water->record, sizeof water->record) &&
                     mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[WATER_GRIDS], sim->context,
-                                   &water->grids);
+                                   &water->grids) &&
+                    CopyCrossings(sim, pass, water);
     if (recorded && water->clears)
     {
         recorded =
@@ -604,10 +664,10 @@ int32_t mvfxGpuSim_WaterPasses(const mvfxGpuSim* sim, int32_t water)
     {
         return 0;
     }
-    // The write, then waves' sinks, substeps and settle, or shallow
-    // water's start, pushes, three passes a substep and settle.
+    // The write, then waves' crossings' sum, sinks, substeps and settle,
+    // or shallow water's start, pushes, three passes a substep and settle.
     return IsShallow(&sim->waters[water]) ? 3 + 3 * MVFX_MAX_WATER_SUBSTEPS + 1
-                                          : 3 + MVFX_MAX_WATER_SUBSTEPS;
+                                          : 4 + MVFX_MAX_WATER_SUBSTEPS;
 }
 
 mvfxResult mvfxGpuSim_GetWater(const mvfxGpuSim* sim, int32_t water, mvfxGpuWater* waterOut)

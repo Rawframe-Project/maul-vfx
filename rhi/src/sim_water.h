@@ -25,15 +25,18 @@
 // A surface's buffers: its numbers, its fields (waves: heights now and
 // next, rates now and next; shallow water: depths, X faces and Z faces,
 // now and next each, the givers' scales, the ground), its statistics
-// record, its terrain's grid.
+// record, its terrain's grid, its coupled emitters' crossings (water.wgsl's
+// crossings: a sum, then their lists).
 #define WATER_NUMBERS    0
 #define WATER_FIELDS     1
 #define WATER_STATISTICS 2
 #define WATER_GRIDS      3
-#define WATER_BUFFERS    4
+#define WATER_CROSSINGS  4
+#define WATER_BUFFERS    5
 
-// The most dispatches a step takes: waves' sinks, a substep each and the
-// settle; shallow water's start, pushes, three a substep and settle.
+// The most dispatches a step takes: waves' crossings' sum, sinks, a
+// substep each and the settle; shallow water's start, pushes, three a
+// substep and settle.
 #define WATER_DISPATCHES (3 + 3 * MVFX_MAX_WATER_SUBSTEPS)
 
 // A dispatch of a surface's step: its kernel, the buffer current and its
@@ -65,11 +68,12 @@ typedef struct WaterRead
 // across Z.
 #define WATER_COPIES 4
 
-// A surface: its view, buffers, numbers and its terrain's grid; the buffer
-// current now, and after the step added (current once it is recorded: a
-// frame the host drops leaves the surface as it was); whether its fields
-// hold a step's (a step recorded, or added in a lane before); the statistics
-// record the step's write starts with (nothing moving, the step's end);
+// A surface: its view, buffers, numbers, its terrain's grid and its
+// coupled emitters; the buffer current now, and after the step added
+// (current once it is recorded: a frame the host drops leaves the surface
+// as it was); whether its fields hold a step's (a step recorded, or added
+// in a lane before); the statistics record the step's write starts with
+// (nothing moving, the step's end);
 // the step's dispatches and their passes (the first pass writing the
 // numbers), held whole so a lane of a split frame (sim_lanes.c) copies it;
 // whether the step clears it first, whether it was added, whether its
@@ -81,6 +85,11 @@ typedef struct SimWater
     mrhiResourceId resources[WATER_BUFFERS];
     uint32_t words[MVFX_WATER_WORDS];
     mvfxGpuGrids grids;
+    // The emitters coupled to it, in their step order, and the first word
+    // of each one's list in the crossings buffer.
+    int32_t couplings;
+    int32_t coupled[MVFX_MAX_EMITTERS];
+    uint32_t lists[MVFX_MAX_EMITTERS];
     uint32_t now;
     uint32_t after;
     bool stepped;

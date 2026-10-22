@@ -4,9 +4,12 @@
 // A water surface's step on the GPU: waves as the core's mvfxStepWater
 // (src/water_step.c), shallow water (below) as its mvfxStepShallow.
 // Waves:
-//  - waterSink lowers each cell by the pushes over it in order, as the
-//    core's Sink does push by push, then lifts it by what they sank
-//    spread evenly (Displace), the lift the host's sum;
+//  - waterCrossSum, one workgroup, sums what the coupled emitters'
+//    crossings sink (mvfxSinkWaves' sums), for the even lift;
+//  - waterSink lowers each cell by the pushes over it in order, then by
+//    the crossings in order, as the core's Sink does push by push, then
+//    lifts it by what they sank spread evenly (Displace), the pushes'
+//    lift the host's sum, the crossings' the device's;
 //  - waterSubstep is a substep whole: the core's rate and height passes
 //    fuse per cell (a cell's height reads only its own new rate), and an
 //    open wall's cell then takes Mur's edge from its inward neighbor's
@@ -36,6 +39,26 @@ const REACH: u32 = 4u;
 
 // include: shared/grid_sample.wgsl
 
+// The coupled emitters' crossings (rhi/src/sim_water.c copies their lists
+// in before the step): the waves' crossings' sunk water summed (binary32
+// bits) and 3 words unused, then each coupled emitter's list in its step
+// order (sim/water.wgsl's: a head of CROSSING_HEAD words, how many, the
+// room's capacity, each crossing's reach, depth and volume; then each
+// crossing's X and Z), as long as its room.
+const CROSSINGS_FIRST: u32 = 4u;
+const CROSSING_HEAD: u32 = 8u;
+
+// The list after the one at `at`.
+fn nextList(at: u32) -> u32 {
+    return at + CROSSING_HEAD + 2u * crossings[at + 1u];
+}
+
+// Crossing c of the list at `at`: its X and Z.
+fn crossingAt(at: u32, c: u32) -> vec2<f32> {
+    let w = at + CROSSING_HEAD + 2u * c;
+    return vec2<f32>(bitcast<f32>(crossings[w]), bitcast<f32>(crossings[w + 1u]));
+}
+
 // The buffer current; the rest unused.
 struct Root {
     now: u32,
@@ -50,6 +73,7 @@ struct Root {
 @group(0) @binding(2) var<storage, read_write> statistics: array<u32>;
 // A shallow surface's terrain's grid (its effect's, or the host's).
 @group(0) @binding(3) var<storage, read> grids: array<u32>;
+@group(0) @binding(4) var<storage, read_write> crossings: array<u32>;
 var<immediate> root: Root;
 
 fn height(b: u32, i: u32) -> f32 {
@@ -67,33 +91,96 @@ fn span(center: f32, reach: f32, n: u32) -> vec2<i32> {
     return vec2<i32>(first, last);
 }
 
+// What a push or crossing at (X, Z) of radius and depth sinks cell (x,
+// z) by (mvfxSinkWaves' cell): depth (1 - r^2)^2 within its radius.
+fn sunk(x: i32, z: i32, at: vec2<f32>, radius: f32, depth: f32) -> f32 {
+    let h = water.sink.x;
+    let n = water.size.xy;
+    let cx = at.x / h + 0.5 * f32(n.x) - 0.5;
+    let cz = at.y / h + 0.5 * f32(n.y) - 0.5;
+    let reach = radius / h;
+    let xs = span(cx, reach, n.x);
+    let zs = span(cz, reach, n.y);
+    if (x < xs.x || x > xs.y || z < zs.x || z > zs.y) {
+        return 0.0;
+    }
+    let dx = (f32(x) - cx) / reach;
+    let dz = (f32(z) - cz) / reach;
+    let s = 1.0 - (dx * dx + dz * dz);
+    return select(0.0, depth * s * s, s > 0.0);
+}
+
+// What a crossing sinks over all its cells (mvfxSinkWaves' sum).
+fn sankBy(at: vec2<f32>, radius: f32, depth: f32) -> f32 {
+    let h = water.sink.x;
+    let n = water.size.xy;
+    let xs = span(at.x / h + 0.5 * f32(n.x) - 0.5, radius / h, n.x);
+    let zs = span(at.y / h + 0.5 * f32(n.y) - 0.5, radius / h, n.y);
+    var sum = 0.0;
+    for (var z = zs.x; z <= zs.y; z++) {
+        for (var x = xs.x; x <= xs.y; x++) {
+            sum += sunk(x, z, at, radius, depth);
+        }
+    }
+    return sum;
+}
+
+var<workgroup> crossSums: array<f32, 256>;
+
+@compute @workgroup_size(256, 1, 1)
+fn waterCrossSum(@builtin(local_invocation_index) lane: u32) {
+    var sum = 0.0;
+    var list = CROSSINGS_FIRST;
+    for (var k = 0u; k < water.faces.z; k++) {
+        let count = crossings[list];
+        let reach = bitcast<f32>(crossings[list + 2u]);
+        let depth = bitcast<f32>(crossings[list + 3u]);
+        for (var c = lane; c < count; c += SETTLE_GROUP) {
+            sum += sankBy(crossingAt(list, c), reach, depth);
+        }
+        list = nextList(list);
+    }
+    crossSums[lane] = sum;
+    workgroupBarrier();
+    for (var half = SETTLE_GROUP / 2u; half > 0u; half >>= 1u) {
+        if (lane < half) {
+            crossSums[lane] += crossSums[lane + half];
+        }
+        workgroupBarrier();
+    }
+    if (lane == 0u) {
+        crossings[0] = bitcast<u32>(crossSums[0]);
+    }
+}
+
 @compute @workgroup_size(64, 1, 1)
 fn waterSink(@builtin(global_invocation_id) id: vec3<u32>) {
     let i = id.x;
     if (i >= water.size.z) {
         return;
     }
-    let n0 = water.size.x;
-    let x = i32(i % n0);
-    let z = i32(i / n0);
-    let h = water.sink.x;
+    let x = i32(i % water.size.x);
+    let z = i32(i / water.size.x);
     var u = height(root.now, i);
     for (var p = 0u; p < water.head.x; p++) {
         let push = water.pushes[p];
-        let cx = push.x / h + 0.5 * f32(n0) - 0.5;
-        let cz = push.y / h + 0.5 * f32(water.size.y) - 0.5;
-        let reach = push.z / h;
-        let xs = span(cx, reach, n0);
-        let zs = span(cz, reach, water.size.y);
-        if (x < xs.x || x > xs.y || z < zs.x || z > zs.y) {
-            continue;
-        }
-        let dx = (f32(x) - cx) / reach;
-        let dz = (f32(z) - cz) / reach;
-        let s = 1.0 - (dx * dx + dz * dz);
-        u -= select(0.0, push.w * s * s, s > 0.0);
+        u -= sunk(x, z, push.xy, push.z, push.w);
     }
-    fields[root.now * water.size.z + i] = u + water.sink.y;
+    // Then the crossings, emitter by emitter, each in order.
+    var list = CROSSINGS_FIRST;
+    for (var k = 0u; k < water.faces.z; k++) {
+        let reach = bitcast<f32>(crossings[list + 2u]);
+        let depth = bitcast<f32>(crossings[list + 3u]);
+        for (var c = 0u; c < crossings[list]; c++) {
+            u -= sunk(x, z, crossingAt(list, c), reach, depth);
+        }
+        list = nextList(list);
+    }
+    // The crossings' share of the lift, their sum written when any emitter
+    // is coupled.
+    let crossed = select(0.0, bitcast<f32>(crossings[0]) / f32(water.size.z), water.faces.z > 0u);
+    let lift = water.sink.y + crossed;
+    fields[root.now * water.size.z + i] = u + lift;
 }
 
 // Whether cell i lies on an open wall.
@@ -232,7 +319,9 @@ fn waterSettle(@builtin(local_invocation_index) lane: u32) {
 //  - shallowStart, a cell each: its ground under the terrain, the first
 //    fill, each source over it in order;
 //  - shallowSpill, one workgroup: the pushes in order, each taking water
-//    within its radius into its ring (or the ring's into its middle);
+//    within its radius into its ring (or the ring's into its middle),
+//    then the coupled emitters' crossings in order, each such a spill
+//    and a pour of its volume;
 //  - shallowFaces, shallowGiving and shallowDepths, a substep's three
 //    passes: each face carried, slowed and accelerated; each cell's
 //    outflows' scale; each cell's depth from its four faces' fluxes;
@@ -407,6 +496,119 @@ fn shallowSpill(@builtin(local_invocation_index) lane: u32) {
         }
         storageBarrier();
         workgroupBarrier();
+    }
+    // Then the coupled emitters' crossings in order, each a spill (its
+    // weight sums the device's: its place is) and then a pour.
+    var list = CROSSINGS_FIRST;
+    for (var k = 0u; k < water.faces.z; k++) {
+        let count = uniformCount(lane, list);
+        let reach = bitcast<f32>(crossings[list + 2u]) / h;
+        let depth = bitcast<f32>(crossings[list + 3u]);
+        let volume = bitcast<f32>(crossings[list + 4u]);
+        for (var c = 0u; c < count; c++) {
+            let on = crossingAt(list, c);
+            spillCrossing(lane, on, reach, depth);
+            // The spill's cells written before the pour reads four of them.
+            storageBarrier();
+            workgroupBarrier();
+            if (lane == 0u) {
+                pourAt(on, volume);
+            }
+            storageBarrier();
+            workgroupBarrier();
+        }
+        list = nextList(list);
+    }
+}
+
+var<workgroup> listCount: u32;
+var<workgroup> crossingSums: array<vec4<f32>, 256>;
+
+// A list's count, uniform over the workgroup.
+fn uniformCount(lane: u32, at: u32) -> u32 {
+    if (lane == 0u) {
+        listCount = crossings[at];
+    }
+    return workgroupUniformLoad(&listCount);
+}
+
+// SpillAt for a crossing at `on` (X and Z of the surface's frame), its
+// reach in cells and depth: the inner and ring weights and what it takes
+// summed over the workgroup, then the water moved when there is any to
+// take and somewhere on the grid to land.
+fn spillCrossing(lane: u32, on: vec2<f32>, reach: f32, depth: f32) {
+    let n = water.size.xy;
+    let h = water.sink.x;
+    let base = root.now * water.size.z;
+    let c = vec2<f32>(on.x / h + 0.5 * f32(n.x) - 0.5, on.y / h + 0.5 * f32(n.y) - 0.5);
+    let sinks = depth > 0.0;
+    let xs = span(c.x, 2.0 * reach, n.x);
+    let zs = span(c.y, 2.0 * reach, n.y);
+    let w = u32(max(xs.y - xs.x + 1, 0));
+    let count = w * u32(max(zs.y - zs.x + 1, 0));
+    var sum = vec4<f32>(0.0);
+    for (var k = lane; k < count; k += SETTLE_GROUP) {
+        let x = xs.x + i32(k % w);
+        let z = zs.x + i32(k / w);
+        let dx = f32(x) - c.x;
+        let dz = f32(z) - c.y;
+        var inner = false;
+        let wt = spillWeight(sqrt(dx * dx + dz * dz) / reach, &inner);
+        let d = fields[base + u32(z) * n.x + u32(x)];
+        sum += vec4<f32>(select(0.0, wt, inner), select(wt, 0.0, inner),
+                         select(0.0, min(abs(depth) * wt, d), inner == sinks), 0.0);
+    }
+    crossingSums[lane] = sum;
+    workgroupBarrier();
+    for (var half = SETTLE_GROUP / 2u; half > 0u; half >>= 1u) {
+        if (lane < half) {
+            crossingSums[lane] += crossingSums[lane + half];
+        }
+        workgroupBarrier();
+    }
+    let sums = crossingSums[0];
+    workgroupBarrier();
+    if (!(sums.x > 0.0 && sums.y > 0.0 && sums.z > 0.0)) {
+        return;
+    }
+    for (var k = lane; k < count; k += SETTLE_GROUP) {
+        let x = xs.x + i32(k % w);
+        let z = zs.x + i32(k / w);
+        let dx = f32(x) - c.x;
+        let dz = f32(z) - c.y;
+        var inner = false;
+        let wt = spillWeight(sqrt(dx * dx + dz * dz) / reach, &inner);
+        let at = base + u32(z) * n.x + u32(x);
+        let d = fields[at];
+        let lands = inner != sinks;
+        let share = wt / select(sums.y, sums.x, inner);
+        let lost = select(0.0, min(abs(depth) * wt, d), inner == sinks);
+        fields[at] = d + select(-lost, sums.z * share, lands);
+    }
+}
+
+// PourAt: a volume added to the depths of the four cells about `on` (X
+// and Z of the surface's frame), bilinear; none off the grid.
+fn pourAt(on: vec2<f32>, volume: f32) {
+    let n = vec2<f32>(f32(water.size.x), f32(water.size.y));
+    let h = water.sink.x;
+    let p = vec2<f32>(on.x / h + 0.5 * n.x, on.y / h + 0.5 * n.y);
+    if (!(p.x >= 0.0 && p.x <= n.x && p.y >= 0.0 && p.y <= n.y)) {
+        return;
+    }
+    let cells = water.size.xy;
+    let c = min(max(p - 0.5, vec2<f32>(0.0)), n - 1.0);
+    let below = vec2<u32>(c);
+    let lo = select(cells - 2u, below, below < cells - 1u);
+    let t = c - vec2<f32>(lo);
+    let base = root.now * water.size.z;
+    for (var corner = 0u; corner < 4u; corner++) {
+        let x = lo.x + (corner & 1u);
+        let z = lo.y + (corner >> 1u);
+        let share = select(1.0 - t.x, t.x, (corner & 1u) != 0u) *
+                    select(1.0 - t.y, t.y, (corner >> 1u) != 0u);
+        let at = base + z * water.size.x + x;
+        fields[at] = fields[at] + share * volume / (h * h);
     }
 }
 

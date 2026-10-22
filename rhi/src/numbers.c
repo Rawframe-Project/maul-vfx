@@ -548,7 +548,7 @@ static void RecordOverLife(const mvfxEmitterView* view, const mvfxStepTables* ta
 
 uint32_t mvfxEventFirst(int32_t capacity)
 {
-    return MVFX_EVENT_FACTS * (uint32_t)capacity + 4u * mvfxScanBlocks(capacity);
+    return MVFX_EVENT_FACTS * (uint32_t)capacity + MVFX_SCAN_GROUPS * mvfxScanBlocks(capacity);
 }
 
 uint64_t mvfxEventBufferWords(int32_t capacity, int32_t eventCapacity)

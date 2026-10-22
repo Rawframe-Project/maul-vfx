@@ -253,9 +253,15 @@ fn waterNormal(at: vec2<f32>) -> vec3<f32> {
     return rotate(params.waterRotation, sum / length);
 }
 
-// A live particle's crossing for its event: its share, point and place
-// on the surface, 6 words of the crossings' facts (when the emitter
-// writes water events).
+// A coupled emitter's crossings' list in its events buffer (the surface's
+// step reads it): a head of CROSSING_HEAD words (how many, the room's
+// capacity, each crossing's reach, depth and volume, events.wgsl's
+// writeCrossingHead), then each crossing's X and Z in the surface's
+// frame, in the CPU path's order.
+const CROSSING_HEAD: u32 = 8u;
+
+// A live particle's crossing: its share, point and place on the surface,
+// 6 words of the crossings' facts.
 fn noteCrossing(i: u32, crossing: Crossing) {
     if (!crossing.crossed || params.waterCross.z == NONE) {
         return;

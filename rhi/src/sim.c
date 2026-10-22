@@ -106,12 +106,7 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
                  : 0) |
             // Rigid particles are killed by their strikes' life
             // alone.
-            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0) |
-            // The surfaces do not take crossings yet: their pushes and
-            // pours.
-            (view->water.enabled && (view->water.push > 0.0f || view->water.pour)
-                 ? MVFX_FEATURE_WATER
-                 : 0),
+            ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0),
     };
     return refusal->features == 0;
 }
@@ -550,7 +545,7 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
     {
         order[count++] = p;
     }
-    for (int32_t p = PASS_ROOM; p < (emitter->writesEvents ? PASS_EVENT_VALUES : PASS_EVENT_COUNT);
+    for (int32_t p = PASS_ROOM; p < (emitter->scansEvents ? PASS_EVENT_VALUES : PASS_EVENT_COUNT);
          ++p)
     {
         if ((p != PASS_RIBBONS || emitter->ribbons) && (p != PASS_BEAM || emitter->beam) &&
