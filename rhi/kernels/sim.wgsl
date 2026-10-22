@@ -352,6 +352,12 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 
 // include: sim/step.wgsl
 
+// include: sim/births.wgsl
+
+// include: sim/scatter.wgsl
+
+// include: sim/room.wgsl
+
 // include: sim/events.wgsl
 
 // include: sim/spawn.wgsl
