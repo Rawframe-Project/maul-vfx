@@ -737,6 +737,16 @@ MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddWaterRead(mvfxGpuSim* sim, 
 Adds the passes writing a water surface's field into a buffer to the frame the host builds, as mvfxInstance_ReadWater writes it on the CPU path (bytes of the buffer between the values, a pitch's padding, kept): a transfer pass and a compute pass, after the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them, reading the fields the last recorded step left. mvfxGpuSim_Record records them, and the next mvfxGpuSim_AddPasses lets go of those of a frame the host dropped. At most MVFX_GPU_WATER_READS a surface a frame.  @param sim  The simulation. @param def  Where the field goes, from mvfxDefaultGpuWaterReadDef. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a surface out of range, a read out of range for the surface (its field, format, box, range or pitch, as mvfxInstance_ReadWater checks them), an offset not a multiple of 4, a null buffer or bytes too few; `mvfx_errorLimit` past MVFX_GPU_WATER_READS for the surface this frame; `mvfx_errorState` when the device refuses a pass or an import (no frame open), or while it is destroyed (a call from its allocator). @par Thread safety Safe from any thread; the device is used by one thread at a time.
 
 ```c
+mvfxGpuWaterSamplesDef mvfxDefaultGpuWaterSamplesDef(void);
+```
+Returns the default water samples def: surface 0, the world's origin, no points or buffers yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddWaterSamples(mvfxGpuSim* sim, const mvfxGpuWaterSamplesDef* def);
+```
+Adds the passes sampling a water surface at a host's points to the frame the host builds, as mvfxInstance_SampleWater samples it on the CPU path, a planned instance's surface being its simulation's: a transfer pass and a compute pass, after the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them, from the fields the last recorded step left, where the surface stands now (mvfxInstance_GetWaterInfo). The host reads the samples back when its frame is done, a frame or more later, as any query of a GPU's water. mvfxGpuSim_Record records the passes, and the next mvfxGpuSim_AddPasses lets go of those of a frame the host dropped. At most MVFX_GPU_WATER_SAMPLES a surface a frame.  @param sim  The simulation. @param def  The query, from mvfxDefaultGpuWaterSamplesDef. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a surface out of range, an origin out of range or not finite, a count out of range, a null buffer, the points' and the samples' one buffer, an offset not a multiple of 4 or bytes too few; `mvfx_errorLimit` past MVFX_GPU_WATER_SAMPLES for the surface this frame; `mvfx_errorState` when the device refuses a pass or an import (no frame open), or while it is destroyed (a call from its allocator). @par Thread safety Safe from any thread; the context and the device are used by one thread at a time.
+
+```c
 mvfxGpuRibbonsDef mvfxDefaultGpuRibbonsDef(void);
 ```
 Returns the default ribbons def: emitter 0, no buffer yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
@@ -803,4 +813,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-148 functions across 17 headers.
+150 functions across 17 headers.

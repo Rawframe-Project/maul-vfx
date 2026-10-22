@@ -26,7 +26,7 @@ add_library(maul-vfx-rhi STATIC rhi/src/allocator.c rhi/src/grid_numbers.c rhi/s
     rhi/src/sim_frame.c rhi/src/sim_lanes.c rhi/src/sim_mesh.c
     rhi/src/sim_sizes.c rhi/src/sim_plexus.c rhi/src/sim_records.c rhi/src/sim_self.c
     rhi/src/sim_spawn.c rhi/src/sim_splat.c rhi/src/sim_surface_gas.c rhi/src/sim_tables.c
-    rhi/src/sim_water.c)
+    rhi/src/sim_water.c rhi/src/sim_water_sample.c)
 add_library(maul-vfx-rhi::maul-vfx-rhi ALIAS maul-vfx-rhi)
 target_include_directories(maul-vfx-rhi PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rhi/include>

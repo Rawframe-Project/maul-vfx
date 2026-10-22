@@ -14,7 +14,10 @@
 // clear; frames dropped; a moving instance. Both beside a liquid gas
 // splitting the frames; the record read back and reported, a stopped
 // instance finishing; reads in every format over a box with padded rows,
-// the padding kept; the refusals.
+// the padding kept; the refusals. Samples by query (a far, turned,
+// doubled pond, a world pond, springs on a terrain), each sample's place,
+// normal, velocity and whether it lies over the grid as the CPU path's;
+// spoiled queries refused.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -596,6 +599,213 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
     mvfxDestroyContext(RunContext());
 }
 
+// The samples' points: a 12 by 12 lattice about the surface's middle (in
+// the world, less the query's origin) over half again its larger side,
+// some past the grid's edges, at heights above and below it.
+#define SAMPLE_POINTS 144
+static float s_points[3 * SAMPLE_POINTS];
+static double s_world[3 * SAMPLE_POINTS];
+static mvfxWaterSample s_cpuSamples[SAMPLE_POINTS];
+static uint32_t s_gpuSamples[MVFX_GPU_WATER_SAMPLE_WORDS * SAMPLE_POINTS];
+
+// Whether a surface's samples at the lattice about its middle are the
+// CPU instance's, given from origin: each place, normal and velocity
+// relative to one more than its size within the tolerance, and whether
+// each lies over the grid; how many did, into over, and the fastest a
+// CPU sample's surface moved, into fastest.
+static bool SameSamples(Gpu* gpu, mvfxGpuSim* sim, const double origin[3],
+                        const mvfxWaterInfo* info, int32_t* over, float* worst, float* fastest)
+{
+    const double* middle = info->center;
+    double side = 1.5 * (double)info->cellSize *
+                  (double)(info->size[0] > info->size[1] ? info->size[0] : info->size[1]);
+    double apartBy = side / 11.0;
+    for (int32_t i = 0; i < SAMPLE_POINTS; ++i)
+    {
+        const double at[3] = {middle[0] - 0.5 * side + apartBy * (double)(i % 12) + 0.013,
+                              middle[1] + 0.3 * (double)(i % 5) - 0.6,
+                              middle[2] - 0.5 * side + apartBy * (double)(i / 12) - 0.007};
+        // The CPU path from the binary32 points, as the device takes them.
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            s_points[3 * i + k] = (float)(at[k] - origin[k]);
+            s_world[3 * i + k] = (double)s_points[3 * i + k] + origin[k];
+        }
+    }
+    if (mvfxInstance_SampleWater(RunContext(), CpuInstance(), 0, s_world, SAMPLE_POINTS,
+                                 s_cpuSamples) != mvfx_success ||
+        !SampleWaterGpu(gpu, sim, 0, origin, s_points, SAMPLE_POINTS, s_gpuSamples))
+    {
+        printf("the samples not taken\n");
+        return false;
+    }
+    bool same = true;
+    *over = 0;
+    for (int32_t i = 0; same && i < SAMPLE_POINTS; ++i)
+    {
+        const uint32_t* words = &s_gpuSamples[MVFX_GPU_WATER_SAMPLE_WORDS * i];
+        const mvfxWaterSample* cpu = &s_cpuSamples[i];
+        float apart = 0.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float value[3];
+            memcpy(value, &words[k], sizeof value[0]);
+            memcpy(&value[1], &words[3 + k], sizeof value[1]);
+            memcpy(&value[2], &words[6 + k], sizeof value[2]);
+            double place = (double)value[0] + origin[k];
+            double from = cpu->surface[k] - origin[k];
+            apart = fmaxf(apart, (float)(fabs(place - cpu->surface[k]) / (1.0 + fabs(from))));
+            apart = fmaxf(apart, fabsf(value[1] - cpu->normal[k]) / (1.0f + fabsf(cpu->normal[k])));
+            apart =
+                fmaxf(apart, fabsf(value[2] - cpu->velocity[k]) / (1.0f + fabsf(cpu->velocity[k])));
+        }
+        *worst = fmaxf(*worst, apart);
+        same = apart <= 1e-4f && (words[9] != 0) == cpu->inside;
+        *over += cpu->inside ? 1 : 0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            *fastest = fmaxf(*fastest, fabsf(cpu->velocity[k]));
+        }
+        if (!same)
+        {
+            printf("sample %d: apart %g, inside %u and %d (GPU and CPU)\n", i, (double)apart,
+                   words[9], cpu->inside);
+        }
+    }
+    return same;
+}
+
+// Steps a run's surface beside its sprite, pushed about its center, the
+// instance at place and then, from half the steps, moved on by a third
+// of a world unit along X and Z; samples it after the last step.
+static void Sampled(Gpu* gpu, mvfxGpu* kernels, const mvfxWaterDef* water, Run run,
+                    const double place[3], float scale, int32_t steps, const char* what)
+{
+    mvfxEmitterDef emitter = Beside();
+    run.emitters = &emitter;
+    run.emitterCount = 1;
+    run.waters = water;
+    run.waterCount = 1;
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(kernels, &run, &effect);
+    mvfxContext* context = RunContext();
+    const float turn[4] = {0.0f, sinf(0.3f), 0.0f, cosf(0.3f)};
+    bool stepped = sim != NULL &&
+                   mvfxInstance_SetTransform(context, CpuInstance(), place, turn, scale, true) ==
+                       mvfx_success &&
+                   mvfxInstance_SetTransform(context, PlannedInstance(), place, turn, scale,
+                                             true) == mvfx_success;
+    LongFrames(true);
+    const double later[3] = {place[0] + 0.3, place[1], place[2] + 0.3};
+    for (int32_t s = 0; stepped && s < steps; ++s)
+    {
+        if (s == steps / 2)
+        {
+            stepped = mvfxInstance_SetTransform(context, CpuInstance(), later, turn, scale,
+                                                false) == mvfx_success &&
+                      mvfxInstance_SetTransform(context, PlannedInstance(), later, turn, scale,
+                                                false) == mvfx_success;
+        }
+        // A push about the surface's center every fourth step of the
+        // first 20, on both instances.
+        mvfxWaterInfo now;
+        stepped =
+            stepped && mvfxInstance_GetWaterInfo(context, CpuInstance(), 0, &now) == mvfx_success;
+        double turned = 0.7 * (double)s;
+        const mvfxWaterPush push = {.point = {now.center[0] + 0.5 * sin(turned), now.center[1],
+                                              now.center[2] - 0.4 * cos(turned)},
+                                    .radius = 0.35f,
+                                    .depth = 0.04f};
+        if (stepped && s % 4 == 0 && s < 20)
+        {
+            stepped =
+                mvfxInstance_PushWater(context, CpuInstance(), 0, &push, 1) == mvfx_success &&
+                mvfxInstance_PushWater(context, PlannedInstance(), 0, &push, 1) == mvfx_success;
+        }
+        stepped = stepped && mvfxContext_StepTicks(context, StepTicks()) == mvfx_success &&
+                  Simulate(gpu, sim) && ReportWaters(gpu, sim);
+        LongFrames(false);
+    }
+    mvfxWaterInfo info;
+    stepped =
+        stepped && mvfxInstance_GetWaterInfo(context, CpuInstance(), 0, &info) == mvfx_success;
+    // The query's origin near the points, not at the world's.
+    const double origin[3] = {info.center[0] + 0.25, info.center[1] - 0.5, info.center[2] + 1.0};
+    int32_t over = 0;
+    float worst = 0.0f;
+    float fastest = 0.0f;
+    bool same = stepped && SameSamples(gpu, sim, origin, &info, &over, &worst, &fastest);
+    printf("%s: %d of %d samples over the grid, largest relative difference %g, fastest %g\n", what,
+           over, SAMPLE_POINTS, (double)worst, (double)fastest);
+    CHECK(same && over > 20 && over < SAMPLE_POINTS && fastest > 1e-3f, what);
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(context);
+}
+
+static void TestSamples(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A pond pushed in an instance moved far off, turned and doubled; a
+    // world pond where it began, a step (one substep) more, so one of the
+    // two is sampled from each buffer; springs on a terrain.
+    const double far[3] = {1000.0, 20.0, -500.0};
+    mvfxWaterDef water = Pond(48, 40, 0.1f, 1.5f, 15);
+    Sampled(gpu, kernels, &water, (Run){0}, far, 2.0f, 24, "a far, turned, doubled pond sampled");
+    water.space = mvfx_spaceWorld;
+    Sampled(gpu, kernels, &water, (Run){0}, far, 2.0f, 25, "a world pond sampled");
+    const mvfxGridDef ground = Ground();
+    water = Basin(48, 40, 0.06f, 0.05f);
+    water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
+    water.hasTerrain = true;
+    water.terrain = Terrain(0.0f);
+    water.sources = s_springs;
+    water.sourceCount = 2;
+    const double near[3] = {0.0, 0.0, 0.0};
+    Sampled(gpu, kernels, &water, (Run){.colliderGrids = &ground, .colliderGridCount = 1}, near,
+            1.0f, 30, "springs on a terrain sampled");
+}
+
+static void TestSampleRefusals(mvfxGpu* kernels)
+{
+    // Each spoiled query refused before any pass.
+    mvfxWaterDef water = Pond(8, 8, 0.1f, 1.0f, 15);
+    mvfxEmitterDef emitter = Beside();
+    mvfxEffectId effect = {0};
+    const Run run = {.emitters = &emitter, .emitterCount = 1, .waters = &water, .waterCount = 1};
+    mvfxGpuSim* sim = OpenRun(kernels, &run, &effect);
+    mvfxGpuWaterSamplesDef good = mvfxDefaultGpuWaterSamplesDef();
+    good.points = (mrhiResourceId){.index1 = 1};
+    good.target = (mrhiResourceId){.index1 = 2};
+    good.count = 4;
+    good.pointBytes = 48;
+    good.bytes = 4u * MVFX_GPU_WATER_SAMPLE_WORDS * 4u;
+    mvfxGpuWaterSamplesDef bad[12];
+    for (int32_t b = 0; b < 12; ++b)
+    {
+        bad[b] = good;
+    }
+    bad[0].cookie = 0;
+    bad[1].water = 1;
+    bad[2].water = -1;
+    bad[3].count = -1;
+    bad[4].count = MVFX_GPU_SAMPLE_POINTS + 1;
+    bad[5].points = (mrhiResourceId){0};
+    bad[6].target = bad[6].points;
+    bad[7].pointOffset = 2;
+    bad[8].offset = 6;
+    bad[9].pointBytes = 47;
+    bad[10].bytes -= 1;
+    bad[11].origin[1] = (double)NAN;
+    bool refused = mvfxGpuSim_AddWaterSamples(NULL, &good) == mvfx_errorInvalid &&
+                   mvfxGpuSim_AddWaterSamples(sim, NULL) == mvfx_errorInvalid;
+    for (int32_t b = 0; b < 12; ++b)
+    {
+        refused = refused && mvfxGpuSim_AddWaterSamples(sim, &bad[b]) == mvfx_errorInvalid;
+    }
+    CHECK(sim != NULL && refused, "spoiled sample queries refused");
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(RunContext());
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestWaves(gpu, kernels);
@@ -605,6 +815,8 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestSplit(gpu, kernels);
     TestFinishing(gpu, kernels);
     TestReads(gpu, kernels);
+    TestSamples(gpu, kernels);
+    TestSampleRefusals(kernels);
 }
 
 int main(void)

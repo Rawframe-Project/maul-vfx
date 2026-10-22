@@ -178,6 +178,7 @@ mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId in
         infoOut->rotation[k] = place.rotation[k];
     }
     infoOut->cellSize = place.scale * live->effect->gases[gas].def.cellSize;
+    infoOut->scale = place.scale;
     for (int32_t k = 0; k < 3; ++k)
     {
         infoOut->size[k] = live->effect->gases[gas].def.size[k];

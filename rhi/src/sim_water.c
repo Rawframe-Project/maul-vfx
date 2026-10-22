@@ -142,7 +142,7 @@ bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords)
     {
         created = CreateBuffer(sim, 4u * WATER_READ_WORDS, numbers, &water->reads[r].numbers);
     }
-    return created;
+    return created && mvfxCreateSimWaterSamples(sim, water);
 }
 
 void mvfxDestroySimWater(mvfxGpuSim* sim, SimWater* water)
@@ -161,6 +161,7 @@ void mvfxDestroySimWater(mvfxGpuSim* sim, SimWater* water)
             (void)mrhiDestroyBuffer(sim->device, water->reads[r].numbers);
         }
     }
+    mvfxDestroySimWaterSamples(sim, water);
 }
 
 // Appends a dispatch to the step.
@@ -357,8 +358,7 @@ void mvfxSimWaterFields(const SimWater* water, uint32_t now, uint32_t firsts[WAT
     memcpy(floats, count, sizeof count);
 }
 
-// Imports a surface's buffers into the frame open, once a frame.
-static bool Import(mvfxGpuSim* sim, SimWater* water)
+bool mvfxImportSimWater(mvfxGpuSim* sim, SimWater* water)
 {
     for (int32_t b = 0; !water->imported && b < WATER_BUFFERS; ++b)
     {
@@ -374,9 +374,10 @@ static bool Import(mvfxGpuSim* sim, SimWater* water)
 mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
 {
     SimWater* water = &sim->waters[w];
-    // The reads of a frame the host dropped go.
+    // The reads and samples of a frame the host dropped go.
     water->added = false;
     water->readCount = 0;
+    water->sampleCount = 0;
     water->imported = false;
     mvfxWaterPlan plan;
     mvfxResult result = mvfxSimWaterPlan(sim, w, &plan);
@@ -391,7 +392,7 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
         return mvfx_errorCapacity;
     }
     Plan(water, &plan);
-    if (!Import(sim, water))
+    if (!mvfxImportSimWater(sim, water))
     {
         return mvfx_errorState;
     }
@@ -533,7 +534,9 @@ bool mvfxRecordSimWater(mvfxGpuSim* sim, SimWater* water)
     {
         recorded = RecordRead(sim, water, &water->reads[r]);
     }
+    recorded = recorded && mvfxRecordSimWaterSamples(sim, water);
     water->readCount = 0;
+    water->sampleCount = 0;
     water->imported = false;
     return recorded;
 }
@@ -638,7 +641,7 @@ mvfxResult mvfxGpuSim_AddWaterRead(mvfxGpuSim* sim, const mvfxGpuWaterReadDef* d
     }
     read->target = def->target;
     bool imported = mrhiImportBuffer(sim->device, read->numbers, &read->resource) == mrhi_success &&
-                    Import(sim, water);
+                    mvfxImportSimWater(sim, water);
     const mrhiResourceId* r = water->resources;
     const mrhiAccess written = {.resource = read->resource, .kind = mrhi_accessCopyDestination};
     const mrhiAccess used[4] = {{.resource = r[WATER_NUMBERS], .kind = mrhi_accessUniform},

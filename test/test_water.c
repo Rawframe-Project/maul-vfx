@@ -890,6 +890,7 @@ static void CheckInfo(mvfxGasSpace space)
     wrong += info.size[0] != 16;
     wrong += info.size[1] != 8;
     wrong += info.cellSize != (local ? 0.2f : 0.1f);
+    wrong += info.scale != (local ? 2.0f : 1.0f);
     wrong += info.rotation[1] != (local ? s_turn : 0.0f);
     wrong += info.rotation[3] != (local ? s_turn : 1.0f);
     CHECK(wrong == 0, "a local surface moves with its instance, a world one stays");

@@ -22,6 +22,7 @@
 #include "../kernels/surface_gas_container.h"
 #include "../kernels/water_container.h"
 #include "../kernels/water_read_container.h"
+#include "../kernels/water_sample_container.h"
 #include "maul-rhi/shader.h"
 
 #include <stdalign.h>
@@ -59,6 +60,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_waterContainer, sizeof s_waterContainer},
     {s_waterReadContainer, sizeof s_waterReadContainer},
     {s_surfaceGasContainer, sizeof s_surfaceGasContainer},
+    {s_waterSampleContainer, sizeof s_waterSampleContainer},
 };
 
 // A kernel's container and entry.
@@ -182,6 +184,7 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSurfaceGas, "surfaceRuns"},
     {mvfx_containerSurfaceGas, "surfaceField"},
     {mvfx_containerSurfaceGas, "surfaceSmooth"},
+    {mvfx_containerWaterSample, "waterSample"},
 };
 
 struct mvfxGpu

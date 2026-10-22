@@ -455,13 +455,13 @@ static void TestPlaces(void)
         if (world != 0)
         {
             right = right && info.center[0] == 1.0 && info.center[1] == 0.0 &&
-                    info.rotation[3] == 1.0f && info.cellSize == 0.1f;
+                    info.rotation[3] == 1.0f && info.cellSize == 0.1f && info.scale == 1.0f;
         }
         else
         {
             right = right && fabs(info.center[0] - 10.0) <= 1e-5 &&
                     fabs(info.center[1] - 2.0) <= 1e-5 && info.rotation[2] == turn[2] &&
-                    fabsf(info.cellSize - 0.2f) <= 1e-7f;
+                    fabsf(info.cellSize - 0.2f) <= 1e-7f && info.scale == 2.0f;
         }
         // Its bounds hold its box: unturned, 6.4 by 3.2 by 0.1 about its
         // center; scaled by 2 and turned a quarter, 6.4 by 12.8.

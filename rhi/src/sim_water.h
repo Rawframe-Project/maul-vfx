@@ -63,6 +63,24 @@ typedef struct WaterRead
     uint32_t written;
 } WaterRead;
 
+// The words of a water sample query's numbers (water_sample.wgsl's
+// Sample).
+#define WATER_SAMPLE_WORDS 16u
+
+// A query of a surface's samples a frame: its numbers' buffer, the frame's
+// ids of it and of the host's points and samples, its passes, its numbers
+// and its points.
+typedef struct WaterSamples
+{
+    mrhiBufferId numbers;
+    mrhiResourceId resource;
+    mrhiResourceId points;
+    mrhiResourceId target;
+    mrhiPassId passes[2];
+    uint32_t words[WATER_SAMPLE_WORDS];
+    uint32_t count;
+} WaterSamples;
+
 // The fields a coupled emitter reads (sim/water.wgsl): waves' heights and
 // rates, or shallow water's depths and ground, then its faces across X and
 // across Z.
@@ -77,7 +95,8 @@ typedef struct WaterRead
 // the step's dispatches and their passes (the first pass writing the
 // numbers), held whole so a lane of a split frame (sim_lanes.c) copies it;
 // whether the step clears it first, whether it was added, whether its
-// buffers are imported into the frame open; the frame's reads.
+// buffers are imported into the frame open; the frame's reads and sample
+// queries.
 typedef struct SimWater
 {
     mvfxWaterView view;
@@ -102,6 +121,8 @@ typedef struct SimWater
     bool imported;
     WaterRead reads[MVFX_GPU_WATER_READS];
     int32_t readCount;
+    WaterSamples samples[MVFX_GPU_WATER_SAMPLES];
+    int32_t sampleCount;
 } SimWater;
 
 // Reads an effect's surfaces into the simulation.
@@ -120,5 +141,16 @@ void mvfxSimWaterFields(const SimWater* water, uint32_t now, uint32_t firsts[WAT
 // Adds surface w's step's passes for its plan, then records them.
 mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w);
 bool mvfxRecordSimWater(mvfxGpuSim* sim, SimWater* water);
+
+// Imports a surface's buffers into the frame open, once a frame; false
+// when the device refuses.
+bool mvfxImportSimWater(mvfxGpuSim* sim, SimWater* water);
+
+// A surface's sample queries (sim_water_sample.c): their numbers' buffers
+// made with it (false when the device refuses) and destroyed, and a
+// frame's recorded, after its step and reads.
+bool mvfxCreateSimWaterSamples(mvfxGpuSim* sim, SimWater* water);
+void mvfxDestroySimWaterSamples(mvfxGpuSim* sim, SimWater* water);
+bool mvfxRecordSimWaterSamples(mvfxGpuSim* sim, SimWater* water);
 
 #endif

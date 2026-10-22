@@ -864,6 +864,86 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddWaterRead(mvfxGpuSim* sim,
                                                                    const mvfxGpuWaterReadDef* def);
 
+// The most sample queries of a water surface a frame
+// (mvfxGpuSim_AddWaterSamples), and the most points a query takes.
+#define MVFX_GPU_WATER_SAMPLES 4
+#define MVFX_GPU_SAMPLE_POINTS (1 << 20)
+
+// A water surface's sample on the device, 32-bit words, as
+// mvfxInstance_SampleWater gives it in mvfxWaterSample: the surface over
+// the point (a place in the world less the query's origin, three
+// binary32), its unit normal and its velocity in the world (three
+// binary32 each), and whether the point is over the grid (1 or 0).
+#define MVFX_GPU_WATER_SAMPLE_WORDS 10
+
+    // A query of a water surface's samples (mvfxGpuSim_AddWaterSamples).
+    // Build it with mvfxDefaultGpuWaterSamplesDef.
+    typedef struct mvfxGpuWaterSamplesDef
+    {
+        uint32_t cookie;
+        // The surface's index in its effect.
+        int32_t water;
+        // The place in the world the points and the samples are given
+        // from, each coordinate at most 2^52 in size: binary32 holds
+        // places near it.
+        double origin[3];
+        // count points, from 0 to MVFX_GPU_SAMPLE_POINTS, each three
+        // binary32 (x, y, z, the world less origin), in a storage buffer
+        // of the frame open from a byte that is a multiple of 4,
+        // pointBytes long from there (at least 12 a point).
+        mrhiResourceId points;
+        uint64_t pointOffset;
+        uint64_t pointBytes;
+        int64_t count;
+        // The samples' storage buffer of the frame open, not the points',
+        // from a byte that is a multiple of 4, bytes long from there (at
+        // least MVFX_GPU_WATER_SAMPLE_WORDS words a point).
+        mrhiResourceId target;
+        uint64_t offset;
+        uint64_t bytes;
+    } mvfxGpuWaterSamplesDef;
+
+// The cookie of a water samples def, which its default sets and
+// mvfxGpuSim_AddWaterSamples checks.
+#define MVFX_GPU_WATER_SAMPLES_DEF_COOKIE 0x6D767773u
+
+    /// Returns the default water samples def: surface 0, the world's
+    /// origin, no points or buffers yet.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API mvfxGpuWaterSamplesDef mvfxDefaultGpuWaterSamplesDef(void);
+
+    /// Adds the passes sampling a water surface at a host's points to the
+    /// frame the host builds, as mvfxInstance_SampleWater samples it on the
+    /// CPU path, a planned instance's surface being its simulation's: a
+    /// transfer pass and a compute pass, after the step's passes of the
+    /// frame (mvfxGpuSim_AddPasses) or, without them, from the fields the
+    /// last recorded step left, where the surface stands now
+    /// (mvfxInstance_GetWaterInfo). The host reads the samples back when
+    /// its frame is done, a frame or more later, as any query of a GPU's
+    /// water. mvfxGpuSim_Record records the passes, and the next
+    /// mvfxGpuSim_AddPasses lets go of those of a frame the host dropped.
+    /// At most MVFX_GPU_WATER_SAMPLES a surface a frame.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  The query, from mvfxDefaultGpuWaterSamplesDef.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, a surface out of range, an origin
+    ///         out of range or not finite, a count out of range, a null
+    ///         buffer, the points' and the samples' one buffer, an offset
+    ///         not a multiple of 4 or bytes too few; `mvfx_errorLimit` past
+    ///         MVFX_GPU_WATER_SAMPLES for the surface this frame;
+    ///         `mvfx_errorState` when the device refuses a pass or an
+    ///         import (no frame open), or while it is destroyed (a call
+    ///         from its allocator).
+    /// @par Thread safety
+    /// Safe from any thread; the context and the device are used by one
+    /// thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult
+    mvfxGpuSim_AddWaterSamples(mvfxGpuSim* sim, const mvfxGpuWaterSamplesDef* def);
+
 // The counts a ribbon pass writes, 32-bit words: the points and the
 // ribbons there are, as mvfxInstance_WriteRibbons counts them, and the
 // points and the ribbons written (for strips, mvfxGpuSim_ExpandRibbons,

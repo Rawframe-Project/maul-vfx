@@ -1135,6 +1135,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   `MVFX_GPU_WATER_POURED`, 7 words), which `mvfxGpuSim_ReportWater`
   hands over with the reach; `mvfxWaterPlan.volumeScale` takes a poured
   volume into the world's.
+- The GPU part samples a planned instance's water surface by query, as
+  `mvfxInstance_SampleWater` does on the CPU path:
+  `mvfxGpuSim_AddWaterSamples` takes a host's points (binary32, the world
+  less an origin in binary64) from one storage buffer and writes each
+  sample's place, normal, velocity and whether it lies over the grid
+  into another (`MVFX_GPU_WATER_SAMPLE_WORDS`), read back when the
+  host's frame is done; at most `MVFX_GPU_WATER_SAMPLES` queries a
+  surface a frame and `MVFX_GPU_SAMPLE_POINTS` points a query.
+  `mvfxWaterInfo.scale` and `mvfxGasInfo.scale` give a box's scale.
 
 ### Changed
 

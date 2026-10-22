@@ -791,13 +791,16 @@ extern "C"
     MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks);
 
     // What a gas is now: its cells and their edge, and its box's center
-    // and orientation (x, y, z, w) in the world.
+    // and orientation (x, y, z, w) in the world, and the scale of its box
+    // (the instance's for a gas in the instance's space, else 1): a cell's
+    // edge in the world is its def's times it.
     typedef struct mvfxGasInfo
     {
         int32_t size[3];
         float cellSize;
         double center[3];
         float rotation[4];
+        float scale;
     } mvfxGasInfo;
 
     /// Reads what a gas of an instance is now.
@@ -868,13 +871,14 @@ extern "C"
 
     // What a water surface is now: its cells and their edge, and its grid's
     // center and orientation (x, y, z, w) in the world, the frame whose Y
-    // its heights are along.
+    // its heights are along, and its scale (as mvfxGasInfo's).
     typedef struct mvfxWaterInfo
     {
         int32_t size[2];
         float cellSize;
         double center[3];
         float rotation[4];
+        float scale;
         // Since the instance was made or restarted: the steps whose time
         // outran MVFX_MAX_WATER_SUBSTEPS substeps (the water slowed), and
         // shallow water's faces whose velocity the substep's bound, half a
@@ -882,8 +886,9 @@ extern "C"
         // that leans on either moves slower than its water would. And the
         // volume particles poured into shallow water (mvfxEmitterDef.water),
         // in the world's lengths cubed at each pour, which no host push
-        // adds. A planned instance's surface steps in its simulation, so
-        // these stay 0.
+        // adds. A planned instance counts its steps slowed from its plans,
+        // and the others as its simulation reports them
+        // (mvfxInstance_SetWaterCounts).
         uint64_t stepsSlowed;
         uint64_t facesHeld;
         double volumePoured;
