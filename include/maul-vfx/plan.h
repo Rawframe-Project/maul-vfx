@@ -526,6 +526,12 @@ extern "C"
         // floor at the grid's center.
         bool hasTerrain;
         mvfxPlannedCollider terrain;
+        // The surface's volume in the world's lengths over its own: its
+        // scale cubed where it stands at the step's end, which a volume
+        // the particles pour takes into the world's (binary64 from the
+        // scale's binary32, as the CPU path's mvfxWaterInfo.volumePoured
+        // counts).
+        double volumeScale;
     } mvfxWaterPlan;
 
     // A water surface of an effect as compiled (mvfxEffect_GetWaterView),
@@ -1293,6 +1299,40 @@ extern "C"
                                                                   mvfxInstanceId instance,
                                                                   int32_t water, int64_t tick,
                                                                   float speed);
+
+    /// Tells a planned instance what a water surface's step measured,
+    /// which its simulation counts: its reach (the farthest its surface
+    /// stood from rest, in the surface's lengths), which its bounds take,
+    /// and the faces shallow water's bound held and the volume the
+    /// particles poured, which mvfxInstance_GetWaterInfo's counts add
+    /// (each step's once: a report of a tick at or before the latest one
+    /// taken is ignored). Its steps slowed the instance counts itself,
+    /// from its plans.
+    ///
+    /// @param context      The context.
+    /// @param instance     A planned instance.
+    /// @param water        A surface's index in its effect.
+    /// @param tick         The tick of the step's end the report is of, at
+    ///                     most the instance's clock.
+    /// @param reach        The reach then, finite and at least 0.
+    /// @param facesHeld    The faces held over the step's substeps (0 for
+    ///                     waves).
+    /// @param volumePoured The volume poured over the step, in the world's
+    ///                     lengths cubed, finite and at least 0 (0 for
+    ///                     waves).
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, a
+    ///         surface out of range, a tick past the clock or below 0, or
+    ///         a reach or volume not finite or below 0, which counts as
+    ///         misuse when the context is given; `mvfx_errorStale` for an
+    ///         instance that is gone; `mvfx_errorState` for an instance
+    ///         that is not planned.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context,
+                                                                   mvfxInstanceId instance,
+                                                                   int32_t water, int64_t tick,
+                                                                   float reach, uint64_t facesHeld,
+                                                                   double volumePoured);
 
 #ifdef __cplusplus
 }

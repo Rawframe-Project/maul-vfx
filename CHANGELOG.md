@@ -1125,6 +1125,16 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   30 a particle of its emitter's capacity and 8 a bucket).
   `mvfxGasView` gives a surface gas's buckets (`bucket`, `buckets`);
   `mvfxGpuRefusal.gas` names none.
+- A planned instance's water surfaces count as the CPU path's do:
+  `mvfxInstance_SetWaterCounts` takes a step's reach, held faces and
+  poured volume once a tick (a stop that clears empties them and drops
+  the reports before it), and the instance counts its steps slowed from
+  its plans, so `mvfxInstance_GetWaterInfo` and the instance's bounds
+  agree with the CPU path's. The GPU part's water record gains the
+  faces held and the volume poured (`MVFX_GPU_WATER_FACES_HELD`,
+  `MVFX_GPU_WATER_POURED`, 7 words), which `mvfxGpuSim_ReportWater`
+  hands over with the reach; `mvfxWaterPlan.volumeScale` takes a poured
+  volume into the world's.
 
 ### Changed
 

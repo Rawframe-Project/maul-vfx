@@ -2797,8 +2797,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     if (run->waterCount > 0)
     {
         // The surfaces moved: the pushes reached them.
-        printf("  water: %g, the fastest a cell moved %g\n", (double)WaterError(),
-               (double)WaterMoved());
+        printf("  water: %g, the fastest a cell moved %g, poured %g, faces held %llu\n",
+               (double)WaterError(), (double)WaterMoved(), WaterPoured(),
+               (unsigned long long)WaterHeld());
         CHECK(WaterMoved() > 1e-3f, "the surfaces moved");
     }
     // The surfaces' largest reach: a cell below it has a particle within

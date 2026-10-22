@@ -188,6 +188,21 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
     run.hostColliderCount = 1;
     run.hostGridBytes = 4 * 81;
     Ponds(gpu, kernels, &water, 1, run, "springs on the instance's terrain");
+    // Steps of a tenth of a second over the effect's terrain: past the
+    // most substeps, each step slowed, so the bound holds the faces where
+    // the water falls fastest (counted on both paths alike).
+    water.hostTerrain = false;
+    water.hasTerrain = true;
+    water.terrain = Terrain(0.0f);
+    run.hostColliders = NULL;
+    run.hostColliderCount = 0;
+    run.hostGridBytes = 0;
+    run.steps = 12;
+    SetStepTicks(MVFX_TICKS_PER_SECOND / 10);
+    Ponds(gpu, kernels, &water, 1, run, "springs on a terrain slowed, faces held");
+    SetStepTicks(STEP_TICKS);
+    CHECK(WaterHeld() > 0, "faces held");
+    run.steps = 0;
     // A basin cleared at half time and filled again; its frames dropped
     // once; where a moving instance began.
     water = Basin(32, 28, 0.1f, 0.2f);

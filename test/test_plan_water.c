@@ -11,7 +11,9 @@
 // plays; in a split frame the pushes and clear in the first step alone;
 // a surface's view; a stopped instance running while its surface moves,
 // as its simulation reports; an emitter's coupling to a surface as
-// resolved; the refusals, and reads of a planned surface refused.
+// resolved; the counts and reach reported once a tick, a clear emptying
+// them, and the steps slowed counted from the plans; the refusals, and
+// reads of a planned surface refused.
 
 #include "direction.h"
 #include "force.h"
@@ -104,6 +106,7 @@ static void TestPushes(void)
                  fabsf(plan.pushes[p].depth - 0.1f) <= 1e-7f;
     }
     CHECK(mapped, "the pushes in the surface's frame, in order");
+    CHECK(plan.volumeScale == 8.0, "the volume's scale, the scale cubed");
     CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success &&
               mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success &&
               plan.pushCount == 0,
@@ -155,6 +158,9 @@ static void TestWaves(void)
               "the waves' substeps");
         CHECK(slowed == (k == 1), "a second's step slowed");
     }
+    // The planned twin counts its slowed step as the CPU twin does.
+    CHECK(Live(s_planned)->waters[0].stepsSlowed == 1 && Live(s_cpu)->waters[0].stepsSlowed == 1,
+          "the steps slowed counted on both");
     mvfxDestroyContext(s_context);
 }
 
@@ -484,6 +490,61 @@ static void TestView(void)
     mvfxDestroyContext(s_context);
 }
 
+static void TestCounts(void)
+{
+    // A planned lake's counts: the reach replaced and the counts added once
+    // a tick, an older or repeated report ignored; a stop that clears
+    // empties them and ignores the reports before it; the refusals.
+    NewContext();
+    mvfxWaterDef water = Lake();
+    const double origin[3] = {0.0, 0.0, 0.0};
+    Open(&water, 1, NULL, 0, NULL, 0, origin, 1.0f);
+    CHECK(mvfxContext_StepTicks(s_context, 2 * STEP_TICKS) == mvfx_success, "stepped");
+    mvfxWaterInfo info;
+    bool counted = mvfxInstance_SetWaterCounts(s_context, s_planned, 0, STEP_TICKS, 0.5f, 3,
+                                               0.25) == mvfx_success &&
+                   mvfxInstance_SetWaterCounts(s_context, s_planned, 0, STEP_TICKS, 0.7f, 3,
+                                               0.25) == mvfx_success &&
+                   mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 2 * STEP_TICKS, 0.2f, 4,
+                                               0.5) == mvfx_success &&
+                   mvfxInstance_SetWaterCounts(s_context, s_planned, 0, STEP_TICKS, 0.9f, 9, 9.0) ==
+                       mvfx_success &&
+                   mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
+                   info.facesHeld == 7 && info.volumePoured == 0.75 &&
+                   Live(s_planned)->waters[0].reach == 0.2f;
+    CHECK(counted, "each tick's report counted once, the latest reach");
+    CHECK(mvfxInstance_Stop(s_context, s_planned, mvfx_stopAndClear) == mvfx_success &&
+              mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 2 * STEP_TICKS, 1.0f, 5, 1.0) ==
+                  mvfx_success &&
+              mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
+              info.facesHeld == 0 && info.volumePoured == 0.0 &&
+              Live(s_planned)->waters[0].reach == 0.0f,
+          "a clear empties them, the reports before it ignored");
+    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    bool refused =
+        mvfxInstance_SetWaterCounts(NULL, s_planned, 0, 0, 0.0f, 0, 0.0) == mvfx_errorInvalid &&
+        mvfxInstance_SetWaterCounts(s_context, s_planned, 1, 0, 0.0f, 0, 0.0) ==
+            mvfx_errorInvalid &&
+        mvfxInstance_SetWaterCounts(s_context, s_planned, 0, -1, 0.0f, 0, 0.0) ==
+            mvfx_errorInvalid &&
+        mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 3 * STEP_TICKS, 0.0f, 0, 0.0) ==
+            mvfx_errorInvalid &&
+        mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 0, -1.0f, 0, 0.0) ==
+            mvfx_errorInvalid &&
+        mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 0, INFINITY, 0, 0.0) ==
+            mvfx_errorInvalid &&
+        mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 0, 0.0f, 0, (double)NAN) ==
+            mvfx_errorInvalid &&
+        mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 0, 0.0f, 0, -1.0) ==
+            mvfx_errorInvalid &&
+        mvfxGetContextMisuse(s_context) == misuse + 7 &&
+        mvfxInstance_SetWaterCounts(s_context, s_cpu, 0, 0, 0.0f, 0, 0.0) == mvfx_errorState &&
+        mvfxInstance_SetWaterCounts(s_context, (mvfxInstanceId){0}, 0, 0, 0.0f, 0, 0.0) ==
+            mvfx_errorStale;
+    CHECK(refused, "the counts setter's refusals");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestRefusals(void)
 {
     NewContext();
@@ -536,6 +597,7 @@ static void TestRefusals(void)
 
 int main(void)
 {
+    TestCounts();
     TestPushes();
     TestWaves();
     TestShallow();

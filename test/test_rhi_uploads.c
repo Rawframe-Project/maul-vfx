@@ -139,7 +139,7 @@ static int64_t StepBytes(const mvfxEmitterPlan* plan, bool events, bool beam, bo
 }
 
 // A water surface the measured effect holds beside its emitters (none for
-// NULL): its numbers and its record, 1,124 bytes a step for waves, 2,532
+// NULL): its numbers and its record, 1,132 bytes a step for waves, 2,540
 // for shallow water.
 static const mvfxWaterDef* s_water;
 
@@ -220,7 +220,7 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
             (void)mvfxGpu_Notify(kernels, &record);
         }
         int64_t expected =
-            s_water == NULL ? 0 : (s_water->model == mvfx_waterShallow ? 2532 : 1124);
+            s_water == NULL ? 0 : (s_water->model == mvfx_waterShallow ? 2540 : 1132);
         for (int32_t e = 0; exact && e < count; ++e)
         {
             mvfxEmitterPlan plan;

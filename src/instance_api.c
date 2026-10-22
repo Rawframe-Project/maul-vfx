@@ -549,6 +549,8 @@ mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfx
         for (int32_t w = 0; w < live->effect->waterCount; ++w)
         {
             mvfxClearWater(&live->waters[w], &live->effect->waters[w]);
+            // A planned surface's reports of the steps before count no more.
+            live->waters[w].countedTick = live->clock;
         }
     }
     return mvfx_success;

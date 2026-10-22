@@ -94,6 +94,9 @@ typedef struct mvfxWaterState
     float stepSpeed;
     float reportedSpeed;
     int64_t reportedTick;
+    // A planned surface's latest step counted (mvfxInstance_SetWaterCounts),
+    // -1 for none.
+    int64_t countedTick;
     int32_t planPushCount;
     mvfxPlannedWaterPush planPushes[MVFX_MAX_WATER_PUSHES];
     bool planHasTerrain;

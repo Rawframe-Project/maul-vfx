@@ -280,6 +280,9 @@ static uint32_t PlanShallow(SimWater* water, const mvfxWaterPlan* plan, uint32_t
     w[WORD_HEAD] = (uint32_t)plan->pushCount;
     w[WORD_HEAD + 2] = (uint32_t)def->sourceCount;
     w[WORD_HEAD + 3] = (plan->cleared ? FLAG_FILLS : 0u) | (plan->hasTerrain ? FLAG_TERRAIN : 0u);
+    // The poured volume into the world's, rounded once.
+    float cube = (float)plan->volumeScale;
+    memcpy(&w[WORD_SINK + 3u], &cube, sizeof cube);
     for (int32_t p = 0; p < plan->pushCount; ++p)
     {
         const mvfxPlannedWaterPush* push = &plan->pushes[p];
@@ -333,6 +336,8 @@ static void Plan(SimWater* water, const mvfxWaterPlan* plan)
     water->record[MVFX_GPU_WATER_TICK + 1] = (uint32_t)(end >> 32u);
     water->record[MVFX_GPU_WATER_SPEED] = 0;
     water->record[MVFX_GPU_WATER_REACH] = 0;
+    water->record[MVFX_GPU_WATER_FACES_HELD] = 0;
+    water->record[MVFX_GPU_WATER_POURED] = 0;
     water->after = now;
 }
 
@@ -696,6 +701,14 @@ mvfxResult mvfxGpuSim_ReportWater(const mvfxGpuSim* sim, mvfxContext* context, i
         (uint64_t)record[MVFX_GPU_WATER_TICK] | (uint64_t)record[MVFX_GPU_WATER_TICK + 1] << 32u;
     mvfxResult result = mvfxInstance_SetWaterHolds(context, sim->instance, water, (int64_t)tick,
                                                    record[MVFX_GPU_WATER_HOLDS] != 0);
+    float reach;
+    float poured;
+    memcpy(&reach, &record[MVFX_GPU_WATER_REACH], sizeof reach);
+    memcpy(&poured, &record[MVFX_GPU_WATER_POURED], sizeof poured);
+    result = result == mvfx_success
+                 ? mvfxInstance_SetWaterCounts(context, sim->instance, water, (int64_t)tick, reach,
+                                               record[MVFX_GPU_WATER_FACES_HELD], (double)poured)
+                 : result;
     if (result != mvfx_success || !IsShallow(&sim->waters[water]))
     {
         return result;

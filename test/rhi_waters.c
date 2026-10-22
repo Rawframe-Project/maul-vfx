@@ -3,7 +3,10 @@
 
 #include "rhi_waters.h"
 
+#include "instance.h"
+#include "instance_api.h"
 #include "test_harness.h"
+#include "water.h"
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/resources.h"
@@ -16,6 +19,8 @@ static float s_cpu[WATER_CELLS];
 static float s_gpu[WATER_CELLS];
 static float s_worst;
 static float s_moved;
+static double s_poured;
+static uint64_t s_held;
 
 void PushWaters(const Run* run, int32_t s)
 {
@@ -149,6 +154,37 @@ static bool SameField(Gpu* gpu, mvfxGpuSim* sim, int32_t w, const mvfxWaterDef* 
     return same;
 }
 
+// A surface's counts and reach on both paths, as the planned instance's
+// reports left them: the steps slowed and the faces held equal, the
+// volume poured and the reach within the tolerance.
+static bool SameCounts(int32_t w, float tolerance)
+{
+    mvfxWaterInfo cpu;
+    mvfxWaterInfo planned;
+    if (mvfxInstance_GetWaterInfo(RunContext(), CpuInstance(), w, &cpu) != mvfx_success ||
+        mvfxInstance_GetWaterInfo(RunContext(), PlannedInstance(), w, &planned) != mvfx_success)
+    {
+        return false;
+    }
+    float cpuReach = mvfxContextInstance(RunContext(), CpuInstance())->waters[w].reach;
+    float plannedReach = mvfxContextInstance(RunContext(), PlannedInstance())->waters[w].reach;
+    double poured = fabs(planned.volumePoured - cpu.volumePoured) / (1.0 + cpu.volumePoured);
+    float reach = fabsf(plannedReach - cpuReach) / (1.0f + cpuReach);
+    s_poured = fmax(s_poured, cpu.volumePoured);
+    s_held = cpu.facesHeld > s_held ? cpu.facesHeld : s_held;
+    bool same = planned.stepsSlowed == cpu.stepsSlowed && planned.facesHeld == cpu.facesHeld &&
+                poured <= (double)tolerance && reach <= tolerance;
+    if (!same)
+    {
+        printf("surface %d: slowed %llu and %llu, held %llu and %llu, poured %g and %g, reach %g "
+               "and %g (GPU and CPU)\n",
+               w, (unsigned long long)planned.stepsSlowed, (unsigned long long)cpu.stepsSlowed,
+               (unsigned long long)planned.facesHeld, (unsigned long long)cpu.facesHeld,
+               planned.volumePoured, cpu.volumePoured, (double)plannedReach, (double)cpuReach);
+    }
+    return same;
+}
+
 bool SameWaters(Gpu* gpu, mvfxGpuSim* sim, const Run* run, float tolerance)
 {
     bool same = true;
@@ -158,6 +194,7 @@ bool SameWaters(Gpu* gpu, mvfxGpuSim* sim, const Run* run, float tolerance)
         {
             same = SameField(gpu, sim, w, &run->waters[w], (mvfxWaterField)f, tolerance);
         }
+        same = same && SameCounts(w, tolerance);
     }
     return same;
 }
@@ -172,8 +209,20 @@ float WaterMoved(void)
     return s_moved;
 }
 
+double WaterPoured(void)
+{
+    return s_poured;
+}
+
+uint64_t WaterHeld(void)
+{
+    return s_held;
+}
+
 void ResetWaters(void)
 {
     s_worst = 0.0f;
     s_moved = 0.0f;
+    s_poured = 0.0;
+    s_held = 0;
 }

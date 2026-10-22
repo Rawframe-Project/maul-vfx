@@ -28,10 +28,13 @@ const WALL_MAX_X: u32 = 2u;
 const WALL_MIN_Z: u32 = 4u;
 const WALL_MAX_Z: u32 = 8u;
 // The statistics record's words (rhi/include/maul-vfx-rhi/sim.h's
-// MVFX_GPU_WATER_*): whether it moves, its reach.
+// MVFX_GPU_WATER_*): whether it moves, its speed, its reach, the faces
+// held and the volume poured.
 const HOLDS: u32 = 0u;
 const SPEED: u32 = 3u;
 const REACH: u32 = 4u;
+const FACES_HELD: u32 = 5u;
+const POURED: u32 = 6u;
 
 // include: shared/collider_numbers.wgsl
 
@@ -70,7 +73,7 @@ struct Root {
 @group(0) @binding(0) var<uniform> water: Water;
 // Heights now and next, then rates now and next: four arrays of the cells.
 @group(0) @binding(1) var<storage, read_write> fields: array<f32>;
-@group(0) @binding(2) var<storage, read_write> statistics: array<u32>;
+@group(0) @binding(2) var<storage, read_write> statistics: array<atomic<u32>>;
 // A shallow surface's terrain's grid (its effect's, or the host's).
 @group(0) @binding(3) var<storage, read> grids: array<u32>;
 @group(0) @binding(4) var<storage, read_write> crossings: array<u32>;
@@ -308,8 +311,8 @@ fn waterSettle(@builtin(local_invocation_index) lane: u32) {
     }
     if (lane == 0u) {
         let moves = highs[0] - lows[0] > STILL || fasts[0] > STILL;
-        statistics[HOLDS] = select(0u, 1u, moves);
-        statistics[REACH] = bitcast<u32>(max(-lows[0], highs[0]));
+        _ = atomicExchange(&statistics[HOLDS], select(0u, 1u, moves));
+        _ = atomicExchange(&statistics[REACH], bitcast<u32>(max(-lows[0], highs[0])));
     }
 }
 
@@ -500,6 +503,9 @@ fn shallowSpill(@builtin(local_invocation_index) lane: u32) {
     // Then the coupled emitters' crossings in order, each a spill (its
     // weight sums the device's: its place is) and then a pour.
     var list = CROSSINGS_FIRST;
+    // The volume poured, in the world's lengths, summed in order by the
+    // lane that pours.
+    var poured = 0.0;
     for (var k = 0u; k < water.faces.z; k++) {
         let count = uniformCount(lane, list);
         let reach = bitcast<f32>(crossings[list + 2u]) / h;
@@ -513,11 +519,15 @@ fn shallowSpill(@builtin(local_invocation_index) lane: u32) {
             workgroupBarrier();
             if (lane == 0u) {
                 pourAt(on, volume);
+                poured += volume * water.sink.w;
             }
             storageBarrier();
             workgroupBarrier();
         }
         list = nextList(list);
+    }
+    if (lane == 0u) {
+        _ = atomicExchange(&statistics[POURED], bitcast<u32>(poured));
     }
 }
 
@@ -741,10 +751,11 @@ fn carried(axis: u32, x: i32, z: i32) -> f32 {
 
 // Face (x, z)'s next velocity, as NextVelocity: carried, slowed,
 // accelerated by the fall across it, held within 0.5 l / dt; 0 dry or
-// closed, an open wall's only outward.
-fn nextVelocity(axis: u32, x: i32, z: i32) -> f32 {
+// closed, an open wall's only outward. Whether the bound held it.
+fn nextVelocity(axis: u32, x: i32, z: i32, held: ptr<function, bool>) -> f32 {
     let face = faceAt(axis, x, z);
     var s = vec3<f32>(0.0);
+    *held = false;
     if (!isWet(axis, x, z, &s)) {
         return 0.0;
     }
@@ -752,6 +763,7 @@ fn nextVelocity(axis: u32, x: i32, z: i32) -> f32 {
     let dt = water.factors.w;
     var v = carried(axis, x, z) * water.factors.y + dt * water.factors.x * (s.x - s.y) / l;
     let most = 0.5 * l / dt;
+    *held = abs(v) > most;
     v = min(max(v, -most), most);
     return select(select(v, max(v, 0.0), face.highWall), min(v, 0.0), face.lowWall);
 }
@@ -765,7 +777,12 @@ fn shallowFaces(@builtin(global_invocation_id) id: vec3<u32>) {
     let axis = select(1u, 0u, j < water.faces.x);
     let k = select(j - water.faces.x, j, axis == 0u);
     let w = water.size.x + select(0u, 1u, axis == 0u);
-    fields[facesAt(axis, 1u - root.now) + k] = nextVelocity(axis, i32(k % w), i32(k / w));
+    var held = false;
+    fields[facesAt(axis, 1u - root.now) + k] = nextVelocity(axis, i32(k % w), i32(k / w), &held);
+    // The faces held, counted over the step (MVFX_GPU_WATER_FACES_HELD).
+    if (held) {
+        atomicAdd(&statistics[FACES_HELD], 1u);
+    }
 }
 
 // The water a face carries a second, by the substep's new velocity, before
@@ -865,8 +882,9 @@ fn shallowSettle(@builtin(local_invocation_index) lane: u32) {
         workgroupBarrier();
     }
     if (lane == 0u) {
-        statistics[HOLDS] = select(0u, 1u, fasts[0] > STILL);
-        statistics[SPEED] = bitcast<u32>(fasts[0] + sqrt(water.factors.x * deepests[0]));
-        statistics[REACH] = bitcast<u32>(highs[0]);
+        _ = atomicExchange(&statistics[HOLDS], select(0u, 1u, fasts[0] > STILL));
+        _ = atomicExchange(&statistics[SPEED],
+                           bitcast<u32>(fasts[0] + sqrt(water.factors.x * deepests[0])));
+        _ = atomicExchange(&statistics[REACH], bitcast<u32>(highs[0]));
     }
 }

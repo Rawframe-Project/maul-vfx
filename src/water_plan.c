@@ -18,7 +18,10 @@
 
 #include "maul-vfx/plan.h"
 
+#include <float.h>
 #include <math.h>
+
+static void StepPlan(const mvfxInstance* live, int32_t w, int32_t s, mvfxWaterPlan* planOut);
 
 void mvfxPlanWaters(mvfxInstance* instance)
 {
@@ -47,6 +50,13 @@ void mvfxPlanWaters(mvfxInstance* instance)
                                 mvfxResolveWaterTerrain(instance, w, &terrain, &grid);
         state->planTerrain = state->planHasTerrain ? mvfxPlannedColliderOf(&terrain, grid)
                                                    : (mvfxPlannedCollider){0};
+        // Its steps slowed, counted as the CPU path's steps count them.
+        for (int32_t s = 0; s < mvfxPlanStepCount(instance); ++s)
+        {
+            mvfxWaterPlan plan;
+            StepPlan(instance, w, s, &plan);
+            state->stepsSlowed += plan.slowed && plan.substeps > 0 ? 1u : 0u;
+        }
         // The simulation fills it at this step.
         state->filled = true;
     }
@@ -73,6 +83,8 @@ static void StepPlan(const mvfxInstance* live, int32_t w, int32_t s, mvfxWaterPl
         .hasTerrain = state->planHasTerrain,
         .terrain = state->planTerrain,
     };
+    double scale = (double)mvfxWaterPlace(live, w).scale;
+    planOut->volumeScale = scale * scale * scale;
     planOut->substeps = shallow ? mvfxShallowSubsteps(water, state->stepSpeed, seconds,
                                                       &planOut->dt, &planOut->slowed)
                                 : mvfxWaveSubsteps(water, seconds, &planOut->dt, &planOut->slowed);
@@ -228,6 +240,40 @@ mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context, mvfxInstanceId insta
     }
     mvfxWaterState* state = &live->waters[water];
     state->holds = holds || (state->holds && !IsStirringOver(live, water, tick));
+    return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                                       int64_t tick, float reach, uint64_t facesHeld,
+                                       double volumePoured)
+{
+    if (context == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (water < 0 || water >= live->effect->waterCount || tick < 0 || tick > live->clock ||
+        !(reach >= 0.0f && reach <= FLT_MAX) || !(volumePoured >= 0.0 && volumePoured <= DBL_MAX))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
+    if (!live->planned)
+    {
+        return mvfx_errorState;
+    }
+    mvfxWaterState* state = &live->waters[water];
+    if (tick > state->countedTick)
+    {
+        state->reach = reach;
+        state->facesHeld += facesHeld;
+        state->volumePoured += volumePoured;
+        state->countedTick = tick;
+    }
     return mvfx_success;
 }
 

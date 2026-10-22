@@ -750,12 +750,17 @@ extern "C"
 // writes: whether it moves at the step's end (1 or 0) and that end's tick
 // (two words, the low first); shallow water's fastest speed then (a
 // binary32's bits, 0 for waves), which mvfxGpuSim_ReportWater hands over;
-// its reach, the largest displacement's size (a binary32's bits).
+// its reach, the largest displacement's size (a binary32's bits); shallow
+// water's faces its bound held over the step's substeps, and the volume
+// the particles poured in the step, in the world's lengths cubed (a
+// binary32's bits), both 0 for waves.
 #define MVFX_GPU_WATER_HOLDS            0
 #define MVFX_GPU_WATER_TICK             1
 #define MVFX_GPU_WATER_SPEED            3
 #define MVFX_GPU_WATER_REACH            4
-#define MVFX_GPU_WATER_STATISTICS_WORDS 5
+#define MVFX_GPU_WATER_FACES_HELD       5
+#define MVFX_GPU_WATER_POURED           6
+#define MVFX_GPU_WATER_STATISTICS_WORDS 7
 
     // A water surface's buffers a host reads: its statistics record.
     typedef struct mvfxGpuWater
@@ -779,11 +784,13 @@ extern "C"
     /// Hands a water surface's statistics record, read back from its buffer
     /// any frames after its step, to the planned instance
     /// (mvfxInstance_SetWaterHolds): whether it moved at that step's end,
-    /// which decides when a stopped instance finishes; for shallow water
-    /// its fastest speed too (mvfxInstance_SetWaterSpeed), from which its
-    /// next steps count their substeps. A host that never reports leaves
-    /// a stopped instance running, and shallow water's steps in the most
-    /// substeps.
+    /// which decides when a stopped instance finishes; its reach, held
+    /// faces and poured volume (mvfxInstance_SetWaterCounts), which its
+    /// bounds and mvfxInstance_GetWaterInfo take; for shallow water its
+    /// fastest speed too (mvfxInstance_SetWaterSpeed), from which its next
+    /// steps count their substeps. A host that never reports leaves a
+    /// stopped instance running, its bounds at its start's reach, and
+    /// shallow water's steps in the most substeps.
     ///
     /// @param sim      The simulation.
     /// @param context  The context the simulation was made in.
@@ -792,7 +799,8 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         context not the simulation's or a surface out of range; else
     ///         what mvfxInstance_SetWaterHolds returns for the record's
-    ///         tick and holds, then for shallow water what
+    ///         tick and holds, then what mvfxInstance_SetWaterCounts
+    ///         returns for its counts, then for shallow water what
     ///         mvfxInstance_SetWaterSpeed returns for its speed.
     /// @par Thread safety
     /// Safe from any thread; the context and the device are used by one
