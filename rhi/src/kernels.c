@@ -169,6 +169,12 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerWater, "waterSubstep"},
     {mvfx_containerWater, "waterSettle"},
     {mvfx_containerWaterRead, "waterRead"},
+    {mvfx_containerWater, "shallowStart"},
+    {mvfx_containerWater, "shallowSpill"},
+    {mvfx_containerWater, "shallowFaces"},
+    {mvfx_containerWater, "shallowGiving"},
+    {mvfx_containerWater, "shallowDepths"},
+    {mvfx_containerWater, "shallowSettle"},
 };
 
 struct mvfxGpu

@@ -133,9 +133,9 @@ static bool SameField(Gpu* gpu, mvfxGpuSim* sim, int32_t w, const mvfxWaterDef* 
     bool same = true;
     for (int64_t i = 0; i < cells; ++i)
     {
-        if (field == mvfx_waterHeight)
+        if (field >= mvfx_waterVelocityX && field <= mvfx_waterVelocityZ)
         {
-            s_moved = fmaxf(s_moved, fabsf(s_cpu[i] - def->center[1]));
+            s_moved = fmaxf(s_moved, fabsf(s_cpu[i]));
         }
         float apart = fabsf(s_gpu[i] - s_cpu[i]) / (1.0f + fabsf(s_cpu[i]));
         s_worst = fmaxf(s_worst, apart);
@@ -151,15 +151,12 @@ static bool SameField(Gpu* gpu, mvfxGpuSim* sim, int32_t w, const mvfxWaterDef* 
 
 bool SameWaters(Gpu* gpu, mvfxGpuSim* sim, const Run* run, float tolerance)
 {
-    static const mvfxWaterField fields[6] = {mvfx_waterHeight,  mvfx_waterVelocityY,
-                                             mvfx_waterNormalX, mvfx_waterNormalY,
-                                             mvfx_waterNormalZ, mvfx_waterDepth};
     bool same = true;
     for (int32_t w = 0; same && w < run->waterCount; ++w)
     {
-        for (int32_t f = 0; same && f < 6; ++f)
+        for (int32_t f = mvfx_waterHeight; same && f <= mvfx_waterDepth; ++f)
         {
-            same = SameField(gpu, sim, w, &run->waters[w], fields[f], tolerance);
+            same = SameField(gpu, sim, w, &run->waters[w], (mvfxWaterField)f, tolerance);
         }
     }
     return same;

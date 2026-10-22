@@ -2563,7 +2563,14 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     effectDef.emitterCount = run->emitterCount;
     effectDef.gases = run->gases;
     effectDef.gasCount = run->gasCount;
-    effectDef.waters = run->waters;
+    // A surface's terrain takes the run's grids as a collider does.
+    static mvfxWaterDef waters[MVFX_MAX_WATERS];
+    for (int32_t w = 0; w < run->waterCount; ++w)
+    {
+        waters[w] = run->waters[w];
+        WithColliderGrids(&run->waters[w].terrain, 1, &waters[w].terrain);
+    }
+    effectDef.waters = run->waterCount > 0 ? waters : NULL;
     effectDef.waterCount = run->waterCount;
     effectDef.parameters = run->parameters;
     effectDef.parameterCount = run->parameterCount;
@@ -2785,7 +2792,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     if (run->waterCount > 0)
     {
         // The surfaces moved: the pushes reached them.
-        printf("  water: %g, the most a cell moved %g\n", (double)WaterError(),
+        printf("  water: %g, the fastest a cell moved %g\n", (double)WaterError(),
                (double)WaterMoved());
         CHECK(WaterMoved() > 1e-3f, "the surfaces moved");
     }

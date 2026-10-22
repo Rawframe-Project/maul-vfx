@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Waves on a real device (lavapipe on CI) beside the CPU path, compared
-// after every step through the harness's runs: each field the GPU writes
-// through mvfxGpuSim_AddWaterRead against mvfxInstance_ReadWater's,
-// relative to its size. Covered: the host's pushes, sinking and lifting,
-// one past an edge; closed walls, open ones and both, every corner's
-// chain of open edges; a grid of two cells across; a moving instance and
-// a surface where it began; a clear; frames dropped; two surfaces; a
-// hitch slowed past the most substeps; frames split by a liquid gas; the
-// record read back and reported, a stopped instance finishing; reads in
-// every format over a box with padded rows, the padding kept; the
-// refusals.
+// Water surfaces on a real device (lavapipe on CI) beside the CPU path,
+// compared after every step through the harness's runs: each field the
+// GPU writes through mvfxGpuSim_AddWaterRead against
+// mvfxInstance_ReadWater's, relative to its size. Waves: the host's
+// pushes, sinking and lifting, one past an edge; closed walls, open ones
+// and both, every corner's chain of open edges; a grid of two cells
+// across; a moving instance and a surface where it began; a clear;
+// frames dropped; two surfaces; a hitch slowed past the most substeps.
+// Shallow water: a basin filled and pushed; springs on a terrain of the
+// effect's, level and leaning, and on the instance's, two walls open; a
+// clear; frames dropped; a moving instance. Both beside a liquid gas
+// splitting the frames; the record read back and reported, a stopped
+// instance finishing; reads in every format over a box with padded rows,
+// the padding kept; the refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -100,6 +103,100 @@ static void TestHitch(Gpu* gpu, mvfxGpu* kernels)
     SetStepTicks(STEP_TICKS);
 }
 
+// A basin of shallow water: x by z cells of h about the instance's origin,
+// its walls closed, filled to level over a flat floor, its flows slowed.
+static mvfxWaterDef Basin(int32_t x, int32_t z, float h, float level)
+{
+    mvfxWaterDef water = mvfxDefaultWaterDef();
+    water.model = mvfx_waterShallow;
+    water.size[0] = x;
+    water.size[1] = z;
+    water.cellSize = h;
+    water.center[1] = 0.25f;
+    water.closedWalls = 15;
+    water.fillLevel = level;
+    water.friction = 0.2f;
+    return water;
+}
+
+// Heights over 9 by 9 points: a slope down along X with a ridge across it.
+static float s_heights[81];
+
+static mvfxGridDef Ground(void)
+{
+    for (int32_t p = 0; p < 81; ++p)
+    {
+        float x = (float)(p % 9) / 8.0f;
+        float z = (float)(p / 9) / 8.0f;
+        s_heights[p] = 0.6f * (1.0f - x) + 0.3f * expf(-40.0f * (z - 0.5f) * (z - 0.5f));
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 9;
+    def.size[2] = 9;
+    def.values = s_heights;
+    return def;
+}
+
+// A terrain over the grid's middle, the run's first grid, turned about Z
+// by turn radians.
+static mvfxCollider Terrain(float turn)
+{
+    return (mvfxCollider){.kind = mvfx_colliderHeightfield,
+                          .space = 1,
+                          .center = {0.1f, -0.3f, 0},
+                          .halfExtents = {1.4f, 0.4f, 1.2f},
+                          .rotation = {0, 0, sinf(0.5f * turn), cosf(0.5f * turn)},
+                          .grid = {.index1 = 1}};
+}
+
+// A spring of a sphere's footprint and one of a box's.
+static const mvfxWaterSource s_springs[2] = {
+    {.shape = mvfx_gasSphere, .center = {-0.6f, 0, 0.4f}, .radius = 0.3f, .rate = 0.4f},
+    {.shape = mvfx_gasBox,
+     .center = {0.5f, 0, -0.5f},
+     .halfExtents = {0.25f, 0.1f, 0.15f},
+     .rate = 0.3f}};
+
+static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A basin filled and pushed, sinking and lifting, a push's ring past
+    // an edge.
+    mvfxWaterDef water = Basin(32, 28, 0.1f, 0.2f);
+    Ponds(gpu, kernels, &water, 1, (Run){0}, "a basin pushed");
+    // A terrain of the effect's sloping down into the basin, two springs
+    // pouring, its far walls open: water runs downhill and out; finer
+    // cells, more substeps. Its fast flow draws the paths' roundings apart
+    // over the run (1.1e-4 at the last steps): the liquids' tolerance.
+    const mvfxGridDef ground = Ground();
+    water = Basin(48, 40, 0.06f, 0.05f);
+    water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
+    water.hasTerrain = true;
+    water.terrain = Terrain(0.0f);
+    water.sources = s_springs;
+    water.sourceCount = 2;
+    Run run = {.colliderGrids = &ground, .colliderGridCount = 1, .tolerance = 1e-3f};
+    Ponds(gpu, kernels, &water, 1, run, "springs on a terrain, two walls open");
+    // The terrain leaning: each cell's ground where its vertical meets it.
+    water.terrain = Terrain(0.3f);
+    Ponds(gpu, kernels, &water, 1, run, "springs on a leaning terrain");
+    // The instance's own heightfield as the terrain.
+    const mvfxCollider host = Terrain(0.0f);
+    water.terrain = (mvfxCollider){0};
+    water.hasTerrain = false;
+    water.hostTerrain = true;
+    run.hostColliders = &host;
+    run.hostColliderCount = 1;
+    run.hostGridBytes = 4 * 81;
+    Ponds(gpu, kernels, &water, 1, run, "springs on the instance's terrain");
+    // A basin cleared at half time and filled again; its frames dropped
+    // once; where a moving instance began.
+    water = Basin(32, 28, 0.1f, 0.2f);
+    Ponds(gpu, kernels, &water, 1, (Run){.clearing = true}, "a basin cleared at half time");
+    Ponds(gpu, kernels, &water, 1, (Run){.dropping = true}, "a basin's frames dropped once");
+    water.space = mvfx_spaceWorld;
+    Ponds(gpu, kernels, &water, 1, (Run){.moving = true}, "a basin where a moving instance began");
+}
+
 static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,
                                     .inside = true,
                                     .halfExtents = {0.8f, 0.8f, 1.0f},
@@ -107,9 +204,9 @@ static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,
 
 static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
 {
-    // A liquid gas of a courant number of 0.2 beside the pond: every
-    // frame splits in two or more steps, each with the pond's step after
-    // the gas's; then each frame dropped once first.
+    // A liquid gas of a courant number of 0.2 beside a pond and a basin:
+    // every frame splits in two or more steps, each with the surfaces'
+    // steps after the gas's; then each frame dropped once first.
     mvfxGasDef gas = mvfxDefaultGasDef();
     gas.kind = mvfx_gasLiquid;
     gas.size[0] = 16;
@@ -135,19 +232,20 @@ static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
     emitter.liquid.spacing = 0.05f;
-    mvfxWaterDef water = Pond(40, 40, 0.1f, 1.5f, mvfx_waterWallMaxZ);
+    const mvfxWaterDef waters[2] = {Pond(40, 40, 0.1f, 1.5f, mvfx_waterWallMaxZ),
+                                    Basin(32, 28, 0.1f, 0.2f)};
     Run run = {.mostApart = 4,
                .emitters = &emitter,
                .emitterCount = 1,
                .gases = &gas,
                .gasCount = 1,
-               .waters = &water,
-               .waterCount = 1,
+               .waters = waters,
+               .waterCount = 2,
                .adopting = true,
                .tolerance = 1e-3f};
-    Compare(gpu, kernels, &run, "a pond beside a liquid gas, in steps");
+    Compare(gpu, kernels, &run, "a pond and a basin beside a liquid gas, in steps");
     run.dropping = true;
-    Compare(gpu, kernels, &run, "a pond beside a liquid gas, its frames dropped once");
+    Compare(gpu, kernels, &run, "a pond and a basin beside a liquid gas, frames dropped");
 }
 
 static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
@@ -360,49 +458,14 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
     mvfxDestroyContext(RunContext());
 }
 
-static void TestRefused(mvfxGpu* kernels)
-{
-    // Shallow water the part does not run: the first such surface named,
-    // no emitter or gas.
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "a context");
-    mvfxEmitterDef emitter = Beside();
-    mvfxWaterDef waters[2] = {Pond(8, 8, 0.1f, 1.0f, 15), Pond(8, 8, 0.1f, 1.0f, 15)};
-    waters[1].model = mvfx_waterShallow;
-    mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = &emitter;
-    def.emitterCount = 1;
-    def.waters = waters;
-    def.waterCount = 2;
-    mvfxEffectId effect = {0};
-    mvfxInstanceId planned = {0};
-    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "an effect");
-    instanceDef.effect = effect;
-    instanceDef.planned = true;
-    CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "an instance");
-    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
-    simDef.gpu = kernels;
-    simDef.context = context;
-    simDef.effect = effect;
-    simDef.instance = planned;
-    mvfxGpuSim* sim = NULL;
-    mvfxGpuRefusal refusal;
-    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
-              refusal.water == 1 && refusal.emitter == -1 && refusal.gas == -1,
-          "shallow water refused");
-    mvfxDestroyContext(context);
-}
-
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestWaves(gpu, kernels);
     TestHitch(gpu, kernels);
+    TestShallow(gpu, kernels);
     TestSplit(gpu, kernels);
     TestFinishing(gpu, kernels);
     TestReads(gpu, kernels);
-    TestRefused(kernels);
 }
 
 int main(void)

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A water surface's field written over a box of its cells in a host's
-// format, as the core's mvfxInstance_ReadWater (src/water_api.c): an
-// invocation a word of the host's buffer, which writes the bytes of the
-// values within it and keeps the rest, so values sharing a word never
-// race.
+// A water surface's field (waves' or shallow water's) written over a box
+// of its cells in a host's format, as the core's mvfxInstance_ReadWater
+// (src/water_api.c): an invocation a word of the host's buffer, which
+// writes the bytes of the values within it and keeps the rest, so values
+// sharing a word never race.
+
+// include: shared/collider_numbers.wgsl
 
 // include: shared/water_numbers.wgsl
 
@@ -35,10 +37,29 @@ struct Read {
 @group(0) @binding(2) var<uniform> query: Read;
 @group(0) @binding(3) var<storage, read_write> out: array<u32>;
 
+// Shallow water's fields: depths, X faces and Z faces, two buffers each,
+// the givers' scales, the ground.
+fn faceAt(axis: u32) -> u32 {
+    let b = query.head.z;
+    let c = water.size.z;
+    return select(2u * c + 2u * water.faces.x + b * water.faces.y, 2u * c + b * water.faces.x,
+                  axis == 0u);
+}
+
+fn groundAt(i: u32) -> f32 {
+    return fields[3u * water.size.z + 2u * (water.faces.x + water.faces.y) + i];
+}
+
+fn shallow() -> bool {
+    return water.head.y == MODEL_SHALLOW;
+}
+
 // The surface's height at cell (x, z) over the grid's center: a wave's
-// displacement.
+// displacement, or shallow water's ground and depth.
 fn surfaceAt(x: u32, z: u32) -> f32 {
-    return fields[query.head.z * water.size.z + z * water.size.x + x];
+    let i = z * water.size.x + x;
+    let u = fields[query.head.z * water.size.z + i];
+    return select(u, groundAt(i) + u, shallow());
 }
 
 // The surface's unit normal at cell (x, z): its heights' central
@@ -55,21 +76,33 @@ fn normalAt(x: u32, z: u32) -> vec3<f32> {
     return vec3<f32>(-dx / length, 1.0 / length, -dz / length);
 }
 
-// A field's value at cell (x, z): the height, a wave's rate along Y, the
-// normal, the depth (a wave's 0).
+// The surface's velocity at cell (x, z): a wave's rate along Y, or shallow
+// water's flow along X and Z, the mean of the cell's two faces' along each.
+fn velocityAt(x: u32, z: u32) -> vec3<f32> {
+    let n0 = water.size.x;
+    if (!shallow()) {
+        return vec3<f32>(0.0, fields[(2u + query.head.z) * water.size.z + z * n0 + x], 0.0);
+    }
+    let across = faceAt(0u) + z * (n0 + 1u) + x;
+    let along = faceAt(1u) + z * n0 + x;
+    return vec3<f32>(0.5 * (fields[across] + fields[across + 1u]), 0.0,
+                     0.5 * (fields[along] + fields[along + n0]));
+}
+
+// A field's value at cell (x, z): the height, the velocity, the normal,
+// the depth (a wave's 0).
 fn cellValue(x: u32, z: u32) -> f32 {
     let field = query.head.x;
     if (field == FIELD_HEIGHT) {
         return water.sink.z + surfaceAt(x, z);
     }
     if (field < FIELD_VELOCITY_X + 3u) {
-        let rate = fields[(2u + query.head.z) * water.size.z + z * water.size.x + x];
-        return select(0.0, rate, field == FIELD_VELOCITY_X + 1u);
+        return velocityAt(x, z)[field - FIELD_VELOCITY_X];
     }
     if (field <= FIELD_NORMAL_Z) {
         return normalAt(x, z)[field - FIELD_VELOCITY_X - 3u];
     }
-    return 0.0;
+    return select(0.0, fields[query.head.z * water.size.z + z * water.size.x + x], shallow());
 }
 
 @compute @workgroup_size(64, 1, 1)

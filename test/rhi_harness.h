@@ -52,7 +52,7 @@ typedef struct Run
     int32_t gasCount;
     // The effect's water surfaces (none for NULL), pushed by the host
     // (rhi_waters.c's PushWaters) and their fields compared after every
-    // step.
+    // step; a terrain's grid {.index1 = n} the run's nth collider grid.
     const mvfxWaterDef* waters;
     int32_t waterCount;
     bool moving;

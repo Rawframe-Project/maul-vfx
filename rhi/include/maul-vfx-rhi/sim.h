@@ -40,12 +40,13 @@ extern "C"
         const mvfxContext* context;
         mvfxEffectId effect;
         mvfxInstanceId instance;
-        // The bytes each emitter, and each gas taking the instance's
-        // colliders as obstacles, keeps for the grids its instance's
-        // colliders read (mvfxInstance_SetColliders: heightfields and
-        // distance grids), their values as stored (mvfxGridView's bytes,
-        // each rounded up to 4, each grid once), as
-        // mvfxGpuSim_HostGridBytes counts them; 0 for none.
+        // The bytes each emitter, each gas taking the instance's colliders
+        // as obstacles and each shallow surface standing on the instance's
+        // terrain keeps for the grids its instance's colliders read
+        // (mvfxInstance_SetColliders: heightfields and distance grids),
+        // their values as stored (mvfxGridView's bytes, each rounded up to
+        // 4, each grid once), as mvfxGpuSim_HostGridBytes counts them; 0
+        // for none.
         int64_t hostGridBytes;
         // The bytes each emitter of a mesh shape keeps for its mesh beyond
         // the one it spawns from at the simulation's creation (room for
@@ -76,8 +77,9 @@ extern "C"
     // compute unit of the device however many there are. gas names the
     // first gas the part does not run, -1 for none (every gas of an effect
     // that can be planned runs), and emitter is then -1; water names the
-    // first water surface it does not run (shallow water), -1 for none,
-    // and emitter and gas are then -1.
+    // first water surface it does not run, -1 for none (every surface of
+    // an effect that can be planned runs), and emitter and gas are then
+    // -1.
     typedef struct mvfxGpuRefusal
     {
         int32_t emitter;
@@ -276,10 +278,15 @@ extern "C"
     /// its forces and its own obstacles read (mvfxGridView's bytes, each
     /// rounded up to 4, each grid once) and, taking the instance's
     /// colliders as obstacles, the room hostGridBytes says; and 10,384 for
-    /// its numbers, statistics and reads. An effect with a liquid gas,
+    /// its numbers, statistics and reads. A water surface keeps 16 bytes a
+    /// cell for its fields (shallow water 8 more a face of each axis's
+    /// faces across it), 2,852 for its numbers, statistics and reads, and
+    /// for shallow water the grid its terrain reads (its own, or the room
+    /// hostGridBytes says for the instance's). An effect with a liquid gas,
     /// whose frames may split into steps (mvfxInstance_GetPlanSteps), keeps
-    /// from its allocator its host state of each emitter and each gas (about
-    /// 30 KiB an emitter, 13 KiB a gas, with their arrays of passes) once
+    /// from its allocator its host state of each emitter, each gas and each
+    /// water surface (about 30 KiB an emitter, 13 KiB a gas, 9 KiB a
+    /// surface, with their arrays of passes) once
     /// more for each step after the first it may split into
     /// (MVFX_MAX_PLAN_STEPS), every step sharing the device buffers.
     ///
@@ -715,7 +722,9 @@ extern "C"
     /// (mvfxGpuSim_AddPasses), for a host to size its device's frame by:
     /// for waves, one writing its numbers, one sinking the host's pushes,
     /// one a substep (at most MVFX_MAX_WATER_SUBSTEPS) and one settling
-    /// it, 67 in all. A frame of an effect with a liquid gas takes them
+    /// it, 67 in all; for shallow water, one writing its numbers, one for
+    /// its ground, fill and sources, one for the host's pushes, three a
+    /// substep and one settling it, 196 in all. A frame of an effect with a liquid gas takes them
     /// once for each step it splits into (mvfxInstance_GetPlanSteps), at
     /// most MVFX_MAX_PLAN_STEPS.
     ///
@@ -760,8 +769,11 @@ extern "C"
     /// Hands a water surface's statistics record, read back from its buffer
     /// any frames after its step, to the planned instance
     /// (mvfxInstance_SetWaterHolds): whether it moved at that step's end,
-    /// which decides when a stopped instance finishes. A host that never
-    /// reports leaves a stopped instance running.
+    /// which decides when a stopped instance finishes; for shallow water
+    /// its fastest speed too (mvfxInstance_SetWaterSpeed), from which its
+    /// next steps count their substeps. A host that never reports leaves
+    /// a stopped instance running, and shallow water's steps in the most
+    /// substeps.
     ///
     /// @param sim      The simulation.
     /// @param context  The context the simulation was made in.
@@ -770,7 +782,8 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         context not the simulation's or a surface out of range; else
     ///         what mvfxInstance_SetWaterHolds returns for the record's
-    ///         tick and holds.
+    ///         tick and holds, then for shallow water what
+    ///         mvfxInstance_SetWaterSpeed returns for its speed.
     /// @par Thread safety
     /// Safe from any thread; the context and the device are used by one
     /// thread at a time.
@@ -1137,9 +1150,11 @@ extern "C"
     /// at the first step, after each change and, for the instance's,
     /// after each move in the room the def keeps; and a mesh shape's mesh
     /// (mvfxGpuSim_MeshBytes) at the first step and after each change of
-    /// it or of the mesh bound; 1,108 a water surface (its numbers' 1,088
-    /// and its record's 20) and 80 a read of it: which the device's
-    /// frameUploadBytes must hold.
+    /// it or of the mesh bound; 1,124 a surface of waves (its numbers'
+    /// 1,104 and its record's 20) and 2,532 one of shallow water (its
+    /// numbers' 2,512), its terrain's values (mvfxGridView's bytes) at the
+    /// first step and after each change, and 80 a read of it: which the
+    /// device's frameUploadBytes must hold.
     ///
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;

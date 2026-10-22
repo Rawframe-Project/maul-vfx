@@ -22,7 +22,16 @@
 #define WORD_FACTORS 4u
 #define WORD_HEAD    8u
 #define WORD_SINK    12u
-#define WORD_PUSHES  16u
+#define WORD_FACES   16u
+#define WORD_PUSHES  20u
+#define WORD_SPILLS  (WORD_PUSHES + 4u * MVFX_MAX_WATER_PUSHES)
+#define WORD_SOURCES (WORD_SPILLS + 4u * MVFX_MAX_WATER_PUSHES)
+#define WORD_TERRAIN (WORD_SOURCES + 8u * MVFX_MAX_WATER_SOURCES)
+
+// The head's flags (water_numbers.wgsl's FLAG_*): shallow water fills at
+// this step; it stands on a terrain.
+#define FLAG_FILLS   1u
+#define FLAG_TERRAIN 2u
 
 // The workgroups of a cell pass.
 #define WATER_GROUP 64u
@@ -31,13 +40,12 @@
 // a dimension; water_read.wgsl's ROW invocations).
 #define READ_ROW 32768u
 
-// Whether the part runs a surface: waves.
-static bool Runs(const mvfxWaterView* view)
+static bool IsShallow(const SimWater* water)
 {
-    return view->def.model == mvfx_waterWaves;
+    return water->view.def.model == mvfx_waterShallow;
 }
 
-mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refusal)
+mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect)
 {
     for (int32_t w = 0; w < MVFX_MAX_WATERS; ++w)
     {
@@ -52,11 +60,6 @@ mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refu
             return result;
         }
         sim->waterCount = w + 1;
-        if (!Runs(&water->view))
-        {
-            *refusal = w;
-            return mvfx_errorState;
-        }
     }
     return mvfx_success;
 }
@@ -70,23 +73,43 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
 }
 
-bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water)
+bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords)
 {
     const mvfxWaterDef* def = &water->view.def;
+    bool shallow = IsShallow(water);
+    // Shallow water's terrain: its own grid, or room for the host's.
+    static const mvfxGridId noForces[MVFX_MAX_FORCES] = {0};
+    mvfxGridId terrain[MVFX_MAX_COLLIDERS] = {0};
+    bool own = shallow && def->hasTerrain && !def->hostTerrain;
+    terrain[0] = own ? def->terrain.grid : (mvfxGridId){0};
+    if (!mvfxLayGrids(sim->context, noForces, terrain, shallow && def->hostTerrain ? hostWords : 0,
+                      &water->grids))
+    {
+        return false;
+    }
     uint32_t* w = water->words;
     w[WORD_SIZE] = (uint32_t)def->size[0];
     w[WORD_SIZE + 1] = (uint32_t)def->size[1];
     w[WORD_SIZE + 2] = (uint32_t)water->view.cells;
     w[WORD_SIZE + 3] = def->closedWalls;
+    w[WORD_HEAD + 1] = def->model;
+    w[WORD_FACES] = (uint32_t)water->view.faces[0];
+    w[WORD_FACES + 1] = (uint32_t)water->view.faces[1];
     mvfxFloatWords(w + WORD_SINK, def->cellSize, 0.0f, def->center[1], 0.0f);
+    // Waves: heights and rates, two each; shallow water: depths and two
+    // of each axis's faces, the givers' scales and the ground.
+    uint64_t floats = 4u * (uint64_t)water->view.cells +
+                      2u * (uint64_t)(water->view.faces[0] + water->view.faces[1]);
     mrhiBufferUsage written = mrhi_bufferStorage | mrhi_bufferCopyDestination;
     mrhiBufferUsage numbers = mrhi_bufferUniform | mrhi_bufferCopyDestination;
+    uint32_t gridWords = water->grids.words > 0 ? water->grids.words : 1u;
     bool created =
         CreateBuffer(sim, 4u * MVFX_WATER_WORDS, numbers, &water->buffers[WATER_NUMBERS]) &&
-        CreateBuffer(sim, 16u * (uint64_t)water->view.cells, written | mrhi_bufferCopySource,
+        CreateBuffer(sim, 4u * floats, written | mrhi_bufferCopySource,
                      &water->buffers[WATER_FIELDS]) &&
         CreateBuffer(sim, 4u * MVFX_GPU_WATER_STATISTICS_WORDS, written | mrhi_bufferCopySource,
-                     &water->buffers[WATER_STATISTICS]);
+                     &water->buffers[WATER_STATISTICS]) &&
+        CreateBuffer(sim, 4u * gridWords, written, &water->buffers[WATER_GRIDS]);
     for (int32_t r = 0; created && r < MVFX_GPU_WATER_READS; ++r)
     {
         created = CreateBuffer(sim, 4u * WATER_READ_WORDS, numbers, &water->reads[r].numbers);
@@ -119,14 +142,13 @@ static void Push(SimWater* water, mvfxKernel kernel, uint32_t now, uint32_t grou
         (WaterDispatch){.kernel = kernel, .now = now, .groups = groups};
 }
 
-// The step's numbers and dispatches, as the core's mvfxStepWater takes the
-// plan: the pushes' sinks and the even lift, the substeps, the settle.
-static void Plan(SimWater* water, const mvfxWaterPlan* plan)
+// A waves surface's numbers and dispatches from buffer now, as the core's
+// mvfxStepWater takes the plan: the pushes' sinks and the even lift, the
+// substeps, the settle; the buffer current after.
+static uint32_t PlanWaves(SimWater* water, const mvfxWaterPlan* plan, uint32_t now)
 {
     const mvfxWaterDef* def = &water->view.def;
     uint32_t* w = water->words;
-    water->clears = plan->cleared;
-    water->count = 0;
     // A substep's factors, as the core's Waves.
     float h = def->cellSize;
     float c = def->waveSpeed;
@@ -144,7 +166,6 @@ static void Plan(SimWater* water, const mvfxWaterPlan* plan)
                        push->depth);
     }
     uint32_t groups = ((uint32_t)water->view.cells + WATER_GROUP - 1u) / WATER_GROUP;
-    uint32_t now = plan->cleared ? 0 : water->now;
     if (plan->pushCount > 0)
     {
         Push(water, mvfx_kernelWaterSink, now, groups);
@@ -155,6 +176,124 @@ static void Plan(SimWater* water, const mvfxWaterPlan* plan)
         now = 1u - now;
     }
     Push(water, mvfx_kernelWaterSettle, now, 1);
+    return now;
+}
+
+// The cells along an axis of n within reach of center, as the core's
+// mvfxWaterSpan.
+static void Span(float center, float reach, int32_t n, int32_t span[2])
+{
+    span[0] = (int32_t)fminf(fmaxf(ceilf(center - reach), 0.0f), (float)n);
+    span[1] = (int32_t)fminf(fmaxf(floorf(center + reach), -1.0f), (float)(n - 1));
+}
+
+// A shallow push's weights over its cells summed, within its radius and
+// in its ring, as the core's SpillAt sums them (binary64, cell by cell);
+// they hang on its place alone.
+static void SpillSums(const mvfxWaterDef* def, const mvfxPlannedWaterPush* push, double sums[2])
+{
+    const int32_t* n = def->size;
+    float h = def->cellSize;
+    const float c[2] = {push->at[0] / h + 0.5f * (float)n[0] - 0.5f,
+                        push->at[1] / h + 0.5f * (float)n[1] - 0.5f};
+    float reach = push->radius / h;
+    int32_t xs[2];
+    int32_t zs[2];
+    Span(c[0], 2.0f * reach, n[0], xs);
+    Span(c[1], 2.0f * reach, n[1], zs);
+    sums[0] = 0.0;
+    sums[1] = 0.0;
+    for (int32_t z = zs[0]; z <= zs[1]; ++z)
+    {
+        for (int32_t x = xs[0]; x <= xs[1]; ++x)
+        {
+            float dx = (float)x - c[0];
+            float dz = (float)z - c[1];
+            float r = sqrtf(dx * dx + dz * dz) / reach;
+            bool inner = r < 1.0f;
+            float s = inner ? 1.0f - r * r : 1.0f - (2.0f * r - 3.0f) * (2.0f * r - 3.0f);
+            sums[inner ? 0 : 1] += (double)(r < 2.0f && s > 0.0f ? s * s : 0.0f);
+        }
+    }
+}
+
+// Shallow water's sources' words: each footprint's center and reach, its
+// shape (0 a sphere's), the depth it adds this step and its radius.
+static void SourceWords(SimWater* water, const mvfxWaterPlan* plan)
+{
+    const mvfxWaterDef* def = &water->view.def;
+    for (int32_t k = 0; k < def->sourceCount; ++k)
+    {
+        const mvfxWaterSource* source = &def->sources[k];
+        bool sphere = source->shape == mvfx_gasSphere;
+        uint32_t* at = water->words + WORD_SOURCES + 8u * (uint32_t)k;
+        mvfxFloatWords(at, source->center[0], source->center[2],
+                       sphere ? source->radius : source->halfExtents[0],
+                       sphere ? source->radius : source->halfExtents[2]);
+        mvfxFloatWords(at + 4, sphere ? 0.0f : 1.0f, plan->sourceDepths[k], source->radius, 0.0f);
+    }
+}
+
+// A shallow surface's numbers and dispatches from buffer now, as the
+// core's mvfxStepShallow takes the plan: its ground, fill and sources, its
+// pushes, three passes a substep, the settle; the buffer current after.
+static uint32_t PlanShallow(SimWater* water, const mvfxWaterPlan* plan, uint32_t now)
+{
+    const mvfxWaterDef* def = &water->view.def;
+    uint32_t* w = water->words;
+    float dt = plan->dt;
+    mvfxFloatWords(w + WORD_FACTORS, def->gravity,
+                   (float)mvfxExpMinus((double)(def->friction * dt)), def->fillLevel, dt);
+    w[WORD_HEAD] = (uint32_t)plan->pushCount;
+    w[WORD_HEAD + 2] = (uint32_t)def->sourceCount;
+    w[WORD_HEAD + 3] = (plan->cleared ? FLAG_FILLS : 0u) | (plan->hasTerrain ? FLAG_TERRAIN : 0u);
+    for (int32_t p = 0; p < plan->pushCount; ++p)
+    {
+        const mvfxPlannedWaterPush* push = &plan->pushes[p];
+        double sums[2];
+        SpillSums(def, push, sums);
+        mvfxFloatWords(w + WORD_PUSHES + 4u * (uint32_t)p, push->at[0], push->at[1], push->radius,
+                       push->depth);
+        mvfxFloatWords(w + WORD_SPILLS + 4u * (uint32_t)p, (float)sums[0], (float)sums[1], 0.0f,
+                       0.0f);
+    }
+    SourceWords(water, plan);
+    uint32_t grid[5] = {0};
+    if (plan->hasTerrain)
+    {
+        mvfxColliderGridWords(&water->grids, &plan->terrain, def->hostTerrain ? 0 : 1, 0, grid);
+    }
+    memset(w + WORD_TERRAIN, 0, MVFX_COLLIDER_WORDS * sizeof(uint32_t));
+    if (plan->hasTerrain)
+    {
+        mvfxColliderWords(&plan->terrain, grid, w + WORD_TERRAIN);
+    }
+    uint32_t cells = ((uint32_t)water->view.cells + WATER_GROUP - 1u) / WATER_GROUP;
+    uint32_t faces = (uint32_t)(water->view.faces[0] + water->view.faces[1]);
+    Push(water, mvfx_kernelShallowStart, now, cells);
+    if (plan->pushCount > 0)
+    {
+        Push(water, mvfx_kernelShallowSpill, now, 1);
+    }
+    for (int32_t s = 0; s < plan->substeps; ++s)
+    {
+        Push(water, mvfx_kernelShallowFaces, now, (faces + WATER_GROUP - 1u) / WATER_GROUP);
+        Push(water, mvfx_kernelShallowGiving, now, cells);
+        Push(water, mvfx_kernelShallowDepths, now, cells);
+        now = 1u - now;
+    }
+    Push(water, mvfx_kernelShallowSettle, now, 1);
+    return now;
+}
+
+// The step's numbers and dispatches from its plan, its record (nothing
+// moving at the step's end), and the buffer current after.
+static void Plan(SimWater* water, const mvfxWaterPlan* plan)
+{
+    water->clears = plan->cleared;
+    water->count = 0;
+    uint32_t now = plan->cleared ? 0 : water->now;
+    now = IsShallow(water) ? PlanShallow(water, plan, now) : PlanWaves(water, plan, now);
     uint64_t end = (uint64_t)(plan->start + plan->ticks);
     water->record[MVFX_GPU_WATER_HOLDS] = 0;
     water->record[MVFX_GPU_WATER_TICK] = (uint32_t)end;
@@ -191,6 +330,12 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
     {
         return result;
     }
+    // A host's terrain's grid into the room for it.
+    if (IsShallow(water) && water->view.def.hostTerrain && plan.hasTerrain &&
+        !mvfxPlaceHostGrids(sim->context, &plan.terrain, 1, 0, &water->grids))
+    {
+        return mvfx_errorCapacity;
+    }
     Plan(water, &plan);
     if (!Import(sim, water))
     {
@@ -200,11 +345,13 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
     const mrhiAccess written[WATER_BUFFERS] = {
         {.resource = r[WATER_NUMBERS], .kind = mrhi_accessCopyDestination},
         {.resource = r[WATER_FIELDS], .kind = mrhi_accessCopyDestination},
-        {.resource = r[WATER_STATISTICS], .kind = mrhi_accessCopyDestination}};
+        {.resource = r[WATER_STATISTICS], .kind = mrhi_accessCopyDestination},
+        {.resource = r[WATER_GRIDS], .kind = mrhi_accessCopyDestination}};
     const mrhiAccess used[WATER_BUFFERS] = {
         {.resource = r[WATER_NUMBERS], .kind = mrhi_accessUniform},
         {.resource = r[WATER_FIELDS], .kind = mrhi_accessStorageReadWrite},
-        {.resource = r[WATER_STATISTICS], .kind = mrhi_accessStorageReadWrite}};
+        {.resource = r[WATER_STATISTICS], .kind = mrhi_accessStorageReadWrite},
+        {.resource = r[WATER_GRIDS], .kind = mrhi_accessStorageRead}};
     for (int32_t p = -1; p < water->count; ++p)
     {
         mrhiPassDef def = mrhiDefaultPassDef();
@@ -222,17 +369,21 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
     return mvfx_success;
 }
 
-// Records the pass writing the numbers and the record, and the fields
-// emptied after a clear.
-static bool RecordWrite(mvfxGpuSim* sim, const SimWater* water)
+// Records the pass writing the numbers (waves' up to their pushes, the
+// rest shallow water's), the record and the terrain's grid when it
+// changed, and the fields emptied after a clear.
+static bool RecordWrite(mvfxGpuSim* sim, SimWater* water)
 {
     mrhiPassId pass = water->passes[0];
     const mrhiResourceId* r = water->resources;
+    uint64_t words = IsShallow(water) ? MVFX_WATER_WORDS : WORD_SPILLS;
     bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, pass, r[WATER_NUMBERS], 0, water->words,
-                               sizeof water->words) &&
+                               4u * words) &&
                     mvfxUpload(sim->device, &sim->uploaded, pass, r[WATER_STATISTICS], 0,
-                               water->record, sizeof water->record);
+                               water->record, sizeof water->record) &&
+                    mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[WATER_GRIDS], sim->context,
+                                   &water->grids);
     if (recorded && water->clears)
     {
         recorded =
@@ -242,7 +393,7 @@ static bool RecordWrite(mvfxGpuSim* sim, const SimWater* water)
 }
 
 // Records the step's dispatches.
-static bool RecordStep(mvfxGpuSim* sim, const SimWater* water)
+static bool RecordStep(mvfxGpuSim* sim, SimWater* water)
 {
     bool recorded = RecordWrite(sim, water);
     mrhiBinding bindings[WATER_BUFFERS];
@@ -436,7 +587,10 @@ int32_t mvfxGpuSim_WaterPasses(const mvfxGpuSim* sim, int32_t water)
     {
         return 0;
     }
-    return 1 + WATER_DISPATCHES;
+    // The write, then waves' sinks, substeps and settle, or shallow
+    // water's start, pushes, three passes a substep and settle.
+    return IsShallow(&sim->waters[water]) ? 3 + 3 * MVFX_MAX_WATER_SUBSTEPS + 1
+                                          : 3 + MVFX_MAX_WATER_SUBSTEPS;
 }
 
 mvfxResult mvfxGpuSim_GetWater(const mvfxGpuSim* sim, int32_t water, mvfxGpuWater* waterOut)
@@ -463,6 +617,13 @@ mvfxResult mvfxGpuSim_ReportWater(const mvfxGpuSim* sim, mvfxContext* context, i
     }
     uint64_t tick =
         (uint64_t)record[MVFX_GPU_WATER_TICK] | (uint64_t)record[MVFX_GPU_WATER_TICK + 1] << 32u;
-    return mvfxInstance_SetWaterHolds(context, sim->instance, water, (int64_t)tick,
-                                      record[MVFX_GPU_WATER_HOLDS] != 0);
+    mvfxResult result = mvfxInstance_SetWaterHolds(context, sim->instance, water, (int64_t)tick,
+                                                   record[MVFX_GPU_WATER_HOLDS] != 0);
+    if (result != mvfx_success || !IsShallow(&sim->waters[water]))
+    {
+        return result;
+    }
+    float speed;
+    memcpy(&speed, &record[MVFX_GPU_WATER_SPEED], sizeof speed);
+    return mvfxInstance_SetWaterSpeed(context, sim->instance, water, (int64_t)tick, speed);
 }

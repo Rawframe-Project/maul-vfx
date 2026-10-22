@@ -32,8 +32,8 @@ bool ReadWaterGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t water, const mvfxWaterRead*
 
 // Whether each field of each of the run's surfaces is the CPU path's,
 // relative to one more than its size within the tolerance; the largest
-// difference over the run so far, and the largest a CPU path's cell rose
-// or sank from its rest level, from 0 after a reset.
+// difference over the run so far, and the fastest a CPU path's cell
+// moved, from 0 after a reset.
 bool SameWaters(Gpu* gpu, mvfxGpuSim* sim, const Run* run, float tolerance);
 float WaterError(void);
 float WaterMoved(void);

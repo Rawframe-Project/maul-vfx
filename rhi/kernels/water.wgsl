@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A waves surface's step on the GPU, as the core's mvfxStepWater
-// (src/water_step.c):
+// A water surface's step on the GPU: waves as the core's mvfxStepWater
+// (src/water_step.c), shallow water (below) as its mvfxStepShallow.
+// Waves:
 //  - waterSink lowers each cell by the pushes over it in order, as the
 //    core's Sink does push by push, then lifts it by what they sank
 //    spread evenly (Displace), the lift the host's sum;
@@ -26,9 +27,14 @@ const WALL_MAX_Z: u32 = 8u;
 // The statistics record's words (rhi/include/maul-vfx-rhi/sim.h's
 // MVFX_GPU_WATER_*): whether it moves, its reach.
 const HOLDS: u32 = 0u;
+const SPEED: u32 = 3u;
 const REACH: u32 = 4u;
 
+// include: shared/collider_numbers.wgsl
+
 // include: shared/water_numbers.wgsl
+
+// include: shared/grid_sample.wgsl
 
 // The buffer current; the rest unused.
 struct Root {
@@ -42,6 +48,8 @@ struct Root {
 // Heights now and next, then rates now and next: four arrays of the cells.
 @group(0) @binding(1) var<storage, read_write> fields: array<f32>;
 @group(0) @binding(2) var<storage, read_write> statistics: array<u32>;
+// A shallow surface's terrain's grid (its effect's, or the host's).
+@group(0) @binding(3) var<storage, read> grids: array<u32>;
 var<immediate> root: Root;
 
 fn height(b: u32, i: u32) -> f32 {
@@ -215,5 +223,448 @@ fn waterSettle(@builtin(local_invocation_index) lane: u32) {
         let moves = highs[0] - lows[0] > STILL || fasts[0] > STILL;
         statistics[HOLDS] = select(0u, 1u, moves);
         statistics[REACH] = bitcast<u32>(max(-lows[0], highs[0]));
+    }
+}
+
+// Shallow water (src/water_shallow.c and src/water_ground.c): depths now
+// and next, X faces now and next, Z faces now and next, the givers'
+// scales and the ground, in that order in the fields.
+//  - shallowStart, a cell each: its ground under the terrain, the first
+//    fill, each source over it in order;
+//  - shallowSpill, one workgroup: the pushes in order, each taking water
+//    within its radius into its ring (or the ring's into its middle);
+//  - shallowFaces, shallowGiving and shallowDepths, a substep's three
+//    passes: each face carried, slowed and accelerated; each cell's
+//    outflows' scale; each cell's depth from its four faces' fluxes;
+//  - shallowSettle, one workgroup: the reach, whether any face moves and
+//    the fastest speed into the statistics record.
+
+const DRY: f32 = 1e-6;
+const ON_EDGE: f32 = 1e-3;
+
+fn faceCount(axis: u32) -> u32 {
+    return select(water.faces.y, water.faces.x, axis == 0u);
+}
+
+// The first float of an axis's faces in buffer b.
+fn facesAt(axis: u32, b: u32) -> u32 {
+    let first = 2u * water.size.z + select(2u * water.faces.x, 0u, axis == 0u);
+    return first + b * faceCount(axis);
+}
+
+fn givingAt() -> u32 {
+    return 2u * (water.size.z + water.faces.x + water.faces.y);
+}
+
+fn groundAt() -> u32 {
+    return givingAt() + water.size.z;
+}
+
+// The height along a vertical, from start along along in the field's
+// frame, where it meets the field's height under the point at at; false
+// where that point is outside the field's box (water_ground.c's Meet).
+fn meet(start: vec3<f32>, along: vec3<f32>, at: f32, height: ptr<function, f32>) -> bool {
+    let t = water.terrain;
+    let point = vec2<f32>(start.x + at * along.x, start.z + at * along.z);
+    let u = vec3<f32>(point.x / (2.0 * t.halfExtents.x) + 0.5, 0.5,
+                      point.y / (2.0 * t.halfExtents.z) + 0.5);
+    var value = vec3<f32>(0.0);
+    if (!sampleGrid(t.grid, t.gridModes.x, 1u, u, BORDER_NONE, &value)) {
+        return false;
+    }
+    *height = (value.x * t.scales.x - start.y) / along.y;
+    return true;
+}
+
+// The ground under a point (x, z) of the surface's frame, as HeightAt:
+// the vertical's meeting with the field, Aitken's step under a lean, the
+// floor where it meets the field outside its box or runs along it.
+fn groundUnder(x: f32, z: f32) -> f32 {
+    let t = water.terrain;
+    let back = vec4<f32>(-t.rotation.xyz, t.rotation.w);
+    let start = rotate(back, vec3<f32>(x - t.center.x, -t.center.y, z - t.center.z));
+    let along = rotate(back, vec3<f32>(0.0, 1.0, 0.0));
+    var first = 0.0;
+    if (abs(along.y) < ON_EDGE || !meet(start, along, 0.0, &first)) {
+        return 0.0;
+    }
+    var second = first;
+    if ((along.x == 0.0 && along.z == 0.0) || first == 0.0 || !meet(start, along, first, &second)) {
+        return first;
+    }
+    let drift = (second - first) / first;
+    return select(second, first / (1.0 - drift), drift < 1.0 - ON_EDGE);
+}
+
+// Whether source k covers cell (x, z): within its span (mvfxWaterSpan
+// about its center) and, for a sphere, its disk.
+fn covers(k: u32, x: u32, z: u32) -> bool {
+    let n = water.size.xy;
+    let h = water.sink.x;
+    let footprint = water.sources[2u * k];
+    let shape = water.sources[2u * k + 1u];
+    let xs = span(footprint.x / h + 0.5 * f32(n.x) - 0.5, footprint.z / h, n.x);
+    let zs = span(footprint.y / h + 0.5 * f32(n.y) - 0.5, footprint.w / h, n.y);
+    if (i32(x) < xs.x || i32(x) > xs.y || i32(z) < zs.x || i32(z) > zs.y) {
+        return false;
+    }
+    let dx = (f32(x) + 0.5 - 0.5 * f32(n.x)) * h - footprint.x;
+    let dz = (f32(z) + 0.5 - 0.5 * f32(n.y)) * h - footprint.y;
+    return shape.x != 0.0 || dx * dx + dz * dz <= shape.z * shape.z;
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn shallowStart(@builtin(global_invocation_id) id: vec3<u32>) {
+    let i = id.x;
+    if (i >= water.size.z) {
+        return;
+    }
+    let n = water.size.xy;
+    let x = i % n.x;
+    let z = i / n.x;
+    let h = water.sink.x;
+    var ground = 0.0;
+    if ((water.head.w & FLAG_TERRAIN) != 0u) {
+        ground = groundUnder((f32(x) + 0.5 - 0.5 * f32(n.x)) * h,
+                             (f32(z) + 0.5 - 0.5 * f32(n.y)) * h);
+    }
+    fields[groundAt() + i] = ground;
+    let at = root.now * water.size.z + i;
+    var d = fields[at];
+    if ((water.head.w & FLAG_FILLS) != 0u) {
+        d = max(water.factors.z - ground, 0.0);
+    }
+    for (var k = 0u; k < water.head.z; k++) {
+        d += select(0.0, water.sources[2u * k + 1u].y, covers(k, x, z));
+    }
+    fields[at] = d;
+}
+
+var<workgroup> spillSums: array<f32, 256>;
+
+// A push's weight at r radii from its center: within the radius
+// (1 - r^2)^2, which it sinks by; in the ring to twice it
+// (1 - (2 r - 3)^2)^2, which it spills into (water_ground.c's Weight).
+fn spillWeight(r: f32, inner: ptr<function, bool>) -> f32 {
+    *inner = r < 1.0;
+    let s = select(1.0 - (2.0 * r - 3.0) * (2.0 * r - 3.0), 1.0 - r * r, *inner);
+    return select(0.0, s * s, r < 2.0 && s > 0.0);
+}
+
+@compute @workgroup_size(256, 1, 1)
+fn shallowSpill(@builtin(local_invocation_index) lane: u32) {
+    let n = water.size.xy;
+    let h = water.sink.x;
+    let base = root.now * water.size.z;
+    for (var p = 0u; p < water.head.x; p++) {
+        let push = water.pushes[p];
+        let c = vec2<f32>(push.x / h + 0.5 * f32(n.x) - 0.5, push.y / h + 0.5 * f32(n.y) - 0.5);
+        let reach = push.z / h;
+        let sinks = push.w > 0.0;
+        let xs = span(c.x, 2.0 * reach, n.x);
+        let zs = span(c.y, 2.0 * reach, n.y);
+        let w = u32(max(xs.y - xs.x + 1, 0));
+        let count = w * u32(max(zs.y - zs.x + 1, 0));
+        // What the push takes, summed over the workgroup.
+        var sum = 0.0;
+        for (var k = lane; k < count; k += SETTLE_GROUP) {
+            let x = xs.x + i32(k % w);
+            let z = zs.x + i32(k / w);
+            let dx = f32(x) - c.x;
+            let dz = f32(z) - c.y;
+            var inner = false;
+            let wt = spillWeight(sqrt(dx * dx + dz * dz) / reach, &inner);
+            let d = fields[base + u32(z) * n.x + u32(x)];
+            sum += select(0.0, min(abs(push.w) * wt, d), inner == sinks);
+        }
+        spillSums[lane] = sum;
+        workgroupBarrier();
+        for (var half = SETTLE_GROUP / 2u; half > 0u; half >>= 1u) {
+            if (lane < half) {
+                spillSums[lane] += spillSums[lane + half];
+            }
+            workgroupBarrier();
+        }
+        let taken = spillSums[0];
+        let sums = water.spills[p];
+        workgroupBarrier();
+        // Nothing to take, or nowhere on the grid to land: no change.
+        if (sums.x > 0.0 && sums.y > 0.0 && taken > 0.0) {
+            for (var k = lane; k < count; k += SETTLE_GROUP) {
+                let x = xs.x + i32(k % w);
+                let z = zs.x + i32(k / w);
+                let dx = f32(x) - c.x;
+                let dz = f32(z) - c.y;
+                var inner = false;
+                let wt = spillWeight(sqrt(dx * dx + dz * dz) / reach, &inner);
+                let at = base + u32(z) * n.x + u32(x);
+                let d = fields[at];
+                let lands = inner != sinks;
+                let share = wt / select(sums.y, sums.x, inner);
+                let lost = select(0.0, min(abs(push.w) * wt, d), inner == sinks);
+                fields[at] = d + select(-lost, taken * share, lands);
+            }
+        }
+        storageBarrier();
+        workgroupBarrier();
+    }
+}
+
+// The surface at cell (x, z) of buffer now: its ground and depth.
+fn surfaceAt(x: i32, z: i32) -> f32 {
+    let i = u32(z) * water.size.x + u32(x);
+    return fields[groundAt() + i] + fields[root.now * water.size.z + i];
+}
+
+// A face of an axis: its cells about it (an X face (x, z) between
+// (x - 1, z) and (x, z), a Z face between (x, z - 1) and (x, z)) and
+// whether it is a wall.
+struct Face {
+    a: vec2<i32>,
+    b: vec2<i32>,
+    lowWall: bool,
+    highWall: bool,
+}
+
+fn faceAt(axis: u32, x: i32, z: i32) -> Face {
+    let n = vec2<i32>(water.size.xy);
+    var face: Face;
+    face.a = select(vec2<i32>(x, z - 1), vec2<i32>(x - 1, z), axis == 0u);
+    face.b = vec2<i32>(x, z);
+    face.lowWall = select(z == 0, x == 0, axis == 0u);
+    face.highWall = select(z == n.y, x == n.x, axis == 0u);
+    return face;
+}
+
+fn groundOf(cell: vec2<i32>) -> f32 {
+    return fields[groundAt() + u32(cell.y) * water.size.x + u32(cell.x)];
+}
+
+// A face's surfaces on its two sides and its sill: at a wall the outside
+// is an empty cell of the edge's ground.
+fn sides(face: Face) -> vec3<f32> {
+    let ground = groundOf(select(face.a, face.b, face.lowWall));
+    // The cell outside a wall is never read.
+    var h0 = ground;
+    var h1 = ground;
+    if (!face.lowWall) {
+        h0 = surfaceAt(face.a.x, face.a.y);
+    }
+    if (!face.highWall) {
+        h1 = surfaceAt(face.b.x, face.b.y);
+    }
+    let other = groundOf(select(face.b, face.a, face.highWall));
+    let sill = select(max(ground, other), ground, face.lowWall || face.highWall);
+    return vec3<f32>(h0, h1, sill);
+}
+
+// Whether face (x, z) of an axis carries water: open, its water over its
+// sill above DRY; its surfaces and sill into out.
+fn isWet(axis: u32, x: i32, z: i32, out: ptr<function, vec3<f32>>) -> bool {
+    let face = faceAt(axis, x, z);
+    let closed = water.size.w;
+    let low = select(WALL_MIN_Z, WALL_MIN_X, axis == 0u);
+    let high = select(WALL_MAX_Z, WALL_MAX_X, axis == 0u);
+    if ((face.lowWall && (closed & low) != 0u) || (face.highWall && (closed & high) != 0u)) {
+        return false;
+    }
+    let s = sides(face);
+    *out = s;
+    return max(s.x, s.y) - s.z > DRY;
+}
+
+// Face (x, z)'s velocity in buffer b, own off the face grid.
+fn faceValue(axis: u32, b: u32, x: i32, z: i32, own: f32) -> f32 {
+    let w = i32(water.size.x) + select(0, 1, axis == 0u);
+    let rows = i32(water.size.y) + select(1, 0, axis == 0u);
+    if (x < 0 || x >= w || z < 0 || z >= rows) {
+        return own;
+    }
+    return fields[facesAt(axis, b) + u32(z * w + x)];
+}
+
+fn old(axis: u32, x: i32, z: i32, own: f32) -> f32 {
+    return faceValue(axis, root.now, x, z, own);
+}
+
+// The water a face carries before the substep: its velocity times the
+// water over its sill on the giver's side; 0 off the grid or dry.
+fn discharge(axis: u32, x: i32, z: i32) -> f32 {
+    let v = old(axis, x, z, 0.0);
+    var s = vec3<f32>(0.0);
+    if (v == 0.0 || !isWet(axis, x, z, &s)) {
+        return 0.0;
+    }
+    return v * max(select(s.y, s.x, v > 0.0) - s.z, 0.0);
+}
+
+fn depthOr0(x: i32, z: i32) -> f32 {
+    let n = vec2<i32>(water.size.xy);
+    if (x < 0 || x >= n.x || z < 0 || z >= n.y) {
+        return 0.0;
+    }
+    return fields[root.now * water.size.z + u32(z * n.x + x)];
+}
+
+// Face (x, z) carried with the flow, as Carried (Stelling and
+// Duinmeijer's upwind form): drawn toward each upstream neighbor by the
+// discharge toward it over the face's depth, the pulls held to 1.
+fn carried(axis: u32, x: i32, z: i32) -> f32 {
+    let along = select(vec2<i32>(0, 1), vec2<i32>(1, 0), axis == 0u);
+    let across = along.yx;
+    let other = 1u - axis;
+    let u = old(axis, x, z, 0.0);
+    let lx = x - along.x;
+    let lz = z - along.y;
+    let back = 0.5 * (discharge(axis, lx, lz) + discharge(axis, x, z));
+    let ahead = 0.5 * (discharge(axis, x, z) + discharge(axis, x + along.x, z + along.y));
+    let below = 0.5 * (discharge(other, lx, lz) + discharge(other, x, z));
+    let above = 0.5 * (discharge(other, lx + across.x, lz + across.y) +
+                       discharge(other, x + across.x, z + across.y));
+    let pull = vec4<f32>(max(back, 0.0), max(-ahead, 0.0), max(below, 0.0), max(-above, 0.0));
+    let upstream = vec4<f32>(old(axis, x - along.x, z - along.y, u),
+                         old(axis, x + along.x, z + along.y, u),
+                         old(axis, x - across.x, z - across.y, u),
+                         old(axis, x + across.x, z + across.y, u));
+    let depth = 0.5 * (depthOr0(lx, lz) + depthOr0(x, z));
+    let k = water.factors.w / (max(depth, DRY) * water.sink.x);
+    let total = k * (pull.x + pull.y + pull.z + pull.w);
+    let held = select(k, k / total, total > 1.0);
+    var moved = 0.0;
+    for (var j = 0u; j < 4u; j++) {
+        moved += pull[j] * (upstream[j] - u);
+    }
+    return u + held * moved;
+}
+
+// Face (x, z)'s next velocity, as NextVelocity: carried, slowed,
+// accelerated by the fall across it, held within 0.5 l / dt; 0 dry or
+// closed, an open wall's only outward.
+fn nextVelocity(axis: u32, x: i32, z: i32) -> f32 {
+    let face = faceAt(axis, x, z);
+    var s = vec3<f32>(0.0);
+    if (!isWet(axis, x, z, &s)) {
+        return 0.0;
+    }
+    let l = water.sink.x;
+    let dt = water.factors.w;
+    var v = carried(axis, x, z) * water.factors.y + dt * water.factors.x * (s.x - s.y) / l;
+    let most = 0.5 * l / dt;
+    v = min(max(v, -most), most);
+    return select(select(v, max(v, 0.0), face.highWall), min(v, 0.0), face.lowWall);
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn shallowFaces(@builtin(global_invocation_id) id: vec3<u32>) {
+    let j = id.x;
+    if (j >= water.faces.x + water.faces.y) {
+        return;
+    }
+    let axis = select(1u, 0u, j < water.faces.x);
+    let k = select(j - water.faces.x, j, axis == 0u);
+    let w = water.size.x + select(0u, 1u, axis == 0u);
+    fields[facesAt(axis, 1u - root.now) + k] = nextVelocity(axis, i32(k % w), i32(k / w));
+}
+
+// The water a face carries a second, by the substep's new velocity, before
+// its giver's scale; toward +X (+Z) above 0; its giver, -1 for none.
+fn faceFlux(axis: u32, x: i32, z: i32, giver: ptr<function, i32>) -> f32 {
+    let face = faceAt(axis, x, z);
+    let v = faceValue(axis, 1u - root.now, x, z, 0.0);
+    let s = sides(face);
+    let fromLow = v > 0.0;
+    let outside = select(face.highWall, face.lowWall, fromLow);
+    let cell = select(face.b, face.a, fromLow);
+    *giver = select(cell.y * i32(water.size.x) + cell.x, -1, outside || v == 0.0);
+    let over = max(select(s.y, s.x, fromLow) - s.z, 0.0);
+    return select(v * over * water.sink.x, 0.0, *giver < 0);
+}
+
+// Cell (x, z)'s four faces' fluxes, out of it above 0 (-X, +X, -Z, +Z).
+fn cellFluxes(x: i32, z: i32, out: ptr<function, vec4<f32>>, givers: ptr<function, vec4<i32>>) {
+    var g = -1;
+    (*out).x = -faceFlux(0u, x, z, &g);
+    (*givers).x = g;
+    (*out).y = faceFlux(0u, x + 1, z, &g);
+    (*givers).y = g;
+    (*out).z = -faceFlux(1u, x, z, &g);
+    (*givers).z = g;
+    (*out).w = faceFlux(1u, x, z + 1, &g);
+    (*givers).w = g;
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn shallowGiving(@builtin(global_invocation_id) id: vec3<u32>) {
+    let i = id.x;
+    if (i >= water.size.z) {
+        return;
+    }
+    let n0 = water.size.x;
+    var out = vec4<f32>(0.0);
+    var givers = vec4<i32>(-1);
+    cellFluxes(i32(i % n0), i32(i / n0), &out, &givers);
+    var sum = 0.0;
+    for (var k = 0u; k < 4u; k++) {
+        sum += select(0.0, out[k], givers[k] == i32(i));
+    }
+    let l = water.sink.x;
+    let most = fields[root.now * water.size.z + i] * l * l / water.factors.w;
+    fields[givingAt() + i] = select(1.0, most / sum, sum > most);
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn shallowDepths(@builtin(global_invocation_id) id: vec3<u32>) {
+    let i = id.x;
+    if (i >= water.size.z) {
+        return;
+    }
+    let n0 = water.size.x;
+    var out = vec4<f32>(0.0);
+    var givers = vec4<i32>(-1);
+    cellFluxes(i32(i % n0), i32(i / n0), &out, &givers);
+    var lost = 0.0;
+    for (var k = 0u; k < 4u; k++) {
+        lost += select(out[k] * fields[givingAt() + u32(max(givers[k], 0))], 0.0, givers[k] < 0);
+    }
+    let l = water.sink.x;
+    let d = fields[root.now * water.size.z + i];
+    fields[(1u - root.now) * water.size.z + i] = max(d - water.factors.w * lost / (l * l), 0.0);
+}
+
+var<workgroup> deepests: array<f32, 256>;
+
+@compute @workgroup_size(256, 1, 1)
+fn shallowSettle(@builtin(local_invocation_index) lane: u32) {
+    let b = root.now;
+    var deep = 0.0;
+    var reach = 0.0;
+    for (var i = lane; i < water.size.z; i += SETTLE_GROUP) {
+        let d = fields[b * water.size.z + i];
+        deep = max(deep, d);
+        reach = max(reach, abs(fields[groundAt() + i] + d));
+    }
+    var fast = 0.0;
+    for (var axis = 0u; axis < 2u; axis++) {
+        let first = facesAt(axis, b);
+        for (var j = lane; j < faceCount(axis); j += SETTLE_GROUP) {
+            fast = max(fast, abs(fields[first + j]));
+        }
+    }
+    deepests[lane] = deep;
+    highs[lane] = reach;
+    fasts[lane] = fast;
+    workgroupBarrier();
+    for (var half = SETTLE_GROUP / 2u; half > 0u; half >>= 1u) {
+        if (lane < half) {
+            deepests[lane] = max(deepests[lane], deepests[lane + half]);
+            highs[lane] = max(highs[lane], highs[lane + half]);
+            fasts[lane] = max(fasts[lane], fasts[lane + half]);
+        }
+        workgroupBarrier();
+    }
+    if (lane == 0u) {
+        statistics[HOLDS] = select(0u, 1u, fasts[0] > STILL);
+        statistics[SPEED] = bitcast<u32>(fasts[0] + sqrt(water.factors.x * deepests[0]));
+        statistics[REACH] = bitcast<u32>(highs[0]);
     }
 }

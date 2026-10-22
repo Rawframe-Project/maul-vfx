@@ -201,6 +201,15 @@ typedef enum mvfxKernel
     mvfx_kernelWaterSettle = 100,
     // A surface's field written into a host's buffer (water_read.wgsl).
     mvfx_kernelWaterRead = 101,
+    // A shallow surface's step (water.wgsl): its ground, fill and sources,
+    // its pushes, a substep's faces, givers' scales and depths, its
+    // settle.
+    mvfx_kernelShallowStart = 102,
+    mvfx_kernelShallowSpill = 103,
+    mvfx_kernelShallowFaces = 104,
+    mvfx_kernelShallowGiving = 105,
+    mvfx_kernelShallowDepths = 106,
+    mvfx_kernelShallowSettle = 107,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

@@ -345,7 +345,7 @@ static mvfxResult CreateParts(mvfxGpuSim* sim, const mvfxGpuSimDef* def, mvfxGpu
 {
     mvfxResult result = ReadViews(sim, def->effect, refusal);
     result = result == mvfx_success ? mvfxReadSimGases(sim, def->effect, &refusal->gas) : result;
-    result = result == mvfx_success ? mvfxReadSimWaters(sim, def->effect, &refusal->water) : result;
+    result = result == mvfx_success ? mvfxReadSimWaters(sim, def->effect) : result;
     for (int32_t e = 0; result == mvfx_success && e < sim->emitterCount; ++e)
     {
         result = PrepareEmitter(sim, def, e);
@@ -358,7 +358,9 @@ static mvfxResult CreateParts(mvfxGpuSim* sim, const mvfxGpuSimDef* def, mvfxGpu
     }
     for (int32_t w = 0; result == mvfx_success && w < sim->waterCount; ++w)
     {
-        result = mvfxCreateSimWater(sim, &sim->waters[w]) ? mvfx_success : mvfx_errorState;
+        result = mvfxCreateSimWater(sim, &sim->waters[w], (uint32_t)((def->hostGridBytes + 3) / 4))
+                     ? mvfx_success
+                     : mvfx_errorState;
     }
     return result;
 }

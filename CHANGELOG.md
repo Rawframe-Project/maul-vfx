@@ -1070,9 +1070,8 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   are counted, and whether the surface still moves
   (`mvfxInstance_SetWaterHolds`: a stopped planned instance runs while
   it does). Reads and samples of a planned surface are refused
-  (`mvfx_errorState`), as a planned gas's are. The GPU part refuses
-  shallow water for now, named in `mvfxGpuRefusal.water`. A surface's
-  def as compiled is read with `mvfxEffect_GetWaterView`.
+  (`mvfx_errorState`), as a planned gas's are. A surface's def as
+  compiled is read with `mvfxEffect_GetWaterView`.
 - The GPU part runs frames that split into steps (an effect with a
   liquid gas whose courant number cuts the instance's step): each step
   every emitter's passes and then every gas's, from that step's plans,
@@ -1091,6 +1090,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   at most 67 passes a surface (`mvfxGpuSim_WaterPasses`). A surface's
   fields are written into a host's buffer in its formats as
   `mvfxInstance_ReadWater` writes them (`mvfxGpuSim_AddWaterRead`).
+- The GPU part runs shallow water: each step its ground read from its
+  terrain (the effect's heightfield or the instance's), the first fill,
+  its sources and the host's pushes spilling in order, three passes a
+  substep (faces, outflows, depths), and its record's fastest speed,
+  which `mvfxGpuSim_ReportWater` hands over so the next steps count
+  their substeps from it (at most 196 passes a surface a step). A
+  surface keeps its numbers, fields and record on the device (16 bytes
+  a cell, 8 a face, and its terrain's grid; `hostGridBytes` covers the
+  instance's terrain); `mvfxGpuRefusal.water` names none.
 
 ### Changed
 

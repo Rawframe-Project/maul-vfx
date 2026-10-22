@@ -8,26 +8,33 @@
 #ifndef MAUL_VFX_RHI_SRC_SIM_WATER_H
 #define MAUL_VFX_RHI_SRC_SIM_WATER_H
 
+#include "grids.h"
 #include "kernels.h"
+#include "numbers.h"
 
 #include "maul-rhi/frame.h"
 #include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/plan.h"
 
 // The words of a surface's numbers (water_numbers.wgsl's Water): its
-// sizes, factors, head and sink, then its pushes.
-#define MVFX_WATER_WORDS (16u + 4u * MVFX_MAX_WATER_PUSHES)
+// sizes, factors, head, sink and faces; its pushes, and shallow water's
+// pushes' weight sums, sources and terrain.
+#define MVFX_WATER_WORDS                                                                           \
+    (20u + 8u * MVFX_MAX_WATER_PUSHES + 8u * MVFX_MAX_WATER_SOURCES + MVFX_COLLIDER_WORDS)
 
-// A surface's buffers: its numbers, its fields (heights now and next,
-// rates now and next), its statistics record.
+// A surface's buffers: its numbers, its fields (waves: heights now and
+// next, rates now and next; shallow water: depths, X faces and Z faces,
+// now and next each, the givers' scales, the ground), its statistics
+// record, its terrain's grid.
 #define WATER_NUMBERS    0
 #define WATER_FIELDS     1
 #define WATER_STATISTICS 2
-#define WATER_BUFFERS    3
+#define WATER_GRIDS      3
+#define WATER_BUFFERS    4
 
-// The most dispatches a step takes: the sinks, a substep each, the
-// settle.
-#define WATER_DISPATCHES (2 + MVFX_MAX_WATER_SUBSTEPS)
+// The most dispatches a step takes: waves' sinks, a substep each and the
+// settle; shallow water's start, pushes, three a substep and settle.
+#define WATER_DISPATCHES (3 + 3 * MVFX_MAX_WATER_SUBSTEPS)
 
 // A dispatch of a surface's step: its kernel, the buffer current and its
 // workgroups.
@@ -53,20 +60,21 @@ typedef struct WaterRead
     uint32_t written;
 } WaterRead;
 
-// A surface: its view, buffers and numbers; the buffer current now, and
-// after the step added (current once it is recorded: a frame the host
-// drops leaves the surface as it was); the statistics record the step's
-// write starts with (nothing moving, the step's end); the step's
-// dispatches and their passes (the first pass writing the numbers), held
-// whole so a lane of a split frame (sim_lanes.c) copies it; whether the
-// step clears it first, whether it was added, whether its buffers are
-// imported into the frame open; the frame's reads.
+// A surface: its view, buffers, numbers and its terrain's grid; the buffer
+// current now, and after the step added (current once it is recorded: a
+// frame the host drops leaves the surface as it was); the statistics
+// record the step's write starts with (nothing moving, the step's end);
+// the step's dispatches and their passes (the first pass writing the
+// numbers), held whole so a lane of a split frame (sim_lanes.c) copies it;
+// whether the step clears it first, whether it was added, whether its
+// buffers are imported into the frame open; the frame's reads.
 typedef struct SimWater
 {
     mvfxWaterView view;
     mrhiBufferId buffers[WATER_BUFFERS];
     mrhiResourceId resources[WATER_BUFFERS];
     uint32_t words[MVFX_WATER_WORDS];
+    mvfxGpuGrids grids;
     uint32_t now;
     uint32_t after;
     uint32_t record[MVFX_GPU_WATER_STATISTICS_WORDS];
@@ -80,12 +88,12 @@ typedef struct SimWater
     int32_t readCount;
 } SimWater;
 
-// Reads an effect's surfaces into the simulation; mvfx_errorState with the
-// surface in refusal for one the part does not run (shallow water).
-mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refusal);
+// Reads an effect's surfaces into the simulation.
+mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect);
 
-// Makes a surface's buffers; false when the device refuses.
-bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water);
+// Makes a surface's buffers, a host's terrain's grid taking hostWords of
+// its grids' buffer; false when the device refuses or a grid is gone.
+bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords);
 void mvfxDestroySimWater(mvfxGpuSim* sim, SimWater* water);
 
 // Adds surface w's step's passes for its plan, then records them.
