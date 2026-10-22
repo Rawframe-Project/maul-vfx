@@ -1,0 +1,22 @@
+{
+  "root_block_bytes": 0,
+  "entries": [
+    {"name": "meshCount", "stage": "compute", "workgroup": [256, 1, 1]},
+    {"name": "meshOffsets", "stage": "compute", "workgroup": [256, 1, 1]},
+    {"name": "meshVertices", "stage": "compute", "workgroup": [256, 1, 1]},
+    {"name": "meshRefuse", "stage": "compute", "workgroup": [256, 1, 1]},
+    {"name": "meshIndices", "stage": "compute", "workgroup": [256, 1, 1]}
+  ],
+  "bindings": [
+    {"table": 0, "slot": 0, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 10048},
+    {"table": 0, "slot": 1, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 2, "kind": "uniform_buffer", "stages": ["compute"], "min_size": 96},
+    {"table": 0, "slot": 3, "kind": "read_only_storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 4, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 5, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 6, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 7, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4},
+    {"table": 0, "slot": 8, "kind": "storage_buffer", "stages": ["compute"], "min_size": 4}
+  ],
+  "constants": []
+}

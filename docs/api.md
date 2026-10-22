@@ -757,6 +757,16 @@ MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddGasSamples(mvfxGpuSim* sim,
 Adds the passes sampling a gas's field at a host's points to the frame the host builds, as mvfxInstance_SampleGas samples it on the CPU path, a planned instance's gas being its simulation's: a transfer pass and a compute pass, after the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them, from the fields the last recorded step left, where the gas stands now (mvfxInstance_GetGasInfo). The host reads the samples back when its frame is done, a frame or more later. mvfxGpuSim_Record records the passes, and the next mvfxGpuSim_AddPasses lets go of those of a frame the host dropped. At most MVFX_GPU_GAS_SAMPLES a gas a frame.  @param sim  The simulation. @param def  The query, from mvfxDefaultGpuGasSamplesDef. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a gas out of range, a field not the gas's, an origin out of range or not finite, a count out of range, a null buffer, the points' and the samples' one buffer, an offset not a multiple of 4 or bytes too few; `mvfx_errorLimit` past MVFX_GPU_GAS_SAMPLES for the gas this frame; `mvfx_errorState` when the device refuses a pass or an import (no frame open), or while it is destroyed (a call from its allocator). @par Thread safety Safe from any thread; the context and the device are used by one thread at a time.
 
 ```c
+mvfxGpuSurfaceMeshDef mvfxDefaultGpuSurfaceMeshDef(void);
+```
+Returns the default surface mesh def: gas 0, level 0, the world's origin, no buffers yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+
+```c
+MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddSurfaceMesh(mvfxGpuSim* sim, const mvfxGpuSurfaceMeshDef* def);
+```
+Adds the passes meshing a surface gas to the frame the host builds, as mvfxInstance_WriteSurfaceMesh meshes it on the CPU path, a planned instance's surface being its simulation's: the same vertices in the same order (positions and normals within a relative 1e-4 of the CPU path's from the same distances), the same indices, the first primitives that fit both buffers written. Every choice of the walk is the CPU path's on every device, save that a device may flush a product below binary32's normal range to zero, which could change a face's choice only for distances within about 1e-19 of the level. A transfer pass and five compute passes (MVFX_GPU_SURFACE_MESHES at most a surface a frame), after the step's passes of the frame (mvfxGpuSim_AddPasses) or, without them, from the field the last recorded step left, where the surface stands now (mvfxInstance_GetGasInfo). mvfxGpuSim_Record records them, and the next mvfxGpuSim_AddPasses lets go of those of a frame the host dropped.  @param sim  The simulation. @param def  Where the mesh goes, from mvfxDefaultGpuSurfaceMeshDef. @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def without its cookie, a gas out of range or not a surface, a level not finite, an origin out of range or not finite, a null positions or indices buffer, a negative capacity, an offset not a multiple of 4 or one whose buffer's words would pass 2^32; `mvfx_errorLimit` past MVFX_GPU_SURFACE_MESHES for the surface this frame; `mvfx_errorState` when the device refuses a pass or an import (no frame open), or while it is destroyed (a call from its allocator). @par Thread safety Safe from any thread; the context and the device are used by one thread at a time.
+
+```c
 mvfxGpuRibbonsDef mvfxDefaultGpuRibbonsDef(void);
 ```
 Returns the default ribbons def: emitter 0, no buffer yet.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
@@ -823,4 +833,4 @@ Maps an emitter's statistics record, read back from its buffer any frames after 
 
 ---
 
-152 functions across 17 headers.
+154 functions across 17 headers.

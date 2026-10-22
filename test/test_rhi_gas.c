@@ -1017,7 +1017,12 @@ static void TestSampleRefusals(Gpu* gpu, mvfxGpu* kernels)
         }
         refused = refused && one;
     }
-    CHECK(refused, "spoiled gas sample queries refused");
+    // A smoke gas has no surface to mesh.
+    mvfxGpuSurfaceMeshDef mesh = mvfxDefaultGpuSurfaceMeshDef();
+    mesh.positions = good.points;
+    mesh.indices = good.target;
+    refused = refused && mvfxGpuSim_AddSurfaceMesh(scene.sim, &mesh) == mvfx_errorInvalid;
+    CHECK(refused, "spoiled gas sample queries refused, a smoke gas's mesh too");
     // A frame's queries past MVFX_GPU_GAS_SAMPLES.
     mrhiBufferDef bufferDef = mrhiDefaultBufferDef();
     bufferDef.size = 48;

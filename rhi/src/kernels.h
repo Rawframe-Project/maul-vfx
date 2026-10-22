@@ -33,6 +33,7 @@ typedef enum mvfxContainer
     mvfx_containerSurfaceGas = 16,
     mvfx_containerWaterSample = 17,
     mvfx_containerGasSample = 18,
+    mvfx_containerSurfaceMesh = 19,
     MVFX_CONTAINER_COUNT
 } mvfxContainer;
 
@@ -226,6 +227,13 @@ typedef enum mvfxKernel
     mvfx_kernelWaterSample = 113,
     // A gas's field sampled at a host's points (gas_sample.wgsl).
     mvfx_kernelGasSample = 114,
+    // A surface's mesh (surface_mesh.wgsl): each block's counts, their
+    // offsets, the vertices, the first refusal, the indices.
+    mvfx_kernelMeshCount = 115,
+    mvfx_kernelMeshOffsets = 116,
+    mvfx_kernelMeshVertices = 117,
+    mvfx_kernelMeshRefuse = 118,
+    mvfx_kernelMeshIndices = 119,
     MVFX_KERNEL_COUNT
 } mvfxKernel;
 

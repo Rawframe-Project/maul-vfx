@@ -367,7 +367,7 @@ bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords)
                      &gas->buffers[GAS_GRIDS]) &&
         CreateBuffer(sim, 4u * MVFX_GPU_GAS_STATISTICS_WORDS, written | mrhi_bufferCopySource,
                      &gas->buffers[GAS_STATISTICS]);
-    return created && mvfxCreateSimGasReads(sim, gas);
+    return created && mvfxCreateSimGasReads(sim, gas) && mvfxCreateSimSurfaceMesh(sim, gas);
 }
 
 void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas)
@@ -380,6 +380,7 @@ void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas)
         }
     }
     mvfxDestroySimGasReads(sim, gas);
+    mvfxDestroySimSurfaceMesh(sim, gas);
     mvfxDestroySimSplats(sim, gas);
     size_t count = (size_t)gas->capacity;
     mvfxRhiRelease(&sim->allocator, gas->dispatches, count * sizeof(GasDispatch),
@@ -644,10 +645,11 @@ bool mvfxImportSimGas(mvfxGpuSim* sim, SimGas* gas)
 mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
 {
     SimGas* gas = &sim->gases[g];
-    // The reads and samples of a frame the host dropped go.
+    // The reads, samples and meshes of a frame the host dropped go.
     gas->added = false;
     gas->readCount = 0;
     gas->sampleCount = 0;
+    gas->meshCount = 0;
     gas->imported = false;
     static mvfxGasPlan plan;
     mvfxResult result = mvfxSimGasPlan(sim, g, &plan);
@@ -771,9 +773,10 @@ bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas)
     bool recorded = !gas->added || RecordStep(sim, gas);
     gas->now = gas->added ? gas->after : gas->now;
     gas->added = false;
-    recorded = recorded && mvfxRecordSimGasReads(sim, gas);
+    recorded = recorded && mvfxRecordSimGasReads(sim, gas) && mvfxRecordSimSurfaceMeshes(sim, gas);
     gas->readCount = 0;
     gas->sampleCount = 0;
+    gas->meshCount = 0;
     gas->imported = false;
     return recorded;
 }

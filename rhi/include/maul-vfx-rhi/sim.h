@@ -1015,6 +1015,91 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult
     mvfxGpuSim_AddGasSamples(mvfxGpuSim* sim, const mvfxGpuGasSamplesDef* def);
 
+// The most meshes of a surface gas a frame (mvfxGpuSim_AddSurfaceMesh),
+// and a mesh's counts, 32-bit words: the vertices and indices there are,
+// as mvfxInstance_WriteSurfaceMesh counts them, then those written.
+#define MVFX_GPU_SURFACE_MESHES      2
+#define MVFX_GPU_SURFACE_MESH_COUNTS 4
+
+    // Where a surface gas's mesh goes (mvfxGpuSim_AddSurfaceMesh). Build it
+    // with mvfxDefaultGpuSurfaceMeshDef.
+    typedef struct mvfxGpuSurfaceMeshDef
+    {
+        uint32_t cookie;
+        // The surface gas's index in its effect, and the distance meshed (0
+        // for its surface), finite.
+        int32_t gas;
+        float level;
+        // The place in the world positions are given from, each coordinate
+        // at most 2^52 in size.
+        double origin[3];
+        // Storage buffers of the frame open, each from a byte that is a
+        // multiple of 4 (one buffer may serve several at offsets apart):
+        // the positions (three binary32 a vertex) and optionally the unit
+        // normals (a null id for none), at most vertexCapacity of each, and
+        // the 32-bit indices (from 0 at the first vertex), at most
+        // indexCapacity.
+        mrhiResourceId positions;
+        uint64_t positionOffset;
+        mrhiResourceId normals;
+        uint64_t normalOffset;
+        int64_t vertexCapacity;
+        mrhiResourceId indices;
+        uint64_t indexOffset;
+        int64_t indexCapacity;
+        // Optionally a storage buffer of the frame and a byte (a multiple
+        // of 4) the counts go to, MVFX_GPU_SURFACE_MESH_COUNTS words; a
+        // null id for none.
+        mrhiResourceId counts;
+        uint64_t countsOffset;
+    } mvfxGpuSurfaceMeshDef;
+
+// The cookie of a surface mesh def, which its default sets and
+// mvfxGpuSim_AddSurfaceMesh checks.
+#define MVFX_GPU_SURFACE_MESH_DEF_COOKIE 0x6D76736Du
+
+    /// Returns the default surface mesh def: gas 0, level 0, the world's
+    /// origin, no buffers yet.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API mvfxGpuSurfaceMeshDef mvfxDefaultGpuSurfaceMeshDef(void);
+
+    /// Adds the passes meshing a surface gas to the frame the host builds,
+    /// as mvfxInstance_WriteSurfaceMesh meshes it on the CPU path, a planned
+    /// instance's surface being its simulation's: the same vertices in the
+    /// same order (positions and normals within a relative 1e-4 of the CPU
+    /// path's from the same distances), the same indices, the first
+    /// primitives that fit both buffers written. Every choice of the walk
+    /// is the CPU path's on every device, save that a device may flush a
+    /// product below binary32's normal range to zero, which could change a
+    /// face's choice only for distances within about 1e-19 of the level. A
+    /// transfer pass and five compute passes (MVFX_GPU_SURFACE_MESHES at
+    /// most a surface a frame), after the step's passes of the frame
+    /// (mvfxGpuSim_AddPasses) or, without them, from the field the last
+    /// recorded step left, where the surface stands now
+    /// (mvfxInstance_GetGasInfo). mvfxGpuSim_Record records them, and the
+    /// next mvfxGpuSim_AddPasses lets go of those of a frame the host
+    /// dropped.
+    ///
+    /// @param sim  The simulation.
+    /// @param def  Where the mesh goes, from mvfxDefaultGpuSurfaceMeshDef.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, a gas out of range or not a surface,
+    ///         a level not finite, an origin out of range or not finite, a
+    ///         null positions or indices buffer, a negative capacity, an
+    ///         offset not a multiple of 4 or one whose buffer's words would
+    ///         pass 2^32; `mvfx_errorLimit` past MVFX_GPU_SURFACE_MESHES for
+    ///         the surface this frame; `mvfx_errorState` when the device
+    ///         refuses a pass or an import (no frame open), or while it is
+    ///         destroyed (a call from its allocator).
+    /// @par Thread safety
+    /// Safe from any thread; the context and the device are used by one
+    /// thread at a time.
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult
+    mvfxGpuSim_AddSurfaceMesh(mvfxGpuSim* sim, const mvfxGpuSurfaceMeshDef* def);
+
 // The counts a ribbon pass writes, 32-bit words: the points and the
 // ribbons there are, as mvfxInstance_WriteRibbons counts them, and the
 // points and the ribbons written (for strips, mvfxGpuSim_ExpandRibbons,

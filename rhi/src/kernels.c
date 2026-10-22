@@ -21,6 +21,7 @@
 #include "../kernels/sort_container.h"
 #include "../kernels/splat_container.h"
 #include "../kernels/surface_gas_container.h"
+#include "../kernels/surface_mesh_container.h"
 #include "../kernels/water_container.h"
 #include "../kernels/water_read_container.h"
 #include "../kernels/water_sample_container.h"
@@ -63,6 +64,7 @@ static const Container s_containers[MVFX_CONTAINER_COUNT] = {
     {s_surfaceGasContainer, sizeof s_surfaceGasContainer},
     {s_waterSampleContainer, sizeof s_waterSampleContainer},
     {s_gasSampleContainer, sizeof s_gasSampleContainer},
+    {s_surfaceMeshContainer, sizeof s_surfaceMeshContainer},
 };
 
 // A kernel's container and entry.
@@ -188,6 +190,11 @@ static const Kernel s_kernels[MVFX_KERNEL_COUNT] = {
     {mvfx_containerSurfaceGas, "surfaceSmooth"},
     {mvfx_containerWaterSample, "waterSample"},
     {mvfx_containerGasSample, "gasSample"},
+    {mvfx_containerSurfaceMesh, "meshCount"},
+    {mvfx_containerSurfaceMesh, "meshOffsets"},
+    {mvfx_containerSurfaceMesh, "meshVertices"},
+    {mvfx_containerSurfaceMesh, "meshRefuse"},
+    {mvfx_containerSurfaceMesh, "meshIndices"},
 };
 
 struct mvfxGpu

@@ -1151,6 +1151,15 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   writes a binary32 sample a point into another, read back when the
   host's frame is done; at most `MVFX_GPU_GAS_SAMPLES` queries a gas a
   frame.
+- The GPU part meshes a planned instance's surface gas, as
+  `mvfxInstance_WriteSurfaceMesh` does on the CPU path:
+  `mvfxGpuSim_AddSurfaceMesh` writes the same vertices in the same order
+  and the same indices into a host's buffers (positions, optionally
+  normals, indices), the first primitives that fit, and optionally the
+  counts (`MVFX_GPU_SURFACE_MESH_COUNTS`: the vertices and indices there
+  are and those written); at most `MVFX_GPU_SURFACE_MESHES` a surface a
+  frame. `tools/gen_marching_cubes.py` also writes the tables' words the
+  GPU part uploads.
 
 ### Changed
 

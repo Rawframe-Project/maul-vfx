@@ -132,6 +132,27 @@ typedef struct GasSamples
     uint32_t count;
 } GasSamples;
 
+// The words of a surface mesh's numbers (surface_mesh.wgsl's Mesh), and
+// its passes: one writing them, then the kernel's five.
+#define MESH_WORDS  24u
+#define MESH_PASSES 6
+
+// A surface's mesh a frame: its numbers' buffer, the frame's ids of it and
+// of the buffers it writes (positions, normals, indices, counts: the
+// simulation's own words where the host gives none), its passes, its
+// numbers, its block passes' workgroups, and whether its write uploads
+// the marching tables too.
+typedef struct SurfaceMesh
+{
+    mrhiBufferId numbers;
+    mrhiResourceId resource;
+    mrhiResourceId out[4];
+    mrhiPassId passes[MESH_PASSES];
+    uint32_t words[MESH_WORDS];
+    uint32_t groups;
+    bool uploads;
+} SurfaceMesh;
+
 typedef struct SimGas
 {
     mvfxGasView view;
@@ -167,6 +188,14 @@ typedef struct SimGas
     // The frame's sample queries.
     GasSamples samples[MVFX_GPU_GAS_SAMPLES];
     int32_t sampleCount;
+    // A surface's meshing (sim_surface_mesh.c): its scratch (the slots,
+    // the blocks' sums), the marching tables and whether they are on the
+    // device, and the frame's meshes.
+    mrhiBufferId meshScratch;
+    mrhiBufferId marching;
+    bool marchingWritten;
+    SurfaceMesh meshes[MVFX_GPU_SURFACE_MESHES];
+    int32_t meshCount;
     // The emitters splatting into it (sim_splat.c), how many and the room
     // held for them, and the accesses of its write pass.
     SimSplat* splats;
@@ -204,6 +233,13 @@ bool mvfxImportSimGas(mvfxGpuSim* sim, SimGas* gas);
 bool mvfxCreateSimGasReads(mvfxGpuSim* sim, SimGas* gas);
 void mvfxDestroySimGasReads(mvfxGpuSim* sim, SimGas* gas);
 bool mvfxRecordSimGasReads(mvfxGpuSim* sim, SimGas* gas);
+
+// A surface's meshes (sim_surface_mesh.c): its buffers made with the gas
+// (false when the device refuses; nothing for a gas not a surface) and
+// destroyed; the frame's recorded, after its reads.
+bool mvfxCreateSimSurfaceMesh(mvfxGpuSim* sim, SimGas* gas);
+void mvfxDestroySimSurfaceMesh(mvfxGpuSim* sim, SimGas* gas);
+bool mvfxRecordSimSurfaceMeshes(mvfxGpuSim* sim, SimGas* gas);
 
 // The passes a gas's step takes at most, with splats splatting into it.
 int32_t mvfxSimGasPasses(const mvfxGasView* view, int32_t splats);
