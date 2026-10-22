@@ -1108,8 +1108,9 @@ the project uses [Semantic Versioning](https://semver.org/). Before
   part runs an emitter coupled to a surface: its particles' drag toward
   the surface's flow and their buoyancy, from the surface's fields as
   its last step left them, copied each step into the emitter's grids
-  (8 bytes a cell, and 4 a face of shallow water). One whose particles
-  push the surface, pour into it or write water events is refused
+  (8 bytes a cell, and 4 a face of shallow water), and the water events
+  of their crossings (`mvfx_eventWater`) in the CPU path's order. One
+  whose particles push the surface or pour into it is refused
   (`MVFX_FEATURE_WATER`).
 
 ### Changed

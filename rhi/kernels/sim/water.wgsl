@@ -89,31 +89,48 @@ fn waterVelocityOf(lo: vec2<u32>, t: vec2<f32>) -> vec3<f32> {
     return velocity;
 }
 
-// mvfxWaterDrag: the surface's drag on a particle at x (in the particles'
-// space) added to its acceleration a and drag, the coupling's drag times
-// its share under (its center from its radius above the surface, 0, to
-// its radius below, 1) toward the water's velocity; what it touches.
-fn waterDrag(x: vec3<f32>, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) -> Touch {
-    var touch = Touch(false, vec3<f32>(0.0), 0.0);
+// A place of the particles' space in the surface's frame.
+fn waterLocal(x: vec3<f32>) -> vec3<f32> {
     let q = params.waterRotation;
     let sigma = params.waterOrigin.w;
     let turned = rotate(vec4<f32>(-q.xyz, q.w), x - params.waterOrigin.xyz);
-    touch.at = select(turned / sigma, turned, sigma == 1.0);
-    var lo = vec2<u32>(0u);
-    var t = vec2<f32>(0.0);
-    if (!waterCorners(touch.at.x, touch.at.z, &lo, &t)) {
+    return select(turned / sigma, turned, sigma == 1.0);
+}
+
+// What a particle at x (in the particles' space) touches, and the four
+// cells about it (lo, t) when it is over the grid.
+fn waterTouchAt(x: vec3<f32>, lo: ptr<function, vec2<u32>>, t: ptr<function, vec2<f32>>) -> Touch {
+    var touch = Touch(false, waterLocal(x), 0.0);
+    if (!waterCorners(touch.at.x, touch.at.z, lo, t)) {
         return touch;
     }
     // Through locals: a member's pointer breaks the backends.
     var height = 0.0;
     var ground = 0.0;
-    waterHeightOf(lo, t, &height, &ground);
+    waterHeightOf(*lo, *t, &height, &ground);
     touch.height = height;
     // Waves have no ground.
-    if (isShallowWater() && !(touch.at.y > ground)) {
+    touch.over = !isShallowWater() || touch.at.y > ground;
+    return touch;
+}
+
+fn waterTouch(x: vec3<f32>) -> Touch {
+    var lo = vec2<u32>(0u);
+    var t = vec2<f32>(0.0);
+    return waterTouchAt(x, &lo, &t);
+}
+
+// mvfxWaterDrag: the surface's drag on a particle at x (in the particles'
+// space) added to its acceleration a and drag, the coupling's drag times
+// its share under (its center from its radius above the surface, 0, to
+// its radius below, 1) toward the water's velocity; what it touches.
+fn waterDrag(x: vec3<f32>, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>) -> Touch {
+    var lo = vec2<u32>(0u);
+    var t = vec2<f32>(0.0);
+    let touch = waterTouchAt(x, &lo, &t);
+    if (!touch.over) {
         return touch;
     }
-    touch.over = true;
     let r = params.waterUp.w;
     let share = min(max((touch.height - touch.at.y + r) / (2.0 * r), 0.0), 1.0);
     let pull = params.waterNumbers.y * share;
@@ -123,7 +140,7 @@ fn waterDrag(x: vec3<f32>, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>
     // In the surface's frame toward the water's velocity, then into the
     // particles' space.
     let toward = pull * waterVelocityOf(lo, t);
-    *a += rotate(q, toward * sigma);
+    *a += rotate(params.waterRotation, toward * params.waterOrigin.w);
     *drag += pull;
     return touch;
 }
@@ -156,4 +173,98 @@ fn waterLift(touch: Touch, v: vec3<f32>, carry: f32, push: f32, a: ptr<function,
         lift = k * (top - end);
     }
     *a += params.waterUp.xyz * lift * params.waterOrigin.w;
+}
+
+// A particle's crossing of the surface in a step (mvfxMeetWater): whether
+// it crossed, the share of its move it met the surface at, and the
+// meeting point in the particles' space and in the surface's frame (X
+// and Z).
+struct Crossing {
+    crossed: bool,
+    t: f32,
+    point: vec3<f32>,
+    at: vec2<f32>,
+}
+
+// mvfxMeetWater: a move from start (touching as touch says) to end, from
+// above the surface to below it, both over the grid, meets it where its
+// height over the surface, linear along the move, is 0, if the water
+// there is above its ground.
+fn waterMeet(touch: Touch, start: vec3<f32>, end: vec3<f32>) -> Crossing {
+    var out = Crossing(false, 0.0, vec3<f32>(0.0), vec2<f32>(0.0));
+    let above = touch.at.y - touch.height;
+    if (params.water.x == NONE || !touch.over || !(above >= 0.0)) {
+        return out;
+    }
+    let to = waterLocal(end);
+    var lo = vec2<u32>(0u);
+    var t = vec2<f32>(0.0);
+    if (!waterCorners(to.x, to.z, &lo, &t)) {
+        return out;
+    }
+    var height = 0.0;
+    var ground = 0.0;
+    waterHeightOf(lo, t, &height, &ground);
+    let below = to.y - height;
+    if (!(below < 0.0)) {
+        return out;
+    }
+    out.t = above / (above - below);
+    out.point = start + out.t * (end - start);
+    let at = touch.at + out.t * (to - touch.at);
+    out.at = at.xz;
+    // Within the grid, between two places on it.
+    _ = waterCorners(at.x, at.z, &lo, &t);
+    waterHeightOf(lo, t, &height, &ground);
+    out.crossed = !isShallowWater() || height > ground;
+    return out;
+}
+
+// The surface's height at cell (x, z), over the grid's center.
+fn waterSurfaceAt(x: u32, z: u32) -> f32 {
+    let u = waterField(0u, x, z);
+    return select(u, waterField(1u, x, z) + u, isShallowWater());
+}
+
+// mvfxWaterNormal at a point (X and Z) of the surface's frame on the
+// grid: the four cells' normals (their heights' central differences,
+// one-sided at the edges) weighed bilinearly, made unit, turned into the
+// particles' space.
+fn waterNormal(at: vec2<f32>) -> vec3<f32> {
+    var lo = vec2<u32>(0u);
+    var t = vec2<f32>(0.0);
+    _ = waterCorners(at.x, at.y, &lo, &t);
+    let n = params.water.yz;
+    let h = params.waterNumbers.w;
+    var sum = vec3<f32>(0.0);
+    for (var corner = 0u; corner < 4u; corner++) {
+        let x = lo.x + (corner & 1u);
+        let z = lo.y + (corner >> 1u);
+        let x0 = select(x, x - 1u, x > 0u);
+        let x1 = select(x, x + 1u, x + 1u < n.x);
+        let z0 = select(z, z - 1u, z > 0u);
+        let z1 = select(z, z + 1u, z + 1u < n.y);
+        let dx = (waterSurfaceAt(x1, z) - waterSurfaceAt(x0, z)) / (f32(x1 - x0) * h);
+        let dz = (waterSurfaceAt(x, z1) - waterSurfaceAt(x, z0)) / (f32(z1 - z0) * h);
+        let length = sqrt(dx * dx + 1.0 + dz * dz);
+        sum += waterShare(t, corner) * vec3<f32>(-dx / length, 1.0 / length, -dz / length);
+    }
+    let length = sqrt(sum.x * sum.x + sum.y * sum.y + sum.z * sum.z);
+    return rotate(params.waterRotation, sum / length);
+}
+
+// A live particle's crossing for its event: its share, point and place
+// on the surface, 6 words of the crossings' facts (when the emitter
+// writes water events).
+fn noteCrossing(i: u32, crossing: Crossing) {
+    if (!crossing.crossed || params.waterCross.z == NONE) {
+        return;
+    }
+    let at = params.waterCross.z + 6u * i;
+    events[at] = bitcast<u32>(crossing.t);
+    for (var k = 0u; k < 3u; k++) {
+        events[at + 1u + k] = bitcast<u32>(crossing.point[k]);
+    }
+    events[at + 4u] = bitcast<u32>(crossing.at.x);
+    events[at + 5u] = bitcast<u32>(crossing.at.y);
 }

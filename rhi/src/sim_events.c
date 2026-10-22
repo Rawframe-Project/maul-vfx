@@ -34,6 +34,10 @@ bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e)
                  (view->events & mvfx_eventMaskTear) != 0;
     emitter->tearFacts = tears ? (uint32_t)words : 0u;
     words += tears ? (uint64_t)MVFX_TEAR_FACTS * (uint64_t)emitter->capacity : 0u;
+    // A particle's crossing of a water surface, for its event, after them.
+    bool crossings = view->water.enabled && (view->events & mvfx_eventMaskWater) != 0;
+    emitter->crossingFacts = crossings ? (uint32_t)words : UINT32_MAX;
+    words += crossings ? (uint64_t)MVFX_CROSSING_FACTS * (uint64_t)emitter->capacity : 0u;
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = 4u * words;
     def.usage = mrhi_bufferStorage | mrhi_bufferCopySource |

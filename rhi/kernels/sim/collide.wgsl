@@ -618,13 +618,15 @@ fn meet(start: vec3<f32>, place: ptr<function, vec3<f32>>, velocity: ptr<functio
 // contact is a unit point's first of its substeps, its tick of the plan
 // in place of its share of the move and its velocity then kept; a unit
 // point's edge across or down tore (its facts after the spawn region,
-// units.wgsl's noteTear).
+// units.wgsl's noteTear); it crossed a water surface (its crossing's
+// facts after those, sim/water.wgsl's noteCrossing).
 const EVENT_FACTS: u32 = 12u;
 const EVENT_ENDED: u32 = 1u;
 const EVENT_CONTACT: u32 = 2u;
 const EVENT_SUBSTEP: u32 = 4u;
 const EVENT_TEAR_ACROSS: u32 = 8u;
 const EVENT_TEAR_DOWN: u32 = 16u;
+const EVENT_CROSSED: u32 = 32u;
 
 // Notes a live particle's facts of the step for its events, when the
 // emitter writes any: its flags, its first contact, the inverse life it

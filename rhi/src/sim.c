@@ -107,10 +107,9 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
             // Rigid particles are killed by their strikes' life
             // alone.
             ((view->features & MVFX_FEATURE_RIGID) != 0 && view->kills ? MVFX_FEATURE_RIGID : 0) |
-            // A surface's crossings (its pushes, pours and events) are not
-            // run yet.
-            (view->water.enabled && (view->water.push > 0.0f || view->water.pour ||
-                                     (view->events & mvfx_eventMaskWater) != 0)
+            // The surfaces do not take crossings yet: their pushes and
+            // pours.
+            (view->water.enabled && (view->water.push > 0.0f || view->water.pour)
                  ? MVFX_FEATURE_WATER
                  : 0),
     };

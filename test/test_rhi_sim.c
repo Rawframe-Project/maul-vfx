@@ -1273,8 +1273,8 @@ static void TestRefused(mvfxGpu* kernels)
           "a gas with an obstacle run");
     mvfxDestroyGpuSim(sim);
     // An emitter coupled to a surface: run while its particles only feel
-    // it; refused, named, when they push it, pour into it or write water
-    // events.
+    // it or write water events; refused, named, when they push it or pour
+    // into it.
     mvfxWaterDef waters[2] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};
     waters[1].model = mvfx_waterShallow;
     effectDef.gasCount = 0;
@@ -1300,10 +1300,11 @@ static void TestRefused(mvfxGpu* kernels)
         simDef.effect = effect;
         simDef.instance = planned;
         mvfxResult result = mvfxCreateGpuSim(&simDef, &sim, &refusal);
-        runs = runs && made &&
-               (c == 0 ? result == mvfx_success && refusal.features == 0
-                       : result == mvfx_errorState && sim == NULL && refusal.emitter == 0 &&
-                             refusal.features == MVFX_FEATURE_WATER);
+        runs =
+            runs && made &&
+            (c == 0 || c == 3 ? result == mvfx_success && refusal.features == 0
+                              : result == mvfx_errorState && sim == NULL && refusal.emitter == 0 &&
+                                    refusal.features == MVFX_FEATURE_WATER);
         mvfxDestroyGpuSim(sim);
     }
     CHECK(runs, "an emitter coupled to a surface run, and refused where it crosses it");

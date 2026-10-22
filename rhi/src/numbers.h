@@ -245,11 +245,15 @@ void mvfxRecordLivesOf(const mvfxEmitterView* view, mvfxLifeView lives[MVFX_RECO
 // An emitter's events buffer (sim.wgsl's events): EVENT_FACTS words a
 // particle of its capacity, four a block of its scan, then its events,
 // MVFX_EVENT_WORDS each; the events' first word, and the words in all
-// (before an emitter's spawn region and its units' tears' facts,
-// MVFX_TEAR_FACTS a point: 11 an edge across, then down).
+// (before an emitter's spawn region, its units' tears' facts,
+// MVFX_TEAR_FACTS a point: 11 an edge across, then down, and its
+// crossings' facts).
 #define MVFX_EVENT_FACTS 12u
 #define MVFX_EVENT_WORDS 28u
 #define MVFX_TEAR_FACTS  22u
+// A particle's crossing of a water surface for its event
+// (sim/water.wgsl's noteCrossing), after the tears' facts.
+#define MVFX_CROSSING_FACTS 6u
 uint32_t mvfxEventFirst(int32_t capacity);
 uint64_t mvfxEventBufferWords(int32_t capacity, int32_t eventCapacity);
 

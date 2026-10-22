@@ -60,7 +60,12 @@ fn moveLive(i: u32) {
     var p = moveByModules(start, start + v0 * f.y + a * f.z, age, seconds);
     var v = v0 * f.x + a * f.y;
     let fate = meet(start, &p, &v, birth, inverseLife, death);
-    noteFacts(i, select(0u, EVENT_CONTACT, fate.contacted), fate.first, inverseLife);
+    // A crossing of the water surface after the collisions, as the
+    // core's MoveParticle meets it.
+    let crossing = waterMeet(touch, start, p);
+    noteFacts(i, select(0u, EVENT_CONTACT, fate.contacted) | select(0u, EVENT_CROSSED, crossing.crossed),
+              fate.first, inverseLife);
+    noteCrossing(i, crossing);
     var placed = p;
     if (params.liquid.w != NONE) {
         // A liquid gas's particle (the core's mvfxMoveGridLiquid): moved
@@ -858,7 +863,8 @@ fn bornSize(j: u32) -> vec3<f32> {
 // the births as update's over the particles.
 @compute @workgroup_size(64, 1, 1)
 fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (params.forceHead.y == 0u && params.collisionHead.z == 0u && params.fateHead.x == 0u) {
+    if (params.forceHead.y == 0u && params.collisionHead.z == 0u && params.fateHead.x == 0u &&
+        params.water.x == NONE) {
         return;
     }
     for (var j = id.x; j < birthCount(); j += params.modes.z * 64u) {
@@ -877,16 +883,21 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
             // Kept by no scatter: its places for the ribbons pass.
             storeBirthPlaces(j, born, p);
         }
-        // Its contacts make an event (BIRTH_CONTACT), for the events'
-        // count; a rigid body's contacts dropped past the most above, which
-        // offsets sums (MVFX_GPU_RIGID_CAPPED).
+        // Its contacts make an event (BIRTH_CONTACT), and its crossing
+        // of the water surface (BIRTH_CROSSED), for the events' count; a
+        // rigid body's contacts dropped past the most above, which offsets
+        // sums (MVFX_GPU_RIGID_CAPPED).
+        let crossed = waterMeet(waterTouch(born), born, p).crossed;
         accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted) |
+                      select(0u, BIRTH_CROSSED, crossed) |
                       (min(fate.capped, 0xFFFFu) << 8u) | (min(fate.searches, 0xFFu) << 24u);
     }
 }
 
-// A birth's mark beside its room's: its contacts make an event.
+// A birth's marks beside its room's: its contacts make an event; it
+// crossed the water surface.
 const BIRTH_CONTACT: u32 = 4u;
+const BIRTH_CROSSED: u32 = 8u;
 
 // The box around a box and a place, by comparisons that pass a NaN over.
 fn lowerOf(low: vec3<f32>, p: vec3<f32>) -> vec3<f32> {

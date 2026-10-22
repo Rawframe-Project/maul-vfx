@@ -1157,7 +1157,8 @@ static bool Near(float gpu, float cpu)
     return fabsf(gpu - cpu) <= s_tolerance * (1.0f + fabsf(cpu));
 }
 
-// How far apart a collision's ticks may be on the two paths: a thousandth
+// How far apart a collision's or a crossing of a water surface's ticks
+// may be on the two paths: a thousandth
 // of the step's ticks (at least one: its share of the move is a float of
 // the GPU's, and a short move's share is the least sure); for an emitter
 // of units, a substep's ticks, as a unit point's place parts from the CPU
@@ -1175,7 +1176,8 @@ static bool SameEvent(const uint32_t* w, const mvfxEvent* cpu, const double anch
     int64_t apart = (int64_t)tick - cpu->tick;
     bool same =
         (w[0] & 0xFFu) == cpu->kind && ((w[0] >> 8u) != 0) == cpu->killed && w[1] == cpu->serial &&
-        (apart == 0 || (cpu->kind == mvfx_eventCollision && llabs(apart) <= s_contactSlack));
+        (apart == 0 || ((cpu->kind == mvfx_eventCollision || cpu->kind == mvfx_eventWater) &&
+                        llabs(apart) <= s_contactSlack));
     float values[20];
     memcpy(values, w + 4, sizeof values);
     for (int32_t k = 0; k < 3; ++k)

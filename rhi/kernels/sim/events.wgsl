@@ -13,6 +13,7 @@ const EVENT_BIRTH: u32 = 0u;
 const EVENT_DEATH: u32 = 1u;
 const EVENT_COLLISION: u32 = 2u;
 const EVENT_TEAR: u32 = 3u;
+const EVENT_WATER: u32 = 4u;
 // An event's words: kind | killed << 8, serial, tick (two words), place
 // (an offset from the plan's anchor after, in the world), velocity,
 // normal, colour, size; then the particle's birth tick (two words),
@@ -51,6 +52,7 @@ fn eventCounts(e: u32, live: u32) -> vec4<u32> {
             return g;
         }
         g.y = select(0u, 1u, writes(EVENT_COLLISION) && (flags & EVENT_CONTACT) != 0u) +
+              select(0u, 1u, writes(EVENT_WATER) && (flags & EVENT_CROSSED) != 0u) +
               select(0u, countOneBits(flags & (EVENT_TEAR_ACROSS | EVENT_TEAR_DOWN)),
                      writes(EVENT_TEAR));
         g.w = select(0u, 1u, writes(EVENT_DEATH) && (source[params.words.alive * c + e] & 1u) == 0u);
@@ -62,7 +64,8 @@ fn eventCounts(e: u32, live: u32) -> vec4<u32> {
     }
     let mark = accepted[j];
     g.z = select(0u, 1u, writes(EVENT_BIRTH)) +
-          select(0u, 1u, writes(EVENT_COLLISION) && (mark & BIRTH_CONTACT) != 0u);
+          select(0u, 1u, writes(EVENT_COLLISION) && (mark & BIRTH_CONTACT) != 0u) +
+          select(0u, 1u, writes(EVENT_WATER) && (mark & BIRTH_CROSSED) != 0u);
     g.w = select(0u, 1u, writes(EVENT_DEATH) && (mark & 3u) == 2u);
     return g;
 }
@@ -293,6 +296,21 @@ fn writeLiveEvents(i: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
         writeEvent((*at).y, e);
         (*at).y += 1u;
     }
+    if (g.y > 0u && (flags & EVENT_CROSSED) != 0u && writes(EVENT_WATER)) {
+        // Its crossing of the water surface (noteCrossing), after its
+        // contact as the core's MoveParticle meets them.
+        let facts = params.waterCross.z + 6u * i;
+        let t = bitcast<f32>(events[facts]);
+        var point = vec3<f32>(0.0);
+        for (var k = 0u; k < 3u; k++) {
+            point[k] = bitcast<f32>(events[facts + 1u + k]);
+        }
+        let on = vec2<f32>(bitcast<f32>(events[facts + 4u]), bitcast<f32>(events[facts + 5u]));
+        var e = liveEvent(i, EVENT_WATER, contactTick(0u, params.counts.z, t), point, velocity);
+        e.normal = waterNormal(on);
+        writeEvent((*at).y, e);
+        (*at).y += 1u;
+    }
     for (var edge = 0u; writes(EVENT_TEAR) && edge < 2u; edge++) {
         if ((flags & (EVENT_TEAR_ACROSS << edge)) == 0u) {
             continue;
@@ -352,6 +370,20 @@ fn writeBirthEvents(j: u32, g: vec4<u32>, at: ptr<function, vec4<u32>>) {
         e.placeTick = e.tick;
         e.place = fate.first.point;
         e.normal = fate.first.normal;
+        writeEvent((*at).z, e);
+        (*at).z += 1u;
+    }
+    if (writes(EVENT_WATER) && (accepted[j] & BIRTH_CROSSED) != 0u) {
+        // Its crossing of the water surface, found again from its birth
+        // place and where its move left it.
+        let crossing = waterMeet(waterTouch(born), born, place);
+        e.kind = EVENT_WATER;
+        e.tick = contactTick(b0.z, params.counts.z - b0.z, crossing.t);
+        e.placeTick = e.tick;
+        e.place = crossing.point;
+        e.velocity = velocity;
+        e.normal = waterNormal(crossing.at);
+        e.inverseLife = fate.inverseLife;
         writeEvent((*at).z, e);
         (*at).z += 1u;
     }

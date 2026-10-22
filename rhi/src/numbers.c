@@ -982,10 +982,9 @@ void mvfxStepNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, i
     Modules(&plan->modules, at + 100);
     Beam(view, plan, at + 116);
     KillRules(plan, words + MVFX_KILLS_FIRST);
-    // The events the GPU writes (births, deaths, collisions, tears), how
-    // many, and where in the events buffer.
-    words[MVFX_KILLS_FIRST + 1] = view->events & (mvfx_eventMaskBirth | mvfx_eventMaskDeath |
-                                                  mvfx_eventMaskCollision | mvfx_eventMaskTear);
+    // The events the GPU writes (every kind the emitter writes), how many,
+    // and where in the events buffer.
+    words[MVFX_KILLS_FIRST + 1] = view->events;
     words[MVFX_KILLS_FIRST + 2] = (uint32_t)view->eventCapacity;
     words[MVFX_KILLS_FIRST + 3] = mvfxEventFirst(plan->capacity);
     Sources(view, tables, words + MVFX_SOURCES_FIRST);

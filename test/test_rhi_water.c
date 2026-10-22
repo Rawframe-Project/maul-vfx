@@ -198,7 +198,7 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
 }
 
 // Sprites coupled to surface 0, living longer: dragged toward its flow
-// and buoyed (their crossings, which push it, not yet run on the GPU).
+// and buoyed (their crossings' pushes not yet run on the GPU).
 static mvfxEmitterDef Floating(void)
 {
     mvfxEmitterDef emitter = Sprite();
@@ -208,10 +208,10 @@ static mvfxEmitterDef Floating(void)
     return emitter;
 }
 
-// Runs floating sprites over a surface, compared after every step.
-static void Floats(Gpu* gpu, mvfxGpu* kernels, const mvfxWaterDef* water, Run run, const char* what)
+// Runs an emitter over a surface, compared after every step.
+static void Floats(Gpu* gpu, mvfxGpu* kernels, mvfxEmitterDef emitter, const mvfxWaterDef* water,
+                   Run run, const char* what)
 {
-    mvfxEmitterDef emitter = Floating();
     run.emitters = &emitter;
     run.emitterCount = 1;
     run.waters = water;
@@ -219,23 +219,31 @@ static void Floats(Gpu* gpu, mvfxGpu* kernels, const mvfxWaterDef* water, Run ru
     Compare(gpu, kernels, &run, what);
 }
 
+// A floor a little under the surfaces' rest.
+static const mvfxCollider s_floor = {.kind = mvfx_colliderPlane,
+                                     .center = {0, 0.15f, 0},
+                                     .normal = {0, 1, 0},
+                                     .rotation = {0, 0, 0, 1}};
+
 static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
 {
     // Over waves the host pushes: their heights and rates.
     mvfxWaterDef water = Pond(48, 40, 0.1f, 1.5f, 15);
-    Floats(gpu, kernels, &water, (Run){0}, "sprites floating on a pond");
-    Floats(gpu, kernels, &water, (Run){.moving = true}, "sprites floating on a moving pond");
+    Floats(gpu, kernels, Floating(), &water, (Run){0}, "sprites floating on a pond");
+    Floats(gpu, kernels, Floating(), &water, (Run){.moving = true},
+           "sprites floating on a moving pond");
     water.space = mvfx_spaceWorld;
-    Floats(gpu, kernels, &water, (Run){.moving = true},
+    Floats(gpu, kernels, Floating(), &water, (Run){.moving = true},
            "sprites floating where a moving instance's pond began");
     water.space = mvfx_spaceLocal;
-    Floats(gpu, kernels, &water, (Run){.clearing = true}, "sprites floating on a pond cleared");
-    Floats(gpu, kernels, &water, (Run){.dropping = true},
+    Floats(gpu, kernels, Floating(), &water, (Run){.clearing = true},
+           "sprites floating on a pond cleared");
+    Floats(gpu, kernels, Floating(), &water, (Run){.dropping = true},
            "sprites floating on a pond, frames dropped");
     // Over shallow water: its depths, ground and flow; over springs on a
     // terrain, where the ground rises out of the water.
     water = Basin(32, 28, 0.1f, 0.2f);
-    Floats(gpu, kernels, &water, (Run){0}, "sprites floating in a basin");
+    Floats(gpu, kernels, Floating(), &water, (Run){0}, "sprites floating in a basin");
     const mvfxGridDef ground = Ground();
     water = Basin(48, 40, 0.06f, 0.05f);
     water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
@@ -244,7 +252,33 @@ static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
     water.sources = s_springs;
     water.sourceCount = 2;
     Run run = {.colliderGrids = &ground, .colliderGridCount = 1, .tolerance = 1e-3f};
-    Floats(gpu, kernels, &water, run, "sprites floating over springs on a terrain");
+    Floats(gpu, kernels, Floating(), &water, run, "sprites floating over springs on a terrain");
+    // Their crossings as water events beside their births, deaths and a
+    // floor's collisions under the surface: a live particle's after its
+    // contact, a birth's after its own; on waves, shallow water and where
+    // a moving instance's pond began.
+    mvfxEmitterDef crossing = Floating();
+    crossing.events =
+        mvfx_eventMaskWater | mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
+    crossing.eventCapacity = 1024;
+    crossing.colliders = &s_floor;
+    crossing.colliderCount = 1;
+    crossing.collision = (mvfxCollision){.enabled = true, .restitution = 0.3f};
+    water = Pond(48, 40, 0.1f, 1.5f, 15);
+    Floats(gpu, kernels, crossing, &water, (Run){.colliding = true}, "sprites crossing a pond");
+    water.space = mvfx_spaceWorld;
+    Floats(gpu, kernels, crossing, &water, (Run){.moving = true, .colliding = true},
+           "sprites crossing where a moving instance's pond began");
+    water = Basin(32, 28, 0.1f, 0.2f);
+    Floats(gpu, kernels, crossing, &water, (Run){.colliding = true}, "sprites crossing a basin");
+    // Born just over the surface and thrown down: births crossing within
+    // their first step.
+    crossing.shape.radius = 0.05f;
+    crossing.shape.offset[1] = 0.33f;
+    crossing.velocity.direction[1] = -1.0f;
+    water = Pond(48, 40, 0.1f, 1.5f, 15);
+    Floats(gpu, kernels, crossing, &water, (Run){.colliding = true},
+           "sprites thrown down across a pond");
 }
 
 static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,

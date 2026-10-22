@@ -72,9 +72,8 @@ extern "C"
     // move the births. Rigid particles (MVFX_FEATURE_RIGID) are refused
     // beside anything that kills within a step. An emitter coupled to a
     // water surface (MVFX_FEATURE_WATER) is refused when its particles
-    // cross the surface to some end: pushing it, pouring into it or
-    // writing water events. Bodies that meet each
-    // other (bodyContacts above 0) run an emitter's step in one workgroup
+    // push the surface or pour into it as they cross it. Bodies that meet
+    // each other (bodyContacts above 0) run an emitter's step in one workgroup
     // (its pairs found and solved colour by colour, its sleepers woken by
     // touch and its islands settled, as the CPU path's), so they use one
     // compute unit of the device however many there are. gas names the
@@ -236,7 +235,8 @@ extern "C"
     /// a block for its lights' counts), one that writes events 48 bytes a particle of
     /// its capacity, 16 a block of its scan (a block for 1,024 of three
     /// times its capacity), 112 an event of its capacity of them and 1,952
-    /// for their numbers; one that spawns from another's events the same
+    /// for their numbers (24 bytes more a particle of its capacity for
+    /// water events, its crossings' facts); one that spawns from another's events the same
     /// 48 and 16 where it writes none, 140 an event of its source's event
     /// capacity and 64 more for the region's counts, 96 more a particle of
     /// its capacity for its plan's births staged, and 64 a birth from

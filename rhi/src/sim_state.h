@@ -366,6 +366,9 @@ typedef struct Emitter
     int32_t water;
     uint32_t waterRoom;
     uint32_t waterSources[WATER_COPIES];
+    // The first word of its crossings' facts in its events buffer
+    // (UINT32_MAX for none: it writes no water events).
+    uint32_t crossingFacts;
 } Emitter;
 
 struct mvfxGpuSim

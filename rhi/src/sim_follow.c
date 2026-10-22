@@ -36,6 +36,8 @@ void mvfxLaySimFollow(mvfxGpuSim* sim, int32_t e)
     const mvfxWaterCoupling* coupling = &sim->views[e].water;
     int32_t water = coupling->enabled ? coupling->water : -1;
     emitter->water = water;
+    // None until its events buffer has them (mvfxCreateSimEvents).
+    emitter->crossingFacts = UINT32_MAX;
     emitter->waterRoom = water >= 0
                              ? mvfxAddRoom(&emitter->gridLayout, WaterFloats(&sim->waters[water]))
                              : UINT32_MAX;
@@ -75,6 +77,7 @@ void mvfxSimFollowWater(const mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan*
     const Emitter* emitter = &sim->emitters[e];
     memset(words, 0, MVFX_WATER_COUPLING * sizeof(uint32_t));
     words[0] = emitter->waterRoom;
+    words[22] = emitter->crossingFacts;
     if (emitter->water < 0)
     {
         return;

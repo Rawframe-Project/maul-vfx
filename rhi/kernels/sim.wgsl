@@ -283,8 +283,9 @@ struct Step {
     // the particles' space and its scale; its turn; its Y in the
     // particles' space and the particles' radius in its lengths;
     // gravity's strength in its lengths, the coupling's drag and
-    // buoyancy, the cell's size; the push in its lengths (bits) and
-    // whether the particles pour, unused.
+    // buoyancy, the cell's size; the push in its lengths (bits), whether
+    // the particles pour, the first word of the crossings' facts in the
+    // events buffer (NONE for none: no water events), unused.
     water: vec4<u32>,
     waterOrigin: vec4<f32>,
     waterRotation: vec4<f32>,
