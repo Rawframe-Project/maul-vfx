@@ -27,9 +27,11 @@
 
 // Ten seconds, the most a frame is waited for once the kernels are ready.
 // The first frame compiles every kernel it dispatches, which on a software
-// driver with an empty shader cache takes minutes, so it is waited for
-// without a limit.
-#define WAIT_NS UINT64_C(10000000000)
+// driver with an empty shader cache takes minutes (lavapipe on a 4-core CI
+// runner: three, or nine with LLVM's optimizations), so it is waited for
+// fifteen.
+#define WAIT_NS       UINT64_C(10000000000)
+#define FIRST_WAIT_NS UINT64_C(900000000000)
 
 typedef struct Gpu
 {
@@ -117,11 +119,18 @@ static void Close(Gpu* gpu)
 static bool Finish(Gpu* gpu)
 {
     mrhiRequestId submitted = {0};
-    bool done = mrhiSubmitFrame(gpu->device, &submitted) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, submitted, gpu->waitNs) == mrhi_success;
+    mrhiResult waited = mrhiSubmitFrame(gpu->device, &submitted);
+    waited = waited == mrhi_success ? mrhiWaitFrame(gpu->device, submitted, gpu->waitNs) : waited;
+    if (waited == mrhi_timeout)
+    {
+        printf(gpu->waitNs == FIRST_WAIT_NS
+                   ? "the first frame did not finish in 15 minutes: its kernels compile then, "
+                     "and a driver without a warm shader cache may take minutes\n"
+                   : "a frame did not finish in 10 seconds\n");
+    }
     gpu->waitNs = WAIT_NS;
     Drain(gpu);
-    return done;
+    return waited == mrhi_success;
 }
 
 // A frame of the simulation's passes.
@@ -271,7 +280,7 @@ static bool Play(Gpu* gpu)
 
 int main(void)
 {
-    Gpu gpu = {.waitNs = UINT64_MAX};
+    Gpu gpu = {.waitNs = FIRST_WAIT_NS};
     if (!Open(&gpu))
     {
         Close(&gpu);

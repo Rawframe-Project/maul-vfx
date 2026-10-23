@@ -137,7 +137,7 @@
       "name": "linux-rhi",
       "inherits": "base",
       "configurePreset": "linux-rhi",
-      "description": "The GPU part's suites that run on Maul RHI's test driver, and the GPU sample on lavapipe as a smoke test, its kernels compiled without LLVM's optimizations (GALLIVM_PERF=nopt), which halves a cold first frame; the suites labeled nightly run on lavapipe at night.",
+      "description": "The GPU part's suites that run on Maul RHI's test driver, and the GPU sample on lavapipe as a smoke test, its kernels compiled without LLVM's optimizations (GALLIVM_PERF=nopt), which cuts a cold first frame to a third; the suites labeled nightly run on lavapipe at night.",
       "filter": {
         "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" },
         "exclude": { "label": "^nightly$" }
