@@ -2,7 +2,7 @@ expand: appearance context direction elementary instance_api layout_api output
 beam: direction elementary instance noise
 tube: elementary output
 ribbon: appearance context direction gradient instance instance_api layout_api output sort spawn tube
-sort:
+sort: invariant
 bounds: appearance direction instance space spawn
 view: bounds context gas_api instance instance_api water_api
 layout: allocator elementary half
@@ -11,14 +11,15 @@ output: appearance context direction instance instance_api layout layout_api sor
 # The internal module graph: each module and the modules it may use, so
 # dependencies stay one-way. tools/check_modules.py enforces it.
 base:
-allocator:
+allocator: invariant
+invariant:
 float_mode:
 half:
 hash:
 random:
 noise: random
 tasks: float_mode
-slots: allocator
+slots: allocator invariant
 direction: elementary random
 mesh: allocator direction random
 shape: direction elementary mesh random
@@ -49,7 +50,7 @@ host_module: effect instance random
 hull: allocator
 appearance: effect gradient instance life over_life
 instance: allocator collide depth effect force gas gas_pressure gas_splat kill rigid_shape
-death_heap:
+death_heap: invariant
 spawn: direction instance random
 space: force instance
 event: appearance context direction instance instance_api space
@@ -64,11 +65,11 @@ attach: direction force instance space
 aero: force instance
 self: attach instance neighbor
 unit: aero attach elementary event instance integrate self
-emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate liquid neighbor plexus rigid scene_query spawn steer unit
+emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate invariant liquid neighbor plexus rigid scene_query spawn steer unit
 emitter_view: effect effect_api hull
 gas_view: effect effect_api gas
 planner: attach birth emitter_step instance integrate spawn
-context: allocator effect grid instance layout mesh slots tasks
+context: allocator effect grid instance invariant layout mesh slots tasks
 convex: direction hull
 effect_api: allocator context effect effect_parts float_mode grid grid_api hull mesh mesh_api slots
 mesh_api: allocator context hull mesh slots

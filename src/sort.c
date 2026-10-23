@@ -3,6 +3,8 @@
 
 #include "sort.h"
 
+#include "invariant.h"
+
 #include <string.h>
 
 // One pass on the byte at shift, from source to target, stable, by its
@@ -17,6 +19,7 @@ static void Pass(const uint32_t* keys, const uint32_t* indices, uint32_t* target
         starts[b] = sum;
         sum += counts[b];
     }
+    MVFX_ASSERT(sum == count);
     for (int32_t i = 0; i < count; ++i)
     {
         int32_t at = starts[(keys[i] >> shift) & 0xFFu]++;

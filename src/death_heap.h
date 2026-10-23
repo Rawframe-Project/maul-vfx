@@ -9,17 +9,18 @@
 
 #include <stdint.h>
 
-// The heap: its ticks and how many it holds.
+// The heap: its ticks, how many it holds and how many it may.
 typedef struct mvfxDeathHeap
 {
     int64_t* ticks;
     int32_t count;
+    int32_t capacity;
 } mvfxDeathHeap;
 
 // Orders the heap's count ticks into a heap.
 void mvfxBuildDeathHeap(mvfxDeathHeap* heap);
 
-// Adds a tick; the caller's memory holds room for it.
+// Adds a tick; the caller refuses a birth that finds the heap full.
 void mvfxPushDeath(mvfxDeathHeap* heap, int64_t tick);
 
 // Removes every tick at or before tick and returns how many it removed.

@@ -5,6 +5,8 @@
 
 #include "death_heap.h"
 
+#include "invariant.h"
+
 static void SiftDown(mvfxDeathHeap* heap, int32_t at)
 {
     int64_t* ticks = heap->ticks;
@@ -41,6 +43,7 @@ void mvfxBuildDeathHeap(mvfxDeathHeap* heap)
 
 void mvfxPushDeath(mvfxDeathHeap* heap, int64_t tick)
 {
+    MVFX_ASSERT(heap->count < heap->capacity);
     int64_t* ticks = heap->ticks;
     int32_t at = heap->count;
     heap->count += 1;

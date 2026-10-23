@@ -6,6 +6,8 @@
 
 #include "allocator.h"
 
+#include "invariant.h"
+
 #include <stdckdint.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -84,6 +86,7 @@ void mvfxRelease(const mvfxAllocator* allocator, void* memory, size_t size, size
 
 size_t mvfxLayoutAdd(mvfxLayout* layout, size_t count, size_t itemSize, size_t alignment)
 {
+    MVFX_ASSERT(alignment != 0 && (alignment & (alignment - 1)) == 0);
     size_t padded = 0;
     size_t bytes = 0;
     size_t end = 0;

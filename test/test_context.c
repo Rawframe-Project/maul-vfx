@@ -119,15 +119,19 @@ static void TestAllocatorFailureIsCapacity(void)
     CHECK(context == NULL, "out-parameter cleared");
 }
 
-static void TestOtherVersionIsRefusedFirst(void)
+static void TestOtherVersionIsRefusedAfterTheCookie(void)
 {
     mvfxContextDef def = mvfxDefaultContextDef();
     def.version = MVFX_ABI_VERSION + 1;
     def.cookie = 0;
     mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorVersion, "version before cookie");
-    def.version = MVFX_ABI_VERSION ^ 0x10000u;
-    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorVersion, "another major");
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorInvalid, "cookie before version");
+    def.cookie = MVFX_CONTEXT_DEF_COOKIE;
+    def.limits.effects = 0;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorVersion, "version before the rest");
+    def.version = 0;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_errorVersion, "a zeroed version");
+    CHECK((MVFX_ABI_VERSION & 0x80000000u) != 0, "the top bit is set");
 }
 
 static void TestInvalidDefsAreRefused(void)
@@ -173,7 +177,7 @@ int main(void)
     TestHostAllocatorHoldsEverything();
     TestAllocatorFailureIsCapacity();
     TestEachAllocationFailing();
-    TestOtherVersionIsRefusedFirst();
+    TestOtherVersionIsRefusedAfterTheCookie();
     TestInvalidDefsAreRefused();
     TestTaskHooksAreAccepted();
     return s_failures == 0 ? 0 : 1;

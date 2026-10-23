@@ -12,6 +12,10 @@ A hash that differs on one platform only is a determinism bug: a call outside `t
 
 The `linux-clang-20-asan` preset builds with AddressSanitizer and UBSan, and `linux-clang-20-tsan` with ThreadSanitizer; `test_twins` and `test_tasks` are the suites ThreadSanitizer exists for. A sanitizer report names the frame; rerun the one suite with `ctest --preset <preset> -L <suite> --output-on-failure`.
 
+## A trap
+
+A test that stops with `SIGILL` (x86-64) or `SIGTRAP` (AArch64) in a build without `NDEBUG` hit an `MVFX_ASSERT` (`src/invariant.h`): an internal invariant the library broke, never a caller's mistake, which is refused with a status instead. Run the suite under a debugger; the trap's frame is the broken check. Release builds compile the checks away.
+
 ## The GPU part
 
 - **A parity failure.** The lavapipe suites step each scene on both paths and compare every particle after every step through `test/rhi_harness.c`. A failure prints the step, the emitter and the largest relative differences in place, velocity and bounds; run the suite alone to see it.
