@@ -6,7 +6,7 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
-## [0.0.1](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.0.1)
+## [0.0.1](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.0.1) (2026-10-23)
 
 The first release: visual effects simulated on the CPU with the same
 bits on every platform and thread count, handed to any renderer as
