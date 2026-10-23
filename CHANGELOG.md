@@ -6,6 +6,19 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.0.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.0.1...v0.0.1) (2026-10-23)
+
+
+### Fixed
+
+* **api:** stamp the root def with the family's ABI version ([#7](https://github.com/Rawframe-Project/maul-vfx/issues/7)) ([4d8d691](https://github.com/Rawframe-Project/maul-vfx/commit/4d8d69121a3cdb7d22dcdacb3fdd7d1f7dcca9e2))
+* **ci:** report rhi test failures and wait out first-frame compiles ([#3](https://github.com/Rawframe-Project/maul-vfx/issues/3)) ([892ce0b](https://github.com/Rawframe-Project/maul-vfx/commit/892ce0bd6cc97091062c666cfd0b7fc27ea2b1d0))
+
+
+### CI
+
+* move to the organization's shared workflows and CI image ([#8](https://github.com/Rawframe-Project/maul-vfx/issues/8)) ([c9be0fa](https://github.com/Rawframe-Project/maul-vfx/commit/c9be0fa42e9fa2648cb89894afae2b19549a48db)), closes [#5](https://github.com/Rawframe-Project/maul-vfx/issues/5)
+
 ## [0.0.1](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.0.1)
 
 The first release: visual effects simulated on the CPU with the same
