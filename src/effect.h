@@ -3,9 +3,8 @@
 //
 // An effect's compiled form: its emitters with their checked values and
 // each emitter's attribute plan, the arrays a particle's data lives in
-// (record mvfx-0001: one array per attribute, each 64-byte aligned and
-// padded to a multiple of 16 particles, only the attributes the emitter
-// uses).
+// (one array per attribute, each 64-byte aligned and padded to a
+// multiple of 16 particles, only the attributes the emitter uses).
 
 #ifndef MAUL_VFX_SRC_EFFECT_H
 #define MAUL_VFX_SRC_EFFECT_H

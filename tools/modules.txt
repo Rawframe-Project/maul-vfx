@@ -8,8 +8,8 @@ view: bounds context gas_api instance instance_api water_api
 layout: allocator elementary half
 layout_api: context layout slots
 output: appearance context direction instance instance_api layout layout_api sort space
-# The internal module graph (docs/conventions.md, section 6): each module
-# and the modules it may use. tools/check_modules.py enforces it.
+# The internal module graph: each module and the modules it may use, so
+# dependencies stay one-way. tools/check_modules.py enforces it.
 base:
 allocator:
 float_mode:

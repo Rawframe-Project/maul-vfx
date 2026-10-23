@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The guide's GPU part blocks (docs/guide.md), each in a function as it
-// stands there, run on a device on the first adapter (lavapipe on CI);
-// skipped (77) without one unless MVFX_RHI_REQUIRED is set.
+// The GPU part's blocks of docs/user/, each in a function as it stands
+// there, run on a device on the first adapter (lavapipe on CI); skipped
+// (77) without one unless MVFX_RHI_REQUIRED is set.
 
 #include "test_harness.h"
 

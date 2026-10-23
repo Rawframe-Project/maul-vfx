@@ -10,6 +10,7 @@ foreach(sample fountain trails fireworks flock cloth smoke liquid pond effect_fi
     # sample that stops working fails the suite.
     if(MAUL_VFX_BUILD_TESTS)
         add_test(NAME sample_${sample} COMMAND sample_${sample})
+        set_tests_properties(sample_${sample} PROPERTIES LABELS sample)
     endif()
 endforeach()
 
@@ -21,6 +22,7 @@ if(MAUL_VFX_RHI)
     maul_apply_flags(sample_gpu)
     if(MAUL_VFX_BUILD_TESTS)
         add_test(NAME sample_gpu COMMAND sample_gpu)
-        set_tests_properties(sample_gpu PROPERTIES SKIP_RETURN_CODE 77)
+        set_tests_properties(sample_gpu PROPERTIES SKIP_RETURN_CODE 77 FAIL_REGULAR_EXPRESSION
+                             "Validation Error|VUID-" LABELS "sample;integration")
     endif()
 endif()

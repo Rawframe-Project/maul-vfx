@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Parallel work through the host's task hooks (record mvfx-0001), or
-// serially when it gave none. Every range runs in the library's
-// floating-point mode, on whichever thread the host chose.
+// Parallel work through the host's task hooks, or serially when it gave
+// none. Every range runs in the library's floating-point mode, on
+// whichever thread the host chose.
 
 #ifndef MAUL_VFX_SRC_TASKS_H
 #define MAUL_VFX_SRC_TASKS_H

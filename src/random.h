@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Counter-based random numbers (record mvfx-0001): pcg4d, the four-in,
-// four-out hash of Jarzynski and Olano ("Hash Functions for GPU
-// Rendering", JCGT 9(3), 2020). A value depends only on its four
-// coordinates (a seed, an emitter and module salt, a particle's serial and
-// a counter), never on the order values are drawn in, and it is 32-bit
-// integer arithmetic alone, so a GPU computes the same bits.
+// Counter-based random numbers: pcg4d, the four-in, four-out hash of
+// Jarzynski and Olano ("Hash Functions for GPU Rendering", JCGT 9(3),
+// 2020). A value depends only on its four coordinates (a seed, an emitter
+// and module salt, a particle's serial and a counter), never on the order
+// values are drawn in, and it is 32-bit integer arithmetic alone, so a GPU
+// computes the same bits.
 
 #ifndef MAUL_VFX_SRC_RANDOM_H
 #define MAUL_VFX_SRC_RANDOM_H

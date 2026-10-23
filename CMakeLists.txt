@@ -152,7 +152,8 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/view.c)
 maul_configure_library(maul-vfx)
 # sqrt, floor, ceil and the other exactly rounded functions the library
-# takes from libm (mvfx-0001); the tests' oracles use more of it.
+# takes from libm (tools/libm-allowed.txt); the tests' oracles use more
+# of it.
 if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(maul-vfx PUBLIC m)
 endif()
@@ -266,7 +267,12 @@ if(MAUL_VFX_BUILD_TESTS)
         target_link_libraries(test_rhi_kernels PRIVATE maul-vfx-rhi)
         target_include_directories(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src
             ${PROJECT_SOURCE_DIR}/test/kernels)
-        set_tests_properties(rhi_kernels PROPERTIES SKIP_RETURN_CODE 77)
+        # The suites that drive a device carry integration: they run on
+        # lavapipe at night, and any message of the Vulkan validation layer
+        # fails them.
+        set_tests_properties(rhi_kernels PROPERTIES SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
+        set_property(TEST rhi_kernels APPEND PROPERTY LABELS integration)
         # Planned instances on the device beside the CPU path, through the
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
@@ -281,7 +287,9 @@ if(MAUL_VFX_BUILD_TESTS)
             # Each compares a step at a time on lavapipe: the longest take
             # over 200 seconds on CI's runners, which vary by half again,
             # so they get 900 in place of a run's default.
-            set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
+            set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
+                                 FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
+            set_property(TEST ${suite} APPEND PROPERTY LABELS integration)
         endforeach()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.
@@ -300,7 +308,9 @@ if(MAUL_VFX_BUILD_TESTS)
         # The guide's GPU part blocks on a device.
         maul_add_test(guide_rhi)
         target_link_libraries(test_guide_rhi PRIVATE maul-vfx-rhi)
-        set_tests_properties(guide_rhi PROPERTIES SKIP_RETURN_CODE 77)
+        set_tests_properties(guide_rhi PROPERTIES SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
+        set_property(TEST guide_rhi APPEND PROPERTY LABELS integration)
     endif()
     maul_add_header_tests()
     # The library keeps within WebAssembly's default 64 KiB stack: on the

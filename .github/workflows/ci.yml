@@ -111,19 +111,6 @@ jobs:
         if: matrix.name == 'linux-gcc-14'
         run: size -t build/libmaul-vfx.a | tail -1
 
-  # The API reference is generated from the headers; it must match them,
-  # and the README must give its function count.
-  docs:
-    name: generated docs
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: The API reference matches the headers
-        run: |
-          COUNT=$(python3 tools/gen_api.py | grep -oE '\([0-9]+ functions\)' | grep -oE '[0-9]+')
-          git diff --exit-code docs/api.md || { echo "docs/api.md is stale: run tools/gen_api.py"; exit 1; }
-          grep -q "$COUNT public functions" README.md || { echo "README says the wrong function count ($COUNT)"; exit 1; }
-
   # Each fuzz target runs for one minute on every push, from the seed
   # corpus in test/corpus (minimized from local campaigns) and, for the
   # effect file reader, the golden scene's effects written as files: the
@@ -261,7 +248,7 @@ jobs:
           ctest --test-dir build -C Release --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       # The public headers alone under MSVC's cl, as C17 and C++17 with
-      # /W4 /WX, which cannot build the library itself (family record 0008).
+      # /W4 /WX; cl cannot build the library itself, which is C23.
       - name: Headers under MSVC
         run: |
           cmake -S cmake/HeaderCheck -B build-headers

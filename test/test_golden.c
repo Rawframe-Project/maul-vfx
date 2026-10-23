@@ -2,14 +2,14 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The scene's state hashed after every step against values committed here
-// (record mvfx-0001: the same bits on every platform). CI runs it on every
-// platform of its matrix; one hash differing anywhere fails. A change meant
-// to change results updates the values and says so in the changelog. Run
-// it with --print to print the values this build computes. The scene runs
-// twice: its effects created from their defs, then through effect files,
-// each def written, read and written again to the same bytes, and created
-// from them, to the same values. With --seeds <dir> it writes those files
-// there, as the effect file fuzz target's first seeds.
+// (the same bits on every platform, docs/internals/determinism.md). CI runs
+// it on every platform of its matrix; one hash differing anywhere fails. A
+// change meant to change results updates the values and says so in the
+// changelog. Run it with --print to print the values this build computes.
+// The scene runs twice: its effects created from their defs, then through
+// effect files, each def written, read and written again to the same bytes,
+// and created from them, to the same values. With --seeds <dir> it writes
+// those files there, as the effect file fuzz target's first seeds.
 
 // Before every include: the C library's fopen without MSVC's warning.
 #define _CRT_SECURE_NO_WARNINGS

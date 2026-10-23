@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Host code calling back into a simulation of the GPU part (record
-// mvfx-0001), on Maul RHI's test driver: from its allocator, while
-// mvfxDestroyGpuSim releases the host's particles' memory, each call that
-// changes the simulation is refused with mvfx_errorState and changes
-// nothing, a second destruction does nothing, a reading call still
-// answers, and the destruction then gives back all the memory taken.
-// And its creation failing at each of its allocations in turn, for an
-// effect with a liquid gas (whose split steps keep lanes): refused, all
-// it took given back.
+// Host code calling back into a simulation of the GPU part, on Maul RHI's
+// test driver: from its allocator, while mvfxDestroyGpuSim releases the
+// host's particles' memory, each call that changes the simulation is
+// refused with mvfx_errorState and changes nothing, a second destruction
+// does nothing, a reading call still answers, and the destruction then
+// gives back all the memory taken. And its creation failing at each of
+// its allocations in turn, for an effect with a liquid gas (whose split
+// steps keep lanes): refused, all it took given back.
 
 #include "test_harness.h"
 

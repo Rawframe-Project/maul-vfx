@@ -16,10 +16,17 @@ extern "C"
 {
 #endif
 
-// The library version. CMake reads it from here.
+// The library version. CMake reads it from here, and release-please
+// moves it between the markers.
+// x-release-please-start-major
 #define MVFX_VERSION_MAJOR 0
+// x-release-please-end
+// x-release-please-start-minor
 #define MVFX_VERSION_MINOR 0
+// x-release-please-end
+// x-release-please-start-patch
 #define MVFX_VERSION_PATCH 1
+// x-release-please-end
 
 // The version a root def carries: the major and minor version of the
 // headers a program was built with. The ABI holds within a minor version.

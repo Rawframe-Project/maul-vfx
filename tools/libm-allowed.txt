@@ -1,7 +1,7 @@
-# The <math.h> functions src/ may call (conventions section 11,
-# record mvfx-0001): each exactly rounded, so its results are the same
-# under every C library; any other is refused by tools/check_source.py.
-# The library writes its own sine, cosine, exponential and power.
+# The <math.h> functions src/ may call (docs/internals/determinism.md):
+# each exactly rounded, so its results are the same under every C
+# library; any other is refused by tools/check_source.py. The library
+# writes its own sine, cosine, exponential and power.
 ceil
 ceilf
 copysignf

@@ -1,0 +1,185 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/out/${presetName}",
+      "cacheVariables": { "MAUL_VFX_WERROR": "ON" }
+    },
+    {
+      "name": "linux",
+      "hidden": true,
+      "inherits": "base",
+      "generator": "Ninja",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "gcc",
+      "hidden": true,
+      "cacheVariables": { "CMAKE_C_COMPILER": "gcc-14", "CMAKE_CXX_COMPILER": "g++-14" }
+    },
+    {
+      "name": "clang",
+      "hidden": true,
+      "cacheVariables": { "CMAKE_C_COMPILER": "clang-20", "CMAKE_CXX_COMPILER": "clang++-20" }
+    },
+    {
+      "name": "linux-gcc-14",
+      "displayName": "GCC 14, Release",
+      "inherits": ["linux", "gcc"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "linux-arm64-gcc-14",
+      "displayName": "GCC 14, Release, on arm64",
+      "inherits": "linux-gcc-14"
+    },
+    {
+      "name": "linux-clang-20",
+      "displayName": "Clang 20, Release",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "linux-clang-20-asan",
+      "displayName": "Clang 20, AddressSanitizer and UBSan, assertions on",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_VFX_SANITIZE": "ON" }
+    },
+    {
+      "name": "linux-clang-20-tsan",
+      "displayName": "Clang 20, ThreadSanitizer, assertions on",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_VFX_TSAN": "ON" }
+    },
+    {
+      "name": "linux-shared",
+      "displayName": "Clang 20, shared library",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MAUL_VFX_BUILD_SHARED": "ON" }
+    },
+    {
+      "name": "linux-rhi",
+      "displayName": "Clang 20, the GPU part under AddressSanitizer and UBSan, on Maul RHI's test driver",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MAUL_VFX_SANITIZE": "ON",
+        "MAUL_VFX_RHI": "ON"
+      }
+    },
+    {
+      "name": "linux-rhi-lavapipe",
+      "displayName": "Clang 20, Debug, the GPU part's suites on lavapipe under the Vulkan validation layer",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_VFX_RHI": "ON" }
+    },
+    {
+      "name": "linux-rhi-lavapipe-asan",
+      "displayName": "Clang 20, the GPU part's suites on lavapipe under AddressSanitizer and UBSan",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MAUL_VFX_SANITIZE": "ON",
+        "MAUL_VFX_RHI": "ON"
+      }
+    },
+    {
+      "name": "web-emscripten",
+      "displayName": "Emscripten, Release, the tests under Node",
+      "inherits": "linux",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "macos-clang",
+      "displayName": "Apple Clang, Release",
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "windows-clang-cl",
+      "displayName": "clang-cl, Release",
+      "inherits": "base",
+      "toolset": { "value": "ClangCL", "strategy": "set" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-gcc-14", "configurePreset": "linux-gcc-14" },
+    { "name": "linux-arm64-gcc-14", "configurePreset": "linux-arm64-gcc-14" },
+    { "name": "linux-clang-20", "configurePreset": "linux-clang-20" },
+    { "name": "linux-clang-20-asan", "configurePreset": "linux-clang-20-asan" },
+    { "name": "linux-clang-20-tsan", "configurePreset": "linux-clang-20-tsan" },
+    { "name": "linux-shared", "configurePreset": "linux-shared" },
+    { "name": "linux-rhi", "configurePreset": "linux-rhi" },
+    { "name": "linux-rhi-lavapipe", "configurePreset": "linux-rhi-lavapipe" },
+    { "name": "linux-rhi-lavapipe-asan", "configurePreset": "linux-rhi-lavapipe-asan" },
+    { "name": "web-emscripten", "configurePreset": "web-emscripten" },
+    { "name": "macos-clang", "configurePreset": "macos-clang" },
+    { "name": "windows-clang-cl", "configurePreset": "windows-clang-cl", "configuration": "Release" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "timeout": 300, "jobs": 4 }
+    },
+    { "name": "linux-gcc-14", "inherits": "base", "configurePreset": "linux-gcc-14" },
+    { "name": "linux-arm64-gcc-14", "inherits": "base", "configurePreset": "linux-arm64-gcc-14" },
+    { "name": "linux-clang-20", "inherits": "base", "configurePreset": "linux-clang-20" },
+    { "name": "linux-clang-20-asan", "inherits": "base", "configurePreset": "linux-clang-20-asan" },
+    { "name": "linux-clang-20-tsan", "inherits": "base", "configurePreset": "linux-clang-20-tsan" },
+    { "name": "linux-shared", "inherits": "base", "configurePreset": "linux-shared" },
+    {
+      "name": "linux-rhi",
+      "inherits": "base",
+      "configurePreset": "linux-rhi",
+      "description": "The GPU part's suites that run on Maul RHI's test driver; those that need a device carry the integration label and run on lavapipe at night.",
+      "filter": {
+        "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" },
+        "exclude": { "label": "integration" }
+      }
+    },
+    {
+      "name": "lavapipe",
+      "hidden": true,
+      "inherits": "base",
+      "description": "The GPU part's suites on lavapipe, which must be found; a suite's warm-up may compile every kernel, minutes without a shader cache, and each suite's own timeout bounds it.",
+      "filter": { "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" } },
+      "environment": { "MVFX_RHI_REQUIRED": "1" },
+      "execution": { "jobs": 1 }
+    },
+    {
+      "name": "linux-rhi-lavapipe",
+      "inherits": "lavapipe",
+      "configurePreset": "linux-rhi-lavapipe",
+      "description": "Under the Vulkan validation layer, whose messages fail a test.",
+      "environment": { "VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation" }
+    },
+    {
+      "name": "linux-rhi-lavapipe-asan",
+      "inherits": "lavapipe",
+      "configurePreset": "linux-rhi-lavapipe-asan",
+      "description": "LeakSanitizer is off: lavapipe's own allocations, its module unloaded before the report, cannot be suppressed by name; the suites count the part's allocations themselves.",
+      "environment": { "ASAN_OPTIONS": "detect_leaks=0" }
+    },
+    {
+      "name": "web-emscripten",
+      "inherits": "base",
+      "configurePreset": "web-emscripten",
+      "description": "The registered tests under Node, the toolchain's emulator; the manual sweeps are built but not registered."
+    },
+    { "name": "macos-clang", "inherits": "base", "configurePreset": "macos-clang" },
+    {
+      "name": "windows-clang-cl",
+      "inherits": "base",
+      "configurePreset": "windows-clang-cl",
+      "configuration": "Release"
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 // An instance as the step runs it: the effect it plays, its transform, seed
 // and clock, and per emitter the particles alive and the counts of what it
 // owed and refused. Everything lives in one block allocated when the
-// instance is created (record mvfx-0001); nothing grows after.
+// instance is created; nothing grows after, so a step never allocates.
 
 #ifndef MAUL_VFX_SRC_INSTANCE_H
 #define MAUL_VFX_SRC_INSTANCE_H

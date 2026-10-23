@@ -15,10 +15,11 @@
 void mvfxBuildEventBirths(mvfxInstance* instance, int32_t emitter);
 
 // The key a birth from an event draws its values by, in place of its
-// serial (record mvfx-0001): the event's particle's serial in the low
-// word; in the high, the top bit (no serial reaches it) and 31 bits of
-// pcg4d of the event's tick and the birth's index among the event's. A
-// count that differs changes that event's births alone.
+// serial, so births from events never share a serial's draws: the
+// event's particle's serial in the low word; in the high, the top bit
+// (no serial reaches it) and 31 bits of pcg4d of the event's tick and
+// the birth's index among the event's. A count that differs changes
+// that event's births alone.
 uint64_t mvfxEventBirthKey(uint32_t source, int64_t tick, int32_t index);
 
 #endif

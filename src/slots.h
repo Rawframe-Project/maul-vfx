@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A table of generation-checked slots (family record 0016): an id is a
-// 1-based slot and the generation the slot had when the object took it,
-// so an id outliving its object is told apart from the slot's next
-// occupant.
+// A table of generation-checked slots: an id is a 1-based slot and the
+// generation the slot had when the object took it, so an id outliving
+// its object is told apart from the slot's next occupant.
 
 #ifndef MAUL_VFX_SRC_SLOTS_H
 #define MAUL_VFX_SRC_SLOTS_H

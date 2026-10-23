@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Host code calling back into the context it serves (record mvfx-0001):
-// from the allocator's alloc and free, the task hooks' enqueue and finish,
-// and a host module, each of the context's calls that take it mutable is
-// refused with mvfx_errorState and counted as misuse, a reading call still
-// answers, and the context is whole after: a step, a creation and a
-// destruction work again, the callbacks then calling nothing.
+// Host code calling back into the context it serves: from the allocator's
+// alloc and free, the task hooks' enqueue and finish, and a host module,
+// each of the context's calls that take it mutable is refused with
+// mvfx_errorState and counted as misuse, a reading call still answers, and
+// the context is whole after: a step, a creation and a destruction work
+// again, the callbacks then calling nothing.
 
 #include "test_harness.h"
 

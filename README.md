@@ -1,110 +1,61 @@
 # Maul VFX
 
-Visual effects for C and C++ programs: particles, ribbons, trails and
-beams, flocks, ropes and cloth, rigid bodies, smoke and fire, liquids
-and water, simulated on the CPU with the same bits on every platform,
-and handed to any renderer as data. Written in C23 with public headers
-any C17 or C++17 program can include, with no dependency and an MIT
-license. An optional part runs the same effects on the GPU through Maul
-RHI.
+Visual effects in C: particles, ribbons, bodies and fluids, simulated with the same bits on every platform and handed to any renderer as data.
 
-It covers:
+[![CI](https://github.com/Rawframe-Project/maul-vfx/actions/workflows/ci.yml/badge.svg)](https://github.com/Rawframe-Project/maul-vfx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/Rawframe-Project/maul-vfx)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Rawframe-Project/maul-vfx)](https://github.com/Rawframe-Project/maul-vfx/releases)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Rawframe-Project/maul-vfx/badge)](https://scorecard.dev/viewer/?uri=github.com/Rawframe-Project/maul-vfx)
 
-- **Emission:** rates and curves of rates, bursts, spawning by distance
-  moved, from another emitter's events and by the host; points, lines,
-  circles, spheres, boxes, cones and meshes, on their surfaces or in
-  their volumes.
-- **Motion:** gravity and drag integrated exactly, wind, attractors,
-  vortices, curl-noise turbulence (analytic, or baked into a periodic
-  grid), vector fields, a gas's velocity, velocity and values over each
-  particle's life, kill rules, and modules a host writes itself.
-- **Collision:** planes, spheres, boxes, heightfields and signed
-  distance grids, the host's scene through queries it answers between
-  steps, and the camera's depth image.
-- **Interaction:** neighbor grids, flocking and steering (seeking,
-  fleeing, following paths), contacts and forces between particles, and
-  plexus links.
-- **Bodies:** ropes and cloth by XPBD (pinned, held to the instance,
-  the host's frames or other particles, torn, with aerodynamics and
-  self-collision) and rigid particles (spheres, capsules, boxes and
-  convex hulls) that tumble, roll, stack and sleep.
-- **Fluids:** smoke and fire on grids (buoyancy, combustion, vortex
-  confinement, obstacles), liquids (position-based fluids, or particles
-  on a grid by APIC), surfaces of particles meshed by marching cubes,
-  and water surfaces (waves, and shallow water over terrain) that
-  particles float on, push and pour into.
-- **Ribbons:** trails from a moving source, trails of particles,
-  ribbons through groups, beams with bends and noise; tessellated,
-  textured and faced as the renderer needs, or expanded into strips and
-  tubes.
-- **Output:** instance records in the layout the renderer asks for,
-  ribbon points, lights, sprites, sheets and surfaces expanded into
-  vertices, gases and water read into texture formats and sampled at
-  points, stable sorting, bounds and draw order. The library draws
-  nothing.
-- **Effects** built in code or read from a versioned binary file that
-  is checked as hostile input; quality levels and a particle budget.
-- **The GPU part** (`maul-vfx-rhi`): a planned instance's particles,
-  gases and water surfaces simulated in WGSL kernels compiled for every
-  Maul RHI backend, its results the CPU path's within a stated
-  tolerance, with records, ribbons, sprites, sheets, lights, reads,
-  samples and meshes written on the device.
+A game or an engine that wants rich effects usually takes them from its engine's particle system, tied to that engine's renderer, editor and threads, with results that differ by platform and frame rate. Maul VFX is a standalone simulation that draws nothing and decides nothing for its host:
 
-Results are identical on every platform, whatever the host's threads.
-Everything lives in a context the host creates with its allocator;
-stepping allocates nothing.
+- **Particles** from emitters with rates, bursts, distance and events, born on points, lines, shapes and meshes; moved exactly under gravity and drag, by wind, attractors, vortices, curl-noise turbulence and vector fields; with values over life, kill rules and the host's own modules.
+- **Collision** with planes, spheres, boxes, heightfields and distance grids, the host's scene through queries it answers, and the camera's depth image.
+- **Interaction:** neighbor grids, flocking and steering, contacts and plexus links; ropes and cloth by XPBD that pin, tear, flutter and keep off themselves; rigid bodies that tumble, stack and sleep.
+- **Fluids:** smoke and fire on grids, liquids by position-based fluids or APIC, surfaces meshed by marching cubes, and water surfaces of waves or shallow water that particles float on and pour into.
+- **Output** in the renderer's own layout: records sorted stably, quads, ribbons, tubes, lights, sheets, meshes, gas and water fields, bounds and draw order.
+- **Effects** built in code or read from a versioned binary file checked as hostile input, with quality levels and a particle budget.
+- **The GPU part:** the same effects run in WGSL kernels on Vulkan, Direct3D 12, Metal or WebGPU through [Maul RHI](https://github.com/Rawframe-Project/maul-rhi), equal to the CPU path in every count and within stated tolerances in its floats.
 
-## Status
+The same effects, seeds, inputs and steps give the same bits on every platform and compiler, whatever the host's threads, so effects replay, roll back and agree across machines. Time is counted in ticks, so the result does not depend on how frames split time. All memory comes from the host's allocator when an object is made; stepping allocates nothing. Parallel work runs on the host's own task system.
 
-Not released yet; 0.1.0, the whole scope above, is being prepared.
-Everything listed is built and tested on every CI platform (Linux
-x86-64 and arm64 with GCC and Clang, under the address, undefined
-behaviour and thread sanitizers, as a shared library, macOS, Windows
-with clang-cl, and the web), the GPU part on lavapipe under Vulkan's
-validation layer. Fuzz targets cover the effect file's readers and the
-step of whatever effects they accept.
-
-## Documentation
-
-- [The guide](docs/guide.md) walks through effects, instances, output,
-  ribbons, events, interaction, fluids, collision, the GPU part and
-  building; every C block in it is run by the tests.
-- [The API reference](docs/api.md) lists all 154 public functions,
-  generated from the headers.
-- [The samples](docs/samples.md) are small complete programs, each run
-  as a test.
-- [The changelog](CHANGELOG.md) records every change.
-
-## Building
-
-Requirements: CMake 3.25 and GCC 14 or Clang 19 or newer; on Windows,
-`clang-cl` (the Visual Studio component "C++ Clang tools for Windows").
+## Quick start
 
 ```sh
+git clone https://github.com/Rawframe-Project/maul-vfx.git
+cd maul-vfx
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build
+./build/sample_fountain
 ```
 
-`-DMAUL_VFX_RHI=ON` adds the GPU part, which finds Maul RHI installed or
-fetches its release; its kernels come compiled for every backend, so a
-build needs no shader tools.
+Install the library with `cmake --install build --prefix <prefix>` and use it from CMake:
 
-Effect files are binary (`maul-vfx/file.h`); `tools/effect_json.py`
-converts one to a JSON form and back (`to-json`, `to-binary`) for diffs,
-reviews and test fixtures, which the library never parses:
-
-```sh
-python3 tools/effect_json.py to-json effect.mvfx effect.json
-python3 tools/effect_json.py to-binary effect.json effect.mvfx
+```cmake
+find_package(maul-vfx REQUIRED CONFIG)
+target_link_libraries(app PRIVATE maul-vfx::maul-vfx)
 ```
 
-## Design
+or through pkg-config as `maul-vfx`. [Getting started](docs/user/getting-started.md) makes a first effect; `-DMAUL_VFX_RHI=ON` adds [the GPU part](docs/user/gpu.md).
 
-The rules every Maul library follows are in `docs/conventions.md` and
-`docs/adr/`; the records particular to this library are listed in
-`docs/adr/mvfx.md`.
+## Platforms
+
+Linux (x86-64 and arm64), macOS, Windows and the web (Emscripten). The library is C23 and builds with GCC 14 or Clang 19 and newer, and with `clang-cl` on Windows; its public headers compile as C17, C23 and C++17. It depends on nothing beyond the C library. CI builds and tests every platform, under AddressSanitizer, UBSan and ThreadSanitizer, and the GPU part on lavapipe under the Vulkan validation layer.
+
+## Documentation
+
+- [The documentation site](https://rawframe-project.github.io/maul-vfx/), with the API reference generated from the headers.
+- [User documentation](docs/README.md): one page per part of the library.
+- [How it works](docs/internals/overview.md) and [how to develop it](docs/operations/development.md).
+- [Changelog](CHANGELOG.md).
+
+Maul VFX belongs to the Maul family of standalone C libraries, which share one set of conventions.
+
+## Contributing
+
+Issues are welcome. Pull requests are accepted for issues a maintainer has approved; see [CONTRIBUTING.md](https://github.com/Rawframe-Project/.github/blob/main/CONTRIBUTING.md). The project is developed with AI coding agents, directed and reviewed by its maintainers; outside contributions follow the [AI policy](https://github.com/Rawframe-Project/.github/blob/main/AI_POLICY.md).
 
 ## License
 
-MIT; see `LICENSE`.
+MIT; see [LICENSE](LICENSE).
