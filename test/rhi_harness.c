@@ -38,14 +38,15 @@
 #include <string.h>
 #include <time.h>
 
-// The longest a frame of the warm-up, or a run's first, is waited for: a
-// device's first frame may compile the kernels it dispatches (lavapipe
-// does, without its shader cache, a minute on a loaded machine; the unit
-// pass alone took 25 s), and a run's first dispatches every kernel the
-// run does, those the warm-up does not among them (units', rigid
-// particles', self-collision's); and every frame after it, so a kernel
-// that hangs fails in seconds.
-#define WARM_WAIT_NS  300000000000ull
+// The longest a frame of the warm-up, or a run's first, is waited for: no
+// limit of its own, the test's timeout being the ceiling. A device's first
+// frame may compile the kernels it dispatches (lavapipe does, with LLVM on
+// one thread, past six minutes on 4 cores without its shader cache), and
+// a run's first dispatches every kernel the run does, those the warm-up
+// does not among them (units', rigid particles', self-collision's). Every
+// frame after it is waited for briefly, so a kernel that hangs fails in
+// seconds.
+#define WARM_WAIT_NS  UINT64_MAX
 #define FRAME_WAIT_NS 20000000000ull
 static uint64_t s_waitNs = WARM_WAIT_NS;
 // Whether the warm-up is over.
