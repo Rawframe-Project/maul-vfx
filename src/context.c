@@ -178,8 +178,9 @@ void mvfxEnterHost(mvfxContext* context)
 
 void mvfxLeaveHost(mvfxContext* context)
 {
-    int32_t calls = atomic_fetch_sub_explicit(&context->hostCalls, 1, memory_order_relaxed);
-    MVFX_ASSERT(calls > 0);
+    // This thread's own entry is still counted, whatever other threads do.
+    MVFX_ASSERT(atomic_load_explicit(&context->hostCalls, memory_order_relaxed) > 0);
+    atomic_fetch_sub_explicit(&context->hostCalls, 1, memory_order_relaxed);
 }
 
 bool mvfxRefusesHostCall(mvfxContext* context)
