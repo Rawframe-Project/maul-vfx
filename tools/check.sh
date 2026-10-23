@@ -134,7 +134,10 @@ files=$(all_c_files)
 echo "$files" | xargs -P "$jobs" -n 32 clang-format --dry-run -Werror
 
 step "clang-tidy"
-configure tidy -DCMAKE_C_COMPILER=clang-20 -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+# Release, as CI's: with NDEBUG an assertion's operands are not evaluated,
+# which the analyzer must see.
+configure tidy -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Release -DMAUL_VFX_RHI=ON \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 # rhi/src/kernels.c includes 70 MB of kernel containers and takes clang-tidy
 # over three minutes, so only the full tier reads it.
 tidy_files=(src/*.c rhi/src/*.c)
