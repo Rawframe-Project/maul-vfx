@@ -135,6 +135,8 @@ jobs:
     # under AddressSanitizer and UBSan.
     name: linux-rhi
     runs-on: ubuntu-24.04
+    env:
+      MESA_SHADER_CACHE_DIR: ${{ github.workspace }}/.mesa-cache
     steps:
       - uses: actions/checkout@v7
       - name: Install the compiler, lavapipe and the validation layer
@@ -144,17 +146,25 @@ jobs:
           sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 clang-tidy-20 \
             libclang-rt-20-dev
           sudo apt-get $APT_OPTIONS install -y -q ninja-build mesa-vulkan-drivers vulkan-validationlayers
-      - name: Read the Mesa version
-        id: mesa
-        run: echo "version=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers)" >> "$GITHUB_OUTPUT"
       # lavapipe compiles each kernel at its first dispatch, minutes for
-      # the whole set: its shader cache is kept while the kernels and the
-      # driver stay the same.
+      # the whole set: its shader cache is kept while the kernels, the
+      # driver and the CPU stay the same. llvmpipe keys its cache on the
+      # CPU's type, features and count (lp_screen.c, update_cache_sha1_cpu),
+      # and the runners' CPUs differ, so a cache from another CPU would be
+      # restored and never read.
+      - name: Read the driver and the CPU
+        id: mesa
+        run: |
+          echo "$(grep -m1 '^model name' /proc/cpuinfo), $(nproc) of $(nproc --all) CPUs"
+          echo "version=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers)" >> "$GITHUB_OUTPUT"
+          cpu=$({ grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo; nproc; nproc --all; } \
+            | sha256sum)
+          echo "cpu=${cpu:0:16}" >> "$GITHUB_OUTPUT"
       - name: Restore lavapipe's shader cache
         uses: actions/cache@v6
         with:
-          path: ~/.cache/mesa_shader_cache
-          key: mesa-${{ steps.mesa.outputs.version }}-${{ hashFiles('rhi/kernels/*_container.h', 'test/kernels/*_container.h') }}
+          path: ${{ env.MESA_SHADER_CACHE_DIR }}
+          key: mesa-${{ steps.mesa.outputs.version }}-${{ steps.mesa.outputs.cpu }}-${{ hashFiles('rhi/kernels/*_container.h', 'test/kernels/*_container.h') }}
       - name: Configure
         run: >
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -D${PREFIX}_WERROR=ON
@@ -182,6 +192,11 @@ jobs:
           if grep -E "Validation Error|VUID-" build/Testing/Temporary/LastTest.log kernels.log; then
             exit 1
           fi
+          # Each suite's warm-up frame: the kernels' compile when the
+          # cache missed, a fraction of a second when it held them.
+          awk '/ Testing: /{t=$3} /^longest frame/{print t ": " $0}' \
+            build/Testing/Temporary/LastTest.log
+          du -sh "$MESA_SHADER_CACHE_DIR"
       - name: Under the sanitizers
         # LeakSanitizer is off: lavapipe's own allocations, its module
         # unloaded before the report, cannot be suppressed by name; the
@@ -195,6 +210,8 @@ jobs:
             -D${PREFIX}_RHI=ON
           cmake --build build-sanitize -j 4
           ctest --test-dir build-sanitize -R rhi --output-on-failure --timeout 300
+          awk '/ Testing: /{t=$3} /^longest frame/{print t ": " $0}' \
+            build-sanitize/Testing/Temporary/LastTest.log
 
   fuzz:
     name: fuzz
