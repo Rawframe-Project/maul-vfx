@@ -12,8 +12,9 @@
 mvfxGrid* mvfxContextGrid(const mvfxContext* context, mvfxGridId grid);
 
 // Finds a valid collider's grid: NULL for a primitive; stale for an id
-// that names no live grid; invalid (misuse) for one not of one component,
-// or a heightfield's not of one point along Y.
+// that names no live grid; invalid for one not of one component, or a
+// heightfield's not of one point along Y, which the caller counts as
+// misuse when the collider is the program's own.
 mvfxResult mvfxFindColliderGrid(mvfxContext* context, const mvfxCollider* collider,
                                 mvfxGrid** gridOut);
 

@@ -40,7 +40,7 @@ The installed package holds the core. A program that uses the GPU part adds the 
 
 **Ids.** The context is a pointer. Everything it owns is a small id struct with a generation: an id outlives its object harmlessly, and using it afterwards answers `mvfx_errorStale`.
 
-**Results.** Every fallible function returns an `mvfxResult`; `mvfx_success` is zero. `mvfx_errorInvalid` means an argument the call can never take and also counts one misuse on the context (`mvfxGetContextMisuse`), so a program can catch its bugs in a release build. The other errors are named in `maul-vfx/base.h`, and `mvfxResultName` names any value. Outputs are cleared when a call fails.
+**Results.** Every fallible function returns an `mvfxResult`; `mvfx_success` is zero. `mvfx_errorInvalid` means an argument the call can never take and also counts one misuse on the context (`mvfxGetContextMisuse`), so a program can catch its bugs in a release build. Bad untrusted data (an effect file, or a model's mesh with no hull) is refused with its status and counts no misuse, since a correct program meets it. The other errors are named in `maul-vfx/base.h`, and `mvfxResultName` names any value. Outputs are cleared when a call fails.
 
 **Time is ticks.** A second is `MVFX_TICKS_PER_SECOND` (2^20) ticks. `mvfxContext_StepTicks` advances by a whole number of them, and `mvfxContext_Step` by seconds rounded to ticks. An effect's times are rounded to ticks once, when it is made, so a repeating burst never drifts and the particles do not depend on how a span of time is split into steps.
 

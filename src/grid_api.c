@@ -221,7 +221,6 @@ mvfxResult mvfxFindColliderGrid(mvfxContext* context, const mvfxCollider* collid
     }
     if (grid->components != 1 || (collider->kind == mvfx_colliderHeightfield && grid->size[1] != 1))
     {
-        mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
     *gridOut = grid;

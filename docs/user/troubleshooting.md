@@ -6,7 +6,7 @@ Every fallible call says why it failed:
 
 | Result | Meaning |
 |---|---|
-| `mvfx_errorInvalid` | An argument the call can never take: a null pointer, a value out of its range, a def not made by its default function. It also counts one misuse on the context. |
+| `mvfx_errorInvalid` | An argument the call can never take: a null pointer, a value out of its range, a def not made by its default function. It also counts one misuse on the context. An effect file the library refuses, including for what it asks of the program's assets, counts none: a file is untrusted data. |
 | `mvfx_errorCapacity` | A buffer the program gave is too small (the call reports the size it needs), or the allocator failed. |
 | `mvfx_errorLimit` | A limit of the context's def is reached: too many effects, instances, layouts, grids or meshes at once. |
 | `mvfx_errorVersion` | The program was built against headers of another release, or a file is of another format version. |

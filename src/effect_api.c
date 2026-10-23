@@ -17,8 +17,7 @@
 #include "slots.h"
 
 // Finds the grid of each vector field of a valid def: stale for an id
-// that names no live grid, invalid (misuse) for one not of three
-// components.
+// that names no live grid, invalid for one not of three components.
 static mvfxResult FindGrids(mvfxContext* context, const mvfxEffectDef* def,
                             mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_FORCES])
 {
@@ -38,7 +37,6 @@ static mvfxResult FindGrids(mvfxContext* context, const mvfxEffectDef* def,
             }
             if (grids[i][f]->components != 3)
             {
-                mvfxCountMisuse(context);
                 return mvfx_errorInvalid;
             }
         }
@@ -87,7 +85,7 @@ static mvfxResult FindObstacleGrids(mvfxContext* context, const mvfxEffectDef* d
 }
 
 // Finds the grid of each vector field on a valid def's gases: stale for
-// an id that names no live grid, invalid (misuse) for one not of three
+// an id that names no live grid, invalid for one not of three
 // components.
 static mvfxResult FindGasForceGrids(mvfxContext* context, const mvfxEffectDef* def,
                                     mvfxGrid* grids[MVFX_MAX_GASES][MVFX_MAX_FORCES])
@@ -108,7 +106,6 @@ static mvfxResult FindGasForceGrids(mvfxContext* context, const mvfxEffectDef* d
             }
             if (grids[g][f]->components != 3)
             {
-                mvfxCountMisuse(context);
                 return mvfx_errorInvalid;
             }
         }
@@ -173,7 +170,6 @@ static mvfxResult FindMeshes(mvfxContext* context, const mvfxEffectDef* def,
         }
         if (!mvfxMeshHasMode(meshes[i], shape->meshMode))
         {
-            mvfxCountMisuse(context);
             return mvfx_errorInvalid;
         }
     }
@@ -192,7 +188,8 @@ static void FreeHulls(mvfxContext* context, mvfxHull* hulls[MVFX_MAX_EMITTERS])
 
 // Builds the hull of each hull emitter's mesh; mvfx_errorStale for a mesh
 // that is gone, mvfx_errorInvalid for one whose vertices span no volume
-// or whose hull has too many vertices (misuse).
+// or whose hull has too many vertices. The mesh's vertices are data a
+// correct program meets (a model file's), so that is never misuse.
 static mvfxResult BuildHulls(mvfxContext* context, const mvfxEffectDef* def,
                              mvfxHull* hulls[MVFX_MAX_EMITTERS])
 {
@@ -213,7 +210,6 @@ static mvfxResult BuildHulls(mvfxContext* context, const mvfxEffectDef* def,
                                                                  &context->allocator, hulls[i]);
         if (built != mvfx_success)
         {
-            built == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
             FreeHulls(context, hulls);
             return built;
         }
@@ -291,36 +287,28 @@ static void AttachGrids(mvfxEffect* effect, const mvfxEffectDef* def, const Effe
     }
 }
 
-mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
+mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
+                              mvfxEffectId* effectOut, bool* misuseOut)
 {
-    if (effectOut == nullptr || context == nullptr)
-    {
-        if (context != nullptr)
-        {
-            mvfxCountMisuse(context);
-        }
-        return mvfx_errorInvalid;
-    }
+    *misuseOut = false;
     *effectOut = (mvfxEffectId){0};
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorState;
-    }
     if (!mvfxIsEffectDefValid(def) || !mvfxAreEffectPartsValid(def))
     {
-        mvfxCountMisuse(context);
+        *misuseOut = true;
         return mvfx_errorInvalid;
     }
     mvfxMesh* meshes[MVFX_MAX_EMITTERS] = {0};
     mvfxResult meshed = FindMeshes(context, def, meshes);
     if (meshed != mvfx_success)
     {
+        *misuseOut = meshed == mvfx_errorInvalid;
         return meshed;
     }
     EffectGrids grids = {0};
     mvfxResult found = FindEffectGrids(context, def, &grids);
     if (found != mvfx_success)
     {
+        *misuseOut = found == mvfx_errorInvalid;
         return found;
     }
     if (context->effects.firstFree == 0)
@@ -356,6 +344,27 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
     uint32_t index1 = mvfxTakeSlot(&context->effects, effect, &generation);
     *effectOut = (mvfxEffectId){index1, generation};
     return mvfx_success;
+}
+
+mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
+{
+    if (effectOut == nullptr || context == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        return mvfx_errorInvalid;
+    }
+    *effectOut = (mvfxEffectId){0};
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorState;
+    }
+    bool misuse = false;
+    mvfxResult created = mvfxCreateEffectOf(context, def, effectOut, &misuse);
+    misuse ? mvfxCountMisuse(context) : (void)0;
+    return created;
 }
 
 mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)

@@ -88,7 +88,7 @@ water_ground: box collide direction grid instance tasks water water_api
 water_couple: box event force instance water water_api
 file_fields:
 file_codec: file_fields
-file: allocator context effect effect_parts file_codec file_fields
+file: allocator context effect effect_api effect_parts file_codec file_fields
 marching_table:
 surface_mesh: context gas gas_api instance marching_table
 gas_forces: elementary force gas
