@@ -12,6 +12,12 @@ env:
   APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30
   PREFIX: MAUL_VFX
 
+# bash with pipefail, so a piped command's failure fails its step: the
+# default shell, bash -e without pipefail, takes the pipe's last status.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # The rules no compiler checks: formatting, static analysis and the
   # family's source, module, documentation and length checks.
@@ -87,7 +93,6 @@ jobs:
       - name: Test
         # A skipped test fails the step, as it would hide a broken job.
         run: |
-          set -o pipefail
           ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Package
@@ -130,6 +135,8 @@ jobs:
     # under AddressSanitizer and UBSan.
     name: linux-rhi
     runs-on: ubuntu-24.04
+    env:
+      MESA_SHADER_CACHE_DIR: ${{ github.workspace }}/.mesa-cache
     steps:
       - uses: actions/checkout@v7
       - name: Install the compiler, lavapipe and the validation layer
@@ -139,6 +146,25 @@ jobs:
           sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 clang-tidy-20 \
             libclang-rt-20-dev
           sudo apt-get $APT_OPTIONS install -y -q ninja-build mesa-vulkan-drivers vulkan-validationlayers
+      # lavapipe compiles each kernel at its first dispatch, minutes for
+      # the whole set: its shader cache is kept while the kernels, the
+      # driver and the CPU stay the same. llvmpipe keys its cache on the
+      # CPU's type, features and count (lp_screen.c, update_cache_sha1_cpu),
+      # and the runners' CPUs differ, so a cache from another CPU would be
+      # restored and never read.
+      - name: Read the driver and the CPU
+        id: mesa
+        run: |
+          echo "$(grep -m1 '^model name' /proc/cpuinfo), $(nproc) of $(nproc --all) CPUs"
+          echo "version=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers)" >> "$GITHUB_OUTPUT"
+          cpu=$({ grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo; nproc; nproc --all; } \
+            | sha256sum)
+          echo "cpu=${cpu:0:16}" >> "$GITHUB_OUTPUT"
+      - name: Restore lavapipe's shader cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.MESA_SHADER_CACHE_DIR }}
+          key: mesa-${{ steps.mesa.outputs.version }}-${{ steps.mesa.outputs.cpu }}-${{ hashFiles('rhi/kernels/*_container.h', 'test/kernels/*_container.h') }}
       - name: Configure
         run: >
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -D${PREFIX}_WERROR=ON
@@ -156,10 +182,21 @@ jobs:
           MVFX_RHI_REQUIRED: 1
           VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
         run: |
-          ctest --test-dir build -R rhi --output-on-failure --timeout 300 2>&1 | tee rhi.log
-          ! grep -qiE "validation error|VUID" rhi.log
+          # The layer writes to each test's output, which ctest shows only
+          # for a failed test and keeps for every test in LastTest.log,
+          # beside the tests' paths: the pattern is the layer's own words,
+          # case and all. bash -e ignores a status negated with !, so the
+          # messages fail the step by an explicit exit.
+          ctest --test-dir build -R rhi --output-on-failure --timeout 300
           build/test_rhi_kernels 2>&1 | tee kernels.log
-          ! grep -qiE "validation error|VUID" kernels.log
+          if grep -E "Validation Error|VUID-" build/Testing/Temporary/LastTest.log kernels.log; then
+            exit 1
+          fi
+          # Each suite's warm-up frame: the kernels' compile when the
+          # cache missed, a fraction of a second when it held them.
+          awk '/ Testing: /{t=$3} /^longest frame/{print t ": " $0}' \
+            build/Testing/Temporary/LastTest.log
+          du -sh "$MESA_SHADER_CACHE_DIR"
       - name: Under the sanitizers
         # LeakSanitizer is off: lavapipe's own allocations, its module
         # unloaded before the report, cannot be suppressed by name; the
@@ -173,6 +210,8 @@ jobs:
             -D${PREFIX}_RHI=ON
           cmake --build build-sanitize -j 4
           ctest --test-dir build-sanitize -R rhi --output-on-failure --timeout 300
+          awk '/ Testing: /{t=$3} /^longest frame/{print t ": " $0}' \
+            build-sanitize/Testing/Temporary/LastTest.log
 
   fuzz:
     name: fuzz
@@ -210,9 +249,6 @@ jobs:
   windows-clang-cl:
     name: windows-clang-cl
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v7
       - name: Configure
@@ -222,7 +258,6 @@ jobs:
       - name: Test
         # A skipped test fails the step, as it would hide a broken job.
         run: |
-          set -o pipefail
           ctest --test-dir build -C Release --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       # The public headers alone under MSVC's cl, as C17 and C++17 with
@@ -246,7 +281,6 @@ jobs:
         # The registered tests, through node as the toolchain's emulator;
         # the manual sweeps are built but not run (conventions 13).
         run: |
-          set -o pipefail
           ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Size

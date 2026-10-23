@@ -38,14 +38,15 @@
 #include <string.h>
 #include <time.h>
 
-// The longest a frame of the warm-up, or a run's first, is waited for: a
-// device's first frame may compile the kernels it dispatches (lavapipe
-// does, without its shader cache, a minute on a loaded machine; the unit
-// pass alone took 25 s), and a run's first dispatches every kernel the
-// run does, those the warm-up does not among them (units', rigid
-// particles', self-collision's); and every frame after it, so a kernel
-// that hangs fails in seconds.
-#define WARM_WAIT_NS  300000000000ull
+// The longest a frame of the warm-up, or a run's first, is waited for: no
+// limit of its own, the test's timeout being the ceiling. A device's first
+// frame may compile the kernels it dispatches (lavapipe does, with LLVM on
+// one thread, past six minutes on 4 cores without its shader cache), and
+// a run's first dispatches every kernel the run does, those the warm-up
+// does not among them (units', rigid particles', self-collision's). Every
+// frame after it is waited for briefly, so a kernel that hangs fails in
+// seconds.
+#define WARM_WAIT_NS  UINT64_MAX
 #define FRAME_WAIT_NS 20000000000ull
 static uint64_t s_waitNs = WARM_WAIT_NS;
 // Whether the warm-up is over.
@@ -54,6 +55,9 @@ static bool s_warm;
 // The longest a frame after the warm-up and after a run's first took, in
 // seconds.
 static double s_longestFrame;
+// The longest a frame waited for with the warm-up's wait took, in seconds,
+// so a run shows how far its first frames are from that wait.
+static double s_longestWarmFrame;
 
 // The ticks a step of the run takes.
 static int64_t s_stepTicks = STEP_TICKS;
@@ -132,11 +136,19 @@ bool Finish(Gpu* gpu)
 {
     mrhiRequestId token = {0};
     double start = Seconds();
-    bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, s_waitNs) == mrhi_success;
-    if (s_waitNs == FRAME_WAIT_NS && Seconds() - start > s_longestFrame)
+    mrhiResult submitted = mrhiSubmitFrame(gpu->device, &token);
+    mrhiResult waited =
+        submitted == mrhi_success ? mrhiWaitFrame(gpu->device, token, s_waitNs) : mrhi_success;
+    bool done = submitted == mrhi_success && waited == mrhi_success;
+    double* longest = s_waitNs == FRAME_WAIT_NS ? &s_longestFrame : &s_longestWarmFrame;
+    if (Seconds() - start > *longest)
     {
-        s_longestFrame = Seconds() - start;
+        *longest = Seconds() - start;
+    }
+    if (!done)
+    {
+        printf("frame: submitted %s, waited %s after %.3f s\n", mrhiResultName(submitted),
+               mrhiResultName(waited), Seconds() - start);
     }
     mrhiDeviceNotification record;
     while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
@@ -3032,7 +3044,8 @@ int RunSuite(SceneSuite suite)
     s_warm = true;
     s_waitNs = FRAME_WAIT_NS;
     suite(&gpu, kernels);
-    printf("longest frame after the warm-up: %.3f s\n", s_longestFrame);
+    printf("longest frame after the warm-up: %.3f s; with the warm-up's wait: %.3f s\n",
+           s_longestFrame, s_longestWarmFrame);
     (void)mrhiDestroyGraphicsPipeline(gpu.device, s_fill);
     (void)mrhiDestroyShader(gpu.device, s_fillShader);
     mvfxDestroyGpu(kernels);
