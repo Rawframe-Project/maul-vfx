@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Memory through a def's allocator (conventions section 9). A zeroed
-// allocator means the C library's functions; for alignments beyond
-// max_align_t they are asked for a larger block and the aligned part of
-// it is handed out. A layout lays out a block's parts with checked
-// arithmetic (conventions section 8).
+// Memory through a def's allocator. A zeroed allocator means the C
+// library's functions; for alignments beyond max_align_t they are asked
+// for a larger block and the aligned part of it is handed out. A layout
+// lays out a block's parts with checked arithmetic, so a size that
+// overflows is refused instead of wrapping.
 
 #ifndef MAUL_VFX_SRC_ALLOCATOR_H
 #define MAUL_VFX_SRC_ALLOCATOR_H

@@ -267,12 +267,13 @@ if(MAUL_VFX_BUILD_TESTS)
         target_link_libraries(test_rhi_kernels PRIVATE maul-vfx-rhi)
         target_include_directories(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src
             ${PROJECT_SOURCE_DIR}/test/kernels)
-        # The suites that drive a device carry integration: they run on
-        # lavapipe at night, and any message of the Vulkan validation layer
-        # fails them.
+        # The suites that drive a device carry integration, and nightly: they
+        # compile and run many kernels on lavapipe, which takes over an hour,
+        # so they run in the nightly extended check. Any message of the
+        # Vulkan validation layer fails them.
         set_tests_properties(rhi_kernels PROPERTIES SKIP_RETURN_CODE 77
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
-        set_property(TEST rhi_kernels APPEND PROPERTY LABELS integration)
+        set_property(TEST rhi_kernels APPEND PROPERTY LABELS integration nightly)
         # Planned instances on the device beside the CPU path, through the
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
@@ -289,7 +290,7 @@ if(MAUL_VFX_BUILD_TESTS)
             # so they get 900 in place of a run's default.
             set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
                                  FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
-            set_property(TEST ${suite} APPEND PROPERTY LABELS integration)
+            set_property(TEST ${suite} APPEND PROPERTY LABELS integration nightly)
         endforeach()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.
@@ -310,7 +311,7 @@ if(MAUL_VFX_BUILD_TESTS)
         target_link_libraries(test_guide_rhi PRIVATE maul-vfx-rhi)
         set_tests_properties(guide_rhi PROPERTIES SKIP_RETURN_CODE 77
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
-        set_property(TEST guide_rhi APPEND PROPERTY LABELS integration)
+        set_property(TEST guide_rhi APPEND PROPERTY LABELS integration nightly)
     endif()
     maul_add_header_tests()
     # The library keeps within WebAssembly's default 64 KiB stack: on the

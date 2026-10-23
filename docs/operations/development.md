@@ -36,7 +36,7 @@ The options a developer uses besides the user's: `MAUL_VFX_WERROR`, `MAUL_VFX_SA
 
 ## The GPU part's tests
 
-The GPU part's suites need a device. Those that run on Maul RHI's test driver (`rhi_object`, `rhi_uploads`, `rhi_host_calls`, `rhi_mesh_image`) need none, and the `linux-rhi` preset runs them. Those that compare a planned instance with the CPU path on a real device carry the `integration` label and run in the `linux-rhi-lavapipe` presets:
+The GPU part's suites need a device. Those that run on Maul RHI's test driver (`rhi_object`, `rhi_uploads`, `rhi_host_calls`, `rhi_mesh_image`) need none, and the `linux-rhi` preset runs them, with the GPU sample (`sample_gpu`) on lavapipe as a smoke test. Those that compare a planned instance with the CPU path on a real device carry the `integration` and `nightly` labels and run in the `linux-rhi-lavapipe` presets, which the nightly check runs:
 
 ```sh
 cmake --preset linux-rhi-lavapipe

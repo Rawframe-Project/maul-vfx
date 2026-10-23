@@ -15,14 +15,20 @@ foreach(sample fountain trails fireworks flock cloth smoke liquid pond effect_fi
 endforeach()
 
 # The GPU part beside the CPU path, on a device on the first adapter;
-# skipped (77) without one.
+# skipped (77) without one. The pull request check's GPU smoke test: the
+# linux-rhi preset runs it on lavapipe, where its first frame compiles the
+# kernels a fountain needs, minutes with an empty shader cache.
+# LeakSanitizer is off for it: it cannot suppress lavapipe's own
+# allocations, whose module is unloaded before the report.
 if(MAUL_VFX_RHI)
     add_executable(sample_gpu gpu.c)
     target_link_libraries(sample_gpu PRIVATE maul-vfx-rhi)
     maul_apply_flags(sample_gpu)
     if(MAUL_VFX_BUILD_TESTS)
         add_test(NAME sample_gpu COMMAND sample_gpu)
-        set_tests_properties(sample_gpu PROPERTIES SKIP_RETURN_CODE 77 FAIL_REGULAR_EXPRESSION
-                             "Validation Error|VUID-" LABELS "sample;integration")
+        set_tests_properties(sample_gpu PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1200
+                             FAIL_REGULAR_EXPRESSION "Validation Error|VUID-"
+                             LABELS "sample;integration"
+                             ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
     endif()
 endif()

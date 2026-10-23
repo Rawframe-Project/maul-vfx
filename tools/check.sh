@@ -12,7 +12,8 @@
 #   tools/check.sh pr         what the pull request check runs on Linux:
 #                             every check, clang-tidy, the
 #                             linux-clang-20-asan, linux-gcc-14 and
-#                             linux-rhi presets, and a short fuzzing pass.
+#                             linux-rhi presets (the GPU sample on lavapipe
+#                             among them), and a short fuzzing pass.
 #   tools/check.sh full       also ThreadSanitizer, the shared library,
 #                             Clang's Release build, clang-tidy on the
 #                             kernel table and longer fuzzing.
@@ -23,9 +24,9 @@
 #
 # The builds are the CI cells' CMake presets (CMakePresets.json), in
 # out/<preset>; the other trees go to out/check-*. Needs gcc-14, clang-20,
-# clang-tidy-20, ninja, the clang-format version CI pins, and for extended
-# lavapipe and the Vulkan validation layers: the organization's CI image
-# has them all. The web, macOS and Windows cells run in CI only. The org
+# clang-tidy-20, ninja, the clang-format version CI pins, and from the pr
+# tier on lavapipe and the Vulkan validation layers, for linux-rhi's GPU
+# sample and extended's suites: the organization's CI image has them all. The web, macOS and Windows cells run in CI only. The org
 # documentation check runs when the organization's .github checkout is at
 # ORG_DEFAULTS (default: ../../.github from the repository).
 set -euo pipefail
@@ -133,7 +134,10 @@ files=$(all_c_files)
 echo "$files" | xargs -P "$jobs" -n 32 clang-format --dry-run -Werror
 
 step "clang-tidy"
-configure tidy -DCMAKE_C_COMPILER=clang-20 -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+# Release, as CI's: with NDEBUG an assertion's operands are not evaluated,
+# which the analyzer must see.
+configure tidy -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Release -DMAUL_VFX_RHI=ON \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 # rhi/src/kernels.c includes 70 MB of kernel containers and takes clang-tidy
 # over three minutes, so only the full tier reads it.
 tidy_files=(src/*.c rhi/src/*.c)
