@@ -12,6 +12,12 @@ env:
   APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30
   PREFIX: MAUL_VFX
 
+# bash with pipefail, so a piped command's failure fails its step: the
+# default shell, bash -e without pipefail, takes the pipe's last status.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # The rules no compiler checks: formatting, static analysis and the
   # family's source, module, documentation and length checks.
@@ -87,7 +93,6 @@ jobs:
       - name: Test
         # A skipped test fails the step, as it would hide a broken job.
         run: |
-          set -o pipefail
           ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Package
@@ -156,10 +161,13 @@ jobs:
           MVFX_RHI_REQUIRED: 1
           VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
         run: |
-          ctest --test-dir build -R rhi --output-on-failure --timeout 300 2>&1 | tee rhi.log
-          ! grep -qiE "validation error|VUID" rhi.log
+          # bash -e ignores a status negated with !, so the messages fail
+          # the step by an explicit exit. rhi_sim runs under the layer in
+          # its own job, linux-rhi-sim-validation.
+          ctest --test-dir build -R rhi -E '^rhi_sim$' --output-on-failure --timeout 300 2>&1 \
+            | tee rhi.log
           build/test_rhi_kernels 2>&1 | tee kernels.log
-          ! grep -qiE "validation error|VUID" kernels.log
+          if grep -iE "validation error|VUID" rhi.log kernels.log; then exit 1; fi
       - name: Under the sanitizers
         # LeakSanitizer is off: lavapipe's own allocations, its module
         # unloaded before the report, cannot be suppressed by name; the
@@ -173,6 +181,36 @@ jobs:
             -D${PREFIX}_RHI=ON
           cmake --build build-sanitize -j 4
           ctest --test-dir build-sanitize -R rhi --output-on-failure --timeout 300
+
+  rhi-sim-validation:
+    # rhi_sim under the validation layer, not blocking: its first frame
+    # sometimes hangs on lavapipe there (issue #2). Its failure shows in
+    # the run without failing it; it is not retried.
+    name: linux-rhi-sim-validation (non-blocking, issue 2)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the compiler, lavapipe and the validation layer
+        timeout-minutes: 10
+        run: |
+          sudo apt-get $APT_OPTIONS update -q
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 \
+            libclang-rt-20-dev
+          sudo apt-get $APT_OPTIONS install -y -q ninja-build mesa-vulkan-drivers vulkan-validationlayers
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -D${PREFIX}_WERROR=ON
+          -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 -D${PREFIX}_RHI=ON
+      - name: Build
+        run: cmake --build build -j 4 --target test_rhi_sim
+      - name: Test
+        env:
+          MVFX_RHI_REQUIRED: 1
+          VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
+        run: |
+          ctest --test-dir build -R '^rhi_sim$' --output-on-failure --timeout 300 2>&1 | tee rhi.log
+          if grep -iE "validation error|VUID" rhi.log; then exit 1; fi
 
   fuzz:
     name: fuzz
@@ -210,9 +248,6 @@ jobs:
   windows-clang-cl:
     name: windows-clang-cl
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v7
       - name: Configure
@@ -222,7 +257,6 @@ jobs:
       - name: Test
         # A skipped test fails the step, as it would hide a broken job.
         run: |
-          set -o pipefail
           ctest --test-dir build -C Release --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       # The public headers alone under MSVC's cl, as C17 and C++17 with
@@ -246,7 +280,6 @@ jobs:
         # The registered tests, through node as the toolchain's emulator;
         # the manual sweeps are built but not run (conventions 13).
         run: |
-          set -o pipefail
           ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Size

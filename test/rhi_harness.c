@@ -54,6 +54,9 @@ static bool s_warm;
 // The longest a frame after the warm-up and after a run's first took, in
 // seconds.
 static double s_longestFrame;
+// The longest a frame waited for with the warm-up's wait took, in seconds,
+// so a run shows how far its first frames are from that wait.
+static double s_longestWarmFrame;
 
 // The ticks a step of the run takes.
 static int64_t s_stepTicks = STEP_TICKS;
@@ -132,11 +135,19 @@ bool Finish(Gpu* gpu)
 {
     mrhiRequestId token = {0};
     double start = Seconds();
-    bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, s_waitNs) == mrhi_success;
-    if (s_waitNs == FRAME_WAIT_NS && Seconds() - start > s_longestFrame)
+    mrhiResult submitted = mrhiSubmitFrame(gpu->device, &token);
+    mrhiResult waited =
+        submitted == mrhi_success ? mrhiWaitFrame(gpu->device, token, s_waitNs) : mrhi_success;
+    bool done = submitted == mrhi_success && waited == mrhi_success;
+    double* longest = s_waitNs == FRAME_WAIT_NS ? &s_longestFrame : &s_longestWarmFrame;
+    if (Seconds() - start > *longest)
     {
-        s_longestFrame = Seconds() - start;
+        *longest = Seconds() - start;
+    }
+    if (!done)
+    {
+        printf("frame: submitted %s, waited %s after %.3f s\n", mrhiResultName(submitted),
+               mrhiResultName(waited), Seconds() - start);
     }
     mrhiDeviceNotification record;
     while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
@@ -3032,7 +3043,8 @@ int RunSuite(SceneSuite suite)
     s_warm = true;
     s_waitNs = FRAME_WAIT_NS;
     suite(&gpu, kernels);
-    printf("longest frame after the warm-up: %.3f s\n", s_longestFrame);
+    printf("longest frame after the warm-up: %.3f s; with the warm-up's wait: %.3f s\n",
+           s_longestFrame, s_longestWarmFrame);
     (void)mrhiDestroyGraphicsPipeline(gpu.device, s_fill);
     (void)mrhiDestroyShader(gpu.device, s_fillShader);
     mvfxDestroyGpu(kernels);
