@@ -6,6 +6,7 @@
 #include "slots.h"
 
 #include "allocator.h"
+#include "invariant.h"
 
 bool mvfxInitSlots(mvfxSlots* slots, const mvfxAllocator* allocator, uint32_t capacity)
 {
@@ -38,7 +39,9 @@ uint32_t mvfxTakeSlot(mvfxSlots* slots, void* object, uint32_t* generationOut)
     {
         return 0;
     }
+    MVFX_ASSERT(index1 <= slots->capacity && slots->taken < slots->capacity);
     mvfxSlot* slot = &slots->slots[index1 - 1];
+    MVFX_ASSERT(slot->object == nullptr);
     slots->firstFree = slot->nextFree;
     slot->object = object;
     slot->nextFree = 0;
@@ -59,7 +62,9 @@ void* mvfxSlotObject(const mvfxSlots* slots, uint32_t index1, uint32_t generatio
 
 void mvfxFreeSlot(mvfxSlots* slots, uint32_t index1)
 {
+    MVFX_ASSERT(index1 >= 1 && index1 <= slots->capacity && slots->taken > 0);
     mvfxSlot* slot = &slots->slots[index1 - 1];
+    MVFX_ASSERT(slot->object != nullptr);
     slot->object = nullptr;
     slot->generation = slot->generation == UINT32_MAX ? 1 : slot->generation + 1;
     slot->nextFree = slots->firstFree;

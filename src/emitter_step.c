@@ -16,6 +16,7 @@
 #include "event_spawn.h"
 #include "host_module.h"
 #include "integrate.h"
+#include "invariant.h"
 #include "liquid.h"
 #include "neighbor.h"
 #include "plexus.h"
@@ -355,7 +356,8 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     const float* inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife);
     // A unit's death, its first point's (all of its points die together).
     int32_t points = instance->effect->emitters[emitter].unitPoints;
-    mvfxDeathHeap heap = {instance->deathScratch, (int32_t)LiveUnits(instance, emitter)};
+    mvfxDeathHeap heap = {instance->deathScratch, (int32_t)LiveUnits(instance, emitter),
+                          (int32_t)UnitCapacity(instance, emitter)};
     for (int32_t u = 0; u < heap.count; ++u)
     {
         int32_t i = u * points;
@@ -410,6 +412,8 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
         state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)(count - taken));
     }
     AcceptEventBirthsBy(instance, emitter, &heap, instance->clock, &next, &accepted);
+    // Every accepted birth outlives the step, so it is still in the heap.
+    MVFX_ASSERT(accepted <= heap.count);
     mvfxSaveBirths(instance, &births);
     RemoveEnded(instance, emitter);
     mvfxFindNeighbors(instance, emitter);

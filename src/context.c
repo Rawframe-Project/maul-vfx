@@ -9,6 +9,7 @@
 #include "effect.h"
 #include "grid.h"
 #include "instance.h"
+#include "invariant.h"
 #include "layout.h"
 #include "mesh.h"
 
@@ -43,11 +44,15 @@ mvfxResult mvfxCreateContext(const mvfxContextDef* def, mvfxContext** contextOut
     {
         return mvfx_errorInvalid;
     }
+    if (def->cookie != MVFX_CONTEXT_DEF_COOKIE)
+    {
+        return mvfx_errorInvalid;
+    }
     if (def->version != MVFX_ABI_VERSION)
     {
         return mvfx_errorVersion;
     }
-    if (def->cookie != MVFX_CONTEXT_DEF_COOKIE || !mvfxIsAllocatorValid(&def->allocator) ||
+    if (!mvfxIsAllocatorValid(&def->allocator) ||
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || def->limits.effects < 1 ||
         def->limits.effects > 65536 || def->limits.instances < 1 || def->limits.instances > 65536 ||
         def->limits.meshes < 1 || def->limits.meshes > 65536 || def->limits.grids < 1 ||
@@ -173,7 +178,8 @@ void mvfxEnterHost(mvfxContext* context)
 
 void mvfxLeaveHost(mvfxContext* context)
 {
-    atomic_fetch_sub_explicit(&context->hostCalls, 1, memory_order_relaxed);
+    int32_t calls = atomic_fetch_sub_explicit(&context->hostCalls, 1, memory_order_relaxed);
+    MVFX_ASSERT(calls > 0);
 }
 
 bool mvfxRefusesHostCall(mvfxContext* context)

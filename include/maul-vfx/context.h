@@ -111,13 +111,13 @@ extern "C"
     ///
     /// @param def         The def, from mvfxDefaultContextDef.
     /// @param contextOut  Receives the context; set to NULL on failure.
-    /// @return `mvfx_success`; `mvfx_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
-    ///         before anything else of it; `mvfx_errorInvalid` for a NULL
-    ///         argument, a def without its cookie, an allocator with one
-    ///         function, a task system with one hook or a limit out of its
-    ///         range;
-    ///         `mvfx_errorCapacity` when the allocator fails.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         def without its cookie; then `mvfx_errorVersion` for a def
+    ///         stamped by headers of another ABI version than the library's,
+    ///         before anything else of it is read; `mvfx_errorInvalid` for an
+    ///         allocator with one function, a task system with one hook or a
+    ///         limit out of its range; `mvfx_errorCapacity` when the
+    ///         allocator fails.
     /// @par Thread safety
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateContext(const mvfxContextDef* def,

@@ -28,9 +28,21 @@ extern "C"
 #define MVFX_VERSION_PATCH 1
 // x-release-please-end
 
-// The version a root def carries: the major and minor version of the
-// headers a program was built with. The ABI holds within a minor version.
-#define MVFX_ABI_VERSION ((MVFX_VERSION_MAJOR << 16) | MVFX_VERSION_MINOR)
+// The binary interface the headers describe, which the root def carries: the
+// whole version before 1.0, where any release may break it, and the major and
+// minor version from 1.0 on. The top bit is always set, so a zeroed value, or a
+// small one written by hand, never matches.
+#define MVFX_ABI_VERSION                                                                           \
+    (UINT32_C(0x80000000) | ((uint32_t)MVFX_VERSION_MAJOR << 16) |                                 \
+     (MVFX_VERSION_MAJOR == 0                                                                      \
+          ? (((uint32_t)MVFX_VERSION_MINOR << 8) | (uint32_t)MVFX_VERSION_PATCH)                   \
+          : (uint32_t)MVFX_VERSION_MINOR))
+#if MVFX_VERSION_MAJOR > 0x7FFF || MVFX_VERSION_MINOR > 0xFFFF
+#error "MVFX_VERSION_MAJOR or MVFX_VERSION_MINOR does not fit MVFX_ABI_VERSION"
+#endif
+#if MVFX_VERSION_MAJOR == 0 && (MVFX_VERSION_MINOR > 0xFF || MVFX_VERSION_PATCH > 0xFF)
+#error "before 1.0, MVFX_VERSION_MINOR and MVFX_VERSION_PATCH must fit 8 bits each"
+#endif
 
 // MVFX_API marks the public functions: dllexport or dllimport in a
 // shared Windows build (maul_vfx_EXPORTS is defined while building
