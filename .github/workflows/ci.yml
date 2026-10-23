@@ -1,48 +1,73 @@
-# Continuous integration for Maul VFX.
+# Continuous integration: the pull request check, and the full check on
+# main and every night, which fuzzes longer, runs clang-tidy on the kernel
+# table and adds the GPU part's suites on lavapipe. Each build cell is a
+# CMake preset built by the organization's shared workflow; the other jobs
+# run in the same CI image, except the Emscripten build, which needs the
+# emsdk action. docs/operations/checks.md explains each job, and
+# tools/check.sh runs the Linux presets locally.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "23 2 * * *"
   workflow_dispatch:
 
-env:
-  # apt retries a stalled download and gives up on a dead one.
-  APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30
-  PREFIX: MAUL_VFX
+# A new push to a pull request cancels its running CI; runs on main get a
+# group of their own, so they are never cancelled.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
-# bash with pipefail, so a piped command's failure fails its step: the
-# default shell, bash -e without pipefail, takes the pipe's last status.
+permissions: {}
+
 defaults:
   run:
     shell: bash
 
 jobs:
-  # The rules no compiler checks: formatting, static analysis and the
-  # family's source, module, documentation and length checks.
+  # Whether anything beyond documentation changed; the builds skip when not.
+  changes:
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    permissions:
+      pull-requests: read
+
+  docs:
+    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    permissions:
+      contents: read
+
+  zizmor:
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    permissions:
+      contents: read
+
+  # The rules no compiler checks: formatting, the family's source, module,
+  # length, API documentation and snippet checks, the generated files, the
+  # documentation site, and clang-tidy on the library and the GPU part. It
+  # runs on documentation changes too, since the snippet check and the site
+  # read docs/.
   checks:
-    name: checks
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.4@sha256:9715ff153db04ba0ed4f520b6d2528ff7860f803de61ab011ba60a4eed572836
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - name: Install tools
-        timeout-minutes: 15
-        run: |
-          sudo apt-get $APT_OPTIONS update -q
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 clang-tidy-20
-          sudo apt-get $APT_OPTIONS install -y -q ninja-build
-          pip install clang-format==22.1.5 >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: clang-format
+        # Every source but the generated tables and kernel containers.
         run: |
           clang-format --version
-          clang-format --dry-run -Werror $(find include src test tools bench samples rhi -name '*.[ch]' 2>/dev/null)
-      - name: The effect file's tables match the headers
-        run: CLANG_FORMAT=clang-format python3 tools/gen_file.py --check
-      - name: The effect fixtures' JSON and binary forms match
-        run: python3 tools/effect_json.py --check test/fixtures
-      - name: The kernel containers carry their sources' splice
-        run: python3 tools/gen_kernels.py --check
+          # A checkout git refused would list nothing and pass unchecked.
+          files=$(git ls-files '*.c' '*.h' ':!*_container.h' ':!src/file_fields.c' \
+            ':!src/marching_table.c')
+          [ -n "$files" ] || { echo "::error::git listed no sources"; exit 1; }
+          echo "$files" | xargs -P 4 -n 32 clang-format --dry-run -Werror
       - name: Family checks
         run: |
           python3 tools/check_source.py
@@ -50,227 +75,279 @@ jobs:
           python3 tools/check_docs.py
           python3 tools/check_lengths.py
           python3 tools/check_guide.py
-      - name: clang-tidy
+      - name: Generated files
+        # The effect file's tables, the marching cubes tables, the kernel
+        # containers' sources and the effect fixtures each match what their
+        # tool writes.
         run: |
-          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          for f in src/*.c; do
-            clang-tidy-20 -p build --quiet --warnings-as-errors='*' "$f" || exit 1
-          done
+          python3 tools/gen_file.py --check
+          python3 tools/gen_marching_cubes.py --check
+          python3 tools/gen_kernels.py --check
+          python3 tools/effect_json.py --check test/fixtures
+      - name: The documentation site builds
+        run: python3 tools/build_docs.py
+      - name: clang-tidy
+        # rhi/src/kernels.c includes 70 MB of kernel containers and takes
+        # clang-tidy minutes, so pull requests leave it to main and the night.
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          cmake --preset linux-clang-20 -B out/tidy -DMAUL_VFX_RHI=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >/dev/null
+          files=(src/*.c rhi/src/*.c)
+          if [ "$EVENT" = pull_request ]; then
+            mapfile -t files < <(printf '%s\n' "${files[@]}" | grep -vx rhi/src/kernels.c)
+          fi
+          printf '%s\n' "${files[@]}" |
+            xargs -P 4 -n 4 clang-tidy-20 -p out/tidy --quiet --warnings-as-errors='*'
 
-  # Every cell builds with warnings as errors and runs the whole suite,
-  # the header tests included.
-  build-test:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+  # Every cell builds with warnings as errors and runs its test preset.
+  # linux-rhi runs the GPU part's suites that need no device on Maul RHI's
+  # test driver, and the GPU sample on lavapipe as a smoke test; the suites
+  # that need a device run on lavapipe at night (extended).
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-gcc-14,        os: ubuntu-24.04,     cc: gcc-14,   cxx: g++-14,     config: Release, extra: "" }
-          - { name: linux-clang-20,      os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Release, extra: "" }
-          - { name: linux-clang-20-asan, os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_VFX_SANITIZE=ON" }
-          - { name: linux-clang-20-tsan, os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_VFX_TSAN=ON" }
-          - { name: linux-shared,        os: ubuntu-24.04,     cc: clang-20, cxx: clang++-20, config: Release, extra: "-DMAUL_VFX_BUILD_SHARED=ON" }
-          - { name: linux-arm64-gcc-14,  os: ubuntu-24.04-arm, cc: gcc-14,   cxx: g++-14,     config: Release, extra: "" }
-          - { name: macos-clang,         os: macos-15,         cc: clang,    cxx: clang++,    config: Release, extra: "" }
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install compilers
-        timeout-minutes: 15
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get $APT_OPTIONS update -q
-          # clang without its recommends, with the sanitizers' runtime.
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 libclang-rt-20-dev
-          sudo apt-get $APT_OPTIONS install -y -q gcc-14 g++-14 ninja-build
-      - name: Configure
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.extra }}
-      - name: Build
-        run: cmake --build build -j 4
-      - name: Test
-        # A skipped test fails the step, as it would hide a broken job.
-        run: |
-          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
-      - name: Package
-        # The installed package, used by a separate C17 project that knows
-        # only it (samples/minimal).
-        if: matrix.name == 'linux-shared'
-        run: |
-          cmake --install build --prefix "$PWD/package"
-          cmake -S samples/minimal -B build-minimal -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-            -DCMAKE_PREFIX_PATH="$PWD/package"
-          cmake --build build-minimal
-          LD_LIBRARY_PATH="$PWD/package/lib" ./build-minimal/minimal
-      - name: Size
-        # The library's code size, reported, not gated (family record
-        # 0013).
-        if: matrix.name == 'linux-gcc-14'
-        run: size -t build/libmaul-vfx.a | tail -1
+          - { preset: linux-gcc-14 }
+          - { preset: linux-arm64-gcc-14, runner: ubuntu-24.04-arm }
+          - { preset: linux-clang-20 }
+          - { preset: linux-clang-20-asan, repeat: 3 }
+          - { preset: linux-clang-20-tsan }
+          - { preset: linux-shared }
+          - { preset: linux-rhi }
+          - { preset: macos-clang, runner: macos-15 }
+          - { preset: windows-clang-cl, runner: windows-2025 }
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    permissions:
+      contents: read
+    with:
+      preset: ${{ matrix.preset }}
+      runner: ${{ matrix.runner || 'ubuntu-24.04' }}
+      repeat: ${{ matrix.repeat || 1 }}
 
-  # Each fuzz target runs for one minute on every push, from the seed
-  # corpus in test/corpus (minimized from local campaigns) and, for the
-  # effect file reader, the golden scene's effects written as files: the
-  # reader, and the step playing the effects fuzzed files make.
-  rhi:
-    # The GPU part with Maul RHI fetched: clang-tidy over its sources and
-    # its kernels' tests on lavapipe, which must be found, under the
-    # Vulkan validation layer, whose messages fail the step; then the same
-    # under AddressSanitizer and UBSan.
-    name: linux-rhi
+  # The installed shared library, used by a separate C17 project that knows
+  # only the package (samples/minimal), and the static library's code size,
+  # reported, not gated.
+  package:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
-    env:
-      MESA_SHADER_CACHE_DIR: ${{ github.workspace }}/.mesa-cache
+    timeout-minutes: 10
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.4@sha256:9715ff153db04ba0ed4f520b6d2528ff7860f803de61ab011ba60a4eed572836
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - name: Install the compiler, lavapipe and the validation layer
-        timeout-minutes: 10
-        run: |
-          sudo apt-get $APT_OPTIONS update -q
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 clang-tidy-20 \
-            libclang-rt-20-dev
-          sudo apt-get $APT_OPTIONS install -y -q ninja-build mesa-vulkan-drivers vulkan-validationlayers
-      # lavapipe compiles each kernel at its first dispatch, minutes for
-      # the whole set: its shader cache is kept while the kernels, the
-      # driver and the CPU stay the same. llvmpipe keys its cache on the
-      # CPU's type, features and count (lp_screen.c, update_cache_sha1_cpu),
-      # and the runners' CPUs differ, so a cache from another CPU would be
-      # restored and never read.
-      - name: Read the driver and the CPU
-        id: mesa
-        run: |
-          echo "$(grep -m1 '^model name' /proc/cpuinfo), $(nproc) of $(nproc --all) CPUs"
-          echo "version=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers)" >> "$GITHUB_OUTPUT"
-          cpu=$({ grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo; nproc; nproc --all; } \
-            | sha256sum)
-          echo "cpu=${cpu:0:16}" >> "$GITHUB_OUTPUT"
-      - name: Restore lavapipe's shader cache
-        uses: actions/cache@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: ${{ env.MESA_SHADER_CACHE_DIR }}
-          key: mesa-${{ steps.mesa.outputs.version }}-${{ steps.mesa.outputs.cpu }}-${{ hashFiles('rhi/kernels/*_container.h', 'test/kernels/*_container.h') }}
-      - name: Configure
-        run: >
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -D${PREFIX}_WERROR=ON
-          -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 -D${PREFIX}_RHI=ON
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - name: Build
-        run: cmake --build build -j 4
-      - name: clang-tidy
+          persist-credentials: false
+      - name: Install and use the package
         run: |
-          for f in rhi/src/*.c; do
-            clang-tidy-20 -p build --quiet --warnings-as-errors='*' "$f" || exit 1
-          done
-      - name: Test
-        env:
-          MVFX_RHI_REQUIRED: 1
-          VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
+          cmake --preset linux-shared -B out/package-build -DMAUL_VFX_BUILD_TESTS=OFF \
+            -DMAUL_VFX_BUILD_BENCH=OFF -DMAUL_VFX_BUILD_SAMPLES=OFF >/dev/null
+          cmake --build out/package-build
+          cmake --install out/package-build --prefix "$PWD/out/package"
+          cmake -S samples/minimal -B out/minimal -G Ninja -DCMAKE_PREFIX_PATH="$PWD/out/package"
+          cmake --build out/minimal
+          LD_LIBRARY_PATH="$PWD/out/package/lib" out/minimal/minimal
+      - name: Size
         run: |
-          # The layer writes to each test's output, which ctest shows only
-          # for a failed test and keeps for every test in LastTest.log,
-          # beside the tests' paths: the pattern is the layer's own words,
-          # case and all. bash -e ignores a status negated with !, so the
-          # messages fail the step by an explicit exit.
-          ctest --test-dir build -R rhi --output-on-failure --timeout 300
-          build/test_rhi_kernels 2>&1 | tee kernels.log
-          if grep -E "Validation Error|VUID-" build/Testing/Temporary/LastTest.log kernels.log; then
-            exit 1
-          fi
-          # Each suite's warm-up frame: the kernels' compile when the
-          # cache missed, a fraction of a second when it held them.
-          awk '/ Testing: /{t=$3} /^longest frame/{print t ": " $0}' \
-            build/Testing/Temporary/LastTest.log
-          du -sh "$MESA_SHADER_CACHE_DIR"
-      - name: Under the sanitizers
-        # LeakSanitizer is off: lavapipe's own allocations, its module
-        # unloaded before the report, cannot be suppressed by name; the
-        # test counts the part's allocations itself.
-        env:
-          MVFX_RHI_REQUIRED: 1
-          ASAN_OPTIONS: detect_leaks=0
-        run: |
-          cmake -B build-sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug -D${PREFIX}_WERROR=ON \
-            -D${PREFIX}_SANITIZE=ON -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
-            -D${PREFIX}_RHI=ON
-          cmake --build build-sanitize -j 4
-          ctest --test-dir build-sanitize -R rhi --output-on-failure --timeout 300
-          awk '/ Testing: /{t=$3} /^longest frame/{print t ": " $0}' \
-            build-sanitize/Testing/Temporary/LastTest.log
+          cmake --preset linux-gcc-14 -B out/size -DMAUL_VFX_BUILD_TESTS=OFF \
+            -DMAUL_VFX_BUILD_BENCH=OFF -DMAUL_VFX_BUILD_SAMPLES=OFF >/dev/null
+          cmake --build out/size
+          size -t out/size/libmaul-vfx.a | tail -1
 
-  fuzz:
-    name: fuzz
-    runs-on: ubuntu-24.04
+  # The public headers alone under MSVC's cl, as C17 and C++17 with /W4 /WX;
+  # cl cannot build the library itself, which is C23.
+  msvc-headers:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - name: Install compilers
-        timeout-minutes: 15
-        run: |
-          sudo apt-get $APT_OPTIONS update -q
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 \
-            libclang-rt-20-dev ninja-build
-      - name: Build
-        run: |
-          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON \
-            -D${PREFIX}_WERROR=ON -D${PREFIX}_BUILD_BENCH=OFF
-          cmake --build build --target fuzz_file fuzz_step test_golden
-      - name: The library writes the golden scene's effects as the fixtures
-        run: |
-          mkdir -p seeds
-          build/test_golden --seeds seeds
-          [ "$(ls seeds | wc -l)" = "$(ls test/fixtures/*.mvfx | wc -l)" ]
-          for f in seeds/*.mvfx; do cmp "$f" "test/fixtures/$(basename $f)"; done
-      - name: Run
-        run: |
-          mkdir -p corpus-fuzz_file
-          build/test_golden --seeds corpus-fuzz_file
-          for target in build/fuzz_*; do
-            name=$(basename $target)
-            mkdir -p "corpus-$name"
-            tar -xzf "test/corpus/$name.tar.gz" -C "corpus-$name"
-            "$target" -max_total_time=60 "corpus-$name"
-          done
-
-  windows-clang-cl:
-    name: windows-clang-cl
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Configure
-        run: cmake -B build -T ClangCL -D${PREFIX}_WERROR=ON
-      - name: Build
-        run: cmake --build build --config Release -j 4
-      - name: Test
-        # A skipped test fails the step, as it would hide a broken job.
-        run: |
-          ctest --test-dir build -C Release --output-on-failure --timeout 300 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
-      # The public headers alone under MSVC's cl, as C17 and C++17 with
-      # /W4 /WX; cl cannot build the library itself, which is C23.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Headers under MSVC
         run: |
-          cmake -S cmake/HeaderCheck -B build-headers
-          cmake --build build-headers --config Release
+          cmake -S cmake/HeaderCheck -B out/headers
+          cmake --build out/headers --config Release
 
-  web:
-    name: web-emscripten
+  # The library under Emscripten, the suites in Node, and the static
+  # library's size, reported, not gated. The CI image has no Emscripten, so
+  # this job uses the runner and the emsdk action.
+  web-emscripten:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: emscripten-core/setup-emsdk@v16
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: emscripten-core/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
       - name: Configure
-        run: emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
+        run: cmake --preset web-emscripten
       - name: Build
-        run: cmake --build build -j 4
+        run: cmake --build --preset web-emscripten
       - name: Test
-        # The registered tests, through node as the toolchain's emulator;
-        # the manual sweeps are built but not run (conventions 13).
         run: |
-          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
+          ctest --preset web-emscripten | tee "$RUNNER_TEMP/ctest.log"
+          if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/ctest.log"; then
+            echo "::error::a test did not run"; exit 1
+          fi
       - name: Size
-        # The static library's size, reported, not gated (family record
-        # 0013).
-        run: stat -c '%s bytes' build/libmaul-vfx.a
+        run: stat -c '%s bytes' out/web-emscripten/libmaul-vfx.a
+      - name: Test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-web-emscripten
+          path: out/web-emscripten/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The effect file reader, and the step playing whatever effects fuzzed
+  # files make: briefly on a pull request, longer on main and at night. Each
+  # target's corpus carries from night to night in a cache, minimized after
+  # the night's run; the committed seeds in test/corpus are its floor, and
+  # the effect file reader also starts from the golden scene's effects.
+  fuzz:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.4@sha256:9715ff153db04ba0ed4f520b6d2528ff7860f803de61ab011ba60a4eed572836
+    permissions:
+      contents: read
+    env:
+      FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && 30 || 300 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore the effect file reader's corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/corpus/fuzz_file
+          key: fuzz-corpus-fuzz_file-${{ github.run_id }}
+          restore-keys: fuzz-corpus-fuzz_file-
+      - name: Restore the step's corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/corpus/fuzz_step
+          key: fuzz-corpus-fuzz_step-${{ github.run_id }}
+          restore-keys: fuzz-corpus-fuzz_step-
+      - name: Build
+        run: |
+          cmake -B out/fuzz -G Ninja -DCMAKE_C_COMPILER=clang-20 -DMAUL_VFX_FUZZ=ON \
+            -DMAUL_VFX_WERROR=ON -DMAUL_VFX_BUILD_BENCH=OFF -DMAUL_VFX_BUILD_SAMPLES=OFF
+          cmake --build out/fuzz --target fuzz_file fuzz_step test_golden
+      - name: The library writes the golden scene's effects as the fixtures
+        run: |
+          mkdir -p out/seeds
+          out/fuzz/test_golden --seeds out/seeds
+          [ "$(ls out/seeds | wc -l)" = "$(ls test/fixtures/*.mvfx | wc -l)" ]
+          for f in out/seeds/*.mvfx; do cmp "$f" "test/fixtures/$(basename "$f")"; done
+      - name: Run
+        # The targets side by side; a target's output goes to its log,
+        # printed when it finds something.
+        run: |
+          mkdir -p out/fuzz-logs
+          for name in fuzz_file fuzz_step; do
+            mkdir -p "out/corpus/$name"
+            tar -xzf "test/corpus/$name.tar.gz" -C "out/corpus/$name"
+          done
+          cp out/seeds/*.mvfx out/corpus/fuzz_file/
+          fuzz_one() {
+            name=$(basename "$1")
+            if "$1" -max_total_time="$FUZZ_SECONDS" "out/corpus/$name" >"out/fuzz-logs/$name.log" 2>&1; then
+              echo "$name: no finding, $(find "out/corpus/$name" -type f | wc -l) inputs"
+            else
+              tail -n 60 "out/fuzz-logs/$name.log"
+              echo "::error::$name found something"
+              return 1
+            fi
+          }
+          export -f fuzz_one
+          printf '%s\n' out/fuzz/fuzz_file out/fuzz/fuzz_step | xargs -P 2 -I {} bash -c 'fuzz_one "$1"' _ {}
+      - name: Minimize the corpora
+        if: github.event_name == 'schedule'
+        run: |
+          for name in fuzz_file fuzz_step; do
+            mkdir -p "out/merged/$name"
+            "out/fuzz/$name" -merge=1 "out/merged/$name" "out/corpus/$name" >/dev/null 2>&1
+            rm -rf "out/corpus/$name"
+            mv "out/merged/$name" "out/corpus/$name"
+            echo "$name: $(find "out/corpus/$name" -type f | wc -l) inputs kept"
+          done
+      - name: Save the effect file reader's corpus
+        if: github.event_name == 'schedule'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/corpus/fuzz_file
+          key: fuzz-corpus-fuzz_file-${{ github.run_id }}
+      - name: Save the step's corpus
+        if: github.event_name == 'schedule'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/corpus/fuzz_step
+          key: fuzz-corpus-fuzz_step-${{ github.run_id }}
+      - name: Fuzz logs and crash inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz
+          path: |
+            out/fuzz-logs/
+            crash-*
+            leak-*
+            timeout-*
+            oom-*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The GPU part's suites on lavapipe, each scene stepped on both paths and
+  # compared: under the Vulkan validation layer, and under AddressSanitizer
+  # and UBSan. Nightly only: lavapipe compiles every kernel on one thread at
+  # its first dispatch, and the suites take over an hour. The Mesa shader
+  # cache the shared workflow keeps per CPU makes later nights faster.
+  extended:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [linux-rhi-lavapipe, linux-rhi-lavapipe-asan]
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    permissions:
+      contents: read
+    with:
+      preset: ${{ matrix.preset }}
+      timeout: 120
+
+  # The one check the ruleset requires: it passes when every job above
+  # passed or was skipped (for a documentation-only change, or a nightly
+  # job on a pull request), so adding or renaming a job never touches the
+  # ruleset.
+  required:
+    if: always()
+    needs: [changes, docs, zizmor, checks, build, package, msvc-headers, web-emscripten, fuzz, extended]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success | skipped) ;; *) exit 1 ;; esac
+          done

@@ -42,9 +42,31 @@ Each tool's header comment and message state its rule and why.
 
 ## Labels
 
-Every suite `test/test_<name>.c` carries the label `<name>`; `ctest -L <label>` runs one suite. The samples carry `sample`. The GPU part's suites that drive a device carry `integration` and run in the `linux-rhi-lavapipe` presets; `-LE integration` leaves them out. A device suite that finds no adapter exits 77 and counts as skipped, unless `MVFX_RHI_REQUIRED` is set, as the lavapipe presets set it; CI fails a cell with a skipped test.
+Every suite `test/test_<name>.c` carries the label `<name>`; `ctest -L <label>` runs one suite. The samples carry `sample`. Tests that drive a device carry `integration`; `-LE integration` leaves them out. The GPU part's suites among them also carry `nightly`: they run in the `linux-rhi-lavapipe` presets of the nightly check, while `linux-rhi` runs the GPU sample on lavapipe as the pull request's smoke test. A device suite that finds no adapter exits 77 and counts as skipped, unless `MVFX_RHI_REQUIRED` is set, as the lavapipe presets set it; CI fails a cell with a skipped test.
 
 The lavapipe presets run one suite at a time, since lavapipe uses every core for one suite, and fail a test whose output holds a message of the Vulkan validation layer (`Validation Error` or a `VUID-`).
+
+## CI
+
+`.github/workflows/ci.yml` runs on every pull request, on every push to `main`, every night and by hand. The ruleset requires one job, `required`, which passes when every other job passed or was skipped.
+
+| Job | What it runs | When |
+|---|---|---|
+| `changes` | Whether anything beyond documentation changed; the build jobs skip when nothing did. | always |
+| `docs`, `zizmor` | The organization's documentation check, and zizmor over the workflows. | always |
+| `checks` | clang-format, the rules above, the generated files' checks, the documentation site's build, and clang-tidy; `rhi/src/kernels.c` only off pull requests. | always |
+| `build` | One cell per CMake preset through the organization's `cpp.yml`, in its CI image on Linux: `linux-gcc-14`, `linux-arm64-gcc-14`, `linux-clang-20`, `linux-clang-20-asan` (each test up to three times on a pull request), `linux-clang-20-tsan`, `linux-shared`, `linux-rhi`, `macos-clang` and `windows-clang-cl`. | code changes |
+| `package` | The installed shared library used by `samples/minimal`, and the static library's size. | code changes |
+| `msvc-headers` | The public headers under MSVC's `cl` as C17 and C++17 (`cmake/HeaderCheck`). | code changes |
+| `web-emscripten` | The suites under Node, and the library's size. | code changes |
+| `fuzz` | Both fuzz targets, 30 seconds each on a pull request and 300 elsewhere; the fixtures written again by the library. | code changes |
+| `extended` | The GPU part's suites on lavapipe, `linux-rhi-lavapipe` and `linux-rhi-lavapipe-asan`, up to two hours. | nightly and by hand |
+
+`cpp.yml` restores ccache and the Mesa shader cache on every run and saves them only from `main`, so a pull request starts from `main`'s latest build. The shader cache is kept per CPU model, feature set and core count, since lavapipe keys its cache on them. A cell fails when a test is skipped or not run, and uploads its test logs when it fails.
+
+The nightly `fuzz` run minimizes each target's corpus with libFuzzer's merge and saves it in an Actions cache, which the next run restores; the seeds in `test/corpus/` stay its floor. A finding becomes a test in the module's suite, and an input worth keeping a seed.
+
+`codeql.yml` builds the library, the GPU part and the tests with GCC 14 for CodeQL. `pages.yml` publishes the documentation site from `main`. `pr-title.yml` checks a pull request's title against the scopes in `AGENTS.md`, and `pr-gate.yml` closes a pull request from outside the organization unless it closes an accepted issue. `release.yml` and `scorecard.yml` are described in [release.md](release.md) and the README's badge.
 
 ## Manual tests
 

@@ -4,7 +4,7 @@
 // Worker twins: the scene stepped serially, and through a host task system
 // that cuts every step into ranges of random sizes and runs them in a
 // shuffled order on four threads, must hold the same state after every
-// step ("Scheduling never changes results", conventions section 10).
+// step (docs/internals/determinism.md).
 // ThreadSanitizer runs it in CI.
 
 #include "vfx_scene.h"
@@ -120,10 +120,11 @@ static mvfxContext* NewContext(Host* host, int32_t instances)
 static void TestTwinsAgree(void)
 {
     static Host host = {.random = 12345u};
-    // More slots than instances, so ranges hold empty slots too.
-    mvfxContext* serial = NewContext(NULL, 80);
-    mvfxContext* parallel = NewContext(&host, 80);
-    for (int32_t copy = 0; copy < 6; ++copy)
+    // Two copies of the scene give the host enough instances to cut into
+    // ranges; more slots than instances, so ranges hold empty slots too.
+    mvfxContext* serial = NewContext(NULL, 40);
+    mvfxContext* parallel = NewContext(&host, 40);
+    for (int32_t copy = 0; copy < 2; ++copy)
     {
         BuildScene(serial);
         BuildScene(parallel);

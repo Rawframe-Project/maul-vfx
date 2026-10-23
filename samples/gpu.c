@@ -25,7 +25,10 @@
 #include <stdio.h>
 #include <time.h>
 
-// Ten seconds, the most a frame is waited for.
+// Ten seconds, the most a frame is waited for once the kernels are ready.
+// The first frame compiles every kernel it dispatches, which on a software
+// driver with an empty shader cache takes minutes, so it is waited for
+// without a limit.
 #define WAIT_NS UINT64_C(10000000000)
 
 typedef struct Gpu
@@ -33,6 +36,8 @@ typedef struct Gpu
     mrhiInstance* instance;
     mrhiDevice* device;
     mvfxGpu* kernels;
+    // How long the next frame is waited for.
+    uint64_t waitNs;
 } Gpu;
 
 static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
@@ -113,7 +118,8 @@ static bool Finish(Gpu* gpu)
 {
     mrhiRequestId submitted = {0};
     bool done = mrhiSubmitFrame(gpu->device, &submitted) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, submitted, WAIT_NS) == mrhi_success;
+                mrhiWaitFrame(gpu->device, submitted, gpu->waitNs) == mrhi_success;
+    gpu->waitNs = WAIT_NS;
     Drain(gpu);
     return done;
 }
@@ -265,7 +271,7 @@ static bool Play(Gpu* gpu)
 
 int main(void)
 {
-    Gpu gpu = {0};
+    Gpu gpu = {.waitNs = UINT64_MAX};
     if (!Open(&gpu))
     {
         Close(&gpu);

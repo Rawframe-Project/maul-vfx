@@ -26,6 +26,12 @@
       "cacheVariables": { "CMAKE_C_COMPILER": "clang-20", "CMAKE_CXX_COMPILER": "clang++-20" }
     },
     {
+      "name": "checked",
+      "hidden": true,
+      "description": "Debug, assertions on, at -O1: the sanitizer suites run several times faster than at -O0 and report the same frames.",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "CMAKE_C_FLAGS_DEBUG": "-g -O1" }
+    },
+    {
       "name": "linux-gcc-14",
       "displayName": "GCC 14, Release",
       "inherits": ["linux", "gcc"],
@@ -45,14 +51,14 @@
     {
       "name": "linux-clang-20-asan",
       "displayName": "Clang 20, AddressSanitizer and UBSan, assertions on",
-      "inherits": ["linux", "clang"],
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_VFX_SANITIZE": "ON" }
+      "inherits": ["linux", "clang", "checked"],
+      "cacheVariables": { "MAUL_VFX_SANITIZE": "ON" }
     },
     {
       "name": "linux-clang-20-tsan",
       "displayName": "Clang 20, ThreadSanitizer, assertions on",
-      "inherits": ["linux", "clang"],
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_VFX_TSAN": "ON" }
+      "inherits": ["linux", "clang", "checked"],
+      "cacheVariables": { "MAUL_VFX_TSAN": "ON" }
     },
     {
       "name": "linux-shared",
@@ -63,28 +69,20 @@
     {
       "name": "linux-rhi",
       "displayName": "Clang 20, the GPU part under AddressSanitizer and UBSan, on Maul RHI's test driver",
-      "inherits": ["linux", "clang"],
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "MAUL_VFX_SANITIZE": "ON",
-        "MAUL_VFX_RHI": "ON"
-      }
+      "inherits": ["linux", "clang", "checked"],
+      "cacheVariables": { "MAUL_VFX_SANITIZE": "ON", "MAUL_VFX_RHI": "ON" }
     },
     {
       "name": "linux-rhi-lavapipe",
-      "displayName": "Clang 20, Debug, the GPU part's suites on lavapipe under the Vulkan validation layer",
-      "inherits": ["linux", "clang"],
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_VFX_RHI": "ON" }
+      "displayName": "Clang 20, assertions on, the GPU part's suites on lavapipe under the Vulkan validation layer",
+      "inherits": ["linux", "clang", "checked"],
+      "cacheVariables": { "MAUL_VFX_RHI": "ON" }
     },
     {
       "name": "linux-rhi-lavapipe-asan",
       "displayName": "Clang 20, the GPU part's suites on lavapipe under AddressSanitizer and UBSan",
-      "inherits": ["linux", "clang"],
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "MAUL_VFX_SANITIZE": "ON",
-        "MAUL_VFX_RHI": "ON"
-      }
+      "inherits": ["linux", "clang", "checked"],
+      "cacheVariables": { "MAUL_VFX_SANITIZE": "ON", "MAUL_VFX_RHI": "ON" }
     },
     {
       "name": "web-emscripten",
@@ -139,20 +137,21 @@
       "name": "linux-rhi",
       "inherits": "base",
       "configurePreset": "linux-rhi",
-      "description": "The GPU part's suites that run on Maul RHI's test driver; those that need a device carry the integration label and run on lavapipe at night.",
+      "description": "The GPU part's suites that run on Maul RHI's test driver, and the GPU sample on lavapipe as a smoke test; the suites labeled nightly run on lavapipe at night.",
       "filter": {
         "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" },
-        "exclude": { "label": "integration" }
-      }
+        "exclude": { "label": "^nightly$" }
+      },
+      "environment": { "VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation" }
     },
     {
       "name": "lavapipe",
       "hidden": true,
       "inherits": "base",
-      "description": "The GPU part's suites on lavapipe, which must be found; a suite's warm-up may compile every kernel, minutes without a shader cache, and each suite's own timeout bounds it.",
+      "description": "The GPU part's suites on lavapipe, which must be found; a suite's warm-up may compile every kernel, minutes without a shader cache. The harness suites' own 900-second timeout bounds them; the others get 30 minutes.",
       "filter": { "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" } },
       "environment": { "MVFX_RHI_REQUIRED": "1" },
-      "execution": { "jobs": 1 }
+      "execution": { "noTestsAction": "error", "timeout": 1800, "jobs": 1 }
     },
     {
       "name": "linux-rhi-lavapipe",
