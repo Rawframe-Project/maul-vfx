@@ -2,13 +2,14 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The transcendental functions the library needs, written here so that
-// they give the same bits on every platform (record mvfx-0001): only
-// IEEE arithmetic and the exactly rounded floor and frexp and ldexp of
-// <math.h>. Each reduces its argument and sums its series in binary64 and
-// rounds once to binary32, so its result is within one unit in the last
-// place of the true value, and the correctly rounded float in all but a
-// handful of cases the tests count. They are defined in round to nearest,
-// the mode every library entry point runs in.
+// they give the same bits on every platform
+// (docs/internals/determinism.md): only IEEE arithmetic and the exactly
+// rounded floor and frexp and ldexp of <math.h>. Each reduces its
+// argument and sums its series in binary64 and rounds once to binary32,
+// so its result is within one unit in the last place of the true value,
+// and the correctly rounded float in all but a handful of cases the tests
+// count. They are defined in round to nearest, the mode every library
+// entry point runs in.
 
 #ifndef MAUL_VFX_SRC_ELEMENTARY_H
 #define MAUL_VFX_SRC_ELEMENTARY_H

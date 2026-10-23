@@ -32,7 +32,7 @@ extern "C"
     {
         uint32_t cookie;
         // Its memory; its functions call none of the part's functions,
-        // nor change the context the simulation reads (record mvfx-0001).
+        // nor change the context the simulation reads.
         mvfxAllocator allocator;
         // A ready GPU object, which outlives the simulation.
         mvfxGpu* gpu;

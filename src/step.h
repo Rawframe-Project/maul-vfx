@@ -3,7 +3,7 @@
 //
 // A context's step: every instance's clock advances and each of its
 // emitters steps, one instance per task item, so the host's split and
-// schedule never change what any instance holds (record mvfx-0001).
+// schedule never change what any instance holds.
 
 #ifndef MAUL_VFX_SRC_STEP_H
 #define MAUL_VFX_SRC_STEP_H

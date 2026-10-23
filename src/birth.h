@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A particle's initial values, drawn from pcg4d at its serial with a salt
-// per purpose (record mvfx-0001): its life, its place on the emitter's
-// shape, its velocity and its optional values.
+// per purpose, so no value depends on another's draw: its life, its place
+// on the emitter's shape, its velocity and its optional values.
 
 #ifndef MAUL_VFX_SRC_BIRTH_H
 #define MAUL_VFX_SRC_BIRTH_H

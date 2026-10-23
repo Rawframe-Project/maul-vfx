@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The guide's C blocks (docs/guide.md), each in a function as it stands
-// there, run: tools/check_guide.py checks that every block appears here
-// unchanged, so a block that no longer builds or runs fails the tests.
+// The C blocks of docs/user/, each in a function as it stands there, run:
+// tools/check_guide.py checks that every block appears here or in
+// test_guide_rhi.c unchanged, so a block that no longer builds or runs
+// fails the tests.
 
 #include "test_harness.h"
 

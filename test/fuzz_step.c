@@ -34,7 +34,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 static mvfxContext* s_fuzzContext;
 
 // Aborts on a condition that does not hold, or on a context left in a
-// call of host code (record mvfx-0001) after one of its calls returned.
+// call of host code after one of its calls returned.
 static void Expect(bool condition)
 {
     if (!condition || (s_fuzzContext != NULL && s_fuzzContext->hostCalls != 0))
