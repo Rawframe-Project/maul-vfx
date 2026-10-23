@@ -30,17 +30,17 @@ defaults:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@b1220ae4523884c7baee93dfb2d9dd1fb1ec960b # v0.0.9
     permissions:
       pull-requests: read
 
   docs:
-    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@b1220ae4523884c7baee93dfb2d9dd1fb1ec960b # v0.0.9
     permissions:
       contents: read
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@b1220ae4523884c7baee93dfb2d9dd1fb1ec960b # v0.0.9
     permissions:
       contents: read
 
@@ -52,7 +52,7 @@ jobs:
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    container: ghcr.io/rawframe-project/ci-cpp:2026.10.4@sha256:9715ff153db04ba0ed4f520b6d2528ff7860f803de61ab011ba60a4eed572836
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.5@sha256:bc8ecad77f13664efd2c5961f3c82751d45b3c0b05fb3ccaaea9d0bdd0966f60
     permissions:
       contents: read
     steps:
@@ -121,7 +121,7 @@ jobs:
           - { preset: linux-rhi }
           - { preset: macos-clang, runner: macos-15 }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@b1220ae4523884c7baee93dfb2d9dd1fb1ec960b # v0.0.9
     permissions:
       contents: read
     with:
@@ -137,7 +137,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    container: ghcr.io/rawframe-project/ci-cpp:2026.10.4@sha256:9715ff153db04ba0ed4f520b6d2528ff7860f803de61ab011ba60a4eed572836
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.5@sha256:bc8ecad77f13664efd2c5961f3c82751d45b3c0b05fb3ccaaea9d0bdd0966f60
     permissions:
       contents: read
     steps:
@@ -224,7 +224,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    container: ghcr.io/rawframe-project/ci-cpp:2026.10.4@sha256:9715ff153db04ba0ed4f520b6d2528ff7860f803de61ab011ba60a4eed572836
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.5@sha256:bc8ecad77f13664efd2c5961f3c82751d45b3c0b05fb3ccaaea9d0bdd0966f60
     permissions:
       contents: read
     env:
@@ -325,7 +325,7 @@ jobs:
       fail-fast: false
       matrix:
         preset: [linux-rhi-lavapipe, linux-rhi-lavapipe-asan]
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@ffd926f489c08984a43e40ac93e1f1feb784be93 # v0.0.8
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@b1220ae4523884c7baee93dfb2d9dd1fb1ec960b # v0.0.9
     permissions:
       contents: read
     with:
