@@ -8,6 +8,7 @@
 #include "effect.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "water.h"
 
 bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, uint64_t owed)
 {
@@ -50,4 +51,25 @@ int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, 
         b[c] = state->rigidPairs[c].b;
     }
     return state->rigidPairCount;
+}
+
+bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                             const float* values, int64_t count)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || water < 0 || water >= live->effect->waterCount)
+    {
+        return false;
+    }
+    const mvfxCompiledWater* compiled = &live->effect->waters[water];
+    mvfxWaterState* state = &live->waters[water];
+    if (compiled->def.model != mvfx_waterShallow || count != compiled->cells)
+    {
+        return false;
+    }
+    for (int64_t i = 0; i < count; ++i)
+    {
+        state->heights[state->current][i] = values[i];
+    }
+    return true;
 }

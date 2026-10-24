@@ -37,4 +37,11 @@ bool mvfxTestTearEdges(mvfxContext* context, mvfxInstanceId instance, int32_t em
 int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                            int32_t* a, int32_t* b, int32_t capacity);
 
+// Sets a shallow water surface's depths at its cells, count of them (its
+// cells), as a step would leave them, so a test can let go any water.
+// Returns false for an id that names no live instance, a surface out of
+// range or not shallow water, or another count.
+bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                             const float* values, int64_t count);
+
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H

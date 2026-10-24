@@ -274,7 +274,7 @@ if(MAUL_VFX_BUILD_TESTS)
     endif()
     # The suites that use the tests' hooks.
     if(NOT MAUL_VFX_BUILD_SHARED)
-        foreach(suite attach rigid_pair tear)
+        foreach(suite attach rigid_pair tear water_shallow)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-test-hooks)
         endforeach()
     endif()
