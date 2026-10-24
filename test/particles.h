@@ -29,8 +29,9 @@ typedef struct TestParticle
     float velocity[3];
     float age;
     uint32_t frame;
-    // The emitter's first custom attribute.
+    // The emitter's first custom attribute, and its second.
     float custom[4];
+    float custom2[4];
     uint32_t serial;
     uint32_t mesh;
     uint32_t neighborCount;
@@ -61,6 +62,11 @@ static int32_t ReadParticlesFrom(mvfxContext* context, mvfxInstanceId instance, 
         TEST_FIELD(age, mvfx_recordAge, mvfx_formatFloat32, 1),
         TEST_FIELD(frame, mvfx_recordFrame, mvfx_formatUint32, 1),
         TEST_FIELD(custom, mvfx_recordCustom, mvfx_formatFloat32, 4),
+        {.field = mvfx_recordCustom,
+         .format = mvfx_formatFloat32,
+         .components = 4,
+         .custom = 1,
+         .offset = (uint32_t)offsetof(TestParticle, custom2)},
         TEST_FIELD(serial, mvfx_recordSerial, mvfx_formatUint32, 1),
         TEST_FIELD(mesh, mvfx_recordMesh, mvfx_formatUint32, 1),
         TEST_FIELD(neighborCount, mvfx_recordNeighborCount, mvfx_formatUint32, 1),
