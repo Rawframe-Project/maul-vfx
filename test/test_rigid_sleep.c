@@ -5,7 +5,7 @@
 // bit for bit and still dies at the end of its life; a sleeping stack
 // stays asleep while a box falls past it and wakes as one when it lands,
 // then sleeps again stacked; gravity turned by the instance wakes a box,
-// which slides; moving ends a still time; a heavy box landing on a
+// which slides; moving starts its time to sleep again; a heavy box landing on a
 // sleeper and a box rebounding off a sleeping stack as on awake ones; a
 // box spinning in place stays awake; a far sleeping pile sleeping on; a
 // host table set again unchanged leaves a box asleep, moved wakes it to
@@ -15,10 +15,14 @@
 // boxes near them, at any height; a depth image set again wakes a box;
 // the host wakes bodies within a sphere; no sleep speed, no sleeping; the
 // checks.
+//
+// A body is seen asleep as a host sees it: its pose the same bits over a
+// step and its velocities 0, the bodies so seen no more than the emitter's
+// statistics count asleep.
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+
+#include "maul-vfx/instance.h"
 
 #include <math.h>
 #include <string.h>
@@ -30,6 +34,54 @@ typedef struct Scene
 } Scene;
 
 static Scene s_scene;
+
+enum
+{
+    MOST = 16
+};
+
+// The bodies as the host modules see them after motion: in the last step
+// and in the one before it.
+typedef struct Body
+{
+    float pose[7];
+    float velocity[3];
+    float angular[3];
+    uint32_t serial;
+} Body;
+
+typedef struct Seen
+{
+    int32_t count;
+    Body bodies[MOST];
+} Seen;
+
+static Seen s_seen[2];
+
+static void Peek(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    s_seen[1] = s_seen[0];
+    s_seen[0].count = p->count < MOST ? p->count : MOST;
+    for (int32_t i = 0; i < s_seen[0].count; ++i)
+    {
+        Body* body = &s_seen[0].bodies[i];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            body->pose[k] = p->position[k][i];
+            body->velocity[k] = p->velocity[k][i];
+            body->angular[k] = p->angularVelocity[k][i];
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            body->pose[3 + k] = p->orientation[k][i];
+        }
+        body->serial = p->serial[i];
+    }
+}
+
+static const mvfxHostModule s_peek = {.stage = mvfx_stageAfterMotion, .function = Peek};
 
 static const mvfxCollider s_ground = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
 
@@ -75,8 +127,12 @@ static mvfxResult EffectOf(const mvfxEmitterDef* emitter, mvfxEffectId* effect)
 
 static void Play(const mvfxEmitterDef* emitter)
 {
+    mvfxEmitterDef peeked = *emitter;
+    peeked.hostModules = &s_peek;
+    peeked.hostModuleCount = 1;
+    memset(s_seen, 0, sizeof s_seen);
     mvfxEffectId effect = {0};
-    CHECK(EffectOf(emitter, &effect) == mvfx_success, "effect");
+    CHECK(EffectOf(&peeked, &effect) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -108,24 +164,39 @@ static mvfxEmitterStats Stats(void)
     return stats;
 }
 
-// Particle i's attribute.
-static float At(int32_t i, mvfxAttribute attribute)
+// Body i as the last step left it.
+static const Body* BodyAt(int32_t i)
 {
-    return ((const float*)mvfxAttributeArray(mvfxContextInstance(s_scene.context, s_scene.instance),
-                                             0, attribute))[i];
+    CHECK(i < s_seen[0].count, "the body seen");
+    return &s_seen[0].bodies[i];
 }
 
-// Particle i's place and orientation.
-static void PoseOf(int32_t i, float out[7])
+// Whether body i is still: its pose the same bits over the last step and
+// its velocities 0.
+static bool Still(int32_t i)
 {
+    const Body* now = BodyAt(i);
+    const Body* before = &s_seen[1].bodies[i];
+    bool still = i < s_seen[1].count && now->serial == before->serial &&
+                 memcmp(now->pose, before->pose, sizeof now->pose) == 0;
     for (int32_t k = 0; k < 3; ++k)
     {
-        out[k] = At(i, (mvfxAttribute)(mvfx_attributePositionX + k));
+        still = still && now->velocity[k] == 0.0f && now->angular[k] == 0.0f;
     }
-    for (int32_t k = 0; k < 4; ++k)
+    return still;
+}
+
+// Whether body i sleeps: still, the still bodies no more than the asleep
+// (one falling asleep within the last step moved in it).
+static bool Asleep(int32_t i)
+{
+    int32_t still = 0;
+    for (int32_t j = 0; j < s_seen[0].count; ++j)
     {
-        out[3 + k] = At(i, (mvfxAttribute)(mvfx_attributeOrientationX + k));
+        still += Still(j) ? 1 : 0;
     }
+    CHECK(still <= Stats().asleep, "the still bodies asleep");
+    return Still(i);
 }
 
 static void TestFallsAsleep(void)
@@ -140,14 +211,13 @@ static void TestFallsAsleep(void)
     static const double place[3] = {0, 0.6, 0};
     Spawn(place, 1);
     Steps(90);
-    bool asleep = Stats().asleep == 1;
+    bool asleep = Stats().asleep == 1 && Asleep(0);
     float before[7];
-    PoseOf(0, before);
+    memcpy(before, BodyAt(0)->pose, sizeof before);
     Steps(30);
-    float after[7];
-    PoseOf(0, after);
-    bool held = memcmp(before, after, sizeof before) == 0 && At(0, mvfx_attributeVelocityY) == 0.0f;
-    CHECK(asleep && held && fabsf(after[1] - 0.5f) <= 0.01f, "a box at rest falls asleep");
+    const Body* after = BodyAt(0);
+    bool held = memcmp(before, after->pose, sizeof before) == 0 && after->velocity[1] == 0.0f;
+    CHECK(asleep && held && fabsf(after->pose[1] - 0.5f) <= 0.01f, "a box at rest falls asleep");
     Steps(70);
     CHECK(Stats().live == 0, "a sleeping box still dies");
     mvfxDestroyContext(s_scene.context);
@@ -180,9 +250,7 @@ static void TestPileWakes(void)
     bool stacked = Stats().asleep == 3;
     for (int32_t i = 0; stacked && i < 3; ++i)
     {
-        uint32_t serial = ((const uint32_t*)mvfxAttributeArray(
-            mvfxContextInstance(s_scene.context, s_scene.instance), 0, mvfx_attributeSerial))[i];
-        stacked = fabsf(At(i, mvfx_attributePositionY) - (0.5f + (float)serial)) <= 0.02f;
+        stacked = fabsf(BodyAt(i)->pose[1] - (0.5f + (float)BodyAt(i)->serial)) <= 0.02f;
     }
     CHECK(stacked, "the three sleep stacked");
     mvfxDestroyContext(s_scene.context);
@@ -213,15 +281,15 @@ static void TestForcesWake(void)
     Steps(1);
     bool woke = Stats().asleep == 0;
     Steps(30);
-    CHECK(slept && woke && fabsf(At(0, mvfx_attributePositionX)) > 0.1f,
-          "turned gravity wakes a box");
+    CHECK(slept && woke && fabsf(BodyAt(0)->pose[0]) > 0.1f, "turned gravity wakes a box");
     mvfxDestroyContext(s_scene.context);
 }
 
 static void TestStillResets(void)
 {
-    // A box still 0.4 s of a 2 s sleep time, then tilted to slide: its
-    // still time starts again from 0.
+    // A box still 0.4 s of a 2 s sleep time, tilted to slide for three
+    // steps and laid flat again: its time to sleep starts again once it
+    // stops, so it is awake 1.9 s after, where 1.6 s would have been left.
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
     static const mvfxCollider ground = {
@@ -234,14 +302,21 @@ static void TestStillResets(void)
     static const double place[3] = {0, 0.5, 0};
     Spawn(place, 1);
     Steps(24);
-    bool still = At(0, mvfx_attributeSleep) >= 0.3f;
+    bool awake = Stats().asleep == 0;
     static const double origin[3] = {0, 0, 0};
     const float tilt[4] = {0, 0, sinf(0.3490659f), cosf(0.3490659f)};
+    const float flat[4] = {0, 0, 0, 1};
     CHECK(mvfxInstance_SetTransform(s_scene.context, s_scene.instance, origin, tilt, 1.0f, true) ==
               mvfx_success,
           "tilted");
     Steps(3);
-    CHECK(still && At(0, mvfx_attributeSleep) == 0.0f, "moving ends a still time");
+    CHECK(mvfxInstance_SetTransform(s_scene.context, s_scene.instance, origin, flat, 1.0f, true) ==
+              mvfx_success,
+          "flat");
+    Steps(114);
+    bool later = Stats().asleep == 0;
+    Steps(126);
+    CHECK(awake && later && Stats().asleep == 1, "moving starts its time to sleep again");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -270,8 +345,8 @@ static void Landing(int32_t count, const double* places, float big, float bounce
     for (int32_t i = 0; i < 90; ++i)
     {
         Steps(1);
-        *lowest = fminf(*lowest, At(0, mvfx_attributePositionY));
-        *rise = fmaxf(*rise, At(count, mvfx_attributeVelocityY));
+        *lowest = fminf(*lowest, BodyAt(0)->pose[1]);
+        *rise = fmaxf(*rise, BodyAt(count)->velocity[1]);
     }
     mvfxDestroyContext(s_scene.context);
 }
@@ -305,12 +380,6 @@ static void TestSleeperMeets(void)
 // Far depth everywhere, from a camera at (0, 0, 10) looking down -Z.
 static const float s_far[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-// The emitter's sleeping bodies' still times: whether particle i sleeps.
-static bool Asleep(int32_t i)
-{
-    return At(i, mvfx_attributeSleep) < 0.0f;
-}
-
 static void TestFarPileSleeps(void)
 {
     // Two sleeping stacks 4 m apart and a box dropped on one: only that
@@ -333,7 +402,7 @@ static void TestFarPileSleeps(void)
         Steps(1);
         for (int32_t j = 0; j < 5; ++j)
         {
-            far = far && (At(j, mvfx_attributePositionX) < 2.0f || Asleep(j));
+            far = far && (BodyAt(j)->pose[0] < 2.0f || Asleep(j));
         }
     }
     CHECK(slept && far && Stats().asleep >= 2, "a far pile sleeps on");
@@ -418,7 +487,7 @@ static void TestGridChanges(void)
     Steps(1);
     bool woke = !Asleep(0);
     Steps(60);
-    bool settled = Asleep(0) && At(0, mvfx_attributePositionY) < 0.35f;
+    bool settled = Asleep(0) && BodyAt(0)->pose[1] < 0.35f;
     CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, NULL, 0) == mvfx_success,
           "taken away");
     bool destroyed = mvfxDestroyGrid(s_scene.context, grid) == mvfx_success;
@@ -491,7 +560,7 @@ static void TestGridRegions(void)
     Steps(1);
     bool one = Asleep(0) && !Asleep(1);
     Steps(60);
-    bool settled = Asleep(1) && At(1, mvfx_attributePositionY) < 0.35f;
+    bool settled = Asleep(1) && BodyAt(1)->pose[1] < 0.35f;
     Dig(grid, 0, 7, 2, 0.2f);
     Steps(1);
     bool neither = Asleep(0) && Asleep(1);
@@ -612,7 +681,7 @@ static void TestSpinning(void)
     static const double place[3] = {0, 2, 0};
     Spawn(place, 1);
     Steps(120);
-    CHECK(Stats().asleep == 0 && fabsf(At(0, mvfx_attributeAngularY) - 1.0f) <= 1e-3f,
+    CHECK(Stats().asleep == 0 && fabsf(BodyAt(0)->angular[1] - 1.0f) <= 1e-3f,
           "a spinning box stays awake");
     mvfxDestroyContext(s_scene.context);
 }
@@ -647,8 +716,7 @@ static void TestWorldWakes(void)
     Steps(1);
     bool woke = Stats().asleep == 0;
     Steps(90);
-    CHECK(slept && kept && woke && Stats().asleep == 1 &&
-              fabsf(At(0, mvfx_attributePositionY) - 0.2f) <= 0.01f,
+    CHECK(slept && kept && woke && Stats().asleep == 1 && fabsf(BodyAt(0)->pose[1] - 0.2f) <= 0.01f,
           "a moved table wakes a box");
     mvfxDestroyContext(s_scene.context);
 }
@@ -667,10 +735,9 @@ static void TestWakeWithin(void)
     static const float near[3] = {-3.5f, 0.5f, 0};
     CHECK(mvfxInstance_WakeBodies(s_scene.context, s_scene.instance, 0, near, 0.1f) == mvfx_success,
           "near one");
-    bool one =
-        Stats().asleep == 1 &&
-        ((const float*)mvfxAttributeArray(mvfxContextInstance(s_scene.context, s_scene.instance), 0,
-                                          mvfx_attributeSleep))[0] == 0.0f;
+    bool one = Stats().asleep == 1;
+    Steps(1);
+    one = one && !Asleep(0) && Asleep(1);
     CHECK(mvfxInstance_WakeBodies(s_scene.context, s_scene.instance, 0, near, INFINITY) ==
               mvfx_success,
           "all");
@@ -694,8 +761,7 @@ static void TestWakeWithin(void)
 
 static void TestNeverSleeps(void)
 {
-    // No sleep speed: a box at rest never sleeps, and the emitter keeps no
-    // sleep state.
+    // No sleep speed: a box at rest never sleeps.
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
     boxes.rigid.sleepSpeed = 0.0f;
@@ -704,10 +770,7 @@ static void TestNeverSleeps(void)
     static const double place[3] = {0, 0.5, 0};
     Spawn(place, 1);
     Steps(120);
-    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
-    CHECK(Stats().asleep == 0 &&
-              !mvfxHasAttribute(&live->effect->emitters[0].plan, mvfx_attributeSleep),
-          "no sleep speed, no sleeping");
+    CHECK(Stats().asleep == 0, "no sleep speed, no sleeping");
     mvfxDestroyContext(s_scene.context);
 }
 
