@@ -292,9 +292,10 @@ static void TestSplatExact(void)
     // 2 of density a second at rest, with a second half a cell outside the
     // box pouring nothing: the 4 cells about the first take 2/64 times
     // their weights (0.04, 0.16, 0.16, 0.64), all that is poured. Moving
-    // at v along X, pulling by a drag of 10: the 4 X faces about it go
-    // toward v by (1 - e^(-10/64)) times theirs (0.14, 0.06, 0.56, 0.24),
-    // all the pull; the Y faces stay still.
+    // at v along X through faces blowing at -v, pulling by a drag of 10:
+    // the 4 X faces about it go toward v by (v - -v) (1 - e^(-10/64))
+    // times theirs (0.14, 0.06, 0.56, 0.24), all the pull, as the pull is
+    // relative to the face's own velocity; the Y faces stay still.
     bool right = true;
     for (int32_t pass = 0; pass < 2; ++pass)
     {
@@ -309,6 +310,7 @@ static void TestSplatExact(void)
         // Slow, so carrying the faces by what the splat gives them, later
         // in the step, changes them by about 2e-5 of their values.
         float speed = pass == 0 ? 0.0f : 1e-3f;
+        Blow(-speed, 0.0f);
         const double places[6] = {0.13 - (double)speed / 64.0, -0.07, 0, -1.65, 0, 0};
         const float velocities[6] = {speed, 0, 0, 0, 0, 0};
         mvfxSpawnRequest request = {
@@ -335,15 +337,16 @@ static void TestSplatExact(void)
                   "faces read");
             const int32_t faceAt[4] = {14 * 33 + 17, 14 * 33 + 18, 15 * 33 + 17, 15 * 33 + 18};
             const float faceWeight[4] = {0.14f, 0.06f, 0.56f, 0.24f};
-            float pull = speed * (1.0f - expf(-10.0f / 64.0f));
+            float pull = 2.0f * speed * (1.0f - expf(-10.0f / 64.0f));
             float faceTotal = 0.0f;
             for (int32_t f = 0; f < 33 * 32; ++f)
             {
-                faceTotal += us[f];
+                faceTotal += us[f] + speed;
             }
             for (int32_t c = 0; c < 4; ++c)
             {
-                right = right && fabsf(us[faceAt[c]] - faceWeight[c] * pull) <= 1e-4f * pull;
+                right =
+                    right && fabsf(us[faceAt[c]] + speed - faceWeight[c] * pull) <= 1e-4f * pull;
             }
             right = right && fabsf(faceTotal - pull) <= 1e-4f * pull;
             for (int32_t f = 0; f < 32 * 33; ++f)
