@@ -1,58 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Liquids: the kernels' rest density against a lattice summed in binary64,
-// 3D and planar; a lattice at rest left in place away from its edges; the
-// refusals, the instance's scale, a plan's kernels, the neighbor cap's
-// count, XSPH, confinement, a 3D liquid, the tensile correction's size
-// and a planar liquid's Z. The flows measured against references are in
-// test_liquid_flow.c.
+// Liquids: a plan's kernels against their formulas and the rest density
+// of a lattice summed in binary64, 3D and planar, at the instance's scale;
+// a lattice at rest left in place away from its edges; the refusals, the
+// instance's scale, the neighbor cap's count, XSPH, confinement, a 3D
+// liquid, the tensile correction's size and a planar liquid's Z. The flows
+// measured against references are in test_liquid_flow.c.
 
-#include "liquid.h"
 #include "liquid_scene.h"
 
 #include "maul-vfx/plan.h"
 
 #include <math.h>
 #include <string.h>
-
-static void TestKernel(void)
-{
-    // The poly6 sum over a lattice, summed again in binary64 from the
-    // kernels' formulas, is the rest density within 1e-5; the tensile
-    // correction's reference kernel is its inverse's; the radius is the
-    // spacing times its scale.
-    bool right = true;
-    for (int32_t planar = 0; planar < 2; ++planar)
-    {
-        mvfxEmitterDef emitter = Emitter(0.05f);
-        emitter.liquid.planar = planar == 1;
-        emitter.liquid.kernelScale = 2.5f;
-        mvfxLiquidKernel kernel = mvfxLiquidKernelOf(&emitter.liquid, 2.0f);
-        double h = 0.25;
-        double pi = 3.14159265358979323846;
-        double factor = planar == 1 ? 4.0 / (pi * pow(h, 8)) : 315.0 / (64.0 * pi * pow(h, 9));
-        double rest = 0.0;
-        for (int32_t c = planar == 1 ? 0 : -3; c <= (planar == 1 ? 0 : 3); ++c)
-        {
-            for (int32_t b = -3; b <= 3; ++b)
-            {
-                for (int32_t a = -3; a <= 3; ++a)
-                {
-                    double square = 0.01 * (double)(a * a + b * b + c * c);
-                    rest += square < h * h ? factor * pow(h * h - square, 3) : 0.0;
-                }
-            }
-        }
-        float reference = 0.2f * kernel.radius;
-        right = right && fabsf(kernel.radius - 0.25f) <= 1e-6f &&
-                fabs((double)kernel.restInverse * rest - 1.0) <= 1e-5 &&
-                fabsf(mvfxLiquidPoly6(&kernel, reference * reference) * kernel.tensileInverse -
-                      1.0f) <= 1e-6f &&
-                kernel.softening > 0.0f;
-    }
-    CHECK(right, "the kernels' rest density");
-}
 
 static void TestRest(void)
 {
@@ -70,7 +31,7 @@ static void TestRest(void)
     emitter.liquid.substeps = 1;
     emitter.liquid.iterations = 1;
     Open(&emitter, places, 24 * 24);
-    CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "step");
+    Step(MVFX_TICKS_PER_SECOND / 60);
     float most = 0.0f;
     int32_t inner = 0;
     for (int32_t i = 0; i < Count(); ++i)
@@ -92,6 +53,7 @@ static void TestRest(void)
 static bool OpenScaled(const mvfxEmitterDef* emitter, const double* places, int32_t count,
                        float scale)
 {
+    ++s_steps;
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxEffectDef def = mvfxDefaultEffectDef();
@@ -194,8 +156,8 @@ static void TestScale(void)
 static void TestCapped(void)
 {
     // Most neighbors 3 in a lattice at rest: the particles with more
-    // within the kernel radius, by the library's own float test at their
-    // places, are counted once a step, the same each step.
+    // within the kernel radius, by a float test at their places with the
+    // radius formed in float, are counted once a step, the same each step.
     static double places[6 * 6 * 3];
     for (int32_t i = 0; i < 36; ++i)
     {
@@ -213,7 +175,8 @@ static void TestCapped(void)
         CHECK(mvfxInstance_GetEmitterStats(s_context, s_instance, 0, &stats[s]) == mvfx_success,
               "stats");
     }
-    mvfxLiquidKernel kernel = mvfxLiquidKernelOf(&emitter.liquid, 1.0f);
+    float radius = emitter.liquid.spacing * emitter.liquid.kernelScale;
+    float within = radius * radius;
     uint64_t expected = 0;
     for (int32_t i = 0; i < Count(); ++i)
     {
@@ -226,7 +189,7 @@ static void TestCapped(void)
                 float d = Places(k)[i] - Places(k)[j];
                 square += d * d;
             }
-            near += j != i && square < kernel.square ? 1 : 0;
+            near += j != i && square < within ? 1 : 0;
         }
         expected += near > 3 ? 1u : 0u;
     }
@@ -247,31 +210,16 @@ static void TestViscosity(void)
     mvfxEmitterDef emitter = Emitter(0.05f);
     emitter.liquid.substeps = 1;
     emitter.liquid.viscosity = 0.5f;
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
-    mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = &emitter;
-    def.emitterCount = 1;
-    mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
-    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    instanceDef.effect = effect;
-    CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    mvfxSpawnRequest request = {.count = 2, .positions = places, .velocities = velocities};
-    CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "spawned");
-    CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "born");
-    const mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
-    const float* vy = mvfxAttributeArray(live, 0, mvfx_attributeVelocityY);
-    float before[2] = {vy[0], vy[1]};
-    float dx = Places(0)[0] - Places(0)[1];
-    float dy = Places(1)[0] - Places(1)[1];
-    CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "step");
-    mvfxLiquidKernel kernel = mvfxLiquidKernelOf(&emitter.liquid, 1.0f);
+    OpenWith(&emitter, places, velocities, 2);
+    float before[2] = {Velocities(1)[0], Velocities(1)[1]};
+    Step(1);
+    const float* vy = Velocities(1);
+    Kernel kernel = KernelOf(&emitter.liquid, 1.0);
     // The tick moves them by a hair; the kernel is read at their places
     // then.
-    dx = Places(0)[0] - Places(0)[1];
-    dy = Places(1)[0] - Places(1)[1];
-    float w = mvfxLiquidPoly6(&kernel, dx * dx + dy * dy) * kernel.restInverse;
+    float dx = Places(0)[0] - Places(0)[1];
+    float dy = Places(1)[0] - Places(1)[1];
+    float w = (float)(Poly6(&kernel, (double)(dx * dx + dy * dy)) * kernel.restInverse);
     float expected0 = before[0] + 0.5f * ((before[1] - before[0]) * w);
     float expected1 = before[1] + 0.5f * ((before[0] - before[1]) * w);
     CHECK(fabsf(vy[0] - expected0) <= 1e-5f && fabsf(vy[1] - expected1) <= 1e-5f && w > 0.0f &&
@@ -283,9 +231,8 @@ static void TestViscosity(void)
 // The kinetic energy (per unit mass) of the emitter's particles.
 static double Energy(void)
 {
-    const mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
-    const float* vx = mvfxAttributeArray(live, 0, mvfx_attributeVelocityX);
-    const float* vy = mvfxAttributeArray(live, 0, mvfx_attributeVelocityY);
+    const float* vx = Velocities(0);
+    const float* vy = Velocities(1);
     double sum = 0.0;
     for (int32_t i = 0; i < Count(); ++i)
     {
@@ -369,7 +316,8 @@ static void TestDeep(void)
     emitter.colliderCount = 1;
     Open(&emitter, places, 512);
     Steps(90);
-    mvfxLiquidKernel kernel = mvfxLiquidKernelOf(&emitter.liquid, 1.0f);
+    Kernel kernel = KernelOf(&emitter.liquid, 1.0);
+    float radius = (float)kernel.radius;
     bool inside = true;
     float top = 0.0f;
     for (int32_t i = 0; i < Count(); ++i)
@@ -387,10 +335,10 @@ static void TestDeep(void)
     int32_t inner = 0;
     for (int32_t i = 0; i < Count(); ++i)
     {
-        bool deep = Places(1)[i] < top - kernel.radius && Places(1)[i] > kernel.radius;
+        bool deep = Places(1)[i] < top - radius && Places(1)[i] > radius;
         for (int32_t k = 0; k < 3; k += 2)
         {
-            deep = deep && Places(k)[i] > kernel.radius && Places(k)[i] < 0.4f - kernel.radius;
+            deep = deep && Places(k)[i] > radius && Places(k)[i] < 0.4f - radius;
         }
         if (!deep)
         {
@@ -405,10 +353,10 @@ static void TestDeep(void)
                 double d = (double)Places(k)[i] - (double)Places(k)[j];
                 square += d * d;
             }
-            sum += (double)mvfxLiquidPoly6(&kernel, (float)square);
+            sum += Poly6(&kernel, square);
         }
-        worst = fmax(worst, sum * (double)kernel.restInverse - 1.0);
-        mean += sum * (double)kernel.restInverse;
+        worst = fmax(worst, sum * kernel.restInverse - 1.0);
+        mean += sum * kernel.restInverse;
         inner += 1;
     }
     CHECK(Count() == 512 && inside && inner > 0 && worst <= 0.03 && mean / (double)inner >= 0.9,
@@ -431,14 +379,15 @@ static void TestTensile(void)
     CHECK(OpenScaled(&emitter, places, 2, 1.0f), "opened");
     const float before[2] = {Places(0)[0], Places(0)[1]};
     Steps(1);
-    mvfxLiquidKernel kernel = mvfxLiquidKernelOf(&emitter.liquid, 1.0f);
-    const float offset[3] = {before[0] - before[1], 0.0f, 0.0f};
-    float length = fabsf(offset[0]);
-    float g[3];
-    mvfxLiquidSpiky(&kernel, offset, length, g);
-    float ratio = mvfxLiquidPoly6(&kernel, length * length) * kernel.tensileInverse;
-    float tensile = -kernel.tensileScale * ratio * ratio * ratio * ratio;
-    float expected = before[0] + tensile * g[0] * kernel.restInverse;
+    Kernel kernel = KernelOf(&emitter.liquid, 1.0);
+    // The spiky gradient at the first, as the library forms it: -spiky
+    // (h - r)^2 / r times the offset from the second.
+    double offset = (double)before[0] - (double)before[1];
+    double length = fabs(offset);
+    double g = -Spiky(&kernel, length) * offset / length;
+    double ratio = Poly6(&kernel, length * length) * kernel.tensileInverse;
+    double tensile = -kernel.tensileScale * ratio * ratio * ratio * ratio;
+    float expected = (float)((double)before[0] + tensile * g * kernel.restInverse);
     float moved = Places(0)[0];
     CHECK(fabsf(moved - expected) <= 1e-7f && moved < before[0] &&
               fabsf((Places(0)[1] - before[1]) + (moved - before[0])) <= 1e-7f,
@@ -472,15 +421,25 @@ static void TestPlanar(void)
     mvfxDestroyContext(s_context);
 }
 
+// Whether a float is within a share of a binary64 value.
+static bool Near(float value, double expected, double share)
+{
+    return fabs((double)value - expected) <= share * fabs(expected);
+}
+
 static void TestPlanned(void)
 {
     // A planned instance's plan hands each liquid's kernels over as its
     // step makes them: a world emitter's at its instance's scale, a local
-    // one's at 1; the view has the def as compiled.
+    // one's at 1; the view has the def as compiled. A planar liquid of
+    // kernel scale 2.5 and a 3D one with a tensile correction: each kernel
+    // as its formula gives it in binary64, the rest density's sum over the
+    // lattice summed again there, within 1e-5 (the radius 1e-6).
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxEmitterDef emitters[2] = {Emitter(0.05f), Emitter(0.05f)};
     emitters[0].space = mvfx_spaceWorld;
+    emitters[0].liquid.kernelScale = 2.5f;
     emitters[1].space = mvfx_spaceLocal;
     emitters[1].liquid.planar = false;
     emitters[1].liquid.tensile = 0.2f;
@@ -509,22 +468,22 @@ static void TestPlanned(void)
                   mvfxEffect_GetEmitterView(s_context, effect, e, &view) == mvfx_success,
               "a plan and a view");
         mvfxLiquidDef compiled = view.liquid;
-        mvfxLiquidKernel k = mvfxLiquidKernelOf(&compiled, sigma);
+        Kernel k = KernelOf(&emitters[e].liquid, (double)sigma);
         const mvfxPlannedLiquid* l = &plan.liquid;
-        same = same && l->radius == k.radius && l->square == k.square && l->poly6 == k.poly6 &&
-               l->spiky == k.spiky && l->restInverse == k.restInverse &&
-               l->softening == k.softening && l->tensileInverse == k.tensileInverse &&
-               l->tensileScale == k.tensileScale && l->sigma == sigma &&
+        same = same && Near(l->radius, k.radius, 1e-6) && Near(l->square, k.square, 1e-6) &&
+               Near(l->poly6, k.poly6, 1e-5) && Near(l->spiky, k.spiky, 1e-5) &&
+               Near(l->restInverse, k.restInverse, 1e-5) && Near(l->softening, k.softening, 1e-5) &&
+               Near(l->tensileInverse, k.tensileInverse, 1e-5) &&
+               Near(l->tensileScale, k.tensileScale, 1e-5) && l->sigma == sigma &&
                l->spacing == 0.05f * sigma && compiled.enabled &&
                compiled.planar == emitters[e].liquid.planar && compiled.spacing == 0.05f;
     }
-    CHECK(same, "a plan's liquid is the step's kernels at its scale");
+    CHECK(same, "a plan's liquid kernels at its scale");
     mvfxDestroyContext(s_context);
 }
 
 int main(void)
 {
-    TestKernel();
     TestPlanned();
     TestRefusals();
     TestScale();

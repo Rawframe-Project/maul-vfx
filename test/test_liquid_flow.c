@@ -7,7 +7,6 @@
 // Martin and Moyce's measurements. Apart from the other liquid tests so
 // each test fits well inside the suite's timeout under sanitizers.
 
-#include "liquid.h"
 #include "liquid_scene.h"
 
 #include <math.h>
@@ -15,16 +14,16 @@
 
 // A particle's density over the rest density at the emitter's places, in
 // binary64 over every particle.
-static double DensityAt(const mvfxLiquidKernel* kernel, int32_t i)
+static double DensityAt(const Kernel* kernel, int32_t i)
 {
     double sum = 0.0;
     for (int32_t j = 0; j < Count(); ++j)
     {
         double dx = (double)Places(0)[i] - (double)Places(0)[j];
         double dy = (double)Places(1)[i] - (double)Places(1)[j];
-        sum += (double)mvfxLiquidPoly6(kernel, (float)(dx * dx + dy * dy));
+        sum += Poly6(kernel, dx * dx + dy * dy);
     }
-    return sum * (double)kernel->restInverse;
+    return sum * kernel->restInverse;
 }
 
 // The column's top, and whether every particle is in the box 0.6 wide.
@@ -43,9 +42,8 @@ static float Top(bool* inside)
 // The mean speed of the emitter's particles.
 static float MeanSpeed(void)
 {
-    const mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
-    const float* vx = mvfxAttributeArray(live, 0, mvfx_attributeVelocityX);
-    const float* vy = mvfxAttributeArray(live, 0, mvfx_attributeVelocityY);
+    const float* vx = Velocities(0);
+    const float* vy = Velocities(1);
     double sum = 0.0;
     for (int32_t i = 0; i < Count(); ++i)
     {
@@ -86,7 +84,8 @@ static void TestColumn(void)
     Steps(120);
     float top = Top(&inside);
     float speed = MeanSpeed();
-    mvfxLiquidKernel kernel = mvfxLiquidKernelOf(&emitter.liquid, 1.0f);
+    Kernel kernel = KernelOf(&emitter.liquid, 1.0);
+    float radius = (float)kernel.radius;
     double worst = 0.0;
     double sums[2] = {0.0, 0.0};
     int32_t counts[2] = {0, 0};
@@ -94,8 +93,7 @@ static void TestColumn(void)
     {
         float x = Places(0)[i];
         float y = Places(1)[i];
-        bool inner = y < top - kernel.radius && x > kernel.radius && x < 0.6f - kernel.radius &&
-                     y > kernel.radius;
+        bool inner = y < top - radius && x > radius && x < 0.6f - radius && y > radius;
         double density = DensityAt(&kernel, i);
         worst = inner ? fmax(worst, fabs(density - 1.0)) : worst;
         int32_t third = y < top / 3.0f ? 0 : (y > 2.0f * top / 3.0f ? 1 : -1);
@@ -188,8 +186,7 @@ static void TestDamBreak(void)
     double unit = sqrt(9.81 / a);
     for (int32_t s = 0; s < 128; ++s)
     {
-        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 120) == mvfx_success,
-              "step");
+        Step(MVFX_TICKS_PER_SECOND / 120);
         times[s] = (double)(s + 1) / 120.0 * unit;
         zs[s] = Front(a, spacing);
     }
