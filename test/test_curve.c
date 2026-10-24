@@ -8,8 +8,9 @@
 // smooth and monotone), the monotone rule never overshooting and smooth
 // at keys, the smooth rule keeping a line straight; the domain a curve is
 // baked over, with a duration and without; every sample of a baked
-// gradient against linear blends of its keys; and a curve in seconds
-// read past both ends of its keys, in particles' sizes.
+// gradient against linear blends of its keys; a curve in seconds read
+// past both ends of its keys, in particles' sizes; and a gradient over a
+// loop's age read by a birth before the first loop.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -732,6 +733,47 @@ static void TestBlends(void)
           "red blends linearly, alpha apart from colour");
 }
 
+// A host's spawn during an emitter's start delay, with its colour a
+// gradient over the loop's age: born before the first loop begins, it
+// takes the gradient's first key.
+static void TestGradientBeforeTheFirstLoop(void)
+{
+    mvfxColorKey colors[2] = {{0.0f, 1, 0, 0}, {1.0f, 0, 0, 1}};
+    mvfxAlphaKey alphas[2] = {{0.0f, 0.5f}, {1.0f, 1.0f}};
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.hostSpawnCapacity = 1;
+    emitter.startDelay = 0.25f;
+    emitter.duration = 1.0f;
+    emitter.color = (mvfxVectorSource){.kind = mvfx_sourceGradientOverAge,
+                                       .min = {1, 1, 1, 1},
+                                       .max = {1, 1, 1, 1},
+                                       .gradient = {colors, 2, alphas, 2}};
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 10) == mvfx_success, "stepped");
+    static const double origin[3] = {0, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = origin};
+    CHECK(mvfxInstance_Spawn(context, instance, 0, &request) == mvfx_success, "spawned");
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 100) == mvfx_success, "stepped");
+    TestParticle particle;
+    CHECK(ReadParticles(context, instance, 0, &particle, 1) == 1, "one particle");
+    CHECK(particle.color[0] == 1.0f && particle.color[1] == 0.0f && particle.color[2] == 0.0f &&
+              particle.color[3] == 0.5f,
+          "the gradient's first key");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestRefusals();
@@ -744,5 +786,6 @@ int main(void)
     TestRateCurves();
     TestGradientRefusals();
     TestBlends();
+    TestGradientBeforeTheFirstLoop();
     return s_failures == 0 ? 0 : 1;
 }
