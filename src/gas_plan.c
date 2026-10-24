@@ -5,6 +5,7 @@
 
 #include "context.h"
 #include "force.h"
+#include "fpenv.h"
 #include "gas.h"
 #include "gas_api.h"
 #include "gas_solid.h"
@@ -157,8 +158,9 @@ static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId 
     return *result == mvfx_success ? live : nullptr;
 }
 
-mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                   mvfxGasPlan* planOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetGasPlanWork(const mvfxContext* context,
+                                                            mvfxInstanceId instance, int32_t gas,
+                                                            mvfxGasPlan* planOut)
 {
     if (planOut != nullptr)
     {
@@ -183,8 +185,19 @@ mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId in
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_GetGasStepPlan(const mvfxContext* context, mvfxInstanceId instance,
-                                       int32_t gas, int32_t step, mvfxGasPlan* planOut)
+mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                   mvfxGasPlan* planOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetGasPlanWork(context, instance, gas, planOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetGasStepPlanWork(const mvfxContext* context,
+                                                                mvfxInstanceId instance,
+                                                                int32_t gas, int32_t step,
+                                                                mvfxGasPlan* planOut)
 {
     if (planOut != nullptr)
     {
@@ -206,6 +219,15 @@ mvfxResult mvfxInstance_GetGasStepPlan(const mvfxContext* context, mvfxInstanceI
     }
     StepPlan(live, gas, step, planOut);
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetGasStepPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t gas, int32_t step, mvfxGasPlan* planOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetGasStepPlanWork(context, instance, gas, step, planOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // Whether nothing pours into gas g after tick: the instance stopped by
@@ -253,8 +275,10 @@ mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context, mvfxInstanceId instanc
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_SetLiquidSpeed(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                       int64_t tick, float speed)
+static MVFX_NOINLINE mvfxResult mvfxInstance_SetLiquidSpeedWork(mvfxContext* context,
+                                                                mvfxInstanceId instance,
+                                                                int32_t gas, int64_t tick,
+                                                                float speed)
 {
     if (context == nullptr)
     {
@@ -283,4 +307,13 @@ mvfxResult mvfxInstance_SetLiquidSpeed(mvfxContext* context, mvfxInstanceId inst
         state->reportedTick = tick;
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetLiquidSpeed(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                       int64_t tick, float speed)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_SetLiquidSpeedWork(context, instance, gas, tick, speed);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

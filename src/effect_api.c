@@ -321,13 +321,11 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
     {
         return built;
     }
-    uint64_t env = mvfxFloatEnvEnter();
     mvfxEffect* effect = mvfxCompileEffect(def, meshes, &context->allocator);
     if (effect != nullptr)
     {
         mvfxCompileEffectParts(def, effect);
     }
-    mvfxFloatEnvLeave(env);
     if (effect == nullptr)
     {
         FreeHulls(context, hulls);
@@ -346,7 +344,8 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
     return mvfx_success;
 }
 
-mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
+static MVFX_NOINLINE mvfxResult mvfxCreateEffectWork(mvfxContext* context, const mvfxEffectDef* def,
+                                                     mvfxEffectId* effectOut)
 {
     if (effectOut == nullptr || context == nullptr)
     {
@@ -365,6 +364,14 @@ mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfx
     mvfxResult created = mvfxCreateEffectOf(context, def, effectOut, &misuse);
     misuse ? mvfxCountMisuse(context) : (void)0;
     return created;
+}
+
+mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxCreateEffectWork(context, def, effectOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)

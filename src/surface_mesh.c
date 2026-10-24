@@ -16,6 +16,7 @@
 // scratch.
 
 #include "context.h"
+#include "fpenv.h"
 #include "gas.h"
 #include "gas_api.h"
 #include "instance.h"
@@ -449,10 +450,9 @@ static bool IsMeshValid(const double origin[3], float level, const mvfxSurfaceMe
     return valid;
 }
 
-mvfxResult mvfxInstance_WriteSurfaceMesh(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                         const double origin[3], float level,
-                                         const mvfxSurfaceMeshBuffers* buffers,
-                                         int64_t* vertexCountOut, int64_t* indexCountOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_WriteSurfaceMeshWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t gas, const double origin[3], float level,
+    const mvfxSurfaceMeshBuffers* buffers, int64_t* vertexCountOut, int64_t* indexCountOut)
 {
     // The counts are 0 on any failure.
     if (vertexCountOut != nullptr)
@@ -505,4 +505,16 @@ mvfxResult mvfxInstance_WriteSurfaceMesh(mvfxContext* context, mvfxInstanceId in
     *vertexCountOut = m.vertices;
     *indexCountOut = m.indices;
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_WriteSurfaceMesh(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                         const double origin[3], float level,
+                                         const mvfxSurfaceMeshBuffers* buffers,
+                                         int64_t* vertexCountOut, int64_t* indexCountOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_WriteSurfaceMeshWork(context, instance, gas, origin, level,
+                                                          buffers, vertexCountOut, indexCountOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

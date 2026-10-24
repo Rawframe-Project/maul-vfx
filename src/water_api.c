@@ -7,6 +7,7 @@
 
 #include "context.h"
 #include "force.h"
+#include "fpenv.h"
 #include "instance_api.h"
 #include "layout.h"
 #include "read_format.h"
@@ -171,9 +172,10 @@ static bool IsReadValid(const mvfxWaterRead* read, const mvfxCompiledWater* wate
     return *pitch >= row;
 }
 
-mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId instance,
-                                  int32_t water, const mvfxWaterRead* read, void* out,
-                                  int64_t bytes)
+static MVFX_NOINLINE mvfxResult mvfxInstance_ReadWaterWork(const mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t water,
+                                                           const mvfxWaterRead* read, void* out,
+                                                           int64_t bytes)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindWater(context, instance, water, &result);
@@ -212,6 +214,16 @@ mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId ins
         }
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId instance,
+                                  int32_t water, const mvfxWaterRead* read, void* out,
+                                  int64_t bytes)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_ReadWaterWork(context, instance, water, read, out, bytes);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z, int32_t lo[2], float t[2])
@@ -359,9 +371,10 @@ static void SampleOne(const mvfxInstance* live, int32_t water, const mvfxSpaceMa
     mvfxUnmapVector(map, velocity, out->velocity);
 }
 
-mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId instance,
-                                    int32_t water, const double* points, int64_t count,
-                                    mvfxWaterSample* out)
+static MVFX_NOINLINE mvfxResult mvfxInstance_SampleWaterWork(const mvfxContext* context,
+                                                             mvfxInstanceId instance, int32_t water,
+                                                             const double* points, int64_t count,
+                                                             mvfxWaterSample* out)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindWater(context, instance, water, &result);
@@ -394,6 +407,16 @@ mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId i
     return mvfx_success;
 }
 
+mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId instance,
+                                    int32_t water, const double* points, int64_t count,
+                                    mvfxWaterSample* out)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_SampleWaterWork(context, instance, water, points, count, out);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 // Whether a push is in range.
 static bool IsPushValid(const mvfxWaterPush* push)
 {
@@ -406,8 +429,10 @@ static bool IsPushValid(const mvfxWaterPush* push)
     return valid;
 }
 
-mvfxResult mvfxInstance_PushWater(mvfxContext* context, mvfxInstanceId instance, int32_t water,
-                                  const mvfxWaterPush* pushes, int32_t count)
+static MVFX_NOINLINE mvfxResult mvfxInstance_PushWaterWork(mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t water,
+                                                           const mvfxWaterPush* pushes,
+                                                           int32_t count)
 {
     if (mvfxRefusesHostCall(context))
     {
@@ -442,8 +467,18 @@ mvfxResult mvfxInstance_PushWater(mvfxContext* context, mvfxInstanceId instance,
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_GetWaterInfo(const mvfxContext* context, mvfxInstanceId instance,
-                                     int32_t water, mvfxWaterInfo* infoOut)
+mvfxResult mvfxInstance_PushWater(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                                  const mvfxWaterPush* pushes, int32_t count)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_PushWaterWork(context, instance, water, pushes, count);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetWaterInfoWork(const mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              int32_t water, mvfxWaterInfo* infoOut)
 {
     if (infoOut == nullptr)
     {
@@ -477,4 +512,13 @@ mvfxResult mvfxInstance_GetWaterInfo(const mvfxContext* context, mvfxInstanceId 
     infoOut->facesHeld = live->waters[water].facesHeld;
     infoOut->volumePoured = live->waters[water].volumePoured;
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetWaterInfo(const mvfxContext* context, mvfxInstanceId instance,
+                                     int32_t water, mvfxWaterInfo* infoOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetWaterInfoWork(context, instance, water, infoOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

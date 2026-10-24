@@ -7,6 +7,7 @@
 #include "effect_api.h"
 #include "effect_parts.h"
 #include "file_codec.h"
+#include "fpenv.h"
 
 #include <string.h>
 
@@ -192,8 +193,10 @@ static uint64_t Hash(const uint8_t* bytes, size_t size)
     return hash;
 }
 
-mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def, const mvfxEffectAsset* assets,
-                               int32_t assetCount, void* bytes, int64_t capacity, int64_t* sizeOut)
+static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def,
+                                                        const mvfxEffectAsset* assets,
+                                                        int32_t assetCount, void* bytes,
+                                                        int64_t capacity, int64_t* sizeOut)
 {
     if (sizeOut != nullptr)
     {
@@ -245,6 +248,15 @@ mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def, const mvfxEffectAsset* 
     Set32(out, 16, (uint32_t)hash);
     Set32(out, 20, (uint32_t)(hash >> 32));
     return Fault(mvfx_success, -1);
+}
+
+mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def, const mvfxEffectAsset* assets,
+                               int32_t assetCount, void* bytes, int64_t capacity, int64_t* sizeOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxFileResult result = mvfxWriteEffectWork(def, assets, assetCount, bytes, capacity, sizeOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // Checks the header and the hash.
@@ -461,9 +473,11 @@ static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEff
     return result;
 }
 
-mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size, const mvfxEffectAsset* assets,
-                              int32_t assetCount, void* memory, int64_t capacity,
-                              int64_t* neededOut, mvfxEffectDef* defOut)
+static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_t size,
+                                                       const mvfxEffectAsset* assets,
+                                                       int32_t assetCount, void* memory,
+                                                       int64_t capacity, int64_t* neededOut,
+                                                       mvfxEffectDef* defOut)
 {
     if (neededOut != nullptr)
     {
@@ -506,9 +520,22 @@ mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size, const mvfxEffectA
     return result;
 }
 
-mvfxFileResult mvfxCreateEffectFromBytes(mvfxContext* context, const void* bytes, int64_t size,
-                                         const mvfxEffectAsset* assets, int32_t assetCount,
-                                         mvfxEffectId* effectOut)
+mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size, const mvfxEffectAsset* assets,
+                              int32_t assetCount, void* memory, int64_t capacity,
+                              int64_t* neededOut, mvfxEffectDef* defOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxFileResult result =
+        mvfxReadEffectWork(bytes, size, assets, assetCount, memory, capacity, neededOut, defOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxFileResult mvfxCreateEffectFromBytesWork(mvfxContext* context,
+                                                                  const void* bytes, int64_t size,
+                                                                  const mvfxEffectAsset* assets,
+                                                                  int32_t assetCount,
+                                                                  mvfxEffectId* effectOut)
 {
     if (context == nullptr || effectOut == nullptr)
     {
@@ -552,5 +579,16 @@ mvfxFileResult mvfxCreateEffectFromBytes(mvfxContext* context, const void* bytes
         result = Fault(mvfxCreateEffectOf(context, &def, effectOut, &misuse), -1);
     }
     mvfxRelease(&context->allocator, memory, (size_t)needed, 16);
+    return result;
+}
+
+mvfxFileResult mvfxCreateEffectFromBytes(mvfxContext* context, const void* bytes, int64_t size,
+                                         const mvfxEffectAsset* assets, int32_t assetCount,
+                                         mvfxEffectId* effectOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxFileResult result =
+        mvfxCreateEffectFromBytesWork(context, bytes, size, assets, assetCount, effectOut);
+    mvfxFloatEnvLeave(env);
     return result;
 }

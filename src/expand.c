@@ -7,6 +7,7 @@
 #include "context.h"
 #include "direction.h"
 #include "elementary.h"
+#include "fpenv.h"
 #include "instance_api.h"
 #include "layout_api.h"
 #include "output.h"
@@ -212,9 +213,9 @@ static bool AreBuffersValid(const mvfxExpandBuffers* buffers)
            mvfxIsBufferValid(buffers->scratch, buffers->scratchBytes, 4);
 }
 
-mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId instance,
-                                      int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
-                                      const mvfxExpandBuffers* buffers, int64_t* countOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* countOut)
 {
     if (context == nullptr || view == nullptr || buffers == nullptr || countOut == nullptr)
     {
@@ -263,6 +264,17 @@ mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId insta
     }
     *countOut = count;
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId instance,
+                                      int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
+                                      const mvfxExpandBuffers* buffers, int64_t* countOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxInstance_ExpandSpritesWork(context, instance, emitter, layout, view, buffers, countOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // A sheet's frame at its vertex in row r, place c: the tangent across and
@@ -369,10 +381,10 @@ static void WriteSheet(const mvfxRecordSource* source, const mvfxOutputLayout* l
     }
 }
 
-mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                     mvfxLayoutId layout, const mvfxView* view,
-                                     const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
-                                     int64_t* indexCountOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+    int64_t* indexCountOut)
 {
     if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
         indexCountOut == nullptr)
@@ -432,4 +444,16 @@ mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instan
     *vertexCountOut = sheets * points;
     *indexCountOut = indices;
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                     mvfxLayoutId layout, const mvfxView* view,
+                                     const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                                     int64_t* indexCountOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_ExpandSheetsWork(context, instance, emitter, layout, view,
+                                                      buffers, vertexCountOut, indexCountOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

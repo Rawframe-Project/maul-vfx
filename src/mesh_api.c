@@ -7,6 +7,7 @@
 
 #include "allocator.h"
 #include "context.h"
+#include "fpenv.h"
 #include "hull.h"
 #include "mesh.h"
 #include "slots.h"
@@ -16,7 +17,8 @@ mvfxMeshDef mvfxDefaultMeshDef(void)
     return (mvfxMeshDef){.cookie = MVFX_MESH_DEF_COOKIE};
 }
 
-mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def, mvfxMeshId* meshOut)
+static MVFX_NOINLINE mvfxResult mvfxCreateMeshWork(mvfxContext* context, const mvfxMeshDef* def,
+                                                   mvfxMeshId* meshOut)
 {
     if (context == nullptr || meshOut == nullptr)
     {
@@ -56,6 +58,14 @@ mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def, mvfxMesh
     return mvfx_success;
 }
 
+mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def, mvfxMeshId* meshOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxCreateMeshWork(context, def, meshOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 mvfxResult mvfxDestroyMesh(mvfxContext* context, mvfxMeshId mesh)
 {
     if (context == nullptr)
@@ -85,8 +95,9 @@ bool mvfxMesh_IsValid(const mvfxContext* context, mvfxMeshId mesh)
     return context != nullptr && mvfxContextMesh(context, mesh) != nullptr;
 }
 
-mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const float* positions,
-                                 const float* normals, int32_t vertexCount)
+static MVFX_NOINLINE mvfxResult mvfxMesh_SetPositionsWork(mvfxContext* context, mvfxMeshId mesh,
+                                                          const float* positions,
+                                                          const float* normals, int32_t vertexCount)
 {
     if (context == nullptr)
     {
@@ -112,6 +123,15 @@ mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const fl
     return mvfx_success;
 }
 
+mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh, const float* positions,
+                                 const float* normals, int32_t vertexCount)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxMesh_SetPositionsWork(context, mesh, positions, normals, vertexCount);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMeshView* viewOut)
 {
     if (viewOut != nullptr)
@@ -131,8 +151,8 @@ mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMes
     return mvfx_success;
 }
 
-mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hullOut,
-                               float centerOut[3])
+static MVFX_NOINLINE mvfxResult mvfxMesh_HullCenterWork(mvfxContext* context, mvfxMeshId mesh,
+                                                        bool* hullOut, float centerOut[3])
 {
     hullOut != nullptr ? (void)(*hullOut = false) : (void)0;
     for (int32_t k = 0; centerOut != nullptr && k < 3; ++k)
@@ -168,7 +188,17 @@ mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hull
     return built == mvfx_errorInvalid ? mvfx_success : built;
 }
 
-mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
+mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hullOut,
+                               float centerOut[3])
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxMesh_HullCenterWork(context, mesh, hullOut, centerOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxMesh_HullVertexCountWork(mvfxContext* context, mvfxMeshId mesh,
+                                                             int32_t* countOut)
 {
     if (context == nullptr || countOut == nullptr)
     {
@@ -190,6 +220,14 @@ mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32
         mvfxCountHullVertices(live->positions, live->vertexCount, &context->allocator, countOut);
     // Vertices that span no volume have no hull: none of its vertices.
     return counted == mvfx_errorInvalid ? mvfx_success : counted;
+}
+
+mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxMesh_HullVertexCountWork(context, mesh, countOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 mvfxMesh* mvfxContextMesh(const mvfxContext* context, mvfxMeshId mesh)

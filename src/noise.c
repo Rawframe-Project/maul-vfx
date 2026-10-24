@@ -3,6 +3,7 @@
 
 #include "noise.h"
 
+#include "fpenv.h"
 #include "random.h"
 
 #include <math.h>
@@ -270,8 +271,9 @@ static void PeriodicCurl(const mvfxNoise* noise, const double place[3], uint32_t
     }
 }
 
-mvfxResult mvfxBakeCurlNoise(const mvfxNoise* noise, int32_t period, const int32_t size[3],
-                             float* values, int64_t valueCount)
+static MVFX_NOINLINE mvfxResult mvfxBakeCurlNoiseWork(const mvfxNoise* noise, int32_t period,
+                                                      const int32_t size[3], float* values,
+                                                      int64_t valueCount)
 {
     if (noise == nullptr || size == nullptr || values == nullptr || !mvfxIsNoiseValid(noise) ||
         noise->lacunarity != floorf(noise->lacunarity) || period < 1 ||
@@ -310,4 +312,13 @@ mvfxResult mvfxBakeCurlNoise(const mvfxNoise* noise, int32_t period, const int32
         }
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxBakeCurlNoise(const mvfxNoise* noise, int32_t period, const int32_t size[3],
+                             float* values, int64_t valueCount)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxBakeCurlNoiseWork(noise, period, size, values, valueCount);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

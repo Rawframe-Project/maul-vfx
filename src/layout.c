@@ -4,6 +4,7 @@
 #include "layout.h"
 
 #include "elementary.h"
+#include "fpenv.h"
 #include "half.h"
 
 #include <math.h>
@@ -147,7 +148,7 @@ static uint32_t SrgbByte(float linear)
     return Unorm(ToSrgb(linear), 255.0f);
 }
 
-void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS])
+static MVFX_NOINLINE void mvfxSrgbStepsWork(float steps[MVFX_SRGB_STEPS])
 {
     // The byte rises with the value: each step by bisection over the
     // binary32 values from 0 to 1, ordered as their bits are.
@@ -171,6 +172,13 @@ void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS])
         }
         memcpy(&steps[k - 1], &low, sizeof low);
     }
+}
+
+void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS])
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxSrgbStepsWork(steps);
+    mvfxFloatEnvLeave(env);
 }
 
 // A value (a word for uint32) in a format at its place.

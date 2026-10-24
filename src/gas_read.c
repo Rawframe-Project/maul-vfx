@@ -5,6 +5,7 @@
 // at points in the world.
 
 #include "context.h"
+#include "fpenv.h"
 #include "gas_api.h"
 #include "gas_lattice.h"
 #include "instance.h"
@@ -68,8 +69,10 @@ static bool IsReadValid(const mvfxGasRead* read, const mvfxCompiledGas* gas, int
     return pitch[0] >= row && pitch[1] >= layer;
 }
 
-mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                  const mvfxGasRead* read, void* out, int64_t bytes)
+static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasAsWork(const mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t gas,
+                                                           const mvfxGasRead* read, void* out,
+                                                           int64_t bytes)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
@@ -114,6 +117,15 @@ mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
+mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                  const mvfxGasRead* read, void* out, int64_t bytes)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_ReadGasAsWork(context, instance, gas, read, out, bytes);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 // A field at a place in the box's frame, 0 outside the box (a surface's
 // distance its reach), a 2D gas's reaching along its Z without end.
 static float SampleAt(const mvfxCompiledGas* gas, const mvfxGasState* state, mvfxGasField field,
@@ -139,9 +151,10 @@ static float SampleAt(const mvfxCompiledGas* gas, const mvfxGasState* state, mvf
     return l.n[k] > 1 ? mvfxGasSample(state->velocity[k][state->current], &l, k, p) : 0.0f;
 }
 
-mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                  mvfxGasField field, const double* points, int64_t count,
-                                  float* out)
+static MVFX_NOINLINE mvfxResult mvfxInstance_SampleGasWork(const mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t gas,
+                                                           mvfxGasField field, const double* points,
+                                                           int64_t count, float* out)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
@@ -174,4 +187,15 @@ mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId ins
         out[i] = SampleAt(compiled, state, field, local);
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                  mvfxGasField field, const double* points, int64_t count,
+                                  float* out)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxInstance_SampleGasWork(context, instance, gas, field, points, count, out);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

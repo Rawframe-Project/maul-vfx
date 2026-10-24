@@ -1,13 +1,13 @@
-expand: appearance context direction elementary instance_api layout_api output
+expand: appearance context direction elementary fpenv instance_api layout_api output
 beam: direction elementary instance noise
 tube: elementary output
-ribbon: appearance context direction gradient instance instance_api layout_api output sort spawn tube
+ribbon: appearance context direction fpenv gradient instance instance_api layout_api output sort spawn tube
 sort: invariant
 bounds: appearance direction instance space spawn
-view: bounds context gas_api instance instance_api water_api
-layout: allocator elementary half
+view: bounds context fpenv gas_api instance instance_api water_api
+layout: allocator elementary fpenv half
 layout_api: context layout slots
-output: appearance context direction instance instance_api layout layout_api sort space
+output: appearance context direction fpenv instance instance_api layout layout_api sort space
 # The internal module graph: each module and the modules it may use, so
 # dependencies stay one-way. tools/check_modules.py enforces it.
 base:
@@ -17,7 +17,7 @@ fpenv:
 half:
 hash:
 random:
-noise: random
+noise: fpenv random
 tasks: fpenv
 slots: allocator invariant
 direction: elementary random
@@ -55,7 +55,7 @@ spawn: direction instance random
 space: force instance
 event: appearance context direction instance instance_api space
 birth: attach direction elementary event instance integrate random rigid shape value velocity
-scene_query: context direction effect force instance instance_api space
+scene_query: context direction effect force fpenv instance instance_api space
 event_spawn: instance random space
 neighbor: elementary instance life random
 steer: force instance neighbor space
@@ -72,8 +72,8 @@ planner: attach birth emitter_step instance integrate spawn
 context: allocator effect grid instance invariant layout mesh slots tasks
 convex: direction hull
 effect_api: allocator context effect effect_parts fpenv grid grid_api hull mesh mesh_api slots
-mesh_api: allocator context hull mesh slots
-grid_api: context grid slots
+mesh_api: allocator context fpenv hull mesh slots
+grid_api: context fpenv grid slots
 gas: allocator collide force gas_lattice
 gas_lattice:
 gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance space tasks
@@ -81,33 +81,33 @@ gas_surface: force gas gas_api instance tasks
 box: direction force instance
 read_format:
 water: allocator collide force
-water_api: box context force instance instance_api layout read_format water
+water_api: box context force fpenv instance instance_api layout read_format water
 water_step: box elementary instance tasks water water_api water_shallow
 water_shallow: elementary instance tasks water water_ground
 water_ground: box collide direction grid instance tasks water water_api
 water_couple: box event force instance water water_api
 file_fields:
 file_codec: file_fields
-file: allocator context effect effect_api effect_parts file_codec file_fields
+file: allocator context effect effect_api effect_parts file_codec file_fields fpenv
 marching_table:
-surface_mesh: context gas gas_api instance marching_table
+surface_mesh: context fpenv gas gas_api instance marching_table
 gas_forces: elementary force gas
 gas_pressure: gas tasks
-gas_read: context gas gas_api gas_lattice instance instance_api layout read_format
+gas_read: context fpenv gas gas_api gas_lattice instance instance_api layout read_format
 gas_solid: collide direction gas gas_pressure
 gas_splat: elementary force gas gas_lattice
 gas_step: elementary force gas gas_forces gas_lattice gas_pressure gas_solid gas_splat tasks
-gas_api: box collide context direction force gas instance instance_api
-instance_api: collide context depth effect_api gas grid_api instance mesh plan_resolved rigid_wake slots spawn
-instance_inputs: context instance instance_api mesh_api rigid_wake spawn
+gas_api: box collide context direction force fpenv gas instance instance_api
+instance_api: collide context depth effect_api fpenv gas grid_api instance mesh plan_resolved rigid_wake slots spawn
+instance_inputs: context fpenv instance instance_api mesh_api rigid_wake spawn
 step: context effect emitter_step event fpenv force gas_api gas_liquid gas_plan gas_splat gas_step gas_surface instance instance_api planner tasks water_shallow water_step
 curve:
 curve_integral: curve
 grid: allocator half
 force: direction elementary gas_lattice grid noise
 plan_resolved: beam collide depth force instance kill liquid_kernel steer velocity_modules water
-gas_plan: context force gas gas_api gas_solid instance instance_api plan_resolved water_plan
-water_plan: box context effect effect_api force instance instance_api plan_resolved water water_api water_ground water_shallow water_step
+gas_plan: context force fpenv gas gas_api gas_solid instance instance_api plan_resolved water_plan
+water_plan: box context effect effect_api force fpenv instance instance_api plan_resolved water water_api water_ground water_shallow water_step
 gradient:
 elementary:
 test_hooks: effect gas instance instance_api water
