@@ -573,7 +573,7 @@ static void TestPile(void)
     View(0);
     TestParticle bodies[8];
     int32_t count = Bodies(0, bodies);
-    Solid solids[6];
+    static Solid solids[6];
     float fastest = 0.0f;
     for (int32_t i = 0; i < 6 && i < count; ++i)
     {
