@@ -141,8 +141,12 @@ extern "C"
     /// @param assetCount  Its length, at least 0.
     /// @param effectOut   Receives the effect's id; the null id on failure.
     /// @return As mvfxReadEffect, then as mvfxCreateEffect with the offset
-    ///         -1; `mvfx_errorCapacity` also when the allocator fails. A
-    ///         NULL argument counts as misuse when the context is given.
+    ///         -1; `mvfx_errorCapacity` also when the allocator fails. An
+    ///         invalid argument (a NULL pointer, NULL bytes with a size, a
+    ///         negative size, an invalid asset table) counts as misuse when
+    ///         the context is given. What the file holds is untrusted data:
+    ///         a file refused for its contents, including for what it asks
+    ///         of the table's assets, counts none.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxCreateEffectFromBytes(
