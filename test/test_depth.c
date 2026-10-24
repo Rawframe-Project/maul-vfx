@@ -10,8 +10,7 @@
 // killed there when asked); a local emitter under a scaled instance with
 // a radius; and every refusal, an image a byte short among them.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -27,7 +26,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -44,7 +42,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -60,6 +57,8 @@ static mvfxEmitterDef Seeing(void)
                                         .depthImage = true,
                                         .depthThickness = 0.5f,
                                         .depthSamples = 64};
+    emitter.events = mvfx_eventMaskCollision;
+    emitter.eventCapacity = 8;
     return emitter;
 }
 
@@ -72,9 +71,35 @@ static void Place(Scene* scene, double x, double y, double z, float vx, float vy
           "placed");
 }
 
-static double At(const Scene* scene, mvfxAttribute attribute, int32_t i)
+static TestParticle s_particles[8];
+
+// Reads the particles into s_particles; returns how many.
+static int32_t Read(const Scene* scene)
 {
-    return (double)((const float*)mvfxAttributeArray(scene->live, 0, attribute))[i];
+    return ReadParticles(scene->context, scene->instance, 0, s_particles, 8);
+}
+
+// The particle at i.
+static TestParticle At(const Scene* scene, int32_t i)
+{
+    CHECK(i < Read(scene), "the particle read");
+    return s_particles[i];
+}
+
+// The collisions of the last step.
+static int32_t Collisions(const Scene* scene)
+{
+    const mvfxEvent* events = NULL;
+    int32_t count = -1;
+    CHECK(mvfxInstance_GetEvents(scene->context, scene->instance, 0, &events, &count) ==
+              mvfx_success,
+          "events");
+    int32_t collisions = 0;
+    for (int32_t e = 0; e < count; ++e)
+    {
+        collisions += events[e].kind == mvfx_eventCollision ? 1 : 0;
+    }
+    return collisions;
 }
 
 static bool Near(double a, double b, double within)
@@ -178,8 +203,8 @@ static void TestWall(void)
             Show(&scene, &image);
             Place(&scene, 0.3, -0.2, 1, 0, 0, -2);
             Step(&scene);
-            CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, within[f]) &&
-                      Near(At(&scene, mvfx_attributeVelocityZ, 0), 2.0, 1e-3),
+            CHECK(Near((double)At(&scene, 0).position[2], 1.0, within[f]) &&
+                      Near((double)At(&scene, 0).velocity[2], 2.0, 1e-3),
                   "off the wall");
             mvfxDestroyContext(scene.context);
         }
@@ -197,8 +222,8 @@ static void TestThickness(void)
     Place(&scene, 0, 0, -0.2, 0, 0, 0);
     Place(&scene, 0, 0, -2, 0, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 0.0, 1e-3), "put out of the wall");
-    CHECK(At(&scene, mvfx_attributePositionZ, 1) == -2.0, "far behind, untouched");
+    CHECK(Near((double)At(&scene, 0).position[2], 0.0, 1e-3), "put out of the wall");
+    CHECK((double)At(&scene, 1).position[2] == -2.0, "far behind, untouched");
     mvfxDestroyContext(scene.context);
 
     // Fast along the view ray, 6 in a step against a thickness of 0.5: the
@@ -207,8 +232,7 @@ static void TestThickness(void)
     Show(&scene, &image);
     Place(&scene, 0, 0, 1, 0, 0, -6);
     Step(&scene);
-    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
-    CHECK(count[0] == 1 && Near(At(&scene, mvfx_attributeVelocityZ, 0), 6.0, 1e-3),
+    CHECK(Collisions(&scene) == 1 && Near((double)At(&scene, 0).velocity[2], 6.0, 1e-3),
           "fast along the ray, caught");
     mvfxDestroyContext(scene.context);
 
@@ -219,10 +243,9 @@ static void TestThickness(void)
     Show(&scene, &image);
     Place(&scene, -5, 0, -0.1, 10, 0, 0);
     Step(&scene);
-    count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
     // Moved onto the surface along its view ray, its x a little out.
-    CHECK(count[0] >= 1 && Near(At(&scene, mvfx_attributePositionZ, 0), 0.0, 1e-3) &&
-              Near(At(&scene, mvfx_attributePositionX, 0), 5.0, 1e-2),
+    CHECK(Collisions(&scene) == 1 && Near((double)At(&scene, 0).position[2], 0.0, 1e-3) &&
+              Near((double)At(&scene, 0).position[0], 5.0, 1e-2),
           "across a thin strip, caught");
     mvfxDestroyContext(scene.context);
 }
@@ -238,8 +261,8 @@ static void TestNormals(void)
     Show(&scene, &image);
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributeVelocityX, 0), -1.6, 2e-2) &&
-              Near(At(&scene, mvfx_attributeVelocityZ, 0), 1.2, 2e-2),
+    CHECK(Near((double)At(&scene, 0).velocity[0], -1.6, 2e-2) &&
+              Near((double)At(&scene, 0).velocity[2], 1.2, 2e-2),
           "the normal from the depth");
     mvfxDestroyContext(scene.context);
 
@@ -256,8 +279,8 @@ static void TestNormals(void)
     Show(&scene, &image);
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributeVelocityX, 0), 0.0, 1e-5) &&
-              Near(At(&scene, mvfx_attributeVelocityZ, 0), 2.0, 1e-3),
+    CHECK(Near((double)At(&scene, 0).velocity[0], 0.0, 1e-5) &&
+              Near((double)At(&scene, 0).velocity[2], 2.0, 1e-3),
           "the normal image's");
     mvfxDestroyContext(scene.context);
 }
@@ -278,17 +301,17 @@ static void TestOutside(void)
         Place(&scene, 20, 0, 1, 0, 0, -2);
         Place(&scene, 0, 0, 1, 0, 0, -2);
         Step(&scene);
-        CHECK(scene.live->emitters[0].count == (kill != 0 ? 1 : 2), "outside the view");
+        CHECK(Read(&scene) == (kill != 0 ? 1 : 2), "outside the view");
         if (kill == 0)
         {
-            CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), -1.0, 1e-4), "outside, passing");
+            CHECK(Near((double)At(&scene, 0).position[2], -1.0, 1e-4), "outside, passing");
         }
         CHECK(mvfxInstance_SetDepthImage(scene.context, scene.instance, NULL) == mvfx_success,
               "cleared");
         Place(&scene, 0, 0, 1, 0, 0, -2);
         Step(&scene);
-        int32_t last = scene.live->emitters[0].count - 1;
-        CHECK(Near(At(&scene, mvfx_attributePositionZ, last), -1.0, 1e-4), "no image, passing");
+        int32_t last = Read(&scene) - 1;
+        CHECK(Near((double)At(&scene, last).position[2], -1.0, 1e-4), "no image, passing");
         mvfxDestroyContext(scene.context);
     }
     Paint(0.0, 0, 0, false);
@@ -297,7 +320,7 @@ static void TestOutside(void)
     Show(&scene, &wall);
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), -1.0, 1e-4), "the background, passing");
+    CHECK(Near((double)At(&scene, 0).position[2], -1.0, 1e-4), "the background, passing");
     mvfxDestroyContext(scene.context);
     // The far plane holds no surface, even for a particle whose radius
     // reaches it.
@@ -307,7 +330,7 @@ static void TestOutside(void)
     Show(&scene, &wall);
     Place(&scene, 0, 0, -89.8, 0, 0, 0);
     Step(&scene);
-    CHECK(At(&scene, mvfx_attributePositionZ, 0) == (double)-89.8f, "no surface at the far plane");
+    CHECK((double)At(&scene, 0).position[2] == (double)-89.8f, "no surface at the far plane");
     mvfxDestroyContext(scene.context);
 }
 
@@ -315,7 +338,8 @@ static void TestLocal(void)
 {
     // A local emitter under an instance at scale 2: from its z = 0.5 (the
     // world's 1) down 1 a second (the world's 2), its radius 0.1 (the
-    // world's 0.2) keeps it to its z = 0.1, back up to 0.7.
+    // world's 0.2) keeps it to its z = 0.1, back up to 0.7 (the world's
+    // 1.4).
     Paint(0.0, 0, SIDE, false);
     mvfxDepthImage image = Camera(s_floats, mvfx_depthFloat32, false);
     mvfxEmitterDef emitter = Seeing();
@@ -330,7 +354,7 @@ static void TestLocal(void)
     Show(&scene, &image);
     Place(&scene, 0, 0, 0.5, 0, 0, -1);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 0.7, 1e-3), "scaled, with its radius");
+    CHECK(Near((double)At(&scene, 0).position[2], 1.4, 2e-3), "scaled, with its radius");
     mvfxDestroyContext(scene.context);
 }
 
@@ -372,7 +396,7 @@ static void TestImageEdges(void)
     Show(&scene, &rolled);
     Place(&scene, 0.3, -0.2, 1, 0, 0, -2);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, 1e-3), "a rolled projection");
+    CHECK(Near((double)At(&scene, 0).position[2], 1.0, 1e-3), "a rolled projection");
     mvfxDestroyContext(scene.context);
 
     // Rows from the image's top: a wall in the top half meets a particle
@@ -384,8 +408,8 @@ static void TestImageEdges(void)
     Place(&scene, 0, 0.3, 1, 0, 0, -2);
     Place(&scene, 0, -0.3, 1, 0, 0, -2);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, 1e-3) &&
-              Near(At(&scene, mvfx_attributePositionZ, 1), -1.0, 1e-4),
+    CHECK(Near((double)At(&scene, 0).position[2], 1.0, 1e-3) &&
+              Near((double)At(&scene, 1).position[2], -1.0, 1e-4),
           "rows from the top");
     mvfxDestroyContext(scene.context);
 
@@ -397,7 +421,7 @@ static void TestImageEdges(void)
     Show(&scene, &wall);
     Place(&scene, 10.25, 0, -0.25, 0, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 0.0, 1e-3), "the right edge's column");
+    CHECK(Near((double)At(&scene, 0).position[2], 0.0, 1e-3), "the right edge's column");
     mvfxDestroyContext(scene.context);
 
     // Beside a step down (z = 0 left of the middle, -3 right of it) the
@@ -414,8 +438,8 @@ static void TestImageEdges(void)
     Show(&scene, &wall);
     Place(&scene, -0.15625, 0, 1, 0, 0, -2);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributeVelocityX, 0), 0.0, 1e-3) &&
-              Near(At(&scene, mvfx_attributeVelocityZ, 0), 2.0, 1e-3),
+    CHECK(Near((double)At(&scene, 0).velocity[0], 0.0, 1e-3) &&
+              Near((double)At(&scene, 0).velocity[2], 2.0, 1e-3),
           "beside a step, the nearer neighbor");
     mvfxDestroyContext(scene.context);
 
@@ -428,8 +452,7 @@ static void TestImageEdges(void)
     Show(&scene, &wall);
     Place(&scene, -5, 0, -0.1, 10, 0, 0);
     Step(&scene);
-    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
-    CHECK(count[0] >= 1, "a pixel-wide strip, sampled by pixels");
+    CHECK(Collisions(&scene) == 1, "a pixel-wide strip, sampled by pixels");
     mvfxDestroyContext(scene.context);
 }
 
@@ -448,8 +471,8 @@ static void TestTurnedAndPlanes(void)
     Show(&scene, &turned);
     Place(&scene, 1, 0, 0.3, -2, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionX, 0), 1.0, 1e-3) &&
-              Near(At(&scene, mvfx_attributeVelocityX, 0), 2.0, 1e-3),
+    CHECK(Near((double)At(&scene, 0).position[0], 1.0, 1e-3) &&
+              Near((double)At(&scene, 0).velocity[0], 2.0, 1e-3),
           "a turned camera");
     mvfxDestroyContext(scene.context);
 
@@ -469,7 +492,7 @@ static void TestTurnedAndPlanes(void)
               mvfx_success,
           "answered");
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, 1e-3), "the earlier contact");
+    CHECK(Near((double)At(&scene, 0).position[2], 1.0, 1e-3), "the earlier contact");
     mvfxDestroyContext(scene.context);
 }
 
@@ -543,7 +566,7 @@ static void TestRefusals(void)
     // The good image kept: the wall still met.
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), 1.0, 1e-3), "the last image kept");
+    CHECK(Near((double)At(&scene, 0).position[2], 1.0, 1e-3), "the last image kept");
     // A stride wider than a row, the last row's end exact, is in range.
     static float wide[SIDE * (SIDE + 3)];
     mvfxDepthImage padded = good;
