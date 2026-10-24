@@ -1,203 +1,33 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Value sources and the initial values they draw: each kind against its
-// formula, the age a source reads, and every optional value through the
-// step (sizes, colors on the line between two, sprite and mesh rotations,
-// frames, custom attributes, lives by curve and parameter) with the
-// instance parameters that feed them.
+// Value sources and the initial values they draw, read where a host reads
+// them (the particles' records, and a host module after motion for spin,
+// spin axes, births and lives): each kind against its formula, the age a
+// source reads in a loop and without one, the refusals, and every
+// optional value through the step (sizes, colors on the line between two,
+// sprite and mesh rotations, frames, custom attributes, lives by curve
+// and parameter) with the instance parameters that feed them.
 
-#include "birth.h"
-#include "context.h"
-#include "instance.h"
+#define PEEK_MOST 4096
+
+#include "particles.h"
+#include "peek.h"
 #include "test_harness.h"
-#include "value.h"
 
 #include "maul-vfx/instance.h"
 
 #include <math.h>
-
-#define SAMPLES 20000
-
-static mvfxWords4 Words(uint32_t i)
-{
-    return mvfxPcg4d((mvfxWords4){i, 0xFACEu, 1u, 0u});
-}
 
 static const mvfxCurveKey s_ramp[2] = {{0.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
                                        {1.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
 static const mvfxColorKey s_redToBlue[2] = {{0.0f, 1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}};
 static const mvfxAlphaKey s_opaque[1] = {{0.0f, 1.0f}};
 
-static void TestScalarKinds(void)
-{
-    mvfxCurveTable curves[1];
-    mvfxTableSpace space = {.curves = curves};
-    static const float parameters[2][4] = {{3.0f, 0, 0, 0}, {-2.0f, 0, 0, 0}};
-
-    mvfxScalarSource range = mvfxRangeSource(2.0f, 4.0f);
-    CHECK(mvfxIsScalarSourceValid(&range, false, true, 0), "a range");
-    mvfxCompiledScalar compiled;
-    mvfxCompileScalar(&range, true, &space, &compiled);
-    double sum = 0.0;
-    bool within = true;
-    for (uint32_t i = 0; i < SAMPLES; ++i)
-    {
-        float v = mvfxDrawScalar(&compiled, 0.0f, parameters, Words(i));
-        within = within && v >= 2.0f && v <= 4.0f;
-        sum += (double)v;
-    }
-    CHECK(within, "within the range");
-    CHECK(fabs(sum / SAMPLES - 3.0) <= 5.0 * (2.0 / sqrt(12.0)) / sqrt((double)SAMPLES),
-          "uniform over it");
-
-    mvfxScalarSource curve = {
-        .kind = mvfx_sourceCurve, .range = {2.0f, 2.0f}, .curve = {s_ramp, 2, mvfx_tangentsGiven}};
-    CHECK(mvfxIsScalarSourceValid(&curve, false, true, 0), "a curve");
-    mvfxCompileScalar(&curve, true, &space, &compiled);
-    CHECK(fabsf(mvfxDrawScalar(&compiled, 0.25f, parameters, Words(1)) - 0.5f) <= 1e-6f,
-          "the curve at the age times the range");
-
-    mvfxScalarSource parameter = {
-        .kind = mvfx_sourceParameter, .range = {1.0f, 1.0f}, .parameter = 1};
-    CHECK(mvfxIsScalarSourceValid(&parameter, false, true, 2), "a parameter");
-    CHECK(!mvfxIsScalarSourceValid(&parameter, false, true, 1), "a parameter past the count");
-    mvfxCompileScalar(&parameter, true, &space, &compiled);
-    CHECK(mvfxDrawScalar(&compiled, 0.0f, parameters, Words(2)) == -2.0f, "the parameter's x");
-
-    mvfxScalarSource none = {0};
-    CHECK(mvfxIsScalarSourceValid(&none, true, true, 0), "none when optional");
-    CHECK(!mvfxIsScalarSourceValid(&none, false, true, 0), "none when required");
-    mvfxScalarSource unbounded = curve;
-    unbounded.curve.keys = (const mvfxCurveKey[1]){{2.5f, 1.0f, 0.0f, 0.0f, 0}};
-    unbounded.curve.keyCount = 1;
-    CHECK(!mvfxIsScalarSourceValid(&unbounded, false, true, 0), "a key past 1 with a duration");
-    CHECK(mvfxIsScalarSourceValid(&unbounded, false, false, 0), "in seconds without one");
-    // A curve in seconds, from 2 s to 4 s, read at 3 s: half way.
-    static const mvfxCurveKey seconds[2] = {{2.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
-                                            {4.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
-    mvfxScalarSource inSeconds = {
-        .kind = mvfx_sourceCurve, .range = {1.0f, 1.0f}, .curve = {seconds, 2, mvfx_tangentsGiven}};
-    mvfxTableSpace secondsSpace = {.curves = curves};
-    mvfxCompileScalar(&inSeconds, false, &secondsSpace, &compiled);
-    CHECK(fabsf(mvfxDrawScalar(&compiled, 3.0f, parameters, Words(9)) - 0.5f) <= 1e-6f,
-          "a curve in seconds over its keys' span");
-    // Baked over its keys' span, not from 0: a peak at 100.5 s of a curve
-    // from 100 s to 101 s keeps its height.
-    static const mvfxCurveKey peak[3] = {{100.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
-                                         {100.5f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
-                                         {101.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
-    inSeconds.curve = (mvfxCurve){peak, 3, mvfx_tangentsGiven};
-    secondsSpace = (mvfxTableSpace){.curves = curves};
-    mvfxCompileScalar(&inSeconds, false, &secondsSpace, &compiled);
-    CHECK(fabsf(mvfxDrawScalar(&compiled, 100.5f, parameters, Words(9)) - 1.0f) <= 0.01f,
-          "a peak far from 0 kept");
-    static const mvfxScalarSource bad[4] = {
-        {.kind = 6, .range = {0.0f, 1.0f}},
-        {.kind = mvfx_sourceRange, .range = {2.0f, 1.0f}},
-        {.kind = mvfx_sourceRange, .range = {(float)NAN, 1.0f}},
-        {.kind = mvfx_sourceRange, .range = {0.0f, 2e30f}},
-    };
-    for (int32_t i = 0; i < 4; ++i)
-    {
-        CHECK(!mvfxIsScalarSourceValid(&bad[i], true, true, 0), "refused");
-    }
-}
-
-static void TestVectorKinds(void)
-{
-    mvfxCurveTable curves[1];
-    mvfxGradientTable gradients[2];
-    mvfxTableSpace space = {.curves = curves, .gradients = gradients};
-    static const float parameters[1][4] = {{1.0f, 2.0f, 3.0f, 4.0f}};
-
-    // Shared draws: a color between red and blue lies on the line.
-    mvfxVectorSource line = {
-        .kind = mvfx_sourceRange, .min = {1, 0, 0, 1}, .max = {0, 0, 1, 1}, .uniform = true};
-    CHECK(mvfxIsVectorSourceValid(&line, 4, true, 0), "a line of colors");
-    mvfxCompiledVector compiled;
-    mvfxCompileVector(&line, 4, true, &space, &compiled);
-    bool onLine = true;
-    for (uint32_t i = 0; i < 2000; ++i)
-    {
-        float v[4];
-        mvfxDrawVector(&compiled, 0.0f, parameters, Words(i), v);
-        onLine = onLine && fabsf(v[0] + v[2] - 1.0f) <= 1e-6f && v[1] == 0.0f && v[3] == 1.0f;
-    }
-    CHECK(onLine, "shared draws on the line between the two");
-
-    // Separate draws: components independent.
-    line.uniform = false;
-    mvfxCompileVector(&line, 4, true, &space, &compiled);
-    int64_t offLine = 0;
-    for (uint32_t i = 0; i < 2000; ++i)
-    {
-        float v[4];
-        mvfxDrawVector(&compiled, 0.0f, parameters, Words(i), v);
-        offLine += fabsf(v[0] + v[2] - 1.0f) > 1e-3f ? 1 : 0;
-    }
-    CHECK(offLine > 1800, "separate draws leave the line");
-
-    // A gradient at random from red to blue, scaled by 1: red plus blue 1.
-    mvfxVectorSource gradient = {.kind = mvfx_sourceGradient,
-                                 .min = {1, 1, 1, 1},
-                                 .max = {1, 1, 1, 1},
-                                 .gradient = {s_redToBlue, 2, s_opaque, 1}};
-    CHECK(mvfxIsVectorSourceValid(&gradient, 4, true, 0), "a gradient");
-    CHECK(!mvfxIsVectorSourceValid(&gradient, 3, true, 0), "a gradient needs four components");
-    mvfxCompileVector(&gradient, 4, true, &space, &compiled);
-    double sumRed = 0.0;
-    bool along = true;
-    for (uint32_t i = 0; i < SAMPLES; ++i)
-    {
-        float v[4];
-        mvfxDrawVector(&compiled, 0.0f, parameters, Words(i), v);
-        along = along && fabsf(v[0] + v[2] - 1.0f) <= 1e-5f && v[3] == 1.0f;
-        sumRed += (double)v[0];
-    }
-    CHECK(along, "on the gradient");
-    CHECK(fabs(sumRed / SAMPLES - 0.5) <= 5.0 * sqrt(1.0 / 12.0) / sqrt((double)SAMPLES),
-          "at a uniform point");
-
-    // Over age: the gradient at the age.
-    gradient.kind = mvfx_sourceGradientOverAge;
-    CHECK(!mvfxIsVectorSourceValid(&gradient, 4, false, 0), "over age needs a duration");
-    mvfxCompileVector(&gradient, 4, true, &space, &compiled);
-    float v[4];
-    mvfxDrawVector(&compiled, 0.75f, parameters, Words(3), v);
-    CHECK(fabsf(v[0] - 0.25f) <= 1e-5f && fabsf(v[2] - 0.75f) <= 1e-5f, "the gradient at age");
-
-    // A curve scales every component; a parameter each by its own.
-    mvfxVectorSource curve = {.kind = mvfx_sourceCurve,
-                              .min = {1, 2, 3, 7},
-                              .max = {1, 2, 3, 7},
-                              .curve = {s_ramp, 2, mvfx_tangentsGiven}};
-    mvfxCompileVector(&curve, 3, true, &space, &compiled);
-    mvfxDrawVector(&compiled, 0.5f, parameters, Words(4), v);
-    CHECK(fabsf(v[0] - 0.5f) <= 1e-6f && fabsf(v[1] - 1.0f) <= 1e-6f &&
-              fabsf(v[2] - 1.5f) <= 1e-6f && v[3] == 0.0f,
-          "a curve scales each component; unused ones 0");
-    mvfxVectorSource parameter = {
-        .kind = mvfx_sourceParameter, .min = {2, 2, 2, 2}, .max = {2, 2, 2, 2}};
-    mvfxCompileVector(&parameter, 4, true, &space, &compiled);
-    mvfxDrawVector(&compiled, 0.0f, parameters, Words(5), v);
-    CHECK(v[0] == 2.0f && v[1] == 4.0f && v[2] == 6.0f && v[3] == 8.0f, "each by its parameter");
-}
-
-static void TestAge(void)
-{
-    mvfxCompiledEmitter looped = {.delay = 1000, .duration = 4000};
-    CHECK(mvfxSourceAge(&looped, 1000 + 3000) == 0.75f, "a loop's normalized age");
-    CHECK(mvfxSourceAge(&looped, 1000 + 4000 * 7 + 1000) == 0.25f, "in a later loop");
-    mvfxCompiledEmitter endless = {.delay = MVFX_TICKS_PER_SECOND};
-    CHECK(mvfxSourceAge(&endless, 3 * MVFX_TICKS_PER_SECOND) == 2.0f, "seconds without a loop");
-}
-
 typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    const mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter, const float* parameters, int32_t count)
@@ -217,13 +47,344 @@ static Scene NewScene(const mvfxEmitterDef* emitter, const float* parameters, in
     instanceDef.seed = 77;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
-static const float* Array(const Scene* scene, mvfxAttribute attribute)
+// Steps a scene by ticks, at most a second a step.
+static void Run(const Scene* scene, int64_t ticks)
 {
-    return mvfxAttributeArray(scene->live, 0, attribute);
+    for (int64_t left = ticks; left > 0; left -= MVFX_TICKS_PER_SECOND)
+    {
+        int64_t step = left < MVFX_TICKS_PER_SECOND ? left : MVFX_TICKS_PER_SECOND;
+        CHECK(mvfxContext_StepTicks(scene->context, step) == mvfx_success, "step");
+    }
+}
+
+// The scene's particles' records, in the pool's order (the peeking
+// module's too), and their count.
+static TestParticle s_records[PEEK_MOST];
+static int32_t Records(const Scene* scene)
+{
+    int32_t count = ReadParticles(scene->context, scene->instance, 0, s_records, PEEK_MOST);
+    CHECK(count >= 0, "records");
+    return count;
+}
+
+// Whether an effect of the emitter and parameterCount parameters (all 0)
+// is taken.
+static bool Taken(const mvfxEmitterDef* emitter, int32_t parameterCount)
+{
+    static const float zeros[8][4] = {{0}};
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = emitter;
+    effectDef.emitterCount = 1;
+    effectDef.parameters = &zeros[0][0];
+    effectDef.parameterCount = parameterCount;
+    mvfxEffectId effect = {0};
+    bool taken = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    mvfxDestroyContext(context);
+    return taken;
+}
+
+// An emitter of many long lives at a rate, peeked.
+static mvfxEmitterDef Many(float rate)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = rate;
+    emitter.capacity = PEEK_MOST;
+    emitter.lifetime = mvfxRangeSource(200.0f, 200.0f);
+    return emitter;
+}
+
+// Particle i's age in its emitter's loop at its birth, as a source reads
+// it: over the loop's ticks from the delay, or seconds without a loop.
+static double SourceAge(int32_t i, int64_t delay, int64_t duration)
+{
+    int64_t since = s_peeked.birth[i] - delay;
+    return duration > 0 ? (double)(since % duration) / (double)duration
+                        : (double)since / (double)MVFX_TICKS_PER_SECOND;
+}
+
+static void TestScalarKinds(void)
+{
+    // Spins drawn by a range of 2 to 4: within it, uniform over it.
+    mvfxEmitterDef base = Many(4000.0f);
+    base.spin = mvfxRangeSource(2.0f, 4.0f);
+    mvfxEmitterDef emitter = Peeking(&base);
+    Scene scene = NewScene(&emitter, NULL, 0);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 2);
+    int32_t count = s_peeked.count;
+    double sum = 0.0;
+    bool within = count == 2000;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        within = within && s_peeked.spin[i] >= 2.0f && s_peeked.spin[i] <= 4.0f;
+        sum += (double)s_peeked.spin[i];
+    }
+    CHECK(within, "within the range");
+    CHECK(fabs(sum / count - 3.0) <= 5.0 * (2.0 / sqrt(12.0)) / sqrt((double)count),
+          "uniform over it");
+    mvfxDestroyContext(scene.context);
+
+    // A curve times the range, at the age in a loop of a second each was
+    // born at.
+    base = Many(4000.0f);
+    base.duration = 1.0f;
+    base.spin = (mvfxScalarSource){
+        .kind = mvfx_sourceCurve, .range = {2.0f, 2.0f}, .curve = {s_ramp, 2, mvfx_tangentsGiven}};
+    emitter = Peeking(&base);
+    scene = NewScene(&emitter, NULL, 0);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 2);
+    bool curved = s_peeked.count > 1000;
+    for (int32_t i = 0; i < s_peeked.count; ++i)
+    {
+        double expected = 2.0 * SourceAge(i, 0, MVFX_TICKS_PER_SECOND);
+        curved = curved && fabs((double)s_peeked.spin[i] - expected) <= 1e-4;
+    }
+    CHECK(curved, "the curve at the age times the range");
+    mvfxDestroyContext(scene.context);
+
+    // A parameter's x times the range.
+    static const float parameters[2][4] = {{3.0f, 0, 0, 0}, {-2.0f, 0, 0, 0}};
+    base = Many(64.0f);
+    base.spin =
+        (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {1.0f, 1.0f}, .parameter = 1};
+    emitter = Peeking(&base);
+    scene = NewScene(&emitter, &parameters[0][0], 2);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 8);
+    CHECK(s_peeked.count > 0 && s_peeked.spin[0] == -2.0f, "the parameter's x");
+    mvfxDestroyContext(scene.context);
+    CHECK(Taken(&base, 2) && !Taken(&base, 1), "a parameter past the count refused");
+
+    // None where optional (the spin), not where required (the life).
+    base = Many(64.0f);
+    base.spin = (mvfxScalarSource){0};
+    CHECK(Taken(&base, 0), "none when optional");
+    base.lifetime = (mvfxScalarSource){0};
+    CHECK(!Taken(&base, 0), "none when required");
+
+    // A key past 1 refused in a loop, taken in seconds without one.
+    base = Many(64.0f);
+    base.spin = (mvfxScalarSource){
+        .kind = mvfx_sourceCurve,
+        .range = {1.0f, 1.0f},
+        .curve = {(const mvfxCurveKey[1]){{2.5f, 1.0f, 0.0f, 0.0f, 0}}, 1, mvfx_tangentsGiven}};
+    CHECK(Taken(&base, 0), "in seconds without a loop");
+    base.duration = 1.0f;
+    CHECK(!Taken(&base, 0), "a key past 1 with a duration");
+
+    // A curve in seconds, from 2 s to 4 s: half way at 3 s.
+    static const mvfxCurveKey seconds[2] = {{2.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+                                            {4.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    base = Many(500.0f);
+    base.spin = (mvfxScalarSource){
+        .kind = mvfx_sourceCurve, .range = {1.0f, 1.0f}, .curve = {seconds, 2, mvfx_tangentsGiven}};
+    emitter = Peeking(&base);
+    scene = NewScene(&emitter, NULL, 0);
+    Run(&scene, 4 * MVFX_TICKS_PER_SECOND);
+    int32_t between = 0;
+    bool spanned = true;
+    for (int32_t i = 0; i < s_peeked.count; ++i)
+    {
+        double age = SourceAge(i, 0, 0);
+        if (age >= 2.0 && age <= 4.0)
+        {
+            between += 1;
+            spanned = spanned && fabs((double)s_peeked.spin[i] - (age - 2.0) / 2.0) <= 1e-3;
+        }
+    }
+    CHECK(between > 500 && spanned, "a curve in seconds over its keys' span");
+    mvfxDestroyContext(scene.context);
+
+    // Baked over its keys' span, not from 0: a peak at 100.5 s of a curve
+    // from 100 s to 101 s keeps its height.
+    static const mvfxCurveKey peak[3] = {{100.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+                                         {100.5f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+                                         {101.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+    base = Many(32.0f);
+    base.spin = (mvfxScalarSource){
+        .kind = mvfx_sourceCurve, .range = {1.0f, 1.0f}, .curve = {peak, 3, mvfx_tangentsGiven}};
+    emitter = Peeking(&base);
+    scene = NewScene(&emitter, NULL, 0);
+    Run(&scene, 101 * MVFX_TICKS_PER_SECOND);
+    float highest = 0.0f;
+    bool shaped = true;
+    for (int32_t i = 0; i < s_peeked.count && i < PEEK_MOST; ++i)
+    {
+        double age = SourceAge(i, 0, 0);
+        if (age >= 100.0 && age <= 101.0)
+        {
+            highest = fmaxf(highest, s_peeked.spin[i]);
+            shaped =
+                shaped && fabs((double)s_peeked.spin[i] - (1.0 - 2.0 * fabs(age - 100.5))) <= 0.01;
+        }
+    }
+    CHECK(shaped && highest >= 0.95f, "a peak far from 0 kept");
+    mvfxDestroyContext(scene.context);
+
+    static const mvfxScalarSource bad[4] = {
+        {.kind = 6, .range = {0.0f, 1.0f}},
+        {.kind = mvfx_sourceRange, .range = {2.0f, 1.0f}},
+        {.kind = mvfx_sourceRange, .range = {(float)NAN, 1.0f}},
+        {.kind = mvfx_sourceRange, .range = {0.0f, 2e30f}},
+    };
+    bool refused = true;
+    for (int32_t i = 0; i < 4; ++i)
+    {
+        base = Many(64.0f);
+        base.spin = bad[i];
+        refused = refused && !Taken(&base, 0);
+    }
+    CHECK(refused, "refused");
+}
+
+static void TestVectorKinds(void)
+{
+    // Shared draws: a color between red and blue lies on the line.
+    mvfxEmitterDef base = Many(4000.0f);
+    base.color = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {1, 0, 0, 1}, .max = {0, 0, 1, 1}, .uniform = true};
+    Scene scene = NewScene(&base, NULL, 0);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 2);
+    int32_t count = Records(&scene);
+    bool onLine = count == 2000;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        const float* v = s_records[i].color;
+        onLine = onLine && fabsf(v[0] + v[2] - 1.0f) <= 1e-6f && v[1] == 0.0f && v[3] == 1.0f;
+    }
+    CHECK(onLine, "shared draws on the line between the two");
+    mvfxDestroyContext(scene.context);
+
+    // Separate draws: components independent.
+    base.color.uniform = false;
+    scene = NewScene(&base, NULL, 0);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 2);
+    count = Records(&scene);
+    int64_t offLine = 0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        const float* v = s_records[i].color;
+        offLine += fabsf(v[0] + v[2] - 1.0f) > 1e-3f ? 1 : 0;
+    }
+    CHECK(count == 2000 && offLine > 1800, "separate draws leave the line");
+    mvfxDestroyContext(scene.context);
+
+    // A gradient at random from red to blue, scaled by 1: red plus blue 1.
+    base = Many(4000.0f);
+    base.color = (mvfxVectorSource){.kind = mvfx_sourceGradient,
+                                    .min = {1, 1, 1, 1},
+                                    .max = {1, 1, 1, 1},
+                                    .gradient = {s_redToBlue, 2, s_opaque, 1}};
+    scene = NewScene(&base, NULL, 0);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 2);
+    count = Records(&scene);
+    double sumRed = 0.0;
+    bool along = count == 2000;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        const float* v = s_records[i].color;
+        along = along && fabsf(v[0] + v[2] - 1.0f) <= 1e-5f && v[3] == 1.0f;
+        sumRed += (double)v[0];
+    }
+    CHECK(along, "on the gradient");
+    CHECK(fabs(sumRed / count - 0.5) <= 5.0 * sqrt(1.0 / 12.0) / sqrt((double)count),
+          "at a uniform point");
+    mvfxDestroyContext(scene.context);
+    mvfxEmitterDef sized = Many(64.0f);
+    sized.size = base.color;
+    CHECK(!Taken(&sized, 0), "a gradient needs four components");
+
+    // Over age: the gradient at the age in the loop each was born at.
+    base.color.kind = mvfx_sourceGradientOverAge;
+    CHECK(!Taken(&base, 0), "over age needs a duration");
+    base.duration = 1.0f;
+    mvfxEmitterDef emitter = Peeking(&base);
+    scene = NewScene(&emitter, NULL, 0);
+    Run(&scene, 3 * MVFX_TICKS_PER_SECOND / 4);
+    count = Records(&scene);
+    bool aged = count > 1000 && count == s_peeked.count;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        double age = SourceAge(i, 0, MVFX_TICKS_PER_SECOND);
+        aged = aged && fabs((double)s_records[i].color[0] - (1.0 - age)) <= 1e-3 &&
+               fabs((double)s_records[i].color[2] - age) <= 1e-3;
+    }
+    CHECK(aged, "the gradient at age");
+    mvfxDestroyContext(scene.context);
+
+    // A curve scales every component; a parameter each by its own.
+    base = Many(4000.0f);
+    base.duration = 1.0f;
+    base.size = (mvfxVectorSource){.kind = mvfx_sourceCurve,
+                                   .min = {1, 2, 3, 7},
+                                   .max = {1, 2, 3, 7},
+                                   .curve = {s_ramp, 2, mvfx_tangentsGiven}};
+    emitter = Peeking(&base);
+    scene = NewScene(&emitter, NULL, 0);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 2);
+    count = Records(&scene);
+    bool scaled = count > 1000 && count == s_peeked.count;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        double age = SourceAge(i, 0, MVFX_TICKS_PER_SECOND);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            scaled = scaled && fabs((double)s_records[i].size[k] - (double)(k + 1) * age) <= 1e-4;
+        }
+    }
+    CHECK(scaled, "a curve scales each component");
+    mvfxDestroyContext(scene.context);
+    static const float parameters[1][4] = {{1.0f, 2.0f, 3.0f, 4.0f}};
+    base = Many(64.0f);
+    base.color =
+        (mvfxVectorSource){.kind = mvfx_sourceParameter, .min = {2, 2, 2, 2}, .max = {2, 2, 2, 2}};
+    scene = NewScene(&base, &parameters[0][0], 1);
+    Run(&scene, MVFX_TICKS_PER_SECOND / 8);
+    const float* v = s_records[0].color;
+    CHECK(Records(&scene) > 0 && v[0] == 2.0f && v[1] == 4.0f && v[2] == 6.0f && v[3] == 8.0f,
+          "each by its parameter");
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestAge(void)
+{
+    // A ramp read in loops of a second from a start a quarter second in:
+    // each particle's age in its loop, over eight loops; without a loop,
+    // the seconds since the start.
+    for (int32_t looped = 0; looped < 2; ++looped)
+    {
+        static const mvfxCurveKey upward[2] = {
+            {0.0f, 0.0f, 0.0f, 0.0f, mvfx_interpolationLinear},
+            {10.0f, 10.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
+        mvfxEmitterDef base = Many(256.0f);
+        base.startDelay = 0.25f;
+        base.duration = looped != 0 ? 1.0f : 0.0f;
+        base.spin =
+            (mvfxScalarSource){.kind = mvfx_sourceCurve,
+                               .range = {1.0f, 1.0f},
+                               .curve = looped != 0 ? (mvfxCurve){s_ramp, 2, mvfx_tangentsGiven}
+                                                    : (mvfxCurve){upward, 2, mvfx_tangentsGiven}};
+        mvfxEmitterDef emitter = Peeking(&base);
+        Scene scene = NewScene(&emitter, NULL, 0);
+        Run(&scene, 8 * MVFX_TICKS_PER_SECOND + MVFX_TICKS_PER_SECOND / 4);
+        bool right = s_peeked.count > 1800;
+        int32_t late = 0;
+        for (int32_t i = 0; i < s_peeked.count; ++i)
+        {
+            double age =
+                SourceAge(i, MVFX_TICKS_PER_SECOND / 4, looped != 0 ? MVFX_TICKS_PER_SECOND : 0);
+            right = right && fabs((double)s_peeked.spin[i] - age) <= 1e-3 * (age > 1.0 ? age : 1.0);
+            late +=
+                s_peeked.birth[i] >= 7 * MVFX_TICKS_PER_SECOND + MVFX_TICKS_PER_SECOND / 4 ? 1 : 0;
+        }
+        CHECK(right && late > 0, looped != 0 ? "a loop's normalized age, in later loops too"
+                                             : "seconds without a loop");
+        mvfxDestroyContext(scene.context);
+    }
 }
 
 static void TestValuesThroughTheStep(void)
@@ -232,57 +393,47 @@ static void TestValuesThroughTheStep(void)
         {.components = 2, .initial = {.kind = mvfx_sourceRange, .min = {5, 6}, .max = {5, 6}}},
         {.components = 1},
     };
-    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    emitter.rate = 4000.0f;
-    emitter.capacity = 4096;
-    emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3}, .max = {2, 4, 6}};
-    emitter.color = (mvfxVectorSource){
+    mvfxEmitterDef base = mvfxDefaultEmitterDef();
+    base.rate = 4000.0f;
+    base.capacity = 4096;
+    base.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3}, .max = {2, 4, 6}};
+    base.color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {1, 0, 0, 1}, .max = {0, 0, 1, 1}, .uniform = true};
-    emitter.spin = mvfxRangeSource(-1.0f, 1.0f);
-    emitter.orientationMode = mvfx_orientationRandom;
-    emitter.frame = (mvfxFrameStart){mvfx_frameRandom, 3, 6};
-    emitter.custom = custom;
-    emitter.customCount = 2;
+    base.spin = mvfxRangeSource(-1.0f, 1.0f);
+    base.orientationMode = mvfx_orientationRandom;
+    base.frame = (mvfxFrameStart){mvfx_frameRandom, 3, 6};
+    base.custom = custom;
+    base.customCount = 2;
+    mvfxEmitterDef emitter = Peeking(&base);
     Scene scene = NewScene(&emitter, NULL, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
-    int32_t count = scene.live->emitters[0].count;
-    CHECK(count == 2000, "2,000 born");
-    const float* size[3] = {Array(&scene, mvfx_attributeSizeX), Array(&scene, mvfx_attributeSizeY),
-                            Array(&scene, mvfx_attributeSizeZ)};
-    const float* r = Array(&scene, mvfx_attributeColorR);
-    const float* b = Array(&scene, mvfx_attributeColorB);
-    const float* angle = Array(&scene, mvfx_attributeAngle);
-    const float* spin = Array(&scene, mvfx_attributeSpin);
-    const float* q[4] = {
-        Array(&scene, mvfx_attributeOrientationX), Array(&scene, mvfx_attributeOrientationY),
-        Array(&scene, mvfx_attributeOrientationZ), Array(&scene, mvfx_attributeOrientationW)};
-    const float* angular = Array(&scene, mvfx_attributeAngularX);
-    const uint32_t* frames = mvfxAttributeArray(scene.live, 0, mvfx_attributeFrame);
-    const float* custom0 = Array(&scene, mvfx_attributeCustom);
-    const float* custom1 = Array(&scene, (mvfxAttribute)(mvfx_attributeCustom + 1));
-    const float* custom4 = Array(&scene, (mvfxAttribute)(mvfx_attributeCustom + 4));
+    int32_t count = Records(&scene);
+    CHECK(count == 2000 && s_peeked.count == count, "2,000 born");
     bool ok = true;
     double squares[4] = {0.0};
     int64_t frameHits[4] = {0};
     for (int32_t i = 0; i < count; ++i)
     {
+        const TestParticle* p = &s_records[i];
         for (int32_t k = 0; k < 3; ++k)
         {
-            ok = ok && size[k][i] >= (float)(k + 1) && size[k][i] <= (float)(2 * (k + 1));
+            ok = ok && p->size[k] >= (float)(k + 1) && p->size[k] <= (float)(2 * (k + 1));
         }
-        ok = ok && fabsf(r[i] + b[i] - 1.0f) <= 1e-6f;
+        ok = ok && fabsf(p->color[0] + p->color[2] - 1.0f) <= 1e-6f;
         // Born at angle 0, turned by its spin since, within the half second.
-        ok = ok && fabsf(angle[i]) <= 0.5f * fabsf(spin[i]) && spin[i] >= -1.0f && spin[i] <= 1.0f;
+        float spin = s_peeked.spin[i];
+        ok = ok && fabsf(p->angle) <= 0.5f * fabsf(spin) && spin >= -1.0f && spin <= 1.0f;
         double length = 0.0;
         for (int32_t k = 0; k < 4; ++k)
         {
-            length += (double)q[k][i] * (double)q[k][i];
-            squares[k] += (double)q[k][i] * (double)q[k][i];
+            double q = (double)p->orientation[k];
+            length += q * q;
+            squares[k] += q * q;
         }
-        ok = ok && fabs(length - 1.0) <= 1e-5 && angular[i] == 0.0f;
-        ok = ok && frames[i] >= 3 && frames[i] <= 6;
-        frameHits[frames[i] < 3 || frames[i] > 6 ? 0 : frames[i] - 3] += 1;
-        ok = ok && custom0[i] == 5.0f && custom1[i] == 6.0f && custom4[i] == 0.0f;
+        ok = ok && fabs(length - 1.0) <= 1e-5 && s_peeked.angular[0][i] == 0.0f;
+        ok = ok && p->frame >= 3 && p->frame <= 6;
+        frameHits[p->frame < 3 || p->frame > 6 ? 0 : p->frame - 3] += 1;
+        ok = ok && p->custom[0] == 5.0f && p->custom[1] == 6.0f && p->custom2[0] == 0.0f;
     }
     CHECK(ok, "every value in its range, on its line, of unit length");
     for (int32_t k = 0; k < 4; ++k)
@@ -306,17 +457,15 @@ static void TestValuesThroughTheStep(void)
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
     // qz(90) qx(90) = (h, 0, 0, h)(rotated): (cz sx, sz sx, sz cx, cz cx)
     // with every half sine and cosine sqrt(1/2): (1/2, 1/2, 1/2, 1/2).
-    bool euler = scene.live->emitters[0].count == 8;
-    const uint32_t* fixedFrames = mvfxAttributeArray(scene.live, 0, mvfx_attributeFrame);
-    for (int32_t i = 0; i < scene.live->emitters[0].count; ++i)
+    count = Records(&scene);
+    bool euler = count == 8;
+    for (int32_t i = 0; i < count; ++i)
     {
         for (int32_t k = 0; k < 4; ++k)
         {
-            euler =
-                euler && fabsf(Array(&scene, (mvfxAttribute)(mvfx_attributeOrientationX + k))[i] -
-                               0.5f) <= 1e-6f;
+            euler = euler && fabsf(s_records[i].orientation[k] - 0.5f) <= 1e-6f;
         }
-        euler = euler && fixedFrames[i] == 4;
+        euler = euler && s_records[i].frame == 4;
     }
     CHECK(euler, "Euler angles about X, then Z; a fixed frame its first");
     mvfxDestroyContext(scene.context);
@@ -343,12 +492,10 @@ static void TestValuesThroughTheStep(void)
                            .max = {(float)angles[0], (float)angles[1], (float)angles[2]}};
     scene = NewScene(&emitter, NULL, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 16) == mvfx_success, "step");
-    bool product = scene.live->emitters[0].count == 4;
+    bool product = Records(&scene) == 4;
     for (int32_t k = 0; k < 4; ++k)
     {
-        product = product &&
-                  fabs((double)Array(&scene, (mvfxAttribute)(mvfx_attributeOrientationX + k))[0] -
-                       expected[k]) <= 1e-6;
+        product = product && fabs((double)s_records[0].orientation[k] - expected[k]) <= 1e-6;
     }
     CHECK(product, "three angles as qz qy qx");
     mvfxDestroyContext(scene.context);
@@ -363,14 +510,13 @@ static void TestValuesThroughTheStep(void)
     emitter.customCount = 2;
     scene = NewScene(&emitter, NULL, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
-    const float* first = Array(&scene, mvfx_attributeCustom);
-    const float* second = Array(&scene, (mvfxAttribute)(mvfx_attributeCustom + 4));
+    count = Records(&scene);
     int32_t alike = 0;
-    for (int32_t i = 0; i < scene.live->emitters[0].count; ++i)
+    for (int32_t i = 0; i < count; ++i)
     {
-        alike += first[i] == second[i] ? 1 : 0;
+        alike += s_records[i].custom[0] == s_records[i].custom2[0] ? 1 : 0;
     }
-    CHECK(scene.live->emitters[0].count == 16 && alike == 0, "each custom attribute its own draws");
+    CHECK(count == 16 && alike == 0, "each custom attribute its own draws");
     mvfxDestroyContext(scene.context);
 }
 
@@ -394,7 +540,7 @@ static void TestLivesAndParameters(void)
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 0, &stats) == mvfx_success,
           "stats");
     CHECK(stats.owed == 64 && stats.live == 16, "a quarter second's births alive");
-    CHECK(Array(&scene, mvfx_attributeSizeY)[0] == 9.0f, "a size from a parameter");
+    CHECK(Records(&scene) > 0 && s_records[0].size[1] == 9.0f, "a size from a parameter");
     static const float zero[4] = {0, 0, 0, 0};
     static const float big[4] = {1, 2, 3, 4};
     CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, zero) == mvfx_success, "set");
@@ -439,9 +585,10 @@ static void TestLivesAndParameters(void)
     emitter = mvfxDefaultEmitterDef();
     emitter.lifetime =
         (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {1.0f, 1.0f}, .parameter = 0};
+    emitter = Peeking(&emitter);
     scene = NewScene(&emitter, forever, 1);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
-    CHECK(Array(&scene, mvfx_attributeInverseLife)[0] == 1.0f / MVFX_MAX_LIFETIME,
+    CHECK(s_peeked.count > 0 && s_peeked.inverseLife[0] == 1.0f / MVFX_MAX_LIFETIME,
           "held to the longest life");
     mvfxDestroyContext(scene.context);
 
@@ -450,10 +597,11 @@ static void TestLivesAndParameters(void)
     emitter.duration = 1.0f;
     emitter.lifetime = (mvfxScalarSource){
         .kind = mvfx_sourceCurve, .range = {2.0f, 2.0f}, .curve = {s_ramp, 2, mvfx_tangentsGiven}};
+    emitter = Peeking(&emitter);
     scene = NewScene(&emitter, NULL, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND - 1) == mvfx_success, "step");
-    const float* inverse = Array(&scene, mvfx_attributeInverseLife);
-    int32_t count = scene.live->emitters[0].count;
+    const float* inverse = s_peeked.inverseLife;
+    int32_t count = s_peeked.count;
     bool longer = count > 32;
     for (int32_t i = 1; i < count; ++i)
     {
