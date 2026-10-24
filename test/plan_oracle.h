@@ -3,12 +3,13 @@
 //
 // The oracles of a plan's resolved parts, in binary64, for the plan
 // suites. plan.h gives each in the space the plan works in (an emitter
-// plan's particles' space, a gas plan's box's frame): forces
-// (mvfxPlannedForce) with lengths scaled, points and vectors mapped and
-// the strength taken from its parameter; colliders (mvfxPlannedCollider)
-// grown by the particles' radius; and a gas plan's pours
-// (mvfxPlannedPour). Each goes through a Frame, the map from a def's
-// space into the plan's; results are compared to 1e-5 of their size.
+// plan's particles' space, a gas plan's box's frame, a water plan's
+// surface's frame): forces (mvfxPlannedForce) with lengths scaled, points
+// and vectors mapped and the strength taken from its parameter; colliders
+// (mvfxPlannedCollider) grown by the particles' radius; and a gas plan's
+// pours (mvfxPlannedPour). Each goes through a Frame, the map from a
+// def's space into the plan's; results are compared to 1e-5 of their
+// size.
 
 #ifndef MAUL_VFX_TEST_PLAN_ORACLE_H
 #define MAUL_VFX_TEST_PLAN_ORACLE_H
@@ -230,19 +231,20 @@ static inline bool SameCollider(const mvfxPlannedCollider* p, const mvfxCollider
     return same;
 }
 
-// The frame a gas plan maps a space into (plan.h, mvfxGasPlan: the box's
-// frame, which mvfxInstance_GetGasInfo places), with the instance at
-// place: a point x whose world place is turn(q, s x) + offset goes to
-// turn(R^-1, (turn(q, s x) + offset - C) / scale) for the box's center
-// C, turn R and scale. A local space's q, s and offset are the
-// instance's; a world space's none, but for a world emitter's particles,
-// offsets from its anchor (docs/user/instances.md).
-static inline Frame BoxFrame(const mvfxGasInfo* box, const mvfxPlanPlace* place,
-                             mvfxSimulationSpace space, const double anchor[3])
+// The frame a space maps into a frame placed in the world at center,
+// turned by rotation and scaled by scale, with the instance at place: a
+// point x whose world place is turn(q, s x) + offset goes to
+// turn(rotation^-1, (turn(q, s x) + offset - center) / scale). A local
+// space's q, s and offset are the instance's; a world space's none, but
+// for a world emitter's particles, offsets from its anchor
+// (docs/user/instances.md).
+static inline Frame FrameInto(const double center[3], const float rotation[4], float scale,
+                              const mvfxPlanPlace* place, mvfxSimulationSpace space,
+                              const double anchor[3])
 {
-    Frame f = {.sigma = 1.0 / (double)box->scale};
-    const double back[4] = {-(double)box->rotation[0], -(double)box->rotation[1],
-                            -(double)box->rotation[2], (double)box->rotation[3]};
+    Frame f = {.sigma = 1.0 / (double)scale};
+    const double back[4] = {-(double)rotation[0], -(double)rotation[1], -(double)rotation[2],
+                            (double)rotation[3]};
     double offset[3] = {0.0, 0.0, 0.0};
     const float none[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     const float* q = none;
@@ -254,12 +256,28 @@ static inline Frame BoxFrame(const mvfxGasInfo* box, const mvfxPlanPlace* place,
     for (int32_t k = 0; k < 3; ++k)
     {
         offset[k] = space == mvfx_spaceLocal ? place->origin[k] : anchor != NULL ? anchor[k] : 0.0;
-        offset[k] = (offset[k] - box->center[k]) / (double)box->scale;
+        offset[k] = (offset[k] - center[k]) / (double)scale;
     }
     Turn(back, offset, f.after);
     const Frame turn = {.rotation = {back[0], back[1], back[2], back[3]}};
     FrameTurn(&turn, q, f.rotation);
     return f;
+}
+
+// The frame a gas plan maps a space into (plan.h, mvfxGasPlan): the box's,
+// which mvfxInstance_GetGasInfo places.
+static inline Frame BoxFrame(const mvfxGasInfo* box, const mvfxPlanPlace* place,
+                             mvfxSimulationSpace space, const double anchor[3])
+{
+    return FrameInto(box->center, box->rotation, box->scale, place, space, anchor);
+}
+
+// The frame a water plan maps a space into (plan.h, mvfxWaterPlan): the
+// surface's, which mvfxInstance_GetWaterInfo places.
+static inline Frame SurfaceFrame(const mvfxWaterInfo* surface, const mvfxPlanPlace* place,
+                                 mvfxSimulationSpace space)
+{
+    return FrameInto(surface->center, surface->rotation, surface->scale, place, space, NULL);
 }
 
 // Whether a planned pour's map is a frame's (plan.h, mvfxPlannedPour: a

@@ -5,18 +5,20 @@
 // instance and a planned one stepped side by side: the host's pushes in
 // the surface's frame of a moved and scaled instance; the waves'
 // substeps, slowed past the most, as water.h counts them; shallow water's
-// terrain, its first step one substep, its later ones counted from the
-// speed reported as water.h counts them (the most before a report), its
-// sources' depths while it plays; in a split frame the pushes and clear
-// in the first step alone; a surface's view; a stopped instance running
-// while its surface moves, as its simulation reports; an emitter's
-// coupling to a surface against the instance's transform; the counts
-// reported once a tick, a clear emptying them, and the steps slowed
-// counted from the plans; the refusals, and reads of a planned surface
-// refused. That the CPU path counts its own substeps from its own speed
-// the same way is left to the GPU part's harness, which compares their
-// results; the reach, the reported speed and the terrain as resolved are
-// compared with the CPU path's in test_plan_water_internal.c.
+// terrain resolved into its surface's frame (its own in either space, or
+// the host's), its first step one substep, its later ones counted from
+// the speed reported as water.h counts them (the most before a report),
+// its sources' depths while it plays; in a split frame the pushes and
+// clear in the first step alone; a surface's view; a stopped instance
+// running while its surface moves, as its simulation reports; an
+// emitter's coupling to a surface against the instance's transform; the
+// counts reported once a tick, a clear emptying them, and the steps
+// slowed counted from the plans; the refusals, and reads of a planned
+// surface refused. That the CPU path counts its own substeps from its own
+// speed the same way is left to the GPU part's harness, which compares
+// their results; the reach and the reported speed are compared with the
+// CPU path's in test_plan_water_internal.c, and the terrain with the CPU
+// path's resolver there too.
 
 #include "plan_oracle.h"
 #include "test_harness.h"
@@ -286,6 +288,69 @@ static void TestShallow(void)
     CHECK(wrong == 0, "each step's plan as water.h counts it from the speed reported");
     CHECK(split > 0 && slowed == 5, "some steps split, those past the most slowed");
     CHECK(Info(s_planned).stepsSlowed == slowed, "the steps slowed counted from the plans");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestTerrain(void)
+{
+    // Three lakes, their grids off the instance's origin: one on the
+    // slope of the instance's frame, one on a turned heightfield of the
+    // world's, and one with hostTerrain on the instance's first
+    // heightfield collider (after a plane), under a moving, turning,
+    // growing instance. Each plan's terrain is its collider resolved into
+    // the surface's frame where the step ends (plan.h, mvfxWaterPlan's
+    // terrain; water.h, terrain), the frame mvfxInstance_GetWaterInfo
+    // places: its box mapped, its turn composed, scaled, grown by no
+    // radius, its grid kept.
+    NewContext();
+    static mvfxWaterDef waters[3];
+    for (int32_t w = 0; w < 3; ++w)
+    {
+        waters[w] = Lake();
+        waters[w].center[0] = 0.3f * (float)w;
+        waters[w].center[2] = -0.2f;
+    }
+    waters[1].terrain.space = 0;
+    waters[1].terrain.center[0] = 1.5f;
+    waters[1].terrain.center[1] = -0.25f;
+    waters[1].terrain.rotation[1] = sinf(0.2f);
+    waters[1].terrain.rotation[3] = cosf(0.2f);
+    waters[2].hasTerrain = false;
+    waters[2].hostTerrain = true;
+    mvfxCollider hosts[2] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}}, waters[1].terrain};
+    hosts[1].center[2] = 0.75f;
+    const mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    const double origin[3] = {0.0, 0.0, 0.0};
+    Open(waters, 3, &emitter, 1, NULL, 0, origin, 1.0f);
+    CHECK(mvfxInstance_SetColliders(s_context, s_planned, hosts, 2) == mvfx_success, "colliders");
+    const mvfxCollider* defs[3] = {&waters[0].terrain, &waters[1].terrain, &hosts[1]};
+    int32_t wrong = 0;
+    for (int32_t s = 0; s < 6; ++s)
+    {
+        const double at[3] = {2.0 + 0.5 * s, 0.1 * s, -1.0};
+        const float rotation[4] = {0.0f, sinf(0.05f * (float)s), 0.0f, cosf(0.05f * (float)s)};
+        CHECK(mvfxInstance_SetTransform(s_context, s_planned, at, rotation, 1.0f + 0.1f * (float)s,
+                                        false) == mvfx_success &&
+                  mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success,
+              "moved and stepped");
+        static mvfxEmitterPlan emitterPlan;
+        CHECK(mvfxInstance_GetEmitterPlan(s_context, s_planned, 0, &emitterPlan) == mvfx_success,
+              "the instance's place");
+        for (int32_t w = 0; w < 3; ++w)
+        {
+            static mvfxWaterPlan plan;
+            mvfxWaterInfo surface;
+            CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, w, &plan) == mvfx_success &&
+                      mvfxInstance_GetWaterInfo(s_context, s_planned, w, &surface) == mvfx_success,
+                  "a plan and its surface");
+            const mvfxCollider* def = defs[w];
+            Frame frame = SurfaceFrame(&surface, &emitterPlan.to, def->space);
+            wrong += !plan.hasTerrain || !SameCollider(&plan.terrain, def, true, &frame, 0.0) ||
+                     plan.terrain.grid.index1 != def->grid.index1;
+        }
+    }
+    CHECK(wrong == 0, "each terrain resolved into its surface's frame");
     mvfxDestroyContext(s_context);
 }
 
@@ -646,6 +711,7 @@ int main(void)
     TestPushes();
     TestWaves();
     TestShallow();
+    TestTerrain();
     TestUnreported();
     TestSplit();
     TestHolds();
