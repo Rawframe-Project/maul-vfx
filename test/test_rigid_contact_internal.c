@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Rigid particles' contacts with boxes, found at crafted poses: two edges
+// The contact module's own output, which no public call shows: rigid
+// particles' contacts with boxes, found at crafted poses: two edges
 // crossing off their middles meeting at their crossing; a box turned on a
 // smaller box's face meeting it at the eight corners of their overlap; a
 // box's face on a turned box's edge meeting it there, on the collider's
@@ -14,6 +15,9 @@
 // across a heightfield's crest meeting it there; passes alternating their
 // order; a twist held by static friction while it can; two bodies on a
 // patch each tipping the way friction pushes it.
+// What the contacts make bodies do (stacking, tipping, resting, an edge
+// held up on a crest) is tested through the public interface in
+// test_rigid.c, test_rigid_hull.c and test_rigid_sleep.c.
 
 #include "grid_api.h"
 #include "hull.h"
