@@ -150,12 +150,6 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/velocity.c
     src/velocity_modules.c
     src/view.c)
-# The tests' hooks (src/test_hooks.h), for the white-box suites and the
-# fuzz targets, which build only against the static library: a shared one
-# holds none of them.
-if((MAUL_VFX_BUILD_TESTS OR MAUL_VFX_FUZZ) AND NOT MAUL_VFX_BUILD_SHARED)
-    target_sources(maul-vfx PRIVATE src/test_hooks.c)
-endif()
 maul_configure_library(maul-vfx)
 # sqrt, floor, ceil and the other exactly rounded functions the library
 # takes from libm (tools/libm-allowed.txt); the tests' oracles use more
@@ -169,6 +163,16 @@ if(MAUL_VFX_RHI)
 endif()
 
 if(MAUL_VFX_BUILD_TESTS)
+    # The tests' hooks (src/test_hooks.h) in a library of their own, never
+    # installed, so the library's archive never holds them; the suites
+    # that use them link it. A shared library hides the functions they
+    # reach, and the white-box suites are skipped there.
+    if(NOT MAUL_VFX_BUILD_SHARED)
+        add_library(maul-vfx-test-hooks STATIC src/test_hooks.c)
+        target_link_libraries(maul-vfx-test-hooks PUBLIC maul-vfx)
+        target_include_directories(maul-vfx-test-hooks PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        maul_apply_flags(maul-vfx-test-hooks)
+    endif()
     enable_testing()
     maul_add_test(aero)
     maul_add_test(allocator WHITEBOX)
@@ -265,6 +269,12 @@ if(MAUL_VFX_BUILD_TESTS)
     # The web build has no threads; the twins need four.
     if(NOT EMSCRIPTEN)
         maul_add_test(twins WHITEBOX POSIX)
+    endif()
+    # The suites that use the tests' hooks.
+    if(NOT MAUL_VFX_BUILD_SHARED)
+        foreach(suite attach rigid_pair tear)
+            target_link_libraries(test_${suite} PRIVATE maul-vfx-test-hooks)
+        endforeach()
     endif()
     if(MAUL_VFX_RHI)
         # The GPU part's kernels on a real device; skipped (77) without an

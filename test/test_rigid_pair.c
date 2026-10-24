@@ -5,21 +5,19 @@
 // at restitution 1, and moving on together at 0; spheres of eight times
 // the mass bouncing as momentum says; bodies passing through each other
 // without body contacts; three boxes stacked and still with their creep
-// bounded; one large body among a thousand small ones examining a few
-// cells each; a box landing aside slowed by every impulse of its
-// impacts; a heavy box landing on a light one without rebound; mixed
-// spheres' overlapping pairs all found, and the same bits whatever the
-// grid's layout; a narrow box on a wide one standing and tipping by the
-// statics; a capsule lying
-// across another; a box dropped on a box, and a sphere on a sphere
-// rolling off; a box sliding to a stop on a wider
-// one by friction, the one below held; a pile of spheres in a box settled
-// without deep overlaps; the pool capped and counted; strikes counted on
-// both bodies.
+// bounded; one large body among a thousand small ones; a box landing aside slowed by every impulse
+// of its impacts; a heavy box landing on a light one without rebound; mixed spheres' overlapping
+// pairs all found, and the same bits whatever the grid's layout; a narrow box on a wide one
+// standing and tipping by the statics; a capsule lying across another; a box dropped on a box, and
+// a sphere on a sphere rolling off; a box sliding to a stop on a wider one by friction, the one
+// below held; a pile of spheres in a box settled without deep overlaps; the pool capped and
+// counted; strikes counted on both bodies.
 
-#include "instance.h"
-#include "instance_api.h"
+#include "particles.h"
 #include "test_harness.h"
+#include "test_hooks.h"
+
+#include "maul-vfx/instance.h"
 
 #include <math.h>
 #include <string.h>
@@ -33,6 +31,56 @@ typedef struct Scene
 static Scene s_scene;
 
 static const mvfxCollider s_ground = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+
+enum
+{
+    MOST = 64
+};
+
+// The bodies' collisions by serial, as the host modules see them after
+// motion in the last step.
+static uint32_t s_collisions[MOST];
+
+static void Count(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    for (int32_t i = 0; p->collisions != NULL && i < p->count; ++i)
+    {
+        if (p->serial[i] < MOST)
+        {
+            s_collisions[p->serial[i]] = p->collisions[i];
+        }
+    }
+}
+
+// An orientation the host gives body s_turned (by serial) before the
+// next step's motion, once.
+static uint32_t s_turned = UINT32_MAX;
+static float s_turn[4];
+
+static void Turn(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    for (int32_t i = 0; i < p->count; ++i)
+    {
+        if (p->serial[i] == s_turned)
+        {
+            for (int32_t k = 0; k < 4; ++k)
+            {
+                p->orientation[k][i] = s_turn[k];
+            }
+            s_turned = UINT32_MAX;
+            return;
+        }
+    }
+}
+
+static const mvfxHostModule s_modules[2] = {
+    {.stage = mvfx_stageBeforeMotion, .function = Turn},
+    {.stage = mvfx_stageAfterMotion, .function = Count},
+};
 
 // Rigid bodies of a shape meeting each other and, with gravity, a plane
 // at y = 0; eight substeps, no friction.
@@ -61,10 +109,15 @@ static void Open(const mvfxEmitterDef* emitter, const double* places, const floa
                  const float* sizes, int32_t count)
 {
     memset(&s_scene, 0, sizeof s_scene);
+    memset(s_collisions, 0, sizeof s_collisions);
+    s_turned = UINT32_MAX;
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+    mvfxEmitterDef hosted = *emitter;
+    hosted.hostModules = s_modules;
+    hosted.hostModuleCount = 2;
     mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = emitter;
+    def.emitters = &hosted;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
@@ -90,35 +143,32 @@ static void Steps(int32_t n)
     }
 }
 
-static float* Array(mvfxAttribute attribute)
-{
-    return mvfxAttributeArray(mvfxContextInstance(s_scene.context, s_scene.instance), 0, attribute);
-}
+static TestParticle s_particles[MOST];
 
-// Body i's position or velocity along axis k, by its serial (its order of
-// birth).
-static int32_t IndexOf(uint32_t serial)
+// The body of a serial (its order of birth), as the output writes it.
+static const TestParticle* Body(uint32_t serial)
 {
-    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
-    const uint32_t* serials = (const uint32_t*)Array(mvfx_attributeSerial);
-    for (int32_t i = 0; i < live->emitters[0].count; ++i)
+    int32_t count = ReadParticles(s_scene.context, s_scene.instance, 0, s_particles, MOST);
+    for (int32_t i = 0; i < count && i < MOST; ++i)
     {
-        if (serials[i] == serial)
+        if (s_particles[i].serial == serial)
         {
-            return i;
+            return &s_particles[i];
         }
     }
-    return 0;
+    CHECK(false, "the body read");
+    return &s_particles[0];
 }
 
+// Body serial's position or velocity along axis k.
 static float X(uint32_t serial, int32_t k)
 {
-    return Array((mvfxAttribute)(mvfx_attributePositionX + k))[IndexOf(serial)];
+    return Body(serial)->position[k];
 }
 
 static float V(uint32_t serial, int32_t k)
 {
-    return Array((mvfxAttribute)(mvfx_attributeVelocityX + k))[IndexOf(serial)];
+    return Body(serial)->velocity[k];
 }
 
 static float Speed(uint32_t serial)
@@ -221,9 +271,7 @@ static void TestStack(void)
 static void TestOneLarge(void)
 {
     // A thousand small spheres (radius 0.05) 0.2 apart and one of radius
-    // 3 beside them, no gravity, one substep a step: by its own level each looks
-    // at a few cells, not at every body as one grid as wide as the large
-    // one's reach would make it (about a million entries).
+    // 3 beside them, no gravity, one substep a step: all step on together.
     enum
     {
         SMALL = 1000,
@@ -250,10 +298,9 @@ static void TestOneLarge(void)
     Open(&emitter, places, still, sizes, ALL);
     // Born in the first step, they meet each other in the second.
     Steps(2);
-    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
-    uint64_t examined = live->emitters[0].rigidExamined;
-    CHECK(live->emitters[0].count == ALL && examined > 0u && examined <= 60u * ALL,
-          "one large body among a thousand");
+    // What the broadphase examines is no result; a bench is to measure
+    // it (#23).
+    CHECK(Stats().live == ALL, "one large body among a thousand");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -300,19 +347,27 @@ static void TestPairsFound(void)
     emitter.rigid.bodyContacts = 64;
     Open(&emitter, places, still, sizes, MIXED);
     Steps(1);
-    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
     static float x[3 * MIXED];
+    static float size[MIXED];
+    CHECK(ReadParticles(s_scene.context, s_scene.instance, 0, s_particles, MOST) == MIXED,
+          "all read");
     for (int32_t i = 0; i < MIXED; ++i)
     {
         for (int32_t k = 0; k < 3; ++k)
         {
-            x[3 * i + k] = Array((mvfxAttribute)(mvfx_attributePositionX + k))[i];
+            x[3 * i + k] = s_particles[i].position[k];
         }
+        size[i] = s_particles[i].size[0];
     }
-    const float* size = Array(mvfx_attributeSizeX);
     Steps(1);
-    const mvfxEmitterState* state = &live->emitters[0];
-    bool found = state->rigidPairCount > 0;
+    enum
+    {
+        PAIRS = MIXED * (MIXED - 1) / 2
+    };
+    static int32_t pairA[PAIRS];
+    static int32_t pairB[PAIRS];
+    int32_t pairs = mvfxTestRigidPairs(s_scene.context, s_scene.instance, 0, pairA, pairB, PAIRS);
+    bool found = pairs > 0 && pairs <= PAIRS;
     int32_t overlapping = 0;
     for (int32_t i = 0; i < MIXED; ++i)
     {
@@ -331,9 +386,9 @@ static void TestPairsFound(void)
             }
             overlapping += 1;
             bool met = false;
-            for (int32_t c = 0; c < state->rigidPairCount && !met; ++c)
+            for (int32_t c = 0; c < pairs && c < PAIRS && !met; ++c)
             {
-                met = state->rigidPairs[c].a == i && state->rigidPairs[c].b == j;
+                met = pairA[c] == i && pairB[c] == j;
             }
             found = found && met;
         }
@@ -449,8 +504,8 @@ static void TestNarrowOnWide(void)
             static const float sizes[6] = {2, 1, 2, 0.4f, 0.6f, 0.4f};
             Open(&emitter, places, still, sizes, 2);
             Steps(180);
-            const float* z = Array(mvfx_attributeOrientationZ);
-            float up = 1.0f - 2.0f * z[IndexOf(1)] * z[IndexOf(1)];
+            float z = Body(1)->orientation[2];
+            float up = 1.0f - 2.0f * z * z;
             float moved = fabsf(X(1, 0) - (float)aside);
             float wide = fabsf(X(0, 0)) + fabsf(X(0, 1) - 0.5f);
             right =
@@ -476,16 +531,11 @@ static void TestCapsules(void)
     Open(&emitter, places, NULL, sizes, 2);
     // The second turned along x by the host after its birth.
     Steps(1);
-    float* q[4];
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        q[k] = Array((mvfxAttribute)(mvfx_attributeOrientationX + k));
-    }
-    int32_t lower = IndexOf(0);
-    q[0][lower] = 0.0f;
-    q[1][lower] = 0.0f;
-    q[2][lower] = 0.70710678f;
-    q[3][lower] = 0.70710678f;
+    s_turn[0] = 0.0f;
+    s_turn[1] = 0.0f;
+    s_turn[2] = 0.70710678f;
+    s_turn[3] = 0.70710678f;
+    s_turned = 0;
     Steps(120);
     CHECK(fabsf(X(0, 1) - 0.25f) <= 0.01f && fabsf(X(1, 1) - 0.75f) <= 0.01f && Speed(1) <= 0.02f,
           "a capsule across a capsule");
@@ -598,8 +648,7 @@ static void TestPoolAndStrikes(void)
     spheres.rigid.restitution = 1.0f;
     Open(&spheres, places, velocities, NULL, 2);
     Steps(60);
-    const uint32_t* count = (const uint32_t*)Array(mvfx_attributeCollisions);
-    CHECK(count[IndexOf(0)] == 1u && count[IndexOf(1)] == 1u, "a strike on both");
+    CHECK(s_collisions[0] == 1u && s_collisions[1] == 1u, "a strike on both");
     mvfxDestroyContext(s_scene.context);
 }
 

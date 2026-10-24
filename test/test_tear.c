@@ -9,9 +9,8 @@
 // mesh's quads and a hanging sheet's motion; a sheet born again whole in
 // the slots of a torn one; a restart's count; the checks.
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/output.h"
 
@@ -300,11 +299,10 @@ static void TestSheet(void)
     }
 }
 
-// Emitter 0's torn edges.
-static uint32_t* Torn(void)
+// Tears particle i's edges of emitter 0: bit 0 across, bit 1 down.
+static void Tear(int32_t i, uint32_t bits)
 {
-    return mvfxAttributeArray(mvfxContextInstance(s_scene.context, s_scene.instance), 0,
-                              mvfx_attributeTorn);
+    CHECK(mvfxTestTearEdges(s_scene.context, s_scene.instance, 0, i, bits), "torn by hand");
 }
 
 static mvfxEmitterDef Sheet(int32_t rows)
@@ -346,12 +344,12 @@ static void TestTornBits(void)
     Open(&emitter, 1);
     Steps(1);
     CHECK(Indices() == 24, "whole");
-    Torn()[1] |= 2u;
+    Tear(1, 2u);
     CHECK(Indices() == 12, "an edge down");
-    Torn()[1] = 0u;
-    Torn()[3] |= 1u;
+    Tear(1, 0u);
+    Tear(3, 1u);
     CHECK(Indices() == 12, "an edge across");
-    Torn()[1] |= 2u;
+    Tear(1, 2u);
     CHECK(Indices() == 6, "both");
     mvfxDestroyContext(s_scene.context);
     // Two by four hanging from its first row, rigid: the edges down from
@@ -366,8 +364,8 @@ static void TestTornBits(void)
     emitter.motion.gravity[1] = -9.81f;
     Open(&emitter, 1);
     Steps(1);
-    Torn()[2] |= 2u;
-    Torn()[3] |= 2u;
+    Tear(2, 2u);
+    Tear(3, 2u);
     Steps(30);
     Read(0);
     CHECK(fabsf(s_scene.records[2].position[1] + 0.5f) <= 0.01f &&
@@ -387,7 +385,7 @@ static void TestReborn(void)
     Steps(1);
     for (int32_t i = 0; i < 9; ++i)
     {
-        Torn()[i] = 3u;
+        Tear(i, 3u);
     }
     CHECK(Indices() == 0, "all torn");
     Steps(10);
