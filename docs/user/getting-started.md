@@ -11,7 +11,7 @@ Maul VFX simulates visual effects and hands a renderer what to draw as data. A p
 
 ## Building and linking
 
-Maul VFX needs CMake 3.25 and GCC 14 or Clang 19 or newer; on Windows, `clang-cl` (Visual Studio's "C++ Clang tools for Windows").
+Maul VFX needs CMake 3.25 and GCC 14 or Clang 19 or newer, or Apple Clang; on Windows, `clang-cl` (Visual Studio's "C++ Clang tools for Windows"). On the web, Emscripten builds it: configure through `emcmake` (`emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release`), and the samples and tests run under Node.
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release
