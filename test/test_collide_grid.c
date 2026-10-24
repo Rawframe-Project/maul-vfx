@@ -9,9 +9,7 @@
 // values read by the next step; grids held by effects and instances; and
 // the refusals.
 
-#include "context.h"
-#include "instance.h"
-#include "random.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/grid.h"
@@ -23,7 +21,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static mvfxContext* NewContext(void)
@@ -45,7 +42,6 @@ static Scene NewScene(mvfxContext* context, const mvfxEmitterDef* emitter)
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &scene.instance) == mvfx_success, "instance");
-    scene.live = context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -59,6 +55,8 @@ static mvfxEmitterDef Held(const mvfxCollider* colliders, int32_t count, int32_t
     emitter.collision = (mvfxCollision){.enabled = true, .restitution = 1.0f};
     emitter.colliders = colliders;
     emitter.colliderCount = count;
+    emitter.events = mvfx_eventMaskCollision;
+    emitter.eventCapacity = capacity;
     return emitter;
 }
 
@@ -71,9 +69,39 @@ static void Place(Scene* scene, double x, double y, double z, float vx, float vy
           "placed");
 }
 
-static float At(const Scene* scene, mvfxAttribute attribute, int32_t i)
+static TestParticle s_particles[1000];
+
+// Reads the particles into s_particles; returns how many.
+static int32_t Read(const Scene* scene)
 {
-    return ((const float*)mvfxAttributeArray(scene->live, 0, attribute))[i];
+    return ReadParticles(scene->context, scene->instance, 0, s_particles, 1000);
+}
+
+// The particle at i.
+static TestParticle At(const Scene* scene, int32_t i)
+{
+    CHECK(i < Read(scene), "the particle read");
+    return s_particles[i];
+}
+
+// The collisions of the last step.
+static int32_t Collisions(const Scene* scene)
+{
+    const mvfxEvent* events = NULL;
+    int32_t count = -1;
+    CHECK(mvfxInstance_GetEvents(scene->context, scene->instance, 0, &events, &count) ==
+              mvfx_success,
+          "events");
+    return count;
+}
+
+static uint32_t s_random = 2026;
+
+// A number in [0, 1).
+static float Random(void)
+{
+    s_random = s_random * 1664525u + 1013904223u;
+    return (float)(s_random >> 8u) * 0x1p-24f;
 }
 
 static bool Near(float a, float b, float within)
@@ -159,9 +187,9 @@ static void TestHeightfield(void)
     // Below it at rest: put on it.
     Place(&scene, 1, -3, 1, 0, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 0.5f, 2e-3f), "landed on the slope");
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 1), -5.0f, 1e-4f), "outside its footprint");
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 2), 0.5f, 1e-4f), "a start below put on it");
+    CHECK(Near(At(&scene, 0).position[1], 0.5f, 2e-3f), "landed on the slope");
+    CHECK(Near(At(&scene, 1).position[1], -5.0f, 1e-4f), "outside its footprint");
+    CHECK(Near(At(&scene, 2).position[1], 0.5f, 1e-4f), "a start below put on it");
     mvfxDestroyContext(context);
 
     // Its normal, (-0.5, 1) made unit: a fall at 10 bounces to (-8, 6).
@@ -171,8 +199,8 @@ static void TestHeightfield(void)
     scene = NewScene(context, &emitter);
     Place(&scene, 1, 5, 0, 0, -10, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributeVelocityX, 0), -8.0f, 1e-2f) &&
-              Near(At(&scene, mvfx_attributeVelocityY, 0), 6.0f, 1e-2f),
+    CHECK(Near(At(&scene, 0).velocity[0], -8.0f, 1e-2f) &&
+              Near(At(&scene, 0).velocity[1], 6.0f, 1e-2f),
           "bounced off the slope's normal");
     mvfxDestroyContext(context);
 
@@ -190,7 +218,7 @@ static void TestHeightfield(void)
         scene = NewScene(context, &emitter);
         Place(&scene, 0, -1, 0, 0, 10, 0);
         Step(&scene);
-        CHECK(Near(At(&scene, mvfx_attributePositionY, 0), r == 0 ? 0.0f : -0.25f, 2e-3f),
+        CHECK(Near(At(&scene, 0).position[1], r == 0 ? 0.0f : -0.25f, 2e-3f),
               r == 0 ? "kept below" : "kept below by its radius");
         mvfxDestroyContext(context);
     }
@@ -206,7 +234,7 @@ static void TestHeightfield(void)
     CHECK(mvfxInstance_SetColliders(context, scene.instance, &slope, 1) == mvfx_success, "set");
     Place(&scene, 1, 5, 0, 0, -10, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 0.5f, 2e-3f), "the instance's heightfield");
+    CHECK(Near(At(&scene, 0).position[1], 0.5f, 2e-3f), "the instance's heightfield");
     mvfxDestroyContext(context);
 
     // Inside, a start above it is put down onto it.
@@ -217,7 +245,7 @@ static void TestHeightfield(void)
     scene = NewScene(context, &emitter);
     Place(&scene, 1, 3, 0, 0, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 0.5f, 1e-4f), "a start above put under");
+    CHECK(Near(At(&scene, 0).position[1], 0.5f, 1e-4f), "a start above put under");
     mvfxDestroyContext(context);
 
     // Under an instance at scale 2 the slope spans x from -4 to 4 and its
@@ -236,7 +264,7 @@ static void TestHeightfield(void)
           "scaled");
     Place(&scene, 3, 5, 0, 0, -10, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 1.5f, 4e-3f), "scaled with the instance");
+    CHECK(Near(At(&scene, 0).position[1], 1.5f, 4e-3f), "scaled with the instance");
     mvfxDestroyContext(context);
 
     // New heights, read by the next step: a particle at rest on the slope
@@ -248,11 +276,11 @@ static void TestHeightfield(void)
     scene = NewScene(context, &emitter);
     Place(&scene, 1, 0.75, 0, 0, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 0.75f, 1e-6f), "above it, untouched");
+    CHECK(Near(At(&scene, 0).position[1], 0.75f, 1e-6f), "above it, untouched");
     static const float flat[9] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
     CHECK(mvfxGrid_SetValues(context, grid, flat, 9) == mvfx_success, "new heights");
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 2.0f, 1e-4f), "lifted onto the new heights");
+    CHECK(Near(At(&scene, 0).position[1], 2.0f, 1e-4f), "lifted onto the new heights");
     mvfxDestroyContext(context);
 }
 
@@ -268,11 +296,10 @@ static void TestDistance(void)
     // Started within the ball: put out onto it.
     Place(&scene, 0.3, 0.2, 0.1, 0, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 9.0f, 2e-2f) &&
-              Near(At(&scene, mvfx_attributeVelocityY, 0), 10.0f, 1e-2f),
+    CHECK(Near(At(&scene, 0).position[1], 9.0f, 2e-2f) &&
+              Near(At(&scene, 0).velocity[1], 10.0f, 1e-2f),
           "bounced off the ball");
-    float p[3] = {At(&scene, mvfx_attributePositionX, 1), At(&scene, mvfx_attributePositionY, 1),
-                  At(&scene, mvfx_attributePositionZ, 1)};
+    float p[3] = {At(&scene, 1).position[0], At(&scene, 1).position[1], At(&scene, 1).position[2]};
     CHECK(Near(sqrtf(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]), 1.0f, 2e-2f), "put out onto it");
     mvfxDestroyContext(context);
 
@@ -287,39 +314,36 @@ static void TestDistance(void)
     for (uint32_t i = 0; i < 1000; ++i)
     {
         float q[3];
-        mvfxWords4 w = {0};
         do
         {
-            w = mvfxPcg4d((mvfxWords4){i, w.x, 3u, 5u});
             for (int32_t k = 0; k < 3; ++k)
             {
-                q[k] = mvfxUnitFloat((&w.x)[k]) * 4.0f - 2.0f;
+                q[k] = Random() * 4.0f - 2.0f;
             }
         } while (sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]) < 1.05f);
-        mvfxWords4 v = mvfxPcg4d(w);
-        float speed = powf(10.0f, mvfxUnitFloat(v.w) * 3.0f);
+        float speed = powf(10.0f, Random() * 3.0f);
         for (int32_t k = 0; k < 3; ++k)
         {
             places[i][k] = (double)q[k];
-            velocities[i][k] = speed * (mvfxUnitFloat((&v.x)[k]) * 2.0f - 1.0f);
+            velocities[i][k] = speed * (Random() * 2.0f - 1.0f);
         }
     }
     mvfxSpawnRequest request = {
         .count = 1000, .positions = &places[0][0], .velocities = &velocities[0][0]};
     CHECK(mvfxInstance_Spawn(context, scene.instance, 0, &request) == mvfx_success, "placed");
     bool kept = true;
+    int32_t count = 0;
     for (int32_t step = 0; step < 3; ++step)
     {
         CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 3) == mvfx_success, "step");
-        for (int32_t i = 0; i < scene.live->emitters[0].count; ++i)
+        count = Read(&scene);
+        for (int32_t i = 0; i < count; ++i)
         {
-            float x = At(&scene, mvfx_attributePositionX, i);
-            float y = At(&scene, mvfx_attributePositionY, i);
-            float z = At(&scene, mvfx_attributePositionZ, i);
-            kept = kept && sqrtf(x * x + y * y + z * z) >= 0.98f;
+            const float* q = s_particles[i].position;
+            kept = kept && sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]) >= 0.98f;
         }
     }
-    CHECK(kept && scene.live->emitters[0].count == 1000, "none through the ball");
+    CHECK(kept && count == 1000, "none through the ball");
     mvfxDestroyContext(context);
 
     // Inside, kept within it: from its center along X at 10, never past it.
@@ -330,9 +354,8 @@ static void TestDistance(void)
     scene = NewScene(context, &emitter);
     Place(&scene, 0, 0, 0, 10, 0, 0);
     Step(&scene);
-    float x = At(&scene, mvfx_attributePositionX, 0);
-    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
-    CHECK(fabsf(x) <= 1.0f + 1e-3f && count[0] >= 1, "kept within the ball");
+    float x = At(&scene, 0).position[0];
+    CHECK(fabsf(x) <= 1.0f + 1e-3f && Collisions(&scene) == 1, "kept within the ball");
     mvfxDestroyContext(context);
 }
 
@@ -362,7 +385,7 @@ static void TestThinWall(void)
     Scene scene = NewScene(context, &emitter);
     Place(&scene, -1.9, 0, 0, 3.8f, 0, 0);
     Step(&scene);
-    CHECK(Near(At(&scene, mvfx_attributePositionX, 0), 0.75f, 2e-3f), "met at the wall's face");
+    CHECK(Near(At(&scene, 0).position[0], 0.75f, 2e-3f), "met at the wall's face");
     mvfxDestroyContext(context);
 }
 
