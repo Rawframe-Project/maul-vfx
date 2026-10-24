@@ -9,10 +9,9 @@
 // values at their centers, a linear field between them, 0 outside the
 // box, through a turned and moved instance.
 
-#include "half.h"
-#include "instance.h"
-#include "instance_api.h"
+#include "half_reference.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
@@ -23,7 +22,6 @@
 
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
-static mvfxGasState* s_state;
 
 // Opens an instance of an effect of a 2D gas of 8 by 6 cells of 0.1,
 // placed and turned, its density a + 2x - 3y at cell (x, y) and its X
@@ -45,16 +43,19 @@ static void Open(const double origin[3], const float rotation[4])
     memcpy(instanceDef.origin, origin, sizeof instanceDef.origin);
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    s_state = &mvfxContextInstance(s_context, s_instance)->gases[0];
+    float density[48];
     for (int32_t i = 0; i < 48; ++i)
     {
-        s_state->scalars[0][s_state->current][i] =
-            0.25f + 2.0f * (float)(i % 8) - 3.0f * (float)(i / 8);
+        density[i] = 0.25f + 2.0f * (float)(i % 8) - 3.0f * (float)(i / 8);
     }
+    float faces[9 * 6];
     for (int32_t f = 0; f < 9 * 6; ++f)
     {
-        s_state->velocity[0][s_state->current][f] = (float)(f % 9);
+        faces[f] = (float)(f % 9);
     }
+    CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasDensity, density, 48) &&
+              mvfxTestWriteGasFaces(s_context, s_instance, 0, 0, faces, 9 * 6),
+          "the fields set");
 }
 
 static const double s_origin[3] = {0, 0, 0};
@@ -100,7 +101,7 @@ static void TestFormats(void)
         float v = floats[i];
         float unorm = fminf(fmaxf((v + 20.0f) / 40.0f, 0.0f), 1.0f);
         float snorm = fminf(fmaxf(2.0f * (v + 20.0f) / 40.0f - 1.0f, -1.0f), 1.0f);
-        right = right && halves[i] == mvfxHalfFromFloat(v) &&
+        right = right && halves[i] == ReferenceHalf(v) &&
                 bytes[i] == (uint8_t)floorf(unorm * 255.0f + 0.5f) &&
                 shorts[i] == (int16_t)copysignf(floorf(fabsf(snorm * 32767.0f) + 0.5f), snorm);
     }

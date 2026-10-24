@@ -12,6 +12,7 @@
 #define MAUL_VFX_SRC_TEST_HOOKS_H
 
 #include "maul-vfx/context.h"
+#include "maul-vfx/gas.h"
 #include "maul-vfx/instance.h"
 
 #include <stdint.h>
@@ -36,5 +37,28 @@ bool mvfxTestTearEdges(mvfxContext* context, mvfxInstanceId instance, int32_t em
 // that names no live instance or an emitter out of range.
 int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                            int32_t* a, int32_t* b, int32_t capacity);
+
+// Copies up to capacity of a gas's velocities on its faces across an axis
+// (0 to 2), X fastest, then Y, then Z, as the last step left them;
+// returns how many faces there are, or -1 for an id that names no live
+// instance, a gas or an axis out of range, or an axis the gas keeps no
+// velocity along.
+int64_t mvfxTestReadGasFaces(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             int32_t axis, float* out, int64_t capacity);
+
+// Sets a gas's velocities on its faces across an axis, count of them (the
+// faces there are), as a step would leave them, so a test can start a
+// solve from any field. Returns false for an id that names no live
+// instance, a gas or an axis out of range, an axis the gas keeps no
+// velocity along, or another count.
+bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_t gas, int32_t axis,
+                           const float* values, int64_t count);
+
+// Sets a gas's scalar field (mvfx_gasDensity, mvfx_gasTemperature or
+// mvfx_gasFuel) at its cells, count of them (its cells). Returns false for
+// an id that names no live instance, a gas out of range, a field it does
+// not keep, or another count.
+bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                            mvfxGasField field, const float* values, int64_t count);
 
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H
