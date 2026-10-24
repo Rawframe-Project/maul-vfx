@@ -8,18 +8,20 @@
 // terrain, the effect's or the host's; a leaned terrain's ground; a fall
 // off a cliff as its mirror's; reads and samples of a lake; friction;
 // pushes at their edges; a stopped instance finishing once still; a
-// step's substeps counted from the state the last step left.
+// step's substeps counted from the state the last step left, a planned
+// instance's from the speed it is told. Depths and flows are read through
+// the output; a dam's and a column's water is let go through a test
+// hook.
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
-#include "water.h"
-#include "water_shallow.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/output.h"
+#include "maul-vfx/plan.h"
+#include "maul-vfx/water.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -27,6 +29,8 @@
 
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
+// Whether Open's instance is planned.
+static bool s_planned;
 
 // A shallow surface of nx by nz cells of cell, walled in, a flat floor,
 // dry.
@@ -59,6 +63,7 @@ static bool Open(const mvfxWaterDef* waters, int32_t count)
     }
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
+    instanceDef.planned = s_planned;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
     return true;
 }
@@ -78,18 +83,39 @@ static void Steps(int32_t count, double seconds)
     }
 }
 
-// Surface 0's state.
-static mvfxWaterState* State(void)
+// Surface 0's field over its cells, as binary32, into a buffer that
+// holds the largest surface's.
+static const float* Read(const mvfxWaterDef* water, mvfxWaterField field)
 {
-    return &mvfxContextInstance(s_context, s_instance)->waters[0];
+    static float values[3600];
+    const mvfxWaterRead read = {
+        .field = field, .format = mvfx_formatFloat32, .size = {water->size[0], water->size[1]}};
+    CHECK((int64_t)water->size[0] * water->size[1] <= 3600 &&
+              mvfxInstance_ReadWater(s_context, s_instance, 0, &read, values, sizeof values) ==
+                  mvfx_success,
+          "read");
+    return values;
+}
+
+// Surface 0's depths.
+static const float* Depths(const mvfxWaterDef* water)
+{
+    return Read(water, mvfx_waterDepth);
+}
+
+// Sets surface 0's depths.
+static void SetDepths(const mvfxWaterDef* water, const float* depths)
+{
+    CHECK(mvfxTestWriteWaterDepth(s_context, s_instance, 0, depths,
+                                  (int64_t)water->size[0] * water->size[1]),
+          "depths set");
 }
 
 // Surface 0's volume (its depths' sum times a cell's area) and whether
 // every depth is at least 0.
 static double Volume(const mvfxWaterDef* water, bool* dry)
 {
-    const mvfxWaterState* state = State();
-    const float* d = state->heights[state->current];
+    const float* d = Depths(water);
     double sum = 0.0;
     *dry = true;
     for (int64_t i = 0; i < (int64_t)water->size[0] * water->size[1]; ++i)
@@ -282,15 +308,19 @@ static void TestDamBreak(void)
     mvfxWaterDef water = Shallow(512, 2, 0.01f);
     CHECK(Open(&water, 1), "opened");
     Steps(1, 0.0);
-    mvfxWaterState* state = State();
-    float* d = state->heights[state->current];
+    static float dam[1024];
     for (int32_t i = 0; i < 1024; ++i)
     {
-        d[i] = i % 512 < 256 ? 0.5f : 0.0f;
+        dam[i] = i % 512 < 256 ? 0.5f : 0.0f;
     }
+    SetDepths(&water, dam);
     Steps(48, 1.0 / 120.0);
     double t = 48.0 * 8738.0 / 1048576.0;
-    d = state->heights[state->current];
+    static float d[1024];
+    memcpy(d, Depths(&water), sizeof d);
+    // The flow at the dam's face, the mean of its cells' (each its two
+    // faces' mean): Ritter's flow is linear in x, so the face's own.
+    const float* flow = Read(&water, mvfx_waterVelocityX);
     double worst = 0.0;
     for (int32_t x = 200; x <= 336; x += 8)
     {
@@ -303,10 +333,10 @@ static void TestDamBreak(void)
         last = d[x] > 5e-4f ? x : last;
     }
     double front = (double)(last + 1 - 256) * 0.01 / (2.0 * sqrt(9.81 * 0.5) * t);
-    double dam = 0.5 * ((double)d[255] + (double)d[256]) / (0.5 * 4.0 / 9.0);
-    double u = (double)state->faces[0][state->faceCurrent][256] / (2.0 / 3.0 * sqrt(9.81 * 0.5));
+    double atDam = 0.5 * ((double)d[255] + (double)d[256]) / (0.5 * 4.0 / 9.0);
+    double u = 0.5 * ((double)flow[255] + (double)flow[256]) / (2.0 / 3.0 * sqrt(9.81 * 0.5));
     CHECK(worst <= 0.07, "a dam break's depths as Ritter's");
-    CHECK(fabs(dam - 1.0) <= 0.02 && fabs(u - 1.0) <= 0.02, "at the dam as Ritter's");
+    CHECK(fabs(atDam - 1.0) <= 0.02 && fabs(u - 1.0) <= 0.02, "at the dam as Ritter's");
     CHECK(front >= 0.75 && front <= 1.0, "a dam break's front behind Ritter's");
     Close();
 }
@@ -343,7 +373,8 @@ static mvfxCollider Slope(const float rotation[4])
 }
 
 // A lake filled to 0 over the slope (its -X half wet, up to 0.5 deep),
-// stepped five seconds: whether it is still (every face still, every
+// stepped five seconds: whether it is still (every face still, as a
+// stopped instance finishing on its next tick shows, no face held, every
 // depth as filled to 1e-6); its depths after.
 static bool StillLake(bool host, const float rotation[4], float* depths)
 {
@@ -365,12 +396,16 @@ static bool StillLake(bool host, const float rotation[4], float* depths)
               "host terrain");
     }
     Steps(1, 0.0);
-    const mvfxWaterState* state = State();
     float filled[1600];
-    memcpy(filled, state->heights[state->current], sizeof filled);
+    memcpy(filled, Depths(&water), sizeof filled);
     Steps(300, 1.0 / 60.0);
-    const float* d = state->heights[state->current];
-    bool still = !state->holds && state->facesHeld == 0;
+    const float* d = Depths(&water);
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
+    CHECK(mvfxInstance_Stop(s_context, s_instance, mvfx_stopEmitting) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, 1) == mvfx_success,
+          "stopped");
+    bool still = mvfxInstance_IsFinished(s_context, s_instance) && info.facesHeld == 0;
     for (int32_t i = 0; i < 1600; ++i)
     {
         still = still && fabsf(d[i] - filled[i]) <= 1e-6f;
@@ -417,7 +452,8 @@ static void TestLake(void)
 }
 
 // The ground under a surface of n by n cells of 0.1 over a field of
-// height a x + b turned by rotation with its center up.
+// height a x + b turned by rotation with its center up: each cell's height
+// read less its depth.
 static void ReadGround(float a, float b, const float rotation[4], float up, int32_t n,
                        float* ground)
 {
@@ -429,7 +465,12 @@ static void ReadGround(float a, float b, const float rotation[4], float up, int3
     water.hasTerrain = true;
     CHECK(Open(&water, 1), "opened");
     Steps(1, 0.0);
-    memcpy(ground, State()->ground, (size_t)n * (size_t)n * sizeof(float));
+    memcpy(ground, Read(&water, mvfx_waterHeight), (size_t)n * (size_t)n * sizeof(float));
+    const float* depth = Depths(&water);
+    for (int32_t i = 0; i < n * n; ++i)
+    {
+        ground[i] -= depth[i];
+    }
     Close();
 }
 
@@ -517,8 +558,7 @@ static double Cliff(bool turned, float depths[128], uint64_t* held)
     water.sourceCount = 1;
     CHECK(Open(&water, 1), "opened");
     Steps(60, 1.0 / 60.0);
-    const mvfxWaterState* state = State();
-    memcpy(depths, state->heights[state->current], 128 * sizeof(float));
+    memcpy(depths, Depths(&water), 128 * sizeof(float));
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
     *held = info.facesHeld;
@@ -581,8 +621,10 @@ static bool Column(bool pinnacle, float deep, int32_t row, uint64_t* held)
     water.hasTerrain = true;
     CHECK(Open(&water, 1), "opened");
     Steps(1, 0.0);
-    mvfxWaterState* state = State();
-    state->heights[state->current][row * 16 + 8] = deep;
+    static float column[256];
+    memcpy(column, Depths(&water), sizeof column);
+    column[row * 16 + 8] = deep;
+    SetDepths(&water, column);
     Steps(30, 1.0 / 60.0);
     bool dry = true;
     double volume = Volume(&water, &dry);
@@ -663,7 +705,7 @@ static void TestReads(void)
 }
 
 // A basin filled to 0.3, pushed once at its middle and stepped seconds
-// under friction: its flow's largest speed after.
+// under friction: its cells' largest flow along X after.
 static float Slosh(float friction, double seconds)
 {
     mvfxWaterDef water = Shallow(32, 32, 0.1f);
@@ -673,11 +715,12 @@ static float Slosh(float friction, double seconds)
     const mvfxWaterPush push = {.point = {0.0, 0.0, 0.0}, .radius = 0.5f, .depth = 0.2f};
     CHECK(mvfxInstance_PushWater(s_context, s_instance, 0, &push, 1) == mvfx_success, "pushed");
     Steps((int32_t)(seconds * 60.0), 1.0 / 60.0);
+    // Each cell's flow along X, its two faces' mean.
+    const float* flow = Read(&water, mvfx_waterVelocityX);
     float most = 0.0f;
-    const mvfxWaterState* state = State();
-    for (int32_t i = 0; i < 33 * 32; ++i)
+    for (int32_t i = 0; i < 32 * 32; ++i)
     {
-        most = fmaxf(most, fabsf(state->faces[0][state->faceCurrent][i]));
+        most = fmaxf(most, fabsf(flow[i]));
     }
     Close();
     return most;
@@ -709,7 +752,7 @@ static bool PushRing(bool sink)
         .point = {0.05, 0.0, 0.05}, .radius = 0.3f, .depth = sink ? 0.1f : -0.1f};
     CHECK(mvfxInstance_PushWater(s_context, s_instance, 0, &push, 1) == mvfx_success, "pushed");
     Steps(1, 0.0);
-    const float* d = State()->heights[State()->current];
+    const float* d = Depths(&water);
     float middle = d[16 * 32 + 16];
     float ring = d[16 * 32 + 16 + 4];
     float past = d[16 * 32 + 16 + 7];
@@ -739,7 +782,8 @@ static int32_t PushOnce(int32_t n, float level, const mvfxWaterPush* push, bool*
     double start = Volume(&water, &dry);
     CHECK(mvfxInstance_PushWater(s_context, s_instance, 0, push, 1) == mvfx_success, "pushed");
     Steps(1, 0.0);
-    const float* d = State()->heights[State()->current];
+    static float d[1600];
+    memcpy(d, Depths(&water), sizeof(float) * (size_t)(n * n));
     int32_t changed = 0;
     for (int32_t i = 0; i < n * n; ++i)
     {
@@ -793,26 +837,47 @@ static void TestSlowed(void)
     Close();
 }
 
+// A planned basin of 8 by 8 cells of 0.125, after a first step of a
+// tick, told that its speed was speed then and stepped ticks: its plan's
+// substeps, their length and whether the step is slowed.
+static int32_t Planned(float speed, int64_t ticks, float* dt, bool* slowed)
+{
+    mvfxWaterDef water = Shallow(8, 8, 0.125f);
+    s_planned = true;
+    CHECK(Open(&water, 1), "opened");
+    s_planned = false;
+    CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success &&
+              mvfxInstance_SetWaterSpeed(s_context, s_instance, 0, 1, speed) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, ticks) == mvfx_success,
+          "told and stepped");
+    static mvfxWaterPlan plan;
+    CHECK(mvfxInstance_GetWaterPlan(s_context, s_instance, 0, &plan) == mvfx_success, "plan");
+    *dt = plan.dt;
+    *slowed = plan.slowed;
+    Close();
+    return plan.substeps;
+}
+
 static void TestSubsteps(void)
 {
     // Equal substeps of at most half a cell at the speed, at least one,
-    // none for no time, the most of the longest past them (slowed).
-    mvfxWaterDef def = Shallow(8, 8, 0.1f);
-    mvfxCompiledWater water = mvfxCompileWater(&def);
+    // none for no time, the most of the longest past them (slowed): at 8
+    // a second in cells of 0.125, 2^-7 s, 8192 ticks.
     float dt = -1.0f;
     bool slowed = true;
-    CHECK(mvfxShallowSubsteps(&water, 5.0f, 0.0, &dt, &slowed) == 0 && dt == 0.0f && !slowed,
-          "no time, no substep");
-    CHECK(mvfxShallowSubsteps(&water, 0.0f, 0.5, &dt, &slowed) == 1 && dt == 0.5f && !slowed,
+    CHECK(Planned(8.0f, 0, &dt, &slowed) == 0 && dt == 0.0f && !slowed, "no time, no substep");
+    CHECK(Planned(0.0f, MVFX_TICKS_PER_SECOND / 2, &dt, &slowed) == 1 && dt == 0.5f && !slowed,
           "still water, one substep");
-    CHECK(mvfxShallowSubsteps(&water, 5.0f, 0.1, &dt, &slowed) == 10 && dt == 0.01f && !slowed,
+    CHECK(Planned(8.0f, 10 * 8192, &dt, &slowed) == 10 && dt == 0.0078125f && !slowed,
           "ten of half a cell");
-    CHECK(mvfxShallowSubsteps(&water, 5.0f, 0.1001, &dt, &slowed) == 11 &&
-              dt == (float)(0.1001 / 11.0) && !slowed,
+    CHECK(Planned(8.0f, 10 * 8192 + 1, &dt, &slowed) == 11 &&
+              dt == (float)((10.0 * 8192.0 + 1.0) / (double)MVFX_TICKS_PER_SECOND / 11.0) &&
+              !slowed,
           "a part past them, one more");
-    CHECK(mvfxShallowSubsteps(&water, 5.0f, 1.0, &dt, &slowed) == MVFX_MAX_WATER_SUBSTEPS &&
-              dt == 0.01f && slowed,
+    CHECK(Planned(8.0f, MVFX_TICKS_PER_SECOND, &dt, &slowed) == MVFX_MAX_WATER_SUBSTEPS &&
+              dt == 0.0078125f && slowed,
           "past the most, slowed");
+    mvfxWaterDef def = Shallow(8, 8, 0.1f);
     // A basin's first step of a second counts from its state before the
     // fill (still, one substep): not slowed, though its 3 deep waves are
     // 5.4 a second; its next takes the most and is.

@@ -69,4 +69,19 @@ bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32
 int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                              uint8_t* out, int64_t capacity);
 
+// Sets a shallow water surface's depths at its cells, count of them (its
+// cells), as a step would leave them, so a test can let go any water.
+// Returns false for an id that names no live instance, a surface out of
+// range or not shallow water, or another count.
+bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                             const float* values, int64_t count);
+
+// Sets a shallow water surface's velocities on its faces across an axis
+// (0 along X, 1 along Z), count of them (the faces there are), as a step
+// would leave them, so a test can hold any flow. Returns false for an id
+// that names no live instance, a surface out of range or not shallow
+// water, an axis out of range, or another count.
+bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                             int32_t axis, const float* values, int64_t count);
+
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H
