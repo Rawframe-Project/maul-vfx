@@ -279,7 +279,7 @@ if(MAUL_VFX_BUILD_TESTS)
     # The suites that use the tests' hooks.
     if(NOT MAUL_VFX_BUILD_SHARED)
         foreach(suite attach gas gas_couple gas_forces gas_liquid gas_pressure gas_read gas_solid
-                rigid_pair surface_mesh tear)
+                emitter_step rigid_pair surface_mesh tear)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-test-hooks)
         endforeach()
     endif()
