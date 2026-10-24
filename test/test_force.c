@@ -5,13 +5,11 @@
 // rest, wind exact as drag is, the falloffs' weights, forces given in the
 // emitter's space or the world's under a turned, scaled instance, a
 // strength from a parameter and its hold, the order of several forces,
-// an unturned box's and map's quick paths the general one's bits, and
-// the refusals.
+// and the refusals. A turbulence's field against the noise itself, and
+// the quick paths of an unturned box and map, are tested in
+// test_force_internal.c.
 
-#include "context.h"
-#include "grid_api.h"
-#include "instance.h"
-#include "noise.h"
+#include "peek.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -23,16 +21,16 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
-static Scene NewScene(const mvfxEmitterDef* emitter, int32_t parameterCount)
+static Scene NewSeededScene(const mvfxEmitterDef* emitter, int32_t parameterCount, uint32_t seed)
 {
     Scene scene = {0};
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &scene.context) == mvfx_success, "context");
+    mvfxEmitterDef peeking = Peeking(emitter);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitter;
+    effectDef.emitters = &peeking;
     effectDef.emitterCount = 1;
     static const float parameters[4] = {1, 1, 1, 1};
     effectDef.parameters = parameters;
@@ -41,15 +39,15 @@ static Scene NewScene(const mvfxEmitterDef* emitter, int32_t parameterCount)
     CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
+    instanceDef.seed = seed;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
-static const float* Array(const Scene* scene, mvfxAttribute attribute)
+static Scene NewScene(const mvfxEmitterDef* emitter, int32_t parameterCount)
 {
-    return mvfxAttributeArray(scene->live, 0, attribute);
+    return NewSeededScene(emitter, parameterCount, 0);
 }
 
 // An emitter that spawns only what the host gives, living long.
@@ -74,10 +72,11 @@ static void AccelerationIn(Scene* scene, const double place[3], float out[3])
           "placed");
     CHECK(mvfxContext_StepTicks(scene->context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success,
           "step");
-    int32_t last = scene->live->emitters[0].count - 1;
+    int32_t last = s_peeked.count - 1;
+    CHECK(last >= 0 && last < PEEK_MOST, "the particle seen");
     for (int32_t k = 0; k < 3; ++k)
     {
-        out[k] = 1024.0f * Array(scene, (mvfxAttribute)(mvfx_attributeVelocityX + k))[last];
+        out[k] = 1024.0f * s_peeked.velocity[k][last];
     }
 }
 
@@ -164,8 +163,8 @@ static void TestWindExact(void)
         double e = exp(-k);
         double v = terminal + (-3.0 - terminal) * e;
         double x = terminal + (-3.0 - terminal) * (1.0 - e) / k;
-        float vx = Array(&scene, mvfx_attributeVelocityX)[0];
-        float px = Array(&scene, mvfx_attributePositionX)[0];
+        float vx = s_peeked.velocity[0][0];
+        float px = s_peeked.position[0][0];
         CHECK(fabs((double)vx - v) <= 2e-5 && fabs((double)px - x) <= 2e-5,
               "toward the wind's velocity, exactly");
         mvfxDestroyContext(scene.context);
@@ -344,7 +343,7 @@ static void TestScaledAndWindy(void)
     mvfxSpawnRequest request = {.count = 1, .positions = home, .velocities = thrown};
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "placed");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(fabs((double)Array(&scene, mvfx_attributeVelocityX)[0] - 8.0 * exp(-4.0)) <= 1e-5,
+    CHECK(fabs((double)s_peeked.velocity[0][0] - 8.0 * exp(-4.0)) <= 1e-5,
           "a particle's drag and the wind's together");
     mvfxDestroyContext(scene.context);
 
@@ -359,8 +358,8 @@ static void TestScaledAndWindy(void)
                                     (const float[4]){0, 0, 0, 1}, 1.0f, true) == mvfx_success,
           "placed");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].anchor[0] == 5000.0, "rebased");
     AccelerationIn(&scene, far, a);
+    CHECK(s_peeked.anchor[0] == 5000.0, "rebased");
     CHECK(Is(a, 0, 8, 0), "a world point through the moved anchor");
     mvfxDestroyContext(scene.context);
 }
@@ -372,65 +371,78 @@ static const mvfxNoise s_noise = {.frequency = 0.5f,
                                   .scroll = {1.0f, 0.0f, -2.0f},
                                   .seed = 77u};
 
+// The acceleration on a particle the host places at rest at place in a
+// fresh scene of the emitter, its instance at the origin, unturned.
+static void PlainAcceleration(const mvfxEmitterDef* emitter, const double place[3], float out[3])
+{
+    Scene scene = NewScene(emitter, 0);
+    AccelerationIn(&scene, place, out);
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestTurbulence(void)
 {
-    // A world turbulence of strength 3 on a world emitter far out (the
-    // anchor rebased): strength times the curl where the particle is in
-    // the world, at the step's start.
+    // A world turbulence on a world emitter far out (the anchor rebased),
+    // the same as on one whose instance is elsewhere near: the field is
+    // the world's at the particle's place, whatever the anchor.
     mvfxForce force = {.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
     mvfxEmitterDef emitter = Held(&force, 1);
-    Scene scene = NewScene(&emitter, 0);
-    static const double far[3] = {123456.0, -7000.0, 9.0};
-    CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, far,
-                                    (const float[4]){0, 0, 0, 1}, 1.0f, true) == mvfx_success,
-          "placed");
-    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     static const double place[3] = {123456.5, -6999.25, 9.75};
     float a[3];
-    double time = (double)scene.live->clock / MVFX_TICKS_PER_SECOND;
-    AccelerationIn(&scene, place, a);
-    float curl[3];
-    mvfxCurlNoise(&s_noise, 77u, place, time, curl);
-    CHECK(Is(a, 3.0f * curl[0], 3.0f * curl[1], 3.0f * curl[2]), "the curl in the world");
-    CHECK(fabsf(curl[0]) + fabsf(curl[1]) + fabsf(curl[2]) > 0.1f, "a field, not nothing");
-    mvfxDestroyContext(scene.context);
+    float b[3];
+    for (int32_t s = 0; s < 2; ++s)
+    {
+        Scene scene = NewScene(&emitter, 0);
+        const double far[3] = {s == 0 ? 123456.0 : 123000.0, -7000.0, 9.0};
+        CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, far,
+                                        (const float[4]){0, 0, 0, 1}, 1.0f, true) == mvfx_success,
+              "placed");
+        CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+        AccelerationIn(&scene, place, s == 0 ? a : b);
+        mvfxDestroyContext(scene.context);
+    }
+    CHECK(Is(a, b[0], b[1], b[2]), "the field in the world, whatever the anchor");
+    CHECK(fabsf(a[0]) + fabsf(a[1]) + fabsf(a[2]) > 0.3f, "a field, not nothing");
 
     // In the emitter's space under a turned, scaled instance: sampled at
-    // the instance's own place, turned and scaled back out.
+    // the instance's own place, turned and scaled back out. (-1, 3, 1)
+    // from the instance's origin, turned back a quarter (3, 1, 1), halved,
+    // is (1.5, 0.5, 0.5), where an unturned instance at the origin gives a;
+    // turned out and doubled, (-2 a_y, 2 a_x, 2 a_z).
     static const double origin[3] = {10.0, 0.0, 0.0};
     static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
     force.space = mvfx_spaceLocal;
     emitter = Held(&force, 1);
-    scene = NewScene(&emitter, 0);
+    static const double local[3] = {1.5, 0.5, 0.5};
+    PlainAcceleration(&emitter, local, b);
+    Scene scene = NewScene(&emitter, 0);
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, quarter, 2.0f, true) ==
               mvfx_success,
           "placed");
     static const double world[3] = {9.0, 3.0, 1.0};
     AccelerationIn(&scene, world, a);
-    // (-1, 3, 1) from the origin, turned back a quarter (3, 1, 1), halved.
-    const double local[3] = {1.5, 0.5, 0.5};
-    mvfxCurlNoise(&s_noise, 77u, local, 0.0, curl);
-    CHECK(Is(a, -6.0f * curl[1], 6.0f * curl[0], 6.0f * curl[2]), "the curl in the emitter's");
+    CHECK(Is(a, -2.0f * b[1], 2.0f * b[0], 2.0f * b[2]), "the field in the emitter's space");
     mvfxDestroyContext(scene.context);
 
-    // As a velocity, tightness 2: drag 2 toward strength times the curl.
-    force = (mvfxForce){.kind = mvfx_forceTurbulence,
-                        .strength = 3.0f,
-                        .noise = s_noise,
-                        .fieldMode = mvfx_fieldVelocity,
-                        .tightness = 2.0f};
+    // As a velocity, tightness 2: drag 2 toward strength times the field,
+    // so over a step of h its push is the force's times 2 (1 - e^(-2 h)) /
+    // (2 h).
+    force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
     emitter = Held(&force, 1);
-    scene = NewScene(&emitter, 0);
     static const double home[3] = {0.5, 0.25, 0.125};
-    AccelerationIn(&scene, home, a);
-    mvfxCurlNoise(&s_noise, 77u, home, 0.0, curl);
+    PlainAcceleration(&emitter, home, b);
+    force.fieldMode = mvfx_fieldVelocity;
+    force.tightness = 2.0f;
+    emitter = Held(&force, 1);
+    PlainAcceleration(&emitter, home, a);
     float carry = (float)((1.0 - exp(-2.0 / 1024.0)) * 1024.0 / 2.0);
-    CHECK(Is(a, 6.0f * carry * curl[0], 6.0f * carry * curl[1], 6.0f * carry * curl[2]),
+    CHECK(Is(a, 2.0f * carry * b[0], 2.0f * carry * b[1], 2.0f * carry * b[2]),
           "a velocity pulled toward");
-    mvfxDestroyContext(scene.context);
 
     // A particle in its second step: the field scrolled to that step's
-    // start, sampled where the particle was then.
+    // start, sampled where the particle was then, as a particle placed
+    // there at that time is pushed over a step twice as long (the same a
+    // second only if the field is the step's start's).
     force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
     emitter = Held(&force, 1);
     scene = NewScene(&emitter, 0);
@@ -439,37 +451,47 @@ static void TestTurbulence(void)
     double start[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        before[k] = Array(&scene, (mvfxAttribute)(mvfx_attributeVelocityX + k))[0];
-        start[k] = (double)Array(&scene, (mvfxAttribute)(mvfx_attributePositionX + k))[0];
+        before[k] = s_peeked.velocity[k][0];
+        start[k] = (double)s_peeked.position[k][0];
     }
-    double startTime = (double)scene.live->clock / MVFX_TICKS_PER_SECOND;
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success,
           "step");
-    mvfxCurlNoise(&s_noise, 77u, start, startTime, curl);
     for (int32_t k = 0; k < 3; ++k)
     {
-        a[k] =
-            1024.0f * (Array(&scene, (mvfxAttribute)(mvfx_attributeVelocityX + k))[0] - before[k]);
+        a[k] = 1024.0f * (s_peeked.velocity[k][0] - before[k]);
     }
-    CHECK(Is(a, 3.0f * curl[0], 3.0f * curl[1], 3.0f * curl[2]), "scrolled to the step's start");
     mvfxDestroyContext(scene.context);
+    scene = NewScene(&emitter, 0);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success,
+          "an empty step");
+    static const float rest[3] = {0.0f, 0.0f, 0.0f};
+    mvfxSpawnRequest there = {.count = 1, .positions = start, .velocities = rest};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &there) == mvfx_success, "placed");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 512) == mvfx_success,
+          "step");
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        b[k] = 512.0f * s_peeked.velocity[k][0];
+    }
+    mvfxDestroyContext(scene.context);
+    CHECK(Is(a, b[0], b[1], b[2]) && (a[0] != 0.0f || a[1] != 0.0f || a[2] != 0.0f),
+          "scrolled to the step's start");
 
-    // A seed per instance: two instances differ, else they agree.
+    // A seed per instance: instances of other seeds differ, else they
+    // agree.
     for (int32_t per = 0; per < 2; ++per)
     {
         force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 1.0f, .noise = s_noise};
         force.noise.seedPerInstance = per != 0;
         emitter = Held(&force, 1);
-        Scene first = NewScene(&emitter, 0);
-        Scene second = NewScene(&emitter, 0);
-        second.live->seed += 1;
-        float b[3];
+        Scene first = NewSeededScene(&emitter, 0, 5);
         AccelerationIn(&first, home, a);
+        mvfxDestroyContext(first.context);
+        Scene second = NewSeededScene(&emitter, 0, 6);
         AccelerationIn(&second, home, b);
+        mvfxDestroyContext(second.context);
         bool same = a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
         CHECK(same == (per == 0), per != 0 ? "instances differ" : "instances agree");
-        mvfxDestroyContext(first.context);
-        mvfxDestroyContext(second.context);
     }
 }
 
@@ -500,8 +522,9 @@ static Scene NewFieldScene(mvfxForce* forces, int32_t count, mvfxSimulationSpace
     {
         forces[f].grid = *gridOut;
     }
-    mvfxEmitterDef emitter = Held(forces, count);
-    emitter.space = space;
+    mvfxEmitterDef held = Held(forces, count);
+    held.space = space;
+    mvfxEmitterDef emitter = Peeking(&held);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
@@ -511,7 +534,6 @@ static Scene NewFieldScene(mvfxForce* forces, int32_t count, mvfxSimulationSpace
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -593,107 +615,6 @@ static void TestVectorField(void)
     float carry = (float)((1.0 - exp(-4.0 / 1024.0)) * 1024.0 / 4.0);
     CHECK(Is(a, 2.0f * carry, 3.0f * carry, 1.0f * carry), "a velocity pulled toward");
     mvfxDestroyContext(scene.context);
-}
-
-// A field's acceleration and drag at x, the quick paths for an unturned
-// box and map taken or not.
-static void FieldAt(mvfxResolvedForce force, bool quick, const float x[3], float out[4])
-{
-    force.unturned = force.unturned && quick;
-    force.mapUnturned = force.mapUnturned && quick;
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        out[k] = 0.0f;
-    }
-    mvfxForcesAt(&force, 1, x, 0.0, out, &out[3]);
-}
-
-static void TestUnturnedBits(void)
-{
-    // A 5x3x4 grid of three components, values of both signs and zeros.
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    static float values[3 * 60];
-    for (uint32_t i = 0; i < 3 * 60; ++i)
-    {
-        values[i] = i % 7 == 0 ? 0.0f : (float)((i * 2654435761u) >> 8) * 0x1p-23f - 1.0f;
-    }
-    mvfxGridDef gridDef = mvfxDefaultGridDef();
-    gridDef.size[0] = 5;
-    gridDef.size[1] = 3;
-    gridDef.size[2] = 4;
-    gridDef.components = 3;
-    gridDef.values = values;
-    mvfxGridId id = {0};
-    CHECK(mvfxCreateGrid(context, &gridDef, &id) == mvfx_success, "grid");
-    const mvfxGrid* grid = mvfxContextGrid(context, id);
-    // Maps: none, moved and scaled unturned, a quarter turn.
-    const mvfxSpaceMap maps[3] = {
-        {.rotation = {0, 0, 0, 1}, .sigma = 1.0f},
-        {.before = {1.5, -2, 0.25}, .after = {-3, 0.5, 7}, .rotation = {0, 0, 0, 1}, .sigma = 2.5f},
-        {.before = {0.5, 0, 0}, .rotation = {0, 0, 0.70710678f, 0.70710678f}, .sigma = 1.0f},
-    };
-    // Places: a lattice past the box's periods each way, its cells' edges,
-    // and places not finite or far.
-    static const float wild[7] = {INFINITY, -INFINITY, NAN, 1e30f, -3e38f, -0.0f, 0.0f};
-    static const float zero[1][4] = {{0}};
-    int32_t same = 0;
-    int32_t count = 0;
-    // Sources: a vector field under each border in an unturned box, a box
-    // turned about Z alone, a box turned about every axis, and a turbulence,
-    // whose place the quick paths must leave alone.
-    static const float turns[3][4] = {
-        {0, 0, 0, 1}, {0, 0, 0.70710678f, 0.70710678f}, {0.1f, 0.2f, 0.3f, 0.92736185f}};
-    mvfxForce sources[10];
-    int32_t sourceCount = 0;
-    for (mvfxGridBorder border = 0; border <= mvfx_borderRepeat; ++border)
-    {
-        for (int32_t r = 0; r < 3; ++r)
-        {
-            sources[sourceCount++] =
-                (mvfxForce){.kind = mvfx_forceVectorField,
-                            .point = {0.25f, -1, 2},
-                            .strength = -1.5f,
-                            .boxSize = {2, 3, 1.5f},
-                            .boxRotation = {turns[r][0], turns[r][1], turns[r][2], turns[r][3]},
-                            .border = border};
-        }
-    }
-    sources[sourceCount++] =
-        (mvfxForce){.kind = mvfx_forceTurbulence,
-                    .strength = 2.0f,
-                    .noise = {.frequency = 1.0f, .octaves = 2, .lacunarity = 2.0f, .gain = 0.5f}};
-    for (int32_t s = 0; s < sourceCount; ++s)
-    {
-        mvfxForce compiled = mvfxCompileForce(&sources[s]);
-        bool box = sources[s].kind == mvfx_forceVectorField;
-        for (int32_t m = 0; m < 3; ++m)
-        {
-            mvfxResolvedForce force = mvfxResolveForce(&compiled, &maps[m], zero, 0, grid);
-            CHECK(!box || (force.unturned == (sources[s].boxRotation[2] == 0.0f) &&
-                           force.mapUnturned == (m < 2)),
-                  "the quick paths chosen");
-            for (int32_t i = 0; i < 9 * 9 * 9 + 7 * 7 * 7; ++i)
-            {
-                float x[3];
-                bool lattice = i < 729;
-                for (int32_t k = 0, r = lattice ? i : i - 729; k < 3; ++k)
-                {
-                    x[k] = lattice ? (float)(r % 9) * 0.625f - 2.5f : wild[r % 7];
-                    r /= lattice ? 9 : 7;
-                }
-                float quick[4];
-                float general[4];
-                FieldAt(force, true, x, quick);
-                FieldAt(force, false, x, general);
-                same += memcmp(quick, general, sizeof quick) == 0;
-                ++count;
-            }
-        }
-    }
-    CHECK(same == count, "the quick paths the general one's bits");
-    mvfxDestroyContext(context);
 }
 
 static void TestParameters(void)
@@ -894,7 +815,6 @@ int main(void)
     TestScaledAndWindy();
     TestTurbulence();
     TestVectorField();
-    TestUnturnedBits();
     TestParameters();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
