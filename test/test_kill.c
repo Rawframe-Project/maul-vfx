@@ -7,8 +7,7 @@
 // the step's end killed where it is born, the others' order kept, the
 // killed counted and restarted, and the refusals.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -19,7 +18,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -36,7 +34,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -275,8 +272,9 @@ static void TestBirthsAndOrder(void)
     Place(&scene, 0, 20, 0, 0, 0, 0);
     Place(&scene, 0, 1, 0, 0, 0, 0);
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    const uint32_t* serial = mvfxAttributeArray(scene.live, 0, mvfx_attributeSerial);
-    CHECK(scene.live->emitters[0].count == 2 && serial[0] == 0 && serial[1] == 2,
+    TestParticle particles[3];
+    CHECK(ReadParticles(scene.context, scene.instance, 0, particles, 3) == 2 &&
+              particles[0].serial == 0 && particles[1].serial == 2,
           "the others' order kept");
     CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success &&
               Stats(&scene).killed == 0,

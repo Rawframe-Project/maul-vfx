@@ -9,8 +9,6 @@
 // restart and a finished instance's step clearing them; and the
 // refusals.
 
-#include "context.h"
-#include "instance.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -21,7 +19,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -38,7 +35,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
