@@ -124,3 +124,19 @@ bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32
     }
     return true;
 }
+
+int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             uint8_t* out, int64_t capacity)
+{
+    const mvfxCompiledGas* compiled = nullptr;
+    const mvfxGasState* state = GasOf(context, instance, gas, &compiled);
+    if (state == nullptr || state->solid == nullptr)
+    {
+        return -1;
+    }
+    for (int64_t i = 0; i < compiled->cells && i < capacity; ++i)
+    {
+        out[i] = state->solid[i];
+    }
+    return compiled->cells;
+}

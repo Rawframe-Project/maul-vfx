@@ -61,4 +61,12 @@ bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_
 bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                             mvfxGasField field, const float* values, int64_t count);
 
+// Copies up to capacity of a gas's cells' solids into out, each 0 for an
+// open cell, else 1 more than the index of the obstacle filling it, as
+// the last step marked them, and returns how many cells it has. Returns
+// -1 for an id that names no live instance, a gas out of range, or a gas
+// without obstacles.
+int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             uint8_t* out, int64_t capacity);
+
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H

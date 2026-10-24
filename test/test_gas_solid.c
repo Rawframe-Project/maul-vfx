@@ -10,18 +10,17 @@
 // placed through a moved, turned and scaled instance, in a world gas and
 // a local one; a turning box giving its faces its turn's
 // velocity; a local gas moving past a still box in the world seeing it
-// move; nothing within a solid reaching the solve, a 3D gas projected
-// around a solid, and a sealed gas's
-// expansion kept less its open cells' mean; an obstacle's grid held by its
-// effect; the obstacles' refusals.
+// move; 2D and 3D gases projected around a solid, and a sealed gas's
+// expansion from burning kept less its open cells' mean; an obstacle's
+// grid held by its effect; the obstacles' refusals. A gas's solid cells
+// and faces are read, and its faces and scalars written, through the test
+// hooks.
 
-#include "gas_pressure.h"
-#include "gas_solid.h"
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/gas.h"
 #include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 
@@ -31,9 +30,18 @@
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
 
-// Opens an instance of an effect of one gas; gives its compiled gas and
-// state.
-static mvfxGasState* Open(const mvfxGasDef* gas, const mvfxCompiledGas** compiled)
+enum
+{
+    // The most cells, and faces along an axis, a test's gas has.
+    MOST = 4096
+};
+
+// The gas's solid cells and its faces along each axis, as read last.
+static uint8_t s_solid[MOST];
+static float s_faces[3][MOST];
+
+// Opens an instance of an effect of one gas.
+static void Open(const mvfxGasDef* gas)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
@@ -45,9 +53,37 @@ static mvfxGasState* Open(const mvfxGasDef* gas, const mvfxCompiledGas** compile
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
-    *compiled = &live->effect->gases[0];
-    return &live->gases[0];
+}
+
+// The count of a gas's faces along k.
+static int64_t FaceCount(const int32_t* n, int32_t k)
+{
+    return (int64_t)(n[0] + (k == 0 ? 1 : 0)) * (n[1] + (k == 1 ? 1 : 0)) *
+           (n[2] + (k == 2 ? 1 : 0));
+}
+
+// Reads the gas's solid cells into s_solid and its faces into s_faces.
+static void Read(const int32_t* n)
+{
+    CHECK(mvfxTestReadGasSolid(s_context, s_instance, 0, s_solid, MOST) ==
+              (int64_t)n[0] * n[1] * n[2],
+          "solids read");
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        CHECK(mvfxTestReadGasFaces(s_context, s_instance, 0, k, s_faces[k], MOST) ==
+                  FaceCount(n, k),
+              "faces read");
+    }
+}
+
+// Writes s_faces into the gas's faces.
+static void Write(const int32_t* n)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        CHECK(mvfxTestWriteGasFaces(s_context, s_instance, 0, k, s_faces[k], FaceCount(n, k)),
+              "faces written");
+    }
 }
 
 // Steps the context by n steps of 1 / rate s.
@@ -94,31 +130,33 @@ static void TestStill(void)
     def.sourceCount = 1;
     def.obstacles = &sphere;
     def.obstacleCount = 1;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
+    Open(&def);
     Steps(4);
+    Read(def.size);
+    static float density[1024];
+    CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, mvfx_gasDensity, density, 1024) ==
+              mvfx_success,
+          "density");
     int32_t solids = 0;
     bool right = true;
-    const float* density = state->scalars[0][state->current];
     for (int32_t i = 0; i < 1024; ++i)
     {
         float x = ((float)(i % 32) + 0.5f - 16.0f) * 0.1f;
         float y = ((float)(i / 32) + 0.5f - 16.0f) * 0.1f;
         bool inside = x * x + y * y < 0.25f;
-        solids += state->solid[i] != 0 ? 1 : 0;
-        right = right && (state->solid[i] != 0) == inside &&
+        solids += s_solid[i] != 0 ? 1 : 0;
+        right = right && (s_solid[i] != 0) == inside &&
                 (inside ? density[i] == 0.0f : density[i] > 0.0f);
     }
     CHECK(right && solids >= 71 && solids <= 87, "a still sphere's cells solid and empty");
     mvfxDestroyContext(s_context);
 }
 
-// The largest divergence's size over a 2D gas's open cells.
-static float MaxOpenDivergence(const mvfxCompiledGas* gas, const mvfxGasState* state)
+// The largest divergence's size over a 2D gas's open cells, as read.
+static float MaxOpenDivergence(const int32_t* n)
 {
-    const int32_t* n = gas->def.size;
-    const float* u = state->velocity[0][state->current];
-    const float* v = state->velocity[1][state->current];
+    const float* u = s_faces[0];
+    const float* v = s_faces[1];
     float most = 0.0f;
     for (int32_t y = 0; y < n[1]; ++y)
     {
@@ -126,7 +164,7 @@ static float MaxOpenDivergence(const mvfxCompiledGas* gas, const mvfxGasState* s
         {
             float d = u[y * (n[0] + 1) + x + 1] - u[y * (n[0] + 1) + x] + v[(y + 1) * n[0] + x] -
                       v[y * n[0] + x];
-            most = state->solid[y * n[0] + x] == 0 ? fmaxf(most, fabsf(d)) : most;
+            most = s_solid[y * n[0] + x] == 0 ? fmaxf(most, fabsf(d)) : most;
         }
     }
     return most;
@@ -154,31 +192,29 @@ static void TestFlowPast(void)
     def.sourceCount = 1;
     def.obstacles = &box;
     def.obstacleCount = 1;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
+    Open(&def);
     Steps(10);
-    const float* u = state->velocity[0][state->current];
+    Read(def.size);
+    const float* u = s_faces[0];
     bool still = true;
     for (int32_t y = 0; y < 24; ++y)
     {
         for (int32_t x = 0; x <= 48; ++x)
         {
-            bool beside = (x > 0 && state->solid[y * 48 + x - 1] != 0) ||
-                          (x < 48 && state->solid[y * 48 + x] != 0);
+            bool beside =
+                (x > 0 && s_solid[y * 48 + x - 1] != 0) || (x < 48 && s_solid[y * 48 + x] != 0);
             still = still && (!beside || u[y * 49 + x] == 0.0f);
         }
     }
-    float most = MaxOpenDivergence(gas, state);
+    float most = MaxOpenDivergence(def.size);
     CHECK(still && most <= 1e-3f * 20.0f, "flow past a still box");
     mvfxDestroyContext(s_context);
 }
 
 // The largest and the least velocity across k of the faces beside a 2D
-// gas's solid cells.
-static void SolidFaces(const mvfxCompiledGas* gas, const mvfxGasState* state, int32_t k,
-                       float range[2])
+// gas's solid cells, as read.
+static void SolidFaces(const int32_t* n, int32_t k, float range[2])
 {
-    const int32_t* n = gas->def.size;
     const int32_t m[2] = {n[0] + (k == 0 ? 1 : 0), n[1] + (k == 1 ? 1 : 0)};
     const int32_t stride = k == 0 ? 1 : n[0];
     range[0] = INFINITY;
@@ -189,9 +225,9 @@ static void SolidFaces(const mvfxCompiledGas* gas, const mvfxGasState* state, in
         {
             const int32_t at[2] = {x, y};
             int32_t cell = y * n[0] + x;
-            bool beside = (at[k] > 0 && state->solid[cell - stride] != 0) ||
-                          (at[k] < n[k] && state->solid[cell] != 0);
-            float value = state->velocity[k][state->current][y * m[0] + x];
+            bool beside =
+                (at[k] > 0 && s_solid[cell - stride] != 0) || (at[k] < n[k] && s_solid[cell] != 0);
+            float value = s_faces[k][y * m[0] + x];
             range[0] = beside ? fminf(range[0], value) : range[0];
             range[1] = beside ? fmaxf(range[1], value) : range[1];
         }
@@ -213,8 +249,7 @@ static void TestMoving(void)
         def.size[1] = 32;
         def.pressureCycles = 0;
         def.hostObstacles = true;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, &gas);
+        Open(&def);
         for (int32_t i = 0; i < 6; ++i)
         {
             mvfxCollider sphere = Collider(
@@ -230,10 +265,11 @@ static void TestMoving(void)
                       "teleport");
             }
             StepsOf(1, rate);
+            Read(def.size);
             float across[2];
             float up[2];
-            SolidFaces(gas, state, 0, across);
-            SolidFaces(gas, state, 1, up);
+            SolidFaces(def.size, 0, across);
+            SolidFaces(def.size, 1, up);
             float speed = i == 0 || i == 4 ? 0.0f : 0.75f;
             right = right && fabsf(across[0] - speed) <= 1e-3f &&
                     fabsf(across[1] - speed) <= 1e-3f && up[0] == 0.0f && up[1] == 0.0f;
@@ -253,8 +289,7 @@ static void TestPlane(void)
     def.size[1] = 32;
     def.pressureCycles = 0;
     def.hostObstacles = true;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
+    Open(&def);
     bool right = true;
     for (int32_t i = 0; i < 3; ++i)
     {
@@ -263,10 +298,11 @@ static void TestPlane(void)
         CHECK(mvfxInstance_SetColliders(s_context, s_instance, &floor, 1) == mvfx_success,
               "colliders");
         Steps(1);
+        Read(def.size);
         float across[2];
         float up[2];
-        SolidFaces(gas, state, 0, across);
-        SolidFaces(gas, state, 1, up);
+        SolidFaces(def.size, 0, across);
+        SolidFaces(def.size, 1, up);
         float rise = i == 0 ? 0.0f : 0.5f;
         right = right && fabsf(up[0] - rise) <= 1e-3f && fabsf(up[1] - rise) <= 1e-3f &&
                 across[0] == 0.0f && across[1] == 0.0f;
@@ -297,12 +333,12 @@ static void TestInstanceFrame(void)
         def.center[0] = world != 0 ? 0.0f : 0.3f;
         def.obstacles = &ball;
         def.obstacleCount = 1;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, &gas);
+        Open(&def);
         CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, quarter, 1.5f, false) ==
                   mvfx_success,
               "moved");
         Steps(1);
+        Read(def.size);
         const float center[2] = {world != 0 ? 0.5f : -0.1f, world != 0 ? 0.3f : 0.0f};
         float radius = world != 0 ? 0.45f : 0.3f;
         for (int32_t i = 0; i < 1024; ++i)
@@ -311,7 +347,7 @@ static void TestInstanceFrame(void)
             float y = ((float)(i / 32) + 0.5f - 16.0f) * 0.1f - center[1];
             float gap = sqrtf(x * x + y * y) - radius;
             // Cells within float's rounding of the surface are not judged.
-            right = right && (fabsf(gap) < 1e-4f || (state->solid[i] != 0) == (gap < 0.0f));
+            right = right && (fabsf(gap) < 1e-4f || (s_solid[i] != 0) == (gap < 0.0f));
         }
         mvfxDestroyContext(s_context);
     }
@@ -330,8 +366,7 @@ static void TestTurning(void)
     def.size[1] = 32;
     def.pressureCycles = 0;
     def.hostObstacles = true;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
+    Open(&def);
     float worst = 0.0f;
     for (int32_t i = 0; i < 3; ++i)
     {
@@ -343,6 +378,7 @@ static void TestTurning(void)
               "colliders");
         Steps(1);
     }
+    Read(def.size);
     for (int32_t k = 0; k < 2; ++k)
     {
         const int32_t m[2] = {32 + (k == 0 ? 1 : 0), 32 + (k == 1 ? 1 : 0)};
@@ -353,12 +389,12 @@ static void TestTurning(void)
             {
                 const int32_t at[2] = {x, y};
                 int32_t cell = y * 32 + x;
-                bool beside = (at[k] > 0 && state->solid[cell - stride] != 0) ||
-                              (at[k] < 32 && state->solid[cell] != 0);
+                bool beside = (at[k] > 0 && s_solid[cell - stride] != 0) ||
+                              (at[k] < 32 && s_solid[cell] != 0);
                 float px = ((float)x + (k == 0 ? 0.0f : 0.5f) - 16.0f) * 0.1f;
                 float py = ((float)y + (k == 1 ? 0.0f : 0.5f) - 16.0f) * 0.1f;
                 float expected = k == 0 ? -2.0f * py : 2.0f * px;
-                float value = state->velocity[k][state->current][y * m[0] + x];
+                float value = s_faces[k][y * m[0] + x];
                 worst = beside ? fmaxf(worst, fabsf(value - expected)) : worst;
             }
         }
@@ -379,8 +415,7 @@ static void TestPassing(void)
     def.pressureCycles = 0;
     def.obstacles = &box;
     def.obstacleCount = 1;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
+    Open(&def);
     bool right = true;
     for (int32_t i = 0; i < 4; ++i)
     {
@@ -390,8 +425,9 @@ static void TestPassing(void)
                   mvfx_success,
               "moved");
         Steps(1);
+        Read(def.size);
         float across[2];
-        SolidFaces(gas, state, 0, across);
+        SolidFaces(def.size, 0, across);
         float speed = i == 0 ? 0.0f : -1.5f;
         right = right && fabsf(across[0] - speed) <= 1e-3f && fabsf(across[1] - speed) <= 1e-3f;
     }
@@ -409,93 +445,11 @@ static float Noise(uint32_t i)
     return (float)(h & 0xFFFFFFu) / 8388608.0f - 1.0f;
 }
 
-// Whether the face across k at index f lies between two solid cells.
-static bool Buried(const mvfxGasState* state, int32_t k, int32_t f)
+// The largest divergence's size over a gas's open cells, as read.
+static float MaxOpenDivergence3D(const int32_t* n)
 {
-    const int32_t m0 = 32 + (k == 0 ? 1 : 0);
-    const int32_t at[2] = {f % m0, f / m0};
-    const int32_t stride = k == 0 ? 1 : 32;
-    int32_t cell = at[1] * 32 + at[0];
-    return at[k] > 0 && at[k] < 32 && state->solid[cell - stride] != 0 && state->solid[cell] != 0;
-}
-
-static void TestBuried(void)
-{
-    // A 2D gas of 32 by 32, open walls, a still box marked solid by a step:
-    // noise for a velocity, projected by 8 cycles from 0 twice, once with
-    // the faces between two solid cells 0 and once with noise of 5 there.
-    // The faces any gas touches come out the same, bit for bit: nothing
-    // within a solid reaches the solve. Their cells' divergence is at most
-    // 2e-3 (the noise's is up to 4).
-    const mvfxCollider box = Collider(mvfx_colliderBox, 0, 0, mvfx_spaceWorld);
-    mvfxGasDef def = mvfxDefaultGasDef();
-    def.size[0] = 32;
-    def.size[1] = 32;
-    def.pressureCycles = 8;
-    def.obstacles = &box;
-    def.obstacleCount = 1;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
-    Steps(1);
-    static float kept[2][33 * 32];
-    bool right = true;
-    for (int32_t r = 0; r < 2; ++r)
-    {
-        for (int32_t k = 0; k < 2; ++k)
-        {
-            for (int32_t f = 0; f < 33 * 32; ++f)
-            {
-                float noise = Noise((uint32_t)(f * 2 + k));
-                state->velocity[k][state->current][f] =
-                    Buried(state, k, f) ? (r == 0 ? 0.0f : 5.0f * noise) : noise;
-            }
-        }
-        memset(state->levels[0].pressure, 0, sizeof(float) * 1024);
-        mvfxProjectGas(gas, state, NULL, NULL);
-        for (int32_t k = 0; k < 2; ++k)
-        {
-            for (int32_t f = 0; f < 33 * 32; ++f)
-            {
-                float value = state->velocity[k][state->current][f];
-                right = right && (r == 0 || Buried(state, k, f) || value == kept[k][f]);
-                kept[k][f] = value;
-            }
-        }
-    }
-    CHECK(right && MaxOpenDivergence(gas, state) <= 2e-3f, "nothing in a solid reaches the solve");
-    mvfxDestroyContext(s_context);
-}
-
-static void TestBuried3D(void)
-{
-    // A 3D gas of 16 by 12 by 10 cells, open walls, a still sphere marked
-    // solid by a step: noise for a velocity projected by 8 cycles leaves
-    // its open cells' divergence at most 2e-3 (the noise's is up to 6).
-    const mvfxCollider ball = Collider(mvfx_colliderSphere, 0.1f, -0.05f, mvfx_spaceWorld);
-    mvfxGasDef def = mvfxDefaultGasDef();
-    def.size[0] = 16;
-    def.size[1] = 12;
-    def.size[2] = 10;
-    def.pressureCycles = 8;
-    def.obstacles = &ball;
-    def.obstacleCount = 1;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
-    Steps(1);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        for (int64_t f = 0; f < gas->faces[k]; ++f)
-        {
-            state->velocity[k][state->current][f] = Noise((uint32_t)(f * 3 + k));
-        }
-    }
-    memset(state->levels[0].pressure, 0, sizeof(float) * (size_t)gas->cells);
-    mvfxProjectGas(gas, state, NULL, NULL);
-    const int32_t* n = def.size;
-    float* const v[3] = {state->velocity[0][state->current], state->velocity[1][state->current],
-                         state->velocity[2][state->current]};
+    float* const* v = (float* const[3]){s_faces[0], s_faces[1], s_faces[2]};
     float most = 0.0f;
-    int32_t solids = 0;
     for (int32_t z = 0; z < n[2]; ++z)
     {
         for (int32_t y = 0; y < n[1]; ++y)
@@ -506,59 +460,117 @@ static void TestBuried3D(void)
                 float d = v[0][((int64_t)z * n[1] + y) * (n[0] + 1) + x + 1] -
                           v[0][((int64_t)z * n[1] + y) * (n[0] + 1) + x] +
                           v[1][((int64_t)z * (n[1] + 1) + y + 1) * n[0] + x] -
-                          v[1][((int64_t)z * (n[1] + 1) + y) * n[0] + x] +
-                          v[2][((int64_t)(z + 1) * n[1] + y) * n[0] + x] -
-                          v[2][((int64_t)z * n[1] + y) * n[0] + x];
-                solids += state->solid[i] != 0 ? 1 : 0;
-                most = state->solid[i] == 0 ? fmaxf(most, fabsf(d)) : most;
+                          v[1][((int64_t)z * (n[1] + 1) + y) * n[0] + x];
+                d += n[2] > 1 ? v[2][((int64_t)(z + 1) * n[1] + y) * n[0] + x] -
+                                    v[2][((int64_t)z * n[1] + y) * n[0] + x]
+                              : 0.0f;
+                most = s_solid[i] == 0 ? fmaxf(most, fabsf(d)) : most;
             }
         }
     }
-    CHECK(solids > 0 && most <= 2e-3f, "a 3D gas projected around a solid");
-    mvfxDestroyContext(s_context);
+    return most;
+}
+
+static void TestAround(void)
+{
+    // A 2D gas of 32 by 32 about a still box and a 3D one of 16 by 12 by 10
+    // about a still sphere, open walls, the obstacle marked solid by a
+    // step: noise for a velocity, projected by 8 cycles in a step of a
+    // tick, leaves its open cells' divergence at most 2e-3 (the noise's is
+    // up to 4 and 6).
+    const mvfxCollider obstacles[2] = {
+        Collider(mvfx_colliderBox, 0, 0, mvfx_spaceWorld),
+        Collider(mvfx_colliderSphere, 0.1f, -0.05f, mvfx_spaceWorld)};
+    static const int32_t sizes[2][3] = {{32, 32, 1}, {16, 12, 10}};
+    bool right = true;
+    for (int32_t c = 0; c < 2; ++c)
+    {
+        mvfxGasDef def = mvfxDefaultGasDef();
+        memcpy(def.size, sizes[c], sizeof def.size);
+        def.pressureCycles = 8;
+        def.obstacles = &obstacles[c];
+        def.obstacleCount = 1;
+        Open(&def);
+        Steps(1);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            for (int64_t f = 0; f < FaceCount(def.size, k); ++f)
+            {
+                s_faces[k][f] = Noise((uint32_t)(f * 3 + k));
+            }
+        }
+        Write(def.size);
+        CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "projected");
+        Read(def.size);
+        int32_t solids = 0;
+        for (int32_t i = 0; i < def.size[0] * def.size[1] * def.size[2]; ++i)
+        {
+            solids += s_solid[i] != 0 ? 1 : 0;
+        }
+        right = right && solids > 0 && MaxOpenDivergence3D(def.size) <= 2e-3f;
+        mvfxDestroyContext(s_context);
+    }
+    CHECK(right, "a gas projected around a solid");
 }
 
 static void TestSealedSolid(void)
 {
-    // The same box in a sealed gas, still, asked to expand by 1 in four
-    // open cells: 8 cycles leave each open cell's divergence its expansion
-    // less their mean over the open cells, within 1e-3.
+    // The same box in a sealed gas, still, fuel of 1 burning in four open
+    // cells, each growing by burnExpansion over the step for each unit
+    // burned (the fuel the step took from it): 8 cycles leave each open
+    // cell's divergence its expansion less their mean over the open
+    // cells, within 1e-3.
     const mvfxCollider box = Collider(mvfx_colliderBox, 0, 0, mvfx_spaceWorld);
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 32;
     def.size[1] = 32;
     def.pressureCycles = 8;
     def.closedWalls = 63;
+    def.burnRate = 10.0f;
+    def.burnExpansion = 1.0f;
     def.obstacles = &box;
     def.obstacleCount = 1;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
+    Open(&def);
     Steps(1);
-    static float expansion[1024];
-    int32_t open = 0;
+    static float fuel[2][1024];
+    static float heat[1024];
     for (int32_t i = 0; i < 1024; ++i)
     {
         int32_t x = i % 32;
         int32_t y = i / 32;
-        expansion[i] = (x == 3 || x == 4) && (y == 3 || y == 4) ? 1.0f : 0.0f;
-        open += state->solid[i] == 0 ? 1 : 0;
+        fuel[0][i] = (x == 3 || x == 4) && (y == 3 || y == 4) ? 1.0f : 0.0f;
+        heat[i] = 1.0f;
     }
-    for (int32_t k = 0; k < 2; ++k)
+    CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasFuel, fuel[0], 1024) &&
+              mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasTemperature, heat, 1024),
+          "fuel");
+    Steps(1);
+    Read(def.size);
+    CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, mvfx_gasFuel, fuel[1], 1024) ==
+              mvfx_success,
+          "burned");
+    // A unit burned grows its cell by burnExpansion over the step of
+    // 1/64 s, in the projection's units its edge times that over the step.
+    float grow = def.burnExpansion * def.cellSize * 64.0f;
+    static float expansion[1024];
+    float sum = 0.0f;
+    int32_t open = 0;
+    for (int32_t i = 0; i < 1024; ++i)
     {
-        memset(state->velocity[k][state->current], 0, sizeof(float) * 33 * 32);
+        expansion[i] = grow * (fuel[0][i] - fuel[1][i]);
+        sum += expansion[i];
+        open += s_solid[i] == 0 ? 1 : 0;
     }
-    memset(state->levels[0].pressure, 0, sizeof(float) * 1024);
-    mvfxProjectGas(gas, state, expansion, NULL);
-    float mean = 4.0f / (float)open;
-    bool right = true;
-    const float* u = state->velocity[0][state->current];
-    const float* v = state->velocity[1][state->current];
+    float mean = sum / (float)open;
+    bool right = sum > 0.0f;
+    const float* u = s_faces[0];
+    const float* v = s_faces[1];
     for (int32_t i = 0; i < 1024; ++i)
     {
         int32_t x = i % 32;
         int32_t y = i / 32;
         float d = u[y * 33 + x + 1] - u[y * 33 + x] + v[(y + 1) * 32 + x] - v[y * 32 + x];
-        right = right && (state->solid[i] != 0 || fabsf(d - (expansion[i] - mean)) <= 1e-3f);
+        right = right && (s_solid[i] != 0 || fabsf(d - (expansion[i] - mean)) <= 1e-3f);
     }
     CHECK(right, "a sealed gas's expansion less its open cells' mean");
     mvfxDestroyContext(s_context);
@@ -602,12 +614,12 @@ static void TestHeld(void)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
     Steps(1);
-    const mvfxGasState* state = &mvfxContextInstance(s_context, s_instance)->gases[0];
+    Read(gas.size);
     // The field crosses 0 at the box's middle along X: its left half solid.
     for (int32_t i = 0; i < 256; ++i)
     {
         int32_t x = i % 16;
-        right = right && (state->solid[i] != 0) == (x < 8);
+        right = right && (s_solid[i] != 0) == (x < 8);
     }
     CHECK(mvfxDestroyInstance(s_context, s_instance) == mvfx_success, "instance gone");
     CHECK(mvfxDestroyEffect(s_context, effect) == mvfx_success, "effect gone");
@@ -666,9 +678,8 @@ int main(void)
     TestInstanceFrame();
     TestTurning();
     TestPassing();
-    TestBuried();
+    TestAround();
     TestSealedSolid();
-    TestBuried3D();
     TestHeld();
     TestRefusals();
     return s_failures;
