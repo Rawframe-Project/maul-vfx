@@ -231,8 +231,13 @@ extern "C"
         // step, its speed and gravity's pull over the step taken together,
         // above 0 and at most MVFX_MAX_GAS_SIZE; a longer step is taken in
         // equal substeps (at most MVFX_MAX_LIQUID_SUBSTEPS), the instance's
-        // whole step each time. A planned instance counts them from the
-        // speed its simulation reported (mvfxInstance_SetLiquidSpeed).
+        // whole step each time. A step of t seconds takes
+        // ceil((v + sqrt(5 h |g|)) t / (h courant)) of them, at least one:
+        // v its emitter's fastest particle's speed at the step's start, h
+        // the cell and g the emitter's gravity, both in the particles'
+        // lengths (Bridson's bound: gravity's speed from rest over five
+        // cells). A planned instance counts them from the speed its
+        // simulation reported (mvfxInstance_SetLiquidSpeed).
         float courant;
         // From 1 to MVFX_MAX_GAS_SUBSTEPS: each a share of the step.
         int32_t substeps;

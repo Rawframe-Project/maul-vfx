@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Planned liquid gases: a planned instance cuts its steps into the
-// substeps the CPU path cuts them into, counted from the fastest speed
-// its simulation reports (the CPU path's own when reported each step; the
-// gravity's alone with no particle alive; the most before any report),
-// and hands over a plan a substep: the span, the move over the first
-// alone, the births by their substep's start, the serials owed; the
-// gas's plan of each substep spans it (its clear in the first alone, its
-// obstacles before as the substep before left them, its forces at its
-// start), the whole plans refused. The speed
-// setter's refusals; births past a plan's room refused; a liquid gas's
-// plan maps its particles, as a surface gas's does.
+// Planned liquid gases: a planned instance cuts its steps into substeps
+// as gas.h counts them (mvfxGasDef.courant) from the fastest speed its
+// simulation reports (the CPU twin's own, read from its records, when
+// reported each step; gravity's alone with no particle alive; the most
+// before any report), and hands over a plan a substep: the span, the
+// move over the first alone, the births by their substep's start, the
+// serials owed (the CPU twin's); the gas's plan of each substep spans it
+// (its clear in the first alone, its obstacles before as the substep
+// before left them, its forces at its start), the whole plans refused.
+// The speed setter: the latest report counts, a restart forgets them, the
+// refusals; births past a plan's room refused; a liquid gas's plan maps
+// its particles into its box, as a surface gas's does. That the CPU path
+// counts its own substeps from its own speed the same way is left to the
+// GPU part's harness, which compares their results.
 
-#include "force.h"
-#include "gas.h"
-#include "gas_api.h"
-#include "gas_liquid.h"
-#include "instance.h"
-#include "instance_api.h"
+#include "particles.h"
+#include "plan_oracle.h"
 #include "test_harness.h"
 
+#include "maul-vfx/instance.h"
 #include "maul-vfx/plan.h"
 
 #include <math.h>
@@ -83,21 +83,30 @@ static mvfxInstanceId Instance(mvfxContext* context, mvfxEffectId effect, bool p
     return instance;
 }
 
-// The CPU instance's fastest particle speed now.
-static float Fastest(const mvfxInstance* live)
+// The CPU twin's fastest particle speed now, from its records.
+static float Fastest(mvfxContext* context, mvfxInstanceId cpu)
 {
-    const float* v[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        v[k] = mvfxAttributeArray((mvfxInstance*)live, 0,
-                                  (mvfxAttribute)(mvfx_attributeVelocityX + k));
-    }
+    static TestParticle records[256];
+    int32_t count = ReadParticles(context, cpu, 0, records, 256);
     float fastest = 0.0f;
-    for (int32_t i = 0; i < live->emitters[0].count; ++i)
+    for (int32_t i = 0; i < count; ++i)
     {
-        fastest = fmaxf(fastest, v[0][i] * v[0][i] + v[1][i] * v[1][i] + v[2][i] * v[2][i]);
+        const float* v = records[i].velocity;
+        fastest = fmaxf(fastest, v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
     }
     return sqrtf(fastest);
+}
+
+// The substeps gas.h gives a step of ticks of a liquid gas of cell h and
+// courant number courant, its emitter's gravity g and fastest speed v:
+// ceil((v + sqrt(5 h |g|)) t / (h courant)), from 1 to
+// MVFX_MAX_LIQUID_SUBSTEPS.
+static int32_t LiquidSubsteps(float v, const mvfxGasDef* gas, double g, int64_t ticks)
+{
+    double h = (double)gas->cellSize;
+    double t = (double)ticks / (double)MVFX_TICKS_PER_SECOND;
+    double n = ceil(((double)v + sqrt(5.0 * h * g)) * t / (h * (double)gas->courant));
+    return (int32_t)fmin(fmax(n, 1.0), (double)MVFX_MAX_LIQUID_SUBSTEPS);
 }
 
 // The instance's place at step s: along X, within the gas.
@@ -176,28 +185,31 @@ static void CheckSteps(mvfxContext* context, mvfxInstanceId planned, int64_t sta
           "a step's plan's refusals");
 }
 
-// Twins of one seed in one context: the CPU path's and the planned.
+// Twins of one seed in one context: the CPU path's and the planned, and
+// their liquid gas.
 typedef struct Twins
 {
     mvfxContext* context;
     mvfxInstanceId cpu;
     mvfxInstanceId planned;
+    mvfxGasDef gas;
 } Twins;
 
 // Steps the twins once (step s), the planned one told the CPU one's
 // fastest speed first when reporting, and checks its plans.
 static void StepTwins(const Twins* t, int32_t s, bool reporting, uint64_t* serial, Broken* broken)
 {
-    const mvfxInstance* cpuLive = mvfxContextInstance(t->context, t->cpu);
-    int64_t start = cpuLive->clock;
+    int64_t start = s * STEP_TICKS;
+    float fastest = Fastest(t->context, t->cpu);
     mvfxResult reported =
-        reporting ? mvfxInstance_SetLiquidSpeed(t->context, t->planned, 0, start, Fastest(cpuLive))
+        reporting ? mvfxInstance_SetLiquidSpeed(t->context, t->planned, 0, start, fastest)
                   : mvfx_success;
     Move(t->context, t->cpu, s);
     Move(t->context, t->planned, s);
-    // Before any report with particles alive, the most.
-    int32_t expected =
-        s > 0 && !reporting ? MVFX_MAX_LIQUID_SUBSTEPS : mvfxLiquidSubsteps(cpuLive, STEP_TICKS);
+    // Before any report with particles alive, the most; with none alive,
+    // gravity's alone (Emitter's, 9.81 down).
+    int32_t expected = s > 0 && !reporting ? MVFX_MAX_LIQUID_SUBSTEPS
+                                           : LiquidSubsteps(fastest, &t->gas, 9.81, STEP_TICKS);
     // The CPU path's move over its first substep.
     int64_t first = STEP_TICKS / expected;
     double seconds = (double)first / (double)MVFX_TICKS_PER_SECOND;
@@ -210,7 +222,9 @@ static void StepTwins(const Twins* t, int32_t s, bool reporting, uint64_t* seria
     broken->counts += count != expected;
     broken->split += count > 1;
     CheckSteps(t->context, t->planned, start, count, velocity, serial, broken);
-    broken->owed += mvfxContextInstance(t->context, t->cpu)->emitters[0].owed != *serial;
+    mvfxEmitterStats stats;
+    CHECK(mvfxInstance_GetEmitterStats(t->context, t->cpu, 0, &stats) == mvfx_success, "stats");
+    broken->owed += stats.owed != *serial;
 }
 
 static void TestSplit(void)
@@ -218,12 +232,13 @@ static void TestSplit(void)
     // Twins of one seed, the planned one told the CPU one's fastest speed
     // at each step's start from its third step on: its first step has no
     // particle (gravity's count, the CPU path's), its second no report
-    // (the most), the rest the CPU path's count.
+    // (the most), the rest counted as gas.h counts them from the CPU twin's
+    // fastest speed.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     Twins t = {0};
     CHECK(mvfxCreateContext(&contextDef, &t.context) == mvfx_success, "context");
-    mvfxGasDef gas = Liquid();
-    mvfxEffectId effect = Effect(t.context, &gas, 1);
+    t.gas = Liquid();
+    mvfxEffectId effect = Effect(t.context, &t.gas, 1);
     t.cpu = Instance(t.context, effect, false);
     t.planned = Instance(t.context, effect, true);
     Broken broken = {0};
@@ -280,7 +295,10 @@ static void TestGasSteps(void)
     gases[1].forceCount = 1;
     mvfxEffectId effect = Effect(context, gases, 2);
     mvfxInstanceId planned = Instance(context, effect, true);
-    const mvfxGasState* smoke = &mvfxContextInstance(context, planned)->gases[1];
+    mvfxGasInfo info;
+    CHECK(mvfxInstance_GetGasInfo(context, planned, 1, &info) == mvfx_success, "the smoke's box");
+    // The turbulence is the world's: the instance's place is not read.
+    Frame box = BoxFrame(&info, NULL, mvfx_spaceWorld, NULL);
     int32_t split = 0;
     int32_t cleared = 0;
     int32_t obstacles = 0;
@@ -306,11 +324,9 @@ static void TestGasSteps(void)
             bool first = s == 0 && k == 0;
             obstacles += first ? plan.obstaclesKnown || plan.obstacleMoved[0]
                                : !still || !plan.obstacleMoved[0];
-            mvfxPlannedForce at = mvfxPlannedForceOf(
-                &smoke->planForces[0], (double)stirred.start / (double)MVFX_TICKS_PER_SECOND);
             forces += stirred.forceCount != 1 ||
-                      memcmp(stirred.forces[0].fraction, at.fraction, sizeof at.fraction) != 0 ||
-                      memcmp(stirred.forces[0].cell, at.cell, sizeof at.cell) != 0;
+                      !SameLattice(&stirred.forces[0], &turbulence, &box,
+                                   (double)stirred.start / (double)MVFX_TICKS_PER_SECOND);
         }
     }
     CHECK(split == 8, "every step split");
@@ -322,9 +338,10 @@ static void TestGasSteps(void)
 
 static void TestSpeedSetter(void)
 {
-    // The latest report counts, an older one is ignored; refused for a
-    // smoke gas, a tick out of range, a speed not finite or negative, an
-    // instance not planned or gone.
+    // The latest report counts, an older one is ignored (the next steps
+    // count from it); refused for a smoke gas, a tick out of range, a
+    // speed not finite or negative, an instance not planned or gone; a
+    // restart forgets the reports.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -334,13 +351,16 @@ static void TestSpeedSetter(void)
     mvfxEffectId effect = Effect(context, gases, 2);
     mvfxInstanceId planned = Instance(context, effect, true);
     mvfxInstanceId cpu = Instance(context, effect, false);
+    int32_t count = 0;
     CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
-    const mvfxGasState* state = &mvfxContextInstance(context, planned)->gases[0];
+    // 3 a second gives 2 substeps, 5 would give 3.
+    int32_t three = LiquidSubsteps(3.0f, &gases[0], 9.81, STEP_TICKS);
     bool latest =
-        state->reportedTick == -1 &&
+        three != LiquidSubsteps(5.0f, &gases[0], 9.81, STEP_TICKS) &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, STEP_TICKS, 3.0f) == mvfx_success &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, 5.0f) == mvfx_success &&
-        state->reportedSpeed == 3.0f && state->reportedTick == STEP_TICKS;
+        mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+        mvfxInstance_GetPlanSteps(context, planned, &count) == mvfx_success && count == three;
     CHECK(latest, "the latest report counts");
     uint64_t misuse = mvfxGetContextMisuse(context);
     bool refused =
@@ -348,7 +368,7 @@ static void TestSpeedSetter(void)
         mvfxInstance_SetLiquidSpeed(context, planned, 1, 0, 1.0f) == mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 2, 0, 1.0f) == mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, -1, 1.0f) == mvfx_errorInvalid &&
-        mvfxInstance_SetLiquidSpeed(context, planned, 0, STEP_TICKS + 1, 1.0f) ==
+        mvfxInstance_SetLiquidSpeed(context, planned, 0, 2 * STEP_TICKS + 1, 1.0f) ==
             mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, -1.0f) == mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, NAN) == mvfx_errorInvalid &&
@@ -356,9 +376,20 @@ static void TestSpeedSetter(void)
         mvfxGetContextMisuse(context) == misuse + 7 &&
         mvfxInstance_SetLiquidSpeed(context, cpu, 0, 0, 1.0f) == mvfx_errorState &&
         mvfxInstance_SetLiquidSpeed(context, (mvfxInstanceId){0}, 0, 0, 1.0f) == mvfx_errorStale;
-    CHECK(refused && state->reportedSpeed == 3.0f, "the speed setter's refusals");
-    // A restart forgets the reports.
-    CHECK(mvfxInstance_Restart(context, planned) == mvfx_success && state->reportedTick == -1,
+    // The report kept through the refusals: the next step counts from it.
+    CHECK(refused && mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+              mvfxInstance_GetPlanSteps(context, planned, &count) == mvfx_success && count == three,
+          "the speed setter's refusals");
+    // A restart forgets the reports: its first step has no particle alive
+    // (gravity's count), its next one no report (the most).
+    int32_t first = 0;
+    CHECK(mvfxInstance_Restart(context, planned) == mvfx_success &&
+              mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+              mvfxInstance_GetPlanSteps(context, planned, &first) == mvfx_success &&
+              mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+              mvfxInstance_GetPlanSteps(context, planned, &count) == mvfx_success &&
+              first == LiquidSubsteps(0.0f, &gases[0], 9.81, STEP_TICKS) &&
+              count == MVFX_MAX_LIQUID_SUBSTEPS,
           "a restart forgets the reports");
     mvfxDestroyContext(context);
 }
@@ -409,11 +440,27 @@ static void TestPlanRoom(void)
     mvfxDestroyContext(context);
 }
 
+// Whether a gas plan's map of a world-space emitter's particles (plan.h,
+// mvfxPlannedPour: a place p goes to origin + rotation (sigma p), the
+// particles offsets from their anchor after the step) takes them into
+// the box the gas's info places: p + anchor back into the box's frame.
+static bool SameMap(const mvfxPlannedPour* m, mvfxContext* context, mvfxInstanceId planned,
+                    int32_t gas)
+{
+    static mvfxEmitterPlan plan;
+    mvfxGasInfo box;
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
+              mvfxInstance_GetGasInfo(context, planned, gas, &box) == mvfx_success,
+          "the anchor and the box");
+    Frame frame = BoxFrame(&box, &plan.to, mvfx_spaceWorld, plan.anchorAfter);
+    return SamePour(m, &frame);
+}
+
 static void TestLiquidMap(void)
 {
     // A liquid gas's plan hands its emitter's particles' map into the box
-    // over, as the core's step maps them, under a moved, turned, grown
-    // instance; a smoke gas's names none.
+    // over, under a moved, turned, grown instance; a smoke gas's names
+    // none.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -434,30 +481,16 @@ static void TestLiquidMap(void)
     CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success &&
               mvfxInstance_GetGasPlan(context, planned, 1, &smoke) == mvfx_success,
           "plans");
-    mvfxSpaceMap map = mvfxGasParticleMap(mvfxContextInstance(context, planned), 0, 0);
-    const double zero[3] = {0.0, 0.0, 0.0};
-    float at[3];
-    mvfxMapPointDouble(&map, zero, at);
-    bool same = plan.liquid.emitter == 0 && plan.liquid.sigma == map.sigma &&
+    bool same = plan.liquid.emitter == 0 && SameMap(&plan.liquid, context, planned, 0) &&
                 plan.liquid.rates[0] == 0.0f && plan.liquid.drag == 0.0f;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        same = same && plan.liquid.origin[k] == at[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        same = same && plan.liquid.rotation[k] == map.rotation[k];
-    }
-    CHECK(same && map.sigma != 1.0f && smoke.liquid.emitter == -1,
-          "a liquid gas's plan maps its particles");
+    CHECK(same && smoke.liquid.emitter == -1, "a liquid gas's plan maps its particles");
     mvfxDestroyContext(context);
 }
 
 static void TestSurfaceMap(void)
 {
     // A surface gas's plan hands over the map of the emitter it wraps into
-    // the box, as the core's step maps it, under a moved, turned, grown
-    // instance.
+    // the box, under a moved, turned, grown instance.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -478,8 +511,7 @@ static void TestSurfaceMap(void)
     mvfxInstanceId planned = Instance(context, effect, true);
     const double origin[3] = {-2.0, 1.0, 0.5};
     const float rotation[4] = {sinf(0.2f), 0.0f, 0.0f, cosf(0.2f)};
-    if (mvfxContextInstance(context, planned) == NULL ||
-        mvfxInstance_SetTransform(context, planned, origin, rotation, 0.75f, false) !=
+    if (mvfxInstance_SetTransform(context, planned, origin, rotation, 0.75f, false) !=
             mvfx_success ||
         mvfxContext_StepTicks(context, STEP_TICKS) != mvfx_success)
     {
@@ -489,20 +521,8 @@ static void TestSurfaceMap(void)
     }
     static mvfxGasPlan plan;
     CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success, "plan");
-    mvfxSpaceMap map = mvfxGasParticleMap(mvfxContextInstance(context, planned), 0, 0);
-    const double zero[3] = {0.0, 0.0, 0.0};
-    float at[3];
-    mvfxMapPointDouble(&map, zero, at);
-    bool same = plan.liquid.emitter == 0 && plan.liquid.sigma == map.sigma;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        same = same && plan.liquid.origin[k] == at[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        same = same && plan.liquid.rotation[k] == map.rotation[k];
-    }
-    CHECK(same && map.sigma != 1.0f, "a surface gas's plan maps its particles");
+    CHECK(plan.liquid.emitter == 0 && SameMap(&plan.liquid, context, planned, 0),
+          "a surface gas's plan maps its particles");
     mvfxDestroyContext(context);
 }
 

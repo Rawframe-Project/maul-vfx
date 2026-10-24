@@ -1,30 +1,27 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Planned water surfaces: a planned instance's plan of a surface is what
-// the CPU path's step of it takes, a CPU instance and a planned one
-// stepped side by side: the host's pushes in the surface's frame of a
-// moved and scaled instance; the waves' substeps, slowed past the most;
-// shallow water's terrain resolved, its first step one substep, its
-// later ones counted from the speed reported as the CPU path counts from
-// its own (the most before a report), its sources' depths while it
-// plays; in a split frame the pushes and clear in the first step alone;
-// a surface's view; a stopped instance running while its surface moves,
-// as its simulation reports; an emitter's coupling to a surface as
-// resolved; the counts and reach reported once a tick, a clear emptying
-// them, and the steps slowed counted from the plans; the refusals, and
-// reads of a planned surface refused.
+// Planned water surfaces: a planned instance's plan of a surface, a CPU
+// instance and a planned one stepped side by side: the host's pushes in
+// the surface's frame of a moved and scaled instance; the waves'
+// substeps, slowed past the most, as water.h counts them; shallow water's
+// terrain resolved into its surface's frame (its own in either space, or
+// the host's), its first step one substep, its later ones counted from
+// the speed reported as water.h counts them (the most before a report),
+// its sources' depths while it plays; in a split frame the pushes and
+// clear in the first step alone; a surface's view; a stopped instance
+// running while its surface moves, as its simulation reports; an
+// emitter's coupling to a surface against the instance's transform; the
+// counts reported once a tick, a clear emptying them, and the steps
+// slowed counted from the plans; the refusals, and reads of a planned
+// surface refused. That the CPU path counts its own substeps from its own
+// speed the same way is left to the GPU part's harness, which compares
+// their results; the reach and the reported speed are compared with the
+// CPU path's in test_plan_water_internal.c, and the terrain with the CPU
+// path's resolver there too.
 
-#include "direction.h"
-#include "force.h"
-#include "instance.h"
-#include "instance_api.h"
-#include "plan_resolved.h"
+#include "plan_oracle.h"
 #include "test_harness.h"
-#include "water.h"
-#include "water_ground.h"
-#include "water_shallow.h"
-#include "water_step.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/grid.h"
@@ -73,9 +70,51 @@ static void NewContext(void)
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
 }
 
-static const mvfxInstance* Live(mvfxInstanceId instance)
+// The substeps water.h gives a step of seconds whose substeps are at
+// most bound (MVFX_MAX_WATER_SUBSTEPS): equal ones, at least one, none
+// for no time; past the most, the most of bound, slowed.
+static int32_t Substeps(double seconds, double bound, double* dt, bool* slowed)
 {
-    return mvfxContextInstance(s_context, instance);
+    *slowed = false;
+    *dt = 0.0;
+    if (!(seconds > 0.0))
+    {
+        return 0;
+    }
+    double n = fmax(ceil(seconds / bound), 1.0);
+    if (n > (double)MVFX_MAX_WATER_SUBSTEPS)
+    {
+        *slowed = true;
+        *dt = bound;
+        return MVFX_MAX_WATER_SUBSTEPS;
+    }
+    *dt = seconds / n;
+    return (int32_t)n;
+}
+
+// Whether a plan's substeps are those of a step of ticks at the bound.
+static bool SubstepsAre(const mvfxWaterPlan* plan, int64_t ticks, double bound)
+{
+    double dt = 0.0;
+    bool slowed = false;
+    int32_t n = Substeps((double)ticks / (double)MVFX_TICKS_PER_SECOND, bound, &dt, &slowed);
+    return plan->substeps == n && plan->slowed == slowed &&
+           fabs((double)plan->dt - dt) <= 1e-6 * dt && plan->ticks == ticks;
+}
+
+// The clock after the planned instance's last step: its plan's end.
+static int64_t PlannedClock(void)
+{
+    static mvfxWaterPlan plan;
+    CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success, "a plan");
+    return plan.start + plan.ticks;
+}
+
+static mvfxWaterInfo Info(mvfxInstanceId instance)
+{
+    mvfxWaterInfo info;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, instance, 0, &info) == mvfx_success, "info");
+    return info;
 }
 
 static void TestPushes(void)
@@ -119,8 +158,9 @@ static void TestWaves(void)
     // A push on both twins in a step of no time (no substep): the CPU
     // path's far cells rise by what the pushes sank over the cells, which
     // the plan's sum gives bit for bit. Then a frame's step and a
-    // second's: the waves' substeps as the CPU path counts them, the
-    // second slowed; no source depths or terrain.
+    // second's: the waves' substeps as water.h bounds them (each at most
+    // 0.9 h / (c sqrt(2))), the second slowed; no source depths or
+    // terrain.
     NewContext();
     mvfxWaterDef water = mvfxDefaultWaterDef();
     water.size[0] = 16;
@@ -129,7 +169,6 @@ static void TestWaves(void)
     water.waveSpeed = 4.0f;
     const double origin[3] = {0.0, 0.0, 0.0};
     Open(&water, 1, NULL, 0, NULL, 0, origin, 1.0f);
-    const mvfxCompiledWater* compiled = &Live(s_planned)->effect->waters[0];
     const mvfxWaterPush push = {.point = {0.1, 0.0, -0.05}, .radius = 0.2f, .depth = 0.1f};
     CHECK(mvfxInstance_PushWater(s_context, s_cpu, 0, &push, 1) == mvfx_success &&
               mvfxInstance_PushWater(s_context, s_planned, 0, &push, 1) == mvfx_success &&
@@ -139,9 +178,12 @@ static void TestWaves(void)
     CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &sunk) == mvfx_success &&
               sunk.pushCount == 1 && sunk.substeps == 0,
           "a plan of no time");
-    const mvfxWaterState* cpu = &Live(s_cpu)->waters[0];
-    float far = cpu->heights[cpu->current][0];
-    CHECK(sunk.pushSank > 0.0 && far == (float)(sunk.pushSank / (double)compiled->cells),
+    const mvfxWaterRead read = {
+        .field = mvfx_waterHeight, .format = mvfx_formatFloat32, .size = {1, 1}};
+    float far = 0.0f;
+    CHECK(mvfxInstance_ReadWater(s_context, s_cpu, 0, &read, &far, sizeof far) == mvfx_success,
+          "read");
+    CHECK(sunk.pushSank > 0.0 && far == (float)(sunk.pushSank / (16.0 * 16.0)),
           "the pushes' sum, the CPU path's lift");
     const int64_t steps[2] = {STEP_TICKS, MVFX_TICKS_PER_SECOND};
     for (int32_t k = 0; k < 2; ++k)
@@ -149,17 +191,14 @@ static void TestWaves(void)
         CHECK(mvfxContext_StepTicks(s_context, steps[k]) == mvfx_success, "stepped");
         static mvfxWaterPlan plan;
         CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success, "a plan");
-        float dt = 0.0f;
-        bool slowed = false;
-        int32_t count = mvfxWaveSubsteps(compiled, (double)steps[k] / (double)MVFX_TICKS_PER_SECOND,
-                                         &dt, &slowed);
-        CHECK(plan.substeps == count && plan.dt == dt && plan.slowed == slowed &&
-                  plan.ticks == steps[k] && !plan.hasTerrain && plan.sourceDepths[0] == 0.0f,
+        double bound = 0.9 * (double)water.cellSize / ((double)water.waveSpeed * sqrt(2.0));
+        CHECK(SubstepsAre(&plan, steps[k], bound) && !plan.hasTerrain &&
+                  plan.sourceDepths[0] == 0.0f,
               "the waves' substeps");
-        CHECK(slowed == (k == 1), "a second's step slowed");
+        CHECK(plan.slowed == (k == 1), "a second's step slowed");
     }
     // The planned twin counts its slowed step as the CPU twin does.
-    CHECK(Live(s_planned)->waters[0].stepsSlowed == 1 && Live(s_cpu)->waters[0].stepsSlowed == 1,
+    CHECK(Info(s_planned).stepsSlowed == 1 && Info(s_cpu).stepsSlowed == 1,
           "the steps slowed counted on both");
     mvfxDestroyContext(s_context);
 }
@@ -207,24 +246,20 @@ static mvfxWaterDef Lake(void)
 
 static void TestShallow(void)
 {
-    // Each step after the first, the planned twin told the CPU twin's
-    // speed at the step's start: the same speed kept, so the same split,
-    // and the terrain as the CPU path resolves it; the first step one
-    // substep; the source's depth while playing, none after a stop.
+    // Each step after the first, the planned twin told a speed at the
+    // step's start, as its simulation would report: its substeps of at
+    // most half a cell at that speed (water.h, mvfx_waterShallow), the
+    // most past them, slowed; the first step one substep (counted before
+    // the fill); its terrain; the source's depth while playing, none after
+    // a stop; the steps slowed counted from the plans.
     NewContext();
     mvfxWaterDef water = Lake();
     const double origin[3] = {0.0, 0.0, 0.0};
     Open(&water, 1, NULL, 0, NULL, 0, origin, 1.0f);
-    const mvfxCompiledWater* compiled = &Live(s_planned)->effect->waters[0];
-    mvfxPlannedCollider terrain = {0};
-    {
-        mvfxResolvedCollider resolved = {0};
-        mvfxGridId grid = {0};
-        CHECK(mvfxResolveWaterTerrain(Live(s_cpu), 0, &resolved, &grid), "a terrain");
-        terrain = mvfxPlannedColliderOf(&resolved, grid);
-    }
     int32_t wrong = 0;
     int32_t split = 0;
+    uint64_t slowed = 0;
+    int64_t clock = 0;
     for (int32_t s = 0; s < 40; ++s)
     {
         if (s == 30)
@@ -233,33 +268,89 @@ static void TestShallow(void)
                       mvfxInstance_Stop(s_context, s_planned, mvfx_stopEmitting) == mvfx_success,
                   "stopped");
         }
-        const mvfxInstance* cpu = Live(s_cpu);
-        float speed = mvfxShallowFastest(compiled, &cpu->waters[0]);
-        CHECK(s == 0 || mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, cpu->clock, speed) ==
-                            mvfx_success,
+        // Rising, and past the most from step 35.
+        float speed = s < 35 ? 0.37f + 0.29f * (float)s : 100.0f;
+        CHECK(s == 0 ||
+                  mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, clock, speed) == mvfx_success,
               "reported");
-        bool playing = cpu->clock < cpu->stopTick;
+        bool playing = s < 30;
         CHECK(mvfxContext_StepTicks(s_context, 4 * STEP_TICKS) == mvfx_success, "stepped");
         static mvfxWaterPlan plan;
         CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success, "a plan");
-        float kept = Live(s_cpu)->waters[0].stepSpeed;
-        float dt = 0.0f;
-        bool slowed = false;
-        int32_t count = mvfxShallowSubsteps(
-            compiled, kept, (double)plan.ticks / MVFX_TICKS_PER_SECOND, &dt, &slowed);
+        double bound = s == 0 ? (double)INFINITY : 0.5 * (double)water.cellSize / (double)speed;
         float depth = playing ? (float)(0.25 * (double)plan.ticks / MVFX_TICKS_PER_SECOND) : 0.0f;
-        wrong += Live(s_planned)->waters[0].stepSpeed != kept || plan.substeps != count ||
-                 plan.dt != dt || plan.slowed != slowed || plan.sourceDepths[0] != depth ||
-                 (s == 0 && plan.substeps != 1);
-        wrong += !plan.hasTerrain ||
-                 memcmp(plan.terrain.center, terrain.center, sizeof terrain.center) != 0 ||
-                 memcmp(plan.terrain.halfExtents, terrain.halfExtents,
-                        sizeof terrain.halfExtents) != 0 ||
-                 plan.terrain.grid.index1 != terrain.grid.index1;
-        split += count > 1;
+        wrong += !SubstepsAre(&plan, 4 * STEP_TICKS, bound) || plan.sourceDepths[0] != depth;
+        wrong += !plan.hasTerrain || plan.terrain.grid.index1 != water.terrain.grid.index1;
+        split += plan.substeps > 1;
+        slowed += plan.slowed ? 1u : 0u;
+        clock = plan.start + plan.ticks;
     }
-    CHECK(wrong == 0, "each step's plan as the CPU path's step");
-    CHECK(split > 0, "some step split");
+    CHECK(wrong == 0, "each step's plan as water.h counts it from the speed reported");
+    CHECK(split > 0 && slowed == 5, "some steps split, those past the most slowed");
+    CHECK(Info(s_planned).stepsSlowed == slowed, "the steps slowed counted from the plans");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestTerrain(void)
+{
+    // Three lakes, their grids off the instance's origin: one on the
+    // slope of the instance's frame, one on a turned heightfield of the
+    // world's, and one with hostTerrain on the instance's first
+    // heightfield collider (after a plane), under a moving, turning,
+    // growing instance. Each plan's terrain is its collider resolved into
+    // the surface's frame where the step ends (plan.h, mvfxWaterPlan's
+    // terrain; water.h, terrain), the frame mvfxInstance_GetWaterInfo
+    // places: its box mapped, its turn composed, scaled, grown by no
+    // radius, its grid kept.
+    NewContext();
+    static mvfxWaterDef waters[3];
+    for (int32_t w = 0; w < 3; ++w)
+    {
+        waters[w] = Lake();
+        waters[w].center[0] = 0.3f * (float)w;
+        waters[w].center[2] = -0.2f;
+    }
+    waters[1].terrain.space = 0;
+    waters[1].terrain.center[0] = 1.5f;
+    waters[1].terrain.center[1] = -0.25f;
+    waters[1].terrain.rotation[1] = sinf(0.2f);
+    waters[1].terrain.rotation[3] = cosf(0.2f);
+    waters[2].hasTerrain = false;
+    waters[2].hostTerrain = true;
+    mvfxCollider hosts[2] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}}, waters[1].terrain};
+    hosts[1].center[2] = 0.75f;
+    const mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    const double origin[3] = {0.0, 0.0, 0.0};
+    Open(waters, 3, &emitter, 1, NULL, 0, origin, 1.0f);
+    CHECK(mvfxInstance_SetColliders(s_context, s_planned, hosts, 2) == mvfx_success, "colliders");
+    const mvfxCollider* defs[3] = {&waters[0].terrain, &waters[1].terrain, &hosts[1]};
+    int32_t wrong = 0;
+    for (int32_t s = 0; s < 6; ++s)
+    {
+        const double at[3] = {2.0 + 0.5 * s, 0.1 * s, -1.0};
+        const float rotation[4] = {0.0f, sinf(0.05f * (float)s), 0.0f, cosf(0.05f * (float)s)};
+        CHECK(mvfxInstance_SetTransform(s_context, s_planned, at, rotation, 1.0f + 0.1f * (float)s,
+                                        false) == mvfx_success &&
+                  mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success,
+              "moved and stepped");
+        static mvfxEmitterPlan emitterPlan;
+        CHECK(mvfxInstance_GetEmitterPlan(s_context, s_planned, 0, &emitterPlan) == mvfx_success,
+              "the instance's place");
+        for (int32_t w = 0; w < 3; ++w)
+        {
+            static mvfxWaterPlan plan;
+            mvfxWaterInfo surface;
+            CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, w, &plan) == mvfx_success &&
+                      mvfxInstance_GetWaterInfo(s_context, s_planned, w, &surface) == mvfx_success,
+                  "a plan and its surface");
+            const mvfxCollider* def = defs[w];
+            Frame frame = SurfaceFrame(&surface, &emitterPlan.to, def->space);
+            wrong += !plan.hasTerrain || !SameCollider(&plan.terrain, def, true, &frame, 0.0) ||
+                     plan.terrain.grid.index1 != def->grid.index1;
+        }
+    }
+    CHECK(wrong == 0, "each terrain resolved into its surface's frame");
     mvfxDestroyContext(s_context);
 }
 
@@ -267,7 +358,8 @@ static void TestUnreported(void)
 {
     // A planned lake told nothing: its first step one substep (no water
     // before its fill), each later the most, not slowed; a restart counts
-    // from no water again, its report forgotten.
+    // from no water again, and its next step the most again, its report
+    // forgotten.
     NewContext();
     mvfxWaterDef water = Lake();
     const double origin[3] = {0.0, 0.0, 0.0};
@@ -284,14 +376,18 @@ static void TestUnreported(void)
                   (float)((double)STEP_TICKS / MVFX_TICKS_PER_SECOND / MVFX_MAX_WATER_SUBSTEPS) &&
               !plan.cleared,
           "unreported, the most");
-    CHECK(mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, Live(s_planned)->clock, 1.0f) ==
+    CHECK(mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, PlannedClock(), 1.0f) ==
                   mvfx_success &&
               mvfxInstance_Restart(s_context, s_planned) == mvfx_success &&
               mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success &&
               mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success &&
               plan.substeps == 1 && plan.cleared,
           "a restart counts from no water");
-    CHECK(Live(s_planned)->waters[0].reportedTick == -1, "its report forgotten");
+    // Told 1, the step would take one substep; forgotten, the most.
+    CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success &&
+              mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success &&
+              plan.substeps == MVFX_MAX_WATER_SUBSTEPS,
+          "its report forgotten");
     mvfxDestroyContext(s_context);
 }
 
@@ -363,7 +459,7 @@ static void TestHolds(void)
               mvfxInstance_Stop(s_context, s_planned, mvfx_stopEmitting) == mvfx_success &&
               mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success,
           "stopped");
-    int64_t clock = Live(s_planned)->clock;
+    int64_t clock = PlannedClock();
     CHECK(mvfxInstance_SetWaterHolds(s_context, s_planned, 0, clock, false) == mvfx_success &&
               !mvfxInstance_IsFinished(s_context, s_planned),
           "still ignored while its particles live");
@@ -371,7 +467,7 @@ static void TestHolds(void)
     {
         CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success, "stepped");
     }
-    clock = Live(s_planned)->clock;
+    clock = PlannedClock();
     CHECK(!mvfxInstance_IsFinished(s_context, s_planned) &&
               mvfxInstance_SetWaterHolds(s_context, s_planned, 0, clock, true) == mvfx_success &&
               !mvfxInstance_IsFinished(s_context, s_planned) &&
@@ -395,10 +491,14 @@ static void TestHolds(void)
 static void TestCoupling(void)
 {
     // A world emitter coupled to a shallow surface (a pour's) of a moved,
-    // turned and scaled instance: its plan's map is its resolved map (places mapped alike,
-    // within the origin's rounding), its up, radius and strength the
-    // resolved ones, the coupling's numbers its def's (the push in the
-    // surface's lengths); an emitter without a coupling plans none.
+    // turned and scaled instance: its plan's map (plan.h,
+    // mvfxPlannedWaterCoupling) takes the surface's frame into the
+    // particles' space by the instance where the step starts (water.h:
+    // the grid's center in the instance's frame), less the anchor the
+    // particles are offsets from; its up the surface's Y turned; its
+    // radius and push in the surface's lengths; its gravity's strength in
+    // them; the coupling's numbers its def's; an emitter without a
+    // coupling plans none.
     NewContext();
     mvfxWaterDef water = mvfxDefaultWaterDef();
     water.size[0] = 8;
@@ -414,6 +514,7 @@ static void TestCoupling(void)
                                             .pour = true,
                                             .buoyancy = 2.0f,
                                             .drag = 1.5f};
+    emitters[0].motion.gravity[1] = -9.81f;
     const double origin[3] = {1.0, 0.0, -2.0};
     Open(&water, 1, emitters, 2, NULL, 0, origin, 2.0f);
     const double moved[3] = {1.5, 0.25, -2.0};
@@ -431,31 +532,37 @@ static void TestCoupling(void)
         mvfxDestroyContext(s_context);
         return;
     }
-    const mvfxResolvedWater* resolved = &Live(s_planned)->emitters[0].water;
     const mvfxPlannedWaterCoupling* c = &plan.water;
-    static const float places[3][3] = {{0, 0, 0}, {0.4f, -0.1f, 0.25f}, {-1.2f, 0.3f, 0.9f}};
-    float apart = 0.0f;
-    for (int32_t p = 0; p < 3; ++p)
+    const mvfxPlanPlace* at = &plan.from;
+    const double q[4] = {(double)at->rotation[0], (double)at->rotation[1], (double)at->rotation[2],
+                         (double)at->rotation[3]};
+    double scale = (double)at->scale;
+    const double center[3] = {(double)water.center[0] * scale, (double)water.center[1] * scale,
+                              (double)water.center[2] * scale};
+    double turned[3];
+    Turn(q, center, turned);
+    static const double y[3] = {0.0, 1.0, 0.0};
+    double up[3];
+    Turn(q, y, up);
+    bool mapped = c->water == 0;
+    for (int32_t k = 0; k < 3; ++k)
     {
-        float expected[3];
-        float scaled[3];
-        float turned[3];
-        mvfxMapPoint(&resolved->map, places[p], expected);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            scaled[k] = c->sigma * places[p][k];
-        }
-        mvfxRotate(c->rotation, scaled, turned);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            apart = fmaxf(apart, fabsf(c->origin[k] + turned[k] - expected[k]));
-        }
+        double placed = at->origin[k] + turned[k] - plan.anchorAfter[k];
+        mapped = mapped && fabs((double)c->origin[k] - placed) <= 1e-5 &&
+                 fabs((double)c->up[k] - up[k]) <= 1e-6;
     }
-    CHECK(c->water == 0 && apart < 1e-5f && c->sigma == resolved->map.sigma &&
-              memcmp(c->up, resolved->up, sizeof c->up) == 0 && c->radius == resolved->radius &&
-              c->strength == resolved->strength && c->radius == 0.05f / c->sigma &&
-              c->drag == 1.5f && c->buoyancy == 2.0f && c->push == 0.04f / c->sigma && c->pour &&
-              none.water.water == -1,
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        mapped = mapped && fabs((double)c->rotation[k] - q[k]) <= 1e-6;
+    }
+    const float* g = emitters[0].motion.gravity;
+    const double pull[3] = {(double)g[0], (double)g[1], (double)g[2]};
+    double gravity = sqrt(pull[0] * pull[0] + pull[1] * pull[1] + pull[2] * pull[2]);
+    CHECK(mapped && fabs((double)c->sigma - scale) <= 1e-6 &&
+              fabs((double)c->radius - 0.05 / scale) <= 1e-7 &&
+              fabs((double)c->push - 0.04 / scale) <= 1e-7 &&
+              fabs((double)c->strength - gravity / scale) <= 1e-5 && c->drag == 1.5f &&
+              c->buoyancy == 2.0f && c->pour && none.water.water == -1,
           "the planned coupling");
     mvfxDestroyContext(s_context);
 }
@@ -510,15 +617,13 @@ static void TestCounts(void)
                    mvfxInstance_SetWaterCounts(s_context, s_planned, 0, STEP_TICKS, 0.9f, 9, 9.0) ==
                        mvfx_success &&
                    mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
-                   info.facesHeld == 7 && info.volumePoured == 0.75 &&
-                   Live(s_planned)->waters[0].reach == 0.2f;
-    CHECK(counted, "each tick's report counted once, the latest reach");
+                   info.facesHeld == 7 && info.volumePoured == 0.75;
+    CHECK(counted, "each tick's report counted once");
     CHECK(mvfxInstance_Stop(s_context, s_planned, mvfx_stopAndClear) == mvfx_success &&
               mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 2 * STEP_TICKS, 1.0f, 5, 1.0) ==
                   mvfx_success &&
               mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
-              info.facesHeld == 0 && info.volumePoured == 0.0 &&
-              Live(s_planned)->waters[0].reach == 0.0f,
+              info.facesHeld == 0 && info.volumePoured == 0.0,
           "a clear empties them, the reports before it ignored");
     uint64_t misuse = mvfxGetContextMisuse(s_context);
     bool refused =
@@ -575,10 +680,15 @@ static void TestRefusals(void)
         mvfxInstance_SetWaterSpeed(s_context, s_cpu, 0, 0, 1.0f) == mvfx_errorState &&
         mvfxInstance_SetWaterSpeed(s_context, (mvfxInstanceId){0}, 0, 0, 1.0f) == mvfx_errorStale;
     CHECK(refused, "the plans' and the speed setter's refusals");
-    // An older report than the latest is ignored.
-    CHECK(mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, STEP_TICKS, 3.0f) == mvfx_success &&
-              mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, 0, 5.0f) == mvfx_success &&
-              Live(s_planned)->waters[0].reportedSpeed == 3.0f,
+    // An older report than the latest is ignored: the next step counts
+    // from 2 a second, not 7.
+    static mvfxWaterPlan next;
+    CHECK(mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, STEP_TICKS, 2.0f) == mvfx_success &&
+              mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, 0, 7.0f) == mvfx_success &&
+              mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success &&
+              mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &next) == mvfx_success &&
+              SubstepsAre(&next, STEP_TICKS, 0.5 * (double)waters[0].cellSize / 2.0) &&
+              !SubstepsAre(&next, STEP_TICKS, 0.5 * (double)waters[0].cellSize / 7.0),
           "the latest report counts");
     // A planned surface's fields are its simulation's.
     const mvfxWaterRead read = {
@@ -601,6 +711,7 @@ int main(void)
     TestPushes();
     TestWaves();
     TestShallow();
+    TestTerrain();
     TestUnreported();
     TestSplit();
     TestHolds();
