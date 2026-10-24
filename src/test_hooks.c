@@ -73,3 +73,25 @@ bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int3
     }
     return true;
 }
+
+bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                             int32_t axis, const float* values, int64_t count)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || water < 0 || water >= live->effect->waterCount || axis < 0 || axis > 1)
+    {
+        return false;
+    }
+    const mvfxCompiledWater* compiled = &live->effect->waters[water];
+    mvfxWaterState* state = &live->waters[water];
+    if (compiled->def.model != mvfx_waterShallow ||
+        count != mvfxWaterFaces(compiled->def.size, axis))
+    {
+        return false;
+    }
+    for (int64_t i = 0; i < count; ++i)
+    {
+        state->faces[axis][state->faceCurrent][i] = values[i];
+    }
+    return true;
+}
