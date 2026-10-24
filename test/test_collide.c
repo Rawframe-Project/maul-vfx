@@ -6,15 +6,11 @@
 // friction as computed by hand; a rest speed; a particle's radius; a
 // start on the wrong side put back; contacts several a step; kill on
 // collision, life lost, the count and its kill rule; the instance's own
-// colliders; a collider in the emitter's space; the refusals; the signed
-// gaps to each kind of collider; the colliders a box's segments may
-// reach, none left out that one meets; and the segments a run's tests
-// mark, every one that meets a collider among them.
+// colliders; a collider in the emitter's space; and the refusals. The
+// module's own functions are tested in test_collide_internal.c.
 
-#include "collide.h"
-#include "context.h"
-#include "instance.h"
-#include "random.h"
+#include "particles.h"
+#include "peek.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -25,7 +21,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -33,8 +28,9 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     Scene scene = {0};
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &scene.context) == mvfx_success, "context");
+    mvfxEmitterDef peeking = Peeking(emitter);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitter;
+    effectDef.emitters = &peeking;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
@@ -42,7 +38,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -70,9 +65,28 @@ static void Place(Scene* scene, double x, double y, double z, float vx, float vy
           "placed");
 }
 
-static float At(const Scene* scene, mvfxAttribute attribute, int32_t i)
+static TestParticle s_particles[1000];
+
+// Reads the particles into s_particles; returns how many there are.
+static int32_t Read(const Scene* scene)
 {
-    return ((const float*)mvfxAttributeArray(scene->live, 0, attribute))[i];
+    return ReadParticles(scene->context, scene->instance, 0, s_particles, 1000);
+}
+
+// The particle at i.
+static TestParticle At(const Scene* scene, int32_t i)
+{
+    CHECK(i < Read(scene), "the particle read");
+    return s_particles[i];
+}
+
+static uint32_t s_random = 2026;
+
+// A number in [0, 1).
+static float Random(void)
+{
+    s_random = s_random * 1664525u + 1013904223u;
+    return (float)(s_random >> 8u) * 0x1p-24f;
 }
 
 // Whether a place keeps to a collider's allowed side, within a hair.
@@ -119,21 +133,18 @@ static void TestNoTunneling(void)
         double places[1000][3];
         float velocities[1000][3];
         int32_t placed = 0;
-        for (uint32_t i = 0; placed < 1000; ++i)
+        while (placed < 1000)
         {
-            mvfxWords4 w = mvfxPcg4d((mvfxWords4){i, (uint32_t)c, 7u, 9u});
-            float p[3] = {mvfxUnitFloat(w.x) * 7.0f - 3.5f, mvfxUnitFloat(w.y) * 7.0f - 3.5f,
-                          mvfxUnitFloat(w.z) * 3.8f - 1.9f};
+            float p[3] = {Random() * 7.0f - 3.5f, Random() * 7.0f - 3.5f, Random() * 3.8f - 1.9f};
             if (!Allowed(&colliders[c], p))
             {
                 continue;
             }
-            mvfxWords4 v = mvfxPcg4d(w);
-            float speed = powf(10.0f, mvfxUnitFloat(v.w) * 4.0f);
+            float speed = powf(10.0f, Random() * 4.0f);
             for (int32_t k = 0; k < 3; ++k)
             {
                 places[placed][k] = (double)p[k];
-                velocities[placed][k] = speed * (mvfxUnitFloat((&v.x)[k]) * 2.0f - 1.0f);
+                velocities[placed][k] = speed * (Random() * 2.0f - 1.0f);
             }
             ++placed;
         }
@@ -142,19 +153,18 @@ static void TestNoTunneling(void)
         CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success,
               "placed");
         bool kept = true;
+        int32_t count = 0;
         for (int32_t step = 0; step < 3 && kept; ++step)
         {
             CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 3) == mvfx_success,
                   "step");
-            for (int32_t i = 0; i < scene.live->emitters[0].count; ++i)
+            count = Read(&scene);
+            for (int32_t i = 0; i < count; ++i)
             {
-                float p[3] = {At(&scene, mvfx_attributePositionX, i),
-                              At(&scene, mvfx_attributePositionY, i),
-                              At(&scene, mvfx_attributePositionZ, i)};
-                kept = kept && Allowed(&colliders[c], p);
+                kept = kept && Allowed(&colliders[c], s_particles[i].position);
             }
         }
-        CHECK(kept && scene.live->emitters[0].count == 1000, "none passes through");
+        CHECK(kept && count == 1000, "none passes through");
         mvfxDestroyContext(scene.context);
     }
 }
@@ -172,14 +182,13 @@ static void TestBounce(void)
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 10, -10, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(fabsf(At(&scene, mvfx_attributeVelocityY, 0) - 5.0f) <= 1e-4f &&
-              fabsf(At(&scene, mvfx_attributeVelocityX, 0) - 5.0f) <= 1e-4f,
+    CHECK(fabsf(At(&scene, 0).velocity[1] - 5.0f) <= 1e-4f &&
+              fabsf(At(&scene, 0).velocity[0] - 5.0f) <= 1e-4f,
           "the velocity bounced");
-    CHECK(fabsf(At(&scene, mvfx_attributePositionY, 0) - 4.5f) <= 1e-4f &&
-              fabsf(At(&scene, mvfx_attributePositionX, 0) - 5.5f) <= 1e-4f,
+    CHECK(fabsf(At(&scene, 0).position[1] - 4.5f) <= 1e-4f &&
+              fabsf(At(&scene, 0).position[0] - 5.5f) <= 1e-4f,
           "the rest of the step bounced alike");
-    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
-    CHECK(count[0] == 1, "one collision counted");
+    CHECK(s_peeked.collisions[0] == 1, "one collision counted");
     mvfxDestroyContext(scene.context);
 
     // Below the rest speed after the bounce: stopped on the plane.
@@ -187,8 +196,7 @@ static void TestBounce(void)
     scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -10, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(At(&scene, mvfx_attributeVelocityY, 0) == 0.0f &&
-              fabsf(At(&scene, mvfx_attributePositionY, 0)) <= 1e-4f,
+    CHECK(At(&scene, 0).velocity[1] == 0.0f && fabsf(At(&scene, 0).position[1]) <= 1e-4f,
           "at rest where it hit");
     mvfxDestroyContext(scene.context);
 
@@ -202,9 +210,8 @@ static void TestBounce(void)
     Place(&scene, 0, 1, 0, 0, -1, 0);
     Place(&scene, 0, -3, 0, 0, 0, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(fabsf(At(&scene, mvfx_attributePositionY, 0) - 0.5f) <= 1e-4f,
-          "the radius keeps it half a unit off");
-    CHECK(fabsf(At(&scene, mvfx_attributePositionY, 1) - 0.5f) <= 1e-4f,
+    CHECK(fabsf(At(&scene, 0).position[1] - 0.5f) <= 1e-4f, "the radius keeps it half a unit off");
+    CHECK(fabsf(At(&scene, 1).position[1] - 0.5f) <= 1e-4f,
           "a start below put back on the surface");
     mvfxDestroyContext(scene.context);
 }
@@ -222,9 +229,8 @@ static void TestManyContacts(void)
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 0, 0, 4.5f, 0, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
-    CHECK(count[0] == 2 && fabsf(At(&scene, mvfx_attributePositionX, 0) - 0.5f) <= 1e-4f &&
-              At(&scene, mvfx_attributeVelocityX, 0) == 4.5f,
+    CHECK(s_peeked.collisions[0] == 2 && fabsf(At(&scene, 0).position[0] - 0.5f) <= 1e-4f &&
+              At(&scene, 0).velocity[0] == 4.5f,
           "two contacts in one step");
     mvfxDestroyContext(scene.context);
 }
@@ -251,13 +257,13 @@ static void TestLifeAndCount(void)
     scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -2, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(fabsf(At(&scene, mvfx_attributeInverseLife, 0) - 0.2f) <= 1e-6f, "half its life");
+    CHECK(fabsf(s_peeked.inverseLife[0] - 0.2f) <= 1e-6f, "half its life");
     mvfxDestroyContext(scene.context);
     emitter.collision.lifeLoss = 1.0f;
     scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -2, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 0, "all its life");
+    CHECK(Read(&scene) == 0, "all its life");
     mvfxDestroyContext(scene.context);
     // A life cut below its age: gone (it meets the plane in the second
     // step, its 10 s cut to 0.5 at an age of 2).
@@ -266,7 +272,7 @@ static void TestLifeAndCount(void)
     Place(&scene, 0, 1, 0, 0, -0.6f, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 0, "a life cut below its age");
+    CHECK(Read(&scene) == 0, "a life cut below its age");
     mvfxDestroyContext(scene.context);
 
     // Killed at its second collision, between two walls.
@@ -281,9 +287,9 @@ static void TestLifeAndCount(void)
     scene = NewScene(&emitter);
     Place(&scene, 0, 0, 0, 1.5f, 0, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 1, "one collision, alive");
+    CHECK(Read(&scene) == 1, "one collision, alive");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 0, "killed at the second");
+    CHECK(Read(&scene) == 0, "killed at the second");
     mvfxDestroyContext(scene.context);
 }
 
@@ -297,13 +303,13 @@ static void TestCountAtBirth(void)
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -2, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    const uint32_t* count = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
-    CHECK(count[0] == 1, "one collision");
+    CHECK(s_peeked.collisions[0] == 1, "one collision");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 0, "ended");
+    CHECK(Read(&scene) == 0, "ended");
     Place(&scene, 0, 50, 0, 0, 0, 0);
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 1 && count[0] == 0, "born at no collisions");
+    CHECK(Read(&scene) == 1 && s_peeked.count == 1 && s_peeked.collisions[0] == 0,
+          "born at no collisions");
     mvfxDestroyContext(scene.context);
 }
 
@@ -321,7 +327,7 @@ static void TestHostAndSpaces(void)
               "set");
         Place(&scene, 0, 1, 0, 0, -2, 0);
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-        float y = At(&scene, mvfx_attributePositionY, 0);
+        float y = At(&scene, 0).position[1];
         CHECK(takes != 0 ? fabsf(y - 1.0f) <= 1e-4f : fabsf(y + 1.0f) <= 1e-4f,
               takes != 0 ? "the instance's colliders" : "not for an emitter without them");
         if (takes != 0)
@@ -331,7 +337,7 @@ static void TestHostAndSpaces(void)
             Place(&scene, 0, 1, 0, 0, -2, 0);
             CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success,
                   "step");
-            CHECK(fabsf(At(&scene, mvfx_attributePositionY, 1) + 1.0f) <= 1e-4f, "cleared");
+            CHECK(fabsf(At(&scene, 1).position[1] + 1.0f) <= 1e-4f, "cleared");
             uint64_t misuse = mvfxGetContextMisuse(scene.context);
             mvfxCollider bad = {.kind = mvfx_colliderSphere};
             CHECK(mvfxInstance_SetColliders(scene.context, scene.instance, &bad, 1) ==
@@ -367,8 +373,8 @@ static void TestHostAndSpaces(void)
           "placed");
     Place(&scene, 100, 10, 0, 0, -20, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(fabsf(At(&scene, mvfx_attributePositionX, 0) - 100.0f) <= 1e-3f &&
-              fabsf(At(&scene, mvfx_attributePositionY, 0) - 4.0f) <= 1e-3f,
+    CHECK(fabsf(At(&scene, 0).position[0] - 100.0f) <= 1e-3f &&
+              fabsf(At(&scene, 0).position[1] - 4.0f) <= 1e-3f,
           "on the mapped, scaled sphere's top");
     mvfxDestroyContext(scene.context);
 }
@@ -391,16 +397,15 @@ static After Run(const mvfxCollider* collider, float radius, double x, double y,
     Scene scene = NewScene(&emitter);
     Place(&scene, x, y, z, vx, vy, vz);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    After after = {.live = scene.live->emitters[0].count};
+    After after = {.live = Read(&scene)};
     if (after.live > 0)
     {
         for (int32_t k = 0; k < 3; ++k)
         {
-            after.p[k] = At(&scene, (mvfxAttribute)(mvfx_attributePositionX + k), 0);
-            after.v[k] = At(&scene, (mvfxAttribute)(mvfx_attributeVelocityX + k), 0);
+            after.p[k] = s_particles[0].position[k];
+            after.v[k] = s_particles[0].velocity[k];
         }
-        after.collisions =
-            ((const uint32_t*)mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions))[0];
+        after.collisions = s_peeked.collisions[0];
     }
     mvfxDestroyContext(scene.context);
     return after;
@@ -540,235 +545,6 @@ static void TestRefusals(void)
     mvfxDestroyContext(context);
 }
 
-static void TestGaps(void)
-{
-    // Signed gaps to resolved colliders: a plane's above and below; a
-    // sphere's outside and, kept in, its inside; a box turned about z,
-    // outside past a corner and inside, and kept in; a grid's box by its
-    // bounds alone, outside it whatever its flag.
-    const mvfxResolvedCollider plane = {
-        .kind = mvfx_colliderPlane, .center = {0, 1, 0}, .normal = {0, 1, 0}};
-    const float above[3] = {5, 3, 0};
-    const float below[3] = {5, 0.5f, 0};
-    bool planes = fabsf(mvfxColliderGap(&plane, above, false) - 2.0f) <= 1e-6f &&
-                  fabsf(mvfxColliderGap(&plane, below, false) + 0.5f) <= 1e-6f;
-    mvfxResolvedCollider ball = {.kind = mvfx_colliderSphere, .center = {1, 0, 0}, .radius = 2.0f};
-    const float out[3] = {1, 3, 0};
-    const float in[3] = {1, 0.5f, 0};
-    bool balls = fabsf(mvfxColliderGap(&ball, out, false) - 1.0f) <= 1e-6f &&
-                 fabsf(mvfxColliderGap(&ball, in, false) + 1.5f) <= 1e-6f;
-    ball.inside = true;
-    balls = balls && fabsf(mvfxColliderGap(&ball, in, false) - 1.5f) <= 1e-6f;
-    // Half sizes 2 by 1 by 1, turned 30 degrees about z: the points at
-    // (3, 2) and (0.5, 0.2) in its frame, 1 and 1 past its corner and 0.8
-    // within its nearest face.
-    mvfxResolvedCollider box = {.kind = mvfx_colliderBox,
-                                .halfExtents = {2, 1, 1},
-                                .rotation = {0, 0, 0.25881905f, 0.96592583f}};
-    const float corner[3] = {1.5980762f, 3.2320508f, 0};
-    const float within[3] = {0.3330127f, 0.4232051f, 0};
-    bool boxes = fabsf(mvfxColliderGap(&box, corner, false) - 1.4142136f) <= 1e-5f &&
-                 fabsf(mvfxColliderGap(&box, within, false) + 0.8f) <= 1e-5f;
-    box.inside = true;
-    boxes = boxes && fabsf(mvfxColliderGap(&box, within, false) - 0.8f) <= 1e-5f;
-    const mvfxResolvedCollider grid = {.kind = mvfx_colliderHeightfield,
-                                       .inside = true,
-                                       .center = {0, 0, 0},
-                                       .halfExtents = {2, 0, 2},
-                                       .rotation = {0, 0, 0, 1}};
-    const float over[3] = {1, 0.7f, 1};
-    bool grids = fabsf(mvfxColliderGap(&grid, over, true) - 0.7f) <= 1e-6f;
-    CHECK(planes && balls && boxes && grids, "gaps to colliders");
-}
-
-// A small generator for the reach's trials.
-static uint32_t s_seed = 12345u;
-
-static float Uniform(float lo, float hi)
-{
-    s_seed = s_seed * 1664525u + 1013904223u;
-    return lo + (hi - lo) * (float)(s_seed >> 8) * 0x1p-24f;
-}
-
-// Whether a segment from a to b meets a collider alone.
-static bool Meets(const mvfxResolvedCollider* c, const float a[3], const float b[3])
-{
-    const mvfxOwnColliders none = {0};
-    const mvfxCollision response = {.enabled = true, .restitution = 0.5f};
-    float place[3] = {b[0], b[1], b[2]};
-    float velocity[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
-    mvfxContact first = {0};
-    return mvfxCollide(c, 1, &none, &response, 0.0f, a, place, velocity, &first) > 0;
-}
-
-static void TestReach(void)
-{
-    // Boxes at random near planes and outside spheres, at scales from 1 to
-    // 1000: a collider the reach leaves out meets none of 64 segments
-    // between random points of the box and its corners; many boxes graze
-    // their colliders, and some are left out within a hair of them. A box,
-    // a field and an inside sphere are always kept.
-    int32_t out = 0;
-    int32_t close = 0;
-    bool exact = true;
-    for (int32_t trial = 0; trial < 4000; ++trial)
-    {
-        float scale = trial % 4 == 0 ? 1000.0f : (trial % 4 == 1 ? 10.0f : 1.0f);
-        mvfxResolvedCollider c = {.rotation = {0, 0, 0, 1}};
-        float n[3] = {Uniform(-1, 1), Uniform(-1, 1), Uniform(-1, 1)};
-        float length = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            c.center[k] = Uniform(-scale, scale);
-            c.normal[k] = n[k] / length;
-        }
-        bool sphere = trial % 2 == 1;
-        c.kind = sphere ? mvfx_colliderSphere : mvfx_colliderPlane;
-        c.radius = sphere ? Uniform(0.01f, 1.0f) * scale : 0.0f;
-        // The box's near corner a small way off the surface along n.
-        float gap = Uniform(-0.01f, 0.05f) * (trial % 8 < 4 ? 1.0f : 0.001f);
-        float lo[3];
-        float hi[3];
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            float at = c.center[k] + c.normal[k] * (c.radius + gap * scale);
-            float size = Uniform(0.0f, 0.5f) * scale;
-            lo[k] = c.normal[k] > 0.0f ? at : at - size;
-            hi[k] = c.normal[k] > 0.0f ? at + size : at;
-        }
-        mvfxResolvedCollider kept[1];
-        if (mvfxReachable(&c, 1, lo, hi, kept) == 1)
-        {
-            continue;
-        }
-        out += 1;
-        close += gap * scale < 1e-3f * scale ? 1 : 0;
-        for (int32_t s = 0; s < 64; ++s)
-        {
-            float a[3];
-            float b[3];
-            for (int32_t k = 0; k < 3; ++k)
-            {
-                bool corner = s % 4 == 0;
-                a[k] = corner ? (Uniform(0, 1) < 0.5f ? lo[k] : hi[k]) : Uniform(lo[k], hi[k]);
-                b[k] = corner ? (Uniform(0, 1) < 0.5f ? lo[k] : hi[k]) : Uniform(lo[k], hi[k]);
-            }
-            exact = exact && !Meets(&c, a, b);
-        }
-    }
-    CHECK(exact, "a collider left out meets no segment in its box");
-    CHECK(out > 1000 && close > 100, "many left out, some within a hair");
-    const float lo[3] = {100, 100, 100};
-    const float hi[3] = {101, 101, 101};
-    const mvfxResolvedCollider always[3] = {
-        {.kind = mvfx_colliderBox, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}},
-        {.kind = mvfx_colliderHeightfield, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}},
-        {.kind = mvfx_colliderSphere, .inside = true, .radius = 1.0f, .rotation = {0, 0, 0, 1}}};
-    mvfxResolvedCollider kept[3];
-    CHECK(mvfxReachable(always, 3, lo, hi, kept) == 3, "boxes, fields and inside spheres kept");
-    // A sphere is left out of a box wholly below it as of one above.
-    const mvfxResolvedCollider ball = {
-        .kind = mvfx_colliderSphere, .radius = 1.0f, .rotation = {0, 0, 0, 1}};
-    const float below[2][3] = {{-5, -5, -5}, {-4, -4, -4}};
-    const float above[2][3] = {{4, 4, 4}, {5, 5, 5}};
-    CHECK(mvfxReachable(&ball, 1, below[0], below[1], kept) == 0 &&
-              mvfxReachable(&ball, 1, above[0], above[1], kept) == 0,
-          "a sphere left out on either side");
-    // A point in front of a plane exactly, behind it as float arithmetic
-    // has it: the plane is kept, the margin past that rounding.
-    const mvfxResolvedCollider tilted = {.kind = mvfx_colliderPlane,
-                                         .center = {0.1f, 0.2f, 0.3f},
-                                         .normal = {0.48f, 0.6f, 0.64f},
-                                         .rotation = {0, 0, 0, 1}};
-    bool found = false;
-    bool keptAll = true;
-    for (int32_t trial = 0; trial < 200000; ++trial)
-    {
-        float s[3] = {Uniform(-100, 100), Uniform(-100, 100), 0};
-        // On the plane in z, then a few ulps either way.
-        double z = (double)tilted.center[2] -
-                   ((double)tilted.normal[0] * ((double)s[0] - (double)tilted.center[0]) +
-                    (double)tilted.normal[1] * ((double)s[1] - (double)tilted.center[1])) /
-                       (double)tilted.normal[2];
-        s[2] = nextafterf((float)z, trial % 2 == 0 ? INFINITY : -INFINITY);
-        double distance = 0.0;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            distance += (double)tilted.normal[k] * ((double)s[k] - (double)tilted.center[k]);
-        }
-        float a[3] = {s[0] - tilted.center[0], s[1] - tilted.center[1], s[2] - tilted.center[2]};
-        float rounded = a[0] * tilted.normal[0] + a[1] * tilted.normal[1] + a[2] * tilted.normal[2];
-        if (distance > 0.0 && rounded < 0.0f)
-        {
-            found = true;
-            keptAll = keptAll && mvfxReachable(&tilted, 1, s, s, kept) == 1;
-        }
-    }
-    CHECK(found && keptAll, "a plane kept where rounding alone puts a point behind it");
-}
-
-static void TestMayMeet(void)
-{
-    // Runs of 64 segments at random about a plane and an outside sphere,
-    // at scales from 1 to 100: every segment that meets either is marked,
-    // and many are not; any other kind marks every segment.
-    enum
-    {
-        RUN = 64
-    };
-    bool superset = true;
-    int32_t unmarked = 0;
-    int32_t meeting = 0;
-    for (int32_t trial = 0; trial < 200; ++trial)
-    {
-        float scale = trial % 3 == 0 ? 100.0f : 1.0f;
-        mvfxResolvedCollider pair[2] = {{.kind = mvfx_colliderPlane, .rotation = {0, 0, 0, 1}},
-                                        {.kind = mvfx_colliderSphere,
-                                         .radius = Uniform(0.1f, 1.0f) * scale,
-                                         .rotation = {0, 0, 0, 1}}};
-        float n[3] = {Uniform(-1, 1), Uniform(-1, 1), Uniform(-1, 1)};
-        float length = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            pair[0].normal[k] = n[k] / length;
-            pair[0].center[k] = Uniform(-1, 1) * scale;
-            pair[1].center[k] = Uniform(-1, 1) * scale;
-        }
-        float s[3][RUN];
-        float e[3][RUN];
-        for (int32_t j = 0; j < RUN; ++j)
-        {
-            for (int32_t k = 0; k < 3; ++k)
-            {
-                s[k][j] = Uniform(-2, 2) * scale;
-                e[k][j] = s[k][j] + Uniform(-0.5f, 0.5f) * scale;
-            }
-        }
-        const float* const starts[3] = {s[0], s[1], s[2]};
-        const float* const ends[3] = {e[0], e[1], e[2]};
-        uint8_t marks[RUN];
-        mvfxMayMeet(pair, 2, starts, ends, RUN, marks);
-        for (int32_t j = 0; j < RUN; ++j)
-        {
-            const float a[3] = {s[0][j], s[1][j], s[2][j]};
-            const float b[3] = {e[0][j], e[1][j], e[2][j]};
-            bool meets = Meets(&pair[0], a, b) || Meets(&pair[1], a, b);
-            meeting += meets ? 1 : 0;
-            superset = superset && (!meets || marks[j] == 1);
-            unmarked += marks[j] == 0 ? 1 : 0;
-        }
-    }
-    CHECK(superset && meeting > 1000 && unmarked > 1000,
-          "every segment that meets a plane or a sphere marked, many not");
-    const mvfxResolvedCollider box = {
-        .kind = mvfx_colliderBox, .halfExtents = {1, 1, 1}, .rotation = {0, 0, 0, 1}};
-    const float far[3][1] = {{100}, {100}, {100}};
-    const float* const ends[3] = {far[0], far[1], far[2]};
-    uint8_t mark = 0;
-    mvfxMayMeet(&box, 1, ends, ends, 1, &mark);
-    CHECK(mark == 1, "any other kind marks every segment");
-}
-
 int main(void)
 {
     TestNoTunneling();
@@ -779,8 +555,5 @@ int main(void)
     TestHostAndSpaces();
     TestShapes();
     TestRefusals();
-    TestGaps();
-    TestReach();
-    TestMayMeet();
     return s_failures == 0 ? 0 : 1;
 }
