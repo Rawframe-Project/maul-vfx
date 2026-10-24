@@ -2,19 +2,18 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Grids: their life on a context and every refusal, the limit, new values,
-// trilinear sampling that reproduces a linear field, each border, a
-// constant axis, binary16 storage, three components read with the
-// general loop's bits, new values for a box of points and
-// the points changed since a step, an effect keeping its grid busy, and
-// the view of a grid as stored.
+// new values for a box of points, an effect keeping its grid busy, and
+// the view of a grid as stored; trilinear sampling, read as a vector
+// field's acceleration on a particle at rest, that reproduces a linear
+// field, each border, a constant axis and binary16 storage. The sampler
+// at places no particle can be put and the points changed since a step
+// are tested in test_grid_internal.c.
 
-#include "context.h"
-#include "grid.h"
-#include "grid_api.h"
-#include "half.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 
 #include <math.h>
@@ -58,6 +57,100 @@ static mvfxGridDef LinearDef(int32_t components)
     def.components = components;
     def.values = s_linear;
     return def;
+}
+
+// A binary16 value as a float, exactly.
+static float FromHalf(uint16_t h)
+{
+    int32_t exponent = (h >> 10) & 0x1F;
+    float fraction = (float)(h & 0x3FF);
+    float sign = (h & 0x8000) != 0 ? -1.0f : 1.0f;
+    return exponent == 0 ? sign * ldexpf(fraction, -24)
+                         : sign * ldexpf(1024.0f + fraction, exponent - 25);
+}
+
+// A grid's stored value at index i (its components' first is c).
+static float Stored(const mvfxContext* context, mvfxGridId grid, int64_t i)
+{
+    mvfxGridView view;
+    CHECK(mvfxGrid_GetView(context, grid, &view) == mvfx_success, "its view");
+    return view.format == mvfx_gridFloat16 ? FromHalf(((const uint16_t*)view.values)[i])
+                                           : ((const float*)view.values)[i];
+}
+
+// A vector field's vector at u, a place in its box's unit coordinates
+// (the box of size 1 centered on the origin, so u is the place plus 0.5):
+// a particle at rest put there, stepped 2^-10 s with no gravity, its
+// velocity over the step, exactly so, an acceleration held over a power of
+// two. The grid is free again after.
+static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, const float u[3],
+                  float out[3])
+{
+    mvfxForce force = {.kind = mvfx_forceVectorField,
+                       .strength = 1.0f,
+                       .grid = grid,
+                       .boxSize = {1, 1, 1},
+                       .boxRotation = {0, 0, 0, 1},
+                       .border = border};
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.capacity = 1;
+    emitter.hostSpawnCapacity = 1;
+    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.motion.gravity[0] = 0.0f;
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.motion.gravity[2] = 0.0f;
+    emitter.forces = &force;
+    emitter.forceCount = 1;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a field");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    const double place[3] = {(double)u[0] - 0.5, (double)u[1] - 0.5, (double)u[2] - 0.5};
+    static const float rest[3] = {0, 0, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = place, .velocities = rest};
+    CHECK(mvfxInstance_Spawn(context, instance, 0, &request) == mvfx_success, "put");
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success, "step");
+    TestParticle record;
+    CHECK(ReadParticles(context, instance, 0, &record, 1) == 1, "read");
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = record.velocity[k] * 1024.0f;
+    }
+    CHECK(mvfxDestroyInstance(context, instance) == mvfx_success &&
+              mvfxDestroyEffect(context, effect) == mvfx_success,
+          "done");
+}
+
+// A grid of three components, the first of them values (one a point),
+// the others 0.
+static mvfxGridId FirstOfThree(mvfxContext* context, const int32_t size[3], const float* values,
+                               mvfxGridFormat format)
+{
+    static float three[3 * 64];
+    int32_t points = size[0] * size[1] * size[2];
+    for (int32_t p = 0; p < points; ++p)
+    {
+        three[3 * p] = values[p];
+        three[3 * p + 1] = 0.0f;
+        three[3 * p + 2] = 0.0f;
+    }
+    mvfxGridDef def = mvfxDefaultGridDef();
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        def.size[k] = size[k];
+    }
+    def.components = 3;
+    def.format = format;
+    def.values = three;
+    mvfxGridId id = {0};
+    CHECK(mvfxCreateGrid(context, &def, &id) == mvfx_success, "a grid");
+    return id;
 }
 
 static void TestLife(void)
@@ -139,14 +232,20 @@ static void TestLife(void)
     CHECK(mvfxGrid_SetValues(context, a, NULL, 8) == mvfx_errorInvalid, "no values");
     CHECK(mvfxGrid_SetValues(context, b, s_linear, 8) == mvfx_errorStale, "stale");
     CHECK(mvfxGrid_SetValues(NULL, a, s_linear, 8) == mvfx_errorInvalid, "no context");
-    const mvfxGrid* live = mvfxContextGrid(context, a);
-    float out[4];
-    const float middle[3] = {0.5f, 0.5f, 0.5f};
-    CHECK(mvfxSampleGrid(live, middle, mvfx_borderNone, out) && out[0] == 3.5f,
-          "unchanged by refusals");
+    bool kept = true;
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        kept = kept && Stored(context, a, i) == s_linear[i];
+    }
+    CHECK(kept, "unchanged by refusals");
     values[3] = 8.0f;
     CHECK(mvfxGrid_SetValues(context, a, values, 8) == mvfx_success, "set");
-    CHECK(mvfxSampleGrid(live, middle, mvfx_borderNone, out) && out[0] == 1.0f, "the new values");
+    bool set = true;
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        set = set && Stored(context, a, i) == values[i];
+    }
+    CHECK(set, "the new values");
     mvfxDestroyContext(context);
 
     // The context's grid limit is from 1 to 65,536.
@@ -199,8 +298,9 @@ static void TestSetValuesIn(void)
         def.values = values;
         mvfxGridId id = {0};
         CHECK(mvfxCreateGrid(context, &def, &id) == mvfx_success, "created");
-        const mvfxGrid* grid = mvfxContextGrid(context, id);
-        uint64_t created = grid->serial;
+        mvfxGridView view;
+        CHECK(mvfxGrid_GetView(context, id, &view) == mvfx_success, "its view");
+        uint64_t created = view.serial;
         static const int32_t first[3] = {1, 1, 0};
         static const int32_t size[3] = {2, 2, 1};
         float box[8];
@@ -221,38 +321,24 @@ static void TestSetValuesIn(void)
             int32_t y = i / 4 % 3;
             int32_t z = i / 12;
             bool inside = x >= 1 && x <= 2 && y >= 1 && y <= 2 && z == 0;
-            const float u[3] = {(float)x / 3.0f, (float)y / 2.0f, (float)z};
-            float out[4];
-            right = right && mvfxSampleGrid(grid, u, mvfx_borderNone, out) &&
-                    out[0] == (inside ? After(i, 0) : Before(i, 0)) &&
-                    out[1] == (inside ? After(i, 1) : Before(i, 1));
+            right = right && Stored(context, id, 2 * i) == (inside ? After(i, 0) : Before(i, 0)) &&
+                    Stored(context, id, 2 * i + 1) == (inside ? After(i, 1) : Before(i, 1));
         }
         CHECK(right, "the box set, the rest kept");
         static const int32_t corner[3] = {3, 0, 1};
         static const int32_t one[3] = {1, 1, 1};
         static const float two[2] = {1, 2};
         CHECK(mvfxGrid_SetValuesIn(context, id, corner, one, two, 2) == mvfx_success, "a point");
-        CHECK(grid->since == created && grid->first[0] == 1 && grid->first[1] == 0 &&
-                  grid->first[2] == 0 && grid->end[0] == 4 && grid->end[1] == 3 &&
-                  grid->end[2] == 2 && grid->serial == created + 2,
-              "both boxes changed since the step");
-        CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success, "a step");
-        uint64_t seen = grid->serial;
-        CHECK(mvfxGrid_SetValuesIn(context, id, first, size, box, 8) == mvfx_success, "again");
-        CHECK(grid->since == seen && grid->first[0] == 1 && grid->first[1] == 1 &&
-                  grid->first[2] == 0 && grid->end[0] == 3 && grid->end[1] == 3 &&
-                  grid->end[2] == 1,
-              "after a step, the box alone");
-        CHECK(mvfxGrid_SetValues(context, id, values, 48) == mvfx_success, "all");
-        CHECK(grid->first[0] == 0 && grid->end[0] == 4 && grid->end[1] == 3 && grid->end[2] == 2,
-              "all of them");
+        CHECK(mvfxGrid_GetView(context, id, &view) == mvfx_success && view.serial == created + 2 &&
+                  Stored(context, id, 2 * 15) == 1.0f && Stored(context, id, 2 * 15 + 1) == 2.0f,
+              "a point set, a serial each");
         uint64_t misuse = mvfxGetContextMisuse(context);
         static const int32_t before[3] = {-1, 0, 0};
         static const int32_t past[3] = {3, 0, 0};
         static const int32_t none[3] = {0, 1, 1};
         float nan[8] = {0};
         nan[5] = (float)NAN;
-        uint64_t serial = grid->serial;
+        uint64_t serial = view.serial;
         bool refused =
             mvfxGrid_SetValuesIn(context, id, before, size, box, 8) == mvfx_errorInvalid &&
             mvfxGrid_SetValuesIn(context, id, past, size, box, 8) == mvfx_errorInvalid &&
@@ -262,7 +348,8 @@ static void TestSetValuesIn(void)
             mvfxGrid_SetValuesIn(context, id, NULL, size, box, 8) == mvfx_errorInvalid &&
             mvfxGrid_SetValuesIn(context, id, first, NULL, box, 8) == mvfx_errorInvalid &&
             mvfxGrid_SetValuesIn(context, id, first, size, NULL, 8) == mvfx_errorInvalid;
-        CHECK(refused && mvfxGetContextMisuse(context) == misuse + 8 && grid->serial == serial,
+        CHECK(refused && mvfxGetContextMisuse(context) == misuse + 8 &&
+                  mvfxGrid_GetView(context, id, &view) == mvfx_success && view.serial == serial,
               "bad boxes refused and counted");
         CHECK(mvfxGrid_SetValuesIn(NULL, id, first, size, box, 8) == mvfx_errorInvalid,
               "no context");
@@ -275,20 +362,22 @@ static void TestSetValuesIn(void)
 static void TestSampling(void)
 {
     mvfxContext* context = NewContext(4);
-    mvfxGridDef def = LinearDef(1);
-    mvfxGridId id = {0};
-    CHECK(mvfxCreateGrid(context, &def, &id) == mvfx_success, "created");
-    const mvfxGrid* grid = mvfxContextGrid(context, id);
-    float out[4];
+    static const int32_t cube[3] = {2, 2, 2};
+    // s_linear as x + 2 y + 4 z.
+    (void)LinearDef(1);
+    mvfxGridId id = FirstOfThree(context, cube, s_linear, mvfx_gridFloat32);
+    float out[3];
     const float inside[3] = {0.25f, 0.5f, 0.75f};
-    CHECK(mvfxSampleGrid(grid, inside, mvfx_borderNone, out) && out[0] == 4.25f && out[1] == 0.0f,
-          "a linear field reproduced");
+    Field(context, id, mvfx_borderNone, inside, out);
+    CHECK(out[0] == 4.25f && out[1] == 0.0f, "a linear field reproduced");
     const float outside[3] = {-1.0f, 2.0f, 0.5f};
-    CHECK(!mvfxSampleGrid(grid, outside, mvfx_borderNone, out) && out[0] == 0.0f,
-          "nothing outside");
-    CHECK(mvfxSampleGrid(grid, outside, mvfx_borderClamp, out) && out[0] == 4.0f, "clamped");
+    Field(context, id, mvfx_borderNone, outside, out);
+    CHECK(out[0] == 0.0f, "nothing outside");
+    Field(context, id, mvfx_borderClamp, outside, out);
+    CHECK(out[0] == 4.0f, "clamped");
     const float face[3] = {1.0f, 1.0f, 1.0f};
-    CHECK(mvfxSampleGrid(grid, face, mvfx_borderNone, out) && out[0] == 7.0f, "on the far face");
+    Field(context, id, mvfx_borderNone, face, out);
+    CHECK(out[0] == 7.0f, "on the far face");
     // Repeat: X's two points 0 and 1 a period, the last joining the first.
     static const float u[4] = {0.75f, 1.25f, -0.25f, 0.5f};
     static const float expected[4] = {0.5f, 0.5f, 0.5f, 1.0f};
@@ -296,25 +385,10 @@ static void TestSampling(void)
     for (int32_t i = 0; i < 4; ++i)
     {
         const float at[3] = {u[i], 0.0f, 0.0f};
-        tiled = tiled && mvfxSampleGrid(grid, at, mvfx_borderRepeat, out) && out[0] == expected[i];
+        Field(context, id, mvfx_borderRepeat, at, out);
+        tiled = tiled && out[0] == expected[i];
     }
     CHECK(tiled, "tiled");
-
-    // Places past any range, as a particle flown past the float range
-    // brings: every border reads inside the grid (the sanitizers watch).
-    static const float wild[6] = {INFINITY, -INFINITY, NAN, 1e30f, -1e30f, 3.4e38f};
-    bool held = true;
-    for (int32_t i = 0; i < 6; ++i)
-    {
-        for (mvfxGridBorder border = 0; border <= mvfx_borderRepeat; ++border)
-        {
-            const float at[3] = {wild[i], wild[(i + 1) % 6], wild[(i + 2) % 6]};
-            bool within = mvfxSampleGrid(grid, at, border, out);
-            held = held && isfinite(out[0]) && out[0] >= 0.0f && out[0] <= 7.0f &&
-                   (border != mvfx_borderNone || !within);
-        }
-    }
-    CHECK(held, "wild places read inside the grid");
 
     // A 2x3x4 grid of x + 10 y + 100 z: each axis's stride its own.
     static float uneven[24];
@@ -322,88 +396,26 @@ static void TestSampling(void)
     {
         uneven[p] = (float)(p % 2) + 10.0f * (float)((p / 2) % 3) + 100.0f * (float)(p / 6);
     }
-    mvfxGridDef box = mvfxDefaultGridDef();
-    box.size[0] = 2;
-    box.size[1] = 3;
-    box.size[2] = 4;
-    box.values = uneven;
-    CHECK(mvfxCreateGrid(context, &box, &id) == mvfx_success, "an uneven grid");
+    static const int32_t box[3] = {2, 3, 4};
+    id = FirstOfThree(context, box, uneven, mvfx_gridFloat32);
     const float at[3] = {0.5f, 0.25f, 0.5f};
-    CHECK(mvfxSampleGrid(mvfxContextGrid(context, id), at, mvfx_borderNone, out) &&
-              out[0] == 0.5f + 5.0f + 150.0f,
-          "each axis's stride");
+    Field(context, id, mvfx_borderNone, at, out);
+    CHECK(out[0] == 0.5f + 5.0f + 150.0f, "each axis's stride");
 
     // One point along an axis: constant along it.
     static const float flat[4] = {1, 2, 3, 4};
-    mvfxGridDef line = mvfxDefaultGridDef();
-    line.size[0] = 4;
-    line.values = flat;
-    CHECK(mvfxCreateGrid(context, &line, &id) == mvfx_success, "a line");
+    static const int32_t line[3] = {4, 1, 1};
+    id = FirstOfThree(context, line, flat, mvfx_gridFloat32);
     const float along[3] = {0.5f, 0.9f, 0.1f};
-    CHECK(mvfxSampleGrid(mvfxContextGrid(context, id), along, mvfx_borderNone, out) &&
-              out[0] == 2.5f,
-          "constant across its single points");
+    Field(context, id, mvfx_borderNone, along, out);
+    CHECK(out[0] == 2.5f, "constant across its single points");
 
     // Binary16: values rounded to nearest, read back exactly.
     static const float thirds[8] = {1.0f / 3.0f, 0, 0, 0, 0, 0, 0, 0};
-    mvfxGridDef half = LinearDef(1);
-    half.values = thirds;
-    half.format = mvfx_gridFloat16;
-    CHECK(mvfxCreateGrid(context, &half, &id) == mvfx_success, "a half grid");
+    id = FirstOfThree(context, cube, thirds, mvfx_gridFloat16);
     const float corner[3] = {0.0f, 0.0f, 0.0f};
-    CHECK(mvfxSampleGrid(mvfxContextGrid(context, id), corner, mvfx_borderNone, out) &&
-              out[0] == mvfxFloatFromHalf(mvfxHalfFromFloat(1.0f / 3.0f)) && out[0] != 1.0f / 3.0f,
-          "kept as binary16");
-    mvfxDestroyContext(context);
-}
-
-// Three binary32 components (a vector field's) read by their own unrolled
-// sum: the same bits as the general loop gives them in a grid of four.
-static void TestThreeComponents(void)
-{
-    mvfxContext* context = NewContext(2);
-    static float three[3 * 60];
-    static float four[4 * 60];
-    for (uint32_t p = 0; p < 60; ++p)
-    {
-        for (uint32_t c = 0; c < 4; ++c)
-        {
-            uint32_t i = 4 * p + c;
-            float value = i % 7 == 0 ? 0.0f : (float)((i * 2654435761u) >> 8) * 0x1p-23f - 1.0f;
-            four[i] = value;
-            if (c < 3)
-            {
-                three[3 * p + c] = value;
-            }
-        }
-    }
-    mvfxGridDef def = mvfxDefaultGridDef();
-    def.size[0] = 5;
-    def.size[1] = 3;
-    def.size[2] = 4;
-    def.components = 3;
-    def.values = three;
-    mvfxGridId threeId = {0};
-    mvfxGridId fourId = {0};
-    CHECK(mvfxCreateGrid(context, &def, &threeId) == mvfx_success, "three components");
-    def.components = 4;
-    def.values = four;
-    CHECK(mvfxCreateGrid(context, &def, &fourId) == mvfx_success, "four components");
-    int32_t same = 0;
-    for (mvfxGridBorder border = 0; border <= mvfx_borderRepeat; ++border)
-    {
-        for (int32_t i = 0; i < 11 * 11 * 11; ++i)
-        {
-            const float u[3] = {(float)(i % 11) * 0.15f - 0.3f, (float)(i / 11 % 11) * 0.15f - 0.3f,
-                                (float)(i / 121) * 0.15f - 0.3f};
-            float a[4];
-            float b[4];
-            bool inA = mvfxSampleGrid(mvfxContextGrid(context, threeId), u, border, a);
-            bool inB = mvfxSampleGrid(mvfxContextGrid(context, fourId), u, border, b);
-            same += inA == inB && memcmp(a, b, 3 * sizeof a[0]) == 0;
-        }
-    }
-    CHECK(same == 3 * 11 * 11 * 11, "the general loop's bits");
+    Field(context, id, mvfx_borderNone, corner, out);
+    CHECK(out[0] == FromHalf(0x3555u) && out[0] != 1.0f / 3.0f, "kept as binary16");
     mvfxDestroyContext(context);
 }
 
@@ -474,7 +486,7 @@ static void TestView(void)
     mvfxGridId half = {0};
     CHECK(mvfxCreateGrid(context, &def, &half) == mvfx_success &&
               mvfxGrid_GetView(context, half, &view) == mvfx_success && view.bytes == 48 &&
-              ((const uint16_t*)view.values)[3] == mvfxHalfFromFloat(1.0f),
+              ((const uint16_t*)view.values)[3] == 0x3C00u,
           "binary16 as stored");
     CHECK(mvfxGrid_GetView(NULL, grid, &view) == mvfx_errorInvalid && view.bytes == 0 &&
               mvfxGrid_GetView(context, grid, NULL) == mvfx_errorInvalid,
@@ -489,7 +501,6 @@ int main(void)
 {
     TestLife();
     TestSampling();
-    TestThreeComponents();
     TestSetValuesIn();
     TestBusy();
     TestView();

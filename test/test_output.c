@@ -10,12 +10,10 @@
 // instance, its custom attribute among them; records written in runs,
 // each its own particle's values over life; and the refusals.
 
-#include "appearance.h"
-#include "context.h"
-#include "instance.h"
-#include "layout.h"
 #include "test_harness.h"
 
+#include "maul-vfx/context.h"
+#include "maul-vfx/instance.h"
 #include "maul-vfx/output.h"
 
 #include <math.h>
@@ -162,16 +160,68 @@ static void TestLayouts(void)
     mvfxDestroyContext(context);
 }
 
+// A particle whose colour and frame a host module sets after motion,
+// written by the output alone in a record of 16 bytes.
+static float s_paint[4];
+static void Paint(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        call->particles.color[c][0] = s_paint[c];
+    }
+    call->particles.frame[0] = 7;
+}
+
+static const mvfxHostModule s_painter = {.stage = mvfx_stageAfterMotion, .function = Paint};
+
 static void Write(mvfxFormat format, bool srgb, int32_t components, const float values[4],
                   unsigned char out[16])
 {
-    mvfxLayoutField field = {.field = mvfx_recordColor,
+    static mvfxContext* context = NULL;
+    static mvfxInstanceId instance = {0};
+    if (context == NULL)
+    {
+        context = NewContext(1);
+        mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+        emitter.rate = 0.0f;
+        emitter.capacity = 1;
+        emitter.hostSpawnCapacity = 1;
+        emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+        emitter.color =
+            (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 1}, .max = {1, 1, 1, 1}};
+        emitter.frame = (mvfxFrameStart){.mode = mvfx_frameFixed, .first = 1, .last = 1};
+        emitter.hostModules = &s_painter;
+        emitter.hostModuleCount = 1;
+        mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+        effectDef.emitters = &emitter;
+        effectDef.emitterCount = 1;
+        mvfxEffectId effect = {0};
+        mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+        static const double place[3] = {0};
+        mvfxSpawnRequest request = {.count = 1, .positions = place};
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success &&
+                  (instanceDef.effect = effect,
+                   mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success) &&
+                  mvfxInstance_Spawn(context, instance, 0, &request) == mvfx_success,
+              "the painted particle");
+    }
+    memcpy(s_paint, values, sizeof s_paint);
+    CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success, "painted");
+    bool word = format == mvfx_formatUint32;
+    mvfxLayoutField field = {.field = word ? mvfx_recordFrame : mvfx_recordColor,
                              .format = format,
                              .components = (uint8_t)components,
                              .srgb = srgb};
-    const uint32_t words[4] = {7, 8, 9, 10};
+    mvfxLayoutId layout = {0};
+    static const mvfxView view = {.origin = {0.0, 0.0, 0.0}};
+    int64_t count = 0;
     memset(out, 0xEE, 16);
-    mvfxWriteField(&field, values, words, out);
+    CHECK(Make(context, &field, 1, 16, &layout) == mvfx_success &&
+              mvfxInstance_WriteParticles(context, instance, 0, layout, &view, NULL, 0, out, 1,
+                                          &count) == mvfx_success &&
+              count == 1 && mvfxDestroyLayout(context, layout) == mvfx_success,
+          "written");
 }
 
 static void TestFormats(void)
@@ -204,10 +254,10 @@ static void TestFormats(void)
     Write(mvfx_formatUnorm8, true, 4, colors, b);
     CHECK(b[0] == 188 && b[1] == 7 && b[2] == 255 && b[3] == 128, "sRGB, alpha linear");
     static const float any[4] = {0};
-    Write(mvfx_formatUint32, false, 2, any, b);
+    Write(mvfx_formatUint32, false, 1, any, b);
     uint32_t w[2];
     memcpy(w, b, 8);
-    CHECK(w[0] == 7 && w[1] == 8, "words");
+    CHECK(w[0] == 7 && w[1] == 0xEEEEEEEEu, "words");
     static const float exact[4] = {0.1f};
     Write(mvfx_formatFloat32, false, 1, exact, b);
     float f = 0.0f;
@@ -219,7 +269,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -234,7 +283,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -355,29 +403,38 @@ static void TestRuns(void)
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success,
               "step");
     }
-    static const mvfxLayoutField fields[3] = {
+    static const mvfxLayoutField fields[4] = {
         {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3},
         {.field = mvfx_recordColor, .format = mvfx_formatFloat32, .components = 4, .offset = 12},
         {.field = mvfx_recordSize, .format = mvfx_formatFloat32, .components = 3, .offset = 28},
+        {.field = mvfx_recordAge, .format = mvfx_formatFloat32, .components = 1, .offset = 40},
     };
     mvfxLayoutId layout = {0};
-    CHECK(Make(scene.context, fields, 3, 40, &layout) == mvfx_success, "layout");
-    static float records[256][10];
+    CHECK(Make(scene.context, fields, 4, 44, &layout) == mvfx_success, "layout");
+    static float records[256][11];
     static const mvfxView view = {.origin = {0.0, 0.0, 0.0}};
     int64_t count = 0;
     CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
                                       records, 256, &count) == mvfx_success &&
               count > 128,
           "more records than two runs");
+    // At age t: red to blue, alpha fading from 1 to 0.5 times t, size 2t.
     int32_t same = 0;
     for (int32_t i = 0; i < (int32_t)count; ++i)
     {
-        float color[4];
-        float size[3];
-        mvfxColorOf(scene.live, 0, i, color);
-        mvfxSizeOf(scene.live, 0, i, size);
-        same += memcmp(color, &records[i][3], sizeof color) == 0 &&
-                memcmp(size, &records[i][7], sizeof size) == 0;
+        const float* r = records[i];
+        double t = (double)r[10];
+        const double color[4] = {1.0 - t, 0.0, t, (1.0 - 0.5 * t) * t};
+        bool own = true;
+        for (int32_t c = 0; c < 4; ++c)
+        {
+            own = own && fabs((double)r[3 + c] - color[c]) <= 2e-3;
+        }
+        for (int32_t c = 0; c < 3; ++c)
+        {
+            own = own && fabs((double)r[7 + c] - 2.0 * t) <= 2e-3;
+        }
+        same += own ? 1 : 0;
     }
     CHECK(same == (int32_t)count, "each record holds its own particle's colour and size");
     CHECK(records[0][3] != records[count - 1][3] && records[0][6] != records[count - 1][6] &&

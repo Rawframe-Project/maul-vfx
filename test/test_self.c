@@ -4,15 +4,14 @@
 // Self-collision: a sheet thrown onto another kept a thickness above it,
 // where without it they pass through; a chain's last point laid on its
 // first parted, and a chain at rest thicker than its spacing left still
-// (its neighbors filtered out at rest); a point touching two others
-// moved by their pairs' mean; friction slowing the sheets' sliding; a
-// point's candidates capped and counted; the checks.
+// (its neighbors filtered out at rest);
+// friction slowing the sheets' sliding; a point's candidates capped and
+// counted; the checks. One pass's mean of a point's pairs is tested in
+// test_self_internal.c.
 
-#include "instance.h"
-#include "instance_api.h"
-#include "self.h"
 #include "test_harness.h"
 
+#include "maul-vfx/instance.h"
 #include "maul-vfx/output.h"
 
 #include <math.h>
@@ -206,6 +205,20 @@ static void TestSheets(void)
     CHECK(fabs(slide[1]) < fabs(slide[0]) - 0.1, "friction slows the slide");
 }
 
+// Whether the next step lays a chain's last point at x 0.05, before its
+// motion.
+static bool s_lay;
+
+static void Lay(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    if (s_lay && call->particles.count == 6)
+    {
+        call->particles.position[0][5] = 0.05f;
+        s_lay = false;
+    }
+}
+
 static void TestChain(void)
 {
     // A chain of six along x, its points 0.5 apart, soft: its last point
@@ -223,14 +236,15 @@ static void TestChain(void)
         emitter.unit.bendCompliance = 1.0f;
         emitter.capacity = 6;
         emitter.hostSpawnCapacity = 1;
+        static const mvfxHostModule lay = {.stage = mvfx_stageBeforeMotion, .function = Lay};
+        emitter.hostModules = &lay;
+        s_lay = false;
         static const double root[3] = {0, 0, 0};
         Open(&emitter, root, 1);
         Steps(1);
         if (laid)
         {
-            mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
-            float* x = mvfxAttributeArray(live, 0, mvfx_attributePositionX);
-            x[5] = 0.05f;
+            s_lay = true;
             Steps(1);
             Read();
             CHECK(Gap(0, 5) >= 0.297, "a fold parted");
@@ -248,49 +262,6 @@ static void TestChain(void)
         }
         mvfxDestroyContext(s_scene.context);
     }
-}
-
-static void TestMean(void)
-{
-    // A chain of six, a thickness of 0.3, folded so that its points 4 and
-    // 5 both touch its first, 0.1 across and 0.1 above and below it: one
-    // pass moves the first by its two pairs' mean, half of each overlap
-    // along each line (the lines' cross parts cancel), not their sum.
-    static Kick none;
-    none = (Kick){.first = 1000};
-    mvfxEmitterDef emitter = Sheets(0.3f, &none);
-    emitter.unit.kind = mvfx_unitChain;
-    emitter.unit.points = 6;
-    emitter.capacity = 6;
-    emitter.hostSpawnCapacity = 1;
-    static const double root[3] = {0, 0, 0};
-    Open(&emitter, root, 1);
-    Steps(1);
-    mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
-    float* x[3];
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        x[k] = mvfxAttributeArray(live, 0, (mvfxAttribute)(mvfx_attributePositionX + k));
-        float* v = mvfxAttributeArray(live, 0, (mvfxAttribute)(mvfx_attributeVelocityX + k));
-        memset(v, 0, 6 * sizeof(float));
-    }
-    static const float folded[6][3] = {{0, 0, 0},    {0.5f, 2, 0},    {1, 2, 0},
-                                       {1.5f, 2, 0}, {0.1f, 0.1f, 0}, {0.1f, -0.1f, 0}};
-    for (int32_t i = 0; i < 6; ++i)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            x[k][i] = folded[i][k];
-        }
-    }
-    mvfxFindSelfContacts(live, 0, 0.0);
-    mvfxSaveSelfStart(live, 0);
-    mvfxSolveSelfContacts(live, 0);
-    double length = sqrt(0.02);
-    double move = -0.5 * (0.3 - length) / length * 0.1;
-    CHECK(fabs((double)x[0][0] - move) < 1e-5 && fabs((double)x[1][0]) < 1e-5,
-          "moved by its pairs' mean");
-    mvfxDestroyContext(s_scene.context);
 }
 
 static void TestSheetAtRest(void)
@@ -397,7 +368,6 @@ int main(void)
 {
     TestSheets();
     TestChain();
-    TestMean();
     TestSheetAtRest();
     TestCapped();
     TestChecks();
