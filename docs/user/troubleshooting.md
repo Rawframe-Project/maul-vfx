@@ -45,6 +45,8 @@ The same effects, seeds, inputs and steps give the same bits everywhere. When tw
 - **Host modules,** whose determinism is the program's to keep; `mvfxModule_Random` gives each module a stream that is deterministic.
 - **The library's version.** A release may change results, and its changelog says so.
 
+A thread's floating-point setting is not among them: a program may run its threads with flush-to-zero or another rounding mode, and every call that computes sets the library's own and gives the thread its setting back. The allocator and the task hooks run in the thread's setting; host modules run in the library's.
+
 The GPU part matches the CPU path in its integer outputs and within stated tolerances in its floats, not to the bit; see [the GPU part](gpu.md#what-matches-the-cpu-path).
 
 ## A step that is slow
