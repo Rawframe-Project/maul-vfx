@@ -8,8 +8,6 @@
 // equal to drag; a torn sheet falling free; a drag too strong for a
 // substep never reversing a point; the checks.
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
 
 #include "maul-vfx/output.h"
@@ -191,19 +189,58 @@ static void TestLift(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Kicks each point of a four by four sheet once away from its middle,
+// thirty a second per spacing across along x and down along z, so every
+// two neighbors part.
+static void KickApart(const mvfxModuleCall* call, void* user)
+{
+    bool* done = user;
+    for (int32_t i = 0; !*done && i < call->particles.count; ++i)
+    {
+        uint32_t s = call->particles.serial[i];
+        call->particles.velocity[0][i] += 30.0f * ((float)(s % 4u) - 1.5f);
+        call->particles.velocity[2][i] += 30.0f * ((float)(s / 4u) - 1.5f);
+    }
+    *done = *done || call->particles.count > 0;
+}
+
 static void TestTorn(void)
 {
-    // Every edge torn: no triangle, a free fall.
+    // Every edge torn: the sheet made stretchy (tearing reads the stretch
+    // the projections leave), soft in shear and bending (rigid, they would
+    // hold a stretched edge's ends together), and each point kicked away
+    // from its neighbors, enough of its edges tear in its first step that
+    // no quad is left: a free fall, the kicks being across it.
     mvfxEmitterDef emitter = Sheet(1.0f, 1.0f);
-    emitter.unit.tearStrain = 50.0f;
+    emitter.unit.stretchCompliance = 0.01f;
+    emitter.unit.shearCompliance = 1.0f;
+    emitter.unit.bendCompliance = 1.0f;
+    emitter.unit.tearStrain = 0.05f;
+    static bool kicked;
+    kicked = false;
+    mvfxHostModule module = {
+        .stage = mvfx_stageBeforeMotion, .function = KickApart, .user = &kicked};
+    emitter.hostModules = &module;
+    emitter.hostModuleCount = 1;
     Open(&emitter, NULL);
-    Steps(1);
-    uint32_t* torn = mvfxAttributeArray(mvfxContextInstance(s_scene.context, s_scene.instance), 0,
-                                        mvfx_attributeTorn);
-    for (int32_t i = 0; i < 16; ++i)
-    {
-        torn[i] = 3u;
-    }
+    Steps(2);
+    mvfxEmitterStats stats = {0};
+    static Record vertices[MOST];
+    static uint32_t indices[6 * MOST];
+    mvfxExpandBuffers buffers = {.vertices = vertices,
+                                 .vertexCapacity = MOST,
+                                 .indices = indices,
+                                 .indexCapacity = 6 * MOST};
+    int64_t vertexCount = 0;
+    int64_t indexCount = -1;
+    CHECK(mvfxInstance_GetEmitterStats(s_scene.context, s_scene.instance, 0, &stats) ==
+                  mvfx_success &&
+              stats.torn > 0 &&
+              mvfxInstance_ExpandSheets(s_scene.context, s_scene.instance, 0, s_scene.layout,
+                                        &s_view, &buffers, &vertexCount,
+                                        &indexCount) == mvfx_success &&
+              vertexCount == 16 && indexCount == 0,
+          "torn until no quad is left");
     double before[3];
     Mean(before);
     Steps(60);
