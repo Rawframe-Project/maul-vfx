@@ -2,10 +2,12 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The one place a zeroed allocator reaches the C library, and the
-// checked layout of blocks.
+// checked layout of blocks. A host's allocator is host code, which runs in
+// the host's own floating-point environment (src/fpenv.h).
 
 #include "allocator.h"
 
+#include "fpenv.h"
 #include "invariant.h"
 
 #include <stdckdint.h>
@@ -61,11 +63,27 @@ static void ReleaseAligned(void* memory, size_t alignment)
     free(aligned - offset);
 }
 
+static MVFX_NOINLINE void* HostAlloc(const mvfxAllocator* allocator, size_t size, size_t alignment)
+{
+    mvfxFloatHost host = mvfxFloatHostEnter();
+    void* memory = allocator->alloc(size, alignment, allocator->context);
+    mvfxFloatHostLeave(host);
+    return memory;
+}
+
+static MVFX_NOINLINE void HostFree(const mvfxAllocator* allocator, void* memory, size_t size,
+                                   size_t alignment)
+{
+    mvfxFloatHost host = mvfxFloatHostEnter();
+    allocator->free(memory, size, alignment, allocator->context);
+    mvfxFloatHostLeave(host);
+}
+
 void* mvfxAllocate(const mvfxAllocator* allocator, size_t size, size_t alignment)
 {
     if (allocator->alloc != nullptr)
     {
-        return allocator->alloc(size, alignment, allocator->context);
+        return HostAlloc(allocator, size, alignment);
     }
     return AllocateAligned(size, alignment);
 }
@@ -78,7 +96,7 @@ void mvfxRelease(const mvfxAllocator* allocator, void* memory, size_t size, size
     }
     if (allocator->free != nullptr)
     {
-        allocator->free(memory, size, alignment, allocator->context);
+        HostFree(allocator, memory, size, alignment);
         return;
     }
     ReleaseAligned(memory, alignment);

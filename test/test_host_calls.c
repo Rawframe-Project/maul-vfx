@@ -6,8 +6,13 @@
 // each of the context's calls that take it mutable is refused with
 // mvfx_errorState and counted as misuse, a reading call still answers, and
 // the context is whole after: a step, a creation and a destruction work
-// again, the callbacks then calling nothing.
+// again, the callbacks then calling nothing. Under a host's float setting
+// (src/fpenv.h): the allocator and the task hooks, which compute nothing
+// of the library's, run in the host's own, even when the library calls
+// them from inside its environment; a host module, whose results feed the
+// simulation, runs in the library's.
 
+#include "test_fenv.h"
 #include "test_harness.h"
 
 #include "maul-vfx/context.h"
@@ -36,6 +41,29 @@ static mvfxInstanceId s_instance;
 static int32_t s_refused;
 static int32_t s_made;
 
+// While watching, the setting each callback should see, and how many
+// calls saw another, of how many made.
+static bool s_watching;
+static TestFloatSetting s_host;
+static TestFloatSetting s_library;
+static int32_t s_seen[MODULE + 1];
+static int32_t s_wrong[MODULE + 1];
+
+static void Watch(Callback from)
+{
+    if (!s_watching)
+    {
+        return;
+    }
+    // Inside the library's environment only the register is the
+    // library's: on x86-64 <fenv.h> may report the x87 control word,
+    // which the library leaves alone.
+    TestFloatSetting now = TestFloatGet();
+    bool right = from == MODULE ? now.control == s_library.control : TestFloatSame(now, s_host);
+    s_seen[from] += 1;
+    s_wrong[from] += right ? 0 : 1;
+}
+
 // Calls back in once from the callback armed: a step, an instance's
 // visibility, its destruction and the context's, each refused and
 // counted; the misuse count, a reading call, still answers.
@@ -62,6 +90,7 @@ static void CallBack(Callback from)
 static void* Alloc(size_t size, size_t alignment, void* context)
 {
     (void)context;
+    Watch(ALLOC);
     CallBack(ALLOC);
     uint8_t* raw = malloc(size + alignment + sizeof(void*));
     if (raw == NULL)
@@ -78,6 +107,7 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
     (void)size;
     (void)alignment;
     (void)context;
+    Watch(FREE);
     CallBack(FREE);
     free(((void**)memory)[-1]);
 }
@@ -88,6 +118,7 @@ static void* Enqueue(mvfxTaskFn* task, int32_t itemCount, int32_t minRange, void
 {
     (void)minRange;
     (void)userContext;
+    Watch(ENQUEUE);
     CallBack(ENQUEUE);
     task(0, itemCount, taskContext);
     return &s_made;
@@ -97,6 +128,7 @@ static void Finish(void* userTask, void* userContext)
 {
     (void)userTask;
     (void)userContext;
+    Watch(FINISH);
     CallBack(FINISH);
 }
 
@@ -104,6 +136,7 @@ static void Module(const mvfxModuleCall* call, void* user)
 {
     (void)call;
     (void)user;
+    Watch(MODULE);
     CallBack(MODULE);
 }
 
@@ -183,8 +216,35 @@ static void TestCallsBackIn(void)
     mvfxDestroyContext(context);
 }
 
+static void TestHostSettings(void)
+{
+    // An effect's compile allocates inside the library's environment, and
+    // a step calls the task hooks and the host module inside it; the
+    // instance's release frees outside it.
+    s_library = TestFloatGet();
+    s_host = TestFloatHostile();
+    TestFloatSet(s_host);
+    s_watching = true;
+    mvfxEffectId effect;
+    mvfxContext* context = Open(&effect);
+    bool stepped = mvfxContext_StepTicks(context, 1) == mvfx_success;
+    mvfxDestroyContext(context);
+    s_watching = false;
+    TestFloatSetting after = TestFloatGet();
+    TestFloatSet(s_library);
+    CHECK(stepped && TestFloatSame(after, s_host), "stepped, the host's setting kept");
+    CHECK(s_seen[ALLOC] > 0 && s_wrong[ALLOC] == 0, "the allocator's alloc in the host's setting");
+    CHECK(s_seen[FREE] > 0 && s_wrong[FREE] == 0, "the allocator's free in the host's setting");
+    CHECK(s_seen[ENQUEUE] > 0 && s_wrong[ENQUEUE] == 0,
+          "the task hooks' enqueue in the host's setting");
+    CHECK(s_seen[FINISH] > 0 && s_wrong[FINISH] == 0,
+          "the task hooks' finish in the host's setting");
+    CHECK(s_seen[MODULE] > 0 && s_wrong[MODULE] == 0, "a host module in the library's setting");
+}
+
 int main(void)
 {
     TestCallsBackIn();
+    TestHostSettings();
     return s_failures == 0 ? 0 : 1;
 }
