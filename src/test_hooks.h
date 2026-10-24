@@ -54,10 +54,10 @@ int64_t mvfxTestReadGasFaces(const mvfxContext* context, mvfxInstanceId instance
 bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_t gas, int32_t axis,
                            const float* values, int64_t count);
 
-// Sets a gas's scalar field (mvfx_gasDensity, mvfx_gasTemperature or
-// mvfx_gasFuel) at its cells, count of them (its cells). Returns false for
-// an id that names no live instance, a gas out of range, a field it does
-// not keep, or another count.
+// Sets a gas's scalar field (mvfx_gasDensity, mvfx_gasTemperature,
+// mvfx_gasFuel, or a surface's mvfx_gasDistance) at its cells, count of
+// them (its cells). Returns false for an id that names no live instance,
+// a gas out of range, a field it does not keep, or another count.
 bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                             mvfxGasField field, const float* values, int64_t count);
 

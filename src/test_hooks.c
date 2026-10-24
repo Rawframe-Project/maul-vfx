@@ -107,12 +107,17 @@ bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32
 {
     const mvfxCompiledGas* compiled = nullptr;
     mvfxGasState* state = GasOf(context, instance, gas, &compiled);
-    if (state == nullptr || field > mvfx_gasFuel ||
-        state->scalars[field][state->current] == nullptr || count != compiled->cells)
+    if (state == nullptr || (field > mvfx_gasFuel && field != mvfx_gasDistance) ||
+        !mvfxIsGasFieldOf(compiled, field) || count != compiled->cells)
     {
         return false;
     }
-    float* cells = state->scalars[field][state->current];
+    // A surface's distance is held as its first scalar.
+    float* cells = state->scalars[field == mvfx_gasDistance ? 0 : field][state->current];
+    if (cells == nullptr)
+    {
+        return false;
+    }
     for (int64_t i = 0; i < count; ++i)
     {
         cells[i] = values[i];
