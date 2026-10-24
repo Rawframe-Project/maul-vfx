@@ -31,7 +31,6 @@ reports a stored count, tick, flag, identity, name or the version, computing no 
     mvfxInstance_GetSurfaceMeshScratchBytes
 
 hands over stored or compiled values as they are, copying them, computing no float:
-    mvfxEffect_GetEmitterView
     mvfxEffect_GetGasView
     mvfxEffect_GetWaterView
     mvfxGrid_GetView
@@ -46,7 +45,7 @@ hashes or draws integers, computing no float:
     mvfxHash64
     mvfxModule_Random
 
-makes, frees, clears or changes objects from integers, pointers, flags and ticks, computing no float:
+makes, frees or changes objects from integers, pointers, flags and ticks, computing no float:
     mvfxCreateContext
     mvfxCreateLayout
     mvfxDestroyContext
@@ -56,13 +55,11 @@ makes, frees, clears or changes objects from integers, pointers, flags and ticks
     mvfxDestroyLayout
     mvfxDestroyMesh
     mvfxInstance_BreakRibbons
-    mvfxInstance_Restart
     mvfxInstance_SetEmitterMesh
     mvfxInstance_SetGasHolds
     mvfxInstance_SetWaterHolds
     mvfxInstance_SetOffscreen
     mvfxInstance_SetVisible
-    mvfxInstance_Stop
 
 stores a caller's floats as given after checking them finite and within bounds of at least 1, which no setting changes, computing no float:
     mvfxInstance_SetParameter

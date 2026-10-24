@@ -8,6 +8,7 @@
 #include "emitter_view.h"
 
 #include "effect_api.h"
+#include "fpenv.h"
 #include "hull.h"
 
 #include <string.h>
@@ -342,8 +343,9 @@ static void ForcesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* out)
     }
 }
 
-mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId effect,
-                                     int32_t emitter, mvfxEmitterView* viewOut)
+static MVFX_NOINLINE mvfxResult mvfxEffect_GetEmitterViewWork(const mvfxContext* context,
+                                                              mvfxEffectId effect, int32_t emitter,
+                                                              mvfxEmitterView* viewOut)
 {
     if (viewOut != nullptr)
     {
@@ -416,4 +418,13 @@ mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId ef
         viewOut->boundsMax[k] = e->boundsMax[k];
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxEffect_GetEmitterView(const mvfxContext* context, mvfxEffectId effect,
+                                     int32_t emitter, mvfxEmitterView* viewOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxEffect_GetEmitterViewWork(context, effect, emitter, viewOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

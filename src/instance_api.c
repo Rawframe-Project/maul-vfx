@@ -558,7 +558,8 @@ bool mvfxInstance_IsFinished(const mvfxContext* context, mvfxInstanceId instance
     return live != nullptr && mvfxIsInstanceFinished(live);
 }
 
-mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfxStopMode mode)
+static MVFX_NOINLINE mvfxResult mvfxInstance_StopWork(mvfxContext* context, mvfxInstanceId instance,
+                                                      mvfxStopMode mode)
 {
     if (context == nullptr)
     {
@@ -601,7 +602,16 @@ mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfx
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
+mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfxStopMode mode)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_StopWork(context, instance, mode);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_RestartWork(mvfxContext* context,
+                                                         mvfxInstanceId instance)
 {
     if (context == nullptr)
     {
@@ -618,6 +628,14 @@ mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
     }
     mvfxResetInstance(live);
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_RestartWork(context, instance);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // Advances the ribbon counter of an emitter, or with -1 of every emitter

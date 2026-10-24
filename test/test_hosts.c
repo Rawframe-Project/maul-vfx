@@ -64,6 +64,13 @@ static mvfxContext* NewContext(Out* out)
     return context;
 }
 
+// The effect NewInstance made last.
+static mvfxEffectId s_effect;
+
+// A quaternion whose norm is within 1e-3 of 1 when rounded to nearest and
+// not when rounded upward, where a frame's or a pose's check reads it.
+static const float s_edge[4] = {0x1.5f5bb4p-7f, 0x1.63c3f4p-5f, 0.0f, 1.0f};
+
 // An effect of the emitters, gases and surfaces, and an instance of it
 // placed off the origin, turned and grown.
 static mvfxInstanceId NewInstance(Out* out, mvfxContext* context, const mvfxEmitterDef* emitters,
@@ -80,6 +87,7 @@ static mvfxInstanceId NewInstance(Out* out, mvfxContext* context, const mvfxEmit
     mvfxEffectId effect = {0};
     mvfxResult r = mvfxCreateEffect(context, &def, &effect);
     PUT(out, r);
+    s_effect = effect;
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.origin[0] = 0.3333333333333333;
@@ -207,6 +215,8 @@ static mvfxEmitterDef Thrown(void)
                                       .speed = {1.3f, 3.7f}};
     emitter.motion.gravity[1] = -9.81f;
     emitter.motion.drag = 0.37f;
+    // Subnormal, so not 0, which its view's features compare.
+    emitter.inheritVelocity = 0x1p-140f;
     emitter.color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f, 0.4f}, .max = {0.9f, 0.7f, 0.5f, 1.0f}};
     emitter.size = (mvfxVectorSource){
@@ -236,6 +246,12 @@ static void Throws(Out* out)
     mvfxContext* context = NewContext(out);
     mvfxEmitterDef emitter = Thrown();
     mvfxInstanceId instance = NewInstance(out, context, &emitter, 1, NULL, 0, NULL, 0, false);
+    mvfxEmitterView view;
+    memset(&view, 0, sizeof view);
+    mvfxResult viewed = mvfxEffect_GetEmitterView(context, s_effect, 0, &view);
+    PUT(out, viewed);
+    PUT(out, view.features);
+    PUT(out, view.inheritVelocity);
     static const mvfxCollider hosts[3] = {
         {.kind = mvfx_colliderPlane, .center = {0.0f, 0.03f, 0.0f}, .normal = {0.3f, 1.1f, 0.2f}},
         {.kind = mvfx_colliderSphere, .center = {0.31f, 0.2f, 0.17f}, .radius = 0.45f},
@@ -560,7 +576,7 @@ static void Strips(Out* out)
     PUT(out, r);
     mvfxAttachFrame frames[2] = {
         {.position = {0.3, 0.2, 0.1}, .rotation = {0.0f, 0.0f, 0.38268343f, 0.92387953f}},
-        {.position = {-0.7, 0.1, 0.4}, .rotation = {0.2f, 0.1f, 0.0f, 0.97467943f}}};
+        {.position = {-0.7, 0.1, 0.4}, .rotation = {s_edge[0], s_edge[1], s_edge[2], s_edge[3]}}};
     r = mvfxInstance_SetAttachFrames(context, instance, 3, frames, 2);
     PUT(out, r);
     static const double roots[6] = {0.4, 0.0, 0.0, -0.3, 0.1, 0.2};
@@ -699,7 +715,7 @@ static void Scenes(Out* out)
         .format = mvfx_depthFloat32,
         .projection = {1.37f, 0, 0, 0, 0, 1.37f, 0, 0, 0, 0, -1.0013f, -1, 0, 0, -0.10037f, 0},
         .origin = {0.1, 0.2, 10.0},
-        .rotation = {0.0f, 0.05f, 0.0f, 0.99874922f},
+        .rotation = {s_edge[0], s_edge[1], s_edge[2], s_edge[3]},
     };
     mvfxResult r = mvfxInstance_SetDepthImage(context, instance, &image);
     PUT(out, r);
@@ -774,6 +790,9 @@ static void Gases(Out* out)
     gases[1].size[0] = 24;
     gases[1].size[1] = 24;
     gases[1].cellSize = 0.1f;
+    // A reach times a radius that rounds: a cleared surface's every cell.
+    gases[1].surface.radius = 0.137f;
+    gases[1].surface.reach = 2.3f;
     static const mvfxBurst burst = {
         .minCount = 200, .maxCount = 200, .cycles = 1, .probability = 1.0f};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -842,6 +861,18 @@ static void Gases(Out* out)
     PUT(out, counts);
     PUT(out, positions);
     PUT(out, normals);
+    // Cleared by a stop, then by a restart: the surface holds its reach.
+    static float distances[24 * 24];
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        r = k == 0 ? mvfxInstance_Stop(context, instance, mvfx_stopAndClear)
+                   : mvfxInstance_Restart(context, instance);
+        PUT(out, r);
+        memset(distances, 0, sizeof distances);
+        r = mvfxInstance_ReadGas(context, instance, 1, mvfx_gasDistance, distances, 24 * 24);
+        PUT(out, r);
+        PUT(out, distances);
+    }
     mvfxDestroyContext(context);
 }
 
