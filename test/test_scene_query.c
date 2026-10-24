@@ -9,8 +9,7 @@
 // world emitter's rebase; births without a plane; answers consumed and
 // a restart clearing them; and the refusals.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -21,7 +20,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -38,7 +36,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -68,9 +65,13 @@ static void Place(Scene* scene, double x, double y, double z, float vx, float vy
           "placed");
 }
 
-static double At(const Scene* scene, mvfxAttribute attribute, int32_t i)
+// The particle at i of the emitter's.
+static TestParticle At(const Scene* scene, int32_t i)
 {
-    return (double)((const float*)mvfxAttributeArray(scene->live, 0, attribute))[i];
+    TestParticle particles[8] = {0};
+    int32_t count = ReadParticles(scene->context, scene->instance, 0, particles, 8);
+    CHECK(i < count, "the particle read");
+    return i < count ? particles[i] : (TestParticle){0};
 }
 
 static bool Near(double a, double b, double within)
@@ -110,13 +111,14 @@ static void AnswerFloor(Scene* scene, bool hit, double height)
 static void TestQueryAndAnswer(void)
 {
     mvfxEmitterDef emitter = Asking(4);
+    emitter.events = mvfx_eventMaskCollision;
+    emitter.eventCapacity = 4;
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 3, 0, 0, -4, 0);
     Step(&scene, 1);
     const mvfxSceneQuery* queries = NULL;
     CHECK(Queries(&scene, &queries) == 1, "one query");
-    const uint32_t* serial = mvfxAttributeArray(scene.live, 0, mvfx_attributeSerial);
-    CHECK(queries[0].particle == 0 && queries[0].serial == serial[0] &&
+    CHECK(queries[0].particle == 0 && queries[0].serial == At(&scene, 0).serial &&
               Near(queries[0].origin[1], 3.0, 1e-4) && queries[0].origin[0] == 0.0 &&
               Near((double)queries[0].segment[1], -2.0, 1e-6),
           "its place and segment");
@@ -124,23 +126,28 @@ static void TestQueryAndAnswer(void)
     CHECK(Queries(&scene, &queries) == 0 && queries == NULL, "consumed");
     // Down 4 for a second from y = 3: off the plane, back up to 1.
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 1.0, 1e-3) &&
-              Near(At(&scene, mvfx_attributeVelocityY, 0), 4.0, 1e-5),
+    CHECK(Near((double)At(&scene, 0).position[1], 1.0, 1e-3) &&
+              Near((double)At(&scene, 0).velocity[1], 4.0, 1e-5),
           "bounced off the answered plane");
-    const uint32_t* collisions = mvfxAttributeArray(scene.live, 0, mvfx_attributeCollisions);
-    CHECK(collisions[0] == 1, "a collision counted");
+    const mvfxEvent* events = NULL;
+    int32_t eventCount = 0;
+    CHECK(mvfxInstance_GetEvents(scene.context, scene.instance, 0, &events, &eventCount) ==
+                  mvfx_success &&
+              eventCount == 1 && events[0].kind == mvfx_eventCollision &&
+              events[0].serial == At(&scene, 0).serial && events[0].normal[1] == 1.0f,
+          "a collision on the plane");
     // Answered none: through where the plane was.
     AnswerFloor(&scene, false, 0.0);
     Place(&scene, 0, 1, 0, 0, -4, 0);
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 5.0, 1e-3), "the first rises on");
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 1), -3.0, 1e-3), "a birth has no plane");
+    CHECK(Near((double)At(&scene, 0).position[1], 5.0, 1e-3), "the first rises on");
+    CHECK(Near((double)At(&scene, 1).position[1], -3.0, 1e-3), "a birth has no plane");
     AnswerFloor(&scene, false, 0.0);
     Place(&scene, 0, 1, 0, 0, -4, 0);
     Step(&scene, 1);
     AnswerFloor(&scene, false, 0.0);
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 2), -3.0, 1e-3), "answered none, through");
+    CHECK(Near((double)At(&scene, 2).position[1], -3.0, 1e-3), "answered none, through");
     mvfxDestroyContext(scene.context);
 }
 
@@ -157,13 +164,13 @@ static void TestRestAndCapacity(void)
     AnswerFloor(&scene, true, 0.0);
     Step(&scene, MVFX_TICKS_PER_SECOND);
     const mvfxSceneQuery* queries = NULL;
-    CHECK(At(&scene, mvfx_attributeVelocityY, 0) == 0.0 && Queries(&scene, &queries) == 0,
+    CHECK((double)At(&scene, 0).velocity[1] == 0.0 && Queries(&scene, &queries) == 0,
           "at rest, no query");
     for (int32_t s = 0; s < 5; ++s)
     {
         Step(&scene, MVFX_TICKS_PER_SECOND / 4);
     }
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 0.0, 1e-4), "resting on its plane");
+    CHECK(Near((double)At(&scene, 0).position[1], 0.0, 1e-4), "resting on its plane");
     mvfxDestroyContext(scene.context);
 
     // Two queries a step: three of five moving particles dropped, and one
@@ -207,10 +214,21 @@ static void TestBirthInPlace(void)
     Step(&scene, MVFX_TICKS_PER_SECOND);
     Place(&scene, 0, 1, 0, 0, -4, 0);
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(scene.live->emitters[0].count == 1 &&
-              Near(At(&scene, mvfx_attributePositionY, 0), -3.0, 1e-3),
+    TestParticle particles[2];
+    CHECK(ReadParticles(scene.context, scene.instance, 0, particles, 2) == 1 &&
+              Near((double)At(&scene, 0).position[1], -3.0, 1e-3),
           "born in its slot without its plane");
     mvfxDestroyContext(scene.context);
+}
+
+// Keeps the anchor a step's host modules see.
+static void SeeAnchor(const mvfxModuleCall* call, void* user)
+{
+    double* anchor = user;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        anchor[k] = call->anchor[k];
+    }
 }
 
 static void TestSpaces(void)
@@ -237,21 +255,31 @@ static void TestSpaces(void)
           "mapped into the world");
     // The world's plane x = 999.5 facing -X is the emitter's y = 0.25 up;
     // the particle's radius of 0.25 in its own space keeps it to y = 0.5,
-    // met halfway down from 1 and back up to 1.
+    // met halfway down from 1 and back up to 1: the world's x = 998 again,
+    // moving 2 along -X.
     mvfxSceneAnswer answer = {.hit = true, .point = {999.5, 0, 0}, .normal = {-1, 0, 0}};
     CHECK(mvfxInstance_AnswerSceneQueries(scene.context, scene.instance, 0, &answer, 1) ==
               mvfx_success,
           "answered");
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 1.0, 1e-3) &&
-              Near(At(&scene, mvfx_attributeVelocityY, 0), 1.0, 1e-5),
+    TestParticle particle = {0};
+    CHECK(ReadParticlesFrom(scene.context, scene.instance, 0, origin, &particle, 1) == 1 &&
+              Near((double)particle.position[0], -2.0, 2e-3) &&
+              Near((double)particle.position[1], 0.0, 1e-4) &&
+              Near((double)particle.velocity[0], -2.0, 2e-5) &&
+              Near((double)particle.velocity[1], 0.0, 1e-5),
           "the answer mapped back");
     mvfxDestroyContext(scene.context);
 
     // A world emitter's planes move with its rebase: its instance jumps
     // 5000 up, its anchor follows, and the particle still meets the
     // world's y = 0.
+    static double anchor[3];
+    const mvfxHostModule seeing = {
+        .stage = mvfx_stageAfterMotion, .function = SeeAnchor, .user = anchor};
     emitter = Asking(4);
+    emitter.hostModules = &seeing;
+    emitter.hostModuleCount = 1;
     scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -1, 0);
     Step(&scene, 1);
@@ -263,10 +291,10 @@ static void TestSpaces(void)
           "jumped");
     Step(&scene, MVFX_TICKS_PER_SECOND);
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(scene.live->emitters[0].anchor[1] == 5000.0, "rebased");
+    CHECK(anchor[1] == 5000.0, "rebased");
     // The hair it is left off the plane by grows with its place's size,
     // 5000 here.
-    CHECK(Near(At(&scene, mvfx_attributePositionY, 0), 1.0 - 5000.0, 1e-2), "still met the plane");
+    CHECK(Near((double)At(&scene, 0).position[1], 1.0, 1e-2), "still met the plane");
     mvfxDestroyContext(scene.context);
 }
 
@@ -285,7 +313,7 @@ static void TestAxesAndMotion(void)
               mvfx_success,
           "answered");
     Step(&scene, MVFX_TICKS_PER_SECOND);
-    CHECK(Near(At(&scene, mvfx_attributePositionZ, 0), -1.0, 1e-3), "a plane facing along Z");
+    CHECK(Near((double)At(&scene, 0).position[2], -1.0, 1e-3), "a plane facing along Z");
     // Unanswered, the next step writes its one query again, not two.
     Step(&scene, 1);
     CHECK(Queries(&scene, &queries) == 1, "written anew");

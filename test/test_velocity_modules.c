@@ -7,8 +7,7 @@
 // alike over one step or many, the modules under a turned, scaled
 // instance, and the refusals.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -19,7 +18,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -36,7 +34,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -68,9 +65,12 @@ static void Run(Scene* scene, int32_t steps, int64_t total)
     }
 }
 
-static float At(const Scene* scene, mvfxAttribute attribute)
+// The first particle.
+static TestParticle First(const Scene* scene)
 {
-    return ((const float*)mvfxAttributeArray(scene->live, 0, attribute))[0];
+    TestParticle particle = {0};
+    CHECK(ReadParticles(scene->context, scene->instance, 0, &particle, 1) >= 1, "the particle");
+    return particle;
 }
 
 static bool Near(float a, double b, double tolerance)
@@ -91,10 +91,9 @@ static void TestSetAndScale(void)
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 0, 0, 10, 0, 0);
     Run(&scene, 8, MVFX_TICKS_PER_SECOND / 2);
-    CHECK(Near(At(&scene, mvfx_attributePositionX), 0.0, 1e-6) &&
-              Near(At(&scene, mvfx_attributePositionY), 1.0, 1e-5),
+    CHECK(Near(First(&scene).position[0], 0.0, 1e-6) && Near(First(&scene).position[1], 1.0, 1e-5),
           "set: moved by the added velocity alone");
-    CHECK(Near(At(&scene, mvfx_attributeVelocityX), 10.0 - 9.75 * 0.5, 1e-4),
+    CHECK(Near(First(&scene).velocity[0], 10.0 - 9.75 * 0.5, 1e-4),
           "its velocity still integrated");
     mvfxDestroyContext(scene.context);
 
@@ -104,7 +103,7 @@ static void TestSetAndScale(void)
     scene = NewScene(&emitter);
     Place(&scene, 1, 0, 0, 4, 0, 0);
     Run(&scene, 4, MVFX_TICKS_PER_SECOND / 2);
-    CHECK(Near(At(&scene, mvfx_attributePositionX), 2.0, 1e-5), "half its motion");
+    CHECK(Near(First(&scene).position[0], 2.0, 1e-5), "half its motion");
     mvfxDestroyContext(scene.context);
 
     // An added speed rising linearly over the life, 0 to 3: over the whole
@@ -122,7 +121,7 @@ static void TestSetAndScale(void)
     Run(&scene, 1024, MVFX_TICKS_PER_SECOND);
     // After half its life: the speed at age a is 3 a, a = t / 2, so the
     // distance is 3 t^2 / 4 = 0.75, less half a step's share.
-    CHECK(Near(At(&scene, mvfx_attributePositionZ), 0.75, 2e-3), "an added speed over age");
+    CHECK(Near(First(&scene).position[2], 0.75, 2e-3), "an added speed over age");
     mvfxDestroyContext(scene.context);
 }
 
@@ -141,8 +140,8 @@ static void TestOrbitAndRadial(void)
         Scene scene = NewScene(&emitter);
         Place(&scene, 3, 0, 0, 0, 0, 0);
         Run(&scene, steps, MVFX_TICKS_PER_SECOND);
-        float x = At(&scene, mvfx_attributePositionX);
-        float y = At(&scene, mvfx_attributePositionY);
+        float x = First(&scene).position[0];
+        float y = First(&scene).position[1];
         CHECK(Near(x, -1.0, 2e-5) && Near(y, 0.0, 2e-5), "half a turn");
         mvfxDestroyContext(scene.context);
     }
@@ -153,13 +152,12 @@ static void TestOrbitAndRadial(void)
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, 0, 0);
     Run(&scene, 10, MVFX_TICKS_PER_SECOND / 2);
-    CHECK(Near(At(&scene, mvfx_attributePositionY), 2.5, 1e-4), "away from the center");
+    CHECK(Near(First(&scene).position[1], 2.5, 1e-4), "away from the center");
     mvfxDestroyContext(scene.context);
     scene = NewScene(&emitter);
     Place(&scene, 0, 0, 0, 0, 0, 0);
     Run(&scene, 2, MVFX_TICKS_PER_SECOND / 4);
-    CHECK(At(&scene, mvfx_attributePositionX) == 0.0f &&
-              At(&scene, mvfx_attributePositionY) == 0.0f,
+    CHECK(First(&scene).position[0] == 0.0f && First(&scene).position[1] == 0.0f,
           "none at the center");
     mvfxDestroyContext(scene.context);
 }
@@ -178,8 +176,8 @@ static void TestSpeedLimit(void)
         Place(&scene, 0, 0, 0, 6, 8, 0);
         Run(&scene, steps, MVFX_TICKS_PER_SECOND / 2);
         double speed = 4.0 + 6.0 * exp(-1.0);
-        CHECK(Near(At(&scene, mvfx_attributeVelocityX), 0.6 * speed, 1e-5) &&
-                  Near(At(&scene, mvfx_attributeVelocityY), 0.8 * speed, 1e-5),
+        CHECK(Near(First(&scene).velocity[0], 0.6 * speed, 1e-5) &&
+                  Near(First(&scene).velocity[1], 0.8 * speed, 1e-5),
               "the excess decays, alike over the steps");
         mvfxDestroyContext(scene.context);
     }
@@ -190,7 +188,7 @@ static void TestSpeedLimit(void)
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 0, 0, 3, 0, 0);
     Run(&scene, 4, MVFX_TICKS_PER_SECOND / 2);
-    CHECK(At(&scene, mvfx_attributeVelocityX) == 3.0f, "under the limit, untouched");
+    CHECK(First(&scene).velocity[0] == 3.0f, "under the limit, untouched");
     mvfxDestroyContext(scene.context);
 }
 
@@ -211,10 +209,8 @@ static void TestUnderAnInstance(void)
           "placed");
     Place(&scene, 100, 0, 0, 0, 0, 0);
     Run(&scene, 2, MVFX_TICKS_PER_SECOND / 2);
-    // The anchor stays at the world's origin (the instance is nearer than
-    // the rebase distance), so places are the world's.
-    CHECK(Near(At(&scene, mvfx_attributePositionX), 100.0, 1e-5) &&
-              Near(At(&scene, mvfx_attributePositionY), 1.5, 1e-5),
+    CHECK(Near(First(&scene).position[0], 100.0, 1e-5) &&
+              Near(First(&scene).position[1], 1.5, 1e-5),
           "added along the turned, scaled axis");
     mvfxDestroyContext(scene.context);
 
@@ -230,8 +226,8 @@ static void TestUnderAnInstance(void)
     Run(&scene, 8, MVFX_TICKS_PER_SECOND);
     // From (100, 3, 0) about the center (100, 2, 0), half a turn: (100, 1,
     // 0).
-    CHECK(Near(At(&scene, mvfx_attributePositionX), 100.0, 2e-4) &&
-              Near(At(&scene, mvfx_attributePositionY), 1.0, 2e-4),
+    CHECK(Near(First(&scene).position[0], 100.0, 2e-4) &&
+              Near(First(&scene).position[1], 1.0, 2e-4),
           "about the mapped center");
     mvfxDestroyContext(scene.context);
 }
@@ -251,7 +247,7 @@ static void TestMoreUnderAnInstance(void)
           "placed");
     Place(&scene, 100, 0, 0, 10, 0, 0);
     Run(&scene, 1, MVFX_TICKS_PER_SECOND / 4);
-    CHECK(Near(At(&scene, mvfx_attributeVelocityX), 4.0, 1e-4), "the limit scaled");
+    CHECK(Near(First(&scene).velocity[0], 4.0, 1e-4), "the limit scaled");
     mvfxDestroyContext(scene.context);
 
     // Radial 1 a second from the emitter's (0, 1, 0), the world's
@@ -266,8 +262,8 @@ static void TestMoreUnderAnInstance(void)
           "placed");
     Place(&scene, 99, 0, 0, 0, 0, 0);
     Run(&scene, 2, MVFX_TICKS_PER_SECOND);
-    CHECK(Near(At(&scene, mvfx_attributePositionX), 101.0, 1e-4) &&
-              Near(At(&scene, mvfx_attributePositionY), 0.0, 1e-4),
+    CHECK(Near(First(&scene).position[0], 101.0, 1e-4) &&
+              Near(First(&scene).position[1], 0.0, 1e-4),
           "radial from the mapped center, scaled");
     mvfxDestroyContext(scene.context);
 
@@ -282,8 +278,8 @@ static void TestMoreUnderAnInstance(void)
           "placed");
     Place(&scene, 100, 0, 1, 0, 0, 0);
     Run(&scene, 4, MVFX_TICKS_PER_SECOND);
-    CHECK(Near(At(&scene, mvfx_attributePositionX), 101.0, 1e-4) &&
-              Near(At(&scene, mvfx_attributePositionZ), 0.0, 1e-4),
+    CHECK(Near(First(&scene).position[0], 101.0, 1e-4) &&
+              Near(First(&scene).position[2], 0.0, 1e-4),
           "about the mapped axis");
     mvfxDestroyContext(scene.context);
 
@@ -300,7 +296,7 @@ static void TestMoreUnderAnInstance(void)
     Place(&scene, 0, 0, 0, 4, 0, 0);
     Run(&scene, 1024, MVFX_TICKS_PER_SECOND);
     // Over the first second the scale falls 1 to 0.5: 4 times its mean.
-    CHECK(Near(At(&scene, mvfx_attributePositionX), 3.0, 5e-3), "a motion scale by its curve");
+    CHECK(Near(First(&scene).position[0], 3.0, 5e-3), "a motion scale by its curve");
     mvfxDestroyContext(scene.context);
 }
 

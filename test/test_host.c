@@ -4,22 +4,21 @@
 // Host spawns and prewarm: queued particles born first at the next step's
 // start with their given values and drawn ones, in world and local space,
 // the queue's limit, a full emitter, a stopped instance, restart, the
-// refusals; prewarm spread over calls reaching the state of the same
+// refusals; prewarm spread over calls reaching the particles of the same
 // steps taken at once, and its refusals.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
 
 #include <math.h>
+#include <string.h>
 
 typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -37,13 +36,15 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.seed = 5;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
-static const float* Array(const Scene* scene, mvfxAttribute attribute)
+// The emitter's particles, as the output writes them.
+static TestParticle s_particles[16];
+
+static int32_t Read(const Scene* scene)
 {
-    return mvfxAttributeArray(scene->live, 0, attribute);
+    return ReadParticles(scene->context, scene->instance, 0, s_particles, 16);
 }
 
 static mvfxEmitterStats Stats(const Scene* scene)
@@ -80,12 +81,14 @@ static void TestWorldSpawns(void)
     mvfxSpawnRequest drawn = {.count = 1, .positions = places};
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &drawn) == mvfx_success, "queued");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 16) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 7, "three of the host's and four of the rate's");
-    const uint32_t* serial = mvfxAttributeArray(scene.live, 0, mvfx_attributeSerial);
-    const uint32_t* birth = mvfxAttributeArray(scene.live, 0, mvfx_attributeBirthLow);
-    const double* anchor = scene.live->emitters[0].anchor;
-    bool first = serial[0] == 0 && serial[1] == 1 && serial[2] == 2 && birth[0] == 0 &&
-                 birth[2] == 0 && birth[3] > 0;
+    CHECK(Read(&scene) == 7, "three of the host's and four of the rate's");
+    const TestParticle* q = s_particles;
+    // Born at the step's start, the host's are a sixteenth of a second into
+    // their five; the rate's, born later, are younger.
+    float age = 1.0f / 16.0f / 5.0f;
+    bool first = q[0].serial == 0 && q[1].serial == 1 && q[2].serial == 2 &&
+                 fabsf(q[0].age - age) <= 1e-6f && fabsf(q[2].age - age) <= 1e-6f &&
+                 q[3].age < age - 1e-6f;
     CHECK(first, "the host's first, at the step's start");
     bool placed = true;
     for (int32_t i = 0; i < 3; ++i)
@@ -93,22 +96,20 @@ static void TestWorldSpawns(void)
         const double* p = &places[3 * (i < 2 ? i : 0)];
         // Born at the step's start, they flew the whole step since.
         double h = 1.0 / 16.0;
-        double x = (double)Array(&scene, mvfx_attributePositionX)[i] -
-                   (double)Array(&scene, mvfx_attributeVelocityX)[i] * h;
-        double y = (double)Array(&scene, mvfx_attributePositionY)[i] -
-                   (double)Array(&scene, mvfx_attributeVelocityY)[i] * h;
-        placed = placed && fabs(x + anchor[0] - p[0]) <= 1e-4 && fabs(y + anchor[1] - p[1]) <= 1e-4;
+        double x = (double)q[i].position[0] - (double)q[i].velocity[0] * h;
+        double y = (double)q[i].position[1] - (double)q[i].velocity[1] * h;
+        placed = placed && fabs(x - p[0]) <= 1e-4 && fabs(y - p[1]) <= 1e-4;
     }
     CHECK(placed, "where the host put them");
-    CHECK(Array(&scene, mvfx_attributeVelocityZ)[0] == 9.0f &&
-              Array(&scene, mvfx_attributeColorR)[0] == 1.0f &&
-              Array(&scene, mvfx_attributeColorG)[1] == 1.0f,
+    CHECK(q[0].velocity[2] == 9.0f && q[0].color[0] == 1.0f && q[1].color[1] == 1.0f,
           "given values kept");
-    CHECK(fabsf(Array(&scene, mvfx_attributeVelocityX)[2]) <= 1e-5f &&
-              fabsf(Array(&scene, mvfx_attributeVelocityY)[2] - 2.0f) <= 1e-5f &&
-              Array(&scene, mvfx_attributeColorR)[2] == 0.0f,
+    CHECK(fabsf(q[2].velocity[0]) <= 1e-5f && fabsf(q[2].velocity[1] - 2.0f) <= 1e-5f &&
+              q[2].color[0] == 0.0f,
           "drawn values turned with the instance");
-    CHECK(scene.live->emitters[0].hostCount == 0, "the queue emptied");
+    static const double eight[24] = {0};
+    mvfxSpawnRequest full = {.count = 8, .positions = eight};
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &full) == mvfx_success,
+          "the queue emptied: it takes its whole room again");
     mvfxDestroyContext(scene.context);
 }
 
@@ -133,11 +134,20 @@ static void TestDrawnFromCenterAndLocal(void)
         CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success,
               "queued");
         CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-        CHECK(scene.live->emitters[0].count == 1 &&
-                  fabsf(Array(&scene, mvfx_attributeVelocityY)[0] - 1.0f) <= 1e-6f &&
-                  fabsf(Array(&scene, mvfx_attributePositionY)[0] - 3.0f) <= 1e-6f,
+        CHECK(Read(&scene) == 1 && fabsf(s_particles[0].velocity[1] - 1.0f) <= 1e-6f &&
+                  fabsf(s_particles[0].position[1] - 3.0f) <= 1e-6f,
               "away from the instance, where it was put");
         mvfxDestroyContext(scene.context);
+    }
+}
+
+// Keeps the anchor a step's host modules see.
+static void SeeAnchor(const mvfxModuleCall* call, void* user)
+{
+    double* anchor = user;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        anchor[k] = call->anchor[k];
     }
 }
 
@@ -145,7 +155,12 @@ static void TestEdges(void)
 {
     // A rebased anchor, a moving instance's inherited velocity, a drawn
     // velocity at the instance's very center, given sizes.
+    static double anchor[3];
+    const mvfxHostModule seeing = {
+        .stage = mvfx_stageAfterMotion, .function = SeeAnchor, .user = anchor};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.hostModules = &seeing;
+    emitter.hostModuleCount = 1;
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
     emitter.inheritVelocity = 1.0f;
@@ -160,7 +175,6 @@ static void TestEdges(void)
               mvfx_success,
           "teleported");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].anchor[0] == 2000.0, "rebased");
     const double next[3] = {2004.0, 0.0, 0.0};
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, next, unturned, 1.0f, false) ==
               mvfx_success,
@@ -171,18 +185,19 @@ static void TestEdges(void)
     mvfxSpawnRequest request = {.count = 1, .positions = places, .sizes = sizes};
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "queued");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 1, "born");
-    CHECK(fabsf(Array(&scene, mvfx_attributePositionX)[0] -
-                0.5f * Array(&scene, mvfx_attributeVelocityX)[0]) <= 1e-5f,
-          "an offset from the moved anchor, then half a second's flight");
-    float vx = Array(&scene, mvfx_attributeVelocityX)[0] - 8.0f;
-    float vy = Array(&scene, mvfx_attributeVelocityY)[0];
-    float vz = Array(&scene, mvfx_attributeVelocityZ)[0];
+    // Rebased at the teleport, 4 units being short of the rebase distance.
+    CHECK(anchor[0] == 2000.0, "rebased");
+    CHECK(ReadParticlesFrom(scene.context, scene.instance, 0, places, s_particles, 16) == 1,
+          "born");
+    const TestParticle* q = s_particles;
+    CHECK(fabsf(q[0].position[0] - 0.5f * q[0].velocity[0]) <= 1e-5f,
+          "born where it was put, then half a second's flight");
+    float vx = q[0].velocity[0] - 8.0f;
+    float vy = q[0].velocity[1];
+    float vz = q[0].velocity[2];
     CHECK(fabsf(sqrtf(vx * vx + vy * vy + vz * vz) - 1.0f) <= 1e-5f,
           "any way at speed 1 from the center, plus the instance's 8 along X");
-    CHECK(Array(&scene, mvfx_attributeSizeX)[0] == 4.0f &&
-              Array(&scene, mvfx_attributeSizeZ)[0] == 6.0f,
-          "given sizes kept");
+    CHECK(q[0].size[0] == 4.0f && q[0].size[2] == 6.0f, "given sizes kept");
     mvfxDestroyContext(scene.context);
 
     // Along the shape's normal at the center: any way, at speed 1.
@@ -194,9 +209,10 @@ static void TestEdges(void)
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &atCenter) == mvfx_success,
           "queued");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    vx = Array(&scene, mvfx_attributeVelocityX)[0];
-    vy = Array(&scene, mvfx_attributeVelocityY)[0];
-    vz = Array(&scene, mvfx_attributeVelocityZ)[0];
+    CHECK(Read(&scene) == 1, "born");
+    vx = q[0].velocity[0];
+    vy = q[0].velocity[1];
+    vz = q[0].velocity[2];
     CHECK(fabsf(sqrtf(vx * vx + vy * vy + vz * vz) - 1.0f) <= 1e-5f,
           "a normal any way at the center");
     mvfxDestroyContext(scene.context);
@@ -229,8 +245,9 @@ static void TestQueueAndRoom(void)
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_success, "one");
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &two) == mvfx_errorCapacity,
           "past the queue's room");
-    CHECK(scene.live->emitters[0].hostCount == 1, "none of a refused request queued");
-    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_success, "one more");
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_success &&
+              mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_errorCapacity,
+          "none of a refused request queued: room for one more");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &two) == mvfx_success, "two");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
@@ -247,7 +264,8 @@ static void TestQueueAndRoom(void)
     CHECK(Stats(&scene).live == 1, "born while stopped");
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_success, "queued");
     CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success, "restart");
-    CHECK(scene.live->emitters[0].hostCount == 0, "a restart empties the queue");
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &two) == mvfx_success,
+          "a restart empties the queue");
 
     // Refusals.
     uint64_t misuse = mvfxGetContextMisuse(scene.context);
@@ -292,6 +310,22 @@ static void TestQueueAndRoom(void)
     mvfxDestroyContext(context);
 }
 
+// Whether two instances of one effect hold the same particles, record for
+// record, and the same counts.
+static bool SameParticles(const Scene* a, const Scene* b)
+{
+    static TestParticle first[64];
+    static TestParticle second[64];
+    int32_t count = ReadParticles(a->context, a->instance, 0, first, 64);
+    mvfxEmitterStats statsA = Stats(a);
+    mvfxEmitterStats statsB = Stats(b);
+    return count > 0 && count <= 64 &&
+           ReadParticles(b->context, b->instance, 0, second, 64) == count &&
+           memcmp(first, second, (size_t)count * sizeof first[0]) == 0 &&
+           statsA.owed == statsB.owed && statsA.refused == statsB.refused &&
+           statsA.killed == statsB.killed;
+}
+
 static void TestPrewarm(void)
 {
     // Three seconds in quarter-second steps, five a call, against the same
@@ -324,11 +358,12 @@ static void TestPrewarm(void)
         CHECK(mvfxContext_StepTicks(stepped.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success,
               "step");
     }
-    CHECK(mvfxHashInstance(warmed.live, 1) == mvfxHashInstance(stepped.live, 1),
-          "the same state as the steps taken at once");
+    CHECK(SameParticles(&warmed, &stepped), "the same particles as the steps taken at once");
     CHECK(mvfxInstance_Prewarm(warmed.context, warmed.instance, 0.1, 0.25, 1, NULL) == mvfx_success,
           "a short span, no out-parameter");
-    CHECK(warmed.live->clock == 3 * MVFX_TICKS_PER_SECOND + 104858, "the last step shorter");
+    // A tenth of a second rounds to 104,858 ticks.
+    CHECK(mvfxContext_StepTicks(stepped.context, 104858) == mvfx_success, "step");
+    CHECK(SameParticles(&warmed, &stepped), "the last step shorter, a tenth of a second");
 
     uint64_t misuse = mvfxGetContextMisuse(warmed.context);
     double out = 7.0;

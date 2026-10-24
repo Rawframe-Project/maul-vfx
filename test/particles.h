@@ -44,10 +44,12 @@ typedef struct TestParticle
      .components = (count),                                                                        \
      .offset = (uint32_t)offsetof(TestParticle, member)}
 
-// Writes up to capacity of an emitter's live particles into out and
-// returns how many it has; -1 when the output refuses.
-static int32_t ReadParticles(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                             TestParticle* out, int32_t capacity)
+// Writes up to capacity of an emitter's live particles into out, their
+// positions less origin (the world's origin when NULL, which keeps a
+// particle far from it to binary32's precision there), and returns how
+// many it has; -1 when the output refuses.
+static int32_t ReadParticlesFrom(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                 const double* origin, TestParticle* out, int32_t capacity)
 {
     static const mvfxLayoutField fields[] = {
         TEST_FIELD(position, mvfx_recordPosition, mvfx_formatFloat32, 3),
@@ -74,7 +76,12 @@ static int32_t ReadParticles(mvfxContext* context, mvfxInstanceId instance, int3
     {
         return -1;
     }
-    const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
+    mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
+    for (int32_t k = 0; origin != NULL && k < 3; ++k)
+    {
+        view.origin[k] = origin[k];
+        view.eye[k] = origin[k];
+    }
     int64_t scratchBytes = 0;
     void* scratch = NULL;
     int64_t count = 0;
@@ -86,6 +93,13 @@ static int32_t ReadParticles(mvfxContext* context, mvfxInstanceId instance, int3
     free(scratch);
     CHECK(mvfxDestroyLayout(context, layout) == mvfx_success, "the reading layout destroyed");
     return written ? (int32_t)count : -1;
+}
+
+// ReadParticlesFrom for a view at the world's origin.
+static int32_t ReadParticles(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                             TestParticle* out, int32_t capacity)
+{
+    return ReadParticlesFrom(context, instance, emitter, NULL, out, capacity);
 }
 
 #undef TEST_FIELD

@@ -6,14 +6,14 @@
 // their ticks, burst counts and chances by their statistics, rate curves
 // against their integrals, emitter states, stop, restart.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef struct Scene
 {
@@ -276,8 +276,9 @@ static void TestBurstCountsAndChances(void)
     mvfxDestroyContext(scene.context);
 
     // Firing 23,834,702 of this seed's first burst draws a chance of exactly
-    // 0 (found by a search): a chance of 0 still does not spawn. A second
-    // burst far ahead keeps the emitter from finishing.
+    // 0 (found by a search): a chance of 0 still does not spawn, stepped
+    // past it a second at a time. A second burst far ahead keeps the
+    // emitter from finishing.
     mvfxBurst zero[2] = {
         {.time = 0.0f,
          .minCount = 1,
@@ -290,13 +291,13 @@ static void TestBurstCountsAndChances(void)
     emitter.bursts = zero;
     emitter.burstCount = 2;
     scene = NewScene(&emitter);
-    mvfxInstance* zeroInstance = scene.context->instances.slots[scene.instance.index1 - 1].object;
-    const uint64_t zeroFiring = 23834702;
-    zeroInstance->emitters[0].bursts[0].firing = zeroFiring;
-    zeroInstance->clock = (int64_t)zeroFiring * 1024 - 1;
-    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
-    CHECK(zeroInstance->emitters[0].bursts[0].firing == zeroFiring + 1, "the firing was drawn");
-    CHECK(Stats(&scene).owed == 0, "a draw of exactly 0 against a chance of 0");
+    const int64_t zeroTick = 23834702LL * 1024;
+    bool stepped = true;
+    for (int64_t clock = 0; stepped && clock <= zeroTick; clock += MVFX_TICKS_PER_SECOND)
+    {
+        stepped = mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success;
+    }
+    CHECK(stepped && Stats(&scene).owed == 0, "a draw of exactly 0 against a chance of 0");
     mvfxDestroyContext(scene.context);
     emitter.bursts = &chance;
     emitter.burstCount = 1;
@@ -535,11 +536,25 @@ static void TestStop(void)
     mvfxDestroyContext(scene.context);
 }
 
+// FNV-1a of the particles' records and the emitter's counts.
 static uint64_t Hash(const Scene* scene)
 {
-    const mvfxInstance* instance =
-        scene->context->instances.slots[scene->instance.index1 - 1].object;
-    return mvfxHashInstance(instance, MVFX_HASH_INIT);
+    static TestParticle particles[40];
+    memset(particles, 0, sizeof particles);
+    int32_t count = ReadParticles(scene->context, scene->instance, 0, particles, 40);
+    mvfxEmitterStats stats = Stats(scene);
+    uint64_t counts[5] = {(uint64_t)count, stats.owed, stats.refused, stats.killed, stats.live};
+    uint64_t hash = 14695981039346656037u;
+    const unsigned char* bytes[2] = {(const unsigned char*)particles, (const unsigned char*)counts};
+    const size_t sizes[2] = {sizeof particles, sizeof counts};
+    for (int32_t part = 0; part < 2; ++part)
+    {
+        for (size_t b = 0; b < sizes[part]; ++b)
+        {
+            hash = (hash ^ bytes[part][b]) * 1099511628211u;
+        }
+    }
+    return hash;
 }
 
 static void TestRestartReplays(void)
@@ -588,7 +603,8 @@ static void TestRestartReplays(void)
 static void TestShapesThroughTheStep(void)
 {
     // A burst of 8 spread evenly on a ring of radius 2 lifted by 1, setting
-    // off outward at 3: particle k (in serial order) at k eighths of a turn.
+    // off outward at 3: particle k (in serial order) at k eighths of a turn,
+    // an eighth of a second's flight from it.
     mvfxBurst ring = {
         .time = 0.125f, .minCount = 8, .maxCount = 8, .cycles = 1, .probability = 1.0f};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -603,26 +619,23 @@ static void TestShapesThroughTheStep(void)
     emitter.velocity.speed = (mvfxRange){3.0f, 3.0f};
     Scene scene = NewScene(&emitter);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
-    const mvfxInstance* instance = scene.context->instances.slots[scene.instance.index1 - 1].object;
-    CHECK(instance->emitters[0].count == 8, "eight born");
-    const float* x = mvfxAttributeArray(instance, 0, mvfx_attributePositionX);
-    const float* y = mvfxAttributeArray(instance, 0, mvfx_attributePositionY);
-    const float* z = mvfxAttributeArray(instance, 0, mvfx_attributePositionZ);
-    const float* vx = mvfxAttributeArray(instance, 0, mvfx_attributeVelocityX);
-    const float* vy = mvfxAttributeArray(instance, 0, mvfx_attributeVelocityY);
-    const uint32_t* serial = mvfxAttributeArray(instance, 0, mvfx_attributeSerial);
-    const uint32_t* birth = mvfxAttributeArray(instance, 0, mvfx_attributeBirthLow);
+    TestParticle particles[9];
+    CHECK(ReadParticles(scene.context, scene.instance, 0, particles, 9) == 8, "eight born");
     bool spread = true;
     for (int32_t k = 0; k < 8; ++k)
     {
+        const TestParticle* p = &particles[k];
         double angle = 2.0 * 3.14159265358979323846 * k / 8.0;
         // Where each was born: its place less its flight since.
-        double age = (double)(instance->clock - (int64_t)birth[k]) / MVFX_TICKS_PER_SECOND;
-        spread = spread && serial[k] == (uint32_t)k &&
-                 fabs((double)x[k] - (double)vx[k] * age - 2.0 * cos(angle)) <= 1e-5 &&
-                 fabs((double)y[k] - (double)vy[k] * age - 2.0 * sin(angle)) <= 1e-5 &&
-                 z[k] == 1.0f && fabs((double)vx[k] - 3.0 * cos(angle)) <= 1e-5 &&
-                 fabs((double)vy[k] - 3.0 * sin(angle)) <= 1e-5;
+        double age = 0.125;
+        spread = spread && p->serial == (uint32_t)k &&
+                 fabs((double)p->position[0] - (double)p->velocity[0] * age - 2.0 * cos(angle)) <=
+                     1e-5 &&
+                 fabs((double)p->position[1] - (double)p->velocity[1] * age - 2.0 * sin(angle)) <=
+                     1e-5 &&
+                 p->position[2] == 1.0f &&
+                 fabs((double)p->velocity[0] - 3.0 * cos(angle)) <= 1e-5 &&
+                 fabs((double)p->velocity[1] - 3.0 * sin(angle)) <= 1e-5;
     }
     CHECK(spread, "spread evenly on the ring, outward at 3");
     mvfxDestroyContext(scene.context);

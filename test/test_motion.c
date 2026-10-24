@@ -3,11 +3,10 @@
 //
 // Moving instances: world and local space, turns and scales, teleports,
 // births by distance along the way (alike however the move is split),
-// the cap on a jump, inherited velocity, anchors that rebase without
-// moving a particle, restart, and the refusals.
+// the cap on a jump, inherited velocity, particles far from the world's
+// origin keeping their places and precision, restart, and the refusals.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -18,7 +17,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -36,7 +34,6 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.seed = 11;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -50,16 +47,34 @@ static void MoveTo(const Scene* scene, double x, double y, double z, bool telepo
           "moved");
 }
 
-static const float* Array(const Scene* scene, mvfxAttribute attribute)
+static TestParticle s_particles[256];
+
+// Reads the particles into s_particles, their places less origin (the
+// world's when NULL); returns how many there are.
+static int32_t ReadFrom(const Scene* scene, const double* origin)
 {
-    return mvfxAttributeArray(scene->live, 0, attribute);
+    return ReadParticlesFrom(scene->context, scene->instance, 0, origin, s_particles, 256);
+}
+
+static int32_t Read(const Scene* scene)
+{
+    return ReadFrom(scene, NULL);
+}
+
+static mvfxEmitterStats Stats(const Scene* scene)
+{
+    mvfxEmitterStats stats = {0};
+    CHECK(mvfxInstance_GetEmitterStats(scene->context, scene->instance, 0, &stats) == mvfx_success,
+          "stats");
+    return stats;
 }
 
 static void TestWorldAndLocal(void)
 {
     // 64 a second over a step moving 16 units along X: in world space each
     // birth is where the instance was at its tick (x = 16 times its share of
-    // the step), and stays there; in local space each is at the origin.
+    // the step), and stays there; in local space each is at its origin,
+    // with the instance at 16 at the step's end and carried with it.
     for (int32_t space = 0; space < 2; ++space)
     {
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -68,20 +83,21 @@ static void TestWorldAndLocal(void)
         Scene scene = NewScene(&emitter);
         MoveTo(&scene, 16.0, 0.0, 0.0, false);
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-        int32_t count = scene.live->emitters[0].count;
-        const float* x = Array(&scene, mvfx_attributePositionX);
+        int32_t count = Read(&scene);
         bool placed = count == 64;
         for (int32_t k = 0; k < count; ++k)
         {
-            float expected = space == mvfx_spaceWorld ? 16.0f * (float)(k + 1) / 64.0f : 0.0f;
-            placed = placed && fabsf(x[k] - expected) <= 1e-4f;
+            float expected = space == mvfx_spaceWorld ? 16.0f * (float)(k + 1) / 64.0f : 16.0f;
+            placed = placed && fabsf(s_particles[k].position[0] - expected) <= 1e-4f;
         }
         CHECK(placed, space == mvfx_spaceWorld ? "born along the way" : "born at the origin");
-        float first = x[0];
+        float first = s_particles[0].position[0];
         MoveTo(&scene, 40.0, 0.0, 0.0, false);
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success,
               "step");
-        CHECK(Array(&scene, mvfx_attributePositionX)[0] == first, "a particle stays put");
+        CHECK(Read(&scene) == 65 &&
+                  s_particles[0].position[0] == (space == mvfx_spaceWorld ? first : 40.0f),
+              space == mvfx_spaceWorld ? "a particle stays put" : "a particle carried along");
         mvfxDestroyContext(scene.context);
     }
 }
@@ -93,6 +109,8 @@ static void TestTurnAndScale(void)
     // 0).
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.shape.offset[0] = 1.0f;
+    emitter.events = mvfx_eventMaskBirth;
+    emitter.eventCapacity = 64;
     emitter.velocity =
         (mvfxVelocity){.mode = mvfx_directionFixed, .direction = {1, 0, 0}, .speed = {1.0f, 1.0f}};
     Scene scene = NewScene(&emitter);
@@ -102,18 +120,22 @@ static void TestTurnAndScale(void)
               mvfx_success,
           "teleported");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
-    bool turned = scene.live->emitters[0].count == 16;
-    const uint32_t* birth = mvfxAttributeArray(scene.live, 0, mvfx_attributeBirthLow);
-    for (int32_t k = 0; k < scene.live->emitters[0].count; ++k)
+    const mvfxEvent* births = NULL;
+    int32_t birthCount = 0;
+    CHECK(mvfxInstance_GetEvents(scene.context, scene.instance, 0, &births, &birthCount) ==
+              mvfx_success,
+          "births");
+    bool turned = Read(&scene) == 16 && birthCount == 16;
+    for (int32_t k = 0; turned && k < 16; ++k)
     {
+        const TestParticle* q = &s_particles[k];
         // Where each was born: its place less its flight since.
-        float age = (float)(scene.live->clock - (int64_t)birth[k]) / (float)MVFX_TICKS_PER_SECOND;
-        float y = Array(&scene, mvfx_attributePositionY)[k] -
-                  Array(&scene, mvfx_attributeVelocityY)[k] * age;
-        turned = turned && fabsf(Array(&scene, mvfx_attributePositionX)[k] - 5.0f) <= 1e-5f &&
-                 fabsf(y - 2.0f) <= 1e-5f &&
-                 fabsf(Array(&scene, mvfx_attributeVelocityX)[k]) <= 1e-5f &&
-                 fabsf(Array(&scene, mvfx_attributeVelocityY)[k] - 2.0f) <= 1e-5f;
+        CHECK(births[k].serial == q->serial, "its birth");
+        float age =
+            (float)(MVFX_TICKS_PER_SECOND / 4 - births[k].tick) / (float)MVFX_TICKS_PER_SECOND;
+        float y = q->position[1] - q->velocity[1] * age;
+        turned = fabsf(q->position[0] - 5.0f) <= 1e-5f && fabsf(y - 2.0f) <= 1e-5f &&
+                 fabsf(q->velocity[0]) <= 1e-5f && fabsf(q->velocity[1] - 2.0f) <= 1e-5f;
     }
     CHECK(turned, "turned and scaled; a teleport moves at once");
     mvfxDestroyContext(scene.context);
@@ -130,9 +152,9 @@ static void TestTurnAndScale(void)
               mvfx_success,
           "moved");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 2, "two born");
-    float x = Array(&scene, mvfx_attributePositionX)[0];
-    float y = Array(&scene, mvfx_attributePositionY)[0];
+    CHECK(Read(&scene) == 2, "two born");
+    float x = s_particles[0].position[0];
+    float y = s_particles[0].position[1];
     CHECK(fabsf(x - 2.0f * 0.70710678f) <= 1e-4f && fabsf(y - 2.0f * 0.70710678f) <= 1e-4f,
           "half way: an eighth of a turn at scale 2");
     mvfxDestroyContext(scene.context);
@@ -155,20 +177,22 @@ static void TestDistance(void)
     MoveTo(&split, 10.0, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(split.context, MVFX_TICKS_PER_SECOND - 314573) == mvfx_success,
           "step");
-    bool along = whole.live->emitters[0].count == 20 && split.live->emitters[0].count == 20;
+    TestParticle splitParticles[20];
+    bool along = ReadParticles(split.context, split.instance, 0, splitParticles, 20) == 20 &&
+                 Read(&whole) == 20;
     for (int32_t k = 0; k < 20 && along; ++k)
     {
-        float a = Array(&whole, mvfx_attributePositionX)[k];
-        float b = Array(&split, mvfx_attributePositionX)[k];
+        float a = s_particles[k].position[0];
+        float b = splitParticles[k].position[0];
         along = fabsf(a - 0.5f * (float)(k + 1)) <= 1e-4f && fabsf(a - b) <= 1e-4f;
     }
     CHECK(along, "born along the way, alike when the move is split");
     MoveTo(&whole, 10.0, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(whole.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(whole.live->emitters[0].count == 20, "standing still spawns nothing");
+    CHECK(Read(&whole) == 20, "standing still spawns nothing");
     MoveTo(&whole, 100.0, 0.0, 0.0, true);
     CHECK(mvfxContext_StepTicks(whole.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(whole.live->emitters[0].count == 20, "a teleport spawns nothing");
+    CHECK(Read(&whole) == 20, "a teleport spawns nothing");
     mvfxDestroyContext(whole.context);
     mvfxDestroyContext(split.context);
 
@@ -182,9 +206,8 @@ static void TestDistance(void)
         CHECK(mvfxContext_StepTicks(carried.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success,
               "step");
     }
-    CHECK(carried.live->emitters[0].count == 2 &&
-              fabsf(Array(&carried, mvfx_attributePositionX)[0] - 1.0f) <= 1e-4f &&
-              fabsf(Array(&carried, mvfx_attributePositionX)[1] - 2.0f) <= 1e-4f,
+    CHECK(Read(&carried) == 2 && fabsf(s_particles[0].position[0] - 1.0f) <= 1e-4f &&
+              fabsf(s_particles[1].position[0] - 2.0f) <= 1e-4f,
           "fractions carried across steps");
     mvfxDestroyContext(carried.context);
     emitter.ratePerDistance = 2.0f;
@@ -198,7 +221,7 @@ static void TestDistance(void)
     CHECK(mvfxInstance_GetEmitterStats(delayed.context, delayed.instance, 0, &stats) ==
               mvfx_success,
           "stats");
-    CHECK(stats.owed == 10 && Array(&delayed, mvfx_attributePositionX)[0] > 5.0f,
+    CHECK(stats.owed == 10 && Read(&delayed) == 10 && s_particles[0].position[0] > 5.0f,
           "only the second half of the way");
     mvfxDestroyContext(delayed.context);
 
@@ -215,7 +238,8 @@ static void TestDistance(void)
     CHECK(mvfxInstance_GetEmitterStats(jump.context, jump.instance, 0, &stats) == mvfx_success,
           "stats");
     CHECK(stats.owed == 100 && stats.refused == 92 && stats.live == 8, "the excess refused");
-    CHECK(fabsf(Array(&jump, mvfx_attributePositionX)[0] - 93.0f) <= 1e-3f, "the last eight born");
+    CHECK(Read(&jump) == 8 && fabsf(s_particles[0].position[0] - 93.0f) <= 1e-3f,
+          "the last eight born");
     mvfxDestroyContext(jump.context);
 }
 
@@ -245,7 +269,6 @@ static void TestHugeJumps(void)
         CHECK(stats.live == (delayed != 0 ? 0 : 8) && stats.refused >= ((uint64_t)1 << 62u) &&
                   stats.refused <= stats.owed,
               "the capacity taken, the rest refused");
-        CHECK(scene.live->emitters[0].distanceCarry == 0.0, "no carry after such a jump");
         uint64_t owed = stats.owed;
         // Back across: a second jump's refusals would wrap the counts.
         MoveTo(&scene, -0x1p52, -0x1p52, -0x1p52, false);
@@ -268,54 +291,91 @@ static void TestInheritedVelocity(void)
     Scene scene = NewScene(&emitter);
     MoveTo(&scene, 0.0, 4.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
-    bool inherited = scene.live->emitters[0].count == 32;
-    for (int32_t k = 0; k < scene.live->emitters[0].count; ++k)
+    int32_t count = Read(&scene);
+    bool inherited = count == 32;
+    for (int32_t k = 0; k < count; ++k)
     {
-        inherited = inherited && Array(&scene, mvfx_attributeVelocityY)[k] == 4.0f &&
-                    Array(&scene, mvfx_attributeVelocityX)[k] == 0.0f;
+        inherited =
+            inherited && s_particles[k].velocity[1] == 4.0f && s_particles[k].velocity[0] == 0.0f;
     }
     CHECK(inherited, "half the instance's velocity");
     MoveTo(&scene, 0.0, 100.0, 0.0, true);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success, "step");
-    CHECK(Array(&scene, mvfx_attributeVelocityY)[32] == 0.0f, "a teleport has no velocity");
+    CHECK(Read(&scene) == 33 && s_particles[32].velocity[1] == 0.0f, "a teleport has no velocity");
     mvfxDestroyContext(scene.context);
+}
+
+// Keeps the anchor a step's host modules see.
+static void SeeAnchor(const mvfxModuleCall* call, void* user)
+{
+    double* anchor = user;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        anchor[k] = call->anchor[k];
+    }
 }
 
 static void TestRebase(void)
 {
     // Far along X in steps: the anchor follows past the rebase distance,
-    // and every particle keeps its place in the world.
+    // every particle keeps its place in the world, to binary32's precision
+    // near it, and new births are where the instance is.
+    static double anchor[3];
+    const mvfxHostModule seeing = {
+        .stage = mvfx_stageAfterMotion, .function = SeeAnchor, .user = anchor};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
     emitter.capacity = 4096;
+    emitter.hostModules = &seeing;
+    emitter.hostModuleCount = 1;
     Scene scene = NewScene(&emitter);
-    double places[64];
+    static const double near[3] = {600.0, 0.0, 0.0};
+    static const double far[3] = {1100.0, 0.0, 0.0};
+    float places[64];
     MoveTo(&scene, 600.0, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].anchor[0] == 0.0, "not yet rebased");
+    CHECK(anchor[0] == 0.0, "not yet rebased");
+    CHECK(ReadFrom(&scene, near) == 64, "a second's births");
     for (int32_t k = 0; k < 64; ++k)
     {
-        places[k] =
-            scene.live->emitters[0].anchor[0] + (double)Array(&scene, mvfx_attributePositionX)[k];
+        places[k] = s_particles[k].position[0];
     }
     MoveTo(&scene, 1100.0, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].anchor[0] == 1100.0, "rebased to the instance");
-    bool kept = true;
+    CHECK(anchor[0] == 1100.0, "rebased to the instance");
+    bool kept = ReadFrom(&scene, near) == 128;
     for (int32_t k = 0; k < 64; ++k)
     {
-        double place =
-            scene.live->emitters[0].anchor[0] + (double)Array(&scene, mvfx_attributePositionX)[k];
-        kept = kept && fabs(place - places[k]) <= 1e-4;
+        kept = kept && fabsf(s_particles[k].position[0] - places[k]) <= 1e-4f;
     }
     CHECK(kept, "every particle keeps its place");
-    CHECK(fabsf(Array(&scene, mvfx_attributePositionX)[127]) <= 1e-3f,
-          "new births near the anchor");
+    CHECK(ReadFrom(&scene, far) == 128 && fabsf(s_particles[127].position[0]) <= 1e-3f,
+          "new births at the instance");
 
+    // A restart plays from where the instance is: a birth there.
     CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success, "restart");
-    CHECK(scene.live->emitters[0].anchor[0] == 1100.0 && scene.live->stepDistance == 0.0 &&
-              scene.live->emitters[0].distanceCarry == 0.0,
-          "a restart anchors where the instance is, with no travel");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success, "step");
+    CHECK(anchor[0] == 1100.0, "a restart anchors where the instance is");
+    CHECK(ReadFrom(&scene, far) == 1 && fabsf(s_particles[0].position[0]) <= 1e-4f,
+          "a restart where the instance is");
+    mvfxDestroyContext(scene.context);
+
+    // A restart carries no fraction of the way before it: half a unit,
+    // a restart, then three quarters owe nothing.
+    emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.capacity = 8;
+    emitter.ratePerDistance = 1.0f;
+    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    scene = NewScene(&emitter);
+    MoveTo(&scene, 0.5, 0.0, 0.0, false);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
+    CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success, "restart");
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
+    CHECK(Stats(&scene).owed == 0, "no travel standing still");
+    MoveTo(&scene, 1.25, 0.0, 0.0, false);
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
+    CHECK(Stats(&scene).owed == 0, "no carry from before it");
     mvfxDestroyContext(scene.context);
 }
 
