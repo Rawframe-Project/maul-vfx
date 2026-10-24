@@ -7,33 +7,27 @@
 // capacity does not bind, by distance too, past 32 bits of serials and
 // ticks; a held throttle's steps gathered in one plan; the anchors before
 // and after; the plan's room at one tick and in a plan; finishing at the
-// latest death; clears; the forces and colliders resolved as the CPU
-// path resolves them; a beam's strikes; and the refusals. The CPU twin is
-// read as a host reads it: its births and deaths as events, its
-// particles' birth ticks, serials and inverse lives by a host module after
-// motion (peek.h), its live count from its statistics. A beam's strike
-// counter is compared in test_plan_internal.c.
+// latest death; clears; the forces, colliders, velocity modules, kill
+// rules and depth image resolved for each step, against binary64 oracles
+// of their meaning in plan.h; a beam's strikes; and the refusals. The
+// CPU twin is read as a host reads it: its births and deaths as events,
+// its particles' birth ticks, serials and inverse lives by a host module
+// after motion (peek.h), its live count from its statistics. A beam's
+// strike counter is compared in test_plan_internal.c.
 
 #define PEEK_MOST 4096
 
-#include "collide.h"
-#include "context.h"
-#include "depth.h"
-#include "direction.h"
-#include "force.h"
-#include "instance.h"
-#include "instance_api.h"
-#include "kill.h"
-#include "noise.h"
 #include "particles.h"
 #include "peek.h"
 #include "test_harness.h"
 #include "test_hooks.h"
-#include "velocity_modules.h"
 
+#include "maul-vfx/grid.h"
+#include "maul-vfx/instance.h"
 #include "maul-vfx/plan.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 // Plans and views are held in static storage where a test reads one: the
@@ -105,6 +99,9 @@ typedef struct Held
 
 static Held s_held[4096];
 static int32_t s_heldCount;
+// The steps whose particles SameAsHeld compared one by one (where the
+// peek saw any), so a twin cannot pass without them.
+static int32_t s_compared;
 // Every birth gathered since the twins were made, to find by serial.
 static Held s_all[16384];
 static int32_t s_allCount;
@@ -221,6 +218,7 @@ static bool SameAsHeld(mvfxContext* context, mvfxInstanceId cpu, int64_t start, 
                DeathOracle(birth, inverseLife) == s_held[alive].death;
         alive += 1;
     }
+    s_compared += alive > 0 ? 1 : 0;
     // Those the peek did not see were born in the step after its motion
     // (a beam's strikes).
     for (int32_t i = alive; same && i < s_heldCount; ++i)
@@ -252,8 +250,9 @@ static bool BatchesWhole(const mvfxEmitterPlan* plan)
 }
 
 // Steps a CPU instance and a planned one side by side, the plans gathered
-// and compared with the CPU path's particles after each step.
-static void Compare(mvfxOffscreen offscreen, const char* what)
+// and compared with the CPU path's particles after each step, one by one
+// on the given count of steps.
+static void Compare(mvfxOffscreen offscreen, int32_t compared, const char* what)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
@@ -271,6 +270,7 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
     }
     s_heldCount = 0;
     s_allCount = 0;
+    s_compared = 0;
     bool same = true;
     int64_t planned_ticks = 0;
     int32_t births = 0;
@@ -295,15 +295,18 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
         same = same && a.owed == b.owed && b.live == 0 && a.status == b.status;
     }
     CHECK(same && births > 0 && planned_ticks == s_peeked.endTick, what);
+    CHECK(s_compared == compared, "the particles compared every step they should be");
     mvfxDestroyContext(context);
 }
 
 static void TestBirths(void)
 {
-    Compare(mvfx_offscreenSimulate, "the CPU path's particles, stepped every step");
+    Compare(mvfx_offscreenSimulate, STEPS, "the CPU path's particles, stepped every step");
     // Unseen and throttled to every third step: two steps hold their ticks
     // with empty plans, the third plans all three.
-    Compare(mvfx_offscreenThrottle, "the CPU path's particles, throttled");
+    // Compared every step but the first, which the twin holds before its
+    // first peek.
+    Compare(mvfx_offscreenThrottle, STEPS - 1, "the CPU path's particles, throttled");
 }
 
 static void TestRoom(void)
@@ -510,6 +513,7 @@ static void TestAnchors(void)
     static const float unturned[4] = {0, 0, 0, 1};
     s_heldCount = 0;
     s_allCount = 0;
+    s_compared = 0;
     bool same = true;
     // The CPU twin's anchor before each step: its instance's place at
     // first, then where its last peek saw it.
@@ -548,6 +552,7 @@ static void TestAnchors(void)
     // distance.
     CHECK(same && s_peeked.anchor[0] > 1000.0 && s_heldCount > 180,
           "the CPU path's places, anchors and births by distance");
+    CHECK(s_compared == 12, "the particles compared every step");
     mvfxDestroyContext(context);
 }
 
@@ -568,6 +573,7 @@ static void TestHighWords(void)
           "owed near 2^32");
     s_heldCount = 0;
     s_allCount = 0;
+    s_compared = 0;
     bool same = true;
     for (int32_t s = 0; s < 6; ++s)
     {
@@ -584,6 +590,7 @@ static void TestHighWords(void)
                    s_held[i].death - s_held[i].birth > (1ll << 32);
     }
     CHECK(same && numbered, "serials and deaths past 32 bits");
+    CHECK(s_compared == 6, "the particles compared every step");
     mvfxDestroyContext(context);
 }
 
@@ -842,6 +849,7 @@ static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, 
     mvfxInstanceId planned = Instance(context, Effect(context, emitter), true);
     s_heldCount = 0;
     s_allCount = 0;
+    s_compared = 0;
     bool same = true;
     int32_t births = 0;
     for (int32_t s = 0; same && s < stepCount; ++s)
@@ -869,7 +877,9 @@ static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, 
                a.status == b.status;
     }
     mvfxDestroyContext(context);
-    return same ? births : -1;
+    // Strikes living less than a step are gone before a peek; at least one
+    // step's must have been compared one by one.
+    return same && s_compared > 0 ? births : -1;
 }
 
 // A planned beam's strikes are the stepped one's: their ticks, serials and
@@ -1154,74 +1164,249 @@ static void TestView(void)
     mvfxDestroyContext(context);
 }
 
-// A planned force as the CPU path's resolved one, field by field.
-static bool SameForce(const mvfxPlannedForce* p, const mvfxResolvedForce* r)
+// The oracles of a plan's resolved parts, in binary64. plan.h gives each
+// in the particles' space, resolved for the plan's step: forces
+// (mvfxPlannedForce) with lengths scaled, points and vectors mapped and
+// the strength taken from its parameter; colliders (mvfxPlannedCollider)
+// grown by the particles' radius; kill rules (mvfxPlannedKillRule) with
+// their least age in ticks rounded up; velocity modules
+// (mvfxPlannedModules); and the depth image (mvfxPlannedDepth). effect.h
+// takes forces where the particles are at the step's start, so the
+// instance is the plan's from; a world-space emitter's particles are
+// offsets from its anchor (docs/user/instances.md), a local one's in
+// its instance's space.
+
+// A map into the particles' space: x' = turn(sigma (x - before)) + after.
+typedef struct Frame
 {
-    bool same = p->kind == r->kind && p->falloff == r->falloff && p->fieldMode == r->fieldMode &&
-                p->sigma == r->map.sigma && p->rotation[3] == r->map.rotation[3] &&
-                p->strength == r->strength && p->softening == r->softening &&
-                p->killRadius == r->killRadius && p->pull == r->pull && p->radius == r->radius &&
-                p->cosine == r->cosine && p->exponent == r->exponent &&
-                p->tightness == r->tightness;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        same = same && p->vector[k] == r->vector[k] && p->point[k] == r->point[k] &&
-               p->center[k] == r->center[k] && p->axis[k] == r->axis[k];
-    }
-    return same;
+    double before[3];
+    double after[3];
+    double rotation[4];
+    double sigma;
+} Frame;
+
+static void Turn(const double q[4], const double v[3], double out[3])
+{
+    double t[3] = {2.0 * (q[1] * v[2] - q[2] * v[1]), 2.0 * (q[2] * v[0] - q[0] * v[2]),
+                   2.0 * (q[0] * v[1] - q[1] * v[0])};
+    out[0] = v[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]);
+    out[1] = v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]);
+    out[2] = v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0]);
 }
 
-// Whether a turbulence's planned octaves give a place's lattice cells
-// and fractions as the CPU path takes them: the place mapped back in
-// binary32 and added, times each frequency, to the split coordinate.
-static bool SameLattice(const mvfxPlannedForce* p, const mvfxResolvedForce* r, double time)
+// The frame a space of an emitter maps by, with the instance at place and
+// a world-space emitter's anchor.
+static Frame FrameOf(const mvfxPlanPlace* place, bool worldEmitter, mvfxSimulationSpace space,
+                     const double anchor[3])
 {
-    bool same = p->octaves == r->source->noise.octaves && p->seed == r->seed;
-    const float* q = p->rotation;
-    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
-    for (int32_t i = 0; same && i < 27; ++i)
+    Frame f = {.rotation = {0, 0, 0, 1}, .sigma = 1.0};
+    const float* q = place->rotation;
+    if (worldEmitter && space == mvfx_spaceWorld)
     {
-        const float x[3] = {(float)(i % 3) - 1.0f, (float)(i / 3 % 3) * 0.7f - 0.7f,
-                            (float)(i / 9) * 1.3f - 1.3f};
-        float turned[3];
-        mvfxRotate(inverse, x, turned);
-        double place[3];
-        mvfxUnmapPoint(&r->map, x, place);
-        double frequency = (double)r->source->noise.frequency;
-        for (int32_t o = 0; o < p->octaves; ++o)
+        for (int32_t k = 0; k < 3; ++k)
         {
-            for (int32_t k = 0; k < 3; ++k)
-            {
-                float fraction;
-                double moved = place[k] + (double)r->source->noise.scroll[k] * time;
-                uint32_t cell = mvfxNoiseCell(moved * frequency, &fraction);
-                float s = p->fraction[o][k] + turned[k] / p->sigma * p->frequency[o];
-                float floor = floorf(s);
-                uint32_t gpuCell = p->cell[o][k] + (uint32_t)(int32_t)floor;
-                same = same && gpuCell == cell && fabsf((s - floor) - fraction) < 1e-4f;
-            }
-            frequency *= (double)r->source->noise.lacunarity;
+            f.after[k] = -anchor[k];
         }
     }
+    else if (worldEmitter)
+    {
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            f.rotation[k] = (double)q[k];
+        }
+        f.sigma = (double)place->scale;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            f.after[k] = place->origin[k] - anchor[k];
+        }
+    }
+    else if (space == mvfx_spaceWorld)
+    {
+        f.rotation[0] = -(double)q[0];
+        f.rotation[1] = -(double)q[1];
+        f.rotation[2] = -(double)q[2];
+        f.rotation[3] = (double)q[3];
+        f.sigma = 1.0 / (double)place->scale;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            f.before[k] = place->origin[k];
+        }
+    }
+    return f;
+}
+
+static void FramePoint(const Frame* f, const float p[3], double out[3])
+{
+    double local[3];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        local[k] = ((double)p[k] - f->before[k]) * f->sigma;
+    }
+    Turn(f->rotation, local, out);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] += f->after[k];
+    }
+}
+
+// A point of the particles' space mapped back by a frame's inverse.
+static void FrameBack(const Frame* f, const double p[3], double out[3])
+{
+    const double back[4] = {-f->rotation[0], -f->rotation[1], -f->rotation[2], f->rotation[3]};
+    double d[3] = {p[0] - f->after[0], p[1] - f->after[1], p[2] - f->after[2]};
+    double turned[3];
+    Turn(back, d, turned);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = turned[k] / f->sigma + f->before[k];
+    }
+}
+
+static void FrameVector(const Frame* f, const float v[3], double sigma, double out[3])
+{
+    const double scaled[3] = {(double)v[0] * sigma, (double)v[1] * sigma, (double)v[2] * sigma};
+    Turn(f->rotation, scaled, out);
+}
+
+// The frame's turn after a def's turn q.
+static void FrameTurn(const Frame* f, const float turn[4], double out[4])
+{
+    const double* a = f->rotation;
+    const double q[4] = {(double)turn[0], (double)turn[1], (double)turn[2], (double)turn[3]};
+    out[0] = a[3] * q[0] + a[0] * q[3] + a[1] * q[2] - a[2] * q[1];
+    out[1] = a[3] * q[1] - a[0] * q[2] + a[1] * q[3] + a[2] * q[0];
+    out[2] = a[3] * q[2] + a[0] * q[1] - a[1] * q[0] + a[2] * q[3];
+    out[3] = a[3] * q[3] - a[0] * q[0] - a[1] * q[1] - a[2] * q[2];
+}
+
+// Whether a binary32 result is a binary64 oracle's, to 1e-5 of its size.
+static bool Near(float got, double want)
+{
+    return fabs((double)got - want) <= 1e-5 * (1.0 + fabs(want));
+}
+
+static bool Near3(const float got[3], const double want[3])
+{
+    return Near(got[0], want[0]) && Near(got[1], want[1]) && Near(got[2], want[2]);
+}
+
+static bool Near4(const float got[4], const double want[4])
+{
+    return Near3(got, want) && Near(got[3], want[3]);
+}
+
+static void Normalized(const float v[3], double out[3])
+{
+    const double d[3] = {(double)v[0], (double)v[1], (double)v[2]};
+    double n = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = d[k] / n;
+    }
+}
+
+// Whether a planned force is a def's resolved by a frame with the given
+// parameter's x: its lengths scaled, its points and vectors mapped (the
+// vortex's axis and a falloff's axis turned, not scaled), an attractor's
+// and a vortex's strength scaled as accelerations, the strength from its
+// parameter held as effect.h says.
+static bool SameForce(const mvfxPlannedForce* p, const mvfxForce* def, const Frame* f,
+                      float parameter)
+{
+    double sigma = f->sigma;
+    double strength = (double)def->strength;
+    if (def->strengthFromParameter)
+    {
+        strength = fmin(fmax(strength * (double)parameter, -(double)MVFX_MAX_EXTENT),
+                        (double)MVFX_MAX_EXTENT);
+    }
+    bool accelerates = def->kind == mvfx_forceAttractor || def->kind == mvfx_forceVortex;
+    strength *= accelerates ? sigma : 1.0;
+    bool same = p->kind == def->kind && p->falloff == def->falloff.kind &&
+                p->fieldMode == def->fieldMode && Near(p->sigma, sigma) &&
+                Near(p->strength, strength) && Near(p->softening, (double)def->softening * sigma) &&
+                Near(p->killRadius, (double)def->killRadius * sigma) &&
+                Near(p->pull, (double)def->pull * sigma) &&
+                Near(p->radius, (double)def->falloff.radius * sigma) &&
+                p->exponent == def->falloff.exponent && p->tightness == def->tightness &&
+                Near4(p->rotation, f->rotation);
+    if (def->falloff.kind == mvfx_falloffCone)
+    {
+        same = same && Near(p->cosine, cos((double)def->falloff.angle));
+    }
+    double vector[3];
+    if (def->kind == mvfx_forceVortex)
+    {
+        double axis[3];
+        Normalized(def->vector, axis);
+        Turn(f->rotation, axis, vector);
+    }
+    else
+    {
+        FrameVector(f, def->vector, sigma, vector);
+    }
+    double point[3];
+    double center[3];
+    double axis[3] = {0, 0, 0};
+    FramePoint(f, def->point, point);
+    FramePoint(f, def->falloff.center, center);
+    if (def->falloff.kind == mvfx_falloffTube || def->falloff.kind == mvfx_falloffCone)
+    {
+        double unit[3];
+        Normalized(def->falloff.axis, unit);
+        Turn(f->rotation, unit, axis);
+    }
+    return same && Near3(p->vector, vector) && Near3(p->point, point) && Near3(p->center, center) &&
+           Near3(p->axis, axis);
+}
+
+// Whether a turbulence's planned octaves are its noise at the plan's
+// start: the particles' origin mapped back into the force's space,
+// scrolled for time, times each octave's frequency, split into a 32-bit
+// cell and a fraction (plan.h, mvfxPlannedForce).
+static bool SameLattice(const mvfxPlannedForce* p, const mvfxForce* def, const Frame* f,
+                        double time)
+{
+    static const double origin[3] = {0.0, 0.0, 0.0};
+    double place[3];
+    FrameBack(f, origin, place);
+    bool same = p->octaves == def->noise.octaves && p->gain == def->noise.gain;
+    double frequency = (double)def->noise.frequency;
+    for (int32_t o = 0; same && o < p->octaves; ++o)
+    {
+        same = Near(p->frequency[o], frequency);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double x = (place[k] + (double)def->noise.scroll[k] * time) * frequency;
+            double cell = floor(x);
+            same = same && p->cell[o][k] == (uint32_t)(int64_t)cell &&
+                   fabs((double)p->fraction[o][k] - (x - cell)) < 1e-4;
+        }
+        frequency *= (double)def->noise.lacunarity;
+    }
     return same;
 }
 
-// Whether a vector field's planned box is its def's, with the particles'
-// origin mapped back less its center.
-static bool SameBox(const mvfxPlannedForce* p, const mvfxResolvedForce* r)
+// Whether a vector field's planned box is its def's: the particles'
+// origin mapped back, less the box's center; its size, its turn (made a
+// unit quaternion) and its border.
+static bool SameBox(const mvfxPlannedForce* p, const mvfxForce* def, const Frame* f)
 {
-    static const float origin[3] = {0.0f, 0.0f, 0.0f};
+    static const double origin[3] = {0.0, 0.0, 0.0};
     double place[3];
-    mvfxUnmapPoint(&r->map, origin, place);
-    bool same = p->border == r->source->border;
+    FrameBack(f, origin, place);
+    const double q[4] = {(double)def->boxRotation[0], (double)def->boxRotation[1],
+                         (double)def->boxRotation[2], (double)def->boxRotation[3]};
+    double n = sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    bool same = p->border == def->border;
     for (int32_t k = 0; k < 3; ++k)
     {
-        same = same && p->boxOrigin[k] == (float)(place[k] - (double)r->source->point[k]) &&
-               p->boxSize[k] == r->source->boxSize[k];
+        same = same && Near(p->boxOrigin[k], place[k] - (double)def->point[k]) &&
+               p->boxSize[k] == def->boxSize[k];
     }
     for (int32_t k = 0; k < 4; ++k)
     {
-        same = same && p->boxRotation[k] == r->source->boxRotation[k];
+        same = same && Near(p->boxRotation[k], q[k] / n);
     }
     return same;
 }
@@ -1230,7 +1415,7 @@ static void TestForces(void)
 {
     // Forces of every kind the plan carries, in both spaces, a falloff, a
     // parameter's strength, under a moving, turning, growing instance: the
-    // plan's are the CPU instance's as resolved for each step.
+    // plan's are their defs resolved for each step.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1243,7 +1428,9 @@ static void TestForces(void)
     gridDef.values = values;
     mvfxGridId grid = {0};
     CHECK(mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success, "a grid");
-    mvfxForce forces[6] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
+    // The last, an attractor in the instance's space: its strength and
+    // lengths scale with the instance (a world one's do not).
+    mvfxForce forces[7] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
                            {.kind = mvfx_forceWind,
                             .space = mvfx_spaceLocal,
                             .vector = {0, 0, 3},
@@ -1283,10 +1470,16 @@ static void TestForces(void)
                             .grid = grid,
                             .boxSize = {4, 2, 3},
                             .boxRotation = {0, 0.6f, 0, 0.8f},
-                            .border = mvfx_borderRepeat}};
+                            .border = mvfx_borderRepeat},
+                           {.kind = mvfx_forceAttractor,
+                            .space = mvfx_spaceLocal,
+                            .point = {0, 1, 1},
+                            .strength = 3.0f,
+                            .softening = 0.25f,
+                            .killRadius = 0.05f}};
     mvfxEmitterDef emitter = Emitter(256);
     emitter.forces = forces;
-    emitter.forceCount = 6;
+    emitter.forceCount = 7;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
@@ -1295,15 +1488,24 @@ static void TestForces(void)
     def.parameterCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
-    mvfxInstanceId cpu = Instance(context, effect, false);
+    // A planned instance, and one of another seed, whose turbulence's seed
+    // differs as the noise's seedPerInstance asks.
     mvfxInstanceId planned = Instance(context, effect, true);
+    mvfxInstanceDef otherDef = mvfxDefaultInstanceDef();
+    otherDef.effect = effect;
+    otherDef.seed = 8;
+    otherDef.planned = true;
+    mvfxInstanceId other = {0};
+    CHECK(mvfxCreateInstance(context, &otherDef, &other) == mvfx_success, "another seed");
     bool same = true;
+    bool seeded = true;
+    uint32_t seed = 0;
     for (int32_t s = 0; s < 10 && same; ++s)
     {
         const double origin[3] = {1000.0 + 3.0 * s, 0.5 * s, -2.0};
         const float rotation[4] = {0.0f, sinf(0.05f * (float)s), 0.0f, cosf(0.05f * (float)s)};
         const float parameter[4] = {0.5f + 0.1f * (float)s, 0, 0, 0};
-        mvfxInstanceId both[2] = {cpu, planned};
+        mvfxInstanceId both[2] = {other, planned};
         for (int32_t i = 0; i < 2; ++i)
         {
             CHECK(mvfxInstance_SetTransform(context, both[i], origin, rotation,
@@ -1314,17 +1516,24 @@ static void TestForces(void)
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
-        const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
-        same = plan.forceCount == 6;
-        for (int32_t f = 0; same && f < 6; ++f)
+        same = plan.forceCount == 7;
+        Frame frames[7];
+        for (int32_t f = 0; same && f < 7; ++f)
         {
-            same = SameForce(&plan.forces[f], &state->forces[f]);
+            frames[f] = FrameOf(&plan.from, true, forces[f].space, plan.anchorAfter);
+            same = SameForce(&plan.forces[f], &forces[f], &frames[f], parameter[0]);
         }
         double time = (double)plan.start / (double)MVFX_TICKS_PER_SECOND;
-        same = same && SameLattice(&plan.forces[4], &state->forces[4], time) &&
-               SameBox(&plan.forces[5], &state->forces[5]);
+        same = same && SameLattice(&plan.forces[4], &forces[4], &frames[4], time) &&
+               SameBox(&plan.forces[5], &forces[5], &frames[5]);
+        static mvfxEmitterPlan otherPlan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, other, 0, &otherPlan) == mvfx_success,
+              "another plan");
+        seed = s == 0 ? plan.forces[4].seed : seed;
+        seeded = seeded && plan.forces[4].seed == seed && otherPlan.forces[4].seed != seed;
     }
-    CHECK(same, "the plan's forces are the CPU path's");
+    CHECK(same, "the plan's forces are their defs resolved for each step");
+    CHECK(seeded, "a turbulence's seed its instance's own, step after step");
     static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               view.forceKinds == 0x3Fu && view.forceGrids[5].index1 == grid.index1 &&
@@ -1335,19 +1544,43 @@ static void TestForces(void)
     mvfxDestroyContext(context);
 }
 
-// Whether a planned collider is the CPU path's resolved one.
-static bool SameCollider(const mvfxPlannedCollider* p, const mvfxResolvedCollider* r)
+// Whether a planned collider is a def resolved by a frame and grown by
+// the particles' radius (plan.h, mvfxPlannedCollider): a grid's keeps its
+// box, its values scaled by the frame's scale and kept off by the radius;
+// a plane moves out along its normal, a sphere outside grows and one
+// inside shrinks (never below 0), a box grows or shrinks on every axis.
+static bool SameCollider(const mvfxPlannedCollider* p, const mvfxCollider* def, bool hasGrid,
+                         const Frame* f, double radius)
 {
-    bool same = p->kind == r->kind && p->inside == r->inside && p->radius == r->radius &&
-                p->scale == r->scale && p->grow == r->grow;
+    double sigma = f->sigma;
+    double center[3];
+    double turn[4];
+    FramePoint(f, def->center, center);
+    FrameTurn(f, def->rotation, turn);
+    bool same = p->kind == def->kind && p->inside == def->inside && Near4(p->rotation, turn);
+    if (hasGrid)
+    {
+        same = same && Near3(p->center, center) && Near(p->scale, sigma) && Near(p->grow, radius) &&
+               p->radius == 0.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && Near(p->halfExtents[k], (double)def->halfExtents[k] * sigma);
+        }
+        return same;
+    }
+    double grow = def->inside ? -radius : radius;
+    double normal[3];
+    FrameVector(f, def->normal, 1.0, normal);
+    for (int32_t k = 0; def->kind == mvfx_colliderPlane && k < 3; ++k)
+    {
+        center[k] += radius * normal[k];
+    }
+    same = same && Near3(p->center, center) && Near3(p->normal, normal) &&
+           Near(p->radius, fmax((double)def->radius * sigma + grow, 0.0));
     for (int32_t k = 0; k < 3; ++k)
     {
-        same = same && p->center[k] == r->center[k] && p->normal[k] == r->normal[k] &&
-               p->halfExtents[k] == r->halfExtents[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        same = same && p->rotation[k] == r->rotation[k];
+        same =
+            same && Near(p->halfExtents[k], fmax((double)def->halfExtents[k] * sigma + grow, 0.0));
     }
     return same;
 }
@@ -1356,7 +1589,8 @@ static void TestColliders(void)
 {
     // A plane, an inside sphere and a turned box of its own in both spaces,
     // and two of the instance's, a radius, under a moving, turning, growing
-    // instance: the plan's colliders and response are the CPU instance's.
+    // instance: the plan's colliders and response are their defs resolved
+    // for each step.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1422,11 +1656,18 @@ static void TestColliders(void)
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
-        const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
-        same = plan.colliderCount == (s < 5 ? 6 : 5) && plan.colliderCount == state->colliderCount;
+        // The radius in the particles' space: the emitter's lengths scaled
+        // as its own space maps.
+        Frame local = FrameOf(&plan.from, true, mvfx_spaceLocal, plan.anchorAfter);
+        double radius = 0.05 * local.sigma;
+        same = plan.colliderCount == (s < 5 ? 6 : 5);
         for (int32_t c = 0; same && c < plan.colliderCount; ++c)
         {
-            same = SameCollider(&plan.colliders[c], &state->colliders[c]);
+            const mvfxCollider* def = c < 4 ? &own[c] : &hosts[c - 4];
+            Frame frame = FrameOf(&plan.from, true, def->space, plan.anchorAfter);
+            bool hasGrid =
+                def->kind == mvfx_colliderHeightfield || def->kind == mvfx_colliderDistance;
+            same = SameCollider(&plan.colliders[c], def, hasGrid, &frame, radius);
         }
         // The grids: the emitter's heightfield's, the instance's distance
         // grid's; none for a primitive.
@@ -1435,9 +1676,9 @@ static void TestColliders(void)
         // The rest speed scales as the instance did at the step's start.
         same = same && plan.restitution == 0.5f && plan.friction == 0.25f &&
                plan.lifeLoss == 0.1f && !plan.killOnCollision &&
-               plan.restSpeed == 0.2f * state->velocityModules.sigma;
+               Near(plan.restSpeed, 0.2 * local.sigma);
     }
-    CHECK(same, "the plan's colliders are the CPU path's");
+    CHECK(same, "the plan's colliders are their defs resolved for each step");
     static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               view.colliderKinds == 0xFu && view.colliderGrids[3].index1 == grid.index1 &&
@@ -1446,21 +1687,26 @@ static void TestColliders(void)
     mvfxDestroyContext(context);
 }
 
-// Whether a planned kill rule is a resolved one, its least age in ticks
-// rounded up.
-static bool SameKillRule(const mvfxPlannedKillRule* p, const mvfxResolvedKillRule* r,
-                         uint64_t ticks)
+// Whether a planned kill rule is a def resolved by a frame (plan.h,
+// mvfxPlannedKillRule): lengths and the speed scaled, points, normals and
+// turns mapped, its least age in ticks rounded up.
+static bool SameKillRule(const mvfxPlannedKillRule* p, const mvfxKillRule* def, const Frame* f)
 {
-    bool same = p->kind == r->kind && p->radius == r->radius && p->speed == r->speed &&
-                p->minimumAgeTicks == ticks && p->collisions == r->collisions;
+    double sigma = f->sigma;
+    double center[3];
+    double normal[3];
+    double turn[4];
+    FramePoint(f, def->center, center);
+    FrameVector(f, def->normal, 1.0, normal);
+    FrameTurn(f, def->rotation, turn);
+    double ticks = ceil((double)def->minimumAge * (double)MVFX_TICKS_PER_SECOND);
+    bool same = p->kind == def->kind && Near(p->radius, (double)def->radius * sigma) &&
+                Near(p->speed, (double)def->speed * sigma) &&
+                p->minimumAgeTicks == (uint64_t)ticks && p->collisions == def->collisions &&
+                Near3(p->center, center) && Near3(p->normal, normal) && Near4(p->rotation, turn);
     for (int32_t k = 0; k < 3; ++k)
     {
-        same = same && p->center[k] == r->center[k] && p->halfExtents[k] == r->halfExtents[k] &&
-               p->normal[k] == r->normal[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        same = same && p->rotation[k] == r->rotation[k];
+        same = same && Near(p->halfExtents[k], (double)def->halfExtents[k] * sigma);
     }
     return same;
 }
@@ -1468,10 +1714,11 @@ static bool SameKillRule(const mvfxPlannedKillRule* p, const mvfxResolvedKillRul
 static void TestModulesAndKills(void)
 {
     // A world-space emitter's velocity modules and kill rules under a
-    // moving, turning, growing instance: the plan's are the CPU instance's
-    // as resolved, each least age in ticks rounded up (a third of a second
-    // is not a whole tick; a quarter is); the view's modules are the
-    // compiled ones, a curve's samples where one is given.
+    // moving, turning, growing instance: the plan's are their defs
+    // resolved for each step (plan.h, mvfxPlannedModules and
+    // mvfxPlannedKillRule), each least age in ticks rounded up (a third of
+    // a second is not a whole tick; a quarter is); the view's modules are
+    // the compiled ones, a curve's samples where one is given.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1519,22 +1766,32 @@ static void TestModulesAndKills(void)
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
-        const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
-        const mvfxResolvedVelocityModules* m = &state->velocityModules;
-        same = plan.modules.sigma == m->sigma && plan.killRuleCount == 3;
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            same = same && plan.modules.addedDirection[k] == m->addedDirection[k] &&
-                   plan.modules.orbitAxis[k] == m->orbitAxis[k] &&
-                   plan.modules.orbitCenter[k] == m->orbitCenter[k] &&
-                   plan.modules.radialCenter[k] == m->radialCenter[k];
-        }
+        // The modules in the emitter's space, mapped into the particles'.
+        Frame local = FrameOf(&plan.from, true, mvfx_spaceLocal, plan.anchorAfter);
+        const mvfxVelocityModules* m = &emitter.velocityModules;
+        double direction[3];
+        double axis[3];
+        double orbit[3];
+        double radial[3];
+        // The added direction normalized (modules.h, mvfxVelocityModules).
+        double unit[3];
+        Normalized(m->addedDirection, unit);
+        Turn(local.rotation, unit, direction);
+        FrameVector(&local, m->orbitAxis, 1.0, axis);
+        FramePoint(&local, m->orbitCenter, orbit);
+        FramePoint(&local, m->radialCenter, radial);
+        same = Near(plan.modules.sigma, local.sigma) &&
+               Near3(plan.modules.addedDirection, direction) &&
+               Near3(plan.modules.orbitAxis, axis) && Near3(plan.modules.orbitCenter, orbit) &&
+               Near3(plan.modules.radialCenter, radial) && plan.killRuleCount == 3;
         for (int32_t r = 0; same && r < 3; ++r)
         {
-            same = SameKillRule(&plan.killRules[r], &state->killRules[r], ticks[r]);
+            Frame frame = FrameOf(&plan.from, true, rules[r].space, plan.anchorAfter);
+            same = SameKillRule(&plan.killRules[r], &rules[r], &frame) &&
+                   plan.killRules[r].minimumAgeTicks == ticks[r];
         }
     }
-    CHECK(same, "the plan's velocity modules and kill rules are the CPU path's");
+    CHECK(same, "the plan's velocity modules and kill rules are their defs resolved");
     static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "a view");
     const mvfxModulesView* m = &view.modules;
@@ -1613,19 +1870,19 @@ static void TestOverLifeView(void)
     mvfxDestroyContext(context);
 }
 
-// The CPU path's clip place of a particle's place: mapped back to the
-// world (the step's map), into the view, projected, in binary64.
-static void CoreClip(const mvfxSpaceMap* map, const mvfxDepthImage* image, const float x[3],
-                     double clip[4])
+// A particle's place in the view's clip space, in binary64: mapped back
+// to the world by the frame its world maps by, into the view, projected.
+static void OracleClip(const Frame* world, const mvfxDepthImage* image, const float x[3],
+                       double clip[4])
 {
-    double world[3];
-    mvfxUnmapPoint(map, x, world);
-    double d[3] = {world[0] - image->origin[0], world[1] - image->origin[1],
-                   world[2] - image->origin[2]};
-    const float back[4] = {-image->rotation[0], -image->rotation[1], -image->rotation[2],
-                           image->rotation[3]};
+    const double place[3] = {(double)x[0], (double)x[1], (double)x[2]};
+    double at[3];
+    FrameBack(world, place, at);
+    double d[3] = {at[0] - image->origin[0], at[1] - image->origin[1], at[2] - image->origin[2]};
+    const double back[4] = {-(double)image->rotation[0], -(double)image->rotation[1],
+                            -(double)image->rotation[2], (double)image->rotation[3]};
     double v[3];
-    mvfxRotateDouble(back, d, v);
+    Turn(back, d, v);
     for (int32_t r = 0; r < 4; ++r)
     {
         clip[r] = (double)image->projection[r] * v[0] + (double)image->projection[4 + r] * v[1] +
@@ -1643,21 +1900,23 @@ static void Apply(const float m[16], const double v[3], double out[4])
     }
 }
 
-// Whether a plan's depth maps places as the CPU path does, its inverse
-// maps them back, and its normals turn as the CPU path turns them.
-static bool SameDepth(const mvfxPlannedDepth* planned, const mvfxResolvedDepth* depth,
-                      const mvfxDepthImage* image)
+// Whether a plan's depth is the image resolved for the step (plan.h,
+// mvfxPlannedDepth): its maps take places to the view's clip space as
+// the oracle does and back, its normals turn from the view's into the
+// particles' space, its radius and thickness in the particles' lengths.
+static bool SameDepth(const mvfxPlannedDepth* planned, const mvfxDepthImage* image,
+                      const Frame* world, double radius, const mvfxCollision* collision)
 {
     bool same = planned->enabled && planned->width == image->width &&
                 planned->height == image->height && planned->reversed == image->reversed &&
-                planned->radius == depth->radius &&
-                planned->thickness == depth->thickness * depth->map.sigma &&
-                planned->samples == depth->samples;
+                Near(planned->radius, radius) &&
+                Near(planned->thickness, (double)collision->depthThickness * world->sigma) &&
+                planned->samples == collision->depthSamples;
     for (int32_t i = 0; i < 8; ++i)
     {
         const float x[3] = {0.3f * (float)i - 1.0f, 0.2f * (float)(i % 3), -0.1f * (float)i};
-        double core[4];
-        CoreClip(&depth->map, image, x, core);
+        double expected[4];
+        OracleClip(world, image, x, expected);
         const double place[3] = {(double)x[0], (double)x[1], (double)x[2]};
         double clip[4];
         Apply(planned->toClip, place, clip);
@@ -1666,25 +1925,30 @@ static bool SameDepth(const mvfxPlannedDepth* planned, const mvfxResolvedDepth* 
         Apply(planned->fromClip, ndc, back);
         for (int32_t k = 0; k < 4; ++k)
         {
-            same = same && fabs(clip[k] - core[k]) <= 1e-5 * (1.0 + fabs(core[k]));
+            same = same && fabs(clip[k] - expected[k]) <= 1e-5 * (1.0 + fabs(expected[k]));
         }
         // Mapped back in binary32: within a few units in its last place of
         // the view's distance.
         for (int32_t k = 0; k < 3; ++k)
         {
-            same = same && fabs(back[k] / back[3] - (double)x[k]) <= 1e-6 * (1.0 + fabs(core[3]));
+            same =
+                same && fabs(back[k] / back[3] - (double)x[k]) <= 1e-6 * (1.0 + fabs(expected[3]));
         }
     }
-    const float n[3] = {0.6f, 0.0f, 0.8f};
-    float world[3];
-    float core[3];
-    float turned[3];
-    mvfxRotate(image->rotation, n, world);
-    mvfxRotate(depth->map.rotation, world, core);
-    mvfxRotate(planned->normalTurn, n, turned);
+    const double n[3] = {0.6, 0.0, 0.8};
+    const double view[4] = {(double)image->rotation[0], (double)image->rotation[1],
+                            (double)image->rotation[2], (double)image->rotation[3]};
+    const double turn[4] = {(double)planned->normalTurn[0], (double)planned->normalTurn[1],
+                            (double)planned->normalTurn[2], (double)planned->normalTurn[3]};
+    double inWorld[3];
+    double expected[3];
+    double turned[3];
+    Turn(view, n, inWorld);
+    Turn(world->rotation, inWorld, expected);
+    Turn(turn, n, turned);
     for (int32_t k = 0; k < 3; ++k)
     {
-        same = same && fabsf(turned[k] - core[k]) <= 1e-6f;
+        same = same && fabs(turned[k] - expected[k]) <= 1e-6;
     }
     return same;
 }
@@ -1694,7 +1958,8 @@ static void TestDepth(void)
     // A depth image of a perspective view far from the origin, turned,
     // set without pixels on a planned instance (refused on one that is
     // not): the plan's depth maps an emitter's places in either space,
-    // under a moving, turning, growing instance, as the CPU path's.
+    // under a moving, turning, growing instance, as the image resolved for
+    // each step.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1745,9 +2010,12 @@ static void TestDepth(void)
             static mvfxEmitterPlan plan;
             CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success,
                   "a plan");
-            const mvfxEmitterState* state = &mvfxContextInstance(context, cpu)->emitters[0];
-            same = state->hasDepth && SameDepth(&plan.depth, &state->depth, &image) &&
-                   plan.depth.killOutsideView == (space == 1);
+            bool world = space == mvfx_spaceWorld;
+            Frame toWorld = FrameOf(&plan.from, world, mvfx_spaceWorld, plan.anchorAfter);
+            Frame local = FrameOf(&plan.from, world, mvfx_spaceLocal, plan.anchorAfter);
+            same =
+                SameDepth(&plan.depth, &image, &toWorld, 0.05 * local.sigma, &emitter.collision) &&
+                plan.depth.killOutsideView == (space == 1);
         }
         CHECK(same, space == 0 ? "a world emitter's depth" : "a local emitter's depth");
     }
