@@ -14,11 +14,8 @@
 // too, and a field of negative values carried; a gas prewarmed as stepped
 // with its context; the reading's refusals.
 
-#include "gas_lattice.h"
-#include "gas_step.h"
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
@@ -63,6 +60,12 @@ static void Steps(int32_t n)
 }
 
 static float s_field[4096];
+
+// Seconds in ticks, rounded down.
+static int64_t TicksOf(double seconds)
+{
+    return (int64_t)(seconds * MVFX_TICKS_PER_SECOND);
+}
 
 // Reads a field of the scene's gas into s_field.
 static void Read(mvfxGasField field, int64_t cells)
@@ -290,14 +293,15 @@ static void TestReadVelocity(void)
     gas.sources = sources;
     Open(&gas);
     Steps(5);
-    const mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
-    const mvfxGasState* state = &live->gases[0];
     bool right = true;
     bool uneven = false;
     for (int32_t k = 0; k < 2; ++k)
     {
         Read((mvfxGasField)(mvfx_gasVelocityX + k), 128);
-        const float* faces = state->velocity[k][state->current];
+        static float faces[17 * 16];
+        CHECK(mvfxTestReadGasFaces(s_scene.context, s_scene.instance, 0, k, faces, 17 * 16) ==
+                  (k == 0 ? 17 * 8 : 16 * 9),
+              "the faces read");
         for (int32_t i = 0; i < 128; ++i)
         {
             int32_t x = i % 16;
@@ -349,14 +353,35 @@ static void TestDecay(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// A 5 by 4 by 3 gas of cells of 0.1 alone, still, at the origin: the
+// world's place of a point of its lattice, in cells from its box's least
+// corner.
+static void LatticePlace(const mvfxGasInfo* info, const float p[3], double out[3])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] =
+            info->center[k] + ((double)p[k] - 0.5 * (double)info->size[k]) * (double)info->cellSize;
+    }
+}
+
 static void TestSampling(void)
 {
-    // A linear field over each array of a 5 by 4 by 3 lattice (the cells'
-    // and the faces' across each axis), sampled anywhere among its
-    // points: reproduced, as trilinear weights reproduce a linear field,
-    // each array's points in their own place (a face on its cell's side).
+    // A linear field over each array of a 5 by 4 by 3 gas (its cells' and
+    // its faces' across each axis), sampled anywhere among its points
+    // through the public sampling: reproduced, as trilinear weights
+    // reproduce a linear field, each array's points in their own place (a
+    // face on its cell's side).
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = 5;
+    gas.size[1] = 4;
+    gas.size[2] = 3;
+    gas.cellSize = 0.1f;
+    Open(&gas);
+    mvfxGasInfo info = {0};
+    CHECK(mvfxInstance_GetGasInfo(s_scene.context, s_scene.instance, 0, &info) == mvfx_success,
+          "info");
     static float values[6 * 5 * 4];
-    const mvfxGasLattice l = {.n = {5, 4, 3}, .cell = 0.1f, .h = 0.1f};
     bool right = true;
     for (int32_t axis = -1; axis < 3; ++axis)
     {
@@ -373,6 +398,12 @@ static void TestSampling(void)
                 }
             }
         }
+        CHECK(axis < 0
+                  ? mvfxTestWriteGasScalar(s_scene.context, s_scene.instance, 0, mvfx_gasDensity,
+                                           values, i)
+                  : mvfxTestWriteGasFaces(s_scene.context, s_scene.instance, 0, axis, values, i),
+              "the field written");
+        mvfxGasField field = axis < 0 ? mvfx_gasDensity : (mvfxGasField)(mvfx_gasVelocityX + axis);
         for (int32_t s = 0; s < 40; ++s)
         {
             float c[3];
@@ -382,23 +413,42 @@ static void TestSampling(void)
                 c[k] = (float)(m[k] - 1) * (float)((s * (7 + 3 * k)) % 41) / 40.0f;
                 p[k] = c[k] + (k == axis ? 0.0f : 0.5f);
             }
+            double place[3];
+            LatticePlace(&info, p, place);
+            float sampled = 0.0f;
+            CHECK(mvfxInstance_SampleGas(s_scene.context, s_scene.instance, 0, field, place, 1,
+                                         &sampled) == mvfx_success,
+                  "sampled");
             float expected = 1.0f + 2.0f * c[0] + 3.0f * c[1] - 0.5f * c[2];
-            right = right && fabsf(mvfxGasSample(values, &l, axis, p) - expected) <= 1e-4f;
+            right = right && fabsf(sampled - expected) <= 1e-4f;
         }
     }
     CHECK(right, "a linear field sampled");
+    mvfxDestroyContext(s_scene.context);
 }
 
 static void TestTraceBack(void)
 {
-    // A 2D lattice of 16 by 16 cells of 0.1 turning at 2 radians a second
-    // about its middle: a place 2 cells off it traced back over 0.1 s by
-    // the midpoint rule, p - h v(p - h/2 v(p)), the velocity linear and so
-    // sampled exactly; Euler's p - h v(p) is 0.04 cells off it.
+    // A 2D gas of 16 by 16 cells of 0.1 turning at 2 radians a second about
+    // its middle, its density linear, one step of 0.1 s with nothing but
+    // the carrying: the density at a cell's center off the middle is the
+    // field's where the midpoint rule traces it back, p - h v(p - h/2
+    // v(p)), the velocity and the density linear and so sampled exactly;
+    // Euler's p - h v(p) would be 0.0125 off it.
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = 16;
+    gas.size[1] = 16;
+    gas.size[2] = 1;
+    gas.cellSize = 0.1f;
+    gas.substeps = 1;
+    gas.pressureCycles = 0;
+    gas.advection = mvfx_gasSemiLagrangian;
+    gas.densityDecay = 0.0f;
+    gas.velocityDecay = 0.0f;
+    Open(&gas);
     static float u[17 * 16];
     static float v[16 * 17];
-    static float w[16 * 16 * 2];
-    const mvfxGasLattice l = {.n = {16, 16, 1}, .cell = 0.1f, .h = 0.1f};
+    static float density[16 * 16];
     const float omega = 2.0f;
     for (int32_t y = 0; y < 16; ++y)
     {
@@ -414,21 +464,31 @@ static void TestTraceBack(void)
             v[y * 16 + x] = omega * ((float)x + 0.5f - 8.0f) * 0.1f;
         }
     }
-    float* velocity[3] = {u, v, w};
-    const float p[3] = {10.0f, 8.0f, 0.5f};
-    float back[3];
-    mvfxGasTraceBack(velocity, &l, p, back);
+    // The density 1 + 0.5 x + 0.25 y at cell (x, y)'s center, in cells.
+    for (int32_t i = 0; i < 256; ++i)
+    {
+        density[i] = 1.0f + 0.5f * ((float)(i % 16) + 0.5f) + 0.25f * ((float)(i / 16) + 0.5f);
+    }
+    CHECK(mvfxTestWriteGasFaces(s_scene.context, s_scene.instance, 0, 0, u, 17 * 16) &&
+              mvfxTestWriteGasFaces(s_scene.context, s_scene.instance, 0, 1, v, 16 * 17) &&
+              mvfxTestWriteGasScalar(s_scene.context, s_scene.instance, 0, mvfx_gasDensity, density,
+                                     256),
+          "the fields written");
+    CHECK(mvfxContext_StepTicks(s_scene.context, TicksOf(0.1)) == mvfx_success, "step");
+    Read(mvfx_gasDensity, 256);
+    // Cell (9, 7)'s center, in cells from the lattice's corner.
+    const double px = 9.5;
+    const double py = 7.5;
     double o = (double)omega;
-    double px = (double)p[0];
-    double py = (double)p[1];
-    // v(p) = omega (-(y - 8), x - 8); the midpoint p - h/2 v(p).
-    double mx = px + 0.05 * o * (py - 8.0);
-    double my = py - 0.05 * o * (px - 8.0);
-    double ex = px + 0.1 * o * (my - 8.0);
-    double ey = py - 0.1 * o * (mx - 8.0);
-    CHECK(fabs((double)back[0] - ex) <= 1e-5 && fabs((double)back[1] - ey) <= 1e-5 &&
-              back[2] == 0.5f,
-          "traced back by the midpoint rule");
+    double h = (double)TicksOf(0.1) / MVFX_TICKS_PER_SECOND;
+    // v(p) = omega (-(y - 8), x - 8) cells a second; the midpoint p - h/2 v(p).
+    double mx = px + 0.5 * h * o * (py - 8.0);
+    double my = py - 0.5 * h * o * (px - 8.0);
+    double ex = px + h * o * (my - 8.0);
+    double ey = py - h * o * (mx - 8.0);
+    double expected = 1.0 + 0.5 * ex + 0.25 * ey;
+    CHECK(fabs((double)s_field[7 * 16 + 9] - expected) <= 1e-5, "traced back by the midpoint rule");
+    mvfxDestroyContext(s_scene.context);
 }
 
 static void TestPlaces(void)
@@ -497,14 +557,16 @@ static void TestFinish(void)
     bool done = mvfxInstance_IsFinished(s_scene.context, s_scene.instance);
     // Nothing happens to a finished instance's gas: a velocity left in it
     // stays as it was.
-    mvfxGasState* state = &mvfxContextInstance(s_scene.context, s_scene.instance)->gases[0];
-    float* faces = state->velocity[1][state->current];
+    static float faces[16 * 9];
     for (int32_t f = 0; f < 16 * 9; ++f)
     {
         faces[f] = (float)(f % 5) - 2.0f;
     }
+    CHECK(mvfxTestWriteGasFaces(s_scene.context, s_scene.instance, 0, 1, faces, 16 * 9),
+          "a velocity left");
     Steps(2);
-    faces = state->velocity[1][state->current];
+    CHECK(mvfxTestReadGasFaces(s_scene.context, s_scene.instance, 0, 1, faces, 16 * 9) == 16 * 9,
+          "read again");
     bool still = true;
     for (int32_t f = 0; f < 16 * 9; ++f)
     {
