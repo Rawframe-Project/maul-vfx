@@ -8,8 +8,6 @@
 // same for the same seed and different for another, and scrolling; a
 // vector field's grid held and its field taken; the forces' refusals.
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
 
 #include "maul-vfx/effect.h"
@@ -35,11 +33,13 @@ static mvfxGasDef Pushed(const mvfxForce* forces, int32_t count)
     return def;
 }
 
+#define CELLS (16 * 12)
+
 // Opens an instance, turned and scaled, of an effect of one gas with the
-// parameters given; gives its state and compiled gas.
-static mvfxGasState* OpenWith(const mvfxGasDef* gas, const float* parameters, int32_t count,
-                              const float rotation[4], float scale, uint32_t seed,
-                              mvfxInstanceId* instanceOut)
+// parameters given.
+static void OpenWith(const mvfxGasDef* gas, const float* parameters, int32_t count,
+                     const float rotation[4], float scale, uint32_t seed,
+                     mvfxInstanceId* instanceOut)
 {
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.gases = gas;
@@ -54,7 +54,14 @@ static mvfxGasState* OpenWith(const mvfxGasDef* gas, const float* parameters, in
     instanceDef.scale = scale;
     instanceDef.seed = seed;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, instanceOut) == mvfx_success, "instance");
-    return &mvfxContextInstance(s_context, *instanceOut)->gases[0];
+}
+
+// The gas's velocity along its box's axis at its cells' centers.
+static void Velocity(mvfxInstanceId instance, int32_t axis, float out[CELLS])
+{
+    CHECK(mvfxInstance_ReadGas(s_context, instance, 0, (mvfxGasField)(mvfx_gasVelocityX + axis),
+                               out, CELLS) == mvfx_success,
+          "velocity read");
 }
 
 static void Context(void)
@@ -86,9 +93,9 @@ static bool AllNear(const float* values, int64_t count, float value, float toler
 static void TestConstant(void)
 {
     // (0, 2, 0) at a strength of 1.5 in the world, one step of 1/64 s: an
-    // unturned box's Y faces speed by 3/64; turned a quarter about Z, its
-    // X faces do (its +X is the world's +Y); scaled by 2, by half that. In
-    // the instance's frame, scaled by 2, its Y faces by 3/64 still.
+    // unturned box's gas speeds along Y by 3/64; turned a quarter about Z,
+    // along its X (its +X is the world's +Y); scaled by 2, by half that. In
+    // the instance's frame, scaled by 2, along Y by 3/64 still.
     const float quarter[4] = {0, 0, 0.70710678f, 0.70710678f};
     struct Case
     {
@@ -111,14 +118,15 @@ static void TestConstant(void)
                                  .strength = 1.5f};
         mvfxGasDef def = Pushed(&force, 1);
         mvfxInstanceId instance = {0};
-        mvfxGasState* state =
-            OpenWith(&def, NULL, 0, cases[c].rotation, cases[c].scale, 1, &instance);
+        OpenWith(&def, NULL, 0, cases[c].rotation, cases[c].scale, 1, &instance);
         Steps(1);
         int32_t a = cases[c].axis;
-        const int64_t faces[2] = {17 * 12, 16 * 13};
-        right = right &&
-                AllNear(state->velocity[a][state->current], faces[a], cases[c].speed, 1e-6f) &&
-                AllNear(state->velocity[1 - a][state->current], faces[1 - a], 0.0f, 1e-6f);
+        float along[CELLS];
+        float across[CELLS];
+        Velocity(instance, a, along);
+        Velocity(instance, 1 - a, across);
+        right = right && AllNear(along, CELLS, cases[c].speed, 1e-6f) &&
+                AllNear(across, CELLS, 0.0f, 1e-6f);
         mvfxDestroyContext(s_context);
     }
     CHECK(right, "a constant force in its space");
@@ -126,19 +134,21 @@ static void TestConstant(void)
 
 static void TestWind(void)
 {
-    // A wind of (1.5, 0, 0) pulling at 3 a second: from rest, each X face
-    // is 1.5 (1 - e^(-3 t)) after each step of 1/64 s.
+    // A wind of (1.5, 0, 0) pulling at 3 a second: from rest, the gas's X
+    // velocity is 1.5 (1 - e^(-3 t)) after each step of 1/64 s.
     Context();
     const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {1.5f, 0, 0}, .strength = 3.0f};
     mvfxGasDef def = Pushed(&wind, 1);
     mvfxInstanceId instance = {0};
-    mvfxGasState* state = OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
+    OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
     bool right = true;
     for (int32_t i = 1; i <= 3; ++i)
     {
         Steps(1);
         float expected = 1.5f * (1.0f - expf(-3.0f * (float)i / 64.0f));
-        right = right && AllNear(state->velocity[0][state->current], 17 * 12, expected, 2e-6f);
+        float u[CELLS];
+        Velocity(instance, 0, u);
+        right = right && AllNear(u, CELLS, expected, 2e-6f);
     }
     CHECK(right, "a wind's pull exact");
     mvfxDestroyContext(s_context);
@@ -147,10 +157,10 @@ static void TestWind(void)
 static void TestVortex(void)
 {
     // A vortex about Z through the box's middle at a strength of 2: a step
-    // later the Y faces right of the middle rise and those left of it
-    // fall, along the row through it; an axis of (0, 0, 2) is the same
+    // later the gas right of the middle rises and that left of it falls,
+    // along the rows either side of it; an axis of (0, 0, 2) is the same
     // axis, bit for bit.
-    static float kept[16 * 13];
+    static float kept[CELLS];
     bool right = true;
     for (int32_t r = 0; r < 2; ++r)
     {
@@ -159,13 +169,17 @@ static void TestVortex(void)
             .kind = mvfx_forceVortex, .vector = {0, 0, r == 0 ? 1.0f : 2.0f}, .strength = 2.0f};
         mvfxGasDef def = Pushed(&vortex, 1);
         mvfxInstanceId instance = {0};
-        mvfxGasState* state = OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
+        OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
         Steps(1);
-        const float* v = state->velocity[1][state->current];
-        for (int32_t x = 0; x < 16; ++x)
+        float v[CELLS];
+        Velocity(instance, 1, v);
+        for (int32_t row = 5; row <= 6; ++row)
         {
-            float value = v[6 * 16 + x];
-            right = right && (x < 8 ? value < 0.0f : value > 0.0f);
+            for (int32_t x = 0; x < 16; ++x)
+            {
+                float value = v[row * 16 + x];
+                right = right && (x < 8 ? value < 0.0f : value > 0.0f);
+            }
         }
         right = right && (r == 0 || memcmp(kept, v, sizeof kept) == 0);
         memcpy(kept, v, sizeof kept);
@@ -177,7 +191,7 @@ static void TestVortex(void)
 static void TestParameter(void)
 {
     // A constant force whose strength is parameter 0's x: its default 1
-    // speeds the Y faces by 2/64 a step; set to 3, by 6/64.
+    // speeds the gas along Y by 2/64 a step; set to 3, by 6/64.
     Context();
     const mvfxForce force = {.kind = mvfx_forceConstant,
                              .vector = {0, 2, 0},
@@ -187,13 +201,16 @@ static void TestParameter(void)
     const float defaults[4] = {1, 0, 0, 0};
     mvfxGasDef def = Pushed(&force, 1);
     mvfxInstanceId instance = {0};
-    mvfxGasState* state = OpenWith(&def, defaults, 1, s_unturned, 1.0f, 1, &instance);
+    OpenWith(&def, defaults, 1, s_unturned, 1.0f, 1, &instance);
     Steps(1);
-    bool right = AllNear(state->velocity[1][state->current], 16 * 13, 2.0f / 64.0f, 1e-6f);
+    float v[CELLS];
+    Velocity(instance, 1, v);
+    bool right = AllNear(v, CELLS, 2.0f / 64.0f, 1e-6f);
     const float three[4] = {3, 0, 0, 0};
     CHECK(mvfxInstance_SetParameter(s_context, instance, 0, three) == mvfx_success, "set");
     Steps(1);
-    right = right && AllNear(state->velocity[1][state->current], 16 * 13, 8.0f / 64.0f, 1e-6f);
+    Velocity(instance, 1, v);
+    right = right && AllNear(v, CELLS, 8.0f / 64.0f, 1e-6f);
     CHECK(right, "a strength from a parameter");
     mvfxDestroyContext(s_context);
 }
@@ -213,20 +230,21 @@ static void TestTurbulence(void)
                                             .seedPerInstance = true}};
     mvfxGasDef def = Pushed(&turbulence, 1);
     const uint32_t seeds[3] = {7, 7, 9};
-    mvfxGasState* states[3];
+    mvfxInstanceId instances[3] = {0};
     for (int32_t i = 0; i < 3; ++i)
     {
-        mvfxInstanceId instance = {0};
-        states[i] = OpenWith(&def, NULL, 0, s_unturned, 1.0f, seeds[i], &instance);
+        OpenWith(&def, NULL, 0, s_unturned, 1.0f, seeds[i], &instances[i]);
     }
     Steps(2);
-    size_t bytes = sizeof(float) * 17 * 12;
-    const float* u[3] = {states[0]->velocity[0][states[0]->current],
-                         states[1]->velocity[0][states[1]->current],
-                         states[2]->velocity[0][states[2]->current]};
+    size_t bytes = sizeof(float) * CELLS;
+    static float u[3][CELLS];
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        Velocity(instances[i], 0, u[i]);
+    }
     bool same = memcmp(u[0], u[1], bytes) == 0;
     bool other = memcmp(u[0], u[2], bytes) != 0;
-    bool stirred = !AllNear(u[0], 17 * 12, 0.0f, 1e-6f);
+    bool stirred = !AllNear(u[0], CELLS, 0.0f, 1e-6f);
     CHECK(same && other && stirred, "turbulence by its seed");
     mvfxDestroyContext(s_context);
     // Scrolling at (1, 0, 0) a second, the same turbulence parts from the
@@ -235,20 +253,21 @@ static void TestTurbulence(void)
     mvfxForce scrolled = turbulence;
     scrolled.noise.scroll[0] = 1.0f;
     mvfxGasDef moved = Pushed(&scrolled, 1);
-    mvfxInstanceId instance = {0};
-    mvfxGasState* still = OpenWith(&def, NULL, 0, s_unturned, 1.0f, 7, &instance);
-    mvfxGasState* moving = OpenWith(&moved, NULL, 0, s_unturned, 1.0f, 7, &instance);
+    mvfxInstanceId still = {0};
+    mvfxInstanceId moving = {0};
+    OpenWith(&def, NULL, 0, s_unturned, 1.0f, 7, &still);
+    OpenWith(&moved, NULL, 0, s_unturned, 1.0f, 7, &moving);
     Steps(2);
-    CHECK(memcmp(still->velocity[0][still->current], moving->velocity[0][moving->current], bytes) !=
-              0,
-          "turbulence scrolls in time");
+    Velocity(still, 0, u[0]);
+    Velocity(moving, 0, u[1]);
+    CHECK(memcmp(u[0], u[1], bytes) != 0, "turbulence scrolls in time");
     mvfxDestroyContext(s_context);
 }
 
 static void TestField(void)
 {
     // A vector field of (0.5, 0, 0) everywhere in a box larger than the
-    // gas, at a strength of 2: each X face speeds by 1/64 a step; the
+    // gas, at a strength of 2: the gas speeds along X by 1/64 a step; the
     // effect holds its grid until it is destroyed.
     Context();
     static const float values[2 * 2 * 2 * 3] = {0.5f, 0, 0, 0.5f, 0, 0, 0.5f, 0, 0, 0.5f, 0, 0,
@@ -278,8 +297,9 @@ static void TestField(void)
     mvfxInstanceId instance = {0};
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &instance) == mvfx_success, "instance");
     Steps(1);
-    const mvfxGasState* state = &mvfxContextInstance(s_context, instance)->gases[0];
-    right = right && AllNear(state->velocity[0][state->current], 17 * 12, 1.0f / 64.0f, 1e-6f);
+    float u[CELLS];
+    Velocity(instance, 0, u);
+    right = right && AllNear(u, CELLS, 1.0f / 64.0f, 1e-6f);
     CHECK(mvfxDestroyInstance(s_context, instance) == mvfx_success, "instance gone");
     CHECK(mvfxDestroyEffect(s_context, effect) == mvfx_success, "effect gone");
     right = right && mvfxDestroyGrid(s_context, grid) == mvfx_success;
