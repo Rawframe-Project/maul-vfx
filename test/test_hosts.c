@@ -192,8 +192,9 @@ static void Constants(Out* out)
     PUT(out, baked);
 }
 
-// An emitter of thrown particles: a cone, gravity, drag, a ground plane,
-// lights, sorted, its births, deaths and collisions recorded.
+// An emitter of thrown particles: a cone, gravity, drag, a ground plane
+// and the instance's colliders, lights, sorted, its births, deaths and
+// collisions recorded.
 static mvfxEmitterDef Thrown(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -219,6 +220,7 @@ static mvfxEmitterDef Thrown(void)
     emitter.colliders = &ground;
     emitter.colliderCount = 1;
     emitter.collision.enabled = true;
+    emitter.collision.hostColliders = true;
     emitter.collision.restitution = 0.43f;
     emitter.collision.friction = 0.21f;
     emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
@@ -251,7 +253,7 @@ static void Throws(Out* out)
     r = mvfxInstance_SetColliders(context, instance, hosts, 3);
     PUT(out, r);
     mvfxLayoutId layout = Layout(out, context);
-    for (int32_t s = 0; s < 12; ++s)
+    for (int32_t s = 0; s < 48; ++s)
     {
         Move(out, context, instance, s);
         Step(out, context);
