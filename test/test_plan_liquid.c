@@ -17,6 +17,7 @@
 // GPU part's harness, which compares their results.
 
 #include "particles.h"
+#include "plan_oracle.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -260,29 +261,6 @@ static void TestSplit(void)
     mvfxDestroyContext(t.context);
 }
 
-// Whether a turbulence's planned octaves are its noise at time (plan.h,
-// mvfxPlannedForce): the box's origin, at place in the force's space,
-// scrolled for time, times each octave's frequency, split into a 32-bit
-// cell and the fraction past it.
-static bool SameNoise(const mvfxPlannedForce* p, const mvfxForce* def, const double place[3],
-                      double time)
-{
-    bool same = p->octaves == def->noise.octaves;
-    double frequency = (double)def->noise.frequency;
-    for (int32_t o = 0; same && o < p->octaves; ++o)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            double x = (place[k] + (double)def->noise.scroll[k] * time) * frequency;
-            double cell = floor(x);
-            same = same && p->cell[o][k] == (uint32_t)(int64_t)cell &&
-                   fabs((double)p->fraction[o][k] - (x - cell)) < 1e-6;
-        }
-        frequency *= (double)def->noise.lacunarity;
-    }
-    return same;
-}
-
 static void TestGasSteps(void)
 {
     // A liquid gas of a courant number of 0.2 (every step split) with an
@@ -319,6 +297,8 @@ static void TestGasSteps(void)
     mvfxInstanceId planned = Instance(context, effect, true);
     mvfxGasInfo info;
     CHECK(mvfxInstance_GetGasInfo(context, planned, 1, &info) == mvfx_success, "the smoke's box");
+    // The turbulence is the world's: the instance's place is not read.
+    Frame box = BoxFrame(&info, NULL, mvfx_spaceWorld, NULL);
     int32_t split = 0;
     int32_t cleared = 0;
     int32_t obstacles = 0;
@@ -345,8 +325,8 @@ static void TestGasSteps(void)
             obstacles += first ? plan.obstaclesKnown || plan.obstacleMoved[0]
                                : !still || !plan.obstacleMoved[0];
             forces += stirred.forceCount != 1 ||
-                      !SameNoise(&stirred.forces[0], &turbulence, info.center,
-                                 (double)stirred.start / (double)MVFX_TICKS_PER_SECOND);
+                      !SameLattice(&stirred.forces[0], &turbulence, &box,
+                                   (double)stirred.start / (double)MVFX_TICKS_PER_SECOND);
         }
     }
     CHECK(split == 8, "every step split");
@@ -460,16 +440,6 @@ static void TestPlanRoom(void)
     mvfxDestroyContext(context);
 }
 
-// v turned by the unit quaternion q, in binary64.
-static void Turn(const double q[4], const double v[3], double out[3])
-{
-    double t[3] = {2.0 * (q[1] * v[2] - q[2] * v[1]), 2.0 * (q[2] * v[0] - q[0] * v[2]),
-                   2.0 * (q[0] * v[1] - q[1] * v[0])};
-    out[0] = v[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]);
-    out[1] = v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]);
-    out[2] = v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0]);
-}
-
 // Whether a gas plan's map of a world-space emitter's particles (plan.h,
 // mvfxPlannedPour: a place p goes to origin + rotation (sigma p), the
 // particles offsets from their anchor after the step) takes them into
@@ -482,23 +452,8 @@ static bool SameMap(const mvfxPlannedPour* m, mvfxContext* context, mvfxInstance
     CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&
               mvfxInstance_GetGasInfo(context, planned, gas, &box) == mvfx_success,
           "the anchor and the box");
-    const double back[4] = {-(double)box.rotation[0], -(double)box.rotation[1],
-                            -(double)box.rotation[2], (double)box.rotation[3]};
-    const double d[3] = {plan.anchorAfter[0] - box.center[0], plan.anchorAfter[1] - box.center[1],
-                         plan.anchorAfter[2] - box.center[2]};
-    double origin[3];
-    Turn(back, d, origin);
-    double sigma = 1.0 / (double)box.scale;
-    bool same = fabs((double)m->sigma - sigma) <= 1e-6 * sigma;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        same = same && fabs((double)m->origin[k] - origin[k] * sigma) <= 1e-5;
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        same = same && fabs((double)m->rotation[k] - back[k]) <= 1e-6;
-    }
-    return same;
+    Frame frame = BoxFrame(&box, &plan.to, mvfx_spaceWorld, plan.anchorAfter);
+    return SamePour(m, &frame);
 }
 
 static void TestLiquidMap(void)

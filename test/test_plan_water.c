@@ -18,6 +18,7 @@
 // results; the reach, the reported speed and the terrain as resolved are
 // compared with the CPU path's in test_plan_water_internal.c.
 
+#include "plan_oracle.h"
 #include "test_harness.h"
 
 #include "maul-vfx/effect.h"
@@ -70,16 +71,6 @@ static void NewContext(void)
 // The substeps water.h gives a step of seconds whose substeps are at
 // most bound (MVFX_MAX_WATER_SUBSTEPS): equal ones, at least one, none
 // for no time; past the most, the most of bound, slowed.
-// v turned by the unit quaternion q, in binary64.
-static void Turn(const double q[4], const double v[3], double out[3])
-{
-    double t[3] = {2.0 * (q[1] * v[2] - q[2] * v[1]), 2.0 * (q[2] * v[0] - q[0] * v[2]),
-                   2.0 * (q[0] * v[1] - q[1] * v[0])};
-    out[0] = v[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]);
-    out[1] = v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]);
-    out[2] = v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0]);
-}
-
 static int32_t Substeps(double seconds, double bound, double* dt, bool* slowed)
 {
     *slowed = false;
@@ -439,10 +430,10 @@ static void TestCoupling(void)
     // mvfxPlannedWaterCoupling) takes the surface's frame into the
     // particles' space by the instance where the step starts (water.h:
     // the grid's center in the instance's frame), less the anchor the
-    // particles are offsets from; its up the surface's Y turned; its radius and push in
-    // the surface's lengths; its gravity's strength in them; the
-    // coupling's numbers its def's; an emitter without a coupling plans
-    // none.
+    // particles are offsets from; its up the surface's Y turned; its
+    // radius and push in the surface's lengths; its gravity's strength in
+    // them; the coupling's numbers its def's; an emitter without a
+    // coupling plans none.
     NewContext();
     mvfxWaterDef water = mvfxDefaultWaterDef();
     water.size[0] = 8;
