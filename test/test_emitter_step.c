@@ -171,7 +171,7 @@ static void TestDeathAgainstBisection(void)
                 }
                 StepTo(&scene, ticks[k]);
             }
-            TestParticle records[PEEK_MOST];
+            static TestParticle records[PEEK_MOST];
             int32_t count = ReadParticles(scene.context, scene.instance, 0, records, PEEK_MOST);
             bool alive[PEEK_MOST] = {false};
             for (int32_t j = 0; j < count; ++j)
