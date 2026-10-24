@@ -5,9 +5,9 @@
 // world; an answered plane bounced off in the step after, none answered
 // let through; a particle at rest asking nothing and keeping its plane;
 // the capacity and the dropped; a local emitter's queries and answers
-// mapped through a moved, turned, scaled instance; a world emitter's
-// planes kept when its instance jumps far; births without a plane;
-// answers consumed and a restart clearing them; and the refusals.
+// mapped through a moved, turned, scaled instance; planes moving with a
+// world emitter's rebase; births without a plane; answers consumed and
+// a restart clearing them; and the refusals.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -221,6 +221,16 @@ static void TestBirthInPlace(void)
     mvfxDestroyContext(scene.context);
 }
 
+// Keeps the anchor a step's host modules see.
+static void SeeAnchor(const mvfxModuleCall* call, void* user)
+{
+    double* anchor = user;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        anchor[k] = call->anchor[k];
+    }
+}
+
 static void TestSpaces(void)
 {
     // A local emitter under an instance at (1000, 0, 0), turned a quarter
@@ -261,9 +271,15 @@ static void TestSpaces(void)
           "the answer mapped back");
     mvfxDestroyContext(scene.context);
 
-    // A world emitter's planes stay in the world: its instance jumps 5000
-    // up, and the particle still meets the world's y = 0.
+    // A world emitter's planes move with its rebase: its instance jumps
+    // 5000 up, its anchor follows, and the particle still meets the
+    // world's y = 0.
+    static double anchor[3];
+    const mvfxHostModule seeing = {
+        .stage = mvfx_stageAfterMotion, .function = SeeAnchor, .user = anchor};
     emitter = Asking(4);
+    emitter.hostModules = &seeing;
+    emitter.hostModuleCount = 1;
     scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -1, 0);
     Step(&scene, 1);
@@ -275,6 +291,7 @@ static void TestSpaces(void)
           "jumped");
     Step(&scene, MVFX_TICKS_PER_SECOND);
     Step(&scene, MVFX_TICKS_PER_SECOND);
+    CHECK(anchor[1] == 5000.0, "rebased");
     // The hair it is left off the plane by grows with its place's size,
     // 5000 here.
     CHECK(Near((double)At(&scene, 0).position[1], 1.0, 1e-2), "still met the plane");

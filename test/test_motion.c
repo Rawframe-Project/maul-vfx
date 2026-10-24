@@ -305,20 +305,36 @@ static void TestInheritedVelocity(void)
     mvfxDestroyContext(scene.context);
 }
 
+// Keeps the anchor a step's host modules see.
+static void SeeAnchor(const mvfxModuleCall* call, void* user)
+{
+    double* anchor = user;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        anchor[k] = call->anchor[k];
+    }
+}
+
 static void TestRebase(void)
 {
-    // Far along X in steps, past the rebase distance: every particle keeps
-    // its place in the world, to binary32's precision near it, and new
-    // births are where the instance is.
+    // Far along X in steps: the anchor follows past the rebase distance,
+    // every particle keeps its place in the world, to binary32's precision
+    // near it, and new births are where the instance is.
+    static double anchor[3];
+    const mvfxHostModule seeing = {
+        .stage = mvfx_stageAfterMotion, .function = SeeAnchor, .user = anchor};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
     emitter.capacity = 4096;
+    emitter.hostModules = &seeing;
+    emitter.hostModuleCount = 1;
     Scene scene = NewScene(&emitter);
     static const double near[3] = {600.0, 0.0, 0.0};
     static const double far[3] = {1100.0, 0.0, 0.0};
     float places[64];
     MoveTo(&scene, 600.0, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    CHECK(anchor[0] == 0.0, "not yet rebased");
     CHECK(ReadFrom(&scene, near) == 64, "a second's births");
     for (int32_t k = 0; k < 64; ++k)
     {
@@ -326,6 +342,7 @@ static void TestRebase(void)
     }
     MoveTo(&scene, 1100.0, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    CHECK(anchor[0] == 1100.0, "rebased to the instance");
     bool kept = ReadFrom(&scene, near) == 128;
     for (int32_t k = 0; k < 64; ++k)
     {
@@ -338,6 +355,7 @@ static void TestRebase(void)
     // A restart plays from where the instance is: a birth there.
     CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success, "restart");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success, "step");
+    CHECK(anchor[0] == 1100.0, "a restart anchors where the instance is");
     CHECK(ReadFrom(&scene, far) == 1 && fabsf(s_particles[0].position[0]) <= 1e-4f,
           "a restart where the instance is");
     mvfxDestroyContext(scene.context);
