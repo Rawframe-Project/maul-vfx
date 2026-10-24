@@ -706,6 +706,7 @@ mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instan
         mvfxResult found = mvfxFindColliderGrid(context, &colliders[c], &grids[c]);
         if (found != mvfx_success)
         {
+            found == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
             return found;
         }
     }

@@ -4,6 +4,7 @@
 #include "allocator.h"
 #include "context.h"
 #include "effect.h"
+#include "effect_api.h"
 #include "effect_parts.h"
 #include "file_codec.h"
 
@@ -536,7 +537,10 @@ mvfxFileResult mvfxCreateEffectFromBytes(mvfxContext* context, const void* bytes
     }
     if (result.result == mvfx_success)
     {
-        result = Fault(mvfxCreateEffect(context, &def, effectOut), -1);
+        // A file's def is untrusted data: what it asks of the program's
+        // assets is refused with its status, and counts no misuse.
+        bool misuse = false;
+        result = Fault(mvfxCreateEffectOf(context, &def, effectOut, &misuse), -1);
     }
     mvfxRelease(&context->allocator, memory, (size_t)needed, 16);
     return result;

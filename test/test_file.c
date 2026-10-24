@@ -15,6 +15,7 @@
 
 #include "maul-vfx/file.h"
 #include "maul-vfx/grid.h"
+#include "maul-vfx/mesh.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -839,6 +840,102 @@ static void TestCreate(void)
     CHECK(s_live == 0, "everything freed");
 }
 
+// A def of one emitter, written with the table and created from its
+// bytes: what a file asks of the program's assets that they do not hold is
+// refused with mvfx_errorInvalid as untrusted data, counting no misuse.
+// The same def passed by the program itself counts one when counted is
+// true: a correct program does not pass it.
+static bool RefusedFromFile(mvfxContext* context, const mvfxEmitterDef* emitter,
+                            const mvfxEffectAsset* table, int32_t count, bool counted)
+{
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitter;
+    def.emitterCount = 1;
+    static uint8_t bytes[4096];
+    int64_t size = 0;
+    bool written =
+        mvfxWriteEffect(&def, table, count, bytes, sizeof bytes, &size).result == mvfx_success;
+    uint64_t misuse = mvfxGetContextMisuse(context);
+    mvfxEffectId effect = {1, 1};
+    bool file = Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, count, &effect),
+                        mvfx_errorInvalid, -1) &&
+                effect.index1 == 0 && mvfxGetContextMisuse(context) == misuse;
+    bool program = mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid &&
+                   mvfxGetContextMisuse(context) == misuse + (counted ? 1 : 0);
+    return written && file && program;
+}
+
+static void TestUntrustedAssets(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    // A grid of one component two points tall, which is no heightfield and
+    // no vector field; points with no triangles; a flat square.
+    float values[8] = {0};
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 2;
+    gridDef.size[1] = 2;
+    gridDef.size[2] = 2;
+    gridDef.values = values;
+    static const float points[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+    static const float flat[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0};
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = points;
+    meshDef.vertexCount = 4;
+    mvfxEffectAsset table[3] = {
+        {.kind = mvfx_assetGrid, .name = "tall", .nameLength = 4},
+        {.kind = mvfx_assetMesh, .name = "points", .nameLength = 6},
+        {.kind = mvfx_assetMesh, .name = "flat", .nameLength = 4},
+    };
+    bool made = mvfxCreateGrid(context, &gridDef, &table[0].grid) == mvfx_success &&
+                mvfxCreateMesh(context, &meshDef, &table[1].mesh) == mvfx_success;
+    meshDef.positions = flat;
+    made = made && mvfxCreateMesh(context, &meshDef, &table[2].mesh) == mvfx_success;
+    CHECK(made, "the assets");
+
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    const mvfxCollider heights = {.kind = mvfx_colliderHeightfield,
+                                  .halfExtents = {2, 1, 2},
+                                  .rotation = {0, 0, 0, 1},
+                                  .grid = table[0].grid};
+    emitter.collision.enabled = true;
+    emitter.colliders = &heights;
+    emitter.colliderCount = 1;
+    CHECK(RefusedFromFile(context, &emitter, table, 3, true), "a heightfield of a tall grid");
+
+    emitter = mvfxDefaultEmitterDef();
+    const mvfxForce field = {.kind = mvfx_forceVectorField,
+                             .strength = 1.0f,
+                             .grid = table[0].grid,
+                             .boxSize = {1, 1, 1},
+                             .boxRotation = {0, 0, 0, 1}};
+    emitter.forces = &field;
+    emitter.forceCount = 1;
+    CHECK(RefusedFromFile(context, &emitter, table, 3, true),
+          "a vector field over a grid of one component");
+
+    emitter = mvfxDefaultEmitterDef();
+    emitter.shape.kind = mvfx_shapeMesh;
+    emitter.shape.mesh = table[1].mesh;
+    emitter.shape.meshMode = mvfx_meshSurface;
+    CHECK(RefusedFromFile(context, &emitter, table, 3, true), "a surface of a mesh without one");
+
+    emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.hostSpawnCapacity = 4;
+    emitter.rigid = (mvfxRigidDef){.enabled = true,
+                                   .shape = mvfx_rigidHull,
+                                   .density = 1.0f,
+                                   .substeps = 8,
+                                   .staticFriction = 0.6f,
+                                   .dynamicFriction = 0.4f,
+                                   .hull = table[2].mesh};
+    CHECK(RefusedFromFile(context, &emitter, table, 3, false),
+          "a hull of a flat mesh, misuse from neither");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestArguments();
@@ -856,5 +953,6 @@ int main(void)
     TestMemory();
     TestMemoryGuard();
     TestCreate();
+    TestUntrustedAssets();
     return s_failures == 0 ? 0 : 1;
 }

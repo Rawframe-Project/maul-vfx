@@ -131,9 +131,15 @@ mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMes
     return mvfx_success;
 }
 
-mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, float centerOut[3])
+mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hullOut,
+                               float centerOut[3])
 {
-    if (context == nullptr || centerOut == nullptr)
+    hullOut != nullptr ? (void)(*hullOut = false) : (void)0;
+    for (int32_t k = 0; centerOut != nullptr && k < 3; ++k)
+    {
+        centerOut[k] = 0.0f;
+    }
+    if (context == nullptr || hullOut == nullptr || centerOut == nullptr)
     {
         context != nullptr ? mvfxCountMisuse(context) : (void)0;
         return mvfx_errorInvalid;
@@ -155,9 +161,11 @@ mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, float cent
     {
         centerOut[k] = built == mvfx_success ? hull->centroid[k] : 0.0f;
     }
-    built == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
     mvfxRelease(&context->allocator, hull, sizeof(mvfxHull), alignof(mvfxHull));
-    return built;
+    // Vertices that span no volume, or whose hull is past what a rigid
+    // particle takes, are a model's data: no hull, not an error.
+    *hullOut = built == mvfx_success;
+    return built == mvfx_errorInvalid ? mvfx_success : built;
 }
 
 mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
@@ -180,8 +188,8 @@ mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32
     }
     mvfxResult counted =
         mvfxCountHullVertices(live->positions, live->vertexCount, &context->allocator, countOut);
-    counted == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
-    return counted;
+    // Vertices that span no volume have no hull: none of its vertices.
+    return counted == mvfx_errorInvalid ? mvfx_success : counted;
 }
 
 mvfxMesh* mvfxContextMesh(const mvfxContext* context, mvfxMeshId mesh)

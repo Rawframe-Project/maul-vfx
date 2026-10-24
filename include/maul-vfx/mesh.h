@@ -168,19 +168,25 @@ extern "C"
     /// a host draws the mesh at the particle's pose, scaled by its size and
     /// moved by minus this centroid scaled likewise.
     ///
+    /// A mesh from a model file may have no hull a rigid particle takes:
+    /// vertices that span no volume, or a hull of more than
+    /// MVFX_MAX_HULL_VERTICES vertices (mvfxMesh_HullVertexCount tells by
+    /// how much). That is a result, not an error.
+    ///
     /// @param context    The context that owns the mesh.
     /// @param mesh       The mesh.
-    /// @param centerOut  Receives x, y and z.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         mesh; `mvfx_errorInvalid` for a NULL argument or vertices that
-    ///         span no volume or whose hull has more than
-    ///         MVFX_MAX_HULL_VERTICES vertices, which counts as misuse when
-    ///         the context is given; `mvfx_errorCapacity` when the allocator
-    ///         fails.
+    /// @param hullOut    Receives whether the mesh has such a hull; false on
+    ///                   failure.
+    /// @param centerOut  Receives x, y and z; zeros without a hull or on
+    ///                   failure.
+    /// @return `mvfx_success`, with or without a hull; `mvfx_errorStale` for
+    ///         an id that names no live mesh; `mvfx_errorInvalid` for a NULL
+    ///         argument, which counts as misuse when the context is given;
+    ///         `mvfx_errorCapacity` when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh,
-                                                           float centerOut[3]);
+                                                           bool* hullOut, float centerOut[3]);
 
 // The most vertices of a hull mvfxMesh_HullVertexCount counts.
 #define MVFX_MAX_HULL_COUNT 500
@@ -191,13 +197,14 @@ extern "C"
     ///
     /// @param context   The context that owns the mesh.
     /// @param mesh      The mesh.
-    /// @param countOut  Receives the count; 0 on failure, so an editor
-    ///                  given `mvfx_errorLimit` reports "more than
+    /// @param countOut  Receives the count: 0 for vertices that span no
+    ///                  volume, which have no hull; 0 on failure, so an
+    ///                  editor given `mvfx_errorLimit` reports "more than
     ///                  MVFX_MAX_HULL_COUNT", never the 0.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         mesh; `mvfx_errorInvalid` for a NULL argument or vertices that
-    ///         span no volume, which counts as misuse when the context is
-    ///         given; `mvfx_errorLimit` for a hull past what a count holds,
+    /// @return `mvfx_success`, 0 among its counts; `mvfx_errorStale` for an
+    ///         id that names no live mesh; `mvfx_errorInvalid` for a NULL
+    ///         argument, which counts as misuse when the context is given;
+    ///         `mvfx_errorLimit` for a hull past what a count holds,
     ///         never fewer than MVFX_MAX_HULL_COUNT vertices (some hulls of
     ///         a few more are still counted); `mvfx_errorCapacity` when the
     ///         allocator fails.

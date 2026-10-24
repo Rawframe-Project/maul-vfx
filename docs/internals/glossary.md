@@ -20,7 +20,7 @@ The words this library uses in its headers, code and documentation, with the mea
 | **host module** | A function of the host's run over an emitter's particles at a stage of the step. |
 | **instance** | One playing of an effect, at a place, with a seed. |
 | **layout** | The host's description of a record: fields, formats, offsets, stride. |
-| **misuse** | A call refused for an invalid argument against a live context, counted on it. |
+| **misuse** | A call refused for an argument a correct program never passes, against a live context, counted on it. Bad untrusted data (an effect file's contents, a mesh's vertices) is refused with its status and counts none. |
 | **parameter** | Four floats per instance that value sources may read at births. |
 | **plan** | What a planned instance's step writes for a simulation elsewhere: births owed with serials and ticks, the resolved forces and colliders. |
 | **planned instance** | An instance that holds no particles and writes plans each step, for the GPU part or the host's own GPU path. |
