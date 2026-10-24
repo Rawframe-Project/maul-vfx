@@ -190,8 +190,6 @@ typedef struct mvfxCompiledBurst
 typedef struct mvfxCompiledEmitter
 {
     int32_t capacity;
-    // The capacity rounded up to MVFX_ATTRIBUTE_PADDING.
-    int32_t paddedCapacity;
     float rate;
     // NULL for a constant rate.
     const mvfxRateCurve* rateCurve;

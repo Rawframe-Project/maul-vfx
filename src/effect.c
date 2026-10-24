@@ -781,8 +781,6 @@ typedef struct mvfxEmitterSpace
 static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
                            mvfxEmitterSpace* space, mvfxCompiledEmitter* out)
 {
-    int32_t padded = (source->capacity + MVFX_ATTRIBUTE_PADDING - 1) / MVFX_ATTRIBUTE_PADDING *
-                     MVFX_ATTRIBUTE_PADDING;
     const mvfxRateCurve* curve = nullptr;
     if (source->rateCurve.keyCount > 0)
     {
@@ -799,7 +797,6 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
         // A particle a birth until mvfxCompileEffectParts says otherwise.
         .unitPoints = 1,
         .unitWidth = 1,
-        .paddedCapacity = padded,
         .rate = source->rate,
         .rateCurve = curve,
         .bursts = bursts,
