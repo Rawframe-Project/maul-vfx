@@ -12,8 +12,7 @@
 // their event, whatever other events gave; and the refusals, a cycle
 // among them.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -24,7 +23,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
@@ -41,7 +39,6 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -59,13 +56,15 @@ static mvfxEmitterDef Source(float minLife, float maxLife)
 }
 
 // An emitter spawning count particles a death of source, living ten
-// seconds.
+// seconds, telling of its births.
 static mvfxEmitterDef Consumer(int32_t source, int32_t minCount, int32_t maxCount)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.capacity = 256;
     emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.events = mvfx_eventMaskBirth;
+    emitter.eventCapacity = 64;
     emitter.eventSpawn = (mvfxEventSpawn){.enabled = true,
                                           .source = source,
                                           .kind = mvfx_eventDeath,
@@ -90,16 +89,36 @@ static void Step(Scene* scene, int64_t ticks)
     CHECK(mvfxContext_StepTicks(scene->context, ticks) == mvfx_success, "step");
 }
 
-static float At(const Scene* scene, int32_t emitter, mvfxAttribute attribute, int32_t i)
+static TestParticle s_particles[256];
+
+// Reads an emitter's particles into s_particles; returns how many.
+static int32_t Read(const Scene* scene, int32_t emitter)
 {
-    return ((const float*)mvfxAttributeArray(scene->live, emitter, attribute))[i];
+    return ReadParticles(scene->context, scene->instance, emitter, s_particles, 256);
 }
 
-static int64_t BirthOf(const Scene* scene, int32_t emitter, int32_t i)
+static const mvfxEvent* Events(const Scene* scene, int32_t emitter, int32_t* countOut)
 {
-    const uint32_t* low = mvfxAttributeArray(scene->live, emitter, mvfx_attributeBirthLow);
-    const uint32_t* high = mvfxAttributeArray(scene->live, emitter, mvfx_attributeBirthHigh);
-    return (int64_t)(((uint64_t)high[i] << 32u) | low[i]);
+    const mvfxEvent* events = NULL;
+    *countOut = -1;
+    CHECK(mvfxInstance_GetEvents(scene->context, scene->instance, emitter, &events, countOut) ==
+              mvfx_success,
+          "events");
+    return events;
+}
+
+// The earliest and latest tick of an emitter's events of the last step.
+static void Ticks(const Scene* scene, int32_t emitter, int64_t* earliest, int64_t* latest)
+{
+    int32_t count = 0;
+    const mvfxEvent* events = Events(scene, emitter, &count);
+    *earliest = INT64_MAX;
+    *latest = INT64_MIN;
+    for (int32_t e = 0; e < count; ++e)
+    {
+        *earliest = events[e].tick < *earliest ? events[e].tick : *earliest;
+        *latest = events[e].tick > *latest ? events[e].tick : *latest;
+    }
 }
 
 static void TestDeathSpawns(void)
@@ -113,16 +132,16 @@ static void TestDeathSpawns(void)
     Place(&scene, 1, 1, 2, 3, 2.0f);
     Step(&scene, 1);
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
-    const mvfxEmitterState* consumer = &scene.live->emitters[0];
-    CHECK(consumer->count == 3, "three a death");
-    bool all = true;
-    for (int32_t i = 0; i < 3; ++i)
+    int32_t births = 0;
+    const mvfxEvent* events = Events(&scene, 0, &births);
+    CHECK(Read(&scene, 0) == 3 && births == 3, "three a death");
+    bool all = births == 3;
+    for (int32_t i = 0; all && i < 3; ++i)
     {
         double lastX = 1.0 + 2.0 / MVFX_TICKS_PER_SECOND;
-        all = all && BirthOf(&scene, 0, i) == MVFX_TICKS_PER_SECOND / 2 &&
-              fabs((double)At(&scene, 0, mvfx_attributePositionX, i) - (lastX + 0.5)) <= 1e-5 &&
-              At(&scene, 0, mvfx_attributePositionY, i) == 2.0f &&
-              At(&scene, 0, mvfx_attributeVelocityX, i) == 1.0f;
+        all = events[i].tick == MVFX_TICKS_PER_SECOND / 2 &&
+              fabs((double)s_particles[i].position[0] - (lastX + 0.5)) <= 1e-5 &&
+              s_particles[i].position[1] == 2.0f && s_particles[i].velocity[0] == 1.0f;
     }
     CHECK(all, "at its tick and place with half its velocity");
     mvfxDestroyContext(scene.context);
@@ -143,7 +162,7 @@ static void TestCounts(void)
         }
         Step(&scene, 1);
         Step(&scene, MVFX_TICKS_PER_SECOND - 1);
-        totals[run] = scene.live->emitters[1].count;
+        totals[run] = Read(&scene, 1);
         mvfxDestroyContext(scene.context);
     }
     CHECK(totals[0] == totals[1] && totals[0] > 40 && totals[0] < 120, "drawn in range, fixed");
@@ -168,8 +187,7 @@ static void TestInherit(void)
     Place(&scene, 0, 0, 0, 0, 0.0f);
     Step(&scene, 1);
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
-    CHECK(scene.live->emitters[1].count == 1 && At(&scene, 1, mvfx_attributeColorG, 0) == 0.5f &&
-              At(&scene, 1, mvfx_attributeSizeX, 0) == 3.0f,
+    CHECK(Read(&scene, 1) == 1 && s_particles[0].color[1] == 0.5f && s_particles[0].size[0] == 3.0f,
           "its colour and size");
     mvfxDestroyContext(scene.context);
     // A consumer storing neither keeps its places: what it inherits goes.
@@ -179,9 +197,8 @@ static void TestInherit(void)
     Place(&scene, 0, 4, 5, 6, 0.0f);
     Step(&scene, 1);
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
-    CHECK(scene.live->emitters[1].count == 1 && At(&scene, 1, mvfx_attributePositionX, 0) == 4.0f &&
-              At(&scene, 1, mvfx_attributePositionY, 0) == 5.0f &&
-              At(&scene, 1, mvfx_attributePositionZ, 0) == 6.0f,
+    CHECK(Read(&scene, 1) == 1 && s_particles[0].position[0] == 4.0f &&
+              s_particles[0].position[1] == 5.0f && s_particles[0].position[2] == 6.0f,
           "a consumer storing no colour or size keeps its places");
     mvfxDestroyContext(scene.context);
 }
@@ -192,7 +209,8 @@ static void TestLocal(void)
     // a quarter about Z, at scale 2: the death at the source's (1, 0, 0)
     // moving (1, 0, 0) is born at the consumer's (1, 0, 0) moving (0.5, 0,
     // 0), half the inherited 1 the world's 2 makes back in its space, so at
-    // x = 1.25 by the step's end.
+    // x = 1.25 by the step's end: the world's (100, 2.5, 0), moving 1 along
+    // Y.
     mvfxEmitterDef emitters[2] = {Source(0.5f, 0.5f), Consumer(0, 1, 1)};
     emitters[0].space = mvfx_spaceLocal;
     emitters[1].space = mvfx_spaceLocal;
@@ -205,10 +223,11 @@ static void TestLocal(void)
     Place(&scene, 0, 1, 0, 0, 1.0f);
     Step(&scene, 1);
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
-    CHECK(scene.live->emitters[1].count == 1 &&
-              fabsf(At(&scene, 1, mvfx_attributePositionX, 0) - 1.25f) <= 1e-4f &&
-              fabsf(At(&scene, 1, mvfx_attributePositionY, 0)) <= 1e-5f &&
-              fabsf(At(&scene, 1, mvfx_attributeVelocityX, 0) - 0.5f) <= 1e-6f,
+    CHECK(ReadParticlesFrom(scene.context, scene.instance, 1, origin, s_particles, 2) == 1 &&
+              fabsf(s_particles[0].position[0]) <= 2e-5f &&
+              fabsf(s_particles[0].position[1] - 2.5f) <= 2e-4f &&
+              fabsf(s_particles[0].velocity[0]) <= 2e-6f &&
+              fabsf(s_particles[0].velocity[1] - 1.0f) <= 2e-6f,
           "mapped through the instance");
     mvfxDestroyContext(scene.context);
 }
@@ -224,13 +243,16 @@ static void TestFullAndStopped(void)
     Place(&scene, 0, 0, 0, 0, 0.0f);
     Place(&scene, 0, 1, 0, 0, 0.0f);
     Step(&scene, 1);
-    const float* inverse = mvfxAttributeArray(scene.live, 0, mvfx_attributeInverseLife);
-    double first = fmin(1.0 / (double)inverse[0], 1.0 / (double)inverse[1]);
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
+    int64_t first = 0;
+    int64_t last = 0;
+    Ticks(&scene, 0, &first, &last);
+    int32_t births = 0;
+    const mvfxEvent* born = Events(&scene, 1, &births);
     mvfxEmitterStats stats = {0};
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
-              scene.live->emitters[1].count == 1 && stats.refused == 1 &&
-              fabs((double)BirthOf(&scene, 1, 0) / MVFX_TICKS_PER_SECOND - first) <= 2e-6,
+              Read(&scene, 1) == 1 && stats.refused == 1 && births == 1 && first < last &&
+              born[0].tick == first && born[0].serial == s_particles[0].serial,
           "the earlier death's, the later refused");
     mvfxDestroyContext(scene.context);
 
@@ -246,7 +268,7 @@ static void TestFullAndStopped(void)
     Step(&scene, 1);
     CHECK(!mvfxInstance_IsFinished(scene.context, scene.instance), "its source lives");
     Step(&scene, MVFX_TICKS_PER_SECOND - 2);
-    CHECK(scene.live->emitters[1].count == 0, "nothing past the stop");
+    CHECK(Read(&scene, 1) == 0, "nothing past the stop");
     Step(&scene, 1);
     CHECK(mvfxInstance_IsFinished(scene.context, scene.instance), "then finished");
     mvfxDestroyContext(scene.context);
@@ -262,7 +284,7 @@ static void TestFullAndStopped(void)
         Place(&scene, 0, 0, 0, 0, 0.0f);
         Step(&scene, 1);
         Step(&scene, MVFX_TICKS_PER_SECOND - 1);
-        CHECK(scene.live->emitters[1].count == loops - 1, "spawns within its loops only");
+        CHECK(Read(&scene, 1) == loops - 1, "spawns within its loops only");
         mvfxDestroyContext(scene.context);
     }
 
@@ -292,7 +314,8 @@ static void TestRoomAndStatus(void)
     mvfxDestroyContext(scene.context);
 
     // Room for one, lives of a quarter second: the earlier death's birth
-    // dies before the later death, which then finds room.
+    // dies before the later death, which then finds room (the earlier,
+    // born and dead within the step, was never live and told of no birth).
     mvfxEmitterDef full[2] = {Source(0.2f, 0.8f), Consumer(0, 1, 1)};
     full[1].capacity = 1;
     full[1].lifetime = mvfxRangeSource(0.25f, 0.25f);
@@ -300,14 +323,19 @@ static void TestRoomAndStatus(void)
     Place(&scene, 0, 0, 0, 0, 0.0f);
     Place(&scene, 0, 1, 0, 0, 0.0f);
     Step(&scene, 1);
-    const float* inverse = mvfxAttributeArray(scene.live, 0, mvfx_attributeInverseLife);
-    double early = fmin(1.0 / (double)inverse[0], 1.0 / (double)inverse[1]);
-    double late = fmax(1.0 / (double)inverse[0], 1.0 / (double)inverse[1]);
-    CHECK(late - early > 0.26 && late + 0.25 > 1.0, "the lives this needs");
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
+    int64_t early = 0;
+    int64_t late = 0;
+    Ticks(&scene, 0, &early, &late);
+    CHECK(late - early > MVFX_TICKS_PER_SECOND / 4 &&
+              late + MVFX_TICKS_PER_SECOND / 4 > MVFX_TICKS_PER_SECOND,
+          "the lives this needs");
+    int32_t births = 0;
+    const mvfxEvent* born = Events(&scene, 1, &births);
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
-              stats.live == 1 && stats.refused == 0 &&
-              fabs((double)BirthOf(&scene, 1, 0) / MVFX_TICKS_PER_SECOND - late) <= 2e-6,
+              stats.live == 1 && stats.refused == 0 && stats.owed == 2 && births == 1 &&
+              born[0].tick == late && Read(&scene, 1) == 1 &&
+              s_particles[0].serial == born[0].serial,
           "room again after a death within the step");
     mvfxDestroyContext(scene.context);
 
@@ -447,9 +475,14 @@ static void TestDrawnByEvent(void)
 {
     // Births from events draw by their event, not their serial: a
     // consumer taking one birth a step (refusing the rest, their serials
-    // spent) keeps births whose lives are those of the same event's births
-    // in a consumer taking them all, though their serials differ.
-    Scene scenes[2];
+    // spent) keeps births whose ticks and lives are those of the same
+    // event's births in a consumer taking them all, though their serials
+    // differ. Born at the same tick, the same age at the end is the same
+    // life.
+    static int64_t bornAt[2][512];
+    static TestParticle particles[2][256];
+    int32_t counts[2] = {0, 0};
+    mvfxEmitterStats stats[2] = {0};
     for (int32_t run = 0; run < 2; ++run)
     {
         mvfxEmitterDef emitters[2] = {Source(0.2f, 0.8f), Consumer(0, 1, 3)};
@@ -458,38 +491,51 @@ static void TestDrawnByEvent(void)
         emitters[0].eventCapacity = 128;
         emitters[1].lifetime = mvfxRangeSource(5.0f, 10.0f);
         emitters[1].eventSpawn.capacity = run == 0 ? 64 : 1;
-        scenes[run] = NewScene(emitters, 2);
+        Scene scene = NewScene(emitters, 2);
         for (int32_t i = 0; i < 120; ++i)
         {
-            Place(&scenes[run], 0, i, 0, 0, 0.0f);
+            Place(&scene, 0, i, 0, 0, 0.0f);
+        }
+        for (int32_t serial = 0; serial < 512; ++serial)
+        {
+            bornAt[run][serial] = -1;
         }
         for (int32_t step = 0; step < 60; ++step)
         {
-            Step(&scenes[run], MVFX_TICKS_PER_SECOND / 60);
+            Step(&scene, MVFX_TICKS_PER_SECOND / 60);
+            int32_t births = 0;
+            const mvfxEvent* born = Events(&scene, 1, &births);
+            for (int32_t e = 0; e < births; ++e)
+            {
+                if (born[e].serial < 512u)
+                {
+                    bornAt[run][born[e].serial] = born[e].tick;
+                }
+            }
         }
+        counts[run] = ReadParticles(scene.context, scene.instance, 1, particles[run], 256);
+        CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats[run]) ==
+                  mvfx_success,
+              "stats");
+        mvfxDestroyContext(scene.context);
     }
-    const mvfxEmitterState* all = &scenes[0].live->emitters[1];
-    const mvfxEmitterState* few = &scenes[1].live->emitters[1];
-    const uint32_t* allLives = mvfxAttributeArray(scenes[0].live, 1, mvfx_attributeInverseLife);
-    const uint32_t* fewLives = mvfxAttributeArray(scenes[1].live, 1, mvfx_attributeInverseLife);
-    const uint32_t* fewSerials = mvfxAttributeArray(scenes[1].live, 1, mvfx_attributeSerial);
     bool twins = true;
     bool shifted = false;
-    for (int32_t j = 0; j < few->count; ++j)
+    for (int32_t j = 0; j < counts[1]; ++j)
     {
+        const TestParticle* few = &particles[1][j];
         bool found = false;
-        for (int32_t i = 0; !found && i < all->count; ++i)
+        for (int32_t i = 0; !found && i < counts[0]; ++i)
         {
-            found = BirthOf(&scenes[0], 1, i) == BirthOf(&scenes[1], 1, j) &&
-                    allLives[i] == fewLives[j];
+            const TestParticle* all = &particles[0][i];
+            found = all->serial < 512u && few->serial < 512u && bornAt[0][all->serial] >= 0 &&
+                    bornAt[0][all->serial] == bornAt[1][few->serial] && all->age == few->age;
         }
         twins = twins && found;
-        shifted = shifted || fewSerials[j] != (uint32_t)j;
+        shifted = shifted || few->serial != (uint32_t)j;
     }
-    CHECK(few->count > 10 && few->refused > 0 && shifted && twins,
+    CHECK(counts[1] > 10 && stats[1].refused > 0 && shifted && twins,
           "an event's births the same whatever other events gave");
-    mvfxDestroyContext(scenes[0].context);
-    mvfxDestroyContext(scenes[1].context);
 }
 
 int main(void)
