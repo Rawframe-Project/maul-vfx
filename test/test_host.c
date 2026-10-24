@@ -364,6 +364,17 @@ static void TestPrewarm(void)
     // A tenth of a second rounds to 104,858 ticks.
     CHECK(mvfxContext_StepTicks(stepped.context, 104858) == mvfx_success, "step");
     CHECK(SameParticles(&warmed, &stepped), "the last step shorter, a tenth of a second");
+    // Nothing a prewarm leaves behind shows only later: the steps after
+    // keep them the same, through the bursts and deaths to come.
+    bool after = true;
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        CHECK(mvfxContext_StepTicks(warmed.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success &&
+                  mvfxContext_StepTicks(stepped.context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success,
+              "steps after");
+        after = after && SameParticles(&warmed, &stepped);
+    }
+    CHECK(after, "the same in the steps after");
 
     uint64_t misuse = mvfxGetContextMisuse(warmed.context);
     double out = 7.0;
