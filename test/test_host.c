@@ -141,11 +141,26 @@ static void TestDrawnFromCenterAndLocal(void)
     }
 }
 
+// Keeps the anchor a step's host modules see.
+static void SeeAnchor(const mvfxModuleCall* call, void* user)
+{
+    double* anchor = user;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        anchor[k] = call->anchor[k];
+    }
+}
+
 static void TestEdges(void)
 {
-    // An instance far from the origin and moving, its inherited velocity,
-    // a drawn velocity at the instance's very center, given sizes.
+    // A rebased anchor, a moving instance's inherited velocity, a drawn
+    // velocity at the instance's very center, given sizes.
+    static double anchor[3];
+    const mvfxHostModule seeing = {
+        .stage = mvfx_stageAfterMotion, .function = SeeAnchor, .user = anchor};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.hostModules = &seeing;
+    emitter.hostModuleCount = 1;
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
     emitter.inheritVelocity = 1.0f;
@@ -170,6 +185,8 @@ static void TestEdges(void)
     mvfxSpawnRequest request = {.count = 1, .positions = places, .sizes = sizes};
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "queued");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
+    // Rebased at the teleport, 4 units being short of the rebase distance.
+    CHECK(anchor[0] == 2000.0, "rebased");
     CHECK(ReadParticlesFrom(scene.context, scene.instance, 0, places, s_particles, 16) == 1,
           "born");
     const TestParticle* q = s_particles;
