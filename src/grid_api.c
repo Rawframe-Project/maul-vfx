@@ -6,7 +6,6 @@
 #include "grid_api.h"
 
 #include "context.h"
-#include "fpenv.h"
 #include "grid.h"
 #include "slots.h"
 
@@ -15,8 +14,7 @@ mvfxGridDef mvfxDefaultGridDef(void)
     return (mvfxGridDef){.cookie = MVFX_GRID_DEF_COOKIE, .size = {1, 1, 1}, .components = 1};
 }
 
-static MVFX_NOINLINE mvfxResult mvfxCreateGridWork(mvfxContext* context, const mvfxGridDef* def,
-                                                   mvfxGridId* gridOut)
+mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGridId* gridOut)
 {
     if (context == nullptr || gridOut == nullptr)
     {
@@ -56,14 +54,6 @@ static MVFX_NOINLINE mvfxResult mvfxCreateGridWork(mvfxContext* context, const m
     uint32_t index1 = mvfxTakeSlot(&context->grids, grid, &generation);
     *gridOut = (mvfxGridId){index1, generation};
     return mvfx_success;
-}
-
-mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGridId* gridOut)
-{
-    uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxCreateGridWork(context, def, gridOut);
-    mvfxFloatEnvLeave(env);
-    return result;
 }
 
 mvfxResult mvfxDestroyGrid(mvfxContext* context, mvfxGridId grid)
@@ -149,8 +139,8 @@ static void Changed(mvfxContext* context, mvfxGrid* grid, const int32_t first[3]
     grid->serial = ++context->gridValues;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxGrid_SetValuesWork(mvfxContext* context, mvfxGridId grid,
-                                                       const float* values, int64_t count)
+mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float* values,
+                              int64_t count)
 {
     if (context == nullptr)
     {
@@ -177,19 +167,8 @@ static MVFX_NOINLINE mvfxResult mvfxGrid_SetValuesWork(mvfxContext* context, mvf
     return mvfx_success;
 }
 
-mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float* values,
-                              int64_t count)
-{
-    uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxGrid_SetValuesWork(context, grid, values, count);
-    mvfxFloatEnvLeave(env);
-    return result;
-}
-
-static MVFX_NOINLINE mvfxResult mvfxGrid_SetValuesInWork(mvfxContext* context, mvfxGridId grid,
-                                                         const int32_t first[3],
-                                                         const int32_t size[3], const float* values,
-                                                         int64_t count)
+mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid, const int32_t first[3],
+                                const int32_t size[3], const float* values, int64_t count)
 {
     if (context == nullptr)
     {
@@ -220,15 +199,6 @@ static MVFX_NOINLINE mvfxResult mvfxGrid_SetValuesInWork(mvfxContext* context, m
     mvfxStoreGridBox(live, first, size, values);
     Changed(context, live, first, size);
     return mvfx_success;
-}
-
-mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid, const int32_t first[3],
-                                const int32_t size[3], const float* values, int64_t count)
-{
-    uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxGrid_SetValuesInWork(context, grid, first, size, values, count);
-    mvfxFloatEnvLeave(env);
-    return result;
 }
 
 mvfxGrid* mvfxContextGrid(const mvfxContext* context, mvfxGridId grid)

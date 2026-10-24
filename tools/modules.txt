@@ -73,7 +73,7 @@ context: allocator effect grid instance invariant layout mesh slots tasks
 convex: direction hull
 effect_api: allocator context effect effect_parts fpenv grid grid_api hull mesh mesh_api slots
 mesh_api: allocator context fpenv hull mesh slots
-grid_api: context fpenv grid slots
+grid_api: context grid slots
 gas: allocator collide force gas_lattice
 gas_lattice:
 gas_liquid: direction gas gas_api gas_lattice gas_pressure gas_solid instance space tasks

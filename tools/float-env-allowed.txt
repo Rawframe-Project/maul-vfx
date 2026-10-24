@@ -67,3 +67,8 @@ makes, frees, clears or changes objects from integers, pointers, flags and ticks
 stores a caller's floats as given after checking them finite and within bounds of at least 1, which no setting changes, computing no float:
     mvfxInstance_SetParameter
     mvfxInstance_Spawn
+
+checks a caller's floats against bounds by their size and stores them, as given or as binary16 rounded by their bits, computing no float:
+    mvfxCreateGrid
+    mvfxGrid_SetValues
+    mvfxGrid_SetValuesIn
