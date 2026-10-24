@@ -18,9 +18,9 @@
 // tipping over a corner at the diagonal's;
 // the checks.
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+
+#include "maul-vfx/instance.h"
 
 #include <math.h>
 #include <string.h>
@@ -34,6 +34,41 @@ typedef struct Scene
 static Scene s_scene;
 
 static mvfxCollider s_colliders[2];
+
+// The first body as the host modules see it after motion in the last step.
+typedef struct Peeked
+{
+    float place[3];
+    float velocity[3];
+    float orientation[4];
+    float angular[3];
+    uint32_t collisions;
+} Peeked;
+
+static Peeked s_peeked;
+
+static void Peek(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    if (p->count == 0)
+    {
+        return;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        s_peeked.place[k] = p->position[k][0];
+        s_peeked.velocity[k] = p->velocity[k][0];
+        s_peeked.angular[k] = p->angularVelocity[k][0];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        s_peeked.orientation[k] = p->orientation[k][0];
+    }
+    s_peeked.collisions = p->collisions != NULL ? p->collisions[0] : 0u;
+}
+
+static const mvfxHostModule s_peek = {.stage = mvfx_stageAfterMotion, .function = Peek};
 
 // A rigid body of a shape and size, one substep in eight, a plane at y = 0.
 static mvfxEmitterDef Rigid(mvfxRigidShape shape, float x, float y, float z)
@@ -71,10 +106,14 @@ static void Tilt(mvfxEmitterDef* emitter, float angle)
 static void Open(const mvfxEmitterDef* emitter, const double place[3], const float velocity[3])
 {
     memset(&s_scene, 0, sizeof s_scene);
+    memset(&s_peeked, 0, sizeof s_peeked);
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+    mvfxEmitterDef peeked = *emitter;
+    peeked.hostModules = &s_peek;
+    peeked.hostModuleCount = 1;
     mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = emitter;
+    def.emitters = &peeked;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
@@ -96,31 +135,26 @@ static void Steps(int32_t n)
     }
 }
 
-static float* Array(mvfxAttribute attribute)
-{
-    return mvfxAttributeArray(mvfxContextInstance(s_scene.context, s_scene.instance), 0, attribute);
-}
-
 static float X(int32_t k)
 {
-    return Array((mvfxAttribute)(mvfx_attributePositionX + k))[0];
+    return s_peeked.place[k];
 }
 
 static float V(int32_t k)
 {
-    return Array((mvfxAttribute)(mvfx_attributeVelocityX + k))[0];
+    return s_peeked.velocity[k];
 }
 
 static float W(int32_t k)
 {
-    return Array((mvfxAttribute)(mvfx_attributeAngularX + k))[0];
+    return s_peeked.angular[k];
 }
 
 static void Q(float out[4])
 {
     for (int32_t k = 0; k < 4; ++k)
     {
-        out[k] = Array((mvfxAttribute)(mvfx_attributeOrientationX + k))[0];
+        out[k] = s_peeked.orientation[k];
     }
 }
 
@@ -301,10 +335,9 @@ static void TestStrikes(void)
     static const float still[3] = {0, 0, 0};
     Open(&emitter, place, still);
     Steps(120);
-    const uint32_t* count = (const uint32_t*)Array(mvfx_attributeCollisions);
-    uint32_t landed = count[0];
+    uint32_t landed = s_peeked.collisions;
     Steps(60);
-    CHECK(landed >= 1 && count[0] == landed, "strikes counted, not resting");
+    CHECK(landed >= 1 && s_peeked.collisions == landed, "strikes counted, not resting");
     mvfxDestroyContext(s_scene.context);
     emitter.collision.killOnCollision = true;
     Open(&emitter, place, still);
@@ -383,8 +416,7 @@ static void TestStrikeEvents(void)
     static const float fast[3] = {0, 60, 0};
     Open(&emitter, place, fast);
     Steps(2);
-    const uint32_t* count = (const uint32_t*)Array(mvfx_attributeCollisions);
-    uint32_t before = count[0];
+    uint32_t before = s_peeked.collisions;
     Steps(1);
     const mvfxEvent* events = NULL;
     int32_t n = 0;
@@ -392,7 +424,7 @@ static void TestStrikeEvents(void)
           "events");
     bool onSurface =
         n == 1 && (fabs(events[0].place[1]) <= 1e-4 || fabs(events[0].place[1] - 1.2) <= 1e-4);
-    CHECK(count[0] >= before + 2u && onSurface, "strikes counted, one event a step");
+    CHECK(s_peeked.collisions >= before + 2u && onSurface, "strikes counted, one event a step");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -701,6 +733,9 @@ static void OpenOn(mvfxEmitterDef* emitter, mvfxCollider (*make)(mvfxContext*, b
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     s_colliders[0] = make(context, flag);
     emitter->colliderCount = 1;
+    emitter->hostModules = &s_peek;
+    emitter->hostModuleCount = 1;
+    memset(&s_peeked, 0, sizeof s_peeked);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitter;
     def.emitterCount = 1;
