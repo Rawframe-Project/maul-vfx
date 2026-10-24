@@ -6,6 +6,63 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.1.2](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.1.2) (2026-10-24)
+
+### Changed
+
+- The allocator's `alloc` and `free` and the task hooks' `enqueueTask`
+  and `finishTask` now run in the host thread's own floating-point
+  setting, even when the library calls them from inside a step or an
+  effect's creation. Called from there, they used to run in the
+  library's. Host modules still run in the library's setting, since
+  their results feed the simulation.
+
+### Fixed
+
+- Every public call that computes floats now runs in the library's
+  floating-point setting (round to nearest, subnormals kept, no
+  traps). It leaves the thread's setting as it found it, sticky
+  exception flags included, and on 32-bit x86 the x87 control word too.
+  Until 0.1.1 only a step, a prewarm, an effect's compile and the task
+  ranges did this. Every other call ran in the host thread's setting,
+  so a host with flush-to-zero, denormals-are-zero or another rounding
+  mode could get different bits, and the call's arithmetic could leave
+  exception flags behind. The same bits under any host setting now
+  hold for:
+  - effects: `mvfxCreateEffect`, `mvfxCreateEffectFromBytes`,
+    `mvfxReadEffect`, `mvfxWriteEffect`, `mvfxEffect_GetEmitterView`;
+  - meshes: `mvfxCreateMesh`, `mvfxMesh_SetPositions`,
+    `mvfxMesh_HullCenter`, `mvfxMesh_HullVertexCount`;
+  - instances: `mvfxCreateInstance`, `mvfxInstance_SetTransform`,
+    `mvfxInstance_SetColliders`, `mvfxInstance_SetAttachFrames`,
+    `mvfxInstance_SetDepthImage`, `mvfxInstance_WakeBodies`,
+    `mvfxInstance_PushWater`, `mvfxInstance_AnswerSceneQueries`,
+    `mvfxInstance_Stop`, `mvfxInstance_Restart`,
+    `mvfxInstance_GetEmitterStats`;
+  - steps: `mvfxContext_Step`, `mvfxContext_StepTicks`,
+    `mvfxInstance_Prewarm`;
+  - output: `mvfxInstance_WriteParticles`, `mvfxInstance_WriteLights`,
+    `mvfxInstance_WriteRibbons`, `mvfxInstance_WritePlexus`,
+    `mvfxInstance_WriteSurfaceMesh`, `mvfxInstance_ExpandSprites`,
+    `mvfxInstance_ExpandRibbons`, `mvfxInstance_ExpandTubes`,
+    `mvfxInstance_ExpandSheets`, `mvfxInstance_ExpandPlexus`,
+    `mvfxInstance_GetBounds`, `mvfxContext_OrderEmitters`;
+  - gases and water: `mvfxInstance_ReadGas`, `mvfxInstance_ReadGasAs`,
+    `mvfxInstance_SampleGas`, `mvfxInstance_GetGasInfo`,
+    `mvfxInstance_ReadWater`, `mvfxInstance_SampleWater`,
+    `mvfxInstance_GetWaterInfo`;
+  - planned instances: `mvfxInstance_GetEmitterPlan`,
+    `mvfxInstance_GetEmitterStepPlan`, `mvfxInstance_GetGasPlan`,
+    `mvfxInstance_GetGasStepPlan`, `mvfxInstance_GetWaterPlan`,
+    `mvfxInstance_GetWaterStepPlan`, `mvfxInstance_SetLiquidSpeed`,
+    `mvfxInstance_SetWaterSpeed`, `mvfxInstance_SetWaterCounts`;
+  - without a context: `mvfxSrgbSteps`, `mvfxBakeCurlNoise`.
+
+  The other public calls compute no float and need no change:
+  defaults, counts, views of stored values, destruction, integer draws,
+  grids' values (converted to binary16 by their bits) and inputs stored
+  as given.
+
 ## [0.1.1](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.1.1) (2026-10-24)
 
 ### Fixed
