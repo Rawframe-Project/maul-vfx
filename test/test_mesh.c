@@ -4,23 +4,22 @@
 // Meshes: their refusals, edges built once, normals, each mode's choice
 // in proportion to length, area, count or volume within five standard
 // deviations, points inside their elements and uniform there, moving a
-// mesh, and meshes bound to effects and instances through the step.
+// mesh, and meshes bound to effects and instances through the step. The
+// meshes are read through their views, and where a mode places particles
+// through the birth events of an emitter born on it: each event's place,
+// and its velocity, the normal there at a speed of 1.
 
-#include "context.h"
-#include "instance.h"
-#include "mesh.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
+#include "maul-vfx/mesh.h"
+#include "maul-vfx/plan.h"
 
 #include <math.h>
+#include <string.h>
 
 #define SAMPLES 40000
-
-static mvfxWords4 Words(uint32_t i)
-{
-    return mvfxPcg4d((mvfxWords4){i, 0xBEEFu, 3u, 0u});
-}
 
 // Whether count of SAMPLES draws matches a share within five standard
 // deviations of a binomial.
@@ -30,9 +29,12 @@ static bool NearShare(int64_t count, double share)
     return fabs((double)count - SAMPLES * share) <= 5.0 * deviation + 1e-9;
 }
 
-static mvfxMesh* Build(const float* positions, const float* normals, int32_t vertices,
-                       const uint32_t* triangles, int32_t triangleCount, const uint32_t* tetrahedra,
-                       int32_t tetrahedronCount)
+// The context the samples' meshes live in.
+static mvfxContext* s_context;
+
+static mvfxMeshId Build(const float* positions, const float* normals, int32_t vertices,
+                        const uint32_t* triangles, int32_t triangleCount,
+                        const uint32_t* tetrahedra, int32_t tetrahedronCount)
 {
     mvfxMeshDef def = mvfxDefaultMeshDef();
     def.positions = positions;
@@ -42,15 +44,73 @@ static mvfxMesh* Build(const float* positions, const float* normals, int32_t ver
     def.triangleCount = triangleCount;
     def.tetrahedra = tetrahedra;
     def.tetrahedronCount = tetrahedronCount;
-    CHECK(mvfxIsMeshDefValid(&def), "a valid mesh");
-    mvfxAllocator allocator = {0};
-    return mvfxBuildMesh(&def, &allocator);
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(s_context, &def, &mesh) == mvfx_success, "a valid mesh");
+    return mesh;
 }
 
-static void Free(mvfxMesh* mesh)
+static mvfxMeshView View(mvfxMeshId mesh)
 {
-    mvfxAllocator allocator = {0};
-    mvfxReleaseMesh(mesh, &allocator);
+    mvfxMeshView view;
+    CHECK(mvfxMesh_GetView(s_context, mesh, &view) == mvfx_success, "its view");
+    return view;
+}
+
+static void Free(mvfxMeshId mesh)
+{
+    CHECK(mvfxDestroyMesh(s_context, mesh) == mvfx_success, "destroyed");
+}
+
+// Points a mode places on a mesh: an emitter born on it, count in its
+// first second, each birth event's place and velocity (the normal there,
+// at a speed of 1).
+static float s_places[SAMPLES][3];
+static float s_normals[SAMPLES][3];
+static int32_t Sample(mvfxMeshId mesh, mvfxMeshMode mode, int32_t count)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = count;
+    emitter.rate = (float)count;
+    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.shape.kind = mvfx_shapeMesh;
+    emitter.shape.mesh = mesh;
+    emitter.shape.meshMode = mode;
+    emitter.velocity.mode = mvfx_directionShapeNormal;
+    emitter.velocity.speed = (mvfxRange){1.0f, 1.0f};
+    emitter.events = mvfx_eventMaskBirth;
+    emitter.eventCapacity = count;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(s_context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(s_context, &instanceDef, &instance) == mvfx_success, "instance");
+    CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    const mvfxEvent* events = NULL;
+    int32_t eventCount = 0;
+    CHECK(mvfxInstance_GetEvents(s_context, instance, 0, &events, &eventCount) == mvfx_success,
+          "events");
+    int32_t n = 0;
+    for (int32_t e = 0; e < eventCount && n < count; ++e)
+    {
+        if (events[e].kind == mvfx_eventBirth)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                s_places[n][k] = (float)events[e].place[k];
+                s_normals[n][k] = events[e].velocity[k];
+            }
+            ++n;
+        }
+    }
+    CHECK(n == count, "every sample born");
+    CHECK(mvfxDestroyInstance(s_context, instance) == mvfx_success &&
+              mvfxDestroyEffect(s_context, effect) == mvfx_success,
+          "done");
+    return n;
 }
 
 // A unit square of two triangles in the XY plane, and a triangle three
@@ -60,22 +120,23 @@ static const uint32_t s_quadTriangles[] = {0, 1, 2, 0, 2, 3, 4, 5, 6};
 
 static void TestEdgesAndNormals(void)
 {
-    mvfxMesh* mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
-    CHECK(mesh->edgeCount == 8, "the shared diagonal once: 5 + 3 edges");
+    mvfxMeshId mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
+    mvfxMeshView view = View(mesh);
+    CHECK(view.edgeCount == 8, "the shared diagonal once: 5 + 3 edges");
     bool ordered = true;
-    for (int32_t e = 0; e < mesh->edgeCount; ++e)
+    for (int32_t e = 0; e < view.edgeCount; ++e)
     {
-        ordered = ordered && mesh->edges[2 * e] < mesh->edges[2 * e + 1];
+        ordered = ordered && view.edges[2 * e] < view.edges[2 * e + 1];
     }
     CHECK(ordered, "the lower vertex first");
     bool up = true;
     for (int32_t v = 0; v < 7; ++v)
     {
-        up = up && mesh->normals[3 * v] == 0.0f && mesh->normals[3 * v + 1] == 0.0f &&
-             mesh->normals[3 * v + 2] == 1.0f;
+        up = up && view.normals[3 * v] == 0.0f && view.normals[3 * v + 1] == 0.0f &&
+             view.normals[3 * v + 2] == 1.0f;
     }
     CHECK(up, "a flat mesh's normals +Z");
-    CHECK(fabs(mesh->triangleSums[2] - 4.0) < 1e-12, "areas summed: 1/2 + 1/2 + 3");
+    CHECK(fabs(view.triangleSums[2] - 4.0) < 1e-12, "areas summed: 1/2 + 1/2 + 3");
     Free(mesh);
 
     // Folded at a right angle along the X axis, two triangles of equal area
@@ -84,29 +145,30 @@ static void TestEdgesAndNormals(void)
     static const float folded[] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 5, 5};
     static const uint32_t foldedTriangles[] = {0, 1, 2, 1, 0, 3};
     mesh = Build(folded, NULL, 5, foldedTriangles, 2, NULL, 0);
+    view = View(mesh);
     float half = 0.70710678f;
-    CHECK(fabsf(mesh->normals[0]) <= 1e-6f && fabsf(mesh->normals[1] + half) <= 1e-6f &&
-              fabsf(mesh->normals[2] - half) <= 1e-6f,
+    CHECK(fabsf(view.normals[0]) <= 1e-6f && fabsf(view.normals[1] + half) <= 1e-6f &&
+              fabsf(view.normals[2] - half) <= 1e-6f,
           "a shared vertex's normal the triangles' sum");
-    CHECK(mesh->normals[12] == 0.0f && mesh->normals[13] == 0.0f && mesh->normals[14] == 1.0f,
+    CHECK(view.normals[12] == 0.0f && view.normals[13] == 0.0f && view.normals[14] == 1.0f,
           "an untouched vertex's normal +Z");
     Free(mesh);
 }
 
 static void TestSurfaceByArea(void)
 {
-    mvfxMesh* mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
+    mvfxMeshId mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
+    int32_t n = Sample(mesh, mvfx_meshSurface, SAMPLES);
     int64_t inLarge = 0;
     double sumX = 0.0;
     double sumY = 0.0;
     int64_t large = 0;
     bool inside = true;
-    for (uint32_t i = 0; i < SAMPLES; ++i)
+    for (int32_t i = 0; i < n; ++i)
     {
-        float p[3];
-        float n[3];
-        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
-        inside = inside && p[2] == 0.0f && n[2] == 1.0f;
+        const float* p = s_places[i];
+        const float* normal = s_normals[i];
+        inside = inside && p[2] == 0.0f && normal[2] == 1.0f;
         if (p[0] >= 2.0f - 1e-6f)
         {
             // The large triangle (2,0), (5,0), (2,2): x >= 2, y >= 0 and
@@ -136,37 +198,27 @@ static void TestSurfaceByArea(void)
     static const float flat[] = {0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 1, 1, 0, 1};
     static const uint32_t flatTriangles[] = {0, 1, 2, 0, 1, 3, 1, 4, 3};
     mesh = Build(flat, NULL, 5, flatTriangles, 3, NULL, 0);
+    n = Sample(mesh, mvfx_meshSurface, 4000);
     bool skipped = true;
-    for (uint32_t i = 0; i < 4000; ++i)
+    for (int32_t i = 0; i < n; ++i)
     {
-        float p[3];
-        float n[3];
-        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
-        skipped = skipped && p[0] <= 1.0f + 1e-6f;
+        skipped = skipped && s_places[i][0] <= 1.0f + 1e-6f;
     }
     CHECK(skipped, "a degenerate triangle never chosen");
-    // Even a draw of exactly 0 passes over a first triangle of no area.
-    static const uint32_t firstFlat[] = {0, 1, 2, 0, 1, 3};
-    mvfxMesh* first = Build(flat, NULL, 5, firstFlat, 2, NULL, 0);
-    float p[3];
-    float n[3];
-    mvfxSampleMesh(first, mvfx_meshSurface, (mvfxWords4){0u, 0u, 0x80000000u, 0x80000000u}, p, n);
-    CHECK(p[2] > 0.0f, "a draw of 0 skips the empty first triangle");
-    Free(first);
+    Free(mesh);
     // Triangles all of no area (a mesh whose positions collapsed): the
     // first is chosen, whatever the draw.
     static const float line[] = {0, 0, 0, 1, 0, 0, 2, 0, 0, 5, 0, 0, 6, 0, 0};
     static const uint32_t lineTriangles[] = {0, 1, 2, 2, 3, 4};
-    mvfxMesh* collapsed = Build(line, NULL, 5, lineTriangles, 2, NULL, 0);
+    mvfxMeshId collapsed = Build(line, NULL, 5, lineTriangles, 2, NULL, 0);
+    n = Sample(collapsed, mvfx_meshSurface, 1000);
     bool firstChosen = true;
-    for (uint32_t i = 0; i < 1000; ++i)
+    for (int32_t i = 0; i < n; ++i)
     {
-        mvfxSampleMesh(collapsed, mvfx_meshSurface, Words(i), p, n);
-        firstChosen = firstChosen && p[0] <= 2.0f + 1e-6f;
+        firstChosen = firstChosen && s_places[i][0] <= 2.0f + 1e-6f;
     }
     CHECK(firstChosen, "the first of triangles of no area chosen");
     Free(collapsed);
-    Free(mesh);
 }
 
 static void TestEdgesByLength(void)
@@ -174,13 +226,13 @@ static void TestEdgesByLength(void)
     // A right triangle of sides 3, 4 and 5: its edges hit 3 : 4 : 5.
     static const float right[] = {0, 0, 0, 3, 0, 0, 0, 4, 0};
     static const uint32_t triangle[] = {0, 1, 2};
-    mvfxMesh* mesh = Build(right, NULL, 3, triangle, 1, NULL, 0);
+    mvfxMeshId mesh = Build(right, NULL, 3, triangle, 1, NULL, 0);
+    int32_t n = Sample(mesh, mvfx_meshEdges, SAMPLES);
     int64_t hits[3] = {0};
-    for (uint32_t i = 0; i < SAMPLES; ++i)
+    bool onHypotenuse = true;
+    for (int32_t i = 0; i < n; ++i)
     {
-        float p[3];
-        float n[3];
-        mvfxSampleMesh(mesh, mvfx_meshEdges, Words(i), p, n);
+        const float* p = s_places[i];
         if (fabsf(p[1]) <= 1e-6f)
         {
             ++hits[0];
@@ -191,10 +243,11 @@ static void TestEdgesByLength(void)
         }
         else
         {
-            CHECK(fabsf(4.0f * p[0] + 3.0f * p[1] - 12.0f) <= 1e-4f, "on the hypotenuse");
+            onHypotenuse = onHypotenuse && fabsf(4.0f * p[0] + 3.0f * p[1] - 12.0f) <= 1e-4f;
             ++hits[2];
         }
     }
+    CHECK(onHypotenuse, "on the hypotenuse");
     CHECK(NearShare(hits[0], 3.0 / 12.0) && NearShare(hits[1], 4.0 / 12.0) &&
               NearShare(hits[2], 5.0 / 12.0),
           "edges by length");
@@ -205,19 +258,19 @@ static void TestVerticesAndGivenNormals(void)
 {
     static const float normals[] = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1};
     static const float corners[] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0};
-    mvfxMesh* mesh = Build(corners, normals, 4, s_quadTriangles, 2, NULL, 0);
+    mvfxMeshId mesh = Build(corners, normals, 4, s_quadTriangles, 2, NULL, 0);
+    int32_t n = Sample(mesh, mvfx_meshVertices, SAMPLES);
     int64_t hits[4] = {0};
     bool given = true;
-    for (uint32_t i = 0; i < SAMPLES; ++i)
+    for (int32_t i = 0; i < n; ++i)
     {
-        float p[3];
-        float n[3];
-        mvfxSampleMesh(mesh, mvfx_meshVertices, Words(i), p, n);
+        const float* p = s_places[i];
+        const float* normal = s_normals[i];
         int32_t v = (p[0] > 0.5f ? 1 : 0) + (p[1] > 0.5f ? 2 : 0);
         static const int32_t index[4] = {0, 1, 3, 2};
         int32_t at = index[v];
-        given = given && n[0] == normals[3 * at] && n[1] == normals[3 * at + 1] &&
-                n[2] == normals[3 * at + 2];
+        given = given && normal[0] == normals[3 * at] && normal[1] == normals[3 * at + 1] &&
+                normal[2] == normals[3 * at + 2];
         ++hits[at];
     }
     CHECK(given, "a vertex's given normal");
@@ -227,14 +280,14 @@ static void TestVerticesAndGivenNormals(void)
     }
     // On the surface, the given normals blend: the first triangle's three
     // (+X, +Y, +Z) give a normal with every component at least 0.
+    n = Sample(mesh, mvfx_meshSurface, 4000);
     bool blended = true;
-    for (uint32_t i = 0; i < 4000; ++i)
+    for (int32_t i = 0; i < n; ++i)
     {
-        float p[3];
-        float n[3];
-        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
-        double length = sqrt((double)n[0] * (double)n[0] + (double)n[1] * (double)n[1] +
-                             (double)n[2] * (double)n[2]);
+        const float* normal = s_normals[i];
+        double length =
+            sqrt((double)normal[0] * (double)normal[0] + (double)normal[1] * (double)normal[1] +
+                 (double)normal[2] * (double)normal[2]);
         blended = blended && fabs(length - 1.0) <= 1e-5;
     }
     CHECK(blended, "blended normals of unit length");
@@ -246,16 +299,15 @@ static void TestVolumeByVolume(void)
     // Two tetrahedra sharing a face, of volumes 1/6 and 2/6.
     static const float points[] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2};
     static const uint32_t tetrahedra[] = {0, 1, 2, 3, 0, 2, 1, 4};
-    mvfxMesh* mesh = Build(points, NULL, 5, NULL, 0, tetrahedra, 2);
+    mvfxMeshId mesh = Build(points, NULL, 5, NULL, 0, tetrahedra, 2);
+    int32_t n = Sample(mesh, mvfx_meshVolume, SAMPLES);
     int64_t below = 0;
     double sum[3] = {0.0};
     int64_t above = 0;
     bool inside = true;
-    for (uint32_t i = 0; i < SAMPLES; ++i)
+    for (int32_t i = 0; i < n; ++i)
     {
-        float p[3];
-        float n[3];
-        mvfxSampleMesh(mesh, mvfx_meshVolume, Words(i), p, n);
+        const float* p = s_places[i];
         inside = inside && p[0] >= -1e-6f && p[1] >= -1e-6f;
         if (p[2] < 0.0f)
         {
@@ -286,7 +338,7 @@ static void TestVolumeByVolume(void)
 
 static void TestMoving(void)
 {
-    mvfxMesh* mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
+    mvfxMeshId mesh = Build(s_quad, NULL, 7, s_quadTriangles, 3, NULL, 0);
     // The large triangle shrunk to the others' size and tipped up: a third
     // of the surface, its normal now along -Y... any way but +Z.
     float moved[21];
@@ -297,18 +349,15 @@ static void TestMoving(void)
     moved[3 * 5] = 3.0f;
     moved[3 * 6 + 1] = 0.0f;
     moved[3 * 6 + 2] = 1.0f;
-    CHECK(mvfxArePositionsValid(moved, NULL, 7), "valid positions");
-    mvfxMoveMesh(mesh, moved, NULL);
+    CHECK(mvfxMesh_SetPositions(s_context, mesh, moved, NULL, 7) == mvfx_success, "moved");
+    int32_t n = Sample(mesh, mvfx_meshSurface, SAMPLES);
     int64_t inLarge = 0;
     bool tipped = true;
-    for (uint32_t i = 0; i < SAMPLES; ++i)
+    for (int32_t i = 0; i < n; ++i)
     {
-        float p[3];
-        float n[3];
-        mvfxSampleMesh(mesh, mvfx_meshSurface, Words(i), p, n);
-        if (p[0] >= 2.0f - 1e-6f)
+        if (s_places[i][0] >= 2.0f - 1e-6f)
         {
-            tipped = tipped && fabsf(n[1]) == 1.0f;
+            tipped = tipped && fabsf(s_normals[i][1]) == 1.0f;
             ++inLarge;
         }
     }
@@ -520,12 +569,12 @@ static void TestThroughTheStep(void)
               mvfxMesh_GetView(NULL, flat, &spawning) == mvfx_errorInvalid,
           "a stale mesh, no view, no context");
     CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
-    const mvfxInstance* live = context->instances.slots[instance.index1 - 1].object;
-    const float* z = mvfxAttributeArray(live, 0, mvfx_attributePositionZ);
-    bool onFlat = live->emitters[0].count == 32;
-    for (int32_t i = 0; i < live->emitters[0].count; ++i)
+    static TestParticle records[64];
+    int32_t count = ReadParticles(context, instance, 0, records, 64);
+    bool onFlat = count == 32;
+    for (int32_t i = 0; i < count; ++i)
     {
-        onFlat = onFlat && z[i] == 7.0f;
+        onFlat = onFlat && records[i].position[2] == 7.0f;
     }
     CHECK(onFlat, "born on the flat mesh, moved by the offset");
 
@@ -555,13 +604,13 @@ static void TestThroughTheStep(void)
               spawning.serial == solidView.serial,
           "the emitter's mesh, the one bound");
     CHECK(mvfxDestroyMesh(context, solid) == mvfx_errorBusy, "busy while an instance uses it");
-    int32_t before = live->emitters[0].count;
+    int32_t before = count;
     CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success, "step");
-    z = mvfxAttributeArray(live, 0, mvfx_attributePositionZ);
-    bool onSolid = live->emitters[0].count == before + 16;
-    for (int32_t i = before; i < live->emitters[0].count; ++i)
+    count = ReadParticles(context, instance, 0, records, 64);
+    bool onSolid = count == before + 16;
+    for (int32_t i = before; i < count; ++i)
     {
-        onSolid = onSolid && z[i] == 12.0f;
+        onSolid = onSolid && records[i].position[2] == 12.0f;
     }
     CHECK(onSolid, "born on the bound mesh's face");
     // Moved, the bound mesh takes a new serial, past every one before.
@@ -583,12 +632,15 @@ static void TestThroughTheStep(void)
 
 int main(void)
 {
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     TestEdgesAndNormals();
     TestSurfaceByArea();
     TestEdgesByLength();
     TestVerticesAndGivenNormals();
     TestVolumeByVolume();
     TestMoving();
+    mvfxDestroyContext(s_context);
     TestRefusals();
     TestThroughTheStep();
     return s_failures == 0 ? 0 : 1;
