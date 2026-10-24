@@ -28,10 +28,16 @@ extern "C"
     // The part's kernels on a device.
     typedef struct mvfxGpu mvfxGpu;
 
-    // How a GPU object is made. Build it with mvfxDefaultGpuDef.
+    // How a GPU object is made. Build it with mvfxDefaultGpuDef. It is a
+    // root def: mvfxCreateGpu takes no other object of the library, so the
+    // def carries the ABI version.
     typedef struct mvfxGpuDef
     {
         uint32_t cookie;
+        // MVFX_ABI_VERSION of the headers the program was built with; the
+        // cookie and this stay the first two fields in every version, so
+        // that mvfxCreateGpu can refuse a def of another layout.
+        uint32_t version;
         // Its memory, taken at creation and given back at destruction; its
         // functions call none of the part's functions.
         mvfxAllocator allocator;
@@ -46,10 +52,23 @@ extern "C"
 
     /// Returns the default GPU def: the C library's allocation, no device.
     ///
-    /// @return The def, with a valid cookie.
+    /// The default is built in the program from the headers it includes,
+    /// so the version it stamps is the program's.
+    ///
+    /// @return The def, with a valid cookie and version.
     /// @par Thread safety
     /// Safe from any thread.
-    MVFX_RHI_API mvfxGpuDef mvfxDefaultGpuDef(void);
+    static inline mvfxGpuDef mvfxDefaultGpuDef(void)
+    {
+#ifdef __cplusplus
+        mvfxGpuDef def = {};
+#else
+    mvfxGpuDef def = {0};
+#endif
+        def.cookie = MVFX_GPU_DEF_COOKIE;
+        def.version = MVFX_ABI_VERSION;
+        return def;
+    }
 
     /// Creates a GPU object: the part's kernels as shaders, their pipelines
     /// requested from the device, built asynchronously. It holds at most 32
@@ -58,11 +77,14 @@ extern "C"
     ///
     /// @param def     The def, from mvfxDefaultGpuDef, naming a device.
     /// @param gpuOut  Receives the object; NULL on failure.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
-    ///         without its cookie or a device, or an allocator with one of
-    ///         its two functions alone; `mvfx_errorCapacity` when the
-    ///         allocator fails; `mvfx_errorState` when the device refuses a
-    ///         kernel's shader or pipeline.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         def without its cookie; then `mvfx_errorVersion` for a def
+    ///         stamped by headers of another ABI version than the library's,
+    ///         before anything else of it is read; `mvfx_errorInvalid` for a
+    ///         def without a device or an allocator with one of its two
+    ///         functions alone; `mvfx_errorCapacity` when the allocator
+    ///         fails; `mvfx_errorState` when the device refuses a kernel's
+    ///         shader or pipeline.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut);

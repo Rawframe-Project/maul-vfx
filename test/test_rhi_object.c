@@ -225,6 +225,28 @@ static void TestLife(void)
     Close(&gpu);
 }
 
+// The root def's checks, in order: the cookie first, then the ABI
+// version, then the rest, so that a def of another layout is refused
+// before any field after the first two is read.
+static void TestDefChecks(void)
+{
+    mvfxGpu* kernels = (mvfxGpu*)&kernels;
+    mvfxGpuDef zeroed = {0};
+    zeroed.version = MVFX_ABI_VERSION + 1;
+    CHECK(mvfxCreateGpu(&zeroed, &kernels) == mvfx_errorInvalid && kernels == NULL,
+          "a def without its cookie refused before its version is read");
+    mvfxGpuDef other = mvfxDefaultGpuDef();
+    other.version = MVFX_ABI_VERSION + 1;
+    CHECK(mvfxCreateGpu(&other, &kernels) == mvfx_errorVersion,
+          "a def of other headers refused before its missing device is read");
+    other.version = 0;
+    CHECK(mvfxCreateGpu(&other, &kernels) == mvfx_errorVersion, "a zeroed version refused");
+    mvfxGpuDef stamped = mvfxDefaultGpuDef();
+    CHECK(stamped.version == MVFX_ABI_VERSION &&
+              mvfxCreateGpu(&stamped, &kernels) == mvfx_errorInvalid,
+          "the default stamps these headers, and still needs a device");
+}
+
 static void TestFailures(void)
 {
     // A pipeline the device fails to build: answered, never ready.
@@ -275,6 +297,7 @@ static void TestFailures(void)
 
 int main(void)
 {
+    TestDefChecks();
     TestLife();
     TestFailures();
     return s_failures == 0 ? 0 : 1;

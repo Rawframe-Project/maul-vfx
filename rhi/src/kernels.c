@@ -213,11 +213,6 @@ struct mvfxGpu
     bool refused;
 };
 
-mvfxGpuDef mvfxDefaultGpuDef(void)
-{
-    return (mvfxGpuDef){.cookie = MVFX_GPU_DEF_COOKIE};
-}
-
 // Creates container c's shader.
 static bool CreateShader(mvfxGpu* gpu, int32_t c)
 {
@@ -244,8 +239,15 @@ mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut)
     {
         *gpuOut = nullptr;
     }
-    if (def == nullptr || gpuOut == nullptr || def->cookie != MVFX_GPU_DEF_COOKIE ||
-        def->device == nullptr || !mvfxRhiIsAllocatorValid(&def->allocator))
+    if (def == nullptr || gpuOut == nullptr || def->cookie != MVFX_GPU_DEF_COOKIE)
+    {
+        return mvfx_errorInvalid;
+    }
+    if (def->version != MVFX_ABI_VERSION)
+    {
+        return mvfx_errorVersion;
+    }
+    if (def->device == nullptr || !mvfxRhiIsAllocatorValid(&def->allocator))
     {
         return mvfx_errorInvalid;
     }
