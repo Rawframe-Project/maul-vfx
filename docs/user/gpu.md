@@ -14,7 +14,7 @@ The program builds each frame as it does for its own rendering:
 
 Nothing is read back within a step. Each emitter keeps a statistics record (its live count, its bounds and its capacity counts) on the device, which the program reads back as late as its frames lag; `mvfxGpuSim_BoundsOf` maps it to bounds in the world. Gases and water surfaces have records too, which the program hands back (`mvfxGpuSim_ReportGas`, `mvfxGpuSim_ReportWater`) so the instance knows when it has finished.
 
-A GPU object (`mvfxCreateGpu`) holds the part's kernels for one device. Their pipelines build asynchronously: the program passes the device's notifications to `mvfxGpu_Notify` until `mvfxGpu_IsReady`.
+A GPU object (`mvfxCreateGpu`) holds the part's kernels for one device. Their pipelines build asynchronously: the program passes the device's notifications to `mvfxGpu_Notify` until `mvfxGpu_IsReady`. Its def is a root, as the context's is: `mvfxDefaultGpuDef` is built into the program from the headers it includes and stamps their ABI version, so `mvfxCreateGpu` refuses a program built against another release with `mvfx_errorVersion`.
 
 The fountain of [getting started](getting-started.md) on the device, with a device and a ready GPU object (`kernels`) in hand:
 
