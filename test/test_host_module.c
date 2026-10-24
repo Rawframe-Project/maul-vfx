@@ -7,8 +7,7 @@
 // anchor; modules of a stage in order; the random stream fixed by its
 // inputs; and the refusals.
 
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -19,7 +18,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
@@ -37,7 +35,6 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
     instanceDef.seed = 21;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
 }
 
@@ -146,8 +143,9 @@ static void TestBeforeMotion(void)
     CHECK(seen.calls == 1 && seen.count == 0 && seen.killNull, "the birth not seen before motion");
     Place(&scene, 0, 5.0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    const float* x = mvfxAttributeArray(scene.live, 0, mvfx_attributePositionX);
-    CHECK(seen.count == 1 && fabsf(x[0] - 2.0f) <= 1e-5f && x[1] == 5.0f,
+    TestParticle p[3];
+    CHECK(ReadParticles(scene.context, scene.instance, 0, p, 3) == 2 && seen.count == 1 &&
+              fabsf(p[0].position[0] - 2.0f) <= 1e-5f && p[1].position[0] == 5.0f,
           "the first moved by the velocity set, the new one not");
     mvfxDestroyContext(scene.context);
 }
@@ -269,8 +267,9 @@ static void TestCallsInFull(void)
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
     Place(&scene, 0, 7.0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    const float* x = mvfxAttributeArray(scene.live, 0, mvfx_attributePositionX);
-    CHECK(full.count == 2 && fabsf(x[0] - 2.0f) <= 1e-5f && fabsf(x[1] - 3.0f) <= 1e-5f,
+    TestParticle p[3];
+    CHECK(ReadParticles(scene.context, scene.instance, 0, p, 3) == 2 && full.count == 2 &&
+              fabsf(p[0].position[0] - 2.0f) <= 1e-5f && fabsf(p[1].position[0] - 3.0f) <= 1e-5f,
           "before motion when the emitter is full");
     mvfxDestroyContext(scene.context);
 }
