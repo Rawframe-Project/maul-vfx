@@ -86,7 +86,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/unit.c
     src/steer.c
     src/event_spawn.c
-    src/float_mode.c
+    src/fpenv.c
     src/gas.c
     src/gas_api.c
     src/gas_plan.c
@@ -277,8 +277,10 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(value)
     maul_add_test(velocity_modules)
     maul_add_test(tasks WHITEBOX)
+    maul_add_test(fpenv WHITEBOX)
     maul_add_test(float_mode)
     maul_add_test(host_calls)
+    maul_add_exports_test()
     # The web build has no threads; the twins need four.
     if(NOT EMSCRIPTEN)
         maul_add_test(twins WHITEBOX POSIX)

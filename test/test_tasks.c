@@ -4,7 +4,6 @@
 // Running work through the host's task hooks, and the floating-point mode
 // every range runs in.
 
-#include "float_mode.h"
 #include "host_mode.h"
 #include "tasks.h"
 #include "test_harness.h"
@@ -162,16 +161,6 @@ static void TestRangesRunInTheLibrarysMode(void)
     }
 }
 
-static void TestEnterAndLeaveNest(void)
-{
-    mvfxFloatMode outer = mvfxEnterFloatMode();
-    mvfxFloatMode inner = mvfxEnterFloatMode();
-    mvfxLeaveFloatMode(inner);
-    volatile float tiny = s_smallest * s_half;
-    CHECK(tiny != 0.0f, "still in the library's mode after the inner leave");
-    mvfxLeaveFloatMode(outer);
-}
-
 int main(void)
 {
     TestSerialRunsEveryItemOnce();
@@ -179,6 +168,5 @@ int main(void)
     TestNullHandleIsNotFinished();
     TestSmallOrEmptyWorkStaysOnTheCaller();
     TestRangesRunInTheLibrarysMode();
-    TestEnterAndLeaveNest();
     return s_failures == 0 ? 0 : 1;
 }

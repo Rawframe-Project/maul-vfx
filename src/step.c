@@ -8,8 +8,8 @@
 #include "context.h"
 #include "emitter_step.h"
 #include "event.h"
-#include "float_mode.h"
 #include "force.h"
+#include "fpenv.h"
 #include "gas_api.h"
 #include "gas_liquid.h"
 #include "gas_plan.h"
@@ -359,16 +359,16 @@ void mvfxStepInstances(mvfxContext* context, int64_t ticks)
 {
     context->steps += 1;
     StepWork work = {&context->instances, ticks};
-    // The whole step in the library's mode: the gases due run on the
-    // calling thread once the tasks are done.
-    mvfxFloatMode mode = mvfxEnterFloatMode();
+    // The whole step in the library's environment: the gases due run on
+    // the calling thread once the tasks are done.
+    uint64_t env = mvfxFloatEnvEnter();
     // The step's tasks and host modules are the host's code.
     mvfxEnterHost(context);
     mvfxRunTasks(&context->tasks, StepRange, (int32_t)context->instances.capacity, STEP_MIN_RANGE,
                  &work);
     mvfxStepDueGases(context);
     mvfxLeaveHost(context);
-    mvfxLeaveFloatMode(mode);
+    mvfxFloatEnvLeave(env);
 }
 
 void mvfxStepDueGases(mvfxContext* context)
@@ -422,10 +422,11 @@ mvfxResult mvfxContext_Step(mvfxContext* context, double seconds)
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
-    // Rounded once to the nearest tick, ties up, in the library's mode.
-    mvfxFloatMode mode = mvfxEnterFloatMode();
+    // Rounded once to the nearest tick, ties up, in the library's
+    // environment.
+    uint64_t env = mvfxFloatEnvEnter();
     int64_t ticks = mvfxSecondsToTicks(seconds);
-    mvfxLeaveFloatMode(mode);
+    mvfxFloatEnvLeave(env);
     mvfxStepInstances(context, ticks);
     return mvfx_success;
 }
@@ -455,14 +456,14 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
         // Its particles are simulated elsewhere, step by step.
         return mvfx_errorState;
     }
-    mvfxFloatMode mode = mvfxEnterFloatMode();
+    uint64_t env = mvfxFloatEnvEnter();
     bool valid = seconds >= 0.0 && seconds <= 1e9 && stepSeconds > 0.0 &&
                  stepSeconds <= MVFX_MAX_STEP_SECONDS && maxSteps >= 1;
     int64_t left = valid ? mvfxSecondsToTicks(seconds) : 0;
     int64_t step = valid ? mvfxSecondsToTicks(stepSeconds) : 0;
     if (!valid || step < 1)
     {
-        mvfxLeaveFloatMode(mode);
+        mvfxFloatEnvLeave(env);
         mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
@@ -483,7 +484,7 @@ mvfxResult mvfxInstance_Prewarm(mvfxContext* context, mvfxInstanceId instance, d
         StepGases(live, &context->tasks);
     }
     mvfxLeaveHost(context);
-    mvfxLeaveFloatMode(mode);
+    mvfxFloatEnvLeave(env);
     if (remainingOut != nullptr)
     {
         *remainingOut = (double)left / (double)MVFX_TICKS_PER_SECOND;

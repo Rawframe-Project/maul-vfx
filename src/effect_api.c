@@ -9,7 +9,7 @@
 #include "context.h"
 #include "effect.h"
 #include "effect_parts.h"
-#include "float_mode.h"
+#include "fpenv.h"
 #include "grid_api.h"
 #include "hull.h"
 #include "mesh.h"
@@ -321,13 +321,13 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
     {
         return built;
     }
-    mvfxFloatMode mode = mvfxEnterFloatMode();
+    uint64_t env = mvfxFloatEnvEnter();
     mvfxEffect* effect = mvfxCompileEffect(def, meshes, &context->allocator);
     if (effect != nullptr)
     {
         mvfxCompileEffectParts(def, effect);
     }
-    mvfxLeaveFloatMode(mode);
+    mvfxFloatEnvLeave(env);
     if (effect == nullptr)
     {
         FreeHulls(context, hulls);
