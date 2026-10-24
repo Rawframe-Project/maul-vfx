@@ -250,8 +250,9 @@ static bool BatchesWhole(const mvfxEmitterPlan* plan)
 }
 
 // Steps a CPU instance and a planned one side by side, the plans gathered
-// and compared with the CPU path's particles after each step.
-static void Compare(mvfxOffscreen offscreen, const char* what)
+// and compared with the CPU path's particles after each step, one by one
+// on the given count of steps.
+static void Compare(mvfxOffscreen offscreen, int32_t compared, const char* what)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
@@ -294,18 +295,18 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
         same = same && a.owed == b.owed && b.live == 0 && a.status == b.status;
     }
     CHECK(same && births > 0 && planned_ticks == s_peeked.endTick, what);
-    // Compared one by one every step but the first of a throttled twin's,
-    // before its first step was peeked.
-    CHECK(s_compared >= STEPS - 1, "the particles compared every step");
+    CHECK(s_compared == compared, "the particles compared every step they should be");
     mvfxDestroyContext(context);
 }
 
 static void TestBirths(void)
 {
-    Compare(mvfx_offscreenSimulate, "the CPU path's particles, stepped every step");
+    Compare(mvfx_offscreenSimulate, STEPS, "the CPU path's particles, stepped every step");
     // Unseen and throttled to every third step: two steps hold their ticks
     // with empty plans, the third plans all three.
-    Compare(mvfx_offscreenThrottle, "the CPU path's particles, throttled");
+    // Compared every step but the first, which the twin holds before its
+    // first peek.
+    Compare(mvfx_offscreenThrottle, STEPS - 1, "the CPU path's particles, throttled");
 }
 
 static void TestRoom(void)
