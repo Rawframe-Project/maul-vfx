@@ -80,6 +80,15 @@ mvfxDestroyContext(context);
 return made;
 ```
 
+## Contents
+
+- [Layouts](#layouts)
+- [Order](#order)
+- [Quads for renderers without instancing](#quads-for-renderers-without-instancing)
+- [Lights](#lights)
+- [Bounds and draw order](#bounds-and-draw-order)
+- [More output](#more-output)
+
 ## Layouts
 
 A layout (`mvfxCreateLayout`) names the fields of a record, each at an offset with a format and a component count, and the stride between records. Fields cover what a particle is (position, size, colour, angle, orientation, velocity, age, flipbook frame, mesh index, custom attributes, serial), what its neighbors are ([interaction](interaction.md)), and what ribbon and quad vertices need (tangent, width, length, place along, side, face normal, corner). Formats are `float32`, `float16`, `unorm8`, `snorm8`, `unorm16`, `snorm16` and `uint32`.

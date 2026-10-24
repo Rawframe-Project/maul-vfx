@@ -79,6 +79,13 @@ mvfxDestroyContext(context);
 return made;
 ```
 
+## Contents
+
+- [Shape and texture](#shape-and-texture)
+- [Writing ribbons](#writing-ribbons)
+- [Beams](#beams)
+- [Plexus links](#plexus-links)
+
 ## Shape and texture
 
 Each segment between two points is cut into pieces along a centripetal Catmull-Rom spline, which never overshoots or loops between unevenly spaced points. With `bendAngle` the pieces adapt, as few as keep each piece's turn within the angle, so straight runs cost little and tight curves stay smooth.

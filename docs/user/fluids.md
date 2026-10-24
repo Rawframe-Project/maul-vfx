@@ -2,6 +2,13 @@
 
 An effect holds gases and water surfaces beside its emitters (`mvfxEffectDef.gases`, `.waters`), each stepped with its instance. The library simulates them and gives the program their fields as data; it draws no volume and no water.
 
+## Contents
+
+- [Gases](#gases)
+- [Liquids](#liquids)
+- [Water surfaces](#water-surfaces)
+- [Costs](#costs)
+
 ## Gases
 
 A gas (`mvfxGasDef`) is a box of cells, 2D or 3D, holding a velocity at the cells' faces and density, temperature and fuel at their centers. Its box lies in the instance's frame and moves with it (a torch's flame), or stays in the world where the instance began and is left behind as it moves (smoke). Walls are closed or open per side. Its kinds:

@@ -2,6 +2,14 @@
 
 `maul-vfx-rhi` runs effects on the GPU through [Maul RHI](https://github.com/Rawframe-Project/maul-rhi), on any device Maul RHI opens: Vulkan, Direct3D 12, Metal or WebGPU. It is a separate static library, built with `-DMAUL_VFX_RHI=ON` and linked as `maul-vfx-rhi::maul-vfx-rhi`; it finds Maul RHI installed or fetches its release. Its kernels come compiled for every backend, so a build needs no shader tools. The core never depends on it.
 
+## Contents
+
+- [How it fits](#how-it-fits)
+- [What matches the CPU path](#what-matches-the-cpu-path)
+- [What it does not run](#what-it-does-not-run)
+- [Budgets](#budgets)
+- [Depth and meshes](#depth-and-meshes)
+
 ## How it fits
 
 The CPU path stays in charge of what happens: a **planned** instance (`mvfxInstanceDef.planned`) steps in its context like any other, but holds no particles. Each step it writes plans (`maul-vfx/plan.h`): the births the step owes with their serials and ticks, the program's births, the forces, colliders and moves resolved for the step, from the same arithmetic as the CPU path. A **simulation** (`mvfxGpuSim`) holds the instance's particles, gases and water surfaces in device buffers and runs each plan in compute passes.

@@ -2,6 +2,13 @@
 
 Maul VFX simulates visual effects and hands a renderer what to draw as data. A program creates a context, makes effects in it from defs or files, plays them as instances, steps the context, and writes each emitter's particles into its own buffers in the layout its renderer reads. This page covers building the library, the rules every call follows, and a first effect.
 
+## Contents
+
+- [Building and linking](#building-and-linking)
+- [The rules every call follows](#the-rules-every-call-follows)
+- [A first effect](#a-first-effect)
+- [Samples](#samples)
+
 ## Building and linking
 
 Maul VFX needs CMake 3.25 and GCC 14 or Clang 19 or newer; on Windows, `clang-cl` (Visual Studio's "C++ Clang tools for Windows").

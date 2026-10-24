@@ -2,6 +2,13 @@
 
 An emitter's particles collide when its `collision` def is enabled: with its own colliders, with the instance's colliders, with the program's scene through queries, and with the camera's depth image. Each step's whole segment is tested, so a fast particle never passes through a thin wall, and up to four contacts a step are resolved in order.
 
+## Contents
+
+- [Colliders](#colliders)
+- [The program's scene](#the-programs-scene)
+- [The depth image](#the-depth-image)
+- [Kill rules](#kill-rules)
+
 ## Colliders
 
 A collider (`mvfxCollider`) is a plane, a sphere, a box, a heightfield or a signed distance grid, given in the world's or the emitter's space. Spheres and boxes keep particles outside or inside. Heightfields and distance grids read one of the context's grids (`mvfxCreateGrid`), spread over a box; the program may give the grid new values between steps (`mvfxGrid_SetValuesIn` for a box of them), as terrain is dug or a level changes.
