@@ -271,7 +271,9 @@ static void TestStack(void)
 static void TestOneLarge(void)
 {
     // A thousand small spheres (radius 0.05) 0.2 apart and one of radius
-    // 3 beside them, no gravity, one substep a step: all step on together.
+    // 3 beside them reaching into their first layer, no gravity, one
+    // substep a step: the broadphase pairs the large one with the small
+    // ones it overlaps, and all step on together.
     enum
     {
         SMALL = 1000,
@@ -287,7 +289,7 @@ static void TestOneLarge(void)
         places[3 * i + 2] = 0.2 * (double)(i / 100);
         sizes[3 * i] = sizes[3 * i + 1] = sizes[3 * i + 2] = 0.1f;
     }
-    places[3 * SMALL] = -4.0;
+    places[3 * SMALL] = -2.9;
     places[3 * SMALL + 1] = 0.9;
     places[3 * SMALL + 2] = 0.9;
     sizes[3 * SMALL] = sizes[3 * SMALL + 1] = sizes[3 * SMALL + 2] = 6.0f;
@@ -298,9 +300,21 @@ static void TestOneLarge(void)
     Open(&emitter, places, still, sizes, ALL);
     // Born in the first step, they meet each other in the second.
     Steps(2);
-    // What the broadphase examines is no result; a bench is to measure
-    // it (#23).
-    CHECK(Stats().live == ALL, "one large body among a thousand");
+    enum
+    {
+        MOST_PAIRS = 256
+    };
+    static int32_t a[MOST_PAIRS];
+    static int32_t b[MOST_PAIRS];
+    int32_t pairs = mvfxTestRigidPairs(s_scene.context, s_scene.instance, 0, a, b, MOST_PAIRS);
+    bool large = false;
+    for (int32_t c = 0; c < pairs && c < MOST_PAIRS; ++c)
+    {
+        large = large || a[c] == SMALL || b[c] == SMALL;
+    }
+    // How many the broadphase examines is no result; a bench is to
+    // measure it (#23).
+    CHECK(Stats().live == ALL && pairs > 0 && large, "one large body among a thousand");
     mvfxDestroyContext(s_scene.context);
 }
 
