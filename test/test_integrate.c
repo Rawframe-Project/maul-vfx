@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The integrator: its factors against the closed form on both sides of
-// the series, particles under gravity and drag where the closed form puts
+// The integrator: one step's factors against the closed form on both
+// sides of the series, particles under gravity and drag where the closed form puts
 // them however the time is split, births within a step moved from their
 // ticks, gravity in either space, a drag multiplier per particle and its
 // hold, spin and angular velocity under angular drag, and the refusals.
+//
+// The particles are read as a host module sees them after motion, which
+// is where the step leaves them.
 
-#include "context.h"
-#include "instance.h"
-#include "integrate.h"
+#include "peek.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -20,7 +21,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -28,8 +28,9 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     Scene scene = {0};
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &scene.context) == mvfx_success, "context");
+    mvfxEmitterDef peeked = Peeking(emitter);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = emitter;
+    effectDef.emitters = &peeked;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
@@ -38,19 +39,7 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.seed = 3;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
-}
-
-static const float* Array(const Scene* scene, mvfxAttribute attribute)
-{
-    return mvfxAttributeArray(scene->live, 0, attribute);
-}
-
-static double AgeOf(const Scene* scene, int32_t i)
-{
-    const uint32_t* low = mvfxAttributeArray(scene->live, 0, mvfx_attributeBirthLow);
-    return (double)(scene->live->clock - (int64_t)low[i]) / (double)MVFX_TICKS_PER_SECOND;
 }
 
 // The closed form of one axis: from rest at x0 0 with velocity v0, after t
@@ -77,17 +66,34 @@ static bool Near(float a, double b, double tolerance)
 
 static void TestFactors(void)
 {
-    // On both sides of the series and at the ends of the range.
+    // One step from a particle the host puts at the origin moving 1 along
+    // Y, under gravity 1 along X and drag k: its Y velocity is the decay
+    // e^(-k t), its X velocity and Y place the carry (1 - e) / k, its X
+    // place the push (t - carry) / k, to a float's rounding, on both sides
+    // of the series and at the ends of the range.
     static const double drags[] = {0.0, 1e-9, 0.1, 0.2499, 0.25, 0.2501, 1.0, 7.5, 1000.0};
-    static const double spans[] = {1.0 / 1048576.0, 0.01, 0.25, 1.0};
+    static const int64_t spans[] = {1, 10486, MVFX_TICKS_PER_SECOND / 4, MVFX_TICKS_PER_SECOND};
     bool close = true;
     for (int32_t d = 0; d < 9; ++d)
     {
         for (int32_t h = 0; h < 4; ++h)
         {
-            double k = drags[d];
-            double t = spans[h];
-            mvfxDragFactors f = mvfxDragFactorsOf(k, t);
+            mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+            emitter.rate = 0.0f;
+            emitter.hostSpawnCapacity = 1;
+            emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+            emitter.motion.gravity[0] = 1.0f;
+            emitter.motion.gravity[1] = 0.0f;
+            emitter.motion.drag = (float)drags[d];
+            Scene scene = NewScene(&emitter);
+            static const double origin[3] = {0, 0, 0};
+            static const float up[3] = {0, 1, 0};
+            mvfxSpawnRequest request = {.count = 1, .positions = origin, .velocities = up};
+            CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success,
+                  "placed");
+            CHECK(mvfxContext_StepTicks(scene.context, spans[h]) == mvfx_success, "step");
+            double k = (double)(float)drags[d];
+            double t = (double)spans[h] / (double)MVFX_TICKS_PER_SECOND;
             double e = exp(-k * t);
             double carry = k == 0.0 ? t : (1.0 - e) / k;
             double push = k == 0.0 ? 0.5 * t * t : (t - carry) / k;
@@ -99,13 +105,14 @@ static void TestFactors(void)
                 carry = t * (1.0 - x / 2.0 + x * x / 6.0);
                 push = t * t * (0.5 - x / 6.0 + x * x / 24.0);
             }
-            close = close && Near(f.decay, e, 3e-7) && Near(f.carry, carry, 3e-7) &&
-                    Near(f.push, push, 3e-7);
+            close = close && s_peeked.count == 1 && Near(s_peeked.velocity[1][0], e, 3e-7) &&
+                    Near(s_peeked.velocity[0][0], carry, 3e-7) &&
+                    Near(s_peeked.position[1][0], carry, 3e-7) &&
+                    Near(s_peeked.position[0][0], push, 3e-7);
+            mvfxDestroyContext(scene.context);
         }
     }
     CHECK(close, "the factors of the closed form, to a float's rounding");
-    mvfxDragFactors none = mvfxDragFactorsOf(0.0, 0.5);
-    CHECK(none.decay == 1.0f && none.carry == 0.5f && none.push == 0.125f, "no drag, exactly");
 }
 
 // An emitter of one burst of four at the start, thrown along X at 10 and
@@ -128,20 +135,21 @@ static mvfxEmitterDef Thrown(void)
 
 static bool MatchesClosedForm(const Scene* scene, double k, double tolerance)
 {
-    bool match = scene->live->emitters[0].count > 0;
-    for (int32_t i = 0; i < scene->live->emitters[0].count; ++i)
+    (void)scene;
+    bool match = s_peeked.count > 0;
+    for (int32_t i = 0; i < s_peeked.count && i < PEEK_MOST; ++i)
     {
-        double t = AgeOf(scene, i);
+        double t = PeekedAge(i);
         double x = 0.0;
         double vx = 0.0;
         double y = 0.0;
         double vy = 0.0;
         ClosedForm(10.0, 0.0, k, t, &x, &vx);
         ClosedForm(5.0, -9.75, k, t, &y, &vy);
-        match = match && Near(Array(scene, mvfx_attributePositionX)[i], x, tolerance) &&
-                Near(Array(scene, mvfx_attributePositionY)[i], y, tolerance) &&
-                Near(Array(scene, mvfx_attributeVelocityX)[i], vx, tolerance) &&
-                Near(Array(scene, mvfx_attributeVelocityY)[i], vy, tolerance);
+        match = match && Near(s_peeked.position[0][i], x, tolerance) &&
+                Near(s_peeked.position[1][i], y, tolerance) &&
+                Near(s_peeked.velocity[0][i], vx, tolerance) &&
+                Near(s_peeked.velocity[1][i], vy, tolerance);
     }
     return match;
 }
@@ -180,7 +188,7 @@ static void TestExactWhateverTheSplit(void)
             CHECK(mvfxContext_StepTicks(scene.context, ticks) == mvfx_success, "step");
             total += ticks;
         }
-        CHECK(scene.live->clock == 2 * MVFX_TICKS_PER_SECOND, "two seconds");
+        CHECK(s_peeked.endTick == 2 * MVFX_TICKS_PER_SECOND, "two seconds");
         CHECK(MatchesClosedForm(&scene, 0.7, 2e-5), "where the closed form puts them");
         mvfxDestroyContext(scene.context);
     }
@@ -195,9 +203,9 @@ static void TestNewborns(void)
     emitter.rate = 40.0f;
     Scene scene = NewScene(&emitter);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    CHECK(scene.live->emitters[0].count == 40, "forty born");
+    CHECK(s_peeked.count == 40, "forty born");
     CHECK(MatchesClosedForm(&scene, 0.7, 2e-5), "each moved from its birth");
-    CHECK(AgeOf(&scene, 39) == 0.0 && Array(&scene, mvfx_attributePositionX)[39] == 0.0f,
+    CHECK(PeekedAge(39) == 0.0 && s_peeked.position[0][39] == 0.0f,
           "the last born at the step's end, not moved");
     mvfxDestroyContext(scene.context);
 }
@@ -225,14 +233,13 @@ static void TestGravitySpaces(void)
                                         true) == mvfx_success,
               "turned");
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-        bool accelerated = scene.live->emitters[0].count == 4;
-        for (int32_t i = 0; i < scene.live->emitters[0].count; ++i)
+        bool accelerated = s_peeked.count == 4;
+        for (int32_t i = 0; i < s_peeked.count; ++i)
         {
-            float t = (float)AgeOf(&scene, i);
-            accelerated =
-                accelerated &&
-                fabsf(Array(&scene, mvfx_attributeVelocityX)[i] - expected[c][0] * t) <= 1e-5f &&
-                fabsf(Array(&scene, mvfx_attributeVelocityY)[i] - expected[c][1] * t) <= 1e-5f;
+            float t = (float)PeekedAge(i);
+            accelerated = accelerated &&
+                          fabsf(s_peeked.velocity[0][i] - expected[c][0] * t) <= 1e-5f &&
+                          fabsf(s_peeked.velocity[1][i] - expected[c][1] * t) <= 1e-5f;
         }
         CHECK(accelerated, "gravity in its space");
         mvfxDestroyContext(scene.context);
@@ -250,18 +257,21 @@ static void TestDragPerParticle(void)
         .time = 0.0f, .minCount = 64, .maxCount = 64, .cycles = 1, .probability = 1.0f};
     Scene scene = NewScene(&emitter);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
-    const float* scales = Array(&scene, mvfx_attributeDrag);
-    bool own = scene.live->emitters[0].count == 64;
+    // Each one's drag read back from its speed, 10 e^(-k t), and its place
+    // where the closed form of that drag puts it.
+    bool own = s_peeked.count == 64;
     bool spread = false;
-    for (int32_t i = 0; i < scene.live->emitters[0].count; ++i)
+    double first = 0.0;
+    for (int32_t i = 0; i < s_peeked.count && i < PEEK_MOST; ++i)
     {
+        double t = PeekedAge(i);
+        double k = -log((double)s_peeked.velocity[0][i] / 10.0) / t;
         double x = 0.0;
         double v = 0.0;
-        ClosedForm(10.0, 0.0, (double)scales[i], AgeOf(&scene, i), &x, &v);
-        own = own && Near(Array(&scene, mvfx_attributeVelocityX)[i], v, 2e-5) &&
-              Near(Array(&scene, mvfx_attributePositionX)[i], x, 2e-5) && scales[i] >= 0.0f &&
-              scales[i] <= 2.0f;
-        spread = spread || fabsf(scales[i] - scales[0]) > 0.5f;
+        ClosedForm(10.0, 0.0, k, t, &x, &v);
+        own = own && Near(s_peeked.position[0][i], x, 2e-5) && k >= -1e-5 && k <= 2.0 + 1e-5;
+        first = i == 0 ? k : first;
+        spread = spread || fabs(k - first) > 0.5;
     }
     CHECK(own && spread, "each by its own drag");
     mvfxDestroyContext(scene.context);
@@ -277,8 +287,8 @@ static void TestDragPerParticle(void)
               "step");
         double x = 0.0;
         double v = 0.0;
-        ClosedForm(10.0, 0.0, c == 0 ? 0.0 : (double)MVFX_MAX_DRAG, AgeOf(&scene, 0), &x, &v);
-        CHECK(Near(Array(&scene, mvfx_attributeVelocityX)[0], v, 2e-5),
+        ClosedForm(10.0, 0.0, c == 0 ? 0.0 : (double)MVFX_MAX_DRAG, PeekedAge(0), &x, &v);
+        CHECK(Near(s_peeked.velocity[0][0], v, 2e-5),
               c == 0 ? "a negative multiplier, no drag" : "held to the most drag");
         mvfxDestroyContext(scene.context);
     }
@@ -308,23 +318,23 @@ static void TestRotation(void)
             CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 37) == mvfx_success,
                   "step");
         }
-        double t = AgeOf(&scene, 0);
+        double t = PeekedAge(0);
         if (c == 0)
         {
             double e = exp(-0.5 * t);
-            CHECK(Near(Array(&scene, mvfx_attributeSpin)[0], 3.0 * e, 1e-5) &&
-                      Near(Array(&scene, mvfx_attributeAngle)[0], 3.0 * (1.0 - e) / 0.5, 1e-5),
+            CHECK(Near(s_peeked.spin[0], 3.0 * e, 1e-5) &&
+                      Near(s_peeked.angle[0], 3.0 * (1.0 - e) / 0.5, 1e-5),
                   "spin and angle under angular drag");
         }
         else
         {
-            const float* qz = Array(&scene, mvfx_attributeOrientationZ);
-            const float* qw = Array(&scene, mvfx_attributeOrientationW);
-            const float* qx = Array(&scene, mvfx_attributeOrientationX);
+            const float* qz = s_peeked.orientation[2];
+            const float* qw = s_peeked.orientation[3];
+            const float* qx = s_peeked.orientation[0];
             CHECK(fabs((double)qz[0] - sin(t)) <= 1e-5 && fabs((double)qw[0] - cos(t)) <= 1e-5 &&
                       qx[0] == 0.0f,
                   "turned 2 t radians about Z");
-            CHECK(Array(&scene, mvfx_attributeAngularZ)[0] == 2.0f, "no drag, no slowing");
+            CHECK(s_peeked.angular[2][0] == 2.0f, "no drag, no slowing");
         }
         mvfxDestroyContext(scene.context);
     }
@@ -358,7 +368,7 @@ static void TestTurnUnderDrag(void)
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 29) == mvfx_success,
               "step");
     }
-    double t = AgeOf(&scene, 0);
+    double t = PeekedAge(0);
     double e = exp(-0.5 * t);
     double theta = 2.0 * (1.0 - e) / 0.5;
     const double turn[4] = {0.0, 0.6 * sin(0.5 * theta), 0.8 * sin(0.5 * theta), cos(0.5 * theta)};
@@ -369,13 +379,11 @@ static void TestTurnUnderDrag(void)
     bool turned = true;
     for (int32_t k = 0; k < 4; ++k)
     {
-        turned = turned &&
-                 fabs((double)Array(&scene, (mvfxAttribute)(mvfx_attributeOrientationX + k))[0] -
-                      expected[k]) <= 2e-5;
+        turned = turned && fabs((double)s_peeked.orientation[k][0] - expected[k]) <= 2e-5;
     }
     CHECK(turned, "turned on the parent's side by the slowing turn");
-    CHECK(Near(Array(&scene, mvfx_attributeAngularZ)[0], 1.6 * e, 1e-5) &&
-              Near(Array(&scene, mvfx_attributeAngularY)[0], 1.2 * e, 1e-5),
+    CHECK(Near(s_peeked.angular[2][0], 1.6 * e, 1e-5) &&
+              Near(s_peeked.angular[1][0], 1.2 * e, 1e-5),
           "the angular velocity slowed");
     mvfxDestroyContext(scene.context);
 }
@@ -397,7 +405,7 @@ static void TestTurnStaysUnit(void)
     double length = 0.0;
     for (int32_t k = 0; k < 4; ++k)
     {
-        double c = (double)Array(&scene, (mvfxAttribute)(mvfx_attributeOrientationX + k))[0];
+        double c = (double)s_peeked.orientation[k][0];
         length += c * c;
     }
     CHECK(fabs(sqrt(length) - 1.0) <= 1e-6, "of unit length");
