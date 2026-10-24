@@ -381,6 +381,13 @@ static void TestMemoryPastSizeIsRefused(void)
     CHECK(s_held == 0, "everything given back");
 }
 
+// The case below runs only where a size_t counts 32 bits; the web build
+// is where CI has one, so a web build of another width must not skip it
+// unseen.
+#if defined(__EMSCRIPTEN__) && SIZE_MAX != UINT32_MAX
+#error "a web build without a 32-bit size_t skips TestBlockNearSizeIsRefused"
+#endif
+
 #if SIZE_MAX == UINT32_MAX
 // The largest block a probing allocator was asked for and refused: it
 // serves blocks below 64 MiB and refuses the rest.
