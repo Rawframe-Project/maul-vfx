@@ -19,3 +19,35 @@ bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emit
     live->emitters[emitter].owed = owed;
     return true;
 }
+
+bool mvfxTestTearEdges(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                       int32_t particle, uint32_t bits)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || emitter < 0 || emitter >= live->effect->emitterCount ||
+        !mvfxHasAttribute(&live->effect->emitters[emitter].plan, mvfx_attributeTorn) ||
+        particle < 0 || particle >= live->emitters[emitter].count)
+    {
+        return false;
+    }
+    uint32_t* torn = mvfxAttributeArray(live, emitter, mvfx_attributeTorn);
+    torn[particle] = bits;
+    return true;
+}
+
+int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                           int32_t* a, int32_t* b, int32_t capacity)
+{
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || emitter < 0 || emitter >= live->effect->emitterCount)
+    {
+        return -1;
+    }
+    const mvfxEmitterState* state = &live->emitters[emitter];
+    for (int32_t c = 0; c < state->rigidPairCount && c < capacity; ++c)
+    {
+        a[c] = state->rigidPairs[c].a;
+        b[c] = state->rigidPairs[c].b;
+    }
+    return state->rigidPairCount;
+}
