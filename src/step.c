@@ -359,12 +359,16 @@ void mvfxStepInstances(mvfxContext* context, int64_t ticks)
 {
     context->steps += 1;
     StepWork work = {&context->instances, ticks};
+    // The whole step in the library's mode: the gases due run on the
+    // calling thread once the tasks are done.
+    mvfxFloatMode mode = mvfxEnterFloatMode();
     // The step's tasks and host modules are the host's code.
     mvfxEnterHost(context);
     mvfxRunTasks(&context->tasks, StepRange, (int32_t)context->instances.capacity, STEP_MIN_RANGE,
                  &work);
     mvfxStepDueGases(context);
     mvfxLeaveHost(context);
+    mvfxLeaveFloatMode(mode);
 }
 
 void mvfxStepDueGases(mvfxContext* context)
