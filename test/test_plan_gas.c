@@ -2,22 +2,22 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Planned smoke gases: a gas plan's span, gravity, forces and obstacles
-// are the CPU path's step's, under a moving, turning, growing instance; a
-// throttled plan's obstacles before are the last plan's; a planned gas
-// holds until its simulation reports it empty past the stop and the
-// splatting emitters' deaths; the emitters pouring into it map as the
-// core's splat; its fields are not read on the CPU path;
-// a gas's view.
+// are their defs resolved as plan.h documents (mvfxGasPlan), in the box's
+// frame mvfxInstance_GetGasInfo places, under a moving, turning, growing
+// instance (the oracles in plan_oracle.h); a throttled plan's obstacles
+// before are the last plan's; a planned gas holds until its simulation
+// reports it empty past the stop and the splatting emitters' deaths; the
+// emitters pouring into it map into the box as mvfxPlannedPour says; its
+// fields are not read on the CPU path; a gas's view.
 
-#include "collide.h"
-#include "direction.h"
-#include "force.h"
-#include "gas.h"
-#include "gas_api.h"
-#include "instance.h"
-#include "instance_api.h"
+#include "plan_oracle.h"
 #include "test_harness.h"
 
+#include "maul-vfx/context.h"
+#include "maul-vfx/effect.h"
+#include "maul-vfx/gas.h"
+#include "maul-vfx/grid.h"
+#include "maul-vfx/instance.h"
 #include "maul-vfx/output.h"
 #include "maul-vfx/plan.h"
 
@@ -82,22 +82,6 @@ static mvfxInstanceId Instance(mvfxContext* context, mvfxEffectId effect, bool p
     return instance;
 }
 
-static bool SameCollider(const mvfxPlannedCollider* p, const mvfxResolvedCollider* r)
-{
-    bool same = p->kind == r->kind && p->inside == r->inside && p->radius == r->radius &&
-                p->scale == r->scale && p->grow == r->grow;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        same = same && p->center[k] == r->center[k] && p->normal[k] == r->normal[k] &&
-               p->halfExtents[k] == r->halfExtents[k];
-    }
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        same = same && p->rotation[k] == r->rotation[k];
-    }
-    return same;
-}
-
 static bool SamePlanned(const mvfxPlannedCollider* a, const mvfxPlannedCollider* b)
 {
     bool same = a->kind == b->kind && a->inside == b->inside && a->radius == b->radius &&
@@ -151,40 +135,61 @@ static bool MovedAsBefore(const mvfxGasPlan* plan, int32_t before)
     return all;
 }
 
-// Whether a gas plan is what the CPU path's gas step took: its span, its
-// gravity, its forces and obstacles as the CPU instance resolved them.
-static bool SameAsStepped(const mvfxGasPlan* plan, const mvfxInstance* cpu, mvfxGridId grid)
+// The instance's place at the end of a planned instance's last step
+// (its emitters' plans' to), the box its gas's info places then, and the
+// emitters' plan.
+static mvfxEmitterPlan s_emitter;
+static mvfxGasInfo s_box;
+
+static void ReadPlace(mvfxContext* context, mvfxInstanceId planned)
 {
-    const mvfxGasState* state = &cpu->gases[0];
-    float gravity[3];
-    mvfxGasGravity(cpu, 0, gravity);
-    bool same = plan->start == cpu->stepStart && plan->ticks == cpu->clock - cpu->stepStart &&
-                plan->stopTick == cpu->stopTick && plan->forceCount == 2;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        same = same && plan->gravity[k] == gravity[k];
-    }
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &s_emitter) == mvfx_success &&
+              mvfxInstance_GetGasInfo(context, planned, 0, &s_box) == mvfx_success,
+          "the place and the box");
+}
+
+// Whether a gas plan is its gas's step as plan.h documents it
+// (mvfxGasPlan), in the box's frame at the step's end: the emitters'
+// span, no stop; the world's gravity turned into the box, over its scale;
+// each force its def through the frame of its space, its noise at the
+// plan's start; each obstacle, its own then the instance's, its def
+// through its space's frame grown by no radius; the obstacles before the
+// last plan's, when it is known.
+static bool SameAsResolved(const mvfxGasPlan* plan, const mvfxGasDef* gas,
+                           const mvfxCollider* hosts, int32_t hostCount, const mvfxGasPlan* last)
+{
+    Frame world = BoxFrame(&s_box, &s_emitter.to, mvfx_spaceWorld, NULL);
+    double gravity[3];
+    FrameVector(&world, gas->gravity, world.sigma, gravity);
+    bool same = plan->start == s_emitter.start && plan->ticks == s_emitter.ticks &&
+                plan->stopTick > plan->start + plan->ticks && Near3(plan->gravity, gravity) &&
+                plan->forceCount == gas->forceCount;
     double time = (double)plan->start / (double)MVFX_TICKS_PER_SECOND;
     for (int32_t f = 0; same && f < plan->forceCount; ++f)
     {
-        mvfxPlannedForce expected = mvfxPlannedForceOf(&cpu->gasForces[f], time);
-        same = memcmp(&expected, &plan->forces[f], sizeof expected) == 0;
+        const mvfxForce* def = &gas->forces[f];
+        Frame frame = BoxFrame(&s_box, &s_emitter.to, def->space, NULL);
+        same =
+            SameForce(&plan->forces[f], def, &frame, 0.0f) &&
+            (def->kind != mvfx_forceTurbulence || SameLattice(&plan->forces[f], def, &frame, time));
     }
-    int32_t now = state->obstaclesNow;
-    same = same && plan->obstacleCount == state->obstacleCount[now] &&
-           plan->ownObstacleCount == 2 && plan->obstaclesKnown == state->obstaclesKnown;
+    same = same && plan->obstacleCount == gas->obstacleCount + hostCount &&
+           plan->ownObstacleCount == gas->obstacleCount;
     for (int32_t c = 0; same && c < plan->obstacleCount; ++c)
     {
-        same = SameCollider(&plan->obstacles[c], &state->obstacles[now][c]);
+        const mvfxCollider* def =
+            c < gas->obstacleCount ? &gas->obstacles[c] : &hosts[c - gas->obstacleCount];
+        Frame frame = BoxFrame(&s_box, &s_emitter.to, def->space, NULL);
+        same = SameCollider(&plan->obstacles[c], def, def->kind == mvfx_colliderHeightfield, &frame,
+                            0.0);
     }
-    same = same && MovedAsBefore(plan, state->obstacleCount[1 - now]);
-    for (int32_t c = 0; same && plan->obstaclesKnown && c < state->obstacleCount[1 - now]; ++c)
+    int32_t before = last != NULL ? last->obstacleCount : 0;
+    same = same && plan->obstaclesKnown == (last != NULL) && MovedAsBefore(plan, before);
+    for (int32_t c = 0; same && c < before; ++c)
     {
-        same = SameCollider(&plan->obstaclesBefore[c], &state->obstacles[1 - now][c]);
+        same = SamePlanned(&plan->obstaclesBefore[c], &last->obstacles[c]);
     }
-    // The grids: the gas's heightfield's; none for a primitive.
-    return same && plan->obstacles[1].grid.index1 == grid.index1 &&
-           plan->obstacles[0].grid.index1 == 0;
+    return same;
 }
 
 static void TestResolved(void)
@@ -232,7 +237,6 @@ static void TestResolved(void)
     gas.gravity[1] = -9.8f;
     mvfxEmitterDef emitter = Emitter(false);
     mvfxEffectId effect = Effect(context, &emitter, &gas);
-    mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
     const mvfxCollider hosts[2] = {
         {.kind = mvfx_colliderPlane, .center = {0, 0.5f, 0}, .normal = {0, 1, 0}},
@@ -241,24 +245,25 @@ static void TestResolved(void)
          .center = {0, 0, -2},
          .normal = {0, 0, 1}}};
     bool same = true;
-    bool known = false;
     static mvfxGasPlan plan;
+    static mvfxGasPlan last;
     for (int32_t s = 0; s < 10 && same; ++s)
     {
-        mvfxInstanceId both[2] = {cpu, planned};
-        for (int32_t i = 0; i < 2; ++i)
-        {
-            Move(context, both[i], s);
-            CHECK(mvfxInstance_SetColliders(context, both[i], hosts, s < 5 ? 2 : 1) == mvfx_success,
-                  "colliders");
-        }
+        Move(context, planned, s);
+        int32_t hostCount = s < 5 ? 2 : 1;
+        CHECK(mvfxInstance_SetColliders(context, planned, hosts, hostCount) == mvfx_success,
+              "colliders");
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
-        same = SameAsStepped(&plan, mvfxContextInstance(context, cpu), grid) &&
-               plan.obstacleCount == (s < 5 ? 4 : 3) && plan.cleared == (s == 0);
-        known = known || plan.obstaclesKnown;
+        ReadPlace(context, planned);
+        // The grids: the gas's heightfield's; none for a primitive.
+        same = SameAsResolved(&plan, &gas, hosts, hostCount, s > 0 ? &last : NULL) &&
+               plan.ticks == STEP_TICKS && plan.start == (int64_t)s * STEP_TICKS &&
+               plan.cleared == (s == 0) && plan.obstacles[1].grid.index1 == grid.index1 &&
+               plan.obstacles[0].grid.index1 == 0;
+        last = plan;
     }
-    CHECK(same && known && s_moved > 0 && s_unmoved > 0, "the gas plan is the CPU path's step's");
+    CHECK(same && s_moved > 0 && s_unmoved > 0, "the gas plan is its defs resolved in the box");
     // A teleport: the obstacles before are not known.
     const double far[3] = {-100, 0, 0};
     const float still[4] = {0, 0, 0, 1};
@@ -270,43 +275,17 @@ static void TestResolved(void)
     mvfxDestroyContext(context);
 }
 
-// Whether a planned pour maps places as the core's splat maps them: the
-// map of its gas from its emitter's space, a world emitter's anchor taken
-// off, to within the rounding of the origin; its rates and drag the
-// splat's.
-static bool SamePour(const mvfxPlannedPour* pour, const mvfxInstance* live, int32_t e)
+// Whether a planned pour is its emitter's (plan.h, mvfxPlannedPour): the
+// map of its particles, in its space, into the box's frame (a world
+// emitter's offsets from its anchor after the step); its splat's rates
+// and drag.
+static bool SamePlannedPour(const mvfxPlannedPour* pour, const mvfxEmitterDef* emitter, int32_t e)
 {
-    const mvfxCompiledEmitter* emitter = &live->effect->emitters[e];
-    bool world = emitter->space == mvfx_spaceWorld;
-    mvfxSpaceMap map = mvfxGasMap(live, 0, world ? mvfx_spaceWorld : mvfx_spaceLocal);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        map.before[k] -= world ? live->emitters[e].anchor[k] : 0.0;
-    }
+    Frame frame = BoxFrame(&s_box, &s_emitter.to, emitter->space, s_emitter.anchorAfter);
     const mvfxGasSplat* splat = &emitter->gasSplat;
-    bool same = pour->emitter == e && pour->sigma == map.sigma && pour->drag == splat->drag &&
-                pour->rates[0] == splat->density && pour->rates[1] == splat->temperature &&
-                pour->rates[2] == splat->fuel;
-    for (int32_t k = 0; k < 4; ++k)
-    {
-        same = same && pour->rotation[k] == map.rotation[k];
-    }
-    static const float places[3][3] = {{0, 0, 0}, {0.5f, -1.25f, 2}, {-3, 0.75f, 0.1f}};
-    for (int32_t i = 0; same && i < 3; ++i)
-    {
-        float expected[3];
-        mvfxMapPoint(&map, places[i], expected);
-        const float scaled[3] = {pour->sigma * places[i][0], pour->sigma * places[i][1],
-                                 pour->sigma * places[i][2]};
-        float turned[3];
-        mvfxRotate(pour->rotation, scaled, turned);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            float got = pour->origin[k] + turned[k];
-            same = same && fabsf(got - expected[k]) <= 1e-5f * (1.0f + fabsf(expected[k]));
-        }
-    }
-    return same;
+    return pour->emitter == e && SamePour(pour, &frame) && pour->drag == splat->drag &&
+           pour->rates[0] == splat->density && pour->rates[1] == splat->temperature &&
+           pour->rates[2] == splat->fuel;
 }
 
 static void TestPours(void)
@@ -348,12 +327,12 @@ static void TestPours(void)
               "moved");
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
-        const mvfxInstance* live = mvfxContextInstance(context, planned);
-        same = plan.pourCount == 2 && SamePour(&plan.pours[0], live, 0) &&
-               SamePour(&plan.pours[1], live, 2);
-        anchored = anchored || live->emitters[0].anchor[0] > 1000.0;
+        ReadPlace(context, planned);
+        same = plan.pourCount == 2 && SamePlannedPour(&plan.pours[0], &emitters[0], 0) &&
+               SamePlannedPour(&plan.pours[1], &emitters[2], 2);
+        anchored = anchored || s_emitter.anchorAfter[0] > 1000.0;
     }
-    CHECK(same && anchored, "the planned pours map as the core's splat");
+    CHECK(same && anchored, "the planned pours map into the box");
     mvfxDestroyContext(context);
 }
 
@@ -455,6 +434,10 @@ static void TestHolds(void)
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
     }
     int64_t clock = 30 * STEP_TICKS;
+    static mvfxGasPlan plan;
+    CHECK(mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success &&
+              plan.stopTick == stop && plan.start + plan.ticks == clock,
+          "the plan's stop tick the clock the instance stopped at");
     // Held until told: empty before the stop, or before the deaths, does
     // not count; past both it does; that it holds always counts.
     bool held = !mvfxInstance_IsFinished(context, planned);
