@@ -110,4 +110,4 @@ gas_plan: context force gas gas_api gas_solid instance instance_api plan_resolve
 water_plan: box context effect effect_api force instance instance_api plan_resolved water water_api water_ground water_shallow water_step
 gradient:
 elementary:
-test_hooks: effect instance instance_api water
+test_hooks: effect gas instance instance_api water

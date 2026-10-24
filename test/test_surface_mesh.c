@@ -10,10 +10,8 @@
 // and random 2D fields closed loops; the capacities' partial writes and
 // true counts; the same bytes as committed.
 
-#include "gas.h"
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/base.h"
 #include "maul-vfx/effect.h"
@@ -404,12 +402,22 @@ static void TestDrops(void)
     CHECK(closed && euler == 4, "two drops, two pieces");
 }
 
+// A surface's distance field as a test writes it, at most 32 by 32 by 32
+// cells.
+static float s_field[32 * 32 * 32];
+
+// Writes the first count values of s_field into the surface's field.
+static void WriteField(int64_t count)
+{
+    CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasDistance, s_field, count),
+          "the field written");
+}
+
 // Writes a random field of values within 1 into a surface of n by n by
 // depth cells, its border's samples positive, so its mesh closes.
 static void RandomField(int32_t n, int32_t depth, uint64_t* state)
 {
-    mvfxGasState* gas = &mvfxContextInstance(s_context, s_instance)->gases[0];
-    float* phi = gas->scalars[0][gas->current];
+    float* phi = s_field;
     for (int64_t i = 0; i < (int64_t)n * n * depth; ++i)
     {
         int32_t at[3] = {(int32_t)(i % n), (int32_t)(i / n % n), (int32_t)(i / n / n)};
@@ -419,6 +427,7 @@ static void RandomField(int32_t n, int32_t depth, uint64_t* state)
         float u = (float)(*state >> 40) / 16777216.0f;
         phi[i] = border ? 1.0f : 2.0f * u - 1.0f;
     }
+    WriteField((int64_t)n * n * depth);
 }
 
 // Whether a mesh's primitives of count vertices close, at samples where
@@ -524,8 +533,7 @@ static bool AtLevel(const float* phi, int32_t n, int32_t depth, int64_t vertices
 // depth cells, its border 1; the field.
 static const float* TieField(int32_t n, int32_t depth, uint64_t* state)
 {
-    mvfxGasState* gas = &mvfxContextInstance(s_context, s_instance)->gases[0];
-    float* phi = gas->scalars[0][gas->current];
+    float* phi = s_field;
     for (int64_t i = 0; i < (int64_t)n * n * depth; ++i)
     {
         int32_t at[3] = {(int32_t)(i % n), (int32_t)(i / n % n), (int32_t)(i / n / n)};
@@ -534,6 +542,7 @@ static const float* TieField(int32_t n, int32_t depth, uint64_t* state)
         *state = *state * 6364136223846793005u + 1442695040888963407u;
         phi[i] = border ? 1.0f : (float)(int32_t)((*state >> 33) % 3u) - 1.0f;
     }
+    WriteField((int64_t)n * n * depth);
     return phi;
 }
 
@@ -667,8 +676,7 @@ static void TestCapacity(void)
 // count values at places (x, y, z, value).
 static void SetField(int32_t n, int32_t depth, const float (*set)[4], int32_t count)
 {
-    mvfxGasState* gas = &mvfxContextInstance(s_context, s_instance)->gases[0];
-    float* phi = gas->scalars[0][gas->current];
+    float* phi = s_field;
     for (int64_t i = 0; i < (int64_t)n * n * depth; ++i)
     {
         phi[i] = 1.0f;
@@ -678,6 +686,7 @@ static void SetField(int32_t n, int32_t depth, const float (*set)[4], int32_t co
         int64_t at = ((int64_t)set[c][2] * n + (int64_t)set[c][1]) * n + (int64_t)set[c][0];
         phi[at] = set[c][3];
     }
+    WriteField((int64_t)n * n * depth);
 }
 
 // The loops of a closed curve: each segment's end is the next's start.

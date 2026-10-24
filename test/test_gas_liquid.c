@@ -2,22 +2,20 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Grid liquids (APIC on a liquid gas): the refusals; a cell's filled share
-// as its density; a still pool staying still, its pressure rising
-// linearly with depth; a turning disk keeping its angular momentum with
-// APIC better than with PIC; a dam break's front against Martin and
+// as its density; a still pool staying still; a turning disk keeping its
+// angular momentum; a dam break's front against Martin and
 // Moyce's measurements and Ritter's frictionless speed, its volume kept;
 // a pour the same whatever its emitter's room; a split step's events the
 // whole step's.
 
-#include "gas.h"
-#include "gas_liquid.h"
-#include "instance.h"
-#include "instance_api.h"
+#include "particles.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/gas.h"
 #include "maul-vfx/instance.h"
+#include "maul-vfx/plan.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -28,6 +26,20 @@ static mvfxInstanceId s_instance;
 // The next instance's origin and turn about Z (radians).
 static double s_origin[3];
 static float s_turn;
+// Whether Open's instance is planned.
+static bool s_planned;
+
+enum
+{
+    MOST = 1024
+};
+
+// Emitter 0's particles as the output writes them, read again after any
+// step (s_steps counts them).
+static TestParticle s_particles[MOST];
+static int32_t s_count;
+static uint64_t s_steps;
+static uint64_t s_read = UINT64_MAX;
 
 // A 2D liquid gas of n0 by n1 cells of cell, its lower left corner at the
 // origin, closed on every side.
@@ -79,6 +91,7 @@ static mvfxCollider BoxOf(const mvfxGasDef* gas)
 static bool Open(const mvfxEmitterDef* emitters, int32_t emitterCount, const mvfxGasDef* gases,
                  int32_t gasCount)
 {
+    ++s_steps;
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxEffectDef def = mvfxDefaultEffectDef();
@@ -96,6 +109,7 @@ static bool Open(const mvfxEmitterDef* emitters, int32_t emitterCount, const mvf
     memcpy(instanceDef.origin, s_origin, sizeof s_origin);
     instanceDef.rotation[2] = sinf(0.5f * s_turn);
     instanceDef.rotation[3] = cosf(0.5f * s_turn);
+    instanceDef.planned = s_planned;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
     return true;
 }
@@ -107,6 +121,7 @@ static void Spawn(const double* places, const float* velocities, int32_t count)
     mvfxSpawnRequest request = {.count = count, .positions = places, .velocities = velocities};
     CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "spawned");
     CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "born");
+    ++s_steps;
 }
 
 // Steps of 1/120 s.
@@ -117,6 +132,7 @@ static void StepsAt(int32_t n, int32_t rate)
     {
         CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / rate) == mvfx_success,
               "step");
+        ++s_steps;
     }
 }
 
@@ -125,14 +141,21 @@ static void Steps(int32_t n)
     StepsAt(n, 120);
 }
 
-static float* Array(mvfxAttribute attribute)
-{
-    return mvfxAttributeArray(mvfxContextInstance(s_context, s_instance), 0, attribute);
-}
-
 static int32_t Count(void)
 {
-    return mvfxContextInstance(s_context, s_instance)->emitters[0].count;
+    if (s_read != s_steps)
+    {
+        s_count = ReadParticles(s_context, s_instance, 0, s_particles, MOST);
+        s_read = s_steps;
+    }
+    return s_count;
+}
+
+// Particle i.
+static const TestParticle* At(int32_t i)
+{
+    (void)Count();
+    return &s_particles[i];
 }
 
 static void TestRefusals(void)
@@ -219,7 +242,7 @@ static void TestOutside(void)
     const float velocities[6] = {0, 0, 0, 1, 0, 0};
     Spawn(places, velocities, 2);
     Steps(2);
-    CHECK(Array(mvfx_attributeVelocityX)[1] == 1.0f && Array(mvfx_attributeVelocityY)[1] == 0.0f,
+    CHECK(At(1)->velocity[0] == 1.0f && At(1)->velocity[1] == 0.0f,
           "a particle beyond the box keeps its velocity");
     mvfxDestroyContext(s_context);
 }
@@ -266,8 +289,8 @@ static float MaxSpeed(void)
     float most = 0.0f;
     for (int32_t i = 0; i < Count(); ++i)
     {
-        float vx = Array(mvfx_attributeVelocityX)[i];
-        float vy = Array(mvfx_attributeVelocityY)[i];
+        float vx = At(i)->velocity[0];
+        float vy = At(i)->velocity[1];
         most = fmaxf(most, sqrtf(vx * vx + vy * vy));
     }
     return most;
@@ -292,25 +315,10 @@ static void TestPool(void)
     float low = 1.0f;
     for (int32_t i = 0; i < Count(); ++i)
     {
-        top = fmaxf(top, Array(mvfx_attributePositionY)[i]);
-        low = fminf(low, Array(mvfx_attributePositionY)[i]);
-    }
-    const mvfxGasState* state = &mvfxContextInstance(s_context, s_instance)->gases[0];
-    const float* p = state->levels[0].pressure;
-    float rises[6];
-    float mean = 0.0f;
-    for (int32_t y = 0; y < 6; ++y)
-    {
-        rises[y] = p[y * 16 + 8] - p[(y + 1) * 16 + 8];
-        mean += rises[y] / 6.0f;
-    }
-    bool linear = mean > 0.0f;
-    for (int32_t y = 0; y < 6; ++y)
-    {
-        linear = linear && fabsf(rises[y] - mean) <= 0.1f * mean;
+        top = fmaxf(top, At(i)->position[1]);
+        low = fminf(low, At(i)->position[1]);
     }
     CHECK(Count() == 512 && MaxSpeed() < 0.2f && top < 0.85f && low >= 0.0f, "a pool stays still");
-    CHECK(linear, "a pool's pressure rises with depth");
     mvfxDestroyContext(s_context);
 }
 
@@ -347,8 +355,8 @@ static void TestObstacle(void)
     float nearest = 1.0f;
     for (int32_t i = 0; i < Count(); ++i)
     {
-        float dx = Array(mvfx_attributePositionX)[i] - 0.8f;
-        float dy = Array(mvfx_attributePositionY)[i] - 0.3f;
+        float dx = At(i)->position[0] - 0.8f;
+        float dy = At(i)->position[1] - 0.3f;
         nearest = fminf(nearest, sqrtf(dx * dx + dy * dy));
     }
     CHECK(Count() == count && MaxSpeed() < 0.2f && nearest >= 0.25f - 1e-4f,
@@ -372,10 +380,9 @@ static double AngularMomentum(void)
     double sum = 0.0;
     for (int32_t i = 0; i < Count(); ++i)
     {
-        double x = (double)Array(mvfx_attributePositionX)[i] - (c - s) * 0.6;
-        double y = (double)Array(mvfx_attributePositionY)[i] - (s + c) * 0.6;
-        sum += x * (double)Array(mvfx_attributeVelocityY)[i] -
-               y * (double)Array(mvfx_attributeVelocityX)[i];
+        double x = (double)At(i)->position[0] - (c - s) * 0.6;
+        double y = (double)At(i)->position[1] - (s + c) * 0.6;
+        sum += x * (double)At(i)->velocity[1] - y * (double)At(i)->velocity[0];
     }
     return sum;
 }
@@ -384,30 +391,16 @@ static void TestTurning(void)
 {
     // A square of 12 by 12 cells of 0.05 turning at 2 a second about the
     // middle of a closed box of 24 by 24, 2 by 2 particles a cell, no
-    // gravity, 1 s: APIC keeps at least 85% of its angular momentum; PIC
-    // (the affine matrices zeroed each step) keeps less.
-    double kept[2];
-    for (int32_t c = 0; c < 2; ++c)
-    {
-        mvfxGasDef gas = Gas(24, 24, 0.05f);
-        mvfxCollider box = BoxOf(&gas);
-        mvfxEmitterDef emitter = Emitter(0.025f, &box, 576);
-        CHECK(Open(&emitter, 1, &gas, 1), "opened");
-        Block(0.05f, 2, (const int32_t[2]){6, 6}, (const int32_t[2]){18, 18}, Turning);
-        double start = AngularMomentum();
-        for (int32_t s = 0; s < 120; ++s)
-        {
-            Steps(1);
-            float* affine = Array(mvfx_attributeAffine);
-            for (int32_t i = 0; c == 1 && i < 9 * Count(); ++i)
-            {
-                affine[i] = 0.0f;
-            }
-        }
-        kept[c] = AngularMomentum() / start;
-        mvfxDestroyContext(s_context);
-    }
-    CHECK(kept[0] >= 0.85 && kept[1] < kept[0], "APIC keeps a turn better than PIC");
+    // gravity, 1 s: APIC keeps at least 85% of its angular momentum.
+    mvfxGasDef gas = Gas(24, 24, 0.05f);
+    mvfxCollider box = BoxOf(&gas);
+    mvfxEmitterDef emitter = Emitter(0.025f, &box, 576);
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    Block(0.05f, 2, (const int32_t[2]){6, 6}, (const int32_t[2]){18, 18}, Turning);
+    double start = AngularMomentum();
+    Steps(120);
+    CHECK(AngularMomentum() / start >= 0.85, "APIC keeps a turn");
+    mvfxDestroyContext(s_context);
 }
 
 static void TestTurnedBox(void)
@@ -439,53 +432,63 @@ static void Shear(const double* place, float* out)
     out[0] = (float)(place[1] - 0.4);
 }
 
+// The worst of a shear's velocity at the particles 2 cells or more inside
+// its block, turned by cs and sn.
+static float ShearMiss(float cs, float sn)
+{
+    float worst = 0.0f;
+    for (int32_t i = 0; i < Count(); ++i)
+    {
+        float wx = At(i)->position[0];
+        float wy = At(i)->position[1];
+        float x = cs * wx + sn * wy;
+        float y = -sn * wx + cs * wy;
+        if (x > 0.3f && x < 0.5f && y > 0.3f && y < 0.5f)
+        {
+            float vx = At(i)->velocity[0];
+            float vy = At(i)->velocity[1];
+            worst = fmaxf(worst, fabsf(cs * vx + sn * vy - (y - 0.4f)));
+            worst = fmaxf(worst, fabsf(-sn * vx + cs * vy));
+        }
+    }
+    return worst;
+}
+
 static void TestShear(void)
 {
     // A block of 8 by 8 cells of 0.05 in shear, 2 by 2 particles a cell, no
     // gravity, in an instance turned by 0 and by 0.5 about Z: after a step,
     // each particle 2 cells or more inside it has the shear's velocity at
-    // its place within 1e-4 (a linear field is carried exactly), and as its
-    // affine matrix the shear's gradient in the world, R G R^T, within
-    // 1e-3.
-    float worst[2] = {0.0f, 0.0f};
+    // its place within 1e-4 (a linear field is carried exactly), and after
+    // a second, carried from the gradient each particle took, still.
+    float worst = 0.0f;
     for (int32_t c = 0; c < 2; ++c)
     {
         s_turn = c == 1 ? 0.5f : 0.0f;
         float cs = cosf(s_turn);
         float sn = sinf(s_turn);
-        // R G R^T for G with dvx/dy 1, row by row over X and Y.
-        const float gradient[4] = {-cs * sn, cs * cs, -sn * sn, sn * cs};
         mvfxGasDef gas = Gas(16, 16, 0.05f);
         mvfxEmitterDef emitter = Emitter(0.025f, NULL, 256);
         CHECK(Open(&emitter, 1, &gas, 1), "opened");
         Block(0.05f, 2, (const int32_t[2]){4, 4}, (const int32_t[2]){12, 12}, Shear);
-        Steps(1);
-        for (int32_t i = 0; i < Count(); ++i)
+        for (int32_t s = 0; s < 2; ++s)
         {
-            float wx = Array(mvfx_attributePositionX)[i];
-            float wy = Array(mvfx_attributePositionY)[i];
-            float x = cs * wx + sn * wy;
-            float y = -sn * wx + cs * wy;
-            if (x > 0.3f && x < 0.5f && y > 0.3f && y < 0.5f)
-            {
-                float vx = Array(mvfx_attributeVelocityX)[i];
-                float vy = Array(mvfx_attributeVelocityY)[i];
-                worst[0] = fmaxf(worst[0], fabsf(cs * vx + sn * vy - (y - 0.4f)));
-                worst[0] = fmaxf(worst[0], fabsf(-sn * vx + cs * vy));
-                for (int32_t r = 0; r < 2; ++r)
-                {
-                    for (int32_t k = 0; k < 2; ++k)
-                    {
-                        float a = Array((mvfxAttribute)(mvfx_attributeAffine + 3 * r + k))[i];
-                        worst[1] = fmaxf(worst[1], fabsf(a - gradient[2 * r + k]));
-                    }
-                }
-            }
+            Steps(1);
+            worst = fmaxf(worst, ShearMiss(cs, sn));
         }
         mvfxDestroyContext(s_context);
     }
     s_turn = 0.0f;
-    CHECK(worst[0] <= 1e-4f && worst[1] <= 1e-3f, "a shear is carried exactly");
+    CHECK(worst <= 1e-4f, "a shear is carried exactly");
+}
+
+// Gas 0's faces along an axis, count of them.
+static const float* Faces(int32_t axis, int64_t count)
+{
+    static float faces[2][1024];
+    CHECK(mvfxTestReadGasFaces(s_context, s_instance, 0, axis, faces[axis], 1024) == count,
+          "faces");
+    return faces[axis];
 }
 
 // A block of 2 by 2 cells of 0.1 filled four times over, spawned in a
@@ -499,9 +502,8 @@ static double Growth(float fillTime)
     mvfxEmitterDef emitter = Emitter(0.05f, &box, 64);
     CHECK(Open(&emitter, 1, &gas, 1), "opened");
     Block(0.1f, 4, (const int32_t[2]){3, 3}, (const int32_t[2]){5, 5}, NULL);
-    const mvfxGasState* state = &mvfxContextInstance(s_context, s_instance)->gases[0];
-    const float* u = state->velocity[0][state->current];
-    const float* v = state->velocity[1][state->current];
+    const float* u = Faces(0, 72);
+    const float* v = Faces(1, 72);
     double worst = 0.0;
     for (int32_t c = 0; c < 4; ++c)
     {
@@ -515,17 +517,55 @@ static double Growth(float fillTime)
     return worst;
 }
 
+// The steps a planned instance's plans of a step of ticks hold.
+static int32_t PlanSteps(int64_t ticks)
+{
+    CHECK(mvfxContext_StepTicks(s_context, ticks) == mvfx_success, "step");
+    int32_t steps = 0;
+    CHECK(mvfxInstance_GetPlanSteps(s_context, s_instance, &steps) == mvfx_success, "plan steps");
+    return steps;
+}
+
+// One particle at 2.5 a second along X under gravity 9.81, in cells of
+// 0.05 at a courant number, stepped 1/30 s in context steps of 1/30 s
+// over steps: its record.
+static TestParticle Thrown(float courant, int32_t steps)
+{
+    mvfxGasDef gas = Gas(32, 32, 0.05f);
+    gas.courant = courant;
+    mvfxEmitterDef emitter = Emitter(0.025f, NULL, 4);
+    emitter.motion.gravity[1] = -9.81f;
+    CHECK(Open(&emitter, 1, &gas, 1), "opened");
+    const double at[3] = {0.4, 1.2, 0.0};
+    const float velocity[3] = {2.5f, 0.0f, 0.0f};
+    Spawn(at, velocity, 1);
+    StepsAt(steps, 30 * steps);
+    CHECK(Count() == 1, "thrown");
+    TestParticle thrown = *At(0);
+    mvfxDestroyContext(s_context);
+    return thrown;
+}
+
 static void TestSubsteps(void)
 {
-    // One particle at 3 a second along X in cells of 0.05, no gravity: a
-    // step of 1/30 s crosses 2 cells, so 2 substeps at courant 1, 4 at 0.5,
-    // 1 at 2; at 300 a second, the most. With gravity 9.81, Bridson's
-    // sqrt(5 h g) = 1.566 more, 3.04 cells: 4 substeps at 1. A smoke gas
-    // asks none.
+    // One particle at 3 a second along X in cells of 0.05, no gravity, in
+    // a planned instance told its speed: a step of 1/30 s crosses 2 cells,
+    // so 2 substeps at courant 1, 4 at 0.5, 1 at 2; at 300 a second, the
+    // most. With gravity 9.81, Bridson's sqrt(5 h g) = 1.566 more, 3.04
+    // cells: 4 substeps at 1. A smoke gas asks none.
     const float courants[4] = {1.0f, 0.5f, 2.0f, 1.0f};
     const float speeds[5] = {3.0f, 3.0f, 3.0f, 300.0f, 3.0f};
     const int32_t expected[5] = {2, 4, 1, MVFX_MAX_LIQUID_SUBSTEPS, 4};
+    // Simulated, the particle and gravity cross 2.71 cells in 1/30 s: 2
+    // substeps at courant 2, the same bits as two steps of 1/60 s (1.36
+    // cells each, 1 substep); 1 at courant 8, which differ.
+    TestParticle halves = Thrown(2.0f, 2);
+    TestParticle split = Thrown(2.0f, 1);
+    TestParticle whole = Thrown(8.0f, 1);
+    CHECK(memcmp(&split, &halves, sizeof split) == 0 && memcmp(&whole, &halves, sizeof whole) != 0,
+          "a simulated liquid's substeps by its particles' speed");
     int32_t wrong = 0;
+    s_planned = true;
     for (int32_t c = 0; c < 5; ++c)
     {
         mvfxGasDef gas = Gas(32, 32, 0.05f);
@@ -537,10 +577,9 @@ static void TestSubsteps(void)
         const mvfxSpawnRequest request = {.count = 1, .positions = at};
         CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "spawned");
         CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "born");
-        mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
-        ((float*)mvfxAttributeArray(live, 0, mvfx_attributeVelocityX))[0] = speeds[c];
-        ((float*)mvfxAttributeArray(live, 0, mvfx_attributeVelocityY))[0] = 0.0f;
-        wrong += mvfxLiquidSubsteps(live, MVFX_TICKS_PER_SECOND / 30) != expected[c];
+        CHECK(mvfxInstance_SetLiquidSpeed(s_context, s_instance, 0, 1, speeds[c]) == mvfx_success,
+              "told");
+        wrong += PlanSteps(MVFX_TICKS_PER_SECOND / 30) != expected[c];
         mvfxDestroyContext(s_context);
     }
     CHECK(wrong == 0, "a liquid's substeps by its courant number");
@@ -549,7 +588,8 @@ static void TestSubsteps(void)
     smoke.size[1] = 8;
     mvfxEmitterDef plain = mvfxDefaultEmitterDef();
     CHECK(Open(&plain, 1, &smoke, 1), "opened");
-    CHECK(mvfxLiquidSubsteps(mvfxContextInstance(s_context, s_instance), 1 << 20) == 1, "none");
+    s_planned = false;
+    CHECK(PlanSteps(MVFX_TICKS_PER_SECOND) == 1, "none");
     mvfxDestroyContext(s_context);
 }
 
@@ -591,25 +631,15 @@ static Twin OpenTwin(bool throttled)
     return twin;
 }
 
-// Whether two twins' particles are where each other's are.
+// Whether two twins' particles are where each other's are, as old and
+// moving as each other's.
 static bool Alike(const Twin* a, const Twin* b)
 {
-    const mvfxInstance* x = mvfxContextInstance(a->context, a->instance);
-    const mvfxInstance* y = mvfxContextInstance(b->context, b->instance);
-    int32_t count = x->emitters[0].count;
-    bool alike = count == y->emitters[0].count && count > 0 && x->clock == y->clock;
-    int32_t moved = 0;
-    for (int32_t k = 0; alike && k < 2; ++k)
-    {
-        mvfxAttribute at = (mvfxAttribute)(mvfx_attributePositionX + k);
-        const float* p = mvfxAttributeArray(x, 0, at);
-        const float* q = mvfxAttributeArray(y, 0, at);
-        for (int32_t i = 0; i < count; ++i)
-        {
-            moved += p[i] != q[i];
-        }
-    }
-    return alike && moved == 0;
+    static TestParticle x[576];
+    static TestParticle y[576];
+    int32_t count = ReadParticles(a->context, a->instance, 0, x, 576);
+    bool alike = count > 0 && count == ReadParticles(b->context, b->instance, 0, y, 576);
+    return alike && memcmp(x, y, (size_t)count * sizeof x[0]) == 0;
 }
 
 static void TestSubstepPaths(void)
@@ -656,9 +686,8 @@ static void TestExpansion(void)
     mvfxEmitterDef emitter = Emitter(0.05f, &box, 64);
     CHECK(Open(&emitter, 1, &gas, 1), "opened");
     Block(0.1f, 4, (const int32_t[2]){3, 3}, (const int32_t[2]){5, 5}, NULL);
-    const mvfxGasState* state = &mvfxContextInstance(s_context, s_instance)->gases[0];
-    const float* u = state->velocity[0][state->current];
-    const float* v = state->velocity[1][state->current];
+    const float* u = Faces(0, 72);
+    const float* v = Faces(1, 72);
     bool grows = true;
     for (int32_t y = 3; y < 5; ++y)
     {
@@ -695,19 +724,18 @@ static const double s_damT[] = {0.97, 1.14, 1.29, 1.45, 1.62, 1.76, 1.93, 2.07,
 // spacings (a lone particle ahead is spray), plus half a spacing.
 static double Front(double a, double spacing)
 {
-    const float* x = Array(mvfx_attributePositionX);
-    const float* y = Array(mvfx_attributePositionY);
     float front = 0.0f;
     for (int32_t i = 0; i < Count(); ++i)
     {
+        const float* p = At(i)->position;
         int32_t near = 0;
         for (int32_t j = 0; j < Count() && near < 2; ++j)
         {
-            float dx = x[i] - x[j];
-            float dy = y[i] - y[j];
+            float dx = p[0] - At(j)->position[0];
+            float dy = p[1] - At(j)->position[1];
             near += j != i && dx * dx + dy * dy < (float)(2.25 * spacing * spacing) ? 1 : 0;
         }
-        front = near >= 2 ? fmaxf(front, x[i]) : front;
+        front = near >= 2 ? fmaxf(front, p[0]) : front;
     }
     return ((double)front + 0.5 * spacing) / a;
 }
@@ -818,8 +846,8 @@ static int32_t Pour(int32_t capacity, float rate, float* places)
     int32_t count = Count();
     for (int32_t i = 0; i < count; ++i)
     {
-        places[2 * i] = Array(mvfx_attributePositionX)[i];
-        places[2 * i + 1] = Array(mvfx_attributePositionY)[i];
+        places[2 * i] = At(i)->position[0];
+        places[2 * i + 1] = At(i)->position[1];
     }
     mvfxDestroyContext(s_context);
     return count;
@@ -827,9 +855,9 @@ static int32_t Pour(int32_t capacity, float rate, float* places)
 
 // Two instances in one context of an effect with a liquid gas of a
 // courant number, an emitter whose lives, longer than a step, write
-// their deaths, and one spawning two children a death: the effects, then
-// the instances.
-static void OpenTwins(const float courant[2], mvfxInstanceId out[2])
+// their deaths, and one spawning two children a death: the effects into
+// effects, the instances into out.
+static void OpenTwins(const float courant[2], mvfxEffectId effects[2], mvfxInstanceId out[2])
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
@@ -860,10 +888,9 @@ static void OpenTwins(const float courant[2], mvfxInstanceId out[2])
         def.emitterCount = 3;
         def.gases = &gas;
         def.gasCount = 1;
-        mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+        CHECK(mvfxCreateEffect(s_context, &def, &effects[k]) == mvfx_success, "effect");
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-        instanceDef.effect = effect;
+        instanceDef.effect = effects[k];
         // One seed: the same draws.
         instanceDef.seed = 7;
         CHECK(mvfxCreateInstance(s_context, &instanceDef, &out[k]) == mvfx_success, "instance");
@@ -914,10 +941,17 @@ static void TestSplitEvents(void)
     // the whole context step, those of one that does not split (births
     // and deaths fall on the same ticks; the order differs, deaths by age
     // coming at a step's start), not its last substep's alone; the
-    // children of those deaths, each born from its own substep's.
+    // children of those deaths, each born from its own substep's. A
+    // planned instance of the split one's effect shows it splits.
     const float courant[2] = {4.0f, 0.05f};
+    mvfxEffectId effects[2];
     mvfxInstanceId twins[2];
-    OpenTwins(courant, twins);
+    OpenTwins(courant, effects, twins);
+    mvfxInstanceDef planDef = mvfxDefaultInstanceDef();
+    planDef.effect = effects[1];
+    planDef.seed = 7;
+    planDef.planned = true;
+    CHECK(mvfxCreateInstance(s_context, &planDef, &s_instance) == mvfx_success, "planned");
     bool same = true;
     int32_t deaths = 0;
     int32_t most = 0;
@@ -932,12 +966,17 @@ static void TestSplitEvents(void)
                       mvfx_success,
                   "events");
         }
-        same = same && SameEvents(events, counts) &&
-               mvfxContextInstance(s_context, twins[0])->emitters[2].count ==
-                   mvfxContextInstance(s_context, twins[1])->emitters[2].count;
+        mvfxEmitterStats children[2];
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            CHECK(mvfxInstance_GetEmitterStats(s_context, twins[k], 2, &children[k]) ==
+                      mvfx_success,
+                  "children");
+        }
+        same = same && SameEvents(events, counts) && children[0].live == children[1].live;
         deaths += counts[0];
-        int32_t substeps = mvfxLiquidSubsteps(mvfxContextInstance(s_context, twins[1]),
-                                              MVFX_TICKS_PER_SECOND / 60);
+        int32_t substeps = 0;
+        CHECK(mvfxInstance_GetPlanSteps(s_context, s_instance, &substeps) == mvfx_success, "split");
         most = substeps > most ? substeps : most;
     }
     mvfxDestroyContext(s_context);

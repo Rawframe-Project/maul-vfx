@@ -12,6 +12,7 @@
 #define MAUL_VFX_SRC_TEST_HOOKS_H
 
 #include "maul-vfx/context.h"
+#include "maul-vfx/gas.h"
 #include "maul-vfx/instance.h"
 
 #include <stdint.h>
@@ -36,6 +37,37 @@ bool mvfxTestTearEdges(mvfxContext* context, mvfxInstanceId instance, int32_t em
 // that names no live instance or an emitter out of range.
 int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                            int32_t* a, int32_t* b, int32_t capacity);
+
+// Copies up to capacity of a gas's velocities on its faces across an axis
+// (0 to 2), X fastest, then Y, then Z, as the last step left them;
+// returns how many faces there are, or -1 for an id that names no live
+// instance, a gas or an axis out of range, or an axis the gas keeps no
+// velocity along.
+int64_t mvfxTestReadGasFaces(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             int32_t axis, float* out, int64_t capacity);
+
+// Sets a gas's velocities on its faces across an axis, count of them (the
+// faces there are), as a step would leave them, so a test can start a
+// solve from any field. Returns false for an id that names no live
+// instance, a gas or an axis out of range, an axis the gas keeps no
+// velocity along, or another count.
+bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_t gas, int32_t axis,
+                           const float* values, int64_t count);
+
+// Sets a gas's scalar field (mvfx_gasDensity, mvfx_gasTemperature,
+// mvfx_gasFuel, or a surface's mvfx_gasDistance) at its cells, count of
+// them (its cells). Returns false for an id that names no live instance,
+// a gas out of range, a field it does not keep, or another count.
+bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                            mvfxGasField field, const float* values, int64_t count);
+
+// Copies up to capacity of a gas's cells' solids into out, each 0 for an
+// open cell, else 1 more than the index of the obstacle filling it, as
+// the last step marked them, and returns how many cells it has. Returns
+// -1 for an id that names no live instance, a gas out of range, or a gas
+// without obstacles.
+int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             uint8_t* out, int64_t capacity);
 
 // Sets a shallow water surface's depths at its cells, count of them (its
 // cells), as a step would leave them, so a test can let go any water.
