@@ -5,6 +5,7 @@
 
 #include "bounds.h"
 #include "context.h"
+#include "fpenv.h"
 #include "gas_api.h"
 #include "instance.h"
 #include "instance_api.h"
@@ -31,8 +32,9 @@ static mvfxBounds Join(mvfxBounds a, mvfxBounds b)
     return a;
 }
 
-mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                  mvfxBounds* boundsOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetBoundsWork(mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t emitter,
+                                                           mvfxBounds* boundsOut)
 {
     if (context == nullptr || boundsOut == nullptr)
     {
@@ -70,6 +72,15 @@ mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance,
         *boundsOut = Join(*boundsOut, mvfxWaterBounds(live, w));
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                  mvfxBounds* boundsOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetBoundsWork(context, instance, emitter, boundsOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // Whether a box lies wholly outside one of a frustum's planes: its corner
@@ -192,9 +203,11 @@ static mvfxDrawItem ItemOf(const mvfxInstance* instance, mvfxInstanceId id, int3
                           .distance = sqrt(square)};
 }
 
-mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3],
-                                     const mvfxFrustum* frustum, mvfxDrawItem* items,
-                                     int64_t capacity, int64_t* countOut)
+static MVFX_NOINLINE mvfxResult mvfxContext_OrderEmittersWork(mvfxContext* context,
+                                                              const double eye[3],
+                                                              const mvfxFrustum* frustum,
+                                                              mvfxDrawItem* items, int64_t capacity,
+                                                              int64_t* countOut)
 {
     if (context == nullptr || eye == nullptr || countOut == nullptr || capacity < 0 ||
         (capacity > 0 && items == nullptr) || !IsViewValid(eye, frustum))
@@ -236,4 +249,15 @@ mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3],
     }
     *countOut = count;
     return mvfx_success;
+}
+
+mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3],
+                                     const mvfxFrustum* frustum, mvfxDrawItem* items,
+                                     int64_t capacity, int64_t* countOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxContext_OrderEmittersWork(context, eye, frustum, items, capacity, countOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

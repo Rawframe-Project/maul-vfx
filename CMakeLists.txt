@@ -280,6 +280,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(fpenv WHITEBOX)
     maul_add_test(float_mode)
     maul_add_test(host_calls)
+    maul_add_test(hosts)
     maul_add_exports_test()
     # The web build has no threads; the twins need four.
     if(NOT EMSCRIPTEN)

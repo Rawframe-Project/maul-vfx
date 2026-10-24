@@ -4,6 +4,7 @@
 #include "appearance.h"
 #include "context.h"
 #include "direction.h"
+#include "fpenv.h"
 #include "gradient.h"
 #include "instance_api.h"
 #include "layout_api.h"
@@ -788,13 +789,34 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
     return mvfx_success;
 }
 
+static MVFX_NOINLINE mvfxResult mvfxInstance_WriteRibbonsWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+    int64_t* ribbonCountOut)
+{
+    return WritePoints(context, instance, emitter, layout, view, buffers, pointCountOut,
+                       ribbonCountOut, false);
+}
+
 mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                                      mvfxLayoutId layout, const mvfxView* view,
                                      const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
                                      int64_t* ribbonCountOut)
 {
-    return WritePoints(context, instance, emitter, layout, view, buffers, pointCountOut,
-                       ribbonCountOut, false);
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_WriteRibbonsWork(context, instance, emitter, layout, view,
+                                                      buffers, pointCountOut, ribbonCountOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandRibbonsWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+    int64_t* indexCountOut)
+{
+    return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
+                       indexCountOut, false, nullptr);
 }
 
 mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId instance,
@@ -802,14 +824,17 @@ mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId insta
                                       const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
                                       int64_t* indexCountOut)
 {
-    return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
-                       indexCountOut, false, nullptr);
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_ExpandRibbonsWork(context, instance, emitter, layout, view,
+                                                       buffers, vertexCountOut, indexCountOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
-mvfxResult mvfxInstance_ExpandTubes(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                    mvfxLayoutId layout, const mvfxView* view,
-                                    const mvfxTubeDef* tube, const mvfxExpandBuffers* buffers,
-                                    int64_t* vertexCountOut, int64_t* indexCountOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandTubesWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxTubeDef* tube, const mvfxExpandBuffers* buffers,
+    int64_t* vertexCountOut, int64_t* indexCountOut)
 {
     if (tube == nullptr || tube->sides == 0)
     {
@@ -823,13 +848,46 @@ mvfxResult mvfxInstance_ExpandTubes(mvfxContext* context, mvfxInstanceId instanc
                        indexCountOut, false, tube);
 }
 
+mvfxResult mvfxInstance_ExpandTubes(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    mvfxLayoutId layout, const mvfxView* view,
+                                    const mvfxTubeDef* tube, const mvfxExpandBuffers* buffers,
+                                    int64_t* vertexCountOut, int64_t* indexCountOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_ExpandTubesWork(context, instance, emitter, layout, view, tube,
+                                                     buffers, vertexCountOut, indexCountOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_WritePlexusWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+    int64_t* ribbonCountOut)
+{
+    return WritePoints(context, instance, emitter, layout, view, buffers, pointCountOut,
+                       ribbonCountOut, true);
+}
+
 mvfxResult mvfxInstance_WritePlexus(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                                     mvfxLayoutId layout, const mvfxView* view,
                                     const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
                                     int64_t* ribbonCountOut)
 {
-    return WritePoints(context, instance, emitter, layout, view, buffers, pointCountOut,
-                       ribbonCountOut, true);
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_WritePlexusWork(context, instance, emitter, layout, view,
+                                                     buffers, pointCountOut, ribbonCountOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandPlexusWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+    int64_t* indexCountOut)
+{
+    return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
+                       indexCountOut, true, nullptr);
 }
 
 mvfxResult mvfxInstance_ExpandPlexus(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
@@ -837,6 +895,9 @@ mvfxResult mvfxInstance_ExpandPlexus(mvfxContext* context, mvfxInstanceId instan
                                      const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
                                      int64_t* indexCountOut)
 {
-    return WriteStrips(context, instance, emitter, layout, view, buffers, vertexCountOut,
-                       indexCountOut, true, nullptr);
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_ExpandPlexusWork(context, instance, emitter, layout, view,
+                                                      buffers, vertexCountOut, indexCountOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

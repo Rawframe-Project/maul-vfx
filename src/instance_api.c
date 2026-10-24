@@ -8,6 +8,7 @@
 #include "collide.h"
 #include "context.h"
 #include "effect_api.h"
+#include "fpenv.h"
 #include "grid_api.h"
 #include "instance.h"
 #include "mesh.h"
@@ -114,8 +115,9 @@ static int32_t LevelThatFits(const mvfxContext* context, const mvfxEffect* effec
     return -1;
 }
 
-mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
-                              mvfxInstanceId* instanceOut)
+static MVFX_NOINLINE mvfxResult mvfxCreateInstanceWork(mvfxContext* context,
+                                                       const mvfxInstanceDef* def,
+                                                       mvfxInstanceId* instanceOut)
 {
     if (context == nullptr || instanceOut == nullptr || def == nullptr ||
         def->cookie != MVFX_INSTANCE_DEF_COOKIE || !IsOriginValid(def->origin) ||
@@ -181,6 +183,15 @@ mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
     return mvfx_success;
 }
 
+mvfxResult mvfxCreateInstance(mvfxContext* context, const mvfxInstanceDef* def,
+                              mvfxInstanceId* instanceOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxCreateInstanceWork(context, def, instanceOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 // Holds the grids of an instance's own colliders, or lets them go (by -1).
 static void HoldHostGrids(mvfxInstance* instance, int32_t by)
 {
@@ -224,8 +235,10 @@ bool mvfxInstance_IsValid(const mvfxContext* context, mvfxInstanceId instance)
     return context != nullptr && mvfxContextInstance(context, instance) != nullptr;
 }
 
-mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId instance,
-                                        int32_t emitter, mvfxEmitterStats* statsOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStatsWork(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 int32_t emitter,
+                                                                 mvfxEmitterStats* statsOut)
 {
     if (statsOut != nullptr)
     {
@@ -272,6 +285,15 @@ mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId ins
         .rigidSearchesCapped = state->rigidSearchesCapped,
     };
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetEmitterStats(mvfxContext* context, mvfxInstanceId instance,
+                                        int32_t emitter, mvfxEmitterStats* statsOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetEmitterStatsWork(context, instance, emitter, statsOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // The ticks from a plan's start whose events give an emitter births.
@@ -388,8 +410,10 @@ static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId 
     return *result == mvfx_success ? live : nullptr;
 }
 
-mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance,
-                                       int32_t emitter, mvfxEmitterPlan* planOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterPlanWork(const mvfxContext* context,
+                                                                mvfxInstanceId instance,
+                                                                int32_t emitter,
+                                                                mvfxEmitterPlan* planOut)
 {
     if (planOut != nullptr)
     {
@@ -414,8 +438,19 @@ mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceI
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context, mvfxInstanceId instance,
-                                           int32_t emitter, int32_t step, mvfxEmitterPlan* planOut)
+mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t emitter, mvfxEmitterPlan* planOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetEmitterPlanWork(context, instance, emitter, planOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStepPlanWork(const mvfxContext* context,
+                                                                    mvfxInstanceId instance,
+                                                                    int32_t emitter, int32_t step,
+                                                                    mvfxEmitterPlan* planOut)
 {
     if (planOut != nullptr)
     {
@@ -437,6 +472,16 @@ mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context, mvfxInsta
     }
     StepPlan(live, emitter, step, planOut);
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                           int32_t emitter, int32_t step, mvfxEmitterPlan* planOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxInstance_GetEmitterStepPlanWork(context, instance, emitter, step, planOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 mvfxResult mvfxInstance_GetPlanSteps(const mvfxContext* context, mvfxInstanceId instance,
@@ -513,7 +558,8 @@ bool mvfxInstance_IsFinished(const mvfxContext* context, mvfxInstanceId instance
     return live != nullptr && mvfxIsInstanceFinished(live);
 }
 
-mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfxStopMode mode)
+static MVFX_NOINLINE mvfxResult mvfxInstance_StopWork(mvfxContext* context, mvfxInstanceId instance,
+                                                      mvfxStopMode mode)
 {
     if (context == nullptr)
     {
@@ -556,7 +602,16 @@ mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfx
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
+mvfxResult mvfxInstance_Stop(mvfxContext* context, mvfxInstanceId instance, mvfxStopMode mode)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_StopWork(context, instance, mode);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_RestartWork(mvfxContext* context,
+                                                         mvfxInstanceId instance)
 {
     if (context == nullptr)
     {
@@ -575,6 +630,14 @@ mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
     return mvfx_success;
 }
 
+mvfxResult mvfxInstance_Restart(mvfxContext* context, mvfxInstanceId instance)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_RestartWork(context, instance);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 // Advances the ribbon counter of an emitter, or with -1 of every emitter
 // drawn as ribbons.
 static void BreakRibbons(mvfxInstance* instance, int32_t emitter)
@@ -589,9 +652,11 @@ static void BreakRibbons(mvfxInstance* instance, int32_t emitter)
     }
 }
 
-mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instance,
-                                     const double origin[3], const float rotation[4], float scale,
-                                     bool teleport)
+static MVFX_NOINLINE mvfxResult mvfxInstance_SetTransformWork(mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              const double origin[3],
+                                                              const float rotation[4], float scale,
+                                                              bool teleport)
 {
     if (context == nullptr || origin == nullptr || rotation == nullptr)
     {
@@ -627,6 +692,17 @@ mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instan
         }
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetTransform(mvfxContext* context, mvfxInstanceId instance,
+                                     const double origin[3], const float rotation[4], float scale,
+                                     bool teleport)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxInstance_SetTransformWork(context, instance, origin, rotation, scale, teleport);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 mvfxResult mvfxInstance_SetVisible(mvfxContext* context, mvfxInstanceId instance, bool visible)
@@ -674,8 +750,10 @@ mvfxResult mvfxInstance_SetOffscreen(mvfxContext* context, mvfxInstanceId instan
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instance,
-                                     const mvfxCollider* colliders, int32_t count)
+static MVFX_NOINLINE mvfxResult mvfxInstance_SetCollidersWork(mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              const mvfxCollider* colliders,
+                                                              int32_t count)
 {
     if (context == nullptr)
     {
@@ -719,6 +797,15 @@ mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instan
     live->hostColliderCount = count;
     HoldHostGrids(live, 1);
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instance,
+                                     const mvfxCollider* colliders, int32_t count)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_SetCollidersWork(context, instance, colliders, count);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // The live instance an id names and whether a parameter index is in

@@ -6,6 +6,7 @@
 // emitter's mesh.
 
 #include "context.h"
+#include "fpenv.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "mesh_api.h"
@@ -149,9 +150,11 @@ static bool IsAttachFrameValid(const mvfxAttachFrame* frame)
     return placed && fabs(sqrt(square) - 1.0) <= 1e-3;
 }
 
-mvfxResult mvfxInstance_SetAttachFrames(mvfxContext* context, mvfxInstanceId instance,
-                                        int32_t emitter, const mvfxAttachFrame* frames,
-                                        int32_t count)
+static MVFX_NOINLINE mvfxResult mvfxInstance_SetAttachFramesWork(mvfxContext* context,
+                                                                 mvfxInstanceId instance,
+                                                                 int32_t emitter,
+                                                                 const mvfxAttachFrame* frames,
+                                                                 int32_t count)
 {
     if (context == nullptr)
     {
@@ -190,8 +193,19 @@ mvfxResult mvfxInstance_SetAttachFrames(mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId instance,
-                                      const mvfxDepthImage* image)
+mvfxResult mvfxInstance_SetAttachFrames(mvfxContext* context, mvfxInstanceId instance,
+                                        int32_t emitter, const mvfxAttachFrame* frames,
+                                        int32_t count)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_SetAttachFramesWork(context, instance, emitter, frames, count);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_SetDepthImageWork(mvfxContext* context,
+                                                               mvfxInstanceId instance,
+                                                               const mvfxDepthImage* image)
 {
     if (context == nullptr)
     {
@@ -224,8 +238,19 @@ mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId insta
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_WakeBodies(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                   const float center[3], float radius)
+mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context, mvfxInstanceId instance,
+                                      const mvfxDepthImage* image)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_SetDepthImageWork(context, instance, image);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_WakeBodiesWork(mvfxContext* context,
+                                                            mvfxInstanceId instance,
+                                                            int32_t emitter, const float center[3],
+                                                            float radius)
 {
     if (mvfxRefusesHostCall(context))
     {
@@ -253,6 +278,15 @@ mvfxResult mvfxInstance_WakeBodies(mvfxContext* context, mvfxInstanceId instance
     }
     mvfxWakeWithin(live, emitter, center, radius);
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_WakeBodies(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                   const float center[3], float radius)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_WakeBodiesWork(context, instance, emitter, center, radius);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId instance,

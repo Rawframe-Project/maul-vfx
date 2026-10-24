@@ -6,6 +6,7 @@
 #include "appearance.h"
 #include "context.h"
 #include "direction.h"
+#include "fpenv.h"
 #include "instance_api.h"
 #include "layout_api.h"
 #include "sort.h"
@@ -538,10 +539,10 @@ bool mvfxIsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment)
     return bytes >= 0 && (bytes == 0 || buffer != nullptr) && ((uintptr_t)buffer % alignment) == 0;
 }
 
-mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId instance,
-                                       int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
-                                       void* scratch, int64_t scratchBytes, void* records,
-                                       int64_t capacity, int64_t* countOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_WriteParticlesWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, void* scratch, int64_t scratchBytes, void* records, int64_t capacity,
+    int64_t* countOut)
 {
     if (context == nullptr || view == nullptr || countOut == nullptr)
     {
@@ -585,6 +586,19 @@ mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId inst
     return mvfx_success;
 }
 
+mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
+                                       void* scratch, int64_t scratchBytes, void* records,
+                                       int64_t capacity, int64_t* countOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxInstance_WriteParticlesWork(context, instance, emitter, layout, view, scratch,
+                                        scratchBytes, records, capacity, countOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 // The light particle i carries for a view.
 static mvfxLight LightOf(const mvfxRecordSource* s, const mvfxLightDef* def, int32_t i)
 {
@@ -608,9 +622,11 @@ static mvfxLight LightOf(const mvfxRecordSource* s, const mvfxLightDef* def, int
     return light;
 }
 
-mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                    const mvfxView* view, mvfxLight* lights, int64_t capacity,
-                                    int64_t* countOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_WriteLightsWork(mvfxContext* context,
+                                                             mvfxInstanceId instance,
+                                                             int32_t emitter, const mvfxView* view,
+                                                             mvfxLight* lights, int64_t capacity,
+                                                             int64_t* countOut)
 {
     if (context == nullptr || view == nullptr || countOut == nullptr)
     {
@@ -663,4 +679,15 @@ mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instanc
     }
     *countOut = count;
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    const mvfxView* view, mvfxLight* lights, int64_t capacity,
+                                    int64_t* countOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxInstance_WriteLightsWork(context, instance, emitter, view, lights, capacity, countOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

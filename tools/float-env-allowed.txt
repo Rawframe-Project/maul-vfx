@@ -1,0 +1,71 @@
+# The public functions that need not enter the library's floating-point
+# environment (tools/check_float_env.py): each listed under the reason,
+# true of every name under it, that it computes no float. A comparison
+# counts as computing: denormals-are-zero reads a subnormal as 0, so a
+# call that compares a caller's float with 0 enters the environment.
+
+makes a default from constants, computing no float:
+    mvfxDefaultEffectDef
+    mvfxDefaultEmitterDef
+    mvfxDefaultGasDef
+    mvfxDefaultGridDef
+    mvfxDefaultInstanceDef
+    mvfxDefaultLayoutDef
+    mvfxDefaultMeshDef
+    mvfxDefaultWaterDef
+
+reports a stored count, tick, flag, identity, name or the version, computing no float:
+    mvfxGetVersion
+    mvfxResultName
+    mvfxGetContextMisuse
+    mvfxContext_GetParticles
+    mvfxEffect_IsValid
+    mvfxGrid_IsValid
+    mvfxInstance_IsValid
+    mvfxLayout_IsValid
+    mvfxMesh_IsValid
+    mvfxInstance_IsFinished
+    mvfxInstance_GetQuality
+    mvfxInstance_GetPlanSteps
+    mvfxInstance_GetSortScratchBytes
+    mvfxInstance_GetSurfaceMeshScratchBytes
+
+hands over stored or compiled values as they are, copying them, computing no float:
+    mvfxEffect_GetGasView
+    mvfxEffect_GetWaterView
+    mvfxGrid_GetView
+    mvfxLayout_GetView
+    mvfxMesh_GetView
+    mvfxInstance_GetEmitterMesh
+    mvfxInstance_GetEvents
+    mvfxInstance_GetSceneQueries
+    mvfxInstance_GetParameter
+
+hashes or draws integers, computing no float:
+    mvfxHash64
+    mvfxModule_Random
+
+makes, frees or changes objects from integers, pointers, flags and ticks, computing no float:
+    mvfxCreateContext
+    mvfxCreateLayout
+    mvfxDestroyContext
+    mvfxDestroyEffect
+    mvfxDestroyGrid
+    mvfxDestroyInstance
+    mvfxDestroyLayout
+    mvfxDestroyMesh
+    mvfxInstance_BreakRibbons
+    mvfxInstance_SetEmitterMesh
+    mvfxInstance_SetGasHolds
+    mvfxInstance_SetWaterHolds
+    mvfxInstance_SetOffscreen
+    mvfxInstance_SetVisible
+
+stores a caller's floats as given after checking them finite and within bounds of at least 1, which no setting changes, computing no float:
+    mvfxInstance_SetParameter
+    mvfxInstance_Spawn
+
+checks a caller's floats against bounds by their size and stores them, as given or as binary16 rounded by their bits, computing no float:
+    mvfxCreateGrid
+    mvfxGrid_SetValues
+    mvfxGrid_SetValuesIn

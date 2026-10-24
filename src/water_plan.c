@@ -8,6 +8,7 @@
 #include "effect.h"
 #include "effect_api.h"
 #include "force.h"
+#include "fpenv.h"
 #include "instance_api.h"
 #include "plan_resolved.h"
 #include "water.h"
@@ -146,8 +147,9 @@ static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId 
     return *result == mvfx_success ? live : nullptr;
 }
 
-mvfxResult mvfxInstance_GetWaterPlan(const mvfxContext* context, mvfxInstanceId instance,
-                                     int32_t water, mvfxWaterPlan* planOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetWaterPlanWork(const mvfxContext* context,
+                                                              mvfxInstanceId instance,
+                                                              int32_t water, mvfxWaterPlan* planOut)
 {
     if (planOut != nullptr)
     {
@@ -172,8 +174,19 @@ mvfxResult mvfxInstance_GetWaterPlan(const mvfxContext* context, mvfxInstanceId 
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_GetWaterStepPlan(const mvfxContext* context, mvfxInstanceId instance,
-                                         int32_t water, int32_t step, mvfxWaterPlan* planOut)
+mvfxResult mvfxInstance_GetWaterPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                     int32_t water, mvfxWaterPlan* planOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetWaterPlanWork(context, instance, water, planOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetWaterStepPlanWork(const mvfxContext* context,
+                                                                  mvfxInstanceId instance,
+                                                                  int32_t water, int32_t step,
+                                                                  mvfxWaterPlan* planOut)
 {
     if (planOut != nullptr)
     {
@@ -195,6 +208,15 @@ mvfxResult mvfxInstance_GetWaterStepPlan(const mvfxContext* context, mvfxInstanc
     }
     StepPlan(live, water, step, planOut);
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_GetWaterStepPlan(const mvfxContext* context, mvfxInstanceId instance,
+                                         int32_t water, int32_t step, mvfxWaterPlan* planOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetWaterStepPlanWork(context, instance, water, step, planOut);
+    mvfxFloatEnvLeave(env);
+    return result;
 }
 
 // Whether nothing moves surface w after tick but its own motion: the
@@ -243,9 +265,11 @@ mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context, mvfxInstanceId insta
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context, mvfxInstanceId instance, int32_t water,
-                                       int64_t tick, float reach, uint64_t facesHeld,
-                                       double volumePoured)
+static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterCountsWork(mvfxContext* context,
+                                                                mvfxInstanceId instance,
+                                                                int32_t water, int64_t tick,
+                                                                float reach, uint64_t facesHeld,
+                                                                double volumePoured)
 {
     if (context == nullptr)
     {
@@ -277,8 +301,21 @@ mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context, mvfxInstanceId inst
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_SetWaterSpeed(mvfxContext* context, mvfxInstanceId instance, int32_t water,
-                                      int64_t tick, float speed)
+mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                                       int64_t tick, float reach, uint64_t facesHeld,
+                                       double volumePoured)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_SetWaterCountsWork(context, instance, water, tick, reach,
+                                                        facesHeld, volumePoured);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterSpeedWork(mvfxContext* context,
+                                                               mvfxInstanceId instance,
+                                                               int32_t water, int64_t tick,
+                                                               float speed)
 {
     if (context == nullptr)
     {
@@ -307,4 +344,13 @@ mvfxResult mvfxInstance_SetWaterSpeed(mvfxContext* context, mvfxInstanceId insta
         state->reportedTick = tick;
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_SetWaterSpeed(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                                      int64_t tick, float speed)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_SetWaterSpeedWork(context, instance, water, tick, speed);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

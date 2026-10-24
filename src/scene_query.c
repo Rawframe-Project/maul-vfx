@@ -5,6 +5,7 @@
 
 #include "context.h"
 #include "direction.h"
+#include "fpenv.h"
 #include "instance_api.h"
 #include "space.h"
 
@@ -121,9 +122,11 @@ static void TakeAnswer(mvfxInstance* instance, int32_t emitter, int32_t i,
     }
 }
 
-mvfxResult mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId instance,
-                                           int32_t emitter, const mvfxSceneAnswer* answers,
-                                           int32_t count)
+static MVFX_NOINLINE mvfxResult mvfxInstance_AnswerSceneQueriesWork(mvfxContext* context,
+                                                                    mvfxInstanceId instance,
+                                                                    int32_t emitter,
+                                                                    const mvfxSceneAnswer* answers,
+                                                                    int32_t count)
 {
     if (context == nullptr)
     {
@@ -156,4 +159,15 @@ mvfxResult mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId 
     }
     state->queryCount = 0;
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_AnswerSceneQueries(mvfxContext* context, mvfxInstanceId instance,
+                                           int32_t emitter, const mvfxSceneAnswer* answers,
+                                           int32_t count)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result =
+        mvfxInstance_AnswerSceneQueriesWork(context, instance, emitter, answers, count);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

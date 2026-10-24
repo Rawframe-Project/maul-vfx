@@ -8,6 +8,7 @@
 #include "box.h"
 #include "context.h"
 #include "direction.h"
+#include "fpenv.h"
 #include "gas.h"
 #include "instance.h"
 #include "instance_api.h"
@@ -150,8 +151,9 @@ void mvfxResolveGasObstacles(mvfxInstance* instance, int32_t gas)
     state->obstacleCount[state->obstaclesNow] = own + hosts;
 }
 
-mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                   mvfxGasInfo* infoOut)
+static MVFX_NOINLINE mvfxResult mvfxInstance_GetGasInfoWork(const mvfxContext* context,
+                                                            mvfxInstanceId instance, int32_t gas,
+                                                            mvfxGasInfo* infoOut)
 {
     if (infoOut == nullptr)
     {
@@ -186,6 +188,15 @@ mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId in
     return mvfx_success;
 }
 
+mvfxResult mvfxInstance_GetGasInfo(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                   mvfxGasInfo* infoOut)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_GetGasInfoWork(context, instance, gas, infoOut);
+    mvfxFloatEnvLeave(env);
+    return result;
+}
+
 // Copies a velocity's component k at the cells' centers: the mean of the
 // faces across k about each.
 static void CopyVelocity(const mvfxCompiledGas* gas, const float* faces, int32_t k, float* out)
@@ -210,8 +221,10 @@ static void CopyVelocity(const mvfxCompiledGas* gas, const float* faces, int32_t
     }
 }
 
-mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                mvfxGasField field, float* out, int64_t count)
+static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasWork(const mvfxContext* context,
+                                                         mvfxInstanceId instance, int32_t gas,
+                                                         mvfxGasField field, float* out,
+                                                         int64_t count)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
@@ -244,4 +257,13 @@ mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId insta
         out[i] = values[i];
     }
     return mvfx_success;
+}
+
+mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                mvfxGasField field, float* out, int64_t count)
+{
+    uint64_t env = mvfxFloatEnvEnter();
+    mvfxResult result = mvfxInstance_ReadGasWork(context, instance, gas, field, out, count);
+    mvfxFloatEnvLeave(env);
+    return result;
 }

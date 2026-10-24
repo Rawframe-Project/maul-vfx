@@ -18,6 +18,7 @@
 #include "maul-vfx/context.h"
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
+#include "maul-vfx/mesh.h"
 #include "maul-vfx/modules.h"
 
 #include <stdint.h>
@@ -218,8 +219,9 @@ static void TestCallsBackIn(void)
 
 static void TestHostSettings(void)
 {
-    // An effect's compile allocates inside the library's environment, and
-    // a step calls the task hooks and the host module inside it; the
+    // An effect's compile allocates inside the library's environment, a
+    // rigid body's hull frees its scratch inside it as the effect is made,
+    // and a step calls the task hooks and the host module inside it; the
     // instance's release frees outside it.
     s_library = TestFloatGet();
     s_host = TestFloatHostile();
@@ -228,11 +230,39 @@ static void TestHostSettings(void)
     mvfxEffectId effect;
     mvfxContext* context = Open(&effect);
     bool stepped = mvfxContext_StepTicks(context, 1) == mvfx_success;
+    static const float corners[4][3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    static const uint32_t faces[4][3] = {{0, 2, 1}, {0, 1, 3}, {0, 3, 2}, {1, 2, 3}};
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = &corners[0][0];
+    meshDef.vertexCount = 4;
+    meshDef.triangles = &faces[0][0];
+    meshDef.triangleCount = 4;
+    mvfxMeshId mesh = {0};
+    mvfxEmitterDef body = mvfxDefaultEmitterDef();
+    body.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {1, 1, 1}};
+    body.orientationMode = mvfx_orientationEuler;
+    body.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    body.rigid = (mvfxRigidDef){.enabled = true,
+                                .shape = mvfx_rigidHull,
+                                .density = 1.0f,
+                                .substeps = 8,
+                                .staticFriction = 0.6f,
+                                .dynamicFriction = 0.4f};
+    mvfxEffectDef bodies = mvfxDefaultEffectDef();
+    bodies.emitters = &body;
+    bodies.emitterCount = 1;
+    mvfxEffectId hulled = {0};
+    int32_t freedBefore = s_seen[FREE];
+    stepped = stepped && mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success;
+    body.rigid.hull = mesh;
+    stepped = stepped && mvfxCreateEffect(context, &bodies, &hulled) == mvfx_success;
+    bool freedInside = s_seen[FREE] > freedBefore;
     mvfxDestroyContext(context);
     s_watching = false;
     TestFloatSetting after = TestFloatGet();
     TestFloatSet(s_library);
-    CHECK(stepped && TestFloatSame(after, s_host), "stepped, the host's setting kept");
+    CHECK(stepped && freedInside && TestFloatSame(after, s_host),
+          "stepped and a hull made, the host's setting kept");
     CHECK(s_seen[ALLOC] > 0 && s_wrong[ALLOC] == 0, "the allocator's alloc in the host's setting");
     CHECK(s_seen[FREE] > 0 && s_wrong[FREE] == 0, "the allocator's free in the host's setting");
     CHECK(s_seen[ENQUEUE] > 0 && s_wrong[ENQUEUE] == 0,
