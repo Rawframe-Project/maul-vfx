@@ -199,6 +199,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(gas WHITEBOX)
     maul_add_test(gas_pressure WHITEBOX)
     maul_add_test(gas_forces WHITEBOX)
+    maul_add_test(gas_forces_internal WHITEBOX)
     maul_add_test(gas_solid WHITEBOX)
     maul_add_test(gas_solid_internal WHITEBOX)
     maul_add_test(gas_push)
@@ -276,8 +277,8 @@ if(MAUL_VFX_BUILD_TESTS)
     endif()
     # The suites that use the tests' hooks.
     if(NOT MAUL_VFX_BUILD_SHARED)
-        foreach(suite attach gas gas_couple gas_liquid gas_pressure gas_read gas_solid rigid_pair
-                surface_mesh tear)
+        foreach(suite attach gas gas_couple gas_forces gas_liquid gas_pressure gas_read gas_solid
+                rigid_pair surface_mesh tear)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-test-hooks)
         endforeach()
     endif()
