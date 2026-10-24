@@ -6,6 +6,17 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.1.1](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.1.1) (2026-10-24)
+
+### Fixed
+
+- A context step ran the gas substeps (pours, splats, buoyancy, push,
+  confinement, burning and solids) and the planning of planned gas
+  instances in the host thread's floating-point mode. A host running
+  with flush-to-zero, denormals-are-zero or another rounding mode could
+  get different gas results. The whole step now runs in the library's
+  mode, and the host's mode is restored after it.
+
 ## [0.1.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.0.1...v0.1.0) (2026-10-24)
 
 ### Changed

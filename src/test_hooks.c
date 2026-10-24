@@ -9,6 +9,7 @@
 #include "gas.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "water.h"
 
 bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, uint64_t owed)
 {
@@ -139,4 +140,47 @@ int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance
         out[i] = state->solid[i];
     }
     return compiled->cells;
+}
+
+bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                             const float* values, int64_t count)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || water < 0 || water >= live->effect->waterCount)
+    {
+        return false;
+    }
+    const mvfxCompiledWater* compiled = &live->effect->waters[water];
+    mvfxWaterState* state = &live->waters[water];
+    if (compiled->def.model != mvfx_waterShallow || count != compiled->cells)
+    {
+        return false;
+    }
+    for (int64_t i = 0; i < count; ++i)
+    {
+        state->heights[state->current][i] = values[i];
+    }
+    return true;
+}
+
+bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                             int32_t axis, const float* values, int64_t count)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || water < 0 || water >= live->effect->waterCount || axis < 0 || axis > 1)
+    {
+        return false;
+    }
+    const mvfxCompiledWater* compiled = &live->effect->waters[water];
+    mvfxWaterState* state = &live->waters[water];
+    if (compiled->def.model != mvfx_waterShallow ||
+        count != mvfxWaterFaces(compiled->def.size, axis))
+    {
+        return false;
+    }
+    for (int64_t i = 0; i < count; ++i)
+    {
+        state->faces[axis][state->faceCurrent][i] = values[i];
+    }
+    return true;
 }

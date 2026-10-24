@@ -7,17 +7,17 @@
 // once each where and when they cross, their events, and the pushes they
 // leave with the volume kept; once a step through substeps; through water
 // into the floor, not over dry ground; pours adding exactly their
-// particles' volume and killing them.
+// particles' volume and killing them. Particles are read from their
+// records, surfaces through the output, and a shallow flow is held
+// through a test hook.
 
-#include "context.h"
-#include "direction.h"
-#include "instance.h"
-#include "instance_api.h"
-#include "step.h"
+#include "particles.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
+#include "maul-vfx/water.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -25,7 +25,6 @@
 
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
-static mvfxInstance* s_live;
 
 // A coupling to surface 0 of particles of radius 0.05.
 static mvfxWaterCoupling Coupling(void)
@@ -80,7 +79,6 @@ static bool Open(const mvfxEmitterDef* emitters, int32_t count, const mvfxWaterD
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    s_live = mvfxContextInstance(s_context, s_instance);
     return true;
 }
 
@@ -98,9 +96,21 @@ static void Place(double x, double y, double z, float vx, float vy, float vz)
     CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "placed");
 }
 
-static float At(mvfxAttribute attribute, int32_t i)
+// The emitter's live particles as the output writes them.
+static int32_t Particles(TestParticle out[16])
 {
-    return ((const float*)mvfxAttributeArray(s_live, 0, attribute))[i];
+    int32_t count = ReadParticles(s_context, s_instance, 0, out, 16);
+    CHECK(count >= 0, "records");
+    return count;
+}
+
+// Particle i's record.
+static TestParticle Particle(int32_t i)
+{
+    TestParticle particles[16];
+    int32_t count = Particles(particles);
+    CHECK(i < count, "a live particle");
+    return i < count ? particles[i] : (TestParticle){0};
 }
 
 // The last step's events of a kind, at most 16.
@@ -203,8 +213,10 @@ static void TestRefusals(void)
 
 static void TestRoom(void)
 {
-    // Room for crossings only on the surface an emitter meets: one a
-    // particle of its capacity.
+    // Room for a crossing a particle: all 16 of an emitter's particles,
+    // meeting surface 1 of two, falling at 1 from 0.5 above it, each
+    // crossing it in the same step, are each met. That the surface it
+    // does not meet has no room is in test_water_couple_internal.c.
     mvfxWaterCoupling coupling = Coupling();
     coupling.water = 1;
     mvfxEmitterDef emitter = Coupled(&coupling);
@@ -221,9 +233,14 @@ static void TestRoom(void)
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    s_live = mvfxContextInstance(s_context, s_instance);
-    CHECK(s_live->waters[0].crossingCapacity == 0 && s_live->waters[1].crossingCapacity == 16,
-          "room for crossings where they happen");
+    for (int32_t p = 0; p < 16; ++p)
+    {
+        Place(-0.6 + 0.4 * (double)(p % 4), 0.5, -0.6 + 0.4 * (double)(p / 4), 0.0f, -1.0f, 0.0f);
+    }
+    CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "born");
+    CHECK(mvfxContext_Step(s_context, 1.0) == mvfx_success, "stepped");
+    const mvfxEvent* events[16];
+    CHECK(Events(mvfx_eventWater, events) == 16, "room for every particle's crossing");
     Close();
 }
 
@@ -244,8 +261,8 @@ static void TestFloat(void)
     {
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    float y = At(mvfx_attributePositionY, 0);
-    CHECK(fabsf(y + 0.03f) <= 1e-4f && fabsf(At(mvfx_attributeVelocityY, 0)) <= 1e-3f,
+    float y = Particle(0).position[1];
+    CHECK(fabsf(y + 0.03f) <= 1e-4f && fabsf(Particle(0).velocity[1]) <= 1e-3f,
           "a particle floats at g / buoyancy");
     Close();
 }
@@ -274,8 +291,7 @@ static void TestMoving(void)
               "moved");
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 0.03f) <= 1e-4f,
-          "a moving instance's particle floats");
+    CHECK(fabsf(Particle(0).position[1] + 0.03f) <= 1e-4f, "a moving instance's particle floats");
     Close();
 }
 
@@ -300,7 +316,7 @@ static void TestScaled(void)
     {
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 0.03f) <= 1e-4f,
+    CHECK(fabsf(Particle(0).position[1] + 0.03f) <= 1e-4f,
           "a scaled instance's particle floats as deep");
     Close();
 }
@@ -323,9 +339,9 @@ static float Settle(float r, float buoyancy, float drag, double y, float* top)
     for (int32_t s = 0; s < 600; ++s)
     {
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
-        *top = fmaxf(*top, At(mvfx_attributePositionY, 0));
+        *top = fmaxf(*top, Particle(0).position[1]);
     }
-    float at = At(mvfx_attributePositionY, 0);
+    float at = Particle(0).position[1];
     Close();
     return at;
 }
@@ -363,7 +379,7 @@ static void TestUnderground(void)
     {
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(fabsf(At(mvfx_attributePositionY, 0) + 0.3f + 0.5f * 9.81f * 0.25f) <= 1e-3f,
+    CHECK(fabsf(Particle(0).position[1] + 0.3f + 0.5f * 9.81f * 0.25f) <= 1e-3f,
           "nothing lifts one below the floor");
     Close();
 }
@@ -382,7 +398,7 @@ static void TestDrag(void)
     {
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(fabsf(At(mvfx_attributeVelocityX, 0) - expf(-1.0f)) <= 1e-5f, "drag slows it");
+    CHECK(fabsf(Particle(0).velocity[0] - expf(-1.0f)) <= 1e-5f, "drag slows it");
     Close();
 }
 
@@ -398,25 +414,35 @@ static void TestFlow(void)
     CHECK(Open(&emitter, 1, &shallow), "opened");
     CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "filled");
     Place(-0.5, 0.1, 0.0, 0.0f, 0.0f, 0.0f);
-    mvfxWaterState* state = &s_live->waters[0];
+    static float u[17 * 16];
+    for (int32_t i = 0; i < 17 * 16; ++i)
+    {
+        u[i] = 0.5f;
+    }
     for (int32_t s = 0; s < 60; ++s)
     {
-        float* u = state->faces[0][state->faceCurrent];
-        for (int32_t i = 0; i < 17 * 16; ++i)
-        {
-            u[i] = 0.5f;
-        }
+        CHECK(mvfxTestWriteWaterFaces(s_context, s_instance, 0, 0, u, 17 * 16), "held");
         CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
     }
-    CHECK(fabsf(At(mvfx_attributeVelocityX, 0) - 0.5f) <= 1e-3f, "drag carries it with the flow");
+    CHECK(fabsf(Particle(0).velocity[0] - 0.5f) <= 1e-3f, "drag carries it with the flow");
     Close();
+}
+
+// Surface 0's field over its 16 by 16 cells.
+static const float* Field(mvfxWaterField field)
+{
+    static float values[256];
+    const mvfxWaterRead read = {.field = field, .format = mvfx_formatFloat32, .size = {16, 16}};
+    CHECK(mvfxInstance_ReadWater(s_context, s_instance, 0, &read, values, sizeof values) ==
+              mvfx_success,
+          "read");
+    return values;
 }
 
 // The sum of a waves surface's heights, and its lowest.
 static double Heights(float* lowest)
 {
-    const mvfxWaterState* state = &s_live->waters[0];
-    const float* u = state->heights[state->current];
+    const float* u = Field(mvfx_waterHeight);
     double sum = 0.0;
     *lowest = 0.0f;
     for (int32_t i = 0; i < 256; ++i)
@@ -488,13 +514,26 @@ static void TestOnce(void)
     Close();
 }
 
-// The crossing a world particle falling at 1 from 0.5 above a surface of
-// a model at (0.3, 0.1) records as the step it crosses in ends (the
-// instance's emitters stepped alone, the surface not yet), its instance
-// scaled 2 and turned by rotation; the step's crossing event, and the
-// volume poured once the surface takes it.
-static mvfxWaterCrossing Recorded(mvfxWaterModel model, const float rotation[4], mvfxEvent* event,
-                                  double* poured)
+// A vector turned by a unit quaternion (x, y, z, w): v + 2 w (q x v) +
+// 2 q x (q x v).
+static void Rotate(const float q[4], const float v[3], float out[3])
+{
+    float t[3] = {2.0f * (q[1] * v[2] - q[2] * v[1]), 2.0f * (q[2] * v[0] - q[0] * v[2]),
+                  2.0f * (q[0] * v[1] - q[1] * v[0])};
+    out[0] = v[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]);
+    out[1] = v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]);
+    out[2] = v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0]);
+}
+
+// A world particle falling at 1 from 0.5 above a surface of a model at
+// (0.24, 0.1) in its frame (with a twin, none), the instance scaled 2 and
+// turned by rotation, filled to 0 (shallow water to 0.1 of the frame's
+// lengths), stepped a second (the twin pushed by the host at that point
+// first, by radius and depth in the world's lengths): its heights after,
+// its depths' sum, the step's crossing event and the volume poured.
+static const float* Crossed(mvfxWaterModel model, const float rotation[4], bool twin,
+                            const mvfxWaterPush* push, double* depths, mvfxEvent* event,
+                            double* poured)
 {
     mvfxWaterCoupling coupling = Coupling();
     coupling.push = 0.02f;
@@ -507,60 +546,86 @@ static mvfxWaterCrossing Recorded(mvfxWaterModel model, const float rotation[4],
     CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, rotation, 2.0f, true) ==
               mvfx_success,
           "placed");
-    // Shallow water filled to 0.1 of the frame's lengths.
     CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "filled");
+    static float filled[256];
     for (int32_t i = 0; model == mvfx_waterShallow && i < 256; ++i)
     {
-        s_live->waters[0].heights[s_live->waters[0].current][i] = 0.1f;
+        filled[i] = 0.1f;
     }
-    // Falling along the frame's -Y from 0.5 above its point (0.15, 0.05)
-    // in the world's lengths.
-    const float local[3] = {0.3f, 0.5f, 0.1f};
+    CHECK(model != mvfx_waterShallow ||
+              mvfxTestWriteWaterDepth(s_context, s_instance, 0, filled, 256),
+          "shallow water 0.1 deep");
+    // Falling along the frame's -Y from 0.5 above its point (0.12, 0.05)
+    // in the world's lengths, between two cells' centers.
+    const float local[3] = {0.24f, 0.5f, 0.1f};
     const float down[3] = {0.0f, -1.0f, 0.0f};
     float place[3];
     float velocity[3];
-    mvfxRotate(rotation, local, place);
-    mvfxRotate(rotation, down, velocity);
-    Place((double)place[0], (double)place[1], (double)place[2], velocity[0], velocity[1],
-          velocity[2]);
+    Rotate(rotation, local, place);
+    Rotate(rotation, down, velocity);
+    if (!twin)
+    {
+        Place((double)place[0], (double)place[1], (double)place[2], velocity[0], velocity[1],
+              velocity[2]);
+    }
     CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "born");
-    mvfxStepInstance(s_live, MVFX_TICKS_PER_SECOND);
-    const mvfxWaterState* state = &s_live->waters[0];
-    mvfxWaterCrossing crossing =
-        state->crossingCount == 1 ? state->crossings[0] : (mvfxWaterCrossing){0};
+    CHECK(!twin || mvfxInstance_PushWater(s_context, s_instance, 0, push, 1) == mvfx_success,
+          "pushed");
+    CHECK(mvfxContext_Step(s_context, 1.0) == mvfx_success, "stepped");
+    static float heights[256];
+    memcpy(heights, Field(mvfx_waterHeight), sizeof heights);
+    const float* d = Field(mvfx_waterDepth);
+    *depths = 0.0;
+    for (int32_t i = 0; i < 256; ++i)
+    {
+        *depths += (double)d[i];
+    }
     const mvfxEvent* events[16];
     *event = Events(mvfx_eventWater, events) == 1 ? *events[0] : (mvfxEvent){0};
-    CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "taken");
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
     *poured = info.volumePoured;
     Close();
-    return crossing;
+    return heights;
 }
 
 static void TestRecorded(void)
 {
-    // In the surface's frame, half the world's lengths: the point (0.15,
+    // In the surface's frame, half the world's lengths: the point (0.12,
     // 0.05), the particle's radius 0.025, so the push's radius a cell (0.1)
-    // and its depth 0.01 (0.025 / 0.1)^2; a pour's volume a sphere of
-    // 0.025 (shallow water 0.1 deep there, its crossing 0.1 lower), counted
-    // in the world as a sphere of 0.05. Turned
+    // and its depth 0.01 (0.025 / 0.1)^2. A waves surface after the step
+    // is the twin's the host pushed there by those (0.2 and 0.00125 in the
+    // world's), to 1e-3 of the depth. A pour's volume is a sphere of 0.025
+    // (shallow water 0.1 deep there, its crossing 0.1 lower): the depths
+    // rise by it, and it counts in the world as a sphere of 0.05. Turned
     // a quarter about Z, the event's normal is the frame's Y in the world.
     static const float unturned[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     static const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    const mvfxWaterPush push = {.point = {0.24, 0.0, 0.1}, .radius = 0.2f, .depth = 0.00125f};
     mvfxEvent event;
     double poured = 0.0;
-    mvfxWaterCrossing waves = Recorded(mvfx_waterWaves, unturned, &event, &poured);
-    int32_t wrong = fabsf(waves.at[0] - 0.15f) > 1e-6f || fabsf(waves.at[1] - 0.05f) > 1e-6f;
-    wrong += fabsf(waves.radius - 0.1f) > 1e-7f || fabsf(waves.depth - 0.000625f) > 1e-9f;
-    wrong += waves.volume != 0.0f;
-    wrong += llabs(event.tick - MVFX_TICKS_PER_SECOND / 2) > 1;
-    mvfxWaterCrossing shallow = Recorded(mvfx_waterShallow, unturned, &event, &poured);
-    float sphere = (float)(4.0 / 3.0 * 3.14159265358979323846 * 0.025 * 0.025 * 0.025);
-    wrong += fabsf(shallow.volume / sphere - 1.0f) > 1e-6f;
+    double depths = 0.0;
+    static float crossed[256];
+    memcpy(crossed, Crossed(mvfx_waterWaves, unturned, false, NULL, &depths, &event, &poured),
+           sizeof crossed);
+    int32_t wrong = llabs(event.tick - MVFX_TICKS_PER_SECOND / 2) > 1;
+    wrong += poured != 0.0;
+    const float* pushed = Crossed(mvfx_waterWaves, unturned, true, &push, &depths, &event, &poured);
+    float lowest = 0.0f;
+    for (int32_t i = 0; i < 256; ++i)
+    {
+        lowest = fminf(lowest, pushed[i]);
+        wrong += fabsf(crossed[i] - pushed[i]) > 1e-3f * 0.000625f;
+    }
+    wrong += !(lowest < -1e-5f);
+    double before = 0.0;
+    (void)Crossed(mvfx_waterShallow, unturned, true, &push, &before, &event, &poured);
+    (void)Crossed(mvfx_waterShallow, unturned, false, NULL, &depths, &event, &poured);
+    double sphere = 4.0 / 3.0 * 3.14159265358979323846 * 0.025 * 0.025 * 0.025;
+    wrong += fabs((depths - before) * 0.01 / sphere - 1.0) > 1e-3;
     wrong += fabs(poured / (4.0 / 3.0 * 3.14159265358979323846 * 0.05 * 0.05 * 0.05) - 1.0) > 1e-6;
     wrong += llabs(event.tick - 3 * MVFX_TICKS_PER_SECOND / 10) > 1;
-    (void)Recorded(mvfx_waterWaves, quarter, &event, &poured);
+    (void)Crossed(mvfx_waterWaves, quarter, false, NULL, &depths, &event, &poured);
     wrong += fabsf(event.normal[0] + 1.0f) > 1e-5f || fabsf(event.normal[1]) > 1e-5f;
     CHECK(wrong == 0, "a crossing recorded in the surface's frame");
 }
@@ -607,8 +672,7 @@ static void TestThrough(void)
 // A shallow surface's volume.
 static double Volume(void)
 {
-    const mvfxWaterState* state = &s_live->waters[0];
-    const float* d = state->heights[state->current];
+    const float* d = Field(mvfx_waterDepth);
     double sum = 0.0;
     for (int32_t i = 0; i < 256; ++i)
     {
@@ -646,7 +710,8 @@ static void TestPour(void)
         }
     }
     double poured = 8.0 * 4.0 / 3.0 * 3.14159265358979323846 * 0.05 * 0.05 * 0.05;
-    CHECK(s_live->emitters[0].count == 0 && deaths == 8 && kills == 8, "poured particles die");
+    TestParticle left[16];
+    CHECK(Particles(left) == 0 && deaths == 8 && kills == 8, "poured particles die");
     CHECK(fabs((Volume() - start) / poured - 1.0) <= 1e-4, "their volume joins the water");
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
