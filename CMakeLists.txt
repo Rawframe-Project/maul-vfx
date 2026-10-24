@@ -253,7 +253,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(trail)
     maul_add_test(tube)
     maul_add_test(value WHITEBOX)
-    maul_add_test(velocity_modules WHITEBOX)
+    maul_add_test(velocity_modules)
     maul_add_test(tasks WHITEBOX)
     maul_add_test(host_calls)
     # The web build has no threads; the twins need four.
