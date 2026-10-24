@@ -6,6 +6,14 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.1.2](https://github.com/Rawframe-Project/maul-vfx/compare/v0.1.1...v0.1.2) (2026-10-24)
+
+
+### Fixed
+
+* **api:** enter the float environment in every computing public call ([#40](https://github.com/Rawframe-Project/maul-vfx/issues/40)) ([18f7faf](https://github.com/Rawframe-Project/maul-vfx/commit/18f7faf20c89a41f86b38d93fb667f945d888f43))
+* **base:** move the float mode onto the family's float environment ([#38](https://github.com/Rawframe-Project/maul-vfx/issues/38)) ([c6f3d9b](https://github.com/Rawframe-Project/maul-vfx/commit/c6f3d9b023d22efd3e6b98768985862ba48a2781))
+
 ## [0.1.1](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.1.1) (2026-10-24)
 
 ### Fixed
