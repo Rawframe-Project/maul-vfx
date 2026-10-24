@@ -2,6 +2,13 @@
 
 Particles of an emitter can meet each other, and an emitter's births can be bodies rather than points: chains and sheets held by constraints, or rigid bodies that tumble and stack.
 
+## Contents
+
+- [Neighbors](#neighbors)
+- [Ropes, chains and cloth](#ropes-chains-and-cloth)
+- [Rigid particles](#rigid-particles)
+- [Limits worth knowing](#limits-worth-knowing)
+
 ## Neighbors
 
 An emitter finds its particles' neighbors (`mvfxNeighborDef`) in a grid built once a step from the particles alive at the step's start: its own, or another emitter's of the effect in the same space, which then steps first. Each particle gets the number of its neighbors within a radius and the offsets to their mean place and mean velocity; host modules and output records (`mvfx_recordNeighborCount` and the like) read them. A query counts at most `maxNeighbors`, in a fixed order, and counts the queries that reached the cap. Everything below builds on the neighbors.
