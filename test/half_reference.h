@@ -4,13 +4,16 @@
 // The oracle binary32 to binary16 conversion is checked against: rounding
 // done in double, which holds every float exactly. (The compiler's
 // _Float16 agreed on every float under GCC 14; it is not linked here, as
-// Clang's needs compiler-rt.)
+// Clang's needs compiler-rt.) And a binary16 grid that converts floats
+// through the public API: a host gives it floats, and its view hands back
+// what it stores.
 
 #ifndef MAUL_VFX_TEST_HALF_REFERENCE_H
 #define MAUL_VFX_TEST_HALF_REFERENCE_H
 
-#include "half.h"
 #include "test_harness.h"
+
+#include "maul-vfx/grid.h"
 
 #include <math.h>
 #include <string.h>
@@ -54,18 +57,83 @@ static inline uint16_t ReferenceHalf(float value)
     return (uint16_t)(sign | (uint16_t)(field << 10u) | mantissa);
 }
 
-static uint64_t s_checked = 0;
+// A binary16 grid of HALF_BATCH points of one component, and the floats
+// waiting to be stored in it.
+#define HALF_BATCH (1 << 16)
 
-static inline void CheckBits(uint32_t bits)
+typedef struct HalfGrid
+{
+    mvfxContext* context;
+    mvfxGridId grid;
+    float floats[HALF_BATCH];
+    int32_t pending;
+    uint64_t checked;
+    uint64_t differing;
+} HalfGrid;
+
+static inline void OpenHalfGrid(HalfGrid* h)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &h->context) == mvfx_success, "context");
+    static float zeros[HALF_BATCH];
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 256;
+    def.size[1] = HALF_BATCH / 256;
+    def.size[2] = 1;
+    def.format = mvfx_gridFloat16;
+    def.values = zeros;
+    CHECK(mvfxCreateGrid(h->context, &def, &h->grid) == mvfx_success, "a binary16 grid");
+    h->pending = 0;
+}
+
+// Stores the pending floats (the rest of the batch 0) and compares what
+// the grid's view holds with the oracle's halves.
+static inline void FlushHalfGrid(HalfGrid* h)
+{
+    if (h->pending == 0)
+    {
+        return;
+    }
+    for (int32_t i = h->pending; i < HALF_BATCH; ++i)
+    {
+        h->floats[i] = 0.0f;
+    }
+    mvfxGridView view;
+    CHECK(mvfxGrid_SetValues(h->context, h->grid, h->floats, HALF_BATCH) == mvfx_success &&
+              mvfxGrid_GetView(h->context, h->grid, &view) == mvfx_success &&
+              view.format == mvfx_gridFloat16 && view.bytes == 2 * HALF_BATCH,
+          "stored as binary16");
+    const uint16_t* halves = view.values;
+    for (int32_t i = 0; i < h->pending; ++i)
+    {
+        h->differing += halves[i] != ReferenceHalf(h->floats[i]) ? 1 : 0;
+    }
+    h->checked += (uint64_t)h->pending;
+    h->pending = 0;
+}
+
+// Queues a float, given by its bits, if a grid takes it (finite, at most
+// 65,504 in size); whether it did.
+static inline bool QueueHalf(HalfGrid* h, uint32_t bits)
 {
     float value = 0;
     memcpy(&value, &bits, sizeof value);
-    uint16_t got = mvfxHalfFromFloat(value);
-    s_checked += 1;
-    if (got != ReferenceHalf(value))
+    if (!(fabsf(value) <= 65504.0f))
     {
-        CHECK(false, "matches the double reference");
+        return false;
     }
+    h->floats[h->pending++] = value;
+    if (h->pending == HALF_BATCH)
+    {
+        FlushHalfGrid(h);
+    }
+    return true;
+}
+
+static inline void CloseHalfGrid(HalfGrid* h)
+{
+    FlushHalfGrid(h);
+    mvfxDestroyContext(h->context);
 }
 
 #endif
