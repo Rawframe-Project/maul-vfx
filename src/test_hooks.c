@@ -6,6 +6,7 @@
 #include "test_hooks.h"
 
 #include "effect.h"
+#include "gas.h"
 #include "instance.h"
 #include "instance_api.h"
 
@@ -50,4 +51,92 @@ int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, 
         b[c] = state->rigidPairs[c].b;
     }
     return state->rigidPairCount;
+}
+
+// A live instance's gas state, or NULL.
+static mvfxGasState* GasOf(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                           const mvfxCompiledGas** compiledOut)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || gas < 0 || gas >= live->effect->gasCount)
+    {
+        return nullptr;
+    }
+    *compiledOut = &live->effect->gases[gas];
+    return &live->gases[gas];
+}
+
+int64_t mvfxTestReadGasFaces(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             int32_t axis, float* out, int64_t capacity)
+{
+    const mvfxCompiledGas* compiled = nullptr;
+    const mvfxGasState* state = GasOf(context, instance, gas, &compiled);
+    if (state == nullptr || axis < 0 || axis > 2 ||
+        state->velocity[axis][state->current] == nullptr)
+    {
+        return -1;
+    }
+    const float* faces = state->velocity[axis][state->current];
+    for (int64_t f = 0; f < compiled->faces[axis] && f < capacity; ++f)
+    {
+        out[f] = faces[f];
+    }
+    return compiled->faces[axis];
+}
+
+bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_t gas, int32_t axis,
+                           const float* values, int64_t count)
+{
+    const mvfxCompiledGas* compiled = nullptr;
+    mvfxGasState* state = GasOf(context, instance, gas, &compiled);
+    if (state == nullptr || axis < 0 || axis > 2 ||
+        state->velocity[axis][state->current] == nullptr || count != compiled->faces[axis])
+    {
+        return false;
+    }
+    float* faces = state->velocity[axis][state->current];
+    for (int64_t f = 0; f < count; ++f)
+    {
+        faces[f] = values[f];
+    }
+    return true;
+}
+
+bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                            mvfxGasField field, const float* values, int64_t count)
+{
+    const mvfxCompiledGas* compiled = nullptr;
+    mvfxGasState* state = GasOf(context, instance, gas, &compiled);
+    if (state == nullptr || (field > mvfx_gasFuel && field != mvfx_gasDistance) ||
+        !mvfxIsGasFieldOf(compiled, field) || count != compiled->cells)
+    {
+        return false;
+    }
+    // A surface's distance is held as its first scalar.
+    float* cells = state->scalars[field == mvfx_gasDistance ? 0 : field][state->current];
+    if (cells == nullptr)
+    {
+        return false;
+    }
+    for (int64_t i = 0; i < count; ++i)
+    {
+        cells[i] = values[i];
+    }
+    return true;
+}
+
+int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             uint8_t* out, int64_t capacity)
+{
+    const mvfxCompiledGas* compiled = nullptr;
+    const mvfxGasState* state = GasOf(context, instance, gas, &compiled);
+    if (state == nullptr || state->solid == nullptr)
+    {
+        return -1;
+    }
+    for (int64_t i = 0; i < compiled->cells && i < capacity; ++i)
+    {
+        out[i] = state->solid[i];
+    }
+    return compiled->cells;
 }

@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A gas's pressure projection: the multigrid's pressure against a direct
-// solve of the same equations on small grids; the divergence after 4 and
-// 8 V cycles, and its fall in the early cycles, over 2D and 3D boxes of even and
-// odd sizes with open, closed and mixed walls; closed walls' faces held
-// at 0; the Taylor-Green vortex in a closed box kept free of divergence,
-// its energy falling every step and by under a tenth in a second; an
-// open-walled gas projected as it is stepped; a restarted gas the same,
-// bit for bit, as a fresh one.
+// A gas's pressure projection: the multigrid's projected faces against
+// those of a direct solve of the same equations on small grids; the
+// divergence after 4 and 8 V cycles, and its fall in the early cycles,
+// over 2D and 3D boxes of even and odd sizes with open, closed and mixed
+// walls; closed walls' faces held at 0; the Taylor-Green vortex in a
+// closed box kept free of divergence, its energy falling every step and by
+// under a tenth in a second; an open-walled gas projected as it is
+// stepped; a restarted gas the same, bit for bit, as a fresh one. A gas's
+// faces are read and written through the test hooks; a step of a tick in
+// cells of 100, which carries nothing, projects them.
 
-#include "gas_pressure.h"
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/gas.h"
 #include "maul-vfx/instance.h"
 
 #include <math.h>
@@ -24,9 +25,17 @@
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
 
-// Opens an instance of an effect of one gas, giving its compiled gas and
-// state.
-static mvfxGasState* Open(const mvfxGasDef* gas, const mvfxCompiledGas** compiled)
+enum
+{
+    // The most faces along an axis a test's gas has.
+    MOST_FACES = 32 * 24 * 17
+};
+
+// The gas's faces along each axis, as read or written last.
+static float s_faces[3][MOST_FACES];
+
+// Opens an instance of an effect of one gas.
+static void Open(const mvfxGasDef* gas)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
@@ -38,9 +47,41 @@ static mvfxGasState* Open(const mvfxGasDef* gas, const mvfxCompiledGas** compile
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
-    *compiled = &live->effect->gases[0];
-    return &live->gases[0];
+}
+
+// The count of a gas's faces along k.
+static int64_t FaceCount(const int32_t* n, int32_t k)
+{
+    return (int64_t)(n[0] + (k == 0 ? 1 : 0)) * (n[1] + (k == 1 ? 1 : 0)) *
+           (n[2] + (k == 2 ? 1 : 0));
+}
+
+// Reads the gas's faces into s_faces.
+static void Read(const int32_t* n)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        CHECK(mvfxTestReadGasFaces(s_context, s_instance, 0, k, s_faces[k], MOST_FACES) ==
+                  FaceCount(n, k),
+              "faces read");
+    }
+}
+
+// Writes s_faces into the gas's faces.
+static void Write(const int32_t* n)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        CHECK(mvfxTestWriteGasFaces(s_context, s_instance, 0, k, s_faces[k], FaceCount(n, k)),
+              "faces written");
+    }
+}
+
+// Projects the gas's faces by a step of a tick, reading them back.
+static void Project(const int32_t* n)
+{
+    CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "projected");
+    Read(n);
 }
 
 // A hash's float in [-1, 1).
@@ -53,17 +94,17 @@ static float Noise(uint32_t i)
     return (float)(h & 0xFFFFFFu) / 8388608.0f - 1.0f;
 }
 
-// Fills the current velocity with noise and the pressure with 0.
-static void Fill(const mvfxCompiledGas* gas, mvfxGasState* state)
+// Writes noise into the gas's faces.
+static void Fill(const int32_t* n)
 {
     for (int32_t k = 0; k < 3; ++k)
     {
-        for (int64_t f = 0; f < gas->faces[k]; ++f)
+        for (int64_t f = 0; f < FaceCount(n, k); ++f)
         {
-            state->velocity[k][state->current][f] = Noise((uint32_t)(f * 3 + k));
+            s_faces[k][f] = Noise((uint32_t)(f * 3 + k));
         }
     }
-    memset(state->levels[0].pressure, 0, (size_t)gas->cells * sizeof(float));
+    Write(n);
 }
 
 // The faces' array index of the face across k before cell (x, y, z).
@@ -82,12 +123,10 @@ static float DivergenceAt(const int32_t* n, float* const v[3], int32_t x, int32_
     return d + (n[2] > 1 ? v[2][Face(n, 2, x, y, z + 1)] - v[2][Face(n, 2, x, y, z)] : 0.0f);
 }
 
-// The largest divergence's size.
-static float MaxDivergence(const mvfxCompiledGas* gas, const mvfxGasState* state)
+// The largest divergence's size in s_faces.
+static float MaxDivergence(const int32_t* n)
 {
-    const int32_t* n = gas->def.size;
-    float* const v[3] = {state->velocity[0][state->current], state->velocity[1][state->current],
-                         state->velocity[2][state->current]};
+    float* const v[3] = {s_faces[0], s_faces[1], s_faces[2]};
     float most = 0.0f;
     for (int32_t z = 0; z < n[2]; ++z)
     {
@@ -142,14 +181,23 @@ static void Solve(double* a, double* b, int32_t n)
     }
 }
 
+// Whether a wall is closed.
+static bool Closed(const mvfxGasDef* def, mvfxGasWalls wall)
+{
+    return (def->closedWalls & wall) != 0;
+}
+
 static void TestDirect(void)
 {
     // A 2D gas of 7 by 5 cells, all walls open, and with its low X and
     // high Y walls closed: the equations written here (each neighbor
     // inside weighs 1, an open wall 2 with the pressure 0 on it, a closed
-    // one 0) solved directly, against 16 V cycles from 0.
+    // one 0) solved directly, each face then less the difference of the
+    // pressures beside it (an open wall's twice its cell's, a closed
+    // wall's 0), against the faces 16 V cycles from 0 leave.
     static double a[35 * 35];
     static double b[35];
+    static float before[2][48];
     static const mvfxGasWalls walls[2] = {0, mvfx_gasWallMinX | mvfx_gasWallMaxY};
     bool right = true;
     for (int32_t w = 0; w < 2; ++w)
@@ -157,23 +205,30 @@ static void TestDirect(void)
         mvfxGasDef def = mvfxDefaultGasDef();
         def.size[0] = 7;
         def.size[1] = 5;
+        def.cellSize = 100.0f;
         def.closedWalls = walls[w];
         def.pressureCycles = 16;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, &gas);
-        Fill(gas, state);
-        mvfxCloseGasWalls(gas, (float* const[3]){state->velocity[0][state->current],
-                                                 state->velocity[1][state->current],
-                                                 state->velocity[2][state->current]});
+        Open(&def);
+        Fill(def.size);
+        for (int32_t y = 0; y < 5; ++y)
+        {
+            s_faces[0][Face(def.size, 0, 0, y, 0)] *= Closed(&def, mvfx_gasWallMinX) ? 0.0f : 1.0f;
+            s_faces[0][Face(def.size, 0, 7, y, 0)] *= Closed(&def, mvfx_gasWallMaxX) ? 0.0f : 1.0f;
+        }
+        for (int32_t x = 0; x < 7; ++x)
+        {
+            s_faces[1][Face(def.size, 1, x, 0, 0)] *= Closed(&def, mvfx_gasWallMinY) ? 0.0f : 1.0f;
+            s_faces[1][Face(def.size, 1, x, 5, 0)] *= Closed(&def, mvfx_gasWallMaxY) ? 0.0f : 1.0f;
+        }
+        memcpy(before[0], s_faces[0], sizeof(float) * 8 * 5);
+        memcpy(before[1], s_faces[1], sizeof(float) * 7 * 6);
         memset(a, 0, sizeof a);
+        float* const v[3] = {s_faces[0], s_faces[1], s_faces[2]};
         for (int32_t y = 0; y < 5; ++y)
         {
             for (int32_t x = 0; x < 7; ++x)
             {
                 int32_t i = y * 7 + x;
-                float* const v[3] = {state->velocity[0][state->current],
-                                     state->velocity[1][state->current],
-                                     state->velocity[2][state->current]};
                 b[i] = (double)DivergenceAt(def.size, v, x, y, 0);
                 const int32_t near[4][2] = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
                 const mvfxGasWalls sides[4] = {mvfx_gasWallMinX, mvfx_gasWallMaxX, mvfx_gasWallMinY,
@@ -182,7 +237,7 @@ static void TestDirect(void)
                 {
                     bool inside =
                         near[s][0] >= 0 && near[s][0] < 7 && near[s][1] >= 0 && near[s][1] < 5;
-                    double c = inside ? 1.0 : ((def.closedWalls & sides[s]) != 0 ? 0.0 : 2.0);
+                    double c = inside ? 1.0 : (Closed(&def, sides[s]) ? 0.0 : 2.0);
                     a[i * 35 + i] -= c;
                     if (inside)
                     {
@@ -191,19 +246,42 @@ static void TestDirect(void)
                 }
             }
         }
-        Solve(a, b, 35);
-        mvfxProjectGas(gas, state, nullptr, NULL);
         double most = 0.0;
-        double error = 0.0;
         for (int32_t i = 0; i < 35; ++i)
         {
             most = fmax(most, fabs(b[i]));
-            error = fmax(error, fabs((double)state->levels[0].pressure[i] - b[i]));
         }
-        right = right && error <= 1e-4 * most && MaxDivergence(gas, state) <= 1e-4f;
+        Solve(a, b, 35);
+        Project(def.size);
+        double error = 0.0;
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            const int32_t m[2] = {7 + (k == 0 ? 1 : 0), 5 + (k == 1 ? 1 : 0)};
+            const mvfxGasWalls low = k == 0 ? mvfx_gasWallMinX : mvfx_gasWallMinY;
+            const mvfxGasWalls high = k == 0 ? mvfx_gasWallMaxX : mvfx_gasWallMaxY;
+            for (int32_t y = 0; y < m[1]; ++y)
+            {
+                for (int32_t x = 0; x < m[0]; ++x)
+                {
+                    int32_t at = k == 0 ? x : y;
+                    int32_t n = k == 0 ? 7 : 5;
+                    int32_t step = k == 0 ? 1 : 7;
+                    int32_t cell = y * 7 + x;
+                    double after = at < n ? b[cell] : 0.0;
+                    double previous = at > 0 ? b[cell - step] : 0.0;
+                    bool wall = at == 0 || at == n;
+                    bool closed = (at == 0 && Closed(&def, low)) || (at == n && Closed(&def, high));
+                    double expected = closed ? 0.0
+                                             : (double)before[k][y * m[0] + x] -
+                                                   (wall ? 2.0 : 1.0) * (after - previous);
+                    error = fmax(error, fabs((double)s_faces[k][y * m[0] + x] - expected));
+                }
+            }
+        }
+        right = right && error <= 1e-4 * most && MaxDivergence(def.size) <= 1e-4f;
         mvfxDestroyContext(s_context);
     }
-    CHECK(right, "the multigrid's pressure the direct solve's");
+    CHECK(right, "the multigrid's faces the direct solve's");
 }
 
 static void TestDivergence(void)
@@ -212,7 +290,7 @@ static void TestDivergence(void)
     // all walls open, all closed and some of each: 4 V cycles from 0 leave
     // at most 1e-3 of the largest divergence, 8 at most 5e-5 (by then
     // near float's round-off), and cycles 2 to 4 each leave at most 0.4
-    // of it (about 0.3 seen).
+    // of it (about 0.3 seen). A gas of each count of cycles.
     static const int32_t sizes[4][3] = {{64, 64, 1}, {33, 20, 1}, {32, 24, 16}, {17, 9, 5}};
     static const mvfxGasWalls walls[3] = {0, 63,
                                           mvfx_gasWallMinY | mvfx_gasWallMaxX | mvfx_gasWallMinZ};
@@ -223,25 +301,20 @@ static void TestDivergence(void)
         {
             mvfxGasDef def = mvfxDefaultGasDef();
             memcpy(def.size, sizes[s], sizeof def.size);
+            def.cellSize = 100.0f;
             def.closedWalls = walls[w];
-            const mvfxCompiledGas* gas = NULL;
-            mvfxGasState* state = Open(&def, &gas);
-            mvfxGasDef* cycles = (mvfxGasDef*)&gas->def;
             float after[9];
-            cycles->pressureCycles = 0;
-            Fill(gas, state);
-            mvfxProjectGas(gas, state, nullptr, NULL);
-            after[0] = MaxDivergence(gas, state);
-            for (int32_t c = 1; c <= 8; ++c)
+            for (int32_t c = 0; c <= 8; ++c)
             {
-                cycles->pressureCycles = c;
-                Fill(gas, state);
-                mvfxProjectGas(gas, state, nullptr, NULL);
-                after[c] = MaxDivergence(gas, state);
+                def.pressureCycles = c;
+                Open(&def);
+                Fill(def.size);
+                Project(def.size);
+                after[c] = MaxDivergence(def.size);
                 right = right && (c < 2 || c > 4 || after[c] <= 0.4f * after[c - 1]);
+                mvfxDestroyContext(s_context);
             }
             right = right && after[4] <= 1e-3f * after[0] && after[8] <= 5e-5f * after[0];
-            mvfxDestroyContext(s_context);
         }
     }
     CHECK(right, "the divergence removed");
@@ -254,14 +327,12 @@ static void TestWalls(void)
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 12;
     def.size[1] = 10;
+    def.cellSize = 100.0f;
     def.closedWalls = mvfx_gasWallMinX | mvfx_gasWallMaxY;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
-    Fill(gas, state);
-    mvfxProjectGas(gas, state, nullptr, NULL);
-    float* const* v =
-        (float* const[3]){state->velocity[0][state->current], state->velocity[1][state->current],
-                          state->velocity[2][state->current]};
+    Open(&def);
+    Fill(def.size);
+    Project(def.size);
+    float* const* v = (float* const[3]){s_faces[0], s_faces[1], s_faces[2]};
     bool closed = true;
     bool open = false;
     for (int32_t y = 0; y < 10; ++y)
@@ -274,7 +345,7 @@ static void TestWalls(void)
         closed = closed && v[1][Face(def.size, 1, x, 10, 0)] == 0.0f;
         open = open || v[1][Face(def.size, 1, x, 0, 0)] != 0.0f;
     }
-    for (int64_t f = 0; f < gas->faces[2]; ++f)
+    for (int64_t f = 0; f < FaceCount(def.size, 2); ++f)
     {
         closed = closed && v[2][f] == 0.0f;
     }
@@ -282,15 +353,15 @@ static void TestWalls(void)
     mvfxDestroyContext(s_context);
 }
 
-// The kinetic energy's sum over the faces.
-static double Energy(const mvfxCompiledGas* gas, const mvfxGasState* state)
+// The kinetic energy's sum over the faces in s_faces of a 2D gas.
+static double Energy(const int32_t* n)
 {
     double e = 0.0;
     for (int32_t k = 0; k < 2; ++k)
     {
-        for (int64_t f = 0; f < gas->faces[k]; ++f)
+        for (int64_t f = 0; f < FaceCount(n, k); ++f)
         {
-            double w = (double)state->velocity[k][state->current][f];
+            double w = (double)s_faces[k][f];
             e += w * w;
         }
     }
@@ -309,11 +380,11 @@ static void TestTaylorGreen(void)
     def.size[1] = 32;
     def.cellSize = 3.14159265f / 32.0f;
     def.closedWalls = 63;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
+    Open(&def);
     const float h = def.cellSize;
-    float* u = state->velocity[0][state->current];
-    float* v = state->velocity[1][state->current];
+    memset(s_faces, 0, sizeof s_faces);
+    float* u = s_faces[0];
+    float* v = s_faces[1];
     for (int32_t y = 0; y < 32; ++y)
     {
         for (int32_t x = 0; x <= 32; ++x)
@@ -328,16 +399,18 @@ static void TestTaylorGreen(void)
             v[y * 32 + x] = -cosf(((float)x + 0.5f) * h) * sinf((float)y * h);
         }
     }
-    double start = Energy(gas, state);
+    Write(def.size);
+    double start = Energy(def.size);
     double last = start;
     bool falling = true;
     bool free = true;
     for (int32_t i = 0; i < 64; ++i)
     {
         CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success, "step");
-        double e = Energy(gas, state);
+        Read(def.size);
+        double e = Energy(def.size);
         falling = falling && e < last;
-        free = free && MaxDivergence(gas, state) <= 1e-5f;
+        free = free && MaxDivergence(def.size) <= 1e-5f;
         last = e;
     }
     CHECK(falling && free && last >= 0.9 * start, "the Taylor-Green vortex kept");
@@ -380,44 +453,44 @@ static void TestStepped(void)
     for (int32_t r = 0; r < 2; ++r)
     {
         mvfxGasDef def = Blown(r == 0 ? 0 : 4);
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, &gas);
+        Open(&def);
         Steps(3);
-        most[r] = MaxDivergence(gas, state);
+        Read(def.size);
+        most[r] = MaxDivergence(def.size);
         mvfxDestroyContext(s_context);
     }
     CHECK(most[0] > 0.0f && most[1] <= 0.01f * most[0], "a stepped gas projected");
 }
 
+// The gas's faces along X and Y and its density into out.
+static void Keep(const int32_t* n, float* out)
+{
+    Read(n);
+    memcpy(out, s_faces[0], (size_t)FaceCount(n, 0) * sizeof(float));
+    out += FaceCount(n, 0);
+    memcpy(out, s_faces[1], (size_t)FaceCount(n, 1) * sizeof(float));
+    out += FaceCount(n, 1);
+    CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, mvfx_gasDensity, out,
+                               (int64_t)n[0] * n[1]) == mvfx_success,
+          "density");
+}
+
 static void TestRestart(void)
 {
     // The blown gas stepped 5 times, restarted and stepped 5 more: its
-    // velocity and pressure bit for bit a fresh gas's after 5, the last
-    // solve's pressure not carried past the restart.
-    mvfxGasDef def = Blown(2);
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, &gas);
-    Steps(5);
+    // velocity and density bit for bit a fresh gas's after 5, the last
+    // solve's pressure, which the next solve starts from, not carried past
+    // the restart.
     static float fresh[33 * 24 + 32 * 25 + 32 * 24];
-    float* to = fresh;
-    for (int32_t k = 0; k < 2; ++k)
-    {
-        memcpy(to, state->velocity[k][state->current], (size_t)gas->faces[k] * sizeof(float));
-        to += gas->faces[k];
-    }
-    memcpy(to, state->levels[0].pressure, (size_t)gas->cells * sizeof(float));
+    static float restarted[33 * 24 + 32 * 25 + 32 * 24];
+    mvfxGasDef def = Blown(2);
+    Open(&def);
+    Steps(5);
+    Keep(def.size, fresh);
     CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success, "restart");
     Steps(5);
-    bool same = true;
-    const float* from = fresh;
-    for (int32_t k = 0; k < 2; ++k)
-    {
-        same = same && memcmp(from, state->velocity[k][state->current],
-                              (size_t)gas->faces[k] * sizeof(float)) == 0;
-        from += gas->faces[k];
-    }
-    same = same && memcmp(from, state->levels[0].pressure, (size_t)gas->cells * sizeof(float)) == 0;
-    CHECK(same, "a restarted gas a fresh one");
+    Keep(def.size, restarted);
+    CHECK(memcmp(fresh, restarted, sizeof fresh) == 0, "a restarted gas a fresh one");
     mvfxDestroyContext(s_context);
 }
 

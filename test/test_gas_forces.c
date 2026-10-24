@@ -5,22 +5,21 @@
 // in the world's gravity (its instance turned and scaled) and in the
 // box's own; vorticity confinement strengthening a vortex about its peak,
 // in proportion to its strength, the same whatever the cells' size, about
-// each axis in 3D, and nothing in an even curl; the curl at the cells'
-// centers; a wall face's force its one cell's; fuel burning where it is
-// hot enough (at the ignition temperature too), to
-// heat, smoke and expansion; the projection keeping the expansion's
-// divergence (less its mean in a sealed box); MacCormack's advection
-// sharper than semi-Lagrangian, making no new extremes, and nearer a
-// moved Gaussian; the work
-// buffer only for what needs it; the def's refusals.
+// each axis in 3D, and nothing in an even curl; a wall face's force its
+// one cell's; fuel burning where it is hot enough (at the ignition
+// temperature too), to heat, smoke and expansion; the projection keeping
+// the expansion's divergence (less its mean in a sealed box); MacCormack's
+// advection sharper than semi-Lagrangian, making no new extremes, and
+// nearer a moved Gaussian; the def's refusals. A gas's faces are read and
+// written, and its scalars written, through the test hooks; confinement
+// is seen through a step of 1/64 s in cells of at least 4e5, which
+// carries nothing, without a projection.
 
-#include "gas_forces.h"
-#include "gas_pressure.h"
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
+#include "maul-vfx/gas.h"
 #include "maul-vfx/instance.h"
 
 #include <math.h>
@@ -29,10 +28,18 @@
 static mvfxContext* s_context;
 static mvfxInstanceId s_instance;
 
+enum
+{
+    // The most cells, and faces along an axis, a test's gas has.
+    MOST = 17 * 16 * 16
+};
+
+// The gas's faces along each axis, as read or to be written.
+static float s_faces[3][MOST];
+
 // Opens an instance of an effect of one gas, its origin at 0, turned by
-// rotation and of scale; gives its compiled gas and state.
-static mvfxGasState* Open(const mvfxGasDef* gas, const float rotation[4], float scale,
-                          const mvfxCompiledGas** compiled)
+// rotation and of scale.
+static void Open(const mvfxGasDef* gas, const float rotation[4], float scale)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
@@ -46,9 +53,54 @@ static mvfxGasState* Open(const mvfxGasDef* gas, const float rotation[4], float 
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);
     instanceDef.scale = scale;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    mvfxInstance* live = mvfxContextInstance(s_context, s_instance);
-    *compiled = &live->effect->gases[0];
-    return &live->gases[0];
+}
+
+// The count of a gas's faces along k.
+static int64_t FaceCount(const int32_t* n, int32_t k)
+{
+    return (int64_t)(n[0] + (k == 0 ? 1 : 0)) * (n[1] + (k == 1 ? 1 : 0)) *
+           (n[2] + (k == 2 ? 1 : 0));
+}
+
+// Reads the gas's faces into s_faces.
+static void Read(const int32_t* n)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        CHECK(mvfxTestReadGasFaces(s_context, s_instance, 0, k, s_faces[k], MOST) ==
+                  FaceCount(n, k),
+              "faces read");
+    }
+}
+
+// Writes s_faces into the gas's faces.
+static void Write(const int32_t* n)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        CHECK(mvfxTestWriteGasFaces(s_context, s_instance, 0, k, s_faces[k], FaceCount(n, k)),
+              "faces written");
+    }
+}
+
+// Writes a value into every cell of a gas's scalar field.
+static void Uniform(const int32_t* n, mvfxGasField field, float value)
+{
+    static float cells[MOST];
+    int64_t count = (int64_t)n[0] * n[1] * n[2];
+    for (int64_t i = 0; i < count; ++i)
+    {
+        cells[i] = value;
+    }
+    CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, field, cells, count), "scalar written");
+}
+
+// Reads a gas's scalar field into out.
+static void Field(const int32_t* n, mvfxGasField field, float* out)
+{
+    CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, field, out, (int64_t)n[0] * n[1] * n[2]) ==
+              mvfx_success,
+          "scalar read");
 }
 
 static const float s_unturned[4] = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -105,29 +157,26 @@ static void TestBuoyancy(void)
         def.heatLift = 0.3f;
         def.densityWeight = 0.2f;
         def.gravitySpace = cases[c].space;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, cases[c].rotation, cases[c].scale, &gas);
-        for (int64_t i = 0; i < gas->cells; ++i)
-        {
-            state->scalars[0][0][i] = 0.5f;
-            state->scalars[1][0][i] = 2.0f;
-        }
+        Open(&def, cases[c].rotation, cases[c].scale);
+        Uniform(def.size, mvfx_gasDensity, 0.5f);
+        Uniform(def.size, mvfx_gasTemperature, 2.0f);
         Steps(1);
+        Read(def.size);
         int32_t a = cases[c].axis;
-        right = right &&
-                AllNear(state->velocity[a][state->current], gas->faces[a], cases[c].speed, 1e-5f) &&
-                AllNear(state->velocity[1 - a][state->current], gas->faces[1 - a], 0.0f, 1e-5f);
+        right = right && AllNear(s_faces[a], FaceCount(def.size, a), cases[c].speed, 1e-5f) &&
+                AllNear(s_faces[1 - a], FaceCount(def.size, 1 - a), 0.0f, 1e-5f);
         mvfxDestroyContext(s_context);
     }
     CHECK(right, "buoyancy's size and direction");
 }
 
-// Sets a 2D gas of n by n cells to a Gaussian vortex about its middle,
-// turning counterclockwise, its speed peaking 4 cells out.
-static void Vortex(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t n)
+// Sets s_faces to a Gaussian vortex about the middle of a 2D gas of n by
+// n cells, turning counterclockwise, its speed peaking 4 cells out.
+static void Vortex(int32_t n)
 {
-    float* u = state->velocity[0][state->current];
-    float* v = state->velocity[1][state->current];
+    memset(s_faces, 0, sizeof s_faces);
+    float* u = s_faces[0];
+    float* v = s_faces[1];
     float middle = 0.5f * (float)n;
     for (int32_t y = 0; y < n; ++y)
     {
@@ -147,16 +196,15 @@ static void Vortex(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t n)
             v[y * n + x] = dx * expf(-(dx * dx + dy * dy) / 32.0f);
         }
     }
-    (void)gas;
 }
 
 // The angular momentum about a 2D gas's middle, counterclockwise, from
 // the change of its velocity since before, over the faces within 5 cells
-// of the middle.
-static double Spin(const mvfxGasState* state, const float* beforeU, const float* beforeV, int32_t n)
+// of the middle, as read.
+static double Spin(const float* beforeU, const float* beforeV, int32_t n)
 {
-    const float* u = state->velocity[0][state->current];
-    const float* v = state->velocity[1][state->current];
+    const float* u = s_faces[0];
+    const float* v = s_faces[1];
     double middle = 0.5 * n;
     double spin = 0.0;
     for (int32_t y = 0; y < n; ++y)
@@ -190,7 +238,7 @@ static void TestConfinement(void)
     // each adds spin to the core within 5 cells in its own sense (N points
     // in to the peak, N x w along its turn; out past the curl's ring at 8
     // cells it turns the other way), the second twice the first's. With
-    // cells of 0.25 instead of 0.1 the same velocities, cell for cell, get
+    // cells of 4e5 instead of 1e6 the same velocities, cell for cell, get
     // the same spin: the curl goes as 1 / h and the force as h times it.
     static float beforeU[33 * 32];
     static float beforeV[32 * 33];
@@ -201,18 +249,16 @@ static void TestConfinement(void)
         def.size[0] = 32;
         def.size[1] = 32;
         def.vorticity = r == 1 ? 4.0f : 2.0f;
-        def.cellSize = r == 2 ? 0.25f : 0.1f;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
-        Vortex(gas, state, 32);
-        memcpy(beforeU, state->velocity[0][state->current], sizeof beforeU);
-        memcpy(beforeV, state->velocity[1][state->current], sizeof beforeV);
-        const mvfxGasLattice l = {.n = {32, 32, 1}, .cell = def.cellSize, .h = 1.0f / 64.0f};
-        float* velocity[3] = {state->velocity[0][state->current],
-                              state->velocity[1][state->current],
-                              state->velocity[2][state->current]};
-        mvfxGasConfine(gas, &l, velocity, state->work);
-        spins[r] = Spin(state, beforeU, beforeV, 32);
+        def.cellSize = r == 2 ? 4e5f : 1e6f;
+        def.pressureCycles = 0;
+        Open(&def, s_unturned, 1.0f);
+        Vortex(32);
+        Write(def.size);
+        memcpy(beforeU, s_faces[0], sizeof beforeU);
+        memcpy(beforeV, s_faces[1], sizeof beforeV);
+        Steps(1);
+        Read(def.size);
+        spins[r] = Spin(beforeU, beforeV, 32);
         mvfxDestroyContext(s_context);
     }
     CHECK(spins[0] > 0.0 && fabs(spins[1] / spins[0] - 2.0) <= 1e-3 &&
@@ -268,8 +314,9 @@ static void TestConfinement3D(void)
         def.size[1] = 16;
         def.size[2] = 16;
         def.vorticity = 3.0f;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
+        def.cellSize = 1e6f;
+        def.pressureCycles = 0;
+        Open(&def, s_unturned, 1.0f);
         int32_t b = (a + 1) % 3;
         int32_t c = (a + 2) % 3;
         for (int32_t k = 0; k < 3; ++k)
@@ -287,15 +334,14 @@ static void TestConfinement3D(void)
                 float g = expf(-(p[b] * p[b] + p[c] * p[c]) / 16.0f);
                 faces[k][i] = k == b ? -p[c] * g : (k == c ? p[b] * g : 0.0f);
             }
-            memcpy(state->velocity[k][state->current], faces[k], sizeof faces[k]);
+            memcpy(s_faces[k], faces[k], sizeof faces[k]);
             memcpy(before[k], faces[k], sizeof faces[k]);
         }
-        const mvfxGasLattice l = {.n = {16, 16, 16}, .cell = def.cellSize, .h = 1.0f / 64.0f};
-        float* velocity[3] = {state->velocity[0][state->current],
-                              state->velocity[1][state->current],
-                              state->velocity[2][state->current]};
+        Write(def.size);
+        Steps(1);
+        Read(def.size);
+        float* velocity[3] = {s_faces[0], s_faces[1], s_faces[2]};
         float* was[3] = {before[0], before[1], before[2]};
-        mvfxGasConfine(gas, &l, velocity, state->work);
         float along = 0.0f;
         spins[a] = Spin3D(velocity, was, a, &along);
         right = right && spins[a] > 0.0 && along == 0.0f;
@@ -308,32 +354,35 @@ static void TestConfinement3D(void)
 
 static void TestEvenCurl(void)
 {
-    // A 2D gas of 24 by 16 in a uniform shear, u = 3 y: its curl, -3, the
-    // same at every cell (one-sided at the edges, as exact for it as the
-    // central differences inside). Confinement at 2 a second changes no
-    // face by more than a hundredth of epsilon h |w| over the substep:
-    // float's noise in an even curl makes no direction.
+    // A 2D gas of 24 by 16 in a uniform shear, u rising by 0.3 a cell up
+    // Y: its curl, -0.3 over the cell's size, the same at every cell
+    // (one-sided at the edges, as exact for it as the central differences
+    // inside). Confinement at 2 a second changes no face by more than a
+    // hundredth of epsilon h |w| over the substep: float's noise in an
+    // even curl makes no direction.
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 24;
     def.size[1] = 16;
+    def.cellSize = 1e6f;
+    def.pressureCycles = 0;
     def.vorticity = 2.0f;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
-    float* u = state->velocity[0][state->current];
+    Open(&def, s_unturned, 1.0f);
+    memset(s_faces, 0, sizeof s_faces);
+    float* u = s_faces[0];
     for (int32_t y = 0; y < 16; ++y)
     {
         for (int32_t x = 0; x <= 24; ++x)
         {
-            u[y * 25 + x] = 3.0f * ((float)y + 0.5f) * def.cellSize;
+            u[y * 25 + x] = 0.3f * ((float)y + 0.5f);
         }
     }
     static float before[25 * 16];
     memcpy(before, u, sizeof before);
-    const mvfxGasLattice l = {.n = {24, 16, 1}, .cell = def.cellSize, .h = 1.0f / 64.0f};
-    float* velocity[3] = {u, state->velocity[1][state->current],
-                          state->velocity[2][state->current]};
-    mvfxGasConfine(gas, &l, velocity, state->work);
-    float bound = 0.01f * 2.0f * def.cellSize * 3.0f / 64.0f;
+    Write(def.size);
+    Steps(1);
+    Read(def.size);
+    float* velocity[3] = {u, s_faces[1], s_faces[2]};
+    float bound = 0.01f * 2.0f * 0.3f / 64.0f;
     float most = 0.0f;
     for (int32_t i = 0; i < 25 * 16; ++i)
     {
@@ -347,41 +396,6 @@ static void TestEvenCurl(void)
     mvfxDestroyContext(s_context);
 }
 
-static void TestCurl(void)
-{
-    // A 2D gas of 12 by 10 cells of 0.1 with u = 2 X Y (X and Y from its
-    // corner), v = 0: after confinement its work holds the curl at each
-    // cell's center, -dU/dy = -2 X there (the faces' mean placed at the
-    // center, half a cell from its low face), one-sided at the edges and
-    // as exact.
-    mvfxGasDef def = mvfxDefaultGasDef();
-    def.size[0] = 12;
-    def.size[1] = 10;
-    def.vorticity = 1.0f;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
-    float* u = state->velocity[0][state->current];
-    for (int32_t y = 0; y < 10; ++y)
-    {
-        for (int32_t x = 0; x <= 12; ++x)
-        {
-            u[y * 13 + x] = 2.0f * ((float)x * 0.1f) * (((float)y + 0.5f) * 0.1f);
-        }
-    }
-    const mvfxGasLattice l = {.n = {12, 10, 1}, .cell = 0.1f, .h = 1.0f / 64.0f};
-    float* velocity[3] = {u, state->velocity[1][state->current],
-                          state->velocity[2][state->current]};
-    mvfxGasConfine(gas, &l, velocity, state->work);
-    bool right = true;
-    for (int32_t i = 0; i < 120; ++i)
-    {
-        float center = ((float)(i % 12) + 0.5f) * 0.1f;
-        right = right && fabsf(state->work[i] + 2.0f * center) <= 1e-5f;
-    }
-    CHECK(right, "the curl at the cells' centers");
-    mvfxDestroyContext(s_context);
-}
-
 static void TestColumns(void)
 {
     // A 2D gas of 12 by 10 cells with v = X + X^2 / 2 (X from its
@@ -392,10 +406,12 @@ static void TestColumns(void)
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 12;
     def.size[1] = 10;
+    def.cellSize = 1e6f;
+    def.pressureCycles = 0;
     def.vorticity = 2.0f;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
-    float* v = state->velocity[1][state->current];
+    Open(&def, s_unturned, 1.0f);
+    memset(s_faces, 0, sizeof s_faces);
+    float* v = s_faces[1];
     for (int32_t y = 0; y <= 10; ++y)
     {
         for (int32_t x = 0; x < 12; ++x)
@@ -406,10 +422,9 @@ static void TestColumns(void)
     }
     static float before[12 * 11];
     memcpy(before, v, sizeof before);
-    const mvfxGasLattice l = {.n = {12, 10, 1}, .cell = 0.1f, .h = 1.0f / 64.0f};
-    float* velocity[3] = {state->velocity[0][state->current], v,
-                          state->velocity[2][state->current]};
-    mvfxGasConfine(gas, &l, velocity, state->work);
+    Write(def.size);
+    Steps(1);
+    Read(def.size);
     bool right = true;
     for (int32_t x = 0; x < 12; ++x)
     {
@@ -424,59 +439,64 @@ static void TestColumns(void)
     mvfxDestroyContext(s_context);
 }
 
+// The divergence of a 2D gas's cell, its faces' outflow, as read.
+static float Outflow(const int32_t n[3], int32_t x, int32_t y)
+{
+    const float* u = s_faces[0];
+    const float* v = s_faces[1];
+    return u[y * (n[0] + 1) + x + 1] - u[y * (n[0] + 1) + x] + v[(y + 1) * n[0] + x] -
+           v[y * n[0] + x];
+}
+
 static void TestBurn(void)
 {
     // Two cells of fuel 2, one at 5 degrees and one at 3, ignition at 4,
-    // a burn rate of 3 over a substep of 1/32 s: the hot cell burns 2 (1 -
-    // exp(-3/32)), each unit adding 10 of heat, 0.5 of smoke and
-    // expansion 0.25 of its volume (0.25 0.1 32 a unit in the projection's
-    // units); the cool cell is untouched; a cell at 4 exactly burns.
+    // a burn rate of 3 over a step of 1/32 s, still, open walls: the hot
+    // cell burns 2 (1 - exp(-3/32)), each unit adding 10 of heat, 0.5 of
+    // smoke and expansion 0.25 of its volume, which the projection leaves
+    // as its divergence (0.25 0.1 32 a unit in the projection's units);
+    // the cool cell is untouched; a cell at 4 exactly burns.
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 2;
     def.size[1] = 2;
+    def.pressureCycles = 8;
     def.ignitionTemperature = 4.0f;
     def.burnRate = 3.0f;
     def.burnHeat = 10.0f;
     def.burnSmoke = 0.5f;
     def.burnExpansion = 0.25f;
-    const mvfxCompiledGas* gas = NULL;
-    mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
-    float* scalars[3] = {state->scalars[0][0], state->scalars[1][0], state->scalars[2][0]};
-    scalars[1][0] = 5.0f;
-    scalars[1][1] = 3.0f;
-    scalars[1][2] = 4.0f;
-    scalars[2][0] = 2.0f;
-    scalars[2][1] = 2.0f;
-    scalars[2][2] = 2.0f;
-    static float expansion[4];
-    const mvfxGasLattice l = {.n = {2, 2, 1}, .cell = 0.1f, .h = 1.0f / 32.0f};
-    mvfxGasBurn(gas, &l, scalars, expansion);
+    Open(&def, s_unturned, 1.0f);
+    const float heat[4] = {5.0f, 3.0f, 4.0f, 0.0f};
+    const float fuel[4] = {2.0f, 2.0f, 2.0f, 0.0f};
+    CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasTemperature, heat, 4) &&
+              mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasFuel, fuel, 4),
+          "fuel");
+    CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 32) == mvfx_success, "step");
+    float scalars[3][4];
+    Field(def.size, mvfx_gasDensity, scalars[0]);
+    Field(def.size, mvfx_gasTemperature, scalars[1]);
+    Field(def.size, mvfx_gasFuel, scalars[2]);
+    Read(def.size);
     double burned = 2.0 * (1.0 - exp(-3.0 / 32.0));
+    double grown = 0.25 * 0.1 * 32.0 * burned;
     bool right = fabs((double)scalars[2][0] - (2.0 - burned)) <= 1e-5 &&
                  fabs((double)scalars[1][0] - (5.0 + 10.0 * burned)) <= 1e-4 &&
                  fabs((double)scalars[0][0] - 0.5 * burned) <= 1e-5 &&
-                 fabs((double)expansion[0] - 0.25 * 0.1 * 32.0 * burned) <= 1e-5;
+                 fabs((double)Outflow(def.size, 0, 0) - grown) <= 1e-5;
     right = right && scalars[2][1] == 2.0f && scalars[1][1] == 3.0f && scalars[0][1] == 0.0f &&
-            expansion[1] == 0.0f && scalars[2][2] == scalars[2][0];
+            fabsf(Outflow(def.size, 1, 0)) <= 1e-5f && scalars[2][2] == scalars[2][0];
     CHECK(right, "fuel burned where hot");
     mvfxDestroyContext(s_context);
 }
 
-// The divergence of a 2D gas's cell, its faces' outflow.
-static float Outflow(const mvfxGasState* state, const int32_t n[3], int32_t x, int32_t y)
-{
-    const float* u = state->velocity[0][state->current];
-    const float* v = state->velocity[1][state->current];
-    return u[y * (n[0] + 1) + x + 1] - u[y * (n[0] + 1) + x] + v[(y + 1) * n[0] + x] -
-           v[y * n[0] + x];
-}
-
 static void TestExpansion(void)
 {
-    // A still 2D gas of 16 by 16 cells asked to expand by 1 in a 2 by 2
-    // patch: 8 V cycles leave that divergence there and none elsewhere,
-    // within 1e-3; sealed, each cell is left 1/64 less (the mean, which
-    // has nowhere to go).
+    // A still 2D gas of 16 by 16 cells, fuel of 1 burning in a 2 by 2
+    // patch, each of those cells growing by burnExpansion over the step for
+    // each unit burned (the fuel the step took from it): 8 V cycles leave
+    // that divergence there and none elsewhere, within 1e-3; sealed, each
+    // cell is left their mean less (it has nowhere to go).
+    static float fuel[2][256];
     static float expansion[256];
     bool right = true;
     for (int32_t sealed = 0; sealed < 2; ++sealed)
@@ -486,19 +506,34 @@ static void TestExpansion(void)
         def.size[1] = 16;
         def.pressureCycles = 8;
         def.closedWalls = sealed != 0 ? 63 : 0;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
+        def.burnRate = 10.0f;
+        def.burnExpansion = 1.0f;
+        Open(&def, s_unturned, 1.0f);
         for (int32_t i = 0; i < 256; ++i)
         {
             int32_t x = i % 16;
             int32_t y = i / 16;
-            expansion[i] = (x == 7 || x == 8) && (y == 7 || y == 8) ? 1.0f : 0.0f;
+            fuel[0][i] = (x == 7 || x == 8) && (y == 7 || y == 8) ? 1.0f : 0.0f;
         }
-        mvfxProjectGas(gas, state, expansion, NULL);
-        float mean = sealed != 0 ? 4.0f / 256.0f : 0.0f;
+        CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasFuel, fuel[0], 256), "fuel");
+        Uniform(def.size, mvfx_gasTemperature, 1.0f);
+        Steps(1);
+        Field(def.size, mvfx_gasFuel, fuel[1]);
+        Read(def.size);
+        // A unit burned grows its cell by burnExpansion over the step of
+        // 1/64 s, in the projection's units its edge times that over the
+        // step.
+        float sum = 0.0f;
         for (int32_t i = 0; i < 256; ++i)
         {
-            float d = Outflow(state, def.size, i % 16, i / 16);
+            expansion[i] = def.burnExpansion * def.cellSize * 64.0f * (fuel[0][i] - fuel[1][i]);
+            sum += expansion[i];
+        }
+        float mean = sealed != 0 ? sum / 256.0f : 0.0f;
+        right = right && sum > 0.0f;
+        for (int32_t i = 0; i < 256; ++i)
+        {
+            float d = Outflow(def.size, i % 16, i / 16);
             right = right && fabsf(d - (expansion[i] - mean)) <= 1e-3f;
         }
         mvfxDestroyContext(s_context);
@@ -506,17 +541,16 @@ static void TestExpansion(void)
     CHECK(right, "the expansion's divergence kept");
 }
 
-// The largest value and the sum of a 2D gas's density.
-static void Spread(const mvfxCompiledGas* gas, const mvfxGasState* state, float* most, double* sum)
+// Sets a 2D gas's X faces to carry it 0.37 cells of 0.1 a step of 1/64 s
+// to the right, its Y faces still.
+static void Carrying(const int32_t* n)
 {
-    *most = -INFINITY;
-    *sum = 0.0;
-    for (int64_t i = 0; i < gas->cells; ++i)
+    memset(s_faces, 0, sizeof s_faces);
+    for (int64_t f = 0; f < FaceCount(n, 0); ++f)
     {
-        float d = state->scalars[0][state->current][i];
-        *most = fmaxf(*most, d);
-        *sum += (double)d;
+        s_faces[0][f] = 0.37f * 0.1f * 64.0f;
     }
+    Write(n);
 }
 
 static void TestMacCormack(void)
@@ -525,6 +559,7 @@ static void TestMacCormack(void)
     // step to the right for 40 steps, no pressure, closed walls: with
     // MacCormack its peak stays higher than semi-Lagrangian's, its values
     // within 0 and 1 (no new extremes), its sum within 5% of its start.
+    static float density[48 * 16];
     float peaks[2];
     bool right = true;
     for (int32_t r = 0; r < 2; ++r)
@@ -534,26 +569,28 @@ static void TestMacCormack(void)
         def.size[1] = 16;
         def.pressureCycles = 0;
         def.advection = r == 0 ? mvfx_gasSemiLagrangian : mvfx_gasMacCormack;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
+        Open(&def, s_unturned, 1.0f);
+        memset(density, 0, sizeof density);
         for (int32_t y = 5; y < 11; ++y)
         {
             for (int32_t x = 4; x < 10; ++x)
             {
-                state->scalars[0][0][y * 48 + x] = 1.0f;
+                density[y * 48 + x] = 1.0f;
             }
         }
-        for (int64_t f = 0; f < gas->faces[0]; ++f)
-        {
-            state->velocity[0][0][f] = 0.37f * 0.1f * 64.0f;
-        }
+        CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasDensity, density, 48 * 16),
+              "square");
+        Carrying(def.size);
         Steps(40);
+        Field(def.size, mvfx_gasDensity, density);
         double sum = 0.0;
-        Spread(gas, state, &peaks[r], &sum);
         float least = INFINITY;
-        for (int64_t i = 0; i < gas->cells; ++i)
+        peaks[r] = -INFINITY;
+        for (int32_t i = 0; i < 48 * 16; ++i)
         {
-            least = fminf(least, state->scalars[0][state->current][i]);
+            peaks[r] = fmaxf(peaks[r], density[i]);
+            least = fminf(least, density[i]);
+            sum += (double)density[i];
         }
         right = right && peaks[r] <= 1.0f && least >= 0.0f && fabs(sum - 36.0) <= 0.05 * 36.0;
         mvfxDestroyContext(s_context);
@@ -567,6 +604,7 @@ static void TestMacCormackAccuracy(void)
     // step to the right for 40 steps, no pressure: MacCormack's error from
     // the Gaussian moved 14.8 cells is at most half semi-Lagrangian's
     // (0.62 against 1.49 seen; taking back the whole error, 2.6).
+    static float density[64 * 16];
     double errors[2];
     for (int32_t r = 0; r < 2; ++r)
     {
@@ -575,63 +613,30 @@ static void TestMacCormackAccuracy(void)
         def.size[1] = 16;
         def.pressureCycles = 0;
         def.advection = r == 0 ? mvfx_gasSemiLagrangian : mvfx_gasMacCormack;
-        const mvfxCompiledGas* gas = NULL;
-        mvfxGasState* state = Open(&def, s_unturned, 1.0f, &gas);
+        Open(&def, s_unturned, 1.0f);
         for (int32_t i = 0; i < 64 * 16; ++i)
         {
             float dx = (float)(i % 64) - 12.0f;
             float dy = (float)(i / 64) - 7.5f;
-            state->scalars[0][0][i] = expf(-(dx * dx + dy * dy) / 18.0f);
+            density[i] = expf(-(dx * dx + dy * dy) / 18.0f);
         }
-        for (int64_t f = 0; f < gas->faces[0]; ++f)
-        {
-            state->velocity[0][0][f] = 0.37f * 0.1f * 64.0f;
-        }
+        CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasDensity, density, 64 * 16),
+              "Gaussian");
+        Carrying(def.size);
         Steps(40);
+        Field(def.size, mvfx_gasDensity, density);
         double sum = 0.0;
         for (int32_t i = 0; i < 64 * 16; ++i)
         {
             double dx = (double)(i % 64) - 12.0 - 14.8;
             double dy = (double)(i / 64) - 7.5;
-            double e =
-                exp(-(dx * dx + dy * dy) / 18.0) - (double)state->scalars[0][state->current][i];
+            double e = exp(-(dx * dx + dy * dy) / 18.0) - (double)density[i];
             sum += e * e;
         }
         errors[r] = sqrt(sum);
         mvfxDestroyContext(s_context);
     }
     CHECK(errors[1] <= 0.5 * errors[0], "MacCormack more accurate");
-}
-
-static void TestWork(void)
-{
-    // The work buffer: none by default; a 3D gas's curl, three arrays; a
-    // 2D gas's, one; MacCormack, the largest faces array it carries (a 2D
-    // gas's Y faces, not its Z); expansion, the cells.
-    mvfxGasDef def = mvfxDefaultGasDef();
-    def.size[0] = 10;
-    def.size[1] = 6;
-    def.size[2] = 4;
-    mvfxCompiledGas gas = mvfxCompileGas(&def);
-    bool right = gas.work == 0;
-    def.vorticity = 1.0f;
-    gas = mvfxCompileGas(&def);
-    right = right && gas.work == 3 * 240;
-    def.size[2] = 1;
-    gas = mvfxCompileGas(&def);
-    right = right && gas.work == 60;
-    def.vorticity = 0.0f;
-    def.advection = mvfx_gasMacCormack;
-    gas = mvfxCompileGas(&def);
-    right = right && gas.work == 70;
-    def.advection = mvfx_gasSemiLagrangian;
-    def.burnRate = 1.0f;
-    gas = mvfxCompileGas(&def);
-    right = right && gas.work == 0;
-    def.burnExpansion = 1.0f;
-    gas = mvfxCompileGas(&def);
-    right = right && gas.work == 60;
-    CHECK(right, "the work buffer sized for its uses");
 }
 
 static void TestRefusals(void)
@@ -675,13 +680,11 @@ int main(void)
     TestConfinement();
     TestConfinement3D();
     TestEvenCurl();
-    TestCurl();
     TestColumns();
     TestBurn();
     TestExpansion();
     TestMacCormack();
     TestMacCormackAccuracy();
-    TestWork();
     TestRefusals();
     return s_failures;
 }

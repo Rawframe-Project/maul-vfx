@@ -11,10 +11,9 @@
 // it is through a moved, scaled, offset box; the refusals of forces and
 // splats naming no gas.
 
-#include "gas_splat.h"
-#include "instance.h"
-#include "instance_api.h"
+#include "peek.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
@@ -23,7 +22,6 @@
 #include <string.h>
 
 static mvfxContext* s_context;
-static mvfxInstance* s_live;
 static mvfxInstanceId s_instance;
 
 // Opens an instance, turned by rotation, of an effect of one emitter and
@@ -32,8 +30,9 @@ static void Open(const mvfxEmitterDef* emitter, const mvfxGasDef* gas, const flo
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    mvfxEmitterDef peeking = Peeking(emitter);
     mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = emitter;
+    def.emitters = &peeking;
     def.emitterCount = 1;
     def.gases = gas;
     def.gasCount = 1;
@@ -43,7 +42,6 @@ static void Open(const mvfxEmitterDef* emitter, const mvfxGasDef* gas, const flo
     instanceDef.effect = effect;
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
-    s_live = mvfxContextInstance(s_context, s_instance);
 }
 
 static const float s_unturned[4] = {0, 0, 0, 1};
@@ -61,12 +59,28 @@ static mvfxGasDef Still(void)
 // Sets every face of the gas to a velocity in its box's frame.
 static void Blow(float u, float v)
 {
-    mvfxGasState* state = &s_live->gases[0];
+    static float us[33 * 32];
+    static float vs[32 * 33];
     for (int32_t f = 0; f < 33 * 32; ++f)
     {
-        state->velocity[0][state->current][f] = u;
-        state->velocity[1][state->current][f] = v;
+        us[f] = u;
+        vs[f] = v;
     }
+    CHECK(mvfxTestWriteGasFaces(s_context, s_instance, 0, 0, us, 33 * 32) &&
+              mvfxTestWriteGasFaces(s_context, s_instance, 0, 1, vs, 32 * 33),
+          "blown");
+}
+
+// Sets the gas's X faces to their index along X, in its box's lengths a
+// second.
+static void Ramp(void)
+{
+    static float us[33 * 32];
+    for (int32_t f = 0; f < 33 * 32; ++f)
+    {
+        us[f] = (float)(f % 33);
+    }
+    CHECK(mvfxTestWriteGasFaces(s_context, s_instance, 0, 0, us, 33 * 32), "ramped");
 }
 
 // Steps the context by n steps of 1/64 s.
@@ -78,14 +92,12 @@ static void Steps(int32_t n)
     }
 }
 
-// A particle's velocity in the emitter's arrays.
+// A particle's velocity as the last step left it.
 static void VelocityOf(int32_t i, float out[3])
 {
     for (int32_t k = 0; k < 3; ++k)
     {
-        const float* v =
-            mvfxAttributeArray(s_live, 0, (mvfxAttribute)(mvfx_attributeVelocityX + k));
-        out[k] = v[i];
+        out[k] = s_peeked.velocity[k][i];
     }
 }
 
@@ -112,7 +124,7 @@ static void TestFollow(void)
         Open(&emitter, &gas, s_unturned);
         Blow(1.0f, 0.5f);
         Steps(10);
-        int32_t count = s_live->emitters[0].count;
+        int32_t count = s_peeked.count;
         right = right && count >= 9;
         for (int32_t i = 0; i < count; ++i)
         {
@@ -146,9 +158,9 @@ static void TestTurned(void)
     Open(&emitter, &gas, quarter);
     Blow(1.0f, 0.0f);
     Steps(6);
-    bool right = s_live->emitters[0].count > 0;
+    bool right = s_peeked.count > 0;
     bool moved = false;
-    for (int32_t i = 0; i < s_live->emitters[0].count; ++i)
+    for (int32_t i = 0; i < s_peeked.count; ++i)
     {
         float v[3];
         VelocityOf(i, v);
@@ -175,8 +187,8 @@ static void TestOutside(void)
     Open(&emitter, &gas, s_unturned);
     Blow(1.0f, 0.5f);
     Steps(4);
-    bool right = s_live->emitters[0].count > 0;
-    for (int32_t i = 0; i < s_live->emitters[0].count; ++i)
+    bool right = s_peeked.count > 0;
+    for (int32_t i = 0; i < s_peeked.count; ++i)
     {
         float v[3];
         VelocityOf(i, v);
@@ -186,14 +198,18 @@ static void TestOutside(void)
     mvfxDestroyContext(s_context);
 }
 
-// The sum of a gas's scalar f.
+static float s_cells[32 * 32];
+
+// The sum of a gas's scalar field f (density, temperature or fuel).
 static double Sum(int32_t f)
 {
-    const mvfxGasState* state = &s_live->gases[0];
+    CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, (mvfxGasField)f, s_cells, 32 * 32) ==
+              mvfx_success,
+          "read");
     double sum = 0.0;
-    for (int64_t i = 0; i < s_live->effect->gases[0].cells; ++i)
+    for (int64_t i = 0; i < 32 * 32; ++i)
     {
-        sum += (double)state->scalars[f][state->current][i];
+        sum += (double)s_cells[i];
     }
     return sum;
 }
@@ -217,7 +233,7 @@ static void TestSplat(void)
     for (int32_t i = 0; i < 6; ++i)
     {
         Steps(1);
-        poured += (double)s_live->emitters[0].count / 64.0;
+        poured += (double)s_peeked.count / 64.0;
         right = right && fabs(Sum(0) - 2.0 * poured) <= 1e-5 &&
                 fabs(Sum(1) - 3.0 * poured) <= 1e-5 && fabs(Sum(2) - 0.5 * poured) <= 1e-5;
     }
@@ -239,13 +255,17 @@ static void TestSplatDrag(void)
     mvfxGasDef gas = Still();
     Open(&emitter, &gas, s_unturned);
     Steps(3);
-    const mvfxGasState* state = &s_live->gases[0];
+    static float us[33 * 32];
+    static float vs[32 * 33];
+    CHECK(mvfxTestReadGasFaces(s_context, s_instance, 0, 0, us, 33 * 32) == 33 * 32 &&
+              mvfxTestReadGasFaces(s_context, s_instance, 0, 1, vs, 32 * 33) == 32 * 33,
+          "faces read");
     float most = 0.0f;
     bool right = true;
     for (int32_t f = 0; f < 33 * 32; ++f)
     {
-        most = fmaxf(most, state->velocity[0][state->current][f]);
-        right = right && state->velocity[1][state->current][f] == 0.0f;
+        most = fmaxf(most, us[f]);
+        right = right && vs[f] == 0.0f;
     }
     CHECK(right && most > 0.1f && most <= 2.0f, "particles pull a gas's faces");
     mvfxDestroyContext(s_context);
@@ -260,72 +280,81 @@ static void TestSplatOutside(void)
     gas.center[1] = -4.0f;
     Open(&emitter, &gas, s_unturned);
     Steps(4);
-    CHECK(s_live->emitters[0].count > 0 && Sum(0) == 0.0, "nothing poured from outside");
+    CHECK(s_peeked.count > 0 && Sum(0) == 0.0, "nothing poured from outside");
     mvfxDestroyContext(s_context);
 }
 
 static void TestSplatExact(void)
 {
-    // Two particles poured straight into a 2D lattice of 8 by 6 cells of
-    // 0.1 over a substep of 1/64 s, through a map scaling by 2: one at
-    // (0.065, -0.035), at (5.3, 2.3) in cells, moving at (1, 0, 0) (2 in
-    // the box), pouring 2 of density a second and pulling by a drag of 10;
-    // one at (-0.025, 0), half a cell outside the box, pouring nothing.
-    // The 4 cells about the first take 2/64 times their weights (0.04,
-    // 0.16, 0.16, 0.64); the X faces, all at 0.5, the 4 about it go
-    // toward 2 by (2 - 0.5) (1 - e^(-10/64)) times theirs (0.14, 0.06,
-    // 0.56, 0.24); nothing else changes.
-    static float cells[3][48];
-    static float faces[3][64];
-    memset(cells, 0, sizeof cells);
-    memset(faces, 0, sizeof faces);
-    for (int32_t f = 0; f < 9 * 6; ++f)
-    {
-        faces[0][f] = 0.5f;
-    }
-    const mvfxGasLattice l = {.n = {8, 6, 1}, .cell = 0.1f, .h = 1.0f / 64.0f};
-    const float px[2] = {0.065f, -0.425f};
-    const float py[2] = {-0.035f, 0.0f};
-    const float zero[2] = {0, 0};
-    const float one[2] = {1, 1};
-    const mvfxGasSplat splat = {.enabled = true, .density = 2.0f, .drag = 10.0f};
-    const mvfxGasPour pour = {.position = {px, py, zero},
-                              .velocity = {one, zero, zero},
-                              .count = 2,
-                              .map = {.rotation = {0, 0, 0, 1}, .sigma = 2.0f},
-                              .splat = &splat};
-    float* velocity[3] = {faces[0], faces[1], faces[2]};
-    float* scalars[3] = {cells[0], cells[1], cells[2]};
-    mvfxGasSplatInto(&l, &pour, velocity, scalars);
-    const int32_t at[4] = {1 * 8 + 4, 1 * 8 + 5, 2 * 8 + 4, 2 * 8 + 5};
-    const float weight[4] = {0.04f, 0.16f, 0.16f, 0.64f};
+    // Particles the host puts in a still 2D gas of 32 by 32 cells of 0.1,
+    // over a step of 1/64 s, each splatting where the step leaves it, at
+    // (0.13, -0.07) from the box's middle, (17.3, 15.3) in cells. Pouring
+    // 2 of density a second at rest, with a second half a cell outside the
+    // box pouring nothing: the 4 cells about the first take 2/64 times
+    // their weights (0.04, 0.16, 0.16, 0.64), all that is poured. Moving
+    // at v along X through faces blowing at -v, pulling by a drag of 10:
+    // the 4 X faces about it go toward v by (v - -v) (1 - e^(-10/64))
+    // times theirs (0.14, 0.06, 0.56, 0.24), all the pull, as the pull is
+    // relative to the face's own velocity; the Y faces stay still.
     bool right = true;
-    float total = 0.0f;
-    for (int32_t i = 0; i < 48; ++i)
+    for (int32_t pass = 0; pass < 2; ++pass)
     {
-        total += cells[0][i];
-    }
-    for (int32_t c = 0; c < 4; ++c)
-    {
-        right = right && fabsf(cells[0][at[c]] - weight[c] * 2.0f / 64.0f) <= 1e-7f;
-    }
-    right = right && fabsf(total - 2.0f / 64.0f) <= 1e-7f;
-    const int32_t faceAt[4] = {1 * 9 + 5, 1 * 9 + 6, 2 * 9 + 5, 2 * 9 + 6};
-    const float faceWeight[4] = {0.14f, 0.06f, 0.56f, 0.24f};
-    float pull = 1.5f * (1.0f - expf(-10.0f / 64.0f));
-    float faceTotal = 0.0f;
-    for (int32_t f = 0; f < 9 * 6; ++f)
-    {
-        faceTotal += faces[0][f] - 0.5f;
-    }
-    for (int32_t c = 0; c < 4; ++c)
-    {
-        right = right && fabsf(faces[0][faceAt[c]] - 0.5f - faceWeight[c] * pull) <= 1e-6f;
-    }
-    right = right && fabsf(faceTotal - pull) <= 1e-6f;
-    for (int32_t f = 0; f < 8 * 7; ++f)
-    {
-        right = right && faces[1][f] == 0.0f;
+        mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+        emitter.rate = 0.0f;
+        emitter.hostSpawnCapacity = 2;
+        emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+        emitter.gasSplat = pass == 0 ? (mvfxGasSplat){.enabled = true, .density = 2.0f}
+                                     : (mvfxGasSplat){.enabled = true, .drag = 10.0f};
+        mvfxGasDef gas = Still();
+        Open(&emitter, &gas, s_unturned);
+        // Slow, so carrying the faces by what the splat gives them, later
+        // in the step, changes them by about 2e-5 of their values.
+        float speed = pass == 0 ? 0.0f : 1e-3f;
+        Blow(-speed, 0.0f);
+        const double places[6] = {0.13 - (double)speed / 64.0, -0.07, 0, -1.65, 0, 0};
+        const float velocities[6] = {speed, 0, 0, 0, 0, 0};
+        mvfxSpawnRequest request = {
+            .count = pass == 0 ? 2 : 1, .positions = places, .velocities = velocities};
+        CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "placed");
+        Steps(1);
+        if (pass == 0)
+        {
+            double total = Sum(0);
+            const int32_t at[4] = {14 * 32 + 16, 14 * 32 + 17, 15 * 32 + 16, 15 * 32 + 17};
+            const float weight[4] = {0.04f, 0.16f, 0.16f, 0.64f};
+            right = right && s_peeked.count == 2 && fabs(total - 2.0 / 64.0) <= 1e-7;
+            for (int32_t c = 0; c < 4; ++c)
+            {
+                right = right && fabsf(s_cells[at[c]] - weight[c] * 2.0f / 64.0f) <= 1e-7f;
+            }
+        }
+        else
+        {
+            static float us[33 * 32];
+            static float vs[32 * 33];
+            CHECK(mvfxTestReadGasFaces(s_context, s_instance, 0, 0, us, 33 * 32) == 33 * 32 &&
+                      mvfxTestReadGasFaces(s_context, s_instance, 0, 1, vs, 32 * 33) == 32 * 33,
+                  "faces read");
+            const int32_t faceAt[4] = {14 * 33 + 17, 14 * 33 + 18, 15 * 33 + 17, 15 * 33 + 18};
+            const float faceWeight[4] = {0.14f, 0.06f, 0.56f, 0.24f};
+            float pull = 2.0f * speed * (1.0f - expf(-10.0f / 64.0f));
+            float faceTotal = 0.0f;
+            for (int32_t f = 0; f < 33 * 32; ++f)
+            {
+                faceTotal += us[f] + speed;
+            }
+            for (int32_t c = 0; c < 4; ++c)
+            {
+                right =
+                    right && fabsf(us[faceAt[c]] + speed - faceWeight[c] * pull) <= 1e-4f * pull;
+            }
+            right = right && fabsf(faceTotal - pull) <= 1e-4f * pull;
+            for (int32_t f = 0; f < 32 * 33; ++f)
+            {
+                right = right && vs[f] == 0.0f;
+            }
+        }
+        mvfxDestroyContext(s_context);
     }
     CHECK(right, "a splat's weights exact");
 }
@@ -368,10 +397,11 @@ static void TestSplatPlace(void)
     const double origin[3] = {2000, 0, 0};
     OpenAt(&emitter, &gas, origin, 1.0f);
     Steps(1);
-    const float* density = s_live->gases[0].scalars[0][s_live->gases[0].current];
+    (void)Sum(0);
+    const float* density = s_cells;
     const int32_t at[4] = {14 * 32 + 16, 14 * 32 + 17, 15 * 32 + 16, 15 * 32 + 17};
     const float weight[4] = {0.04f, 0.16f, 0.16f, 0.64f};
-    bool right = s_live->emitters[0].count == 1 && s_live->emitters[0].anchor[0] != 0.0;
+    bool right = s_peeked.count == 1 && s_peeked.anchor[0] != 0.0;
     for (int32_t c = 0; c < 4; ++c)
     {
         right = right && fabsf(density[at[c]] - weight[c] * 2.0f / 64.0f) <= 1e-6f;
@@ -405,17 +435,12 @@ static void TestFollowPlace(void)
         gas.center[0] = 0.5f;
         const double origin[3] = {1, 0, 0};
         OpenAt(&emitter, &gas, origin, 2.0f);
-        mvfxGasState* state = &s_live->gases[0];
-        for (int32_t f = 0; f < 33 * 32; ++f)
-        {
-            state->velocity[0][state->current][f] = (float)(f % 33);
-        }
+        Ramp();
         Steps(1);
         float v[3];
         VelocityOf(0, v);
         float expected = mode == 0 ? 38.0f / 64.0f : 38.0f * (1.0f - expf(-8.0f / 64.0f));
-        right = right && s_live->emitters[0].count == 1 && fabsf(v[0] - expected) <= 1e-3f &&
-                v[1] == 0.0f;
+        right = right && s_peeked.count == 1 && fabsf(v[0] - expected) <= 1e-3f && v[1] == 0.0f;
         mvfxDestroyContext(s_context);
     }
     CHECK(right, "a particle follows the gas where it is");
@@ -437,11 +462,7 @@ static void TestFollowMoving(void)
     mvfxGasDef gas = Still();
     Open(&emitter, &gas, s_unturned);
     Steps(1);
-    mvfxGasState* state = &s_live->gases[0];
-    for (int32_t f = 0; f < 33 * 32; ++f)
-    {
-        state->velocity[0][state->current][f] = (float)(f % 33);
-    }
+    Ramp();
     const double moved[3] = {1, 0, 0};
     CHECK(mvfxInstance_SetTransform(s_context, s_instance, moved, s_unturned, 1.0f, false) ==
               mvfx_success,
