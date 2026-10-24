@@ -523,6 +523,15 @@ mvfxFileResult mvfxCreateEffectFromBytes(mvfxContext* context, const void* bytes
     {
         return Fault(mvfx_errorState, -1);
     }
+    // The bytes' pointer and size and the asset table are the program's own
+    // arguments: a correct program never passes them invalid, so that
+    // counts as misuse. What the bytes hold is untrusted data and counts
+    // nothing.
+    if (size < 0 || (bytes == nullptr && size > 0) || !AreAssetsValid(assets, assetCount))
+    {
+        mvfxCountMisuse(context);
+        return Fault(mvfx_errorInvalid, -1);
+    }
     mvfxEffectDef def;
     int64_t needed = 0;
     mvfxFileResult result =

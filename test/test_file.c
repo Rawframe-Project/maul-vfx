@@ -936,6 +936,60 @@ static void TestUntrustedAssets(void)
     mvfxDestroyContext(context);
 }
 
+// The bytes' pointer and size and the asset table are the program's own
+// arguments: each invalid one is refused with mvfx_errorInvalid at offset
+// -1 and counts one misuse. What the bytes hold counts none: a damaged
+// file, or one naming an asset the table lacks.
+static void TestArgumentMisuse(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    Def def;
+    MakeDef(&def);
+    static uint8_t bytes[4096];
+    int64_t size = Write(&def, bytes);
+    static const char bad[1] = {(char)0xFF};
+    const mvfxEffectAsset tables[6][2] = {
+        {{.kind = 250, .name = "a", .nameLength = 1}},
+        {{.kind = mvfx_assetGrid, .name = NULL, .nameLength = 1}},
+        {{.kind = mvfx_assetGrid, .name = "a", .nameLength = 0}},
+        {{.kind = mvfx_assetGrid, .name = "a", .nameLength = MVFX_MAX_ASSET_NAME + 1}},
+        {{.kind = mvfx_assetGrid, .name = bad, .nameLength = 1}},
+        {{.kind = mvfx_assetGrid, .name = "a", .nameLength = 1},
+         {.kind = mvfx_assetGrid, .name = "a", .nameLength = 1}},
+    };
+    mvfxEffectId effect = {0};
+    uint64_t misuse = mvfxGetContextMisuse(context);
+    int32_t counted = 0;
+    counted += Refused(mvfxCreateEffectFromBytes(context, NULL, size, s_assets, 4, &effect),
+                       mvfx_errorInvalid, -1);
+    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, -1, s_assets, 4, &effect),
+                       mvfx_errorInvalid, -1);
+    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, size, NULL, 4, &effect),
+                       mvfx_errorInvalid, -1);
+    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, size, s_assets, -1, &effect),
+                       mvfx_errorInvalid, -1);
+    for (int32_t t = 0; t < 6; ++t)
+    {
+        counted += Refused(
+            mvfxCreateEffectFromBytes(context, bytes, size, tables[t], t == 5 ? 2 : 1, &effect),
+            mvfx_errorInvalid, -1);
+    }
+    CHECK(counted == 10 && mvfxGetContextMisuse(context) == misuse + 10,
+          "each invalid argument refused and counted as misuse");
+    misuse = mvfxGetContextMisuse(context);
+    bytes[size - 1] ^= 1;
+    bool damaged = Refused(mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 4, &effect),
+                           mvfx_errorInvalid, 16);
+    bytes[size - 1] ^= 1;
+    bool missing = mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 3, &effect).result ==
+                   mvfx_errorMissing;
+    CHECK(damaged && missing && mvfxGetContextMisuse(context) == misuse,
+          "a damaged file and one naming an asset the table lacks counted as nothing");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestArguments();
@@ -954,5 +1008,6 @@ int main(void)
     TestMemoryGuard();
     TestCreate();
     TestUntrustedAssets();
+    TestArgumentMisuse();
     return s_failures == 0 ? 0 : 1;
 }
