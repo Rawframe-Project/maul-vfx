@@ -6,6 +6,13 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.1.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.1.0...v0.1.1) (2026-10-24)
+
+
+### Fixed
+
+* **gas:** step due gases in the library's float mode ([#28](https://github.com/Rawframe-Project/maul-vfx/issues/28)) ([cb9609a](https://github.com/Rawframe-Project/maul-vfx/commit/cb9609a25bf351527c00680c32e43f9296c24566))
+
 ## [0.1.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.0.1...v0.1.0) (2026-10-24)
 
 ### Changed
