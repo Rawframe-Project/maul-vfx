@@ -8,19 +8,27 @@
 // ticks; a held throttle's steps gathered in one plan; the anchors before
 // and after; the plan's room at one tick and in a plan; finishing at the
 // latest death; clears; the forces and colliders resolved as the CPU
-// path resolves them; a beam's strikes; and the refusals.
+// path resolves them; a beam's strikes; and the refusals. The CPU twin is
+// read as a host reads it: its births and deaths as events, its
+// particles' birth ticks, serials and inverse lives by a host module after
+// motion (peek.h), its live count from its statistics. A beam's strike
+// counter is compared in test_plan_internal.c.
+
+#define PEEK_MOST 4096
 
 #include "collide.h"
 #include "context.h"
 #include "depth.h"
 #include "direction.h"
-#include "emitter_step.h"
 #include "force.h"
 #include "instance.h"
 #include "instance_api.h"
 #include "kill.h"
 #include "noise.h"
+#include "particles.h"
+#include "peek.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 #include "velocity_modules.h"
 
 #include "maul-vfx/plan.h"
@@ -63,6 +71,18 @@ static mvfxEffectId Effect(mvfxContext* context, const mvfxEmitterDef* emitter)
     return effect;
 }
 
+// The CPU twin's effect: its births (a beam takes no birth events) and
+// deaths written as events, its particles peeked after motion (read from
+// s_peeked).
+static mvfxEffectId PeekedEffect(mvfxContext* context, const mvfxEmitterDef* emitter)
+{
+    mvfxEmitterDef peeking = Peeking(emitter);
+    peeking.events =
+        emitter->beam.enabled ? mvfx_eventMaskDeath : mvfx_eventMaskBirth | mvfx_eventMaskDeath;
+    peeking.eventCapacity = 4096;
+    return Effect(context, &peeking);
+}
+
 static mvfxInstanceId Instance(mvfxContext* context, mvfxEffectId effect, bool planned)
 {
     mvfxInstanceDef def = mvfxDefaultInstanceDef();
@@ -85,6 +105,9 @@ typedef struct Held
 
 static Held s_held[4096];
 static int32_t s_heldCount;
+// Every birth gathered since the twins were made, to find by serial.
+static Held s_all[16384];
+static int32_t s_allCount;
 
 // Adds a plan's births and ends those dead by the clock.
 static void Gather(const mvfxEmitterPlan* plan, int64_t clock)
@@ -98,6 +121,8 @@ static void Gather(const mvfxEmitterPlan* plan, int64_t clock)
             .death = plan->start + (int64_t)(((uint64_t)b->deathHigh << 32u) | b->deathLow),
             .inverseLife = b->inverseLife,
         };
+        s_all[s_allCount] = s_held[s_heldCount - 1];
+        s_allCount += s_allCount < 16383 ? 1 : 0;
     }
     int32_t kept = 0;
     for (int32_t i = 0; i < s_heldCount; ++i)
@@ -110,21 +135,97 @@ static void Gather(const mvfxEmitterPlan* plan, int64_t clock)
     s_heldCount = kept;
 }
 
-// Whether the CPU path's particles are the gathered births, in order.
-static bool SameAsHeld(const mvfxInstance* cpu)
+// Whether a particle born at birth with inverse life has ended by tick,
+// as the step's removal tests it.
+static bool HasEnded(int64_t tick, int64_t birth, float inverseLife)
 {
-    const mvfxEmitterState* state = &cpu->emitters[0];
-    const uint32_t* low = mvfxAttributeArray(cpu, 0, mvfx_attributeBirthLow);
-    const uint32_t* high = mvfxAttributeArray(cpu, 0, mvfx_attributeBirthHigh);
-    const uint32_t* serial = mvfxAttributeArray(cpu, 0, mvfx_attributeSerial);
-    const float* inverseLife = mvfxAttributeArray(cpu, 0, mvfx_attributeInverseLife);
-    bool same = state->count == s_heldCount;
-    for (int32_t i = 0; same && i < state->count; ++i)
+    float age = (float)((double)(tick - birth) * 0x1p-20);
+    return age * inverseLife >= 1.0f;
+}
+
+// The least tick after birth where it has ended, by bisection.
+static int64_t DeathOracle(int64_t birth, float inverseLife)
+{
+    int64_t low = birth + 1;
+    int64_t high = birth + 2;
+    while (!HasEnded(high, birth, inverseLife))
     {
-        int64_t birth = (int64_t)(((uint64_t)high[i] << 32u) | low[i]);
-        same = birth == s_held[i].birth && serial[i] == (uint32_t)s_held[i].serial &&
-               memcmp(&inverseLife[i], &s_held[i].inverseLife, sizeof(float)) == 0 &&
-               mvfxDeathTick(birth, inverseLife[i]) == s_held[i].death;
+        high = birth + (high - birth) * 2;
+    }
+    while (low < high)
+    {
+        int64_t mid = low + (high - low) / 2;
+        if (HasEnded(mid, birth, inverseLife))
+        {
+            high = mid;
+        }
+        else
+        {
+            low = mid + 1;
+        }
+    }
+    return low;
+}
+
+// A gathered birth by its serial's low word, the latest; NULL for none.
+static const Held* Find(uint32_t serial)
+{
+    for (int32_t i = s_allCount - 1; i >= 0; --i)
+    {
+        if ((uint32_t)s_all[i].serial == serial)
+        {
+            return &s_all[i];
+        }
+    }
+    return NULL;
+}
+
+// Whether the CPU twin at clock holds the gathered births still alive:
+// as many live; its last step's births and deaths by age, as events, at
+// the gathered ticks; and, where its peek saw its particles after that
+// step's motion (strikes born after it are not seen), the alive among
+// them in order with their birth ticks, serials and inverse lives, the
+// rest born in the step since start.
+static bool SameAsHeld(mvfxContext* context, mvfxInstanceId cpu, int64_t start, int64_t clock)
+{
+    mvfxEmitterStats stats;
+    CHECK(mvfxInstance_GetEmitterStats(context, cpu, 0, &stats) == mvfx_success, "stats");
+    const mvfxEvent* events = NULL;
+    int32_t eventCount = 0;
+    CHECK(mvfxInstance_GetEvents(context, cpu, 0, &events, &eventCount) == mvfx_success, "events");
+    bool same = stats.live == s_heldCount;
+    for (int32_t e = 0; same && e < eventCount; ++e)
+    {
+        const Held* held = Find(events[e].serial);
+        same = held != NULL && (events[e].kind == mvfx_eventBirth
+                                    ? events[e].tick == held->birth
+                                    : events[e].killed || events[e].tick == held->death);
+    }
+    if (s_peeked.endTick != clock)
+    {
+        return same;
+    }
+    int32_t alive = 0;
+    same = same && s_peeked.count <= PEEK_MOST;
+    for (int32_t i = 0; same && i < s_peeked.count; ++i)
+    {
+        int64_t birth = s_peeked.birth[i];
+        float inverseLife = s_peeked.inverseLife[i];
+        if (HasEnded(s_peeked.endTick, birth, inverseLife))
+        {
+            continue;
+        }
+        same = alive < s_heldCount && birth == s_held[alive].birth &&
+               s_peeked.serial[i] == (uint32_t)s_held[alive].serial &&
+               memcmp(&inverseLife, &s_held[alive].inverseLife, sizeof(float)) == 0 &&
+               DeathOracle(birth, inverseLife) == s_held[alive].death;
+        alive += 1;
+    }
+    // Those the peek did not see were born in the step after its motion
+    // (a beam's strikes).
+    for (int32_t i = alive; same && i < s_heldCount; ++i)
+    {
+        same = s_held[i].birth >= start;
     }
     return same;
 }
@@ -158,9 +259,8 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEmitterDef emitter = Emitter(1000);
-    mvfxEffectId effect = Effect(context, &emitter);
-    mvfxInstanceId cpu = Instance(context, effect, false);
-    mvfxInstanceId planned = Instance(context, effect, true);
+    mvfxInstanceId cpu = Instance(context, PeekedEffect(context, &emitter), false);
+    mvfxInstanceId planned = Instance(context, Effect(context, &emitter), true);
     for (int32_t i = 0; i < 2; ++i)
     {
         mvfxInstanceId id = i == 0 ? cpu : planned;
@@ -170,6 +270,7 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
               "policy");
     }
     s_heldCount = 0;
+    s_allCount = 0;
     bool same = true;
     int64_t planned_ticks = 0;
     int32_t births = 0;
@@ -178,13 +279,14 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
-        const mvfxInstance* live = mvfxContextInstance(context, planned);
-        same = same && plan.start + plan.ticks == live->clock && plan.refused == 0 &&
+        // The planned twin's clock is the CPU twin's, whose last step ended
+        // at its peek's end tick.
+        same = same && plan.start + plan.ticks == s_peeked.endTick && plan.refused == 0 &&
                BatchesWhole(&plan);
         planned_ticks += plan.ticks;
         births += plan.birthCount;
-        Gather(&plan, live->clock);
-        same = same && SameAsHeld(mvfxContextInstance(context, cpu));
+        Gather(&plan, plan.start + plan.ticks);
+        same = same && SameAsHeld(context, cpu, plan.start, plan.start + plan.ticks);
         mvfxEmitterStats a;
         mvfxEmitterStats b;
         CHECK(mvfxInstance_GetEmitterStats(context, cpu, 0, &a) == mvfx_success &&
@@ -192,8 +294,7 @@ static void Compare(mvfxOffscreen offscreen, const char* what)
               "stats");
         same = same && a.owed == b.owed && b.live == 0 && a.status == b.status;
     }
-    CHECK(same && births > 0 && planned_ticks == mvfxContextInstance(context, planned)->clock,
-          what);
+    CHECK(same && births > 0 && planned_ticks == s_peeked.endTick, what);
     mvfxDestroyContext(context);
 }
 
@@ -404,18 +505,18 @@ static void TestAnchors(void)
     mvfxEmitterDef emitter = Emitter(1000);
     emitter.space = mvfx_spaceWorld;
     emitter.ratePerDistance = 0.02f;
-    mvfxEffectId effect = Effect(context, &emitter);
-    mvfxInstanceId cpu = Instance(context, effect, false);
-    mvfxInstanceId planned = Instance(context, effect, true);
+    mvfxInstanceId cpu = Instance(context, PeekedEffect(context, &emitter), false);
+    mvfxInstanceId planned = Instance(context, Effect(context, &emitter), true);
     static const float unturned[4] = {0, 0, 0, 1};
     s_heldCount = 0;
+    s_allCount = 0;
     bool same = true;
+    // The CPU twin's anchor before each step: its instance's place at
+    // first, then where its last peek saw it.
+    double before[3] = {0.0, 0.0, 0.0};
     for (int32_t s = 0; s < 12; ++s)
     {
         const double place[3] = {300.0 * s, 0.0, -125.0 * s};
-        const mvfxInstance* cpuLive = mvfxContextInstance(context, cpu);
-        double before[3] = {cpuLive->emitters[0].anchor[0], cpuLive->emitters[0].anchor[1],
-                            cpuLive->emitters[0].anchor[2]};
         CHECK(mvfxInstance_SetTransform(context, cpu, place, unturned, 1.0f, false) ==
                       mvfx_success &&
                   mvfxInstance_SetTransform(context, planned, place, unturned, 1.0f, false) ==
@@ -428,20 +529,24 @@ static void TestAnchors(void)
         same = same && plan.capacity == 1000 && plan.seed == 7 && plan.from.origin[0] == last &&
                plan.to.origin[0] == place[0] && plan.to.origin[2] == place[2] &&
                plan.from.scale == 1.0f && plan.to.rotation[3] == 1.0f;
+        // Its velocity over the last step (plan.h, mvfxEmitterPlan): the
+        // move from where it was over the step's seconds.
+        double seconds = (double)STEP_TICKS / (double)MVFX_TICKS_PER_SECOND;
+        const double from[3] = {last, 0.0, -125.0 * (s > 0 ? s - 1 : 0)};
         for (int32_t k = 0; k < 3; ++k)
         {
+            double moved = (place[k] - from[k]) / seconds;
             same = same && plan.anchorBefore[k] == before[k] &&
-                   plan.anchorAfter[k] == cpuLive->emitters[0].anchor[k] &&
-                   plan.velocity[k] == cpuLive->velocity[k];
+                   plan.anchorAfter[k] == s_peeked.anchor[k] &&
+                   fabs((double)plan.velocity[k] - moved) <= 1e-6 * (1.0 + fabs(moved));
+            before[k] = s_peeked.anchor[k];
         }
-        Gather(&plan, mvfxContextInstance(context, planned)->clock);
-        same = same && SameAsHeld(cpuLive);
+        Gather(&plan, plan.start + plan.ticks);
+        same = same && SameAsHeld(context, cpu, plan.start, plan.start + plan.ticks);
     }
-    const mvfxInstance* cpuLive = mvfxContextInstance(context, cpu);
     // At 10 births a step and a burst of 12, all alive: past 132 by
     // distance.
-    CHECK(same && cpuLive->emitters[0].anchor[0] > 1000.0 && s_heldCount > 180 &&
-              cpuLive->velocity[0] > 0.0f,
+    CHECK(same && s_peeked.anchor[0] > 1000.0 && s_heldCount > 180,
           "the CPU path's places, anchors and births by distance");
     mvfxDestroyContext(context);
 }
@@ -456,21 +561,21 @@ static void TestHighWords(void)
     mvfxEmitterDef emitter = Emitter(1000);
     emitter.burstCount = 0;
     emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
-    mvfxEffectId effect = Effect(context, &emitter);
-    mvfxInstanceId cpu = Instance(context, effect, false);
-    mvfxInstanceId planned = Instance(context, effect, true);
+    mvfxInstanceId cpu = Instance(context, PeekedEffect(context, &emitter), false);
+    mvfxInstanceId planned = Instance(context, Effect(context, &emitter), true);
     uint64_t first = (1ull << 32u) - 20u;
-    mvfxContextInstance(context, cpu)->emitters[0].owed = first;
-    mvfxContextInstance(context, planned)->emitters[0].owed = first;
+    CHECK(mvfxTestSetOwed(context, cpu, 0, first) && mvfxTestSetOwed(context, planned, 0, first),
+          "owed near 2^32");
     s_heldCount = 0;
+    s_allCount = 0;
     bool same = true;
     for (int32_t s = 0; s < 6; ++s)
     {
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
-        Gather(&plan, mvfxContextInstance(context, planned)->clock);
-        same = same && SameAsHeld(mvfxContextInstance(context, cpu));
+        Gather(&plan, plan.start + plan.ticks);
+        same = same && SameAsHeld(context, cpu, plan.start, plan.start + plan.ticks);
     }
     bool numbered = s_heldCount > 40;
     for (int32_t i = 0; i < s_heldCount; ++i)
@@ -569,10 +674,10 @@ static void TestHostBirths(void)
     CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
     static mvfxEmitterPlan plan;
     CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
-    const mvfxInstance* core = mvfxContextInstance(context, cpu);
-    const float* v[3] = {mvfxAttributeArray(core, 0, mvfx_attributeVelocityX),
-                         mvfxAttributeArray(core, 0, mvfx_attributeVelocityY),
-                         mvfxAttributeArray(core, 0, mvfx_attributeVelocityZ)};
+    // The CPU twin's particles, the host's first: without gravity or
+    // forces each keeps the velocity it was born with.
+    static TestParticle records[16];
+    CHECK(ReadParticles(context, cpu, 0, records, 16) > 6, "the CPU twin's particles");
     bool same = plan.hostBirthCount == 6 && plan.birthCount > 6 &&
                 plan.births[6].host == UINT32_MAX && plan.births[6].serialLow == 6;
     for (int32_t h = 0; same && h < 6; ++h)
@@ -586,7 +691,7 @@ static void TestHostBirths(void)
         for (int32_t k = 0; k < 3; ++k)
         {
             same = same && host->position[k] == positions[3 * i + k] &&
-                   host->velocity[k] == v[k][h] &&
+                   host->velocity[k] == records[h].velocity[k] &&
                    (h < 3 ? host->velocity[k] == velocities[3 * i + k]
                           : host->size[k] == sizes[3 * i + k]);
         }
@@ -733,10 +838,10 @@ static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, 
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxEffectId effect = Effect(context, emitter);
-    mvfxInstanceId cpu = Instance(context, effect, false);
-    mvfxInstanceId planned = Instance(context, effect, true);
+    mvfxInstanceId cpu = Instance(context, PeekedEffect(context, emitter), false);
+    mvfxInstanceId planned = Instance(context, Effect(context, emitter), true);
     s_heldCount = 0;
+    s_allCount = 0;
     bool same = true;
     int32_t births = 0;
     for (int32_t s = 0; same && s < stepCount; ++s)
@@ -750,20 +855,18 @@ static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, 
         CHECK(mvfxContext_StepTicks(context, steps[s]) == mvfx_success, "stepped");
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
-        const mvfxInstance* live = mvfxContextInstance(context, planned);
-        same = plan.refused == 0 && BatchesWhole(&plan) && SameBeam(&plan, emitter, live->clock) &&
+        int64_t clock = plan.start + plan.ticks;
+        same = plan.refused == 0 && BatchesWhole(&plan) && SameBeam(&plan, emitter, clock) &&
                (plan.birthCount == 0 || plan.birthCount == emitter->beam.segments + 1);
         births += plan.birthCount;
-        Gather(&plan, live->clock);
+        Gather(&plan, clock);
         mvfxEmitterStats a;
         mvfxEmitterStats b;
         CHECK(mvfxInstance_GetEmitterStats(context, cpu, 0, &a) == mvfx_success &&
                   mvfxInstance_GetEmitterStats(context, planned, 0, &b) == mvfx_success,
               "stats");
-        same = same && SameAsHeld(mvfxContextInstance(context, cpu)) && a.owed == b.owed &&
-               a.status == b.status &&
-               mvfxContextInstance(context, cpu)->emitters[0].beamStrike ==
-                   live->emitters[0].beamStrike;
+        same = same && SameAsHeld(context, cpu, plan.start, clock) && a.owed == b.owed &&
+               a.status == b.status;
     }
     mvfxDestroyContext(context);
     return same ? births : -1;
