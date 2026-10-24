@@ -8,9 +8,8 @@
 // many sources found by their serials across the 32-bit wrap; the checks
 // and the host's calls' misuse.
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/output.h"
 
@@ -403,8 +402,7 @@ static void TestSources(void)
     chains[3].eventSpawn.source = 2;
     chains[3].eventSpawn.capacity = 1;
     Open(chains, 4);
-    mvfxInstance* live = mvfxContextInstance(s_scene.context, s_scene.instance);
-    live->emitters[0].owed = 0xFFFFFFFAu;
+    CHECK(mvfxTestSetOwed(s_scene.context, s_scene.instance, 0, 0xFFFFFFFAu), "near the wrap");
     static const double root[3] = {0, 50, 0};
     mvfxSpawnRequest request = {.count = 1, .positions = root};
     CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 1, &request) == mvfx_success &&
