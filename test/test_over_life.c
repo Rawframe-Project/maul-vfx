@@ -6,11 +6,11 @@
 // size uniform, per axis and by speed, the flipbook over life and at a
 // rate, looping or held, from a start frame, custom attributes by a
 // curve, the stored values never written, rotation speed over life (which
-// a step applies), and the refusals.
+// a step applies), and the refusals. Read from the particles' records;
+// the frames' exact products at ages a test cannot reach by stepping are
+// in test_over_life_internal.c.
 
-#include "appearance.h"
-#include "context.h"
-#include "instance.h"
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -21,7 +21,6 @@ typedef struct Scene
 {
     mvfxContext* context;
     mvfxInstanceId instance;
-    mvfxInstance* live;
 } Scene;
 
 static Scene NewScene(const mvfxEmitterDef* emitter)
@@ -38,8 +37,15 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
-    scene.live = scene.context->instances.slots[scene.instance.index1 - 1].object;
     return scene;
+}
+
+// The scene's first particle's record.
+static TestParticle Record(const Scene* scene)
+{
+    TestParticle particles[4];
+    CHECK(ReadParticles(scene->context, scene->instance, 0, particles, 4) >= 1, "a particle");
+    return particles[0];
 }
 
 // An emitter of what the host spawns, living two seconds.
@@ -96,12 +102,17 @@ static void TestColor(void)
                             .scaleAlpha = true,
                             .alpha = {.value = 1.0f, .curve = {.keys = s_rising, .keyCount = 2}}};
     Scene scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
-    float color[4];
-    mvfxColorOf(scene.live, 0, 0, color);
+    TestParticle record = Record(&scene);
+    const float* color = record.color;
     CHECK(Near(color[0], 0.25f) && Near(color[1], 0.0f) && Near(color[2], 0.5f) &&
               Near(color[3], 0.8f * 0.75f * 0.5f),
           "the colour by the gradient and alpha over age");
-    CHECK(((const float*)mvfxAttributeArray(scene.live, 0, mvfx_attributeColorR))[0] == 0.5f,
+    // Half a second on, at age 0.75, the stored colour times the gradient
+    // there (a quarter red, three quarters blue, alpha 0.625), not the
+    // colour read before times it again.
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "on");
+    record = Record(&scene);
+    CHECK(Near(color[0], 0.125f) && Near(color[2], 0.75f) && Near(color[3], 0.8f * 0.625f * 0.75f),
           "the stored colour never written");
     mvfxDestroyContext(scene.context);
 
@@ -122,7 +133,7 @@ static void TestColor(void)
     mvfxSpawnRequest request = {.count = 1, .positions = origin, .velocities = fast};
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success, "placed");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 64) == mvfx_success, "step");
-    mvfxColorOf(scene.live, 0, 0, color);
+    record = Record(&scene);
     CHECK(Near(color[0], 0.5f) && Near(color[2], 0.5f) && Near(color[3], 0.75f),
           "by speed in the emitter's units, from white");
     mvfxDestroyContext(scene.context);
@@ -130,7 +141,7 @@ static void TestColor(void)
     // Not enabled: the stored value, or white.
     emitter = Held();
     scene = Run(&emitter, 0.0f, 1);
-    mvfxColorOf(scene.live, 0, 0, color);
+    record = Record(&scene);
     CHECK(color[0] == 1.0f && color[3] == 1.0f, "white without one");
     mvfxDestroyContext(scene.context);
 }
@@ -145,8 +156,8 @@ static void TestSize(void)
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3, 0}, .max = {1, 2, 3, 0}};
     emitter.overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 2.0f}}};
     Scene scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
-    float size[3];
-    mvfxSizeOf(scene.live, 0, 0, size);
+    TestParticle record = Record(&scene);
+    const float* size = record.size;
     CHECK(size[0] == 2.0f && size[1] == 4.0f && size[2] == 6.0f, "uniform");
     mvfxDestroyContext(scene.context);
     emitter.overLife.size =
@@ -156,7 +167,7 @@ static void TestSize(void)
                                     {.value = 3.0f},
                                     {.value = 1.0f}}};
     scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
-    mvfxSizeOf(scene.live, 0, 0, size);
+    record = Record(&scene);
     CHECK(Near(size[0], 0.5f) && size[1] == 6.0f && size[2] == 3.0f, "per axis");
     mvfxDestroyContext(scene.context);
     emitter.overLife.size =
@@ -165,12 +176,12 @@ static void TestSize(void)
                            .speedRange = {1.0f, 3.0f},
                            .size = {{.value = 2.0f, .curve = {.keys = s_rising, .keyCount = 2}}}};
     scene = Run(&emitter, 7.0f, 1);
-    mvfxSizeOf(scene.live, 0, 0, size);
+    record = Record(&scene);
     CHECK(Near(size[0], 2.0f) && Near(size[2], 6.0f), "by speed, held at its range's top");
     mvfxDestroyContext(scene.context);
     // Within the range: speed 2 between 1 and 3 is half way.
     scene = Run(&emitter, 2.0f, 1);
-    mvfxSizeOf(scene.live, 0, 0, size);
+    record = Record(&scene);
     CHECK(Near(size[0], 1.0f) && Near(size[1], 2.0f), "by speed, its share of the range");
     mvfxDestroyContext(scene.context);
 }
@@ -195,7 +206,7 @@ static void TestFrames(void)
                                                          .loop = loop != 0};
             Scene scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND + 1);
             uint32_t expected = loop != 0 ? (uint32_t)start : 3u;
-            CHECK(mvfxFrameOf(scene.live, 0, 0) == expected, "over life");
+            CHECK(Record(&scene).frame == expected, "over life");
             mvfxDestroyContext(scene.context);
         }
     }
@@ -205,50 +216,23 @@ static void TestFrames(void)
     emitter.overLife.frame = (mvfxFrameOverLife){
         .animation = mvfx_frameAtRate, .frameCount = 8, .frameRate = 10.0f, .loop = true};
     Scene scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND * 5 / 4);
-    CHECK(mvfxFrameOf(scene.live, 0, 0) == 4u, "at a rate, looping");
+    CHECK(Record(&scene).frame == 4u, "at a rate, looping");
     mvfxDestroyContext(scene.context);
     emitter.overLife.frame.loop = false;
     scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND * 5 / 4);
-    CHECK(mvfxFrameOf(scene.live, 0, 0) == 7u, "at a rate, held");
+    CHECK(Record(&scene).frame == 7u, "at a rate, held");
     mvfxDestroyContext(scene.context);
     emitter = Held();
     emitter.frame = (mvfxFrameStart){mvfx_frameFixed, 5, 5};
     scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
-    CHECK(mvfxFrameOf(scene.live, 0, 0) == 5u, "still");
-    mvfxDestroyContext(scene.context);
-    // The frames moved are the floor of the exact product, where binary64
-    // rounds up to the next integer: an age of 0.6232155561447144 (one
-    // second of a life whose inverse it is) times 64.00150299072266 cycles
-    // of 65,535 frames is just below 2,613,977, frame 58,111 looping; a
-    // particle 977,351,125,672 ticks old at 1.0000003576278687 frames a
-    // second is just below 932,075, frame 14,584.
-    emitter = Held();
-    emitter.overLife.frame = (mvfxFrameOverLife){.animation = mvfx_frameOverLife,
-                                                 .frameCount = 65535,
-                                                 .cycles = 64.00150299072266f,
-                                                 .loop = true};
-    scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
-    float* inverse = mvfxAttributeArray(scene.live, 0, mvfx_attributeInverseLife);
-    inverse[0] = 0.6232155561447144f;
-    CHECK(mvfxFrameOf(scene.live, 0, 0) == 58111u, "over life, exactly");
-    mvfxDestroyContext(scene.context);
-    emitter.overLife.frame = (mvfxFrameOverLife){.animation = mvfx_frameAtRate,
-                                                 .frameCount = 65535,
-                                                 .frameRate = 1.0000003576278687f,
-                                                 .loop = true};
-    scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
-    uint64_t birth = (uint64_t)(scene.live->clock - 977351125672);
-    ((uint32_t*)mvfxAttributeArray(scene.live, 0, mvfx_attributeBirthLow))[0] = (uint32_t)birth;
-    ((uint32_t*)mvfxAttributeArray(scene.live, 0, mvfx_attributeBirthHigh))[0] =
-        (uint32_t)(birth >> 32u);
-    CHECK(mvfxFrameOf(scene.live, 0, 0) == 14584u, "at a rate, exactly");
+    CHECK(Record(&scene).frame == 5u, "still");
     mvfxDestroyContext(scene.context);
 }
 
 static void TestCustomAndRotation(void)
 {
-    // A custom attribute (3, 4) scaled by twice the rising curve: (3, 4)
-    // at age 0.5, the stored values kept.
+    // A custom attribute (3, 4) scaled by twice the rising curve: (1.5, 2)
+    // at age 0.25, (4.5, 6) at 0.75, the stored values kept.
     mvfxCustomAttribute custom = {
         .components = 2,
         .initial = {.kind = mvfx_sourceRange, .min = {3, 4, 0, 0}, .max = {3, 4, 0, 0}},
@@ -258,13 +242,16 @@ static void TestCustomAndRotation(void)
     emitter.custom = &custom;
     emitter.customCount = 1;
     // Moving, so nothing reads as 0 by chance.
-    Scene scene = Run(&emitter, 1.0f, MVFX_TICKS_PER_SECOND);
-    float values[4];
-    mvfxCustomOf(scene.live, 0, 0, 0, values);
-    CHECK(Near(values[0], 3.0f) && Near(values[1], 4.0f) && values[2] == 0.0f,
+    Scene scene = Run(&emitter, 1.0f, MVFX_TICKS_PER_SECOND / 2);
+    TestParticle record = Record(&scene);
+    const float* values = record.custom;
+    CHECK(Near(values[0], 1.5f) && Near(values[1], 2.0f) && values[2] == 0.0f,
           "scaled by its curve");
-    CHECK(((const float*)mvfxAttributeArray(scene.live, 0, mvfx_attributeCustom))[0] == 3.0f,
-          "stored values kept");
+    // A second on, at age 0.75: (3, 4) times 1.5, not the values read
+    // before times it.
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "on");
+    record = Record(&scene);
+    CHECK(Near(values[0], 4.5f) && Near(values[1], 6.0f), "stored values kept");
     mvfxDestroyContext(scene.context);
 
     // Spin 2 at half its rate over life: half a radian over half a second;
@@ -275,10 +262,9 @@ static void TestCustomAndRotation(void)
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 2, 0}, .max = {0, 0, 2, 0}};
     emitter.overLife.rotation = (mvfxRotationOverLife){.enabled = true, .scale = {.value = 0.5f}};
     scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND / 2);
-    CHECK(Near(((const float*)mvfxAttributeArray(scene.live, 0, mvfx_attributeAngle))[0], 0.5f),
-          "a sprite's turn scaled");
-    float qz = ((const float*)mvfxAttributeArray(scene.live, 0, mvfx_attributeOrientationZ))[0];
-    CHECK(Near(qz, sinf(0.25f)), "a mesh particle's turn scaled");
+    record = Record(&scene);
+    CHECK(Near(record.angle, 0.5f), "a sprite's turn scaled");
+    CHECK(Near(record.orientation[2], sinf(0.25f)), "a mesh particle's turn scaled");
     mvfxDestroyContext(scene.context);
 }
 
