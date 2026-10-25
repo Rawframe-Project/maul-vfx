@@ -5,11 +5,14 @@
 // version; the stack of a fault, each frame's module and symbol.
 
 #define WIN32_LEAN_AND_MEAN
-#include <dbghelp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+// dbghelp.h needs windows.h's types first.
+// clang-format off
 #include <windows.h>
+#include <dbghelp.h>
+// clang-format on
 
 #pragma comment(lib, "version.lib")
 #pragma comment(lib, "dbghelp.lib")
