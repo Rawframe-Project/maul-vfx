@@ -223,7 +223,7 @@ fn crossField(c: Collider, a: vec3<f32>, b: vec3<f32>, t: ptr<function, f32>) ->
     let length = sqrt(dot3(d, d)) * (high - low);
     let cell = gridSpan(c);
     let wanted = select(1.0, ceil(length / (0.5 * cell)), cell > 0.0);
-    let n = u32(min(max(wanted, 1.0), f32(FIELD_SAMPLES)));
+    let n = u32(select(1.0, min(wanted, f32(FIELD_SAMPLES)), wanted >= 1.0));
     var before = low;
     for (var i = 0u; i <= n; i++) {
         var at = low + (high - low) * f32(i) / f32(n);
@@ -410,7 +410,8 @@ fn depthSamples(s: vec3<f32>, e: vec3<f32>) -> u32 {
         let pixels = max(abs(f32(pe.column - ps.column)), abs(f32(pe.row - ps.row)));
         wanted = max(wanted, pixels);
     }
-    return u32(min(max(ceil(wanted), 1.0), most));
+    let whole = ceil(wanted);
+    return u32(select(1.0, min(whole, most), whole >= 1.0));
 }
 
 // The halvings that find a crossing between two samples.

@@ -116,7 +116,7 @@ fn mapParticle(i: u32) -> u32 {
         place[k] = local[k] / gas.lattice.x + 0.5 * f32(n[k]);
         if (n[k] > 1u) {
             inside = inside && place[k] >= 0.0 && place[k] <= f32(n[k]);
-            cell[k] = min(u32(max(place[k], 0.0)), n[k] - 1u);
+            cell[k] = min(u32(select(0.0, place[k], place[k] >= 0.0)), n[k] - 1u);
         }
     }
     let s = spanOf();
@@ -198,7 +198,8 @@ fn nearest(axis: u32, p: vec3<f32>) -> Nearest {
     var t: vec3<f32>;
     for (var k = 0u; k < 3u; k++) {
         let shift = select(0.5, 0.0, k == axis);
-        let c = min(max(p[k] - shift, 0.0), f32(m[k] - 1u));
+        // Held as the core's, a NaN to 0.
+        let c = select(0.0, min(p[k] - shift, f32(m[k] - 1u)), p[k] - shift >= 0.0);
         let base = floor(c);
         low[k] = u32(base);
         high[k] = select(low[k], low[k] + 1u, low[k] + 1u < m[k]);

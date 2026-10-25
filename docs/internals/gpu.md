@@ -14,6 +14,12 @@ The kernels are written once, in WGSL, under [rhi/kernels/](../../rhi/kernels). 
 
 The containers are large (the step kernel is most of them) and cannot be rebuilt in CI, which has none of those tools. CI runs `gen_kernels.py --check`, which needs none of them: each committed container must carry a fresh splice of its kernel's sources, byte for byte, so an edited kernel part without a rebuild fails. [kernels.md](../operations/kernels.md) describes regenerating them.
 
+A float becomes an integer in a kernel only once its value is defined for a NaN. `u32()` and `i32()` clamp a finite value to the integer's range, but `min`, `max` and that clamp leave a NaN's result undefined, and a count or an index taken from it would be too. So a kernel holds a float the way the core's `fminf(fmaxf(v, low), high)` does, with a comparison that a NaN fails: `select(low, min(v, high), v >= low)`, which takes a NaN to `low` as C does. Or it rejects the value first with a comparison a NaN fails. A new conversion follows the same rule. Where floats become integers:
+
+- held this way: `span` in `water.wgsl`; the lattice places in `gas.wgsl` (`sampleRange`), `liquid_gas.wgsl`, `splat.wgsl` (the cell and the sample), `shared/forces.wgsl` and `shared/gas_sample.wgsl`; the curve and gradient reads in `shared/curve.wgsl`, `shared/record_fields.wgsl` and `sim/forces.wgsl` (a NaN reads the first sample); the sample counts in `sim/collide.wgsl`; a capsule's core spans in `sim/rigid_contacts.wgsl` (a NaN gives 8, as `fminf` does); a contact's tick in `sim/events.wgsl`;
+- rejected first: `corners` in `water_sample.wgsl`, the buckets in `surface_gas.wgsl`, `cellAt` in `liquid_gas.wgsl`, `locate` in `shared/grid_sample.wgsl`, the depth image's projection in `sim/collide.wgsl`, the unorm and snorm formats in `shared/formats.wgsl`, `cellOf` in `shared/cell_floor.wgsl` and `reaches` in `gas.wgsl`;
+- integers by construction: the solid ids stored as floats (`gas.wgsl`, `liquid_gas.wgsl`), the beam noise's cell (`sim/beam.wgsl`, a share of the beam times a validated frequency) and the point counts summed in `ribbon_records.wgsl`.
+
 A GPU object ([rhi/src/kernels.c](../../rhi/src/kernels.c)) creates the shaders and requests the pipelines from the device, a bounded number at a time, built asynchronously as Maul RHI's requests are; nothing runs until all are ready.
 
 ## A step on the device

@@ -219,7 +219,8 @@ fn planTick(tick: u32) -> vec2<u32> {
 // The tick of a contact at a share t of a move from a tick of the plan
 // over ticks of it, rounded half up, as the CPU path's.
 fn contactTick(start: u32, ticks: u32, t: f32) -> u32 {
-    return start + u32(floor(t * f32(ticks) + 0.5));
+    let share = floor(t * f32(ticks) + 0.5);
+    return start + u32(select(0.0, share, share >= 0.0));
 }
 
 // What an event says, in the particles' space, its ticks the plan's: when

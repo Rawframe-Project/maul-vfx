@@ -21,9 +21,10 @@
 // keeps them within; spheres, capsules, boxes and hulls on heightfields
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
-// they are kept out of, and born into a box; what is still refused
-// (kills within a step; bodies meeting each other are rhi_pairs'). Skips
-// (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
+// they are kept out of, and born into a box; capsules of infinite size
+// on grids; what is still refused (kills within a step; bodies meeting
+// each other are rhi_pairs'). Skips (77) without an adapter, unless
+// MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
@@ -607,6 +608,54 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
         "boxes at a wall of reversed depth, normals given");
 }
 
+static void TestInfiniteSizes(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Capsules whose size over life is infinite (1e30 times a curve of
+    // 1e18, past a float; their core's length over their radius NaN) on a
+    // heightfield and a distance grid, met by samples along the core:
+    // every step runs on the device, and as many bodies live there as on
+    // the CPU path, within the emitter's capacity.
+    static const mvfxCurveKey huge = {0.0f, 1e18f, 0, 0, mvfx_interpolationLinear};
+    mvfxGridDef grids[2];
+    MakeGrids(grids);
+    static const mvfxCollider own[2] = {{.kind = mvfx_colliderHeightfield,
+                                         .center = {0, -0.8f, 0},
+                                         .halfExtents = {1, 0.1f, 1},
+                                         .rotation = {0, 0, 0, 1},
+                                         .grid = {.index1 = 1}},
+                                        {.kind = mvfx_colliderDistance,
+                                         .center = {-0.2f, -0.5f, 0.1f},
+                                         .halfExtents = {0.4f, 0.4f, 0.4f},
+                                         .rotation = {0, 0.19509032f, 0, 0.98078528f},
+                                         .grid = {.index1 = 2}}};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidCapsule, own, 2);
+    emitter.overLife.size = (mvfxSizeOverLife){
+        .enabled = true, .size = {{.value = 1e30f, .curve = {.keys = &huge, .keyCount = 1}}}};
+    mvfxEffectId effect = {0};
+    mvfxGpuSim* sim = OpenRun(kernels,
+                              &(Run){.emitters = &emitter,
+                                     .emitterCount = 1,
+                                     .colliderGrids = grids,
+                                     .colliderGridCount = 2},
+                              &effect);
+    bool bounded = sim != NULL;
+    int32_t steps = 0;
+    for (int32_t s = 0; bounded && s < 20; ++s)
+    {
+        mvfxEmitterStats stats;
+        bounded =
+            mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success &&
+            Simulate(gpu, sim) && ReadBack(gpu, sim, 0) &&
+            mvfxInstance_GetEmitterStats(RunContext(), CpuInstance(), 0, &stats) == mvfx_success &&
+            StatisticsRecord()[0] == (uint32_t)stats.live &&
+            StatisticsRecord()[0] <= (uint32_t)emitter.capacity;
+        steps += bounded ? 1 : 0;
+    }
+    CHECK(bounded && steps == 20, "capsules of infinite size, as many as on the CPU path");
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(RunContext());
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
@@ -618,6 +667,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestStrikes(gpu, kernels);
     TestGrids(gpu, kernels);
     TestDepth(gpu, kernels);
+    TestInfiniteSizes(gpu, kernels);
 }
 
 int main(void)
