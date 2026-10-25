@@ -44,7 +44,7 @@ cmake --build --preset linux-rhi-lavapipe
 /home/rawframe-project/tools/heavy.sh ctest --preset linux-rhi-lavapipe -R rhi_events
 ```
 
-A device suite exits 77 and counts as skipped without an adapter, unless `MVFX_RHI_REQUIRED` is set, as those presets set it. The first frame of a run compiles every kernel it dispatches: minutes on lavapipe with an empty shader cache, a fraction of a second with a warm one. lavapipe keys its cache on the CPU, its count included, so pinning a run to other cores (`taskset`) starts it cold.
+A device suite exits 77 and counts as skipped without an adapter, unless `MVFX_RHI_REQUIRED` is set, as those presets set it (to `vulkan`, or `d3d12` in the `windows-rhi-d3d12` preset: the harness suites and `rhi_kernels` then also refuse an adapter of another driver). On D3D12 only `rhi_kernels` runs: WARP, the runners' D3D12 adapter, faults compiling the simulation's kernels, and its in-place 64-bit remainders are an expected failure there that fails the check if it ever passes ([#65](https://github.com/Rawframe-Project/maul-vfx/issues/65)). The first frame of a run compiles every kernel it dispatches: minutes on lavapipe with an empty shader cache, a fraction of a second with a warm one. lavapipe keys its cache on the CPU, its count included, so pinning a run to other cores (`taskset`) starts it cold.
 
 ## Generated files
 

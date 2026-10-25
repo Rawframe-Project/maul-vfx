@@ -8,6 +8,9 @@
 // the same order; its place and velocity within a tolerance (the GPU's
 // floats are not the CPU's bits); the bounds; the records.
 
+// getenv is standard C; MSVC's runtime deprecates it for its own.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "rhi_harness.h"
 
 #include "emitter_step.h"
@@ -18,6 +21,7 @@
 #include "output.h"
 #include "plexus.h"
 #include "rhi_apart.h"
+#include "rhi_driver.h"
 #include "rhi_surfaces.h"
 #include "rhi_waters.h"
 #include "test_harness.h"
@@ -76,7 +80,8 @@ static bool Open(Gpu* gpu)
         mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
         mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
         record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
+        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0 ||
+        !IsRequiredDriver(gpu->instance, adapter))
     {
         return false;
     }
@@ -3024,6 +3029,9 @@ static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
 
 int RunSuite(SceneSuite suite, const int* suiteFailures)
 {
+    // Unbuffered, so that a crash keeps every line printed before it:
+    // ctest reads a pipe, which C's runtime otherwise fills in blocks.
+    (void)setvbuf(stdout, NULL, _IONBF, 0);
     Gpu gpu;
     if (!Open(&gpu))
     {

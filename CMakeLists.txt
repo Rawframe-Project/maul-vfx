@@ -340,6 +340,40 @@ if(MAUL_VFX_BUILD_TESTS)
                                  FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
             set_property(TEST ${suite} APPEND PROPERTY LABELS integration nightly)
         endforeach()
+        # On D3D12 with the Agility SDK (the windows-rhi-d3d12 preset),
+        # rhi_kernels runs under the debug layer and GPU-based validation and
+        # fails on any error it reports. That is Maul RHI's own
+        # test/d3d12_debug.c from the tree fetched at the pinned tag, which
+        # also exports the Agility SDK the test loads from D3D12/ beside it.
+        # It is a test file of Maul RHI, not its interface: a pin that moves
+        # or renames it fails here. The suites that build a simulation do not
+        # run there: WARP, the runners' D3D12 adapter, faults compiling the
+        # simulation's kernels (the preset says where that is tracked).
+        set(MAUL_VFX_D3D12_AGILITY "" CACHE PATH
+            "The Agility SDK's bin/x64 folder: rhi_kernels runs on it under the debug layer")
+        if(MAUL_VFX_D3D12_AGILITY)
+            set(mvfx_d3d12_debug "${maul-rhi_SOURCE_DIR}/test/d3d12_debug.c")
+            if(NOT WIN32 OR NOT MAUL_RHI_D3D12_DRIVER OR NOT EXISTS "${mvfx_d3d12_debug}")
+                message(FATAL_ERROR "MAUL_VFX_D3D12_AGILITY needs a Windows build on a fetched "
+                                    "Maul RHI ${MAUL_VFX_RHI_VERSION} with its D3D12 driver and "
+                                    "test/d3d12_debug.c")
+            endif()
+            file(GLOB mvfx_agility "${MAUL_VFX_D3D12_AGILITY}/*.dll")
+            if(NOT mvfx_agility)
+                message(FATAL_ERROR "MAUL_VFX_D3D12_AGILITY holds no DLL: ${MAUL_VFX_D3D12_AGILITY}")
+            endif()
+            target_sources(test_rhi_kernels PRIVATE "${mvfx_d3d12_debug}")
+            target_include_directories(test_rhi_kernels PRIVATE "${maul-rhi_SOURCE_DIR}/test")
+            target_include_directories(test_rhi_kernels SYSTEM PRIVATE
+                "${maul-rhi_SOURCE_DIR}/directx")
+            target_compile_definitions(test_rhi_kernels PRIVATE MVFX_RHI_D3D12_DEBUG)
+            target_link_libraries(test_rhi_kernels PRIVATE d3d12 dxgi)
+            add_custom_target(maul_vfx_agility ALL
+                COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:test_rhi_kernels>/D3D12
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_agility}
+                        $<TARGET_FILE_DIR:test_rhi_kernels>/D3D12
+                VERBATIM)
+        endif()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.
         maul_add_test(rhi_mesh_image WHITEBOX)

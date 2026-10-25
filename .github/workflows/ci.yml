@@ -1,10 +1,11 @@
 # Continuous integration: the pull request check, and the full check on
 # main and every night, which fuzzes longer, runs clang-tidy on the kernel
-# table and adds the GPU part's suites on lavapipe. Each build cell is a
-# CMake preset built by the organization's shared workflow; the other jobs
-# run in the same CI image, except the Emscripten build, which needs the
-# emsdk action. docs/operations/checks.md explains each job, and
-# tools/check.sh runs the Linux presets locally.
+# table and adds the GPU part's suites on lavapipe and rhi_kernels on
+# D3D12 (WARP). Each build cell is a CMake preset built by the
+# organization's shared workflow; the other jobs run in the same CI image,
+# except the Emscripten build, which needs the emsdk action.
+# docs/operations/checks.md explains each job, and tools/check.sh runs the
+# Linux presets locally.
 name: ci
 
 on:
@@ -357,13 +358,30 @@ jobs:
       preset: ${{ matrix.preset }}
       timeout: 120
 
+  # rhi_kernels on D3D12, on WARP under the Agility SDK's debug layer and
+  # GPU-based validation; the suites that build a simulation stay out, as
+  # WARP faults compiling its kernels (docs/operations/checks.md). Nightly
+  # only until the shared changes workflow can tell a pull request that
+  # touches the GPU part.
+  windows-d3d12:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c84f41e11c17d61e2876d65faf9aed1bea5130f7 # v0.0.19
+    permissions:
+      contents: read
+    with:
+      preset: windows-rhi-d3d12
+      runner: windows-2025
+      setup: tools/ci_agility.sh
+      timeout: 30
+
   # The one check the ruleset requires: it passes when every job above
   # passed or was skipped (for a documentation-only change, or a nightly
   # job on a pull request), so adding or renaming a job never touches the
   # ruleset.
   required:
     if: always()
-    needs: [changes, docs, zizmor, checks, build, package, msvc-headers, web-emscripten, fuzz, extended]
+    needs: [changes, docs, zizmor, checks, build, package, msvc-headers, web-emscripten, fuzz, extended,
+            windows-d3d12]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}
