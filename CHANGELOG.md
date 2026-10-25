@@ -6,6 +6,22 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.2.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.1.2...v0.2.0) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **gpu:** the GPU part needs Maul RHI 0.3.0, as its public headers include Maul RHI's and a host hands it its own device; a host on an earlier Maul RHI moves too, and a Maul RHI driver built outside its tree is rebuilt for SPI 7.
+
+### Fixed
+
+* **spawn:** give births before a loop's start delay a source age of 0 ([#50](https://github.com/Rawframe-Project/maul-vfx/issues/50)) ([1f2dfef](https://github.com/Rawframe-Project/maul-vfx/commit/1f2dfef8f381f95f73b56e7b2e8d177e4431d742)), closes [#15](https://github.com/Rawframe-Project/maul-vfx/issues/15) [#52](https://github.com/Rawframe-Project/maul-vfx/issues/52)
+
+
+### Build
+
+* **gpu:** take Maul RHI 0.3.0 ([#49](https://github.com/Rawframe-Project/maul-vfx/issues/49)) ([ad687bb](https://github.com/Rawframe-Project/maul-vfx/commit/ad687bb7199408f57c990c9ceb89ad126c52de0c))
+
 ## [0.1.2](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.1.2) (2026-10-24)
 
 ### Changed

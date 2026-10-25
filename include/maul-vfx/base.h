@@ -22,10 +22,10 @@ extern "C"
 #define MVFX_VERSION_MAJOR 0
 // x-release-please-end
 // x-release-please-start-minor
-#define MVFX_VERSION_MINOR 1
+#define MVFX_VERSION_MINOR 2
 // x-release-please-end
 // x-release-please-start-patch
-#define MVFX_VERSION_PATCH 2
+#define MVFX_VERSION_PATCH 0
 // x-release-please-end
 
 // The binary interface the headers describe, which the root def carries: the
