@@ -9,7 +9,7 @@ What to run before pushing, what each tier covers, and what the test presets exp
 | Tier | Runs | Budget |
 |---|---|---|
 | `changed` | The source, module, length, documentation and snippet rules; the generated files' checks; the organization's documentation check; clang-format on the changed files; clang-tidy on the changed library sources (`src/*.c` and `rhi/src/*.c`, as the `pr` tier reads them); the `linux-clang-20-asan` preset. A change to documentation alone builds nothing. | under 2 minutes |
-| `pr` | Every rule; clang-format on every source but the generated tables and kernel containers; clang-tidy on `src/` and `rhi/src/` but `rhi/src/kernels.c`; the `linux-clang-20-asan`, `linux-gcc-14` and `linux-rhi` presets; 10 seconds of fuzzing per target. | under 10 minutes |
+| `pr` | Every rule; clang-format on every source but the generated tables and kernel containers; clang-tidy on `src/` and `rhi/src/` but `rhi/src/kernels.c`; both parts built at `-O0`, where no function may take a stack frame over 64 KB; the `linux-clang-20-asan`, `linux-gcc-14` and `linux-rhi` presets; 10 seconds of fuzzing per target. | under 10 minutes |
 | `full` | Also ThreadSanitizer, the shared library, Clang's Release build, clang-tidy on `rhi/src/kernels.c` (it includes 70 MB of containers and takes over three minutes), and 60 seconds of fuzzing per target. | under 20 minutes |
 | `extended` | Also the GPU part's suites on lavapipe: under the Vulkan validation layer, and under AddressSanitizer. | up to 2 hours |
 
@@ -27,6 +27,7 @@ The macOS, Windows and web cells run in CI only. The organization's documentatio
 |---|---|
 | Formatting | `clang-format` 22.1.5, `.clang-format` |
 | Naming, complexity | `clang-tidy-20`, `.clang-tidy` |
+| No stack frame over 64 KB in either part | `-Wframe-larger-than=65536` (`mvfx_limit_frames` in `CMakeLists.txt`), shown by the unoptimized build |
 | SPDX lines, comments, banned calls, the `<math.h>` allow list, file-scope state, file names | `tools/check_source.py`, `tools/libm-allowed.txt` |
 | The module graph | `tools/check_modules.py`, `tools/modules.txt` |
 | File and function lengths, WGSL files included | `tools/check_lengths.py` |
@@ -54,7 +55,7 @@ The lavapipe presets run one suite at a time, since lavapipe uses every core for
 |---|---|---|
 | `changes` | Whether anything beyond documentation changed; the build jobs skip when nothing did. | always |
 | `docs`, `zizmor` | The organization's documentation check, and zizmor over the workflows. | always |
-| `checks` | clang-format, the rules above, the generated files' checks, the documentation site's build, and clang-tidy; `rhi/src/kernels.c` only off pull requests. | always |
+| `checks` | clang-format, the rules above, the generated files' checks, the documentation site's build, clang-tidy (`rhi/src/kernels.c` only off pull requests), and both parts built at `-O0`, where no function may take a stack frame over 64 KB. | always |
 | `build` | One cell per CMake preset through the organization's `cpp.yml`, in its CI image on Linux: `linux-gcc-14`, `linux-arm64-gcc-14`, `linux-clang-20`, `linux-clang-20-asan` (each test up to three times on a pull request), `linux-clang-20-tsan`, `linux-shared`, `linux-rhi`, `macos-clang` and `windows-clang-cl`. | code changes |
 | `package` | The installed shared library used by `samples/minimal`, and the static library's size. | code changes |
 | `msvc-headers` | The public headers under MSVC's `cl` as C17 and C++17 (`cmake/HeaderCheck`). | code changes |

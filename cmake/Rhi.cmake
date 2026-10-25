@@ -35,3 +35,4 @@ target_include_directories(maul-vfx-rhi PUBLIC
 target_link_libraries(maul-vfx-rhi PUBLIC maul-vfx maul-rhi::maul-rhi)
 set_target_properties(maul-vfx-rhi PROPERTIES LINKER_LANGUAGE C)
 maul_apply_flags(maul-vfx-rhi)
+mvfx_limit_frames(maul-vfx-rhi)

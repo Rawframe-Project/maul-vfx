@@ -11,8 +11,9 @@
 #                             and the linux-clang-20-asan preset's tests.
 #                             Under two minutes; run it before every push.
 #   tools/check.sh pr         what the pull request check runs on Linux:
-#                             every check, clang-tidy, the
-#                             linux-clang-20-asan, linux-gcc-14 and
+#                             every check, clang-tidy, both parts built
+#                             unoptimized with no stack frame over 64 KB,
+#                             the linux-clang-20-asan, linux-gcc-14 and
 #                             linux-rhi presets (the GPU sample on lavapipe
 #                             among them), and a short fuzzing pass.
 #   tools/check.sh full       also ThreadSanitizer, the shared library,
@@ -165,6 +166,14 @@ if [ "$tier" = pr ]; then
     mapfile -t tidy_files < <(printf '%s\n' "${tidy_files[@]}" | grep -vx rhi/src/kernels.c)
 fi
 tidy "${tidy_files[@]}"
+
+step "no stack frame over 64 KB, unoptimized"
+# Optimized builds fold the temporaries that an unoptimized one keeps on
+# the stack, so only this build shows a frame past the limit.
+configure frames -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS_DEBUG=-O0 \
+    -DMAUL_VFX_RHI=ON -DMAUL_VFX_BUILD_TESTS=OFF -DMAUL_VFX_BUILD_BENCH=OFF \
+    -DMAUL_VFX_BUILD_SAMPLES=OFF
+build frames
 
 preset linux-clang-20-asan
 preset linux-gcc-14
