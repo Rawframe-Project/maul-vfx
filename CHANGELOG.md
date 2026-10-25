@@ -6,6 +6,18 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.3.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.2.0...v0.3.0) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **effect:** an effect is refused when a value source's base at its largest size (a curve's largest baked value, a gradient's largest key) times the larger size of its ends passes MVFX_MAX_DRAW (1e38), and a parameter default or a value set with mvfxInstance_SetParameter is refused (mvfx_errorInvalid) when it takes a source reading it past that bound.
+
+### Fixed
+
+* **effect:** refuse value sources that can draw past a float ([#55](https://github.com/Rawframe-Project/maul-vfx/issues/55)) ([8a58af2](https://github.com/Rawframe-Project/maul-vfx/commit/8a58af2e2c08679bbf883d3c5516640f01155b52)), closes [#46](https://github.com/Rawframe-Project/maul-vfx/issues/46)
+* **kernels:** give a NaN a defined value before each integer conversion ([#54](https://github.com/Rawframe-Project/maul-vfx/issues/54)) ([5da257c](https://github.com/Rawframe-Project/maul-vfx/commit/5da257c2854b8029c2f3de67fb9a756d7ce5f68f)), closes [#53](https://github.com/Rawframe-Project/maul-vfx/issues/53)
+
 ## [0.2.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.1.2...v0.2.0) (2026-10-25)
 
 ### Changed
