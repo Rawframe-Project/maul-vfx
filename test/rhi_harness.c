@@ -27,6 +27,12 @@
 #ifdef MVFX_RHI_D3D12_DEBUG
 #include "d3d12_debug.h"
 #endif
+#ifdef MVFX_D3D12_DIAG
+// A diagnosis on WARP (to drop): test/d3d12_diag.c and d3d12_no_gbv.c.
+void mvfxDiagWarp(void);
+void mvfxDiagWatchWithoutGbv(void);
+uint32_t mvfxDiagErrors(void);
+#endif
 
 #include "kernels/depth_fill_container.h"
 #include "maul-rhi/encoder.h"
@@ -2665,6 +2671,9 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
 void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
 {
     mvfxEffectId effect = {0};
+#ifdef MVFX_D3D12_DIAG
+    printf("%s: started\n", what);
+#endif
     mvfxGpuSim* sim = OpenRun(kernels, run, &effect);
     s_stepsApart = 0;
     s_dropping = run->dropping;
@@ -3063,7 +3072,17 @@ int RunSuite(SceneSuite suite)
     // ctest reads a pipe, which C's runtime otherwise fills in blocks.
     (void)setvbuf(stdout, NULL, _IONBF, 0);
     Gpu gpu;
-#ifdef MVFX_RHI_D3D12_DEBUG
+#ifdef MVFX_D3D12_DIAG
+    const char* noGbv = getenv("MVFX_D3D12_NO_GBV");
+    if (noGbv != NULL && noGbv[0] != '\0')
+    {
+        mvfxDiagWatchWithoutGbv();
+    }
+    else
+    {
+        mrhiTestWatchD3d12();
+    }
+#elif defined(MVFX_RHI_D3D12_DEBUG)
     mrhiTestWatchD3d12();
 #endif
     if (!Open(&gpu))
@@ -3082,7 +3101,14 @@ int RunSuite(SceneSuite suite)
     mvfxGpu* kernels = NULL;
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     CHECK(MakeFill(&gpu), "the depth-writing pipeline");
+#ifdef MVFX_D3D12_DIAG
+    printf("kernels ready\n");
+#endif
     WarmUp(&gpu, kernels);
+#ifdef MVFX_D3D12_DIAG
+    mvfxDiagWarp();
+    printf("warmed up\n");
+#endif
     s_warm = true;
     s_waitNs = FRAME_WAIT_NS;
     suite(&gpu, kernels);
@@ -3094,6 +3120,9 @@ int RunSuite(SceneSuite suite)
     Close(&gpu);
 #ifdef MVFX_RHI_D3D12_DEBUG
     CHECK(mrhiTestD3d12Errors() == 0, "no D3D12 debug layer error");
+#endif
+#ifdef MVFX_D3D12_DIAG
+    CHECK(mvfxDiagErrors() == 0, "no D3D12 debug layer error, GPU-based validation off");
 #endif
     return s_failures == 0 ? 0 : 1;
 }

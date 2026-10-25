@@ -17,3 +17,11 @@ rm -rf out/maul-rhi-tools
 git -c advice.detachedHead=false clone -q --depth 1 --branch "v$version" \
     https://github.com/Rawframe-Project/maul-rhi.git out/maul-rhi-tools
 bash out/maul-rhi-tools/tools/ci_agility.sh
+
+# A diagnosis on WARP (to drop): the redistributable WARP 1.0.21, its
+# digest checked, unpacked into out/warp for the copies in warp/.
+curl -sSfL --retry 3 -o out/warp.zip \
+    https://api.nuget.org/v3-flatcontainer/microsoft.direct3d.warp/1.0.21/microsoft.direct3d.warp.1.0.21.nupkg
+echo "ea44b77eb30eec14427193e20f40cdb2e4c31ed11ab39cb880538fdf4bac2681  out/warp.zip" | sha256sum -c -
+rm -rf out/warp
+unzip -q out/warp.zip -d out/warp

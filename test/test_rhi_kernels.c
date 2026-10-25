@@ -31,6 +31,10 @@
 #include <time.h>
 
 // The indices hashed, a multiple of the kernel's 64 invocations.
+#ifdef MVFX_D3D12_DIAG
+void mvfxDiagWarp(void);
+#endif
+
 #define WORDS   4096
 #define WAIT_NS 300000000000ull
 
@@ -583,6 +587,74 @@ static uint64_t DrawBits(uint64_t* state, uint32_t bits)
     return x | 1ull << (length - 1u);
 }
 
+// A diagnosis on WARP (to drop): the wrong remainders by what came back,
+// the first few in words, and the first few right ones.
+static void DiagnoseRemainders(const Checker* checker, bool ran)
+{
+    uint64_t* inputs = calloc(2 * (size_t)CHECKS, sizeof *inputs);
+    uint64_t state = 5;
+    for (uint32_t e = 0; inputs != NULL && e < CHECKS; ++e)
+    {
+        inputs[2 * e] = DrawBits(&state, 64);
+        inputs[2 * e + 1] = DrawBits(&state, 48);
+    }
+    long long asD = 0, asX = 0, asZero = 0, asNext = 0, other = 0, keptD = 0, right = 0;
+    long long rightBelow = 0, below = 0, shown = 0;
+    for (uint32_t e = 0; ran && inputs != NULL && e < CHECKS; ++e)
+    {
+        uint64_t x = inputs[2 * e];
+        uint64_t d = inputs[2 * e + 1];
+        const uint32_t* w = &checker->words[4 * e];
+        uint64_t got = (uint64_t)w[1] << 32u | w[0];
+        keptD += ((uint64_t)w[3] << 32u | w[2]) == d;
+        below += x < d;
+        if (got == x % d)
+        {
+            rightBelow += x < d;
+            if (right++ < 6)
+            {
+                printf("right %u: x %llu, d %llu, x %% d %llu\n", e, (unsigned long long)x,
+                       (unsigned long long)d, (unsigned long long)got);
+            }
+            continue;
+        }
+        uint64_t next = e + 1 < CHECKS ? inputs[2 * e + 2] : 0;
+        if (got == d)
+        {
+            ++asD;
+        }
+        else if (got == x)
+        {
+            ++asX;
+        }
+        else if (got == 0)
+        {
+            ++asZero;
+        }
+        else if (next != 0 && got == d % next)
+        {
+            ++asNext;
+        }
+        else
+        {
+            ++other;
+        }
+        if (shown++ < 8)
+        {
+            printf("wrong %u: x %llu, d %llu; words in %08x %08x %08x %08x, out %08x %08x %08x "
+                   "%08x; x %% d %llu\n",
+                   e, (unsigned long long)x, (unsigned long long)d, (unsigned)(x & 0xFFFFFFFFu),
+                   (unsigned)(x >> 32u), (unsigned)(d & 0xFFFFFFFFu), (unsigned)(d >> 32u),
+                   (unsigned)w[0], (unsigned)w[1], (unsigned)w[2], (unsigned)w[3],
+                   (unsigned long long)(x % d));
+        }
+    }
+    printf("remainders: %lld right (%lld of them x below d), wrong %lld gave d, %lld x, %lld 0, "
+           "%lld d %% the next x, %lld other; d kept in %lld; x below d in %lld\n",
+           right, rightBelow, asD, asX, asZero, asNext, other, keptD, below);
+    free(inputs);
+}
+
 // 64-bit remainders over divisors of up to 48 bits, and the ratios of
 // numbers below their divisors (below 2^53, as C's binary64 divides them
 // exactly) as C rounds them to binary32: drawn, and at exact ties (an odd
@@ -615,6 +687,7 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
     {
         printf("%lld of %d remainders wrong\n", (long long)wrong, CHECKS);
     }
+    DiagnoseRemainders(checker, ran);
     uint64_t* pairs = calloc(2 * (size_t)CHECKS, sizeof *pairs);
     for (uint32_t e = 0; pairs != NULL && e < CHECKS; ++e)
     {
@@ -676,6 +749,9 @@ int main(void)
     }
     TestPcg4d(&gpu);
     TestExact(&gpu);
+#ifdef MVFX_D3D12_DIAG
+    mvfxDiagWarp();
+#endif
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
 }
