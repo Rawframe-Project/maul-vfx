@@ -70,7 +70,9 @@ def build(work, tools, name):
     with open(source, "w", encoding="utf-8", newline="\n") as file:
         file.write(spliced(os.path.join(folder(name), f"{name}.wgsl"), set()))
     module = os.path.join(work, f"{name}.spv")
-    run("naga", source, module)
+    # Restrict holds every index into an array, a buffer or a texture in
+    # range, so a kernel's result is defined for any input on every driver.
+    run("naga", "--index-bounds-check-policy", "Restrict", source, module)
     run("spirv-val", "--target-env", "vulkan1.3", module)
     reflection = os.path.join(folder(name), f"{name}.json")
     dxil = os.path.join(work, "dxil")

@@ -392,13 +392,15 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     {
         return mvfx_errorCapacity;
     }
-    *sim = (mvfxGpuSim){
-        .allocator = def->allocator,
-        .gpu = def->gpu,
-        .device = mvfxGpuDevice(def->gpu),
-        .context = def->context,
-        .instance = def->instance,
-    };
+    // Zeroed in place, field by field: a compound literal of the 2 MB
+    // struct would be built on the stack first in an unoptimized build,
+    // past a Windows thread's 1 MB.
+    memset(sim, 0, sizeof *sim);
+    sim->allocator = def->allocator;
+    sim->gpu = def->gpu;
+    sim->device = mvfxGpuDevice(def->gpu);
+    sim->context = def->context;
+    sim->instance = def->instance;
     mvfxResult result = CreateParts(sim, def, &refusal);
     if (result == mvfx_success && !mvfxCreateSimLanes(sim))
     {

@@ -34,6 +34,19 @@ endif()
 
 include(GNUInstallDirs)
 include(cmake/CompilerFlags.cmake)
+
+# No function of the library may take a stack frame over 64 KB, in any
+# build: a host's thread may have Windows' 1 MB, and an unoptimized build
+# keeps every temporary on the stack, a compound literal of a large struct
+# among them. With MAUL_VFX_WERROR it is an error; CI's unoptimized build
+# of both parts (the checks job) is where it shows.
+function(mvfx_limit_frames target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /clang:-Wframe-larger-than=65536)
+    else()
+        target_compile_options(${target} PRIVATE -Wframe-larger-than=65536)
+    endif()
+endfunction()
 include(cmake/Library.cmake)
 include(cmake/Testing.cmake)
 
@@ -151,6 +164,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/velocity_modules.c
     src/view.c)
 maul_configure_library(maul-vfx)
+mvfx_limit_frames(maul-vfx)
 # sqrt, floor, ceil and the other exactly rounded functions the library
 # takes from libm (tools/libm-allowed.txt); the tests' oracles use more
 # of it.

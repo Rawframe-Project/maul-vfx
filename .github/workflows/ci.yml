@@ -101,6 +101,15 @@ jobs:
           fi
           printf '%s\n' "${files[@]}" |
             xargs -P 4 -n 4 clang-tidy-20 -p out/tidy --quiet --warnings-as-errors='*'
+      - name: No stack frame over 64 KB, unoptimized
+        # Both parts at -O0, where every temporary stays on the stack: the
+        # optimized cells fold them, so only this build shows a frame past
+        # the limit a host's thread may need (Windows gives it 1 MB).
+        run: |
+          cmake --preset linux-clang-20 -B out/frames -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS_DEBUG=-O0 -DMAUL_VFX_RHI=ON -DMAUL_VFX_BUILD_TESTS=OFF \
+            -DMAUL_VFX_BUILD_BENCH=OFF -DMAUL_VFX_BUILD_SAMPLES=OFF >/dev/null
+          cmake --build out/frames
 
   # Every cell builds with warnings as errors and runs its test preset.
   # linux-rhi runs the GPU part's suites that need no device on Maul RHI's

@@ -6,6 +6,18 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.3.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.0...v0.3.1) (2026-10-25)
+
+### Fixed
+
+- The GPU part's kernels are compiled with naga's Restrict index policy:
+  an index into an array, a buffer or a texture is held in range, so a
+  kernel's result is defined on every driver for any input, as the
+  core's is. The kernel containers' headers grow by 5.9% (74,257,784 to
+  78,646,288 bytes). Results, the effect file, the CPU path and the GPU
+  part's tolerances are unchanged
+  ([#60](https://github.com/Rawframe-Project/maul-vfx/pull/60)).
+
 ## [0.3.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.2.0...v0.3.0) (2026-10-25)
 
 ### Changed
