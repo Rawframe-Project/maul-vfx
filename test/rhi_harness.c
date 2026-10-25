@@ -30,6 +30,7 @@
 #ifdef MVFX_D3D12_DIAG
 // A diagnosis on WARP (to drop): test/d3d12_diag.c and d3d12_no_gbv.c.
 void mvfxDiagWarp(void);
+void mvfxDiagCatch(void);
 void mvfxDiagWatchWithoutGbv(void);
 uint32_t mvfxDiagErrors(void);
 #endif
@@ -3091,6 +3092,7 @@ int RunSuite(SceneSuite suite)
     (void)setvbuf(stdout, NULL, _IONBF, 0);
     Gpu gpu;
 #ifdef MVFX_D3D12_DIAG
+    mvfxDiagCatch();
     const char* noGbv = getenv("MVFX_D3D12_NO_GBV");
     if (noGbv != NULL && noGbv[0] != '\0')
     {

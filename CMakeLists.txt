@@ -385,7 +385,7 @@ if(MAUL_VFX_BUILD_TESTS)
             add_test(NAME rhi_sim_no_debug COMMAND test_rhi_sim)
             set_tests_properties(rhi_sim_no_debug PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800
                                  ENVIRONMENT MAUL_RHI_D3D12_DEBUG=)
-            foreach(version 18 20)
+            foreach(version 20)
                 set(mvfx_warp_dll
                     "${PROJECT_SOURCE_DIR}/out/warp${version}/build/native/bin/x64/d3d10warp.dll")
                 set(mvfx_warp_dir "$<TARGET_FILE_DIR:test_rhi_sim>/warp${version}")
@@ -407,6 +407,18 @@ if(MAUL_VFX_BUILD_TESTS)
                 set_tests_properties(rhi_sim_warp${version} PROPERTIES
                                      ENVIRONMENT MVFX_D3D12_NO_GBV=1)
             endforeach()
+            # Under cdb: rhi_sim with no debug layer and full page heap, and
+            # rhi_kernels on WARP 1.0.20 beside it.
+            add_test(NAME rhi_sim_cdb
+                     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:test_rhi_sim> -DPAGEHEAP=ON
+                             -P ${PROJECT_SOURCE_DIR}/test/diag_run.cmake)
+            set_tests_properties(rhi_sim_cdb PROPERTIES TIMEOUT 1800
+                                 ENVIRONMENT MAUL_RHI_D3D12_DEBUG=)
+            add_test(NAME rhi_kernels_warp20_cdb
+                     COMMAND ${CMAKE_COMMAND}
+                             -DEXE=$<TARGET_FILE_DIR:test_rhi_sim>/warp20/$<TARGET_FILE_NAME:test_rhi_kernels>
+                             -P ${PROJECT_SOURCE_DIR}/test/diag_run.cmake)
+            set_tests_properties(rhi_kernels_warp20_cdb PROPERTIES TIMEOUT 1800)
         endif()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.

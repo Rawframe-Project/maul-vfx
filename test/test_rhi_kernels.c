@@ -33,6 +33,7 @@
 // The indices hashed, a multiple of the kernel's 64 invocations.
 #ifdef MVFX_D3D12_DIAG
 void mvfxDiagWarp(void);
+void mvfxDiagCatch(void);
 #endif
 
 #define WORDS   4096
@@ -924,6 +925,9 @@ static void TestExact(Gpu* gpu)
 
 int main(void)
 {
+#ifdef MVFX_D3D12_DIAG
+    mvfxDiagCatch();
+#endif
     TestRefusals();
     Gpu gpu;
     if (!Open(&gpu))
