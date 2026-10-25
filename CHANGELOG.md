@@ -6,6 +6,13 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.3.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.0...v0.3.1) (2026-10-25)
+
+
+### Fixed
+
+* **kernels:** compile kernels with naga's Restrict index policy ([#60](https://github.com/Rawframe-Project/maul-vfx/issues/60)) ([6f313a7](https://github.com/Rawframe-Project/maul-vfx/commit/6f313a71e7536789afe258125e3651c21eee6643)), closes [#58](https://github.com/Rawframe-Project/maul-vfx/issues/58)
+
 ## [0.3.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.2.0...v0.3.0) (2026-10-25)
 
 ### Changed
