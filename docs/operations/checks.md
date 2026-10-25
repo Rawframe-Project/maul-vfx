@@ -47,7 +47,7 @@ Every suite `test/test_<name>.c` carries the label `<name>`; `ctest -L <label>` 
 
 The lavapipe presets run one suite at a time, since lavapipe uses every core for one suite, and fail a test whose output holds a message of the Vulkan validation layer (`Validation Error` or a `VUID-`).
 
-The `windows-rhi-d3d12` preset runs the same suites on WARP, D3D12's software adapter, one at a time. Its harness suites run under the Agility SDK's debug layer and GPU-based validation, and fail on any error the layer reports, through Maul RHI's own `test/d3d12_debug.c` from the tree CMake fetches at the pinned version (`MAUL_VFX_D3D12_AGILITY` names the SDK's DLLs; `tools/ci_agility.sh` fetches them with Maul RHI's script at that version). The validation's resource state tracking is off, as in Maul RHI's own D3D12 cell, where it reports false errors.
+The `windows-rhi-d3d12` preset runs `rhi_kernels` on WARP, D3D12's software adapter, under the Agility SDK's debug layer and GPU-based validation, and fails on any error the layer reports, through Maul RHI's own `test/d3d12_debug.c` from the tree CMake fetches at the pinned version (`MAUL_VFX_D3D12_AGILITY` names the SDK's DLLs; `tools/ci_agility.sh` fetches them with Maul RHI's script at that version). The validation's resource state tracking is off, as in Maul RHI's own D3D12 cell, where it reports false errors. The suites that build a simulation (the harness suites, `guide_rhi`, `sample_gpu`) do not run there: WARP faults compiling the simulation's kernels, and `rhi_kernels`' in-place remainders are WARP's expected failure, which fails the check if it ever passes ([#65](https://github.com/Rawframe-Project/maul-vfx/issues/65)).
 
 ## CI
 
@@ -64,7 +64,7 @@ The `windows-rhi-d3d12` preset runs the same suites on WARP, D3D12's software ad
 | `web-emscripten` | The suites under Node, and the library's size. | code changes |
 | `fuzz` | Both fuzz targets, 30 seconds each on a pull request and 300 elsewhere; the fixtures written again by the library. | code changes |
 | `extended` | The GPU part's suites on lavapipe, `linux-rhi-lavapipe` and `linux-rhi-lavapipe-asan`, up to two hours. | nightly and by hand |
-| `windows-d3d12` | The GPU part's suites on D3D12 (WARP), `windows-rhi-d3d12`, under the Agility SDK's debug layer. | nightly and by hand |
+| `windows-d3d12` | `rhi_kernels` on D3D12 (WARP), `windows-rhi-d3d12`, under the Agility SDK's debug layer. | nightly and by hand |
 
 `cpp.yml` restores ccache and the Mesa shader cache on every run and saves them only from `main`, so a pull request starts from `main`'s latest build. The shader cache is kept per CPU model, feature set and core count, since lavapipe keys its cache on them. A cell fails when a test is skipped or not run, and uploads its test logs when it fails.
 

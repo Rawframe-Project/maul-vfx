@@ -322,11 +322,10 @@ if(MAUL_VFX_BUILD_TESTS)
         set_property(TEST rhi_kernels APPEND PROPERTY LABELS integration nightly)
         # Planned instances on the device beside the CPU path, through the
         # tests' shared harness: their particles, and their records.
-        set(mvfx_harness_suites rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
+        foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
                 rhi_ribbon_points rhi_beams rhi_lights rhi_sprites rhi_neighbors rhi_steering
                 rhi_contacts rhi_plexus rhi_units rhi_rigid rhi_pairs rhi_gas rhi_liquid
                 rhi_water rhi_surface_gas)
-        foreach(suite IN LISTS mvfx_harness_suites)
             maul_add_test(${suite} WHITEBOX)
             target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c ${PROJECT_SOURCE_DIR}/test/rhi_waters.c
@@ -339,15 +338,17 @@ if(MAUL_VFX_BUILD_TESTS)
                                  FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
             set_property(TEST ${suite} APPEND PROPERTY LABELS integration nightly)
         endforeach()
-        # On D3D12 with the Agility SDK (the windows-rhi-d3d12 preset), the
-        # harness suites run under the debug layer and GPU-based validation
-        # and fail on any error it reports. That is Maul RHI's own
+        # On D3D12 with the Agility SDK (the windows-rhi-d3d12 preset),
+        # rhi_kernels runs under the debug layer and GPU-based validation and
+        # fails on any error it reports. That is Maul RHI's own
         # test/d3d12_debug.c from the tree fetched at the pinned tag, which
-        # also exports the Agility SDK the suites load from D3D12/ beside
-        # them. It is a test file of Maul RHI, not its interface: a pin that
-        # moves or renames it fails here.
+        # also exports the Agility SDK the test loads from D3D12/ beside it.
+        # It is a test file of Maul RHI, not its interface: a pin that moves
+        # or renames it fails here. The suites that build a simulation do not
+        # run there: WARP, the runners' D3D12 adapter, faults compiling the
+        # simulation's kernels (the preset says where that is tracked).
         set(MAUL_VFX_D3D12_AGILITY "" CACHE PATH
-            "The Agility SDK's bin/x64 folder: the harness suites run on it under the debug layer")
+            "The Agility SDK's bin/x64 folder: rhi_kernels runs on it under the debug layer")
         if(MAUL_VFX_D3D12_AGILITY)
             set(mvfx_d3d12_debug "${maul-rhi_SOURCE_DIR}/test/d3d12_debug.c")
             if(NOT WIN32 OR NOT MAUL_RHI_D3D12_DRIVER OR NOT EXISTS "${mvfx_d3d12_debug}")
@@ -359,18 +360,16 @@ if(MAUL_VFX_BUILD_TESTS)
             if(NOT mvfx_agility)
                 message(FATAL_ERROR "MAUL_VFX_D3D12_AGILITY holds no DLL: ${MAUL_VFX_D3D12_AGILITY}")
             endif()
-            foreach(suite IN LISTS mvfx_harness_suites)
-                target_sources(test_${suite} PRIVATE "${mvfx_d3d12_debug}")
-                target_include_directories(test_${suite} PRIVATE "${maul-rhi_SOURCE_DIR}/test")
-                target_include_directories(test_${suite} SYSTEM PRIVATE
-                    "${maul-rhi_SOURCE_DIR}/directx")
-                target_compile_definitions(test_${suite} PRIVATE MVFX_RHI_D3D12_DEBUG)
-                target_link_libraries(test_${suite} PRIVATE d3d12 dxgi)
-            endforeach()
+            target_sources(test_rhi_kernels PRIVATE "${mvfx_d3d12_debug}")
+            target_include_directories(test_rhi_kernels PRIVATE "${maul-rhi_SOURCE_DIR}/test")
+            target_include_directories(test_rhi_kernels SYSTEM PRIVATE
+                "${maul-rhi_SOURCE_DIR}/directx")
+            target_compile_definitions(test_rhi_kernels PRIVATE MVFX_RHI_D3D12_DEBUG)
+            target_link_libraries(test_rhi_kernels PRIVATE d3d12 dxgi)
             add_custom_target(maul_vfx_agility ALL
-                COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:test_rhi_sim>/D3D12
+                COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:test_rhi_kernels>/D3D12
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_agility}
-                        $<TARGET_FILE_DIR:test_rhi_sim>/D3D12
+                        $<TARGET_FILE_DIR:test_rhi_kernels>/D3D12
                 VERBATIM)
         endif()
         # A mesh's region and the element its thresholds choose, beside the

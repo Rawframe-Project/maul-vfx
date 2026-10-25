@@ -3,7 +3,7 @@
 //
 // The kernels' exact arithmetic (rhi/kernels/shared/exact.wgsl) on the
 // device, for test_rhi_kernels to hold against the core's: each element
-// four words, two in and two out.
+// four words, two in and two out (eight for remainders apart).
 
 // include: shared/exact.wgsl
 
@@ -14,6 +14,7 @@ const LIFE_TICKS: u32 = 3u;
 const SUMS: u32 = 4u;
 const REMAINDERS: u32 = 5u;
 const RATIOS: u32 = 6u;
+const REMAINDERS_APART: u32 = 7u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -35,8 +36,10 @@ var<immediate> root: Root;
 // from its estimate as the second in-word says (signed). Sums: in two 32-bit halves of 64-bit numbers a (low
 // words) and b (high words) as a = (w0, w2), b = (w1, w3); out a + b in
 // w0 and w2, a - b in w1 and w3. Remainders: in x (w0, w1) and d (w2,
-// w3), out x % d in w0 and w1. Ratios: in n (w0, w1) and d (w2, w3), out
-// n / d as binary32 in w0.
+// w3), out x % d in w0 and w1. Remainders apart: eight words an element,
+// in x (w0, w1) and d (w2, w3), out x % d in w4 and w5, w6 and w7 never
+// written. Ratios: in n (w0, w1) and d (w2, w3), out n / d as binary32
+// in w0.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -71,6 +74,13 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                                     vec2<u32>(words[w + 2u], words[w + 3u]));
                 words[w] = r.x;
                 words[w + 1u] = r.y;
+            }
+            case REMAINDERS_APART: {
+                let a = 2u * w;
+                let r = remainder64(vec2<u32>(words[a], words[a + 1u]),
+                                    vec2<u32>(words[a + 2u], words[a + 3u]));
+                words[a + 4u] = r.x;
+                words[a + 5u] = r.y;
             }
             case RATIOS: {
                 words[w] = bitcast<u32>(ratio(vec2<u32>(words[w], words[w + 1u]),
