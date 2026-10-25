@@ -6,6 +6,35 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.2.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.1.2...v0.2.0) (2026-10-25)
+
+### Changed
+
+- **Breaking:** the GPU part (`maul-vfx-rhi`) now builds on Maul RHI
+  0.3.0 instead of 0.0.1. Its public headers include Maul RHI's, and a
+  host hands it its own Maul RHI device, so a host that uses Maul RHI
+  itself moves to 0.3.0 too. A Maul RHI driver built outside Maul RHI's
+  tree must be rebuilt for its driver interface version 7. What a host
+  gets from Maul RHI 0.1.0 to 0.3.0:
+  - on Direct3D 12, the GPU part's transfer passes (uploads, clears and
+    copies, all of buffers) run on a copy queue of their own, each after
+    the passes it depends on; a device also takes more memory from the
+    host's allocator when it is made;
+  - a buffer read in a second read state takes the barrier it was
+    missing, which can raise a frame's barrier count.
+
+  The core is unchanged, and so are the simulation's results, the effect
+  file format and the GPU part's tolerances
+  ([#49](https://github.com/Rawframe-Project/maul-vfx/pull/49)).
+
+### Fixed
+
+- A planned instance's births that the host spawns before a looping
+  emitter's start delay ends now report a `sourceAge` of 0 in their plan
+  (`mvfxPlannedBirth`), the loop's start, instead of a negative share of
+  the loop. What those births draw is unchanged
+  ([#50](https://github.com/Rawframe-Project/maul-vfx/pull/50)).
+
 ## [0.1.2](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.1.2) (2026-10-24)
 
 ### Changed
