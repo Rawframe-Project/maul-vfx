@@ -8,10 +8,15 @@ simulation's results.
 
 ## [0.3.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.0...v0.3.1) (2026-10-25)
 
-
 ### Fixed
 
-* **kernels:** compile kernels with naga's Restrict index policy ([#60](https://github.com/Rawframe-Project/maul-vfx/issues/60)) ([6f313a7](https://github.com/Rawframe-Project/maul-vfx/commit/6f313a71e7536789afe258125e3651c21eee6643)), closes [#58](https://github.com/Rawframe-Project/maul-vfx/issues/58)
+- The GPU part's kernels are compiled with naga's Restrict index policy:
+  an index into an array, a buffer or a texture is held in range, so a
+  kernel's result is defined on every driver for any input, as the
+  core's is. The kernel containers' headers grow by 5.9% (74,257,784 to
+  78,646,288 bytes). Results, the effect file, the CPU path and the GPU
+  part's tolerances are unchanged
+  ([#60](https://github.com/Rawframe-Project/maul-vfx/pull/60)).
 
 ## [0.3.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.2.0...v0.3.0) (2026-10-25)
 
