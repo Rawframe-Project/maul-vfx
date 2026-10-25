@@ -602,9 +602,19 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
         uint64_t x = DrawBits(&state, 64);
         uint64_t d = DrawBits(&state, 48);
         const uint32_t* w = &checker->words[4 * e];
-        wrong += ((uint64_t)w[1] << 32u | w[0]) != x % d;
+        uint64_t got = (uint64_t)w[1] << 32u | w[0];
+        if (got != x % d && wrong++ == 0)
+        {
+            printf("first wrong remainder: %llu %% %llu gave %llu, not %llu\n",
+                   (unsigned long long)x, (unsigned long long)d, (unsigned long long)got,
+                   (unsigned long long)(x % d));
+        }
     }
     CHECK(ran && wrong == 0, "64-bit remainders");
+    if (wrong != 0)
+    {
+        printf("%lld of %d remainders wrong\n", (long long)wrong, CHECKS);
+    }
     uint64_t* pairs = calloc(2 * (size_t)CHECKS, sizeof *pairs);
     for (uint32_t e = 0; pairs != NULL && e < CHECKS; ++e)
     {
