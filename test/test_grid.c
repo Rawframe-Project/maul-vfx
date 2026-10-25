@@ -416,6 +416,20 @@ static void TestSampling(void)
     const float corner[3] = {0.0f, 0.0f, 0.0f};
     Field(context, id, mvfx_borderNone, corner, out);
     CHECK(out[0] == FromHalf(0x3555u) && out[0] != 1.0f / 3.0f, "kept as binary16");
+
+    // Subnormal halves of both signs and a negative normal one, read back
+    // as the floats they are.
+    static const float small[3] = {0x3p-24f, -0x5p-24f, -0.75f};
+    mvfxGridDef one = mvfxDefaultGridDef();
+    one.components = 3;
+    one.format = mvfx_gridFloat16;
+    one.values = small;
+    CHECK(mvfxDestroyGrid(context, id) == mvfx_success &&
+              mvfxCreateGrid(context, &one, &id) == mvfx_success,
+          "a grid of one point");
+    Field(context, id, mvfx_borderNone, corner, out);
+    CHECK(out[0] == 0x3p-24f && out[1] == -0x5p-24f && out[2] == -0.75f,
+          "subnormal and negative halves read exactly");
     mvfxDestroyContext(context);
 }
 
