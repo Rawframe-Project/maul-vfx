@@ -338,7 +338,7 @@ jobs:
   # compared as on lavapipe. Nightly only until the shared changes
   # workflow can tell a pull request that touches the GPU part.
   windows-d3d12:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c84f41e11c17d61e2876d65faf9aed1bea5130f7 # v0.0.19
     permissions:
       contents: read
