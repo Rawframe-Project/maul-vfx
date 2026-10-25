@@ -8,7 +8,7 @@ What to run before pushing, what each tier covers, and what the test presets exp
 
 | Tier | Runs | Budget |
 |---|---|---|
-| `changed` | The source, module, length, documentation and snippet rules; the generated files' checks; the organization's documentation check; clang-format on the changed files; the `linux-clang-20-asan` preset. A change to documentation alone builds nothing. | under 2 minutes |
+| `changed` | The source, module, length, documentation and snippet rules; the generated files' checks; the organization's documentation check; clang-format on the changed files; clang-tidy on the changed library sources (`src/*.c` and `rhi/src/*.c`, as the `pr` tier reads them); the `linux-clang-20-asan` preset. A change to documentation alone builds nothing. | under 2 minutes |
 | `pr` | Every rule; clang-format on every source but the generated tables and kernel containers; clang-tidy on `src/` and `rhi/src/` but `rhi/src/kernels.c`; the `linux-clang-20-asan`, `linux-gcc-14` and `linux-rhi` presets; 10 seconds of fuzzing per target. | under 10 minutes |
 | `full` | Also ThreadSanitizer, the shared library, Clang's Release build, clang-tidy on `rhi/src/kernels.c` (it includes 70 MB of containers and takes over three minutes), and 60 seconds of fuzzing per target. | under 20 minutes |
 | `extended` | Also the GPU part's suites on lavapipe: under the Vulkan validation layer, and under AddressSanitizer. | up to 2 hours |
