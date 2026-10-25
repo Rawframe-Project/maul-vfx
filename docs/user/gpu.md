@@ -1,6 +1,6 @@
 # The GPU part
 
-`maul-vfx-rhi` runs effects on the GPU through [Maul RHI](https://github.com/Rawframe-Project/maul-rhi), on any device Maul RHI opens: Vulkan, Direct3D 12, Metal or WebGPU. It is a separate static library, built with `-DMAUL_VFX_RHI=ON` and linked as `maul-vfx-rhi::maul-vfx-rhi`; it finds Maul RHI installed or fetches its release. Its kernels come compiled for every backend, so a build needs no shader tools. The core never depends on it.
+`maul-vfx-rhi` runs effects on the GPU through [Maul RHI](https://github.com/Rawframe-Project/maul-rhi), on any device Maul RHI opens: Vulkan, Direct3D 12, Metal or WebGPU. It is a separate static library, built with `-DMAUL_VFX_RHI=ON` and linked as `maul-vfx-rhi::maul-vfx-rhi`; it finds Maul RHI installed or fetches its release. It takes the Maul RHI version pinned in `cmake/Rhi.cmake` (`MAUL_VFX_RHI_VERSION`), and a host that uses Maul RHI itself builds against that version, as it hands the GPU part its own device. Its kernels come compiled for every backend, so a build needs no shader tools. The core never depends on it.
 
 ## Contents
 
