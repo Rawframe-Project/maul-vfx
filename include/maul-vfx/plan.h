@@ -54,8 +54,9 @@ extern "C"
         uint32_t batchIndex;
         uint32_t batchCount;
         // The emitter's source age at its tick: what its values drawn over
-        // the emitter's duration read (its loop's share, or seconds where
-        // it has no duration).
+        // the emitter's duration read (its loop's share, 0 before its start
+        // delay ends; or seconds where it has no duration, negative before
+        // it begins).
         float sourceAge;
         // The host's particle it is, an index into the plan's host births
         // (all ones for one of the emitter's own).
