@@ -7,7 +7,8 @@
 // source reads in a loop and without one, the refusals, and every
 // optional value through the step (sizes, colors on the line between two,
 // sprite and mesh rotations, frames, custom attributes, lives by curve
-// and parameter) with the instance parameters that feed them.
+// and parameter) with the instance parameters that feed them; and the
+// largest a source may draw.
 
 #define PEEK_MOST 4096
 
@@ -70,23 +71,30 @@ static int32_t Records(const Scene* scene)
     return count;
 }
 
-// Whether an effect of the emitter and parameterCount parameters (all 0)
-// is taken.
-static bool Taken(const mvfxEmitterDef* emitter, int32_t parameterCount)
+// Whether an effect of the emitter and count parameters of these
+// defaults is taken.
+static bool TakenWith(const mvfxEmitterDef* emitter, const float* parameters, int32_t count)
 {
-    static const float zeros[8][4] = {{0}};
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
-    effectDef.parameters = &zeros[0][0];
-    effectDef.parameterCount = parameterCount;
+    effectDef.parameters = parameters;
+    effectDef.parameterCount = count;
     mvfxEffectId effect = {0};
     bool taken = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
     mvfxDestroyContext(context);
     return taken;
+}
+
+// Whether an effect of the emitter and parameterCount parameters (all 0)
+// is taken.
+static bool Taken(const mvfxEmitterDef* emitter, int32_t parameterCount)
+{
+    static const float zeros[8][4] = {{0}};
+    return TakenWith(emitter, &zeros[0][0], parameterCount);
 }
 
 // An emitter of many long lives at a rate, peeked.
@@ -611,6 +619,116 @@ static void TestLivesAndParameters(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestDrawBounds(void)
+{
+    // A source's base at its largest size times its ends' larger size is
+    // at most MVFX_MAX_DRAW (1e38): ends of 1e30 take a curve of 1e7 and
+    // refuse one of 1e9, for a scalar and for a vector (its ends' largest
+    // on any axis).
+    static const mvfxCurveKey within = {0.0f, 1e7f, 0, 0, mvfx_interpolationLinear};
+    static const mvfxCurveKey past = {0.0f, 1e9f, 0, 0, mvfx_interpolationLinear};
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.angle = (mvfxScalarSource){.kind = mvfx_sourceCurve,
+                                       .range = {-1e30f, 1.0f},
+                                       .curve = {&within, 1, mvfx_tangentsGiven}};
+    CHECK(Taken(&emitter, 0), "a scalar's curve within");
+    emitter.angle.curve.keys = &past;
+    CHECK(!Taken(&emitter, 0), "a scalar's curve past");
+    emitter = mvfxDefaultEmitterDef();
+    emitter.size = (mvfxVectorSource){.kind = mvfx_sourceCurve,
+                                      .min = {1, 1, 1},
+                                      .max = {1, 1e30f, 1},
+                                      .curve = {&within, 1, mvfx_tangentsGiven}};
+    CHECK(Taken(&emitter, 0), "a vector's curve within");
+    emitter.size.curve.keys = &past;
+    CHECK(!Taken(&emitter, 0), "a vector's curve past");
+
+    // A cubic between two keys of 0 rises by its tangents (to about 2.2e17
+    // a third of the way): what it bakes is bounded, not its keys.
+    static const mvfxCurveKey rising[2] = {{0.0f, 0.0f, 0.0f, 1e18f, mvfx_interpolationCubic},
+                                           {1.0f, 0.0f, -1e18f, 0.0f, mvfx_interpolationCubic}};
+    emitter = mvfxDefaultEmitterDef();
+    emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceCurve,
+                                      .range = {1e20f, 1e20f},
+                                      .curve = {rising, 2, mvfx_tangentsGiven}};
+    CHECK(Taken(&emitter, 0), "a rise between keys within");
+    emitter.spin.range = (mvfxRange){1e21f, 1e21f};
+    CHECK(!Taken(&emitter, 0), "a rise between keys past");
+
+    // A gradient by its largest key, colour or alpha, at a random point and
+    // over the loop.
+    mvfxColorKey colors[2] = {{0.0f, 1, 0, 0}, {1.0f, 0, 0, 1e7f}};
+    mvfxAlphaKey alphas[2] = {{0.0f, 1}, {1.0f, 1}};
+    emitter = mvfxDefaultEmitterDef();
+    emitter.color = (mvfxVectorSource){.kind = mvfx_sourceGradient,
+                                       .min = {1, 1, 1, 1},
+                                       .max = {1, 1, 1e30f, 1},
+                                       .gradient = {colors, 2, alphas, 2}};
+    CHECK(Taken(&emitter, 0), "a gradient within");
+    colors[1].blue = 1e9f;
+    CHECK(!Taken(&emitter, 0), "a colour key past");
+    colors[1].blue = 1;
+    alphas[0].alpha = -1e9f;
+    CHECK(!Taken(&emitter, 0), "an alpha key past");
+    alphas[0].alpha = 1;
+    emitter.duration = 1.0f;
+    emitter.color.kind = mvfx_sourceGradientOverAge;
+    CHECK(Taken(&emitter, 0), "a gradient over the loop within");
+    colors[0].green = 1e9f;
+    CHECK(!Taken(&emitter, 0), "a gradient over the loop past");
+
+    // A parameter by the ends of the sources reading each of its
+    // components: its defaults, and the values the host sets.
+    emitter = mvfxDefaultEmitterDef();
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceParameter, .min = {1e30f, 1, 1}, .max = {1e30f, 1, 1}, .parameter = 0};
+    emitter.angle =
+        (mvfxScalarSource){.kind = mvfx_sourceParameter, .range = {-1e30f, 0}, .parameter = 1};
+    static const float spread[8] = {1e7f, 1e9f, 1e9f, 3e38f, 1e7f, 3e38f, 3e38f, 3e38f};
+    CHECK(TakenWith(&emitter, spread, 2), "each component by the ends that read it");
+    static const float pastX[8] = {1e9f, 0, 0, 0, 0, 0, 0, 0};
+    static const float pastAngle[8] = {0, 0, 0, 0, -1e9f, 0, 0, 0};
+    CHECK(!TakenWith(&emitter, pastX, 2), "a vector's default past");
+    CHECK(!TakenWith(&emitter, pastAngle, 2), "a scalar's default past");
+    Scene scene = NewScene(&emitter, spread, 2);
+    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    static const float setPast[4] = {1e9f, 0, 0, 0};
+    static const float setWithin[4] = {-1e7f, 1e30f, -1e30f, 3e38f};
+    float read[4];
+    CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, setPast) ==
+                  mvfx_errorInvalid &&
+              mvfxGetContextMisuse(scene.context) == misuse + 1,
+          "a value past, refused as misuse");
+    CHECK(mvfxInstance_GetParameter(scene.context, scene.instance, 0, read) == mvfx_success &&
+              read[0] == 1e7f && read[1] == 1e9f,
+          "and not set");
+    CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 1, setPast) == mvfx_errorInvalid,
+          "a scalar's value past");
+    CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, setWithin) == mvfx_success &&
+              mvfxGetContextMisuse(scene.context) == misuse + 2,
+          "a value within");
+    mvfxDestroyContext(scene.context);
+
+    // At the bound every draw is finite through the step: sizes of 9e37.
+    static const mvfxCurveKey nearest = {0.0f, 9e7f, 0, 0, mvfx_interpolationLinear};
+    emitter = Many(64.0f);
+    emitter.size = (mvfxVectorSource){.kind = mvfx_sourceCurve,
+                                      .min = {1e30f, -1e30f, 1e30f},
+                                      .max = {1e30f, -1e30f, 1e30f},
+                                      .curve = {&nearest, 1, mvfx_tangentsGiven}};
+    scene = NewScene(&emitter, NULL, 0);
+    Run(&scene, MVFX_TICKS_PER_SECOND);
+    int32_t count = Records(&scene);
+    bool finite = count > 0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        finite = finite && s_records[i].size[0] > 8.9e37f && s_records[i].size[1] < -8.9e37f &&
+                 isfinite(s_records[i].size[0]) && isfinite(s_records[i].size[1]);
+    }
+    CHECK(finite, "the largest sizes finite");
+    mvfxDestroyContext(scene.context);
+}
+
 int main(void)
 {
     TestScalarKinds();
@@ -618,5 +736,6 @@ int main(void)
     TestAge();
     TestValuesThroughTheStep();
     TestLivesAndParameters();
+    TestDrawBounds();
     return s_failures == 0 ? 0 : 1;
 }

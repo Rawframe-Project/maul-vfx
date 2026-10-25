@@ -1149,8 +1149,9 @@ extern "C"
         // is created.
         const mvfxEmitterDef* emitters;
         int32_t emitterCount;
-        // The defaults of its instances' parameters, four floats each, finite;
-        // at most MVFX_MAX_PARAMETERS, NULL when parameterCount is 0.
+        // The defaults of its instances' parameters, four floats each, finite,
+        // each within MVFX_MAX_DRAW of the sources reading it (value.h); at
+        // most MVFX_MAX_PARAMETERS, NULL when parameterCount is 0.
         const float* parameters;
         int32_t parameterCount;
         // Its quality levels below the full one: level 0 is the def as given,

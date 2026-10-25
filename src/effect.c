@@ -323,6 +323,45 @@ static bool AreHostModulesValid(const mvfxHostModule* modules, int32_t count)
     return true;
 }
 
+// Raises reach to the larger size of the ends of each source of an
+// emitter's values that reads a parameter's component (mvfxIsParameterWithinReach).
+static void AddParameterReach(const mvfxEmitterDef* def, float reach[MVFX_MAX_PARAMETERS][4])
+{
+    const mvfxScalarSource* scalars[4] = {&def->lifetime, &def->angle, &def->spin,
+                                          &def->motion.dragScale};
+    const mvfxVectorSource* vectors[4] = {&def->size, &def->color, &def->orientation,
+                                          &def->angularVelocity};
+    static const int32_t components[4] = {3, 4, 3, 3};
+    for (int32_t s = 0; s < 4; ++s)
+    {
+        mvfxScalarParameterReach(scalars[s], reach);
+        mvfxVectorParameterReach(vectors[s], components[s], reach);
+    }
+    for (int32_t i = 0; i < def->customCount; ++i)
+    {
+        mvfxVectorParameterReach(&def->custom[i].initial, def->custom[i].components, reach);
+    }
+}
+
+// Whether each parameter's defaults keep the sources reading them within
+// MVFX_MAX_DRAW, for an effect whose emitters are valid.
+static bool AreDefaultsWithinReach(const mvfxEffectDef* def)
+{
+    float reach[MVFX_MAX_PARAMETERS][4] = {{0}};
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        AddParameterReach(&def->emitters[i], reach);
+    }
+    for (int32_t p = 0; p < def->parameterCount; ++p)
+    {
+        if (!mvfxIsParameterWithinReach(&def->parameters[4 * p], reach[p]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whether an emitter's initial values are valid against its effect's
 // parameters.
 static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
@@ -557,7 +596,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
             return false;
         }
     }
-    if (!mvfxAreEffectGasesValid(def))
+    if (!AreDefaultsWithinReach(def) || !mvfxAreEffectGasesValid(def))
     {
         return false;
     }
@@ -900,6 +939,10 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         {
             effect->parameters[p][c] = def->parameters[4 * p + c];
         }
+    }
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        AddParameterReach(&def->emitters[i], effect->parameterReach);
     }
     mvfxEmitterSpace emitterSpace = {
         .values =

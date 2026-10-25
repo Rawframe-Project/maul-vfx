@@ -34,11 +34,11 @@ double mvfxCurveValueAt(const mvfxCurve* curve, double time);
 void mvfxBakeCurve(const mvfxCurve* curve, float start, float end, mvfxCurveTable* tableOut);
 
 // The baked value at time: the blend of the two samples around it, the
-// end samples outside the domain.
+// end samples outside the domain (the first for a NaN time).
 static inline float mvfxCurveTableAt(const mvfxCurveTable* table, float time)
 {
     float position = (time - table->start) * table->scale;
-    position = position < 0.0f ? 0.0f : position;
+    position = !(position >= 0.0f) ? 0.0f : position;
     position =
         position > (float)(MVFX_CURVE_SAMPLES - 1) ? (float)(MVFX_CURVE_SAMPLES - 1) : position;
     int32_t index = (int32_t)position;
@@ -47,6 +47,10 @@ static inline float mvfxCurveTableAt(const mvfxCurveTable* table, float time)
     float low = table->samples[index];
     return low + (table->samples[index + 1] - low) * fraction;
 }
+
+// The largest size of the samples mvfxBakeCurve bakes over [start, end]
+// (NaN if one is).
+double mvfxCurveLargest(const mvfxCurve* curve, float start, float end);
 
 // Whether no sample of a baked curve is below 0, as a rate must be.
 bool mvfxIsCurveTableNonNegative(const mvfxCurveTable* table);

@@ -166,16 +166,38 @@ double mvfxCurveValueAt(const mvfxCurve* curve, double time)
     }
 }
 
+// Sample i of a curve baked over start and a span.
+static float SampleAt(const mvfxCurve* curve, float start, double span, int32_t i)
+{
+    double time = (double)start + span * (double)i / (double)(MVFX_CURVE_SAMPLES - 1);
+    return (float)mvfxCurveValueAt(curve, time);
+}
+
 void mvfxBakeCurve(const mvfxCurve* curve, float start, float end, mvfxCurveTable* tableOut)
 {
     double span = (double)end - (double)start;
     for (int32_t i = 0; i < MVFX_CURVE_SAMPLES; ++i)
     {
-        double time = (double)start + span * (double)i / (double)(MVFX_CURVE_SAMPLES - 1);
-        tableOut->samples[i] = (float)mvfxCurveValueAt(curve, time);
+        tableOut->samples[i] = SampleAt(curve, start, span, i);
     }
     tableOut->start = start;
     tableOut->scale = span > 0.0 ? (float)((double)(MVFX_CURVE_SAMPLES - 1) / span) : 0.0f;
+}
+
+double mvfxCurveLargest(const mvfxCurve* curve, float start, float end)
+{
+    double span = (double)end - (double)start;
+    double largest = 0.0;
+    for (int32_t i = 0; i < MVFX_CURVE_SAMPLES; ++i)
+    {
+        double size = fabs((double)SampleAt(curve, start, span, i));
+        if (isnan(size))
+        {
+            return size;
+        }
+        largest = size > largest ? size : largest;
+    }
+    return largest;
 }
 
 bool mvfxIsCurveTableNonNegative(const mvfxCurveTable* table)

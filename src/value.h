@@ -48,15 +48,27 @@ typedef struct mvfxTableSpace
 
 // Whether a scalar source is valid: a known kind (none only when
 // optional), finite bounds in order, a valid curve (over [0, 1] when the
-// emitter has a duration), a parameter below the count.
+// emitter has a duration), a parameter below the count; a curve's baked
+// samples times its bounds' larger size within MVFX_MAX_DRAW.
 bool mvfxIsScalarSourceValid(const mvfxScalarSource* source, bool optional, bool hasDuration,
                              int32_t parameterCount);
 
 // Whether a vector source of components (1 to 4) is valid likewise, the
 // gradient kinds only for four components, over age only with a
-// duration.
+// duration; a curve's samples or a gradient's channels times its ends'
+// largest size within MVFX_MAX_DRAW.
 bool mvfxIsVectorSourceValid(const mvfxVectorSource* source, int32_t components, bool hasDuration,
                              int32_t parameterCount);
+
+// Raises reach[p][c] to the larger size of the ends of a source that reads
+// component c of parameter p, for each such component.
+void mvfxScalarParameterReach(const mvfxScalarSource* source, float reach[MVFX_MAX_PARAMETERS][4]);
+void mvfxVectorParameterReach(const mvfxVectorSource* source, int32_t components,
+                              float reach[MVFX_MAX_PARAMETERS][4]);
+
+// Whether a parameter's value times the reach of the sources reading each
+// component stays within MVFX_MAX_DRAW (false for a NaN).
+bool mvfxIsParameterWithinReach(const float value[4], const float reach[4]);
 
 // How many curve and gradient tables a source needs.
 int32_t mvfxScalarCurves(const mvfxScalarSource* source);

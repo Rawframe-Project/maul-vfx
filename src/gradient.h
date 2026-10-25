@@ -25,11 +25,12 @@ bool mvfxIsGradientValid(const mvfxGradient* gradient);
 // Bakes a valid gradient.
 void mvfxBakeGradient(const mvfxGradient* gradient, mvfxGradientTable* tableOut);
 
-// The baked color at t in [0, 1] (clamped), as four floats into rgbaOut.
+// The baked color at t in [0, 1] (clamped, a NaN read as 0), as four
+// floats into rgbaOut.
 static inline void mvfxGradientTableAt(const mvfxGradientTable* table, float t, float rgbaOut[4])
 {
     float position = t * (float)(MVFX_CURVE_SAMPLES - 1);
-    position = position < 0.0f ? 0.0f : position;
+    position = !(position >= 0.0f) ? 0.0f : position;
     position =
         position > (float)(MVFX_CURVE_SAMPLES - 1) ? (float)(MVFX_CURVE_SAMPLES - 1) : position;
     int32_t index = (int32_t)position;

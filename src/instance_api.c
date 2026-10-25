@@ -855,6 +855,11 @@ mvfxResult mvfxInstance_SetParameter(mvfxContext* context, mvfxInstanceId instan
             return mvfx_errorInvalid;
         }
     }
+    if (!mvfxIsParameterWithinReach(value, live->effect->parameterReach[parameter]))
+    {
+        mvfxCountMisuse(context);
+        return mvfx_errorInvalid;
+    }
     for (int32_t c = 0; c < 4; ++c)
     {
         live->parameters[parameter][c] = value[c];
