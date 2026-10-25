@@ -27,8 +27,9 @@ extern "C"
 #define MVFX_MAX_VALUE 1e30f
 
     // What a source's base is. An age is the loop's normalized age at the
-    // particle's birth when the emitter has a duration, else the seconds
-    // since the emitter began.
+    // particle's birth when the emitter has a duration, 0 for a birth
+    // before its start delay ends (a host's spawn); else the seconds since
+    // the emitter began, negative before it begins.
     typedef uint8_t mvfxSourceKind;
     enum
     {

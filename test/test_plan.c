@@ -794,6 +794,12 @@ static void TestEventSpawn(void)
         }
     }
     CHECK(numbered, "its own and the host's births numbered alone, without lives");
+    bool started = true;
+    for (int32_t b = 0; b < plan.birthCount; ++b)
+    {
+        started = started && plan.births[b].sourceAge == 0.0f;
+    }
+    CHECK(started, "born before its delay ends, at its loop's start");
     // The delay (0.1 s, rounded to ticks) falls in the seventh step: its
     // events spawn from there to the step's end, and its own births are
     // numbered after the host's.
