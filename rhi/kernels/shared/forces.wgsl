@@ -183,7 +183,8 @@ fn gasSample(start: u32, n: vec3<u32>, axis: u32, p: vec3<f32>) -> f32 {
     var t: vec3<f32>;
     for (var k = 0u; k < 3u; k++) {
         let shift = select(0.5, 0.0, k == axis);
-        let place = min(max(p[k] - shift, 0.0), f32(m[k] - 1u));
+        // Held as the core's, a NaN to 0.
+        let place = select(0.0, min(p[k] - shift, f32(m[k] - 1u)), p[k] - shift >= 0.0);
         low[k] = u32(place);
         high[k] = select(low[k], low[k] + 1u, low[k] + 1u < m[k]);
         t[k] = place - f32(low[k]);

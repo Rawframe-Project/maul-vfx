@@ -465,7 +465,8 @@ fn interpolate(k: u32, p: vec3<f32>, gradient: ptr<function, vec3<f32>>) -> f32 
     var inner: vec3<bool>;
     for (var j = 0u; j < 3u; j++) {
         let c = p[j] - select(0.5, 0.0, j == k);
-        let held = min(max(c, 0.0), f32(m[j] - 1u));
+        // Held as the core's, a NaN to 0.
+        let held = select(0.0, min(c, f32(m[j] - 1u)), c >= 0.0);
         low[j] = u32(held);
         high[j] = select(low[j], low[j] + 1u, low[j] + 1u < m[j]);
         t[j] = held - f32(low[j]);

@@ -88,9 +88,13 @@ fn rate(b: u32, i: u32) -> f32 {
 }
 
 // mvfxWaterSpan: the cells along an axis of n within reach of center.
+// Each end held as the core's fminf(fmaxf(...)), a NaN to the low bound
+// (min and max leave a NaN's result undefined).
 fn span(center: f32, reach: f32, n: u32) -> vec2<i32> {
-    let first = i32(min(max(ceil(center - reach), 0.0), f32(n)));
-    let last = i32(min(max(floor(center + reach), -1.0), f32(n) - 1.0));
+    let below = ceil(center - reach);
+    let above = floor(center + reach);
+    let first = i32(select(0.0, min(below, f32(n)), below >= 0.0));
+    let last = i32(select(-1.0, min(above, f32(n) - 1.0), above >= -1.0));
     return vec2<i32>(first, last);
 }
 

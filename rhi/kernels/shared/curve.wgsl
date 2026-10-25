@@ -14,7 +14,7 @@ fn tableAt(at: u32) -> f32 {
 fn curveAt(first: u32, time: f32) -> f32 {
     let last = f32(CURVE_SAMPLES - 1u);
     var position = (time - tableAt(first + CURVE_SAMPLES)) * tableAt(first + CURVE_SAMPLES + 1u);
-    position = select(position, 0.0, position < 0.0);
+    position = select(0.0, position, position >= 0.0);
     position = select(position, last, position > last);
     let index = min(u32(position), CURVE_SAMPLES - 2u);
     let fraction = position - f32(index);

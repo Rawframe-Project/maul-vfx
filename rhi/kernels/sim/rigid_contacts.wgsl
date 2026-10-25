@@ -361,7 +361,9 @@ fn coreSpans(s: Shape) -> u32 {
     if (s.kind != RIGID_CAPSULE || !(s.radius > 0.0)) {
         return 0u;
     }
-    return u32(ceil(min(2.0 * s.half.y / s.radius, 8.0)));
+    // As the core's fminf, a NaN to 8.
+    let spans = 2.0 * s.half.y / s.radius;
+    return u32(ceil(select(8.0, spans, spans <= 8.0)));
 }
 
 // The most corners a shape meets a grid by: a hull's vertices
