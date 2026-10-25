@@ -7,25 +7,6 @@
 
 // include: shared/exact.wgsl
 
-// An experiment on WARP (to drop): remainder64 with less64 made of
-// selects, no branch, to tell whether the short-circuit one is what WARP
-// gets wrong.
-fn lessSelected(x: vec2<u32>, y: vec2<u32>) -> bool {
-    return select(x.y < y.y, x.x < y.x, x.y == y.y);
-}
-
-fn remainderSelected(x: vec2<u32>, d: vec2<u32>) -> vec2<u32> {
-    var r = vec2<u32>(0u);
-    for (var b = 63; b >= 0; b--) {
-        let word = select(x.x, x.y, b >= 32);
-        r = shiftLeft(r, 1u) | vec2<u32>((word >> (u32(b) % 32u)) & 1u, 0u);
-        if (!lessSelected(r, d)) {
-            r = subtract64(r, d);
-        }
-    }
-    return r;
-}
-
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
 const CONVERSIONS: u32 = 2u;
@@ -86,7 +67,7 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                 words[w + 3u] = ticks.y;
             }
             case REMAINDERS: {
-                let r = remainderSelected(vec2<u32>(words[w], words[w + 1u]),
+                let r = remainder64(vec2<u32>(words[w], words[w + 1u]),
                                     vec2<u32>(words[w + 2u], words[w + 3u]));
                 words[w] = r.x;
                 words[w + 1u] = r.y;
