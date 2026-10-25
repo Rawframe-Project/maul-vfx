@@ -6,12 +6,17 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
-## [0.3.2](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.1...v0.3.2) (2026-10-25)
-
+## [0.3.2](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.3.2) (2026-10-25)
 
 ### Fixed
 
-* **gpu:** make a simulation without a 2 MB stack temporary ([#63](https://github.com/Rawframe-Project/maul-vfx/issues/63)) ([b1de0bc](https://github.com/Rawframe-Project/maul-vfx/commit/b1de0bc3957b4e31aabd1fcaf7e8e9d1e58c99d9)), closes [#47](https://github.com/Rawframe-Project/maul-vfx/issues/47)
+- `mvfxCreateGpuSim` no longer builds the 2 MB simulation struct as a
+  temporary. An unoptimized build put that temporary on the stack, and
+  its 2,160,296-byte frame overflowed a Windows thread's default 1 MB
+  stack, so every call crashed in a Debug build. Optimized builds were
+  not affected. Results, the effect file and the GPU part's tolerances
+  are unchanged.
+  ([#63](https://github.com/Rawframe-Project/maul-vfx/pull/63))
 
 ## [0.3.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.0...v0.3.1) (2026-10-25)
 
