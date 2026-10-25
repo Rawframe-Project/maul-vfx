@@ -3059,6 +3059,9 @@ static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
 
 int RunSuite(SceneSuite suite)
 {
+    // Unbuffered, so that a crash keeps every line printed before it:
+    // ctest reads a pipe, which C's runtime otherwise fills in blocks.
+    (void)setvbuf(stdout, NULL, _IONBF, 0);
     Gpu gpu;
 #ifdef MVFX_RHI_D3D12_DEBUG
     mrhiTestWatchD3d12();
