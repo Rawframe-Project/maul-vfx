@@ -7,15 +7,26 @@
 // bit, and every byte the object took returned; the kernels' exact
 // arithmetic (rhi/kernels/shared/exact.wgsl, through a test kernel) against
 // the core's: 1 over every significand, drawn quotients, 64-bit counts near
-// rounding ties as binary32, and drawn lives' ticks as mvfxDeathTick's.
-// Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set; the
-// refusals of mvfxCreateGpu need no device.
+// rounding ties as binary32, drawn lives' ticks as mvfxDeathTick's, and
+// 64-bit remainders stored over their inputs and eight words apart (the
+// first expected wrong on WARP, the second right everywhere). Skips (77)
+// without an adapter, unless MVFX_RHI_REQUIRED is set, whose driver the
+// adapter must be; the refusals of mvfxCreateGpu need no device. On the
+// windows-rhi-d3d12 preset it runs under D3D12's debug layer and fails on
+// any error it reports.
+
+// getenv is standard C; MSVC's runtime deprecates it for its own.
+#define _CRT_SECURE_NO_WARNINGS
 
 #include "emitter_step.h"
 #include "exact_check_container.h"
 #include "kernels.h"
 #include "random.h"
+#include "rhi_driver.h"
 #include "test_harness.h"
+#ifdef MVFX_RHI_D3D12_DEBUG
+#include "d3d12_debug.h"
+#endif
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/instance.h"
@@ -41,6 +52,9 @@ typedef struct Gpu
 {
     mrhiInstance* instance;
     mrhiDevice* device;
+    // Whether the adapter is WARP, whose JIT gets the in-place remainders
+    // wrong.
+    bool warp;
 } Gpu;
 
 static bool Open(Gpu* gpu)
@@ -57,10 +71,12 @@ static bool Open(Gpu* gpu)
         mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
         mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
         record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
+        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0 ||
+        !IsRequiredDriver(gpu->instance, adapter))
     {
         return false;
     }
+    gpu->warp = IsWarp(gpu->instance, adapter);
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
     deviceDef.deviceLimits.frameUploadBytes = CHECK_BYTES;
@@ -242,8 +258,16 @@ typedef enum CheckMode
     CHECK_LIFE_TICKS = 3,
     CHECK_SUMS = 4,
     CHECK_REMAINDERS = 5,
-    CHECK_RATIOS = 6
+    CHECK_RATIOS = 6,
+    CHECK_REMAINDERS_APART = 7
 } CheckMode;
+
+// The bytes of an element of a mode: eight words for remainders apart,
+// four for the others.
+static uint32_t ElementBytes(uint32_t mode)
+{
+    return mode == CHECK_REMAINDERS_APART ? 32u : 16u;
+}
 
 typedef struct Checker
 {
@@ -317,7 +341,7 @@ static void CloseChecker(Gpu* gpu, Checker* checker)
 static bool RecordChecks(Gpu* gpu, const Checker* checker, mrhiResourceId words,
                          const uint32_t root[4], mrhiRequestId* readback)
 {
-    uint64_t bytes = (uint64_t)root[2] * 16u;
+    uint64_t bytes = (uint64_t)root[2] * ElementBytes(root[0]);
     const mrhiAccess put = {.resource = words, .kind = mrhi_accessCopyDestination};
     const mrhiAccess use = {.resource = words, .kind = mrhi_accessStorageReadWrite};
     const mrhiAccess take = {.resource = words, .kind = mrhi_accessCopySource};
@@ -377,9 +401,9 @@ static bool RunChecks(Gpu* gpu, Checker* checker, CheckMode mode, uint32_t first
     }
     size_t taken = 0;
     return done &&
-           mrhiTakeReadback(gpu->device, readback, checker->words, (size_t)count * 16u, &taken) ==
-               mrhi_success &&
-           taken == (size_t)count * 16u;
+           mrhiTakeReadback(gpu->device, readback, checker->words,
+                            (size_t)count * ElementBytes(mode), &taken) == mrhi_success &&
+           taken == (size_t)count * ElementBytes(mode);
 }
 
 static uint32_t Bits(float x)
@@ -599,9 +623,32 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
         uint64_t x = DrawBits(&state, 64);
         uint64_t d = DrawBits(&state, 48);
         const uint32_t* w = &checker->words[4 * e];
-        wrong += ((uint64_t)w[1] << 32u | w[0]) != x % d;
+        uint64_t got = (uint64_t)w[1] << 32u | w[0];
+        if (got != x % d && wrong++ == 0)
+        {
+            printf("first wrong remainder: %llu %% %llu gave %llu, not %llu\n",
+                   (unsigned long long)x, (unsigned long long)d, (unsigned long long)got,
+                   (unsigned long long)(x % d));
+        }
     }
-    CHECK(ran && wrong == 0, "64-bit remainders");
+    if (wrong != 0)
+    {
+        printf("%lld of %d remainders wrong\n", (long long)wrong, CHECKS);
+    }
+    if (gpu->warp)
+    {
+        // WARP stores the loop's state of this shape, x % d stored over x
+        // after a constant 64 steps, over words it never writes; the
+        // eight-word case below holds remainder64 itself there. Passing
+        // means a WARP without the fault, where this check is to be
+        // strict again.
+        printf("known WARP JIT fault: misplaced stores in a constant 64-step loop\n");
+        CHECK(ran && wrong != 0, "64-bit remainders pass on WARP, whose fault they expect");
+    }
+    else
+    {
+        CHECK(ran && wrong == 0, "64-bit remainders");
+    }
     uint64_t* pairs = calloc(2 * (size_t)CHECKS, sizeof *pairs);
     for (uint32_t e = 0; pairs != NULL && e < CHECKS; ++e)
     {
@@ -629,6 +676,37 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
     CHECK(ran && wrong == 0, "ratios as C rounds them, ties among them");
 }
 
+// The same remainders eight words an element: x and d in, x % d out in
+// words 4 and 5 (not over x), words 6 and 7 a value no step writes. Every
+// device runs it, WARP among them, whose JIT gets the in-place shape
+// wrong; inputs and the untouched words must come back as they went.
+static void TestRemaindersApart(Gpu* gpu, Checker* checker)
+{
+    const uint32_t count = CHECKS / 2;
+    uint64_t state = 5;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[8 * e];
+        uint64_t x = DrawBits(&state, 64);
+        PutPair(w, x, DrawBits(&state, 48));
+        w[4] = w[5] = 0;
+        w[6] = w[7] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_REMAINDERS_APART, 0, count);
+    state = 5;
+    int64_t wrong = 0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        uint64_t x = DrawBits(&state, 64);
+        uint64_t d = DrawBits(&state, 48);
+        const uint32_t* w = &checker->words[8 * e];
+        wrong += ((uint64_t)w[1] << 32u | w[0]) != x || ((uint64_t)w[3] << 32u | w[2]) != d ||
+                 ((uint64_t)w[5] << 32u | w[4]) != x % d || w[6] != 0x5A5A5A5Au ||
+                 w[7] != 0x5A5A5A5Au;
+    }
+    CHECK(ran && wrong == 0, "64-bit remainders, eight words an element");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -642,13 +720,20 @@ static void TestExact(Gpu* gpu)
         TestLifeTicks(gpu, &checker);
         TestSums(gpu, &checker);
         TestRemaindersAndRatios(gpu, &checker);
+        TestRemaindersApart(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }
 
 int main(void)
 {
+    // Unbuffered, so that a crash keeps every line printed before it:
+    // ctest reads a pipe, which C's runtime otherwise fills in blocks.
+    (void)setvbuf(stdout, NULL, _IONBF, 0);
     TestRefusals();
+#ifdef MVFX_RHI_D3D12_DEBUG
+    mrhiTestWatchD3d12();
+#endif
     Gpu gpu;
     if (!Open(&gpu))
     {
@@ -664,5 +749,8 @@ int main(void)
     TestPcg4d(&gpu);
     TestExact(&gpu);
     Close(&gpu);
+#ifdef MVFX_RHI_D3D12_DEBUG
+    CHECK(mrhiTestD3d12Errors() == 0, "no D3D12 debug layer error");
+#endif
     return s_failures == 0 ? 0 : 1;
 }

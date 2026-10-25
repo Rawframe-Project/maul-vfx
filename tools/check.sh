@@ -28,9 +28,11 @@
 # out/<preset>; the other trees go to out/check-*. Needs gcc-14, clang-20,
 # clang-tidy-20, ninja, the clang-format version CI pins, and from the pr
 # tier on lavapipe and the Vulkan validation layers, for linux-rhi's GPU
-# sample and extended's suites: the organization's CI image has them all. The web, macOS and Windows cells run in CI only. The org
-# documentation check runs when the organization's .github checkout is at
-# ORG_DEFAULTS (default: ../../.github from the repository).
+# sample and extended's suites: the organization's CI image has them all.
+# The web, macOS and Windows cells run in CI only, rhi_kernels on D3D12
+# among them. The org documentation check runs when the
+# organization's .github checkout is at ORG_DEFAULTS (default:
+# ../../.github from the repository).
 set -euo pipefail
 
 tier=${1:-changed}
