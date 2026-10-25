@@ -372,33 +372,41 @@ if(MAUL_VFX_BUILD_TESTS)
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_agility}
                         $<TARGET_FILE_DIR:test_rhi_sim>/D3D12
                 VERBATIM)
-            # A diagnosis on WARP (to drop): rhi_kernels and rhi_sim again
-            # on the redistributable WARP, beside copies of them in warp/;
-            # rhi_sim with the debug layer and no GPU-based validation, and
-            # with no debug layer.
-            target_sources(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/test/d3d12_diag.c)
+            # A diagnosis on WARP (to drop): rhi_kernels on the Agility SDK's
+            # runtime; rhi_kernels and rhi_sim again on the redistributable
+            # WARP 1.0.18 and 1.0.20, beside copies of them in warp18/ and
+            # warp20/; rhi_sim with no debug layer on the system's WARP.
+            target_sources(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/test/d3d12_diag.c
+                ${PROJECT_SOURCE_DIR}/test/d3d12_agility.c)
             target_compile_definitions(test_rhi_kernels PRIVATE MVFX_D3D12_DIAG)
             target_sources(test_rhi_sim PRIVATE ${PROJECT_SOURCE_DIR}/test/d3d12_diag.c
                 ${PROJECT_SOURCE_DIR}/test/d3d12_no_gbv.c)
             target_compile_definitions(test_rhi_sim PRIVATE MVFX_D3D12_DIAG)
-            set(mvfx_warp_dll "${PROJECT_SOURCE_DIR}/out/warp/build/native/bin/x64/d3d10warp.dll")
-            set(mvfx_warp_dir "$<TARGET_FILE_DIR:test_rhi_sim>/warp")
-            add_custom_target(maul_vfx_warp ALL
-                COMMAND ${CMAKE_COMMAND} -E make_directory ${mvfx_warp_dir}/D3D12
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_agility} ${mvfx_warp_dir}/D3D12
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_warp_dll}
-                        $<TARGET_FILE:test_rhi_kernels> $<TARGET_FILE:test_rhi_sim> ${mvfx_warp_dir}
-                VERBATIM)
-            add_dependencies(maul_vfx_warp test_rhi_kernels test_rhi_sim)
-            add_test(NAME rhi_kernels_warp
-                     COMMAND ${mvfx_warp_dir}/$<TARGET_FILE_NAME:test_rhi_kernels>)
-            add_test(NAME rhi_sim_warp COMMAND ${mvfx_warp_dir}/$<TARGET_FILE_NAME:test_rhi_sim>)
-            add_test(NAME rhi_sim_no_gbv COMMAND test_rhi_sim)
             add_test(NAME rhi_sim_no_debug COMMAND test_rhi_sim)
-            set_tests_properties(rhi_kernels_warp rhi_sim_warp rhi_sim_no_gbv rhi_sim_no_debug
-                                 PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
-            set_tests_properties(rhi_sim_no_gbv PROPERTIES ENVIRONMENT MVFX_D3D12_NO_GBV=1)
-            set_tests_properties(rhi_sim_no_debug PROPERTIES ENVIRONMENT MAUL_RHI_D3D12_DEBUG=)
+            set_tests_properties(rhi_sim_no_debug PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800
+                                 ENVIRONMENT MAUL_RHI_D3D12_DEBUG=)
+            foreach(version 18 20)
+                set(mvfx_warp_dll
+                    "${PROJECT_SOURCE_DIR}/out/warp${version}/build/native/bin/x64/d3d10warp.dll")
+                set(mvfx_warp_dir "$<TARGET_FILE_DIR:test_rhi_sim>/warp${version}")
+                add_custom_target(maul_vfx_warp${version} ALL
+                    COMMAND ${CMAKE_COMMAND} -E make_directory ${mvfx_warp_dir}/D3D12
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_agility}
+                            ${mvfx_warp_dir}/D3D12
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_warp_dll}
+                            $<TARGET_FILE:test_rhi_kernels> $<TARGET_FILE:test_rhi_sim>
+                            ${mvfx_warp_dir}
+                    VERBATIM)
+                add_dependencies(maul_vfx_warp${version} test_rhi_kernels test_rhi_sim)
+                add_test(NAME rhi_kernels_warp${version}
+                         COMMAND ${mvfx_warp_dir}/$<TARGET_FILE_NAME:test_rhi_kernels>)
+                add_test(NAME rhi_sim_warp${version}
+                         COMMAND ${mvfx_warp_dir}/$<TARGET_FILE_NAME:test_rhi_sim>)
+                set_tests_properties(rhi_kernels_warp${version} rhi_sim_warp${version}
+                                     PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
+                set_tests_properties(rhi_sim_warp${version} PROPERTIES
+                                     ENVIRONMENT MVFX_D3D12_NO_GBV=1)
+            endforeach()
         endif()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.

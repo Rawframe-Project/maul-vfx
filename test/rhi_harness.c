@@ -178,9 +178,18 @@ bool Finish(Gpu* gpu)
 {
     mrhiRequestId token = {0};
     double start = Seconds();
+#ifdef MVFX_D3D12_DIAG
+    printf("frame: recorded, submitting\n");
+#endif
     mrhiResult submitted = mrhiSubmitFrame(gpu->device, &token);
+#ifdef MVFX_D3D12_DIAG
+    printf("frame: submitted, waiting\n");
+#endif
     mrhiResult waited =
         submitted == mrhi_success ? mrhiWaitFrame(gpu->device, token, s_waitNs) : mrhi_success;
+#ifdef MVFX_D3D12_DIAG
+    printf("frame: waited\n");
+#endif
     bool done = submitted == mrhi_success && waited == mrhi_success;
     double* longest = s_waitNs == FRAME_WAIT_NS ? &s_longestFrame : &s_longestWarmFrame;
     if (Seconds() - start > *longest)
@@ -2801,7 +2810,13 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         PushWaters(run, s);
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
         s_waitNs = s_warm && s > 0 ? FRAME_WAIT_NS : WARM_WAIT_NS;
+#ifdef MVFX_D3D12_DIAG
+        printf("step %d: stepped on the CPU\n", s);
+#endif
         same = Simulate(gpu, sim) && ReportGases(gpu, sim) && ReportWaters(gpu, sim);
+#ifdef MVFX_D3D12_DIAG
+        printf("step %d: simulated on the GPU\n", s);
+#endif
         if (!same)
         {
             printf("step %d: the simulation was not recorded and finished\n", s);
@@ -2835,6 +2850,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (!run->adopting || AdoptGpu(e));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
         }
+#ifdef MVFX_D3D12_DIAG
+        printf("step %d: emitters read back and compared\n", s);
+#endif
         same = same && SameWaters(gpu, sim, run, s_tolerance) &&
                SameSurfaces(gpu, sim, run, SURFACE_TOLERANCE);
         // The emitter whose records are written read back last, as the
