@@ -468,8 +468,10 @@ fn expand(e: ptr<function, Epa>, p: Point) -> bool {
             for (var j = 0u; j < edgeCount && !twin; j++) {
                 if (edgeAt(&edges, j) == (end | (start << 8u))) {
                     twin = true;
-                    edgeCount -= 1u;
-                    setEdge(&edges, j, edgeAt(&edges, edgeCount));
+                    // Read, then step: maul-rhi's stale_reads falsely refuses the reverse.
+                    let last = edgeCount - 1u;
+                    setEdge(&edges, j, edgeAt(&edges, last));
+                    edgeCount = last;
                 }
             }
             if (!twin) {

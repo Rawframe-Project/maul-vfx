@@ -191,11 +191,13 @@ fn ribbons(@builtin(local_invocation_index) local: u32) {
         var held = 0u;
         var i = counts[1];
         while (i > 0u && held < RIBBON_LOOKBACK) {
-            i--;
-            if ((source[params.words.alive * c + i] & LIVE_ENDED) == 0u) {
-                accepted[windowWord(held)] = i;
+            // Read, then step: maul-rhi's stale_reads falsely refuses the reverse.
+            let below = i - 1u;
+            if ((source[params.words.alive * c + below] & LIVE_ENDED) == 0u) {
+                accepted[windowWord(held)] = below;
                 held++;
             }
+            i = below;
         }
         accepted[headWord()] = held;
         liveCount = birthCount();
@@ -239,8 +241,10 @@ fn placeAppended(local: u32, count: u32) {
     var latest = 0u;
     for (var j = lo; j < hi; j++) {
         if (appended(j)) {
-            kept++;
-            latest = select(latest, kept, takesCounter(j));
+            // Read, then step: maul-rhi's stale_reads falsely refuses the reverse.
+            let next = kept + 1u;
+            latest = select(latest, next, takesCounter(j));
+            kept = next;
         }
     }
     let base = exclusiveScan(local, kept);
