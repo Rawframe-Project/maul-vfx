@@ -343,6 +343,25 @@ static void AddParameterReach(const mvfxEmitterDef* def, float reach[MVFX_MAX_PA
     }
 }
 
+// Whether each parameter's defaults keep the sources reading them within
+// MVFX_MAX_DRAW, for an effect whose emitters are valid.
+static bool AreDefaultsWithinReach(const mvfxEffectDef* def)
+{
+    float reach[MVFX_MAX_PARAMETERS][4] = {{0}};
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        AddParameterReach(&def->emitters[i], reach);
+    }
+    for (int32_t p = 0; p < def->parameterCount; ++p)
+    {
+        if (!mvfxIsParameterWithinReach(&def->parameters[4 * p], reach[p]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whether an emitter's initial values are valid against its effect's
 // parameters.
 static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
@@ -577,19 +596,7 @@ bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
             return false;
         }
     }
-    float reach[MVFX_MAX_PARAMETERS][4] = {{0}};
-    for (int32_t i = 0; i < def->emitterCount; ++i)
-    {
-        AddParameterReach(&def->emitters[i], reach);
-    }
-    for (int32_t p = 0; p < def->parameterCount; ++p)
-    {
-        if (!mvfxIsParameterWithinReach(&def->parameters[4 * p], reach[p]))
-        {
-            return false;
-        }
-    }
-    if (!mvfxAreEffectGasesValid(def))
+    if (!AreDefaultsWithinReach(def) || !mvfxAreEffectGasesValid(def))
     {
         return false;
     }
