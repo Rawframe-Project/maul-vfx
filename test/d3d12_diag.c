@@ -4,6 +4,8 @@
 // A diagnosis on WARP (to drop): which WARP a process loaded, and its
 // version; the stack of a fault, each frame's module and symbol.
 
+// getenv is standard C; MSVC's runtime deprecates it for its own.
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <stdint.h>
 #include <stdio.h>
