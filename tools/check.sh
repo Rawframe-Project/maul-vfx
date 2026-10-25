@@ -6,8 +6,9 @@
 #
 #   tools/check.sh changed    the files changed against origin/main: the
 #                             source rules, the generated files' checks,
-#                             formatting, the documentation checks, and
-#                             the linux-clang-20-asan preset's tests.
+#                             formatting, the documentation checks,
+#                             clang-tidy on the changed library sources,
+#                             and the linux-clang-20-asan preset's tests.
 #                             Under two minutes; run it before every push.
 #   tools/check.sh pr         what the pull request check runs on Linux:
 #                             every check, clang-tidy, the
@@ -89,6 +90,16 @@ source_checks() {
     fi
 }
 
+# clang-tidy on library sources, in a Release tree as CI's: with NDEBUG
+# an assertion's operands are not evaluated, which the analyzer must see.
+tidy() { # files
+    configure tidy -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Release -DMAUL_VFX_RHI=ON \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    printf '%s\n' "$@" |
+        xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy" --quiet --warnings-as-errors='*' \
+            2>/dev/null
+}
+
 # The sources clang-format reads: every C file but the generated tables
 # and kernel containers, which tools write and no one edits.
 all_c_files() {
@@ -116,6 +127,18 @@ if [ "$tier" = changed ]; then
         step "clang-format on ${#present[@]} changed files"
         clang-format --dry-run -Werror "${present[@]}"
     fi
+    # The library sources changed, as the pr tier reads them (the kernel
+    # table left to the full tier).
+    tidy_files=()
+    for f in "${changed[@]}"; do
+        if [[ -f "$f" && "$f" =~ ^(src|rhi/src)/[^/]+\.c$ && "$f" != rhi/src/kernels.c ]]; then
+            tidy_files+=("$f")
+        fi
+    done
+    if [ ${#tidy_files[@]} -gt 0 ]; then
+        step "clang-tidy on ${#tidy_files[@]} changed library files"
+        tidy "${tidy_files[@]}"
+    fi
     if ! printf '%s\n' "${changed[@]}" | grep -qvE '\.md$|^docs/|^LICENSE$|^\.github/'; then
         echo "only documentation changed: no build"
         exit 0
@@ -135,19 +158,13 @@ files=$(all_c_files)
 echo "$files" | xargs -P "$jobs" -n 32 clang-format --dry-run -Werror
 
 step "clang-tidy"
-# Release, as CI's: with NDEBUG an assertion's operands are not evaluated,
-# which the analyzer must see.
-configure tidy -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Release -DMAUL_VFX_RHI=ON \
-    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 # rhi/src/kernels.c includes 70 MB of kernel containers and takes clang-tidy
 # over three minutes, so only the full tier reads it.
 tidy_files=(src/*.c rhi/src/*.c)
 if [ "$tier" = pr ]; then
     mapfile -t tidy_files < <(printf '%s\n' "${tidy_files[@]}" | grep -vx rhi/src/kernels.c)
 fi
-printf '%s\n' "${tidy_files[@]}" |
-    xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy" --quiet --warnings-as-errors='*' \
-        2>/dev/null
+tidy "${tidy_files[@]}"
 
 preset linux-clang-20-asan
 preset linux-gcc-14
