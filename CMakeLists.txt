@@ -317,6 +317,7 @@ if(MAUL_VFX_BUILD_TESTS)
         # compile and run many kernels on lavapipe, which takes over an hour,
         # so they run in the nightly extended check. Any message of the
         # Vulkan validation layer fails them.
+        # hygiene: a device test skips without an adapter, unless a cell requires one
         set_tests_properties(rhi_kernels PROPERTIES SKIP_RETURN_CODE 77
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
         set_property(TEST rhi_kernels APPEND PROPERTY LABELS integration nightly)
@@ -334,6 +335,7 @@ if(MAUL_VFX_BUILD_TESTS)
             # Each compares a step at a time on lavapipe: the longest take
             # over 200 seconds on CI's runners, which vary by half again,
             # so they get 900 in place of a run's default.
+            # hygiene: a device test skips without an adapter, unless a cell requires one
             set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
                                  FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
             set_property(TEST ${suite} APPEND PROPERTY LABELS integration nightly)
@@ -355,6 +357,7 @@ if(MAUL_VFX_BUILD_TESTS)
         # The guide's GPU part blocks on a device.
         maul_add_test(guide_rhi)
         target_link_libraries(test_guide_rhi PRIVATE maul-vfx-rhi)
+        # hygiene: a device test skips without an adapter, unless a cell requires one
         set_tests_properties(guide_rhi PROPERTIES SKIP_RETURN_CODE 77
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
         set_property(TEST guide_rhi APPEND PROPERTY LABELS integration nightly)

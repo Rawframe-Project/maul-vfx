@@ -85,6 +85,7 @@ static void Close(Gpu* gpu)
 static double Seconds(void)
 {
     struct timespec now = {0};
+    // hygiene: bounds waits on the device, never a result
     (void)timespec_get(&now, TIME_UTC);
     return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 }
@@ -659,6 +660,7 @@ int main(void)
             return 1;
         }
         printf("SKIP: no adapter\n");
+        // hygiene: no device here, and no cell requires one
         return s_failures == 0 ? 77 : 1;
     }
     TestPcg4d(&gpu);

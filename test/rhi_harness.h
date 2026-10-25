@@ -231,8 +231,9 @@ typedef void (*SceneSuite)(Gpu* gpu, mvfxGpu* kernels);
 
 // Runs a suite on the first adapter's device (software allowed) with the
 // object's kernels: 77 without an adapter, unless MVFX_RHI_REQUIRED is set
-// (1); 1 when a check of the harness's failed; 0 otherwise.
-int RunSuite(SceneSuite suite);
+// (1); 1 when a check failed, the harness's or one of the suite's, which
+// count in *suiteFailures; 0 otherwise. A suite's main returns it.
+int RunSuite(SceneSuite suite, const int* suiteFailures);
 
 // A sprite emitter: a sphere's shell, cone velocities, gravity and drag,
 // a burst; in the world.

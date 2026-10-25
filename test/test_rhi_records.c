@@ -449,6 +449,5 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
 
 int main(void)
 {
-    int result = RunSuite(Suite);
-    return result == 77 ? 77 : (result == 0 && s_failures == 0 ? 0 : 1);
+    return RunSuite(Suite, &s_failures);
 }

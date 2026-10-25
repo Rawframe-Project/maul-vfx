@@ -67,6 +67,7 @@ preset() {
     shift
     step "preset $name"
     cmake --preset "$name" >"$out/$name.log"
+    python3 tools/check_test_hygiene.py --ctest "out/$name"
     cmake --build --preset "$name" -j "$jobs" >>"$out/$name.log"
     ctest --preset "$name" "$@"
 }
@@ -79,6 +80,8 @@ source_checks() {
     python3 tools/check_lengths.py
     python3 tools/check_docs.py
     python3 tools/check_guide.py
+    python3 tools/check_test_hygiene.py --self-test
+    python3 tools/check_test_hygiene.py
     step "generated files"
     python3 tools/gen_file.py --check
     python3 tools/gen_marching_cubes.py --check

@@ -37,6 +37,7 @@ The macOS, Windows and web cells run in CI only. The organization's documentatio
 | The marching cubes tables | `tools/gen_marching_cubes.py --check` |
 | The kernel containers carry their sources | `tools/gen_kernels.py --check` |
 | The effect fixtures' JSON and binary forms agree | `tools/effect_json.py --check test/fixtures` |
+| No sleep, wall clock, retry or unexplained skip in a test, and every test labeled | `tools/check_test_hygiene.py`: its self-test, the tree, and each configured build's tests (`--ctest`) |
 | Allowed Markdown files, em dash, record numbers, links | the organization's `docs_check.py` |
 
 Each tool's header comment and message state its rule and why.
@@ -54,8 +55,8 @@ The lavapipe presets run one suite at a time, since lavapipe uses every core for
 | Job | What it runs | When |
 |---|---|---|
 | `changes` | Whether anything beyond documentation changed; the build jobs skip when nothing did. | always |
-| `docs`, `zizmor` | The organization's documentation check, and zizmor over the workflows. | always |
-| `checks` | clang-format, the rules above, the generated files' checks, the documentation site's build, clang-tidy (`rhi/src/kernels.c` only off pull requests), and both parts built at `-O0`, where no function may take a stack frame over 64 KB. | always |
+| `docs`, `zizmor` | The organization's documentation check, from the commit the workflow pins (its `docs-check` action), and zizmor over the workflows. | always |
+| `checks` | clang-format, the rules above (test hygiene over the library's build and the GPU part's), the generated files' checks, the documentation site's build, clang-tidy (`rhi/src/kernels.c` only off pull requests), and both parts built at `-O0`, where no function may take a stack frame over 64 KB. | always |
 | `build` | One cell per CMake preset through the organization's `cpp.yml`, in its CI image on Linux: `linux-gcc-14`, `linux-arm64-gcc-14`, `linux-clang-20`, `linux-clang-20-asan` (each test up to three times on a pull request), `linux-clang-20-tsan`, `linux-shared`, `linux-rhi`, `macos-clang` and `windows-clang-cl`. | code changes |
 | `package` | The installed shared library used by `samples/minimal`, and the static library's size. | code changes |
 | `msvc-headers` | The public headers under MSVC's `cl` as C17 and C++17 (`cmake/HeaderCheck`). | code changes |
