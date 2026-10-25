@@ -1,11 +1,11 @@
 # Continuous integration: the pull request check, and the full check on
 # main and every night, which fuzzes longer, runs clang-tidy on the kernel
 # table and adds the GPU part's suites on lavapipe and rhi_kernels on
-# D3D12 (WARP).
-# Each build cell is a CMake preset built by the organization's shared
-# workflow; the other jobs run in the same CI image, except the Emscripten
-# build, which needs the emsdk action. docs/operations/checks.md explains each job, and
-# tools/check.sh runs the Linux presets locally.
+# D3D12 (WARP). Each build cell is a CMake preset built by the
+# organization's shared workflow; the other jobs run in the same CI image,
+# except the Emscripten build, which needs the emsdk action.
+# docs/operations/checks.md explains each job, and tools/check.sh runs the
+# Linux presets locally.
 name: ci
 
 on:
