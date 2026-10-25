@@ -3,11 +3,13 @@
 //
 // The GPU part's blocks of docs/user/, each in a function as it stands
 // there, run on a device on the first adapter (lavapipe on CI); skipped
-// (77) without one unless MVFX_RHI_REQUIRED is set.
+// (77) without one unless MVFX_RHI_REQUIRED is set, whose driver the
+// adapter must be.
 
 // getenv is standard C; MSVC's runtime deprecates it for its own.
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "rhi_driver.h"
 #include "test_harness.h"
 
 #include "maul-rhi/encoder.h"
@@ -30,30 +32,15 @@ typedef struct Gpu
     mrhiDevice* device;
 } Gpu;
 
-// A device on the first adapter, software ones allowed.
-static bool Open(Gpu* gpu)
+// A device on the first adapter, software ones allowed: OpenDevice's
+// result.
+static int Open(Gpu* gpu)
 {
     *gpu = (Gpu){0};
-    mrhiInstanceDef def = mrhiDefaultInstanceDef();
-    mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
-    search.allowSoftware = true;
-    mrhiRequestId request;
-    mrhiInstanceNotification record;
+    mrhiDeviceDef def = mrhiDefaultDeviceDef();
     mrhiAdapterId adapter;
-    size_t count = 0;
-    if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
-        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
-        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
-        record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
-    {
-        return false;
-    }
-    mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
-    deviceDef.adapter = adapter;
-    return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
-           mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
-           record.outcome == mrhi_success;
+    int opened = OpenDevice(def, &gpu->instance, &adapter, &gpu->device);
+    return opened;
 }
 
 static void Close(Gpu* gpu)
@@ -201,17 +188,11 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
 int main(void)
 {
     Gpu gpu;
-    if (!Open(&gpu))
+    int opened = Open(&gpu);
+    if (opened != 0)
     {
         Close(&gpu);
-        if (getenv("MVFX_RHI_REQUIRED") != NULL)
-        {
-            printf("FAIL: no adapter, and MVFX_RHI_REQUIRED is set\n");
-            return 1;
-        }
-        printf("SKIP: no adapter\n");
-        // hygiene: no device here, and no cell requires one
-        return 77;
+        return opened;
     }
     mvfxGpuDef def = mvfxDefaultGpuDef();
     def.device = gpu.device;
