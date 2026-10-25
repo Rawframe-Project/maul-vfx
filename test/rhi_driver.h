@@ -57,11 +57,11 @@ static inline bool IsWarp(mrhiInstance* instance, mrhiAdapterId adapter)
 
 // Opens a device as def asks on the first adapter the instance's drivers
 // find, software ones allowed: 0 with *instance, *adapter and *device made;
-// 77 when the search finds no adapter, so the test skips, unless
-// MVFX_RHI_REQUIRED is set (1); 1 when the instance is not made, the
-// adapter is not the driver MVFX_RHI_REQUIRED names, or its device is not
-// made. Each result but 0 says why. The caller destroys what was made,
-// whatever the result.
+// 77 when the search succeeds and finds no adapter, so the test skips,
+// unless MVFX_RHI_REQUIRED is set (1); 1 when the instance is not made, the
+// search fails, the adapter is not the driver MVFX_RHI_REQUIRED names, or
+// its device is not made. Each result but 0 says why. The caller destroys
+// what was made, whatever the result.
 static inline int OpenDevice(mrhiDeviceDef def, mrhiInstance** instance, mrhiAdapterId* adapter,
                              mrhiDevice** device)
 {
@@ -83,15 +83,19 @@ static inline int OpenDevice(mrhiDeviceDef def, mrhiInstance** instance, mrhiAda
     found = found == mrhi_success ? mrhiNextInstanceNotification(*instance, &record) : found;
     found = found == mrhi_success ? record.outcome : found;
     found = found == mrhi_success ? mrhiGetAdapters(*instance, adapter, 1, &count) : found;
-    if (found != mrhi_success || count == 0)
+    if (found != mrhi_success)
     {
-        const char* answer = found == mrhi_success ? "none found" : mrhiResultName(found);
+        printf("FAIL: the adapter search failed: %s\n", mrhiResultName(found));
+        return 1;
+    }
+    if (count == 0)
+    {
         if (getenv("MVFX_RHI_REQUIRED") != NULL)
         {
-            printf("FAIL: no adapter (%s), and MVFX_RHI_REQUIRED is set\n", answer);
+            printf("FAIL: no adapter, and MVFX_RHI_REQUIRED is set\n");
             return 1;
         }
-        printf("SKIP: no adapter (%s)\n", answer);
+        printf("SKIP: no adapter\n");
         // hygiene: no device here, and no cell requires one
         return 77;
     }

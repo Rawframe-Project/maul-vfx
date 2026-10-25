@@ -5,8 +5,11 @@
 // of one context, one stepped on the CPU and one planned and simulated on
 // a device on the first adapter through Maul RHI. Each second the host
 // reads the device's statistics record back and compares its live count
-// and bounds with the CPU instance's. It returns 0 when they agree, and
-// 77 (skipped) when there is no adapter.
+// and bounds with the CPU instance's. It returns 0 when they agree, 77
+// (skipped) when the adapter search finds none, and 1 on any failure,
+// which says what failed. As the tests do, it fails rather than skips
+// when MVFX_RHI_REQUIRED is set, and fails on an adapter of another
+// driver than the one it names ("vulkan" or "d3d12").
 
 #include "maul-vfx-rhi/gpu.h"
 
@@ -23,6 +26,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 // Ten seconds, the most a frame is waited for once the kernels are ready.
@@ -62,44 +67,77 @@ static double Seconds(void)
 }
 
 // A device on the first adapter, software ones allowed, and the part's
-// GPU object with its pipelines ready (a minute at most).
-static bool Open(Gpu* gpu)
+// GPU object with its pipelines ready (a minute at most): 0, 77 when the
+// search finds no adapter, or 1.
+static int Open(Gpu* gpu)
 {
     mrhiInstanceDef def = mrhiDefaultInstanceDef();
     mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
     search.allowSoftware = true;
     mrhiRequestId request;
-    mrhiInstanceNotification record;
+    mrhiInstanceNotification record = {0};
     mrhiAdapterId adapter;
     size_t count = 0;
-    if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
-        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
-        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
-        record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
+    mrhiResult made = mrhiCreateInstance(&def, &gpu->instance);
+    if (made != mrhi_success)
     {
-        return false;
+        printf("the instance was not made: %s\n", mrhiResultName(made));
+        return 1;
+    }
+    mrhiResult found = mrhiRequestAdapters(gpu->instance, &search, &request);
+    found = found == mrhi_success ? mrhiNextInstanceNotification(gpu->instance, &record) : found;
+    found = found == mrhi_success ? record.outcome : found;
+    found = found == mrhi_success ? mrhiGetAdapters(gpu->instance, &adapter, 1, &count) : found;
+    if (found != mrhi_success)
+    {
+        printf("the adapter search failed: %s\n", mrhiResultName(found));
+        return 1;
+    }
+    const char* required = getenv("MVFX_RHI_REQUIRED");
+    if (count == 0)
+    {
+        printf(required != NULL ? "no adapter, and MVFX_RHI_REQUIRED is set\n"
+                                : "no adapter: skipped\n");
+        return required != NULL ? 1 : 77;
+    }
+    mrhiAdapterInfo info = {0};
+    if (required != NULL &&
+        (mrhiGetAdapterInfo(gpu->instance, adapter, &info) != mrhi_success ||
+         (strcmp(required, "vulkan") == 0 && info.driver != mrhi_driverVulkan) ||
+         (strcmp(required, "d3d12") == 0 && info.driver != mrhi_driverD3d12)))
+    {
+        printf("the adapter is not the %s driver's, which MVFX_RHI_REQUIRED names\n", required);
+        return 1;
     }
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
-    mvfxGpuDef gpuDef = mvfxDefaultGpuDef();
-    if (mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) != mrhi_success ||
-        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
-        record.outcome != mrhi_success)
+    mrhiResult opened = mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request);
+    opened = opened == mrhi_success ? mrhiNextInstanceNotification(gpu->instance, &record) : opened;
+    opened = opened == mrhi_success ? record.outcome : opened;
+    if (opened != mrhi_success)
     {
-        return false;
+        printf("the adapter's device was not made: %s\n", mrhiResultName(opened));
+        return 1;
     }
+    mvfxGpuDef gpuDef = mvfxDefaultGpuDef();
     gpuDef.device = gpu->device;
-    if (mvfxCreateGpu(&gpuDef, &gpu->kernels) != mvfx_success)
+    mvfxResult kernels = mvfxCreateGpu(&gpuDef, &gpu->kernels);
+    if (kernels != mvfx_success)
     {
-        return false;
+        printf("the GPU object was not made: %s\n", mvfxResultName(kernels));
+        return 1;
     }
     double deadline = Seconds() + 60.0;
     while (!mvfxGpu_IsReady(gpu->kernels) && Seconds() < deadline)
     {
         Drain(gpu);
     }
-    return mvfxGpu_IsReady(gpu->kernels);
+    if (!mvfxGpu_IsReady(gpu->kernels))
+    {
+        printf("the GPU object's pipelines were not ready in a minute\n");
+        return 1;
+    }
+    return 0;
 }
 
 static void Close(Gpu* gpu)
@@ -281,11 +319,11 @@ static bool Play(Gpu* gpu)
 int main(void)
 {
     Gpu gpu = {.waitNs = FIRST_WAIT_NS};
-    if (!Open(&gpu))
+    int opened = Open(&gpu);
+    if (opened != 0)
     {
         Close(&gpu);
-        printf("no adapter: skipped\n");
-        return 77;
+        return opened;
     }
     bool ok = Play(&gpu);
     Close(&gpu);
