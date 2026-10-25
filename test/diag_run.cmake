@@ -41,4 +41,5 @@ if(PAGEHEAP)
     execute_process(COMMAND reg delete "${ifeo}" /f)
     message("full page heap off for ${name}")
 endif()
-message("result: ${result}")
+# Always failed, so that ctest prints the whole output.
+message(FATAL_ERROR "result: ${result}")
