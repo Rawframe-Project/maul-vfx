@@ -6,6 +6,45 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.3.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.2.0...v0.3.0) (2026-10-25)
+
+### Changed
+
+- **Breaking:** every value a source draws is now finite. The new
+  `MVFX_MAX_DRAW` (1e38, `value.h`) bounds it: a source's base at its
+  largest size times the larger size of its ends must be at most that.
+  The base is a curve's largest baked value (a cubic's rise between keys
+  counts, not only its keys), a gradient's largest colour or alpha key,
+  or a parameter's value. Refused:
+  - an effect with a curve or gradient source past the bound, made from
+    a def or read from an effect file;
+  - an effect whose parameter defaults take a source reading them past
+    it, each component checked against the ends of the sources that
+    read it;
+  - a value set with `mvfxInstance_SetParameter` that does the same,
+    with `mvfx_errorInvalid`, counted as misuse; a component no source
+    reads takes any finite value.
+
+  Before, a curve key of 1e18 between ends of 1e30 drew an infinite
+  value. The effect file's bytes and version are unchanged, and so are
+  the simulation's results for every effect still taken. Values can
+  still become infinite after a birth, through the over-life products (a
+  size times its size over life, a colour times its colour over life, a
+  rotation speed times its scale), which
+  [#53](https://github.com/Rawframe-Project/maul-vfx/issues/53) tracks
+  ([#55](https://github.com/Rawframe-Project/maul-vfx/pull/55)).
+
+### Fixed
+
+- The GPU part gives a NaN the value the CPU path gives wherever a
+  kernel turns a float into an integer (a lattice cell, a sample count,
+  a curve's sample, a capsule's core spans, a contact's tick). It holds
+  the float as the core's `fminf(fmaxf(v, low), high)` does, taking a
+  NaN to `low`, where before the integer depended on the driver. Every
+  finite value converts as before, so results and the GPU part's
+  tolerances are unchanged
+  ([#54](https://github.com/Rawframe-Project/maul-vfx/pull/54)).
+
 ## [0.2.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.1.2...v0.2.0) (2026-10-25)
 
 ### Changed
