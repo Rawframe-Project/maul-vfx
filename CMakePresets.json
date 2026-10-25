@@ -196,7 +196,7 @@
       "configurePreset": "windows-rhi-d3d12",
       "configuration": "Debug",
       "description": "The GPU part's suites on WARP, which must be found as a D3D12 adapter; the harness suites under the Agility SDK's debug layer and GPU-based validation, whose errors fail them. The validation's resource state tracking is off, as in Maul RHI's windows-d3d12 cell: it reports false errors on a device whose objects were made and released before.",
-      "filter": { "include": { "name": "^rhi_(sim_cdb|kernels_warp20_cdb)$" } },
+      "filter": { "include": { "name": "^rhi_(kernels|sim)_warp20_(main|big)$" } },
       "environment": {
         "MVFX_RHI_REQUIRED": "d3d12",
         "MAUL_RHI_D3D12_DEBUG": "1",

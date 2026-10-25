@@ -29,6 +29,7 @@ if(cdb)
         "sxe -c \".echo first chance; kn 60; gn\" -c2 \".echo second chance; .ecxr; kn 60; q\" av\n"
         "sxe -c \".echo heap corruption; kn 60; q\" c0000374\n"
         "sxe -c \".echo fail fast; kn 60; q\" c0000409\n"
+        "sxe -c \".echo stack overflow; kn 200; q\" c00000fd\n"
         "g\n")
     file(WRITE "${dir}/${name}.in" "q\n")
     execute_process(COMMAND "${cdb}" -G -lines -cf "${dir}/${name}.cdb" "${EXE}"

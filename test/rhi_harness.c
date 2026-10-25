@@ -31,6 +31,7 @@
 // A diagnosis on WARP (to drop): test/d3d12_diag.c and d3d12_no_gbv.c.
 void mvfxDiagWarp(void);
 void mvfxDiagCatch(void);
+int mvfxDiagOnBigStack(int (*body)(void*), void* argument);
 void mvfxDiagWatchWithoutGbv(void);
 uint32_t mvfxDiagErrors(void);
 #endif
@@ -3085,14 +3086,32 @@ static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
             "the ribbons' warm-up");
 }
 
+static int RunSuiteHere(SceneSuite suite);
+
+#ifdef MVFX_D3D12_DIAG
+static int RunSuiteOf(void* suite)
+{
+    return RunSuiteHere(*(SceneSuite*)suite);
+}
+#endif
+
 int RunSuite(SceneSuite suite)
+{
+#ifdef MVFX_D3D12_DIAG
+    mvfxDiagCatch();
+    return mvfxDiagOnBigStack(RunSuiteOf, &suite);
+#else
+    return RunSuiteHere(suite);
+#endif
+}
+
+static int RunSuiteHere(SceneSuite suite)
 {
     // Unbuffered, so that a crash keeps every line printed before it:
     // ctest reads a pipe, which C's runtime otherwise fills in blocks.
     (void)setvbuf(stdout, NULL, _IONBF, 0);
     Gpu gpu;
 #ifdef MVFX_D3D12_DIAG
-    mvfxDiagCatch();
     const char* noGbv = getenv("MVFX_D3D12_NO_GBV");
     if (noGbv != NULL && noGbv[0] != '\0')
     {

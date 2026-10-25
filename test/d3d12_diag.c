@@ -7,6 +7,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 // dbghelp.h needs windows.h's types first.
 // clang-format off
@@ -19,6 +20,44 @@
 
 void mvfxDiagWarp(void);
 void mvfxDiagCatch(void);
+int mvfxDiagOnBigStack(int (*body)(void*), void* argument);
+
+typedef struct BigStack
+{
+    int (*body)(void*);
+    void* argument;
+    int result;
+} BigStack;
+
+static DWORD WINAPI RunBigStack(LPVOID parameter)
+{
+    BigStack* run = parameter;
+    run->result = run->body(run->argument);
+    return 0;
+}
+
+// Runs body on a thread of 8 MB of stack, against a main thread's 1 MB,
+// when MVFX_DIAG_THREAD is set; on the calling thread otherwise.
+int mvfxDiagOnBigStack(int (*body)(void*), void* argument)
+{
+    const char* asked = getenv("MVFX_DIAG_THREAD");
+    if (asked == NULL || asked[0] == '\0')
+    {
+        return body(argument);
+    }
+    printf("on a thread of 8 MB of stack\n");
+    BigStack run = {.body = body, .argument = argument, .result = 1};
+    HANDLE thread = CreateThread(NULL, (SIZE_T)8 << 20u, RunBigStack, &run,
+                                 STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+    if (thread == NULL)
+    {
+        printf("FAIL: no thread\n");
+        return 1;
+    }
+    (void)WaitForSingleObject(thread, INFINITE);
+    (void)CloseHandle(thread);
+    return run.result;
+}
 
 static void PrintFrame(DWORD64 address)
 {

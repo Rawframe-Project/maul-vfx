@@ -34,6 +34,7 @@
 #ifdef MVFX_D3D12_DIAG
 void mvfxDiagWarp(void);
 void mvfxDiagCatch(void);
+int mvfxDiagOnBigStack(int (*body)(void*), void* argument);
 #endif
 
 #define WORDS   4096
@@ -923,11 +924,9 @@ static void TestExact(Gpu* gpu)
     CloseChecker(gpu, &checker);
 }
 
-int main(void)
+static int Run(void* unused)
 {
-#ifdef MVFX_D3D12_DIAG
-    mvfxDiagCatch();
-#endif
+    (void)unused;
     TestRefusals();
     Gpu gpu;
     if (!Open(&gpu))
@@ -948,4 +947,14 @@ int main(void)
 #endif
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
+}
+
+int main(void)
+{
+#ifdef MVFX_D3D12_DIAG
+    mvfxDiagCatch();
+    return mvfxDiagOnBigStack(Run, NULL);
+#else
+    return Run(NULL);
+#endif
 }

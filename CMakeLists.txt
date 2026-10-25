@@ -407,18 +407,34 @@ if(MAUL_VFX_BUILD_TESTS)
                 set_tests_properties(rhi_sim_warp${version} PROPERTIES
                                      ENVIRONMENT MVFX_D3D12_NO_GBV=1)
             endforeach()
-            # Under cdb: rhi_sim with no debug layer and full page heap, and
-            # rhi_kernels on WARP 1.0.20 beside it.
-            add_test(NAME rhi_sim_cdb
-                     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:test_rhi_sim> -DPAGEHEAP=ON
-                             -P ${PROJECT_SOURCE_DIR}/test/diag_run.cmake)
-            set_tests_properties(rhi_sim_cdb PROPERTIES TIMEOUT 1800
-                                 ENVIRONMENT MAUL_RHI_D3D12_DEBUG=)
-            add_test(NAME rhi_kernels_warp20_cdb
-                     COMMAND ${CMAKE_COMMAND}
-                             -DEXE=$<TARGET_FILE_DIR:test_rhi_sim>/warp20/$<TARGET_FILE_NAME:test_rhi_kernels>
-                             -P ${PROJECT_SOURCE_DIR}/test/diag_run.cmake)
-            set_tests_properties(rhi_kernels_warp20_cdb PROPERTIES TIMEOUT 1800)
+            # Under cdb on WARP 1.0.20: rhi_kernels, and rhi_sim with no
+            # debug layer and full page heap, each on the main thread and on
+            # a thread of 8 MB of stack.
+            set(mvfx_warp20 "$<TARGET_FILE_DIR:test_rhi_sim>/warp20")
+            foreach(stack main big)
+                add_test(NAME rhi_kernels_warp20_${stack}
+                         COMMAND ${CMAKE_COMMAND}
+                                 -DEXE=${mvfx_warp20}/$<TARGET_FILE_NAME:test_rhi_kernels>
+                                 -P ${PROJECT_SOURCE_DIR}/test/diag_run.cmake)
+                add_test(NAME rhi_sim_warp20_${stack}
+                         COMMAND ${CMAKE_COMMAND}
+                                 -DEXE=${mvfx_warp20}/$<TARGET_FILE_NAME:test_rhi_sim> -DPAGEHEAP=ON
+                                 -P ${PROJECT_SOURCE_DIR}/test/diag_run.cmake)
+                set(mvfx_kernels_env "")
+                set(mvfx_sim_env "MAUL_RHI_D3D12_DEBUG=")
+                if(stack STREQUAL "big")
+                    list(APPEND mvfx_kernels_env "MVFX_DIAG_THREAD=1")
+                    list(APPEND mvfx_sim_env "MVFX_DIAG_THREAD=1")
+                endif()
+                set_tests_properties(rhi_kernels_warp20_${stack} rhi_sim_warp20_${stack}
+                                     PROPERTIES TIMEOUT 1800)
+                if(mvfx_kernels_env)
+                    set_tests_properties(rhi_kernels_warp20_${stack} PROPERTIES
+                                         ENVIRONMENT "${mvfx_kernels_env}")
+                endif()
+                set_tests_properties(rhi_sim_warp20_${stack} PROPERTIES
+                                     ENVIRONMENT "${mvfx_sim_env}")
+            endforeach()
         endif()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.
