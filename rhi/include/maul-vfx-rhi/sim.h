@@ -381,8 +381,8 @@ extern "C"
     ///         `mvfx_errorState` while the simulation is destroyed or from
     ///         the context's host code.
     /// @par Thread safety
-    /// Safe from any thread; the context and the device are each used by
-    /// one thread at a time.
+    /// Safe from any thread; the context and the device are used by one
+    /// thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_SetEmitterMesh(mvfxGpuSim* sim,
                                                                      mvfxContext* context,
                                                                      int32_t emitter,
