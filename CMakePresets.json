@@ -202,6 +202,7 @@
         "MAUL_RHI_D3D12_DEBUG": "1",
         "MAUL_RHI_D3D12_GBV_STATES": "0"
       },
+      "output": { "outputOnFailure": true, "verbosity": "verbose" },
       "execution": { "noTestsAction": "error", "timeout": 1800, "jobs": 1 }
     }
   ]

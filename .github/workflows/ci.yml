@@ -357,7 +357,7 @@ jobs:
       preset: windows-rhi-d3d12
       runner: windows-2025
       setup: tools/ci_agility.sh
-      timeout: 120
+      timeout: 30
 
   # The one check the ruleset requires: it passes when every job above
   # passed or was skipped (for a documentation-only change, or a nightly
