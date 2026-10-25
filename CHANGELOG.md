@@ -8,19 +8,32 @@ simulation's results.
 
 ## [0.2.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.1.2...v0.2.0) (2026-10-25)
 
+### Changed
 
-### ⚠ BREAKING CHANGES
+- **Breaking:** the GPU part (`maul-vfx-rhi`) now builds on Maul RHI
+  0.3.0 instead of 0.0.1. Its public headers include Maul RHI's, and a
+  host hands it its own Maul RHI device, so a host that uses Maul RHI
+  itself moves to 0.3.0 too. A Maul RHI driver built outside Maul RHI's
+  tree must be rebuilt for its driver interface version 7. What a host
+  gets from Maul RHI 0.1.0 to 0.3.0:
+  - on Direct3D 12, the GPU part's transfer passes (uploads, clears and
+    copies, all of buffers) run on a copy queue of their own, each after
+    the passes it depends on; a device also takes more memory from the
+    host's allocator when it is made;
+  - a buffer read in a second read state takes the barrier it was
+    missing, which can raise a frame's barrier count.
 
-* **gpu:** the GPU part needs Maul RHI 0.3.0, as its public headers include Maul RHI's and a host hands it its own device; a host on an earlier Maul RHI moves too, and a Maul RHI driver built outside its tree is rebuilt for SPI 7.
+  The core is unchanged, and so are the simulation's results, the effect
+  file format and the GPU part's tolerances
+  ([#49](https://github.com/Rawframe-Project/maul-vfx/pull/49)).
 
 ### Fixed
 
-* **spawn:** give births before a loop's start delay a source age of 0 ([#50](https://github.com/Rawframe-Project/maul-vfx/issues/50)) ([1f2dfef](https://github.com/Rawframe-Project/maul-vfx/commit/1f2dfef8f381f95f73b56e7b2e8d177e4431d742)), closes [#15](https://github.com/Rawframe-Project/maul-vfx/issues/15) [#52](https://github.com/Rawframe-Project/maul-vfx/issues/52)
-
-
-### Build
-
-* **gpu:** take Maul RHI 0.3.0 ([#49](https://github.com/Rawframe-Project/maul-vfx/issues/49)) ([ad687bb](https://github.com/Rawframe-Project/maul-vfx/commit/ad687bb7199408f57c990c9ceb89ad126c52de0c))
+- A planned instance's births that the host spawns before a looping
+  emitter's start delay ends now report a `sourceAge` of 0 in their plan
+  (`mvfxPlannedBirth`), the loop's start, instead of a negative share of
+  the loop. What those births draw is unchanged
+  ([#50](https://github.com/Rawframe-Project/maul-vfx/pull/50)).
 
 ## [0.1.2](https://github.com/Rawframe-Project/maul-vfx/releases/tag/v0.1.2) (2026-10-24)
 
