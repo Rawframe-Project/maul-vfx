@@ -19,7 +19,7 @@ Run `changed` before every push. Run the other tiers through the workspace's hea
 /home/rawframe-project/tools/heavy.sh tools/check.sh full
 ```
 
-The macOS, Windows and web cells run in CI only. The organization's documentation check runs when the `.github` repository is checked out beside the workspace (`ORG_DEFAULTS` overrides where).
+The macOS, Windows and web cells run in CI only, `windows-d3d12` among them. The organization's documentation check runs when the `.github` repository is checked out beside the workspace (`ORG_DEFAULTS` overrides where).
 
 ## The rules
 
@@ -42,9 +42,11 @@ Each tool's header comment and message state its rule and why.
 
 ## Labels
 
-Every suite `test/test_<name>.c` carries the label `<name>`; `ctest -L <label>` runs one suite. The samples carry `sample`. Tests that drive a device carry `integration`; `-LE integration` leaves them out. The GPU part's suites among them also carry `nightly`: they run in the `linux-rhi-lavapipe` presets of the nightly check, while `linux-rhi` runs the GPU sample on lavapipe as the pull request's smoke test. A device suite that finds no adapter exits 77 and counts as skipped, unless `MVFX_RHI_REQUIRED` is set, as the lavapipe presets set it; CI fails a cell with a skipped test.
+Every suite `test/test_<name>.c` carries the label `<name>`; `ctest -L <label>` runs one suite. The samples carry `sample`. Tests that drive a device carry `integration`; `-LE integration` leaves them out. The GPU part's suites among them also carry `nightly`: they run in the `linux-rhi-lavapipe` presets of the nightly check, while `linux-rhi` runs the GPU sample on lavapipe as the pull request's smoke test. A device suite that finds no adapter exits 77 and counts as skipped, unless `MVFX_RHI_REQUIRED` is set, as the device presets set it; CI fails a cell with a skipped test. Set to `vulkan` or `d3d12`, as the lavapipe and D3D12 presets set it, the harness suites also fail on an adapter of another driver.
 
 The lavapipe presets run one suite at a time, since lavapipe uses every core for one suite, and fail a test whose output holds a message of the Vulkan validation layer (`Validation Error` or a `VUID-`).
+
+The `windows-rhi-d3d12` preset runs the same suites on WARP, D3D12's software adapter, one at a time. Its harness suites run under the Agility SDK's debug layer and GPU-based validation, and fail on any error the layer reports, through Maul RHI's own `test/d3d12_debug.c` from the tree CMake fetches at the pinned version (`MAUL_VFX_D3D12_AGILITY` names the SDK's DLLs; `tools/ci_agility.sh` fetches them with Maul RHI's script at that version). The validation's resource state tracking is off, as in Maul RHI's own D3D12 cell, where it reports false errors.
 
 ## CI
 
@@ -61,6 +63,7 @@ The lavapipe presets run one suite at a time, since lavapipe uses every core for
 | `web-emscripten` | The suites under Node, and the library's size. | code changes |
 | `fuzz` | Both fuzz targets, 30 seconds each on a pull request and 300 elsewhere; the fixtures written again by the library. | code changes |
 | `extended` | The GPU part's suites on lavapipe, `linux-rhi-lavapipe` and `linux-rhi-lavapipe-asan`, up to two hours. | nightly and by hand |
+| `windows-d3d12` | The GPU part's suites on D3D12 (WARP), `windows-rhi-d3d12`, under the Agility SDK's debug layer. | nightly and by hand |
 
 `cpp.yml` restores ccache and the Mesa shader cache on every run and saves them only from `main`, so a pull request starts from `main`'s latest build. The shader cache is kept per CPU model, feature set and core count, since lavapipe keys its cache on them. A cell fails when a test is skipped or not run, and uploads its test logs when it fails.
 

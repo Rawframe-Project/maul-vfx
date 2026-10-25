@@ -21,6 +21,9 @@
 #include "rhi_surfaces.h"
 #include "rhi_waters.h"
 #include "test_harness.h"
+#ifdef MVFX_RHI_D3D12_DEBUG
+#include "d3d12_debug.h"
+#endif
 
 #include "kernels/depth_fill_container.h"
 #include "maul-rhi/encoder.h"
@@ -62,6 +65,35 @@ static double s_longestWarmFrame;
 // The ticks a step of the run takes.
 static int64_t s_stepTicks = STEP_TICKS;
 
+// Whether the adapter is the driver MVFX_RHI_REQUIRED names, "vulkan" or
+// "d3d12", so that a cell meant for one driver cannot pass on another; any
+// other value takes any adapter.
+static bool IsRequiredDriver(mrhiInstance* instance, mrhiAdapterId adapter)
+{
+    const char* required = getenv("MVFX_RHI_REQUIRED");
+    mrhiDriverKind driver;
+    if (required != NULL && strcmp(required, "vulkan") == 0)
+    {
+        driver = mrhi_driverVulkan;
+    }
+    else if (required != NULL && strcmp(required, "d3d12") == 0)
+    {
+        driver = mrhi_driverD3d12;
+    }
+    else
+    {
+        return true;
+    }
+    mrhiAdapterInfo info;
+    if (mrhiGetAdapterInfo(instance, adapter, &info) != mrhi_success || info.driver != driver)
+    {
+        printf("FAIL: the adapter is not the %s driver's, which MVFX_RHI_REQUIRED names\n",
+               required);
+        return false;
+    }
+    return true;
+}
+
 static bool Open(Gpu* gpu)
 {
     *gpu = (Gpu){0};
@@ -76,7 +108,8 @@ static bool Open(Gpu* gpu)
         mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
         mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
         record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
+        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0 ||
+        !IsRequiredDriver(gpu->instance, adapter))
     {
         return false;
     }
@@ -3024,6 +3057,9 @@ static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
 int RunSuite(SceneSuite suite)
 {
     Gpu gpu;
+#ifdef MVFX_RHI_D3D12_DEBUG
+    mrhiTestWatchD3d12();
+#endif
     if (!Open(&gpu))
     {
         Close(&gpu);
@@ -3050,5 +3086,8 @@ int RunSuite(SceneSuite suite)
     (void)mrhiDestroyShader(gpu.device, s_fillShader);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
+#ifdef MVFX_RHI_D3D12_DEBUG
+    CHECK(mrhiTestD3d12Errors() == 0, "no D3D12 debug layer error");
+#endif
     return s_failures == 0 ? 0 : 1;
 }

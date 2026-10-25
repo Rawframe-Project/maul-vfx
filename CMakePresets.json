@@ -104,6 +104,15 @@
       "inherits": "base",
       "toolset": { "value": "ClangCL", "strategy": "set" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "windows-rhi-d3d12",
+      "displayName": "clang-cl, assertions on, the GPU part's suites on D3D12 (WARP) under the Agility SDK's debug layer",
+      "inherits": "windows-clang-cl",
+      "cacheVariables": {
+        "MAUL_VFX_RHI": "ON",
+        "MAUL_VFX_D3D12_AGILITY": "${sourceDir}/out/agility/build/native/bin/x64"
+      }
     }
   ],
   "buildPresets": [
@@ -118,7 +127,8 @@
     { "name": "linux-rhi-lavapipe-asan", "configurePreset": "linux-rhi-lavapipe-asan" },
     { "name": "web-emscripten", "configurePreset": "web-emscripten" },
     { "name": "macos-clang", "configurePreset": "macos-clang" },
-    { "name": "windows-clang-cl", "configurePreset": "windows-clang-cl", "configuration": "Release" }
+    { "name": "windows-clang-cl", "configurePreset": "windows-clang-cl", "configuration": "Release" },
+    { "name": "windows-rhi-d3d12", "configurePreset": "windows-rhi-d3d12", "configuration": "Debug" }
   ],
   "testPresets": [
     {
@@ -150,7 +160,7 @@
       "inherits": "base",
       "description": "The GPU part's suites on lavapipe, which must be found; a suite's warm-up may compile every kernel, minutes without a shader cache. The harness suites' own 900-second timeout bounds them; the others get 30 minutes.",
       "filter": { "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" } },
-      "environment": { "MVFX_RHI_REQUIRED": "1" },
+      "environment": { "MVFX_RHI_REQUIRED": "vulkan" },
       "execution": { "noTestsAction": "error", "timeout": 1800, "jobs": 1 }
     },
     {
@@ -179,6 +189,20 @@
       "inherits": "base",
       "configurePreset": "windows-clang-cl",
       "configuration": "Release"
+    },
+    {
+      "name": "windows-rhi-d3d12",
+      "inherits": "base",
+      "configurePreset": "windows-rhi-d3d12",
+      "configuration": "Debug",
+      "description": "The GPU part's suites on WARP, which must be found as a D3D12 adapter; the harness suites under the Agility SDK's debug layer and GPU-based validation, whose errors fail them. The validation's resource state tracking is off, as in Maul RHI's windows-d3d12 cell: it reports false errors on a device whose objects were made and released before.",
+      "filter": { "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" } },
+      "environment": {
+        "MVFX_RHI_REQUIRED": "d3d12",
+        "MAUL_RHI_D3D12_DEBUG": "1",
+        "MAUL_RHI_D3D12_GBV_STATES": "0"
+      },
+      "execution": { "noTestsAction": "error", "timeout": 1800, "jobs": 1 }
     }
   ]
 }

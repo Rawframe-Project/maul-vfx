@@ -44,7 +44,7 @@ cmake --build --preset linux-rhi-lavapipe
 /home/rawframe-project/tools/heavy.sh ctest --preset linux-rhi-lavapipe -R rhi_events
 ```
 
-A device suite exits 77 and counts as skipped without an adapter, unless `MVFX_RHI_REQUIRED` is set, as those presets set it. The first frame of a run compiles every kernel it dispatches: minutes on lavapipe with an empty shader cache, a fraction of a second with a warm one. lavapipe keys its cache on the CPU, its count included, so pinning a run to other cores (`taskset`) starts it cold.
+A device suite exits 77 and counts as skipped without an adapter, unless `MVFX_RHI_REQUIRED` is set, as those presets set it (to `vulkan`: the harness suites then also refuse an adapter of another driver). The first frame of a run compiles every kernel it dispatches: minutes on lavapipe with an empty shader cache, a fraction of a second with a warm one. lavapipe keys its cache on the CPU, its count included, so pinning a run to other cores (`taskset`) starts it cold.
 
 ## Generated files
 
