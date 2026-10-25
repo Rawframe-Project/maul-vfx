@@ -33,7 +33,7 @@ if(cdb)
         "g\n")
     file(WRITE "${dir}/${name}.in" "q\n")
     execute_process(COMMAND "${cdb}" -G -lines -cf "${dir}/${name}.cdb" "${EXE}"
-                    INPUT_FILE "${dir}/${name}.in" RESULT_VARIABLE result TIMEOUT 1500)
+                    INPUT_FILE "${dir}/${name}.in" RESULT_VARIABLE result TIMEOUT 3300)
 else()
     message("no cdb on this runner: the exe alone")
     execute_process(COMMAND "${EXE}" RESULT_VARIABLE result TIMEOUT 1500)

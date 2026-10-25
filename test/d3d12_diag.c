@@ -38,8 +38,9 @@ static DWORD WINAPI RunBigStack(LPVOID parameter)
     return 0;
 }
 
-// Runs body on a thread of 8 MB of stack, against a main thread's 1 MB,
-// when MVFX_DIAG_THREAD is set; on the calling thread otherwise.
+// Runs body on a thread of MVFX_DIAG_THREAD MB of stack reserved (8 for
+// 1), against a main thread's 1 MB, when it is set; on the calling
+// thread otherwise.
 int mvfxDiagOnBigStack(int (*body)(void*), void* argument)
 {
     const char* asked = getenv("MVFX_DIAG_THREAD");
@@ -47,9 +48,11 @@ int mvfxDiagOnBigStack(int (*body)(void*), void* argument)
     {
         return body(argument);
     }
-    printf("on a thread of 8 MB of stack\n");
+    unsigned long megabytes = strtoul(asked, NULL, 10);
+    megabytes = megabytes <= 1 ? 8 : megabytes;
+    printf("on a thread of %lu MB of stack\n", megabytes);
     BigStack run = {.body = body, .argument = argument, .result = 1};
-    HANDLE thread = CreateThread(NULL, (SIZE_T)8 << 20u, RunBigStack, &run,
+    HANDLE thread = CreateThread(NULL, (SIZE_T)megabytes << 20u, RunBigStack, &run,
                                  STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
     if (thread == NULL)
     {

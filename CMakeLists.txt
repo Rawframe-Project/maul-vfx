@@ -435,6 +435,14 @@ if(MAUL_VFX_BUILD_TESTS)
                 set_tests_properties(rhi_sim_warp20_${stack} PROPERTIES
                                      ENVIRONMENT "${mvfx_sim_env}")
             endforeach()
+            # rhi_sim on WARP 1.0.20 on a thread of 1 GB of stack reserved,
+            # the debug layer on and GPU-based validation off, no page heap.
+            add_test(NAME rhi_sim_warp20_huge
+                     COMMAND ${CMAKE_COMMAND}
+                             -DEXE=${mvfx_warp20}/$<TARGET_FILE_NAME:test_rhi_sim>
+                             -P ${PROJECT_SOURCE_DIR}/test/diag_run.cmake)
+            set_tests_properties(rhi_sim_warp20_huge PROPERTIES TIMEOUT 3600
+                                 ENVIRONMENT "MVFX_DIAG_THREAD=1024;MVFX_D3D12_NO_GBV=1")
         endif()
         # A mesh's region and the element its thresholds choose, beside the
         # CPU path's sampler; no device needed.
