@@ -7,20 +7,6 @@
 
 // include: shared/exact.wgsl
 
-// A diagnosis on WARP (to drop): remainder64 stopped after trips steps,
-// so the top trips bits of x over d.
-fn remainderTrips(x: vec2<u32>, d: vec2<u32>, trips: i32) -> vec2<u32> {
-    var r = vec2<u32>(0u);
-    for (var b = 63; b >= 64 - trips; b--) {
-        let word = select(x.x, x.y, b >= 32);
-        r = shiftLeft(r, 1u) | vec2<u32>((word >> (u32(b) % 32u)) & 1u, 0u);
-        if (!less64(r, d)) {
-            r = subtract64(r, d);
-        }
-    }
-    return r;
-}
-
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
 const CONVERSIONS: u32 = 2u;
@@ -28,8 +14,6 @@ const LIFE_TICKS: u32 = 3u;
 const SUMS: u32 = 4u;
 const REMAINDERS: u32 = 5u;
 const RATIOS: u32 = 6u;
-const REMAINDER_TRIPS: u32 = 7u;
-const REMAINDERS_APART: u32 = 8u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -87,20 +71,6 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                                     vec2<u32>(words[w + 2u], words[w + 3u]));
                 words[w] = r.x;
                 words[w + 1u] = r.y;
-            }
-            case REMAINDER_TRIPS: {
-                let r = remainderTrips(vec2<u32>(words[w], words[w + 1u]),
-                                       vec2<u32>(words[w + 2u], words[w + 3u]), i32(root.first));
-                words[w] = r.x;
-                words[w + 1u] = r.y;
-            }
-            case REMAINDERS_APART: {
-                // Eight words an element: x, d, x % d out, two untouched.
-                let a = 2u * w;
-                let r = remainder64(vec2<u32>(words[a], words[a + 1u]),
-                                    vec2<u32>(words[a + 2u], words[a + 3u]));
-                words[a + 4u] = r.x;
-                words[a + 5u] = r.y;
             }
             case RATIOS: {
                 words[w] = bitcast<u32>(ratio(vec2<u32>(words[w], words[w + 1u]),

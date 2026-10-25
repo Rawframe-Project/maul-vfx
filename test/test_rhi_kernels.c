@@ -31,12 +31,6 @@
 #include <time.h>
 
 // The indices hashed, a multiple of the kernel's 64 invocations.
-#ifdef MVFX_D3D12_DIAG
-void mvfxDiagWarp(void);
-void mvfxDiagCatch(void);
-int mvfxDiagOnBigStack(int (*body)(void*), void* argument);
-#endif
-
 #define WORDS   4096
 #define WAIT_NS 300000000000ull
 
@@ -251,9 +245,7 @@ typedef enum CheckMode
     CHECK_LIFE_TICKS = 3,
     CHECK_SUMS = 4,
     CHECK_REMAINDERS = 5,
-    CHECK_RATIOS = 6,
-    CHECK_REMAINDER_TRIPS = 7,
-    CHECK_REMAINDERS_APART = 8
+    CHECK_RATIOS = 6
 } CheckMode;
 
 typedef struct Checker
@@ -591,260 +583,6 @@ static uint64_t DrawBits(uint64_t* state, uint32_t bits)
     return x | 1ull << (length - 1u);
 }
 
-// A diagnosis on WARP (to drop): the wrong remainders by what came back,
-// the first few in words, and the first few right ones.
-static void DiagnoseRemainders(const Checker* checker, bool ran)
-{
-    uint64_t* inputs = calloc(2 * (size_t)CHECKS, sizeof *inputs);
-    uint64_t state = 5;
-    for (uint32_t e = 0; inputs != NULL && e < CHECKS; ++e)
-    {
-        inputs[2 * e] = DrawBits(&state, 64);
-        inputs[2 * e + 1] = DrawBits(&state, 48);
-    }
-    long long asD = 0, asX = 0, asZero = 0, asNext = 0, other = 0, keptD = 0, right = 0;
-    long long rightBelow = 0, below = 0, shown = 0;
-    for (uint32_t e = 0; ran && inputs != NULL && e < CHECKS; ++e)
-    {
-        uint64_t x = inputs[2 * e];
-        uint64_t d = inputs[2 * e + 1];
-        const uint32_t* w = &checker->words[4 * e];
-        uint64_t got = (uint64_t)w[1] << 32u | w[0];
-        keptD += ((uint64_t)w[3] << 32u | w[2]) == d;
-        below += x < d;
-        if (got == x % d)
-        {
-            rightBelow += x < d;
-            if (right++ < 6)
-            {
-                printf("right %u: x %llu, d %llu, x %% d %llu\n", e, (unsigned long long)x,
-                       (unsigned long long)d, (unsigned long long)got);
-            }
-            continue;
-        }
-        uint64_t next = e + 1 < CHECKS ? inputs[2 * e + 2] : 0;
-        if (got == d)
-        {
-            ++asD;
-        }
-        else if (got == x)
-        {
-            ++asX;
-        }
-        else if (got == 0)
-        {
-            ++asZero;
-        }
-        else if (next != 0 && got == d % next)
-        {
-            ++asNext;
-        }
-        else
-        {
-            ++other;
-        }
-        if (shown++ < 8)
-        {
-            printf("wrong %u: x %llu, d %llu; words in %08x %08x %08x %08x, out %08x %08x %08x "
-                   "%08x; x %% d %llu\n",
-                   e, (unsigned long long)x, (unsigned long long)d, (unsigned)(x & 0xFFFFFFFFu),
-                   (unsigned)(x >> 32u), (unsigned)(d & 0xFFFFFFFFu), (unsigned)(d >> 32u),
-                   (unsigned)w[0], (unsigned)w[1], (unsigned)w[2], (unsigned)w[3],
-                   (unsigned long long)(x % d));
-        }
-    }
-    printf("remainders: %lld right (%lld of them x below d), wrong %lld gave d, %lld x, %lld 0, "
-           "%lld d %% the next x, %lld other; d kept in %lld; x below d in %lld\n",
-           right, rightBelow, asD, asX, asZero, asNext, other, keptD, below);
-    free(inputs);
-}
-
-// A diagnosis on WARP (to drop): remainders stopped after 16, 32, 48 and
-// 64 steps, the first two and the last two words of each element by what
-// they hold.
-static void DiagnoseTrips(Gpu* gpu, Checker* checker)
-{
-    static const int32_t trips[4] = {16, 32, 48, 64};
-    for (int32_t t = 0; t < 4; ++t)
-    {
-        uint64_t state = 5;
-        for (uint32_t e = 0; e < CHECKS; ++e)
-        {
-            uint64_t x = DrawBits(&state, 64);
-            PutPair(&checker->words[4 * e], x, DrawBits(&state, 48));
-        }
-        bool ran = RunChecks(gpu, checker, CHECK_REMAINDER_TRIPS, (uint32_t)trips[t], CHECKS);
-        long long right = 0, lowD = 0, highD = 0, highTop = 0, high16 = 0, high32 = 0;
-        long long high48 = 0, highX = 0, highOther = 0;
-        state = 5;
-        for (uint32_t e = 0; ran && e < CHECKS; ++e)
-        {
-            uint64_t x = DrawBits(&state, 64);
-            uint64_t d = DrawBits(&state, 48);
-            const uint32_t* w = &checker->words[4 * e];
-            uint64_t low = (uint64_t)w[1] << 32u | w[0];
-            uint64_t high = (uint64_t)w[3] << 32u | w[2];
-            uint64_t top = x >> (64 - trips[t]);
-            right += low == top % d;
-            lowD += low == d;
-            if (high == d)
-            {
-                ++highD;
-            }
-            else if (high == top)
-            {
-                ++highTop;
-            }
-            else if (high == x >> 16u)
-            {
-                ++high16;
-            }
-            else if (high == x >> 32u)
-            {
-                ++high32;
-            }
-            else if (high == x >> 48u)
-            {
-                ++high48;
-            }
-            else if (high == x)
-            {
-                ++highX;
-            }
-            else
-            {
-                ++highOther;
-            }
-        }
-        printf("trips %d (ran %d): words 0-1 right %lld, d %lld; words 2-3 d %lld, x>>%d %lld, "
-               "x>>16 %lld, x>>32 %lld, x>>48 %lld, x %lld, other %lld\n",
-               trips[t], ran, right, lowD, highD, 64 - trips[t], highTop, high16, high32, high48,
-               highX, highOther);
-    }
-}
-
-// A diagnosis on WARP (to drop): remainders eight words apart, x and d
-// in, x % d out, the last two words a sentinel the kernel never touches;
-// read back directly and through a copy into a second buffer.
-static void DiagnoseApart(Gpu* gpu, Checker* checker)
-{
-    const uint32_t count = CHECKS / 4;
-    const uint64_t bytes = (uint64_t)count * 32u;
-    mrhiBufferDef def = mrhiDefaultBufferDef();
-    def.size = bytes;
-    def.usage = mrhi_bufferCopySource | mrhi_bufferCopyDestination;
-    mrhiBufferId second = {0};
-    uint32_t* copied = calloc(count, 32);
-    if (copied == NULL || mrhiCreateBuffer(gpu->device, &def, &second) != mrhi_success)
-    {
-        printf("apart: no second buffer\n");
-        free(copied);
-        return;
-    }
-    uint64_t state = 5;
-    for (uint32_t e = 0; e < count; ++e)
-    {
-        uint32_t* w = &checker->words[8 * e];
-        uint64_t x = DrawBits(&state, 64);
-        PutPair(w, x, DrawBits(&state, 48));
-        w[4] = w[5] = 0xA5A5A5A5u;
-        w[6] = w[7] = 0x5A5A5A5Au;
-    }
-    const uint32_t root[4] = {CHECK_REMAINDERS_APART, 0, count, (count + 63u) / 64u};
-    mrhiFrameDef frame = mrhiDefaultFrameDef();
-    mrhiResourceId words = {0};
-    mrhiResourceId copy = {0};
-    mrhiRequestId direct = {0};
-    mrhiRequestId through = {0};
-    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
-                    mrhiImportBuffer(gpu->device, checker->buffer, &words) == mrhi_success &&
-                    mrhiImportBuffer(gpu->device, second, &copy) == mrhi_success;
-    const mrhiAccess put = {.resource = words, .kind = mrhi_accessCopyDestination};
-    const mrhiAccess use = {.resource = words, .kind = mrhi_accessStorageReadWrite};
-    const mrhiAccess move[2] = {{.resource = words, .kind = mrhi_accessCopySource},
-                                {.resource = copy, .kind = mrhi_accessCopyDestination}};
-    const mrhiAccess take[2] = {{.resource = words, .kind = mrhi_accessCopySource},
-                                {.resource = copy, .kind = mrhi_accessCopySource}};
-    const mrhiAccess* accesses[4] = {&put, &use, move, take};
-    const uint32_t accessCounts[4] = {1, 1, 2, 2};
-    mrhiPassId passes[4] = {0};
-    for (int32_t p = 0; recorded && p < 4; ++p)
-    {
-        mrhiPassDef pass = mrhiDefaultPassDef();
-        pass.passClass = p == 1 ? mrhi_passGraphics : mrhi_passTransfer;
-        pass.accesses = accesses[p];
-        pass.accessCount = accessCounts[p];
-        pass.neverCull = true;
-        recorded = mrhiAddPass(gpu->device, &pass, &passes[p]) == mrhi_success;
-    }
-    const mrhiBinding binding = {.slot = 0, .resource = words, .size = MRHI_WHOLE_SIZE};
-    recorded =
-        recorded && mrhiCompileFrame(gpu->device) == mrhi_success &&
-        mrhiBeginPass(gpu->device, passes[0]) == mrhi_success &&
-        mrhiWriteBuffer(gpu->device, passes[0], words, 0, checker->words, bytes) == mrhi_success &&
-        mrhiEndPass(gpu->device, passes[0]) == mrhi_success &&
-        mrhiBeginPass(gpu->device, passes[1]) == mrhi_success &&
-        mrhiSetComputePipeline(gpu->device, passes[1], checker->pipeline) == mrhi_success &&
-        mrhiSetBindings(gpu->device, passes[1], 0, &binding, 1) == mrhi_success &&
-        mrhiSetRootBlock(gpu->device, passes[1], 0, root, sizeof root) == mrhi_success &&
-        mrhiDispatch(gpu->device, passes[1], root[3], 1, 1) == mrhi_success &&
-        mrhiEndPass(gpu->device, passes[1]) == mrhi_success &&
-        mrhiBeginPass(gpu->device, passes[2]) == mrhi_success &&
-        mrhiCopyBuffer(gpu->device, passes[2], words, 0, copy, 0, bytes) == mrhi_success &&
-        mrhiEndPass(gpu->device, passes[2]) == mrhi_success &&
-        mrhiBeginPass(gpu->device, passes[3]) == mrhi_success &&
-        mrhiReadBuffer(gpu->device, passes[3], words, 0, bytes, &direct) == mrhi_success &&
-        mrhiReadBuffer(gpu->device, passes[3], copy, 0, bytes, &through) == mrhi_success &&
-        mrhiEndPass(gpu->device, passes[3]) == mrhi_success;
-    if (!recorded)
-    {
-        (void)mrhiDropFrame(gpu->device);
-    }
-    mrhiRequestId token = {0};
-    bool done = recorded && mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
-    mrhiDeviceNotification record;
-    while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
-    {
-    }
-    size_t taken = 0;
-    size_t takenCopy = 0;
-    done =
-        done &&
-        mrhiTakeReadback(gpu->device, direct, checker->words, (size_t)bytes, &taken) ==
-            mrhi_success &&
-        mrhiTakeReadback(gpu->device, through, copied, (size_t)bytes, &takenCopy) == mrhi_success &&
-        taken == bytes && takenCopy == bytes;
-    long long same = 0, inputsKept = 0, sentinelKept = 0, right = 0, unwritten = 0, shown = 0;
-    state = 5;
-    for (uint32_t e = 0; done && e < count; ++e)
-    {
-        const uint32_t* w = &checker->words[8 * e];
-        uint64_t x = DrawBits(&state, 64);
-        uint64_t d = DrawBits(&state, 48);
-        same += memcmp(w, &copied[8 * e], 32) == 0;
-        inputsKept += ((uint64_t)w[1] << 32u | w[0]) == x && ((uint64_t)w[3] << 32u | w[2]) == d;
-        sentinelKept += w[6] == 0x5A5A5A5Au && w[7] == 0x5A5A5A5Au;
-        uint64_t got = (uint64_t)w[5] << 32u | w[4];
-        right += got == x % d;
-        unwritten += w[4] == 0xA5A5A5A5u && w[5] == 0xA5A5A5A5u;
-        if (got != x % d && shown++ < 4)
-        {
-            printf("apart %u: in %08x %08x %08x %08x, out %08x %08x %08x %08x %08x %08x %08x "
-                   "%08x; x %% d %llu\n",
-                   e, (unsigned)(x & 0xFFFFFFFFu), (unsigned)(x >> 32u),
-                   (unsigned)(d & 0xFFFFFFFFu), (unsigned)(d >> 32u), (unsigned)w[0],
-                   (unsigned)w[1], (unsigned)w[2], (unsigned)w[3], (unsigned)w[4], (unsigned)w[5],
-                   (unsigned)w[6], (unsigned)w[7], (unsigned long long)(x % d));
-        }
-    }
-    printf("apart (ran %d) over %u: readbacks the same %lld, inputs kept %lld, sentinel kept "
-           "%lld, x %% d right %lld, out never written %lld\n",
-           done, count, same, inputsKept, sentinelKept, right, unwritten);
-    (void)mrhiDestroyBuffer(gpu->device, second);
-    free(copied);
-}
-
 // 64-bit remainders over divisors of up to 48 bits, and the ratios of
 // numbers below their divisors (below 2^53, as C's binary64 divides them
 // exactly) as C rounds them to binary32: drawn, and at exact ties (an odd
@@ -877,9 +615,6 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
     {
         printf("%lld of %d remainders wrong\n", (long long)wrong, CHECKS);
     }
-    DiagnoseRemainders(checker, ran);
-    DiagnoseTrips(gpu, checker);
-    DiagnoseApart(gpu, checker);
     uint64_t* pairs = calloc(2 * (size_t)CHECKS, sizeof *pairs);
     for (uint32_t e = 0; pairs != NULL && e < CHECKS; ++e)
     {
@@ -924,9 +659,8 @@ static void TestExact(Gpu* gpu)
     CloseChecker(gpu, &checker);
 }
 
-static int Run(void* unused)
+int main(void)
 {
-    (void)unused;
     TestRefusals();
     Gpu gpu;
     if (!Open(&gpu))
@@ -942,19 +676,6 @@ static int Run(void* unused)
     }
     TestPcg4d(&gpu);
     TestExact(&gpu);
-#ifdef MVFX_D3D12_DIAG
-    mvfxDiagWarp();
-#endif
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
-}
-
-int main(void)
-{
-#ifdef MVFX_D3D12_DIAG
-    mvfxDiagCatch();
-    return mvfxDiagOnBigStack(Run, NULL);
-#else
-    return Run(NULL);
-#endif
 }
