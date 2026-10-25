@@ -144,20 +144,15 @@ static void TestPastTheLargestHalf(void)
     mvfxDestroyContext(context);
 }
 
-// Infinities: a custom attribute by a curve of 1e18 between ends of 1e30
-// and -1e30 (both in range) starts at 1e48 and -1e48, past a float, so
-// at each infinity; written as binary16 fields, each is that infinity.
+// Infinities: a size of 1e30 and -1e30 (in range) times a size over life
+// of 1e30 (in range) is 1e60 and -1e60, past a float, so each infinity;
+// written as binary16 fields, each is that infinity.
 static void TestInfinities(void)
 {
-    static const mvfxCurveKey key = {0.0f, 1e18f, 0, 0, mvfx_interpolationLinear};
-    mvfxCustomAttribute custom = {.components = 2,
-                                  .initial = {.kind = mvfx_sourceCurve,
-                                              .min = {1e30f, -1e30f, 0, 0},
-                                              .max = {1e30f, -1e30f, 0, 0},
-                                              .curve = {&key, 1, mvfx_tangentsGiven}}};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    emitter.custom = &custom;
-    emitter.customCount = 1;
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {1e30f, -1e30f, 1}, .max = {1e30f, -1e30f, 1}};
+    emitter.overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 1e30f}}};
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -172,8 +167,8 @@ static void TestInfinities(void)
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
     CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "stepped");
     const mvfxLayoutField fields[2] = {
-        {.field = mvfx_recordCustom, .format = mvfx_formatFloat32, .components = 2, .offset = 0},
-        {.field = mvfx_recordCustom, .format = mvfx_formatFloat16, .components = 2, .offset = 8}};
+        {.field = mvfx_recordSize, .format = mvfx_formatFloat32, .components = 2, .offset = 0},
+        {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 2, .offset = 8}};
     mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
     layoutDef.fields = fields;
     layoutDef.fieldCount = 2;

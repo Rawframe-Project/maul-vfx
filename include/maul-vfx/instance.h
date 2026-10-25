@@ -579,11 +579,14 @@ extern "C"
     /// @param context    The context that owns the instance.
     /// @param instance   The instance.
     /// @param parameter  An index below the effect's count of parameters.
-    /// @param value      Four finite floats.
+    /// @param value      Four finite floats, each times the larger size of the
+    ///                   ends of every source reading it at most
+    ///                   `MVFX_MAX_DRAW` (value.h).
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, an index out
-    ///         of range or a value not finite, which counts as misuse when
-    ///         the context is given.
+    ///         of range, a value not finite or one that takes a source past
+    ///         `MVFX_MAX_DRAW`, which counts as misuse when the context is
+    ///         given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetParameter(mvfxContext* context,

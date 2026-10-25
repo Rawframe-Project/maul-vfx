@@ -38,6 +38,8 @@ An emitter spawns particles and decides how they live. Start from `mvfxDefaultEm
 
 An effect's `parameters` are four floats each, with defaults in the def. `mvfxInstance_SetParameter` changes them per instance, and a value source of the parameter kind reads them at a birth. Births from the next step read the new value; particles already alive keep what they drew. Parameters let one effect take a colour, a size or a direction from the game.
 
+Every value a source draws is finite. A source's base at its largest size (a curve's largest baked value, rises between keys included, a gradient's largest key, a parameter's value) times the larger size of its ends may be at most `MVFX_MAX_DRAW` (1e38). An effect with a curve or gradient source past it is refused, and so is a parameter default or a value set with `mvfxInstance_SetParameter` that takes a source reading it past it (`mvfx_errorInvalid`).
+
 ## Quality levels and the particle budget
 
 `qualityLevels` lists cheaper versions of the effect: each scales every emitter's capacity and rates, and may leave emitters out. An instance asks for a level (`mvfxInstanceDef.quality`) and plays at the first level from it whose particles fit the context's particle budget (`mvfxContextLimits.particles`), which counts the sum of the capacities of all live instances. `mvfxInstance_GetQuality` reads the level an instance got, and `mvfxContext_GetParticles` what the budget holds.

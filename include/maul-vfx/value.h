@@ -26,6 +26,14 @@ extern "C"
 // The largest a source's bound may be.
 #define MVFX_MAX_VALUE 1e30f
 
+// The largest size a source may draw. A source's base at its largest size
+// (a curve's largest baked value, a gradient's largest key, a parameter's
+// value; 1 for a range) times the larger size of its ends must be at most
+// this: an effect with a curve or gradient source past it is refused, and
+// so is a parameter value, as a default or set, that takes a source
+// reading it past it. Every value a source draws is then finite.
+#define MVFX_MAX_DRAW 1e38f
+
     // What a source's base is. An age is the loop's normalized age at the
     // particle's birth when the emitter has a duration, 0 for a birth
     // before its start delay ends (a host's spawn); else the seconds since
@@ -53,7 +61,9 @@ extern "C"
     typedef struct mvfxScalarSource
     {
         mvfxSourceKind kind;
-        // Finite, min at most max, each at most MVFX_MAX_VALUE in size.
+        // Finite, min at most max, each at most MVFX_MAX_VALUE in size, the
+        // base's largest size times the larger of theirs at most
+        // MVFX_MAX_DRAW.
         mvfxRange range;
         // For the curve kind: keys in [0, 1] with a duration, in seconds
         // without; baked when the effect is created.
@@ -66,7 +76,8 @@ extern "C"
     // times min plus (max - min) times its own draw, or one draw shared by
     // every component (uniform: a color then lies on the line between min
     // and max). Min and max are ends, in either order, each finite and at
-    // most MVFX_MAX_VALUE in size.
+    // most MVFX_MAX_VALUE in size; the base's largest size times the
+    // largest of theirs is at most MVFX_MAX_DRAW.
     typedef struct mvfxVectorSource
     {
         mvfxSourceKind kind;
