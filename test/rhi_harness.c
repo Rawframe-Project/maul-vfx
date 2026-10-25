@@ -117,6 +117,7 @@ static void Close(Gpu* gpu)
 static double Seconds(void)
 {
     struct timespec now = {0};
+    // hygiene: bounds waits on the device, never a result
     (void)timespec_get(&now, TIME_UTC);
     return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 }
@@ -3026,7 +3027,7 @@ static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
             "the ribbons' warm-up");
 }
 
-int RunSuite(SceneSuite suite)
+int RunSuite(SceneSuite suite, const int* suiteFailures)
 {
     // Unbuffered, so that a crash keeps every line printed before it:
     // ctest reads a pipe, which C's runtime otherwise fills in blocks.
@@ -3041,6 +3042,7 @@ int RunSuite(SceneSuite suite)
             return 1;
         }
         printf("SKIP: no adapter\n");
+        // hygiene: no device here, and no cell requires one
         return 77;
     }
     mvfxGpuDef def = mvfxDefaultGpuDef();
@@ -3058,5 +3060,5 @@ int RunSuite(SceneSuite suite)
     (void)mrhiDestroyShader(gpu.device, s_fillShader);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
-    return s_failures == 0 ? 0 : 1;
+    return s_failures == 0 && *suiteFailures == 0 ? 0 : 1;
 }

@@ -26,6 +26,7 @@ if(MAUL_VFX_RHI)
     maul_apply_flags(sample_gpu)
     if(MAUL_VFX_BUILD_TESTS)
         add_test(NAME sample_gpu COMMAND sample_gpu)
+        # hygiene: a device test skips without an adapter, unless a cell requires one
         set_tests_properties(sample_gpu PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1200
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-"
                              LABELS "sample;integration"
