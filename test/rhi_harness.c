@@ -66,40 +66,24 @@ static double s_longestWarmFrame;
 // The ticks a step of the run takes.
 static int64_t s_stepTicks = STEP_TICKS;
 
-static bool Open(Gpu* gpu)
+// The harness's device, with room for its largest frames: OpenDevice's
+// result.
+static int Open(Gpu* gpu)
 {
     *gpu = (Gpu){0};
-    mrhiInstanceDef def = mrhiDefaultInstanceDef();
-    mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
-    search.allowSoftware = true;
-    mrhiRequestId request;
-    mrhiInstanceNotification record;
-    mrhiAdapterId adapter;
-    size_t count = 0;
-    if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
-        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
-        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
-        record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0 ||
-        !IsRequiredDriver(gpu->instance, adapter))
-    {
-        return false;
-    }
-    mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
-    deviceDef.adapter = adapter;
+    mrhiDeviceDef def = mrhiDefaultDeviceDef();
     // Room for an emitter of 2^17: its plan's births uploaded, its
     // particles read back.
-    deviceDef.deviceLimits.frameUploadBytes = 16u << 20u;
-    deviceDef.deviceLimits.readbackBytes = 16u << 20u;
+    def.deviceLimits.frameUploadBytes = 16u << 20u;
+    def.deviceLimits.readbackBytes = 16u << 20u;
     // Room for a frame that splits into the most steps
     // (MVFX_MAX_PLAN_STEPS), each a liquid gas's and its emitter's passes.
-    deviceDef.deviceLimits.framePasses = 2048u;
-    deviceDef.deviceLimits.frameAccesses = 32768u;
-    deviceDef.deviceLimits.frameBarriers = 32768u;
-    deviceDef.deviceLimits.frameCommandBytes = 8u << 20u;
-    return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
-           mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
-           record.outcome == mrhi_success;
+    def.deviceLimits.framePasses = 2048u;
+    def.deviceLimits.frameAccesses = 32768u;
+    def.deviceLimits.frameBarriers = 32768u;
+    def.deviceLimits.frameCommandBytes = 8u << 20u;
+    mrhiAdapterId adapter;
+    return OpenDevice(def, &gpu->instance, &adapter, &gpu->device);
 }
 
 static void Close(Gpu* gpu)
@@ -3033,17 +3017,11 @@ int RunSuite(SceneSuite suite, const int* suiteFailures)
     // ctest reads a pipe, which C's runtime otherwise fills in blocks.
     (void)setvbuf(stdout, NULL, _IONBF, 0);
     Gpu gpu;
-    if (!Open(&gpu))
+    int opened = Open(&gpu);
+    if (opened != 0)
     {
         Close(&gpu);
-        if (getenv("MVFX_RHI_REQUIRED") != NULL)
-        {
-            printf("FAIL: no adapter, and MVFX_RHI_REQUIRED is set\n");
-            return 1;
-        }
-        printf("SKIP: no adapter\n");
-        // hygiene: no device here, and no cell requires one
-        return 77;
+        return opened;
     }
     mvfxGpuDef def = mvfxDefaultGpuDef();
     def.device = gpu.device;

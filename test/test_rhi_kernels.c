@@ -57,33 +57,17 @@ typedef struct Gpu
     bool warp;
 } Gpu;
 
-static bool Open(Gpu* gpu)
+// The checks' device, with room for a frame of them: OpenDevice's result.
+static int Open(Gpu* gpu)
 {
     *gpu = (Gpu){0};
-    mrhiInstanceDef def = mrhiDefaultInstanceDef();
-    mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
-    search.allowSoftware = true;
-    mrhiRequestId request;
-    mrhiInstanceNotification record;
+    mrhiDeviceDef def = mrhiDefaultDeviceDef();
+    def.deviceLimits.frameUploadBytes = CHECK_BYTES;
+    def.deviceLimits.readbackBytes = 2u * CHECK_BYTES;
     mrhiAdapterId adapter;
-    size_t count = 0;
-    if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
-        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
-        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
-        record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0 ||
-        !IsRequiredDriver(gpu->instance, adapter))
-    {
-        return false;
-    }
-    gpu->warp = IsWarp(gpu->instance, adapter);
-    mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
-    deviceDef.adapter = adapter;
-    deviceDef.deviceLimits.frameUploadBytes = CHECK_BYTES;
-    deviceDef.deviceLimits.readbackBytes = 2u * CHECK_BYTES;
-    return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
-           mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
-           record.outcome == mrhi_success;
+    int opened = OpenDevice(def, &gpu->instance, &adapter, &gpu->device);
+    gpu->warp = opened == 0 && IsWarp(gpu->instance, adapter);
+    return opened;
 }
 
 static void Close(Gpu* gpu)
@@ -736,17 +720,12 @@ int main(void)
     mrhiTestWatchD3d12();
 #endif
     Gpu gpu;
-    if (!Open(&gpu))
+    int opened = Open(&gpu);
+    if (opened != 0)
     {
+        // The refusals ran without a device; a skip keeps their failure.
         Close(&gpu);
-        if (getenv("MVFX_RHI_REQUIRED") != NULL)
-        {
-            printf("FAIL: no adapter, and MVFX_RHI_REQUIRED is set\n");
-            return 1;
-        }
-        printf("SKIP: no adapter\n");
-        // hygiene: no device here, and no cell requires one
-        return s_failures == 0 ? 77 : 1;
+        return s_failures == 0 ? opened : 1;
     }
     TestPcg4d(&gpu);
     TestExact(&gpu);
