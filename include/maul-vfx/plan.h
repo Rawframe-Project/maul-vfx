@@ -727,7 +727,11 @@ extern "C"
     // speed's share of its range, alpha times a value over life; the size
     // times a value over life (one an axis where perAxis) at the age or the
     // speed's share; the flipbook; each custom attribute's values times a
-    // value over life where scaled.
+    // value over life where scaled. A birth's colour and size inherited
+    // from an event (mvfxEventSpawn) are held to colorCaps and sizeCaps on
+    // each channel and axis, below 0 to their negatives: MVFX_MAX_COLOR and
+    // MVFX_MAX_EXTENT over the most these values over life scale them, so
+    // what a record shows stays within those limits.
     typedef struct mvfxOverLifeView
     {
         bool color;
@@ -744,6 +748,8 @@ extern "C"
         mvfxFrameOverLife frame;
         bool customScaled[MVFX_MAX_CUSTOM_ATTRIBUTES];
         mvfxLifeView custom[MVFX_MAX_CUSTOM_ATTRIBUTES];
+        float colorCaps[4];
+        float sizeCaps[3];
     } mvfxOverLifeView;
 
     // An emitter's ribbons as compiled (mvfxRibbonDef): how its births

@@ -20,6 +20,13 @@ extern "C"
 // The samples a baked curve or gradient holds over its domain.
 #define MVFX_CURVE_SAMPLES 256
 
+// The largest a colour channel may be, in size, as any output shows it:
+// a particle's stored colour (a source's draw, a host's or an event's
+// colour) times its colour over life. Every gradient's keys are within it
+// too. HDR colours keep room to spare, and a light's intensity or a
+// ribbon's gradient times it stays finite.
+#define MVFX_MAX_COLOR 1e6f
+
     // How a curve runs from a key to the next.
     typedef uint8_t mvfxInterpolation;
     enum
@@ -84,8 +91,8 @@ extern "C"
     } mvfxAlphaKey;
 
     // A gradient over [0, 1]: color keys and alpha keys apart, each list at
-    // least one key, in times from 0 to 1 that never decrease, interpolated
-    // linearly in linear RGB.
+    // least one key, in times from 0 to 1 that never decrease, each channel
+    // at most MVFX_MAX_COLOR in size, interpolated linearly in linear RGB.
     typedef struct mvfxGradient
     {
         const mvfxColorKey* colorKeys;

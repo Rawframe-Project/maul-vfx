@@ -49,16 +49,21 @@ mvfxOwnColliders mvfxOwnCollidersOf(const mvfxInstance* instance, int32_t emitte
                                     float sigma, mvfxResolvedCollider* plane);
 
 // Moves the particles the emitter holds over the whole step (those alive
-// at its start, once the ended ones are gone), marking those killed.
+// at its start, once the ended ones are gone), marking those killed, each
+// velocity held within MVFX_MAX_SPEED along each axis (times the
+// particles' space's scale) after its contacts.
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter);
 
 // Moves particles first to end, from a tick on the instance's clock, over
-// seconds, marking those killed: a substep of an emitter of units.
+// seconds, marking those killed: a substep of a solver's emitter (units,
+// rigid bodies, a liquid), whose velocities are not held.
 void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
                         int64_t tick, double seconds);
 
 // Moves a particle born within the step from its birth to the step's end,
-// marking it if killed.
-void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick);
+// marking it if killed, its velocity held as mvfxIntegrateEmitter holds it
+// where holds is set (not for a rigid body).
+void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick,
+                          bool holds);
 
 #endif

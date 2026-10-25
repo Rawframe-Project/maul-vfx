@@ -315,10 +315,10 @@ typedef struct mvfxEffect
     int32_t burstCount;
     // Its parameters' defaults.
     float parameters[MVFX_MAX_PARAMETERS][4];
-    // For each parameter's component, the larger size of the ends of every
-    // source reading it, 0 for none: what a value set is held to
-    // (mvfxIsParameterWithinReach).
-    float parameterReach[MVFX_MAX_PARAMETERS][4];
+    // For each parameter's component, the largest share of its cap the
+    // ends of a source reading it take, 0 for none: what a value set is
+    // held to (mvfxIsParameterWithinReach).
+    double parameterReach[MVFX_MAX_PARAMETERS][4];
     int32_t parameterCount;
     // Its quality levels, level 0 the full one; levels from 1 as given.
     mvfxQualityLevel qualityLevels[MVFX_MAX_QUALITY_LEVELS + 1];

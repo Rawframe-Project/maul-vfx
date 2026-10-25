@@ -3,7 +3,7 @@
 //
 // Output: layouts checked when made (every rule), held to the context's
 // limit and destroyed; each format's conversion by hand (binary16,
-// normalized with clamps, NaN and rounding, sRGB and a linear alpha,
+// normalized with clamps and rounding, sRGB and a linear alpha,
 // words); records of a world emitter relative to a view's origin with
 // the host's padding untouched, a buffer too small and a count alone; a
 // local emitter's records in the world under a moved, turned, scaled
@@ -228,20 +228,20 @@ static void TestFormats(void)
 {
     unsigned char b[16];
     uint16_t h[4];
-    static const float halves[4] = {1.0f, -2.5f, 65504.0f, 1e9f};
+    static const float halves[4] = {1.0f, -2.5f, 65504.0f, 1e6f};
     Write(mvfx_formatFloat16, false, 4, halves, b);
     memcpy(h, b, 8);
     CHECK(h[0] == 0x3C00 && h[1] == 0xC100 && h[2] == 0x7BFF && h[3] == 0x7C00, "binary16");
-    static const float units[4] = {0.5f, 1.2f, -1.0f, (float)NAN};
+    static const float units[4] = {0.5f, 1.2f, -1.0f, -0.25f};
     Write(mvfx_formatUnorm8, false, 4, units, b);
     CHECK(b[0] == 128 && b[1] == 255 && b[2] == 0 && b[3] == 0 && b[4] == 0xEE, "unorm8");
     static const float signs[4] = {-1.0f, 0.5f, -0.5f, 2.0f};
     Write(mvfx_formatSnorm8, false, 4, signs, b);
     CHECK((int8_t)b[0] == -127 && (int8_t)b[1] == 64 && (int8_t)b[2] == -64 && (int8_t)b[3] == 127,
           "snorm8, half away from 0");
-    static const float odd[4] = {(float)NAN, -3.0f, 0.0f, 0.0f};
+    static const float odd[4] = {-0.0f, -3.0f, 0.0f, 0.0f};
     Write(mvfx_formatSnorm8, false, 2, odd, b);
-    CHECK(b[0] == 0 && (int8_t)b[1] == -127, "snorm8: NaN to 0, below -1 to -1");
+    CHECK(b[0] == 0 && (int8_t)b[1] == -127, "snorm8: -0 to 0, below -1 to -1");
     Write(mvfx_formatUnorm16, false, 2, units, b);
     memcpy(h, b, 4);
     CHECK(h[0] == 32768 && h[1] == 65535, "unorm16");

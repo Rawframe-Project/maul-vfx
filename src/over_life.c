@@ -76,6 +76,66 @@ bool mvfxIsOverLifeValid(const mvfxOverLife* overLife, const mvfxCustomAttribute
            (!overLife->rotation.enabled || mvfxIsLifeCurveValid(&overLife->rotation.scale));
 }
 
+// A role's limit over the most a value over life scales it by, at most
+// MVFX_MAX_DRAW.
+static float CapOf(float limit, double scale)
+{
+    return scale * (double)MVFX_MAX_DRAW > (double)limit ? (float)((double)limit / scale)
+                                                         : MVFX_MAX_DRAW;
+}
+
+void mvfxStoredCapsOf(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
+                      int32_t customCount, mvfxStoredCaps* out)
+{
+    const mvfxSizeOverLife* size = &overLife->size;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        double scale =
+            size->enabled ? mvfxLifeCurveLargest(&size->size[size->perAxis ? k : 0]) : 1.0;
+        out->size[k] = CapOf(MVFX_MAX_EXTENT, scale);
+    }
+    const mvfxColorOverLife* color = &overLife->color;
+    double tint = 1.0;
+    double alpha = 1.0;
+    if (color->enabled && !IsWhite(&color->gradient))
+    {
+        mvfxGradientLargest(&color->gradient, &tint, &alpha);
+    }
+    if (color->enabled && color->scaleAlpha)
+    {
+        alpha *= mvfxLifeCurveLargest(&color->alpha);
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out->color[k] = CapOf(MVFX_MAX_COLOR, tint);
+    }
+    out->color[3] = CapOf(MVFX_MAX_COLOR, alpha);
+    const mvfxRotationOverLife* rotation = &overLife->rotation;
+    out->spin =
+        CapOf(MVFX_MAX_SPIN, rotation->enabled ? mvfxLifeCurveLargest(&rotation->scale) : 1.0);
+    for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+    {
+        bool scaled = i < customCount && custom[i].scaledOverLife;
+        out->custom[i] =
+            CapOf(MVFX_MAX_VALUE, scaled ? mvfxLifeCurveLargest(&custom[i].overLife) : 1.0);
+    }
+}
+
+void mvfxSourceCapsOf(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
+                      int32_t customCount, mvfxSourceCaps* out)
+{
+    mvfxStoredCapsOf(overLife, custom, customCount, &out->stored);
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out->spin[k] = out->stored.spin;
+        out->any[k] = MVFX_MAX_DRAW;
+        for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
+        {
+            out->custom[i][k] = out->stored.custom[i];
+        }
+    }
+}
+
 void mvfxOverLifeTables(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
                         int32_t customCount, int32_t* curves, int32_t* gradients)
 {
@@ -159,4 +219,5 @@ void mvfxCompileOverLife(const mvfxOverLife* overLife, const mvfxCustomAttribute
             mvfxCompileLife(&custom[i].overLife, space, &out->custom[i]);
         }
     }
+    mvfxStoredCapsOf(overLife, custom, customCount, &out->caps);
 }

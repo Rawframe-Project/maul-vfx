@@ -122,6 +122,7 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
     var death = vec2<u32>(0u);
     birthTicks(b0, b1, &birth, &death);
     var fate = meet(p, place, velocity, birth, bitcast<f32>(b1.y), death);
+    *velocity = holdSpeed(*velocity);
     let age = vec2<u32>(params.counts.z - b0.z, 0u);
     fate.killed = fate.killed || killed(p, *place, *velocity, age, fate.contacts);
     return fate;
@@ -310,6 +311,17 @@ fn lifeAt(k: u32, age: f32) -> f32 {
         return value;
     }
     return value * curveAt(first, age);
+}
+
+// The fastest a moved particle goes along each axis, in the emitter's
+// units a second (MVFX_MAX_SPEED).
+const MAX_SPEED: f32 = 1e9;
+
+// A velocity held within MAX_SPEED along each axis in the particles'
+// space, as the core's HoldSpeed holds it after a particle's contacts.
+fn holdSpeed(v: vec3<f32>) -> vec3<f32> {
+    let fastest = MAX_SPEED * params.modules[0].w;
+    return clamp(v, vec3<f32>(-fastest), vec3<f32>(fastest));
 }
 
 // A velocity held to the speed limit at a normalized age: past it, its

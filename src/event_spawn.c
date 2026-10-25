@@ -40,6 +40,12 @@ static int32_t CountOf(const mvfxInstance* instance, int32_t emitter, const mvfx
     return spawn->minCount + (int32_t)(((uint64_t)words.x * span) >> 32u);
 }
 
+// x held to [-bound, bound].
+static float Hold(float x, float bound)
+{
+    return x < -bound ? -bound : (x > bound ? bound : x);
+}
+
 // A birth of an event, its place and inherited velocity in the emitter's
 // terms at the event's tick: a world-space emitter's place in the world,
 // a local one's in the instance's space.
@@ -72,12 +78,15 @@ static mvfxHostBirth BirthOf(const mvfxInstance* instance, int32_t emitter,
             birth.position[k] = (double)local[k];
         }
     }
+    // What it inherits held to what its emitter's particles may store: the
+    // source's colour and size, as shown, may be past it.
+    const mvfxStoredCaps* caps = &compiled->overLife.caps;
     if (spawn->inheritColor)
     {
         birth.given |= mvfx_givenColor;
         for (int32_t k = 0; k < 4; ++k)
         {
-            birth.color[k] = event->color[k];
+            birth.color[k] = Hold(event->color[k], caps->color[k]);
         }
     }
     if (spawn->inheritSize)
@@ -85,7 +94,7 @@ static mvfxHostBirth BirthOf(const mvfxInstance* instance, int32_t emitter,
         birth.given |= mvfx_givenSize;
         for (int32_t k = 0; k < 3; ++k)
         {
-            birth.size[k] = event->size[k];
+            birth.size[k] = Hold(event->size[k], caps->size[k]);
         }
     }
     return birth;

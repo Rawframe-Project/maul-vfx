@@ -144,64 +144,10 @@ static void TestPastTheLargestHalf(void)
     mvfxDestroyContext(context);
 }
 
-// Infinities: a size of 1e30 and -1e30 (in range) times a size over life
-// of 1e30 (in range) is 1e60 and -1e60, past a float, so each infinity;
-// written as binary16 fields, each is that infinity.
-static void TestInfinities(void)
-{
-    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    emitter.size = (mvfxVectorSource){
-        .kind = mvfx_sourceRange, .min = {1e30f, -1e30f, 1}, .max = {1e30f, -1e30f, 1}};
-    emitter.overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 1e30f}}};
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
-    effectDef.emitters = &emitter;
-    effectDef.emitterCount = 1;
-    mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
-    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    instanceDef.effect = effect;
-    mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
-    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "stepped");
-    const mvfxLayoutField fields[2] = {
-        {.field = mvfx_recordSize, .format = mvfx_formatFloat32, .components = 2, .offset = 0},
-        {.field = mvfx_recordSize, .format = mvfx_formatFloat16, .components = 2, .offset = 8}};
-    mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
-    layoutDef.fields = fields;
-    layoutDef.fieldCount = 2;
-    layoutDef.stride = 12;
-    mvfxLayoutId layout = {0};
-    CHECK(mvfxCreateLayout(context, &layoutDef, &layout) == mvfx_success, "layout");
-    static unsigned char records[64][12];
-    mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
-    int64_t count = 0;
-    CHECK(mvfxInstance_WriteParticles(context, instance, 0, layout, &view, NULL, 0, records, 64,
-                                      &count) == mvfx_success &&
-              count > 0,
-          "written");
-    bool infinite = true;
-    for (int64_t i = 0; i < count; ++i)
-    {
-        float floats[2];
-        uint16_t halves[2];
-        memcpy(floats, records[i], sizeof floats);
-        memcpy(halves, records[i] + 8, sizeof halves);
-        infinite = infinite && floats[0] == INFINITY && floats[1] == -INFINITY &&
-                   halves[0] == 0x7C00u && halves[1] == 0xFC00u &&
-                   ReferenceHalf(floats[0]) == halves[0] && ReferenceHalf(floats[1]) == halves[1];
-    }
-    CHECK(infinite, "each infinity as itself");
-    mvfxDestroyContext(context);
-}
-
 int main(void)
 {
     TestEdgeCases();
     TestFloats();
     TestPastTheLargestHalf();
-    TestInfinities();
     return s_failures == 0 ? 0 : 1;
 }

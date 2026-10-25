@@ -28,7 +28,8 @@ Each function's documentation in its header lists the results it returns and wha
 `mvfxInstance_GetEmitterStats` tells what happened to them:
 
 - **`refused` above zero:** births past the emitter's capacity. Raise `capacity`, or lower the rate or the lifetime.
-- **`killed`:** kill rules, killing colliders or an attractor's kill radius ended them.
+- **`killed`:** kill rules, killing colliders, an attractor's kill radius or a host module ended them.
+- **`valuesKilled`:** a host module left them with a value that is not finite or is past its cap ([effects](effects.md#host-modules)).
 - **`owed` but not `live`:** they were born and died within a step, which a very short lifetime does.
 - **A lower quality level:** the context's particle budget lowered the instance's quality (`mvfxInstance_GetQuality`), which scales capacities and rates and may leave emitters out.
 - **`status`:** an emitter that has stopped (its loops ended, or the instance was stopped) spawns no more.

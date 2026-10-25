@@ -40,7 +40,9 @@ extern "C"
         mvfx_recordSize = 1,
         // Its colour with its values over life, 1 to 4 (1 where none).
         mvfx_recordColor = 2,
-        // Its angle in radians, a sprite's turn about the view (0 where none).
+        // Its angle in radians, a sprite's turn about the view (0 where
+        // none): its initial angle plus the turns its spin summed, at most
+        // MVFX_MAX_SPIN times MVFX_MAX_LIFETIME (1e12) from it.
         mvfx_recordAngle = 3,
         // Its orientation in the world, a quaternion (x, y, z, w), 4.
         mvfx_recordOrientation = 4,

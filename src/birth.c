@@ -550,7 +550,7 @@ static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth
     }
     else
     {
-        mvfxIntegrateNewborn(instance, emitter, at, birth->tick);
+        mvfxIntegrateNewborn(instance, emitter, at, birth->tick, true);
     }
     if (mvfxIsPinnedPoint(compiled, j))
     {

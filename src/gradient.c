@@ -58,6 +58,33 @@ void mvfxBakeGradient(const mvfxGradient* gradient, mvfxGradientTable* tableOut)
     }
 }
 
+// Whether a key's channel is within MVFX_MAX_COLOR in size; false for NaN.
+static bool IsChannel(float x)
+{
+    return x >= -MVFX_MAX_COLOR && x <= MVFX_MAX_COLOR;
+}
+
+void mvfxGradientLargest(const mvfxGradient* gradient, double* color, double* alpha)
+{
+    *color = 0.0;
+    *alpha = 0.0;
+    for (int32_t i = 0; i < gradient->colorKeyCount; ++i)
+    {
+        const mvfxColorKey* key = &gradient->colorKeys[i];
+        double sizes[3] = {fabs((double)key->red), fabs((double)key->green),
+                           fabs((double)key->blue)};
+        for (int32_t c = 0; c < 3; ++c)
+        {
+            *color = sizes[c] > *color ? sizes[c] : *color;
+        }
+    }
+    for (int32_t i = 0; i < gradient->alphaKeyCount; ++i)
+    {
+        double size = fabs((double)gradient->alphaKeys[i].alpha);
+        *alpha = size > *alpha ? size : *alpha;
+    }
+}
+
 bool mvfxIsGradientValid(const mvfxGradient* gradient)
 {
     if (gradient == nullptr || gradient->colorKeys == nullptr || gradient->alphaKeys == nullptr ||
@@ -70,8 +97,8 @@ bool mvfxIsGradientValid(const mvfxGradient* gradient)
     for (int32_t i = 0; i < gradient->colorKeyCount; ++i)
     {
         const mvfxColorKey* key = &gradient->colorKeys[i];
-        if (!(key->time >= previous && key->time <= 1.0f) || !isfinite(key->red) ||
-            !isfinite(key->green) || !isfinite(key->blue))
+        if (!(key->time >= previous && key->time <= 1.0f) || !IsChannel(key->red) ||
+            !IsChannel(key->green) || !IsChannel(key->blue))
         {
             return false;
         }
@@ -81,7 +108,7 @@ bool mvfxIsGradientValid(const mvfxGradient* gradient)
     for (int32_t i = 0; i < gradient->alphaKeyCount; ++i)
     {
         const mvfxAlphaKey* key = &gradient->alphaKeys[i];
-        if (!(key->time >= previous && key->time <= 1.0f) || !isfinite(key->alpha))
+        if (!(key->time >= previous && key->time <= 1.0f) || !IsChannel(key->alpha))
         {
             return false;
         }

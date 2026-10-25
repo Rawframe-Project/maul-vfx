@@ -274,6 +274,72 @@ static void StrikeBeam(mvfxInstance* instance, int32_t emitter)
     }
 }
 
+// Takes out the particles the step killed, keeping the others' order,
+// and counts them.
+static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    uint8_t* killed = instance->killScratch;
+    // A unit dies whole: a kill of any of its points kills it.
+    int32_t points = instance->effect->emitters[emitter].unitPoints;
+    for (int32_t u = 0; points > 1 && u < state->count / points; ++u)
+    {
+        uint8_t any = 0;
+        for (int32_t j = 0; j < points; ++j)
+        {
+            any |= killed[u * points + j];
+        }
+        for (int32_t j = 0; j < points; ++j)
+        {
+            killed[u * points + j] = any;
+        }
+    }
+    const mvfxAttributePlan* plan = &instance->effect->emitters[emitter].plan;
+    int32_t kept = 0;
+    for (int32_t i = 0; i < state->count; ++i)
+    {
+        if (killed[i] != 0)
+        {
+            mvfxRecordEvent(instance, emitter,
+                            &(mvfxEventFact){.kind = mvfx_eventDeath,
+                                             .killed = true,
+                                             .particle = i,
+                                             .tick = instance->clock,
+                                             .placeTick = instance->clock});
+            continue;
+        }
+        for (int32_t a = 0; kept != i && a < MVFX_ATTRIBUTE_COUNT; ++a)
+        {
+            if (mvfxHasAttribute(plan, a))
+            {
+                uint32_t* array = mvfxAttributeArray(instance, emitter, a);
+                array[kept] = array[i];
+            }
+        }
+        ++kept;
+    }
+    // Those a host module's values killed apart (mvfxRunHostModules).
+    int32_t gone = state->count - kept;
+    int32_t values = state->valuesMarked < gone ? state->valuesMarked : gone;
+    state->valuesKilled = mvfxSaturatingAdd(state->valuesKilled, (uint64_t)values);
+    state->killed = mvfxSaturatingAdd(state->killed, (uint64_t)(gone - values));
+    state->valuesMarked = 0;
+    state->count = kept;
+}
+
+// Runs the host modules before motion; a particle one left with a value
+// past its limit is taken out at once, so the step never moves it.
+static void RunModulesBeforeMotion(mvfxInstance* instance, int32_t emitter)
+{
+    mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    if (state->valuesMarked > 0)
+    {
+        RemoveKilled(instance, emitter);
+        memset(instance->killScratch, 0, (size_t)state->capacity);
+    }
+}
+
 // The births of a step whose emitter cannot fill: none is refused, so the
 // ones that live past the step are appended in order.
 static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
@@ -418,7 +484,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
     RemoveEnded(instance, emitter);
     mvfxFindNeighbors(instance, emitter);
     mvfxSteerEmitter(instance, emitter);
-    mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
+    RunModulesBeforeMotion(instance, emitter);
     MoveLive(instance, emitter);
     for (int32_t i = 0; i < accepted; ++i)
     {
@@ -427,54 +493,6 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
                         mvfxInverseLifeOf(instance, emitter, mvfxDrawKey(instance, emitter, birth),
                                           birth->tick));
     }
-}
-
-// Takes out the particles the step killed, keeping the others' order,
-// and counts them.
-static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
-{
-    mvfxEmitterState* state = &instance->emitters[emitter];
-    uint8_t* killed = instance->killScratch;
-    // A unit dies whole: a kill of any of its points kills it.
-    int32_t points = instance->effect->emitters[emitter].unitPoints;
-    for (int32_t u = 0; points > 1 && u < state->count / points; ++u)
-    {
-        uint8_t any = 0;
-        for (int32_t j = 0; j < points; ++j)
-        {
-            any |= killed[u * points + j];
-        }
-        for (int32_t j = 0; j < points; ++j)
-        {
-            killed[u * points + j] = any;
-        }
-    }
-    const mvfxAttributePlan* plan = &instance->effect->emitters[emitter].plan;
-    int32_t kept = 0;
-    for (int32_t i = 0; i < state->count; ++i)
-    {
-        if (killed[i] != 0)
-        {
-            mvfxRecordEvent(instance, emitter,
-                            &(mvfxEventFact){.kind = mvfx_eventDeath,
-                                             .killed = true,
-                                             .particle = i,
-                                             .tick = instance->clock,
-                                             .placeTick = instance->clock});
-            continue;
-        }
-        for (int32_t a = 0; kept != i && a < MVFX_ATTRIBUTE_COUNT; ++a)
-        {
-            if (mvfxHasAttribute(plan, a))
-            {
-                uint32_t* array = mvfxAttributeArray(instance, emitter, a);
-                array[kept] = array[i];
-            }
-        }
-        ++kept;
-    }
-    state->killed = mvfxSaturatingAdd(state->killed, (uint64_t)(state->count - kept));
-    state->count = kept;
 }
 
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
@@ -507,7 +525,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
         RemoveEnded(instance, emitter);
         mvfxFindNeighbors(instance, emitter);
         mvfxSteerEmitter(instance, emitter);
-        mvfxRunHostModules(instance, emitter, mvfx_stageBeforeMotion);
+        RunModulesBeforeMotion(instance, emitter);
         MoveLive(instance, emitter);
         BirthsWithRoom(instance, emitter);
     }

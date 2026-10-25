@@ -227,7 +227,27 @@ typedef struct Range
     int64_t tick;
     double time;
     double seconds;
+    // Whether each moved particle's velocity is held within fastest along
+    // each axis (MVFX_MAX_SPEED in the particles' space): not in a
+    // solver's substeps, which keep their own.
+    bool holds;
+    float fastest;
 } Range;
+
+// x held to [-bound, bound].
+static float Held(float x, float bound)
+{
+    return x < -bound ? -bound : (x > bound ? bound : x);
+}
+
+// Holds particle i's velocity where the range holds it.
+static void HoldSpeed(const Range* r, int32_t i)
+{
+    for (int32_t k = 0; r->holds && k < 3; ++k)
+    {
+        r->v[k][i] = Held(r->v[k][i], r->fastest);
+    }
+}
 
 // Particle i's normalized age at the span's start, held to [0, 1].
 static float AgeOf(const Range* r, int32_t i)
@@ -448,6 +468,7 @@ static void MoveParticle(const Range* r, int32_t i)
     {
         r->p[k][i] = place[k];
     }
+    HoldSpeed(r, i);
     if (r->water != nullptr)
     {
         mvfxMeetWater(r->instance, r->emitter, i, &touch, start, place, r->tick, r->seconds);
@@ -476,10 +497,12 @@ static bool Collides(const Range* r)
 }
 
 // MoveLinear over a plain range, an axis at a time, in the same operations
-// so the same bits.
-static void MovePlain(const Range* r, int32_t first, int32_t end)
+// so the same bits; each velocity held where the range holds it and holds
+// is set (a colliding range holds after its contacts).
+static void MovePlain(const Range* r, int32_t first, int32_t end, bool holds)
 {
     const mvfxDragFactors f = r->shared;
+    float fastest = r->holds && holds ? r->fastest : INFINITY;
     for (int32_t k = 0; k < 3; ++k)
     {
         float* restrict p = r->p[k];
@@ -490,7 +513,7 @@ static void MovePlain(const Range* r, int32_t first, int32_t end)
         {
             float v0 = v[i];
             p[i] += v0 * f.carry + push;
-            v[i] = v0 * f.decay + carry;
+            v[i] = Held(v0 * f.decay + carry, fastest);
         }
     }
 }
@@ -552,7 +575,7 @@ static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
                 starts[k][i - at] = r->p[k][i];
             }
         }
-        MovePlain(r, at, stop);
+        MovePlain(r, at, stop, false);
         Reach reach;
         ReachOf(r, starts, at, stop, &reach);
         uint8_t marks[PLAIN_RUN];
@@ -569,6 +592,7 @@ static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
             // is as the move left it.
             if (lanes && marks[i - at] == 0)
             {
+                HoldSpeed(r, i);
                 continue;
             }
             const float start[3] = {starts[0][i - at], starts[1][i - at], starts[2][i - at]};
@@ -578,14 +602,16 @@ static void MovePlainColliding(const Range* r, int32_t first, int32_t end)
             {
                 r->p[k][i] = place[k];
             }
+            HoldSpeed(r, i);
             r->instance->killScratch[i] |= kills ? 1 : 0;
         }
     }
 }
 
-// Moves particles from first to end over seconds from tick.
-void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
-                        int64_t tick, double seconds)
+// Moves particles from first to end over seconds from tick, holding each
+// one's speed where holds is set.
+static void IntegrateSpan(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
+                          int64_t tick, double seconds, bool holds)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     Range r = {
@@ -601,6 +627,8 @@ void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, 
         .tick = tick,
         .time = (double)tick / (double)MVFX_TICKS_PER_SECOND,
         .seconds = seconds,
+        .holds = holds,
+        .fastest = MVFX_MAX_SPEED * instance->emitters[emitter].velocityModules.sigma,
     };
     mvfxGravityOf(instance, compiled, r.gravity);
     for (int32_t k = 0; k < 3; ++k)
@@ -629,7 +657,7 @@ void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, 
     }
     else if (IsPlain(&r))
     {
-        MovePlain(&r, first, end);
+        MovePlain(&r, first, end, true);
     }
     else
     {
@@ -796,17 +824,24 @@ void mvfxResolveEmitter(mvfxInstance* instance, int32_t emitter)
     mvfxResolveWaterCoupling(instance, emitter, &world, gravity);
 }
 
+void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
+                        int64_t tick, double seconds)
+{
+    IntegrateSpan(instance, emitter, first, end, tick, seconds, false);
+}
+
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter)
 {
     double seconds =
         (double)(instance->clock - instance->stepStart) / (double)MVFX_TICKS_PER_SECOND;
-    mvfxIntegrateRange(instance, emitter, 0, instance->emitters[emitter].count, instance->stepStart,
-                       seconds);
+    IntegrateSpan(instance, emitter, 0, instance->emitters[emitter].count, instance->stepStart,
+                  seconds, true);
 }
 
-void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick)
+void mvfxIntegrateNewborn(mvfxInstance* instance, int32_t emitter, int32_t at, int64_t birthTick,
+                          bool holds)
 {
     // Even one born at the step's end, so the kill rules test where it is.
     double seconds = (double)(instance->clock - birthTick) / (double)MVFX_TICKS_PER_SECOND;
-    mvfxIntegrateRange(instance, emitter, at, at + 1, birthTick, seconds);
+    IntegrateSpan(instance, emitter, at, at + 1, birthTick, seconds, holds);
 }

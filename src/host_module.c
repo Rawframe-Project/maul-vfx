@@ -7,6 +7,9 @@
 
 #include "maul-vfx/instance.h"
 
+#include <float.h>
+#include <math.h>
+
 // The salt of a host module's seed.
 #define HOST_SALT 0x484F5354u
 
@@ -64,6 +67,92 @@ static mvfxParticleArrays ArraysOf(mvfxInstance* instance, int32_t emitter, bool
     return arrays;
 }
 
+// Whether particle i's values in n arrays (NULL for one not stored) are
+// each finite and at most bound in size, bound per array.
+static bool AreWithin(float* const* arrays, int32_t n, int32_t i, const float* bounds)
+{
+    bool within = true;
+    for (int32_t k = 0; k < n; ++k)
+    {
+        within = within && (arrays[k] == nullptr || fabsf(arrays[k][i]) <= bounds[k]);
+    }
+    return within;
+}
+
+// Whether any of count values is not finite or past bound in size: a
+// reduction over one array, which vectorizes.
+static bool AnyPast(const float* values, int32_t count, float bound)
+{
+    uint32_t past = 0;
+    for (int32_t i = 0; values != nullptr && i < count; ++i)
+    {
+        past |= fabsf(values[i]) <= bound ? 0u : 1u;
+    }
+    return past != 0;
+}
+
+// Whether any of n arrays holds a value past its bound.
+static bool AnyArrayPast(float* const* arrays, int32_t n, int32_t count, const float* bounds)
+{
+    bool past = false;
+    for (int32_t k = 0; k < n; ++k)
+    {
+        past = past || AnyPast(arrays[k], count, bounds[k]);
+    }
+    return past;
+}
+
+// Marks for the kill each particle a host module left holding a value
+// that is not finite or is past its limit: a place not finite, a velocity
+// past the speed the step holds, a size, colour, spin, angular velocity or
+// custom attribute past what the emitter's particles may store, an angle
+// or orientation not finite. Those not marked already are counted in
+// valuesMarked.
+static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxParticleArrays* a)
+{
+    mvfxEmitterState* state = &instance->emitters[emitter];
+    const mvfxStoredCaps* caps = &instance->effect->emitters[emitter].overLife.caps;
+    float fastest = MVFX_MAX_SPEED * state->velocityModules.sigma;
+    const float finite[4] = {FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX};
+    const float speeds[3] = {fastest, fastest, fastest};
+    const float spins[3] = {caps->spin, caps->spin, caps->spin};
+    float* angle[1] = {a->angle};
+    float* spin[1] = {a->spin};
+    // An array at a time first: the particles are looked at one by one
+    // only where some value is past its limit.
+    int32_t n = a->count;
+    bool past =
+        AnyArrayPast(a->position, 3, n, finite) || AnyArrayPast(a->velocity, 3, n, speeds) ||
+        AnyArrayPast(a->color, 4, n, caps->color) || AnyArrayPast(a->size, 3, n, caps->size) ||
+        AnyArrayPast(angle, 1, n, finite) || AnyArrayPast(spin, 1, n, &caps->spin) ||
+        AnyArrayPast(a->orientation, 4, n, finite) || AnyArrayPast(a->angularVelocity, 3, n, spins);
+    for (int32_t c = 0; !past && c < MVFX_MAX_CUSTOM_ATTRIBUTES; ++c)
+    {
+        const float custom[4] = {caps->custom[c], caps->custom[c], caps->custom[c],
+                                 caps->custom[c]};
+        past = AnyArrayPast(a->custom[c], 4, n, custom);
+    }
+    for (int32_t i = 0; past && i < n; ++i)
+    {
+        bool within =
+            AreWithin(a->position, 3, i, finite) && AreWithin(a->velocity, 3, i, speeds) &&
+            AreWithin(a->color, 4, i, caps->color) && AreWithin(a->size, 3, i, caps->size) &&
+            AreWithin(angle, 1, i, finite) && AreWithin(spin, 1, i, &caps->spin) &&
+            AreWithin(a->orientation, 4, i, finite) && AreWithin(a->angularVelocity, 3, i, spins);
+        for (int32_t c = 0; within && c < MVFX_MAX_CUSTOM_ATTRIBUTES; ++c)
+        {
+            const float custom[4] = {caps->custom[c], caps->custom[c], caps->custom[c],
+                                     caps->custom[c]};
+            within = AreWithin(a->custom[c], 4, i, custom);
+        }
+        if (!within && instance->killScratch[i] == 0)
+        {
+            instance->killScratch[i] = 1;
+            state->valuesMarked += 1;
+        }
+    }
+}
+
 void mvfxRunHostModules(mvfxInstance* instance, int32_t emitter, mvfxModuleStage stage)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
@@ -91,6 +180,7 @@ void mvfxRunHostModules(mvfxInstance* instance, int32_t emitter, mvfxModuleStage
             .seed = seed.x,
         };
         module->function(&call, module->user);
+        MarkPastLimits(instance, emitter, &call.particles);
     }
 }
 

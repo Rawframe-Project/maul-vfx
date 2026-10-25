@@ -3,9 +3,9 @@
 //
 // Planned instances simulated on a real device (lavapipe on CI) beside the
 // same effects on the CPU path, compared after every step (rhi_harness.h):
-// spawning, motion, forces, collision, depth, values, modules, kill rules,
-// the host's particles, bounds; and what the part refuses. Skips (77)
-// without an adapter, unless MVFX_RHI_REQUIRED is set.
+// spawning, motion, speeds held, forces, collision, depth, values,
+// modules, kill rules, the host's particles, bounds; and what the part
+// refuses. Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "emitter_step.h"
 #include "half.h"
@@ -68,6 +68,34 @@ static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].boundsMax[2] = 0.25f;
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 1, .moving = true},
             "fixed bounds under a moving instance");
+}
+
+static void TestSpeedHeld(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Set off at the fastest valid speed straight down under the strongest
+    // constant force, 1e12 a second squared: each step holds the speed at
+    // MVFX_MAX_SPEED, from the births' first move on, in the instance's
+    // space and in the world's under a growing instance (the limit times
+    // its scale).
+    static const mvfxForce strongest = {.kind = mvfx_forceConstant,
+                                        .vector = {0, -MVFX_MAX_EXTENT, 0},
+                                        .strength = MVFX_MAX_EXTENT};
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        emitters[e].velocity = (mvfxVelocity){.mode = mvfx_directionFixed,
+                                              .direction = {0, -1, 0},
+                                              .speed = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT}};
+        emitters[e].forces = &strongest;
+        emitters[e].forceCount = 1;
+        // Without drag: the GPU's drag factors in binary32 cancel, which
+        // a force this strong would carry into the place.
+        emitters[e].motion.drag = 0.0f;
+    }
+    emitters[0].space = mvfx_spaceLocal;
+    emitters[1].space = mvfx_spaceWorld;
+    Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
+            "speeds held at the limit");
 }
 
 // Bursts larger than the capacity at one tick, and past it with the rate.
@@ -1325,6 +1353,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestSprite(gpu, kernels);
     TestMoving(gpu, kernels);
+    TestSpeedHeld(gpu, kernels);
     TestForces(gpu, kernels);
     TestTurbulence(gpu, kernels);
     TestVectorFields(gpu, kernels);

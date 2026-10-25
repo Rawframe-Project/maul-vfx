@@ -683,6 +683,6 @@ void mvfxIntegrateRigidNewborn(mvfxInstance* instance, int32_t emitter, int32_t 
     if (!moved)
     {
         // Born at the step's end: still tested by the kill rules there.
-        mvfxIntegrateNewborn(instance, emitter, at, birthTick);
+        mvfxIntegrateNewborn(instance, emitter, at, birthTick, false);
     }
 }

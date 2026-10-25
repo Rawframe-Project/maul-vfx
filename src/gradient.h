@@ -19,8 +19,12 @@ typedef struct mvfxGradientTable
 
 // Whether a gradient is valid: both lists present and at most
 // MVFX_CURVE_MAX_KEYS long, times in [0, 1] that never decrease, every
-// field finite.
+// channel at most MVFX_MAX_COLOR in size.
 bool mvfxIsGradientValid(const mvfxGradient* gradient);
+
+// The largest size of a valid gradient's colour keys' channels and of its
+// alpha keys: its baked colours blend its keys, so they bound them.
+void mvfxGradientLargest(const mvfxGradient* gradient, double* color, double* alpha);
 
 // Bakes a valid gradient.
 void mvfxBakeGradient(const mvfxGradient* gradient, mvfxGradientTable* tableOut);

@@ -23,10 +23,18 @@ extern "C"
 // The most custom attributes an emitter declares.
 #define MVFX_MAX_CUSTOM_ATTRIBUTES 8
 
+// The most a life curve may scale by, in size: its value times its largest
+// baked sample (1 with no keys). Every product a life curve takes part in
+// (a size, a colour's alpha, a rotation speed, a custom attribute, a
+// velocity module's speed or rate, a ribbon's width, a pair force) is then
+// bounded by its other factor's limit times this.
+#define MVFX_MAX_LIFE_SCALE 1e6f
+
     // A value over a particle's life: value times the curve at the
     // particle's normalized age (its age over its life, held to [0, 1]);
-    // a curve with no keys is 1. value is finite and at most MVFX_MAX_VALUE
-    // in size, the curve's keys' times in [0, 1]; the effect bakes it.
+    // a curve with no keys is 1. value is finite, the curve's keys' times in
+    // [0, 1], and value times the curve's largest baked sample at most
+    // MVFX_MAX_LIFE_SCALE in size; the effect bakes it.
     typedef struct mvfxLifeCurve
     {
         float value;
@@ -251,7 +259,10 @@ extern "C"
     // event of a kind its source wrote in the step, from minCount to
     // maxCount particles (drawn for the event), born at its tick and its
     // place, with the emitter's own velocity plus inheritVelocity of the
-    // event's, and its colour and size when asked. The source steps first
+    // event's, and its colour and size when asked, each held to what the
+    // emitter's particles may store (MVFX_MAX_COLOR and MVFX_MAX_EXTENT
+    // over the most its own values over life scale them; a
+    // mvfxSpawnRequest's colors and sizes). The source steps first
     // (an effect's emitters step in an order its links make; a cycle is
     // refused); the source's capacity of events bounds the spawns, and so
     // do capacity a step and the emitter's own room, the rest counted
@@ -583,6 +594,17 @@ extern "C"
     // particle in each, count long; NULL for what the emitter does not
     // store. Places are in the emitter's space: offsets from anchor for a
     // world-space emitter, the instance's own space for a local one.
+    //
+    // What a module leaves is checked after it runs: a particle holding a
+    // place, angle or orientation that is not finite, a velocity past
+    // MVFX_MAX_SPEED on an axis (times the instance's scale for a
+    // world-space emitter), or a colour, size, spin, angular velocity or
+    // custom attribute past what the emitter's particles may store (its
+    // role's limit, MVFX_MAX_COLOR, MVFX_MAX_EXTENT, MVFX_MAX_SPIN or
+    // MVFX_MAX_VALUE, over the most its values over life scale it; a
+    // mvfxSpawnRequest's colors and sizes) is killed and counted in
+    // mvfxEmitterStats.valuesKilled. Before motion it is taken out at once,
+    // so the step moves it no further.
     typedef struct mvfxParticleArrays
     {
         int32_t count;

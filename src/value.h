@@ -48,27 +48,33 @@ typedef struct mvfxTableSpace
 
 // Whether a scalar source is valid: a known kind (none only when
 // optional), finite bounds in order, a valid curve (over [0, 1] when the
-// emitter has a duration), a parameter below the count; a curve's baked
-// samples times its bounds' larger size within MVFX_MAX_DRAW.
+// emitter has a duration), a parameter below the count; its base's
+// largest size (1 for a range, a curve's largest baked sample) times its
+// bounds' larger size within cap (at most MVFX_MAX_DRAW). A parameter's
+// share is checked against its value (mvfxIsParameterWithinReach).
 bool mvfxIsScalarSourceValid(const mvfxScalarSource* source, bool optional, bool hasDuration,
-                             int32_t parameterCount);
+                             int32_t parameterCount, float cap);
 
 // Whether a vector source of components (1 to 4) is valid likewise, the
 // gradient kinds only for four components, over age only with a
-// duration; a curve's samples or a gradient's channels times its ends'
-// largest size within MVFX_MAX_DRAW.
+// duration; its base's largest size (a gradient's largest key) times each
+// component's ends' larger size within that component's cap (cap holds
+// one a component).
 bool mvfxIsVectorSourceValid(const mvfxVectorSource* source, int32_t components, bool hasDuration,
-                             int32_t parameterCount);
+                             int32_t parameterCount, const float* cap);
 
 // Raises reach[p][c] to the larger size of the ends of a source that reads
-// component c of parameter p, for each such component.
-void mvfxScalarParameterReach(const mvfxScalarSource* source, float reach[MVFX_MAX_PARAMETERS][4]);
-void mvfxVectorParameterReach(const mvfxVectorSource* source, int32_t components,
-                              float reach[MVFX_MAX_PARAMETERS][4]);
+// component c of parameter p over the source's cap for it, for each such
+// component.
+void mvfxScalarParameterReach(const mvfxScalarSource* source, float cap,
+                              double reach[MVFX_MAX_PARAMETERS][4]);
+void mvfxVectorParameterReach(const mvfxVectorSource* source, int32_t components, const float* cap,
+                              double reach[MVFX_MAX_PARAMETERS][4]);
 
 // Whether a parameter's value times the reach of the sources reading each
-// component stays within MVFX_MAX_DRAW (false for a NaN).
-bool mvfxIsParameterWithinReach(const float value[4], const float reach[4]);
+// component stays within 1, each source's draw then within its cap (false
+// for a NaN).
+bool mvfxIsParameterWithinReach(const float value[4], const double reach[4]);
 
 // How many curve and gradient tables a source needs.
 int32_t mvfxScalarCurves(const mvfxScalarSource* source);

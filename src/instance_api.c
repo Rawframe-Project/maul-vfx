@@ -274,6 +274,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStatsWork(mvfxContext* co
         .owed = state->owed,
         .refused = state->refused,
         .killed = state->killed,
+        .valuesKilled = state->valuesKilled,
         .queriesDropped = state->queriesDropped,
         .eventsDropped = state->eventsDropped,
         .neighborsCapped = state->neighborsCapped,

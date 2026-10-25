@@ -5,10 +5,19 @@
 
 #include <math.h>
 
+double mvfxLifeCurveLargest(const mvfxLifeCurve* life)
+{
+    double value = fabs((double)life->value);
+    return life->curve.keyCount == 0 ? value : value * mvfxCurveLargest(&life->curve, 0.0f, 1.0f);
+}
+
 bool mvfxIsLifeCurveValid(const mvfxLifeCurve* life)
 {
+    // A value past MVFX_MAX_VALUE is refused before the curve is sampled,
+    // so a zero curve cannot hide it.
     return fabsf(life->value) <= MVFX_MAX_VALUE &&
-           (life->curve.keyCount == 0 || mvfxIsCurveValid(&life->curve, true));
+           (life->curve.keyCount == 0 || mvfxIsCurveValid(&life->curve, true)) &&
+           mvfxLifeCurveLargest(life) <= (double)MVFX_MAX_LIFE_SCALE;
 }
 
 int32_t mvfxLifeCurves(const mvfxLifeCurve* life)
