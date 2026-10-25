@@ -8,6 +8,9 @@
 // the same order; its place and velocity within a tolerance (the GPU's
 // floats are not the CPU's bits); the bounds; the records.
 
+// getenv is standard C; MSVC's runtime deprecates it for its own.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "rhi_harness.h"
 
 #include "emitter_step.h"

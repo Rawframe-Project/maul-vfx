@@ -5,6 +5,9 @@
 // there, run on a device on the first adapter (lavapipe on CI); skipped
 // (77) without one unless MVFX_RHI_REQUIRED is set.
 
+// getenv is standard C; MSVC's runtime deprecates it for its own.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "test_harness.h"
 
 #include "maul-rhi/encoder.h"

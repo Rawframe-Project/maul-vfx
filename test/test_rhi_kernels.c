@@ -11,6 +11,9 @@
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set; the
 // refusals of mvfxCreateGpu need no device.
 
+// getenv is standard C; MSVC's runtime deprecates it for its own.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "emitter_step.h"
 #include "exact_check_container.h"
 #include "kernels.h"
