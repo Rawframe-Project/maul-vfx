@@ -9,7 +9,9 @@
 // the core's: 1 over every significand, drawn quotients, 64-bit counts near
 // rounding ties as binary32, drawn lives' ticks as mvfxDeathTick's, and
 // 64-bit remainders stored over their inputs and eight words apart (the
-// first expected wrong on WARP, the second right everywhere). Skips (77)
+// first expected wrong on WARP, the second right everywhere); and the drag
+// factors (rhi/kernels/shared/drag.wgsl) against the core's binary64 ones
+// over seven decades of drag times seconds. Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set, whose driver the
 // adapter must be; the refusals of mvfxCreateGpu need no device. On the
 // windows-rhi-d3d12 preset it runs under D3D12's debug layer and fails on
@@ -20,6 +22,7 @@
 
 #include "emitter_step.h"
 #include "exact_check_container.h"
+#include "integrate.h"
 #include "kernels.h"
 #include "random.h"
 #include "rhi_driver.h"
@@ -244,7 +247,8 @@ typedef enum CheckMode
     CHECK_SUMS = 4,
     CHECK_REMAINDERS = 5,
     CHECK_RATIOS = 6,
-    CHECK_REMAINDERS_APART = 7
+    CHECK_REMAINDERS_APART = 7,
+    CHECK_DRAG_FACTORS = 8
 } CheckMode;
 
 // The bytes of an element of a mode: eight words for remainders apart,
@@ -692,6 +696,63 @@ static void TestRemaindersApart(Gpu* gpu, Checker* checker)
     CHECK(ran && wrong == 0, "64-bit remainders, eight words an element");
 }
 
+// The most the kernels' drag factors (shared/drag.wgsl) are from the
+// core's, relative. The decay is WGSL's exp past the series, within
+// 3 + 2 |x| units in the last place: at most 23 over the x checked, up to
+// 2.7e-6 relative. The carry and the push take it only past x = 1, where
+// neither cancels: e^-x falls faster than the bound grows, so the decay's
+// share of phi1, e^-x (3 + 2x) / (1 - e^-x) units, is largest at x = 1,
+// about 3 units, and phi2 carries 1.7 times that, about 5. With a few
+// units of rounding, and the series' few, both stay near 1e-6.
+#define DRAG_DECAY_ERROR 4e-6
+#define DRAG_ERROR       2e-6
+
+// Drag factors against the core's (mvfxDragFactorsOf, in binary64 and
+// rounded once), for x, drag times seconds, from 1e-6 to 10 spaced
+// evenly in its logarithm, over a second and over a 60th of one.
+static void TestDragFactors(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        POINTS = 4096
+    };
+    for (uint32_t e = 0; e < 2 * POINTS; ++e)
+    {
+        uint32_t* w = &checker->words[4 * e];
+        float seconds = e < POINTS ? 1.0f : 1.0f / 60.0f;
+        double x = 1e-6 * pow(10.0, 7.0 * (double)(e % POINTS) / (POINTS - 1));
+        w[0] = Bits((float)(x / (double)seconds));
+        w[1] = Bits(seconds);
+        w[2] = 0;
+        w[3] = 0;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_DRAG_FACTORS, 0, 2 * POINTS);
+    double worst[3] = {0.0, 0.0, 0.0};
+    double worstAt = 0.0;
+    for (uint32_t e = 0; ran && e < 2 * POINTS; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        // The drag in w0 was read before the decay replaced it.
+        float seconds = FloatOf(w[1]);
+        double x = 1e-6 * pow(10.0, 7.0 * (double)(e % POINTS) / (POINTS - 1));
+        float drag = (float)(x / (double)seconds);
+        mvfxDragFactors core = mvfxDragFactorsOf((double)drag, (double)seconds);
+        const float expected[3] = {core.decay, core.carry, core.push};
+        const float got[3] = {FloatOf(w[0]), FloatOf(w[2]), FloatOf(w[3])};
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double error = fabs((double)got[k] - (double)expected[k]) / fabs((double)expected[k]);
+            worstAt = k == 2 && error > worst[2] ? (double)drag * (double)seconds : worstAt;
+            worst[k] = error > worst[k] ? error : worst[k];
+        }
+    }
+    printf("drag factors' largest relative differences from the core's: decay %g, carry %g, "
+           "push %g (at x = %g)\n",
+           worst[0], worst[1], worst[2], worstAt);
+    CHECK(ran && worst[0] <= DRAG_DECAY_ERROR && worst[1] <= DRAG_ERROR && worst[2] <= DRAG_ERROR,
+          "drag factors as the core's");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -706,6 +767,7 @@ static void TestExact(Gpu* gpu)
         TestSums(gpu, &checker);
         TestRemaindersAndRatios(gpu, &checker);
         TestRemaindersApart(gpu, &checker);
+        TestDragFactors(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }

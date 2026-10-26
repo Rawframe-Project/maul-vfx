@@ -13,7 +13,10 @@
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
+#include "rhi_pair_budgets.h"
 #include "test_harness.h"
+
+#include <string.h>
 
 // Sprites as rigid bodies of a shape thrown down on a floor, sizes
 // unequal along their axes, random orientations and angular velocities,
@@ -62,13 +65,33 @@ static const mvfxCollider s_floor = {
 static const mvfxCollider s_level = {
     .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
 
+// A scene's bound on the bodies apart (rhi_pair_budgets.h), 0 for one
+// it does not list.
+static int32_t BoundOf(const char* what)
+{
+    for (size_t i = 0; i < sizeof s_pairBudgets / sizeof s_pairBudgets[0]; ++i)
+    {
+        if (strcmp(s_pairBudgets[i].scene, what) == 0)
+        {
+            return s_pairBudgets[i].mostApart;
+        }
+    }
+    return 0;
+}
+
 // Compares bodies a step at a time from the same state (rhi_harness.h's
 // adopting): a body near the floor or another body may go apart, at most
-// the scene's bound.
+// the scene's bound. The bounds bound chaotic divergence under
+// perturbation, not a correctness count: tools/pair_budgets.py derives
+// them, and is run again when the arithmetic changes. Its margin, times 1.5
+// plus 4, lets a new run step past the ensemble's largest count as far
+// again as the widest step between its two largest (1.57 times, the pool's
+// 58 against 37) or by a few bodies for a small count.
 static void Met(Gpu* gpu, mvfxGpu* kernels, const Run* scene, const char* what)
 {
-    CHECK(scene->mostApart > 0, "a scene's bound on the bodies apart");
     Run run = *scene;
+    run.mostApart = BoundOf(what);
+    CHECK(run.mostApart > 0, "a scene's bound on the bodies apart");
     run.emitterCount = 1;
     run.colliding = true;
     run.adopting = true;
@@ -79,16 +102,14 @@ static void Met(Gpu* gpu, mvfxGpu* kernels, const Run* scene, const char* what)
 static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = Thrown(mvfx_rigidSphere, &s_floor, 8);
-    Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter},
-        "spheres meeting the floor and each other");
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "spheres meeting the floor and each other");
     emitter = Thrown(mvfx_rigidBox, &s_floor, 8);
-    Met(gpu, kernels, &(Run){.mostApart = 6, .emitters = &emitter},
-        "boxes meeting the floor and each other");
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes meeting the floor and each other");
     // Living a third to two thirds of a second, bodies end within the run:
     // a pair's priority is of the bodies' ranks among those the step moves.
     emitter = Thrown(mvfx_rigidSphere, &s_floor, 8);
     emitter.lifetime = mvfxRangeSource(0.3f, 0.6f);
-    Met(gpu, kernels, &(Run){.mostApart = 4, .least = 50, .emitters = &emitter},
+    Met(gpu, kernels, &(Run){.least = 50, .emitters = &emitter},
         "spheres meeting each other, some ending within the run");
     // Sizes from 0.1 to 1: the pair grid has levels. Masses up to 500
     // times one another's part more bodies (the CPU path against itself,
@@ -96,20 +117,17 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
     emitter = Thrown(mvfx_rigidBox, &s_floor, 8);
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.1f, 0.1f}, .max = {1.0f, 0.6f, 0.8f}};
-    Met(gpu, kernels, &(Run){.mostApart = 66, .emitters = &emitter},
-        "boxes of sizes apart meeting each other");
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "boxes of sizes apart meeting each other");
     // Capsules by their cores (the CPU path against itself, sizes moved
     // by a binary32 unit each step, parts 17).
     emitter = Thrown(mvfx_rigidCapsule, &s_floor, 8);
-    Met(gpu, kernels, &(Run){.mostApart = 38, .emitters = &emitter},
-        "capsules meeting the floor and each other");
+    Met(gpu, kernels, &(Run){.emitters = &emitter}, "capsules meeting the floor and each other");
     // Hulls as polytopes, over the first 15 steps: a hull's face against
     // another's turns on rounding (a cube's hull parts 99 of 119 over 40
     // steps on the CPU path against itself, places moved by 2e-6, where
     // boxes part 10; 7 over 15).
     emitter = Thrown(mvfx_rigidHull, &s_floor, 8);
-    Met(gpu, kernels,
-        &(Run){.mostApart = 4, .steps = 15, .least = 30, .emitters = &emitter, .mesh = &s_hull},
+    Met(gpu, kernels, &(Run){.steps = 15, .least = 30, .emitters = &emitter, .mesh = &s_hull},
         "hulls meeting the floor and each other");
     // Sleeping, over two seconds on a level floor: 15 boxes a second,
     // spread over 3 and living 3 seconds, sleep by islands once still a
@@ -123,18 +141,14 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
     emitter.rigid.sleepSpeed = 2.0f;
     emitter.rigid.sleepTime = 0.1f;
     Met(gpu, kernels,
-        &(Run){.mostApart = 5,
-               .steps = 120,
-               .least = 45,
-               .emitters = &emitter,
-               .leastAsleep = 10,
-               .leastWoken = 20},
+        &(Run){
+            .steps = 120, .least = 45, .emitters = &emitter, .leastAsleep = 10, .leastWoken = 20},
         "boxes meeting each other, sleeping by islands and woken by touch");
     // Three contacts a body: those past the pool's room are dropped and
     // counted.
     emitter = Thrown(mvfx_rigidBox, &s_floor, 3);
     emitter.events = 0;
-    Met(gpu, kernels, &(Run){.mostApart = 5, .emitters = &emitter, .leastRigidCapped = 1},
+    Met(gpu, kernels, &(Run){.emitters = &emitter, .leastRigidCapped = 1},
         "boxes meeting each other, the pool's contacts dropped");
 }
 

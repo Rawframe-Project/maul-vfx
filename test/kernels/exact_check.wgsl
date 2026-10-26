@@ -6,6 +6,7 @@
 // four words, two in and two out (eight for remainders apart).
 
 // include: shared/exact.wgsl
+// include: shared/drag.wgsl
 
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
@@ -15,6 +16,7 @@ const SUMS: u32 = 4u;
 const REMAINDERS: u32 = 5u;
 const RATIOS: u32 = 6u;
 const REMAINDERS_APART: u32 = 7u;
+const DRAG_FACTORS: u32 = 8u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -39,7 +41,8 @@ var<immediate> root: Root;
 // w3), out x % d in w0 and w1. Remainders apart: eight words an element,
 // in x (w0, w1) and d (w2, w3), out x % d in w4 and w5, w6 and w7 never
 // written. Ratios: in n (w0, w1) and d (w2, w3), out n / d as binary32
-// in w0.
+// in w0. Drag factors (shared/drag.wgsl): in a drag (w0) and seconds
+// (w1), out the decay in w0, the carry in w2 and the push in w3.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -85,6 +88,12 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
             case RATIOS: {
                 words[w] = bitcast<u32>(ratio(vec2<u32>(words[w], words[w + 1u]),
                                               vec2<u32>(words[w + 2u], words[w + 3u])));
+            }
+            case DRAG_FACTORS: {
+                let f = factors(bitcast<f32>(words[w]), bitcast<f32>(words[w + 1u]));
+                words[w] = bitcast<u32>(f.x);
+                words[w + 2u] = bitcast<u32>(f.y);
+                words[w + 3u] = bitcast<u32>(f.z);
             }
             case SUMS, default: {
                 let a = vec2<u32>(words[w], words[w + 2u]);
