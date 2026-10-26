@@ -2465,7 +2465,9 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
         bool skipped;
         uint32_t word;
         uint64_t cpu;
-    } counts[13] = {
+    } counts[15] = {
+        {def->events == 0, MVFX_GPU_EVENTS_WRITTEN, 0},
+        {def->events == 0, MVFX_GPU_EVENTS_WRITTEN + 1, 0},
         {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS, 0},
         {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 1, 0},
         {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 2, 0},
@@ -2480,7 +2482,7 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
         {!rigid, MVFX_GPU_RIGID_CAPPED, stats.rigidContactsCapped},
         {!rigid, MVFX_GPU_RIGID_SEARCHES, stats.rigidSearchesCapped}};
     bool same = true;
-    for (int32_t c = 0; c < 13; ++c)
+    for (int32_t c = 0; c < 15; ++c)
     {
         if (counts[c].skipped && s_record[counts[c].word] != counts[c].cpu)
         {
