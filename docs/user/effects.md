@@ -50,6 +50,7 @@ Every value a particle stores or shows stays within its role's limit, so every o
 | A spin or angular velocity | `MVFX_MAX_SPIN` (1e6 radians a second) | The stored value times its rotation speed over life. A sprite's angle then stays within 1e12 radians of its initial one. |
 | A custom attribute | `MVFX_MAX_VALUE` (1e30) | Each component times its scale over life. |
 | Anything else a source draws | `MVFX_MAX_DRAW` (1e38) | An angle, an orientation, a drag scale, a lifetime. |
+| A place a host module leaves | `MVFX_MAX_PLACE` (1e30) | Each axis, in the emitter's space. The step's own places stay far within it, and times the largest instance scale it is still finite. |
 
 So each stored value has a cap: its role's limit over the most its values over life scale it. A source's base at its largest size (a curve's largest baked value, rises between keys included, a gradient's largest key, a parameter's value) times the larger size of its ends must be within its cap. An effect with a source past it is refused, and so is a parameter default or a value set with `mvfxInstance_SetParameter` that takes a source reading it past it (`mvfx_errorInvalid`). A colour or size the program spawns with (`mvfxSpawnRequest`) past its cap is refused the same way; one inherited from an event is held to the spawning emitter's cap.
 
@@ -59,7 +60,7 @@ So each stored value has a cap: its role's limit over the most its values over l
 
 ## Host modules
 
-`hostModules` run the program's own functions over an emitter's particles, before or after the step moves them (`mvfx_stageBeforeMotion`, `mvfx_stageAfterMotion`). A module reads and writes the particle arrays in place, can kill particles, and draws random numbers from `mvfxModule_Random`, whose stream is seeded per instance and module, so the step stays deterministic if the module is. What a module leaves is checked after it runs: a particle left with a place, angle or orientation that is not finite, a velocity past the speed the step holds, or a colour, size, spin, angular velocity or custom attribute past its cap is killed and counted in `valuesKilled` (before motion, at once, so the step never moves it). A module runs on whichever thread steps its instance, possibly beside itself for another instance, and calls no function that changes the context. An effect with host modules cannot run on the GPU part.
+`hostModules` run the program's own functions over an emitter's particles, before or after the step moves them (`mvfx_stageBeforeMotion`, `mvfx_stageAfterMotion`). A module reads and writes the particle arrays in place, can kill particles, and draws random numbers from `mvfxModule_Random`, whose stream is seeded per instance and module, so the step stays deterministic if the module is. What a module leaves is checked after it runs: a particle left with a place past `MVFX_MAX_PLACE` (1e30) on an axis, an angle or orientation that is not finite, a velocity past the speed the step holds, or a colour, size, spin, angular velocity or custom attribute past its cap is killed and counted in `valuesKilled` (before motion, at once, so the step never moves it). A module runs on whichever thread steps its instance, possibly beside itself for another instance, and calls no function that changes the context. An effect with host modules cannot run on the GPU part.
 
 ## Beyond points
 

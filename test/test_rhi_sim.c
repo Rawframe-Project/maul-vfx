@@ -88,8 +88,8 @@ static void TestSpeedHeld(Gpu* gpu, mvfxGpu* kernels)
                                               .speed = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT}};
         emitters[e].forces = &strongest;
         emitters[e].forceCount = 1;
-        // Without drag: the GPU's drag factors in binary32 cancel, which
-        // a force this strong would carry into the place.
+        // Without drag until #77: the GPU's drag factors in binary32
+        // cancel, which a force this strong would carry into the place.
         emitters[e].motion.drag = 0.0f;
     }
     emitters[0].space = mvfx_spaceLocal;

@@ -30,6 +30,14 @@ extern "C"
 // bounded by its other factor's limit times this.
 #define MVFX_MAX_LIFE_SCALE 1e6f
 
+// The farthest a host module may leave a particle's place along each axis,
+// in the emitter's space; past it the particle is killed
+// (mvfxParticleArrays). Far past any place the step makes (a birth within
+// 1e12 of its origin, moved at most about 1e27 over the longest life), and
+// times MVFX_MAX_SCALE still finite in binary32, so each output that maps a
+// place into the world stays finite.
+#define MVFX_MAX_PLACE 1e30f
+
     // A value over a particle's life: value times the curve at the
     // particle's normalized age (its age over its life, held to [0, 1]);
     // a curve with no keys is 1. value is finite, the curve's keys' times in
@@ -596,7 +604,8 @@ extern "C"
     // world-space emitter, the instance's own space for a local one.
     //
     // What a module leaves is checked after it runs: a particle holding a
-    // place, angle or orientation that is not finite, a velocity past
+    // place past MVFX_MAX_PLACE on an axis, an angle or orientation that is
+    // not finite, a velocity past
     // MVFX_MAX_SPEED on an axis (times the instance's scale for a
     // world-space emitter), or a colour, size, spin, angular velocity or
     // custom attribute past what the emitter's particles may store (its

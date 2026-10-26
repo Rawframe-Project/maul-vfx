@@ -9,12 +9,15 @@
 // attribute's over its scale (MVFX_MAX_VALUE); a gradient's keys; a host's
 // spawned sizes and colours refused past them, an event's inherited ones
 // held to them; each moved particle's speed held within MVFX_MAX_SPEED;
-// and what a host module leaves past a limit killed and counted apart.
+// and what a host module leaves past a limit killed and counted apart, a
+// place past MVFX_MAX_PLACE among them, so the records stay finite under
+// the largest instance scale.
 
 #include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
+#include "maul-vfx/output.h"
 
 #include <math.h>
 
@@ -543,6 +546,64 @@ static void TestModules(void)
     }
 }
 
+// After motion, once s_placing is set: a place past MVFX_MAX_PLACE (yet
+// finite) on the first particle, one at it on the second.
+static bool s_placing;
+static void LeavePlaces(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* a = &call->particles;
+    if (s_placing && a->count == 2)
+    {
+        a->position[0][0] = 1e38f;
+        a->position[0][1] = MVFX_MAX_PLACE;
+    }
+}
+
+static void TestModulePlaces(void)
+{
+    // A local emitter under the largest scale: the place past the limit
+    // would be infinite in the world; the one at it is 1e36 there.
+    const mvfxHostModule module = {
+        .stage = mvfx_stageAfterMotion, .function = LeavePlaces, .user = NULL};
+    mvfxEmitterDef emitter = Hosted();
+    emitter.space = mvfx_spaceLocal;
+    emitter.hostModules = &module;
+    emitter.hostModuleCount = 1;
+    Scene scene = NewScene(&emitter, 1, MVFX_MAX_SCALE);
+    Spawn(&scene, 2);
+    s_placing = false;
+    Step(&scene, 1);
+    s_placing = true;
+    Step(&scene, 1);
+    mvfxEmitterStats stats;
+    Stats(&scene, 0, &stats);
+    static const mvfxLayoutField fields[1] = {
+        {.field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3}};
+    mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
+    layoutDef.fields = fields;
+    layoutDef.fieldCount = 1;
+    layoutDef.stride = 12;
+    mvfxLayoutId layout = {0};
+    CHECK(mvfxCreateLayout(scene.context, &layoutDef, &layout) == mvfx_success, "layout");
+    float records[4][3] = {{0}};
+    const mvfxView view = {.forward = {0.0f, 0.0f, -1.0f}, .up = {0.0f, 1.0f, 0.0f}};
+    int64_t count = 0;
+    CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,
+                                      records, 4, &count) == mvfx_success,
+          "records written");
+    bool finite = true;
+    for (int64_t i = 0; i < count; ++i)
+    {
+        finite =
+            finite && isfinite(records[i][0]) && isfinite(records[i][1]) && isfinite(records[i][2]);
+    }
+    CHECK(stats.valuesKilled == 1u && count == 1 && finite &&
+              records[0][0] == MVFX_MAX_PLACE * MVFX_MAX_SCALE,
+          "a module's place past it killed, the records finite");
+    mvfxDestroyContext(scene.context);
+}
+
 int main(void)
 {
     TestLifeCurves();
@@ -553,5 +614,6 @@ int main(void)
     TestInherited();
     TestSpeedHold();
     TestModules();
+    TestModulePlaces();
     return s_failures == 0 ? 0 : 1;
 }
