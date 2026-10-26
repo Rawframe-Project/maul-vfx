@@ -13,11 +13,11 @@ simulation's results.
 - **Breaking:** every value a particle stores or shows now stays within
   a limit for its role, so every output (records, sprites, ribbons,
   lights, events, bounds) is finite for an effect without a solver of
-  its own. Before, the products formed after
-  a birth were unbounded: a size, alpha or rotation speed over life
-  could reach 1e48, any space scale past 3.4 made a size drawn near
-  `MVFX_MAX_DRAW` infinite, and a host module could leave a NaN.
-  A limit applies where the value comes from:
+  its own. Before, the products formed after a birth were unbounded: a
+  size, alpha or rotation speed over life could reach 1e48, any space
+  scale past 3.4 made a size drawn near `MVFX_MAX_DRAW` infinite, and a
+  host module could leave a NaN. A limit applies where the value comes
+  from:
   - **Refused** (`mvfx_errorInvalid`): an effect whose life curve's
     value times its largest baked sample passes the new
     `MVFX_MAX_LIFE_SCALE` (1e6), whose gradient key passes the new
@@ -44,14 +44,13 @@ simulation's results.
   GPU path can hold inherited values as the library does. Every effect
   in the samples, the tests and the user guide is taken unchanged, and
   the largest value any of them uses, apart from the tests written at
-  the limits, is at least 1,500 times below its limit. The check after a
-  host module costs under 1 ns a particle a step (measured on 100,000
-  sprites, one core, Release). The
-  simulation's results for every effect still taken, the effect file's
-  bytes and version, and the GPU part's tolerances are unchanged.
-  Solvers (liquids, rigid particles, contacts and units, gases, water
-  surfaces)
-  keep their own state and are not yet bounded this way
+  the limits, is at least 1,500 times below its limit. The check after
+  a host module costs under 1 ns a particle a step (measured on 100,000
+  sprites, one core, Release). The simulation's results for every
+  effect still taken, the effect file's bytes and version, and the GPU
+  part's tolerances are unchanged. Solvers (liquids, rigid particles,
+  contacts and units, gases, water surfaces) keep their own state and
+  are not yet bounded this way
   ([#79](https://github.com/Rawframe-Project/maul-vfx/pull/79)).
 
 ### Fixed
@@ -60,14 +59,14 @@ simulation's results.
   past their series cutoff. A birth's move, a particle with its own drag
   scale, a particle under winds with a falloff and a particle in water
   took a push up to 16.9 times off its value; the push is now within
-  3.6e-7 of the core's (relative), and every factor within 9e-7. GPU results change within the
-  GPU part's tolerances, which do not change. The CPU path, its results
-  and the effect file are unchanged
+  3.6e-7 of the core's (relative), and every factor within 9e-7. GPU
+  results change within the GPU part's tolerances, which do not change.
+  The CPU path, its results and the effect file are unchanged
   ([#84](https://github.com/Rawframe-Project/maul-vfx/pull/84)).
 - An emitter whose speed limit is off no longer carries that limit's
   dampen into its step, so a NaN there no longer reaches the binary64
   exponential's conversion, which sanitizers reported as undefined
-  behaviour, and the binary64 exponential gives a NaN back before
+  behaviour; the binary64 exponential also gives a NaN back before
   converting. No output changed; results are unchanged
   ([#82](https://github.com/Rawframe-Project/maul-vfx/pull/82)).
 
@@ -75,14 +74,14 @@ simulation's results.
 
 - The GPU part (`MAUL_VFX_RHI=ON`) now writes every byte of the buffers
   `mvfxGpuSim_GetParticles` hands to the host at a simulation's first
-  step, before any of them holds a step's results. After a clear and at a simulation's first step, the whole
-  statistics record is uploaded, with every word the emitter does not
-  keep at 0. At that first step the two particle buffers, the events
-  buffer and the plexus links buffer are cleared. `sim.h` states that
-  unkept statistics words hold 0, and `sim.h` and the user guide state
-  that slots and entries past each count are undefined and not to be
-  read. Results, the effect file and the GPU part's tolerances are
-  unchanged
+  step, before any of them holds a step's results. After a clear and at
+  a simulation's first step, the whole statistics record is uploaded,
+  with every word the emitter does not keep at 0. At that first step
+  the two particle buffers, the events buffer and the plexus links
+  buffer are cleared. `sim.h` states that unkept statistics words hold
+  0, and `sim.h` and the user guide state that slots and entries past
+  each count are undefined and not to be read. Results, the effect file
+  and the GPU part's tolerances are unchanged
   ([#86](https://github.com/Rawframe-Project/maul-vfx/pull/86),
   [#87](https://github.com/Rawframe-Project/maul-vfx/pull/87),
   [GHSA-hj35-99h7-jf52](https://github.com/Rawframe-Project/maul-vfx/security/advisories/GHSA-hj35-99h7-jf52)).
