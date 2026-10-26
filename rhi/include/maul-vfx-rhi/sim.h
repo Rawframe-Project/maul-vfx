@@ -96,8 +96,10 @@ extern "C"
     // word the step uses; and its statistics record,
     // MVFX_GPU_STATISTICS_WORDS words of the last recorded step: the live
     // count first, then what the step uses and the bounds, which
-    // mvfxGpuSim_BoundsOf reads. A world-space emitter's places are
-    // offsets from its anchor (its plan's anchor after). Its events of the
+    // mvfxGpuSim_BoundsOf reads; a word the emitter does not keep (one of
+    // a kind it is not, from MVFX_GPU_EVENT_SERIALS on) holds 0. A
+    // world-space emitter's places are offsets from its anchor (its plan's
+    // anchor after). Its events of the
     // frame, when it writes any (a null buffer otherwise; a frame split
     // into steps gives theirs one after another, as the CPU path's
     // context step): from word

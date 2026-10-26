@@ -481,9 +481,9 @@ void mvfxSimFrameNumbers(mvfxGpuSim* sim, Emitter* emitter, const mvfxEmitterPla
 bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass);
 bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass);
 
-// Records the counts of an emitter's statistics record a clear empties
-// (sim_records.c): the record's own, and each word of the GPU's it keeps;
-// false when the device refuses an upload.
+// Records the zeroing of an emitter's statistics record when its instance
+// was cleared (sim_records.c), before the step's own words: every count,
+// kept or not; false when the device refuses an upload.
 bool mvfxClearSimCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
 
 // An emitter's events (sim_events.c): its events buffer and numbers made

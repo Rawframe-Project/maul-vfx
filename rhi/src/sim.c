@@ -806,13 +806,12 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS], BirthBytes(emitter),
                     emitter->hostWords,
                     (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u)) &&
-        mvfxUploadSimFrames(sim, emitter, pass) &&
+        mvfxUploadSimFrames(sim, emitter, pass) && mvfxClearSimCounts(sim, pass, emitter) &&
         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                    MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map, sizeof emitter->map) &&
         (!emitter->pinsHead ||
          mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
                     MVFX_RECORD_HEAD * sizeof(uint32_t), emitter->head, sizeof emitter->head)) &&
-        mvfxClearSimCounts(sim, pass, emitter) &&
         mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
                        &emitter->gridLayout) &&
         mvfxWriteSimMesh(sim, pass, emitter) && mvfxCopySimFollow(sim, pass, emitter) &&
