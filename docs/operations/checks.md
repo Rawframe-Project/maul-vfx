@@ -69,7 +69,7 @@ The `windows-rhi-d3d12` preset runs `rhi_kernels` on WARP, D3D12's software adap
 
 `cpp.yml` restores ccache and the Mesa shader cache on every run and saves them only from `main`, so a pull request starts from `main`'s latest build. The shader cache is kept per CPU model, feature set and core count, since lavapipe keys its cache on them. A cell fails when a test is skipped or not run, and uploads its test logs when it fails.
 
-The nightly `fuzz` run minimizes each target's corpus with libFuzzer's merge and saves it in an Actions cache, which the next run restores; the seeds in `test/corpus/` stay its floor. A finding becomes a test in the module's suite, and an input worth keeping a seed.
+The nightly `fuzz` run minimizes each target's corpus with libFuzzer's merge and saves it in an Actions cache, which every later run but a pull request's restores; a pull request's run starts from the seeds in `test/corpus/` alone, since a fork's pull request can restore the cache too, and those seeds stay every run's floor. A run that finds something saves no corpus and uploads nothing: `tools/fuzz_target.sh` keeps the input, the seed and the finding's name on the runner and reports only the kind of each finding and the sanitizers' report. A finding becomes a test in the module's suite, and an input worth keeping a seed.
 
 `codeql.yml` builds the library, the GPU part and the tests with GCC 14 for CodeQL. `pages.yml` publishes the documentation site from `main`. `pr-title.yml` checks a pull request's title against the scopes in `AGENTS.md`, and `pr-gate.yml` closes a pull request from outside the organization unless it closes an accepted issue. `release.yml` and `scorecard.yml` are described in [release.md](release.md) and the README's badge.
 
