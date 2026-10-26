@@ -698,10 +698,12 @@ static void TestRemaindersApart(Gpu* gpu, Checker* checker)
 
 // The most the kernels' drag factors (shared/drag.wgsl) are from the
 // core's, relative. The decay is WGSL's exp past the series, within
-// 3 + 2 |x| units in the last place: at most 23 (1.4e-6) over the x
-// checked. The carry and the push take it where it cannot cancel (1 - e^-x
-// at least 0.63, 1 - phi1 at least 0.37), so at most 1.7 times that
-// share of it, and the series within a few units.
+// 3 + 2 |x| units in the last place: at most 23 over the x checked, up to
+// 2.7e-6 relative. The carry and the push take it only past x = 1, where
+// neither cancels: e^-x falls faster than the bound grows, so the decay's
+// share of phi1, e^-x (3 + 2x) / (1 - e^-x) units, is largest at x = 1,
+// about 3 units, and phi2 carries 1.7 times that, about 5. With a few
+// units of rounding, and the series' few, both stay near 1e-6.
 #define DRAG_DECAY_ERROR 4e-6
 #define DRAG_ERROR       2e-6
 
