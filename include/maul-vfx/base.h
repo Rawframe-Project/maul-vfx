@@ -22,7 +22,7 @@ extern "C"
 #define MVFX_VERSION_MAJOR 0
 // x-release-please-end
 // x-release-please-start-minor
-#define MVFX_VERSION_MINOR 4
+#define MVFX_VERSION_MINOR 5
 // x-release-please-end
 // x-release-please-start-patch
 #define MVFX_VERSION_PATCH 0

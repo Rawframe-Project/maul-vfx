@@ -6,6 +6,54 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.5.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.4.0...v0.5.0) (2026-10-26)
+
+### Changed
+
+- **Breaking:** the GPU part (`maul-vfx-rhi`) now builds on Maul RHI
+  0.7.0 instead of 0.3.0. Its public headers include Maul RHI's, and a
+  host hands it its own Maul RHI device, so a host that uses Maul RHI
+  itself moves to 0.7.0 too. What a host gets from Maul RHI 0.3.0 to
+  0.7.0:
+  - every new buffer reads as zeros until the frame graph writes it,
+    on every backend, cleared in the first frame that imports it by a
+    pass of Maul RHI's own that takes nothing from the frame's budgets;
+    the buffers `mvfxGpuSim_GetParticles` hands out are therefore
+    zeroed in the frame of the simulation's first step, though until
+    that frame has run they stay undefined, as `sim.h` says;
+  - shader containers are version 2, and version 1 is refused: the GPU
+    part's kernel containers are rebuilt with 0.7.0's tools, and a
+    host's own containers must be written again with them;
+  - a pipeline cache is read only under the Maul RHI ABI version that
+    wrote it, so caches from 0.6.0 or earlier are refused;
+  - every failed call sets the pointers and ids it was given to NULL or
+    the null id;
+  - a program's pass ids start at 2;
+  - on Direct3D 12, a transfer pass that clears runs on the compute
+    queue, since copy lists cannot clear: the GPU part's contacts' and
+    self-collision's write passes every step, a grid's the first time
+    it empties its counts, an emitter's at the first step, and a gas's
+    and a water surface's after a clear;
+  - conformance mustpass lists for driver interface versions 4 to 6 are
+    gone, and diagnostic codes are no longer promised to stay fixed.
+
+  The core is unchanged, and so are the simulation's results, the
+  effect file format and the GPU part's tolerances. On Direct3D 12
+  (WARP) the drag factors stay at #84's measure: decay 8.01e-7, carry
+  1.85e-7 and push 2.20e-7 against bounds of 4e-6, 2e-6 and 2e-6
+  ([#91](https://github.com/Rawframe-Project/maul-vfx/pull/91)).
+- `sim.h` and the user guide say that every buffer
+  `mvfxGpuSim_GetParticles` gives is undefined until the simulation's
+  first step is recorded and its frame has run
+  ([#89](https://github.com/Rawframe-Project/maul-vfx/pull/89)).
+
+### Fixed
+
+- The GPU sample builds on Windows with warnings as errors again: it
+  defines `_CRT_SECURE_NO_WARNINGS` for its `getenv`, as the tests do.
+  The nightly Direct3D 12 job had stopped at its build since #69, in
+  0.4.0 ([#92](https://github.com/Rawframe-Project/maul-vfx/pull/92)).
+
 ## [0.4.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.2...v0.4.0) (2026-10-26)
 
 ### Changed
