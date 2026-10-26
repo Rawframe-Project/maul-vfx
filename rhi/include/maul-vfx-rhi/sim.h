@@ -1441,7 +1441,9 @@ extern "C"
                                                                   int64_t* bytesOut);
 
     /// Returns an emitter's particles: the buffer the last recorded step
-    /// left them in, which the host imports to draw or read them.
+    /// left them in, which the host imports to draw or read them. Every
+    /// buffer it gives is undefined until the simulation's first step is
+    /// recorded and its frame has run, which writes them all.
     ///
     /// @param sim           The simulation.
     /// @param emitter       The emitter's index in its effect.
