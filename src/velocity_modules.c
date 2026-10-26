@@ -71,7 +71,9 @@ void mvfxCompileVelocityModules(const mvfxVelocityModules* m, mvfxTableSpace* sp
     (void)mvfxNormalize(out->addedDirection);
     (void)mvfxNormalize(out->orbitAxis);
     out->limitSpeed = m->limitSpeed;
-    out->limitDampen = m->limitDampen;
+    // Checked only for a limit in use: without one it stays out of every
+    // product.
+    out->limitDampen = m->limitSpeed ? m->limitDampen : 0.0f;
     bool scaled = !(m->motionScale.value == 1.0f && m->motionScale.curve.keyCount == 0);
     out->moves =
         scaled || IsUsed(&m->addedSpeed) || IsUsed(&m->orbitRate) || IsUsed(&m->radialSpeed);

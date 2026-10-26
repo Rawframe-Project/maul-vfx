@@ -88,6 +88,7 @@ static void TestExpEdges(void)
     CHECK(mvfxExp(INFINITY) == INFINITY, "e^inf");
     CHECK(mvfxExp(-INFINITY) == 0.0f, "e^-inf");
     CHECK(isnan(mvfxExp(NAN)), "NaN stays NaN");
+    CHECK(isnan(mvfxExpDouble((double)NAN)), "NaN stays NaN in binary64");
     Tally tally = {0};
     // The subnormal results, every float.
     FOR_FLOATS(x, -103.98f, -87.33f, 1)

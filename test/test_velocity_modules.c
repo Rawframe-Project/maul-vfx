@@ -5,18 +5,21 @@
 // velocity), scaling it, an added speed over a curve of age, orbit exact
 // on its circle however the steps fall, radial velocity, the speed limit
 // alike over one step or many, the modules under a turned, scaled
-// instance, and the refusals.
+// instance, a speed limit's fields left unchecked while it is off, and the
+// refusals.
 
 #include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
+#include "maul-vfx/plan.h"
 
 #include <math.h>
 
 typedef struct Scene
 {
     mvfxContext* context;
+    mvfxEffectId effect;
     mvfxInstanceId instance;
 } Scene;
 
@@ -28,10 +31,9 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
-    mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &scene.effect) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    instanceDef.effect = effect;
+    instanceDef.effect = scene.effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
           "instance");
     return scene;
@@ -300,6 +302,26 @@ static void TestMoreUnderAnInstance(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestLimitOff(void)
+{
+    // A dampen of NaN is no limit's while the limit is off: taken, left
+    // out of the plan's view (0) and of the step, the particle moving as
+    // without it.
+    mvfxEmitterDef emitter = Held();
+    emitter.velocityModules.limitDampen = (float)NAN;
+    Scene scene = NewScene(&emitter);
+    mvfxEmitterView view;
+    CHECK(mvfxEffect_GetEmitterView(scene.context, scene.effect, 0, &view) == mvfx_success &&
+              view.modules.limitDampen == 0.0f,
+          "a limit's dampen out of the view while it is off");
+    Place(&scene, 0.0, 0.0, 0.0, 3.0f, 0.0f, 0.0f);
+    Run(&scene, 4, MVFX_TICKS_PER_SECOND);
+    TestParticle particle = First(&scene);
+    CHECK(Near(particle.position[0], 3.0, 1e-5) && particle.velocity[0] == 3.0f,
+          "a limit's dampen unchecked while it is off");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -360,6 +382,7 @@ int main(void)
     TestSpeedLimit();
     TestUnderAnInstance();
     TestMoreUnderAnInstance();
+    TestLimitOff();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
