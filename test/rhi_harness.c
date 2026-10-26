@@ -6,7 +6,9 @@
 // beside the CPU path, and its comparisons after every step: the live
 // count, each particle's serial and its birth and death ticks equal, in
 // the same order; its place and velocity within a tolerance (the GPU's
-// floats are not the CPU's bits); the bounds; the records.
+// floats are not the CPU's bits); the bounds; the records; and every
+// statistics word of a count, the CPU path's, for the features an emitter
+// lacks too (0 for a count it does not keep).
 
 // getenv is standard C; MSVC's runtime deprecates it for its own.
 #define _CRT_SECURE_NO_WARNINGS
@@ -2447,6 +2449,51 @@ static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
     return same;
 }
 
+// Whether the words of the counts the checks above skip for an emitter,
+// those of the features it lacks, hold the CPU path's counts: 0 for a
+// count the emitter does not keep, whatever the buffer held before.
+static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
+{
+    mvfxEmitterStats stats;
+    if (mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) != mvfx_success)
+    {
+        return false;
+    }
+    bool rigid = def->rigid.enabled && def->collision.enabled;
+    const struct
+    {
+        bool skipped;
+        uint32_t word;
+        uint64_t cpu;
+    } counts[15] = {
+        {def->events == 0, MVFX_GPU_EVENTS_WRITTEN, 0},
+        {def->events == 0, MVFX_GPU_EVENTS_WRITTEN + 1, 0},
+        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS, 0},
+        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 1, 0},
+        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 2, 0},
+        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 3, 0},
+        {def->ribbon.ids == mvfx_ribbonNone, MVFX_GPU_RIBBON_BREAKS, 0},
+        {!def->neighbors.enabled, MVFX_GPU_NEIGHBORS_CAPPED, stats.neighborsCapped},
+        {!def->contacts.enabled, MVFX_GPU_CONTACTS_CAPPED, stats.contactsCapped},
+        {!def->plexus.enabled, MVFX_GPU_LINKS, 0},
+        {!def->plexus.enabled, MVFX_GPU_LINKS_DROPPED, stats.linksDropped},
+        {!(def->unit.tearStrain > 0.0f), MVFX_GPU_TORN, stats.torn},
+        {!(def->unit.selfThickness > 0.0f), MVFX_GPU_SELF_CAPPED, stats.selfContactsCapped},
+        {!rigid, MVFX_GPU_RIGID_CAPPED, stats.rigidContactsCapped},
+        {!rigid, MVFX_GPU_RIGID_SEARCHES, stats.rigidSearchesCapped}};
+    bool same = true;
+    for (int32_t c = 0; c < 15; ++c)
+    {
+        if (counts[c].skipped && s_record[counts[c].word] != counts[c].cpu)
+        {
+            printf("statistics word %u: GPU %u, the CPU path's %llu\n", counts[c].word,
+                   s_record[counts[c].word], (unsigned long long)counts[c].cpu);
+            same = false;
+        }
+    }
+    return same;
+}
+
 static void Clear(void)
 {
     // Both counters start again from 0, and the drops.
@@ -2795,6 +2842,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (!run->emitters[e].rigid.enabled || !run->emitters[e].collision.enabled ||
                     SameRigidCapped(e)) &&
                    (!run->emitters[e].plexus.enabled || SameLinks(gpu, sim, e)) &&
+                   SameSkipped(&run->emitters[e], e) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
                    (!run->adopting || AdoptGpu(e));
             most[e] = (int32_t)s_record[0] > most[e] ? (int32_t)s_record[0] : most[e];
