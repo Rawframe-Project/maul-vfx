@@ -585,7 +585,8 @@ static void TestView(void)
               view.def.terrain.grid.index1 == waters[0].terrain.grid.index1,
           "a lake's view");
     CHECK(mvfxEffect_GetWaterView(s_context, effect, 1, &view) == mvfx_success &&
-              view.cells == mvfxDefaultWaterDef().size[0] * mvfxDefaultWaterDef().size[1] &&
+              view.cells ==
+                  (int64_t)mvfxDefaultWaterDef().size[0] * mvfxDefaultWaterDef().size[1] &&
               view.faces[0] == 0 && view.def.sources == NULL,
           "waves' view");
     CHECK(mvfxEffect_GetWaterView(NULL, effect, 0, &view) == mvfx_errorInvalid &&
