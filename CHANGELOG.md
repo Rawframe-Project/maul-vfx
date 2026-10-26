@@ -6,6 +6,18 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.5.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.4.0...v0.5.0) (2026-10-26)
+
+
+### Fixed
+
+* **samples:** let the GPU sample call getenv on Windows ([#92](https://github.com/Rawframe-Project/maul-vfx/issues/92)) ([75b664e](https://github.com/Rawframe-Project/maul-vfx/commit/75b664eba913662393614f9929d9ca8727709889))
+
+
+### Chores
+
+* release 0.5.0 ([#94](https://github.com/Rawframe-Project/maul-vfx/issues/94)) ([0747cd9](https://github.com/Rawframe-Project/maul-vfx/commit/0747cd92bc8c0c84c600b463994f8b267667f139)), closes [#91](https://github.com/Rawframe-Project/maul-vfx/issues/91)
+
 ## [0.4.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.2...v0.4.0) (2026-10-26)
 
 ### Changed
