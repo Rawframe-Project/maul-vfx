@@ -603,7 +603,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         return false;
     }
     const mrhiResourceId* r = emitter->resources;
-    mrhiAccess written[8 + MVFX_MAX_GASES] = {
+    mrhiAccess written[9 + MVFX_MAX_GASES] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination},
@@ -614,14 +614,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
     {
         return false;
     }
-    // Both particle buffers, zeroed at the simulation's first step.
-    if (emitter->first)
-    {
-        written[writes++] =
-            (mrhiAccess){.resource = r[BUFFER_CURRENT], .kind = mrhi_accessCopyDestination};
-        written[writes++] =
-            (mrhiAccess){.resource = r[BUFFER_OTHER], .kind = mrhi_accessCopyDestination};
-    }
+    mvfxClearedSimBuffers(emitter, written, &writes);
     const mrhiAccess used[BUFFER_COUNT + 2] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessUniform},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessStorageReadWrite},
@@ -799,17 +792,17 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
     return written && mvfxWriteSimFollow(sim, pass, step, emitter);
 }
 
-// Records the pass writing the plan's bytes: both particle buffers zeroed
-// at the first step, its numbers, its births and its host births after
-// the births' room, the record's map (the whole record after a clear and
-// at the first step), the grids changed and the gases' faces.
+// Records the pass writing the plan's bytes: the buffers a host reads
+// zeroed at the first step, its numbers, its births and its host births
+// after the births' room, the record's map (the whole record after a
+// clear and at the first step), the grids changed and the gases' faces.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->passes[PASS_WRITE];
     const mrhiResourceId* r = emitter->resources;
     bool spawns = emitter->spawnSource >= 0;
     bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
-                    (!emitter->first || mvfxClearSimParticles(sim, pass, emitter)) &&
+                    (!emitter->first || mvfxClearSimBuffers(sim, pass, emitter)) &&
                     WriteNumbers(sim, pass, r[BUFFER_STEP], emitter) &&
                     (emitter->birthCount == 0 ||
                      mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS],

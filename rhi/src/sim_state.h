@@ -491,10 +491,13 @@ bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pa
 // the whole record, every count 0, in one upload; false when the device
 // refuses an upload.
 bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
-// Records the zeroing of both an emitter's particle buffers at the
-// simulation's first step, so the slots past the live count hold 0 until
-// births reach them; false when the device refuses a clear.
-bool mvfxClearSimParticles(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
+// The buffers of an emitter a host reads (sim_records.c), zeroed at the
+// simulation's first step so nothing past their counts holds what the
+// library did not write: both particle buffers and its events buffer.
+// Their accesses appended to a write pass's at that step, and their
+// clears recorded; false when the device refuses a clear.
+void mvfxClearedSimBuffers(const Emitter* emitter, mrhiAccess* accesses, int32_t* count);
+bool mvfxClearSimBuffers(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
 
 // An emitter's events (sim_events.c): its events buffer and numbers made
 // at the simulation's creation (false when the device refuses); the
