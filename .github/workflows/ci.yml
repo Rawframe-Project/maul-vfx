@@ -31,7 +31,7 @@ defaults:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
     permissions:
       pull-requests: read
 
@@ -44,10 +44,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
     permissions:
       contents: read
 
@@ -147,7 +147,7 @@ jobs:
           - { preset: linux-rhi }
           - { preset: macos-clang, runner: macos-15 }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
     permissions:
       contents: read
     with:
@@ -259,13 +259,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The cache is not secret (a fork's pull request can run its own
+      # workflow and restore it), so pull requests start from the committed
+      # seeds.
       - name: Restore the effect file reader's corpus
+        if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/corpus/fuzz_file
           key: fuzz-corpus-fuzz_file-${{ github.run_id }}
           restore-keys: fuzz-corpus-fuzz_file-
       - name: Restore the step's corpus
+        if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/corpus/fuzz_step
@@ -283,33 +288,32 @@ jobs:
           [ "$(ls out/seeds | wc -l)" = "$(ls test/fixtures/*.mvfx | wc -l)" ]
           for f in out/seeds/*.mvfx; do cmp "$f" "test/fixtures/$(basename "$f")"; done
       - name: Run
-        # The targets side by side; a target's output goes to its log,
-        # printed when it finds something.
+        # The targets side by side through tools/fuzz_target.sh, which keeps
+        # the seed, a finding's input and its name on the runner and reports
+        # only the kind of each finding and the sanitizers' report; the
+        # reports are printed once both have finished.
         run: |
-          mkdir -p out/fuzz-logs
           for name in fuzz_file fuzz_step; do
             mkdir -p "out/corpus/$name"
             tar -xzf "test/corpus/$name.tar.gz" -C "out/corpus/$name"
           done
           cp out/seeds/*.mvfx out/corpus/fuzz_file/
-          fuzz_one() {
-            name=$(basename "$1")
-            if "$1" -max_total_time="$FUZZ_SECONDS" "out/corpus/$name" >"out/fuzz-logs/$name.log" 2>&1; then
-              echo "$name: no finding, $(find "out/corpus/$name" -type f | wc -l) inputs"
-            else
-              tail -n 60 "out/fuzz-logs/$name.log"
-              echo "::error::$name found something"
-              return 1
-            fi
-          }
-          export -f fuzz_one
-          printf '%s\n' out/fuzz/fuzz_file out/fuzz/fuzz_step | xargs -P 2 -I {} bash -c 'fuzz_one "$1"' _ {}
+          rm -rf out/fuzz-reports
+          status=0
+          printf '%s\n' fuzz_file fuzz_step |
+            xargs -P 2 -I {} tools/fuzz_target.sh out/fuzz/{} -max_total_time="$FUZZ_SECONDS" out/corpus/{} ||
+            status=$?
+          cat out/fuzz-reports/*.txt 2>/dev/null || true
+          exit "$status"
       - name: Minimize the corpora
         if: github.event_name == 'schedule'
         run: |
           for name in fuzz_file fuzz_step; do
             mkdir -p "out/merged/$name"
-            "out/fuzz/$name" -merge=1 "out/merged/$name" "out/corpus/$name" >/dev/null 2>&1
+            # A merge reruns every input, so its log may hold one: on
+            # failure only the target and the status.
+            "out/fuzz/$name" -merge=1 "out/merged/$name" "out/corpus/$name" >/dev/null 2>&1 ||
+              { status=$?; echo "::error::$name: the merge exited $status"; exit 1; }
             rm -rf "out/corpus/$name"
             mv "out/merged/$name" "out/corpus/$name"
             echo "$name: $(find "out/corpus/$name" -type f | wc -l) inputs kept"
@@ -326,19 +330,6 @@ jobs:
         with:
           path: out/corpus/fuzz_step
           key: fuzz-corpus-fuzz_step-${{ github.run_id }}
-      - name: Fuzz logs and crash inputs
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz
-          path: |
-            out/fuzz-logs/
-            crash-*
-            leak-*
-            timeout-*
-            oom-*
-          if-no-files-found: ignore
-          retention-days: 7
 
   # The GPU part's suites on lavapipe, each scene stepped on both paths and
   # compared: under the Vulkan validation layer, and under AddressSanitizer
@@ -351,7 +342,7 @@ jobs:
       fail-fast: false
       matrix:
         preset: [linux-rhi-lavapipe, linux-rhi-lavapipe-asan]
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
     permissions:
       contents: read
     with:
@@ -365,7 +356,7 @@ jobs:
   # touches the GPU part.
   windows-d3d12:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
     permissions:
       contents: read
     with:
