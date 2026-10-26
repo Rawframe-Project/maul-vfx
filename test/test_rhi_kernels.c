@@ -9,7 +9,9 @@
 // the core's: 1 over every significand, drawn quotients, 64-bit counts near
 // rounding ties as binary32, drawn lives' ticks as mvfxDeathTick's, and
 // 64-bit remainders stored over their inputs and eight words apart (the
-// first expected wrong on WARP, the second right everywhere). Skips (77)
+// first expected wrong on WARP, the second right everywhere); and the drag
+// factors (rhi/kernels/shared/drag.wgsl) against the core's binary64 ones
+// over seven decades of drag times seconds. Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set, whose driver the
 // adapter must be; the refusals of mvfxCreateGpu need no device. On the
 // windows-rhi-d3d12 preset it runs under D3D12's debug layer and fails on
@@ -695,8 +697,10 @@ static void TestRemaindersApart(Gpu* gpu, Checker* checker)
 }
 
 // The most a drag factor of the kernels (shared/drag.wgsl) is from the
-// core's, relative.
-#define DRAG_ERROR 1e-3
+// core's, relative: WGSL's exp is within 3 + 2 |x| units in the last
+// place, at most 23 (1.4e-6) over the x checked, and the series within a
+// few.
+#define DRAG_ERROR 4e-6
 
 // Drag factors against the core's (mvfxDragFactorsOf, in binary64 and
 // rounded once), for x, drag times seconds, from 1e-6 to 10 spaced
