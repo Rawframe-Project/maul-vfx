@@ -6,6 +6,21 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.4.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.2...v0.4.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **effect:** an effect is refused when a life curve's value times its largest baked sample passes MVFX_MAX_LIFE_SCALE (1e6), when a gradient's key passes MVFX_MAX_COLOR (1e6), or when a value source can draw past its cap: a size's axis past MVFX_MAX_EXTENT over its size over life, a colour's channel past MVFX_MAX_COLOR over its colour over life, a spin or angular velocity past MVFX_MAX_SPIN over its rotation speed over life, a custom attribute past MVFX_MAX_VALUE over its scale, anything else past MVFX_MAX_DRAW. A parameter default, or a value set with mvfxInstance_SetParameter, that takes a source reading it past its cap is refused, and so is a mvfxSpawnRequest colour or size past its emitter's cap (mvfx_errorInvalid). An event's inherited colour and size are held to the spawning emitter's caps; each moved particle's velocity is held within MVFX_MAX_SPEED (1e9) per axis, times the instance's scale for a world-space emitter; a particle a host module leaves with a place past MVFX_MAX_PLACE (1e30) on an axis, a non-finite angle or orientation, a velocity past that hold or a value past its cap is killed and counted in mvfxEmitterStats.valuesKilled. mvfxOverLifeView gains colorCaps and sizeCaps.
+
+### Fixed
+
+* **effect:** bound every value a particle shows by its role ([#79](https://github.com/Rawframe-Project/maul-vfx/issues/79)) ([cddf1bd](https://github.com/Rawframe-Project/maul-vfx/commit/cddf1bd2208a7bc2a3f25638df4931409560d9ec)), closes [#53](https://github.com/Rawframe-Project/maul-vfx/issues/53)
+* **gpu:** clear the buffers handed to the host when an emitter is made ([#87](https://github.com/Rawframe-Project/maul-vfx/issues/87)) ([3813ef0](https://github.com/Rawframe-Project/maul-vfx/commit/3813ef0c0e38eaf66d71b59c232c1d86268f8ee9)), closes [#88](https://github.com/Rawframe-Project/maul-vfx/issues/88)
+* **gpu:** zero the statistics words an emitter does not keep ([#86](https://github.com/Rawframe-Project/maul-vfx/issues/86)) ([a021194](https://github.com/Rawframe-Project/maul-vfx/commit/a021194511c017f64fdcdea38979454f26284208)), closes [#83](https://github.com/Rawframe-Project/maul-vfx/issues/83)
+* **kernels:** give the drag factors without cancellation in binary32 ([#84](https://github.com/Rawframe-Project/maul-vfx/issues/84)) ([bdc82e2](https://github.com/Rawframe-Project/maul-vfx/commit/bdc82e23d01375464408b350c2b225aec4006dc8)), closes [#77](https://github.com/Rawframe-Project/maul-vfx/issues/77)
+* **math:** keep a NaN out of the binary64 exponential's conversion ([#82](https://github.com/Rawframe-Project/maul-vfx/issues/82)) ([12ba726](https://github.com/Rawframe-Project/maul-vfx/commit/12ba72600c402c99eefa51a4410ba400b8b9c068))
+
 ## [0.3.2](https://github.com/Rawframe-Project/maul-vfx/compare/v0.3.1...v0.3.2) (2026-10-25)
 
 ### Fixed
