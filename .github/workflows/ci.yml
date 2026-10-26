@@ -31,7 +31,7 @@ defaults:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       pull-requests: read
 
@@ -44,10 +44,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       contents: read
 
@@ -147,7 +147,7 @@ jobs:
           - { preset: linux-rhi }
           - { preset: macos-clang, runner: macos-15 }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       contents: read
     with:
@@ -307,16 +307,16 @@ jobs:
           exit "$status"
       - name: Minimize the corpora
         if: github.event_name == 'schedule'
+        # Through tools/fuzz_target.sh --merge: a merge reruns every input,
+        # so the script keeps its log on the runner, and it fails when the
+        # merge met a finding, so that corpus is not saved.
         run: |
+          rm -rf out/fuzz-reports out/merged
           for name in fuzz_file fuzz_step; do
-            mkdir -p "out/merged/$name"
-            # A merge reruns every input, so its log may hold one: on
-            # failure only the target and the status.
-            "out/fuzz/$name" -merge=1 "out/merged/$name" "out/corpus/$name" >/dev/null 2>&1 ||
-              { status=$?; echo "::error::$name: the merge exited $status"; exit 1; }
+            tools/fuzz_target.sh --merge "out/fuzz/$name" "out/merged/$name" "out/corpus/$name" ||
+              { status=$?; cat "out/fuzz-reports/$name.txt" 2>/dev/null || true; exit "$status"; }
             rm -rf "out/corpus/$name"
             mv "out/merged/$name" "out/corpus/$name"
-            echo "$name: $(find "out/corpus/$name" -type f | wc -l) inputs kept"
           done
       - name: Save the effect file reader's corpus
         if: github.event_name == 'schedule'
@@ -342,7 +342,7 @@ jobs:
       fail-fast: false
       matrix:
         preset: [linux-rhi-lavapipe, linux-rhi-lavapipe-asan]
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       contents: read
     with:
@@ -356,7 +356,7 @@ jobs:
   # touches the GPU part.
   windows-d3d12:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       contents: read
     with:
