@@ -707,6 +707,9 @@ static mvfxResult AddStep(mvfxGpuSim* sim, int32_t e)
     }
     mvfxSimFrameNumbers(sim, emitter, &plan);
     emitter->cleared = plan.cleared;
+    // Only a frame's first step: a split frame's lanes are recalled while
+    // it is recorded, each as it was added.
+    emitter->first = sim->step == 0 && !emitter->zeroed;
     mvfxSimFollowSources(sim, emitter);
     if (!AddEmitterPasses(sim, emitter))
     {
@@ -788,35 +791,30 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
 }
 
 // Records the pass writing the plan's bytes: its numbers, its births and
-// its host births after the births' room, the record's map, the counts
-// emptied after a clear, the grids changed and the gases' faces.
+// its host births after the births' room, the record's map (the whole
+// record after a clear and at the first step), the grids changed and the
+// gases' faces.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->passes[PASS_WRITE];
     const mrhiResourceId* r = emitter->resources;
     bool spawns = emitter->spawnSource >= 0;
-    bool recorded =
-        mrhiBeginPass(sim->device, pass) == mrhi_success &&
-        WriteNumbers(sim, pass, r[BUFFER_STEP], emitter) &&
-        (emitter->birthCount == 0 ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS],
-                    spawns ? StagedBirths(emitter) : 0, emitter->plannedBirths,
-                    (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth))) &&
-        (emitter->hostCount == 0 ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS], BirthBytes(emitter),
-                    emitter->hostWords,
-                    (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u)) &&
-        mvfxUploadSimFrames(sim, emitter, pass) &&
-        mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                   MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map, sizeof emitter->map) &&
-        (!emitter->pinsHead ||
-         mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_STATISTICS],
-                    MVFX_RECORD_HEAD * sizeof(uint32_t), emitter->head, sizeof emitter->head)) &&
-        mvfxClearSimCounts(sim, pass, emitter) &&
-        mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
-                       &emitter->gridLayout) &&
-        mvfxWriteSimMesh(sim, pass, emitter) && mvfxCopySimFollow(sim, pass, emitter) &&
-        (!emitter->writesEvents || mvfxWriteEventNumbers(sim, pass, emitter));
+    bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
+                    WriteNumbers(sim, pass, r[BUFFER_STEP], emitter) &&
+                    (emitter->birthCount == 0 ||
+                     mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS],
+                                spawns ? StagedBirths(emitter) : 0, emitter->plannedBirths,
+                                (uint64_t)emitter->birthCount * sizeof(mvfxPlannedBirth))) &&
+                    (emitter->hostCount == 0 ||
+                     mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS],
+                                BirthBytes(emitter), emitter->hostWords,
+                                (uint64_t)emitter->hostCount * MVFX_HOST_BIRTH_WORDS * 4u)) &&
+                    mvfxUploadSimFrames(sim, emitter, pass) &&
+                    mvfxWriteSimRecord(sim, pass, emitter) &&
+                    mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[BUFFER_GRIDS], sim->context,
+                                   &emitter->gridLayout) &&
+                    mvfxWriteSimMesh(sim, pass, emitter) && mvfxCopySimFollow(sim, pass, emitter) &&
+                    (!emitter->writesEvents || mvfxWriteEventNumbers(sim, pass, emitter));
     return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
 }
 

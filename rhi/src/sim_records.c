@@ -13,6 +13,7 @@
 #include "maul-rhi/resources.h"
 
 #include <math.h>
+#include <string.h>
 
 mvfxGpuRecordsDef mvfxDefaultGpuRecordsDef(void)
 {
@@ -461,34 +462,40 @@ mvfxResult mvfxGpuSim_ExpandSheets(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
     return ExpandQuads(sim, def, MVFX_SINK_SHEETS);
 }
 
-// Records the counts a clear empties: the record's own, and each word of
-// the GPU's an emitter keeps (an event spawn's serials, the ribbons'
-// breaks, the neighbors', contacts', self-contacts' and rigid contacts'
-// caps, the tears, the links and their drops).
-bool mvfxClearSimCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
+// Writes the map, and the head when the ribbons pin one. After a clear
+// and at the simulation's first step (a simulation may be made for an
+// instance that has planned before), the whole record goes up instead in
+// one upload, every other word 0: the counts a clear empties, and the
+// words of every count the emitter does not keep, which a host reading
+// the whole record then reads as 0. One upload, as copies within a pass
+// are not ordered.
+bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter)
 {
-    static const uint32_t zeros[4] = {0};
-    const struct
+    mrhiResourceId statistics = emitter->resources[BUFFER_STATISTICS];
+    bool written = false;
+    if (emitter->cleared || emitter->first)
     {
-        bool kept;
-        uint32_t word;
-        uint32_t words;
-    } counts[9] = {{true, MVFX_RECORD_COUNT, MVFX_RECORD_PAST + 1},
-                   {emitter->spawnSource >= 0, MVFX_GPU_EVENT_SERIALS, 4},
-                   {emitter->ribbons, MVFX_GPU_RIBBON_BREAKS, 1},
-                   {(emitter->gridFlags & MVFX_GRID_FINDS) != 0, MVFX_GPU_NEIGHBORS_CAPPED, 1},
-                   {emitter->contacts, MVFX_GPU_CONTACTS_CAPPED, 1},
-                   {emitter->tears, MVFX_GPU_TORN, 1},
-                   {emitter->selfCollides, MVFX_GPU_SELF_CAPPED, 1},
-                   {emitter->rigid, MVFX_GPU_RIGID_CAPPED, 2},
-                   {emitter->plexus, MVFX_GPU_LINKS, 2}};
-    bool written = true;
-    for (int32_t c = 0; written && emitter->cleared && c < 9; ++c)
-    {
-        written = !counts[c].kept || mvfxUpload(sim->device, &sim->uploaded, pass,
-                                                emitter->resources[BUFFER_STATISTICS],
-                                                counts[c].word * 4u, zeros, counts[c].words * 4u);
+        uint32_t record[MVFX_GPU_STATISTICS_WORDS] = {0};
+        memcpy(&record[MVFX_RECORD_SPACE], emitter->map, sizeof emitter->map);
+        if (emitter->pinsHead)
+        {
+            memcpy(&record[MVFX_RECORD_HEAD], emitter->head, sizeof emitter->head);
+        }
+        written =
+            mvfxUpload(sim->device, &sim->uploaded, pass, statistics, 0, record, sizeof record);
     }
+    else
+    {
+        written =
+            mvfxUpload(sim->device, &sim->uploaded, pass, statistics,
+                       MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map, sizeof emitter->map) &&
+            (!emitter->pinsHead ||
+             mvfxUpload(sim->device, &sim->uploaded, pass, statistics,
+                        MVFX_RECORD_HEAD * sizeof(uint32_t), emitter->head, sizeof emitter->head));
+    }
+    // Set in the lane recorded, so the last step's lane, which goes on
+    // into the next frame, holds it.
+    emitter->zeroed = emitter->zeroed || written;
     return written;
 }
 

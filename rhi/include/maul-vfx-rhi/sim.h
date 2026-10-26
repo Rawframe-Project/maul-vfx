@@ -96,8 +96,10 @@ extern "C"
     // word the step uses; and its statistics record,
     // MVFX_GPU_STATISTICS_WORDS words of the last recorded step: the live
     // count first, then what the step uses and the bounds, which
-    // mvfxGpuSim_BoundsOf reads. A world-space emitter's places are
-    // offsets from its anchor (its plan's anchor after). Its events of the
+    // mvfxGpuSim_BoundsOf reads; a word the emitter does not keep (one of
+    // a kind it is not, from MVFX_GPU_EVENT_SERIALS on) holds 0. A
+    // world-space emitter's places are offsets from its anchor (its plan's
+    // anchor after). Its events of the
     // frame, when it writes any (a null buffer otherwise; a frame split
     // into steps gives theirs one after another, as the CPU path's
     // context step): from word
@@ -168,10 +170,10 @@ extern "C"
 // plus it.
 #define MVFX_GPU_RIBBON_BREAKS 38
 
-// For an emitter that finds its neighbors (mvfxNeighborDef), the
-// statistics record's word counting the queries its cap stopped since the
-// instance was last cleared (mvfxEmitterStats.neighborsCapped on the CPU
-// path).
+// For an emitter that finds its neighbors (mvfxNeighborDef) or is a
+// liquid (mvfxLiquidDef), the statistics record's word counting the
+// queries its cap stopped since the instance was last cleared
+// (mvfxEmitterStats.neighborsCapped on the CPU path).
 #define MVFX_GPU_NEIGHBORS_CAPPED 46
 
 // For an emitter with particle contacts (mvfxContactDef), the statistics
@@ -1393,12 +1395,11 @@ extern "C"
     /// birth (a plan holds at most twice the emitter's capacity, in units for
     /// an emitter of units), 64 a host's particle, and for units held to
     /// the host's frames 32 a frame and 16 for the frames' numbers; at the
-    /// first step and after a clear, 12 for its counts, 16 more for one
-    /// spawning from events, 4 more each for one drawn as ribbons, finding
-    /// neighbors, with contacts, of units that tear, of units that collide
-    /// with themselves and of rigid particles, and 8 more for one with
-    /// plexus links; 96 more for one coupled to a water surface (the
-    /// surface's map and the coupling's numbers); at the first step, its
+    /// simulation's first step and after a clear, its whole statistics
+    /// record's 216 in place of its map's and head's (and of the 8 that
+    /// empty the counts of one writing events); 96 more for one coupled
+    /// to a water surface (the surface's map and the coupling's numbers);
+    /// at the first step, its
     /// sources' 1,664 and the effect's
     /// baked tables its values read (1,032 a curve, 4,096 a gradient, 12 a
     /// vertex of a rigid hull); and the values of each grid its
