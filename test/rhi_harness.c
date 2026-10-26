@@ -1582,9 +1582,26 @@ static void CountSleep(int32_t count)
     s_mostAsleep = now > s_mostAsleep ? now : s_mostAsleep;
 }
 
+// The share each place the CPU path adopts is moved by: k 2^-20 for
+// MVFX_RHI_PERTURB=k, 0 without it. tools/pair_budgets.py runs a suite
+// under a few k to bound what a binary32 unit's difference parts.
+static float Perturbation(void)
+{
+    static bool read;
+    static float share;
+    if (!read)
+    {
+        const char* k = getenv("MVFX_RHI_PERTURB");
+        share = k != NULL ? (float)atoi(k) * 0x1p-20f : 0.0f;
+        read = true;
+    }
+    return share;
+}
+
 // Gives the CPU path's emitter the GPU's places and velocities (and a
-// rigid body's turn and sleep), read back last: false when its pool is
-// not the GPU's, serial by serial.
+// rigid body's turn and sleep), read back last, each place moved by
+// Perturbation's share of itself: false when its pool is not the GPU's,
+// serial by serial.
 static bool AdoptGpu(int32_t e)
 {
     mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
@@ -1617,14 +1634,16 @@ static bool AdoptGpu(int32_t e)
                     {s_arrays.angular, mvfx_attributeAngularX, 3},
                     {s_arrays.sleep, mvfx_attributeSleep, 4},
                     {s_arrays.affine, mvfx_attributeAffine, 9}};
+    float moved = 1.0f + Perturbation();
     for (int32_t a = 0; a < 6; ++a)
     {
+        float scale = a == 0 ? moved : 1.0f;
         for (int32_t k = 0; adopted[a].first >= 0 && k < adopted[a].components; ++k)
         {
             float* values = mvfxAttributeArray(cpu, e, (mvfxAttribute)(adopted[a].attribute + k));
             for (int32_t i = 0; i < count; ++i)
             {
-                values[i] = FloatOf(adopted[a].first + k, i);
+                values[i] = FloatOf(adopted[a].first + k, i) * scale;
             }
         }
     }

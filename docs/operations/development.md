@@ -54,6 +54,7 @@ A device suite and the GPU sample exit 77 and count as skipped when the adapter 
 | `src/marching_table.c`, `rhi/src/marching_words.c` and `.h`, `rhi/kernels/shared/marching_words.wgsl` | `python3 tools/gen_marching_cubes.py` | none; the cases are derived | checked with `--check` |
 | `rhi/kernels/*_container.h`, `test/kernels/*_container.h` | `python3 tools/gen_kernels.py <maul-rhi tree>` | the WGSL sources and JSON bindings beside them | committed; `--check` checks the WGSL they carry |
 | `test/fixtures/*.mvfx` | `python3 tools/effect_json.py --write test/fixtures` | the JSON forms beside them | checked with `--check`, and against the library's own writing |
+| `test/rhi_pair_budgets.h` | `python3 tools/pair_budgets.py --write`, after building `linux-rhi-lavapipe`, through the heavy-job limiter | `rhi_pairs` run as it is and with the CPU path's adopted places moved by k 2^-20 (`MVFX_RHI_PERTURB`) | committed; run again when the kernels' or the core's arithmetic changes, since rigid bodies meeting each other part chaotically |
 | `test/corpus/*.tar.gz` | minimized from local fuzzing runs | | seeds only |
 
 `tools/math_constants.py` derives the constants of `src/elementary.c`, and `tools/pcg4d_vectors.py` the reference values `test/test_random.c` checks; both print what the source holds, for review.
