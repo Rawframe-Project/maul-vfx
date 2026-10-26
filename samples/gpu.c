@@ -11,6 +11,9 @@
 // when MVFX_RHI_REQUIRED is set, and fails on an adapter of another
 // driver than the one it names ("vulkan" or "d3d12").
 
+// getenv is standard C; MSVC's runtime deprecates it for its own.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "maul-vfx-rhi/gpu.h"
 
 #include "maul-rhi/encoder.h"
