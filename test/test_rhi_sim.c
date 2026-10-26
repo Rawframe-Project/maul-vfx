@@ -73,7 +73,8 @@ static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
 static void TestSpeedHeld(Gpu* gpu, mvfxGpu* kernels)
 {
     // Set off at the fastest valid speed straight down under the strongest
-    // constant force, 1e12 a second squared: each step holds the speed at
+    // constant force, 1e12 a second squared, and a drag of 0.5, whose
+    // factors then carry most of the place: each step holds the speed at
     // MVFX_MAX_SPEED, from the births' first move on, in the instance's
     // space and in the world's under a growing instance (the limit times
     // its scale).
@@ -88,9 +89,6 @@ static void TestSpeedHeld(Gpu* gpu, mvfxGpu* kernels)
                                               .speed = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT}};
         emitters[e].forces = &strongest;
         emitters[e].forceCount = 1;
-        // Without drag until #77: the GPU's drag factors in binary32
-        // cancel, which a force this strong would carry into the place.
-        emitters[e].motion.drag = 0.0f;
     }
     emitters[0].space = mvfx_spaceLocal;
     emitters[1].space = mvfx_spaceWorld;

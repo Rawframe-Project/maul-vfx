@@ -134,17 +134,7 @@ fn randomDirection(a: u32, b: u32) -> vec3<f32> {
     return vec3<f32>(ring * cos(angle), ring * sin(angle), z);
 }
 
-// Drag factors over seconds: decay, carry, push (the integrator's exact form).
-fn factors(drag: f32, seconds: f32) -> vec3<f32> {
-    let x = drag * seconds;
-    if (x < 1e-4) {
-        return vec3<f32>(1.0 - x, seconds * (1.0 - 0.5 * x), seconds * seconds * (0.5 - x / 6.0));
-    }
-    let decay = exp(-x);
-    let phi1 = (1.0 - decay) / x;
-    let phi2 = (1.0 - phi1) / x;
-    return vec3<f32>(decay, seconds * phi1, seconds * seconds * phi2);
-}
+// include: shared/drag.wgsl
 
 fn readVector(buffer: u32, i: u32, first: u32) -> vec3<f32> {
     let c = params.counts.x;
