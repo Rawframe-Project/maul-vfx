@@ -493,6 +493,12 @@ fn writeEventHost(j: u32, tick: u32) {
     for (var k = 0u; k < 4u; k++) {
         color[k] = bitcast<f32>(sourceEvent(e, 13u + k));
     }
+    // Held to what the emitter's particles may store, as the core's
+    // BirthOf holds them.
+    let sizeCaps = bitcast<vec4<f32>>(params.spawnRule[3]).xyz;
+    let colorCaps = bitcast<vec4<f32>>(params.spawnRule[4]);
+    size = clamp(size, -sizeCaps, sizeCaps);
+    color = clamp(color, -colorCaps, colorCaps);
     let place = eventPlace(held, sourceEvent(e, 27u), tick);
     if (params.start.w != 0u) {
         var origin = vec3<f32>(0.0);

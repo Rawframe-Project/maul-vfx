@@ -21,8 +21,8 @@
 // keeps them within; spheres, capsules, boxes and hulls on heightfields
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
-// they are kept out of, and born into a box; capsules of infinite size
-// on grids; what is still refused (kills within a step; bodies meeting
+// they are kept out of, and born into a box; capsules of the largest
+// size on grids; what is still refused (kills within a step; bodies meeting
 // each other are rhi_pairs'). Skips (77) without an adapter, unless
 // MVFX_RHI_REQUIRED is set.
 
@@ -608,14 +608,13 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
         "boxes at a wall of reversed depth, normals given");
 }
 
-static void TestInfiniteSizes(Gpu* gpu, mvfxGpu* kernels)
+static void TestLargestSizes(Gpu* gpu, mvfxGpu* kernels)
 {
-    // Capsules whose size over life is infinite (1e30 times a curve of
-    // 1e18, past a float; their core's length over their radius NaN) on a
+    // Capsules of the largest size an effect may give (a size of 1 over a
+    // size over life of MVFX_MAX_LIFE_SCALE, MVFX_MAX_EXTENT) on a
     // heightfield and a distance grid, met by samples along the core:
     // every step runs on the device, and as many bodies live there as on
     // the CPU path, within the emitter's capacity.
-    static const mvfxCurveKey huge = {0.0f, 1e18f, 0, 0, mvfx_interpolationLinear};
     mvfxGridDef grids[2];
     MakeGrids(grids);
     static const mvfxCollider own[2] = {{.kind = mvfx_colliderHeightfield,
@@ -629,8 +628,8 @@ static void TestInfiniteSizes(Gpu* gpu, mvfxGpu* kernels)
                                          .rotation = {0, 0.19509032f, 0, 0.98078528f},
                                          .grid = {.index1 = 2}}};
     mvfxEmitterDef emitter = Thrown(mvfx_rigidCapsule, own, 2);
-    emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .size = {{.value = 1e30f, .curve = {.keys = &huge, .keyCount = 1}}}};
+    emitter.overLife.size =
+        (mvfxSizeOverLife){.enabled = true, .size = {{.value = MVFX_MAX_LIFE_SCALE}}};
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(kernels,
                               &(Run){.emitters = &emitter,
@@ -651,7 +650,7 @@ static void TestInfiniteSizes(Gpu* gpu, mvfxGpu* kernels)
             StatisticsRecord()[0] <= (uint32_t)emitter.capacity;
         steps += bounded ? 1 : 0;
     }
-    CHECK(bounded && steps == 20, "capsules of infinite size, as many as on the CPU path");
+    CHECK(bounded && steps == 20, "capsules of the largest size, as many as on the CPU path");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());
 }
@@ -667,7 +666,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestStrikes(gpu, kernels);
     TestGrids(gpu, kernels);
     TestDepth(gpu, kernels);
-    TestInfiniteSizes(gpu, kernels);
+    TestLargestSizes(gpu, kernels);
 }
 
 int main(void)

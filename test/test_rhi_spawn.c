@@ -4,8 +4,9 @@
 // Emitters spawning from another's events, planned instances on a real
 // device (lavapipe on CI) beside the CPU path's, compared after every step
 // (rhi_harness.h): births from deaths, births and collisions, in both
-// spaces, numbered with the emitter's own and the host's births, bounded
-// and refused, replayed in a full emitter. Skips (77) without an adapter,
+// spaces, their inherited colours and sizes held to the child's caps,
+// numbered with the emitter's own and the host's births, bounded and
+// refused, replayed in a full emitter. Skips (77) without an adapter,
 // unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -55,6 +56,34 @@ static void TestDeaths(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].space = mvfx_spaceLocal;
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "births from deaths, in the instance's space");
+}
+
+static void TestInheritedHeld(Gpu* gpu, mvfxGpu* kernels)
+{
+    // The source's colours and sizes, drawn up to the limits, inherited by
+    // a child whose values over life scale them by up to 1e3: held to 1e3
+    // as they are born, the few drawn below it kept.
+    static const mvfxColorKey colors[1] = {{0.0f, 1e3f, 1e3f, 1e3f}};
+    static const mvfxAlphaKey alphas[1] = {{0.0f, 1e3f}};
+    mvfxEmitterDef emitters[2] = {Sprite(), Child(0, mvfx_eventDeath)};
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 4096;
+    emitters[0].color = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                           .min = {-1e6f, -1e6f, -1e6f, -1e6f},
+                                           .max = {1e6f, 1e6f, 1e6f, 1e6f}};
+    emitters[0].size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {-1e6f, -1e6f, -1e6f}, .max = {1e6f, 1e6f, 1e6f}};
+    // Sources of their own, so the child stores what it inherits.
+    emitters[1].color =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 1}, .max = {1, 1, 1, 1}};
+    emitters[1].size =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {1, 1, 1}};
+    emitters[1].eventSpawn.inheritSize = true;
+    emitters[1].overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 1e3f}}};
+    emitters[1].overLife.color =
+        (mvfxColorOverLife){.enabled = true, .gradient = {colors, 1, alphas, 1}};
+    Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
+            "inherited colours and sizes held to the child's caps");
 }
 
 static void TestBirthsMerged(Gpu* gpu, mvfxGpu* kernels)
@@ -201,6 +230,7 @@ static void TestOrderAndHost(Gpu* gpu, mvfxGpu* kernels)
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestDeaths(gpu, kernels);
+    TestInheritedHeld(gpu, kernels);
     TestBirthsMerged(gpu, kernels);
     TestCollisions(gpu, kernels);
     TestBounds(gpu, kernels);

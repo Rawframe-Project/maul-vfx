@@ -42,53 +42,46 @@ static void CurveDomain(const mvfxCurve* curve, bool hasDuration, float* start, 
     *end = hasDuration ? 1.0f : curve->keys[curve->keyCount - 1].time;
 }
 
-// Whether a valid curve's baked samples times ends of a reach stay within
-// MVFX_MAX_DRAW.
-static bool IsCurveDrawBounded(const mvfxCurve* curve, bool hasDuration, double reach)
+// The largest size a valid curve source's base takes: its largest baked
+// sample.
+static double CurveBase(const mvfxCurve* curve, bool hasDuration)
 {
     float start = 0.0f;
     float end = 0.0f;
     CurveDomain(curve, hasDuration, &start, &end);
-    return mvfxCurveLargest(curve, start, end) * reach <= (double)MVFX_MAX_DRAW;
+    return mvfxCurveLargest(curve, start, end);
 }
 
-// Whether a valid gradient's channels times ends of a reach stay within
-// MVFX_MAX_DRAW: its baked colours blend its keys, so its keys bound them.
-static bool IsGradientDrawBounded(const mvfxGradient* gradient, double reach)
+// The largest size a valid gradient source's base takes: its largest key.
+static double GradientBase(const mvfxGradient* gradient)
 {
-    double largest = 0.0;
-    for (int32_t i = 0; i < gradient->colorKeyCount; ++i)
-    {
-        const mvfxColorKey* key = &gradient->colorKeys[i];
-        double sizes[3] = {fabs((double)key->red), fabs((double)key->green),
-                           fabs((double)key->blue)};
-        for (int32_t c = 0; c < 3; ++c)
-        {
-            largest = sizes[c] > largest ? sizes[c] : largest;
-        }
-    }
-    for (int32_t i = 0; i < gradient->alphaKeyCount; ++i)
-    {
-        double size = fabs((double)gradient->alphaKeys[i].alpha);
-        largest = size > largest ? size : largest;
-    }
-    return largest * reach <= (double)MVFX_MAX_DRAW;
+    double color = 0.0;
+    double alpha = 0.0;
+    mvfxGradientLargest(gradient, &color, &alpha);
+    return color > alpha ? color : alpha;
+}
+
+// Whether a base's largest size times a reach stays within a cap; false
+// for NaN.
+static bool IsWithinCap(double base, double reach, float cap)
+{
+    return base * reach <= (double)cap;
 }
 
 bool mvfxIsScalarSourceValid(const mvfxScalarSource* source, bool optional, bool hasDuration,
-                             int32_t parameterCount)
+                             int32_t parameterCount, float cap)
 {
+    double reach = Reach(source->range.min, source->range.max);
     switch (source->kind)
     {
     case mvfx_sourceNone:
         return optional;
     case mvfx_sourceRange:
-        return AreBoundsValid(source->range.min, source->range.max);
+        return AreBoundsValid(source->range.min, source->range.max) && IsWithinCap(1.0, reach, cap);
     case mvfx_sourceCurve:
         return AreBoundsValid(source->range.min, source->range.max) &&
                mvfxIsCurveValid(&source->curve, hasDuration) &&
-               IsCurveDrawBounded(&source->curve, hasDuration,
-                                  Reach(source->range.min, source->range.max));
+               IsWithinCap(CurveBase(&source->curve, hasDuration), reach, cap);
     case mvfx_sourceParameter:
         return AreBoundsValid(source->range.min, source->range.max) && source->parameter >= 0 &&
                source->parameter < parameterCount;
@@ -98,40 +91,53 @@ bool mvfxIsScalarSourceValid(const mvfxScalarSource* source, bool optional, bool
 }
 
 bool mvfxIsVectorSourceValid(const mvfxVectorSource* source, int32_t components, bool hasDuration,
-                             int32_t parameterCount)
+                             int32_t parameterCount, const float* cap)
 {
     if (source->kind == mvfx_sourceNone)
     {
         return true;
     }
-    double reach = 0.0;
     for (int32_t c = 0; c < components; ++c)
     {
         if (!AreEndsValid(source->min[c], source->max[c]))
         {
             return false;
         }
-        double size = Reach(source->min[c], source->max[c]);
-        reach = size > reach ? size : reach;
     }
+    double base = 1.0;
     switch (source->kind)
     {
     case mvfx_sourceRange:
-        return true;
+        break;
     case mvfx_sourceCurve:
-        return mvfxIsCurveValid(&source->curve, hasDuration) &&
-               IsCurveDrawBounded(&source->curve, hasDuration, reach);
+        if (!mvfxIsCurveValid(&source->curve, hasDuration))
+        {
+            return false;
+        }
+        base = CurveBase(&source->curve, hasDuration);
+        break;
     case mvfx_sourceParameter:
         return source->parameter >= 0 && source->parameter < parameterCount;
     case mvfx_sourceGradient:
-        return components == 4 && mvfxIsGradientValid(&source->gradient) &&
-               IsGradientDrawBounded(&source->gradient, reach);
     case mvfx_sourceGradientOverAge:
-        return components == 4 && hasDuration && mvfxIsGradientValid(&source->gradient) &&
-               IsGradientDrawBounded(&source->gradient, reach);
+        if (components != 4 || (source->kind == mvfx_sourceGradientOverAge && !hasDuration) ||
+            !mvfxIsGradientValid(&source->gradient))
+        {
+            return false;
+        }
+        base = GradientBase(&source->gradient);
+        break;
     default:
         return false;
     }
+    for (int32_t c = 0; c < components; ++c)
+    {
+        if (!IsWithinCap(base, Reach(source->min[c], source->max[c]), cap[c]))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 int32_t mvfxScalarCurves(const mvfxScalarSource* source)
@@ -162,37 +168,38 @@ static const mvfxCurveTable* BakeInto(const mvfxCurve* curve, bool hasDuration,
     return table;
 }
 
-void mvfxScalarParameterReach(const mvfxScalarSource* source, float reach[MVFX_MAX_PARAMETERS][4])
+void mvfxScalarParameterReach(const mvfxScalarSource* source, float cap,
+                              double reach[MVFX_MAX_PARAMETERS][4])
 {
     if (source->kind == mvfx_sourceParameter && source->parameter >= 0 &&
         source->parameter < MVFX_MAX_PARAMETERS)
     {
-        float size = (float)Reach(source->range.min, source->range.max);
-        float* held = &reach[source->parameter][0];
-        *held = size > *held ? size : *held;
+        double share = Reach(source->range.min, source->range.max) / (double)cap;
+        double* held = &reach[source->parameter][0];
+        *held = share > *held ? share : *held;
     }
 }
 
-void mvfxVectorParameterReach(const mvfxVectorSource* source, int32_t components,
-                              float reach[MVFX_MAX_PARAMETERS][4])
+void mvfxVectorParameterReach(const mvfxVectorSource* source, int32_t components, const float* cap,
+                              double reach[MVFX_MAX_PARAMETERS][4])
 {
     if (source->kind == mvfx_sourceParameter && source->parameter >= 0 &&
         source->parameter < MVFX_MAX_PARAMETERS)
     {
         for (int32_t c = 0; c < components && c < 4; ++c)
         {
-            float size = (float)Reach(source->min[c], source->max[c]);
-            float* held = &reach[source->parameter][c];
-            *held = size > *held ? size : *held;
+            double share = Reach(source->min[c], source->max[c]) / (double)cap[c];
+            double* held = &reach[source->parameter][c];
+            *held = share > *held ? share : *held;
         }
     }
 }
 
-bool mvfxIsParameterWithinReach(const float value[4], const float reach[4])
+bool mvfxIsParameterWithinReach(const float value[4], const double reach[4])
 {
     for (int32_t c = 0; c < 4; ++c)
     {
-        if (!(fabs((double)value[c]) * (double)reach[c] <= (double)MVFX_MAX_DRAW))
+        if (!(fabs((double)value[c]) * reach[c] <= 1.0))
         {
             return false;
         }

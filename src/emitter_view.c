@@ -162,6 +162,11 @@ static mvfxOverLifeView OverLifeOf(const mvfxCompiledOverLife* o)
     for (int32_t k = 0; k < 3; ++k)
     {
         view.sizes[k] = LifeOf(&o->sizes[k]);
+        view.sizeCaps[k] = o->caps.size[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        view.colorCaps[k] = o->caps.color[k];
     }
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
     {

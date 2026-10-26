@@ -19,8 +19,14 @@ typedef struct mvfxCompiledLife
     const mvfxCurveTable* curve;
 } mvfxCompiledLife;
 
-// Whether a life curve is valid.
+// Whether a life curve is valid: its value finite and its curve valid
+// over [0, 1], its largest (mvfxLifeCurveLargest) at most
+// MVFX_MAX_LIFE_SCALE.
 bool mvfxIsLifeCurveValid(const mvfxLifeCurve* life);
+
+// The largest a life curve with a valid curve is in size at any age: its
+// value's size times its largest baked sample (NaN if one is).
+double mvfxLifeCurveLargest(const mvfxLifeCurve* life);
 
 // The tables a life curve needs: 1 with keys, else 0.
 int32_t mvfxLifeCurves(const mvfxLifeCurve* life);

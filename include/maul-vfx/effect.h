@@ -41,6 +41,15 @@ extern "C"
 // delay, duration, burst time and burst interval.
 #define MVFX_MAX_LIFETIME 1e6f
 
+// The fastest a particle moves, in the emitter's units a second along each
+// axis (a world-space emitter's times its instance's scale): each step
+// holds every component of a moved particle's velocity within it, so how
+// far a particle travels in its life is bounded. Its forces (up to 1e12 a
+// second squared) and the instance's velocity it inherits (its move over a
+// step of a tick, 2^20 times the move) build a speed up only to here; far
+// past what a scene asks for, it holds only such extremes.
+#define MVFX_MAX_SPEED 1e9f
+
 // The shortest loop an emitter may have, and the shortest interval of a
 // repeating burst, in seconds (1,024 ticks).
 #define MVFX_MIN_DURATION 0x1p-10f
@@ -1150,8 +1159,9 @@ extern "C"
         const mvfxEmitterDef* emitters;
         int32_t emitterCount;
         // The defaults of its instances' parameters, four floats each, finite,
-        // each within MVFX_MAX_DRAW of the sources reading it (value.h); at
-        // most MVFX_MAX_PARAMETERS, NULL when parameterCount is 0.
+        // each keeping the sources reading it within their caps (value.h's
+        // MVFX_MAX_DRAW); at most MVFX_MAX_PARAMETERS, NULL when
+        // parameterCount is 0.
         const float* parameters;
         int32_t parameterCount;
         // Its quality levels below the full one: level 0 is the def as given,

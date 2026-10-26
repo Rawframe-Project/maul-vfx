@@ -15,13 +15,14 @@
 
 #include <math.h>
 
-// Whether count values from values, of components each, are finite and
-// at most bound in size; true for NULL.
-static bool AreValuesWithin(const float* values, int64_t count, float bound)
+// Whether count values of components each are finite and each component
+// at most its bound in size; true for NULL.
+static bool AreValuesWithin(const float* values, int64_t count, int32_t components,
+                            const float* bounds)
 {
-    for (int64_t i = 0; values != nullptr && i < count; ++i)
+    for (int64_t i = 0; values != nullptr && i < count * components; ++i)
     {
-        if (!(fabsf(values[i]) <= bound))
+        if (!(fabsf(values[i]) <= bounds[i % components]))
         {
             return false;
         }
@@ -55,9 +56,12 @@ static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequ
             return false;
         }
     }
-    return AreValuesWithin(request->velocities, 3 * count, MVFX_MAX_EXTENT) &&
-           AreValuesWithin(request->colors, 4 * count, MVFX_MAX_VALUE) &&
-           AreValuesWithin(request->sizes, 3 * count, MVFX_MAX_VALUE);
+    // Colours and sizes within what the emitter's particles may store.
+    static const float speeds[3] = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT, MVFX_MAX_EXTENT};
+    const mvfxStoredCaps* caps = &emitter->overLife.caps;
+    return AreValuesWithin(request->velocities, count, 3, speeds) &&
+           AreValuesWithin(request->colors, count, 4, caps->color) &&
+           AreValuesWithin(request->sizes, count, 3, caps->size);
 }
 
 // Copies a request's i-th particle, flagging the values it gives.

@@ -143,7 +143,8 @@ typedef struct Baked
     float scale;
 } Baked;
 
-// Bakes a curve as an emitter's size, scaling every component by 1, with
+// Bakes a curve as an emitter's angle, between ends of 1 (its cap is
+// MVFX_MAX_DRAW, so keys up to their bound are taken), with
 // a duration of a second (over [0, 1]) or without (over its keys' span),
 // and reads it back; the effect's result.
 static mvfxResult Bake(const mvfxCurve* curve, bool duration, Baked* bakedOut)
@@ -153,8 +154,8 @@ static mvfxResult Bake(const mvfxCurve* curve, bool duration, Baked* bakedOut)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.duration = duration ? 1.0f : 0.0f;
-    emitter.size = (mvfxVectorSource){
-        .kind = mvfx_sourceCurve, .min = {1, 1, 1, 0}, .max = {1, 1, 1, 0}, .curve = *curve};
+    emitter.angle =
+        (mvfxScalarSource){.kind = mvfx_sourceCurve, .range = {1.0f, 1.0f}, .curve = *curve};
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
@@ -164,14 +165,14 @@ static mvfxResult Bake(const mvfxCurve* curve, bool duration, Baked* bakedOut)
     {
         mvfxEmitterView view;
         CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
-                  view.size.curve != NULL,
-              "the size's baked curve");
+                  view.angle.curve != NULL,
+              "the angle's baked curve");
         for (int32_t i = 0; i < MVFX_CURVE_SAMPLES; ++i)
         {
-            bakedOut->samples[i] = view.size.curve[i];
+            bakedOut->samples[i] = view.angle.curve[i];
         }
-        bakedOut->start = view.size.curve[MVFX_CURVE_SAMPLES];
-        bakedOut->scale = view.size.curve[MVFX_CURVE_SAMPLES + 1];
+        bakedOut->start = view.angle.curve[MVFX_CURVE_SAMPLES];
+        bakedOut->scale = view.angle.curve[MVFX_CURVE_SAMPLES + 1];
     }
     mvfxDestroyContext(context);
     return result;

@@ -208,8 +208,9 @@ struct Step {
     // (1) and size (2) are inherited and the source is in the instance's
     // space (4), the share of velocity inherited
     // (bits), the source's event capacity; its loop's start and length in
-    // ticks (two words each; a length of 0 for none).
-    spawnRule: array<vec4<u32>, 3>,
+    // ticks (two words each; a length of 0 for none); what an inherited
+    // size's axes and colour's channels are held to (binary32 bits).
+    spawnRule: array<vec4<u32>, 5>,
     // The shape beyond the sphere's numbers: its length and half extents;
     // its arc, arc speed and cone tangent, unused; its arc mode, whether a
     // cone fills its volume, and the emitter's start delay in ticks (two

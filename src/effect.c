@@ -177,7 +177,7 @@ static bool IsEmitterDefValid(const mvfxEmitterDef* def)
 static bool IsLifetimeValid(const mvfxScalarSource* lifetime, bool hasDuration,
                             int32_t parameterCount)
 {
-    if (!mvfxIsScalarSourceValid(lifetime, false, hasDuration, parameterCount))
+    if (!mvfxIsScalarSourceValid(lifetime, false, hasDuration, parameterCount, MVFX_MAX_DRAW))
     {
         return false;
     }
@@ -323,31 +323,38 @@ static bool AreHostModulesValid(const mvfxHostModule* modules, int32_t count)
     return true;
 }
 
-// Raises reach to the larger size of the ends of each source of an
-// emitter's values that reads a parameter's component (mvfxIsParameterWithinReach).
-static void AddParameterReach(const mvfxEmitterDef* def, float reach[MVFX_MAX_PARAMETERS][4])
+// Raises reach to the share of its cap of the ends of each source of an
+// emitter's values that reads a parameter's component
+// (mvfxIsParameterWithinReach), for an emitter whose values over life are
+// valid.
+static void AddParameterReach(const mvfxEmitterDef* def, double reach[MVFX_MAX_PARAMETERS][4])
 {
+    mvfxSourceCaps caps;
+    mvfxSourceCapsOf(&def->overLife, def->custom, def->customCount, &caps);
     const mvfxScalarSource* scalars[4] = {&def->lifetime, &def->angle, &def->spin,
                                           &def->motion.dragScale};
+    const float scalarCaps[4] = {MVFX_MAX_DRAW, MVFX_MAX_DRAW, caps.stored.spin, MVFX_MAX_DRAW};
     const mvfxVectorSource* vectors[4] = {&def->size, &def->color, &def->orientation,
                                           &def->angularVelocity};
+    const float* vectorCaps[4] = {caps.stored.size, caps.stored.color, caps.any, caps.spin};
     static const int32_t components[4] = {3, 4, 3, 3};
     for (int32_t s = 0; s < 4; ++s)
     {
-        mvfxScalarParameterReach(scalars[s], reach);
-        mvfxVectorParameterReach(vectors[s], components[s], reach);
+        mvfxScalarParameterReach(scalars[s], scalarCaps[s], reach);
+        mvfxVectorParameterReach(vectors[s], components[s], vectorCaps[s], reach);
     }
     for (int32_t i = 0; i < def->customCount; ++i)
     {
-        mvfxVectorParameterReach(&def->custom[i].initial, def->custom[i].components, reach);
+        mvfxVectorParameterReach(&def->custom[i].initial, def->custom[i].components, caps.custom[i],
+                                 reach);
     }
 }
 
 // Whether each parameter's defaults keep the sources reading them within
-// MVFX_MAX_DRAW, for an effect whose emitters are valid.
+// their caps, for an effect whose emitters are valid.
 static bool AreDefaultsWithinReach(const mvfxEffectDef* def)
 {
-    float reach[MVFX_MAX_PARAMETERS][4] = {{0}};
+    double reach[MVFX_MAX_PARAMETERS][4] = {{0}};
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         AddParameterReach(&def->emitters[i], reach);
@@ -367,22 +374,31 @@ static bool AreDefaultsWithinReach(const mvfxEffectDef* def)
 static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
 {
     bool d = def->duration > 0.0f;
+    if (def->customCount < 0 || def->customCount > MVFX_MAX_CUSTOM_ATTRIBUTES ||
+        (def->customCount > 0 && def->custom == nullptr) ||
+        !mvfxAreVelocityModulesValid(&def->velocityModules) ||
+        !mvfxIsOverLifeValid(&def->overLife, def->custom, def->customCount))
+    {
+        return false;
+    }
+    // The sources' caps follow from the values over life, checked first.
+    mvfxSourceCaps caps;
+    mvfxSourceCapsOf(&def->overLife, def->custom, def->customCount, &caps);
     if (!IsLifetimeValid(&def->lifetime, d, parameterCount) ||
-        !mvfxIsVectorSourceValid(&def->size, 3, d, parameterCount) ||
-        !mvfxIsVectorSourceValid(&def->color, 4, d, parameterCount) ||
-        !mvfxIsScalarSourceValid(&def->angle, true, d, parameterCount) ||
-        !mvfxIsScalarSourceValid(&def->spin, true, d, parameterCount) ||
-        !mvfxIsScalarSourceValid(&def->motion.dragScale, true, d, parameterCount) ||
+        !mvfxIsVectorSourceValid(&def->size, 3, d, parameterCount, caps.stored.size) ||
+        !mvfxIsVectorSourceValid(&def->color, 4, d, parameterCount, caps.stored.color) ||
+        !mvfxIsScalarSourceValid(&def->angle, true, d, parameterCount, MVFX_MAX_DRAW) ||
+        !mvfxIsScalarSourceValid(&def->spin, true, d, parameterCount, caps.stored.spin) ||
+        !mvfxIsScalarSourceValid(&def->motion.dragScale, true, d, parameterCount, MVFX_MAX_DRAW) ||
         def->orientationMode > mvfx_orientationRandom ||
         (def->orientationMode == mvfx_orientationEuler &&
          def->orientation.kind == mvfx_sourceNone) ||
-        !mvfxIsVectorSourceValid(&def->orientation, 3, d, parameterCount) ||
-        !mvfxIsVectorSourceValid(&def->angularVelocity, 3, d, parameterCount) ||
+        !mvfxIsVectorSourceValid(&def->orientation, 3, d, parameterCount, caps.any) ||
+        !mvfxIsVectorSourceValid(&def->angularVelocity, 3, d, parameterCount, caps.spin) ||
         def->frame.mode > mvfx_frameRandom || def->frame.first < 0 ||
         def->frame.first > def->frame.last || def->frame.last >= MVFX_MAX_FRAMES ||
-        def->customCount < 0 || def->customCount > MVFX_MAX_CUSTOM_ATTRIBUTES ||
-        (def->customCount > 0 && def->custom == nullptr) || def->forceCount < 0 ||
-        def->forceCount > MVFX_MAX_FORCES || (def->forceCount > 0 && def->forces == nullptr))
+        def->forceCount < 0 || def->forceCount > MVFX_MAX_FORCES ||
+        (def->forceCount > 0 && def->forces == nullptr))
     {
         return false;
     }
@@ -392,11 +408,6 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
         {
             return false;
         }
-    }
-    if (!mvfxAreVelocityModulesValid(&def->velocityModules) ||
-        !mvfxIsOverLifeValid(&def->overLife, def->custom, def->customCount))
-    {
-        return false;
     }
     if (def->killRuleCount < 0 || def->killRuleCount > MVFX_MAX_KILL_RULES ||
         (def->killRuleCount > 0 && def->killRules == nullptr))
@@ -422,7 +433,8 @@ static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
     {
         const mvfxCustomAttribute* custom = &def->custom[i];
         if (custom->components < 1 || custom->components > 4 ||
-            !mvfxIsVectorSourceValid(&custom->initial, custom->components, d, parameterCount))
+            !mvfxIsVectorSourceValid(&custom->initial, custom->components, d, parameterCount,
+                                     caps.custom[i]))
         {
             return false;
         }

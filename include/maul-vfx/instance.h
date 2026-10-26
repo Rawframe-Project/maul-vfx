@@ -230,11 +230,16 @@ extern "C"
         // Optional: x, y and z for each, finite and at most MVFX_MAX_EXTENT in
         // size, in the emitter's space; NULL to draw them.
         const float* velocities;
-        // Optional: red, green, blue and alpha for each, finite and at most
-        // MVFX_MAX_VALUE in size, for an emitter that stores color.
+        // Optional: red, green, blue and alpha for each, for an emitter
+        // that stores color, each finite and at most MVFX_MAX_COLOR in size
+        // over the most the emitter's colour over life scales that channel
+        // (its gradient's largest colour key, or alpha key times its alpha's
+        // largest), so the colour any output shows stays within
+        // MVFX_MAX_COLOR.
         const float* colors;
-        // Optional: x, y and z for each likewise, for an emitter that stores
-        // size.
+        // Optional: x, y and z for each, for an emitter that stores size,
+        // each finite and at most MVFX_MAX_EXTENT in size over the most its
+        // size over life scales that axis.
         const float* sizes;
         // Optional: for an emitter of units held to the host's frames
         // (mvfx_attachHost), each unit's frame, from 0 to below the
@@ -580,13 +585,12 @@ extern "C"
     /// @param instance   The instance.
     /// @param parameter  An index below the effect's count of parameters.
     /// @param value      Four finite floats, each times the larger size of the
-    ///                   ends of every source reading it at most
-    ///                   `MVFX_MAX_DRAW` (value.h).
+    ///                   ends of every source reading it within that
+    ///                   source's cap (`MVFX_MAX_DRAW`, value.h).
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, an index out
     ///         of range, a value not finite or one that takes a source past
-    ///         `MVFX_MAX_DRAW`, which counts as misuse when the context is
-    ///         given.
+    ///         its cap, which counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetParameter(mvfxContext* context,
@@ -639,8 +643,13 @@ extern "C"
         uint64_t owed;
         // Particles its capacity refused.
         uint64_t refused;
-        // Particles its kill rules (and attractors' kill radii) killed.
+        // Particles its kill rules (and attractors' kill radii, contacts that
+        // kill, its host modules' kills) killed.
         uint64_t killed;
+        // Particles killed for a value one of its host modules left them
+        // with that is not finite or is past its limit
+        // (mvfxParticleArrays), apart from those killed.
+        uint64_t valuesKilled;
         // Scene queries its capacity of them dropped.
         uint64_t queriesDropped;
         // Events its capacity of them dropped.

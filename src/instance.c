@@ -679,6 +679,8 @@ static void ResetEmitter(mvfxInstance* instance, int32_t e)
     state->rate = (mvfxRateCursor){0};
     state->hostCount = 0;
     state->killed = 0;
+    state->valuesKilled = 0;
+    state->valuesMarked = 0;
     state->queryCount = 0;
     state->queriesDropped = 0;
     state->eventCount = 0;

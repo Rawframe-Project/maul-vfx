@@ -8,7 +8,9 @@
 
 #include "instance.h"
 
-// Runs the emitter's host modules of a stage, in order, on its particles.
+// Runs the emitter's host modules of a stage, in order, on its particles;
+// after each, a particle it left holding a value that is not finite or is
+// past its limit is marked killed and counted in valuesMarked.
 void mvfxRunHostModules(mvfxInstance* instance, int32_t emitter, mvfxModuleStage stage);
 
 #endif

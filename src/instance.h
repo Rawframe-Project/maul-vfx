@@ -166,6 +166,10 @@ typedef struct mvfxEmitterState
     // killed.
     struct mvfxResolvedKillRule* killRules;
     uint64_t killed;
+    // The particles killed for a value a host module left them, and those
+    // of this step's marks not yet taken out.
+    uint64_t valuesKilled;
+    int32_t valuesMarked;
     // Its colliders as resolved for the step (the effect's, then the
     // instance's when it takes them).
     struct mvfxResolvedCollider* colliders;

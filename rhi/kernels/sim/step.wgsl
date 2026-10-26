@@ -61,6 +61,7 @@ fn moveLive(i: u32) {
     var p = moveByModules(start, start + v0 * f.y + a * f.z, age, seconds);
     var v = v0 * f.x + a * f.y;
     let fate = meet(start, &p, &v, birth, inverseLife, death);
+    v = holdSpeed(v);
     // A crossing of the water surface after the collisions, as the
     // core's MoveParticle meets it.
     let crossing = waterMeet(touch, start, p);

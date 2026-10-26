@@ -314,6 +314,8 @@ void mvfxSpawnNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                                     (uint32_t)(loop >> 32u)};
     memcpy(rule, ruleWords, sizeof ruleWords);
     memcpy(&rule[6], &spawn->inheritVelocity, sizeof(float));
+    memcpy(&rule[12], view->overLife.sizeCaps, sizeof view->overLife.sizeCaps);
+    memcpy(&rule[16], view->overLife.colorCaps, sizeof view->overLife.colorCaps);
 }
 
 void mvfxHostBirthWords(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t* words)
