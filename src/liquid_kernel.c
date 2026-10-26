@@ -14,7 +14,7 @@ float mvfxLiquidPoly6(const mvfxLiquidKernel* kernel, float square)
 void mvfxLiquidSpiky(const mvfxLiquidKernel* kernel, const float offset[3], float length,
                      float out[3])
 {
-    float d = kernel->radius - length;
+    float d = kernel->span - length;
     float factor = d > 0.0f && length > 0.0f ? -kernel->spiky * d * d / length : 0.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -38,10 +38,15 @@ static void Factors(float radius, bool planar, mvfxLiquidKernel* out)
 
 mvfxLiquidKernel mvfxLiquidKernelOf(const mvfxLiquidDef* def, float scale)
 {
-    float spacing = def->spacing * scale;
-    mvfxLiquidKernel kernel = {.radius = spacing * def->kernelScale};
-    kernel.square = kernel.radius * kernel.radius;
-    Factors(kernel.radius, def->planar, &kernel);
+    mvfxLiquidKernel kernel = {.radius = def->spacing * scale * def->kernelScale};
+    int exponent = 0;
+    (void)frexp((double)kernel.radius, &exponent);
+    kernel.unit = (float)ldexp(1.0, exponent - 1);
+    kernel.inverseUnit = (float)ldexp(1.0, 1 - exponent);
+    float spacing = def->spacing * scale * kernel.inverseUnit;
+    kernel.span = kernel.radius * kernel.inverseUnit;
+    kernel.square = kernel.span * kernel.span;
+    Factors(kernel.span, def->planar, &kernel);
     // The ideal lattice about a particle, in a fixed order.
     int32_t reach = (int32_t)ceilf(def->kernelScale);
     int32_t layers = def->planar ? 0 : reach;
@@ -68,7 +73,7 @@ mvfxLiquidKernel mvfxLiquidKernelOf(const mvfxLiquidDef* def, float scale)
     float full = gradients * kernel.restInverse * kernel.restInverse;
     kernel.softening = def->relaxation * full;
     kernel.tensileScale = def->tensile / full;
-    float reference = def->tensileDistance * kernel.radius;
+    float reference = def->tensileDistance * kernel.span;
     kernel.tensileInverse = 1.0f / mvfxLiquidPoly6(&kernel, reference * reference);
     return kernel;
 }
