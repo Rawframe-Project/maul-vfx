@@ -23,7 +23,7 @@ void mvfxSinCos(float x, float* sineOut, float* cosineOut);
 // NaN.
 float mvfxExp(float x);
 
-// e^x in binary64 for x of at most 100; 0 below -120.
+// e^x in binary64 for x of at most 100; 0 below -120; NaN for NaN.
 double mvfxExpDouble(double x);
 
 // x to the y for x at least 0: 1 when y is 0 (0 to the 0 included), 0 for

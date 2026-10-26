@@ -50,6 +50,14 @@ static bool IsNan(float x)
     return (bits & 0x7FFFFFFFu) > 0x7F800000u;
 }
 
+// Whether x is a NaN, from its bits, in binary64.
+static bool IsNanDouble(double x)
+{
+    uint64_t bits = 0;
+    memcpy(&bits, &x, sizeof bits);
+    return (bits & 0x7FFFFFFFFFFFFFFFull) > 0x7FF0000000000000ull;
+}
+
 // The sine of r in [-pi/4, pi/4], to r^15: the first term left out,
 // r^17/17!, is below 2^-48 of the result.
 static double SinReduced(double r)
@@ -122,9 +130,14 @@ static double ExpReduced(double r)
 }
 
 // e^x in binary64 for x in [-120, 100], the range a float result needs:
-// below it the result rounds to 0 as a float, above it to infinity.
+// below it the result rounds to 0 as a float, above it to infinity; a NaN
+// is returned before it reaches the conversion of its power of two.
 static double ExpDouble(double x)
 {
+    if (IsNanDouble(x))
+    {
+        return x;
+    }
     if (x > 100.0)
     {
         return (double)INFINITY;
