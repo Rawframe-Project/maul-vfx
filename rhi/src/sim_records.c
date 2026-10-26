@@ -499,6 +499,14 @@ bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter)
     return written;
 }
 
+bool mvfxClearSimParticles(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
+{
+    const mrhiResourceId* r = emitter->resources;
+    return mrhiClearBuffer(sim->device, pass, r[BUFFER_CURRENT], 0, MRHI_WHOLE_SIZE) ==
+               mrhi_success &&
+           mrhiClearBuffer(sim->device, pass, r[BUFFER_OTHER], 0, MRHI_WHOLE_SIZE) == mrhi_success;
+}
+
 mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,
                                mvfxBounds* boundsOut)
 {
