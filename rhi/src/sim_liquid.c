@@ -111,11 +111,12 @@ void mvfxSimLiquidNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* pla
     mvfxFloatWords(w + 8, 1.0f / l->radius, l->radius * inverseUnit, l->square, l->poly6);
     mvfxFloatWords(w + 12, l->spiky, l->restInverse, l->softening, l->tensileInverse);
     mvfxFloatWords(w + 16, l->tensileScale, def->viscosity,
-                   def->vorticity * l->spacing * inverseUnit, inverseUnit);
+                   def->vorticity * l->spacing * inverseUnit, 0.0f);
     uint32_t blocks = mvfxSortBlocks(plan->capacity);
     const uint32_t tail[4] = {(uint32_t)plan->ticks, (uint32_t)def->substeps,
                               groups > 0u ? groups : 1u, blocks < 65535u ? blocks : 65535u};
     memcpy(w + 20, tail, sizeof tail);
+    mvfxFloatWords(w + 24, l->unit, inverseUnit, 0.0f, 0.0f);
     emitter->liquidTicks = plan->ticks;
 }
 

@@ -163,7 +163,7 @@ enum
 // numbers (liquid.wgsl's Liquid, MVFX_LIQUID_WORDS of them), its words
 // (the sort's keys and indices, the multipliers, the scratch velocities
 // and the curls) and its digit counts.
-#define MVFX_LIQUID_WORDS 24
+#define MVFX_LIQUID_WORDS 28
 enum
 {
     LIQUID_NUMBERS = 0,

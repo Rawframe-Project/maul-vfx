@@ -34,9 +34,11 @@ const STATISTICS_CAPPED: u32 = 46u;
 // radius and its square, poly6's factor; the spiky gradient's factor, the
 // inverse rest density, the softening, the tensile correction's inverse
 // reference; its scale, the viscosity, the confinement's strength over a
-// second (vorticity times spacing, over the unit), the unit's inverse;
-// the plan's ticks, the substeps, the workgroups of a particle pass and of
-// a block pass.
+// second (vorticity times spacing, over the unit), unused; the plan's
+// ticks, the substeps, the workgroups of a particle pass and of a block
+// pass; the unit and its inverse, both powers of two, so an offset or a
+// move scaled between the particles' space and the unit by multiplying
+// is exact, unused, unused.
 struct Liquid {
     head: vec4<u32>,
     grid: vec4<u32>,
@@ -44,6 +46,7 @@ struct Liquid {
     kernel: vec4<f32>,
     rates: vec4<f32>,
     plan: vec4<u32>,
+    units: vec4<f32>,
 }
 
 // The substep, and whether the pass counts the capped (the first
@@ -319,7 +322,7 @@ fn gather(mode: u32, i: u32) -> Sums {
         let last = firstKey(key, n, true);
         for (var e = firstKey(key, n, false); e < last; e++) {
             let j = words[span + e];
-            let d = (x - placeOf(j)) * liquid.rates.w;
+            let d = (x - placeOf(j)) * liquid.units.y;
             let square = d.x * d.x + d.y * d.y + d.z * d.z;
             if (j == i || !(square < liquid.cells.z)) {
                 continue;
@@ -380,7 +383,7 @@ fn liquidCorrections(@builtin(global_invocation_id) id: vec3<u32>) {
         if (liquid.grid.w != 0u) {
             delta.z = 0.0;
         }
-        setVector(1u, liquid.head.z, i, placeOf(i) + delta / liquid.rates.w);
+        setVector(1u, liquid.head.z, i, placeOf(i) + delta * liquid.units.x);
     }
 }
 
