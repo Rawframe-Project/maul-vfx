@@ -13,6 +13,7 @@
 #include "maul-rhi/resources.h"
 
 #include <math.h>
+#include <string.h>
 
 mvfxGpuRecordsDef mvfxDefaultGpuRecordsDef(void)
 {
@@ -461,16 +462,41 @@ mvfxResult mvfxGpuSim_ExpandSheets(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
     return ExpandQuads(sim, def, MVFX_SINK_SHEETS);
 }
 
-// Zeroes the emitter's statistics record when its instance was cleared
-// (or just made), before the step writes its map and head: the counts a
-// clear empties, and the words of every count the emitter does not keep,
-// which a host reading the whole record then reads as 0.
-bool mvfxClearSimCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
+// Writes the map, and the head when the ribbons pin one. After a clear
+// and at the simulation's first step (a simulation may be made for an
+// instance that has planned before), the whole record goes up instead in
+// one upload, every other word 0: the counts a clear empties, and the
+// words of every count the emitter does not keep, which a host reading
+// the whole record then reads as 0. One upload, as copies within a pass
+// are not ordered.
+bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter)
 {
-    static const uint32_t zeros[MVFX_GPU_STATISTICS_WORDS] = {0};
-    return !emitter->cleared ||
-           mvfxUpload(sim->device, &sim->uploaded, pass, emitter->resources[BUFFER_STATISTICS], 0,
-                      zeros, sizeof zeros);
+    mrhiResourceId statistics = emitter->resources[BUFFER_STATISTICS];
+    bool written = false;
+    if (emitter->cleared || emitter->first)
+    {
+        uint32_t record[MVFX_GPU_STATISTICS_WORDS] = {0};
+        memcpy(&record[MVFX_RECORD_SPACE], emitter->map, sizeof emitter->map);
+        if (emitter->pinsHead)
+        {
+            memcpy(&record[MVFX_RECORD_HEAD], emitter->head, sizeof emitter->head);
+        }
+        written =
+            mvfxUpload(sim->device, &sim->uploaded, pass, statistics, 0, record, sizeof record);
+    }
+    else
+    {
+        written =
+            mvfxUpload(sim->device, &sim->uploaded, pass, statistics,
+                       MVFX_RECORD_SPACE * sizeof(uint32_t), emitter->map, sizeof emitter->map) &&
+            (!emitter->pinsHead ||
+             mvfxUpload(sim->device, &sim->uploaded, pass, statistics,
+                        MVFX_RECORD_HEAD * sizeof(uint32_t), emitter->head, sizeof emitter->head));
+    }
+    // Set in the lane recorded, so the last step's lane, which goes on
+    // into the next frame, holds it.
+    emitter->zeroed = emitter->zeroed || written;
+    return written;
 }
 
 mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,

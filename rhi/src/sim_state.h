@@ -355,7 +355,12 @@ typedef struct Emitter
     // and, where it stores them, orientations) and whether it turns.
     int32_t sourceCopy;
     bool sourceTurned;
+    // Whether the step's plan cleared the instance; whether the step is a
+    // frame's first while no frame has been recorded, which writes the
+    // whole statistics record (mvfxWriteSimRecord); whether one has.
     bool cleared;
+    bool first;
+    bool zeroed;
     // The gases its forces follow: each one's region in the grids buffer
     // that its current faces are copied to (UINT32_MAX for a gas it does
     // not follow), and for the step the first float of the faces copied
@@ -481,10 +486,11 @@ void mvfxSimFrameNumbers(mvfxGpuSim* sim, Emitter* emitter, const mvfxEmitterPla
 bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass);
 bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass);
 
-// Records the zeroing of an emitter's statistics record when its instance
-// was cleared (sim_records.c), before the step's own words: every count,
-// kept or not; false when the device refuses an upload.
-bool mvfxClearSimCounts(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
+// Records the writes of an emitter's statistics record (sim_records.c):
+// its map and head, or after a clear and at the simulation's first step
+// the whole record, every count 0, in one upload; false when the device
+// refuses an upload.
+bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
 
 // An emitter's events (sim_events.c): its events buffer and numbers made
 // at the simulation's creation (false when the device refuses); the
