@@ -696,11 +696,14 @@ static void TestRemaindersApart(Gpu* gpu, Checker* checker)
     CHECK(ran && wrong == 0, "64-bit remainders, eight words an element");
 }
 
-// The most a drag factor of the kernels (shared/drag.wgsl) is from the
-// core's, relative: WGSL's exp is within 3 + 2 |x| units in the last
-// place, at most 23 (1.4e-6) over the x checked, and the series within a
-// few.
-#define DRAG_ERROR 4e-6
+// The most the kernels' drag factors (shared/drag.wgsl) are from the
+// core's, relative. The decay is WGSL's exp past the series, within
+// 3 + 2 |x| units in the last place: at most 23 (1.4e-6) over the x
+// checked. The carry and the push take it where it cannot cancel (1 - e^-x
+// at least 0.63, 1 - phi1 at least 0.37), so at most 1.7 times that
+// share of it, and the series within a few units.
+#define DRAG_DECAY_ERROR 4e-6
+#define DRAG_ERROR       2e-6
 
 // Drag factors against the core's (mvfxDragFactorsOf, in binary64 and
 // rounded once), for x, drag times seconds, from 1e-6 to 10 spaced
@@ -744,7 +747,7 @@ static void TestDragFactors(Gpu* gpu, Checker* checker)
     printf("drag factors' largest relative differences from the core's: decay %g, carry %g, "
            "push %g (at x = %g)\n",
            worst[0], worst[1], worst[2], worstAt);
-    CHECK(ran && worst[0] <= DRAG_ERROR && worst[1] <= DRAG_ERROR && worst[2] <= DRAG_ERROR,
+    CHECK(ran && worst[0] <= DRAG_DECAY_ERROR && worst[1] <= DRAG_ERROR && worst[2] <= DRAG_ERROR,
           "drag factors as the core's");
 }
 
