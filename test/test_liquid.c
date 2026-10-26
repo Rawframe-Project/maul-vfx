@@ -432,9 +432,10 @@ static void TestPlanned(void)
     // A planned instance's plan hands each liquid's kernels over as its
     // step makes them: a world emitter's at its instance's scale, a local
     // one's at 1; the view has the def as compiled. A planar liquid of
-    // kernel scale 2.5 and a 3D one with a tensile correction: each kernel
-    // as its formula gives it in binary64, the rest density's sum over the
-    // lattice summed again there, within 1e-5 (the radius 1e-6).
+    // kernel scale 2.5 and a 3D one with a tensile correction: the radius,
+    // and in the kernels' unit each kernel as its formula gives it in
+    // binary64, the rest density's sum over the lattice summed again
+    // there, within 1e-5 (the radius and its square 1e-6).
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxEmitterDef emitters[2] = {Emitter(0.05f), Emitter(0.05f)};
@@ -468,11 +469,19 @@ static void TestPlanned(void)
                   mvfxEffect_GetEmitterView(s_context, effect, e, &view) == mvfx_success,
               "a plan and a view");
         mvfxLiquidDef compiled = view.liquid;
-        Kernel k = KernelOf(&emitters[e].liquid, (double)sigma);
+        // The radius in the particles' space; the rest in the unit, the
+        // power of two leaving the radius from 1 to 2 in it: the kernels
+        // of lengths divided by it.
         const mvfxPlannedLiquid* l = &plan.liquid;
-        same = same && Near(l->radius, k.radius, 1e-6) && Near(l->square, k.square, 1e-6) &&
-               Near(l->poly6, k.poly6, 1e-5) && Near(l->spiky, k.spiky, 1e-5) &&
-               Near(l->restInverse, k.restInverse, 1e-5) && Near(l->softening, k.softening, 1e-5) &&
+        Kernel world = KernelOf(&emitters[e].liquid, (double)sigma);
+        Kernel k = KernelOf(&emitters[e].liquid, (double)sigma / (double)l->unit);
+        int exponent = 0;
+        double mantissa = frexp((double)l->unit, &exponent);
+        same = same && mantissa == 0.5 && world.radius / (double)l->unit >= 1.0 &&
+               world.radius / (double)l->unit < 2.0 && Near(l->radius, world.radius, 1e-6) &&
+               Near(l->square, k.square, 1e-6) && Near(l->poly6, k.poly6, 1e-5) &&
+               Near(l->spiky, k.spiky, 1e-5) && Near(l->restInverse, k.restInverse, 1e-5) &&
+               Near(l->softening, k.softening, 1e-5) &&
                Near(l->tensileInverse, k.tensileInverse, 1e-5) &&
                Near(l->tensileScale, k.tensileScale, 1e-5) && l->sigma == sigma &&
                l->spacing == 0.05f * sigma && compiled.enabled &&
@@ -482,8 +491,84 @@ static void TestPlanned(void)
     mvfxDestroyContext(s_context);
 }
 
+// A compressed lattice of a world-space liquid, its spacing and its
+// instance's scale each a power of two, 3D or planar, with viscosity,
+// confinement and a tensile correction: after each of 6 steps its places
+// and velocities into places and velocities.
+static void Lattice(float spacing, float scale, bool planar, float* places, float* velocities)
+{
+    static double lattice[216 * 3];
+    mvfxEmitterDef emitter = Emitter(spacing);
+    emitter.space = mvfx_spaceWorld;
+    emitter.liquid.planar = planar;
+    emitter.liquid.viscosity = 0.05f;
+    emitter.liquid.vorticity = 2.0f;
+    emitter.liquid.tensile = 0.2f;
+    int32_t side = planar ? 12 : 6;
+    int32_t count = planar ? side * side : side * side * side;
+    double gap = 0.8 * (double)spacing * (double)scale;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        lattice[3 * i] = gap * (double)(i % side);
+        lattice[3 * i + 1] = gap * (double)(i / side % side);
+        lattice[3 * i + 2] = planar ? 0.0 : gap * (double)(i / (side * side));
+    }
+    CHECK(OpenScaled(&emitter, lattice, count, scale), "opened");
+    for (int32_t step = 0; step < 6; ++step)
+    {
+        Steps(1);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            for (int32_t i = 0; i < count; ++i)
+            {
+                size_t at = ((size_t)step * 3u + (size_t)k) * 216u + (size_t)i;
+                places[at] = i < Count() ? Places(k)[i] : NAN;
+                velocities[at] = i < Count() ? Velocities(k)[i] : NAN;
+            }
+        }
+    }
+    mvfxDestroyContext(s_context);
+}
+
+static void TestRange(void)
+{
+    // The kernels measure lengths in a power of two of the radius, so a
+    // liquid's results scale exactly with its lengths over the radius's
+    // whole range: lattices whose radius is 2^38 (spacing 2^18 under a
+    // scale of 2^19) and 2^-31 (spacing 2^-13 under 2^-19), where binary32
+    // holds neither the kernels' factors nor the cube of a squared radius,
+    // move as the lattice of radius 2^-3 does, every place and velocity
+    // that one's times 2^41 and 2^-28 (the radii's ratios), finite.
+    static float places[3][6 * 3 * 216];
+    static float velocities[3][6 * 3 * 216];
+    static const float spacings[3] = {0x1p-4f, 0x1p18f, 0x1p-13f};
+    static const float scales[3] = {1.0f, 0x1p19f, 0x1p-19f};
+    static const float ratios[3] = {1.0f, 0x1p41f, 0x1p-28f};
+    for (int32_t p = 0; p < 2; ++p)
+    {
+        for (int32_t c = 0; c < 3; ++c)
+        {
+            Lattice(spacings[c], scales[c], p == 1, places[c], velocities[c]);
+        }
+        bool exact = true;
+        for (int32_t c = 1; c < 3; ++c)
+        {
+            for (size_t i = 0; i < 6u * 3u * 216u; ++i)
+            {
+                bool counted = !isnan(places[0][i]);
+                exact = exact && (!counted || (isfinite(places[c][i]) &&
+                                               places[c][i] == places[0][i] * ratios[c] &&
+                                               velocities[c][i] == velocities[0][i] * ratios[c]));
+            }
+        }
+        CHECK(exact, p == 1 ? "a planar liquid scales exactly to its range's ends"
+                            : "a 3D liquid scales exactly to its range's ends");
+    }
+}
+
 int main(void)
 {
+    TestRange();
     TestPlanned();
     TestRefusals();
     TestScale();

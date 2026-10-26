@@ -105,9 +105,13 @@ void mvfxSimLiquidNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* pla
                               mvfxTableMask(plan->capacity),     (uint32_t)def->maxNeighbors,
                               (uint32_t)def->tensilePower,       def->planar ? 1u : 0u};
     memcpy(w, head, sizeof head);
-    mvfxFloatWords(w + 8, 1.0f / l->radius, l->radius, l->square, l->poly6);
+    // The kernels in their unit (a power of two, so dividing by it is
+    // exact), and the confinement's strength over it.
+    float inverseUnit = 1.0f / l->unit;
+    mvfxFloatWords(w + 8, 1.0f / l->radius, l->radius * inverseUnit, l->square, l->poly6);
     mvfxFloatWords(w + 12, l->spiky, l->restInverse, l->softening, l->tensileInverse);
-    mvfxFloatWords(w + 16, l->tensileScale, def->viscosity, def->vorticity * l->spacing, 0.0f);
+    mvfxFloatWords(w + 16, l->tensileScale, def->viscosity,
+                   def->vorticity * l->spacing * inverseUnit, inverseUnit);
     uint32_t blocks = mvfxSortBlocks(plan->capacity);
     const uint32_t tail[4] = {(uint32_t)plan->ticks, (uint32_t)def->substeps,
                               groups > 0u ? groups : 1u, blocks < 65535u ? blocks : 65535u};

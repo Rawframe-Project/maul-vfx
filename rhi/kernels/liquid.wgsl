@@ -30,10 +30,11 @@ const STATISTICS_CAPPED: u32 = 46u;
 // A liquid's numbers: the particle buffer's capacity and where a
 // particle's place, velocity and alive word are; the grid's mask, the
 // most neighbors, the tensile correction's power, whether it is planar;
-// the inverse cell, the kernel radius and its square, poly6's factor; the
-// spiky gradient's factor, the inverse rest density, the softening, the
-// tensile correction's inverse reference; its scale, the viscosity, the
-// confinement's strength over a second (vorticity times spacing), unused;
+// the inverse cell; in the kernels' unit (a power of two) the kernel
+// radius and its square, poly6's factor; the spiky gradient's factor, the
+// inverse rest density, the softening, the tensile correction's inverse
+// reference; its scale, the viscosity, the confinement's strength over a
+// second (vorticity times spacing, over the unit), the unit's inverse;
 // the plan's ticks, the substeps, the workgroups of a particle pass and of
 // a block pass.
 struct Liquid {
@@ -289,7 +290,8 @@ fn add(mode: u32, i: u32, j: u32, x: vec3<f32>, d: vec3<f32>, sums: ptr<function
 }
 
 // Particle i's gather over its neighbors, as the core's Neighbors walks
-// them; a confinement's sums start from i's curl's size.
+// them, their offsets in the kernels' unit; a confinement's sums start
+// from i's curl's size.
 fn gather(mode: u32, i: u32) -> Sums {
     var sums = Sums();
     if (mode == GATHER_CONFINE) {
@@ -317,7 +319,7 @@ fn gather(mode: u32, i: u32) -> Sums {
         let last = firstKey(key, n, true);
         for (var e = firstKey(key, n, false); e < last; e++) {
             let j = words[span + e];
-            let d = x - placeOf(j);
+            let d = (x - placeOf(j)) * liquid.rates.w;
             let square = d.x * d.x + d.y * d.y + d.z * d.z;
             if (j == i || !(square < liquid.cells.z)) {
                 continue;
@@ -364,8 +366,9 @@ fn liquidMultipliers(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 // Corrections: each particle's place plus its neighbors' gradients weighted
-// by both multipliers and the tensile correction (Z held for a planar
-// liquid), into the other buffer's velocity words.
+// by both multipliers and the tensile correction, a move in the kernels'
+// unit (Z held for a planar liquid), into the other buffer's velocity
+// words.
 @compute @workgroup_size(64, 1, 1)
 fn liquidCorrections(@builtin(global_invocation_id) id: vec3<u32>) {
     let n = liveOf();
@@ -377,7 +380,7 @@ fn liquidCorrections(@builtin(global_invocation_id) id: vec3<u32>) {
         if (liquid.grid.w != 0u) {
             delta.z = 0.0;
         }
-        setVector(1u, liquid.head.z, i, placeOf(i) + delta);
+        setVector(1u, liquid.head.z, i, placeOf(i) + delta / liquid.rates.w);
     }
 }
 

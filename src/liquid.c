@@ -73,7 +73,7 @@ static int32_t Neighbors(const Liquid* l, int32_t i, int32_t out[MVFX_MAX_NEIGHB
             float square = 0.0f;
             for (int32_t k = 0; k < 3; ++k)
             {
-                float d = l->x[k][i] - l->x[k][j];
+                float d = (l->x[k][i] - l->x[k][j]) * l->kernel.inverseUnit;
                 square += d * d;
             }
             if (j == i || !(square < l->kernel.square))
@@ -92,12 +92,12 @@ static int32_t Neighbors(const Liquid* l, int32_t i, int32_t out[MVFX_MAX_NEIGHB
 }
 
 // The offset from neighbor j to particle i at their places now, and its
-// length.
+// length, in the kernel's unit.
 static float OffsetOf(const Liquid* l, int32_t i, int32_t j, float d[3])
 {
     for (int32_t k = 0; k < 3; ++k)
     {
-        d[k] = l->x[k][i] - l->x[k][j];
+        d[k] = (l->x[k][i] - l->x[k][j]) * l->kernel.inverseUnit;
     }
     return sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
 }
@@ -166,7 +166,7 @@ static float Tensile(const Liquid* l, float square)
 
 // Each particle's corrected place into moved: its place plus the
 // neighbors' gradients weighted by both multipliers and the tensile
-// correction (Z held for a planar liquid).
+// correction, a move in the kernel's unit (Z held for a planar liquid).
 static void Corrections(const Liquid* l, const float* multipliers, float* const moved[3])
 {
     int32_t near[MVFX_MAX_NEIGHBORS];
@@ -190,7 +190,7 @@ static void Corrections(const Liquid* l, const float* multipliers, float* const 
         delta[2] = l->def->planar ? 0.0f : delta[2];
         for (int32_t k = 0; k < 3; ++k)
         {
-            moved[k][i] = l->x[k][i] + delta[k];
+            moved[k][i] = l->x[k][i] + delta[k] * l->kernel.unit;
         }
     }
 }
@@ -294,12 +294,13 @@ static float SizeOf(const float* const swirls[3], int32_t i)
 // epsilon spacing (N x w), N the gradient of the curl's size over the
 // larger of its own size and 1e-4 of the curl's over the kernel radius
 // (a unit vector where the size changes, tapering to nothing where it is
-// even, as a gas's), into out.
+// even, as a gas's), into out. The curls and their gradients are in the
+// kernel's unit, which the strength's inverse unit undoes.
 static void Confine(const Liquid* l, const float* const swirls[3], float spacing, float h,
                     float* const out[3])
 {
     int32_t near[MVFX_MAX_NEIGHBORS];
-    float strength = h * l->def->vorticity * spacing;
+    float strength = h * l->def->vorticity * spacing * l->kernel.inverseUnit;
     for (int32_t i = 0; i < l->count; ++i)
     {
         bool over = false;
@@ -319,7 +320,7 @@ static void Confine(const Liquid* l, const float* const swirls[3], float spacing
             }
         }
         float length = sqrtf(eta[0] * eta[0] + eta[1] * eta[1] + eta[2] * eta[2]);
-        float floor = 1e-4f * size / l->kernel.radius;
+        float floor = 1e-4f * size / l->kernel.span;
         float bound = length > floor ? length : floor;
         float scale = bound > 0.0f ? strength / bound : 0.0f;
         const float w[3] = {swirls[0][i], swirls[1][i], swirls[2][i]};

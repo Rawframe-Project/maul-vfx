@@ -88,6 +88,7 @@ static mvfxPlannedLiquid PlannedLiquid(const mvfxInstance* instance, int32_t emi
     float sigma = compiled->space == mvfx_spaceWorld ? instance->to.scale : 1.0f;
     mvfxLiquidKernel k = mvfxLiquidKernelOf(def, sigma);
     return (mvfxPlannedLiquid){.radius = k.radius,
+                               .unit = k.unit,
                                .square = k.square,
                                .poly6 = k.poly6,
                                .spiky = k.spiky,

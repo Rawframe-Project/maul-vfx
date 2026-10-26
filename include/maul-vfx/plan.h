@@ -260,14 +260,19 @@ extern "C"
 
     // A particle liquid's kernels as resolved for a plan's step (its
     // lengths in the particles' space: a world-space emitter's scale with
-    // its instance at the step's end): the kernel radius and its square;
-    // poly6's and the spiky gradient's factors; the inverse of the rest
-    // density; the constraint's softening; the tensile correction's
-    // inverse reference and scale; the spacing; the scale. Zeros for an
-    // emitter without one.
+    // its instance at the step's end): the kernel radius; the unit the
+    // kernels measure lengths in, the power of two that leaves the radius
+    // from 1 to 2 in it (an offset between particles divided by it, a
+    // correction multiplied); and in that unit the radius's square,
+    // poly6's and the spiky gradient's factors, the inverse of the rest
+    // density, the constraint's softening, the tensile correction's
+    // inverse reference and scale; the spacing; the scale. Measured in
+    // the unit, each stays within binary32 over the radius's whole range.
+    // Zeros for an emitter without one.
     typedef struct mvfxPlannedLiquid
     {
         float radius;
+        float unit;
         float square;
         float poly6;
         float spiky;
