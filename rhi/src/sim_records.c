@@ -499,6 +499,37 @@ bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter)
     return written;
 }
 
+// Both particle buffers, and the events buffer when the emitter has its
+// own (its events, and its scratch for births from events, tears and
+// crossings).
+static int32_t ClearedBuffers(const Emitter* emitter)
+{
+    return emitter->events.index1 != 0 ? 3 : 2;
+}
+
+void mvfxClearedSimBuffers(const Emitter* emitter, mrhiAccess* accesses, int32_t* count)
+{
+    static const int32_t buffers[3] = {BUFFER_CURRENT, BUFFER_OTHER, BUFFER_EVENTS};
+    for (int32_t b = 0; emitter->first && b < ClearedBuffers(emitter); ++b)
+    {
+        accesses[*count] = (mrhiAccess){.resource = emitter->resources[buffers[b]],
+                                        .kind = mrhi_accessCopyDestination};
+        *count += 1;
+    }
+}
+
+bool mvfxClearSimBuffers(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
+{
+    static const int32_t buffers[3] = {BUFFER_CURRENT, BUFFER_OTHER, BUFFER_EVENTS};
+    bool cleared = true;
+    for (int32_t b = 0; cleared && b < ClearedBuffers(emitter); ++b)
+    {
+        cleared = mrhiClearBuffer(sim->device, pass, emitter->resources[buffers[b]], 0,
+                                  MRHI_WHOLE_SIZE) == mrhi_success;
+    }
+    return cleared;
+}
+
 mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,
                                mvfxBounds* boundsOut)
 {

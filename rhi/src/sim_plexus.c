@@ -62,7 +62,8 @@ bool mvfxCreateSimPlexus(mvfxGpuSim* sim, int32_t e)
            CreateBuffer(sim, 4u * 2u * 256u * blocks, mrhi_bufferStorage, &b[PLEXUS_DIGITS]) &&
            CreateBuffer(sim, 4u * 3u * c, mrhi_bufferStorage, &b[PLEXUS_COUNTS]) &&
            CreateBuffer(sim, 4u * 14u * (uint64_t)mvfxLinkSpan(def->maxLinks),
-                        mrhi_bufferStorage | mrhi_bufferCopySource, &b[PLEXUS_LINKS]);
+                        mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination,
+                        &b[PLEXUS_LINKS]);
 }
 
 void mvfxDestroySimPlexus(mvfxGpuSim* sim, Emitter* emitter)
@@ -113,7 +114,9 @@ bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter)
         }
     }
     const mrhiResourceId* r = emitter->resources;
-    const mrhiAccess written = {.resource = x[PLEXUS_NUMBERS], .kind = mrhi_accessCopyDestination};
+    const mrhiAccess written[2] = {
+        {.resource = x[PLEXUS_NUMBERS], .kind = mrhi_accessCopyDestination},
+        {.resource = x[PLEXUS_LINKS], .kind = mrhi_accessCopyDestination}};
     const mrhiAccess used[PLEXUS_BINDINGS] = {
         {.resource = r[BUFFER_OTHER], .kind = mrhi_accessStorageRead},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessStorageReadWrite},
@@ -126,10 +129,12 @@ bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter)
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessStorageRead},
         {.resource = x[PLEXUS_SORT], .kind = mrhi_accessStorageReadWrite},
         {.resource = x[PLEXUS_DIGITS], .kind = mrhi_accessStorageReadWrite}};
-    // The numbers are the same every step: written once.
-    emitter->plexusWriting = !emitter->plexusWritten;
-    bool added = !emitter->plexusWriting ||
-                 AddPass(sim, mrhi_passTransfer, &written, 1, &emitter->plexusPasses[PLEXUS_WRITE]);
+    // The numbers are the same every step: written once; the links, which
+    // a host reads, zeroed at the simulation's first step.
+    emitter->plexusWriting = !emitter->plexusWritten || emitter->first;
+    bool added =
+        !emitter->plexusWriting || AddPass(sim, mrhi_passTransfer, written, emitter->first ? 2 : 1,
+                                           &emitter->plexusPasses[PLEXUS_WRITE]);
     for (int32_t p = PLEXUS_KEYS; added && p < PLEXUS_PASSES; ++p)
     {
         bool radix = p >= PLEXUS_RADIX && p < PLEXUS_COUNT;
@@ -139,7 +144,8 @@ bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter)
     return added;
 }
 
-// Records the write of the plexus numbers, at the first step.
+// Records the write of the plexus numbers, at the first step, and the
+// zeroing of the links at the simulation's first.
 static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 {
     if (!emitter->plexusWriting)
@@ -150,7 +156,10 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
     bool recorded =
         mrhiBeginPass(sim->device, pass) == mrhi_success &&
         mvfxUpload(sim->device, &sim->uploaded, pass, emitter->plexusResources[PLEXUS_NUMBERS], 0,
-                   emitter->plexusWords, sizeof emitter->plexusWords);
+                   emitter->plexusWords, sizeof emitter->plexusWords) &&
+        (!emitter->first ||
+         mrhiClearBuffer(sim->device, pass, emitter->plexusResources[PLEXUS_LINKS], 0,
+                         MRHI_WHOLE_SIZE) == mrhi_success);
     recorded = mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
     emitter->plexusWritten = recorded;
     return recorded;

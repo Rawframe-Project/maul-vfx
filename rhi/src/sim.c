@@ -187,7 +187,8 @@ static uint64_t AcceptedWords(const Emitter* emitter)
 static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 {
     uint64_t c = (uint64_t)emitter->capacity;
-    mrhiBufferUsage particles = mrhi_bufferStorage | mrhi_bufferCopySource;
+    mrhiBufferUsage particles =
+        mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
     mrhiBufferUsage written = mrhi_bufferStorage | mrhi_bufferCopyDestination;
     uint64_t words = (uint64_t)emitter->particleWords;
     return CreateBuffer(sim, c * words * 4u, particles, &emitter->particles[0]) &&
@@ -602,7 +603,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
         return false;
     }
     const mrhiResourceId* r = emitter->resources;
-    mrhiAccess written[6 + MVFX_MAX_GASES] = {
+    mrhiAccess written[9 + MVFX_MAX_GASES] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessCopyDestination},
         {.resource = r[BUFFER_STATISTICS], .kind = mrhi_accessCopyDestination},
@@ -613,6 +614,7 @@ static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
     {
         return false;
     }
+    mvfxClearedSimBuffers(emitter, written, &writes);
     const mrhiAccess used[BUFFER_COUNT + 2] = {
         {.resource = r[BUFFER_STEP], .kind = mrhi_accessUniform},
         {.resource = r[BUFFER_BIRTHS], .kind = mrhi_accessStorageReadWrite},
@@ -790,16 +792,17 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
     return written && mvfxWriteSimFollow(sim, pass, step, emitter);
 }
 
-// Records the pass writing the plan's bytes: its numbers, its births and
-// its host births after the births' room, the record's map (the whole
-// record after a clear and at the first step), the grids changed and the
-// gases' faces.
+// Records the pass writing the plan's bytes: the buffers a host reads
+// zeroed at the first step, its numbers, its births and its host births
+// after the births' room, the record's map (the whole record after a
+// clear and at the first step), the grids changed and the gases' faces.
 static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->passes[PASS_WRITE];
     const mrhiResourceId* r = emitter->resources;
     bool spawns = emitter->spawnSource >= 0;
     bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
+                    (!emitter->first || mvfxClearSimBuffers(sim, pass, emitter)) &&
                     WriteNumbers(sim, pass, r[BUFFER_STEP], emitter) &&
                     (emitter->birthCount == 0 ||
                      mvfxUpload(sim->device, &sim->uploaded, pass, r[BUFFER_BIRTHS],

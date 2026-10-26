@@ -97,15 +97,17 @@ extern "C"
     // MVFX_GPU_STATISTICS_WORDS words of the last recorded step: the live
     // count first, then what the step uses and the bounds, which
     // mvfxGpuSim_BoundsOf reads; a word the emitter does not keep (one of
-    // a kind it is not, from MVFX_GPU_EVENT_SERIALS on) holds 0. A
-    // world-space emitter's places are offsets from its anchor (its plan's
-    // anchor after). Its events of the
+    // a kind it is not, from MVFX_GPU_EVENT_SERIALS on) holds 0. A slot
+    // past the live count is undefined, and a host reads none: only the
+    // first live count of each array. A world-space emitter's places are
+    // offsets from its anchor (its plan's anchor after). Its events of the
     // frame, when it writes any (a null buffer otherwise; a frame split
     // into steps gives theirs one after another, as the CPU path's
     // context step): from word
     // eventFirst of the events buffer, MVFX_GPU_EVENT_WORDS words each, as
     // many as the statistics record's word MVFX_GPU_EVENTS_WRITTEN (at
-    // most eventCapacity; those past it in the next word): kind | killed
+    // most eventCapacity; those past it in the next word; the entries
+    // after them undefined, not to be read): kind | killed
     // << 8, serial, tick (low, high word), place (binary32 offsets from the
     // plan's anchor after, in the world), velocity, normal, colour, size,
     // then eight words the part uses; in the order the CPU path's
@@ -135,7 +137,8 @@ extern "C"
     // of the step, when it has them (a null buffer otherwise): two words
     // each, the owner's index in the particles then the other's, as many as
     // the statistics record's word MVFX_GPU_LINKS (at most linkCapacity,
-    // the def's maxLinks), in the order the CPU path's links take. Links
+    // the def's maxLinks; the entries after them undefined, not to be
+    // read), in the order the CPU path's links take. Links
     // are decided on places too: a pair that close to the distance may link
     // on one path only; from the same places the links are the CPU path's.
     typedef struct mvfxGpuParticles

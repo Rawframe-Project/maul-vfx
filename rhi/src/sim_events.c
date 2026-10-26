@@ -45,8 +45,7 @@ bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e)
     words += crossings ? mvfxCrossingListWords(emitter->capacity) : 0u;
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = 4u * words;
-    def.usage = mrhi_bufferStorage | mrhi_bufferCopySource |
-                (spawns ? mrhi_bufferCopyDestination : (mrhiBufferUsage)0);
+    def.usage = mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
     if (mrhiCreateBuffer(sim->device, &def, &emitter->events) != mrhi_success)
     {
         return false;
