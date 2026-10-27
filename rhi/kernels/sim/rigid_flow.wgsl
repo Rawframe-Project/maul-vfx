@@ -1,11 +1,13 @@
-// The sim kernel's rigid bodies' free turning (spliced into sim.wgsl), as
-// the core's mvfxPrincipalOf and mvfxFlowBody (src/rigid_flow.c): the
-// principal frame by cyclic Jacobi rotations, and the flow of a body's
-// spin and orientation by a Casimir splitting of its kinetic energy. The
-// core turns in binary64; here in binary32, so each turn is held to the
-// length it keeps by a first-order correction, the turns are composed
-// into one before the orientation takes them, and the spin's momentum is
-// held to its size as the next substep reads it back.
+// The sim kernel's rigid bodies' free turning (spliced into sim.wgsl): the
+// principal frame by cyclic Jacobi rotations, as the core's
+// mvfxPrincipalOf (src/rigid_flow.c), and the flow of a body's spin and
+// orientation by a Casimir splitting of its kinetic energy, as maul3d's
+// docs/internals/rotation.md takes it in binary32 (the core turns in
+// binary64): each operation in its order, its residual turns held to the
+// length they keep, composed before the orientation takes them, and the
+// spin corrected by what the next substep would miss reading it back,
+// component by component. Its sine and cosine are sinCos's (the shader
+// has no remainderf), made a unit pair as the doc's cossin.
 
 // The most sweeps the Jacobi rotations take, as the core's MOST_SWEEPS.
 const MOST_SWEEPS: u32 = 16u;
@@ -129,7 +131,7 @@ fn principalOf(inertia: array<f32, 6>) -> Principal {
 }
 
 // The unit quaternion of a rotation matrix (its columns the turned axes),
-// as the core's QuaternionOf.
+// its w not negative, as the core's QuaternionOf.
 fn quaternionOf(m: array<vec3<f32>, 3>) -> vec4<f32> {
     let trace = m[0][0] + m[1][1] + m[2][2];
     var q = vec4<f32>(0.0);
@@ -150,56 +152,88 @@ fn quaternionOf(m: array<vec3<f32>, 3>) -> vec4<f32> {
         q = vec4<f32>((m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s,
                       (m[1][0] - m[0][1]) / s);
     }
-    return q / sqrt(dot(q, q));
+    return select(1.0, -1.0, q.w < 0.0) * q / sqrt(dot(q, q));
 }
 
-// How many equal pieces a substep's residual turns take, as the core's
-// Pieces.
-fn flowPieces(turn: f32, least: f32, most: f32) -> f32 {
-    let a = turn * least;
-    let b = turn * most;
-    let reach = max(a * a * b, a * b * b) / (PIECE_TURN * PIECE_TURN * PIECE_TURN);
-    var n = 1.0;
-    while (n < MOST_PIECES && n * n * n < reach) {
-        n += 1.0;
+// The cosine and sine of a, as rotation.md's cossin: sinCos's pair
+// scaled to a unit one.
+fn cosSin(a: f32) -> vec2<f32> {
+    let sc = sinCos(a);
+    let m = sqrt(sc.x * sc.x + sc.y * sc.y);
+    let i = select(0.0, 1.0 / m, m > 0.0);
+    return vec2<f32>(sc.y * i, sc.x * i);
+}
+
+// A unit quaternion, or the identity for one of length below binary32's
+// epsilon, as rotation.md's normalize.
+fn unitOf(q: vec4<f32>) -> vec4<f32> {
+    let n = sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    if (n < 1.19209290e-7) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    return n;
+    let i = 1.0 / n;
+    return vec4<f32>(i * q.x, i * q.y, i * q.z, i * q.w);
 }
 
-// A first-order correction of x toward the squared length kept, as maul3d
-// takes it: x (1 + (kept - got) / (2 got)).
-fn keepLength(x: vec2<f32>, kept: f32) -> vec2<f32> {
-    let got = dot(x, x);
-    return select(x, x + x * ((kept - got) / (2.0 * got)), got > 0.0);
+// v turned by a unit quaternion, as rotation.md's rotate.
+fn turnVector(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
+    let u = q.xyz;
+    let c = cross(u, v);
+    let t = vec3<f32>(2.0 * c.x, 2.0 * c.y, 2.0 * c.z);
+    return (v + q.w * t) + cross(u, t);
 }
 
-// Turns T by theta about principal axis i, and the momentum L in the
-// frame back by theta, its pair across i held to its length: the
-// residual's exact flow. False past sinCos's range.
-fn residualTurn(i: u32, theta: f32, t: ptr<function, vec4<f32>>, l: ptr<function, vec3<f32>>) -> bool {
-    if (!(abs(0.5 * theta) <= MOST_HALF_TURN)) {
-        return false;
+// A turn by angle about a unit axis e, as rotation.md's turn.
+fn turnOn(e: vec3<f32>, angle: f32) -> vec4<f32> {
+    let cs = cosSin(0.5 * angle);
+    return vec4<f32>(cs.y * e.x, cs.y * e.y, cs.y * e.z, cs.x);
+}
+
+// How many equal pieces a substep's residual turns take, as rotation.md's
+// count: the first n of 1 to 63 whose quarter cubed reaches m, else 64.
+fn flowPieces(m: f32) -> f32 {
+    for (var n = 1u; n < 64u; n++) {
+        let r = f32(n) * PIECE_TURN;
+        if (!(m > r * r * r)) {
+            return f32(n);
+        }
     }
-    let half = sinCos(0.5 * theta);
-    var r = vec4<f32>(0.0, 0.0, 0.0, half.y);
-    r[i] = half.x;
-    *t = multiplyRotations(*t, r);
-    let c = half.y * half.y - half.x * half.x;
-    let s = 2.0 * half.x * half.y;
-    let a = (i + 1u) % 3u;
-    let b = (i + 2u) % 3u;
-    let pair = vec2<f32>((*l)[a], (*l)[b]);
-    let turned = keepLength(vec2<f32>(c * pair.x + s * pair.y, -s * pair.x + c * pair.y),
-                            dot(pair, pair));
-    (*l)[a] = turned.x;
-    (*l)[b] = turned.y;
-    return true;
+    return MOST_PIECES;
+}
+
+// rotation.md's residual(i, inv, tau): T turned by the residual's angle
+// about principal axis i, and the momentum's pair across i turned back,
+// held to its length.
+fn residualTurn(i: u32, inv: f32, invMid: f32, tau: f32, t: ptr<function, vec4<f32>>,
+                l: ptr<function, vec3<f32>>) {
+    let angle = tau * (*l)[i] * (inv - invMid);
+    let half = cosSin(0.5 * angle);
+    *t = multiplyRotations(*t, vec4<f32>(select(0.0, half.y, i == 0u), 0.0,
+                                         select(0.0, half.y, i == 2u), half.x));
+    let c = half.x * half.x - half.y * half.y;
+    let s = 2.0 * half.y * half.x;
+    let j = (i + 1u) % 3u;
+    let k = (i + 2u) % 3u;
+    let lj = (*l)[j];
+    let lk = (*l)[k];
+    var nj = c * lj + s * lk;
+    var nk = c * lk - s * lj;
+    let before = lj * lj + lk * lk;
+    let after = nj * nj + nk * nk;
+    let d = 0.5 * (before - after) / after;
+    if (d - d == 0.0) {
+        nj = nj + d * nj;
+        nk = nk + d * nk;
+    }
+    (*l)[j] = nj;
+    (*l)[k] = nk;
 }
 
 // A body's orientation and angular velocity turned over t from its
 // orientation q at its substep's start, as the core's Flow: by
 // flowTurned, or about its angular velocity (turnBy) for a body of one
-// moment about every axis, one of no volume or a turn flowTurned refuses.
+// moment about every axis, or one the flow does not apply to (one of no
+// volume).
 fn flowBody(b: ptr<function, Body>, inertia: array<f32, 6>, q: vec4<f32>, t: f32) {
     let w = (*b).moving.turning.angular;
     var turned = Turning();
@@ -211,48 +245,50 @@ fn flowBody(b: ptr<function, Body>, inertia: array<f32, 6>, q: vec4<f32>, t: f32
     }
 }
 
-// The free flow of a body's orientation q and angular velocity w over t
-// into out, as the core's mvfxFlowBody, its moments taken over the
-// largest so only their ratios are used; false for a body of one moment
-// about every axis or one of none, and past sinCos's or binary32's range.
-fn flowTurned(p: Principal, t: f32, q: vec4<f32>, w: vec3<f32>, out: ptr<function, Turning>) -> bool {
-    if (p.moments.x == p.moments.z || !(p.moments.z > 0.0)) {
+// The free flow of a body's orientation q and angular velocity w over h
+// into out, as rotation.md's flow from its scale on; false for a body of
+// one moment about every axis and one it does not apply to (its least
+// moment, or its least over its largest, below binary32's least normal).
+fn flowTurned(p: Principal, h: f32, q: vec4<f32>, w: vec3<f32>, out: ptr<function, Turning>) -> bool {
+    let I = p.moments;
+    if (!(I.x - I.x == 0.0 && I.z >= 1.17549435e-38 && I.z / I.x >= 1.17549435e-38)) {
         return false;
     }
-    let m = p.moments / p.moments.x;
-    let frame = p.rotation;
-    let back = vec4<f32>(-frame.xyz, frame.w);
-    let start = normalize(multiplyRotations(q, frame));
-    var l = m * rotate(vec4<f32>(-start.xyz, start.w), w);
-    let kept = dot(l, l);
-    let least = 1.0 / m.z - 1.0 / m.y;
-    let most = 1.0 / m.x - 1.0 / m.y;
-    let pieces = flowPieces(t * sqrt(kept), least, -most);
-    let piece = t / pieces;
-    var turn = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    var done = true;
-    for (var k = 0.0; done && k < pieces; k += 1.0) {
-        done = residualTurn(2u, 0.5 * piece * l.z * least, &turn, &l) &&
-               residualTurn(0u, piece * l.x * most, &turn, &l) &&
-               residualTurn(2u, 0.5 * piece * l.z * least, &turn, &l);
-    }
-    let size = sqrt(dot(l, l));
-    let casimir = 0.5 * t * size / m.y;
-    if (!done || !(size > 0.0) || !(size <= 3.40282347e38) || !(abs(casimir) <= MOST_HALF_TURN)) {
+    let S = vec3<f32>(1.0, I.y / I.x, I.z / I.x);
+    if (S.y == 1.0 && S.z == 1.0) {
         return false;
     }
-    let half = sinCos(casimir);
-    turn = multiplyRotations(turn, vec4<f32>(l / size * half.x, half.y));
-    let orientation =
-        normalize(multiplyRotations(q, multiplyRotations(frame, multiplyRotations(turn, back))));
-    let now = normalize(multiplyRotations(orientation, frame));
-    var angular = rotate(now, l / m);
-    // The momentum as the next substep reads it back, held to its size.
-    let read = m * rotate(vec4<f32>(-now.xyz, now.w), angular);
-    let got = dot(read, read);
-    angular = select(angular, angular + angular * ((kept - got) / (2.0 * got)), got > 0.0);
-    if (!all(abs(angular) <= vec3<f32>(3.40282347e38)) ||
-        !all(abs(orientation) <= vec4<f32>(3.40282347e38))) {
+    let F = p.rotation;
+    let invMid = 1.0 / S.y;
+    let invMin = 1.0 / S.z;
+    let invMax = 1.0;
+    let start = unitOf(multiplyRotations(q, F));
+    let pw = turnVector(vec4<f32>(-start.xyz, start.w), w);
+    var L = vec3<f32>(pw.x, S.y * pw.y, S.z * pw.z);
+    var len = sqrt(dot(L, L));
+    let a = h * len * (invMin - invMid);
+    let b = h * len * (invMid - invMax);
+    let m = select(a * b * b, a * a * b, a * a * b > a * b * b);
+    let n = flowPieces(m);
+    let t = h / n;
+    var T = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    for (var k = 0.0; k < n; k += 1.0) {
+        residualTurn(2u, invMin, invMid, 0.5 * t, &T, &L);
+        residualTurn(0u, invMax, invMid, t, &T, &L);
+        residualTurn(2u, invMin, invMid, 0.5 * t, &T, &L);
+    }
+    len = sqrt(dot(L, L));
+    if (len > 0.0) {
+        T = multiplyRotations(T, turnOn((1.0 / len) * L, h * len * invMid));
+    }
+    let back = vec4<f32>(-F.xyz, F.w);
+    let orientation = unitOf(multiplyRotations(q, multiplyRotations(multiplyRotations(F, T), back)));
+    let P = unitOf(multiplyRotations(orientation, F));
+    let spin = vec3<f32>(L.x, L.y / S.y, L.z / S.z);
+    let o = turnVector(P, spin);
+    let miss = spin - turnVector(vec4<f32>(-P.xyz, P.w), o);
+    let angular = o + turnVector(P, miss);
+    if (!all(abs(angular) <= vec3<f32>(3.40282347e38))) {
         return false;
     }
     (*out).orientation = orientation;

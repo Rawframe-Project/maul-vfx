@@ -4,10 +4,11 @@
 // Rigid particles on a real device (lavapipe on CI) beside the CPU path,
 // compared after every step (rhi_harness.h): their places, velocities,
 // orientations, angular velocities and sleep within the tolerance (masses
-// and the gyroscopic turn take square roots and division). Covered:
-// spheres, capsules, boxes and hulls of sizes unequal along their axes
-// tumbling under gravity and drag over several substeps (the gyroscopic
-// term turning those of unequal inertias), newborns taking the rest of
+// and the free flow take square roots and division). Covered: spheres,
+// capsules, boxes and hulls of sizes unequal along their axes tumbling
+// under gravity and drag over several substeps (the free flow turning
+// those of unequal inertias), rods down to 1e-6 of their length across
+// spun about it and tumbling, newborns taking the rest of
 // their step's substeps, sizes over life by age and by speed, in the
 // world's space under a moving instance, and bodies coming to rest in a
 // drag and falling asleep alone, held in the air under gravity; spheres
@@ -72,11 +73,11 @@ static const mvfxMeshDef s_hull = {
 static void Tumbled(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, bool moving,
                     const char* what)
 {
-    // A step at a time from the same state, within 1e-3: the inertias are
-    // binary32 here and binary64 on the CPU path, and the gyroscopic turn
-    // carries their rounding into the angular velocity a substep at a
-    // time, which a body tumbling about its middle axis grows from step
-    // to step (the Dzhanibekov effect).
+    // A step at a time from the same state, within 1e-3: the inertias and
+    // the free flow are binary32 here and binary64 on the CPU path, and
+    // the flow carries their rounding into the angular velocity a substep
+    // at a time, which a body tumbling about its middle axis grows from
+    // step to step (the Dzhanibekov effect).
     Compare(gpu, kernels,
             &(Run){.emitters = emitter,
                    .emitterCount = 1,
@@ -729,36 +730,41 @@ static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
     }
 }
 
-static void TestNeedles(Gpu* gpu, mvfxGpu* kernels)
+static void TestRods(Gpu* gpu, mvfxGpu* kernels)
 {
-    // Needles 1e-8 of their length across, lying along X and rolling
-    // about it as they fall onto a level floor, then upright and turning
-    // slowly: the floor's friction turns them about their long axis, about
-    // which their inverse inertia is held at 2^40 in their units, and their
-    // gyroscopic term, exact for a symmetric body, keeps them as near on
-    // both paths as any body (stepped explicitly, its rounding times that
-    // inverse inertia parted them).
-    static const mvfxCollider floor = {
-        .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
+    // Rods 0.4 long and 1e-2, 1e-4 and 1e-6 of that across, capsules and
+    // boxes, their moments about their length 1e-4 to 1e-12 of the
+    // others' (the last held at 2^-40 in their units), free: spun at up to
+    // 3 rad/s about their length, then tumbling about every axis, a step
+    // at a time within 1e-3 of the CPU path's binary64 flow. Read back by
+    // its momentum's size, a rod's spin about its length drained in
+    // binary32: the rounding across it, at its large moments, outweighed
+    // its momentum about its length.
+    static const float across[3] = {4e-3f, 4e-5f, 4e-7f};
     for (int32_t shape = 1; shape < 3; ++shape)
     {
-        mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
-        emitter.size = (mvfxVectorSource){
-            .kind = mvfx_sourceRange, .min = {1e-8f, 0.3f, 1e-8f}, .max = {1e-8f, 0.5f, 1e-8f}};
-        emitter.velocity.coneAngle = 0.0f;
-        emitter.orientationMode = mvfx_orientationEuler;
-        emitter.orientation = (mvfxVectorSource){
-            .kind = mvfx_sourceRange, .min = {0, 0, 1.5707964f}, .max = {0, 0, 1.5707964f}};
-        emitter.angularVelocity =
-            (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, 0, 0}, .max = {3, 0, 0}};
-        Met(gpu, kernels, &(Run){.mostApart = 8, .emitters = &emitter},
-            shape == 1 ? "needle capsules rolling about their length"
-                       : "needle boxes rolling about their length");
-        emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
-        emitter.angularVelocity = (mvfxVectorSource){
-            .kind = mvfx_sourceRange, .min = {0.3f, 0.2f, 0.1f}, .max = {0.3f, 0.2f, 0.1f}};
-        Met(gpu, kernels, &(Run){.mostApart = 8, .emitters = &emitter},
-            shape == 1 ? "needle capsules dropped upright" : "needle boxes dropped upright");
+        for (int32_t r = 0; r < 3; ++r)
+        {
+            mvfxEmitterDef emitter = Bodies((mvfxRigidShape)shape);
+            emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                              .min = {across[r], 0.4f, across[r]},
+                                              .max = {across[r], 0.4f, across[r]}};
+            emitter.orientationMode = mvfx_orientationEuler;
+            emitter.orientation = (mvfxVectorSource){
+                .kind = mvfx_sourceRange, .min = {0, 0, 1.5707964f}, .max = {0, 0, 1.5707964f}};
+            emitter.angularVelocity =
+                (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, 0, 0}, .max = {3, 0, 0}};
+            char what[96];
+            const char* name = shape == 1 ? "capsules" : "boxes";
+            (void)snprintf(what, sizeof what, "%s %g across spun about their length", name,
+                           (double)across[r]);
+            Tumbled(gpu, kernels, &emitter, false, what);
+            emitter.orientationMode = mvfx_orientationRandom;
+            emitter.angularVelocity = (mvfxVectorSource){
+                .kind = mvfx_sourceRange, .min = {-3, -3, -3}, .max = {3, 3, 3}};
+            (void)snprintf(what, sizeof what, "%s %g across tumbling", name, (double)across[r]);
+            Tumbled(gpu, kernels, &emitter, false, what);
+        }
     }
 }
 
@@ -823,7 +829,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestDepth(gpu, kernels);
     TestLargestSizes(gpu, kernels);
     TestUnits(gpu, kernels);
-    TestNeedles(gpu, kernels);
+    TestRods(gpu, kernels);
     TestTiedSizes(gpu, kernels);
 }
 
