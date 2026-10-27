@@ -714,7 +714,9 @@ static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
         emitter.motion.gravity[1] *= 0x1p-40f;
         char what[64];
         (void)snprintf(what, sizeof what, "%s on a sloped floor at 2^-40",
-                       shape == 0 ? "spheres" : shape == 1 ? "capsules" : "boxes");
+                       shape == 0   ? "spheres"
+                       : shape == 1 ? "capsules"
+                                    : "boxes");
         Met(gpu, kernels, &(Run){.mostApart = mostApart[shape], .emitters = &emitter}, what);
     }
 }

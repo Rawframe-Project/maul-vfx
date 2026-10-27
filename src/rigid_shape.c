@@ -119,7 +119,7 @@ static double ReachOf(const mvfxBodyShape* s)
         float p[3];
         mvfxShapePoint(s, i, p);
         reach = fmax(reach, (double)p[0] * (double)p[0] + (double)p[1] * (double)p[1] +
-                               (double)p[2] * (double)p[2]);
+                                (double)p[2] * (double)p[2]);
     }
     if (s->kind == mvfx_rigidHull)
     {

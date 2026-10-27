@@ -156,7 +156,8 @@ static void TurnOf(const mvfxBody* b, const float r[3], const float u[3], float 
     InLength(b, r, lever);
     Cross(lever, u, c);
     InverseInertiaTimes(b, c, turned);
-    double most = fmax(fabs((double)turned[0]), fmax(fabs((double)turned[1]), fabs((double)turned[2])));
+    double most =
+        fmax(fabs((double)turned[0]), fmax(fabs((double)turned[1]), fabs((double)turned[2])));
     int32_t exponent = 0;
     (void)frexp(most, &exponent);
     int32_t shift = exponent - b->lengthUnit > MOST_TURN ? MOST_TURN - exponent : -b->lengthUnit;

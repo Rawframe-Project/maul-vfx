@@ -1081,8 +1081,8 @@ static void Scaled(bool drop, int32_t size, int32_t density, Track* out)
     emitter.motion.gravity[1] = drop ? -9.81f * unit : 0.0f;
     emitter.collision.enabled = drop;
     emitter.colliderCount = drop ? 1 : 0;
-    emitter.angularVelocity =
-        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0.05f, 4, 0.3f}, .max = {0.05f, 4, 0.3f}};
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.05f, 4, 0.3f}, .max = {0.05f, 4, 0.3f}};
     Tilt(&emitter, 0.3f);
     const double place[3] = {0, 3.0 * (double)unit, 0};
     static const float still[3] = {0, 0, 0};
@@ -1159,10 +1159,10 @@ static void TestUnits(void)
             float size = end == 0 ? 1e-30f : MVFX_MAX_EXTENT;
             mvfxEmitterDef emitter = Rigid((mvfxRigidShape)shape, size, size, size);
             emitter.rigid.density = end == 0 ? 1e-30f : MVFX_MAX_EXTENT;
-            emitter.angularVelocity = (mvfxVectorSource){
-                .kind = mvfx_sourceRange,
-                .min = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN},
-                .max = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN}};
+            emitter.angularVelocity =
+                (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                   .min = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN},
+                                   .max = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN}};
             const double place[3] = {0, 2.0 * (double)size, 0};
             static const float still[3] = {0, 0, 0};
             Open(&emitter, place, still);
