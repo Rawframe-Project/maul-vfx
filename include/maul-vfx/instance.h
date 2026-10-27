@@ -239,7 +239,8 @@ extern "C"
         const float* colors;
         // Optional: x, y and z for each, for an emitter that stores size,
         // each finite and at most MVFX_MAX_EXTENT in size over the most its
-        // size over life scales that axis.
+        // size over life scales that axis; for rigid spheres and capsules,
+        // the axes their shape does not set equal to x (mvfxRigidShape).
         const float* sizes;
         // Optional: for an emitter of units held to the host's frames
         // (mvfx_attachHost), each unit's frame, from 0 to below the

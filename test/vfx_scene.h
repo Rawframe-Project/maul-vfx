@@ -212,8 +212,10 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[1].rigid.shape = mvfx_rigidCapsule;
     emitters[1].space = mvfx_spaceLocal;
     emitters[1].rigid.restitution = 0.8f;
+    // A capsule's Z and a sphere's Y and Z are their X (mvfxRigidShape).
     emitters[1].size.min[1] = 0.6f;
     emitters[1].size.max[1] = 0.9f;
+    emitters[1].size.max[2] = 0.5f;
     emitters[0].collision.hostColliders = true;
     emitters[0].collision.depthImage = true;
     emitters[0].collision.depthThickness = 0.3f;
@@ -221,6 +223,9 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[1].colliders = bowl;
     emitters[1].colliderCount = 3;
     emitters[2].rigid.shape = mvfx_rigidSphere;
+    emitters[2].size.min[1] = 0.2f;
+    emitters[2].size.max[1] = 0.5f;
+    emitters[2].size.max[2] = 0.5f;
     emitters[2].killRules = &secondStrike;
     emitters[2].killRuleCount = 1;
     emitters[2].colliders = hills;

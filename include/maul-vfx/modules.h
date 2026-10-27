@@ -295,6 +295,8 @@ extern "C"
         // From 0 to 1.
         float inheritVelocity;
         bool inheritColor;
+        // A rigid sphere or capsule inherits the size's axes its shape sets
+        // and takes X for the others (mvfxRigidShape).
         bool inheritSize;
         // The most births from events a step, from 1 to
         // MVFX_MAX_EMITTER_CAPACITY; past it the latest by tick are refused.

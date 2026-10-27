@@ -572,7 +572,20 @@ fn bornColor(j: u32) -> vec4<f32> {
     return drawVector(SOURCE_COLOR, age, draw(COLOR_SALT, k.x, k.y));
 }
 
-// A birth's size (ones where the emitter stores none), as its colour.
+// A size's axes past those a rigid shape takes made copies of X, as the
+// core's mvfxTieSize.
+fn tiedSize(size: vec3<f32>) -> vec3<f32> {
+    if (params.rigid.y > 0u && params.rigid.x == RIGID_SPHERE) {
+        return vec3<f32>(size.x);
+    }
+    if (params.rigid.y > 0u && params.rigid.x == RIGID_CAPSULE) {
+        return vec3<f32>(size.x, size.y, size.x);
+    }
+    return size;
+}
+
+// A birth's size (ones where the emitter stores none), as its colour, its
+// axes tied to a rigid shape's.
 fn bornSize(j: u32) -> vec3<f32> {
     if (params.words.size == NONE) {
         return vec3<f32>(1.0);
@@ -581,12 +594,12 @@ fn bornSize(j: u32) -> vec3<f32> {
     if (host != NONE) {
         let record = hostBirthAt(host);
         if ((bitcast<u32>(record.place.w) & HOST_GIVES_SIZE) != 0u) {
-            return record.size.xyz;
+            return tiedSize(record.size.xyz);
         }
     }
     let k = birthKey(j);
     let age = bitcast<f32>(birthWord(j, 2u).x);
-    return drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, k.x, k.y)).xyz;
+    return tiedSize(drawVector(SOURCE_SIZE, age, draw(SIZE_SALT, k.x, k.y)).xyz);
 }
 
 // Kill births: each birth with room killed on its way to the plan's end

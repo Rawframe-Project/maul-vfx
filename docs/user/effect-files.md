@@ -45,7 +45,7 @@ return made;
 
 ## Reading
 
-A file is read as hostile input. `mvfxReadEffect` checks the header (its magic, its version and its size), a hash over the whole file, each part of it on its own, the names it holds against the program's asset table, and finally the def itself. A refusal comes with `offset`, the first byte to blame, so a tool can point at the damage. A file written by another format version is refused with `mvfx_errorVersion`.
+A file is read as hostile input. `mvfxReadEffect` checks the header (its magic, its version and its size), a hash over the whole file, each part of it on its own, the names it holds against the program's asset table, and finally the def itself, by the rules `mvfxCreateEffect` applies (a rigid sphere's size Y and Z equal to its X, for one). A refusal comes with `offset`, the first byte to blame, so a tool can point at the damage. A file written by another format version is refused with `mvfx_errorVersion`.
 
 `mvfxReadEffect` puts the def's arrays into memory the program gives and reports the bytes it needs. `mvfxCreateEffectFromBytes` reads, makes the effect and frees the memory in one call, with the context's allocator.
 

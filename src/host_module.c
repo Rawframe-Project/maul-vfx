@@ -91,6 +91,32 @@ static bool AnyPast(const float* values, int32_t count, float bound)
     return past != 0;
 }
 
+// Whether particle i's size (NULL arrays for none stored) keeps the axes
+// past the first axes equal to X, as a rigid shape takes them.
+static bool IsTied(float* const* size, int32_t axes, int32_t i)
+{
+    bool tied = true;
+    for (int32_t k = axes; size[0] != nullptr && k < 3; ++k)
+    {
+        tied = tied && size[k][i] == size[0][i];
+    }
+    return tied;
+}
+
+// Whether any of count sizes is not tied (IsTied), as AnyPast.
+static bool AnyUntied(float* const* size, int32_t axes, int32_t count)
+{
+    uint32_t untied = 0;
+    for (int32_t k = axes; size[0] != nullptr && k < 3; ++k)
+    {
+        for (int32_t i = 0; i < count; ++i)
+        {
+            untied |= size[k][i] == size[0][i] ? 0u : 1u;
+        }
+    }
+    return untied != 0;
+}
+
 // Whether any of n arrays holds a value past its bound.
 static bool AnyArrayPast(float* const* arrays, int32_t n, int32_t count, const float* bounds)
 {
@@ -106,8 +132,9 @@ static bool AnyArrayPast(float* const* arrays, int32_t n, int32_t count, const f
 // that is not finite or is past its limit: a place past MVFX_MAX_PLACE, a
 // velocity past the speed the step holds, a size, colour, spin, angular
 // velocity or custom attribute past what the emitter's particles may
-// store, an angle or orientation not finite. Those not marked already are
-// counted in valuesMarked.
+// store, an angle or orientation not finite, a size whose axes its rigid
+// shape does not take differ from X (mvfxRigidShape). Those not marked
+// already are counted in valuesMarked.
 static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxParticleArrays* a)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
@@ -119,6 +146,7 @@ static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxPa
     const float spins[3] = {caps->spin, caps->spin, caps->spin};
     float* angle[1] = {a->angle};
     float* spin[1] = {a->spin};
+    int32_t axes = mvfxSizeAxes(&instance->effect->emitters[emitter].rigid);
     // An array at a time first: the particles are looked at one by one
     // only where some value is past its limit.
     int32_t n = a->count;
@@ -126,7 +154,8 @@ static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxPa
         AnyArrayPast(a->position, 3, n, places) || AnyArrayPast(a->velocity, 3, n, speeds) ||
         AnyArrayPast(a->color, 4, n, caps->color) || AnyArrayPast(a->size, 3, n, caps->size) ||
         AnyArrayPast(angle, 1, n, finite) || AnyArrayPast(spin, 1, n, &caps->spin) ||
-        AnyArrayPast(a->orientation, 4, n, finite) || AnyArrayPast(a->angularVelocity, 3, n, spins);
+        AnyArrayPast(a->orientation, 4, n, finite) ||
+        AnyArrayPast(a->angularVelocity, 3, n, spins) || AnyUntied(a->size, axes, n);
     for (int32_t c = 0; !past && c < MVFX_MAX_CUSTOM_ATTRIBUTES; ++c)
     {
         const float custom[4] = {caps->custom[c], caps->custom[c], caps->custom[c],
@@ -139,7 +168,8 @@ static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxPa
             AreWithin(a->position, 3, i, places) && AreWithin(a->velocity, 3, i, speeds) &&
             AreWithin(a->color, 4, i, caps->color) && AreWithin(a->size, 3, i, caps->size) &&
             AreWithin(angle, 1, i, finite) && AreWithin(spin, 1, i, &caps->spin) &&
-            AreWithin(a->orientation, 4, i, finite) && AreWithin(a->angularVelocity, 3, i, spins);
+            AreWithin(a->orientation, 4, i, finite) && AreWithin(a->angularVelocity, 3, i, spins) &&
+            IsTied(a->size, axes, i);
         for (int32_t c = 0; within && c < MVFX_MAX_CUSTOM_ATTRIBUTES; ++c)
         {
             const float custom[4] = {caps->custom[c], caps->custom[c], caps->custom[c],
