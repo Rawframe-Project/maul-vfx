@@ -8,21 +8,44 @@ simulation's results.
 
 ## [0.6.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.5.0...v0.6.0) (2026-10-27)
 
+### Changed
 
-### ⚠ BREAKING CHANGES
-
-* **gpu:** the GPU part builds on Maul RHI 0.8.0. A host that uses Maul RHI itself moves to 0.8.0 too: every new device texture reads as zeros in its first frame, cleared in Maul RHI's own zero pass, and drivers built outside Maul RHI's tree declare driver interface version 8.
-* **step:** `mvfxPlannedLiquid` gains a `unit` field after `radius`, and its `square`, `poly6`, `spiky`, `restInverse`, `softening`, `tensileInverse` and `tensileScale` are in that unit rather than in the particles' space.
+- **Breaking: the GPU part (`maul-vfx-rhi`) builds on Maul RHI 0.8.0**
+  instead of 0.7.0. A host that uses Maul RHI itself moves to 0.8.0
+  too: every new device texture reads as zeros in its first frame,
+  cleared in Maul RHI's own zero pass, and drivers built outside Maul
+  RHI's tree declare driver interface version 8. The GPU part's own
+  textures are its 1-pixel depth and normal images, which no kernel
+  reads, so its results are unchanged. The core, the simulation's
+  results, the effect file format and the GPU part's tolerances are
+  unchanged
+  ([#101](https://github.com/Rawframe-Project/maul-vfx/pull/101)).
+- **Breaking: `mvfxPlannedLiquid` gains `unit`, after `radius`.** Its
+  `square`, `poly6`, `spiky`, `restInverse`, `softening`,
+  `tensileInverse` and `tensileScale` are now in that unit rather than
+  in the particles' space; see the fix below
+  ([#95](https://github.com/Rawframe-Project/maul-vfx/pull/95)).
+- On WebAssembly the float environment's entries compile away, so each
+  public function is its worker alone: the web build's library is 1.4%
+  smaller, with the same results. Native builds are unchanged
+  ([#105](https://github.com/Rawframe-Project/maul-vfx/pull/105)).
 
 ### Fixed
 
-* **kernels:** move a liquid's corrections out of its unit by a product ([#98](https://github.com/Rawframe-Project/maul-vfx/issues/98)) ([68c2b6e](https://github.com/Rawframe-Project/maul-vfx/commit/68c2b6ee2be3f8c2e781a25256fe8ca19ed2ce1a)), closes [#70](https://github.com/Rawframe-Project/maul-vfx/issues/70) [#99](https://github.com/Rawframe-Project/maul-vfx/issues/99)
-* **step:** measure a liquid's kernels in a power of two of its radius ([#95](https://github.com/Rawframe-Project/maul-vfx/issues/95)) ([96969d9](https://github.com/Rawframe-Project/maul-vfx/commit/96969d93871b358e2d159f0ef329ebd770391815)), closes [#70](https://github.com/Rawframe-Project/maul-vfx/issues/70)
-
-
-### Build
-
-* **gpu:** take Maul RHI 0.8.0 ([#101](https://github.com/Rawframe-Project/maul-vfx/issues/101)) ([82a7f49](https://github.com/Rawframe-Project/maul-vfx/commit/82a7f4935a5357bc57b0aebf725b9a99cca633b1)), closes [#100](https://github.com/Rawframe-Project/maul-vfx/issues/100)
+- A particle liquid stays finite over its kernel radius's whole valid
+  range. Before, a radius near either end, such as a world-space liquid
+  under an instance's largest or smallest scale, made its kernel
+  factors overflow or round to 0, and its particles' places and
+  velocities went non-finite by the second step. The kernels now
+  measure lengths in a unit, the power of two that leaves the radius
+  from 1 to 2 in it. Every scaling is exact, so results within
+  binary32's normal range are the same bits and the golden hashes are
+  unchanged
+  ([#95](https://github.com/Rawframe-Project/maul-vfx/pull/95)).
+- The GPU part's liquid kernel moves a correction out of the unit by a
+  product, exact on every device, rather than a division, which WGSL
+  allows to be 2.5 ULP off
+  ([#98](https://github.com/Rawframe-Project/maul-vfx/pull/98)).
 
 ## [0.5.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.4.0...v0.5.0) (2026-10-26)
 
