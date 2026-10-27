@@ -11,9 +11,9 @@
 #include "instance.h"
 
 // Moves an emitter's rigid particles alive at the step's start over the
-// step: each substep turns their angular velocities by the gyroscopic
-// term, integrates them, then meets each body's contacts by position (with
-// static friction) and velocity (with dynamic friction and restitution).
+// step: each substep integrates them, turns each by its free flow, then
+// meets each body's contacts by position (with static friction) and
+// velocity (with dynamic friction and restitution).
 void mvfxStepRigid(mvfxInstance* instance, int32_t emitter);
 
 // Moves a rigid particle born at birthTick, at at, to the step's end over

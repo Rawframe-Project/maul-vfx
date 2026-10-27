@@ -51,7 +51,8 @@ static void Rotate(double a[3][3], double v[3][3], int32_t p, int32_t q)
 }
 
 // The unit quaternion of a rotation matrix (its columns the turned axes),
-// by its largest of the trace and diagonal (Shepperd's).
+// by its largest of the trace and diagonal (Shepperd's), its w not
+// negative.
 static void QuaternionOf(const double m[3][3], float out[4])
 {
     double trace = m[0][0] + m[1][1] + m[2][2];
@@ -88,10 +89,11 @@ static void QuaternionOf(const double m[3][3], float out[4])
         q[2] = 0.25 * s;
         q[3] = (m[1][0] - m[0][1]) / s;
     }
-    double length = sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    double i =
+        (q[3] < 0.0 ? -1.0 : 1.0) / sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
     for (int32_t k = 0; k < 4; ++k)
     {
-        out[k] = (float)(q[k] / length);
+        out[k] = (float)(q[k] * i);
     }
 }
 
