@@ -16,7 +16,8 @@
 // A body's mass and inertia come from its shape at its size at the step's
 // end (taken each substep: a size over life at the speed changes with it),
 // in binary32 where the core takes binary64, so they and the square roots
-// differ from the core's within their rounding.
+// differ from the core's within their rounding; in the body's units, as
+// the core's, so they stay in binary32's range at any size and density.
 
 const RIGID_SPHERE: u32 = 0u;
 const RIGID_CAPSULE: u32 = 1u;
@@ -30,11 +31,15 @@ const SLEEP_HELD: f32 = -2.0;
 const SIZE_AT_SPEED: u32 = 1u;
 
 // A body's mass: its inertia and inverse inertia about its own axes (xx,
-// yy, zz, xy, xz, yz), its inverse mass (1 for a shape of no volume).
+// yy, zz, xy, xz, yz), its inverse mass (1 for a shape of no volume), in
+// its units, as the core's mvfxBodyMass: a mass of 2^massUnit and a
+// length of 2^lengthUnit, each a power of two near its own.
 struct Mass {
     inertia: array<f32, 6>,
     inverse: array<f32, 6>,
     inverseMass: f32,
+    massUnit: i32,
+    lengthUnit: i32,
 }
 
 // A size over life k (0 to 2) at an input, as the core's mvfxLifeAt.
@@ -147,10 +152,11 @@ fn rigidReach(size: vec3<f32>) -> f32 {
 }
 
 // A shape's mass and its inertia about its own axes at a size, as the
-// core's PrimitiveInertia and HullInertia (xx, yy, zz, xy, xz, yz).
-fn shapeInertia(size: vec3<f32>, inertia: ptr<function, array<f32, 6>>) -> f32 {
-    let a = abs(size);
-    let density = params.rigidMass.x;
+// core's PrimitiveInertia and HullInertia (xx, yy, zz, xy, xz, yz), in
+// units of density times length cubed and to the fifth: the density's
+// share from 1/2 to 1 and its sizes over length (each from 0 to 1), so
+// they stay in binary32's range at any size and density.
+fn shapeInertia(a: vec3<f32>, density: f32, inertia: ptr<function, array<f32, 6>>) -> f32 {
     let pi = 3.14159265358979;
     let r = 0.5 * a.x;
     var mass = density * 4.0 / 3.0 * pi * r * r * r;
@@ -198,22 +204,50 @@ fn shapeInertia(size: vec3<f32>, inertia: ptr<function, array<f32, 6>>) -> f32 {
     return mass;
 }
 
-// A body's mass at a size, as the core's mvfxBodyShapeOf: its inertia and
-// the inverse (zero where it has none); a shape of no volume does not
-// turn.
+// The exponent of a body's length unit at a size: of the largest of its
+// sizes (a hull's times its vertices' largest coordinate), the power of
+// two that leaves it from 1/2 to 1. The core's is its reach's; any near
+// it cancels.
+fn rigidLengthUnit(a: vec3<f32>) -> i32 {
+    var largest = max(a.x, max(a.y, a.z));
+    if (params.rigid.x == RIGID_HULL) {
+        largest = 0.0;
+        for (var v = 0u; v < params.rigid.w; v++) {
+            let p = abs(hullVertex(v, a));
+            largest = max(largest, max(p.x, max(p.y, p.z)));
+        }
+    }
+    return frexp(largest).exp;
+}
+
+// A body's mass at a size in its units, as the core's mvfxBodyShapeOf:
+// its inertia and the inverse (zero where it has none); a shape of no
+// volume does not turn, in units of 1.
 fn rigidMass(size: vec3<f32>) -> Mass {
+    let lengthUnit = rigidLengthUnit(abs(size));
+    let density = frexp(params.rigidMass.x);
     var m = array<f32, 6>();
-    let mass = shapeInertia(size, &m);
+    let scaled = shapeInertia(ldexp(abs(size), vec3<i32>(-lengthUnit)), density.fract, &m);
+    var out = Mass();
+    out.inverseMass = 1.0;
+    if (!(scaled > 0.0)) {
+        return out;
+    }
+    let share = frexp(scaled);
+    for (var k = 0u; k < 6u; k++) {
+        m[k] = ldexp(m[k], -share.exp);
+    }
     let c = array<f32, 6>(m[1] * m[2] - m[5] * m[5], m[0] * m[2] - m[4] * m[4],
                           m[0] * m[1] - m[3] * m[3], m[4] * m[5] - m[3] * m[2],
                           m[3] * m[5] - m[4] * m[1], m[3] * m[4] - m[0] * m[5]);
     let det = m[0] * c[0] + m[3] * c[3] + m[4] * c[4];
-    var out = Mass();
-    out.inverseMass = select(1.0, 1.0 / mass, mass > 0.0);
+    out.inverseMass = 1.0 / share.fract;
     for (var k = 0u; k < 6u; k++) {
-        out.inertia[k] = select(0.0, m[k], mass > 0.0);
-        out.inverse[k] = select(0.0, c[k] / det, mass > 0.0 && det > 0.0);
+        out.inertia[k] = m[k];
+        out.inverse[k] = select(0.0, c[k] / det, det > 0.0);
     }
+    out.massUnit = density.exp + 3 * lengthUnit + share.exp;
+    out.lengthUnit = lengthUnit;
     return out;
 }
 
@@ -374,7 +408,7 @@ fn meetWorld(b: ptr<function, Body>, x0: vec3<f32>, q0: vec4<f32>, h: f32, tick:
     }
     let mass = rigidMass(size);
     var body = Solid(m.place, m.velocity, m.turning.angular, x0, m.turning.orientation, q0,
-                     mass.inverseMass, mass.inverse);
+                     mass.inverseMass, mass.inverse, mass.massUnit, mass.lengthUnit);
     speedsOf(body, &list);
     body.x = x0 + body.v * h;
     stabilizePasses(&body, &list);

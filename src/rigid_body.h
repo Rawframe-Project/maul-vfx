@@ -23,7 +23,11 @@ enum
 
 // A body: its pose and velocities, the pose it started the substep at,
 // its inverse mass and its inverse inertia in its frame (xx, yy, zz, xy,
-// xz, yz: a hull's is not along its axes).
+// xz, yz: a hull's is not along its axes), in a mass unit of 2^massUnit
+// and a length unit of 2^lengthUnit (rigid_shape.h's mvfxBodyMass; 0 for
+// both, the particles' own). Its places and velocities are in the
+// particles' units; a multiplier or an impulse a solve gives it is in its
+// mass unit, and the offsets it turns about are taken in its length unit.
 typedef struct mvfxBody
 {
     float x[3];
@@ -34,6 +38,8 @@ typedef struct mvfxBody
     float q0[4];
     float inverseMass;
     float inverseInertia[6];
+    int32_t massUnit;
+    int32_t lengthUnit;
 } mvfxBody;
 
 // An emitter's rigid particles in a substep: their attributes, their
@@ -67,11 +73,23 @@ typedef struct mvfxRigidSolve
     int64_t tick;
 } mvfxRigidSolve;
 
+// Body i in its own units.
 mvfxBody mvfxLoadBody(const mvfxRigidSolve* s, int32_t i);
 void mvfxStoreBody(const mvfxRigidSolve* s, int32_t i, const mvfxBody* b);
 
-// The generalized inverse mass at offset r along unit n.
+// The body's inverse mass and inertia moved into a mass unit of
+// 2^massUnit and a length unit of 2^lengthUnit, by powers of two.
+void mvfxBodyToUnits(mvfxBody* b, int32_t massUnit, int32_t lengthUnit);
+
+// The generalized inverse mass at offset r along unit n, in the body's
+// mass unit.
 float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3]);
+
+// The most a patch's friction against turning takes, in the unit its
+// weight for turning (mvfxTwistPatch) is in: its load (in the body's mass
+// unit, by the particles' lengths) times its radius, for body a, and b
+// in the same units (NULL for the world).
+float mvfxTurnLimit(const mvfxBody* a, const mvfxBody* b, float load, float radius);
 
 // Moves the body by a positional impulse p at offset r: its place by p
 // over its mass, its orientation by the turn it gives. With both, its
@@ -150,7 +168,7 @@ void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3
 // contacts' mean distance from its center, weighted by their normal
 // multipliers); dynamic by velocity, the spin about n cut by impulses
 // summing (spun) to at most limit, the dynamic coefficient times the
-// pressed impulse times the radius.
+// pressed impulse times the radius. Each limit is mvfxTurnLimit's.
 void mvfxTwistPatch(const mvfxRigidSolve* s, mvfxBody* a, mvfxBody* b, const float n[3],
                     float limit, float* twisted);
 void mvfxUnspinPatch(mvfxBody* a, mvfxBody* b, const float n[3], float limit, float* spun);

@@ -166,7 +166,8 @@ static void Rub(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, in
             mvfxRotate(b->q0, patch.point, r0);
             mvfxRubPatch(s, b, r, r0, nullptr, nullptr, nullptr, patch.n, patch.load, &patch.spread,
                          nullptr, &items[i].rubbed);
-            mvfxTwistPatch(s, b, nullptr, patch.n, patch.load * patch.radius, &items[i].twisted);
+            mvfxTwistPatch(s, b, nullptr, patch.n,
+                           mvfxTurnLimit(b, nullptr, patch.load, patch.radius), &items[i].twisted);
         }
     }
 }
@@ -183,9 +184,10 @@ static void Slow(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, i
             mvfxRotate(b->q, patch.point, r);
             mvfxSlowPatch(b, r, nullptr, nullptr, patch.n, patch.pressed, &patch.spread, nullptr,
                           s->rigid->dynamicFriction, &items[i].slowed);
-            mvfxUnspinPatch(b, nullptr, patch.n,
-                            s->rigid->dynamicFriction * patch.pressed * patch.radius,
-                            &items[i].spun);
+            mvfxUnspinPatch(
+                b, nullptr, patch.n,
+                mvfxTurnLimit(b, nullptr, s->rigid->dynamicFriction * patch.pressed, patch.radius),
+                &items[i].spun);
         }
     }
 }
@@ -342,6 +344,8 @@ static void Prepare(const mvfxRigidSolve* s, int32_t i)
         s->mass[(size_t)(1 + k) * s->stride + (size_t)i] = mass.inverseInertia[k];
     }
     s->mass[MVFX_RIGID_REACH * s->stride + (size_t)i] = mvfxBodyReach(&shape);
+    s->mass[MVFX_RIGID_MASS_UNIT * s->stride + (size_t)i] = (float)mass.massUnit;
+    s->mass[MVFX_RIGID_LENGTH_UNIT * s->stride + (size_t)i] = (float)mass.lengthUnit;
     s->flags[i] &= (uint8_t)~(MVFX_RIGID_TOUCHED | MVFX_RIGID_STRUCK | MVFX_RIGID_WOKEN);
     mvfxBody b = mvfxLoadBody(s, i);
     const mvfxCollision* collision = &instance->effect->emitters[s->emitter].collision;
@@ -513,7 +517,10 @@ static void Times(const float m[6], const float v[3], float out[3])
 }
 
 // Turns each body's angular velocity by the gyroscopic term over h, about
-// its own axes: w += h I^-1 (I w x w).
+// its own axes: w += h I^-1 (I w x w), the inertia in the body's units,
+// which cancel. In the particles' units its momentum's square passed
+// binary32's range (a body 1e6 across at density 1 turning at 0.3 rad/s)
+// or fell below it.
 static void Spin(const mvfxRigidSolve* s, int32_t first, int32_t end)
 {
     for (int32_t i = first; i < end; ++i)

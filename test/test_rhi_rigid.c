@@ -22,14 +22,16 @@
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
 // they are kept out of, and born into a box; capsules of the largest
-// size on grids; what is still refused (kills within a step; bodies meeting
-// each other are rhi_pairs'). Skips (77) without an adapter, unless
-// MVFX_RHI_REQUIRED is set.
+// size on grids; bodies near the ends of sizes and densities, in their
+// own units, tumbling and thrown on a floor; what is still refused (kills
+// within a step; bodies meeting each other are rhi_pairs'). Skips (77)
+// without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
 
 #include <math.h>
+#include <stdio.h>
 
 // A lopsided hull: a wedge with a spike.
 static const float s_lopsided[21] = {0,    0, 0,    1, 0, 0,    0, 0.6f, 0,    0,   0,
@@ -655,6 +657,70 @@ static void TestLargestSizes(Gpu* gpu, mvfxGpu* kernels)
     mvfxDestroyContext(RunContext());
 }
 
+// An emitter's sizes times 2^exponent, its density another.
+static void ScaleBodies(mvfxEmitterDef* emitter, int32_t exponent, float density)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        emitter->size.min[k] = (float)ldexp((double)emitter->size.min[k], exponent);
+        emitter->size.max[k] = (float)ldexp((double)emitter->size.max[k], exponent);
+    }
+    emitter->rigid.density = density;
+}
+
+static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Bodies near the ends of sizes and densities, their mass and inertia
+    // in their own units on both paths: boxes and hulls tumbling, up to
+    // half MVFX_MAX_EXTENT across at its density, where the gyroscopic
+    // term's momentum passed binary32's range, and 2^-100 of the sizes
+    // above at density 1e-30, where their mass and inertia fell below it.
+    static const struct
+    {
+        int32_t exponent;
+        float density;
+        const char* what;
+    } ends[2] = {{20, MVFX_MAX_EXTENT, "the largest"}, {-100, 1e-30f, "the smallest"}};
+    for (int32_t end = 0; end < 2; ++end)
+    {
+        for (int32_t hull = 0; hull < 2; ++hull)
+        {
+            mvfxEmitterDef emitter = Bodies(hull == 1 ? mvfx_rigidHull : mvfx_rigidBox);
+            ScaleBodies(&emitter, ends[end].exponent, ends[end].density);
+            char what[64];
+            (void)snprintf(what, sizeof what, "%s tumbling at %s sizes", hull ? "hulls" : "boxes",
+                           ends[end].what);
+            Tumbled(gpu, kernels, &emitter, false, what);
+        }
+    }
+    // Bodies thrown on a sloped floor, the whole scene's lengths (sizes,
+    // places, speeds, gravity) times 2^-40 at density 1e-30, where their
+    // mass and inertia fell below binary32's range: the same scene as at 1
+    // in their units, as near on both paths and as few apart (their
+    // orientations and angular velocities, which do not scale, compared
+    // as at 1). Scaled up instead, it parts no more, but the harness's
+    // tolerance (relative past 1, which the contact scenes at 1 are
+    // within) no longer covers its slow bodies' velocities.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f * 0x1p-40f, 0}, .normal = {0, 1, 0.2f}};
+    static const int32_t mostApart[3] = {4, 8, 11};
+    for (int32_t shape = 0; shape < 3; ++shape)
+    {
+        mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
+        ScaleBodies(&emitter, -40, 1e-30f);
+        emitter.shape.radius *= 0x1p-40f;
+        emitter.velocity.speed.min *= 0x1p-40f;
+        emitter.velocity.speed.max *= 0x1p-40f;
+        emitter.motion.gravity[1] *= 0x1p-40f;
+        char what[64];
+        (void)snprintf(what, sizeof what, "%s on a sloped floor at 2^-40",
+                       shape == 0   ? "spheres"
+                       : shape == 1 ? "capsules"
+                                    : "boxes");
+        Met(gpu, kernels, &(Run){.mostApart = mostApart[shape], .emitters = &emitter}, what);
+    }
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
@@ -667,6 +733,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestGrids(gpu, kernels);
     TestDepth(gpu, kernels);
     TestLargestSizes(gpu, kernels);
+    TestUnits(gpu, kernels);
 }
 
 int main(void)

@@ -37,20 +37,35 @@ typedef struct mvfxBodyShape
 void mvfxShapePoint(const mvfxBodyShape* s, int32_t i, float out[3]);
 
 // A body's mass arrays, each of the stride: its inverse mass, its inverse
-// inertia's six, its reach.
+// inertia's six, its reach, its mass unit's and its length unit's
+// exponents.
 enum
 {
-    MVFX_RIGID_MASS_ARRAYS = 8,
+    MVFX_RIGID_MASS_ARRAYS = 10,
     MVFX_RIGID_REACH = 7,
+    MVFX_RIGID_MASS_UNIT = 8,
+    MVFX_RIGID_LENGTH_UNIT = 9,
 };
 
 // A body's inverse mass, and its inertia and inverse inertia about its
-// center in its frame (xx, yy, zz, xy, xz, yz).
+// center in its frame (xx, yy, zz, xy, xz, yz), in its own units: a mass
+// of 2^massUnit, the power of two that leaves its mass from 1/2 to 1 in
+// it, and a length of 2^lengthUnit, the one that leaves its reach from 1/2
+// to 1 (its inertia in the mass unit times the length unit squared). A
+// body's mass and inertia span binary32's range and past it (a body's
+// size is from 0 to MVFX_MAX_EXTENT, its density above 0 to
+// MVFX_MAX_EXTENT, and its inertia goes as the density times the fifth
+// power of its size), while in its units they are near 1 for any shape
+// not much longer one way than another. Every scaling is by a power of
+// two, exact within binary32's normal range: an XPBD step's correction
+// from its multiplier is the same bits in any mass unit.
 typedef struct mvfxBodyMass
 {
     float inverseMass;
     float inertia[6];
     float inverseInertia[6];
+    int32_t massUnit;
+    int32_t lengthUnit;
 } mvfxBodyMass;
 
 // A contact: the body's point in its frame, the surface point it meets
@@ -120,8 +135,8 @@ typedef struct mvfxPairContact
 } mvfxPairContact;
 
 // The shape a size gives (in the particles' space; a hull's from hull),
-// and its mass from the density (a shape of no volume a point of unit
-// mass that does not turn).
+// and its mass from the density in its units (a shape of no volume a point
+// of unit mass that does not turn, in units of 1).
 mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3],
                               mvfxBodyMass* mass);
 

@@ -16,6 +16,9 @@
 // a box tipping at its edge's angle, standing steady parked at it and
 // still below it, its creep near it bounded, and turned on its upright
 // tipping over a corner at the diagonal's;
+// a box spun and dropped in its own units: the same bits, scaled, at
+// sizes and densities near binary32's ends, and each shape finite at the
+// ends of the limits;
 // the checks.
 
 #include "test_harness.h"
@@ -1049,6 +1052,137 @@ static void TestTipping(void)
     }
 }
 
+// A body's state after each step of a run.
+typedef struct Track
+{
+    float x[3];
+    float v[3];
+    float q[4];
+    float w[3];
+} Track;
+
+enum
+{
+    TRACK_STEPS = 120,
+};
+
+static Track s_unit[TRACK_STEPS];
+static Track s_scaled[TRACK_STEPS];
+
+// A 1 by 2 by 3 box spun about its middle axis and a little about the
+// others, alone or tilted and dropped on the plane, its sizes, place and
+// gravity times 2^size and its density 2^density.
+static void Scaled(bool drop, int32_t size, int32_t density, Track* out)
+{
+    float unit = (float)ldexp(1.0, size);
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, unit, 2.0f * unit, 3.0f * unit);
+    emitter.rigid.density = (float)ldexp(1.0, density);
+    emitter.rigid.restitution = 0.3f;
+    emitter.motion.gravity[1] = drop ? -9.81f * unit : 0.0f;
+    emitter.collision.enabled = drop;
+    emitter.colliderCount = drop ? 1 : 0;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.05f, 4, 0.3f}, .max = {0.05f, 4, 0.3f}};
+    Tilt(&emitter, 0.3f);
+    const double place[3] = {0, 3.0 * (double)unit, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    for (int32_t i = 0; i < TRACK_STEPS; ++i)
+    {
+        Steps(1);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[i].x[k] = X(k);
+            out[i].v[k] = V(k);
+            out[i].w[k] = W(k);
+        }
+        Q(out[i].q);
+    }
+    mvfxDestroyContext(s_scene.context);
+}
+
+// Whether a scaled run is the unit run's bits, its places and velocities
+// times 2^size.
+static bool SameScaled(int32_t size)
+{
+    bool same = true;
+    for (int32_t i = 0; i < TRACK_STEPS; ++i)
+    {
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            same = same && s_scaled[i].q[k] == s_unit[i].q[k];
+        }
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            same = same && s_scaled[i].w[k] == s_unit[i].w[k] &&
+                   s_scaled[i].x[k] == (float)ldexp((double)s_unit[i].x[k], size) &&
+                   s_scaled[i].v[k] == (float)ldexp((double)s_unit[i].v[k], size);
+        }
+    }
+    return same;
+}
+
+static void TestUnits(void)
+{
+    // A body's mass and inertia are in its own units, powers of two that
+    // cancel: spun alone, the box turns the same bits from sizes of 2^-120
+    // to 2^18 and densities of 2^-140 to 2^19, where its momentum's square
+    // passed binary32's range or fell below it (a NaN, or its spin lost);
+    // dropped, it lands, tips and rests the same bits from sizes of 2^-40
+    // to 2^16 (below, a substep's fall in the particles' units is below
+    // binary32's normal range).
+    static const int32_t spun[][2] = {{18, 19}, {18, -140}, {0, -140}, {-120, 19}, {-120, -140}};
+    static const int32_t dropped[][2] = {{16, 19}, {16, -140}, {-40, 19}, {-40, -140}};
+    Scaled(false, 0, 0, s_unit);
+    bool same = true;
+    for (size_t c = 0; c < sizeof spun / sizeof spun[0]; ++c)
+    {
+        Scaled(false, spun[c][0], spun[c][1], s_scaled);
+        same = same && SameScaled(spun[c][0]);
+    }
+    CHECK(same, "spun the same bits at any size and density");
+    Scaled(true, 0, 0, s_unit);
+    same = true;
+    for (size_t c = 0; c < sizeof dropped / sizeof dropped[0]; ++c)
+    {
+        Scaled(true, dropped[c][0], dropped[c][1], s_scaled);
+        same = same && SameScaled(dropped[c][0]);
+    }
+    CHECK(same, "dropped the same bits at any size and density");
+    // At the ends of the limits, each shape spun at MVFX_MAX_SPIN about
+    // each axis and dropped on the plane stays finite.
+    bool finite = true;
+    for (int32_t shape = 0; shape < 3; ++shape)
+    {
+        for (int32_t end = 0; end < 2; ++end)
+        {
+            float size = end == 0 ? 1e-30f : MVFX_MAX_EXTENT;
+            mvfxEmitterDef emitter = Rigid((mvfxRigidShape)shape, size, size, size);
+            emitter.rigid.density = end == 0 ? 1e-30f : MVFX_MAX_EXTENT;
+            emitter.angularVelocity =
+                (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                   .min = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN},
+                                   .max = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN}};
+            const double place[3] = {0, 2.0 * (double)size, 0};
+            static const float still[3] = {0, 0, 0};
+            Open(&emitter, place, still);
+            for (int32_t i = 0; i < 60; ++i)
+            {
+                Steps(1);
+                float q[4];
+                Q(q);
+                for (int32_t k = 0; k < 3; ++k)
+                {
+                    finite = finite && isfinite(X(k)) && isfinite(V(k)) && isfinite(W(k)) &&
+                             isfinite(q[k]) && isfinite(q[3]);
+                }
+            }
+            mvfxDestroyContext(s_scene.context);
+        }
+    }
+    CHECK(finite, "finite at the ends of sizes and densities");
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -1134,6 +1268,7 @@ int main(void)
     TestTwist();
     TestTipping();
     TestTippingAngle();
+    TestUnits();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }
