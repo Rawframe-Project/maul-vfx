@@ -25,8 +25,7 @@
 // size on grids; bodies near the ends of sizes and densities, in their
 // own units, tumbling and thrown on a floor; what is still refused (kills
 // within a step; bodies meeting each other are rhi_pairs'). Skips (77)
-// without an adapter, unless
-// MVFX_RHI_REQUIRED is set.
+// without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
 #include "test_harness.h"
