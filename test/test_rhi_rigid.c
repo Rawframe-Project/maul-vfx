@@ -729,6 +729,39 @@ static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
     }
 }
 
+static void TestNeedles(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Needles 1e-8 of their length across, lying along X and rolling
+    // about it as they fall onto a level floor, then upright and turning
+    // slowly: the floor's friction turns them about their long axis, about
+    // which their inverse inertia is held at 2^40 in their units, and their
+    // gyroscopic term, exact for a symmetric body, keeps them as near on
+    // both paths as any body (stepped explicitly, its rounding times that
+    // inverse inertia parted them).
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
+    for (int32_t shape = 1; shape < 3; ++shape)
+    {
+        mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
+        emitter.size = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {1e-8f, 0.3f, 1e-8f}, .max = {1e-8f, 0.5f, 1e-8f}};
+        emitter.velocity.coneAngle = 0.0f;
+        emitter.orientationMode = mvfx_orientationEuler;
+        emitter.orientation = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {0, 0, 1.5707964f}, .max = {0, 0, 1.5707964f}};
+        emitter.angularVelocity =
+            (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, 0, 0}, .max = {3, 0, 0}};
+        Met(gpu, kernels, &(Run){.mostApart = 8, .emitters = &emitter},
+            shape == 1 ? "needle capsules rolling about their length"
+                       : "needle boxes rolling about their length");
+        emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
+        emitter.angularVelocity = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {0.3f, 0.2f, 0.1f}, .max = {0.3f, 0.2f, 0.1f}};
+        Met(gpu, kernels, &(Run){.mostApart = 8, .emitters = &emitter},
+            shape == 1 ? "needle capsules dropped upright" : "needle boxes dropped upright");
+    }
+}
+
 static void TestTiedSizes(Gpu* gpu, mvfxGpu* kernels)
 {
     // A size the effect does not fix takes X for the axes a sphere or a
@@ -790,6 +823,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestDepth(gpu, kernels);
     TestLargestSizes(gpu, kernels);
     TestUnits(gpu, kernels);
+    TestNeedles(gpu, kernels);
     TestTiedSizes(gpu, kernels);
 }
 
