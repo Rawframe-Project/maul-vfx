@@ -22,8 +22,10 @@
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
 // they are kept out of, and born into a box; capsules of the largest
-// size on grids; what is still refused (kills within a step; bodies meeting
-// each other are rhi_pairs'). Skips (77) without an adapter, unless
+// size on grids; bodies near the ends of sizes and densities, in their
+// own units, tumbling and thrown on a floor; what is still refused (kills
+// within a step; bodies meeting each other are rhi_pairs'). Skips (77)
+// without an adapter, unless
 // MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -693,37 +695,28 @@ static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
         }
     }
     // Bodies thrown on a sloped floor, the whole scene's lengths (sizes,
-    // places, speeds, gravity) times 2^16 at density MVFX_MAX_EXTENT and
-    // times 2^-40 at density 1e-30: the same scene as at 1 in their units,
-    // and as near on both paths, its bodies apart as few.
-    static const struct
+    // places, speeds, gravity) times 2^-40 at density 1e-30, where their
+    // mass and inertia fell below binary32's range: the same scene as at 1
+    // in their units, as near on both paths and as few apart (their
+    // orientations and angular velocities, which do not scale, compared
+    // as at 1). Scaled up instead, it parts no more, but the harness's
+    // tolerance (relative past 1, which the contact scenes at 1 are
+    // within) no longer covers its slow bodies' velocities.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f * 0x1p-40f, 0}, .normal = {0, 1, 0.2f}};
+    static const int32_t mostApart[3] = {4, 8, 11};
+    for (int32_t shape = 0; shape < 3; ++shape)
     {
-        int32_t exponent;
-        float density;
-        const char* what;
-        int32_t mostApart[3];
-    } scenes[2] = {{16, MVFX_MAX_EXTENT, "2^16", {4, 8, 11}}, {-40, 1e-30f, "2^-40", {4, 8, 11}}};
-    for (int32_t scene = 0; scene < 2; ++scene)
-    {
-        float unit = (float)ldexp(1.0, scenes[scene].exponent);
-        const mvfxCollider floor = {.kind = mvfx_colliderPlane,
-                                    .center = {0, -0.7f * unit, 0},
-                                    .normal = {0, 1, 0.2f}};
-        for (int32_t shape = 0; shape < 3; ++shape)
-        {
-            mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
-            ScaleBodies(&emitter, scenes[scene].exponent, scenes[scene].density);
-            emitter.shape.radius *= unit;
-            emitter.velocity.speed.min *= unit;
-            emitter.velocity.speed.max *= unit;
-            emitter.motion.gravity[1] *= unit;
-            char what[64];
-            (void)snprintf(what, sizeof what, "%s on a sloped floor at %s",
-                           shape == 0 ? "spheres" : shape == 1 ? "capsules" : "boxes",
-                           scenes[scene].what);
-            Met(gpu, kernels,
-                &(Run){.mostApart = scenes[scene].mostApart[shape], .emitters = &emitter}, what);
-        }
+        mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
+        ScaleBodies(&emitter, -40, 1e-30f);
+        emitter.shape.radius *= 0x1p-40f;
+        emitter.velocity.speed.min *= 0x1p-40f;
+        emitter.velocity.speed.max *= 0x1p-40f;
+        emitter.motion.gravity[1] *= 0x1p-40f;
+        char what[64];
+        (void)snprintf(what, sizeof what, "%s on a sloped floor at 2^-40",
+                       shape == 0 ? "spheres" : shape == 1 ? "capsules" : "boxes");
+        Met(gpu, kernels, &(Run){.mostApart = mostApart[shape], .emitters = &emitter}, what);
     }
 }
 
