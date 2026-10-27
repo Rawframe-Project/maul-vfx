@@ -109,31 +109,25 @@ static double PrimitiveInertia(const mvfxRigidDef* rigid, const float size[3], m
     return mass;
 }
 
-// mvfxBodyReach in binary64, whose squares stay in range for the
-// smallest shapes.
-static double ReachOf(const mvfxBodyShape* s)
+// The largest of the sizes a body's shape takes (mvfxBodyMass).
+static float ExtentOf(const mvfxBodyShape* s, const float size[3])
 {
-    double reach = 0.0;
+    float extent = 0.0f;
     for (int32_t i = 0; i < s->count && s->kind == mvfx_rigidHull; ++i)
     {
         float p[3];
         mvfxShapePoint(s, i, p);
-        reach = fmax(reach, (double)p[0] * (double)p[0] + (double)p[1] * (double)p[1] +
-                                (double)p[2] * (double)p[2]);
+        extent = fmaxf(extent, fmaxf(fabsf(p[0]), fmaxf(fabsf(p[1]), fabsf(p[2]))));
     }
-    if (s->kind == mvfx_rigidHull)
+    int32_t sizes = s->kind == mvfx_rigidSphere    ? 1
+                    : s->kind == mvfx_rigidCapsule ? 2
+                    : s->kind == mvfx_rigidBox     ? 3
+                                                   : 0;
+    for (int32_t k = 0; k < sizes; ++k)
     {
-        return sqrt(reach);
+        extent = fmaxf(extent, fabsf(size[k]));
     }
-    for (int32_t k = 0; k < 3 && s->kind == mvfx_rigidBox; ++k)
-    {
-        reach += (double)s->half[k] * (double)s->half[k];
-    }
-    if (s->kind == mvfx_rigidBox)
-    {
-        return sqrt(reach);
-    }
-    return (double)s->half[1] + (double)s->radius;
+    return extent;
 }
 
 mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3],
@@ -166,7 +160,7 @@ mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, c
     int32_t massUnit = 0;
     int32_t lengthUnit = 0;
     (void)frexp(m, &massUnit);
-    (void)frexp(ReachOf(&s), &lengthUnit);
+    (void)frexp((double)ExtentOf(&s, size), &lengthUnit);
     double scaled[6];
     double inverse[6];
     for (int32_t k = 0; k < 6; ++k)

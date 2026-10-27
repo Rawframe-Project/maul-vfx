@@ -104,20 +104,20 @@ static mvfxEmitterDef Bodies(mvfxRigidShape shape, bool gravity)
 }
 
 // Opens a scene of count bodies at places, with velocities and sizes
-// (NULL for still and 1).
-static void Open(const mvfxEmitterDef* emitter, const double* places, const float* velocities,
-                 const float* sizes, int32_t count)
+// (NULL for still and 1), and the host modules when hosted.
+static void OpenHosted(const mvfxEmitterDef* emitter, const double* places, const float* velocities,
+                       const float* sizes, int32_t count, bool hosted)
 {
     memset(&s_scene, 0, sizeof s_scene);
     memset(s_collisions, 0, sizeof s_collisions);
     s_turned = UINT32_MAX;
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
-    mvfxEmitterDef hosted = *emitter;
-    hosted.hostModules = s_modules;
-    hosted.hostModuleCount = 2;
+    mvfxEmitterDef withModules = *emitter;
+    withModules.hostModules = hosted ? s_modules : NULL;
+    withModules.hostModuleCount = hosted ? 2 : 0;
     mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = &hosted;
+    def.emitters = &withModules;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
     CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
@@ -132,6 +132,12 @@ static void Open(const mvfxEmitterDef* emitter, const double* places, const floa
                                 .sizes = sizes};
     CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
           "spawned");
+}
+
+static void Open(const mvfxEmitterDef* emitter, const double* places, const float* velocities,
+                 const float* sizes, int32_t count)
+{
+    OpenHosted(emitter, places, velocities, sizes, count, true);
 }
 
 static void Steps(int32_t n)
@@ -666,6 +672,142 @@ static void TestPoolAndStrikes(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Two bodies' places, velocities and orientations after each step.
+enum
+{
+    TRACK_STEPS = 60
+};
+
+typedef struct Track
+{
+    float x[2][3];
+    float v[2][3];
+    float q[2][4];
+} Track;
+
+static Track s_unit[TRACK_STEPS];
+static Track s_scaled[TRACK_STEPS];
+
+// A box 0.4 by 0.6 by 0.4 sliding at 0.5 on a 2 by 1 by 2 box on the
+// ground, both spun about the vertical (the one below slowed by the
+// ground, the one above twisting on it), their sizes, places, velocities
+// and gravity times 2^size and their density 2^density; sleeping off, its
+// speed in the particles' units.
+static void Stacked(int32_t size, int32_t density, Track* out)
+{
+    double unit = ldexp(1.0, size);
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidBox, true);
+    emitter.rigid.density = (float)ldexp(1.0, density);
+    emitter.rigid.staticFriction = 0.6f;
+    emitter.rigid.dynamicFriction = 0.4f;
+    emitter.rigid.restitution = 0.3f;
+    emitter.motion.gravity[1] = -9.81f * (float)unit;
+    emitter.rigid.sleepSpeed = 0.0f;
+    emitter.angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 3, 0}, .max = {0, 3, 0}};
+    const double places[6] = {0, 0.5 * unit, 0, 0.3 * unit, 1.3005 * unit, 0};
+    const float velocities[6] = {0, 0, 0, 0.5f * (float)unit, 0, 0};
+    const float sizes[6] = {2.0f * (float)unit, (float)unit,        2.0f * (float)unit,
+                            0.4f * (float)unit, 0.6f * (float)unit, 0.4f * (float)unit};
+    Open(&emitter, places, velocities, sizes, 2);
+    for (int32_t i = 0; i < TRACK_STEPS; ++i)
+    {
+        Steps(1);
+        for (uint32_t b = 0; b < 2; ++b)
+        {
+            const TestParticle* body = Body(b);
+            memcpy(out[i].x[b], body->position, sizeof out[i].x[b]);
+            memcpy(out[i].v[b], body->velocity, sizeof out[i].v[b]);
+            memcpy(out[i].q[b], body->orientation, sizeof out[i].q[b]);
+        }
+    }
+    mvfxDestroyContext(s_scene.context);
+}
+
+// Whether a scaled run is the unit run's bits, its places and velocities
+// times 2^size.
+static bool SameScaled(int32_t size)
+{
+    bool same = true;
+    for (int32_t i = 0; i < TRACK_STEPS; ++i)
+    {
+        for (int32_t b = 0; b < 2; ++b)
+        {
+            for (int32_t k = 0; k < 4; ++k)
+            {
+                same = same && s_scaled[i].q[b][k] == s_unit[i].q[b][k];
+            }
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                same = same &&
+                       s_scaled[i].x[b][k] == (float)ldexp((double)s_unit[i].x[b][k], size) &&
+                       s_scaled[i].v[b][k] == (float)ldexp((double)s_unit[i].v[b][k], size);
+            }
+        }
+    }
+    return same;
+}
+
+// Whether every body read is finite.
+static bool AllFinite(int32_t count)
+{
+    bool finite = true;
+    for (uint32_t b = 0; b < (uint32_t)count; ++b)
+    {
+        const TestParticle* body = Body(b);
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            finite = finite && isfinite(body->orientation[k]) &&
+                     (k == 3 || (isfinite(body->position[k]) && isfinite(body->velocity[k])));
+        }
+    }
+    return finite;
+}
+
+static void TestUnits(void)
+{
+    // A pair is solved in the lighter body's mass unit, each body in its
+    // own length unit, and its turning in the smaller of their mass units
+    // times their length units squared: powers of two that cancel. The
+    // stack slides, twists and rests the same bits from sizes of 2^-40 to
+    // 2^16 and densities of 2^-140 to 2^19, where a pair solved in the
+    // particles' units had an inverse mass past binary32's range, and at
+    // 2^-40 the square of a resting box's leftover speed (2^-67) fell below
+    // binary32's normal range until sizes were taken in a length unit.
+    static const int32_t cases[][2] = {{16, 19}, {16, -140}, {-40, 19}, {-40, -140}, {0, -140}};
+    Stacked(0, 0, s_unit);
+    bool same = true;
+    for (size_t c = 0; c < sizeof cases / sizeof cases[0]; ++c)
+    {
+        Stacked(cases[c][0], cases[c][1], s_scaled);
+        same = same && SameScaled(cases[c][0]);
+    }
+    CHECK(same, "a stack the same bits at any size and density");
+    // A box 2^-40 across meeting one 8 across at 2^-40 a second, spun at 4
+    // about their normal, no gravity: its mass is 2^-129 of the other's
+    // and its inertia 2^-215. Positions round to 2^-24 of the large box's
+    // reach, so where the small one is held is no result; that it stays
+    // finite is. Without the host modules, whose check kills a body whose
+    // angular velocity passes the spin cap (#107), as the small one's does.
+    static const float sizes[6] = {8, 8, 8, 0x1p-40f, 0x1p-40f, 0x1p-40f};
+    static const double places[6] = {0, -4, 0, 0, 0x1p-41 * 0.99, 0};
+    static const float velocities[6] = {0, 0, 0, 0, -0x1p-40f, 0};
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidBox, false);
+    emitter.rigid.staticFriction = 0.6f;
+    emitter.rigid.dynamicFriction = 0.4f;
+    emitter.angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 4, 0}, .max = {0, 4, 0}};
+    OpenHosted(&emitter, places, velocities, sizes, 2, false);
+    bool finite = true;
+    for (int32_t i = 0; i < 30; ++i)
+    {
+        Steps(1);
+        finite = finite && AllFinite(2);
+    }
+    CHECK(finite && Stats().live == 2, "a box 2^-43 of another's size meeting it stays finite");
+    mvfxDestroyContext(s_scene.context);
+}
+
 int main(void)
 {
     TestHeadOn();
@@ -682,5 +824,6 @@ int main(void)
     TestSliding();
     TestPile();
     TestPoolAndStrikes();
+    TestUnits();
     return s_failures == 0 ? 0 : 1;
 }

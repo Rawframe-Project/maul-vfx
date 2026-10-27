@@ -204,12 +204,18 @@ fn shapeInertia(a: vec3<f32>, density: f32, inertia: ptr<function, array<f32, 6>
     return mass;
 }
 
-// The exponent of a body's length unit at a size: of the largest of its
-// sizes (a hull's times its vertices' largest coordinate), the power of
-// two that leaves it from 1/2 to 1. The core's is its reach's; any near
-// it cancels.
+// The exponent of a body's length unit at a size, as the core's
+// mvfxBodyShapeOf: of the largest of the sizes its shape takes (a
+// sphere's x, a capsule's x and y, a box's three, a hull's vertices'
+// coordinates at its size), the power of two that leaves it from 1/2 to 1.
 fn rigidLengthUnit(a: vec3<f32>) -> i32 {
-    var largest = max(a.x, max(a.y, a.z));
+    var largest = a.x;
+    if (params.rigid.x == RIGID_CAPSULE) {
+        largest = max(a.x, a.y);
+    }
+    if (params.rigid.x == RIGID_BOX) {
+        largest = max(a.x, max(a.y, a.z));
+    }
     if (params.rigid.x == RIGID_HULL) {
         largest = 0.0;
         for (var v = 0u; v < params.rigid.w; v++) {

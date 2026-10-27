@@ -642,6 +642,20 @@ fn toUnits(b: ptr<function, Solid>, massUnit: i32, lengthUnit: i32) {
     (*b).lengthUnit = lengthUnit;
 }
 
+// The size of v, taken in the body's length unit, as the core's
+// mvfxBodyLength.
+fn bodyLength(b: Solid, v: vec3<f32>) -> f32 {
+    let l = inLength(b, v);
+    return ldexp(sqrt(dot3(l, l)), b.lengthUnit);
+}
+
+// The size of d across unit n, as the core's mvfxBodyAcross.
+fn bodyAcross(b: Solid, d: vec3<f32>, n: vec3<f32>) -> f32 {
+    let l = inLength(b, d);
+    let along = dot3(l, n);
+    return ldexp(sqrt(max(dot3(l, l) - along * along, 0.0)), b.lengthUnit);
+}
+
 fn bodyWeight(b: Solid, r: vec3<f32>, n: vec3<f32>) -> f32 {
     let c = cross(inLength(b, r), n);
     return b.inverseMass + dot3(c, inverseInertiaTimes(b, c));
@@ -720,7 +734,7 @@ fn rubPatch(b: ptr<function, Solid>, r: vec3<f32>, r0: vec3<f32>, p: Patch,
     let slide = (*b).x + r - (*b).x0 - r0;
     let along = dot3(slide, p.n);
     let st = slide - along * p.n;
-    let slid = sqrt(dot3(st, st));
+    let slid = bodyLength(*b, st);
     if (!(slid > 0.0) || !(p.load > 0.0)) {
         return;
     }
@@ -739,7 +753,7 @@ fn rubPatch(b: ptr<function, Solid>, r: vec3<f32>, r0: vec3<f32>, p: Patch,
 fn slowPatch(b: ptr<function, Solid>, r: vec3<f32>, p: Patch, slowed: ptr<function, f32>) {
     var v = pointVelocity(*b, r);
     v -= dot3(v, p.n) * p.n;
-    let speed = sqrt(dot3(v, v));
+    let speed = bodyLength(*b, v);
     if (!(speed > 0.0)) {
         return;
     }
@@ -804,7 +818,7 @@ fn startDepthOf(b: Solid, c: Contact) -> f32 {
 
 // The patch of the contacts with contact first's collider, as the core's
 // PatchOf; false when none pushed.
-fn patchOf(list: ptr<function, Contacts>, first: u32, h: f32, q: vec4<f32>,
+fn patchOf(list: ptr<function, Contacts>, first: u32, h: f32, b: Solid,
            area: ptr<function, Patch>) -> bool {
     let collider = (*list).items[first].collider;
     (*area).point = vec3<f32>(0.0);
@@ -827,20 +841,18 @@ fn patchOf(list: ptr<function, Contacts>, first: u32, h: f32, q: vec4<f32>,
     (*area).point /= (*area).load;
     // The contacts' mean distance from the center across the normal,
     // weighted by their multipliers.
-    let n = rotate(conjugate(q), (*area).n);
+    let n = rotate(conjugate(b.q), (*area).n);
     var radius = 0.0;
     for (var i = first; i < (*list).count; i++) {
         let c = (*list).items[i];
         let lambda = select(0.0, c.lambda, c.collider == collider && c.lambda > 0.0);
-        let d = c.body - (*area).point;
-        let along = dot3(d, n);
-        radius += lambda * sqrt(max(dot3(d, d) - along * along, 0.0));
+        radius += lambda * bodyAcross(b, c.body - (*area).point, n);
     }
     (*area).radius = radius / (*area).load;
     (*area).spreadCount = 0u;
     for (var i = first; i < (*list).count && (*area).spreadCount < MOST_CONTACTS; i++) {
         if ((*list).items[i].collider == collider) {
-            (*area).spread[(*area).spreadCount] = rotate(q, (*list).items[i].body);
+            (*area).spread[(*area).spreadCount] = rotate(b.q, (*list).items[i].body);
             (*area).spreadCount += 1u;
         }
     }
@@ -860,7 +872,7 @@ fn firstOf(list: ptr<function, Contacts>, i: u32) -> bool {
 fn rub(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32) {
     for (var i = 0u; i < (*list).count; i++) {
         var area = Patch();
-        if (firstOf(list, i) && patchOf(list, i, h, (*b).q, &area)) {
+        if (firstOf(list, i) && patchOf(list, i, h, *b, &area)) {
             let r = rotate((*b).q, area.point);
             let r0 = rotate((*b).q0, area.point);
             var rubbed = (*list).items[i].rubbed;
@@ -877,7 +889,7 @@ fn rub(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32) {
 fn slow(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32) {
     for (var i = 0u; i < (*list).count; i++) {
         var area = Patch();
-        if (firstOf(list, i) && patchOf(list, i, h, (*b).q, &area)) {
+        if (firstOf(list, i) && patchOf(list, i, h, *b, &area)) {
             let r = rotate((*b).q, area.point);
             var slowed = (*list).items[i].slowed;
             slowPatch(b, r, area, &slowed);
