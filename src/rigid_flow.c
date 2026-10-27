@@ -13,6 +13,11 @@
 // The most sweeps the Jacobi rotations take.
 #define MOST_SWEEPS 16
 
+// The residual turns' pieces: at most this many, each of a size this
+// cube root of a turn's error terms.
+#define MOST_PIECES 64.0
+#define PIECE_TURN  0.25
+
 // The largest half turn mvfxSinCos takes.
 #define MOST_HALF_TURN 0x1p24
 
@@ -230,6 +235,26 @@ static bool TurnAbout(int32_t i, double theta, double q[4], double L[3])
     return true;
 }
 
+// How many equal pieces a substep's residual turns take: the least n
+// from 1 to MOST_PIECES with n^3 at least the larger of a^2 b and a b^2
+// over PIECE_TURN^3, a = turn (1 / I2 - 1 / I1) and b = turn (1 / I1 -
+// 1 / I0) for turn = h |L| (n = ceil(cbrt(...) / PIECE_TURN), exactly).
+// The splitting's error goes as their product: a box 0.5 by 1 by 1.5 at 5
+// radians a substep had its energy off by up to 150% in one piece. A body
+// symmetric about an axis, a or b 0, takes one.
+static double Pieces(double turn, double least, double most)
+{
+    double a = turn * least;
+    double b = turn * most;
+    double reach = fmax(a * a * b, a * b * b) / (PIECE_TURN * PIECE_TURN * PIECE_TURN);
+    double n = 1.0;
+    while (n < MOST_PIECES && n * n * n < reach)
+    {
+        n += 1.0;
+    }
+    return n;
+}
+
 bool mvfxFlowBody(const mvfxPrincipal* p, float t, float q[4], float w[3])
 {
     const double m[3] = {(double)p->moments[0], (double)p->moments[1], (double)p->moments[2]};
@@ -254,8 +279,15 @@ bool mvfxFlowBody(const mvfxPrincipal* p, float t, float q[4], float w[3])
     double L[3] = {m[0] * wp[0], m[1] * wp[1], m[2] * wp[2]};
     double least = 1.0 / m[2] - 1.0 / m[1];
     double most = 1.0 / m[0] - 1.0 / m[1];
-    bool done = TurnAbout(2, 0.5 * h * L[2] * least, qp, L) &&
-                TurnAbout(0, h * L[0] * most, qp, L) && TurnAbout(2, 0.5 * h * L[2] * least, qp, L);
+    double pieces = Pieces(h * sqrt(L[0] * L[0] + L[1] * L[1] + L[2] * L[2]), least, -most);
+    double piece = h / pieces;
+    bool done = true;
+    for (double k = 0.0; done && k < pieces; k += 1.0)
+    {
+        done = TurnAbout(2, 0.5 * piece * L[2] * least, qp, L) &&
+               TurnAbout(0, piece * L[0] * most, qp, L) &&
+               TurnAbout(2, 0.5 * piece * L[2] * least, qp, L);
+    }
     double size = sqrt(L[0] * L[0] + L[1] * L[1] + L[2] * L[2]);
     if (!done || !(size > 0.0) || !isfinite(size) ||
         !HalfTurn(0.5 * h * size / m[1], &sine, &cosine))
