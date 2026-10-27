@@ -176,7 +176,7 @@ fn keepLength(x: vec2<f32>, kept: f32) -> vec2<f32> {
 // Turns T by theta about principal axis i, and the momentum L in the
 // frame back by theta, its pair across i held to its length: the
 // residual's exact flow. False past sinCos's range.
-fn turnAbout(i: u32, theta: f32, t: ptr<function, vec4<f32>>, l: ptr<function, vec3<f32>>) -> bool {
+fn residualTurn(i: u32, theta: f32, t: ptr<function, vec4<f32>>, l: ptr<function, vec3<f32>>) -> bool {
     if (!(abs(0.5 * theta) <= MOST_HALF_TURN)) {
         return false;
     }
@@ -232,9 +232,9 @@ fn flowTurned(p: Principal, t: f32, q: vec4<f32>, w: vec3<f32>, out: ptr<functio
     var turn = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     var done = true;
     for (var k = 0.0; done && k < pieces; k += 1.0) {
-        done = turnAbout(2u, 0.5 * piece * l.z * least, &turn, &l) &&
-               turnAbout(0u, piece * l.x * most, &turn, &l) &&
-               turnAbout(2u, 0.5 * piece * l.z * least, &turn, &l);
+        done = residualTurn(2u, 0.5 * piece * l.z * least, &turn, &l) &&
+               residualTurn(0u, piece * l.x * most, &turn, &l) &&
+               residualTurn(2u, 0.5 * piece * l.z * least, &turn, &l);
     }
     let size = sqrt(dot(l, l));
     let casimir = 0.5 * t * size / m.y;
