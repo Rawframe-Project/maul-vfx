@@ -247,9 +247,10 @@ fn rigidMass(size: vec3<f32>) -> Mass {
     for (var k = 0u; k < 6u; k++) {
         m[k] = ldexp(m[k], -share.exp);
     }
-    // A needle past the most inverse inertia, or one whose determinant
-    // binary32 flushes to 0, has its inertia raised by the most's
-    // reciprocal about each axis, as the core's mvfxBodyShapeOf.
+    // A needle whose inverse's trace passes the most inverse inertia, or
+    // one whose determinant binary32 flushes to 0, has its inertia raised
+    // by the most's reciprocal about each axis, as the core's
+    // mvfxBodyShapeOf.
     for (var held = 0u; held < 2u; held++) {
         let c = array<f32, 6>(m[1] * m[2] - m[5] * m[5], m[0] * m[2] - m[4] * m[4],
                               m[0] * m[1] - m[3] * m[3], m[4] * m[5] - m[3] * m[2],
@@ -258,8 +259,8 @@ fn rigidMass(size: vec3<f32>) -> Mass {
         for (var k = 0u; k < 6u; k++) {
             out.inverse[k] = select(0.0, c[k] / det, det > 0.0);
         }
-        let most = max(out.inverse[0], max(out.inverse[1], out.inverse[2]));
-        if (held == 1u || (det > 0.0 && most <= MOST_INVERSE_INERTIA)) {
+        let trace = out.inverse[0] + out.inverse[1] + out.inverse[2];
+        if (held == 1u || (det > 0.0 && trace <= MOST_INVERSE_INERTIA)) {
             break;
         }
         for (var k = 0u; k < 3u; k++) {
