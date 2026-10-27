@@ -30,6 +30,7 @@
 #include "test_harness.h"
 
 #include <math.h>
+#include <stdio.h>
 
 // A lopsided hull: a wedge with a spike.
 static const float s_lopsided[21] = {0,    0, 0,    1, 0, 0,    0, 0.6f, 0,    0,   0,
@@ -655,6 +656,77 @@ static void TestLargestSizes(Gpu* gpu, mvfxGpu* kernels)
     mvfxDestroyContext(RunContext());
 }
 
+// An emitter's sizes times 2^exponent, its density another.
+static void ScaleBodies(mvfxEmitterDef* emitter, int32_t exponent, float density)
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        emitter->size.min[k] = (float)ldexp((double)emitter->size.min[k], exponent);
+        emitter->size.max[k] = (float)ldexp((double)emitter->size.max[k], exponent);
+    }
+    emitter->rigid.density = density;
+}
+
+static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Bodies near the ends of sizes and densities, their mass and inertia
+    // in their own units on both paths: boxes and hulls tumbling, up to
+    // half MVFX_MAX_EXTENT across at its density, where the gyroscopic
+    // term's momentum passed binary32's range, and 2^-100 of the sizes
+    // above at density 1e-30, where their mass and inertia fell below it.
+    static const struct
+    {
+        int32_t exponent;
+        float density;
+        const char* what;
+    } ends[2] = {{20, MVFX_MAX_EXTENT, "the largest"}, {-100, 1e-30f, "the smallest"}};
+    for (int32_t end = 0; end < 2; ++end)
+    {
+        for (int32_t hull = 0; hull < 2; ++hull)
+        {
+            mvfxEmitterDef emitter = Bodies(hull == 1 ? mvfx_rigidHull : mvfx_rigidBox);
+            ScaleBodies(&emitter, ends[end].exponent, ends[end].density);
+            char what[64];
+            (void)snprintf(what, sizeof what, "%s tumbling at %s sizes", hull ? "hulls" : "boxes",
+                           ends[end].what);
+            Tumbled(gpu, kernels, &emitter, false, what);
+        }
+    }
+    // Bodies thrown on a sloped floor, the whole scene's lengths (sizes,
+    // places, speeds, gravity) times 2^16 at density MVFX_MAX_EXTENT and
+    // times 2^-40 at density 1e-30: the same scene as at 1 in their units,
+    // and as near on both paths, its bodies apart as few.
+    static const struct
+    {
+        int32_t exponent;
+        float density;
+        const char* what;
+        int32_t mostApart[3];
+    } scenes[2] = {{16, MVFX_MAX_EXTENT, "2^16", {4, 8, 11}}, {-40, 1e-30f, "2^-40", {4, 8, 11}}};
+    for (int32_t scene = 0; scene < 2; ++scene)
+    {
+        float unit = (float)ldexp(1.0, scenes[scene].exponent);
+        const mvfxCollider floor = {.kind = mvfx_colliderPlane,
+                                    .center = {0, -0.7f * unit, 0},
+                                    .normal = {0, 1, 0.2f}};
+        for (int32_t shape = 0; shape < 3; ++shape)
+        {
+            mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
+            ScaleBodies(&emitter, scenes[scene].exponent, scenes[scene].density);
+            emitter.shape.radius *= unit;
+            emitter.velocity.speed.min *= unit;
+            emitter.velocity.speed.max *= unit;
+            emitter.motion.gravity[1] *= unit;
+            char what[64];
+            (void)snprintf(what, sizeof what, "%s on a sloped floor at %s",
+                           shape == 0 ? "spheres" : shape == 1 ? "capsules" : "boxes",
+                           scenes[scene].what);
+            Met(gpu, kernels,
+                &(Run){.mostApart = scenes[scene].mostApart[shape], .emitters = &emitter}, what);
+        }
+    }
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
@@ -667,6 +739,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestGrids(gpu, kernels);
     TestDepth(gpu, kernels);
     TestLargestSizes(gpu, kernels);
+    TestUnits(gpu, kernels);
 }
 
 int main(void)

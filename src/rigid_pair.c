@@ -34,6 +34,15 @@ static mvfxBodyShape ShapeAt(const mvfxRigidSolve* s, int32_t i, mvfxBodyPose* p
     return mvfxBodyShapeOf(s->rigid, s->hull, size, &mass);
 }
 
+// Body i as a pair's solve takes it: in the particles' units, the two
+// bodies' masses in one unit.
+static mvfxBody PairBody(const mvfxRigidSolve* s, int32_t i)
+{
+    mvfxBody b = mvfxLoadBody(s, i);
+    mvfxBodyToUnits(&b, 0, 0);
+    return b;
+}
+
 // A contact's offsets from both bodies' centers and its depth, at the
 // bodies' poses or at their start poses.
 static float PairDepth(const mvfxPairContact* c, const mvfxBody* a, const mvfxBody* b, bool start,
@@ -494,8 +503,8 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
                       bool friction, bool backward)
 {
     mvfxPairContact* pairs = s->instance->emitters[s->emitter].rigidPairs;
-    mvfxBody a = mvfxLoadBody(s, pairs[first].a);
-    mvfxBody b = mvfxLoadBody(s, pairs[first].b);
+    mvfxBody a = PairBody(s, pairs[first].a);
+    mvfxBody b = PairBody(s, pairs[first].b);
     float onA[3] = {0.0f, 0.0f, 0.0f};
     float onB[3] = {0.0f, 0.0f, 0.0f};
     for (int32_t i = first; i < end; ++i)
@@ -535,7 +544,8 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
     {
         mvfxRubPatch(s, &a, patch.ra, patch.ra0, &b, patch.rb, patch.rb0, patch.n, patch.load,
                      &patch.spreadA, &patch.spreadB, &pairs[first].rubbed);
-        mvfxTwistPatch(s, &a, &b, patch.n, patch.load * patch.radius, &pairs[first].twisted);
+        mvfxTwistPatch(s, &a, &b, patch.n, mvfxTurnLimit(&a, &b, patch.load, patch.radius),
+                       &pairs[first].twisted);
     }
     mvfxStoreBody(s, pairs[first].a, &a);
     mvfxStoreBody(s, pairs[first].b, &b);
@@ -546,8 +556,8 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
 static void BouncePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool backward)
 {
     mvfxPairContact* pairs = s->instance->emitters[s->emitter].rigidPairs;
-    mvfxBody a = mvfxLoadBody(s, pairs[first].a);
-    mvfxBody b = mvfxLoadBody(s, pairs[first].b);
+    mvfxBody a = PairBody(s, pairs[first].a);
+    mvfxBody b = PairBody(s, pairs[first].b);
     for (int32_t step = first; step < end; ++step)
     {
         mvfxPairContact* c = &pairs[mvfxPassIndex(first, end, step, backward)];
@@ -574,8 +584,10 @@ static void BouncePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool
     {
         mvfxSlowPatch(&a, patch.ra, &b, patch.rb, patch.n, patch.pressed, &patch.spreadA,
                       &patch.spreadB, s->rigid->dynamicFriction, &pairs[first].slowed);
-        mvfxUnspinPatch(&a, &b, patch.n, s->rigid->dynamicFriction * patch.pressed * patch.radius,
-                        &pairs[first].spun);
+        mvfxUnspinPatch(
+            &a, &b, patch.n,
+            mvfxTurnLimit(&a, &b, s->rigid->dynamicFriction * patch.pressed, patch.radius),
+            &pairs[first].spun);
     }
     mvfxStoreBody(s, pairs[first].a, &a);
     mvfxStoreBody(s, pairs[first].b, &b);

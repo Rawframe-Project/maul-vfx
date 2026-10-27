@@ -252,12 +252,20 @@ fn holdPair(a: ptr<function, Solid>, b: ptr<function, Solid>, first: u32, end: u
     bodyPush(b, rb, lambda * u, true);
 }
 
+// Body i as a pair's solve takes it, as the core's PairBody: in the
+// particles' units, the two bodies' masses in one unit.
+fn pairSolid(i: u32) -> Solid {
+    var b = loadSolid(i);
+    toUnits(&b, 0, 0);
+    return b;
+}
+
 // A pass over the run first to end, as the core's SolvePair: stabilizing
 // (start) or pushing apart, then with friction the run's static friction.
 fn solvePair(first: u32, end: u32, start: bool, friction: bool, backward: bool, h: f32) {
     let head = loadPair(poolAt(first));
-    var a = loadSolid(head.a);
-    var b = loadSolid(head.b);
+    var a = pairSolid(head.a);
+    var b = pairSolid(head.b);
     var onA = vec3<f32>(0.0);
     var onB = vec3<f32>(0.0);
     let count = f32(end - first);
@@ -292,19 +300,19 @@ fn solvePair(first: u32, end: u32, start: bool, friction: bool, backward: bool, 
         rubPair(&a, &b, area, &rubbed);
         blocks[at + 14u] = bitcast<u32>(rubbed);
         var twisted = bitcast<f32>(blocks[at + 16u]);
-        twistPair(&a, &b, area.n, area.load * area.radius, &twisted);
+        twistPair(&a, &b, area.n, turnLimit(a, area.load, area.radius), &twisted);
         blocks[at + 16u] = bitcast<u32>(twisted);
     }
-    storeSolid(head.a, a);
-    storeSolid(head.b, b);
+    storeMoved(head.a, a);
+    storeMoved(head.b, b);
 }
 
 // A pass of restitution over the run first to end, then its patch's
 // dynamic friction, as the core's BouncePair.
 fn bouncePair(first: u32, end: u32, backward: bool, h: f32, still: f32) {
     let head = loadPair(poolAt(first));
-    var a = loadSolid(head.a);
-    var b = loadSolid(head.b);
+    var a = pairSolid(head.a);
+    var b = pairSolid(head.b);
     for (var step = 0u; step < end - first; step++) {
         let at = poolAt(first + passIndex(end - first, step, backward));
         let c = loadPair(at);
@@ -331,9 +339,10 @@ fn bouncePair(first: u32, end: u32, backward: bool, h: f32, still: f32) {
         slowPair(&a, &b, area, &slowed);
         blocks[at + 15u] = bitcast<u32>(slowed);
         var spun = bitcast<f32>(blocks[at + 17u]);
-        unspinPair(&a, &b, area.n, params.rigidContact.z * area.pressed * area.radius, &spun);
+        unspinPair(&a, &b, area.n, turnLimit(a, params.rigidContact.z * area.pressed, area.radius),
+                   &spun);
         blocks[at + 17u] = bitcast<u32>(spun);
     }
-    storeSolid(head.a, a);
-    storeSolid(head.b, b);
+    storeMoved(head.a, a);
+    storeMoved(head.b, b);
 }

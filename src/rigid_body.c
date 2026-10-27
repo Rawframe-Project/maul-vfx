@@ -40,6 +40,8 @@ mvfxBody mvfxLoadBody(const mvfxRigidSolve* s, int32_t i)
         b.q0[k] = s->start[(size_t)(3 + k) * s->stride + (size_t)i];
     }
     b.inverseMass = s->mass[i];
+    b.massUnit = (int32_t)s->mass[MVFX_RIGID_MASS_UNIT * s->stride + (size_t)i];
+    b.lengthUnit = (int32_t)s->mass[MVFX_RIGID_LENGTH_UNIT * s->stride + (size_t)i];
     return b;
 }
 
@@ -72,13 +74,49 @@ static void InverseInertiaTimes(const mvfxBody* b, const float v[3], float out[3
     mvfxRotate(b->q, turned, out);
 }
 
+// x times 2^k, exact while it stays in binary32's normal range.
+static float Scale(float x, int32_t k)
+{
+    return (float)ldexp((double)x, k);
+}
+
+// v in the body's length unit.
+static void InLength(const mvfxBody* b, const float v[3], float out[3])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = Scale(v[k], -b->lengthUnit);
+    }
+}
+
+void mvfxBodyToUnits(mvfxBody* b, int32_t massUnit, int32_t lengthUnit)
+{
+    int32_t mass = massUnit - b->massUnit;
+    int32_t turning = mass + 2 * (lengthUnit - b->lengthUnit);
+    b->inverseMass = Scale(b->inverseMass, mass);
+    for (int32_t k = 0; k < 6; ++k)
+    {
+        b->inverseInertia[k] = Scale(b->inverseInertia[k], turning);
+    }
+    b->massUnit = massUnit;
+    b->lengthUnit = lengthUnit;
+}
+
 float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3])
 {
+    float lever[3];
     float c[3];
     float turned[3];
-    Cross(r, n, c);
+    InLength(b, r, lever);
+    Cross(lever, n, c);
     InverseInertiaTimes(b, c, turned);
     return b->inverseMass + Dot(c, turned);
+}
+
+float mvfxTurnLimit(const mvfxBody* a, const mvfxBody* b, float load, float radius)
+{
+    (void)b;
+    return Scale(load, -a->lengthUnit) * Scale(radius, -a->lengthUnit);
 }
 
 // Turns q by a turn vector to first order (q + [turn, 0] q / 2),
@@ -101,12 +139,37 @@ static void TurnBy(float q[4], const float turn[3])
     }
 }
 
+// The most exponent of a turn's component: past 2^60, a first-order turn
+// is all its axis (q is lost in its rounding long before), and its square
+// would leave binary32's range.
+#define MOST_TURN 60
+
+// The turn I^-1 (r x u) an impulse u at offset r gives the body, in its
+// units: r in its length unit, the product moved out of it last, so a
+// body far smaller than the impulse's way (its turn past binary32's
+// range) keeps a finite turn, held at 2^MOST_TURN a component.
+static void TurnOf(const mvfxBody* b, const float r[3], const float u[3], float out[3])
+{
+    float lever[3];
+    float c[3];
+    float turned[3];
+    InLength(b, r, lever);
+    Cross(lever, u, c);
+    InverseInertiaTimes(b, c, turned);
+    double most = fmax(fabs((double)turned[0]), fmax(fabs((double)turned[1]), fabs((double)turned[2])));
+    int32_t exponent = 0;
+    (void)frexp(most, &exponent);
+    int32_t shift = exponent - b->lengthUnit > MOST_TURN ? MOST_TURN - exponent : -b->lengthUnit;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = Scale(turned[k], shift);
+    }
+}
+
 void mvfxBodyPush(mvfxBody* b, const float r[3], const float p[3], bool both)
 {
-    float c[3];
     float turn[3];
-    Cross(r, p, c);
-    InverseInertiaTimes(b, c, turn);
+    TurnOf(b, r, p, turn);
     TurnBy(b->q, turn);
     if (both)
     {
@@ -121,10 +184,8 @@ void mvfxBodyPush(mvfxBody* b, const float r[3], const float p[3], bool both)
 
 void mvfxBodyKick(mvfxBody* b, const float r[3], const float j[3])
 {
-    float c[3];
     float turn[3];
-    Cross(r, j, c);
-    InverseInertiaTimes(b, c, turn);
+    TurnOf(b, r, j, turn);
     for (int32_t k = 0; k < 3; ++k)
     {
         b->v[k] += j[k] * b->inverseMass;

@@ -67,7 +67,8 @@ struct Shape {
 
 // A body as its solve holds it (the core's mvfxBody): its pose, velocity
 // and angular velocity, its start pose, its inverse mass and inverse
-// inertia about its own axes.
+// inertia about its own axes in a mass unit of 2^massUnit and a length
+// unit of 2^lengthUnit (0 for both, the particles' own).
 struct Solid {
     x: vec3<f32>,
     v: vec3<f32>,
@@ -77,6 +78,8 @@ struct Solid {
     q0: vec4<f32>,
     inverseMass: f32,
     inverse: array<f32, 6>,
+    massUnit: i32,
+    lengthUnit: i32,
 }
 
 // A patch of a body's contacts with one collider: their center on the body
@@ -621,9 +624,33 @@ fn inverseInertiaTimes(b: Solid, v: vec3<f32>) -> vec3<f32> {
     return rotate(b.q, symmetricTimes(b.inverse, rotate(conjugate(b.q), v)));
 }
 
+// v in the body's length unit.
+fn inLength(b: Solid, v: vec3<f32>) -> vec3<f32> {
+    return ldexp(v, vec3<i32>(-b.lengthUnit));
+}
+
+// The body's inverse mass and inertia moved into other units, as the
+// core's mvfxBodyToUnits.
+fn toUnits(b: ptr<function, Solid>, massUnit: i32, lengthUnit: i32) {
+    let mass = massUnit - (*b).massUnit;
+    let turning = mass + 2 * (lengthUnit - (*b).lengthUnit);
+    (*b).inverseMass = ldexp((*b).inverseMass, mass);
+    for (var k = 0u; k < 6u; k++) {
+        (*b).inverse[k] = ldexp((*b).inverse[k], turning);
+    }
+    (*b).massUnit = massUnit;
+    (*b).lengthUnit = lengthUnit;
+}
+
 fn bodyWeight(b: Solid, r: vec3<f32>, n: vec3<f32>) -> f32 {
-    let c = cross(r, n);
+    let c = cross(inLength(b, r), n);
     return b.inverseMass + dot3(c, inverseInertiaTimes(b, c));
+}
+
+// The most a patch's friction against turning takes, as the core's
+// mvfxTurnLimit for a body and the world.
+fn turnLimit(b: Solid, load: f32, radius: f32) -> f32 {
+    return ldexp(load, -b.lengthUnit) * ldexp(radius, -b.lengthUnit);
 }
 
 // Turns q by a turn vector to first order (q + [turn, 0] q / 2),
@@ -633,8 +660,20 @@ fn turnFirst(q: vec4<f32>, turn: vec3<f32>) -> vec4<f32> {
     return out / sqrt(out.x * out.x + out.y * out.y + out.z * out.z + out.w * out.w);
 }
 
+// The most exponent of a turn's component, as the core's MOST_TURN.
+const MOST_TURN: i32 = 60;
+
+// The turn an impulse u at offset r gives the body, in its units, held at
+// 2^MOST_TURN a component, as the core's TurnOf.
+fn turnOf(b: Solid, r: vec3<f32>, u: vec3<f32>) -> vec3<f32> {
+    let turned = inverseInertiaTimes(b, cross(inLength(b, r), u));
+    let exponent = frexp(max(abs(turned.x), max(abs(turned.y), abs(turned.z)))).exp;
+    let shift = select(-b.lengthUnit, MOST_TURN - exponent, exponent - b.lengthUnit > MOST_TURN);
+    return ldexp(turned, vec3<i32>(shift));
+}
+
 fn bodyPush(b: ptr<function, Solid>, r: vec3<f32>, p: vec3<f32>, both: bool) {
-    let turn = inverseInertiaTimes(*b, cross(r, p));
+    let turn = turnOf(*b, r, p);
     (*b).q = turnFirst((*b).q, turn);
     (*b).x += p * (*b).inverseMass;
     if (both) {
@@ -644,7 +683,7 @@ fn bodyPush(b: ptr<function, Solid>, r: vec3<f32>, p: vec3<f32>, both: bool) {
 }
 
 fn bodyKick(b: ptr<function, Solid>, r: vec3<f32>, j: vec3<f32>) {
-    let turn = inverseInertiaTimes(*b, cross(r, j));
+    let turn = turnOf(*b, r, j);
     (*b).v += j * (*b).inverseMass;
     (*b).w += turn;
 }
@@ -828,7 +867,7 @@ fn rub(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32) {
             rubPatch(b, r, r0, area, &rubbed);
             (*list).items[i].rubbed = rubbed;
             var twisted = (*list).items[i].twisted;
-            twistPatch(b, area.n, area.load * area.radius, &twisted);
+            twistPatch(b, area.n, turnLimit(*b, area.load, area.radius), &twisted);
             (*list).items[i].twisted = twisted;
         }
     }
@@ -844,7 +883,8 @@ fn slow(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32) {
             slowPatch(b, r, area, &slowed);
             (*list).items[i].slowed = slowed;
             var spun = (*list).items[i].spun;
-            unspinPatch(b, area.n, params.rigidContact.z * area.pressed * area.radius, &spun);
+            unspinPatch(b, area.n, turnLimit(*b, params.rigidContact.z * area.pressed, area.radius),
+                        &spun);
             (*list).items[i].spun = spun;
         }
     }

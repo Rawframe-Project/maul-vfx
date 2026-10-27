@@ -92,7 +92,9 @@ fn loadRotation(at: u32) -> vec4<f32> {
     return vec4<f32>(loadVector(at), bitcast<f32>(blocks[at + 3u]));
 }
 
-fn storeSolid(i: u32, b: Solid) {
+// Body i's pose, velocities and start pose of a solve, its mass as it
+// was.
+fn storeMoved(i: u32, b: Solid) {
     let at = solidAt(i);
     storeVector(at, b.x);
     storeVector(at + 3u, b.v);
@@ -100,10 +102,18 @@ fn storeSolid(i: u32, b: Solid) {
     storeVector(at + 9u, b.x0);
     storeRotation(at + 12u, b.q);
     storeRotation(at + 16u, b.q0);
+}
+
+// Body i's solve, its units' exponents in its last word, the mass's in
+// the low 16 bits and the length's in the high 16.
+fn storeSolid(i: u32, b: Solid) {
+    let at = solidAt(i);
+    storeMoved(i, b);
     blocks[at + 20u] = bitcast<u32>(b.inverseMass);
     for (var k = 0u; k < 6u; k++) {
         blocks[at + 21u + k] = bitcast<u32>(b.inverse[k]);
     }
+    blocks[at + 27u] = (bitcast<u32>(b.massUnit) & 0xFFFFu) | (bitcast<u32>(b.lengthUnit) << 16u);
 }
 
 fn loadSolid(i: u32) -> Solid {
@@ -119,6 +129,9 @@ fn loadSolid(i: u32) -> Solid {
     for (var k = 0u; k < 6u; k++) {
         b.inverse[k] = bitcast<f32>(blocks[at + 21u + k]);
     }
+    let units = bitcast<i32>(blocks[at + 27u]);
+    b.massUnit = (units << 16u) >> 16u;
+    b.lengthUnit = units >> 16u;
     return b;
 }
 
@@ -229,7 +242,7 @@ fn pairPrepare(i: u32, b: Body, x0: vec3<f32>, q0: vec4<f32>, fate: ptr<function
         mass.inverse = array<f32, 6>();
     }
     let body = Solid(m.place, m.velocity, m.turning.angular, x0, m.turning.orientation, q0,
-                     mass.inverseMass, mass.inverse);
+                     mass.inverseMass, mass.inverse, mass.massUnit, mass.lengthUnit);
     speedsOf(body, &list);
     storeSolid(i, body);
     storeWorld(i, &list);

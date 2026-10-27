@@ -109,6 +109,33 @@ static double PrimitiveInertia(const mvfxRigidDef* rigid, const float size[3], m
     return mass;
 }
 
+// mvfxBodyReach in binary64, whose squares stay in range for the
+// smallest shapes.
+static double ReachOf(const mvfxBodyShape* s)
+{
+    double reach = 0.0;
+    for (int32_t i = 0; i < s->count && s->kind == mvfx_rigidHull; ++i)
+    {
+        float p[3];
+        mvfxShapePoint(s, i, p);
+        reach = fmax(reach, (double)p[0] * (double)p[0] + (double)p[1] * (double)p[1] +
+                               (double)p[2] * (double)p[2]);
+    }
+    if (s->kind == mvfx_rigidHull)
+    {
+        return sqrt(reach);
+    }
+    for (int32_t k = 0; k < 3 && s->kind == mvfx_rigidBox; ++k)
+    {
+        reach += (double)s->half[k] * (double)s->half[k];
+    }
+    if (s->kind == mvfx_rigidBox)
+    {
+        return sqrt(reach);
+    }
+    return (double)s->half[1] + (double)s->radius;
+}
+
 mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3],
                               mvfxBodyMass* mass)
 {
@@ -131,14 +158,30 @@ mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, c
         m = PrimitiveInertia(rigid, size, &s, inertia);
     }
     // A shape of no volume is a point of unit mass that does not turn.
+    *mass = (mvfxBodyMass){.inverseMass = 1.0f};
+    if (!(m > 0.0))
+    {
+        return s;
+    }
+    int32_t massUnit = 0;
+    int32_t lengthUnit = 0;
+    (void)frexp(m, &massUnit);
+    (void)frexp(ReachOf(&s), &lengthUnit);
+    double scaled[6];
     double inverse[6];
-    Invert(inertia, inverse);
-    mass->inverseMass = m > 0.0 ? (float)(1.0 / m) : 1.0f;
     for (int32_t k = 0; k < 6; ++k)
     {
-        mass->inertia[k] = m > 0.0 ? (float)inertia[k] : 0.0f;
-        mass->inverseInertia[k] = m > 0.0 ? (float)inverse[k] : 0.0f;
+        scaled[k] = ldexp(inertia[k], -massUnit - 2 * lengthUnit);
     }
+    Invert(scaled, inverse);
+    mass->inverseMass = (float)ldexp(1.0 / m, massUnit);
+    for (int32_t k = 0; k < 6; ++k)
+    {
+        mass->inertia[k] = (float)scaled[k];
+        mass->inverseInertia[k] = (float)inverse[k];
+    }
+    mass->massUnit = massUnit;
+    mass->lengthUnit = lengthUnit;
     return s;
 }
 
