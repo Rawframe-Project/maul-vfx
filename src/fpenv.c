@@ -208,11 +208,6 @@ static void WriteControl(uint64_t value)
     (void)value;
 }
 
-static uint64_t Wanted(uint64_t control)
-{
-    return control;
-}
-
 enum
 {
     s_controlBits = 0,
@@ -225,6 +220,10 @@ enum
 // Every control bit the library reads or sets, the x87 word's included,
 // is below the token's mark.
 static_assert((uint64_t)s_controlBits <= UINT32_MAX, "the control bits are below bit 63");
+
+// On WebAssembly the entries are fpenv.h's empty inline functions and
+// keep no depth.
+#if !defined(__wasm__)
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #define MVFX_THREAD_LOCAL __declspec(thread)
@@ -283,13 +282,6 @@ MVFX_NO_CANARY void mvfxFloatEnvLeave(uint64_t token)
     s_thread.depth = 0;
 }
 
-void mvfxFloatEnvRun(void (*body)(void* context), void* context)
-{
-    uint64_t token = mvfxFloatEnvEnter();
-    body(context);
-    mvfxFloatEnvLeave(token);
-}
-
 MVFX_NO_CANARY mvfxFloatHost mvfxFloatHostEnter(void)
 {
     mvfxFloatHost host = s_thread;
@@ -314,6 +306,15 @@ MVFX_NO_CANARY void mvfxFloatHostLeave(mvfxFloatHost host)
     }
 }
 
+#endif
+
+void mvfxFloatEnvRun(void (*body)(void* context), void* context)
+{
+    uint64_t token = mvfxFloatEnvEnter();
+    body(context);
+    mvfxFloatEnvLeave(token);
+}
+
 uint64_t mvfxFloatControlRead(void)
 {
     return ReadControl();
@@ -326,5 +327,9 @@ void mvfxFloatControlWrite(uint64_t value)
 
 uint32_t mvfxFloatEnvDepth(void)
 {
+#if defined(__wasm__)
+    return 0;
+#else
     return s_thread.depth;
+#endif
 }
