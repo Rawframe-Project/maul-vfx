@@ -11,6 +11,7 @@
 #include "integrate.h"
 #include "rigid_body.h"
 #include "rigid_contact.h"
+#include "rigid_flow.h"
 #include "rigid_pair.h"
 #include "rigid_sleep.h"
 
@@ -20,13 +21,6 @@
 static float Dot(const float a[3], const float b[3])
 {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-static void Cross(const float a[3], const float b[3], float out[3])
-{
-    out[0] = a[1] * b[2] - a[2] * b[1];
-    out[1] = a[2] * b[0] - a[0] * b[2];
-    out[2] = a[0] * b[1] - a[1] * b[0];
 }
 
 static void ToBody(const float q[4], const float v[3], float out[3])
@@ -506,20 +500,15 @@ static void Meet(const mvfxRigidSolve* s, int32_t first, int32_t end, bool pairs
     mvfxStrikePairs(s);
 }
 
-// A symmetric matrix (xx, yy, zz, xy, xz, yz) times v.
-static void Times(const float m[6], const float v[3], float out[3])
-{
-    out[0] = m[0] * v[0] + m[3] * v[1] + m[4] * v[2];
-    out[1] = m[3] * v[0] + m[1] * v[1] + m[5] * v[2];
-    out[2] = m[4] * v[0] + m[5] * v[1] + m[2] * v[2];
-}
-
-// Turns each body's angular velocity by the gyroscopic term over h, about
-// its own axes: w += h I^-1 (I w x w), the inertia in the body's units,
-// which cancel. In the particles' units its momentum's square passed
-// binary32's range (a body 1e6 across at density 1 turning at 0.3 rad/s)
-// or fell below it.
-static void Spin(const mvfxRigidSolve* s, int32_t first, int32_t end)
+// Turns each awake body's orientation and angular velocity over a substep
+// from tick from, after the integrator moved it and slowed its spin by its
+// drag: by its free flow (mvfxFlowBody), which replaces the gyroscopic
+// term and the turn of its orientation, or about its angular velocity for
+// a body of one moment about every axis, as the integrator turns other
+// particles. Either is over h scaled by rotation speed over life. Its
+// inertia is in the body's units, which cancel. A touched body's angular
+// velocity is then taken from its pose's change.
+static void Flow(const mvfxRigidSolve* s, int32_t first, int32_t end, int64_t from)
 {
     for (int32_t i = first; i < end; ++i)
     {
@@ -531,34 +520,22 @@ static void Spin(const mvfxRigidSolve* s, int32_t first, int32_t end)
         mvfxBodyMass mass;
         mvfxSizeOf(s->instance, s->emitter, i, size);
         (void)mvfxBodyShapeOf(s->rigid, s->hull, size, &mass);
+        mvfxPrincipal principal = mvfxPrincipalOf(mass.inertia);
+        float carry = s->h * mvfxTurnScale(s->instance, s->emitter, i, from);
         float q[4] = {s->q[0][i], s->q[1][i], s->q[2][i], s->q[3][i]};
-        const float world[3] = {s->w[0][i], s->w[1][i], s->w[2][i]};
-        float w[3];
-        ToBody(q, world, w);
-        float momentum[3];
-        Times(mass.inertia, w, momentum);
-        float torque[3];
-        Cross(momentum, w, torque);
-        float before = sqrtf(Dot(momentum, momentum));
-        float turn[3];
-        Times(mass.inverseInertia, torque, turn);
+        float w[3] = {s->w[0][i], s->w[1][i], s->w[2][i]};
+        if (!mvfxFlowBody(&principal, carry, q, w))
+        {
+            const float theta[3] = {w[0] * carry, w[1] * carry, w[2] * carry};
+            mvfxTurnBy(q, theta);
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            s->q[k][i] = q[k];
+        }
         for (int32_t k = 0; k < 3; ++k)
         {
-            w[k] += s->h * turn[k];
-        }
-        Times(mass.inertia, w, momentum);
-        // The term turns the momentum without changing its size: held to
-        // it, the explicit step cannot grow however fast the spin.
-        float after = sqrtf(Dot(momentum, momentum));
-        for (int32_t k = 0; after > 0.0f && k < 3; ++k)
-        {
-            w[k] *= before / after;
-        }
-        float turned[3];
-        mvfxRotate(q, w, turned);
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            s->w[k][i] = turned[k];
+            s->w[k][i] = w[k];
         }
     }
 }
@@ -624,8 +601,8 @@ static void Substep(mvfxRigidSolve* s, int32_t first, int32_t end, int64_t from,
         memcpy(s->start + (size_t)(3 + k) * s->stride + (size_t)first, s->q[k] + first,
                count * sizeof(float));
     }
-    Spin(s, first, end);
     mvfxIntegrateRange(s->instance, s->emitter, first, end, from, seconds);
+    Flow(s, first, end, from);
     if (s->sleep != nullptr)
     {
         mvfxHoldSleeping(s, first, end);
