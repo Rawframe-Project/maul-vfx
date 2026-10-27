@@ -97,18 +97,11 @@ static void QuaternionOf(const double m[3][3], float out[4])
     }
 }
 
-mvfxPrincipal mvfxPrincipalOf(const float inertia[6])
+// Diagonalizes a symmetric matrix by cyclic Jacobi rotations, its axes'
+// columns v turned with it: pairs (0, 1), (0, 2), (1, 2), at most
+// MOST_SWEEPS sweeps, stopped once every off-diagonal is 0.
+static void Diagonalize(double a[3][3], double v[3][3])
 {
-    static const int32_t at[3][3] = {{0, 3, 4}, {3, 1, 5}, {4, 5, 2}};
-    double a[3][3];
-    for (int32_t r = 0; r < 3; ++r)
-    {
-        for (int32_t c = 0; c < 3; ++c)
-        {
-            a[r][c] = (double)inertia[at[r][c]];
-        }
-    }
-    double v[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     static const int32_t pairs[3][2] = {{0, 1}, {0, 2}, {1, 2}};
     for (int32_t sweep = 0; sweep < MOST_SWEEPS; ++sweep)
     {
@@ -124,6 +117,21 @@ mvfxPrincipal mvfxPrincipalOf(const float inertia[6])
             }
         }
     }
+}
+
+mvfxPrincipal mvfxPrincipalOf(const float inertia[6])
+{
+    static const int32_t at[3][3] = {{0, 3, 4}, {3, 1, 5}, {4, 5, 2}};
+    double a[3][3];
+    for (int32_t r = 0; r < 3; ++r)
+    {
+        for (int32_t c = 0; c < 3; ++c)
+        {
+            a[r][c] = (double)inertia[at[r][c]];
+        }
+    }
+    double v[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    Diagonalize(a, v);
     // Largest first, a tie keeping the earlier axis first.
     int32_t order[3] = {0, 1, 2};
     for (int32_t i = 1; i < 3; ++i)
