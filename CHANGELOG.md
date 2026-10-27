@@ -6,6 +6,24 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.6.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.5.0...v0.6.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **gpu:** the GPU part builds on Maul RHI 0.8.0. A host that uses Maul RHI itself moves to 0.8.0 too: every new device texture reads as zeros in its first frame, cleared in Maul RHI's own zero pass, and drivers built outside Maul RHI's tree declare driver interface version 8.
+* **step:** `mvfxPlannedLiquid` gains a `unit` field after `radius`, and its `square`, `poly6`, `spiky`, `restInverse`, `softening`, `tensileInverse` and `tensileScale` are in that unit rather than in the particles' space.
+
+### Fixed
+
+* **kernels:** move a liquid's corrections out of its unit by a product ([#98](https://github.com/Rawframe-Project/maul-vfx/issues/98)) ([68c2b6e](https://github.com/Rawframe-Project/maul-vfx/commit/68c2b6ee2be3f8c2e781a25256fe8ca19ed2ce1a)), closes [#70](https://github.com/Rawframe-Project/maul-vfx/issues/70) [#99](https://github.com/Rawframe-Project/maul-vfx/issues/99)
+* **step:** measure a liquid's kernels in a power of two of its radius ([#95](https://github.com/Rawframe-Project/maul-vfx/issues/95)) ([96969d9](https://github.com/Rawframe-Project/maul-vfx/commit/96969d93871b358e2d159f0ef329ebd770391815)), closes [#70](https://github.com/Rawframe-Project/maul-vfx/issues/70)
+
+
+### Build
+
+* **gpu:** take Maul RHI 0.8.0 ([#101](https://github.com/Rawframe-Project/maul-vfx/issues/101)) ([82a7f49](https://github.com/Rawframe-Project/maul-vfx/commit/82a7f4935a5357bc57b0aebf725b9a99cca633b1)), closes [#100](https://github.com/Rawframe-Project/maul-vfx/issues/100)
+
 ## [0.5.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.4.0...v0.5.0) (2026-10-26)
 
 ### Changed
