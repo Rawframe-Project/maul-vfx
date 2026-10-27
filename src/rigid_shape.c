@@ -30,6 +30,18 @@ void mvfxShapePoint(const mvfxBodyShape* s, int32_t i, float out[3])
     }
 }
 
+// The most a body's inverse inertia is about any axis in its units. A
+// needle's about its long axis goes as its length over its diameter
+// squared, and passed binary32's range at a diameter 1e-20 of its length.
+// A body whose inverse's trace passes it (a needle thinner than about a
+// millionth of its length) has its inverse's reciprocal, 2^-40, added to
+// its inertia about each axis, which holds the inverse within it about
+// any axis; every other body keeps its bits, its inverse within it about
+// any axis since the trace bounds the largest eigenvalue. The diagonal
+// alone does not: a needle along (1, 1, 1) has each a third of its
+// inverse about its length.
+#define MOST_INVERSE_INERTIA 0x1p40
+
 // The inverse of a symmetric matrix (xx, yy, zz, xy, xz, yz); zero when it
 // has none.
 static void Invert(const double m[6], double out[6])
@@ -168,6 +180,14 @@ mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, c
         scaled[k] = ldexp(inertia[k], -massUnit - 2 * lengthUnit);
     }
     Invert(scaled, inverse);
+    if (inverse[0] + inverse[1] + inverse[2] > MOST_INVERSE_INERTIA)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            scaled[k] += 1.0 / MOST_INVERSE_INERTIA;
+        }
+        Invert(scaled, inverse);
+    }
     mass->inverseMass = (float)ldexp(1.0 / m, massUnit);
     for (int32_t k = 0; k < 6; ++k)
     {

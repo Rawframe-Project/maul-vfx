@@ -15,7 +15,8 @@
 // across a heightfield's crest meeting it there; passes alternating their
 // order; a twist held by static friction while it can; two bodies on a
 // patch each tipping the way friction pushes it; a pair's twist and spin
-// against a body of a turning unit 2^140 past its own, in the smaller.
+// against a body of a turning unit 2^140 past its own, in the smaller;
+// a needle's inverse inertia along (1, 1, 1) held at 2^40.
 // What the contacts make bodies do (stacking, tipping, resting, an edge
 // held up on a crest) is tested through the public interface in
 // test_rigid.c, test_rigid_hull.c and test_rigid_sleep.c.
@@ -517,6 +518,34 @@ static void TestTurningUnits(void)
           "a pair's turning in its smaller turning unit");
 }
 
+static void TestNeedleInertia(void)
+{
+    // A body's inverse inertia is held by its trace: a hull of a cube's
+    // vertices and volume whose second moments are 2^-20 along each axis
+    // and 2^-20 - 3 2^-43 across each pair has, in its units, an inertia
+    // of 3 2^-43 about (1, 1, 1), an inverse of 2^43 / 3 about it, and
+    // each of the inverse's diagonals 0.89 2^40, below the most: held, it
+    // is at most 2^40 about (1, 1, 1), and still turns there. A built
+    // hull's moments are binary32 and cannot make such a needle along
+    // (1, 1, 1), so the test sets them.
+    static const float cube[24] = {-0.5f, -0.5f, -0.5f, 0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,
+                                   -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
+                                   -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
+    CHECK(mvfxBuildHull(cube, 8, &(mvfxAllocator){0}, &s_hull) == mvfx_success, "a cube's hull");
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        s_hull.moments[k] = 0x1p-20f;
+        s_hull.moments[3 + k] = 0x1p-20f - 0x3p-43f;
+    }
+    static const mvfxRigidDef hull = {.enabled = true, .shape = mvfx_rigidHull, .density = 1.0f};
+    static const float unit[3] = {1, 1, 1};
+    mvfxBodyMass mass;
+    (void)mvfxBodyShapeOf(&hull, &s_hull, unit, &mass);
+    const float* m = mass.inverseInertia;
+    float about = (m[0] + m[1] + m[2] + 2.0f * (m[3] + m[4] + m[5])) / 3.0f;
+    CHECK(about <= 0x1p40f && about >= 0x1p39f, "a needle along (1, 1, 1) held at 2^40");
+}
+
 int main(void)
 {
     TestHeights();
@@ -531,5 +560,6 @@ int main(void)
     TestCrest();
     TestSolverRules();
     TestTurningUnits();
+    TestNeedleInertia();
     return s_failures == 0 ? 0 : 1;
 }
