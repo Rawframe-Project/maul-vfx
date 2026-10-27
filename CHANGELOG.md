@@ -26,7 +26,8 @@ simulation's results.
   in the particles' space; see the fix below
   ([#95](https://github.com/Rawframe-Project/maul-vfx/pull/95)).
 - On WebAssembly the float environment's entries compile away, so each
-  public function is its worker alone: the web build's library is 1.4%
+  public function that works with floats compiles to its worker alone:
+  the web build's library is 1.4%
   smaller, with the same results. Native builds are unchanged
   ([#105](https://github.com/Rawframe-Project/maul-vfx/pull/105)).
 
