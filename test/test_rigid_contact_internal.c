@@ -14,7 +14,8 @@
 // crossing, and side by side at both ends; a box's and a hull's edge laid
 // across a heightfield's crest meeting it there; passes alternating their
 // order; a twist held by static friction while it can; two bodies on a
-// patch each tipping the way friction pushes it.
+// patch each tipping the way friction pushes it; a pair's twist and spin
+// against a body of a turning unit 2^140 past its own, in the smaller.
 // What the contacts make bodies do (stacking, tipping, resting, an edge
 // held up on a crest) is tested through the public interface in
 // test_rigid.c, test_rigid_hull.c and test_rigid_sleep.c.
@@ -25,6 +26,7 @@
 #include "rigid_contact.h"
 #include "test_harness.h"
 
+#include <float.h>
 #include <math.h>
 
 static const mvfxRigidDef s_box = {.enabled = true, .shape = mvfx_rigidBox, .density = 1.0f};
@@ -478,6 +480,43 @@ static void TestSolverRules(void)
           "each body tips the way it is pushed");
 }
 
+static void TestTurningUnits(void)
+{
+    // A pair's turning is taken in the smaller of its bodies' turning
+    // units: a unit body turned 0.01 about y over a substep, and spinning
+    // at 2 about it, against one alike but of a length unit 2^70 (its
+    // turning unit 2^140 past the first's), held by static friction up to
+    // mvfxTurnLimit's and slowed by dynamic friction: the first's twist is
+    // cancelled and its spin stopped, as against the world, the second
+    // turned by a share below binary32's range, both finite.
+    const mvfxRigidDef rigid = {.enabled = true, .staticFriction = 0.6f};
+    const mvfxRigidSolve solve = {.rigid = &rigid, .h = 1.0f / 480.0f};
+    static const float up[3] = {0, 1, 0};
+    mvfxBody light = {.q = {0, sinf(0.005f), 0, cosf(0.005f)},
+                      .q0 = {0, 0, 0, 1},
+                      .w = {0, 2, 0},
+                      .inverseMass = 1.0f,
+                      .inverseInertia = {6, 6, 6, 0, 0, 0}};
+    mvfxBody heavy = {.q = {0, 0, 0, 1},
+                      .q0 = {0, 0, 0, 1},
+                      .inverseMass = 1.0f,
+                      .inverseInertia = {6, 6, 6, 0, 0, 0},
+                      .lengthUnit = 70};
+    float twisted = 0.0f;
+    float spun = 0.0f;
+    mvfxTwistPatch(&solve, &light, &heavy, up, mvfxTurnLimit(&light, &heavy, 1.0f, 1.0f), &twisted);
+    mvfxUnspinPatch(&light, &heavy, up, mvfxTurnLimit(&light, &heavy, 1.0f, 1.0f), &spun);
+    bool finite = true;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        finite = finite && isfinite(light.q[k]) && isfinite(heavy.q[k]) &&
+                 (k == 3 || (isfinite(light.w[k]) && isfinite(heavy.w[k])));
+    }
+    CHECK(finite && fabsf(light.q[1]) <= 1e-6f && fabsf(light.w[1]) <= 1e-6f &&
+              fabsf(heavy.q[1]) < FLT_MIN && fabsf(heavy.w[1]) < FLT_MIN,
+          "a pair's turning in its smaller turning unit");
+}
+
 int main(void)
 {
     TestHeights();
@@ -491,5 +530,6 @@ int main(void)
     TestCapsulePairs();
     TestCrest();
     TestSolverRules();
+    TestTurningUnits();
     return s_failures == 0 ? 0 : 1;
 }
