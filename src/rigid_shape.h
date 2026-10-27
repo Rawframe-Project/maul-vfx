@@ -50,8 +50,13 @@ enum
 // A body's inverse mass, and its inertia and inverse inertia about its
 // center in its frame (xx, yy, zz, xy, xz, yz), in its own units: a mass
 // of 2^massUnit, the power of two that leaves its mass from 1/2 to 1 in
-// it, and a length of 2^lengthUnit, the one that leaves its reach from 1/2
-// to 1 (its inertia in the mass unit times the length unit squared). A
+// it, and a length of 2^lengthUnit, the one that leaves its extent from
+// 1/2 to 1 (its inertia in the mass unit times the length unit squared).
+// Its extent is the largest of the sizes its shape takes: a sphere's
+// diameter, a capsule's diameter and length, a box's three sizes, a hull's
+// vertices' coordinates at its size. The GPU part takes the same, the
+// largest of binary32 values, so both pick the same units (for an extent
+// in binary32's normal range: a GPU may flush a subnormal one to 0). A
 // body's mass and inertia span binary32's range and past it (a body's
 // size is from 0 to MVFX_MAX_EXTENT, its density above 0 to
 // MVFX_MAX_EXTENT, and its inertia goes as the density times the fifth
@@ -117,7 +122,10 @@ typedef struct mvfxBodyContacts
 // A contact between two bodies a and b (by index): its points in each
 // one's frame, the normal from b toward a in the particles' space, and as
 // a body's contact its normal multiplier, its speed before, its
-// restitution's impulses and on a pair's first its friction's.
+// restitution's impulses and on a pair's first its friction's. Its
+// multipliers and impulses are in the lighter body's mass unit, those
+// against turning (twisted, spun) in the smaller of the bodies' mass units
+// times their length units squared (rigid_body.h's mvfxTwistPatch).
 typedef struct mvfxPairContact
 {
     int32_t a;

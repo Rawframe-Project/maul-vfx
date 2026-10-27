@@ -102,6 +102,21 @@ void mvfxBodyToUnits(mvfxBody* b, int32_t massUnit, int32_t lengthUnit)
     b->lengthUnit = lengthUnit;
 }
 
+float mvfxBodyLength(const mvfxBody* b, const float v[3])
+{
+    float l[3];
+    InLength(b, v, l);
+    return Scale(sqrtf(Dot(l, l)), b->lengthUnit);
+}
+
+float mvfxBodyAcross(const mvfxBody* b, const float d[3], const float n[3])
+{
+    float l[3];
+    InLength(b, d, l);
+    float along = Dot(l, n);
+    return Scale(sqrtf(fmaxf(Dot(l, l) - along * along, 0.0f)), b->lengthUnit);
+}
+
 float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3])
 {
     float lever[3];
@@ -113,10 +128,25 @@ float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3])
     return b->inverseMass + Dot(c, turned);
 }
 
+// The body's mass unit times its length unit squared, as an exponent.
+static int32_t TurningUnit(const mvfxBody* b)
+{
+    return b->massUnit + 2 * b->lengthUnit;
+}
+
+// Of a patch's bodies (b NULL for the world), the one whose turning unit
+// is the smaller: the patch's turning is taken in it, so each body's
+// weight for turning is its own times a power of two of at most 1.
+static const mvfxBody* TurningBody(const mvfxBody* a, const mvfxBody* b)
+{
+    return b != nullptr && TurningUnit(b) < TurningUnit(a) ? b : a;
+}
+
 float mvfxTurnLimit(const mvfxBody* a, const mvfxBody* b, float load, float radius)
 {
-    (void)b;
-    return Scale(load, -a->lengthUnit) * Scale(radius, -a->lengthUnit);
+    const mvfxBody* least = TurningBody(a, b);
+    return Scale(load, a->massUnit - least->massUnit - least->lengthUnit) *
+           Scale(radius, -least->lengthUnit);
 }
 
 // Turns q by a turn vector to first order (q + [turn, 0] q / 2),
@@ -266,7 +296,7 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
     {
         st[k] = slide[k] - along * n[k];
     }
-    float slid = sqrtf(Dot(st, st));
+    float slid = mvfxBodyLength(a, st);
     if (!(slid > 0.0f) || !(load > 0.0f))
     {
         return;
@@ -323,7 +353,7 @@ void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3
     {
         v[k] -= along * n[k];
     }
-    float speed = sqrtf(Dot(v, v));
+    float speed = mvfxBodyLength(a, v);
     if (!(speed > 0.0f))
     {
         return;
@@ -359,16 +389,28 @@ static float TurnAbout(const mvfxBody* b, const float n[3])
     return sign * (dq[0] * n[0] + dq[1] * n[1] + dq[2] * n[2]);
 }
 
+// The body's turn from an impulse v against turning in a unit of
+// 2^turning (its inverse inertia times v).
+static void TurningTimes(const mvfxBody* b, int32_t turning, const float v[3], float out[3])
+{
+    InverseInertiaTimes(b, v, out);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = Scale(out[k], turning - TurningUnit(b));
+    }
+}
+
 // The bodies' weight for turning about unit n: their inverse inertias
-// about it.
+// about it, in the turning unit of TurningBody.
 static float TwistWeight(const mvfxBody* a, const mvfxBody* b, const float n[3])
 {
+    int32_t turning = TurningUnit(TurningBody(a, b));
     float turned[3];
-    InverseInertiaTimes(a, n, turned);
+    TurningTimes(a, turning, n, turned);
     float weight = Dot(n, turned);
     if (b != nullptr)
     {
-        InverseInertiaTimes(b, n, turned);
+        TurningTimes(b, turning, n, turned);
         weight += Dot(n, turned);
     }
     return weight;
@@ -389,14 +431,15 @@ void mvfxTwistPatch(const mvfxRigidSolve* s, mvfxBody* a, mvfxBody* b, const flo
         return;
     }
     *twisted += holding;
+    int32_t turning = TurningUnit(TurningBody(a, b));
     float back[3];
     float l[3] = {-turn / weight * n[0], -turn / weight * n[1], -turn / weight * n[2]};
-    InverseInertiaTimes(a, l, back);
+    TurningTimes(a, turning, l, back);
     TurnBy(a->q, back);
     if (b != nullptr)
     {
         const float m[3] = {-l[0], -l[1], -l[2]};
-        InverseInertiaTimes(b, m, back);
+        TurningTimes(b, turning, m, back);
         TurnBy(b->q, back);
     }
 }
@@ -411,10 +454,11 @@ void mvfxUnspinPatch(mvfxBody* a, mvfxBody* b, const float n[3], float limit, fl
     }
     float j = fminf(fabsf(spin) / weight, fmaxf(limit - *spun, 0.0f));
     *spun += j;
+    int32_t turning = TurningUnit(TurningBody(a, b));
     float sign = spin > 0.0f ? -1.0f : 1.0f;
     float turned[3];
     const float l[3] = {sign * j * n[0], sign * j * n[1], sign * j * n[2]};
-    InverseInertiaTimes(a, l, turned);
+    TurningTimes(a, turning, l, turned);
     for (int32_t k = 0; k < 3; ++k)
     {
         a->w[k] += turned[k];
@@ -422,7 +466,7 @@ void mvfxUnspinPatch(mvfxBody* a, mvfxBody* b, const float n[3], float limit, fl
     if (b != nullptr)
     {
         const float m[3] = {-l[0], -l[1], -l[2]};
-        InverseInertiaTimes(b, m, turned);
+        TurningTimes(b, turning, m, turned);
         for (int32_t k = 0; k < 3; ++k)
         {
             b->w[k] += turned[k];

@@ -72,12 +72,12 @@ typedef struct Patch
 } Patch;
 
 // The contacts' mean distance from the patch's center across its normal,
-// weighted by their multipliers, the body at orientation q.
+// weighted by their multipliers, of body b.
 static float RadiusOf(const mvfxBodyContact* items, int32_t count, int32_t first,
-                      const Patch* patch, const float q[4])
+                      const Patch* patch, const mvfxBody* b)
 {
     float n[3];
-    ToBody(q, patch->n, n);
+    ToBody(b->q, patch->n, n);
     float radius = 0.0f;
     for (int32_t i = first; i < count; ++i)
     {
@@ -85,15 +85,13 @@ static float RadiusOf(const mvfxBodyContact* items, int32_t count, int32_t first
         float lambda = c->collider == items[first].collider && c->lambda > 0.0f ? c->lambda : 0.0f;
         float d[3] = {c->body[0] - patch->point[0], c->body[1] - patch->point[1],
                       c->body[2] - patch->point[2]};
-        float along = Dot(d, n);
-        float across = Dot(d, d) - along * along;
-        radius += lambda * sqrtf(fmaxf(across, 0.0f));
+        radius += lambda * mvfxBodyAcross(b, d, n);
     }
     return radius / patch->load;
 }
 
 static bool PatchOf(const mvfxBodyContact* items, int32_t count, int32_t first, float h,
-                    const float q[4], Patch* patch)
+                    const mvfxBody* b, Patch* patch)
 {
     float* point = patch->point;
     float* n = patch->n;
@@ -127,14 +125,14 @@ static bool PatchOf(const mvfxBodyContact* items, int32_t count, int32_t first, 
     {
         point[k] /= *load;
     }
-    patch->radius = RadiusOf(items, count, first, patch, q);
+    patch->radius = RadiusOf(items, count, first, patch, b);
     patch->spread.count = 0;
     for (int32_t i = first; i < count && patch->spread.count < MVFX_MAX_RIGID_CONTACTS; ++i)
     {
         const mvfxBodyContact* c = &items[i];
         if (c->collider == collider)
         {
-            mvfxRotate(q, c->body, patch->spread.offsets[patch->spread.count++]);
+            mvfxRotate(b->q, c->body, patch->spread.offsets[patch->spread.count++]);
         }
     }
     return true;
@@ -158,7 +156,7 @@ static void Rub(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, in
     for (int32_t i = 0; i < count; ++i)
     {
         Patch patch;
-        if (FirstOf(items, i) && PatchOf(items, count, i, s->h, b->q, &patch))
+        if (FirstOf(items, i) && PatchOf(items, count, i, s->h, b, &patch))
         {
             float r[3];
             float r0[3];
@@ -178,7 +176,7 @@ static void Slow(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, i
     for (int32_t i = 0; i < count; ++i)
     {
         Patch patch;
-        if (FirstOf(items, i) && PatchOf(items, count, i, s->h, b->q, &patch))
+        if (FirstOf(items, i) && PatchOf(items, count, i, s->h, b, &patch))
         {
             float r[3];
             mvfxRotate(b->q, patch.point, r);

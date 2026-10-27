@@ -34,13 +34,18 @@ static mvfxBodyShape ShapeAt(const mvfxRigidSolve* s, int32_t i, mvfxBodyPose* p
     return mvfxBodyShapeOf(s->rigid, s->hull, size, &mass);
 }
 
-// Body i as a pair's solve takes it: in the particles' units, the two
-// bodies' masses in one unit.
-static mvfxBody PairBody(const mvfxRigidSolve* s, int32_t i)
+// Bodies i and j as a pair's solve takes them: in the lighter's mass
+// unit, each in its own length unit. Each one's inverse mass and inertia
+// are its own times a power of two of at most 1, so neither leaves
+// binary32's range, and one past 2^150 times the other's mass moves no
+// more than the world.
+static void PairBodies(const mvfxRigidSolve* s, int32_t i, int32_t j, mvfxBody* a, mvfxBody* b)
 {
-    mvfxBody b = mvfxLoadBody(s, i);
-    mvfxBodyToUnits(&b, 0, 0);
-    return b;
+    *a = mvfxLoadBody(s, i);
+    *b = mvfxLoadBody(s, j);
+    int32_t unit = a->massUnit < b->massUnit ? a->massUnit : b->massUnit;
+    mvfxBodyToUnits(a, unit, a->lengthUnit);
+    mvfxBodyToUnits(b, unit, b->lengthUnit);
 }
 
 // A contact's offsets from both bodies' centers and its depth, at the
@@ -419,8 +424,7 @@ static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* 
         float lambda = fmaxf(pairs[i].lambda, 0.0f);
         float d[3] = {pairs[i].onA[0] - patch.onA[0], pairs[i].onA[1] - patch.onA[1],
                       pairs[i].onA[2] - patch.onA[2]};
-        float along = Dot(d, n);
-        out->radius += lambda * sqrtf(fmaxf(Dot(d, d) - along * along, 0.0f));
+        out->radius += lambda * mvfxBodyAcross(a, d, n);
         if (out->spreadA.count < MVFX_MAX_RIGID_CONTACTS)
         {
             mvfxRotate(a->q, pairs[i].onA, out->spreadA.offsets[out->spreadA.count++]);
@@ -478,7 +482,7 @@ static void HoldStabilized(mvfxBody* a, mvfxBody* b, const mvfxPairContact* pair
     {
         slide[k] -= along * n[k];
     }
-    float slid = sqrtf(Dot(slide, slide));
+    float slid = mvfxBodyLength(a, slide);
     if (!(slid > 0.0f))
     {
         return;
@@ -503,8 +507,9 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
                       bool friction, bool backward)
 {
     mvfxPairContact* pairs = s->instance->emitters[s->emitter].rigidPairs;
-    mvfxBody a = PairBody(s, pairs[first].a);
-    mvfxBody b = PairBody(s, pairs[first].b);
+    mvfxBody a;
+    mvfxBody b;
+    PairBodies(s, pairs[first].a, pairs[first].b, &a, &b);
     float onA[3] = {0.0f, 0.0f, 0.0f};
     float onB[3] = {0.0f, 0.0f, 0.0f};
     for (int32_t i = first; i < end; ++i)
@@ -556,8 +561,9 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
 static void BouncePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool backward)
 {
     mvfxPairContact* pairs = s->instance->emitters[s->emitter].rigidPairs;
-    mvfxBody a = PairBody(s, pairs[first].a);
-    mvfxBody b = PairBody(s, pairs[first].b);
+    mvfxBody a;
+    mvfxBody b;
+    PairBodies(s, pairs[first].a, pairs[first].b, &a, &b);
     for (int32_t step = first; step < end; ++step)
     {
         mvfxPairContact* c = &pairs[mvfxPassIndex(first, end, step, backward)];

@@ -81,14 +81,23 @@ void mvfxStoreBody(const mvfxRigidSolve* s, int32_t i, const mvfxBody* b);
 // 2^massUnit and a length unit of 2^lengthUnit, by powers of two.
 void mvfxBodyToUnits(mvfxBody* b, int32_t massUnit, int32_t lengthUnit);
 
+// The size of v, taken in the body's length unit: the squares of a slide
+// or a speed far below the body's own size stay in binary32's normal range,
+// where the size is the same bits as taken whole.
+float mvfxBodyLength(const mvfxBody* b, const float v[3]);
+
+// The size of d across unit n, taken in the body's length unit as
+// mvfxBodyLength.
+float mvfxBodyAcross(const mvfxBody* b, const float d[3], const float n[3]);
+
 // The generalized inverse mass at offset r along unit n, in the body's
 // mass unit.
 float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3]);
 
 // The most a patch's friction against turning takes, in the unit its
-// weight for turning (mvfxTwistPatch) is in: its load (in the body's mass
-// unit, by the particles' lengths) times its radius, for body a, and b
-// in the same units (NULL for the world).
+// weight for turning (mvfxTwistPatch) is in: its load (in the bodies'
+// mass unit, by the particles' lengths) times its radius, for body a, and
+// b in the same mass unit (NULL for the world).
 float mvfxTurnLimit(const mvfxBody* a, const mvfxBody* b, float load, float radius);
 
 // Moves the body by a positional impulse p at offset r: its place by p
@@ -168,7 +177,10 @@ void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3
 // contacts' mean distance from its center, weighted by their normal
 // multipliers); dynamic by velocity, the spin about n cut by impulses
 // summing (spun) to at most limit, the dynamic coefficient times the
-// pressed impulse times the radius. Each limit is mvfxTurnLimit's.
+// pressed impulse times the radius. Each limit is mvfxTurnLimit's. Both
+// take the bodies' turning in the smaller of their mass units times their
+// length units squared, each one's weight for it its own times a power
+// of two of at most 1.
 void mvfxTwistPatch(const mvfxRigidSolve* s, mvfxBody* a, mvfxBody* b, const float n[3],
                     float limit, float* twisted);
 void mvfxUnspinPatch(mvfxBody* a, mvfxBody* b, const float n[3], float limit, float* spun);

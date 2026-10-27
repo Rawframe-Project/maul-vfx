@@ -127,9 +127,7 @@ fn pairPatchOf(a: Solid, b: Solid, first: u32, end: u32, h: f32,
     for (var i = first; i < end; i++) {
         let c = loadPair(poolAt(i));
         let lambda = max(c.lambda, 0.0);
-        let d = c.onA - area.onA;
-        let along = dot3(d, local);
-        (*out).radius += lambda * sqrt(max(dot3(d, d) - along * along, 0.0));
+        (*out).radius += lambda * bodyAcross(a, c.onA - area.onA, local);
         if ((*out).count < MOST_CONTACTS) {
             (*out).spreadA[(*out).count] = rotate(a.q, c.onA);
             (*out).spreadB[(*out).count] = rotate(b.q, c.onB);
@@ -155,7 +153,7 @@ fn rubPair(a: ptr<function, Solid>, b: ptr<function, Solid>, p: PairPatch,
     let slide = ((*a).x + p.ra - (*a).x0 - p.ra0) - ((*b).x + p.rb - (*b).x0 - p.rb0);
     let along = dot3(slide, p.n);
     let st = slide - along * p.n;
-    let slid = sqrt(dot3(st, st));
+    let slid = bodyLength(*a, st);
     if (!(slid > 0.0) || !(p.load > 0.0)) {
         return;
     }
@@ -177,7 +175,7 @@ fn slowPair(a: ptr<function, Solid>, b: ptr<function, Solid>, p: PairPatch,
             slowed: ptr<function, f32>) {
     var v = pointVelocity(*a, p.ra) - pointVelocity(*b, p.rb);
     v -= dot3(v, p.n) * p.n;
-    let speed = sqrt(dot3(v, v));
+    let speed = bodyLength(*a, v);
     if (!(speed > 0.0)) {
         return;
     }
@@ -192,11 +190,44 @@ fn slowPair(a: ptr<function, Solid>, b: ptr<function, Solid>, p: PairPatch,
     bodyKick(b, lb, j * u);
 }
 
+// The body's mass unit times its length unit squared, as an exponent.
+fn turningUnit(b: Solid) -> i32 {
+    return b.massUnit + 2 * b.lengthUnit;
+}
+
+// The smaller of a pair's turning units, as the core's TurningBody's.
+fn pairTurning(a: Solid, b: Solid) -> i32 {
+    return min(turningUnit(a), turningUnit(b));
+}
+
+// The body's turn from an impulse v against turning in a unit of
+// 2^turning, as the core's TurningTimes.
+fn turningTimes(b: Solid, turning: i32, v: vec3<f32>) -> vec3<f32> {
+    return ldexp(inverseInertiaTimes(b, v), vec3<i32>(turning - turningUnit(b)));
+}
+
+// The pair's weight for turning about unit n, as the core's TwistWeight.
+fn pairTwistWeight(a: Solid, b: Solid, n: vec3<f32>) -> f32 {
+    let turning = pairTurning(a, b);
+    return dot3(n, turningTimes(a, turning, n)) + dot3(n, turningTimes(b, turning, n));
+}
+
+// The most a pair patch's friction against turning takes, as the core's
+// mvfxTurnLimit with b.
+fn pairTurnLimit(a: Solid, b: Solid, load: f32, radius: f32) -> f32 {
+    var least = a;
+    if (turningUnit(b) < turningUnit(a)) {
+        least = b;
+    }
+    return ldexp(load, a.massUnit - least.massUnit - least.lengthUnit) *
+           ldexp(radius, -least.lengthUnit);
+}
+
 // A pair patch's twist held, as the core's mvfxTwistPatch with b.
 fn twistPair(a: ptr<function, Solid>, b: ptr<function, Solid>, n: vec3<f32>, limit: f32,
              twisted: ptr<function, f32>) {
     let turn = turnAbout(*a, n) - turnAbout(*b, n);
-    let weight = twistWeight(*a, n) + twistWeight(*b, n);
+    let weight = pairTwistWeight(*a, *b, n);
     if (turn == 0.0 || !(weight > 0.0)) {
         return;
     }
@@ -206,23 +237,25 @@ fn twistPair(a: ptr<function, Solid>, b: ptr<function, Solid>, n: vec3<f32>, lim
     }
     *twisted += holding;
     let l = -turn / weight * n;
-    (*a).q = turnFirst((*a).q, inverseInertiaTimes(*a, l));
-    (*b).q = turnFirst((*b).q, inverseInertiaTimes(*b, -l));
+    let turning = pairTurning(*a, *b);
+    (*a).q = turnFirst((*a).q, turningTimes(*a, turning, l));
+    (*b).q = turnFirst((*b).q, turningTimes(*b, turning, -l));
 }
 
 // A pair patch's spin slowed, as the core's mvfxUnspinPatch with b.
 fn unspinPair(a: ptr<function, Solid>, b: ptr<function, Solid>, n: vec3<f32>, limit: f32,
               spun: ptr<function, f32>) {
     let spin = dot3((*a).w, n) - dot3((*b).w, n);
-    let weight = twistWeight(*a, n) + twistWeight(*b, n);
+    let weight = pairTwistWeight(*a, *b, n);
     if (spin == 0.0 || !(weight > 0.0)) {
         return;
     }
     let j = min(abs(spin) / weight, max(limit - *spun, 0.0));
     *spun += j;
     let l = select(1.0, -1.0, spin > 0.0) * j * n;
-    (*a).w += inverseInertiaTimes(*a, l);
-    (*b).w += inverseInertiaTimes(*b, -l);
+    let turning = pairTurning(*a, *b);
+    (*a).w += turningTimes(*a, turning, l);
+    (*b).w += turningTimes(*b, turning, -l);
 }
 
 // Holds a run's contacts where post-stabilization found them, as the
@@ -240,7 +273,7 @@ fn holdPair(a: ptr<function, Solid>, b: ptr<function, Solid>, first: u32, end: u
     }
     var slide = after - before;
     slide -= dot3(slide, n) * n;
-    let slid = sqrt(dot3(slide, slide));
+    let slid = bodyLength(*a, slide);
     if (!(slid > 0.0)) {
         return;
     }
@@ -252,20 +285,23 @@ fn holdPair(a: ptr<function, Solid>, b: ptr<function, Solid>, first: u32, end: u
     bodyPush(b, rb, lambda * u, true);
 }
 
-// Body i as a pair's solve takes it, as the core's PairBody: in the
-// particles' units, the two bodies' masses in one unit.
-fn pairSolid(i: u32) -> Solid {
-    var b = loadSolid(i);
-    toUnits(&b, 0, 0);
-    return b;
+// Bodies i and j as a pair's solve takes them, as the core's PairBodies:
+// in the lighter's mass unit, each in its own length unit.
+fn pairSolids(i: u32, j: u32, a: ptr<function, Solid>, b: ptr<function, Solid>) {
+    *a = loadSolid(i);
+    *b = loadSolid(j);
+    let unit = min((*a).massUnit, (*b).massUnit);
+    toUnits(a, unit, (*a).lengthUnit);
+    toUnits(b, unit, (*b).lengthUnit);
 }
 
 // A pass over the run first to end, as the core's SolvePair: stabilizing
 // (start) or pushing apart, then with friction the run's static friction.
 fn solvePair(first: u32, end: u32, start: bool, friction: bool, backward: bool, h: f32) {
     let head = loadPair(poolAt(first));
-    var a = pairSolid(head.a);
-    var b = pairSolid(head.b);
+    var a: Solid;
+    var b: Solid;
+    pairSolids(head.a, head.b, &a, &b);
     var onA = vec3<f32>(0.0);
     var onB = vec3<f32>(0.0);
     let count = f32(end - first);
@@ -300,7 +336,7 @@ fn solvePair(first: u32, end: u32, start: bool, friction: bool, backward: bool, 
         rubPair(&a, &b, area, &rubbed);
         blocks[at + 14u] = bitcast<u32>(rubbed);
         var twisted = bitcast<f32>(blocks[at + 16u]);
-        twistPair(&a, &b, area.n, turnLimit(a, area.load, area.radius), &twisted);
+        twistPair(&a, &b, area.n, pairTurnLimit(a, b, area.load, area.radius), &twisted);
         blocks[at + 16u] = bitcast<u32>(twisted);
     }
     storeMoved(head.a, a);
@@ -311,8 +347,9 @@ fn solvePair(first: u32, end: u32, start: bool, friction: bool, backward: bool, 
 // dynamic friction, as the core's BouncePair.
 fn bouncePair(first: u32, end: u32, backward: bool, h: f32, still: f32) {
     let head = loadPair(poolAt(first));
-    var a = pairSolid(head.a);
-    var b = pairSolid(head.b);
+    var a: Solid;
+    var b: Solid;
+    pairSolids(head.a, head.b, &a, &b);
     for (var step = 0u; step < end - first; step++) {
         let at = poolAt(first + passIndex(end - first, step, backward));
         let c = loadPair(at);
@@ -339,8 +376,8 @@ fn bouncePair(first: u32, end: u32, backward: bool, h: f32, still: f32) {
         slowPair(&a, &b, area, &slowed);
         blocks[at + 15u] = bitcast<u32>(slowed);
         var spun = bitcast<f32>(blocks[at + 17u]);
-        unspinPair(&a, &b, area.n, turnLimit(a, params.rigidContact.z * area.pressed, area.radius),
-                   &spun);
+        unspinPair(&a, &b, area.n,
+                   pairTurnLimit(a, b, params.rigidContact.z * area.pressed, area.radius), &spun);
         blocks[at + 17u] = bitcast<u32>(spun);
     }
     storeMoved(head.a, a);
