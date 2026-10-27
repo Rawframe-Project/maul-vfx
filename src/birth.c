@@ -277,6 +277,7 @@ static void AppendValues(mvfxInstance* instance, int32_t emitter, const mvfxBirt
     {
         mvfxDrawVector(&compiled->size, age, parameters, Draw(instance, emitter, SIZE_SALT, serial),
                        values);
+        mvfxTieSize(&compiled->rigid, values);
         StoreVector(instance, emitter, mvfx_attributeSizeX, 3, at, values);
     }
     if (Has(compiled, mvfx_attributeColorR))

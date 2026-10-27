@@ -593,14 +593,22 @@ extern "C"
 #define MVFX_MAX_SLEEP_TIME 3600.0f
 
     // A rigid particle's shape, sized by the particle's size in the
-    // particles' space and turned by its orientation.
+    // particles' space and turned by its orientation. Each size axis is the
+    // shape's extent along it, so a host may draw a mesh scaled by the size:
+    // an axis a shape does not set is X. An emitter whose size source's
+    // ends on such an axis are not X's, or whose size over life per axis
+    // has another curve on it, is refused, and so is a spawn request's
+    // size that differs there; a host module that writes one kills the
+    // particle (valuesKilled). A birth takes X's draw for those axes, and
+    // a size the effect does not fix, a parameter's or an event's
+    // inherited one, takes X for them, their own values ignored.
     typedef uint8_t mvfxRigidShape;
     enum
     {
-        // A sphere of diameter size X.
+        // A sphere of diameter size X; Y and Z are X.
         mvfx_rigidSphere = 0,
         // A capsule along its Y of diameter size X and length size Y (end to
-        // end, at least its diameter).
+        // end, at least its diameter); Z is X.
         mvfx_rigidCapsule = 1,
         // A box of size X by Y by Z.
         mvfx_rigidBox = 2,
@@ -1106,9 +1114,10 @@ extern "C"
         float boundsMin[3];
         float boundsMax[3];
         // The optional initial values, each stored only when its source is
-        // set: size per axis (X, Y, Z), linear color (red, green, blue,
-        // alpha), a sprite's angle in radians and spin in radians a second
-        // (either sets both, the other 0).
+        // set: size per axis (X, Y, Z; for a rigid sphere or capsule, the
+        // axes its shape does not set equal to X, mvfxRigidShape), linear
+        // color (red, green, blue, alpha), a sprite's angle in radians and
+        // spin in radians a second (either sets both, the other 0).
         mvfxVectorSource size;
         mvfxVectorSource color;
         mvfxScalarSource angle;

@@ -19,6 +19,10 @@
 // a box spun and dropped in its own units: the same bits, scaled, at
 // sizes and densities near binary32's ends, and each shape finite at the
 // ends of the limits;
+// a sphere's and a capsule's sizes on the axes they do not set held to X:
+// refused in the effect and a spawn request, taken from X's draw, a
+// parameter's and an inherited one's X, killed when a host module sets
+// them apart;
 // the checks.
 
 #include "test_harness.h"
@@ -1183,6 +1187,213 @@ static void TestUnits(void)
     CHECK(finite, "finite at the ends of sizes and densities");
 }
 
+// The sizes of the first particles as the host modules see them after
+// motion, and how many there were; with s_untie, the first one's Y set
+// apart from its X before motion, once.
+enum
+{
+    SIZED = 4
+};
+
+static float s_sizes[SIZED][3];
+static int32_t s_sized;
+static bool s_untie;
+
+static void PeekSizes(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    s_sized = p->count;
+    for (int32_t i = 0; i < p->count && i < SIZED && p->size[0] != NULL; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            s_sizes[i][k] = p->size[k][i];
+        }
+    }
+}
+
+static void Untie(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    if (s_untie && p->count > 0)
+    {
+        p->size[1][0] = 2.0f * p->size[0][0];
+        s_untie = false;
+    }
+}
+
+static const mvfxHostModule s_sizing[2] = {
+    {.stage = mvfx_stageBeforeMotion, .function = Untie},
+    {.stage = mvfx_stageAfterMotion, .function = PeekSizes},
+};
+
+// Whether an effect of emitters is made.
+static bool Made(mvfxContext* context, const mvfxEmitterDef* emitters, int32_t count,
+                 const float* parameters)
+{
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = count;
+    def.parameters = parameters;
+    def.parameterCount = parameters != NULL ? 1 : 0;
+    mvfxEffectId effect = {0};
+    return mvfxCreateEffect(context, &def, &effect) == mvfx_success;
+}
+
+// Steps emitters (their last one's sizes peeked) from four of the last
+// one's bodies spawned at the origin with sizes (NULL to draw them), or
+// none, for a second; whether they were spawned.
+static bool Sized(const mvfxEmitterDef* emitters, int32_t count, const float* parameters,
+                  const float* sizes, bool spawn)
+{
+    memset(&s_scene, 0, sizeof s_scene);
+    memset(s_sizes, 0, sizeof s_sizes);
+    s_sized = 0;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+    mvfxEmitterDef hosted[2];
+    memcpy(hosted, emitters, (size_t)count * sizeof hosted[0]);
+    hosted[count - 1].hostModules = s_sizing;
+    hosted[count - 1].hostModuleCount = 2;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = hosted;
+    def.emitterCount = count;
+    def.parameters = parameters;
+    def.parameterCount = parameters != NULL ? 1 : 0;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+          "instance");
+    static const double places[3 * SIZED] = {0, 1, 0, 2, 1, 0, 4, 1, 0, 6, 1, 0};
+    mvfxSpawnRequest request = {.count = SIZED, .positions = places, .sizes = sizes};
+    bool spawned = !spawn || mvfxInstance_Spawn(s_scene.context, s_scene.instance, count - 1,
+                                                &request) == mvfx_success;
+    Steps(60);
+    return spawned;
+}
+
+// Whether the peeked sizes keep Y (for a sphere) and Z at X, and at want
+// where it is not 0.
+static bool Tied(mvfxRigidShape shape, const float want[3])
+{
+    bool tied = s_sized > 0;
+    for (int32_t i = 0; i < s_sized && i < SIZED; ++i)
+    {
+        tied = tied && s_sizes[i][2] == s_sizes[i][0] &&
+               (shape != mvfx_rigidSphere || s_sizes[i][1] == s_sizes[i][0]);
+        for (int32_t k = 0; want != NULL && k < 3; ++k)
+        {
+            tied = tied && s_sizes[i][k] == want[k];
+        }
+    }
+    return tied;
+}
+
+static void TestTiedSizes(void)
+{
+    // A size axis a shape does not set is X: a sphere's Y and Z, a
+    // capsule's Z. A size source's ends or size over life per axis
+    // otherwise are refused; a capsule's own Y, a box's three and the same
+    // curves per axis are not.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = nullptr;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const mvfxCurveKey grow[2] = {{0, 1, 0, 0, mvfx_interpolationLinear},
+                                         {1, 2, 0, 0, mvfx_interpolationLinear}};
+    static const mvfxCurveKey shrink[2] = {{0, 1, 0, 0, mvfx_interpolationLinear},
+                                           {1, 0.5f, 0, 0, mvfx_interpolationLinear}};
+    const mvfxLifeCurve grows = {.value = 1, .curve = {.keys = grow, .keyCount = 2}};
+    const mvfxLifeCurve shrinks = {.value = 1, .curve = {.keys = shrink, .keyCount = 2}};
+    int32_t refused = 0;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        mvfxEmitterDef bad =
+            Rigid(c == 2 ? mvfx_rigidCapsule : mvfx_rigidSphere, 1, c == 2 ? 3 : 1, 1);
+        bad.size.min[1] = c == 0 ? 0.5f : bad.size.min[1];
+        bad.size.max[2] = c == 1 || c == 2 ? 2.0f : bad.size.max[2];
+        bad.overLife.size =
+            (mvfxSizeOverLife){.enabled = c == 3, .perAxis = true, .size = {grows, shrinks, grows}};
+        refused += Made(context, &bad, 1, NULL) ? 0 : 1;
+    }
+    mvfxEmitterDef good[3] = {Rigid(mvfx_rigidCapsule, 1, 3, 1), Rigid(mvfx_rigidBox, 1, 2, 3),
+                              Rigid(mvfx_rigidSphere, 1, 1, 1)};
+    good[2].overLife.size =
+        (mvfxSizeOverLife){.enabled = true, .perAxis = true, .size = {grows, grows, grows}};
+    bool made = true;
+    for (int32_t c = 0; c < 3; ++c)
+    {
+        made = made && Made(context, &good[c], 1, NULL);
+    }
+    CHECK(refused == 4 && made, "sizes unlike X on axes a shape does not set refused");
+    mvfxDestroyContext(context);
+    // A spawn request's size is refused there too.
+    mvfxEmitterDef sphere = Rigid(mvfx_rigidSphere, 1, 1, 1);
+    static const float apart[3 * SIZED] = {1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1};
+    static const float even[3 * SIZED] = {1, 1, 1, 0.5f, 0.5f, 0.5f, 1, 1, 1, 2, 2, 2};
+    bool refusedSpawn = !Sized(&sphere, 1, NULL, apart, true);
+    mvfxDestroyContext(s_scene.context);
+    bool spawned = Sized(&sphere, 1, NULL, even, true);
+    CHECK(refusedSpawn && spawned && Tied(mvfx_rigidSphere, NULL),
+          "a spawn request's sizes unlike X refused");
+    mvfxDestroyContext(s_scene.context);
+    // A size drawn axis by axis takes X's draw for the axes the shape does
+    // not set.
+    for (int32_t shape = 0; shape < 2; ++shape)
+    {
+        mvfxEmitterDef drawn = Rigid((mvfxRigidShape)shape, 1, 3, 1);
+        drawn.size =
+            (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0.5f, 2, 0.5f}, .max = {1, 3, 1}};
+        drawn.size.min[1] = shape == 0 ? 0.5f : 2.0f;
+        drawn.size.max[1] = shape == 0 ? 1.0f : 3.0f;
+        Sized(&drawn, 1, NULL, NULL, true);
+        CHECK(Tied((mvfxRigidShape)shape, NULL) && s_sizes[0][0] != s_sizes[1][0],
+              "drawn sizes take X's draw");
+        mvfxDestroyContext(s_scene.context);
+    }
+    // A parameter's size keeps the axes a shape sets, its others ignored.
+    static const float parameter[4] = {0.5f, 2, 3, 0};
+    for (int32_t shape = 0; shape < 2; ++shape)
+    {
+        mvfxEmitterDef scaled = Rigid((mvfxRigidShape)shape, 1, 1, 1);
+        scaled.size.kind = mvfx_sourceParameter;
+        scaled.size.parameter = 0;
+        const float want[3] = {0.5f, shape == 0 ? 0.5f : 2.0f, 0.5f};
+        Sized(&scaled, 1, parameter, NULL, true);
+        CHECK(Tied((mvfxRigidShape)shape, want), "a parameter's size tied to X");
+        mvfxDestroyContext(s_scene.context);
+    }
+    // An inherited size, of a source of sprites 1 by 2 by 3 ending at 0.1
+    // seconds, likewise.
+    mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), Rigid(mvfx_rigidCapsule, 1, 1, 1)};
+    emitters[0].rate = 40.0f;
+    emitters[0].lifetime = mvfxRangeSource(0.1f, 0.1f);
+    emitters[0].size =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3}, .max = {1, 2, 3}};
+    emitters[0].events = mvfx_eventMaskDeath;
+    emitters[0].eventCapacity = 64;
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                              .source = 0,
+                                              .kind = mvfx_eventDeath,
+                                              .minCount = 1,
+                                              .maxCount = 1,
+                                              .inheritSize = true,
+                                              .capacity = 8};
+    static const float inherited[3] = {1, 2, 1};
+    Sized(emitters, 2, NULL, NULL, false);
+    CHECK(Tied(mvfx_rigidCapsule, inherited), "an inherited size tied to X");
+    mvfxDestroyContext(s_scene.context);
+    // A host module that sets Y apart from X kills the body.
+    s_untie = true;
+    Sized(&sphere, 1, NULL, even, true);
+    CHECK(Stats().valuesKilled == 1 && Stats().live == SIZED - 1,
+          "a host module's size unlike X kills its body");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -1269,6 +1480,7 @@ int main(void)
     TestTipping();
     TestTippingAngle();
     TestUnits();
+    TestTiedSizes();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

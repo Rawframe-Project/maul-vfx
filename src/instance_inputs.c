@@ -56,6 +56,14 @@ static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequ
             return false;
         }
     }
+    // Sizes tied to a rigid shape's axes (mvfxRigidShape).
+    for (int64_t i = 0; request->sizes != nullptr && i < count; ++i)
+    {
+        if (!mvfxIsSizeTied(&emitter->rigid, &request->sizes[3 * i]))
+        {
+            return false;
+        }
+    }
     // Colours and sizes within what the emitter's particles may store.
     static const float speeds[3] = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT, MVFX_MAX_EXTENT};
     const mvfxStoredCaps* caps = &emitter->overLife.caps;

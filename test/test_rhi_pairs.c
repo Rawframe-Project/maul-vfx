@@ -19,7 +19,7 @@
 #include <string.h>
 
 // Sprites as rigid bodies of a shape thrown down on a floor, sizes
-// unequal along their axes, random orientations and angular velocities,
+// unequal along the axes it sets, random orientations and angular velocities,
 // four substeps, meeting each other with body contacts a body each. A
 // pile's friction holds or lets go by its loads, so a body's difference
 // within the tolerance parts the bodies about it: the CPU path against
@@ -31,6 +31,12 @@ static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* floor, in
     mvfxEmitterDef emitter = Sprite();
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.3f, 0.2f}, .max = {0.2f, 0.5f, 0.3f}};
+    // A sphere's Y and Z and a capsule's Z are its X (mvfxRigidShape).
+    for (int32_t k = shape == mvfx_rigidSphere ? 1 : 2; shape <= mvfx_rigidCapsule && k < 3; ++k)
+    {
+        emitter.size.min[k] = emitter.size.min[0];
+        emitter.size.max[k] = emitter.size.max[0];
+    }
     emitter.orientationMode = mvfx_orientationRandom;
     emitter.angularVelocity =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-20, -20, -20}, .max = {20, 20, 20}};

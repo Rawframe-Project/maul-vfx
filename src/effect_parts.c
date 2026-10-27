@@ -226,9 +226,43 @@ static bool IsAttachValid(const mvfxEffectDef* def, int32_t i)
     }
 }
 
+static bool IsSameCurve(const mvfxCurve* a, const mvfxCurve* b)
+{
+    bool same = a->keyCount == b->keyCount && a->tangents == b->tangents;
+    for (int32_t i = 0; same && i < a->keyCount; ++i)
+    {
+        const mvfxCurveKey* x = &a->keys[i];
+        const mvfxCurveKey* y = &b->keys[i];
+        same = x->time == y->time && x->value == y->value && x->inTangent == y->inTangent &&
+               x->outTangent == y->outTangent && x->interpolation == y->interpolation;
+    }
+    return same;
+}
+
+// Whether an emitter's sizes keep the axes its rigid shape does not take
+// equal to X (mvfxRigidShape): its size source's ends on them X's (a
+// birth takes X's draw for them, mvfxTieSize), and with size over life
+// per axis, their curves X's.
+static bool IsSizeTied(const mvfxEmitterDef* def)
+{
+    int32_t axes = mvfxSizeAxes(&def->rigid);
+    const mvfxVectorSource* size = &def->size;
+    bool drawn = size->kind != mvfx_sourceNone;
+    bool tied = true;
+    const mvfxSizeOverLife* over = &def->overLife.size;
+    for (int32_t k = axes; k < 3; ++k)
+    {
+        tied = tied && (!drawn || (size->min[k] == size->min[0] && size->max[k] == size->max[0]));
+        tied = tied && (!over->enabled || !over->perAxis ||
+                        (over->size[k].value == over->size[0].value &&
+                         IsSameCurve(&over->size[k].curve, &over->size[0].curve)));
+    }
+    return tied;
+}
+
 // Whether an emitter's rigid particles are valid: a shape, a density,
-// substeps, restitution and friction in range; particles, not units nor a
-// beam.
+// substeps, restitution and friction in range, its sizes tied to its
+// shape's axes; particles, not units nor a beam.
 static bool IsRigidValid(const mvfxEmitterDef* def)
 {
     const mvfxRigidDef* rigid = &def->rigid;
@@ -245,7 +279,7 @@ static bool IsRigidValid(const mvfxEmitterDef* def)
                 IsWithin(rigid->sleepSpeed, 0.0f, MVFX_MAX_EXTENT) &&
                 (rigid->sleepSpeed == 0.0f ||
                  (rigid->sleepTime > 0.0f && rigid->sleepTime <= MVFX_MAX_SLEEP_TIME));
-    return body && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
+    return body && IsSizeTied(def) && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
 }
 
 // Whether an emitter's liquid is valid: each parameter in range, the

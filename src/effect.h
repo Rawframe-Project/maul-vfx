@@ -380,6 +380,40 @@ static inline bool mvfxIsQuadWhole(const uint32_t* torn, int32_t q, int32_t widt
            (((torn[q] | torn[q + width]) & 1u) == 0 && ((torn[q] | torn[q + 1]) & 2u) == 0);
 }
 
+// How many of a particle's size axes its rigid shape takes from X
+// (mvfxRigidShape): 1 for a sphere, 2 for a capsule, 3 for other shapes
+// and particles not rigid. The axes past them are copies of X.
+static inline int32_t mvfxSizeAxes(const mvfxRigidDef* rigid)
+{
+    if (!rigid->enabled)
+    {
+        return 3;
+    }
+    return rigid->shape == mvfx_rigidSphere ? 1 : rigid->shape == mvfx_rigidCapsule ? 2 : 3;
+}
+
+// Whether a size's axes past those its rigid shape takes are X's.
+static inline bool mvfxIsSizeTied(const mvfxRigidDef* rigid, const float size[3])
+{
+    bool tied = true;
+    for (int32_t k = mvfxSizeAxes(rigid); k < 3; ++k)
+    {
+        tied = tied && size[k] == size[0];
+    }
+    return tied;
+}
+
+// A size's axes past those its rigid shape takes made copies of X: a
+// drawn size takes X's draw for them, and one the effect does not fix (a
+// parameter's, an inherited one) keeps only the axes its shape takes.
+static inline void mvfxTieSize(const mvfxRigidDef* rigid, float size[3])
+{
+    for (int32_t k = mvfxSizeAxes(rigid); k < 3; ++k)
+    {
+        size[k] = size[0];
+    }
+}
+
 // Returns a compiled effect's block.
 void mvfxReleaseEffect(mvfxEffect* effect, const mvfxAllocator* allocator);
 

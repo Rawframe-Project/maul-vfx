@@ -96,6 +96,7 @@ static mvfxHostBirth BirthOf(const mvfxInstance* instance, int32_t emitter,
         {
             birth.size[k] = Hold(event->size[k], caps->size[k]);
         }
+        mvfxTieSize(&compiled->rigid, birth.size);
     }
     return birth;
 }

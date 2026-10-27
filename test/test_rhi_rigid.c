@@ -23,7 +23,9 @@
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
 // they are kept out of, and born into a box; capsules of the largest
 // size on grids; bodies near the ends of sizes and densities, in their
-// own units, tumbling and thrown on a floor; what is still refused (kills
+// own units, tumbling and thrown on a floor; spheres and capsules sized
+// by a parameter of unequal axes or inheriting unequal sizes, their axes
+// the shape does not set taking X; what is still refused (kills
 // within a step; bodies meeting each other are rhi_pairs'). Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set.
 
@@ -37,13 +39,19 @@
 static const float s_lopsided[21] = {0,    0, 0,    1, 0, 0,    0, 0.6f, 0,    0,   0,
                                      0.3f, 1, 0.1f, 0, 0, 0.4f, 0, 0.7f, 0.8f, 1.1f};
 
-// Sprites as rigid bodies of a shape, sizes unequal along their axes,
-// random orientations and fast angular velocities, four substeps.
+// Sprites as rigid bodies of a shape, sizes unequal along the axes it
+// sets, random orientations and fast angular velocities, four substeps.
 static mvfxEmitterDef Bodies(mvfxRigidShape shape)
 {
     mvfxEmitterDef emitter = Sprite();
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.3f, 0.2f}, .max = {0.2f, 0.5f, 0.3f}};
+    // A sphere's Y and Z and a capsule's Z are its X (mvfxRigidShape).
+    for (int32_t k = shape == mvfx_rigidSphere ? 1 : 2; shape <= mvfx_rigidCapsule && k < 3; ++k)
+    {
+        emitter.size.min[k] = emitter.size.min[0];
+        emitter.size.max[k] = emitter.size.max[0];
+    }
     emitter.orientationMode = mvfx_orientationRandom;
     emitter.angularVelocity =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-20, -20, -20}, .max = {20, 20, 20}};
@@ -721,6 +729,54 @@ static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
     }
 }
 
+static void TestTiedSizes(Gpu* gpu, mvfxGpu* kernels)
+{
+    // A size the effect does not fix takes X for the axes a sphere or a
+    // capsule does not set, as on the CPU path: a parameter's of unequal
+    // axes, and one inherited from sprites of unequal sizes ending.
+    static const float sized[4] = {0.15f, 0.4f, 0.25f, 0.0f};
+    for (int32_t shape = 0; shape < 2; ++shape)
+    {
+        mvfxEmitterDef emitter = Bodies((mvfxRigidShape)shape);
+        emitter.size = (mvfxVectorSource){
+            .kind = mvfx_sourceParameter, .min = {1, 1, 1}, .max = {1, 1, 1}, .parameter = 0};
+        char what[64];
+        const char* name = shape == 0 ? "spheres" : "capsules";
+        (void)snprintf(what, sizeof what, "%s sized by a parameter of unequal axes", name);
+        Compare(gpu, kernels,
+                &(Run){.emitters = &emitter,
+                       .emitterCount = 1,
+                       .parameters = sized,
+                       .parameterCount = 1,
+                       .pace = 0.001,
+                       .adopting = true,
+                       .tolerance = 1e-3f},
+                what);
+        mvfxEmitterDef emitters[2] = {Sprite(), Bodies((mvfxRigidShape)shape)};
+        emitters[0].events = mvfx_eventMaskDeath;
+        emitters[0].eventCapacity = 4096;
+        emitters[0].size = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {0.1f, 0.3f, 0.2f}, .max = {0.2f, 0.5f, 0.3f}};
+        emitters[1].rate = 0.0f;
+        emitters[1].burstCount = 0;
+        emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+                                                  .source = 0,
+                                                  .kind = mvfx_eventDeath,
+                                                  .minCount = 1,
+                                                  .maxCount = 1,
+                                                  .inheritSize = true,
+                                                  .capacity = 512};
+        (void)snprintf(what, sizeof what, "%s inheriting unequal sizes", name);
+        Compare(gpu, kernels,
+                &(Run){.emitters = emitters,
+                       .emitterCount = 2,
+                       .pace = 0.001,
+                       .adopting = true,
+                       .tolerance = 1e-3f},
+                what);
+    }
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
@@ -734,6 +790,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestDepth(gpu, kernels);
     TestLargestSizes(gpu, kernels);
     TestUnits(gpu, kernels);
+    TestTiedSizes(gpu, kernels);
 }
 
 int main(void)
