@@ -642,8 +642,7 @@ fn toUnits(b: ptr<function, Solid>, massUnit: i32, lengthUnit: i32) {
     (*b).lengthUnit = lengthUnit;
 }
 
-// The size of v, taken in the body's length unit, as the core's
-// mvfxBodyLength.
+// The size of v in the body's length unit, as the core's mvfxBodyLength.
 fn bodyLength(b: Solid, v: vec3<f32>) -> f32 {
     let l = inLength(b, v);
     return ldexp(sqrt(dot3(l, l)), b.lengthUnit);
