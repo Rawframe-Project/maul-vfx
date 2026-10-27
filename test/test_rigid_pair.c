@@ -788,7 +788,7 @@ static void TestUnits(void)
     // and its inertia 2^-215. Positions round to 2^-24 of the large box's
     // reach, so where the small one is held is no result; that it stays
     // finite is. Without the host modules, whose check kills a body whose
-    // angular velocity passes the spin cap (#107), as the small one's does.
+    // angular velocity passes the spin cap, as the small one's does.
     static const float sizes[6] = {8, 8, 8, 0x1p-40f, 0x1p-40f, 0x1p-40f};
     static const double places[6] = {0, -4, 0, 0, 0x1p-41 * 0.99, 0};
     static const float velocities[6] = {0, 0, 0, 0, -0x1p-40f, 0};

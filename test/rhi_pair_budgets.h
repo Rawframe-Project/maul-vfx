@@ -37,6 +37,12 @@ static const PairBudget s_pairBudgets[] = {
     {"boxes meeting each other, sleeping by islands and woken by touch", 13},
     // 7 27 8 37 58
     {"boxes meeting each other, the pool's contacts dropped", 91},
+    // 0 1 0 1 0
+    {"spheres meeting each other at 2^-40", 6},
+    // 33 51 45 58 57
+    {"capsules meeting each other at 2^-40", 91},
+    // 3 10 20 10 30
+    {"boxes meeting each other at 2^-40", 49},
 };
 
 #endif
