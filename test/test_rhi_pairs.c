@@ -9,7 +9,9 @@
 // ending within the run (pairs' priorities of the bodies' ranks); boxes of
 // sizes apart (the pair grid's levels); a pool too small for them, its
 // contacts past the room dropped and counted; capsules by their cores and
-// hulls as polytopes; sleeping by islands and waking by touch.
+// hulls as polytopes; sleeping by islands and waking by touch; spheres,
+// capsules and boxes meeting each other with the scene at 2^-40 and
+// density 1e-30, in the lighter body's units.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -158,9 +160,38 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
         "boxes meeting each other, the pool's contacts dropped");
 }
 
+static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Bodies meeting each other with the whole scene's lengths (sizes,
+    // places, speeds, gravity) times 2^-40 at density 1e-30: a pair's
+    // masses, in the particles' units, passed binary32's range; in the
+    // lighter body's units they are the scene at 1's, on both paths.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f * 0x1p-40f, 0}, .normal = {0, 1, 0.2f}};
+    static const char* const names[3] = {"spheres meeting each other at 2^-40",
+                                         "capsules meeting each other at 2^-40",
+                                         "boxes meeting each other at 2^-40"};
+    for (int32_t shape = 0; shape < 3; ++shape)
+    {
+        mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 8);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            emitter.size.min[k] *= 0x1p-40f;
+            emitter.size.max[k] *= 0x1p-40f;
+        }
+        emitter.rigid.density = 1e-30f;
+        emitter.shape.radius *= 0x1p-40f;
+        emitter.velocity.speed.min *= 0x1p-40f;
+        emitter.velocity.speed.max *= 0x1p-40f;
+        emitter.motion.gravity[1] *= 0x1p-40f;
+        Met(gpu, kernels, &(Run){.emitters = &emitter}, names[shape]);
+    }
+}
+
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestMeeting(gpu, kernels);
+    TestUnits(gpu, kernels);
 }
 
 int main(void)
