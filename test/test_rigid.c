@@ -18,13 +18,15 @@
 // tipping over a corner at the diagonal's;
 // a box spun and dropped in its own units: the same bits, scaled, at
 // sizes and densities near binary32's ends, and each shape finite at the
-// ends of the limits;
+// ends of the limits; needles 1e-20 of their length across, their inverse
+// inertia held, finite dropped and spun;
 // a sphere's and a capsule's sizes on the axes they do not set held to X:
 // refused in the effect and a spawn request, taken from X's draw, a
 // parameter's and an inherited one's X, killed when a host module sets
 // them apart;
 // the checks.
 
+#include "particles.h"
 #include "test_harness.h"
 
 #include "maul-vfx/instance.h"
@@ -1187,6 +1189,63 @@ static void TestUnits(void)
     CHECK(finite, "finite at the ends of sizes and densities");
 }
 
+static void TestNeedles(void)
+{
+    // A needle's inverse inertia about its long axis goes as its length
+    // over its diameter squared, held at 2^40 in its units: capsules and
+    // boxes 1e-20 across and 1 long, and 1e-14 across and MVFX_MAX_EXTENT
+    // long, at the densities' ends, dropped upright on the plane turning
+    // slowly or spun about each axis, stay finite (unheld, the first went
+    // non-finite as they landed on an end, its friction turning them about
+    // their long axis). Read through the output: no host module's check
+    // kills one.
+    static const float ends[2][2] = {{1e-20f, 1.0f}, {1e-14f, MVFX_MAX_EXTENT}};
+    bool finite = true;
+    for (int32_t c = 0; c < 8; ++c)
+    {
+        mvfxRigidShape shape = c % 2 == 0 ? mvfx_rigidCapsule : mvfx_rigidBox;
+        const float* end = ends[c / 2 % 2];
+        bool spun = c >= 4;
+        mvfxEmitterDef emitter = Rigid(shape, end[0], end[1], end[0]);
+        emitter.rigid.density = c % 4 < 2 ? 1e-30f : MVFX_MAX_EXTENT;
+        emitter.motion.gravity[1] = -fminf(9.81f * end[1], MVFX_MAX_EXTENT);
+        emitter.rigid.restitution = 0.3f;
+        const float turning = spun ? 4.0f : 0.1f;
+        emitter.angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                                     .min = {3 * turning, 2 * turning, turning},
+                                                     .max = {3 * turning, 2 * turning, turning}};
+        mvfxContextDef contextDef = mvfxDefaultContextDef();
+        CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+        mvfxEffectDef def = mvfxDefaultEffectDef();
+        def.emitters = &emitter;
+        def.emitterCount = 1;
+        mvfxEffectId effect = {0};
+        CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+        mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+        instanceDef.effect = effect;
+        CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+              "instance");
+        const double place[3] = {0, 2.0 * (double)end[1], 0};
+        mvfxSpawnRequest request = {.count = 1, .positions = place};
+        CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+              "spawned");
+        for (int32_t i = 0; i < 120; ++i)
+        {
+            Steps(1);
+            TestParticle body;
+            int32_t count = ReadParticles(s_scene.context, s_scene.instance, 0, &body, 1);
+            finite = finite && count == 1;
+            for (int32_t k = 0; count == 1 && k < 4; ++k)
+            {
+                finite = finite && isfinite(body.orientation[k]) &&
+                         (k == 3 || (isfinite(body.position[k]) && isfinite(body.velocity[k])));
+            }
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(finite, "needles finite at the ends of sizes and densities");
+}
+
 // The sizes of the first particles as the host modules see them after
 // motion, and how many there were; with s_untie, the first one's Y set
 // apart from its X before motion, once.
@@ -1480,6 +1539,7 @@ int main(void)
     TestTipping();
     TestTippingAngle();
     TestUnits();
+    TestNeedles();
     TestTiedSizes();
     TestChecks();
     return s_failures == 0 ? 0 : 1;

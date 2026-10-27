@@ -61,9 +61,11 @@ enum
 // size is from 0 to MVFX_MAX_EXTENT, its density above 0 to
 // MVFX_MAX_EXTENT, and its inertia goes as the density times the fifth
 // power of its size), while in its units they are near 1 for any shape
-// not much longer one way than another. Every scaling is by a power of
-// two, exact within binary32's normal range: an XPBD step's correction
-// from its multiplier is the same bits in any mass unit.
+// not much longer one way than another, and its inverse inertia is at most
+// 2^40 about any axis: a needle's about its long axis is held there.
+// Every scaling is by a power of two, exact within binary32's normal
+// range: an XPBD step's correction from its multiplier is the same bits in
+// any mass unit.
 typedef struct mvfxBodyMass
 {
     float inverseMass;
