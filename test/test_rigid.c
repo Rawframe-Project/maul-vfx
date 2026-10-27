@@ -21,7 +21,8 @@
 // a box spun and dropped in its own units: the same bits, scaled, at
 // sizes and densities near binary32's ends, and each shape finite at the
 // ends of the limits; needles 1e-20 of their length across, their inverse
-// inertia held, finite dropped and spun;
+// inertia held, finite dropped and spun, and needles spun at the most
+// still turning;
 // a sphere's and a capsule's sizes on the axes they do not set held to X:
 // refused in the effect and a spawn request, taken from X's draw, a
 // parameter's and an inherited one's X, killed when a host module sets
@@ -1421,6 +1422,52 @@ static void TestNeedles(void)
         mvfxDestroyContext(s_scene.context);
     }
     CHECK(finite, "needles finite at the ends of sizes and densities");
+    // Spun at MVFX_MAX_SPIN about each axis, alone, capsules and boxes 1e-6
+    // and 1e-20 of their length across keep turning: their orientations
+    // change in each of the last 20 of 60 steps. Stepped explicitly, the
+    // gyroscopic term's rounding carried their spin onto their long axis
+    // until a first-order turn mapped each orientation onto itself.
+    bool turning = true;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        float across = c < 2 ? 1e-6f : 1e-20f;
+        mvfxEmitterDef emitter =
+            Rigid(c % 2 == 0 ? mvfx_rigidCapsule : mvfx_rigidBox, across, 1.0f, across);
+        emitter.motion.gravity[1] = 0.0f;
+        emitter.collision.enabled = false;
+        emitter.colliderCount = 0;
+        emitter.angularVelocity =
+            (mvfxVectorSource){.kind = mvfx_sourceRange,
+                               .min = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN},
+                               .max = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN}};
+        mvfxContextDef contextDef = mvfxDefaultContextDef();
+        CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+        mvfxEffectDef def = mvfxDefaultEffectDef();
+        def.emitters = &emitter;
+        def.emitterCount = 1;
+        mvfxEffectId effect = {0};
+        CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+        mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+        instanceDef.effect = effect;
+        CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+              "instance");
+        static const double origin[3] = {0, 0, 0};
+        mvfxSpawnRequest request = {.count = 1, .positions = origin};
+        CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+              "spawned");
+        float last[4] = {0};
+        for (int32_t i = 0; i < 60; ++i)
+        {
+            Steps(1);
+            TestParticle body;
+            bool read = ReadParticles(s_scene.context, s_scene.instance, 0, &body, 1) == 1;
+            turning =
+                turning && read && (i < 40 || memcmp(last, body.orientation, sizeof last) != 0);
+            memcpy(last, body.orientation, sizeof last);
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(turning, "needles spun at the most keep turning");
 }
 
 // The sizes of the first particles as the host modules see them after
