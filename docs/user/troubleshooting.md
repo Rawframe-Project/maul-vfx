@@ -11,7 +11,7 @@ Every fallible call says why it failed:
 | `mvfx_errorStale` | An id whose object was destroyed. |
 | `mvfx_errorUnsupported` | The object was made without what the call needs: a planned instance's fields, which its simulation holds; a plan of an instance that is not planned; an effect the GPU part does not run yet. |
 | `mvfx_errorPlatform` | A driver refused: the GPU part's device would not make a kernel's shader or pipeline, or a simulation's buffer, for a reason Maul RHI shares no other status for. |
-| `mvfx_errorState` | The call is not allowed now, and another call changes that: a planned instance's plans split into steps, a GPU frame not open. |
+| `mvfx_errorState` | The call is not allowed now, and another call changes that: a planned instance's plans split into steps, a GPU frame not open, a device not ready yet. |
 | `mvfx_errorVersion` | The program was built against headers of another release, or a file is of another format version. |
 | `mvfx_errorFormat` | An effect file's bytes are malformed: a magic, size or hash that does not match, a unit out of place, a count past its cap, a def the def validator refuses. The offset names the first byte at fault. |
 | `mvfx_errorLimit` | An argument passes a fixed bound of the library, a named constant: a hull past `MVFX_MAX_HULL_COUNT` vertices, a frame's GPU passes past their `MVFX_GPU_*` count. |

@@ -73,6 +73,39 @@ static bool Open(Gpu* gpu, mrhiResult pipelines, uint32_t objects)
            record.kind == mrhi_instanceDeviceReady && record.outcome == mrhi_success;
 }
 
+// A device on the test driver opened, its ready notification not yet
+// taken, so not ready.
+static bool OpenUnready(Gpu* gpu)
+{
+    *gpu = (Gpu){0};
+    s_adapter = (mrhiTestAdapter){
+        .info = {.driver = mrhi_driverTest, .kind = mrhi_adapterDiscrete},
+        .limits = mrhiDefaultLimits(),
+    };
+    s_driver = (mrhiTestDriverDef){
+        .chain = {.next = NULL, .type = mrhi_structTestDriver},
+        .adapters = &s_adapter,
+        .adapterCount = 1,
+    };
+    mrhiInstanceDef def = mrhiDefaultInstanceDef();
+    def.next = &s_driver.chain;
+    mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
+    mrhiRequestId request;
+    mrhiInstanceNotification record;
+    mrhiAdapterId adapter;
+    size_t count = 0;
+    if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
+        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
+        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
+        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count != 1)
+    {
+        return false;
+    }
+    mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
+    deviceDef.adapter = adapter;
+    return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success;
+}
+
 static void Close(Gpu* gpu)
 {
     if (gpu->device != NULL)
@@ -400,11 +433,31 @@ static void TestSimFailures(void)
     mvfxDestroyContext(context);
 }
 
+// A device not ready yet refuses the GPU object's shaders with the state
+// error, which the device's ready notification changes: made then.
+static void TestOpening(void)
+{
+    Gpu gpu;
+    CHECK(OpenUnready(&gpu), "a device opening");
+    mvfxGpuDef def = CountedDef(gpu.device);
+    mvfxGpu* kernels = (mvfxGpu*)&kernels;
+    CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_errorState && kernels == NULL && s_held == 0,
+          "refused with the state error before the device is ready");
+    mrhiInstanceNotification record;
+    CHECK(mrhiNextInstanceNotification(gpu.instance, &record) == mrhi_success &&
+              record.kind == mrhi_instanceDeviceReady,
+          "the device ready");
+    CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success, "made once it is");
+    mvfxDestroyGpu(kernels);
+    Close(&gpu);
+}
+
 int main(void)
 {
     TestDefChecks();
     TestLife();
     TestFailures();
     TestSimFailures();
+    TestOpening();
     return s_failures == 0 ? 0 : 1;
 }

@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The GPU part's answer when its device refuses to make an object: Maul
-// RHI's status where the family's shared one means the same, the platform
-// error otherwise.
+// RHI's status where the family's shared one means the same (a device not
+// ready yet is in a state a later call changes), the platform error
+// otherwise.
 
 #ifndef MAUL_VFX_RHI_SRC_REFUSAL_H
 #define MAUL_VFX_RHI_SRC_REFUSAL_H
@@ -21,6 +22,8 @@ static inline mvfxResult mvfxRhiRefusal(mrhiResult result)
         return mvfx_errorCapacity;
     case mrhi_errorUnsupported:
         return mvfx_errorUnsupported;
+    case mrhi_errorState:
+        return mvfx_errorState;
     default:
         return mvfx_errorPlatform;
     }

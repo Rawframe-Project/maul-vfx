@@ -86,7 +86,8 @@ extern "C"
     ///         `mvfx_errorCapacity` when the allocator fails; when the
     ///         device refuses a kernel's shader or pipeline, Maul RHI's
     ///         status where the family shares it (`mvfx_errorCapacity`,
-    ///         `mvfx_errorUnsupported`), `mvfx_errorPlatform` otherwise.
+    ///         `mvfx_errorUnsupported`, `mvfx_errorState` for a device not
+    ///         ready yet), `mvfx_errorPlatform` otherwise.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut);
