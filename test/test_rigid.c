@@ -1824,6 +1824,68 @@ static void TestSpinBound(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Writes an angular velocity of 1e11 about Z on every body before motion.
+static void Whirl(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    for (int32_t i = 0; i < p->count; ++i)
+    {
+        p->angularVelocity[0][i] = 0.0f;
+        p->angularVelocity[1][i] = 0.0f;
+        p->angularVelocity[2][i] = 1e11f;
+    }
+}
+
+static void TestFastTurn(void)
+{
+    // A body turning past 2^24 radians a half substep turns by its angle's
+    // exact value, where binary32 holds no fraction of a turn: a sphere
+    // 1e-3 across spun at 1e11 (about 1e8 radians a half substep, within
+    // the spin a host module may give it) has a new orientation each step,
+    // unit and about Z.
+    static const mvfxHostModule modules[2] = {{.stage = mvfx_stageBeforeMotion, .function = Whirl},
+                                              {.stage = mvfx_stageAfterMotion, .function = Peek}};
+    memset(&s_scene, 0, sizeof s_scene);
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1e-3f, 1e-3f, 1e-3f);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.collision.enabled = false;
+    emitter.colliderCount = 0;
+    emitter.hostModules = modules;
+    emitter.hostModuleCount = 2;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+          "instance");
+    static const double place[3] = {0, 1, 0};
+    mvfxSpawnRequest request = {.count = 1, .positions = place};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+          "spawned");
+    Steps(2);
+    float before[4];
+    Q(before);
+    bool turned = true;
+    for (int32_t s = 0; s < 4; ++s)
+    {
+        Steps(1);
+        float q[4];
+        Q(q);
+        float length = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+        turned = turned && fabsf(length - 1.0f) < 1e-5f && q[0] == 0.0f && q[1] == 0.0f &&
+                 (q[2] != before[2] || q[3] != before[3]);
+        memcpy(before, q, sizeof before);
+    }
+    CHECK(turned && Stats().live == 1, "a body turning past 2^24 radians a half substep turned");
+    mvfxDestroyContext(s_scene.context);
+}
+
 // Whether a host module sinks the body far along x half into the floor
 // before motion.
 static bool s_sinking;
@@ -1989,6 +2051,7 @@ int main(void)
     TestNeedles();
     TestTiedSizes();
     TestSpinBound();
+    TestFastTurn();
     TestHeldSpeed();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
