@@ -19,6 +19,8 @@ const TWO_PI: f32 = 6.28318530717958647692;
 
 // include: shared/exact.wgsl
 
+// include: shared/finite.wgsl
+
 const SHAPE_SALT: u32 = 0x53484150u;
 const VELOCITY_SALT: u32 = 0x56454C4Fu;
 const SIZE_SALT: u32 = 0x53495A45u;

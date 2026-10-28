@@ -249,7 +249,8 @@ typedef enum CheckMode
     CHECK_RATIOS = 6,
     CHECK_REMAINDERS_APART = 7,
     CHECK_DRAG_FACTORS = 8,
-    CHECK_HELD_SPEEDS = 9
+    CHECK_HELD_SPEEDS = 9,
+    CHECK_CLASSES = 10
 } CheckMode;
 
 // The bytes of an element of a mode: eight words for remainders apart and
@@ -827,6 +828,37 @@ static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
           "held speeds as the core's, NaN and infinities left");
 }
 
+// The kernels' float classes (shared/finite.wgsl) against C's, on the
+// device: NaNs quiet and signalling, of either sign and of the largest
+// payload, infinities, the largest and least floats and zeros. A test
+// written x != x or x - x == 0.0 fails here on a device that folds it.
+static void TestClasses(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        VALUES = 12
+    };
+    const uint32_t values[VALUES] = {0x7FC00000u, 0xFFC00000u, 0x7F800001u, 0x7FFFFFFFu,
+                                     0x7F800000u, 0xFF800000u, 0x7F7FFFFFu, 0xFF7FFFFFu,
+                                     0x00000001u, 0x80000000u, 0x00000000u, 0x3FC00000u};
+    for (uint32_t e = 0; e < VALUES; ++e)
+    {
+        uint32_t* w = &checker->words[4 * e];
+        w[0] = values[e];
+        w[1] = w[2] = w[3] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_CLASSES, 0, VALUES);
+    int32_t right = 0;
+    for (uint32_t e = 0; ran && e < VALUES; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        float x = FloatOf(values[e]);
+        right += w[1] == (isfinite(x) ? 1u : 0u) && w[2] == (isnan(x) ? 1u : 0u);
+    }
+    printf("float classes: %d of %d as C's\n", right, VALUES);
+    CHECK(ran && right == VALUES, "finite and NaN tests on the bits");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -843,6 +875,7 @@ static void TestExact(Gpu* gpu)
         TestRemaindersApart(gpu, &checker);
         TestDragFactors(gpu, &checker);
         TestHeldSpeeds(gpu, &checker);
+        TestClasses(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }

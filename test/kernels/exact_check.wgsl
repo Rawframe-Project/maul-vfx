@@ -8,6 +8,7 @@
 // include: shared/exact.wgsl
 // include: shared/drag.wgsl
 // include: shared/speed.wgsl
+// include: shared/finite.wgsl
 
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
@@ -19,6 +20,7 @@ const RATIOS: u32 = 6u;
 const REMAINDERS_APART: u32 = 7u;
 const DRAG_FACTORS: u32 = 8u;
 const HELD_SPEEDS: u32 = 9u;
+const CLASSES: u32 = 10u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -46,7 +48,9 @@ var<immediate> root: Root;
 // in w0. Drag factors (shared/drag.wgsl): in a drag (w0) and seconds
 // (w1), out the decay in w0, the carry in w2 and the push in w3. Held
 // speeds (shared/speed.wgsl): eight words an element, in a velocity (w0
-// to w2) and a bound (w3), out the held velocity in w4 to w6.
+// to w2) and a bound (w3), out the held velocity in w4 to w6. Classes
+// (shared/finite.wgsl): in a float (w0), out whether it is finite (w1)
+// and whether it is a NaN (w2), 1 or 0.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -92,6 +96,11 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
             case RATIOS: {
                 words[w] = bitcast<u32>(ratio(vec2<u32>(words[w], words[w + 1u]),
                                               vec2<u32>(words[w + 2u], words[w + 3u])));
+            }
+            case CLASSES: {
+                let x = bitcast<f32>(words[w]);
+                words[w + 1u] = select(0u, 1u, isFinite(x));
+                words[w + 2u] = select(0u, 1u, isNan(x));
             }
             case HELD_SPEEDS: {
                 let a = 2u * w;

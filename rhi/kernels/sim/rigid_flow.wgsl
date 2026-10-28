@@ -221,7 +221,7 @@ fn residualTurn(i: u32, inv: f32, invMid: f32, tau: f32, t: ptr<function, vec4<f
     let before = lj * lj + lk * lk;
     let after = nj * nj + nk * nk;
     let d = 0.5 * (before - after) / after;
-    if (d - d == 0.0) {
+    if (isFinite(d)) {
         nj = nj + d * nj;
         nk = nk + d * nk;
     }
@@ -251,7 +251,7 @@ fn flowBody(b: ptr<function, Body>, inertia: array<f32, 6>, q: vec4<f32>, t: f32
 // moment, or its least over its largest, below binary32's least normal).
 fn flowTurned(p: Principal, h: f32, q: vec4<f32>, w: vec3<f32>, out: ptr<function, Turning>) -> bool {
     let I = p.moments;
-    if (!(I.x - I.x == 0.0 && I.z >= 1.17549435e-38 && I.z / I.x >= 1.17549435e-38)) {
+    if (!(isFinite(I.x) && I.z >= 1.17549435e-38 && I.z / I.x >= 1.17549435e-38)) {
         return false;
     }
     let S = vec3<f32>(1.0, I.y / I.x, I.z / I.x);
