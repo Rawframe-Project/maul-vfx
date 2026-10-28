@@ -124,13 +124,21 @@ static bool AnyUntied(float* const* size, int32_t axes, int32_t count)
 // its diameter at twice its speed, 2 sqrt(3) times the bound.
 #define RIGID_SPIN_SPEEDS 4.0
 
+// The fastest a rigid body may spin, in radians a second: the step
+// squares its turn over a substep (mvfxTurnBy) and its momentum in its
+// units (below 2 times its spin: its mass is below 1 there and its points
+// within 1 of its center on each axis) in binary32.
+#define RIGID_MOST_SPIN 0x1p60
+
 // Whether rigid body i's spin (none stored is none) is one its own step
 // may give it, in binary64, where a tiny body's spin and its square stay
-// in range: its angular momentum within what the spin cap about every
-// axis gives it (|I w| within sqrt(3) cap times its inertia's trace, which
-// is at least its largest moment; the free flow keeps the momentum's
-// length as the body precesses and a component passes the cap, and as its
-// energy drifts at a turn of many radians a substep), or its extent
+// in range. Within RIGID_MOST_SPIN, and for a body of no volume (no
+// inertia: its step does not turn it) within the cap on each axis; for
+// another, its angular momentum within what the spin cap about every axis
+// gives it (|I w| within sqrt(3) cap times its inertia's trace, which is
+// at least its largest moment; the free flow keeps the momentum's length
+// as the body precesses and a component passes the cap, and as its energy
+// drifts at a turn of many radians a substep), or its extent
 // (mvfxBodyExtent) turned within RIGID_SPIN_SPEEDS times the speed bound
 // (a sphere 1e-20 across rolling at 1e-9 lengths a second turns at 1e11
 // radians a second, past the cap).
@@ -171,6 +179,14 @@ static bool IsSpinWithin(mvfxInstance* instance, int32_t emitter, const mvfxPart
     double turn = w[0] * w[0] + w[1] * w[1] + w[2] * w[2];
     double extent = (double)mvfxBodyExtent(&compiled->rigid, compiled->hull, size);
     double bound = RIGID_SPIN_SPEEDS * fastest;
+    if (!(turn <= RIGID_MOST_SPIN * RIGID_MOST_SPIN))
+    {
+        return false;
+    }
+    if (!(trace > 0.0))
+    {
+        return fabs(v[0]) <= cap && fabs(v[1]) <= cap && fabs(v[2]) <= cap;
+    }
     return held <= 3.0 * cap * cap * trace * trace || turn * extent * extent <= bound * bound;
 }
 
