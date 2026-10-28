@@ -613,12 +613,14 @@ extern "C"
     // particles may store (its role's limit, MVFX_MAX_COLOR,
     // MVFX_MAX_EXTENT, MVFX_MAX_SPIN or MVFX_MAX_VALUE, over the most its
     // values over life scale it; a mvfxSpawnRequest's colors and sizes), or
-    // a rigid body's angular velocity that turns the body's extent (the
-    // largest of its sizes) faster than 4 times that speed bound, is killed
-    // and counted in mvfxEmitterStats.valuesKilled. A rigid body's angular
-    // velocity is held to its surface's speed rather than to
-    // MVFX_MAX_SPIN, because its own step spins a small body past it: a
-    // sphere 1e-20 across rolling at 1e-9 turns at 1e11 radians a second.
+    // a rigid body's angular velocity that both turns the body's extent
+    // (the largest of its sizes) faster than 4 times that speed bound and
+    // gives it more angular momentum than the spin cap about every axis
+    // would, is killed and counted in mvfxEmitterStats.valuesKilled. A
+    // rigid body's angular velocity is not held to MVFX_MAX_SPIN on each
+    // axis, because its own step takes it past that: a sphere 1e-20 across
+    // rolling at 1e-9 turns at 1e11 radians a second, and a body spun at
+    // the cap about every axis precesses, one axis past the cap.
     // A particle killed before motion is taken out at once, so the step
     // moves it no further.
     typedef struct mvfxParticleArrays

@@ -124,13 +124,16 @@ static bool AnyUntied(float* const* size, int32_t axes, int32_t count)
 // its diameter at twice its speed, 2 sqrt(3) times the bound.
 #define RIGID_SPIN_SPEEDS 4.0
 
-// Whether rigid body i's spin (none stored is none) turns its extent
-// (mvfxBodyExtent) within RIGID_SPIN_SPEEDS times the speed bound, in
-// binary64, where a tiny body's spin and its square stay in range. The
-// bound goes with the body's size, as its own step spins it: a sphere
-// 1e-20 across rolling at 1e-9 lengths a second turns at 1e11 radians a
-// second, past MVFX_MAX_SPIN, and one spun at that cap about every axis
-// passes it about one as it precesses.
+// Whether rigid body i's spin (none stored is none) is one its own step
+// may give it, in binary64, where a tiny body's spin and its square stay
+// in range: its angular momentum within what the spin cap about every
+// axis gives it (|I w| within sqrt(3) cap times its inertia's trace, which
+// is at least its largest moment; the free flow keeps the momentum's
+// length as the body precesses and a component passes the cap, and as its
+// energy drifts at a turn of many radians a substep), or its extent
+// (mvfxBodyExtent) turned within RIGID_SPIN_SPEEDS times the speed bound
+// (a sphere 1e-20 across rolling at 1e-9 lengths a second turns at 1e11
+// radians a second, past the cap).
 static bool IsSpinWithin(mvfxInstance* instance, int32_t emitter, const mvfxParticleArrays* a,
                          int32_t i, double fastest)
 {
@@ -138,18 +141,37 @@ static bool IsSpinWithin(mvfxInstance* instance, int32_t emitter, const mvfxPart
     {
         return true;
     }
-    double turn = 0.0;
+    // In the body's frame, where its inertia is: turned back by its
+    // orientation (none stored is none).
+    double v[3];
+    double q[3] = {0.0, 0.0, 0.0};
     for (int32_t k = 0; k < 3; ++k)
     {
-        double w = (double)a->angularVelocity[k][i];
-        turn += w * w;
+        v[k] = (double)a->angularVelocity[k][i];
+        q[k] = a->orientation[0] != nullptr ? -(double)a->orientation[k][i] : 0.0;
     }
+    double qw = a->orientation[0] != nullptr ? (double)a->orientation[3][i] : 1.0;
+    double t[3] = {2.0 * (q[1] * v[2] - q[2] * v[1]), 2.0 * (q[2] * v[0] - q[0] * v[2]),
+                   2.0 * (q[0] * v[1] - q[1] * v[0])};
+    double w[3] = {v[0] + qw * t[0] + (q[1] * t[2] - q[2] * t[1]),
+                   v[1] + qw * t[1] + (q[2] * t[0] - q[0] * t[2]),
+                   v[2] + qw * t[2] + (q[0] * t[1] - q[1] * t[0])};
     float size[3];
     mvfxSizeOf(instance, emitter, i, size);
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    mvfxBodyMass mass;
+    (void)mvfxBodyShapeOf(&compiled->rigid, compiled->hull, size, &mass);
+    const float* m = mass.inertia;
+    double momentum[3] = {(double)m[0] * w[0] + (double)m[3] * w[1] + (double)m[4] * w[2],
+                          (double)m[3] * w[0] + (double)m[1] * w[1] + (double)m[5] * w[2],
+                          (double)m[4] * w[0] + (double)m[5] * w[1] + (double)m[2] * w[2]};
+    double held = momentum[0] * momentum[0] + momentum[1] * momentum[1] + momentum[2] * momentum[2];
+    double cap = (double)compiled->overLife.caps.spin;
+    double trace = (double)m[0] + (double)m[1] + (double)m[2];
+    double turn = w[0] * w[0] + w[1] * w[1] + w[2] * w[2];
     double extent = (double)mvfxBodyExtent(&compiled->rigid, compiled->hull, size);
     double bound = RIGID_SPIN_SPEEDS * fastest;
-    return turn * extent * extent <= bound * bound;
+    return held <= 3.0 * cap * cap * trace * trace || turn * extent * extent <= bound * bound;
 }
 
 // Whether any of an emitter's rigid bodies spins past its bound
