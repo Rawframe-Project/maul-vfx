@@ -248,14 +248,15 @@ typedef enum CheckMode
     CHECK_REMAINDERS = 5,
     CHECK_RATIOS = 6,
     CHECK_REMAINDERS_APART = 7,
-    CHECK_DRAG_FACTORS = 8
+    CHECK_DRAG_FACTORS = 8,
+    CHECK_HELD_SPEEDS = 9
 } CheckMode;
 
-// The bytes of an element of a mode: eight words for remainders apart,
-// four for the others.
+// The bytes of an element of a mode: eight words for remainders apart and
+// held speeds, four for the others.
 static uint32_t ElementBytes(uint32_t mode)
 {
-    return mode == CHECK_REMAINDERS_APART ? 32u : 16u;
+    return mode == CHECK_REMAINDERS_APART || mode == CHECK_HELD_SPEEDS ? 32u : 16u;
 }
 
 typedef struct Checker
@@ -753,6 +754,79 @@ static void TestDragFactors(Gpu* gpu, Checker* checker)
           "drag factors as the core's");
 }
 
+// The most a held velocity (shared/speed.wgsl) is from the core's
+// (mvfxHoldSpeed, in binary64), relative to its speed: a quotient, a
+// square root and a product in binary32, each a few units in the last
+// place.
+#define HELD_ERROR 1e-6
+
+// Held speeds against the core's. A velocity with a NaN or an infinite
+// component comes back bit for bit, as the core leaves it for the kill
+// rules: a NaN in each component and in all, infinities of either sign,
+// a NaN beside an infinity, each beside a velocity far past the bound.
+// Then a zero velocity, one at the bound, and drawn ones from far within
+// to far past it, each component from -2^40 to 2^40, under bounds from
+// 1e3 to 1e9.
+static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 9,
+        DRAWN = 4096
+    };
+    const float special[SPECIAL][3] = {
+        {NAN, 2e9f, 0.0f},       {3e9f, NAN, -1e9f},      {1e12f, 1e12f, NAN},
+        {NAN, NAN, NAN},         {INFINITY, 1e12f, 0.0f}, {0.0f, -INFINITY, 5e9f},
+        {NAN, INFINITY, -1e12f}, {0.0f, 0.0f, 0.0f},      {0.0f, 0.0f, -1e9f}};
+    const uint32_t count = SPECIAL + DRAWN;
+    uint64_t state = 11;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[8 * e];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float drawn =
+                ldexpf((float)Draw(&state) / 4294967296.0f - 0.5f, (int32_t)(Draw(&state) % 42u));
+            w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
+        }
+        w[3] = Bits(e < SPECIAL ? 1e9f : ldexpf(1e3f, (int32_t)(Draw(&state) % 20u)));
+        w[4] = w[5] = w[6] = 0;
+        w[7] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_HELD_SPEEDS, 0, count);
+    int32_t kept = 0;
+    int32_t held = 0;
+    double worst = 0.0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[8 * e];
+        float v[3] = {FloatOf(w[0]), FloatOf(w[1]), FloatOf(w[2])};
+        float* const arrays[3] = {&v[0], &v[1], &v[2]};
+        mvfxHoldSpeed(arrays, 0, FloatOf(w[3]));
+        bool finite = isfinite(FloatOf(w[0])) && isfinite(FloatOf(w[1])) && isfinite(FloatOf(w[2]));
+        if (!finite)
+        {
+            kept += w[4] == w[0] && w[5] == w[1] && w[6] == w[2] && w[7] == 0x5A5A5A5Au;
+            continue;
+        }
+        double speed = sqrt((double)v[0] * (double)v[0] + (double)v[1] * (double)v[1] +
+                            (double)v[2] * (double)v[2]);
+        double apart = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            apart = fmax(apart, fabs((double)FloatOf(w[4 + k]) - (double)v[k]));
+        }
+        double error = speed > 0.0 ? apart / speed : apart;
+        worst = error > worst ? error : worst;
+        held += Bits(v[0]) != w[0] || Bits(v[1]) != w[1] || Bits(v[2]) != w[2];
+    }
+    printf("held speeds: %d not finite kept bit for bit (of 7), %d held of %d, largest relative "
+           "difference from the core's %g\n",
+           kept, held, (int32_t)count - 7, worst);
+    CHECK(ran && kept == 7 && held > (int32_t)count / 4 && worst <= HELD_ERROR,
+          "held speeds as the core's, NaN and infinities left");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -768,6 +842,7 @@ static void TestExact(Gpu* gpu)
         TestRemaindersAndRatios(gpu, &checker);
         TestRemaindersApart(gpu, &checker);
         TestDragFactors(gpu, &checker);
+        TestHeldSpeeds(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }

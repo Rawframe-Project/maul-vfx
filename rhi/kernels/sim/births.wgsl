@@ -319,26 +319,9 @@ fn lifeAt(k: u32, age: f32) -> f32 {
 const MAX_SPEED: f32 = 1e9;
 
 // A velocity's speed held within MAX_SPEED in the particles' space,
-// keeping its heading, as the core's mvfxHoldSpeed: over its largest
-// component, then scaled to the bound past it. A NaN or infinite
-// component leaves it as it is, for the kill rules; NaN is tested first,
-// as WGSL's max of a NaN is unspecified.
+// keeping its heading (shared/speed.wgsl's heldSpeed).
 fn holdSpeed(v: vec3<f32>) -> vec3<f32> {
-    let fastest = MAX_SPEED * params.modules[0].w;
-    if (any(v != v)) {
-        return v;
-    }
-    let a = abs(v);
-    let most = max(a.x, max(a.y, a.z));
-    if (!(most > 0.0)) {
-        return v;
-    }
-    let u = v / most;
-    let length = sqrt(dot(u, u));
-    if (!(most * length > fastest)) {
-        return v;
-    }
-    return u * (fastest / length);
+    return heldSpeed(v, MAX_SPEED * params.modules[0].w);
 }
 
 // A velocity held to the speed limit at a normalized age: past it, its
