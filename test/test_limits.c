@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The limits of what a record shows, each at its bound and just past it:
-// a life curve's scale (MVFX_MAX_LIFE_SCALE) wherever one is held; a
-// size's source over its size over life (MVFX_MAX_EXTENT), a colour's over
-// its colour over life (MVFX_MAX_COLOR), a spin's and an angular
-// velocity's over their rotation speed (MVFX_MAX_SPIN), a custom
-// attribute's over its scale (MVFX_MAX_VALUE); a gradient's keys; a host's
-// spawned sizes and colours refused past them, an event's inherited ones
-// held to them; each moved particle's speed held within MVFX_MAX_SPEED;
-// and what a host module leaves past a limit killed and counted apart, a
-// place past MVFX_MAX_PLACE among them, so the records stay finite under
-// the largest instance scale.
+// The limits of what a record shows, each at its bound and just past it: a
+// life curve's scale (MVFX_MAX_LIFE_SCALE) wherever one is held; a size's
+// source over its size over life (MVFX_MAX_EXTENT), a colour's over its
+// colour over life (MVFX_MAX_COLOR), a spin's and an angular velocity's
+// over their rotation speed (MVFX_MAX_SPIN), a custom attribute's over its
+// scale (MVFX_MAX_VALUE); a gradient's keys; a host's spawned sizes and
+// colours refused past them, an event's inherited ones held to them; each
+// moved particle's speed held within MVFX_MAX_SPEED along its heading; and
+// what a host module leaves past a limit killed and counted apart, a place
+// past MVFX_MAX_PLACE among them, so the records stay finite under the
+// largest instance scale.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -359,6 +359,13 @@ static void Seconds(const Scene* scene, int32_t n)
     }
 }
 
+// A velocity's length, in binary64.
+static double SpeedOf(const float v[3])
+{
+    return sqrt((double)v[0] * (double)v[0] + (double)v[1] * (double)v[1] +
+                (double)v[2] * (double)v[2]);
+}
+
 static void TestSpeedHold(void)
 {
     // Falling under 1e6 a second squared from rest, a second a step: below
@@ -426,6 +433,38 @@ static void TestSpeedHold(void)
     Step(&scene, MVFX_TICKS_PER_SECOND);
     CHECK(Read(&scene, 0) == 1 && s_particles[0].velocity[1] == -MVFX_MAX_SPEED, "a birth held");
     mvfxDestroyContext(scene.context);
+    // A diagonal velocity is held to the bound's speed along its own
+    // heading: under a force of 1e12 along X and 5e11 along Y, held from
+    // about (1e12, 5e11) to 1e9 at half as much Y as X, not to (1e9, 1e9).
+    static const mvfxForce diagonal = {
+        .kind = mvfx_forceConstant, .vector = {1e6f, 5e5f, 0}, .strength = 1e6f};
+    emitter = Hosted();
+    emitter.forces = &diagonal;
+    emitter.forceCount = 1;
+    scene = NewScene(&emitter, 1, 1.0f);
+    Spawn(&scene, 1);
+    Step(&scene, MVFX_TICKS_PER_SECOND);
+    bool read = Read(&scene, 0) == 1;
+    const float* v = s_particles[0].velocity;
+    CHECK(read && fabs(SpeedOf(v) / (double)MVFX_MAX_SPEED - 1.0) < 0x1p-22 &&
+              fabs((double)v[1] / (double)v[0] - 0.5) < 0x1p-22 && v[2] == 0.0f,
+          "a diagonal velocity held along its heading");
+    mvfxDestroyContext(scene.context);
+    // Within the bound on each axis, past it in speed: built to about
+    // (8e8, 8e8) in a second, held to 1e9 at 45 degrees.
+    static const mvfxForce even = {
+        .kind = mvfx_forceConstant, .vector = {8e5f, 8e5f, 0}, .strength = 1e3f};
+    emitter = Hosted();
+    emitter.forces = &even;
+    emitter.forceCount = 1;
+    scene = NewScene(&emitter, 1, 1.0f);
+    Spawn(&scene, 1);
+    Step(&scene, MVFX_TICKS_PER_SECOND);
+    read = Read(&scene, 0) == 1;
+    CHECK(read && v[0] < 8e8f && v[0] == v[1] &&
+              fabs(SpeedOf(v) / (double)MVFX_MAX_SPEED - 1.0) < 0x1p-22,
+          "a speed past the bound, each axis within it, held");
+    mvfxDestroyContext(scene.context);
 }
 
 // What a module leaves, once s_acting is set: s_leave picks it, on the
@@ -446,7 +485,10 @@ static void Leave(const mvfxModuleCall* call, void* user)
         a->position[0][0] = NAN;
         break;
     case 1:
-        a->velocity[2][0] = -Past(MVFX_MAX_SPEED);
+        // Within the bound on each axis, past it in speed.
+        a->velocity[0][0] = 8e8f;
+        a->velocity[1][0] = 0.0f;
+        a->velocity[2][0] = -8e8f;
         break;
     case 2:
         a->size[1][0] = Past(1e3f);

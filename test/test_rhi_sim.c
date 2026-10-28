@@ -94,6 +94,26 @@ static void TestSpeedHeld(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].space = mvfx_spaceWorld;
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "speeds held at the limit");
+    // Along a diagonal, held to the limit's speed along its own heading:
+    // set off along (1, -0.5, 0.25) under a force along it, within 3e-4.
+    // On lavapipe the paths part by 7.6e-5 in place (binary32 places a
+    // second's 1e9 out under a moving instance); a hold past the largest
+    // component instead of the length parts their velocities by 0.39, and
+    // one clamping each axis by 3.6.
+    static const mvfxForce slanted = {
+        .kind = mvfx_forceConstant,
+        .vector = {MVFX_MAX_EXTENT, -0.5f * MVFX_MAX_EXTENT, 0.25f * MVFX_MAX_EXTENT},
+        .strength = MVFX_MAX_EXTENT};
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        emitters[e].velocity.direction[0] = 1.0f;
+        emitters[e].velocity.direction[1] = -0.5f;
+        emitters[e].velocity.direction[2] = 0.25f;
+        emitters[e].forces = &slanted;
+    }
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .tolerance = 3e-4f},
+            "diagonal speeds held along their heading");
 }
 
 // Bursts larger than the capacity at one tick, and past it with the rate.

@@ -229,25 +229,42 @@ typedef struct Range
     int64_t tick;
     double time;
     double seconds;
-    // Whether each moved particle's velocity is held within fastest along
-    // each axis (MVFX_MAX_SPEED in the particles' space): not in a
-    // solver's substeps (the rigid step holds its bodies' at its end).
+    // Whether each moved particle's speed is held within fastest
+    // (MVFX_MAX_SPEED in the particles' space): not in a solver's substeps
+    // (the rigid step holds its bodies' at its end).
     bool holds;
     float fastest;
 } Range;
 
-// x held to [-bound, bound].
-static float Held(float x, float bound)
+void mvfxHoldSpeed(float* const v[3], int32_t i, float fastest)
 {
-    return x < -bound ? -bound : (x > bound ? bound : x);
+    // Over its largest component, so no square overflows; a NaN or an
+    // infinity makes the length NaN, and the velocity is left.
+    double u[3] = {(double)v[0][i], (double)v[1][i], (double)v[2][i]};
+    double most = fmax(fabs(u[0]), fmax(fabs(u[1]), fabs(u[2])));
+    if (!(most > 0.0))
+    {
+        return;
+    }
+    double length = sqrt((u[0] / most) * (u[0] / most) + (u[1] / most) * (u[1] / most) +
+                         (u[2] / most) * (u[2] / most));
+    if (!(most * length > (double)fastest))
+    {
+        return;
+    }
+    double scale = (double)fastest / (most * length);
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        v[k][i] = (float)(u[k] * scale);
+    }
 }
 
-// Holds particle i's velocity where the range holds it.
+// Holds particle i's speed where the range holds it.
 static void HoldSpeed(const Range* r, int32_t i)
 {
-    for (int32_t k = 0; r->holds && k < 3; ++k)
+    if (r->holds)
     {
-        r->v[k][i] = Held(r->v[k][i], r->fastest);
+        mvfxHoldSpeed(r->v, i, r->fastest);
     }
 }
 
@@ -514,12 +531,11 @@ static bool Collides(const Range* r)
 }
 
 // MoveLinear over a plain range, an axis at a time, in the same operations
-// so the same bits; each velocity held where the range holds it and holds
-// is set (a colliding range holds after its contacts).
+// so the same bits; then each speed held where the range holds it and
+// holds is set (a colliding range holds after its contacts).
 static void MovePlain(const Range* r, int32_t first, int32_t end, bool holds)
 {
     const mvfxDragFactors f = r->shared;
-    float fastest = r->holds && holds ? r->fastest : INFINITY;
     for (int32_t k = 0; k < 3; ++k)
     {
         float* restrict p = r->p[k];
@@ -530,8 +546,12 @@ static void MovePlain(const Range* r, int32_t first, int32_t end, bool holds)
         {
             float v0 = v[i];
             p[i] += v0 * f.carry + push;
-            v[i] = Held(v0 * f.decay + carry, fastest);
+            v[i] = v0 * f.decay + carry;
         }
+    }
+    for (int32_t i = first; holds && i < end; ++i)
+    {
+        HoldSpeed(r, i);
     }
 }
 

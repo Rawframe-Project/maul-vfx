@@ -190,6 +190,30 @@ static bool IsSpinWithin(mvfxInstance* instance, int32_t emitter, const mvfxPart
     return held <= 3.0 * cap * cap * trace * trace || turn * extent * extent <= bound * bound;
 }
 
+// The share past the speed bound a held speed may round to: each
+// component scaled to it rounds to binary32 apart (mvfxHoldSpeed).
+#define SPEED_ROUNDING 0x1p-20
+
+// Whether particle i's speed is within fastest, its hold's rounding
+// allowed, in binary64 (a NaN component is not).
+static bool IsSpeedWithin(const mvfxParticleArrays* a, int32_t i, double fastest)
+{
+    double v[3] = {(double)a->velocity[0][i], (double)a->velocity[1][i], (double)a->velocity[2][i]};
+    double most = fastest * (1.0 + SPEED_ROUNDING);
+    return v[0] * v[0] + v[1] * v[1] + v[2] * v[2] <= most * most;
+}
+
+// Whether any particle's speed is past fastest (IsSpeedWithin).
+static bool AnySpeedPast(const mvfxParticleArrays* a, double fastest)
+{
+    bool past = false;
+    for (int32_t i = 0; !past && i < a->count; ++i)
+    {
+        past = !IsSpeedWithin(a, i, fastest);
+    }
+    return past;
+}
+
 // Whether any of an emitter's rigid bodies spins past its bound
 // (IsSpinWithin).
 static bool AnySpinPast(mvfxInstance* instance, int32_t emitter, const mvfxParticleArrays* a,
@@ -216,12 +240,12 @@ static bool AnyArrayPast(float* const* arrays, int32_t n, int32_t count, const f
 
 // Marks for the kill each particle a host module left holding a value
 // that is not finite or is past its limit: a place past MVFX_MAX_PLACE, a
-// velocity past the speed the step holds, a size, colour, spin, angular
-// velocity or custom attribute past what the emitter's particles may
-// store (a rigid body's angular velocity past its surface's bound,
-// IsSpinWithin), an angle or orientation not finite, a size whose axes its
-// rigid shape does not take differ from X (mvfxRigidShape). Those not
-// marked already are counted in valuesMarked.
+// speed past the one the step holds (IsSpeedWithin), a size, colour,
+// spin, angular velocity or custom attribute past what the emitter's
+// particles may store (a rigid body's angular velocity past its surface's
+// bound, IsSpinWithin), an angle or orientation not finite, a size whose
+// axes its rigid shape does not take differ from X (mvfxRigidShape).
+// Those not marked already are counted in valuesMarked.
 static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxParticleArrays* a)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
@@ -229,7 +253,6 @@ static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxPa
     float fastest = MVFX_MAX_SPEED * state->velocityModules.sigma;
     const float finite[4] = {FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX};
     const float places[3] = {MVFX_MAX_PLACE, MVFX_MAX_PLACE, MVFX_MAX_PLACE};
-    const float speeds[3] = {fastest, fastest, fastest};
     const float spins[3] = {caps->spin, caps->spin, caps->spin};
     float* angle[1] = {a->angle};
     float* spin[1] = {a->spin};
@@ -238,14 +261,14 @@ static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxPa
     // An array at a time first: the particles are looked at one by one
     // only where some value is past its limit.
     int32_t n = a->count;
-    bool past =
-        AnyArrayPast(a->position, 3, n, places) || AnyArrayPast(a->velocity, 3, n, speeds) ||
-        AnyArrayPast(a->color, 4, n, caps->color) || AnyArrayPast(a->size, 3, n, caps->size) ||
-        AnyArrayPast(angle, 1, n, finite) || AnyArrayPast(spin, 1, n, &caps->spin) ||
-        AnyArrayPast(a->orientation, 4, n, finite) ||
-        (rigid ? AnySpinPast(instance, emitter, a, (double)fastest)
-               : AnyArrayPast(a->angularVelocity, 3, n, spins)) ||
-        AnyUntied(a->size, axes, n);
+    bool past = AnyArrayPast(a->position, 3, n, places) || AnySpeedPast(a, (double)fastest) ||
+                AnyArrayPast(a->color, 4, n, caps->color) ||
+                AnyArrayPast(a->size, 3, n, caps->size) || AnyArrayPast(angle, 1, n, finite) ||
+                AnyArrayPast(spin, 1, n, &caps->spin) ||
+                AnyArrayPast(a->orientation, 4, n, finite) ||
+                (rigid ? AnySpinPast(instance, emitter, a, (double)fastest)
+                       : AnyArrayPast(a->angularVelocity, 3, n, spins)) ||
+                AnyUntied(a->size, axes, n);
     for (int32_t c = 0; !past && c < MVFX_MAX_CUSTOM_ATTRIBUTES; ++c)
     {
         const float custom[4] = {caps->custom[c], caps->custom[c], caps->custom[c],
@@ -255,7 +278,7 @@ static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxPa
     for (int32_t i = 0; past && i < n; ++i)
     {
         bool within =
-            AreWithin(a->position, 3, i, places) && AreWithin(a->velocity, 3, i, speeds) &&
+            AreWithin(a->position, 3, i, places) && IsSpeedWithin(a, i, (double)fastest) &&
             AreWithin(a->color, 4, i, caps->color) && AreWithin(a->size, 3, i, caps->size) &&
             AreWithin(angle, 1, i, finite) && AreWithin(spin, 1, i, &caps->spin) &&
             AreWithin(a->orientation, 4, i, finite) &&
