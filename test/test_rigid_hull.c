@@ -286,7 +286,8 @@ static void State(const float inertia[6], float momentum[3], float* energy)
 static void TestFreeSpin(void)
 {
     // The lopsided hull spun at (2, 3, -1) without gravity: its angular
-    // momentum in the world and its energy held over 2 s while it tumbles.
+    // momentum in the world and its energy held within 1e-4 over 2 s while
+    // it tumbles, turned by its free flow in its principal frame.
     OpenContext();
     mvfxMeshId lopsided = MeshOf(s_lopsided, 7);
     static const float unit[3] = {1, 1, 1};
@@ -314,7 +315,7 @@ static void TestFreeSpin(void)
     float drift = sqrtf((after[0] - before[0]) * (after[0] - before[0]) +
                         (after[1] - before[1]) * (after[1] - before[1]) +
                         (after[2] - before[2]) * (after[2] - before[2]));
-    CHECK(drift <= 0.01f * size && fabsf(later - energy) <= 0.01f * energy,
+    CHECK(drift <= 1e-4f * size && fabsf(later - energy) <= 1e-4f * energy,
           "momentum and energy held");
     mvfxDestroyContext(s_scene.context);
 }
