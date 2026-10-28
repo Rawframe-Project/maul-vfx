@@ -317,7 +317,8 @@ extern "C"
     ///         device refuses a buffer or a texture, Maul RHI's status
     ///         where the family shares it (`mvfx_errorCapacity`,
     ///         `mvfx_errorUnsupported`, `mvfx_errorState` for a device not
-    ///         ready yet), `mvfx_errorPlatform` otherwise.
+    ///         ready yet, `mvfx_errorBusy` for a call from inside the
+    ///         device's allocator), `mvfx_errorPlatform` otherwise.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def,

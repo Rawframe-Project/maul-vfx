@@ -2,7 +2,7 @@
 # kernels run with Maul RHI, found installed or fetched at its release tag
 # as Maul UI's part does. The core never depends on it.
 
-set(MAUL_VFX_RHI_VERSION 0.8.0)
+set(MAUL_VFX_RHI_VERSION 0.10.0)
 find_package(maul-rhi ${MAUL_VFX_RHI_VERSION} QUIET)
 if(NOT maul-rhi_FOUND)
     set(MAUL_RHI_BUILD_TESTS OFF)
