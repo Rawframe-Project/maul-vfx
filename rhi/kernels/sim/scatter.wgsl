@@ -10,11 +10,11 @@ const BIRTH_CROSSED: u32 = 8u;
 // core's comparisons pass it, tested on the bits, which a device cannot
 // fold.
 fn lowerOf(low: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
-    return select(low, p, p < low & !areNan(p));
+    return select(low, p, (p < low) & !areNan(p));
 }
 
 fn higherOf(high: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
-    return select(high, p, p > high & !areNan(p));
+    return select(high, p, (p > high) & !areNan(p));
 }
 
 // The workgroup's box from each invocation's, by a fixed tree; whole in

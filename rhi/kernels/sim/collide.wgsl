@@ -293,7 +293,8 @@ fn project(x: vec3<f32>, p: ptr<function, Projected>) -> bool {
     return true;
 }
 
-// A pixel's device depth; false where it holds none.
+// A pixel's device depth; false where it holds none. The host fills the
+// image, so a NaN is refused on its bits first, which a device cannot fold.
 fn depthAt(column: i32, row: i32, d: ptr<function, f32>) -> bool {
     if (column < 0 || row < 0 || column >= i32(params.depth.head.y) ||
         row >= i32(params.depth.head.z)) {
@@ -301,7 +302,7 @@ fn depthAt(column: i32, row: i32, d: ptr<function, f32>) -> bool {
     }
     *d = textureLoad(depthImage, vec2<i32>(column, row), 0);
     let far = select(1.0, 0.0, params.depth.modes.x != 0u);
-    return *d >= 0.0 && *d <= 1.0 && *d != far;
+    return !isNan(*d) && *d >= 0.0 && *d <= 1.0 && *d != far;
 }
 
 // The particles' place at device x, y and depth; false at infinity.
