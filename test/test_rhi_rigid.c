@@ -733,13 +733,17 @@ static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
 
 static void TestFreeBoxes(Gpu* gpu, mvfxGpu* kernels)
 {
+    // Each scene's tolerance lies between the worst the paths part by
+    // and the worst they part by without what the scene is there for, at
+    // least 3 times from each as measured on lavapipe: a device's binary32
+    // division and square root may round less closely than lavapipe's.
+    //
     // Boxes 0.5 by 1 by 1.5 spun at 20 rad/s near their largest moment's
-    // axis for 200 steps at 8 substeps, each path on its own, within 1e-3:
+    // axis for 100 steps at 8 substeps, each path on its own, within 6e-4:
     // the residual turns keep the momentum's length, which a turn's
     // binary32 sine and cosine, the same each substep at one angle, would
-    // otherwise grow or shrink. Here binary32 stays within 1e-3 of the CPU
-    // path's binary64 for 342 steps; without that correction it left it at
-    // step 71.
+    // otherwise grow or shrink. Binary32 parts from the CPU path's binary64
+    // by 1.4e-4; without that correction, by 2.7e-3.
     mvfxEmitterDef emitter = Bodies(mvfx_rigidBox);
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.5f, 1.0f, 1.5f}, .max = {0.5f, 1.0f, 1.5f}};
@@ -750,12 +754,12 @@ static void TestFreeBoxes(Gpu* gpu, mvfxGpu* kernels)
     emitter.angularVelocity = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {19.0f, 1.0f, 1.0f}, .max = {20.0f, 2.0f, 2.0f}};
     Compare(gpu, kernels,
-            &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 200, .tolerance = 1e-3f},
-            "boxes spun near their largest moment's axis for 200 steps");
+            &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 100, .tolerance = 6e-4f},
+            "boxes spun near their largest moment's axis for 100 steps");
     // Boxes spun at up to 870 rad/s, up to 1.8 radians a substep, a step
-    // at a time within 1e-2: their residual turns taken in pieces. A step's
-    // binary32 turns of that size part from binary64 by up to 4e-3; in one
-    // piece they part by more than 1e-1 at once.
+    // at a time within 3e-2: their residual turns taken in pieces. A step's
+    // binary32 turns of that size part from binary64 by 3e-3; in one piece,
+    // by 3.3.
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.3f, 0.6f, 1.2f}, .max = {0.6f, 1.6f, 1.9f}};
     emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
@@ -763,7 +767,7 @@ static void TestFreeBoxes(Gpu* gpu, mvfxGpu* kernels)
     emitter.angularVelocity = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {-500, -500, -500}, .max = {500, 500, 500}};
     Compare(gpu, kernels,
-            &(Run){.emitters = &emitter, .emitterCount = 1, .adopting = true, .tolerance = 1e-2f},
+            &(Run){.emitters = &emitter, .emitterCount = 1, .adopting = true, .tolerance = 3e-2f},
             "boxes spun at up to 870 rad/s");
 }
 
@@ -773,10 +777,11 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
     // boxes, their moments about their length 1e-4 to 1e-12 of the
     // others' (the last held at 2^-40 in their units), free: spun at up to
     // 3 rad/s about their length, then tumbling about every axis, a step
-    // at a time within 1e-3 of the CPU path's binary64 flow. Read back by
-    // its momentum's size, a rod's spin about its length drained in
-    // binary32: the rounding across it, at its large moments, outweighed
-    // its momentum about its length.
+    // at a time within 1e-3 of the CPU path's binary64 flow, which they
+    // part from by 2e-6. Read back by its momentum's size, a rod's spin
+    // about its length drained in binary32: the rounding across it, at its
+    // large moments, outweighed its momentum about its length, and the
+    // rods 4e-5 and 4e-7 across spun about it parted by 1.3 or more.
     static const float across[3] = {4e-3f, 4e-5f, 4e-7f};
     for (int32_t shape = 1; shape < 3; ++shape)
     {
@@ -803,9 +808,9 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
             Tumbled(gpu, kernels, &emitter, false, what);
         }
         // The thinnest spun about their length for 10 s, each path on its
-        // own, within 1e-3: their spin stays along their length, which the
-        // spin's read back keeps. Without it their spin leaned off their
-        // length by 2.6e-3 of itself in that time.
+        // own, within 2e-3: their spin stays along their length, which the
+        // spin's read back keeps. The paths part by 4.2e-4; without the
+        // read back, by 9e-3.
         mvfxEmitterDef emitter = Bodies((mvfxRigidShape)shape);
         emitter.size = (mvfxVectorSource){
             .kind = mvfx_sourceRange, .min = {4e-7f, 0.4f, 4e-7f}, .max = {4e-7f, 0.4f, 4e-7f}};
@@ -817,7 +822,7 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
         emitter.angularVelocity =
             (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, 0, 0}, .max = {3, 0, 0}};
         Compare(gpu, kernels,
-                &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 600, .tolerance = 1e-3f},
+                &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 600, .tolerance = 2e-3f},
                 shape == 1 ? "capsules 4e-07 across spun about their length for 10 s"
                            : "boxes 4e-07 across spun about their length for 10 s");
     }
