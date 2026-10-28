@@ -1270,7 +1270,7 @@ static void TestRefused(mvfxGpu* kernels)
     simDef.instance = planned;
     mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
     mvfxGpuRefusal refusal;
-    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState && sim == NULL &&
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorUnsupported && sim == NULL &&
               refusal.emitter == 1 && refusal.features == MVFX_FEATURE_HOST_MODULES,
           "an emitter it does not run, named");
     simDef.instance = cpu;

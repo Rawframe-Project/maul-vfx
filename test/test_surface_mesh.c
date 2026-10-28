@@ -291,7 +291,7 @@ static void TestRefusals(void)
         mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) == mvfx_success &&
         bytes == 32 * 64 &&
         mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, zero, 0.0f, &b, &v, &i) ==
-            mvfx_errorState &&
+            mvfx_errorUnsupported &&
         v == 0 && i == 0;
     mvfxDestroyContext(s_context);
     CHECK(right, "a mesh's refusals");

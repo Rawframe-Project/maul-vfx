@@ -519,7 +519,7 @@ mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId
     *bytesOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -555,7 +555,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteParticlesWork(
     *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -639,7 +639,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteLightsWork(mvfxContext* contex
     *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);

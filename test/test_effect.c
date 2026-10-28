@@ -104,7 +104,7 @@ static void TestLimit(void)
     mvfxEffectId c = {1, 1};
     CHECK(mvfxCreateEffect(context, &def, &a) == mvfx_success, "first");
     CHECK(mvfxCreateEffect(context, &def, &b) == mvfx_success, "second");
-    CHECK(mvfxCreateEffect(context, &def, &c) == mvfx_errorLimit, "the third is past the limit");
+    CHECK(mvfxCreateEffect(context, &def, &c) == mvfx_errorCapacity, "the third is past the table");
     CHECK(c.index1 == 0 && c.generation == 0, "the null id on failure");
     CHECK(mvfxGetContextMisuse(context) == 0, "a limit is not misuse");
     CHECK(mvfxDestroyEffect(context, a) == mvfx_success, "one freed");

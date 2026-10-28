@@ -115,7 +115,7 @@ mvfxResult mvfxGpuSim_SetEmitterMesh(mvfxGpuSim* sim, mvfxContext* context, int3
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxMeshView view;
     if (mvfxMesh_GetView(context, mesh, &view) != mvfx_success)

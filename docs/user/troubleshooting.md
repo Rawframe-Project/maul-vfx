@@ -6,13 +6,15 @@ Every fallible call says why it failed:
 
 | Result | Meaning |
 |---|---|
-| `mvfx_errorInvalid` | An argument the call can never take: a null pointer, a value out of its range, a def not made by its default function. It also counts one misuse on the context. An effect file the library refuses, including for what it asks of the program's assets, counts none: a file is untrusted data. |
-| `mvfx_errorCapacity` | A buffer the program gave is too small (the call reports the size it needs), or the allocator failed. |
-| `mvfx_errorLimit` | A limit of the context's def is reached: too many effects, instances, layouts, grids or meshes at once. |
-| `mvfx_errorVersion` | The program was built against headers of another release, or a file is of another format version. |
+| `mvfx_errorInvalid` | An argument the call can never take: a null pointer, a value out of its range, a def not made by its default function. It also counts one misuse on the context. A def an effect file holds that the library refuses, for what it asks of the program's assets, counts none: a file is untrusted data. |
+| `mvfx_errorCapacity` | Room is too small: a buffer the program gave (the call reports the size it needs), a table of the context's def (too many effects, instances, layouts, grids or meshes at once), or the allocator. |
 | `mvfx_errorStale` | An id whose object was destroyed. |
-| `mvfx_errorBusy` | The object is in use: an effect an instance plays, a grid or mesh an effect holds. |
-| `mvfx_errorState` | The call is not allowed now, such as a call from the allocator, a task hook or a host module that would change the context while it steps. |
+| `mvfx_errorUnsupported` | The object was made without what the call needs: a planned instance's fields, which its simulation holds; a plan of an instance that is not planned; an effect the GPU part does not run yet. |
+| `mvfx_errorState` | The call is not allowed now, and another call changes that: a planned instance's plans split into steps, a GPU frame not open. |
+| `mvfx_errorVersion` | The program was built against headers of another release, or a file is of another format version. |
+| `mvfx_errorFormat` | An effect file's bytes are malformed: a magic, size or hash that does not match, a unit out of place, a count past its cap, a def the def validator refuses. The offset names the first byte at fault. |
+| `mvfx_errorLimit` | An argument passes a fixed bound of the library, a named constant: a hull past `MVFX_MAX_HULL_COUNT` vertices, a frame's GPU passes past their `MVFX_GPU_*` count. |
+| `mvfx_errorBusy` | The object is in use: an effect an instance plays, a grid or mesh an effect holds, or a call from the allocator, a task hook or a host module that would change the context while it runs them. |
 | `mvfx_errorMissing` | A name or object the call needs is not in the table it was given, such as an asset of an effect file. |
 
 `mvfxResultName` names any result for a log. `mvfxGetContextMisuse` counts the calls refused as invalid since the context was made: a program can assert in its own tests that it stays at zero, and log it in a release build.
@@ -21,7 +23,7 @@ Each function's documentation in its header lists the results it returns and wha
 
 ## An effect that is refused
 
-`mvfxCreateEffect` checks every field of the def and its parts, with the ranges each header states; a refused def answers `mvfx_errorInvalid`. A def that is built up in steps is easiest to check one emitter at a time. An effect file refused by `mvfxReadEffect` comes with the offset of the first byte at fault. `tools/effect_json.py to-json` shows a file whole, and refuses a damaged one, a hash that does not match included.
+`mvfxCreateEffect` checks every field of the def and its parts, with the ranges each header states; a refused def answers `mvfx_errorInvalid` (`mvfx_errorFormat` when it comes from a file). A def that is built up in steps is easiest to check one emitter at a time. An effect file refused by `mvfxReadEffect` comes with the offset of the first byte at fault. `tools/effect_json.py to-json` shows a file whole, and refuses a damaged one, a hash that does not match included.
 
 ## Particles that are missing
 

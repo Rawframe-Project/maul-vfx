@@ -1211,15 +1211,14 @@ extern "C"
     /// @param context    The context that owns the effect.
     /// @param def        The def, from mvfxDefaultEffectDef.
     /// @param effectOut  Receives the effect's id; the null id on failure.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
-    ///         or an emitter def without its cookie, a field out of its
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def or an emitter def without its cookie, a field out of its
     ///         range or an invalid curve, which counts as misuse when the
-    ///         context is given;
-    ///         `mvfx_errorStale` for a mesh shape's mesh that names no live
-    ///         mesh, `mvfx_errorInvalid` too for a mesh without the elements
-    ///         its mode needs; `mvfx_errorLimit` when the context holds its
-    ///         limit of effects; `mvfx_errorCapacity` when the allocator
-    ///         fails.
+    ///         context is given; `mvfx_errorStale` for a mesh shape's mesh
+    ///         that names no live mesh, `mvfx_errorInvalid` too for a mesh
+    ///         without the elements its mode needs; `mvfx_errorCapacity`
+    ///         when the context holds as many effects as its def allows, or
+    ///         when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateEffect(mvfxContext* context,

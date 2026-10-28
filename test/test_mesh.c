@@ -450,7 +450,7 @@ static void TestRefusals(void)
     mvfxMeshId b = {0};
     CHECK(mvfxCreateMesh(context, &def, &a) == mvfx_success, "first");
     CHECK(mvfxCreateMesh(context, &def, &b) == mvfx_success, "second");
-    CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_errorLimit, "past the limit");
+    CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_errorCapacity, "past the table");
     CHECK(mvfxMesh_IsValid(context, a) && !mvfxMesh_IsValid(context, (mvfxMeshId){0}) &&
               !mvfxMesh_IsValid(NULL, a),
           "validity");

@@ -710,7 +710,7 @@ static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int
     *ribbonCountOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     bool valid = buffers->pointCapacity >= 0 &&
                  (buffers->pointCapacity == 0 || buffers->points != nullptr) &&
@@ -759,7 +759,7 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
     *indexCountOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     bool valid = buffers->vertexCapacity >= 0 &&
                  (buffers->vertexCapacity == 0 || buffers->vertices != nullptr) &&

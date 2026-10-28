@@ -209,7 +209,7 @@ typedef struct SimGas
     bool hasLiquid;
 } SimGas;
 
-// Reads an effect's gases into the simulation; mvfx_errorState with the
+// Reads an effect's gases into the simulation; mvfx_errorUnsupported with the
 // gas in refusal for one the part does not run.
 mvfxResult mvfxReadSimGases(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refusal);
 

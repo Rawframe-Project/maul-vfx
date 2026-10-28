@@ -166,12 +166,12 @@ extern "C"
     /// @param context    The context that will own the layout.
     /// @param def        The def, from mvfxDefaultLayoutDef.
     /// @param layoutOut  Receives the layout's id; the null id on failure.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
-    ///         without its cookie, a count, stride, field, format,
-    ///         component count, offset or overlap out of range, which counts
-    ///         as misuse when the context is given; `mvfx_errorLimit` when
-    ///         the context holds its limit of layouts; `mvfx_errorCapacity`
-    ///         when the allocator fails.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, a count, stride, field, format,
+    ///         component count, offset or overlap out of range, which
+    ///         counts as misuse when the context is given;
+    ///         `mvfx_errorCapacity` when the context holds as many layouts
+    ///         as its def allows, or when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateLayout(mvfxContext* context,
@@ -685,13 +685,13 @@ extern "C"
     /// @param read      What to read and how.
     /// @param out       Receives the values.
     /// @param bytes     out's size in bytes: at least the last value's end.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas
-    ///         index, field, format, box, range or pitch out of range (a
-    ///         surface's only field its distance, which no other gas has),
-    ///         or bytes too few, which counts as misuse when the context is
-    ///         given; `mvfx_errorState` for a planned instance, whose
-    ///         gases' fields its simulation holds.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
+    ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
+    ///         gas index, field, format, box, range or pitch out of range
+    ///         (a surface's only field its distance, which no other gas
+    ///         has), or bytes too few, which counts as misuse when the
+    ///         context is given; `mvfx_errorUnsupported` for a planned
+    ///         instance, whose gases' fields its simulation holds.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
@@ -714,12 +714,12 @@ extern "C"
     /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
     ///                  be NULL for 0.
     /// @param out       Receives count values.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas index
-    ///         or field out of range, a count out of range or a point not
-    ///         finite, which counts as misuse when the context is given;
-    ///         `mvfx_errorState` for a planned instance, whose gases'
-    ///         fields its simulation holds.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
+    ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
+    ///         gas index or field out of range, a count out of range or a
+    ///         point not finite, which counts as misuse when the context is
+    ///         given; `mvfx_errorUnsupported` for a planned instance, whose
+    ///         gases' fields its simulation holds.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
@@ -756,12 +756,12 @@ extern "C"
     /// @param read      The field, format, box, range and pitch.
     /// @param out       The buffer.
     /// @param bytes     Its bytes, at least the read's.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument, a surface
-    ///         index, field, format, box, range or pitch out of range, or
-    ///         bytes too few, which counts as misuse when the context is
-    ///         given; `mvfx_errorState` for a planned instance, whose
-    ///         fields are its simulation's.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
+    ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
+    ///         surface index, field, format, box, range or pitch out of
+    ///         range, or bytes too few, which counts as misuse when the
+    ///         context is given; `mvfx_errorUnsupported` for a planned
+    ///         instance, whose fields are its simulation's.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
@@ -795,12 +795,12 @@ extern "C"
     /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
     ///                  be NULL for 0.
     /// @param out       Receives count samples.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument, a surface
-    ///         index out of range, a count out of range or a point not
-    ///         finite, which counts as misuse when the context is given;
-    ///         `mvfx_errorState` for a planned instance, whose fields are
-    ///         its simulation's.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
+    ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
+    ///         surface index out of range, a count out of range or a point
+    ///         not finite, which counts as misuse when the context is
+    ///         given; `mvfx_errorUnsupported` for a planned instance, whose
+    ///         fields are its simulation's.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
@@ -922,8 +922,8 @@ extern "C"
     /// @param vertexCountOut  Receives the mesh's vertices; 0 on failure.
     /// @param indexCountOut   Receives the mesh's indices; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
-    ///         nothing live; `mvfx_errorState` for a planned instance (its
-    ///         fields are its simulation's); `mvfx_errorCapacity` for
+    ///         nothing live; `mvfx_errorUnsupported` for a planned instance
+    ///         (its fields are its simulation's); `mvfx_errorCapacity` for
     ///         scratch too small, with nothing written; `mvfx_errorInvalid`
     ///         for a NULL context, origin, buffers or count, a gas out of
     ///         range or not a surface, an origin or level out of range, a

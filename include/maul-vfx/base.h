@@ -74,43 +74,57 @@ extern "C"
 
     // The status a fallible function returns. Zero is success, positive
     // values are outcomes that are not errors, negative values are errors.
-    // The type has a fixed width so that result structs have one layout in
-    // C and C++.
+    // The errors the Maul family shares have the same name, meaning and
+    // value in every library; a library's own count down from -32. The
+    // type has a fixed width so that result structs have one layout in C
+    // and C++.
     typedef int32_t mvfxResult;
     enum
     {
         // The call did what was asked.
         mvfx_success = 0,
         // An argument is invalid: a null pointer where one is required, a
-        // value out of range, a def not made by its default function.
+        // value out of the range its parameter documents, a def not made
+        // by its default function.
         mvfx_errorInvalid = -1,
-        // A caller buffer is too small for the result, or the allocator
-        // failed.
+        // The room for the result is too small: a caller buffer, a table
+        // a context's def sized, the allocator. More room would succeed.
         mvfx_errorCapacity = -2,
-        // A named limit the caller set was reached: the work it bounds was
-        // not done.
-        mvfx_errorLimit = -3,
-        // A def was built against headers of another major or minor
-        // version.
-        mvfx_errorVersion = -4,
         // An id names an object that has been destroyed since it was
         // handed out.
-        mvfx_errorStale = -5,
-        // The object is in use by another and cannot be destroyed or
-        // changed now.
-        mvfx_errorBusy = -6,
-        // The call is not allowed in the object's current state.
-        mvfx_errorState = -7,
+        mvfx_errorStale = -3,
+        // The object was created without what the call needs, which no
+        // later call can add: a planned instance's fields, an effect the
+        // GPU part does not run.
+        mvfx_errorUnsupported = -4,
+        // The call is not allowed in the object's current state, which
+        // another call changes.
+        mvfx_errorState = -6,
+        // A def was built against headers of another release, or a file
+        // is of another format version.
+        mvfx_errorVersion = -7,
+        // Stored bytes are malformed: every check a reader makes on an
+        // effect file's bytes fails with this, or mvfx_errorVersion.
+        mvfx_errorFormat = -8,
+        // An argument passes a fixed bound of the library, published as a
+        // named constant (MVFX_MAX_*, MVFX_GPU_*). More room would not
+        // help.
+        mvfx_errorLimit = -9,
+        // The object is in use by work under way and the same call
+        // succeeds once it ends: a call from host code the object is
+        // running (the allocator, the task hooks, host modules), or one
+        // that would change an object another still uses.
+        mvfx_errorBusy = -10,
         // An object or a name the call needs is not in the table it was
         // given.
-        mvfx_errorMissing = -8,
+        mvfx_errorMissing = -32,
     };
 
     // The allocator an owner object takes in its def and keeps for its
     // lifetime. Alignment is a power of two. A zeroed allocator means the C
     // library's allocation functions. Its functions call none of the
     // owner's functions that take it mutable: such a call is refused with
-    // mvfx_errorState and counted as misuse.
+    // mvfx_errorBusy and counted as misuse.
     typedef struct mvfxAllocator
     {
         void* (*alloc)(size_t size, size_t alignment, void* context);

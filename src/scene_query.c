@@ -66,7 +66,7 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
     *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -134,7 +134,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_AnswerSceneQueriesWork(mvfxContext*
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);

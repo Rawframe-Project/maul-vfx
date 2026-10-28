@@ -57,7 +57,7 @@ static void ReadSealed(const uint8_t* bytes, int64_t size)
     mvfxEffectId effect = {0};
     if (result.result != mvfx_errorCapacity)
     {
-        Expect(result.result == mvfx_errorInvalid || result.result == mvfx_errorVersion ||
+        Expect(result.result == mvfx_errorFormat || result.result == mvfx_errorVersion ||
                result.result == mvfx_errorMissing);
         mvfxFileResult created = mvfxCreateEffectFromBytes(
             s_fuzzContext, bytes, size, s_sceneAssets, s_sceneAssetCount, &effect);
@@ -73,7 +73,7 @@ static void ReadSealed(const uint8_t* bytes, int64_t size)
     // a def it refuses lies at the effect unit.
     if (result.result != mvfx_success)
     {
-        Expect(result.result == mvfx_errorInvalid && result.offset == (int64_t)Get32(bytes, 76));
+        Expect(result.result == mvfx_errorFormat && result.offset == (int64_t)Get32(bytes, 76));
         mvfxFileResult created = mvfxCreateEffectFromBytes(
             s_fuzzContext, bytes, size, s_sceneAssets, s_sceneAssetCount, &effect);
         Expect(created.result == result.result && created.offset == result.offset);

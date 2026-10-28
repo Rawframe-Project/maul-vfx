@@ -392,7 +392,7 @@ static MVFX_NOINLINE mvfxResult mvfxContext_StepTicksWork(mvfxContext* context, 
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     if (ticks < 0 || ticks > MAX_STEP_TICKS)
     {
@@ -419,7 +419,7 @@ static MVFX_NOINLINE mvfxResult mvfxContext_StepWork(mvfxContext* context, doubl
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     if (!(seconds >= 0.0 && seconds <= MVFX_MAX_STEP_SECONDS))
     {
@@ -455,7 +455,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_PrewarmWork(mvfxContext* context,
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -465,7 +465,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_PrewarmWork(mvfxContext* context,
     if (live->planned)
     {
         // Its particles are simulated elsewhere, step by step.
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     bool valid = seconds >= 0.0 && seconds <= 1e9 && stepSeconds > 0.0 &&
                  stepSeconds <= MVFX_MAX_STEP_SECONDS && maxSteps >= 1;

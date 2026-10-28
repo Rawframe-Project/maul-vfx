@@ -92,7 +92,7 @@ mvfxResult mvfxGpuSim_AddWaterSamples(mvfxGpuSim* sim, const mvfxGpuWaterSamples
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     SimWater* water = &sim->waters[def->water];
     if (water->sampleCount == MVFX_GPU_WATER_SAMPLES)

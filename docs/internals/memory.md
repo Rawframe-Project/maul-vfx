@@ -4,7 +4,7 @@ Every byte the library uses comes from the host's allocator, at a moment the hos
 
 ## Who owns what
 
-The **context** is the owner object. Its def takes the allocator (`alloc` and `free` with a size and an alignment, a context pointer, no realloc; zeroed means the C library's) and named limits: how many effects, instances, meshes, grids and layouts may exist at once. The context allocates its tables of those objects once, at those limits, and refuses a creation past one with `mvfx_errorLimit`.
+The **context** is the owner object. Its def takes the allocator (`alloc` and `free` with a size and an alignment, a context pointer, no realloc; zeroed means the C library's) and named limits: how many effects, instances, meshes, grids and layouts may exist at once. The context allocates its tables of those objects once, at those limits, and refuses a creation past one with `mvfx_errorCapacity`.
 
 Objects are named by ids: a 1-based slot in the context's table and the generation the slot had when the object took it ([src/slots.h](../../src/slots.h)). A destroyed object's slot bumps its generation, so an old id is told apart from the slot's next occupant and refused with `mvfx_errorStale`; nothing is ever reached through a dangling pointer.
 
@@ -32,7 +32,7 @@ A context may cap the particles its instances hold (`mvfxContextLimits.particles
 
 ## The allocator calling back in
 
-The allocator must not call the context's functions that change it, since one may be allocating at the time. The context counts its calls of host code (a step's tasks and host modules, every allocation), and refuses a changing call made meanwhile with `mvfx_errorState`, counted as misuse. Functions that only read (those taking a `const` context) are allowed.
+The allocator must not call the context's functions that change it, since one may be allocating at the time. The context counts its calls of host code (a step's tasks and host modules, every allocation), and refuses a changing call made meanwhile with `mvfx_errorBusy`, counted as misuse. Functions that only read (those taking a `const` context) are allowed.
 
 ## The GPU part
 

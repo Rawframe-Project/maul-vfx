@@ -428,7 +428,7 @@ struct mvfxGpuSim
     // The bytes the last mvfxGpuSim_Record uploaded.
     uint64_t uploaded;
     // Whether it is being destroyed: its changing calls from its
-    // allocator meanwhile are refused with mvfx_errorState.
+    // allocator meanwhile are refused with mvfx_errorBusy.
     bool ending;
 };
 

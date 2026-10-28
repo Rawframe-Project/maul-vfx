@@ -195,7 +195,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadWaterWork(const mvfxContext* co
     if (live->planned)
     {
         // Its fields are the simulation's.
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     const mvfxWaterState* state = &live->waters[water];
     const mvfxLayoutField field = {.format = read->format, .components = 1};
@@ -396,7 +396,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SampleWaterWork(const mvfxContext* 
     if (live->planned)
     {
         // Its fields are the simulation's.
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     mvfxBoxPlace place = mvfxWaterPlace(live, water);
     mvfxSpaceMap map = mvfxBoxMap(live, &place, mvfx_spaceWorld);
@@ -436,7 +436,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_PushWaterWork(mvfxContext* context,
 {
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxResult result = mvfx_success;
     mvfxInstance* live = (mvfxInstance*)FindWater(context, instance, water, &result);

@@ -116,7 +116,7 @@ mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxLayoutView layout;
     mvfxResult result = mvfxLayout_GetView(sim->context, def->layout, &layout);
@@ -168,7 +168,7 @@ mvfxResult mvfxGpuSim_AddLights(mvfxGpuSim* sim, const mvfxGpuLightsDef* def)
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     Emitter* emitter = &sim->emitters[def->emitter];
     if (emitter->records.count == MVFX_GPU_RECORD_PASSES)
@@ -212,7 +212,7 @@ static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfx
 {
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxLayoutView layout;
     mvfxResult result = mvfxLayout_GetView(sim->context, def->layout, &layout);
@@ -379,7 +379,7 @@ static mvfxResult CheckQuads(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, mvfxL
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxResult result = mvfxLayout_GetView(sim->context, def->layout, layout);
     if (result != mvfx_success || !mvfxIsRibbonLayout(layout))

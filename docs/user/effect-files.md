@@ -34,7 +34,7 @@ bool made =
 file[size / 2] ^= 0x40u;
 mvfxEffectId damaged = {0};
 mvfxFileResult refused = mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &damaged);
-made = made && refused.result == mvfx_errorInvalid && refused.offset >= 0;
+made = made && refused.result == mvfx_errorFormat && refused.offset >= 0;
 mvfxDestroyContext(context);
 return made;
 ```

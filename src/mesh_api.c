@@ -35,7 +35,7 @@ static MVFX_NOINLINE mvfxResult mvfxCreateMeshWork(mvfxContext* context, const m
     *meshOut = (mvfxMeshId){0};
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     if (!mvfxIsMeshDefValid(def))
     {
@@ -44,7 +44,7 @@ static MVFX_NOINLINE mvfxResult mvfxCreateMeshWork(mvfxContext* context, const m
     }
     if (context->meshes.firstFree == 0)
     {
-        return mvfx_errorLimit;
+        return mvfx_errorCapacity;
     }
     mvfxMesh* mesh = mvfxBuildMesh(def, &context->allocator);
     if (mesh == nullptr)
@@ -74,7 +74,7 @@ mvfxResult mvfxDestroyMesh(mvfxContext* context, mvfxMeshId mesh)
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
@@ -105,7 +105,7 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_SetPositionsWork(mvfxContext* context, 
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
@@ -166,7 +166,7 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullCenterWork(mvfxContext* context, mv
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
@@ -209,7 +209,7 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullVertexCountWork(mvfxContext* contex
     *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)

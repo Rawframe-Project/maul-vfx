@@ -481,7 +481,7 @@ static void TestHolds(void)
                   mvfx_errorInvalid &&
               mvfxInstance_SetWaterHolds(s_context, s_planned, 0, -1, true) == mvfx_errorInvalid &&
               mvfxGetContextMisuse(s_context) == misuse + 3 &&
-              mvfxInstance_SetWaterHolds(s_context, s_cpu, 0, 0, true) == mvfx_errorState &&
+              mvfxInstance_SetWaterHolds(s_context, s_cpu, 0, 0, true) == mvfx_errorUnsupported &&
               mvfxInstance_SetWaterHolds(s_context, (mvfxInstanceId){0}, 0, 0, true) ==
                   mvfx_errorStale,
           "the holds setter's refusals");
@@ -644,7 +644,8 @@ static void TestCounts(void)
         mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 0, 0.0f, 0, -1.0) ==
             mvfx_errorInvalid &&
         mvfxGetContextMisuse(s_context) == misuse + 7 &&
-        mvfxInstance_SetWaterCounts(s_context, s_cpu, 0, 0, 0.0f, 0, 0.0) == mvfx_errorState &&
+        mvfxInstance_SetWaterCounts(s_context, s_cpu, 0, 0, 0.0f, 0, 0.0) ==
+            mvfx_errorUnsupported &&
         mvfxInstance_SetWaterCounts(s_context, (mvfxInstanceId){0}, 0, 0, 0.0f, 0, 0.0) ==
             mvfx_errorStale;
     CHECK(refused, "the counts setter's refusals");
@@ -664,7 +665,7 @@ static void TestRefusals(void)
         mvfxInstance_GetWaterPlan(NULL, s_planned, 0, &plan) == mvfx_errorInvalid &&
         mvfxInstance_GetWaterPlan(s_context, s_planned, 0, NULL) == mvfx_errorInvalid &&
         mvfxInstance_GetWaterPlan(s_context, s_planned, 2, &plan) == mvfx_errorInvalid &&
-        mvfxInstance_GetWaterPlan(s_context, s_cpu, 0, &plan) == mvfx_errorState &&
+        mvfxInstance_GetWaterPlan(s_context, s_cpu, 0, &plan) == mvfx_errorUnsupported &&
         mvfxInstance_GetWaterPlan(s_context, (mvfxInstanceId){0}, 0, &plan) == mvfx_errorStale &&
         mvfxInstance_GetWaterStepPlan(s_context, s_planned, 0, 1, &plan) == mvfx_errorInvalid &&
         mvfxInstance_GetWaterStepPlan(s_context, s_planned, 0, -1, &plan) == mvfx_errorInvalid &&
@@ -678,7 +679,7 @@ static void TestRefusals(void)
         mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, 0, -1.0f) == mvfx_errorInvalid &&
         mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, 0, NAN) == mvfx_errorInvalid &&
         mvfxGetContextMisuse(s_context) == misuse + 6 &&
-        mvfxInstance_SetWaterSpeed(s_context, s_cpu, 0, 0, 1.0f) == mvfx_errorState &&
+        mvfxInstance_SetWaterSpeed(s_context, s_cpu, 0, 0, 1.0f) == mvfx_errorUnsupported &&
         mvfxInstance_SetWaterSpeed(s_context, (mvfxInstanceId){0}, 0, 0, 1.0f) == mvfx_errorStale;
     CHECK(refused, "the plans' and the speed setter's refusals");
     // An older report than the latest is ignored: the next step counts
@@ -698,9 +699,9 @@ static void TestRefusals(void)
     const double point[3] = {0.0, 0.0, 0.0};
     mvfxWaterSample sample;
     CHECK(mvfxInstance_ReadWater(s_context, s_planned, 0, &read, &out, sizeof out) ==
-                  mvfx_errorState &&
+                  mvfx_errorUnsupported &&
               mvfxInstance_SampleWater(s_context, s_planned, 0, point, 1, &sample) ==
-                  mvfx_errorState &&
+                  mvfx_errorUnsupported &&
               mvfxInstance_ReadWater(s_context, s_cpu, 0, &read, &out, sizeof out) == mvfx_success,
           "reads of a planned surface refused");
     mvfxDestroyContext(s_context);

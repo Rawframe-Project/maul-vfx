@@ -407,7 +407,7 @@ mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(mvfxContext* context, mvfxIns
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindSurface(context, instance, gas, &result);
@@ -465,7 +465,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteSurfaceMeshWork(
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindSurface(context, instance, gas, &result);
@@ -481,7 +481,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteSurfaceMeshWork(
     if (live->planned)
     {
         // Its fields are the simulation's.
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     const mvfxCompiledGas* compiled = &live->effect->gases[gas];
     int64_t bytes = ScratchBytes(compiled);

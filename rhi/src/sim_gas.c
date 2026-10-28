@@ -95,7 +95,7 @@ mvfxResult mvfxReadSimGases(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refus
         if (!Runs(&gas->view))
         {
             *refusal = g;
-            return mvfx_errorState;
+            return mvfx_errorUnsupported;
         }
     }
     return mvfx_success;

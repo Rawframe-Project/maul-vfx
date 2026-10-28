@@ -627,7 +627,7 @@ mvfxResult mvfxGpuSim_AddWaterRead(mvfxGpuSim* sim, const mvfxGpuWaterReadDef* d
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     SimWater* water = &sim->waters[def->water];
     if (water->readCount == MVFX_GPU_WATER_READS)

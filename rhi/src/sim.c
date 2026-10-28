@@ -130,7 +130,7 @@ static mvfxResult ReadViews(mvfxGpuSim* sim, mvfxEffectId effect, mvfxGpuRefusal
         if (!Runs(&sim->views[e], refusal))
         {
             refusal->emitter = e;
-            return mvfx_errorState;
+            return mvfx_errorUnsupported;
         }
     }
     *refusal = (mvfxGpuRefusal){.emitter = -1, .gas = -1, .water = -1};
@@ -386,7 +386,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     mvfxResult planned = mvfxInstance_GetEmitterStepPlan(def->context, def->instance, 0, 0, &plan);
     if (planned != mvfx_success)
     {
-        return planned == mvfx_errorState ? mvfx_errorInvalid : planned;
+        return planned == mvfx_errorUnsupported ? mvfx_errorInvalid : planned;
     }
     mvfxGpuSim* sim = mvfxRhiAllocate(&def->allocator, sizeof *sim, alignof(mvfxGpuSim));
     if (sim == nullptr)
@@ -729,7 +729,7 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     // The plans' steps, each a lane of every emitter, gas and surface when
     // there are more (sim_lanes.c).
@@ -923,7 +923,7 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     sim->uploaded = 0;
     const mvfxRecordPipelines pipelines = {

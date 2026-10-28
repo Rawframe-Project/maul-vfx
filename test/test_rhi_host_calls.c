@@ -4,7 +4,7 @@
 // Host code calling back into a simulation of the GPU part, on Maul RHI's
 // test driver: from its allocator, while mvfxDestroyGpuSim releases the
 // host's particles' memory, each call that changes the simulation is
-// refused with mvfx_errorState and changes nothing, a second destruction
+// refused with mvfx_errorBusy and changes nothing, a second destruction
 // does nothing, a reading call still answers, and the destruction then
 // gives back all the memory taken. And its creation failing at each of
 // its allocations in turn, for an effect with a liquid gas (whose split
@@ -122,10 +122,10 @@ static void CallBack(void)
     records.records = (mrhiResourceId){.index1 = 1};
     bool refused = mvfxGpuSim_UploadBytes(sim, &before) == mvfx_success && before > 0 &&
                    mvfxGpuSim_SetDepthTextures(sim, (mrhiResourceId){0}, (mrhiResourceId){0}) ==
-                       mvfx_errorState &&
-                   mvfxGpuSim_AddPasses(sim) == mvfx_errorState &&
-                   mvfxGpuSim_AddRecords(sim, &records) == mvfx_errorState &&
-                   mvfxGpuSim_Record(sim) == mvfx_errorState;
+                       mvfx_errorBusy &&
+                   mvfxGpuSim_AddPasses(sim) == mvfx_errorBusy &&
+                   mvfxGpuSim_AddRecords(sim, &records) == mvfx_errorBusy &&
+                   mvfxGpuSim_Record(sim) == mvfx_errorBusy;
     mvfxDestroyGpuSim(sim);
     s_refused = refused && mvfxGpuSim_UploadBytes(sim, &after) == mvfx_success && after == before;
     s_made += 1;

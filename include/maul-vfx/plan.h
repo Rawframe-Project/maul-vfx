@@ -61,7 +61,12 @@ extern "C"
         // The host's particle it is, an index into the plan's host births
         // (all ones for one of the emitter's own).
         uint32_t host;
-        uint32_t reserved[2];
+        // The key an event's birth draws its values by, in two words, its
+        // high word's top bit set: the simulation sets it in the births it
+        // merges from events. 0 in a plan, whose births draw by their
+        // serials.
+        uint32_t eventKeyLow;
+        uint32_t eventKeyHigh;
     } mvfxPlannedBirth;
 
     // Where an instance is: its place in the world, its turn (a unit
@@ -1029,7 +1034,7 @@ extern "C"
     /// @param countOut  Receives the count; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument;
     ///         `mvfx_errorStale` for an instance that is gone;
-    ///         `mvfx_errorState` for an instance that is not planned.
+    ///         `mvfx_errorUnsupported` for an instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetPlanSteps(const mvfxContext* context,
@@ -1052,8 +1057,8 @@ extern "C"
     /// @param planOut   Receives the plan; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an
     ///         emitter or a step out of range; `mvfx_errorStale` for an
-    ///         instance that is gone; `mvfx_errorState` for an instance
-    ///         that is not planned.
+    ///         instance that is gone; `mvfx_errorUnsupported` for an
+    ///         instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context,
@@ -1072,9 +1077,10 @@ extern "C"
     /// @param planOut   Receives the plan; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or
     ///         an emitter out of range; `mvfx_errorStale` for an instance
-    ///         that is gone; `mvfx_errorState` for an instance that is not
-    ///         planned or whose plans hold more than one step
-    ///         (mvfxInstance_GetPlanSteps), each with its own plan.
+    ///         that is gone; `mvfx_errorUnsupported` for an instance that
+    ///         is not planned; `mvfx_errorState` for one whose plans hold
+    ///         more than one step (mvfxInstance_GetPlanSteps), each with
+    ///         its own plan.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context,
@@ -1103,11 +1109,12 @@ extern "C"
     /// @param instance A planned instance.
     /// @param gas      The gas's index in its effect.
     /// @param planOut  Receives the plan; zeroed on failure.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or
-    ///         a gas out of range; `mvfx_errorStale` for an instance that
-    ///         is gone; `mvfx_errorState` for an instance that is not
-    ///         planned or whose plans hold more than one step
-    ///         (mvfxInstance_GetPlanSteps), each with its own plan.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         gas out of range; `mvfx_errorStale` for an instance that is
+    ///         gone; `mvfx_errorUnsupported` for an instance that is not
+    ///         planned; `mvfx_errorState` for one whose plans hold more
+    ///         than one step (mvfxInstance_GetPlanSteps), each with its own
+    ///         plan.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetGasPlan(const mvfxContext* context,
@@ -1129,8 +1136,8 @@ extern "C"
     /// @param planOut  Receives the plan; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         gas or a step out of range; `mvfx_errorStale` for an
-    ///         instance that is gone; `mvfx_errorState` for an instance
-    ///         that is not planned.
+    ///         instance that is gone; `mvfx_errorUnsupported` for an
+    ///         instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetGasStepPlan(const mvfxContext* context,
@@ -1159,7 +1166,7 @@ extern "C"
     ///         gas out of range or a tick past the clock or below 0, which
     ///         counts as misuse when the context is given;
     ///         `mvfx_errorStale` for an instance that is gone;
-    ///         `mvfx_errorState` for an instance that is not planned.
+    ///         `mvfx_errorUnsupported` for an instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context,
@@ -1188,8 +1195,8 @@ extern "C"
     ///         gas out of range or not a liquid, a tick past the clock or
     ///         below 0 or a speed not finite or below 0, which counts as
     ///         misuse when the context is given; `mvfx_errorStale` for an
-    ///         instance that is gone; `mvfx_errorState` for an instance
-    ///         that is not planned.
+    ///         instance that is gone; `mvfx_errorUnsupported` for an
+    ///         instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetLiquidSpeed(mvfxContext* context,
@@ -1220,9 +1227,10 @@ extern "C"
     /// @param planOut  Receives the plan; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
     ///         surface out of range; `mvfx_errorStale` for an instance that
-    ///         is gone; `mvfx_errorState` for an instance that is not
-    ///         planned or whose plans hold more than one step
-    ///         (mvfxInstance_GetPlanSteps), each with its own plan.
+    ///         is gone; `mvfx_errorUnsupported` for an instance that is not
+    ///         planned; `mvfx_errorState` for one whose plans hold more
+    ///         than one step (mvfxInstance_GetPlanSteps), each with its own
+    ///         plan.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetWaterPlan(const mvfxContext* context,
@@ -1244,8 +1252,8 @@ extern "C"
     /// @param planOut  Receives the plan; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         surface or a step out of range; `mvfx_errorStale` for an
-    ///         instance that is gone; `mvfx_errorState` for an instance
-    ///         that is not planned.
+    ///         instance that is gone; `mvfx_errorUnsupported` for an
+    ///         instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetWaterStepPlan(const mvfxContext* context,
@@ -1274,7 +1282,7 @@ extern "C"
     ///         surface out of range or a tick past the clock or below 0,
     ///         which counts as misuse when the context is given;
     ///         `mvfx_errorStale` for an instance that is gone;
-    ///         `mvfx_errorState` for an instance that is not planned.
+    ///         `mvfx_errorUnsupported` for an instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context,
@@ -1304,7 +1312,7 @@ extern "C"
     ///         clock or below 0 or a speed not finite or below 0, which
     ///         counts as misuse when the context is given;
     ///         `mvfx_errorStale` for an instance that is gone;
-    ///         `mvfx_errorState` for an instance that is not planned.
+    ///         `mvfx_errorUnsupported` for an instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterSpeed(mvfxContext* context,
@@ -1333,11 +1341,11 @@ extern "C"
     ///                     lengths cubed, finite and at least 0 (0 for
     ///                     waves).
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, a
-    ///         surface out of range, a tick past the clock or below 0, or
-    ///         a reach or volume not finite or below 0, which counts as
+    ///         surface out of range, a tick past the clock or below 0, or a
+    ///         reach or volume not finite or below 0, which counts as
     ///         misuse when the context is given; `mvfx_errorStale` for an
-    ///         instance that is gone; `mvfx_errorState` for an instance
-    ///         that is not planned.
+    ///         instance that is gone; `mvfx_errorUnsupported` for an
+    ///         instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context,

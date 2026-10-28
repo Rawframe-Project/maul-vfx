@@ -163,7 +163,8 @@ static void TestLife(void)
     CHECK(mvfxCreateGrid(context, &def, &a) == mvfx_success && mvfxGrid_IsValid(context, a),
           "created");
     CHECK(mvfxCreateGrid(context, &def, &b) == mvfx_success, "a second");
-    CHECK(mvfxCreateGrid(context, &def, &c) == mvfx_errorLimit && c.index1 == 0, "the limit");
+    CHECK(mvfxCreateGrid(context, &def, &c) == mvfx_errorCapacity && c.index1 == 0,
+          "the table full");
     CHECK(mvfxDestroyGrid(context, b) == mvfx_success && !mvfxGrid_IsValid(context, b),
           "destroyed");
     CHECK(mvfxDestroyGrid(context, b) == mvfx_errorStale, "stale");

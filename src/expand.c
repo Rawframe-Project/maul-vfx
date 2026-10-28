@@ -228,7 +228,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
     *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -399,7 +399,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
     *indexCountOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);

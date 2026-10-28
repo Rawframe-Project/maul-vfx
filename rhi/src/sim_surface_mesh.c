@@ -253,7 +253,7 @@ mvfxResult mvfxGpuSim_AddSurfaceMesh(mvfxGpuSim* sim, const mvfxGpuSurfaceMeshDe
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     SimGas* gas = &sim->gases[def->gas];
     if (gas->meshCount == MVFX_GPU_SURFACE_MESHES)

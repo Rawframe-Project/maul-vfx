@@ -116,13 +116,13 @@ extern "C"
     ///                     instance.
     /// @param def          The def, from mvfxDefaultInstanceDef.
     /// @param instanceOut  Receives the instance's id; the null id on failure.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
-    ///         without its cookie, or an origin, rotation or scale out of
-    ///         range, which counts as
-    ///         misuse when the context is given; `mvfx_errorStale` for an
-    ///         effect id that names no live effect; `mvfx_errorLimit` when the
-    ///         context holds its limit of instances; `mvfx_errorCapacity` when
-    ///         the allocator fails or the block's size does not fit.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, or an origin, rotation or scale out
+    ///         of range, which counts as misuse when the context is given;
+    ///         `mvfx_errorStale` for an effect id that names no live
+    ///         effect; `mvfx_errorCapacity` when the context holds as many
+    ///         instances as its def allows, or when the allocator fails or
+    ///         the block's size does not fit.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateInstance(mvfxContext* context,
@@ -319,10 +319,11 @@ extern "C"
     /// @param maxSteps      At least 1.
     /// @param remainingOut  Receives the span left, exactly as ticks; may be
     ///                      NULL.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorState` for a planned instance;
-    ///         `mvfx_errorInvalid` for a NULL context or a value out of range,
-    ///         which counts as misuse when the context is given.
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
+    ///         live instance; `mvfx_errorUnsupported` for a planned
+    ///         instance; `mvfx_errorInvalid` for a NULL context or a value
+    ///         out of range, which counts as misuse when the context is
+    ///         given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Prewarm(mvfxContext* context,
@@ -842,12 +843,12 @@ extern "C"
     /// @param field    The field.
     /// @param out      Receives count values.
     /// @param count    How many: the gas's cells.
-    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument, a gas index
-    ///         or field out of range (a surface's only field its distance,
-    ///         which no other gas has) or a count not the gas's cells,
-    ///         which counts as misuse when the context is given;
-    ///         `mvfx_errorState` for a planned instance, whose gases'
+    /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
+    ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
+    ///         gas index or field out of range (a surface's only field its
+    ///         distance, which no other gas has) or a count not the gas's
+    ///         cells, which counts as misuse when the context is given;
+    ///         `mvfx_errorUnsupported` for a planned instance, whose gases'
     ///         fields its simulation holds.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.

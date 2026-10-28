@@ -4,7 +4,7 @@
 // Host code calling back into the context it serves: from the allocator's
 // alloc and free, the task hooks' enqueue and finish, and a host module,
 // each of the context's calls that take it mutable is refused with
-// mvfx_errorState and counted as misuse, a reading call still answers, and
+// mvfx_errorBusy and counted as misuse, a reading call still answers, and
 // the context is whole after: a step, a creation and a destruction work
 // again, the callbacks then calling nothing. Under a host's float setting
 // (src/fpenv.h): the allocator and the task hooks, which compute nothing
@@ -78,9 +78,9 @@ static void CallBack(Callback from)
     s_target = NULL;
     s_armed = NONE;
     uint64_t before = mvfxGetContextMisuse(target);
-    bool refused = mvfxContext_StepTicks(target, 1) == mvfx_errorState &&
-                   mvfxInstance_SetVisible(target, s_instance, false) == mvfx_errorState &&
-                   mvfxDestroyInstance(target, s_instance) == mvfx_errorState;
+    bool refused = mvfxContext_StepTicks(target, 1) == mvfx_errorBusy &&
+                   mvfxInstance_SetVisible(target, s_instance, false) == mvfx_errorBusy &&
+                   mvfxDestroyInstance(target, s_instance) == mvfx_errorBusy;
     mvfxDestroyContext(target);
     s_refused += refused && mvfxGetContextMisuse(target) == before + 4 ? 1 : 0;
     s_made += 1;

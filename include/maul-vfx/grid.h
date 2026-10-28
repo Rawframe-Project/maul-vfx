@@ -77,11 +77,11 @@ extern "C"
     /// @param context  The context that will own the grid.
     /// @param def      The def, from mvfxDefaultGridDef.
     /// @param gridOut  Receives the grid's id; the null id on failure.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
-    ///         without its cookie, a size or count out of range or a value
-    ///         out of range, which counts as misuse when the context is
-    ///         given; `mvfx_errorLimit` when the context holds its limit of
-    ///         grids; `mvfx_errorCapacity` when the allocator fails.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, a size or count out of range or a
+    ///         value out of range, which counts as misuse when the context
+    ///         is given; `mvfx_errorCapacity` when the context holds as
+    ///         many grids as its def allows, or when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def,
