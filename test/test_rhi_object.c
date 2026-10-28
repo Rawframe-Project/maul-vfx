@@ -33,9 +33,14 @@ typedef struct Gpu
     mrhiDevice* device;
 } Gpu;
 
+// The allocator the next device opened takes (the C library's for a
+// zeroed one), and how many GPU objects' shaders and pipelines it holds.
+static mrhiAllocator s_deviceAllocator;
+static uint32_t s_objectsHeld = 1;
+
 // A device on the test driver, its pipelines answered with an outcome,
 // failing every object after objects (0 for none), holding the shaders
-// and pipelines of one GPU object alone.
+// and pipelines of s_objectsHeld GPU objects alone.
 static bool Open(Gpu* gpu, mrhiResult pipelines, uint32_t objects)
 {
     *gpu = (Gpu){0};
@@ -66,8 +71,9 @@ static bool Open(Gpu* gpu, mrhiResult pipelines, uint32_t objects)
     }
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
-    deviceDef.deviceLimits.shaders = MVFX_CONTAINER_COUNT;
-    deviceDef.deviceLimits.pipelines = MVFX_KERNEL_COUNT;
+    deviceDef.allocator = s_deviceAllocator;
+    deviceDef.deviceLimits.shaders = s_objectsHeld * MVFX_CONTAINER_COUNT;
+    deviceDef.deviceLimits.pipelines = s_objectsHeld * MVFX_KERNEL_COUNT;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
            mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
            record.kind == mrhi_instanceDeviceReady && record.outcome == mrhi_success;
@@ -452,6 +458,99 @@ static void TestOpening(void)
     Close(&gpu);
 }
 
+// What the device's allocator calls once, from inside its next call:
+// the GPU part's creations on its own device, and their answers.
+static mvfxGpuDef s_innerGpu;
+static mvfxGpuSimDef s_innerSim;
+static bool s_inside;
+static mvfxResult s_innerGpuResult;
+static mvfxResult s_innerSimResult;
+static bool s_innerNull;
+
+static void CallInside(void)
+{
+    if (!s_inside)
+    {
+        return;
+    }
+    s_inside = false;
+    mvfxGpu* kernels = (mvfxGpu*)&kernels;
+    s_innerGpuResult = mvfxCreateGpu(&s_innerGpu, &kernels);
+    mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
+    s_innerSimResult = mvfxCreateGpuSim(&s_innerSim, &sim, NULL);
+    s_innerNull = kernels == NULL && sim == NULL;
+}
+
+static void* DeviceAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    CallInside();
+    return malloc(size);
+}
+
+static void DeviceFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    free(memory);
+}
+
+// The GPU object and a simulation made from inside the device's allocator,
+// while it makes another GPU object's shaders: the device refuses them as
+// busy, and so do they, their memory returned; the object being made is
+// made.
+static void TestBusy(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = 16;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.planned = true;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    s_deviceAllocator = (mrhiAllocator){.alloc = DeviceAlloc, .free = DeviceFree};
+    s_objectsHeld = 2;
+    Gpu gpu;
+    CHECK(Open(&gpu, mrhi_success, 0), "a device on an allocator of its own, for two objects");
+    s_deviceAllocator = (mrhiAllocator){0};
+    s_objectsHeld = 1;
+    mvfxGpuDef def = CountedDef(gpu.device);
+    mvfxGpu* kernels = NULL;
+    mrhiDeviceNotification mine = {0};
+    bool ready = mvfxCreateGpu(&def, &kernels) == mvfx_success &&
+                 Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && mvfxGpu_IsReady(kernels);
+    CHECK(ready, "its kernels made");
+    s_innerGpu = def;
+    s_innerSim = mvfxDefaultGpuSimDef();
+    s_innerSim.gpu = kernels;
+    s_innerSim.context = context;
+    s_innerSim.effect = effect;
+    s_innerSim.instance = instance;
+    s_innerSim.allocator = def.allocator;
+    int64_t held = s_held;
+    s_inside = true;
+    mvfxGpu* other = NULL;
+    mvfxResult made = mvfxCreateGpu(&def, &other);
+    CHECK(!s_inside && made == mvfx_success, "the object being made made");
+    CHECK(s_innerGpuResult == mvfx_errorBusy && s_innerSimResult == mvfx_errorBusy && s_innerNull,
+          "made from inside the device's allocator: busy");
+    mvfxDestroyGpu(other);
+    CHECK(s_held == held, "their memory returned");
+    mvfxDestroyGpu(kernels);
+    Close(&gpu);
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestDefChecks();
@@ -459,5 +558,6 @@ int main(void)
     TestFailures();
     TestSimFailures();
     TestOpening();
+    TestBusy();
     return s_failures == 0 ? 0 : 1;
 }
