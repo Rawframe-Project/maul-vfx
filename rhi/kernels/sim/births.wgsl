@@ -314,15 +314,31 @@ fn lifeAt(k: u32, age: f32) -> f32 {
     return value * curveAt(first, age);
 }
 
-// The fastest a moved particle goes along each axis, in the emitter's
-// units a second (MVFX_MAX_SPEED).
+// The fastest a moved particle goes, in the emitter's units a second
+// (MVFX_MAX_SPEED).
 const MAX_SPEED: f32 = 1e9;
 
-// A velocity held within MAX_SPEED along each axis in the particles'
-// space, as the core's HoldSpeed holds it after a particle's contacts.
+// A velocity's speed held within MAX_SPEED in the particles' space,
+// keeping its heading, as the core's mvfxHoldSpeed: over its largest
+// component, then scaled to the bound past it. A NaN or infinite
+// component leaves it as it is, for the kill rules; NaN is tested first,
+// as WGSL's max of a NaN is unspecified.
 fn holdSpeed(v: vec3<f32>) -> vec3<f32> {
     let fastest = MAX_SPEED * params.modules[0].w;
-    return clamp(v, vec3<f32>(-fastest), vec3<f32>(fastest));
+    if (any(v != v)) {
+        return v;
+    }
+    let a = abs(v);
+    let most = max(a.x, max(a.y, a.z));
+    if (!(most > 0.0)) {
+        return v;
+    }
+    let u = v / most;
+    let length = sqrt(dot(u, u));
+    if (!(most * length > fastest)) {
+        return v;
+    }
+    return u * (fastest / length);
 }
 
 // A velocity held to the speed limit at a normalized age: past it, its

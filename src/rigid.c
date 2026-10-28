@@ -620,8 +620,8 @@ static int64_t SubstepTick(const mvfxInstance* instance, int32_t substeps, int32
     return instance->stepStart + ticks * k / substeps;
 }
 
-// Holds the velocities of bodies first to end within MVFX_MAX_SPEED along
-// each axis (times the particles' space's scale) at the step's end, as the
+// Holds the speeds of bodies first to end within MVFX_MAX_SPEED (times the
+// particles' space's scale) at the step's end (mvfxHoldSpeed), as the
 // step holds every other particle's after its contacts. The substeps hold
 // none: a body pushed out of a deep contact over a short substep leaves
 // it at its depth over the substep, past the bound for a body large
@@ -629,13 +629,9 @@ static int64_t SubstepTick(const mvfxInstance* instance, int32_t substeps, int32
 static void HoldSpeeds(const mvfxRigidSolve* s, int32_t first, int32_t end)
 {
     float fastest = MVFX_MAX_SPEED * s->instance->emitters[s->emitter].velocityModules.sigma;
-    for (int32_t k = 0; k < 3; ++k)
+    for (int32_t i = first; i < end; ++i)
     {
-        for (int32_t i = first; i < end; ++i)
-        {
-            float v = s->v[k][i];
-            s->v[k][i] = v < -fastest ? -fastest : (v > fastest ? fastest : v);
-        }
+        mvfxHoldSpeed(s->v, i, fastest);
     }
 }
 

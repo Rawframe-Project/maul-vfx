@@ -48,10 +48,15 @@ void mvfxGravityOf(const mvfxInstance* instance, const mvfxCompiledEmitter* emit
 mvfxOwnColliders mvfxOwnCollidersOf(const mvfxInstance* instance, int32_t emitter, int32_t i,
                                     float sigma, mvfxResolvedCollider* plane);
 
+// Holds velocity i of the arrays v (x, y, z) to a speed of at most
+// fastest, keeping its heading: past it, scaled to fastest in binary64.
+// A NaN or infinite component leaves it as it is, for the kill rules.
+void mvfxHoldSpeed(float* const v[3], int32_t i, float fastest);
+
 // Moves the particles the emitter holds over the whole step (those alive
 // at its start, once the ended ones are gone), marking those killed, each
-// velocity held within MVFX_MAX_SPEED along each axis (times the
-// particles' space's scale) after its contacts.
+// speed held within MVFX_MAX_SPEED (times the particles' space's scale)
+// after its contacts (mvfxHoldSpeed).
 void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter);
 
 // Moves particles first to end, from a tick on the instance's clock, over

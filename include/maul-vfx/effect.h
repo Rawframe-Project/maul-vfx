@@ -41,13 +41,14 @@ extern "C"
 // delay, duration, burst time and burst interval.
 #define MVFX_MAX_LIFETIME 1e6f
 
-// The fastest a particle moves, in the emitter's units a second along each
-// axis (a world-space emitter's times its instance's scale): each step
-// holds every component of a moved particle's velocity within it, so how
-// far a particle travels in its life is bounded. Its forces (up to 1e12 a
-// second squared) and the instance's velocity it inherits (its move over a
-// step of a tick, 2^20 times the move) build a speed up only to here; far
-// past what a scene asks for, it holds only such extremes.
+// The fastest a particle moves, in the emitter's units a second (a
+// world-space emitter's times its instance's scale): each step holds a
+// moved particle's speed within it, scaling a faster velocity down to it
+// so its heading is kept, and so how far a particle travels in its life
+// is bounded. Its forces (up to 1e12 a second squared) and the instance's
+// velocity it inherits (its move over a step of a tick, 2^20 times the
+// move) build a speed up only to here; far past what a scene asks for, it
+// holds only such extremes.
 #define MVFX_MAX_SPEED 1e9f
 
 // The shortest loop an emitter may have, and the shortest interval of a

@@ -1901,8 +1901,8 @@ static void Sink(const mvfxModuleCall* call, void* user)
     s_sinking = false;
 }
 
-// Whether every body left by the last step moves within the speed bound
-// along each axis.
+// Whether every body left by the last step moves within the speed bound,
+// its hold's rounding to binary32 allowed.
 static bool AreHeld(float fastest)
 {
     TestParticle bodies[2];
@@ -1910,22 +1910,22 @@ static bool AreHeld(float fastest)
     bool held = count == 2;
     for (int32_t i = 0; i < count; ++i)
     {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            held = held && fabsf(bodies[i].velocity[k]) <= fastest;
-        }
+        const float* v = bodies[i].velocity;
+        double speed = sqrt((double)v[0] * (double)v[0] + (double)v[1] * (double)v[1] +
+                            (double)v[2] * (double)v[2]);
+        held = held && speed <= (double)fastest * (1.0 + 0x1p-22);
     }
     return held;
 }
 
 static void TestHeldSpeed(void)
 {
-    // A body's velocity is held within MVFX_MAX_SPEED along each axis
-    // (times the instance's scale in world space) at its step's end, as
-    // every particle's, so a host module's check kills none: boxes 1e6 by
-    // 5e5 by 2.5e5 in an instance of scale 1e-6 (a bound of 1e3) pushed out
-    // of the floor faster, one born in it, then one sunk half in by a host
-    // module before a later step.
+    // A body's speed is held within MVFX_MAX_SPEED (times the instance's
+    // scale in world space) at its step's end, as every particle's, so a
+    // host module's check kills none: boxes 1e6 by 5e5 by 2.5e5 in an
+    // instance of scale 1e-6 (a bound of 1e3) pushed out of the floor
+    // faster, one born in it, then one sunk half in by a host module before
+    // a later step.
     static const mvfxHostModule modules[2] = {{.stage = mvfx_stageBeforeMotion, .function = Sink},
                                               {.stage = mvfx_stageAfterMotion, .function = Peek}};
     memset(&s_scene, 0, sizeof s_scene);
