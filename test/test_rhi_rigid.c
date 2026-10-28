@@ -7,8 +7,9 @@
 // and the free flow take square roots and division). Covered: spheres,
 // capsules, boxes and hulls of sizes unequal along their axes tumbling
 // under gravity and drag over several substeps (the free flow turning
-// those of unequal inertias), rods down to 1e-6 of their length across
-// spun about it and tumbling, newborns taking the rest of
+// those of unequal inertias), boxes spun near an axis for 10 s and spun
+// at up to 800 rad/s, rods down to 1e-6 of their length across spun
+// about it and tumbling, and spun for 10 s, newborns taking the rest of
 // their step's substeps, sizes over life by age and by speed, in the
 // world's space under a moving instance, and bodies coming to rest in a
 // drag and falling asleep alone, held in the air under gravity; spheres
@@ -730,6 +731,36 @@ static void TestUnits(Gpu* gpu, mvfxGpu* kernels)
     }
 }
 
+static void TestFreeBoxes(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Boxes 0.5 by 1 by 1.5 spun at 20 rad/s near their largest moment's
+    // axis for 10 s at 8 substeps, each path on its own, within 1e-4: the
+    // residual turns keep the momentum's length, which a turn's binary32
+    // sine and cosine, the same each substep at one angle, would otherwise
+    // grow or shrink. Then boxes spun at 500 to 800 rad/s, up to 1.7
+    // radians a substep, a step at a time within 1e-3: their residual
+    // turns taken in pieces.
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidBox);
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.5f, 1.0f, 1.5f}, .max = {0.5f, 1.0f, 1.5f}};
+    emitter.lifetime = mvfxRangeSource(20.0f, 20.0f);
+    emitter.motion.angularDrag = 0.0f;
+    emitter.rigid.substeps = 8;
+    emitter.orientationMode = mvfx_orientationNone;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {19.0f, 1.0f, 1.0f}, .max = {20.0f, 2.0f, 2.0f}};
+    Compare(gpu, kernels,
+            &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 600, .tolerance = 1e-4f},
+            "boxes spun near their largest moment's axis for 10 s");
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.3f, 0.6f, 1.2f}, .max = {0.6f, 1.6f, 1.9f}};
+    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.orientationMode = mvfx_orientationRandom;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {-500, -500, -500}, .max = {500, 500, 500}};
+    Tumbled(gpu, kernels, &emitter, false, "boxes spun at up to 800 rad/s");
+}
+
 static void TestRods(Gpu* gpu, mvfxGpu* kernels)
 {
     // Rods 0.4 long and 1e-2, 1e-4 and 1e-6 of that across, capsules and
@@ -760,11 +791,29 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
                            (double)across[r]);
             Tumbled(gpu, kernels, &emitter, false, what);
             emitter.orientationMode = mvfx_orientationRandom;
-            emitter.angularVelocity = (mvfxVectorSource){
-                .kind = mvfx_sourceRange, .min = {-3, -3, -3}, .max = {3, 3, 3}};
+            emitter.angularVelocity =
+                (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, -3, -3}, .max = {3, 3, 3}};
             (void)snprintf(what, sizeof what, "%s %g across tumbling", name, (double)across[r]);
             Tumbled(gpu, kernels, &emitter, false, what);
         }
+        // The thinnest spun about their length for 10 s, each path on its
+        // own, within 1e-3: their spin stays along their length, which the
+        // spin's read back keeps. Without it their spin leaned off their
+        // length by 2.6e-3 of itself in that time.
+        mvfxEmitterDef emitter = Bodies((mvfxRigidShape)shape);
+        emitter.size = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {4e-7f, 0.4f, 4e-7f}, .max = {4e-7f, 0.4f, 4e-7f}};
+        emitter.lifetime = mvfxRangeSource(20.0f, 20.0f);
+        emitter.motion.angularDrag = 0.0f;
+        emitter.orientationMode = mvfx_orientationEuler;
+        emitter.orientation = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {0, 0, 1.5707964f}, .max = {0, 0, 1.5707964f}};
+        emitter.angularVelocity =
+            (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, 0, 0}, .max = {3, 0, 0}};
+        Compare(gpu, kernels,
+                &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 600, .tolerance = 1e-3f},
+                shape == 1 ? "capsules 4e-07 across spun about their length for 10 s"
+                           : "boxes 4e-07 across spun about their length for 10 s");
     }
 }
 
@@ -829,6 +878,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestDepth(gpu, kernels);
     TestLargestSizes(gpu, kernels);
     TestUnits(gpu, kernels);
+    TestFreeBoxes(gpu, kernels);
     TestRods(gpu, kernels);
     TestTiedSizes(gpu, kernels);
 }
