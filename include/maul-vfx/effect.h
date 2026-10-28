@@ -627,7 +627,8 @@ extern "C"
     // Position Based Dynamics", SCA 2020) in substeps, so they tumble, roll
     // and come to rest on an edge or a face. Each particle is a body of a
     // shape and a density; its orientation and angular velocity (stored for
-    // it) turn by the gyroscopic term and the angular drag. Each substep a
+    // it) turn by its free flow, keeping its angular momentum, after the
+    // angular drag slows its spin. Each substep a
     // body is moved as a particle is, then meets its contacts at its
     // predicted pose: the colliders of its emitter and, with
     // hostColliders, the instance's, outside or inside, at the shape's

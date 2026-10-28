@@ -2,11 +2,10 @@
 // mvfxStepRigid (src/rigid.c) for bodies that meet no other: an
 // invocation a body (striding over them), the ended (marked by update)
 // skipped, each of its substeps
-//  - turning its angular velocity by the gyroscopic term about its own
-//    axes, its momentum's size kept (an awake body);
 //  - moving it as a particle over the substep (forces, drag, the speed
-//    limit, the velocity modules, kills, its orientation by its angular
-//    velocity with the angular drag), as the unit pass moves a point;
+//    limit, the velocity modules, kills, its angular velocity slowed by
+//    the angular drag), as the unit pass moves a point, then turning an
+//    awake one by its free flow (sim/rigid_flow.wgsl);
 //  - holding a sleeping body at its start pose, woken where its forces
 //    changed by more than the sleep speed over the sleep time;
 //  - meeting the world, an awake body, when it collides
@@ -286,23 +285,19 @@ fn isAsleep(b: Body) -> bool {
     return params.rigid.z != NONE && b.sleep < 0.0;
 }
 
-// Turns a body's angular velocity by the gyroscopic term over h about its
-// own axes, w += h I^-1 (I w x w), held to its momentum's size, as the
-// core's Spin.
-fn spinBody(b: ptr<function, Body>, mass: Mass, h: f32) {
-    let q = (*b).moving.turning.orientation;
-    let inverse = vec4<f32>(-q.xyz, q.w);
-    var w = rotate(inverse, (*b).moving.turning.angular);
-    var momentum = symmetricTimes(mass.inertia, w);
-    let torque = cross(momentum, w);
-    let before = sqrt(dot(momentum, momentum));
-    w += h * symmetricTimes(mass.inverse, torque);
-    momentum = symmetricTimes(mass.inertia, w);
-    let after = sqrt(dot(momentum, momentum));
-    if (after > 0.0) {
-        w *= before / after;
+// A body moved as a particle over a substep since a tick of the plan for
+// ticks (moveState), then, awake, turned by its free flow from its
+// orientation q0 at the substep's start (flowBody) over the substep scaled
+// by rotation speed over life, as the core's Substep and Flow.
+fn rigidMove(b: ptr<function, Body>, since: u32, ticks: u32, q0: vec4<f32>) {
+    // Through a variable of its own: a pointer to a member is not passed.
+    var moving = (*b).moving;
+    _ = moveState(&moving, since, ticks);
+    (*b).moving = moving;
+    if (!isAsleep(*b)) {
+        let scale = lifeAt(LIFE_ROTATION, spanAge(planTick(since), moving.birth, moving.inverseLife));
+        flowBody(b, rigidMass(rigidSizeOf(*b)).inertia, q0, secondsOf(vec2<u32>(ticks, 0u)) * scale);
     }
-    (*b).moving.turning.angular = rotate(q, w);
 }
 
 // Holds a sleeping body at its start pose over a substep of h, its
@@ -365,20 +360,14 @@ fn rigidSpan(s: u32) -> vec2<u32> {
 }
 
 // A body's substep since a tick of the plan for ticks, as the core's
-// Substep: its start pose kept, an awake body spun, it moved as a
-// particle, a sleeping one held, an awake one meeting the world; its
-// strike's fate.
+// Substep: its start pose kept, it moved as a particle and an awake body
+// turned by its free flow, a sleeping one held, an awake one meeting the
+// world; its strike's fate.
 fn rigidSubstep(b: ptr<function, Body>, since: u32, ticks: u32) -> Fate {
     let h = secondsOf(vec2<u32>(ticks, 0u));
     let x0 = (*b).moving.place;
     let q0 = (*b).moving.turning.orientation;
-    if (!isAsleep(*b)) {
-        spinBody(b, rigidMass(rigidSizeOf(*b)), h);
-    }
-    // Through a variable of its own: a pointer to a member is not passed.
-    var moving = (*b).moving;
-    _ = moveState(&moving, since, ticks);
-    (*b).moving = moving;
+    rigidMove(b, since, ticks, q0);
     if (isAsleep(*b)) {
         holdSleeping(b, x0, q0, h);
         return Fate();

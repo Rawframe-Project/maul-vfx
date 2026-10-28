@@ -192,7 +192,7 @@ fn pairWait() {
 }
 
 // A substep's start for body i, as rigidSubstep to its meeting: its start
-// pose kept, an awake body spun and moved, a sleeping one held, then
+// pose kept, a body moved and an awake one turned, a sleeping one held, then
 // prepared (pairPrepare); again, a body woken by touch prepared anew at
 // the pose it was held at, as the core prepares the woken.
 fn pairStart(i: u32, since: u32, ticks: u32, again: bool) {
@@ -205,13 +205,8 @@ fn pairStart(i: u32, since: u32, ticks: u32, again: bool) {
     let x0 = b.moving.place;
     let q0 = b.moving.turning.orientation;
     let asleep = isAsleep(b);
-    if (!asleep && !again) {
-        spinBody(&b, rigidMass(rigidSizeOf(b)), h);
-    }
     if (!again) {
-        var moving = b.moving;
-        _ = moveState(&moving, since, ticks);
-        b.moving = moving;
+        rigidMove(&b, since, ticks, q0);
     }
     if (asleep) {
         holdSleeping(&b, x0, q0, h);

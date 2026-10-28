@@ -10,16 +10,19 @@
 // killing; contacts capped and counted, the deepest kept; a box pushed
 // off a sphere inside it through its nearest face; several strikes a step
 // writing one event on the surface; a box spun about its middle axis
-// flipping by the gyroscopic term while its momentum and energy hold; a
-// box spun on a plane stopped by its friction at the rate its contacts'
-// spread gives; a tall box tipping over on a slope a short one stands on;
+// flipping by the gyroscopic term while its momentum and energy hold;
+// boxes turned by their free flow, their momentum, energy and orbit
+// against Euler's equations; a box spun on a plane stopped by its
+// friction at the rate its contacts' spread gives; a tall box tipping
+// over on a slope a short one stands on;
 // a box tipping at its edge's angle, standing steady parked at it and
 // still below it, its creep near it bounded, and turned on its upright
 // tipping over a corner at the diagonal's;
 // a box spun and dropped in its own units: the same bits, scaled, at
 // sizes and densities near binary32's ends, and each shape finite at the
 // ends of the limits; needles 1e-20 of their length across, their inverse
-// inertia held, finite dropped and spun;
+// inertia held, finite dropped and spun, and needles spun at the most
+// still turning;
 // a sphere's and a capsule's sizes on the axes they do not set held to X:
 // refused in the effect and a spawn request, taken from X's draw, a
 // parameter's and an inherited one's X, killed when a host module sets
@@ -688,6 +691,181 @@ static void TestGyroscopic(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// A free box's motion over a step: its angular velocity w in its frame
+// and its momentum's place in the world, in binary64.
+typedef struct Free
+{
+    double body[3];
+    double momentum[3];
+} Free;
+
+static Free FreeOf(const double inertia[3])
+{
+    float q[4];
+    Q(q);
+    Free f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        float axis[3];
+        Axis(k, axis);
+        f.body[k] = (double)axis[0] * (double)W(0) + (double)axis[1] * (double)W(1) +
+                    (double)axis[2] * (double)W(2);
+    }
+    for (int32_t j = 0; j < 3; ++j)
+    {
+        f.momentum[j] = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float axis[3];
+            Axis(k, axis);
+            f.momentum[j] += (double)axis[j] * inertia[k] * f.body[k];
+        }
+    }
+    return f;
+}
+
+// Euler's equations of a free body's angular velocity in its frame.
+static void EulerOf(const double inertia[3], const double w[3], double out[3])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int32_t a = (k + 1) % 3;
+        int32_t b = (k + 2) % 3;
+        out[k] = (inertia[a] - inertia[b]) * w[a] * w[b] / inertia[k];
+    }
+}
+
+// Steps Euler's equations over h by RK4.
+static void EulerStep(const double inertia[3], double w[3], double h)
+{
+    double k[4][3];
+    double at[3];
+    EulerOf(inertia, w, k[0]);
+    for (int32_t s = 1; s < 4; ++s)
+    {
+        double share = s == 3 ? h : 0.5 * h;
+        for (int32_t j = 0; j < 3; ++j)
+        {
+            at[j] = w[j] + share * k[s - 1][j];
+        }
+        EulerOf(inertia, at, k[s]);
+    }
+    for (int32_t j = 0; j < 3; ++j)
+    {
+        w[j] += h / 6.0 * (k[0][j] + 2.0 * k[1][j] + 2.0 * k[2][j] + k[3][j]);
+    }
+}
+
+// How far a box of sizes x, y, z spun at w strays over 10 s: its world
+// momentum's change over its size (into drift[0]), its energy's (into
+// drift[1]), and the angle between its momentum in its frame and Euler's
+// equations' stepped by RK4 from its first step (into drift[2]).
+static void FreeDrift(float x, float y, float z, const float w[3], double drift[3])
+{
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, x, y, z);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.collision.enabled = false;
+    emitter.colliders = NULL;
+    emitter.colliderCount = 0;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {w[0], w[1], w[2]}, .max = {w[0], w[1], w[2]}};
+    static const double place[3] = {0, 0, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    Steps(1);
+    double sx = (double)x * (double)x;
+    double sy = (double)y * (double)y;
+    double sz = (double)z * (double)z;
+    const double inertia[3] = {sy + sz, sx + sz, sx + sy};
+    Free first = FreeOf(inertia);
+    double size = 0.0;
+    double energy = 0.0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        size += first.momentum[k] * first.momentum[k];
+        energy += inertia[k] * first.body[k] * first.body[k];
+    }
+    size = sqrt(size);
+    double euler[3] = {first.body[0], first.body[1], first.body[2]};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        drift[k] = 0.0;
+    }
+    for (int32_t i = 0; i < 600; ++i)
+    {
+        Steps(1);
+        for (int32_t j = 0; j < 64; ++j)
+        {
+            EulerStep(inertia, euler, 1.0 / 60.0 / 64.0);
+        }
+        Free f = FreeOf(inertia);
+        double apart = 0.0;
+        double e = 0.0;
+        double along = 0.0;
+        double ours = 0.0;
+        double theirs = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double d = f.momentum[k] - first.momentum[k];
+            apart += d * d;
+            e += inertia[k] * f.body[k] * f.body[k];
+            along += inertia[k] * f.body[k] * inertia[k] * euler[k];
+            ours += inertia[k] * f.body[k] * inertia[k] * f.body[k];
+            theirs += inertia[k] * euler[k] * inertia[k] * euler[k];
+        }
+        drift[0] = fmax(drift[0], sqrt(apart) / size);
+        drift[1] = fmax(drift[1], fabs(e / energy - 1.0));
+        double cosine = along / sqrt(ours * theirs);
+        drift[2] = fmax(drift[2], acos(fmin(1.0, fmax(-1.0, cosine))));
+    }
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestFreeFlow(void)
+{
+    // A box 0.5 by 1 by 1.5 spun at 20 rad/s near each of its principal
+    // axes (near its middle one it flips over and back) turns by its free
+    // flow for 10 s: its momentum in the world kept within 1e-4 of its
+    // size, its energy within 1e-4, and its momentum in its frame within
+    // 0.01 rad of Euler's equations'. Explicit, the first two were off by
+    // up to 0.018 and 0.19 and the third by 3 rad.
+    double most[3] = {0.0, 0.0, 0.0};
+    for (int32_t axis = 0; axis < 3; ++axis)
+    {
+        float d[3] = {0.05f, 0.05f, 0.05f};
+        d[axis] = 1.0f;
+        d[(axis + 1) % 3] = 0.1f;
+        float n = 20.0f / sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        const float w[3] = {d[0] * n, d[1] * n, d[2] * n};
+        double drift[3];
+        FreeDrift(0.5f, 1.0f, 1.5f, w, drift);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            most[k] = fmax(most[k], drift[k]);
+        }
+    }
+    CHECK(most[0] <= 1e-4 && most[1] <= 1e-4 && most[2] <= 0.01,
+          "a box's momentum, energy and orbit kept");
+    // Boxes spun at 500 to 800 rad/s about tilted axes, up to 1.7 radians
+    // a substep: their energy within 5e-3, their residual turns taken in
+    // pieces (in one, a box's was off by up to 150%).
+    static const float fast[4][7] = {{1.142f, 0.234f, 0.992f, 500.47f, 0.0362f, 0.081f, 0.187f},
+                                     {1.2f, 1.612f, 0.391f, 572.25f, -0.7023f, -0.2796f, -0.2895f},
+                                     {1.207f, 1.898f, 1.712f, 748.15f, 0.3316f, 0.3865f, -0.3627f},
+                                     {0.633f, 0.332f, 1.405f, 800.0f, 0.1381f, 0.4512f, -2.084f}};
+    double energy = 0.0;
+    for (int32_t i = 0; i < 4; ++i)
+    {
+        const float* f = fast[i];
+        float n = f[3] / sqrtf(f[4] * f[4] + f[5] * f[5] + f[6] * f[6]);
+        const float w[3] = {f[4] * n, f[5] * n, f[6] * n};
+        double drift[3];
+        FreeDrift(f[0], f[1], f[2], w, drift);
+        energy = fmax(energy, drift[1]);
+    }
+    CHECK(energy <= 5e-3, "fast boxes' energy kept");
+}
+
 static bool s_bump;
 
 // A grid of heights over x and z from -2 to 2, three points a side:
@@ -1244,6 +1422,52 @@ static void TestNeedles(void)
         mvfxDestroyContext(s_scene.context);
     }
     CHECK(finite, "needles finite at the ends of sizes and densities");
+    // Spun at MVFX_MAX_SPIN about each axis, alone, capsules and boxes 1e-6
+    // and 1e-20 of their length across keep turning: their orientations
+    // change in each of the last 20 of 60 steps. Stepped explicitly, the
+    // gyroscopic term's rounding carried their spin onto their long axis
+    // until a first-order turn mapped each orientation onto itself.
+    bool turning = true;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        float across = c < 2 ? 1e-6f : 1e-20f;
+        mvfxEmitterDef emitter =
+            Rigid(c % 2 == 0 ? mvfx_rigidCapsule : mvfx_rigidBox, across, 1.0f, across);
+        emitter.motion.gravity[1] = 0.0f;
+        emitter.collision.enabled = false;
+        emitter.colliderCount = 0;
+        emitter.angularVelocity =
+            (mvfxVectorSource){.kind = mvfx_sourceRange,
+                               .min = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN},
+                               .max = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN}};
+        mvfxContextDef contextDef = mvfxDefaultContextDef();
+        CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+        mvfxEffectDef def = mvfxDefaultEffectDef();
+        def.emitters = &emitter;
+        def.emitterCount = 1;
+        mvfxEffectId effect = {0};
+        CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+        mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+        instanceDef.effect = effect;
+        CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+              "instance");
+        static const double origin[3] = {0, 0, 0};
+        mvfxSpawnRequest request = {.count = 1, .positions = origin};
+        CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+              "spawned");
+        float last[4] = {0};
+        for (int32_t i = 0; i < 60; ++i)
+        {
+            Steps(1);
+            TestParticle body;
+            bool read = ReadParticles(s_scene.context, s_scene.instance, 0, &body, 1) == 1;
+            turning =
+                turning && read && (i < 40 || memcmp(last, body.orientation, sizeof last) != 0);
+            memcpy(last, body.orientation, sizeof last);
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(turning, "needles spun at the most keep turning");
 }
 
 // The sizes of the first particles as the host modules see them after
@@ -1535,6 +1759,7 @@ int main(void)
     TestSceneQueries();
     TestDepth();
     TestGyroscopic();
+    TestFreeFlow();
     TestTwist();
     TestTipping();
     TestTippingAngle();

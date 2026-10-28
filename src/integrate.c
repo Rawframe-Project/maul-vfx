@@ -106,9 +106,7 @@ static void MoveLinear(float* const p[3], float* const v[3], int32_t i, const fl
     }
 }
 
-// Turns a unit quaternion q by the rotation vector theta (axis times
-// angle), in the parent's frame: q' = r(theta) q, then normalized.
-static void TurnBy(float q[4], const float theta[3])
+void mvfxTurnBy(float q[4], const float theta[3])
 {
     float angle = sqrtf(theta[0] * theta[0] + theta[1] * theta[1] + theta[2] * theta[2]);
     if (!(angle > 0.0f))
@@ -161,10 +159,14 @@ static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfx
             w[k] =
                 mvfxAttributeArray(instance, emitter, (mvfxAttribute)(mvfx_attributeAngularX + k));
         }
+        // A rigid body turns by its free flow after its spin is slowed.
         float carry = f.carry * speedScale;
         float theta[3] = {w[0][i] * carry, w[1][i] * carry, w[2][i] * carry};
         float turned[4] = {q[0][i], q[1][i], q[2][i], q[3][i]};
-        TurnBy(turned, theta);
+        if (!compiled->rigid.enabled)
+        {
+            mvfxTurnBy(turned, theta);
+        }
         for (int32_t k = 0; k < 4; ++k)
         {
             q[k][i] = turned[k];
@@ -256,6 +258,21 @@ static float AgeOf(const Range* r, int32_t i)
     float age =
         (float)((double)(r->tick - birth) / (double)MVFX_TICKS_PER_SECOND) * r->inverseLife[i];
     return fminf(fmaxf(age, 0.0f), 1.0f);
+}
+
+float mvfxTurnScale(const mvfxInstance* instance, int32_t emitter, int32_t i, int64_t tick)
+{
+    const mvfxCompiledOverLife* over = &instance->effect->emitters[emitter].overLife;
+    if (!over->rotation)
+    {
+        return 1.0f;
+    }
+    const uint32_t* high = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh);
+    const uint32_t* low = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow);
+    const float* inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife);
+    int64_t birth = (int64_t)(((uint64_t)high[i] << 32u) | low[i]);
+    float age = (float)((double)(tick - birth) / (double)MVFX_TICKS_PER_SECOND) * inverseLife[i];
+    return mvfxLifeAt(&over->rotationScale, fminf(fmaxf(age, 0.0f), 1.0f));
 }
 
 // Particle i's contact plane from the scene, grown by its radius times

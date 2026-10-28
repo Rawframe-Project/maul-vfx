@@ -27,6 +27,15 @@ Chains and sheets ([src/unit.c](../../src/unit.c)) are solved by XPBD (Macklin, 
 
 Rigid particles ([src/rigid.c](../../src/rigid.c)) follow Muller et al. 2020: each substep a body's pose is predicted, its contacts are found at the predicted pose, positional impulses push it out, and velocities are taken from the pose's change, then restitution and friction act on them. Friction is solved per patch, the contacts with one collider or one face together, so a box on a plane holds still instead of creeping corner by corner.
 
+Within a substep a body turns by its free flow ([src/rigid_flow.c](../../src/rigid_flow.c)), the method of maul3d's [free rotation](https://github.com/Rawframe-Project/maul3d/blob/main/docs/internals/rotation.md): a Casimir splitting of its kinetic energy (McLachlan 1993; Fasso 2003). In its principal frame (cyclic Jacobi rotations, its moments largest first), it takes the least moment's residual turn for half the substep, the largest's for all of it and the least's again, in as many equal pieces as its spin needs (counted by comparing cubes, not by a cube root), then a turn about its momentum by `h |L| / I_mid`. Each part is an exact turn, so a body keeps its angular momentum to rounding and its energy within a bounded error, and a symmetric top turns exactly. Angular drag slows the spin before the flow. The flow replaces both the gyroscopic term and the turn of the orientation by the spin, so a spinning body keeps its momentum where the two, split, lost it.
+
+Where it differs from maul3d's page:
+
+- The CPU path turns in binary64, from mvfxSinCos's binary32 half turns made unit pairs, so it needs neither of the page's length corrections. The GPU path follows the page in binary32, operation by operation, with its own sine and cosine for the page's `cossin` (WGSL has no `remainderf`).
+- A body touched by a contact takes its angular velocity from its pose's change after the solve, as XPBD does. maul3d never re-derives it.
+- A body's size can change over its life, and its principal frame with it, so the frame is taken each substep rather than once per mass update.
+- A body of one moment about every axis, or of no volume, turns about its spin by the integrator's exact turn.
+
 Contacts are found by shape: spheres and capsules directly; boxes against boxes by separating axes (Gottschalk, Lin and Manocha 1996) and face clipping; hulls (Quickhull of a mesh's vertices, [src/hull.c](../../src/hull.c)) by GJK for the nearest points and EPA for the depth ([src/convex.c](../../src/convex.c)). GJK and EPA stop after a fixed number of steps, and a stop is counted; a capped pair is kept touching with its depth at most the true one.
 
 Bodies meeting each other are found by the neighbor grid at the predicted poses and solved in coloured runs ([src/rigid_colour.c](../../src/rigid_colour.c)): no two runs of a colour share a body, so a colour's runs give the same result in any order. The CPU path solves them in order; the GPU path solves a colour's runs at once.

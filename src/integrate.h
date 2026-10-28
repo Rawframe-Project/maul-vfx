@@ -60,6 +60,14 @@ void mvfxIntegrateEmitter(mvfxInstance* instance, int32_t emitter);
 void mvfxIntegrateRange(mvfxInstance* instance, int32_t emitter, int32_t first, int32_t end,
                         int64_t tick, double seconds);
 
+// Turns a unit quaternion q by the rotation vector theta (axis times
+// angle), in the parent's frame: q' = r(theta) q, then normalized.
+void mvfxTurnBy(float q[4], const float theta[3]);
+
+// What rotation speed over life scales particle i's turn by at a tick on
+// the instance's clock (1 without it), as the integrator takes it.
+float mvfxTurnScale(const mvfxInstance* instance, int32_t emitter, int32_t i, int64_t tick);
+
 // Moves a particle born within the step from its birth to the step's end,
 // marking it if killed, its velocity held as mvfxIntegrateEmitter holds it
 // where holds is set (not for a rigid body).
