@@ -47,7 +47,7 @@ rigid_box: collide direction rigid_shape
 rigid_contact: collide convex depth direction rigid_box rigid_shape
 rigid_shape: hull
 integrate: collide depth direction effect elementary event force gas_api instance kill rigid_wake space velocity_modules water_couple
-host_module: effect instance random
+host_module: appearance effect instance random rigid_shape
 hull: allocator
 appearance: effect gradient instance life over_life
 instance: allocator collide depth effect force gas gas_pressure gas_splat kill rigid_shape

@@ -607,15 +607,24 @@ extern "C"
     //
     // What a module leaves is checked after it runs: a particle holding a
     // place past MVFX_MAX_PLACE on an axis, an angle or orientation that is
-    // not finite, a velocity past
-    // MVFX_MAX_SPEED on an axis (times the instance's scale for a
-    // world-space emitter), or a colour, size, spin, angular velocity or
-    // custom attribute past what the emitter's particles may store (its
-    // role's limit, MVFX_MAX_COLOR, MVFX_MAX_EXTENT, MVFX_MAX_SPIN or
-    // MVFX_MAX_VALUE, over the most its values over life scale it; a
-    // mvfxSpawnRequest's colors and sizes) is killed and counted in
-    // mvfxEmitterStats.valuesKilled. Before motion it is taken out at once,
-    // so the step moves it no further.
+    // not finite, a velocity past MVFX_MAX_SPEED on an axis (times the
+    // instance's scale for a world-space emitter), a colour, size, spin,
+    // angular velocity or custom attribute past what the emitter's
+    // particles may store (its role's limit, MVFX_MAX_COLOR,
+    // MVFX_MAX_EXTENT, MVFX_MAX_SPIN or MVFX_MAX_VALUE, over the most its
+    // values over life scale it; a mvfxSpawnRequest's colors and sizes), or
+    // a rigid body's angular velocity that both turns the body's extent
+    // (the largest of its sizes) faster than 4 times that speed bound and
+    // gives it more angular momentum than the spin cap about every axis
+    // would, or is past 2^60 radians a second (where the step's binary32
+    // squares overflow), or for a body of no volume past the cap on an
+    // axis, is killed and counted in mvfxEmitterStats.valuesKilled. A
+    // rigid body's angular velocity is not held to MVFX_MAX_SPIN on each
+    // axis, because its own step takes it past that: a sphere 1e-20 across
+    // rolling at 1e-9 turns at 1e11 radians a second, and a body spun at
+    // the cap about every axis precesses, one axis past the cap.
+    // A particle killed before motion is taken out at once, so the step
+    // moves it no further.
     typedef struct mvfxParticleArrays
     {
         int32_t count;
