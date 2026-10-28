@@ -7,6 +7,8 @@
 
 #include "elementary_reference.h"
 
+#include <float.h>
+
 // Every float from low to high in steps of `stride` floats.
 #define FOR_FLOATS(x, low, high, stride)                                                           \
     for (int64_t order_ = FloatOrder(low); order_ <= FloatOrder(high); order_ += (stride))         \
@@ -31,6 +33,16 @@ static void TestSinCosOnAStride(void)
     }
     Report("sine", &sines);
     Report("cosine", &cosines);
+    // Past 2^24, where a float is an integer reduced exactly, to the
+    // largest.
+    Tally largeSines = {0};
+    Tally largeCosines = {0};
+    FOR_FLOATS(x, -FLT_MAX, FLT_MAX, 99991)
+    {
+        CheckSinCos(&largeSines, &largeCosines, x);
+    }
+    Report("sine past 2^24", &largeSines);
+    Report("cosine past 2^24", &largeCosines);
 }
 
 static void TestSinCosEdges(void)
@@ -41,16 +53,30 @@ static void TestSinCosEdges(void)
     CHECK(s == 0.0f && c == 1.0f, "sin 0 and cos 0");
     mvfxSinCos(-0.0f, &s, &c);
     CHECK(s == 0.0f && c == 1.0f, "negative zero");
-    // Past 2^24 and for NaN, defined values (those of 0), never an
-    // overflowing conversion.
-    static const float wild[5] = {-6.3e27f, 3.0e38f, 0x1p25f, INFINITY, NAN};
-    for (int32_t i = 0; i < 5; ++i)
+    // Infinities and NaN give those of 0, never an overflowing
+    // conversion.
+    static const float wild[3] = {INFINITY, -INFINITY, NAN};
+    for (int32_t i = 0; i < 3; ++i)
     {
         mvfxSinCos(wild[i], &s, &c);
-        CHECK(s == 0.0f && c == 1.0f, "an argument past 2^24");
+        CHECK(s == 0.0f && c == 1.0f, "an argument not finite");
     }
-    mvfxSinCos(0x1p24f, &s, &c);
-    CHECK(fabsf(s * s + c * c - 1.0f) < 1e-6f, "2^24 itself still turned");
+    // Either side of 2^24, where the reduction changes, and at the ends.
+    Tally farSines = {0};
+    Tally farCosines = {0};
+    // The floats past 2^24 nearest a multiple of pi/2: 0x1.f37c8ap+95,
+    // 2^-29.9 of a quarter turn past one, and 0x1.628d4cp+40, 2^-27.8
+    // short of one.
+    static const float far[14] = {
+        0x1p24f,         0x1.000002p24f,   -0x1.000002p24f, 0x1p25f,         -6.3e27f,
+        3.0e38f,         FLT_MAX,          -FLT_MAX,        1e10f,           0x1.fffffep23f,
+        0x1.f37c8ap+95f, -0x1.f37c8ap+95f, 0x1.628d4cp+40f, -0x1.628d4cp+40f};
+    for (int32_t i = 0; i < 14; ++i)
+    {
+        CheckSinCos(&farSines, &farCosines, far[i]);
+    }
+    Report("sine at 2^24 and the ends", &farSines);
+    Report("cosine at 2^24 and the ends", &farCosines);
     Tally sines = {0};
     Tally cosines = {0};
     // The floats nearest each multiple of pi/4 up to 2^20, where the

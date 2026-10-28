@@ -18,7 +18,9 @@
 #define MOST_PIECES 64.0
 #define PIECE_TURN  0.25
 
-// The largest half turn mvfxSinCos takes.
+// The largest half turn the flow takes, as the GPU part's, whose sine
+// stops there: past it a body turns about its angular velocity
+// (mvfxTurnBy).
 #define MOST_HALF_TURN 0x1p24
 
 // One Jacobi rotation zeroing a[p][q] of a symmetric matrix, its axes'
@@ -203,7 +205,7 @@ static void Turn(const double q[4], const double v[3], double out[3])
 // The sine and cosine of a half turn, by mvfxSinCos and scaled to a unit
 // pair in binary64: binary32's pair is one only to rounding, the same at
 // each substep at one angle, which shrank or grew a body's momentum by
-// 0.15% over 24000 substeps. False past mvfxSinCos's range.
+// 0.15% over 24000 substeps. False past MOST_HALF_TURN.
 static bool HalfTurn(double half, double* sine, double* cosine)
 {
     if (!(fabs(half) <= MOST_HALF_TURN))
