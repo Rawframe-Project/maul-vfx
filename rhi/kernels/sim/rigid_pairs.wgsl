@@ -421,8 +421,8 @@ fn pairSubstep(t: u32, live: u32, span: vec2<u32>) -> vec3<u32> {
 // Rigid pairs: the rigid pass for an emitter whose bodies meet each other,
 // in one workgroup. Each live body's fate cleared and its life's inverse
 // kept; each substep taken by every body; with sleeping, the islands of
-// the last substep's pairs settled; then each body's first strike's event
-// and its drops, as the rigid pass.
+// the last substep's pairs settled; then each body's velocity held, its
+// first strike's event and its drops, as the rigid pass.
 @compute @workgroup_size(256, 1, 1)
 fn rigidPairs(@builtin(local_invocation_index) t: u32) {
     let c = params.counts.x;
@@ -447,7 +447,8 @@ fn rigidPairs(@builtin(local_invocation_index) t: u32) {
         if (source[params.words.alive * c + i] == LIVE_ENDED) {
             continue;
         }
-        let b = loadBody(i);
+        var b = loadBody(i);
+        b.moving.velocity = holdSpeed(b.moving.velocity);
         let fate = loadFate(i);
         if (fate.contacted) {
             let inverseLife = bitcast<f32>(blocks[pairBase() + FATE_WORDS * i + 15u]);

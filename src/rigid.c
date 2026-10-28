@@ -620,6 +620,25 @@ static int64_t SubstepTick(const mvfxInstance* instance, int32_t substeps, int32
     return instance->stepStart + ticks * k / substeps;
 }
 
+// Holds the velocities of bodies first to end within MVFX_MAX_SPEED along
+// each axis (times the particles' space's scale) at the step's end, as the
+// step holds every other particle's after its contacts. The substeps hold
+// none: a body pushed out of a deep contact over a short substep leaves
+// it at its depth over the substep, past the bound for a body large
+// beside its instance's scale.
+static void HoldSpeeds(const mvfxRigidSolve* s, int32_t first, int32_t end)
+{
+    float fastest = MVFX_MAX_SPEED * s->instance->emitters[s->emitter].velocityModules.sigma;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        for (int32_t i = first; i < end; ++i)
+        {
+            float v = s->v[k][i];
+            s->v[k][i] = v < -fastest ? -fastest : (v > fastest ? fastest : v);
+        }
+    }
+}
+
 void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
@@ -643,6 +662,7 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
         int64_t ticks = instance->clock - instance->stepStart;
         mvfxSettleBodies(&s, count, (float)((double)ticks / (double)MVFX_TICKS_PER_SECOND));
     }
+    HoldSpeeds(&s, 0, count);
 }
 
 void mvfxIntegrateRigidNewborn(mvfxInstance* instance, int32_t emitter, int32_t at,
@@ -667,4 +687,5 @@ void mvfxIntegrateRigidNewborn(mvfxInstance* instance, int32_t emitter, int32_t 
         // Born at the step's end: still tested by the kill rules there.
         mvfxIntegrateNewborn(instance, emitter, at, birthTick, false);
     }
+    HoldSpeeds(&s, at, at + 1);
 }

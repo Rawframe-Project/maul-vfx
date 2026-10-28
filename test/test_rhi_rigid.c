@@ -667,6 +667,66 @@ static void TestLargestSizes(Gpu* gpu, mvfxGpu* kernels)
     mvfxDestroyContext(RunContext());
 }
 
+static void TestHeldSpeed(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Bodies large beside their instance's scale, pushed out of a floor
+    // faster than MVFX_MAX_SPEED times the scale, leave each step within
+    // it as on the CPU path: boxes 1e6 by 5e5 by 2.5e5 in the world at a
+    // scale of 1e-6 (a bound of 1e3), four placed by the host in the
+    // instance's floor, 1e7 apart (held as they are born; the emitter
+    // holds no more, so those placed later are left out), the floor
+    // raised half through them at half time (held as they live, its
+    // places the world's); in the rigid pass, then in the pass of bodies
+    // meeting each other, which holds every body, touching or not.
+    static const mvfxCollider floor = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+    static const mvfxCollider raised = {
+        .kind = mvfx_colliderPlane, .center = {0, 2.5e5f, 0}, .normal = {0, 1, 0}};
+    static const double sunk[12] = {0, 2, 0, 1e7, 2, 0, 0, 2, 1e7, 1e7, 2, 1e7};
+    static const float still[12] = {0};
+    static const mvfxSpawnRequest placed = {.count = 4, .positions = sunk, .velocities = still};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidBox, NULL, 0);
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.capacity = 4;
+    emitter.hostSpawnCapacity = 4;
+    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.space = mvfx_spaceWorld;
+    emitter.collision.hostColliders = true;
+    emitter.size = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {1e6f, 5e5f, 2.5e5f}, .max = {1e6f, 5e5f, 2.5e5f}};
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.3f, 0.2f, 0.1f}, .max = {0.3f, 0.2f, 0.1f}};
+    emitter.rigid.restitution = 0.3f;
+    // No strikes' events: a strike's speed out of a contact this deep is
+    // its depth over a substep, held only after, and the paths' masses
+    // (binary32 here) part it past the tolerance on a small component.
+    emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
+    // A step at a time from the same state, within 3e-2: a velocity from a
+    // pose's change at places near 2.5e5 rounds by their unit in the last
+    // place over the substep, about 7.5 at 1/480 seconds. On lavapipe the
+    // paths part by 5.3e-3 at most (by 14 or more where a pass does not
+    // hold), and none goes apart.
+    Run run = {.emitters = &emitter,
+               .emitterCount = 1,
+               .spawn = &placed,
+               .least = -1,
+               .scale = 1e-6f,
+               .hostColliders = &floor,
+               .hostColliderCount = 1,
+               .laterHostColliders = &raised,
+               .laterHostColliderCount = 1,
+               .colliding = true,
+               .adopting = true,
+               .tolerance = 3e-2f,
+               .mostApart = 1};
+    Compare(gpu, kernels, &run, "boxes large beside their instance's scale, held");
+    emitter.rigid.bodyContacts = 8;
+    Compare(gpu, kernels, &run,
+            "boxes large beside their instance's scale, held, in the pairs pass");
+}
+
 // An emitter's sizes times 2^exponent, its density another.
 static void ScaleBodies(mvfxEmitterDef* emitter, int32_t exponent, float density)
 {
@@ -895,6 +955,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestFreeBoxes(gpu, kernels);
     TestRods(gpu, kernels);
     TestTiedSizes(gpu, kernels);
+    TestHeldSpeed(gpu, kernels);
 }
 
 int main(void)

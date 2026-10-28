@@ -83,7 +83,8 @@ fn bornPlace(j: u32, withVelocity: bool, place: ptr<function, vec3<f32>>,
 
 // bornAt with the birth's place and velocity at its tick, before its
 // move, as its birth event gives them; a rigid body's turn after its
-// substeps (the birth's as drawn for other particles, turned after).
+// substeps (the birth's as drawn for other particles, turned after) and
+// its velocity held, as the core's.
 fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function, vec3<f32>>,
              place: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>,
              turning: ptr<function, Turning>) -> Fate {
@@ -99,7 +100,7 @@ fn bornFacts(j: u32, born: ptr<function, vec3<f32>>, bornVelocity: ptr<function,
         var b = Body();
         let fate = rigidNewborn(j, p, v, &b);
         *place = b.moving.place;
-        *velocity = b.moving.velocity;
+        *velocity = holdSpeed(b.moving.velocity);
         *turning = b.moving.turning;
         return fate;
     }

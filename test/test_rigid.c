@@ -1886,6 +1886,81 @@ static void TestFastTurn(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Whether a host module sinks the body far along x half into the floor
+// before motion.
+static bool s_sinking;
+
+static void Sink(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    for (int32_t i = 0; s_sinking && i < p->count; ++i)
+    {
+        p->position[1][i] = p->position[0][i] > 5e6f ? 0.0f : p->position[1][i];
+    }
+    s_sinking = false;
+}
+
+// Whether every body left by the last step moves within the speed bound
+// along each axis.
+static bool AreHeld(float fastest)
+{
+    TestParticle bodies[2];
+    int32_t count = ReadParticles(s_scene.context, s_scene.instance, 0, bodies, 2);
+    bool held = count == 2;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            held = held && fabsf(bodies[i].velocity[k]) <= fastest;
+        }
+    }
+    return held;
+}
+
+static void TestHeldSpeed(void)
+{
+    // A body's velocity is held within MVFX_MAX_SPEED along each axis
+    // (times the instance's scale in world space) at its step's end, as
+    // every particle's, so a host module's check kills none: boxes 1e6 by
+    // 5e5 by 2.5e5 in an instance of scale 1e-6 (a bound of 1e3) pushed out
+    // of the floor faster, one born in it, then one sunk half in by a host
+    // module before a later step.
+    static const mvfxHostModule modules[2] = {{.stage = mvfx_stageBeforeMotion, .function = Sink},
+                                              {.stage = mvfx_stageAfterMotion, .function = Peek}};
+    memset(&s_scene, 0, sizeof s_scene);
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1e6f, 5e5f, 2.5e5f);
+    emitter.space = mvfx_spaceWorld;
+    emitter.rigid.restitution = 0.3f;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {0.3f, 0.2f, 0.1f}, .max = {0.3f, 0.2f, 0.1f}};
+    emitter.hostModules = modules;
+    emitter.hostModuleCount = 2;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.scale = 1e-6f;
+    CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+          "instance");
+    static const double places[6] = {0, 2, 0, 1e7, 2e6, 0};
+    mvfxSpawnRequest request = {.count = 2, .positions = places};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+          "spawned");
+    s_sinking = false;
+    Steps(1);
+    CHECK(AreHeld(1e3f) && Stats().valuesKilled == 0, "a body born in the floor held");
+    s_sinking = true;
+    Steps(1);
+    CHECK(AreHeld(1e3f) && Stats().valuesKilled == 0, "a body sunk in the floor held");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -1977,6 +2052,7 @@ int main(void)
     TestTiedSizes();
     TestSpinBound();
     TestFastTurn();
+    TestHeldSpeed();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }
