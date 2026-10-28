@@ -1677,6 +1677,64 @@ static void TestTiedSizes(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// The angular velocity a host module writes about X on each body before
+// motion, once.
+static float s_spinWritten[SIZED];
+static bool s_spinning;
+
+static void Spin(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    const mvfxParticleArrays* p = &call->particles;
+    for (int32_t i = 0; s_spinning && i < p->count && i < SIZED; ++i)
+    {
+        p->angularVelocity[0][i] = s_spinWritten[i];
+    }
+    s_spinning = false;
+}
+
+static void TestSpinBound(void)
+{
+    // A host module's angular velocity on a rigid body is held to the
+    // speed it turns the body's extent at, within 4 times the speed bound
+    // (MVFX_MAX_SPEED), not each axis to MVFX_MAX_SPIN, so a tiny body
+    // keeps the spin its own step gives it: free spheres 1e-20, 1e-20, 1
+    // and 1e-20 across spun at 3.9e29 (kept, 3.9e9 at their surface),
+    // 4.1e29 (killed), 1e11 (killed) and NaN (killed).
+    static const mvfxHostModule spin = {.stage = mvfx_stageBeforeMotion, .function = Spin};
+    static const float sizes[3 * SIZED] = {1e-20f, 1e-20f, 1e-20f, 1e-20f, 1e-20f, 1e-20f,
+                                           1,      1,      1,      1e-20f, 1e-20f, 1e-20f};
+    static const float written[SIZED] = {3.9e29f, 4.1e29f, 1e11f, NAN};
+    memcpy(s_spinWritten, written, sizeof s_spinWritten);
+    s_spinning = true;
+    memset(&s_scene, 0, sizeof s_scene);
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1, 1, 1);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.collision.enabled = false;
+    emitter.colliderCount = 0;
+    emitter.hostModules = &spin;
+    emitter.hostModuleCount = 1;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+          "instance");
+    static const double places[3 * SIZED] = {0, 1, 0, 2, 1, 0, 4, 1, 0, 6, 1, 0};
+    mvfxSpawnRequest request = {.count = SIZED, .positions = places, .sizes = sizes};
+    CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
+          "spawned");
+    Steps(2);
+    CHECK(Stats().valuesKilled == 3 && Stats().live == 1,
+          "a body's spin held to its surface's speed, not to the spin cap");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -1766,6 +1824,7 @@ int main(void)
     TestUnits();
     TestNeedles();
     TestTiedSizes();
+    TestSpinBound();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

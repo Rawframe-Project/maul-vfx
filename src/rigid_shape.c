@@ -142,6 +142,21 @@ static float ExtentOf(const mvfxBodyShape* s, const float size[3])
     return extent;
 }
 
+float mvfxBodyExtent(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3])
+{
+    mvfxBodyShape s = {.kind = rigid->shape};
+    if (s.kind == mvfx_rigidHull)
+    {
+        s.hull = hull;
+        s.count = hull->vertexCount;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            s.scale[k] = fabsf(size[k]);
+        }
+    }
+    return ExtentOf(&s, size);
+}
+
 mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3],
                               mvfxBodyMass* mass)
 {

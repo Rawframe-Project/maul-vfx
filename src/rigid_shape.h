@@ -150,6 +150,12 @@ typedef struct mvfxPairContact
 mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3],
                               mvfxBodyMass* mass);
 
+// A body's extent at a size, which its length unit is taken from: the
+// largest of the sizes its shape takes (a sphere's diameter, a capsule's
+// diameter and length, a box's three sizes) or of its hull's vertices'
+// coordinates at its size.
+float mvfxBodyExtent(const mvfxRigidDef* rigid, const mvfxHull* hull, const float size[3]);
+
 struct mvfxResolvedDepth;
 
 // Adds a contact deeper than 0 to a list; past the cap the shallowest is
