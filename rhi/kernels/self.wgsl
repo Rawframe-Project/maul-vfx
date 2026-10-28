@@ -23,6 +23,8 @@
 
 // include: shared/exact.wgsl
 
+// include: shared/finite.wgsl
+
 // include: shared/grid_cells.wgsl
 
 const NONE: u32 = 0xFFFFFFFFu;
@@ -153,7 +155,7 @@ fn selfReach(@builtin(global_invocation_id) id: vec3<u32>) {
             let speed = floatAt(v + k, i);
             square += speed * speed;
         }
-        if (square == square) {
+        if (!isNan(square)) {
             _ = atomicMax(&count[COUNT_FASTEST], bitcast<u32>(square));
         }
         let at = placeOf(i);

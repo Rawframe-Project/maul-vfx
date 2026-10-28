@@ -1,7 +1,7 @@
 // A turn by a unit quaternion, and a grid's values sampled as the core
 // samples them (src/grid.c): spliced where a kernel names it (through
-// shared/forces.wgsl, or alone), beside a storage buffer of words named
-// grids.
+// shared/forces.wgsl, or alone), after shared/finite.wgsl, beside a
+// storage buffer of words named grids.
 
 fn rotate(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
     let t = 2.0 * cross(q.xyz, v);
@@ -17,8 +17,7 @@ const BORDER_REPEAT: u32 = 2u;
 // paths' places do).
 fn locate(u: f32, n: u32, border: u32, low: ptr<function, u32>, high: ptr<function, u32>) -> f32 {
     if (border == BORDER_REPEAT) {
-        let finite = u == u && abs(u) <= 3.40282347e38;
-        let g = select(0.0, u, finite) * f32(n);
+        let g = select(0.0, u, isFinite(u)) * f32(n);
         let whole = floor(g);
         let period = f32(n);
         let cell = i32(whole - period * floor(whole / period));

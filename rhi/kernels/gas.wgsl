@@ -47,6 +47,8 @@ const CARRY_CORRECT: u32 = 3u;
 
 // include: shared/pcg4d_hash.wgsl
 
+// include: shared/finite.wgsl
+
 // include: shared/forces.wgsl
 
 // include: shared/colliders.wgsl

@@ -40,6 +40,8 @@ const POURED: u32 = 6u;
 
 // include: shared/water_numbers.wgsl
 
+// include: shared/finite.wgsl
+
 // include: shared/grid_sample.wgsl
 
 // The coupled emitters' crossings (rhi/src/sim_water.c copies their lists
