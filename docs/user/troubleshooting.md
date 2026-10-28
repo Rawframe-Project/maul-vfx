@@ -15,7 +15,7 @@ Every fallible call says why it failed:
 | `mvfx_errorVersion` | The program was built against headers of another release, or a file is of another format version. |
 | `mvfx_errorFormat` | An effect file's bytes are malformed: a magic, size or hash that does not match, a unit out of place, a count past its cap, a def the def validator refuses. The offset names the first byte at fault. |
 | `mvfx_errorLimit` | An argument passes a fixed bound of the library, a named constant: a hull past `MVFX_MAX_HULL_COUNT` vertices, a frame's GPU passes past their `MVFX_GPU_*` count. |
-| `mvfx_errorBusy` | The object is in use: an effect an instance plays, a grid or mesh an effect holds, or a call from the allocator, a task hook or a host module that would change the context while it runs them. |
+| `mvfx_errorBusy` | The object is in use: an effect an instance plays, a grid or mesh an effect holds, or a call from the allocator, a task hook or a host module that would change the context while it runs them. The GPU part answers it too when its device refuses a call from inside the device's own allocator. |
 | `mvfx_errorMissing` | A name or object the call needs is not in the table it was given, such as an asset of an effect file. |
 
 `mvfxResultName` names any result for a log. `mvfxGetContextMisuse` counts the calls refused as invalid since the context was made: a program can assert in its own tests that it stays at zero, and log it in a release build.
