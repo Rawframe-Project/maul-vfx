@@ -61,7 +61,7 @@ fn leastAxis(p: ptr<function, BoxPair>, margin: f32, n: ptr<function, vec3<f32>>
         e[i / 3u] = 1.0;
         var l = cross(e, (*p).axes[i % 3u]);
         let square = dot3(l, l);
-        if (!(square > 1e-10) || !(square <= LARGEST)) {
+        if (!(square > 1e-10) || !isFinite(square)) {
             continue;
         }
         l /= sqrt(square);

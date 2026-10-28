@@ -6,13 +6,15 @@
 const BIRTH_CONTACT: u32 = 4u;
 const BIRTH_CROSSED: u32 = 8u;
 
-// The box around a box and a place, by comparisons that pass a NaN over.
+// The box around a box and a place, a NaN component passed over as the
+// core's comparisons pass it, tested on the bits, which a device cannot
+// fold.
 fn lowerOf(low: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
-    return select(low, p, p < low);
+    return select(low, p, p < low & !areNan(p));
 }
 
 fn higherOf(high: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
-    return select(high, p, p > high);
+    return select(high, p, p > high & !areNan(p));
 }
 
 // The workgroup's box from each invocation's, by a fixed tree; whole in

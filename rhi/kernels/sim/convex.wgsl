@@ -79,7 +79,7 @@ fn polyPlane(p: Poly, f: u32) -> vec4<f32> {
     }
     var n = hullPlane(f).xyz / max(p.scale, vec3<f32>(1e-30));
     let square = dot3(n, n);
-    if (square > 0.0 && square <= LARGEST) {
+    if (square > 0.0 && isFinite(square)) {
         n = n * (1.0 / sqrt(square));
     }
     n = rotate(p.q, n);

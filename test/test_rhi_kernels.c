@@ -830,8 +830,9 @@ static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
 
 // The kernels' float classes (shared/finite.wgsl) against C's, on the
 // device: NaNs quiet and signalling, of either sign and of the largest
-// payload, infinities, the largest and least floats and zeros. A test
-// written x != x or x - x == 0.0 fails here on a device that folds it.
+// payload, infinities, the largest and least floats and zeros, alone and
+// in each component of a vector of ones. A test written x != x or
+// x - x == 0.0 fails here on a device that folds it.
 static void TestClasses(Gpu* gpu, Checker* checker)
 {
     enum
@@ -853,7 +854,9 @@ static void TestClasses(Gpu* gpu, Checker* checker)
     {
         const uint32_t* w = &checker->words[4 * e];
         float x = FloatOf(values[e]);
-        right += w[1] == (isfinite(x) ? 1u : 0u) && w[2] == (isnan(x) ? 1u : 0u);
+        uint32_t lane = 1u << (e % 3u);
+        uint32_t vector = (isfinite(x) ? 7u : 7u & ~lane) | (isnan(x) ? lane << 3 : 0u);
+        right += w[1] == (isfinite(x) ? 1u : 0u) && w[2] == (isnan(x) ? 1u : 0u) && w[3] == vector;
     }
     printf("float classes: %d of %d as C's\n", right, VALUES);
     CHECK(ran && right == VALUES, "finite and NaN tests on the bits");
