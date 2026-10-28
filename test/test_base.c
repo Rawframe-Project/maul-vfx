@@ -32,6 +32,7 @@ static void TestResultNames(void)
         {mvfx_errorCapacity, -2, "mvfx_errorCapacity"},
         {mvfx_errorStale, -3, "mvfx_errorStale"},
         {mvfx_errorUnsupported, -4, "mvfx_errorUnsupported"},
+        {mvfx_errorPlatform, -5, "mvfx_errorPlatform"},
         {mvfx_errorState, -6, "mvfx_errorState"},
         {mvfx_errorVersion, -7, "mvfx_errorVersion"},
         {mvfx_errorFormat, -8, "mvfx_errorFormat"},
@@ -45,7 +46,6 @@ static void TestResultNames(void)
         CHECK(strcmp(mvfxResultName(cases[i].result), cases[i].name) == 0, cases[i].name);
     }
     CHECK(strcmp(mvfxResultName(12345), "unknown result") == 0, "unknown name");
-    CHECK(strcmp(mvfxResultName(-5), "unknown result") == 0, "the platform error, not returned");
     CHECK(strcmp(mvfxResultName(-11), "unknown result") == 0, "past the shared errors");
     CHECK(strcmp(mvfxResultName(-33), "unknown result") == 0, "past the library's own");
 }

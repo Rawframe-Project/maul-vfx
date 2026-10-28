@@ -144,7 +144,7 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
     def.usage = usage;
-    return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
+    return mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, out));
 }
 
 // The bytes of an emitter's births, and of its host queue's after them.
@@ -242,9 +242,9 @@ static bool CreateTextures(mvfxGpuSim* sim)
     def.height = 1;
     def.usage = mrhi_textureSampled;
     def.format = mrhi_formatDepth32Float;
-    bool made = mrhiCreateTexture(sim->device, &def, &sim->ownDepth) == mrhi_success;
+    bool made = mvfxSimMade(sim, mrhiCreateTexture(sim->device, &def, &sim->ownDepth));
     def.format = mrhi_formatRgba32Float;
-    return made && mrhiCreateTexture(sim->device, &def, &sim->ownNormals) == mrhi_success;
+    return made && mvfxSimMade(sim, mrhiCreateTexture(sim->device, &def, &sim->ownNormals));
 }
 
 static_assert(MVFX_GPU_EVENT_WORDS == MVFX_EVENT_WORDS, "an event's words, as the kernel's");
@@ -322,13 +322,14 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
         result = mvfxLaySimMesh(sim, def, e);
     }
     if (result == mvfx_success && emitter->capacity > 0 &&
-        (!CreateBuffers(sim, emitter) || !mvfxCreateRecordBuffers(sim->device, &emitter->records) ||
+        (!CreateBuffers(sim, emitter) ||
+         !mvfxSimMade(sim, mvfxCreateRecordBuffers(sim->device, &emitter->records)) ||
          !CreateSortBuffers(sim, &sim->views[e], emitter) || !mvfxCreateSimEvents(sim, e) ||
          !mvfxCreateSimGrid(sim, e) || !mvfxCreateSimContacts(sim, e) ||
          !mvfxCreateSimPlexus(sim, e) || !mvfxCreateSimSelf(sim, e) ||
          !mvfxCreateSimLiquid(sim, e)))
     {
-        result = mvfx_errorState;
+        result = mvfxSimRefusal(sim);
     }
     return result;
 }
@@ -355,13 +356,13 @@ static mvfxResult CreateParts(mvfxGpuSim* sim, const mvfxGpuSimDef* def, mvfxGpu
     {
         result = mvfxCreateSimGas(sim, &sim->gases[g], (uint32_t)((def->hostGridBytes + 3) / 4))
                      ? mvfx_success
-                     : mvfx_errorState;
+                     : mvfxSimRefusal(sim);
     }
     for (int32_t w = 0; result == mvfx_success && w < sim->waterCount; ++w)
     {
         result = mvfxCreateSimWater(sim, &sim->waters[w], (uint32_t)((def->hostGridBytes + 3) / 4))
                      ? mvfx_success
-                     : mvfx_errorState;
+                     : mvfxSimRefusal(sim);
     }
     return result;
 }
@@ -418,7 +419,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
          !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownGrid[1]) ||
          !CreateBuffer(sim, 4, mrhi_bufferStorage, &sim->ownGrid[2])))
     {
-        result = mvfx_errorState;
+        result = mvfxSimRefusal(sim);
     }
     if (result != mvfx_success)
     {

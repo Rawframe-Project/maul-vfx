@@ -74,7 +74,7 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
     def.usage = usage;
-    return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
+    return mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, out));
 }
 
 // Lays out the lists of the emitters coupled to surface w in the crossings

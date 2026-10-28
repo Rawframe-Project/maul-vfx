@@ -46,14 +46,14 @@ bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e)
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = 4u * words;
     def.usage = mrhi_bufferStorage | mrhi_bufferCopySource | mrhi_bufferCopyDestination;
-    if (mrhiCreateBuffer(sim->device, &def, &emitter->events) != mrhi_success)
+    if (!mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, &emitter->events)))
     {
         return false;
     }
     def.size = MVFX_RECORD_WORDS * 4u;
     def.usage = mrhi_bufferUniform | mrhi_bufferCopyDestination;
     return !emitter->writesEvents ||
-           mrhiCreateBuffer(sim->device, &def, &emitter->eventNumbers) == mrhi_success;
+           mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, &emitter->eventNumbers));
 }
 
 // The numbers of an emitter's events' values over life: a record pass's

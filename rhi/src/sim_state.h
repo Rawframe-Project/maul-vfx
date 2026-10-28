@@ -15,6 +15,7 @@
 #include "numbers.h"
 #include "record.h"
 #include "records.h"
+#include "refusal.h"
 #include "sim_gas.h"
 #include "sim_water.h"
 
@@ -430,7 +431,28 @@ struct mvfxGpuSim
     // Whether it is being destroyed: its changing calls from its
     // allocator meanwhile are refused with mvfx_errorBusy.
     bool ending;
+    // The device's first refusal to make an object while the simulation
+    // is made (mvfxRhiRefusal); mvfx_success for none.
+    mvfxResult refused;
 };
+
+// Whether the device made an object; its first refusal kept in the
+// simulation's refused.
+static inline bool mvfxSimMade(mvfxGpuSim* sim, mrhiResult result)
+{
+    if (result != mrhi_success && sim->refused == mvfx_success)
+    {
+        sim->refused = mvfxRhiRefusal(result);
+    }
+    return result == mrhi_success;
+}
+
+// Why a part of the simulation was not made: the device's refusal, or
+// else the allocator's failure.
+static inline mvfxResult mvfxSimRefusal(const mvfxGpuSim* sim)
+{
+    return sim->refused != mvfx_success ? sim->refused : mvfx_errorCapacity;
+}
 
 // An effect's steps of a frame that splits (sim_lanes.c): its lanes made
 // after its emitters and gases, and released before them; a dropped
