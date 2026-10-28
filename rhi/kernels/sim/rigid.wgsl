@@ -507,10 +507,11 @@ fn rigidCounts(fate: Fate) -> u32 {
     return min(fate.capped, 0xFFFFFFu) | (min(fate.searches, 0xFFu) << 24u);
 }
 
-// Rigid: each live body's substeps and its settling, the ended (marked by
-// update) skipped; its first strike noted for its event, and the contacts
-// it dropped past the most in its alive word of the other buffer, free
-// until the scatter, which offsets sums (MVFX_GPU_RIGID_CAPPED).
+// Rigid: each live body's substeps, its settling and its velocity held
+// (as the core's HoldSpeeds), the ended (marked by update) skipped; its
+// first strike noted for its event, and the contacts it dropped past the
+// most in its alive word of the other buffer, free until the scatter,
+// which offsets sums (MVFX_GPU_RIGID_CAPPED).
 @compute @workgroup_size(64, 1, 1)
 fn rigid(@builtin(global_invocation_id) id: vec3<u32>) {
     let c = params.counts.x;
@@ -533,6 +534,7 @@ fn rigid(@builtin(global_invocation_id) id: vec3<u32>) {
         if (params.rigid.z != NONE) {
             settleBody(&b, secondsOf(vec2<u32>(params.counts.z, 0u)));
         }
+        b.moving.velocity = holdSpeed(b.moving.velocity);
         if (fate.contacted) {
             noteUnitContact(i, fate.tick, fate.first, fate.velocity, inverseLife);
         }

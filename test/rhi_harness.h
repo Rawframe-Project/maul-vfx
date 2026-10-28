@@ -224,6 +224,8 @@ typedef struct Run
     // bound but the harness's for 0): rigid bodies' friction and strikes
     // decided apart.
     int32_t mostApart;
+    // Both instances' scale (1 for 0), for an instance that stands still.
+    float scale;
 } Run;
 
 // The scenes a test runs on the device.

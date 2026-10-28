@@ -2665,6 +2665,7 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     instanceDef.effect = *effectOut;
     instanceDef.seed = 11;
     instanceDef.quality = run->quality != NULL ? 1 : 0;
+    instanceDef.scale = run->scale > 0.0f ? run->scale : 1.0f;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_cpu) == mvfx_success, "a CPU instance");
     instanceDef.planned = true;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_planned) == mvfx_success, "planned");

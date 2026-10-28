@@ -231,7 +231,7 @@ typedef struct Range
     double seconds;
     // Whether each moved particle's velocity is held within fastest along
     // each axis (MVFX_MAX_SPEED in the particles' space): not in a
-    // solver's substeps, which keep their own.
+    // solver's substeps (the rigid step holds its bodies' at its end).
     bool holds;
     float fastest;
 } Range;
