@@ -616,7 +616,9 @@ extern "C"
     // a rigid body's angular velocity that both turns the body's extent
     // (the largest of its sizes) faster than 4 times that speed bound and
     // gives it more angular momentum than the spin cap about every axis
-    // would, is killed and counted in mvfxEmitterStats.valuesKilled. A
+    // would, or is past 2^60 radians a second (where the step's binary32
+    // squares overflow), or for a body of no volume past the cap on an
+    // axis, is killed and counted in mvfxEmitterStats.valuesKilled. A
     // rigid body's angular velocity is not held to MVFX_MAX_SPIN on each
     // axis, because its own step takes it past that: a sphere 1e-20 across
     // rolling at 1e-9 turns at 1e11 radians a second, and a body spun at
