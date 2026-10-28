@@ -6,8 +6,10 @@
 # ln 2 by its atanh series, to 60 digits in exact rationals, then split
 # for Cody and Waite's argument reduction (each high part with enough
 # trailing zero bits that its product with any reduction multiple the
-# library's domain allows is exact in binary64), and the reciprocal
-# factorials of the Taylor series as correctly rounded binary64.
+# library's domain allows is exact in binary64), 2/pi's leading 256
+# fraction bits for Payne and Hanek's reduction of larger arguments, and
+# the reciprocal factorials of the Taylor series as correctly rounded
+# binary64.
 #
 # usage: math_constants.py
 
@@ -60,6 +62,13 @@ show("HALF_PI_1", c1)
 show("HALF_PI_2", c2)
 show("HALF_PI_3", c3)
 show("TWO_OVER_PI", 2 / PI)
+# Reduction of floats past 2^24: 2/pi's fraction bits 1 to 256 in 32-bit
+# words, most significant first (a float's lowest bit weighs at most
+# 2^104, and the reduction reads 128 bits from there).
+fraction = int(2 / PI * 2 ** 256)
+words = ["0x%08Xu" % ((fraction >> (32 * (7 - k))) & 0xFFFFFFFF) for k in range(8)]
+print("#define HALF_PI     %s" % float(PI / 2).hex())
+print("static const uint32_t TWO_OVER_PI_WORDS[8] = {%s};" % ", ".join(words))
 # Reduction by ln 2 of exponents up to 2^11 in size: 42-bit high part.
 l1, l2, _ = split(LN2, 42)
 show("LN2_1", l1)

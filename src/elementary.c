@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Sine and cosine by Cody and Waite's reduction to [-pi/4, pi/4] and
-// Taylor series; the exponential by reduction to |r| <= ln 2 / 2 and its
-// series; the power as 2 to the y log2 x, the logarithm by the atanh
-// series. The constants come from tools/math_constants.py.
+// Sine and cosine by Cody and Waite's reduction to [-pi/4, pi/4] (Payne
+// and Hanek's past 2^24) and Taylor series; the exponential by reduction
+// to |r| <= ln 2 / 2 and its series; the power as 2 to the y log2 x, the
+// logarithm by the atanh series. The constants come from
+// tools/math_constants.py.
 
 #include "elementary.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -18,6 +20,9 @@
 #define HALF_PI_2   0x1.10b4611000000p-30
 #define HALF_PI_3   0x1.4c4c6628b80dcp-59
 #define TWO_OVER_PI 0x1.45f306dc9c883p-1
+#define HALF_PI     0x1.921fb54442d18p+0
+static const uint32_t TWO_OVER_PI_WORDS[8] = {0xA2F9836Eu, 0x4E441529u, 0xFC2757D1u, 0xF534DDC0u,
+                                              0xDB629599u, 0x3C439041u, 0xFE5163ABu, 0xDEBBC561u};
 // ln 2 in two parts, the first of 42 bits for multiples below 2^11.
 #define LN2_1  0x1.62e42fefa3800p-1
 #define LN2_2  0x1.ef35793c76730p-45
@@ -88,20 +93,78 @@ static double CosReduced(double r)
     return 1.0 - r2 * p;
 }
 
+// 32 bits of 2/pi's fraction from bit `first` on (bit 1 weighing 1/2;
+// bit 0, its integer part, is 0).
+static uint32_t TwoOverPiBits(int32_t first)
+{
+    // Bit i at place i + 31 of the words after a word of zeros.
+    int32_t place = first + 31;
+    int32_t word = place / 32;
+    int32_t shift = place % 32;
+    uint32_t high = word == 0 ? 0u : TWO_OVER_PI_WORDS[word - 1];
+    uint32_t low = TWO_OVER_PI_WORDS[word];
+    return shift == 0 ? high : (high << shift) | (low >> (32 - shift));
+}
+
+// x past 2^24, a finite float and so an integer m 2^e (m below 2^24, e
+// from 1 to 104), less its nearest multiple of pi/2, and that multiple's
+// low two bits in *quadrant: Payne and Hanek's reduction. 2/pi's bits
+// from bit e - 1 on (those above give multiples of 4) times m in 32-bit
+// limbs, 128 of them, put x 2/pi within 2^-102 quarter turns. The
+// remainder's leading 64 bits keep at least 34 significant: no float's
+// is below 2^-29.9 of a quarter turn (0x1.f37c8ap+95's).
+static double ReducedPast(float x, int64_t* quadrant)
+{
+    uint32_t bits = 0;
+    memcpy(&bits, &x, sizeof bits);
+    uint64_t m = (uint64_t)((bits & 0x7FFFFFu) | 0x800000u);
+    int32_t e = (int32_t)((bits >> 23) & 0xFFu) - 150;
+    // The product's limbs, most significant first: 2^-126 of x 2/pi less
+    // a multiple of 4.
+    uint32_t limbs[5];
+    uint64_t carry = 0;
+    for (int32_t k = 3; k >= 0; --k)
+    {
+        uint64_t product = m * TwoOverPiBits(e - 1 + 32 * k) + carry;
+        limbs[k + 1] = (uint32_t)product;
+        carry = product >> 32;
+    }
+    limbs[0] = (uint32_t)carry;
+    // Bits 126 and 127 count quarter turns; below them the fraction's
+    // leading 64 bits.
+    uint64_t turns = limbs[1] >> 30;
+    uint64_t fraction =
+        ((uint64_t)(limbs[1] & 0x3FFFFFFFu) << 34) | ((uint64_t)limbs[2] << 2) | (limbs[3] >> 30);
+    // Past half a quarter turn, the next multiple is nearer.
+    bool next = fraction >= 0x8000000000000000ull;
+    double part = next ? -(double)(~fraction + 1u) : (double)fraction;
+    *quadrant = (int64_t)((turns + (next ? 1u : 0u)) & 3u);
+    return part * 0x1p-64 * HALF_PI;
+}
+
 void mvfxSinCos(float x, float* sineOut, float* cosineOut)
 {
-    // Beyond 2^24 (and for NaN) the values are unspecified: those of 0,
-    // so k below stays small enough to convert.
-    double value = fabs((double)x) <= 0x1p24 ? (double)x : 0.0;
-    // The nearest multiple of pi/2; a tie may go either way, as both
-    // leave the remainder within pi/4 and a hair.
-    double k = floor(value * TWO_OVER_PI + 0.5);
-    double r = ((value - k * HALF_PI_1) - k * HALF_PI_2) - k * HALF_PI_3;
+    double r = 0.0;
+    int64_t quadrant = 0;
+    if (fabs((double)x) <= 0x1p24)
+    {
+        // The nearest multiple of pi/2; a tie may go either way, as both
+        // leave the remainder within pi/4 and a hair.
+        double k = floor((double)x * TWO_OVER_PI + 0.5);
+        r = (((double)x - k * HALF_PI_1) - k * HALF_PI_2) - k * HALF_PI_3;
+        // k is below 2^25 in size, so it converts exactly; its low two
+        // bits name the quadrant.
+        quadrant = (int64_t)k & 3;
+    }
+    else if (!IsNan(x) && fabs((double)x) <= (double)FLT_MAX)
+    {
+        // Past 2^24 by its exact value: -x turns back as x does.
+        r = ReducedPast(fabsf(x), &quadrant);
+        r = x < 0.0f ? -r : r;
+        quadrant = x < 0.0f ? (4 - quadrant) & 3 : quadrant;
+    }
     double sine = SinReduced(r);
     double cosine = CosReduced(r);
-    // k is below 2^25 in size, so it converts exactly; its low two bits
-    // name the quadrant.
-    int64_t quadrant = (int64_t)k & 3;
     double s = quadrant == 0 ? sine : quadrant == 1 ? cosine : quadrant == 2 ? -sine : -cosine;
     double c = quadrant == 0 ? cosine : quadrant == 1 ? -sine : quadrant == 2 ? -cosine : sine;
     *sineOut = (float)s;

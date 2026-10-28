@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The library's sine and cosine for every float up to 2^24 in size, its
+// The library's sine and cosine for every finite float, its
 // exponential for every float from -104 to 89, and its power for every
 // positive normal float to a set of exponents, against the oracle of
 // elementary_reference.h. Minutes in an optimized build: built, and run by
@@ -13,7 +13,7 @@ static void SweepSinCos(void)
 {
     Tally sines = {0};
     Tally cosines = {0};
-    for (uint32_t bits = 0; bits <= 0x4B800000u; ++bits)
+    for (uint32_t bits = 0; bits <= 0x7F7FFFFFu; ++bits)
     {
         float x = 0;
         memcpy(&x, &bits, sizeof x);
