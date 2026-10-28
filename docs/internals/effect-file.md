@@ -33,7 +33,7 @@ A grid, a mesh or a host module is the host's object; its address means nothing 
 
 ## Versions
 
-`MVFX_FILE_VERSION` is the only format a library reads; another is refused with `mvfx_errorVersion`, never guessed at. Any change to the bytes raises it, in the same change: a field added to a def, a field's type, an enum's width. Before 1.0.0 the library promises no reading of older files; the JSON form is the stable source for effects meant to outlive a format.
+`MVFX_FILE_VERSION` is the only format a library reads; another is refused with `mvfx_errorVersion`, never guessed at. Every other check the reader makes on a file's bytes, a bound included, refuses it with `mvfx_errorFormat` and the offset of the first byte at fault. Any change to the bytes raises it, in the same change: a field added to a def, a field's type, an enum's width. Before 1.0.0 the library promises no reading of older files; the JSON form is the stable source for effects meant to outlive a format.
 
 ## The JSON form and the fixtures
 

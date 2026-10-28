@@ -53,7 +53,7 @@ The installed package holds the core. A program that uses the GPU part adds the 
 
 **The same bits everywhere.** The simulation gives the same particles on every platform, compiler and thread count for the same effects, seeds, inputs and steps. [Troubleshooting](troubleshooting.md#results-that-differ) lists what breaks that promise.
 
-**Threads are the program's.** A context runs its work on the calling thread unless its def gives task hooks (`enqueueTask` and `finishTask`), which spread a step's instances over the program's own task system with the same results. A context is used by one thread at a time. The allocator, the task hooks and host modules must not call a function that changes the context: such a call is refused with `mvfx_errorState`.
+**Threads are the program's.** A context runs its work on the calling thread unless its def gives task hooks (`enqueueTask` and `finishTask`), which spread a step's instances over the program's own task system with the same results. A context is used by one thread at a time. The allocator, the task hooks and host modules must not call a function that changes the context: such a call is refused with `mvfx_errorBusy`.
 
 **The library draws nothing.** It writes records, vertices and indices into the program's buffers, in layouts the program defines.
 

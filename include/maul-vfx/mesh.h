@@ -73,12 +73,12 @@ extern "C"
     /// @param context  The context that will own the mesh.
     /// @param def      The def, from mvfxDefaultMeshDef.
     /// @param meshOut  Receives the mesh's id; the null id on failure.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a def
-    ///         without its cookie, a count out of range, an index past the
-    ///         vertices or a value out of range, which counts as misuse when
-    ///         the context is given; `mvfx_errorLimit` when the context holds
-    ///         its limit of meshes; `mvfx_errorCapacity` when the allocator
-    ///         fails.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
+    ///         def without its cookie, a count out of range, an index past
+    ///         the vertices or a value out of range, which counts as misuse
+    ///         when the context is given; `mvfx_errorCapacity` when the
+    ///         context holds as many meshes as its def allows, or when the
+    ///         allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def,

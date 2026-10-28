@@ -142,7 +142,7 @@ static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId 
     const mvfxInstance* live = mvfxContextInstance(context, instance);
     *result = live == nullptr                          ? mvfx_errorStale
               : w < 0 || w >= live->effect->waterCount ? mvfx_errorInvalid
-              : !live->planned                         ? mvfx_errorState
+              : !live->planned                         ? mvfx_errorUnsupported
                                                        : mvfx_success;
     return *result == mvfx_success ? live : nullptr;
 }
@@ -258,7 +258,7 @@ mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context, mvfxInstanceId insta
     }
     if (!live->planned)
     {
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     mvfxWaterState* state = &live->waters[water];
     state->holds = holds || (state->holds && !IsStirringOver(live, water, tick));
@@ -288,7 +288,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterCountsWork(mvfxContext* con
     }
     if (!live->planned)
     {
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     mvfxWaterState* state = &live->waters[water];
     if (tick > state->countedTick)
@@ -335,7 +335,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterSpeedWork(mvfxContext* cont
     }
     if (!live->planned)
     {
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     mvfxWaterState* state = &live->waters[water];
     if (tick >= state->reportedTick)

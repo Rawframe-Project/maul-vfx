@@ -280,7 +280,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         mvfxEffectId effect = {0};
         mvfxResult created = read.result == mvfx_success && IsCheap(&def)
                                  ? mvfxCreateEffect(s_fuzzContext, &def, &effect)
-                                 : mvfx_errorLimit;
+                                 : mvfx_errorCapacity;
         Expect(created <= 0);
         if (created == mvfx_success)
         {

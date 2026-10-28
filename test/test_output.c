@@ -149,8 +149,8 @@ static void TestLayouts(void)
     mvfxLayoutId second = {0};
     mvfxLayoutId third = {0};
     CHECK(Make(context, &good, 1, 12, &second) == mvfx_success &&
-              Make(context, &good, 1, 12, &third) == mvfx_errorLimit,
-          "the limit");
+              Make(context, &good, 1, 12, &third) == mvfx_errorCapacity,
+          "past the table");
     CHECK(mvfxDestroyLayout(context, second) == mvfx_success &&
               !mvfxLayout_IsValid(context, second) &&
               mvfxDestroyLayout(context, second) == mvfx_errorStale &&

@@ -153,7 +153,7 @@ static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId 
     const mvfxInstance* live = mvfxContextInstance(context, instance);
     *result = live == nullptr                        ? mvfx_errorStale
               : g < 0 || g >= live->effect->gasCount ? mvfx_errorInvalid
-              : !live->planned                       ? mvfx_errorState
+              : !live->planned                       ? mvfx_errorUnsupported
                                                      : mvfx_success;
     return *result == mvfx_success ? live : nullptr;
 }
@@ -268,7 +268,7 @@ mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context, mvfxInstanceId instanc
     }
     if (!live->planned)
     {
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     mvfxGasState* state = &live->gases[gas];
     state->holds = holds || (state->holds && !IsPouringOver(live, gas, tick));
@@ -298,7 +298,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetLiquidSpeedWork(mvfxContext* con
     }
     if (!live->planned)
     {
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     mvfxGasState* state = &live->gases[gas];
     if (tick >= state->reportedTick)

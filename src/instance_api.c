@@ -137,7 +137,7 @@ static MVFX_NOINLINE mvfxResult mvfxCreateInstanceWork(mvfxContext* context,
     *instanceOut = (mvfxInstanceId){0};
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxEffect* effect = mvfxContextEffect(context, def->effect);
     if (effect == nullptr)
@@ -151,7 +151,7 @@ static MVFX_NOINLINE mvfxResult mvfxCreateInstanceWork(mvfxContext* context,
     }
     if (context->instances.firstFree == 0)
     {
-        return mvfx_errorLimit;
+        return mvfx_errorCapacity;
     }
     int32_t quality = LevelThatFits(context, effect, def->quality);
     if (quality < 0)
@@ -210,7 +210,7 @@ mvfxResult mvfxDestroyInstance(mvfxContext* context, mvfxInstanceId instance)
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -254,7 +254,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStatsWork(mvfxContext* co
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     const mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -406,7 +406,7 @@ static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId 
     const mvfxInstance* live = mvfxContextInstance(context, instance);
     *result = live == nullptr                                        ? mvfx_errorStale
               : emitter < 0 || emitter >= live->effect->emitterCount ? mvfx_errorInvalid
-              : !live->planned                                       ? mvfx_errorState
+              : !live->planned                                       ? mvfx_errorUnsupported
                                                                      : mvfx_success;
     return *result == mvfx_success ? live : nullptr;
 }
@@ -503,7 +503,7 @@ mvfxResult mvfxInstance_GetPlanSteps(const mvfxContext* context, mvfxInstanceId 
     }
     if (!live->planned)
     {
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     *countOut = mvfxPlanStepCount(live);
     return mvfx_success;
@@ -568,7 +568,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_StopWork(mvfxContext* context, mvfx
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     if (mode != mvfx_stopEmitting && mode != mvfx_stopAndClear)
     {
@@ -620,7 +620,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_RestartWork(mvfxContext* context,
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -669,7 +669,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetTransformWork(mvfxContext* conte
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -714,7 +714,7 @@ mvfxResult mvfxInstance_SetVisible(mvfxContext* context, mvfxInstanceId instance
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -734,7 +734,7 @@ mvfxResult mvfxInstance_SetOffscreen(mvfxContext* context, mvfxInstanceId instan
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -762,7 +762,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetCollidersWork(mvfxContext* conte
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -840,7 +840,7 @@ mvfxResult mvfxInstance_SetParameter(mvfxContext* context, mvfxInstanceId instan
 {
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult result = FindParameter(context, instance, parameter, value, &live);
@@ -880,7 +880,7 @@ mvfxResult mvfxInstance_GetParameter(mvfxContext* context, mvfxInstanceId instan
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult result = FindParameter(context, instance, parameter, valueOut, &live);
@@ -937,7 +937,7 @@ mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instan
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitters(context, instance, emitter, &live);
@@ -962,7 +962,7 @@ mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance
     *levelOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)

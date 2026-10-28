@@ -119,7 +119,7 @@ static bool RefusedForContacts(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
     simDef.instance = planned;
     mvfxGpuSim* sim = NULL;
     mvfxGpuRefusal refusal;
-    bool refused = made && mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorState &&
+    bool refused = made && mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_errorUnsupported &&
                    sim == NULL && refusal.emitter == 0 && refusal.features == MVFX_FEATURE_CONTACTS;
     mvfxDestroyContext(context);
     return refused;

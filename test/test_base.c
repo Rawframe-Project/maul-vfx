@@ -19,27 +19,35 @@ static void TestVersionMatchesHeader(void)
 
 static void TestResultNames(void)
 {
+    // The family's shared errors at their shared values, the library's
+    // own from -32 down.
     static const struct
     {
         mvfxResult result;
+        int32_t value;
         const char* name;
     } cases[] = {
-        {mvfx_success, "mvfx_success"},
-        {mvfx_errorInvalid, "mvfx_errorInvalid"},
-        {mvfx_errorCapacity, "mvfx_errorCapacity"},
-        {mvfx_errorLimit, "mvfx_errorLimit"},
-        {mvfx_errorVersion, "mvfx_errorVersion"},
-        {mvfx_errorStale, "mvfx_errorStale"},
-        {mvfx_errorBusy, "mvfx_errorBusy"},
-        {mvfx_errorState, "mvfx_errorState"},
-        {mvfx_errorMissing, "mvfx_errorMissing"},
+        {mvfx_success, 0, "mvfx_success"},
+        {mvfx_errorInvalid, -1, "mvfx_errorInvalid"},
+        {mvfx_errorCapacity, -2, "mvfx_errorCapacity"},
+        {mvfx_errorStale, -3, "mvfx_errorStale"},
+        {mvfx_errorUnsupported, -4, "mvfx_errorUnsupported"},
+        {mvfx_errorState, -6, "mvfx_errorState"},
+        {mvfx_errorVersion, -7, "mvfx_errorVersion"},
+        {mvfx_errorFormat, -8, "mvfx_errorFormat"},
+        {mvfx_errorLimit, -9, "mvfx_errorLimit"},
+        {mvfx_errorBusy, -10, "mvfx_errorBusy"},
+        {mvfx_errorMissing, -32, "mvfx_errorMissing"},
     };
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; ++i)
     {
+        CHECK(cases[i].result == cases[i].value, cases[i].name);
         CHECK(strcmp(mvfxResultName(cases[i].result), cases[i].name) == 0, cases[i].name);
     }
     CHECK(strcmp(mvfxResultName(12345), "unknown result") == 0, "unknown name");
-    CHECK(strcmp(mvfxResultName(-9), "unknown result") == 0, "one past the last error");
+    CHECK(strcmp(mvfxResultName(-5), "unknown result") == 0, "the platform error, not returned");
+    CHECK(strcmp(mvfxResultName(-11), "unknown result") == 0, "past the shared errors");
+    CHECK(strcmp(mvfxResultName(-33), "unknown result") == 0, "past the library's own");
 }
 
 static void TestHash64KnownValues(void)

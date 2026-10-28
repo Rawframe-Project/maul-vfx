@@ -47,7 +47,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetBoundsWork(mvfxContext* context,
     *boundsOut = (mvfxBounds){.empty = true};
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitters(context, instance, emitter, &live);
@@ -220,7 +220,7 @@ static MVFX_NOINLINE mvfxResult mvfxContext_OrderEmittersWork(mvfxContext* conte
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     int64_t count = 0;
     int64_t kept = 0;

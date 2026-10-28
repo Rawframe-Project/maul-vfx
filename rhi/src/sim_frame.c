@@ -20,7 +20,7 @@ mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim, mrhiResourceId depth,
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     sim->hostDepth = depth;
     sim->hostNormals = depth.index1 != 0 ? normals : (mrhiResourceId){0};

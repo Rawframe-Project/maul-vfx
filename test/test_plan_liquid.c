@@ -255,7 +255,7 @@ static void TestSplit(void)
     int32_t count = -1;
     CHECK(mvfxInstance_GetPlanSteps(NULL, t.planned, &count) == mvfx_errorInvalid && count == 0 &&
               mvfxInstance_GetPlanSteps(t.context, t.planned, NULL) == mvfx_errorInvalid &&
-              mvfxInstance_GetPlanSteps(t.context, t.cpu, &count) == mvfx_errorState &&
+              mvfxInstance_GetPlanSteps(t.context, t.cpu, &count) == mvfx_errorUnsupported &&
               mvfxInstance_GetPlanSteps(t.context, (mvfxInstanceId){0}, &count) == mvfx_errorStale,
           "the steps' refusals");
     mvfxDestroyContext(t.context);
@@ -374,7 +374,7 @@ static void TestSpeedSetter(void)
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, NAN) == mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, INFINITY) == mvfx_errorInvalid &&
         mvfxGetContextMisuse(context) == misuse + 7 &&
-        mvfxInstance_SetLiquidSpeed(context, cpu, 0, 0, 1.0f) == mvfx_errorState &&
+        mvfxInstance_SetLiquidSpeed(context, cpu, 0, 0, 1.0f) == mvfx_errorUnsupported &&
         mvfxInstance_SetLiquidSpeed(context, (mvfxInstanceId){0}, 0, 0, 1.0f) == mvfx_errorStale;
     // The report kept through the refusals: the next step counts from it.
     CHECK(refused && mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&

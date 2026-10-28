@@ -175,7 +175,7 @@ int main(int argc, char** argv)
     s_again[size / 2] ^= 0x10u;
     mvfxEffectId damaged = {0};
     mvfxFileResult refused = mvfxCreateEffectFromBytes(context, s_again, size, assets, 1, &damaged);
-    bool caught = refused.result == mvfx_errorInvalid && refused.offset >= 0;
+    bool caught = refused.result == mvfx_errorFormat && refused.offset >= 0;
     printf("a bit flipped at byte %lld: refused at byte %lld, the header's hash of the "
            "payload, which no longer matches\n",
            (long long)(size / 2), (long long)refused.offset);

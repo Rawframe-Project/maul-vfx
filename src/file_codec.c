@@ -100,7 +100,7 @@ static bool Take(mvfxCodec* codec, size_t bytes, uint64_t* value)
     }
     if (bytes > codec->end - codec->at)
     {
-        mvfxCodecFault(codec, mvfx_errorInvalid, (int64_t)codec->end);
+        mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)codec->end);
         return false;
     }
     *value = 0;
@@ -147,7 +147,7 @@ static void CodeScalars(mvfxCodec* codec, mvfxFieldKind kind, uint8_t* place, si
         }
         if (kind == mvfx_fieldBool && value > 1)
         {
-            mvfxCodecFault(codec, mvfx_errorInvalid, (int64_t)at);
+            mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
             return;
         }
         if (item != nullptr)
@@ -222,7 +222,7 @@ static int32_t TakeName(mvfxCodec* codec, mvfxAssetKind kind)
     }
     if (index < 0 || index > codec->nameCount[kind] || index >= codec->nameCap[kind])
     {
-        mvfxCodecFault(codec, mvfx_errorInvalid, (int64_t)at);
+        mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
         return -1;
     }
     codec->nameCount[kind] += index == codec->nameCount[kind] ? 1 : 0;
@@ -338,7 +338,8 @@ static void CodeArray(mvfxCodec* codec, const mvfxFileField* field, uint8_t* obj
     int32_t count = (int32_t)(uint32_t)value;
     if (count < 0 || count > (int32_t)field->cap)
     {
-        mvfxCodecFault(codec, mvfx_errorInvalid, codec->writing ? -1 : (int64_t)at);
+        mvfxCodecFault(codec, codec->writing ? mvfx_errorInvalid : mvfx_errorFormat,
+                       codec->writing ? -1 : (int64_t)at);
         return;
     }
     bool scalar = field->element != mvfx_fieldStruct;

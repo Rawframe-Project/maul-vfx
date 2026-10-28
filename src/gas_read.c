@@ -92,7 +92,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasAsWork(const mvfxContext* co
     if (live->planned)
     {
         // Its fields are the simulation's.
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     const mvfxGasState* state = &live->gases[gas];
     const mvfxLayoutField field = {.format = read->format, .components = 1};
@@ -176,7 +176,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SampleGasWork(const mvfxContext* co
     }
     if (live->planned)
     {
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     const mvfxGasState* state = &live->gases[gas];
     mvfxSpaceMap map = mvfxGasMap(live, gas, mvfx_spaceWorld);

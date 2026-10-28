@@ -122,6 +122,8 @@ static void WriteLived(mvfxInstance* instance, int32_t emitter, uint64_t serial,
         .batchCount = batchCount < UINT32_MAX ? (uint32_t)batchCount : UINT32_MAX,
         .sourceAge = mvfxSourceAge(&instance->effect->emitters[emitter], tick),
         .host = host,
+        .eventKeyLow = 0,
+        .eventKeyHigh = 0,
     };
     state->lastDeath = death > state->lastDeath ? death : state->lastDeath;
 }

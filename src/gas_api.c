@@ -241,7 +241,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasWork(const mvfxContext* cont
     if (live->planned)
     {
         // Its fields are the simulation's.
-        return mvfx_errorState;
+        return mvfx_errorUnsupported;
     }
     const mvfxGasState* state = &live->gases[gas];
     if (field >= mvfx_gasVelocityX && field <= mvfx_gasVelocityZ)

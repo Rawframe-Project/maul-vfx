@@ -120,7 +120,7 @@ mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -174,7 +174,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetAttachFramesWork(mvfxContext* co
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -225,7 +225,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetDepthImageWork(mvfxContext* cont
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -266,7 +266,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WakeBodiesWork(mvfxContext* context
 {
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     bool valid = context != nullptr && center != nullptr && isfinite(center[0]) &&
                  isfinite(center[1]) && isfinite(center[2]) && radius >= 0.0f;
@@ -310,7 +310,7 @@ mvfxResult mvfxInstance_SetEmitterMesh(mvfxContext* context, mvfxInstanceId inst
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     mvfxMesh* bound = mvfxContextMesh(context, mesh);

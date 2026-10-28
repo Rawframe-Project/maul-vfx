@@ -168,7 +168,7 @@ mvfxResult mvfxInstance_GetEvents(mvfxContext* context, mvfxInstanceId instance,
     *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);

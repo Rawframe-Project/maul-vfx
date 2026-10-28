@@ -240,7 +240,7 @@ mvfxResult mvfxGpuSim_AddGasRead(mvfxGpuSim* sim, const mvfxGpuGasReadDef* def)
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     SimGas* gas = &sim->gases[def->gas];
     if (gas->readCount == MVFX_GPU_GAS_READS)
@@ -321,7 +321,7 @@ mvfxResult mvfxGpuSim_AddGasSamples(mvfxGpuSim* sim, const mvfxGpuGasSamplesDef*
     }
     if (sim->ending)
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     if (gas->sampleCount == MVFX_GPU_GAS_SAMPLES)
     {

@@ -313,7 +313,7 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
     }
     if (context->effects.firstFree == 0)
     {
-        return mvfx_errorLimit;
+        return mvfx_errorCapacity;
     }
     mvfxHull* hulls[MVFX_MAX_EMITTERS] = {0};
     mvfxResult built = BuildHulls(context, def, hulls);
@@ -358,7 +358,7 @@ static MVFX_NOINLINE mvfxResult mvfxCreateEffectWork(mvfxContext* context, const
     *effectOut = (mvfxEffectId){0};
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     bool misuse = false;
     mvfxResult created = mvfxCreateEffectOf(context, def, effectOut, &misuse);
@@ -382,7 +382,7 @@ mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxEffect* compiled = mvfxSlotObject(&context->effects, effect.index1, effect.generation);
     if (compiled == nullptr)

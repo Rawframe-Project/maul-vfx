@@ -113,6 +113,7 @@ static void Gather(const mvfxEmitterPlan* plan, int64_t clock)
     for (int32_t i = 0; i < plan->birthCount && s_heldCount < 4096; ++i)
     {
         const mvfxPlannedBirth* b = &plan->births[i];
+        CHECK(b->eventKeyLow == 0 && b->eventKeyHigh == 0, "a plan's birth draws by its serial");
         s_held[s_heldCount++] = (Held){
             .serial = ((uint64_t)b->serialHigh << 32u) | b->serialLow,
             .birth = plan->start + (int64_t)b->tick,
@@ -606,7 +607,7 @@ static void TestRefusals(void)
     mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
     static mvfxEmitterPlan plan;
-    bool refused = mvfxInstance_GetEmitterPlan(context, cpu, 0, &plan) == mvfx_errorState &&
+    bool refused = mvfxInstance_GetEmitterPlan(context, cpu, 0, &plan) == mvfx_errorUnsupported &&
                    mvfxInstance_GetEmitterPlan(NULL, planned, 0, &plan) == mvfx_errorInvalid &&
                    mvfxInstance_GetEmitterPlan(context, planned, 0, NULL) == mvfx_errorInvalid &&
                    mvfxInstance_GetEmitterPlan(context, planned, 1, &plan) == mvfx_errorInvalid &&
@@ -616,7 +617,7 @@ static void TestRefusals(void)
     const mvfxSpawnRequest request = {.count = 1, .positions = place};
     double left = 0.0;
     CHECK(mvfxInstance_Spawn(context, planned, 0, &request) == mvfx_success &&
-              mvfxInstance_Prewarm(context, planned, 1.0, 0.1, 10, &left) == mvfx_errorState,
+              mvfxInstance_Prewarm(context, planned, 1.0, 0.1, 10, &left) == mvfx_errorUnsupported,
           "host spawns but no prewarm for a planned instance");
     // Before any step, an empty plan from tick 0.
     CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success &&

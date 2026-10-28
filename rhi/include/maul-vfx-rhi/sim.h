@@ -311,10 +311,10 @@ extern "C"
     ///         def without its cookie, a GPU object that is not ready, an
     ///         allocator with one of its two functions alone, or an
     ///         instance that is not planned; `mvfx_errorStale` for an
-    ///         instance or effect that is gone; `mvfx_errorState` for an
-    ///         effect it does not run yet (refusalOut says why) or when the
-    ///         device refuses a buffer; `mvfx_errorCapacity` when the
-    ///         allocator fails.
+    ///         instance or effect that is gone; `mvfx_errorUnsupported` for
+    ///         an effect it does not run yet (refusalOut says why);
+    ///         `mvfx_errorState` when the device refuses a buffer;
+    ///         `mvfx_errorCapacity` when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def,
@@ -383,7 +383,7 @@ extern "C"
     ///         shape, or a mesh without the elements its mode needs;
     ///         `mvfx_errorStale` for a mesh or an instance that is gone;
     ///         `mvfx_errorCapacity` for a mesh past the room (unbound);
-    ///         `mvfx_errorState` while the simulation is destroyed or from
+    ///         `mvfx_errorBusy` while the simulation is destroyed or from
     ///         the context's host code.
     /// @par Thread safety
     /// Safe from any thread; the context and the device are used by one
@@ -409,7 +409,7 @@ extern "C"
     /// @param normals  The normal texture's id in the frame, or a null id
     ///                 (ignored without a depth texture).
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
-    ///         `mvfx_errorState` while it is destroyed (a call from its
+    ///         `mvfx_errorBusy` while it is destroyed (a call from its
     ///         allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
@@ -431,9 +431,9 @@ extern "C"
     ///         `mvfx_errorState` when the device refuses a pass or an
     ///         import (no frame open), or when an emitter meets the
     ///         instance's depth image and no depth texture was given
-    ///         (mvfxGpuSim_SetDepthTextures), or while it is destroyed (a
-    ///         call from its allocator); `mvfx_errorCapacity` when the
-    ///         grids the instance's colliders read pass the def's
+    ///         (mvfxGpuSim_SetDepthTextures); `mvfx_errorBusy` while it is
+    ///         destroyed (a call from its allocator); `mvfx_errorCapacity`
+    ///         when the grids the instance's colliders read pass the def's
     ///         hostGridBytes, or a mesh shape's mesh its room.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
@@ -507,9 +507,10 @@ extern "C"
     ///         eye is out of range or whose directions are not finite;
     ///         `mvfx_errorStale` for a layout or an instance that is gone;
     ///         `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the
-    ///         emitter this frame; `mvfx_errorState` when the device refuses
-    ///         a pass or an import (no frame open), or while it is destroyed
-    ///         (a call from its allocator).
+    ///         emitter this frame; `mvfx_errorState` when the device
+    ///         refuses a pass or an import (no frame open);
+    ///         `mvfx_errorBusy` while it is destroyed (a call from its
+    ///         allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRecords(mvfxGpuSim* sim,
@@ -567,9 +568,10 @@ extern "C"
     ///         buffer, or a view whose origin is out of range;
     ///         `mvfx_errorStale` for an instance that is gone;
     ///         `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the
-    ///         emitter this frame; `mvfx_errorState` when the device refuses
-    ///         a pass or an import (no frame open), or while it is destroyed
-    ///         (a call from its allocator).
+    ///         emitter this frame; `mvfx_errorState` when the device
+    ///         refuses a pass or an import (no frame open);
+    ///         `mvfx_errorBusy` while it is destroyed (a call from its
+    ///         allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddLights(mvfxGpuSim* sim,
@@ -617,13 +619,13 @@ extern "C"
     /// @param def  Where the field goes, from mvfxDefaultGpuGasReadDef.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         def without its cookie, a gas out of range, a read out of
-    ///         range for the gas (its field, format, box, range or
-    ///         pitches, as mvfxInstance_ReadGasAs checks them), an offset
-    ///         not a multiple of 4, a null buffer or bytes too few;
+    ///         range for the gas (its field, format, box, range or pitches,
+    ///         as mvfxInstance_ReadGasAs checks them), an offset not a
+    ///         multiple of 4, a null buffer or bytes too few;
     ///         `mvfx_errorLimit` past MVFX_GPU_GAS_READS for the gas this
     ///         frame; `mvfx_errorState` when the device refuses a pass or
-    ///         an import (no frame open), or while it is destroyed (a call
-    ///         from its allocator).
+    ///         an import (no frame open); `mvfx_errorBusy` while it is
+    ///         destroyed (a call from its allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddGasRead(mvfxGpuSim* sim,
@@ -862,8 +864,8 @@ extern "C"
     ///         a multiple of 4, a null buffer or bytes too few;
     ///         `mvfx_errorLimit` past MVFX_GPU_WATER_READS for the surface
     ///         this frame; `mvfx_errorState` when the device refuses a pass
-    ///         or an import (no frame open), or while it is destroyed (a
-    ///         call from its allocator).
+    ///         or an import (no frame open); `mvfx_errorBusy` while it is
+    ///         destroyed (a call from its allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddWaterRead(mvfxGpuSim* sim,
@@ -941,8 +943,8 @@ extern "C"
     ///         not a multiple of 4 or bytes too few; `mvfx_errorLimit` past
     ///         MVFX_GPU_WATER_SAMPLES for the surface this frame;
     ///         `mvfx_errorState` when the device refuses a pass or an
-    ///         import (no frame open), or while it is destroyed (a call
-    ///         from its allocator).
+    ///         import (no frame open); `mvfx_errorBusy` while it is
+    ///         destroyed (a call from its allocator).
     /// @par Thread safety
     /// Safe from any thread; the context and the device are used by one
     /// thread at a time.
@@ -1012,8 +1014,8 @@ extern "C"
     ///         buffer, an offset not a multiple of 4 or bytes too few;
     ///         `mvfx_errorLimit` past MVFX_GPU_GAS_SAMPLES for the gas this
     ///         frame; `mvfx_errorState` when the device refuses a pass or
-    ///         an import (no frame open), or while it is destroyed (a call
-    ///         from its allocator).
+    ///         an import (no frame open); `mvfx_errorBusy` while it is
+    ///         destroyed (a call from its allocator).
     /// @par Thread safety
     /// Safe from any thread; the context and the device are used by one
     /// thread at a time.
@@ -1095,10 +1097,11 @@ extern "C"
     ///         a level not finite, an origin out of range or not finite, a
     ///         null positions or indices buffer, a negative capacity, an
     ///         offset not a multiple of 4 or one whose buffer's words would
-    ///         pass 2^32; `mvfx_errorLimit` past MVFX_GPU_SURFACE_MESHES for
-    ///         the surface this frame; `mvfx_errorState` when the device
-    ///         refuses a pass or an import (no frame open), or while it is
-    ///         destroyed (a call from its allocator).
+    ///         pass 2^32; `mvfx_errorLimit` past MVFX_GPU_SURFACE_MESHES
+    ///         for the surface this frame; `mvfx_errorState` when the
+    ///         device refuses a pass or an import (no frame open);
+    ///         `mvfx_errorBusy` while it is destroyed (a call from its
+    ///         allocator).
     /// @par Thread safety
     /// Safe from any thread; the context and the device are used by one
     /// thread at a time.
@@ -1188,16 +1191,17 @@ extern "C"
     /// @param sim  The simulation.
     /// @param def  Where the ribbons go, from mvfxDefaultGpuRibbonsDef.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
-    ///         def without its cookie, an emitter out of range, a layout whose stride
-    ///         is not a multiple of 4 or with a neighbor field, an offset
-    ///         not a multiple of 4, a negative capacity, a null points or
-    ///         ribbons buffer, or a view whose origin or eye is out of range
-    ///         or whose directions are not finite; `mvfx_errorStale` for a
-    ///         layout or an instance that is gone; `mvfx_errorLimit` past
-    ///         MVFX_GPU_RECORD_PASSES for the emitter this frame;
-    ///         `mvfx_errorState` when the device refuses a pass or an
-    ///         import (no frame open), or while it is destroyed (a call
-    ///         from its allocator).
+    ///         def without its cookie, an emitter out of range, a layout
+    ///         whose stride is not a multiple of 4 or with a neighbor
+    ///         field, an offset not a multiple of 4, a negative capacity, a
+    ///         null points or ribbons buffer, or a view whose origin or eye
+    ///         is out of range or whose directions are not finite;
+    ///         `mvfx_errorStale` for a layout or an instance that is gone;
+    ///         `mvfx_errorLimit` past MVFX_GPU_RECORD_PASSES for the
+    ///         emitter this frame; `mvfx_errorState` when the device
+    ///         refuses a pass or an import (no frame open);
+    ///         `mvfx_errorBusy` while it is destroyed (a call from its
+    ///         allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim,
@@ -1419,8 +1423,8 @@ extern "C"
     /// @param sim  The simulation.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL simulation;
     ///         `mvfx_errorState` when the device refuses a command, such as
-    ///         an upload past the frame's, or while it is destroyed (a call
-    ///         from its allocator).
+    ///         an upload past the frame's; `mvfx_errorBusy` while it is
+    ///         destroyed (a call from its allocator).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim);

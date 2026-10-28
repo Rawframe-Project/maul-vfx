@@ -400,10 +400,10 @@ static bool SetterRefuses(mvfxContext* context, mvfxInstanceId planned, mvfxInst
         mvfxInstance_SetGasHolds(context, planned, 0, -1, false) == mvfx_errorInvalid &&
         mvfxInstance_SetGasHolds(context, planned, 0, clock + 1, false) == mvfx_errorInvalid &&
         mvfxGetContextMisuse(context) == misuse + 3 &&
-        mvfxInstance_SetGasHolds(context, cpu, 0, 0, false) == mvfx_errorState &&
+        mvfxInstance_SetGasHolds(context, cpu, 0, 0, false) == mvfx_errorUnsupported &&
         mvfxInstance_SetGasHolds(context, (mvfxInstanceId){0}, 0, 0, false) == mvfx_errorStale;
     static mvfxGasPlan plan;
-    return refused && mvfxInstance_GetGasPlan(context, cpu, 0, &plan) == mvfx_errorState &&
+    return refused && mvfxInstance_GetGasPlan(context, cpu, 0, &plan) == mvfx_errorUnsupported &&
            mvfxInstance_GetGasPlan(context, planned, 1, &plan) == mvfx_errorInvalid &&
            mvfxInstance_GetGasPlan(NULL, planned, 0, &plan) == mvfx_errorInvalid &&
            mvfxInstance_GetGasPlan(context, planned, 0, NULL) == mvfx_errorInvalid;
@@ -463,11 +463,11 @@ static void TestHolds(void)
                               .low = 0.0f,
                               .high = 1.0f};
     CHECK(mvfxInstance_ReadGas(context, planned, 0, mvfx_gasDensity, cells, 8 * 8 * 4) ==
-                  mvfx_errorState &&
+                  mvfx_errorUnsupported &&
               mvfxInstance_SampleGas(context, planned, 0, mvfx_gasDensity, point, 1, &sampled) ==
-                  mvfx_errorState &&
+                  mvfx_errorUnsupported &&
               mvfxInstance_ReadGasAs(context, planned, 0, &read, cells, sizeof cells) ==
-                  mvfx_errorState,
+                  mvfx_errorUnsupported,
           "a planned gas's fields not read");
     // A clear empties the gas: no report needed.
     mvfxInstanceId cleared = Instance(context, effect, true);

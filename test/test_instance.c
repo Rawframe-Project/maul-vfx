@@ -93,7 +93,7 @@ static void TestRefusals(void)
     mvfxInstanceId b = {0};
     CHECK(mvfxCreateInstance(context, &def, &a) == mvfx_success, "first");
     CHECK(mvfxCreateInstance(context, &def, &b) == mvfx_success, "second");
-    CHECK(mvfxCreateInstance(context, &def, &instance) == mvfx_errorLimit, "past the limit");
+    CHECK(mvfxCreateInstance(context, &def, &instance) == mvfx_errorCapacity, "past the table");
     mvfxEmitterStats stats;
     CHECK(mvfxInstance_GetEmitterStats(context, a, 1, &stats) == mvfx_errorInvalid, "no emitter 1");
     CHECK(mvfxInstance_GetEmitterStats(context, a, -1, &stats) == mvfx_errorInvalid,

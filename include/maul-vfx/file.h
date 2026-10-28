@@ -111,17 +111,17 @@ extern "C"
     /// @param defOut      Receives the def, with its cookies; zeroed on
     ///                    failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument,
-    ///         memory not aligned, an invalid asset table, or a file that
-    ///         is not one (a wrong magic, size or hash, a unit out of
-    ///         place, a count past its cap, a bool neither 0 nor 1, a name
-    ///         not UTF-8 or twice a kind, a reference past its names or out
-    ///         of their order) or holds a def the def validator refuses;
-    ///         `mvfx_errorVersion` for another format version;
-    ///         `mvfx_errorMissing` for a name the table lacks;
-    ///         `mvfx_errorCapacity` when the def does not fit in memory.
-    ///         The offset is the first byte at fault: the version's, a
-    ///         name's, a count's; the effect unit's for a def refused; -1
-    ///         for a fault outside the file.
+    ///         memory not aligned or an invalid asset table;
+    ///         `mvfx_errorFormat` for a file that is not one (a wrong
+    ///         magic, size or hash, a unit out of place, a count past its
+    ///         cap, a bool neither 0 nor 1, a name not UTF-8 or twice a
+    ///         kind, a reference past its names or out of their order) or
+    ///         holds a def the def validator refuses; `mvfx_errorVersion`
+    ///         for another format version; `mvfx_errorMissing` for a name
+    ///         the table lacks; `mvfx_errorCapacity` when the def does not
+    ///         fit in memory. The offset is the first byte at fault: the
+    ///         version's, a name's, a count's; the effect unit's for a def
+    ///         refused; -1 for a fault outside the file.
     /// @par Thread safety
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size,

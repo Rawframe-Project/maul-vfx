@@ -30,7 +30,7 @@ mvfxResult mvfxCreateLayout(mvfxContext* context, const mvfxLayoutDef* def, mvfx
     *layoutOut = (mvfxLayoutId){0};
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     if (!mvfxIsLayoutDefValid(def))
     {
@@ -39,7 +39,7 @@ mvfxResult mvfxCreateLayout(mvfxContext* context, const mvfxLayoutDef* def, mvfx
     }
     if (context->layouts.firstFree == 0)
     {
-        return mvfx_errorLimit;
+        return mvfx_errorCapacity;
     }
     mvfxOutputLayout* layout = mvfxBuildLayout(def, &context->allocator);
     if (layout == nullptr)
@@ -65,7 +65,7 @@ mvfxResult mvfxDestroyLayout(mvfxContext* context, mvfxLayoutId layout)
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxOutputLayout* live = mvfxContextLayout(context, layout);
     if (live == nullptr)

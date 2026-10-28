@@ -31,7 +31,7 @@ mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGrid
     *gridOut = (mvfxGridId){0};
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     if (!mvfxIsGridDefValid(def))
     {
@@ -40,7 +40,7 @@ mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGrid
     }
     if (context->grids.firstFree == 0)
     {
-        return mvfx_errorLimit;
+        return mvfx_errorCapacity;
     }
     mvfxGrid* grid = mvfxBuildGrid(def, &context->allocator);
     if (grid == nullptr)
@@ -64,7 +64,7 @@ mvfxResult mvfxDestroyGrid(mvfxContext* context, mvfxGridId grid)
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxGrid* live = mvfxContextGrid(context, grid);
     if (live == nullptr)
@@ -148,7 +148,7 @@ mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxGrid* live = mvfxContextGrid(context, grid);
     if (live == nullptr)
@@ -176,7 +176,7 @@ mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid, const int
     }
     if (mvfxRefusesHostCall(context))
     {
-        return mvfx_errorState;
+        return mvfx_errorBusy;
     }
     mvfxGrid* live = mvfxContextGrid(context, grid);
     if (live == nullptr)
