@@ -773,19 +773,22 @@ static void TestFreeBoxes(Gpu* gpu, mvfxGpu* kernels)
 
 static void TestRods(Gpu* gpu, mvfxGpu* kernels)
 {
-    // Rods 0.4 long and 1e-2, 1e-4 and 1e-6 of that across, capsules and
-    // boxes, their moments about their length 1e-4 to 1e-12 of the
-    // others' (the last held at 2^-40 in their units), free: spun at up to
-    // 3 rad/s about their length, then tumbling about every axis, a step
+    // Rods 0.4 long and 1e-2, 1e-4, 1e-6 and 1e-23 of that across, capsules
+    // and boxes, their moments about their length 1e-4 to 1e-46 of the
+    // others' (the last two held at 2^-40 in their units), free: spun at up
+    // to 3 rad/s about their length, then tumbling about every axis, a step
     // at a time within 1e-3 of the CPU path's binary64 flow, which they
     // part from by 2e-6. Read back by its momentum's size, a rod's spin
     // about its length drained in binary32: the rounding across it, at its
-    // large moments, outweighed its momentum about its length, and the
-    // rods 4e-5 and 4e-7 across spun about it parted by 1.3 or more.
-    static const float across[3] = {4e-3f, 4e-5f, 4e-7f};
+    // large moments, outweighed its momentum about its length, and the rods
+    // 4e-5 and 4e-7 across spun about it parted by 1.3 or more. The
+    // thinnest's mass in its units, its volume, is past binary32's range,
+    // which the part keeps apart from its power of two: taken whole, it
+    // flushed to 0 and the rod was a point that did not turn.
+    static const float across[4] = {4e-3f, 4e-5f, 4e-7f, 4e-24f};
     for (int32_t shape = 1; shape < 3; ++shape)
     {
-        for (int32_t r = 0; r < 3; ++r)
+        for (int32_t r = 0; r < 4; ++r)
         {
             mvfxEmitterDef emitter = Bodies((mvfxRigidShape)shape);
             emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,

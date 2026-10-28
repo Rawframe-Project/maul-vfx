@@ -150,28 +150,57 @@ fn rigidReach(size: vec3<f32>) -> f32 {
     }
 }
 
-// A shape's mass and its inertia about its own axes at a size, as the
-// core's PrimitiveInertia and HullInertia (xx, yy, zz, xy, xz, yz), in
-// units of density times length cubed and to the fifth: the density's
-// share from 1/2 to 1 and its sizes over length (each from 0 to 1), so
-// they stay in binary32's range at any size and density.
-fn shapeInertia(a: vec3<f32>, density: f32, inertia: ptr<function, array<f32, 6>>) -> f32 {
+// A number as a fraction from 1/2 to 1 (0 for 0) and a power of two, so a
+// product of sizes keeps its exponent past binary32's range.
+struct Split {
+    fract: f32,
+    exp: i32,
+}
+
+fn splitOf(x: f32) -> Split {
+    let s = frexp(x);
+    return Split(s.fract, s.exp);
+}
+
+fn splitTimes(a: Split, b: Split) -> Split {
+    let s = frexp(a.fract * b.fract);
+    return Split(s.fract, a.exp + b.exp + s.exp);
+}
+
+fn splitPlus(a: Split, b: Split) -> Split {
+    let e = max(a.exp, b.exp);
+    let s = frexp(ldexp(a.fract, a.exp - e) + ldexp(b.fract, b.exp - e));
+    return Split(s.fract, e + s.exp);
+}
+
+// x over y, both positive, as a binary32 (y the larger or near it).
+fn splitOver(x: Split, y: Split) -> f32 {
+    return ldexp(x.fract / y.fract, x.exp - y.exp);
+}
+
+// A shape's mass and its inertia per unit mass about its own axes at a
+// size, as the core's PrimitiveInertia and HullInertia (xx, yy, zz, xy,
+// xz, yz) over its mass: the mass in units of density times length cubed,
+// apart from its power of two, and the inertia in length squared, from the
+// density's share from 1/2 to 1 and the sizes over length (each from 0 to
+// 1), so a needle's mass stays in range however thin it is.
+fn shapeInertia(a: vec3<f32>, density: f32, inertia: ptr<function, array<f32, 6>>) -> Split {
     let pi = 3.14159265358979;
     let r = 0.5 * a.x;
-    var mass = density * 4.0 / 3.0 * pi * r * r * r;
+    let rs = splitOf(r);
+    var mass = splitTimes(splitTimes(splitOf(density * 4.0 / 3.0 * pi), rs), splitTimes(rs, rs));
     for (var k = 0u; k < 6u; k++) {
-        (*inertia)[k] = select(0.0, 0.4 * mass * r * r, k < 3u);
+        (*inertia)[k] = select(0.0, 0.4 * r * r, k < 3u);
     }
     switch (params.rigid.x) {
         case RIGID_HULL: {
-            let volume = a.x * a.y * a.z;
             let m = params.rigidMoments;
             let moments = array<f32, 6>(m[0].x, m[0].y, m[0].z, m[0].w, m[1].x, m[1].y);
             var c = array<f32, 6>();
             for (var k = 0u; k < 6u; k++) {
                 let row = select(select(0u, 1u, k == 5u), k, k < 3u);
                 let column = select(select(2u, 1u, k == 3u), k, k < 3u);
-                c[k] = density * volume * a[row] * a[column] * moments[k];
+                c[k] = a[row] * a[column] * moments[k] / params.rigidMass.w;
             }
             (*inertia)[0] = c[1] + c[2];
             (*inertia)[1] = c[0] + c[2];
@@ -179,23 +208,31 @@ fn shapeInertia(a: vec3<f32>, density: f32, inertia: ptr<function, array<f32, 6>
             (*inertia)[3] = -c[3];
             (*inertia)[4] = -c[4];
             (*inertia)[5] = -c[5];
-            mass = density * volume * params.rigidMass.w;
+            let volume = splitTimes(splitTimes(splitOf(a.x), splitOf(a.y)), splitOf(a.z));
+            mass = splitTimes(splitTimes(splitOf(density), volume), splitOf(params.rigidMass.w));
         }
         case RIGID_BOX: {
-            mass = density * a.x * a.y * a.z;
-            (*inertia)[0] = mass * (a.y * a.y + a.z * a.z) / 12.0;
-            (*inertia)[1] = mass * (a.x * a.x + a.z * a.z) / 12.0;
-            (*inertia)[2] = mass * (a.x * a.x + a.y * a.y) / 12.0;
+            let volume = splitTimes(splitTimes(splitOf(a.x), splitOf(a.y)), splitOf(a.z));
+            mass = splitTimes(splitOf(density), volume);
+            (*inertia)[0] = (a.y * a.y + a.z * a.z) / 12.0;
+            (*inertia)[1] = (a.x * a.x + a.z * a.z) / 12.0;
+            (*inertia)[2] = (a.x * a.x + a.y * a.y) / 12.0;
         }
         case RIGID_CAPSULE: {
             let length = max(a.y - 2.0 * r, 0.0);
-            let tube = density * pi * r * r * length;
+            let tube = splitTimes(splitTimes(splitOf(density * pi), splitTimes(rs, rs)),
+                                  splitOf(length));
             let ends = mass;
-            mass = tube + ends;
-            (*inertia)[1] = tube * r * r / 2.0 + ends * 0.4 * r * r;
-            (*inertia)[0] = tube * (length * length / 12.0 + r * r / 4.0) +
-                            ends * (0.4 * r * r + length * length / 4.0 + 3.0 * length * r / 8.0);
-            (*inertia)[2] = (*inertia)[0];
+            mass = splitPlus(tube, ends);
+            if (mass.fract > 0.0) {
+                // Each part's share of the mass.
+                let t = splitOver(tube, mass);
+                let e = splitOver(ends, mass);
+                (*inertia)[1] = t * r * r / 2.0 + e * 0.4 * r * r;
+                (*inertia)[0] = t * (length * length / 12.0 + r * r / 4.0) +
+                                e * (0.4 * r * r + length * length / 4.0 + 3.0 * length * r / 8.0);
+                (*inertia)[2] = (*inertia)[0];
+            }
         }
         default: {
         }
@@ -236,15 +273,14 @@ fn rigidMass(size: vec3<f32>) -> Mass {
     let lengthUnit = rigidLengthUnit(abs(size));
     let density = frexp(params.rigidMass.x);
     var m = array<f32, 6>();
-    let scaled = shapeInertia(ldexp(abs(size), vec3<i32>(-lengthUnit)), density.fract, &m);
+    let share = shapeInertia(ldexp(abs(size), vec3<i32>(-lengthUnit)), density.fract, &m);
     var out = Mass();
     out.inverseMass = 1.0;
-    if (!(scaled > 0.0)) {
+    if (!(share.fract > 0.0)) {
         return out;
     }
-    let share = frexp(scaled);
     for (var k = 0u; k < 6u; k++) {
-        m[k] = ldexp(m[k], -share.exp);
+        m[k] = m[k] * share.fract;
     }
     // A needle whose inverse's trace passes the most inverse inertia, or
     // one whose determinant binary32 flushes to 0, has its inertia raised
