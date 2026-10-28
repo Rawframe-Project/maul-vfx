@@ -103,8 +103,8 @@ typedef struct mvfxRecordPasses
     int32_t count;
 } mvfxRecordPasses;
 
-// Creates the numbers buffers; false when the device refuses one.
-bool mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes);
+// Creates the numbers buffers; the device's refusal of one, if any.
+mrhiResult mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes);
 
 // Destroys the buffers made.
 void mvfxDestroyRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes);

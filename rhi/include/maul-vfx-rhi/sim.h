@@ -313,8 +313,10 @@ extern "C"
     ///         instance that is not planned; `mvfx_errorStale` for an
     ///         instance or effect that is gone; `mvfx_errorUnsupported` for
     ///         an effect it does not run yet (refusalOut says why);
-    ///         `mvfx_errorState` when the device refuses a buffer;
-    ///         `mvfx_errorCapacity` when the allocator fails.
+    ///         `mvfx_errorCapacity` when the allocator fails; when the
+    ///         device refuses a buffer or a texture, Maul RHI's status
+    ///         where the family shares it (`mvfx_errorCapacity`,
+    ///         `mvfx_errorUnsupported`), `mvfx_errorPlatform` otherwise.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def,

@@ -24,6 +24,8 @@ const char* mvfxResultName(mvfxResult result)
         return "mvfx_errorStale";
     case mvfx_errorUnsupported:
         return "mvfx_errorUnsupported";
+    case mvfx_errorPlatform:
+        return "mvfx_errorPlatform";
     case mvfx_errorState:
         return "mvfx_errorState";
     case mvfx_errorVersion:

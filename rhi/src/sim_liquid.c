@@ -46,7 +46,7 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
     def.usage = usage;
-    return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
+    return mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, out));
 }
 
 bool mvfxCreateSimLiquid(mvfxGpuSim* sim, int32_t e)

@@ -25,7 +25,7 @@ static bool CreateNumbers(mvfxGpuSim* sim, uint64_t words, mrhiBufferId* out)
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = 4u * words;
     def.usage = mrhi_bufferUniform | mrhi_bufferCopyDestination;
-    return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
+    return mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, out));
 }
 
 bool mvfxCreateSimGasReads(mvfxGpuSim* sim, SimGas* gas)

@@ -320,7 +320,7 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
     def.usage = usage;
-    return mrhiCreateBuffer(sim->device, &def, out) == mrhi_success;
+    return mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, out));
 }
 
 bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords)

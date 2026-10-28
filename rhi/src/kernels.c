@@ -4,6 +4,7 @@
 #include "kernels.h"
 
 #include "allocator.h"
+#include "refusal.h"
 
 #include "../kernels/contacts_container.h"
 #include "../kernels/gas_container.h"
@@ -214,23 +215,22 @@ struct mvfxGpu
 };
 
 // Creates container c's shader.
-static bool CreateShader(mvfxGpu* gpu, int32_t c)
+static mrhiResult CreateShader(mvfxGpu* gpu, int32_t c)
 {
     mrhiShaderDef shader = mrhiDefaultShaderDef();
     shader.bytes = s_containers[c].bytes;
     shader.byteCount = s_containers[c].size;
-    return mrhiCreateShader(gpu->device, &shader, &gpu->shaders[c]) == mrhi_success;
+    return mrhiCreateShader(gpu->device, &shader, &gpu->shaders[c]);
 }
 
 // Requests kernel k's pipeline from its container's shader.
-static bool Request(mvfxGpu* gpu, int32_t k)
+static mrhiResult Request(mvfxGpu* gpu, int32_t k)
 {
     mrhiComputePipelineDef pipeline = mrhiDefaultComputePipelineDef();
     pipeline.shader = gpu->shaders[s_kernels[k].container];
     pipeline.entry = s_kernels[k].entry;
     pipeline.entryLength = strlen(s_kernels[k].entry);
-    return mrhiCreateComputePipeline(gpu->device, &pipeline, &gpu->pipelines[k],
-                                     &gpu->requests[k]) == mrhi_success;
+    return mrhiCreateComputePipeline(gpu->device, &pipeline, &gpu->pipelines[k], &gpu->requests[k]);
 }
 
 mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut)
@@ -259,20 +259,20 @@ mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut)
     *gpu = (mvfxGpu){0};
     gpu->allocator = def->allocator;
     gpu->device = def->device;
-    bool made = true;
-    for (int32_t c = 0; made && c < MVFX_CONTAINER_COUNT; ++c)
+    mrhiResult made = mrhi_success;
+    for (int32_t c = 0; made == mrhi_success && c < MVFX_CONTAINER_COUNT; ++c)
     {
         made = CreateShader(gpu, c);
     }
-    for (; made && gpu->next < PENDING_REQUESTS; ++gpu->next)
+    for (; made == mrhi_success && gpu->next < PENDING_REQUESTS; ++gpu->next)
     {
         made = Request(gpu, gpu->next);
     }
     gpu->pending = gpu->next;
-    if (!made)
+    if (made != mrhi_success)
     {
         mvfxDestroyGpu(gpu);
-        return mvfx_errorState;
+        return mvfxRhiRefusal(made);
     }
     *gpuOut = gpu;
     return mvfx_success;
@@ -325,7 +325,7 @@ bool mvfxGpu_Notify(mvfxGpu* gpu, const mrhiDeviceNotification* notification)
             while (!gpu->refused && gpu->pending < PENDING_REQUESTS &&
                    gpu->next < MVFX_KERNEL_COUNT)
             {
-                gpu->refused = !Request(gpu, gpu->next);
+                gpu->refused = Request(gpu, gpu->next) != mrhi_success;
                 gpu->pending += gpu->refused ? 0 : 1;
                 gpu->next += gpu->refused ? 0 : 1;
             }

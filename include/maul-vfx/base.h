@@ -97,6 +97,10 @@ extern "C"
         // later call can add: a planned instance's fields, an effect the
         // GPU part does not run.
         mvfx_errorUnsupported = -4,
+        // A driver refused the call: the GPU part's device refused to make
+        // a shader, a pipeline or a buffer, for a reason Maul RHI shares
+        // no other status for.
+        mvfx_errorPlatform = -5,
         // The call is not allowed in the object's current state, which
         // another call changes.
         mvfx_errorState = -6,

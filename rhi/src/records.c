@@ -10,21 +10,23 @@
 #include <string.h>
 
 // Creates a uniform buffer of words the transfer passes write.
-static bool CreateNumbers(mrhiDevice* device, uint32_t words, mrhiBufferId* bufferOut)
+static mrhiResult CreateNumbers(mrhiDevice* device, uint32_t words, mrhiBufferId* bufferOut)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = words * sizeof(uint32_t);
     def.usage = mrhi_bufferUniform | mrhi_bufferCopyDestination;
-    return mrhiCreateBuffer(device, &def, bufferOut) == mrhi_success;
+    return mrhiCreateBuffer(device, &def, bufferOut);
 }
 
-bool mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes)
+mrhiResult mvfxCreateRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes)
 {
-    bool made = true;
-    for (int32_t p = 0; made && p < MVFX_GPU_RECORD_PASSES; ++p)
+    mrhiResult made = mrhi_success;
+    for (int32_t p = 0; made == mrhi_success && p < MVFX_GPU_RECORD_PASSES; ++p)
     {
-        made = CreateNumbers(device, MVFX_RECORD_WORDS, &passes->numbers[p]) &&
-               CreateNumbers(device, MVFX_RIBBON_WORDS, &passes->ribbonNumbers[p]);
+        made = CreateNumbers(device, MVFX_RECORD_WORDS, &passes->numbers[p]);
+        made = made == mrhi_success
+                   ? CreateNumbers(device, MVFX_RIBBON_WORDS, &passes->ribbonNumbers[p])
+                   : made;
     }
     return made;
 }

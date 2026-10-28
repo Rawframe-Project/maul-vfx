@@ -10,6 +10,7 @@ Every fallible call says why it failed:
 | `mvfx_errorCapacity` | Room is too small: a buffer the program gave (the call reports the size it needs), a table of the context's def (too many effects, instances, layouts, grids or meshes at once), or the allocator. |
 | `mvfx_errorStale` | An id whose object was destroyed. |
 | `mvfx_errorUnsupported` | The object was made without what the call needs: a planned instance's fields, which its simulation holds; a plan of an instance that is not planned; an effect the GPU part does not run yet. |
+| `mvfx_errorPlatform` | A driver refused: the GPU part's device would not make a kernel's shader or pipeline, or a simulation's buffer, for a reason Maul RHI shares no other status for. |
 | `mvfx_errorState` | The call is not allowed now, and another call changes that: a planned instance's plans split into steps, a GPU frame not open. |
 | `mvfx_errorVersion` | The program was built against headers of another release, or a file is of another format version. |
 | `mvfx_errorFormat` | An effect file's bytes are malformed: a magic, size or hash that does not match, a unit out of place, a count past its cap, a def the def validator refuses. The offset names the first byte at fault. |

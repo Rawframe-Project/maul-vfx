@@ -79,12 +79,14 @@ extern "C"
     /// @param gpuOut  Receives the object; NULL on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
     ///         def without its cookie; then `mvfx_errorVersion` for a def
-    ///         stamped by headers of another ABI version than the library's,
-    ///         before anything else of it is read; `mvfx_errorInvalid` for a
-    ///         def without a device or an allocator with one of its two
-    ///         functions alone; `mvfx_errorCapacity` when the allocator
-    ///         fails; `mvfx_errorState` when the device refuses a kernel's
-    ///         shader or pipeline.
+    ///         stamped by headers of another ABI version than the
+    ///         library's, before anything else of it is read;
+    ///         `mvfx_errorInvalid` for a def without a device or an
+    ///         allocator with one of its two functions alone;
+    ///         `mvfx_errorCapacity` when the allocator fails; when the
+    ///         device refuses a kernel's shader or pipeline, Maul RHI's
+    ///         status where the family shares it (`mvfx_errorCapacity`,
+    ///         `mvfx_errorUnsupported`), `mvfx_errorPlatform` otherwise.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpu(const mvfxGpuDef* def, mvfxGpu** gpuOut);

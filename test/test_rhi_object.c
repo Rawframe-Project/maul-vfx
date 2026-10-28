@@ -6,7 +6,8 @@
 // hand, its memory failing, a device failing an object, the object not
 // ready before its pipelines' notifications, a pipeline that fails,
 // notifications that are not its own, and its shaders and pipelines all
-// returned, on a device that holds no more than one object's.
+// returned, on a device that holds no more than one object's; and a
+// simulation on a device failing its buffers.
 
 #include "kernels.h"
 #include "test_harness.h"
@@ -14,6 +15,11 @@
 #include "maul-rhi/instance.h"
 #include "maul-rhi/test.h"
 #include "maul-vfx-rhi/gpu.h"
+#include "maul-vfx-rhi/sim.h"
+#include "maul-vfx/context.h"
+#include "maul-vfx/effect.h"
+#include "maul-vfx/gas.h"
+#include "maul-vfx/instance.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -261,11 +267,10 @@ static void TestFailures(void)
     mvfxDestroyGpu(kernels);
     Close(&gpu);
 
-    // A device failing its objects after a few: refused with the state
-    // error and all returned, until the device makes the shaders and the
-    // first requests; made then, but ready only once it makes every
-    // kernel's pipeline (the later ones requested as the first are
-    // answered).
+    // A device failing its objects after a few: refused with the device's
+    // status (the test driver's is the platform error) and all returned, until the device makes the
+    // shaders and the first requests; made then, but ready only once it makes every kernel's
+    // pipeline (the later ones requested as the first are answered).
     int32_t refusedCount = 0;
     int32_t madeCount = 0;
     bool readyAsMade = true;
@@ -275,7 +280,7 @@ static void TestFailures(void)
         def = CountedDef(gpu.device);
         kernels = (mvfxGpu*)&kernels;
         mvfxResult result = mvfxCreateGpu(&def, &kernels);
-        refusedCount += result == mvfx_errorState && kernels == NULL && s_held == 0;
+        refusedCount += result == mvfx_errorPlatform && kernels == NULL && s_held == 0;
         madeCount += result == mvfx_success;
         if (result == mvfx_success)
         {
@@ -295,10 +300,111 @@ static void TestFailures(void)
           "made with its first requests, ready once every pipeline is");
 }
 
+// A simulation on a device that fails its objects a few past the GPU
+// object's: refused with the device's status, the test driver's platform
+// error, its memory returned, until the device makes every buffer; and
+// with each of its allocations failing in turn, refused with the capacity
+// error, its memory returned.
+static void TestSimFailures(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.capacity = 16;
+    // A gas too, whose passes' host arrays are allocated while its
+    // buffers are made.
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = 8;
+    gas.size[1] = 8;
+    gas.size[2] = 8;
+    gas.cellSize = 0.1f;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    effectDef.gases = &gas;
+    effectDef.gasCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.planned = true;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    int32_t refused = 0;
+    int32_t made = 0;
+    bool answered = true;
+    for (uint32_t more = 0; made == 0 && more < 1024; ++more)
+    {
+        Gpu gpu;
+        CHECK(Open(&gpu, mrhi_success, MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + more),
+              "a device failing buffers");
+        mvfxGpuDef def = CountedDef(gpu.device);
+        mvfxGpu* kernels = NULL;
+        mrhiDeviceNotification mine = {0};
+        bool ready = mvfxCreateGpu(&def, &kernels) == mvfx_success &&
+                     Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && mvfxGpu_IsReady(kernels);
+        CHECK(ready, "its kernels made");
+        mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+        simDef.gpu = kernels;
+        simDef.context = context;
+        simDef.effect = effect;
+        simDef.instance = instance;
+        simDef.allocator = def.allocator;
+        int64_t held = s_held;
+        mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
+        mvfxResult result = ready ? mvfxCreateGpuSim(&simDef, &sim, NULL) : mvfx_errorInvalid;
+        made += result == mvfx_success ? 1 : 0;
+        refused += result == mvfx_errorPlatform && sim == NULL && s_held == held ? 1 : 0;
+        answered = answered && (result == mvfx_success || result == mvfx_errorPlatform);
+        mvfxDestroyGpuSim(result == mvfx_success ? sim : NULL);
+        mvfxDestroyGpu(kernels);
+        Close(&gpu);
+    }
+    CHECK(refused > 0 && made == 1 && answered,
+          "refused with the platform error while the device fails, made once it does not");
+    Gpu gpu;
+    CHECK(Open(&gpu, mrhi_success, 0), "a device");
+    mvfxGpuDef def = CountedDef(gpu.device);
+    mvfxGpu* kernels = NULL;
+    mrhiDeviceNotification mine = {0};
+    bool ready = mvfxCreateGpu(&def, &kernels) == mvfx_success &&
+                 Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && mvfxGpu_IsReady(kernels);
+    CHECK(ready, "its kernels made");
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    simDef.gpu = kernels;
+    simDef.context = context;
+    simDef.effect = effect;
+    simDef.instance = instance;
+    simDef.allocator = def.allocator;
+    refused = 0;
+    made = 0;
+    answered = true;
+    for (int32_t failing = 1; ready && made == 0 && failing < 1024; ++failing)
+    {
+        int64_t held = s_held;
+        s_calls = 0;
+        s_failAt = failing;
+        mvfxGpuSim* sim = (mvfxGpuSim*)&sim;
+        mvfxResult result = mvfxCreateGpuSim(&simDef, &sim, NULL);
+        s_failAt = 0;
+        made += result == mvfx_success ? 1 : 0;
+        refused += result == mvfx_errorCapacity && sim == NULL && s_held == held ? 1 : 0;
+        answered = answered && (result == mvfx_success || result == mvfx_errorCapacity);
+        mvfxDestroyGpuSim(result == mvfx_success ? sim : NULL);
+    }
+    CHECK(refused > 1 && made == 1 && answered,
+          "refused with the capacity error while its allocator fails, made once it does not");
+    mvfxDestroyGpu(kernels);
+    Close(&gpu);
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestDefChecks();
     TestLife();
     TestFailures();
+    TestSimFailures();
     return s_failures == 0 ? 0 : 1;
 }

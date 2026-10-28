@@ -35,7 +35,7 @@ bool mvfxCreateSimWaterSamples(mvfxGpuSim* sim, SimWater* water)
         mrhiBufferDef def = mrhiDefaultBufferDef();
         def.size = 4u * WATER_SAMPLE_WORDS;
         def.usage = mrhi_bufferUniform | mrhi_bufferCopyDestination;
-        created = mrhiCreateBuffer(sim->device, &def, &water->samples[q].numbers) == mrhi_success;
+        created = mvfxSimMade(sim, mrhiCreateBuffer(sim->device, &def, &water->samples[q].numbers));
     }
     return created;
 }
