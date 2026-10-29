@@ -664,6 +664,13 @@ static void TestRefusals(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     for (int32_t field = 0; field < 33; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 3 || field == 4 || field == 5 || field == 12 || field == 14 ||
+                                  field == 15 || field == 18 || field == 21 || field == 23 ||
+                                  field == 29
+                              ? mvfx_errorLimit
+                              : mvfx_errorInvalid;
         mvfxForce force = {.kind = mvfx_forceAttractor, .softening = 1.0f};
         mvfxEmitterDef bad = Held(&force, 1);
         switch (field)
@@ -795,7 +802,7 @@ static void TestRefusals(void)
         effectDef.emitters = &bad;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
     }
     mvfxEmitterDef none = Held(NULL, 1);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();

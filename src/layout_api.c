@@ -32,10 +32,12 @@ mvfxResult mvfxCreateLayout(mvfxContext* context, const mvfxLayoutDef* def, mvfx
     {
         return mvfx_errorBusy;
     }
-    if (!mvfxIsLayoutDefValid(def))
+    // A def past a bound is data a correct program may pass: no misuse.
+    mvfxResult valid = mvfxCheckLayoutDef(def);
+    if (valid != mvfx_success)
     {
-        mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        valid == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
+        return valid;
     }
     if (context->layouts.firstFree == 0)
     {

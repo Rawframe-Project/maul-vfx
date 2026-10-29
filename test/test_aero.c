@@ -355,7 +355,9 @@ static void TestChecks(void)
         emitter = Sheet(1.0f, 1.0f);
         float* drag = rule < 3 ? &emitter.unit.normalDrag : &emitter.unit.tangentDrag;
         *drag = rule % 3 == 0 ? -1.0f : rule % 3 == 1 ? NAN : 2.0f * MVFX_MAX_EXTENT;
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past MVFX_MAX_EXTENT is past a named bound.
+        mvfxResult want = rule % 3 == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 6, "every check");
     emitter = Sheet(MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);

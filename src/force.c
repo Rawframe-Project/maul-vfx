@@ -7,37 +7,40 @@
 #include "elementary.h"
 #include "grid.h"
 #include "noise.h"
+#include "refusal.h"
 
 #include <math.h>
 
-static bool IsWithin(float x, float low, float high)
-{
-    return x >= low && x <= high;
-}
-
-static bool IsVectorWithin(const float v[3], float bound)
-{
-    return fabsf(v[0]) <= bound && fabsf(v[1]) <= bound && fabsf(v[2]) <= bound;
-}
-
-static bool IsAxis(const float v[3])
+// An axis's status: within MVFX_MAX_EXTENT, and of a length to normalize.
+static mvfxResult CheckAxis(const float v[3])
 {
     float copy[3] = {v[0], v[1], v[2]};
-    return IsVectorWithin(v, MVFX_MAX_EXTENT) && mvfxNormalize(copy);
+    mvfxResult within = mvfxBoundedVector(v, MVFX_MAX_EXTENT);
+    return within != mvfx_success ? within : mvfxRequire(mvfxNormalize(copy));
 }
 
-static bool IsFalloffValid(const mvfxFalloff* falloff)
+static mvfxResult CheckFalloff(const mvfxFalloff* falloff)
 {
     if (falloff->kind == mvfx_falloffNone)
     {
-        return true;
+        return mvfx_success;
     }
-    return falloff->kind <= mvfx_falloffCone && IsVectorWithin(falloff->center, MVFX_MAX_EXTENT) &&
-           falloff->radius > 0.0f && falloff->radius <= MVFX_MAX_EXTENT &&
-           IsWithin(falloff->exponent, 0.0f, MVFX_MAX_FALLOFF_EXPONENT) &&
-           (falloff->kind == mvfx_falloffSphere || IsAxis(falloff->axis)) &&
-           (falloff->kind != mvfx_falloffCone ||
-            (falloff->angle > 0.0f && falloff->angle <= MVFX_MAX_CONE_ANGLE));
+    if (falloff->kind > mvfx_falloffCone)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult reach =
+        mvfxFirst(mvfxBoundedVector(falloff->center, MVFX_MAX_EXTENT),
+                  mvfxFirst(mvfxPositiveUpTo(falloff->radius, MVFX_MAX_EXTENT),
+                            mvfxUpToBound(falloff->exponent, 0.0f, MVFX_MAX_FALLOFF_EXPONENT)));
+    if (reach != mvfx_success)
+    {
+        return reach;
+    }
+    mvfxResult axis = falloff->kind == mvfx_falloffSphere ? mvfx_success : CheckAxis(falloff->axis);
+    return mvfxFirst(axis, falloff->kind == mvfx_falloffCone
+                               ? mvfxPositiveUpTo(falloff->angle, MVFX_MAX_CONE_ANGLE)
+                               : mvfx_success);
 }
 
 // Whether a unit quaternion within 0.001, finite.
@@ -55,48 +58,58 @@ static bool IsRotation(const float q[4])
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-static bool IsBoxValid(const mvfxForce* force)
+static mvfxResult CheckBox(const mvfxForce* force)
 {
-    for (int32_t k = 0; k < 3; ++k)
+    if (!IsRotation(force->boxRotation) || force->border > mvfx_borderRepeat)
     {
-        if (!(force->boxSize[k] > 0.0f && force->boxSize[k] <= MVFX_MAX_EXTENT))
-        {
-            return false;
-        }
+        return mvfx_errorInvalid;
     }
-    return IsRotation(force->boxRotation) && force->border <= mvfx_borderRepeat;
+    return mvfxFirst(mvfxPositiveUpTo(force->boxSize[0], MVFX_MAX_EXTENT),
+                     mvfxFirst(mvfxPositiveUpTo(force->boxSize[1], MVFX_MAX_EXTENT),
+                               mvfxPositiveUpTo(force->boxSize[2], MVFX_MAX_EXTENT)));
 }
 
-bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount)
+mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount)
 {
+    // A gas past MVFX_MAX_GASES is an index naming no gas, not a count.
     if (force->kind > mvfx_forceGas || force->space > mvfx_spaceLocal ||
-        force->fieldMode > mvfx_fieldVelocity || !IsWithin(force->tightness, 0.0f, MVFX_MAX_DRAG) ||
-        !IsVectorWithin(force->vector, MVFX_MAX_EXTENT) ||
-        !IsVectorWithin(force->point, MVFX_MAX_EXTENT) ||
-        !IsWithin(force->strength, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) ||
+        force->fieldMode > mvfx_fieldVelocity ||
         (force->strengthFromParameter &&
          (force->parameter < 0 || force->parameter >= parameterCount)) ||
-        !IsFalloffValid(&force->falloff))
+        (force->kind == mvfx_forceGas && (force->gas < 0 || force->gas >= MVFX_MAX_GASES)))
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    mvfxResult common =
+        mvfxFirst(mvfxFirst(mvfxUpToBound(force->tightness, 0.0f, MVFX_MAX_DRAG),
+                            mvfxBounded(force->strength, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT)),
+                  mvfxFirst(mvfxBoundedVector(force->vector, MVFX_MAX_EXTENT),
+                            mvfxBoundedVector(force->point, MVFX_MAX_EXTENT)));
+    if (common != mvfx_success)
+    {
+        return common;
+    }
+    mvfxResult falloff = CheckFalloff(&force->falloff);
+    if (falloff != mvfx_success)
+    {
+        return falloff;
     }
     switch (force->kind)
     {
     case mvfx_forceWind:
-        return IsWithin(force->strength, 0.0f, MVFX_MAX_DRAG);
+        return mvfxUpToBound(force->strength, 0.0f, MVFX_MAX_DRAG);
     case mvfx_forceAttractor:
-        return IsWithin(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT) &&
-               IsWithin(force->killRadius, 0.0f, MVFX_MAX_EXTENT);
+        return mvfxFirst(mvfxBounded(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT),
+                         mvfxUpToBound(force->killRadius, 0.0f, MVFX_MAX_EXTENT));
     case mvfx_forceVortex:
-        return IsAxis(force->vector) && IsWithin(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
+        return mvfxFirst(CheckAxis(force->vector),
+                         mvfxBounded(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
     case mvfx_forceTurbulence:
-        return mvfxIsNoiseValid(&force->noise);
+        return mvfxCheckNoise(&force->noise);
     case mvfx_forceVectorField:
-        return IsBoxValid(force);
-    case mvfx_forceGas:
-        return force->gas >= 0 && force->gas < MVFX_MAX_GASES;
+        return CheckBox(force);
     default:
-        return true;
+        return mvfx_success;
     }
 }
 

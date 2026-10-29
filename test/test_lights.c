@@ -224,7 +224,9 @@ static void TestChecks(void)
             emitter.light.radiusBySize = (float)NAN;
             break;
         }
-        refusals += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid ? 1 : 0;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refusals += mvfxCreateEffect(context, &def, &effect) == want ? 1 : 0;
     }
     CHECK(refusals == 8, "every check");
     emitter.light = (mvfxLightDef){.every = 0, .intensity = -1.0f};

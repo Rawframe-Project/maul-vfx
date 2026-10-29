@@ -248,12 +248,13 @@ static void TestAssetTables(void)
         int64_t size = 0;
         int64_t needed = 0;
         mvfxEffectDef read;
-        CHECK(Refused(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size), mvfx_errorInvalid,
-                      -1),
+        // A name past MVFX_MAX_ASSET_NAME is past a named bound.
+        mvfxResult want = c == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
+        CHECK(Refused(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size), want, -1),
               "the writer refuses the table");
         CHECK(Refused(mvfxReadEffect(bytes, written, table, 4, s_memory, sizeof s_memory, &needed,
                                      &read),
-                      mvfx_errorInvalid, -1),
+                      want, -1),
               "the reader refuses the table");
     }
     // A name the longest allowed, once a kind under each kind, in UTF-8 of
@@ -657,7 +658,7 @@ static void TestParts(void)
           "the writer refuses it too");
 }
 
-// Bytes after the def in its unit, and a def the validator refuses.
+// Bytes after the def in its unit, and defs the validator refuses.
 static void TestTrailing(void)
 {
     Def def;
@@ -670,7 +671,7 @@ static void TestTrailing(void)
     Rehash(bytes, size + 4);
     mvfxEffectDef read;
     CHECK(Refused(Read(bytes, size + 4, &read), mvfx_errorFormat, size), "bytes after the def");
-    // The capacity found by the difference, and set to 0.
+    // The capacity found by the difference, set to 0 and past its most.
     uint8_t other[4096];
     size = Write(&def, bytes);
     def.emitter.capacity = 17;
@@ -678,6 +679,10 @@ static void TestTrailing(void)
     int64_t capacity = FirstDifference(bytes, other, size);
     CHECK(capacity > 114 && Get32(bytes, capacity) == 16, "the capacity found");
     Expect(bytes, size, capacity, 0, mvfx_errorFormat, 114, "a def the validator refuses");
+    // Past a named bound too: what a file holds is malformed, whatever check
+    // it fails.
+    Expect(bytes, size, capacity, MVFX_MAX_EMITTER_CAPACITY + 1, mvfx_errorFormat, 114,
+           "a def past a bound");
 }
 
 // The memory a def needs: measured, a byte short refused, read in exactly.
@@ -973,9 +978,11 @@ static void TestArgumentMisuse(void)
                        mvfx_errorInvalid, -1);
     for (int32_t t = 0; t < 6; ++t)
     {
+        // A name past MVFX_MAX_ASSET_NAME is past a named bound, and as a
+        // direct argument still misuse.
         counted += Refused(
             mvfxCreateEffectFromBytes(context, bytes, size, tables[t], t == 5 ? 2 : 1, &effect),
-            mvfx_errorInvalid, -1);
+            t == 3 ? mvfx_errorLimit : mvfx_errorInvalid, -1);
     }
     CHECK(counted == 10 && mvfxGetContextMisuse(context) == misuse + 10,
           "each invalid argument refused and counted as misuse");

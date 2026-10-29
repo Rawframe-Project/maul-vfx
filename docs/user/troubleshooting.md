@@ -6,7 +6,7 @@ Every fallible call says why it failed:
 
 | Result | Meaning |
 |---|---|
-| `mvfx_errorInvalid` | An argument the call can never take: a null pointer, a value out of its range, a def not made by its default function. It also counts one misuse on the context. A def an effect file holds that the library refuses, for what it asks of the program's assets, counts none: a file is untrusted data. |
+| `mvfx_errorInvalid` | An argument the call can never take: a null pointer, NaN or an infinity, a value out of a range its documentation gives with no named constant, a def not made by its default function. It also counts one misuse on the context. A def an effect file holds that the library refuses, for what it asks of the program's assets, counts none: a file is untrusted data. |
 | `mvfx_errorCapacity` | Room is too small: a buffer the program gave (the call reports the size it needs), a table of the context's def (too many effects, instances, layouts, grids or meshes at once), or the allocator. |
 | `mvfx_errorStale` | An id whose object was destroyed. |
 | `mvfx_errorUnsupported` | The object was made without what the call needs: a planned instance's fields, which its simulation holds; a plan of an instance that is not planned; an effect the GPU part does not run yet. |
@@ -14,7 +14,7 @@ Every fallible call says why it failed:
 | `mvfx_errorState` | The call is not allowed now, and another call changes that: a planned instance's plans split into steps, a GPU frame not open, a device not ready yet. |
 | `mvfx_errorVersion` | The program was built against headers of another release, or a file is of another format version. |
 | `mvfx_errorFormat` | An effect file's bytes are malformed: a magic, size or hash that does not match, a unit out of place, a count past its cap, a def the def validator refuses. The offset names the first byte at fault. |
-| `mvfx_errorLimit` | An argument passes a fixed bound of the library, a named constant: a hull past `MVFX_MAX_HULL_COUNT` vertices, a frame's GPU passes past their `MVFX_GPU_*` count. |
+| `mvfx_errorLimit` | An argument, or a def's field, passes a fixed bound of the library, a named constant (`MVFX_MAX_*`, `MVFX_MIN_*`): more emitters than `MVFX_MAX_EMITTERS`, a size past `MVFX_MAX_EXTENT`, a hull past `MVFX_MAX_HULL_VERTICES` or `MVFX_MAX_HULL_COUNT` vertices, a frame's GPU passes past their `MVFX_GPU_*` count. A def past one counts no misuse; a direct argument past one counts one. When a def fails several checks, the first decides which of the two it answers. |
 | `mvfx_errorBusy` | The object is in use: an effect an instance plays, a grid or mesh an effect holds, or a call from the allocator, a task hook or a host module that would change the context while it runs them. The GPU part answers it too when its device refuses a call from inside the device's own allocator. |
 | `mvfx_errorMissing` | A name or object the call needs is not in the table it was given, such as an asset of an effect file. |
 
@@ -24,7 +24,7 @@ Each function's documentation in its header lists the results it returns and wha
 
 ## An effect that is refused
 
-`mvfxCreateEffect` checks every field of the def and its parts, with the ranges each header states; a refused def answers `mvfx_errorInvalid` (`mvfx_errorFormat` when it comes from a file). A def that is built up in steps is easiest to check one emitter at a time. An effect file refused by `mvfxReadEffect` comes with the offset of the first byte at fault. `tools/effect_json.py to-json` shows a file whole, and refuses a damaged one, a hash that does not match included.
+`mvfxCreateEffect` checks every field of the def and its parts, with the ranges each header states; a refused def answers `mvfx_errorLimit` for a field past a named bound, `mvfx_errorInvalid` for any other (`mvfx_errorFormat` when it comes from a file, whatever the check). A def that is built up in steps is easiest to check one emitter at a time. An effect file refused by `mvfxReadEffect` comes with the offset of the first byte at fault. `tools/effect_json.py to-json` shows a file whole, and refuses a damaged one, a hash that does not match included.
 
 ## Particles that are missing
 

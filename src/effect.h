@@ -337,8 +337,19 @@ typedef struct mvfxEffect
     int32_t waterCount;
 } mvfxEffect;
 
-// Whether a def and every emitter def in it are valid.
-bool mvfxIsEffectDefValid(const mvfxEffectDef* def);
+// Bakes a rate curve over a loop's normalized age, its samples times rate.
+void mvfxBakeRateCurve(const mvfxCurve* curve, float rate, mvfxRateCurve* out);
+
+// Raises reach to the share of its cap of the ends of each source of an
+// emitter's values that reads a parameter's component
+// (mvfxCheckParameterReach), for an emitter whose values over life are
+// valid.
+void mvfxAddParameterReach(const mvfxEmitterDef* def, double reach[MVFX_MAX_PARAMETERS][4]);
+
+// The order an effect's emitters step in: repeatedly the lowest index
+// whose source (if any) has stepped; false for a cycle or a source out of
+// range.
+bool mvfxOrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITTERS]);
 
 // Compiles a valid def into a block from allocator, each mesh shape's
 // emitter i spawning from meshes[i]; NULL when the allocator fails or the

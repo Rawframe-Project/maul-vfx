@@ -105,10 +105,10 @@ static void TestRefusals(void)
 
     CHECK(mvfxContext_Step(context, -0.001) == mvfx_errorInvalid, "a negative step");
     CHECK(mvfxContext_Step(context, (double)NAN) == mvfx_errorInvalid, "a NaN step");
-    CHECK(mvfxContext_Step(context, MVFX_MAX_STEP_SECONDS * 1.01) == mvfx_errorInvalid,
+    CHECK(mvfxContext_Step(context, MVFX_MAX_STEP_SECONDS * 1.01) == mvfx_errorLimit,
           "too long a step");
     CHECK(mvfxContext_StepTicks(context, -1) == mvfx_errorInvalid, "negative ticks");
-    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND + 1) == mvfx_errorInvalid,
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND + 1) == mvfx_errorLimit,
           "too many ticks");
     CHECK(mvfxGetContextMisuse(context) == misuse + 5, "each counted");
     CHECK(mvfxContext_Step(NULL, 0.1) == mvfx_errorInvalid, "no context");

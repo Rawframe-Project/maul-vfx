@@ -298,12 +298,12 @@ static void TestHostSpawns(void)
           "at the caps, taken");
     uint64_t misuse = mvfxGetContextMisuse(scene.context);
     sizes[4] = Past(1e3f);
-    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_errorInvalid &&
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_errorLimit &&
               mvfxGetContextMisuse(scene.context) == misuse + 1,
           "a size past, refused as misuse");
     sizes[4] = 1;
     tints[7] = Past(5e5f);
-    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_errorInvalid,
+    CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_errorLimit,
           "an alpha past");
     Step(&scene, 1);
     CHECK(Read(&scene, 0) == 2 && s_particles[0].size[1] == -1e6f &&

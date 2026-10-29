@@ -32,10 +32,11 @@ typedef struct mvfxResolvedDepth
     int32_t samples;
 } mvfxResolvedDepth;
 
-// Checks an image and prepares its view; false for one out of range. A
+// Checks an image and prepares its view: mvfx_errorLimit for a size past
+// MVFX_MAX_DEPTH_SIZE, mvfx_errorInvalid for anything else out of range. A
 // planned instance's image may come without pixels or normals (its
 // simulation reads them on the GPU).
-bool mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out);
+mvfxResult mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out);
 
 // A resolved depth as a plan hands it over, for an emitter's collision.
 void mvfxPlanDepth(const mvfxResolvedDepth* depth, const mvfxCollision* collision,

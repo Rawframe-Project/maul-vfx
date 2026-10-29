@@ -379,6 +379,10 @@ static void TestRefusals(void)
     static const uint32_t past[] = {0, 1, 3};
     for (int32_t field = 0; field < 13; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want =
+            field == 3 || field == 9 || field == 11 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxMeshDef def = mvfxDefaultMeshDef();
         def.positions = s_quad;
         def.vertexCount = 3;
@@ -432,8 +436,9 @@ static void TestRefusals(void)
         }
         }
         mvfxMeshId mesh = {5, 5};
-        CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_errorInvalid, "refused");
-        CHECK(mesh.index1 == 0 && mvfxGetContextMisuse(context) == ++misuse, "counted");
+        CHECK(mvfxCreateMesh(context, &def, &mesh) == want, "refused");
+        misuse += want == mvfx_errorInvalid ? 1u : 0u;
+        CHECK(mesh.index1 == 0 && mvfxGetContextMisuse(context) == misuse, "counted");
     }
     mvfxMeshId mesh = {0};
     CHECK(mvfxCreateMesh(context, NULL, &mesh) == mvfx_errorInvalid, "no def");

@@ -4,18 +4,9 @@
 #include "kill.h"
 
 #include "direction.h"
+#include "refusal.h"
 
 #include <math.h>
-
-static bool IsVectorWithin(const float v[3], float bound)
-{
-    return fabsf(v[0]) <= bound && fabsf(v[1]) <= bound && fabsf(v[2]) <= bound;
-}
-
-static bool IsPositive(float x)
-{
-    return x > 0.0f && x <= MVFX_MAX_EXTENT;
-}
 
 static bool IsRotation(const float q[4])
 {
@@ -31,31 +22,44 @@ static bool IsRotation(const float q[4])
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-bool mvfxIsKillRuleValid(const mvfxKillRule* rule)
+mvfxResult mvfxCheckKillRule(const mvfxKillRule* rule)
 {
-    if (rule->space > mvfx_spaceLocal || !IsVectorWithin(rule->center, MVFX_MAX_EXTENT))
+    if (rule->space > mvfx_spaceLocal)
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    mvfxResult center = mvfxBoundedVector(rule->center, MVFX_MAX_EXTENT);
+    if (center != mvfx_success)
+    {
+        return center;
     }
     float normal[3] = {rule->normal[0], rule->normal[1], rule->normal[2]};
     switch (rule->kind)
     {
     case mvfx_killInsideSphere:
     case mvfx_killOutsideSphere:
-        return IsPositive(rule->radius);
+        return mvfxPositiveUpTo(rule->radius, MVFX_MAX_EXTENT);
     case mvfx_killInsideBox:
     case mvfx_killOutsideBox:
-        return IsPositive(rule->halfExtents[0]) && IsPositive(rule->halfExtents[1]) &&
-               IsPositive(rule->halfExtents[2]) && IsRotation(rule->rotation);
+        if (!IsRotation(rule->rotation))
+        {
+            return mvfx_errorInvalid;
+        }
+        return mvfxFirst(mvfxPositiveUpTo(rule->halfExtents[0], MVFX_MAX_EXTENT),
+                         mvfxFirst(mvfxPositiveUpTo(rule->halfExtents[1], MVFX_MAX_EXTENT),
+                                   mvfxPositiveUpTo(rule->halfExtents[2], MVFX_MAX_EXTENT)));
     case mvfx_killPastPlane:
-        return IsVectorWithin(rule->normal, MVFX_MAX_EXTENT) && mvfxNormalize(normal);
+    {
+        mvfxResult within = mvfxBoundedVector(rule->normal, MVFX_MAX_EXTENT);
+        return within != mvfx_success ? within : mvfxRequire(mvfxNormalize(normal));
+    }
     case mvfx_killSlower:
-        return rule->speed >= 0.0f && rule->speed <= MVFX_MAX_EXTENT && rule->minimumAge >= 0.0f &&
-               rule->minimumAge <= MVFX_MAX_LIFETIME;
+        return mvfxFirst(mvfxUpToBound(rule->speed, 0.0f, MVFX_MAX_EXTENT),
+                         mvfxUpToBound(rule->minimumAge, 0.0f, MVFX_MAX_LIFETIME));
     case mvfx_killCollisions:
-        return rule->collisions >= 1;
+        return mvfxRequire(rule->collisions >= 1);
     default:
-        return false;
+        return mvfx_errorInvalid;
     }
 }
 

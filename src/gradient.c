@@ -6,6 +6,8 @@
 
 #include "gradient.h"
 
+#include "refusal.h"
+
 #include <math.h>
 
 // Linear interpolation between the keys around t, the end values held
@@ -59,9 +61,10 @@ void mvfxBakeGradient(const mvfxGradient* gradient, mvfxGradientTable* tableOut)
 }
 
 // Whether a key's channel is within MVFX_MAX_COLOR in size; false for NaN.
-static bool IsChannel(float x)
+// A colour channel's status: finite, and at most MVFX_MAX_COLOR in size.
+static mvfxResult CheckChannel(float x)
 {
-    return x >= -MVFX_MAX_COLOR && x <= MVFX_MAX_COLOR;
+    return mvfxBounded(x, -MVFX_MAX_COLOR, MVFX_MAX_COLOR);
 }
 
 void mvfxGradientLargest(const mvfxGradient* gradient, double* color, double* alpha)
@@ -85,22 +88,31 @@ void mvfxGradientLargest(const mvfxGradient* gradient, double* color, double* al
     }
 }
 
-bool mvfxIsGradientValid(const mvfxGradient* gradient)
+mvfxResult mvfxCheckGradient(const mvfxGradient* gradient)
 {
     if (gradient == nullptr || gradient->colorKeys == nullptr || gradient->alphaKeys == nullptr ||
-        gradient->colorKeyCount < 1 || gradient->colorKeyCount > MVFX_CURVE_MAX_KEYS ||
-        gradient->alphaKeyCount < 1 || gradient->alphaKeyCount > MVFX_CURVE_MAX_KEYS)
+        gradient->colorKeyCount < 1 || gradient->alphaKeyCount < 1)
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    if (gradient->colorKeyCount > MVFX_CURVE_MAX_KEYS ||
+        gradient->alphaKeyCount > MVFX_CURVE_MAX_KEYS)
+    {
+        return mvfx_errorLimit;
     }
     float previous = 0.0f;
     for (int32_t i = 0; i < gradient->colorKeyCount; ++i)
     {
         const mvfxColorKey* key = &gradient->colorKeys[i];
-        if (!(key->time >= previous && key->time <= 1.0f) || !IsChannel(key->red) ||
-            !IsChannel(key->green) || !IsChannel(key->blue))
+        if (!(key->time >= previous && key->time <= 1.0f))
         {
-            return false;
+            return mvfx_errorInvalid;
+        }
+        mvfxResult channels = mvfxFirst(
+            CheckChannel(key->red), mvfxFirst(CheckChannel(key->green), CheckChannel(key->blue)));
+        if (channels != mvfx_success)
+        {
+            return channels;
         }
         previous = key->time;
     }
@@ -108,11 +120,16 @@ bool mvfxIsGradientValid(const mvfxGradient* gradient)
     for (int32_t i = 0; i < gradient->alphaKeyCount; ++i)
     {
         const mvfxAlphaKey* key = &gradient->alphaKeys[i];
-        if (!(key->time >= previous && key->time <= 1.0f) || !IsChannel(key->alpha))
+        if (!(key->time >= previous && key->time <= 1.0f))
         {
-            return false;
+            return mvfx_errorInvalid;
+        }
+        mvfxResult alpha = CheckChannel(key->alpha);
+        if (alpha != mvfx_success)
+        {
+            return alpha;
         }
         previous = key->time;
     }
-    return true;
+    return mvfx_success;
 }

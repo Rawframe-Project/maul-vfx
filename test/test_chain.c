@@ -624,7 +624,10 @@ static void TestChecks(void)
                                                   .capacity = 5};
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want =
+            rule == 1 || rule == 6 || rule == 9 || rule == 13 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 15, "every check");
     emitter = Chain(MVFX_MAX_CHAIN_POINTS);

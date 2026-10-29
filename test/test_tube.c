@@ -262,9 +262,10 @@ static void TestChainAndMisuse(void)
     const mvfxTubeDef* tubes[4] = {&few, &many, &none, NULL};
     for (int32_t t = 0; t < 4; ++t)
     {
-        refused +=
-            mvfxInstance_ExpandTubes(s_scene.context, s_scene.instance, 0, s_scene.layout, &s_view,
-                                     tubes[t], &buffers, &v, &i) == mvfx_errorInvalid;
+        // More sides than MVFX_MAX_TUBE_SIDES is past a named bound.
+        mvfxResult want = t == 1 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxInstance_ExpandTubes(s_scene.context, s_scene.instance, 0, s_scene.layout,
+                                            &s_view, tubes[t], &buffers, &v, &i) == want;
     }
     CHECK(refused == 4, "misuse");
     CHECK(Expand(MVFX_MAX_TUBE_SIDES, true, MOST, 4 * MOST) == mvfx_success &&

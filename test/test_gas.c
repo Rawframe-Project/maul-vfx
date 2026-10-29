@@ -162,7 +162,11 @@ static void TestDefs(void)
         def.gases = &gas;
         def.gasCount = 1;
         mvfxEffectId effect = {0};
-        refused = refused && mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = c == 3 || c == 4 || c == 9 || c == 13 || c == 18 || c == 20
+                              ? mvfx_errorLimit
+                              : mvfx_errorInvalid;
+        refused = refused && mvfxCreateEffect(context, &def, &effect) == want;
     }
     mvfxEffectDef none = mvfxDefaultEffectDef();
     mvfxEffectId effect = {0};
@@ -174,7 +178,7 @@ static void TestDefs(void)
     }
     none.gases = gases;
     none.gasCount = MVFX_MAX_GASES + 1;
-    bool many = mvfxCreateEffect(context, &none, &effect) == mvfx_errorInvalid;
+    bool many = mvfxCreateEffect(context, &none, &effect) == mvfx_errorLimit;
     none.gasCount = MVFX_MAX_GASES;
     bool most = mvfxCreateEffect(context, &none, &effect) == mvfx_success;
     CHECK(refused && empty && many && most, "gas defs checked");

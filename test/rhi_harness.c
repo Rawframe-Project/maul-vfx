@@ -983,8 +983,18 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     {
         return mvfxGpuSim_ExpandPlexus(sim, &strips) == mvfx_success;
     }
-    return (s_tube.sides > 0 ? mvfxGpuSim_ExpandTubes(sim, &strips)
-                             : mvfxGpuSim_ExpandRibbons(sim, &strips)) == mvfx_success;
+    if (s_tube.sides > 0)
+    {
+        // Sides out of range add nothing: fewer than 3 are invalid, more
+        // than MVFX_MAX_TUBE_SIDES past a named bound.
+        mvfxGpuExpandDef bad = strips;
+        bad.tube.sides = 2;
+        bool refused = mvfxGpuSim_ExpandTubes(sim, &bad) == mvfx_errorInvalid;
+        bad.tube.sides = MVFX_MAX_TUBE_SIDES + 1;
+        refused = refused && mvfxGpuSim_ExpandTubes(sim, &bad) == mvfx_errorLimit;
+        return refused && mvfxGpuSim_ExpandTubes(sim, &strips) == mvfx_success;
+    }
+    return mvfxGpuSim_ExpandRibbons(sim, &strips) == mvfx_success;
 }
 
 // Adds the fill of the records and list buffers and the first emitter's

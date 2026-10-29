@@ -19,12 +19,16 @@ static bool IsFieldValid(float x)
     return x >= -CURVE_FIELD_LIMIT && x <= CURVE_FIELD_LIMIT;
 }
 
-bool mvfxIsCurveValid(const mvfxCurve* curve, bool unitDomain)
+mvfxResult mvfxCheckCurve(const mvfxCurve* curve, bool unitDomain)
 {
     if (curve == nullptr || curve->keys == nullptr || curve->keyCount < 1 ||
-        curve->keyCount > MVFX_CURVE_MAX_KEYS || curve->tangents > mvfx_tangentsMonotone)
+        curve->tangents > mvfx_tangentsMonotone)
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    if (curve->keyCount > MVFX_CURVE_MAX_KEYS)
+    {
+        return mvfx_errorLimit;
     }
     for (int32_t i = 0; i < curve->keyCount; ++i)
     {
@@ -33,18 +37,18 @@ bool mvfxIsCurveValid(const mvfxCurve* curve, bool unitDomain)
             !IsFieldValid(key->inTangent) || !IsFieldValid(key->outTangent) ||
             key->interpolation > mvfx_interpolationCubic)
         {
-            return false;
+            return mvfx_errorInvalid;
         }
         if (unitDomain && (key->time < 0.0f || key->time > 1.0f))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
         if (i > 0 && key->time < curve->keys[i - 1].time)
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // The slope from key a to key b, 0 across a step.

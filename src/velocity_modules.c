@@ -5,21 +5,19 @@
 
 #include "direction.h"
 #include "elementary.h"
+#include "refusal.h"
 
 #include "maul-vfx/effect.h"
 
 #include <math.h>
 
-static bool IsVectorWithin(const float v[3], float bound)
-{
-    return fabsf(v[0]) <= bound && fabsf(v[1]) <= bound && fabsf(v[2]) <= bound;
-}
-
-// A direction that may be of length 0 only when it is not used.
-static bool IsDirection(const float v[3], bool used)
+// A direction's status: within MVFX_MAX_EXTENT, and of length 0 only when
+// it is not used.
+static mvfxResult CheckDirection(const float v[3], bool used)
 {
     float copy[3] = {v[0], v[1], v[2]};
-    return IsVectorWithin(v, MVFX_MAX_EXTENT) && (!used || mvfxNormalize(copy));
+    mvfxResult within = mvfxBoundedVector(v, MVFX_MAX_EXTENT);
+    return within != mvfx_success ? within : mvfxRequire(!used || mvfxNormalize(copy));
 }
 
 static bool IsUsed(const mvfxLifeCurve* life)
@@ -27,23 +25,29 @@ static bool IsUsed(const mvfxLifeCurve* life)
     return life->value != 0.0f;
 }
 
-bool mvfxAreVelocityModulesValid(const mvfxVelocityModules* m)
+mvfxResult mvfxCheckVelocityModules(const mvfxVelocityModules* m)
 {
+    if (m->limitSpeed && !(m->speedLimit.value >= 0.0f && m->limitDampen > 0.0f))
+    {
+        return mvfx_errorInvalid;
+    }
     const mvfxLifeCurve* lives[5] = {&m->motionScale, &m->addedSpeed, &m->orbitRate,
                                      &m->radialSpeed, &m->speedLimit};
     for (int32_t i = 0; i < 5; ++i)
     {
-        if (!mvfxIsLifeCurveValid(lives[i]))
+        mvfxResult life = mvfxCheckLifeCurve(lives[i]);
+        if (life != mvfx_success)
         {
-            return false;
+            return life;
         }
     }
-    return IsDirection(m->addedDirection, IsUsed(&m->addedSpeed)) &&
-           IsDirection(m->orbitAxis, IsUsed(&m->orbitRate)) &&
-           IsVectorWithin(m->orbitCenter, MVFX_MAX_EXTENT) &&
-           IsVectorWithin(m->radialCenter, MVFX_MAX_EXTENT) &&
-           (!m->limitSpeed || (m->speedLimit.value >= 0.0f && m->limitDampen > 0.0f &&
-                               m->limitDampen <= MVFX_MAX_DRAG));
+    mvfxResult directions = mvfxFirst(CheckDirection(m->addedDirection, IsUsed(&m->addedSpeed)),
+                                      CheckDirection(m->orbitAxis, IsUsed(&m->orbitRate)));
+    mvfxResult centers = mvfxFirst(mvfxBoundedVector(m->orbitCenter, MVFX_MAX_EXTENT),
+                                   mvfxBoundedVector(m->radialCenter, MVFX_MAX_EXTENT));
+    return mvfxFirst(mvfxFirst(directions, centers),
+                     m->limitSpeed ? mvfxBounded(m->limitDampen, 0.0f, MVFX_MAX_DRAG)
+                                   : mvfx_success);
 }
 
 int32_t mvfxVelocityModuleCurves(const mvfxVelocityModules* m)

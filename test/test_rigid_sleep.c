@@ -790,7 +790,9 @@ static void TestChecks(void)
         boxes.rigid.sleepSpeed = speeds[i];
         boxes.rigid.sleepTime = times[i];
         mvfxEffectId effect = {0};
-        refused += EffectOf(&boxes, &effect) == mvfx_errorInvalid ? 1 : 0;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = i == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += EffectOf(&boxes, &effect) == want ? 1 : 0;
     }
     mvfxEmitterDef off = Boxes();
     off.rigid.sleepSpeed = 0.0f;

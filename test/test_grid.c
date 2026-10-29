@@ -176,6 +176,9 @@ static void TestLife(void)
     static const float big[1] = {70000.0f};
     for (int32_t field = 0; field < 11; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 2 || field == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxGridDef bad = mvfxDefaultGridDef();
         static const float one[1] = {1.0f};
         bad.values = one;
@@ -218,9 +221,9 @@ static void TestLife(void)
             CHECK(mvfxCreateGrid(context, NULL, &c) == mvfx_errorInvalid, "no def");
             continue;
         }
-        CHECK(mvfxCreateGrid(context, &bad, &c) == mvfx_errorInvalid && c.index1 == 0, "refused");
+        CHECK(mvfxCreateGrid(context, &bad, &c) == want && c.index1 == 0, "refused");
     }
-    CHECK(mvfxGetContextMisuse(context) == misuse + 11, "each counted");
+    CHECK(mvfxGetContextMisuse(context) == misuse + 9, "each invalid one counted");
     CHECK(mvfxCreateGrid(context, &def, NULL) == mvfx_errorInvalid, "no out-parameter");
     CHECK(mvfxCreateGrid(NULL, &def, &c) == mvfx_errorInvalid, "no context");
 

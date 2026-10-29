@@ -49,8 +49,10 @@ typedef struct mvfxShapeSample
 } mvfxShapeSample;
 
 // Whether a shape is valid (its kind and arc mode known, the fields its
-// kind reads in range).
-bool mvfxIsShapeValid(const mvfxShape* shape);
+// kind reads in range): mvfx_errorLimit for an offset, a size or a cone's
+// angle or reach past its named bound, mvfx_errorInvalid for anything
+// else.
+mvfxResult mvfxCheckShape(const mvfxShape* shape);
 
 // Compiles a valid shape: its rotation as a normalized matrix, its cone's
 // tangent, a mesh shape's mesh.

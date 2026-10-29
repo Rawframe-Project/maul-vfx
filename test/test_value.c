@@ -700,15 +700,14 @@ static void TestDrawBounds(void)
     static const float setAnglePast[4] = {1e9f, 0, 0, 0};
     static const float setWithin[4] = {-1e3f, 1e6f, -1e6f, 3e38f};
     float read[4];
-    CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, setPast) ==
-                  mvfx_errorInvalid &&
+    CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, setPast) == mvfx_errorLimit &&
               mvfxGetContextMisuse(scene.context) == misuse + 1,
           "a value past, refused as misuse");
     CHECK(mvfxInstance_GetParameter(scene.context, scene.instance, 0, read) == mvfx_success &&
               read[0] == 1e3f && read[1] == 1e6f,
           "and not set");
     CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 1, setAnglePast) ==
-              mvfx_errorInvalid,
+              mvfx_errorLimit,
           "a scalar's value past");
     CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, setWithin) == mvfx_success &&
               mvfxGetContextMisuse(scene.context) == misuse + 2,

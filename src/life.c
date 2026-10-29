@@ -3,6 +3,8 @@
 
 #include "life.h"
 
+#include "refusal.h"
+
 #include <math.h>
 
 double mvfxLifeCurveLargest(const mvfxLifeCurve* life)
@@ -11,13 +13,22 @@ double mvfxLifeCurveLargest(const mvfxLifeCurve* life)
     return life->curve.keyCount == 0 ? value : value * mvfxCurveLargest(&life->curve, 0.0f, 1.0f);
 }
 
-bool mvfxIsLifeCurveValid(const mvfxLifeCurve* life)
+mvfxResult mvfxCheckLifeCurve(const mvfxLifeCurve* life)
 {
     // A value past MVFX_MAX_VALUE is refused before the curve is sampled,
     // so a zero curve cannot hide it.
-    return fabsf(life->value) <= MVFX_MAX_VALUE &&
-           (life->curve.keyCount == 0 || mvfxIsCurveValid(&life->curve, true)) &&
-           mvfxLifeCurveLargest(life) <= (double)MVFX_MAX_LIFE_SCALE;
+    mvfxResult value = mvfxBounded(life->value, -MVFX_MAX_VALUE, MVFX_MAX_VALUE);
+    if (value != mvfx_success)
+    {
+        return value;
+    }
+    mvfxResult curve =
+        life->curve.keyCount == 0 ? mvfx_success : mvfxCheckCurve(&life->curve, true);
+    if (curve != mvfx_success)
+    {
+        return curve;
+    }
+    return mvfxWithinBound(mvfxLifeCurveLargest(life) <= (double)MVFX_MAX_LIFE_SCALE);
 }
 
 int32_t mvfxLifeCurves(const mvfxLifeCurve* life)

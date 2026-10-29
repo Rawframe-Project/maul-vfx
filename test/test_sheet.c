@@ -444,7 +444,10 @@ static void TestChecks(void)
             emitter.hostSpawnCapacity = 5;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want =
+            rule == 1 || rule == 2 || rule == 12 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 14, "every check");
     emitter = Sheet(MVFX_MAX_SHEET_SIDE, MVFX_MAX_SHEET_SIDE);

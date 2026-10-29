@@ -74,11 +74,14 @@ extern "C"
     /// @param def      The def, from mvfxDefaultMeshDef.
     /// @param meshOut  Receives the mesh's id; the null id on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
-    ///         def without its cookie, a count out of range, an index past
-    ///         the vertices or a value out of range, which counts as misuse
-    ///         when the context is given; `mvfx_errorCapacity` when the
-    ///         context holds as many meshes as its def allows, or when the
-    ///         allocator fails.
+    ///         def without its cookie, a count below its least, an index past
+    ///         the vertices or a value not finite or out of range, which
+    ///         counts as misuse when the context is given; `mvfx_errorLimit`
+    ///         for more vertices than MVFX_MAX_MESH_VERTICES, more elements
+    ///         than MVFX_MAX_MESH_ELEMENTS or a position past
+    ///         MVFX_MAX_EXTENT, which counts none; `mvfx_errorCapacity` when
+    ///         the context holds as many meshes as its def allows, or when
+    ///         the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateMesh(mvfxContext* context, const mvfxMeshDef* def,
@@ -154,8 +157,10 @@ extern "C"
     /// @param vertexCount  The mesh's count of vertices.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         mesh; `mvfx_errorInvalid` for a NULL context or positions, a
-    ///         count not the mesh's or a value out of range, which counts as
-    ///         misuse when the context is given (the mesh is then unchanged).
+    ///         count not the mesh's or a value not finite or out of range;
+    ///         `mvfx_errorLimit` for a position past MVFX_MAX_EXTENT. Either
+    ///         counts as misuse when the context is given (the mesh is then
+    ///         unchanged).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_SetPositions(mvfxContext* context, mvfxMeshId mesh,

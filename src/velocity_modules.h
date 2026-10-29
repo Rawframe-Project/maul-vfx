@@ -41,7 +41,10 @@ typedef struct mvfxResolvedVelocityModules
     float radialCenter[3];
 } mvfxResolvedVelocityModules;
 
-bool mvfxAreVelocityModulesValid(const mvfxVelocityModules* modules);
+// Whether velocity modules are valid: mvfx_errorLimit for a life curve,
+// direction, center or dampening past its named bound, mvfx_errorInvalid
+// for anything else wrong.
+mvfxResult mvfxCheckVelocityModules(const mvfxVelocityModules* modules);
 
 // The curve tables they need.
 int32_t mvfxVelocityModuleCurves(const mvfxVelocityModules* modules);

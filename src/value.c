@@ -5,25 +5,23 @@
 
 #include "value.h"
 
+#include "refusal.h"
+
 #include <math.h>
 
-// Whether low <= x <= high; false for NaN.
-static bool IsWithin(float x, float low, float high)
+// A vector's ends' status, in either order: finite, and at most
+// MVFX_MAX_VALUE in size.
+static mvfxResult CheckEnds(float min, float max)
 {
-    return x >= low && x <= high;
+    return mvfxFirst(mvfxBounded(min, -MVFX_MAX_VALUE, MVFX_MAX_VALUE),
+                     mvfxBounded(max, -MVFX_MAX_VALUE, MVFX_MAX_VALUE));
 }
 
-// Whether a vector's ends are finite and in range, in either order.
-static bool AreEndsValid(float min, float max)
+// A range's bounds' status: as CheckEnds, and min at most max.
+static mvfxResult CheckBounds(float min, float max)
 {
-    return IsWithin(min, -MVFX_MAX_VALUE, MVFX_MAX_VALUE) &&
-           IsWithin(max, -MVFX_MAX_VALUE, MVFX_MAX_VALUE);
-}
-
-static bool AreBoundsValid(float min, float max)
-{
-    return IsWithin(min, -MVFX_MAX_VALUE, MVFX_MAX_VALUE) &&
-           IsWithin(max, -MVFX_MAX_VALUE, MVFX_MAX_VALUE) && min <= max;
+    mvfxResult ends = CheckEnds(min, max);
+    return ends != mvfx_success ? ends : mvfxRequire(min <= max);
 }
 
 // The larger size of two ends.
@@ -61,47 +59,62 @@ static double GradientBase(const mvfxGradient* gradient)
     return color > alpha ? color : alpha;
 }
 
-// Whether a base's largest size times a reach stays within a cap; false
-// for NaN.
-static bool IsWithinCap(double base, double reach, float cap)
+// Whether a base's largest size times a reach stays within a cap, a named
+// bound: mvfx_errorLimit past it.
+static mvfxResult CheckCap(double base, double reach, float cap)
 {
-    return base * reach <= (double)cap;
+    return mvfxWithinBound(base * reach <= (double)cap);
 }
 
-bool mvfxIsScalarSourceValid(const mvfxScalarSource* source, bool optional, bool hasDuration,
-                             int32_t parameterCount, float cap)
+mvfxResult mvfxCheckScalarSource(const mvfxScalarSource* source, bool optional, bool hasDuration,
+                                 int32_t parameterCount, float cap)
 {
     double reach = Reach(source->range.min, source->range.max);
+    if (source->kind == mvfx_sourceNone)
+    {
+        return mvfxRequire(optional);
+    }
+    if (source->kind > mvfx_sourceParameter)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult bounds = CheckBounds(source->range.min, source->range.max);
+    if (bounds != mvfx_success)
+    {
+        return bounds;
+    }
     switch (source->kind)
     {
-    case mvfx_sourceNone:
-        return optional;
     case mvfx_sourceRange:
-        return AreBoundsValid(source->range.min, source->range.max) && IsWithinCap(1.0, reach, cap);
+        return CheckCap(1.0, reach, cap);
     case mvfx_sourceCurve:
-        return AreBoundsValid(source->range.min, source->range.max) &&
-               mvfxIsCurveValid(&source->curve, hasDuration) &&
-               IsWithinCap(CurveBase(&source->curve, hasDuration), reach, cap);
-    case mvfx_sourceParameter:
-        return AreBoundsValid(source->range.min, source->range.max) && source->parameter >= 0 &&
-               source->parameter < parameterCount;
+    {
+        mvfxResult curve = mvfxCheckCurve(&source->curve, hasDuration);
+        return curve != mvfx_success ? curve
+                                     : CheckCap(CurveBase(&source->curve, hasDuration), reach, cap);
+    }
     default:
-        return false;
+        return mvfxRequire(source->parameter >= 0 && source->parameter < parameterCount);
     }
 }
 
-bool mvfxIsVectorSourceValid(const mvfxVectorSource* source, int32_t components, bool hasDuration,
-                             int32_t parameterCount, const float* cap)
+mvfxResult mvfxCheckVectorSource(const mvfxVectorSource* source, int32_t components,
+                                 bool hasDuration, int32_t parameterCount, const float* cap)
 {
     if (source->kind == mvfx_sourceNone)
     {
-        return true;
+        return mvfx_success;
+    }
+    if (source->kind > mvfx_sourceGradientOverAge)
+    {
+        return mvfx_errorInvalid;
     }
     for (int32_t c = 0; c < components; ++c)
     {
-        if (!AreEndsValid(source->min[c], source->max[c]))
+        mvfxResult ends = CheckEnds(source->min[c], source->max[c]);
+        if (ends != mvfx_success)
         {
-            return false;
+            return ends;
         }
     }
     double base = 1.0;
@@ -110,34 +123,41 @@ bool mvfxIsVectorSourceValid(const mvfxVectorSource* source, int32_t components,
     case mvfx_sourceRange:
         break;
     case mvfx_sourceCurve:
-        if (!mvfxIsCurveValid(&source->curve, hasDuration))
+    {
+        mvfxResult curve = mvfxCheckCurve(&source->curve, hasDuration);
+        if (curve != mvfx_success)
         {
-            return false;
+            return curve;
         }
         base = CurveBase(&source->curve, hasDuration);
         break;
+    }
     case mvfx_sourceParameter:
-        return source->parameter >= 0 && source->parameter < parameterCount;
-    case mvfx_sourceGradient:
-    case mvfx_sourceGradientOverAge:
-        if (components != 4 || (source->kind == mvfx_sourceGradientOverAge && !hasDuration) ||
-            !mvfxIsGradientValid(&source->gradient))
+        return mvfxRequire(source->parameter >= 0 && source->parameter < parameterCount);
+    default:
+    {
+        if (components != 4 || (source->kind == mvfx_sourceGradientOverAge && !hasDuration))
         {
-            return false;
+            return mvfx_errorInvalid;
+        }
+        mvfxResult gradient = mvfxCheckGradient(&source->gradient);
+        if (gradient != mvfx_success)
+        {
+            return gradient;
         }
         base = GradientBase(&source->gradient);
         break;
-    default:
-        return false;
+    }
     }
     for (int32_t c = 0; c < components; ++c)
     {
-        if (!IsWithinCap(base, Reach(source->min[c], source->max[c]), cap[c]))
+        mvfxResult capped = CheckCap(base, Reach(source->min[c], source->max[c]), cap[c]);
+        if (capped != mvfx_success)
         {
-            return false;
+            return capped;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 int32_t mvfxScalarCurves(const mvfxScalarSource* source)
@@ -195,16 +215,23 @@ void mvfxVectorParameterReach(const mvfxVectorSource* source, int32_t components
     }
 }
 
-bool mvfxIsParameterWithinReach(const float value[4], const double reach[4])
+mvfxResult mvfxCheckParameterReach(const float value[4], const double reach[4])
 {
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        if (!isfinite(value[c]))
+        {
+            return mvfx_errorInvalid;
+        }
+    }
     for (int32_t c = 0; c < 4; ++c)
     {
         if (!(fabs((double)value[c]) * reach[c] <= 1.0))
         {
-            return false;
+            return mvfx_errorLimit;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 void mvfxCompileScalar(const mvfxScalarSource* source, bool hasDuration, mvfxTableSpace* space,

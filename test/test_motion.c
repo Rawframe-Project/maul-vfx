@@ -394,8 +394,8 @@ static void TestRefusals(void)
               mvfx_errorInvalid,
           "not a unit quaternion");
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, s_identity, 0.0f,
-                                    false) == mvfx_errorInvalid,
-          "scale 0");
+                                    false) == mvfx_errorLimit,
+          "scale 0, below MVFX_MIN_SCALE");
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, NULL, s_identity, 1.0f, false) ==
               mvfx_errorInvalid,
           "no origin");
@@ -412,7 +412,10 @@ static void TestRefusals(void)
     def.effect = (mvfxEffectId){1, 1};
     def.scale = 2e6f;
     mvfxInstanceId none = {0};
-    CHECK(mvfxCreateInstance(scene.context, &def, &none) == mvfx_errorInvalid, "a def's scale");
+    uint64_t counted = mvfxGetContextMisuse(scene.context);
+    CHECK(mvfxCreateInstance(scene.context, &def, &none) == mvfx_errorLimit &&
+              mvfxGetContextMisuse(scene.context) == counted,
+          "a def's scale past MVFX_MAX_SCALE, no misuse");
     def.scale = 1.0f;
     def.rotation[3] = 0.9f;
     CHECK(mvfxCreateInstance(scene.context, &def, &none) == mvfx_errorInvalid, "a def's rotation");
@@ -424,6 +427,9 @@ static void TestRefusals(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     for (int32_t field = 0; field < 5; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxEmitterDef bad = mvfxDefaultEmitterDef();
         switch (field)
         {
@@ -448,7 +454,7 @@ static void TestRefusals(void)
         effectDef.emitters = &bad;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
     }
     mvfxDestroyContext(context);
 }

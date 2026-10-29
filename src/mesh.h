@@ -43,12 +43,15 @@ typedef struct mvfxMesh
 // A mesh as its public view gives it.
 mvfxMeshView mvfxViewOfMesh(const mvfxMesh* mesh);
 
-// Whether a mesh def is valid.
-bool mvfxIsMeshDefValid(const mvfxMeshDef* def);
+// Whether a mesh def is valid: mvfx_errorLimit for a count or a position
+// past its named bound, mvfx_errorInvalid for anything else wrong.
+mvfxResult mvfxCheckMeshDef(const mvfxMeshDef* def);
 
 // Whether positions (and normals, when given) for vertexCount vertices are
-// finite and in range.
-bool mvfxArePositionsValid(const float* positions, const float* normals, int32_t vertexCount);
+// finite and in range: mvfx_errorInvalid for a value not finite or a
+// normal's component past 2 in size, else mvfx_errorLimit for a position
+// past MVFX_MAX_EXTENT.
+mvfxResult mvfxCheckPositions(const float* positions, const float* normals, int32_t vertexCount);
 
 // Builds a mesh from a valid def in one block from allocator; NULL when
 // the allocator fails.

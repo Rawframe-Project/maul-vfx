@@ -326,7 +326,10 @@ static void TestChecks(void)
             p->width = NAN;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want =
+            rule == 0 || rule == 1 || rule == 3 || rule == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 8, "every check");
     emitter = Emitter(MVFX_MAX_NEIGHBOR_RADIUS);

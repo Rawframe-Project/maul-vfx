@@ -62,9 +62,11 @@ typedef struct mvfxCompiledOverLife
     mvfxStoredCaps caps;
 } mvfxCompiledOverLife;
 
-// Whether the values over life and the custom attributes' are valid.
-bool mvfxIsOverLifeValid(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
-                         int32_t customCount);
+// Whether the values over life and the custom attributes' are valid:
+// mvfx_errorLimit for a field past its named bound, mvfx_errorInvalid for
+// anything else wrong.
+mvfxResult mvfxCheckOverLife(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
+                             int32_t customCount);
 
 // The caps of what particles store, for valid values over life.
 void mvfxStoredCapsOf(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
