@@ -293,7 +293,8 @@ fn project(x: vec3<f32>, p: ptr<function, Projected>) -> bool {
     return true;
 }
 
-// A pixel's device depth; false where it holds none.
+// A pixel's device depth; false where it holds none. The host fills the
+// image, so a NaN is refused on its bits first, which a device cannot fold.
 fn depthAt(column: i32, row: i32, d: ptr<function, f32>) -> bool {
     if (column < 0 || row < 0 || column >= i32(params.depth.head.y) ||
         row >= i32(params.depth.head.z)) {
@@ -301,7 +302,7 @@ fn depthAt(column: i32, row: i32, d: ptr<function, f32>) -> bool {
     }
     *d = textureLoad(depthImage, vec2<i32>(column, row), 0);
     let far = select(1.0, 0.0, params.depth.modes.x != 0u);
-    return *d >= 0.0 && *d <= 1.0 && *d != far;
+    return !isNan(*d) && *d >= 0.0 && *d <= 1.0 && *d != far;
 }
 
 // The particles' place at device x, y and depth; false at infinity.
@@ -311,7 +312,7 @@ fn unproject(x: f32, y: f32, d: f32, out: ptr<function, vec3<f32>>) -> bool {
         return false;
     }
     *out = h.xyz / h.w;
-    return all(abs(*out) <= vec3<f32>(LARGEST));
+    return all(areFinite(*out));
 }
 
 // A pixel's surface place, at its center; false where it has none.
@@ -365,15 +366,14 @@ fn depthNormal(p: Projected) -> vec3<f32> {
     var dy = vec3<f32>(0.0);
     if (params.depth.modes.z != 0u) {
         let given = textureLoad(normalImage, vec2<i32>(p.column, p.row), 0).xyz;
-        let finite = abs(given) <= vec3<f32>(LARGEST);
-        n = rotate(params.depth.normalTurn, select(vec3<f32>(0.0), given, finite));
+        n = rotate(params.depth.normalTurn, select(vec3<f32>(0.0), given, areFinite(given)));
     } else if (pixelPoint(p.column, p.row, &center) && across(center, p.column, p.row, 1, 0, &dx) &&
                across(center, p.column, p.row, 0, 1, &dy)) {
         n = vec3<f32>(dx.y * dy.z - dx.z * dy.y, dx.z * dy.x - dx.x * dy.z,
                       dx.x * dy.y - dx.y * dy.x);
     }
     var length = sqrt(dot3(n, n));
-    if (!(length > 0.0 && length <= LARGEST)) {
+    if (!(length > 0.0 && isFinite(length))) {
         n = toward;
         length = sqrt(dot3(n, n));
     }

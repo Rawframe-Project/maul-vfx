@@ -256,7 +256,7 @@ fn flowTurned(p: Principal, h: f32, q: vec4<f32>, w: vec3<f32>, out: ptr<functio
     let o = turnVector(P, spin);
     let miss = spin - turnVector(vec4<f32>(-P.xyz, P.w), o);
     let angular = o + turnVector(P, miss);
-    if (!all(abs(angular) <= vec3<f32>(3.40282347e38))) {
+    if (!all(areFinite(angular))) {
         return false;
     }
     (*out).orientation = orientation;

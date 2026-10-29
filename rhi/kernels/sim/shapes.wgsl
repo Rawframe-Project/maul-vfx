@@ -106,11 +106,12 @@ fn ringRadius(radius: f32, thickness: f32, u: f32) -> f32 {
 }
 
 // v made unit as the CPU path's mvfxNormalize makes it, false (v as it
-// was) for a zero or unbounded v: scaled by its largest component first,
-// so a v whose square underflows binary32 still turns unit.
+// was) for a zero v or one with a NaN or infinite component: scaled by
+// its largest component first, so a v whose square underflows binary32
+// still turns unit.
 fn normalized(v: ptr<function, vec3<f32>>) -> bool {
     let largest = max(abs((*v).x), max(abs((*v).y), abs((*v).z)));
-    if (!(largest > 0.0) || largest > 3.4028234e38) {
+    if (!all(areFinite(*v)) || !(largest > 0.0)) {
         return false;
     }
     let u = *v / largest;

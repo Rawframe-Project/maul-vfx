@@ -1,6 +1,7 @@
 // Colliders' fields and gaps as the core resolves them (src/collide.c):
-// spliced where a kernel names it, after shared/forces.wgsl (rotate,
-// sampleGrid) and shared/collider_numbers.wgsl, beside a storage buffer of
+// spliced where a kernel names it, after shared/finite.wgsl,
+// shared/forces.wgsl (rotate, sampleGrid) and shared/collider_numbers.wgsl,
+// beside a storage buffer of
 // words named grids that grid colliders read.
 
 const LARGEST: f32 = 3.40282347e38;
@@ -11,6 +12,14 @@ fn dot3(a: vec3<f32>, b: vec3<f32>) -> f32 {
 
 fn conjugate(q: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(-q.xyz, q.w);
+}
+
+// Whether a field's value is within its box: below LARGEST, its value
+// outside, and not a NaN, which a grid's NaN value makes and the core's
+// compare with infinity reads as outside. The NaN is tested on the bits,
+// which a device cannot fold.
+fn inBox(f: f32) -> bool {
+    return f < LARGEST && !isNan(f);
 }
 
 // A grid collider's field at a place in its box's frame: at or above 0 on
@@ -57,18 +66,18 @@ fn gradientAt(c: Collider, local: vec3<f32>) -> vec3<f32> {
         b[k] -= h;
         let fa = gridField(c, a);
         let fb = gridField(c, b);
-        let aIn = fa < LARGEST;
-        let bIn = fb < LARGEST;
+        let aIn = inBox(fa);
+        let bIn = inBox(fb);
         // At the box's edge one side is outside: a one-sided difference.
         if (aIn && bIn) {
             g[k] = (fa - fb) / (2.0 * h);
         } else if (aIn || bIn) {
-            lost = lost || !(f0 < LARGEST);
+            lost = lost || !inBox(f0);
             g[k] = select((f0 - fb) / h, (fa - f0) / h, aIn);
         }
     }
     let square = dot3(g, g);
-    if (lost || !(square > 0.0 && square <= LARGEST)) {
+    if (lost || !(square > 0.0 && isFinite(square))) {
         return vec3<f32>(0.0, 1.0, 0.0);
     }
     return g * (1.0 / sqrt(square));
@@ -80,7 +89,7 @@ fn gradientAt(c: Collider, local: vec3<f32>) -> vec3<f32> {
 fn fieldDistance(c: Collider, world: vec3<f32>, n: ptr<function, vec3<f32>>) -> f32 {
     let local = rotate(conjugate(c.rotation), world - c.center.xyz);
     let f = gridField(c, local);
-    if (!(f < LARGEST)) {
+    if (!inBox(f)) {
         return LARGEST;
     }
     let g = gradientAt(c, local);

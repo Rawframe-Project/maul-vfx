@@ -7,8 +7,8 @@
 
 // include: shared/exact.wgsl
 // include: shared/drag.wgsl
-// include: shared/speed.wgsl
 // include: shared/finite.wgsl
+// include: shared/speed.wgsl
 // include: shared/sincos.wgsl
 
 const RECIPROCALS: u32 = 0u;
@@ -52,8 +52,10 @@ var<immediate> root: Root;
 // speeds (shared/speed.wgsl): eight words an element, in a velocity (w0
 // to w2) and a bound (w3), out the held velocity in w4 to w6. Classes
 // (shared/finite.wgsl): in a float (w0), out whether it is finite (w1)
-// and whether it is a NaN (w2), 1 or 0. Sines (shared/sincos.wgsl): in an
-// angle (w0), out its sine (w1) and cosine (w2).
+// and whether it is a NaN (w2), 1 or 0, and in w3 areFinite (bits 0 to
+// 2) and areNan (bits 3 to 5) of a vector of ones with the float in
+// component e % 3. Sines (shared/sincos.wgsl): in an angle (w0), out its
+// sine (w1) and cosine (w2).
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -104,6 +106,11 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                 let x = bitcast<f32>(words[w]);
                 words[w + 1u] = select(0u, 1u, isFinite(x));
                 words[w + 2u] = select(0u, 1u, isNan(x));
+                var v = vec3<f32>(1.0);
+                v[e % 3u] = x;
+                let finite = select(vec3<u32>(0u), vec3<u32>(1u, 2u, 4u), areFinite(v));
+                let nan = select(vec3<u32>(0u), vec3<u32>(8u, 16u, 32u), areNan(v));
+                words[w + 3u] = finite.x | finite.y | finite.z | nan.x | nan.y | nan.z;
             }
             case SINES: {
                 let sc = sinCos(bitcast<f32>(words[w]));
