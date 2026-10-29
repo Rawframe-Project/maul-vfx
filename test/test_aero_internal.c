@@ -83,9 +83,10 @@ static void TestCross(void)
 {
     // Edges below 2^63 crossed as written; one 1e20 long and one 0.5
     // across it crossed scaled by 2^-64 each, its length then 1e20 0.5
-    // 2^-128; 2^63 itself scaled; a product below binary32's least normal,
-    // and a scaled edge's component there, flushed to +0 as a device that
-    // flushes subnormals leaves them.
+    // 2^-128; 2^63 itself scaled; each row's first product, a second
+    // product, a difference, and either edge's scaled component below
+    // binary32's least normal, each flushed to +0 as a device that flushes
+    // subnormals leaves them.
     uint64_t state = 9;
     bool written = true;
     for (int32_t i = 0; i < 10000; ++i)
@@ -111,25 +112,45 @@ static void TestCross(void)
     bool at = mvfxCrossEdges(edge, across, n);
     static const float below[3] = {0x1.fffffep62f, 0.0f, 0.0f};
     bool under = !mvfxCrossEdges(below, across, n);
-    // Scaled, y is 2^-124 0.5 less 0.5 2^-126: the subnormal product
-    // flushed leaves 2^-125, where unflushed it would take 2^-127 off.
-    static const float steep[3] = {0x1p63f, 0.0f, 0x1p-60f};
-    static const float shallow[3] = {0x1p63f, 0.0f, 0x1p-62f};
-    mvfxCrossEdges(steep, shallow, n);
-    bool product = n[0] == 0.0f && n[1] == 0x1p-125f && n[2] == 0.0f;
-    // Scaled, y is 1.5 2^-126 less 2^-126, normal products whose
-    // difference 2^-127 is flushed.
-    static const float near[3] = {0x1p63f, 0.0f, 0x1.8p-61f};
-    static const float nearer[3] = {0x1p63f, 0.0f, 0x1p-61f};
-    mvfxCrossEdges(near, nearer, n);
-    bool difference = n[0] == 0.0f && n[1] == 0.0f && !signbit(n[1]) && n[2] == 0.0f;
-    // 2^-70 scaled is a subnormal component, flushed; unflushed, times
-    // 2^63 it would make x 2^-71.
-    static const float slight[3] = {0x1p63f, 0x1p-70f, 0.0f};
-    static const float up[3] = {0.0f, 0.0f, 0x1p127f};
-    mvfxCrossEdges(slight, up, n);
-    bool component = n[0] == 0.0f && !signbit(n[0]) && n[1] == -0x1p62f && n[2] == 0.0f;
-    CHECK(written && far && at && under && product && difference && component, "cross edges");
+    // Flushes, each case's y or first row deciding one, and each case
+    // turned to every row: a cross product of edges whose components move
+    // one place on is its own, moved one place on.
+    static const float flushes[5][3][3] = {
+        // Scaled, y is 2^-124 0.5 less 0.5 2^-126: the subnormal second
+        // product flushed leaves 2^-125, unflushed it would take 2^-127.
+        {{0x1p63f, 0.0f, 0x1p-60f}, {0x1p63f, 0.0f, 0x1p-62f}, {0.0f, 0x1p-125f, 0.0f}},
+        // Scaled, y is 1.5 2^-126 less 2^-126, normal products whose
+        // difference 2^-127 is flushed.
+        {{0x1p63f, 0.0f, 0x1.8p-61f}, {0x1p63f, 0.0f, 0x1p-61f}, {0.0f, 0.0f, 0.0f}},
+        // e1's 2^-70 scaled is subnormal, flushed; unflushed, times 2^63 it
+        // would make x 2^-71.
+        {{0x1p63f, 0x1p-70f, 0.0f}, {0.0f, 0.0f, 0x1p127f}, {0.0f, -0x1p62f, 0.0f}},
+        // e2's, likewise; unflushed x would be -2^-71.
+        {{0.0f, 0.0f, 0x1p127f}, {0x1p63f, 0x1p-70f, 0.0f}, {0.0f, 0x1p62f, 0.0f}},
+        // The first row's first product 0.5 2^-126 flushed, less 2^-124
+        // 0.5: -2^-125, unflushed -1.5 2^-126.
+        {{0.0f, 0x1p63f, 0x1p-60f}, {0.0f, 0x1p63f, 0x1p-62f}, {-0x1p-125f, 0.0f, 0.0f}}};
+    bool flushed = true;
+    for (int32_t c = 0; c < 5; ++c)
+    {
+        for (int32_t turn = 0; turn < 3; ++turn)
+        {
+            float a[3];
+            float b[3];
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                a[k] = flushes[c][0][(k + 3 - turn) % 3];
+                b[k] = flushes[c][1][(k + 3 - turn) % 3];
+            }
+            mvfxCrossEdges(a, b, n);
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                float want = flushes[c][2][(k + 3 - turn) % 3];
+                flushed = flushed && n[k] == want && signbit(n[k]) == signbit(want);
+            }
+        }
+    }
+    CHECK(written && far && at && under && flushed, "cross edges");
 }
 
 int main(void)

@@ -887,22 +887,26 @@ static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
 // within HELD_ERROR of it (the device's square root): vectors of normal or
 // zero components with a largest from binary32's least normal to past
 // 2^63, among them a long hanging sheet's scaled cross product (about
-// 2^-66, whose square is subnormal) and either side of 2^-40 and 2^63. A
-// device that flushes subnormals (D3D12 does) measured a vector below
-// about 2^-63 as 0 before such vectors were scaled up. A subnormal
+// 2^-66, whose square is subnormal), either side of 2^-38 and 2^63, and
+// two just above 2^-40 whose subnormal square tipped the sum's rounding
+// before the bound moved to 2^-38 (test_direction_internal holds their
+// bits). A device that flushes subnormals (D3D12 does) measured a vector
+// below about 2^-63 as 0 before such vectors were scaled up. A subnormal
 // component it flushes on reading, so none is drawn.
 static void TestLengths(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 8,
+        SPECIAL = 10,
         DRAWN = 65536
     };
     const float special[SPECIAL][3] = {{0.0f, 0.0f, 0x1.2p-66f},
                                        {0x1p-126f, 0.0f, 0.0f},
                                        {1e-20f, -1e-20f, 1e-20f},
-                                       {0x1p-40f, 0x1p-70f, 0.0f},
-                                       {0x1.fffffep-41f, 0x1p-70f, 0.0f},
+                                       {0x1p-38f, 0x1p-70f, 0.0f},
+                                       {0x1.fffffep-39f, 0x1p-70f, 0.0f},
+                                       {0x1.fffffep-53f, 0x1.6a09e8p-64f, 0x1.0016ap-40f},
+                                       {0x1.93ca06p-64f, 0x1p-52f, 0x1.00d88p-40f},
                                        {0x1p63f, 1.0f, -1.0f},
                                        {0.0f, 0.0f, 0.0f},
                                        {3.0f, 4.0f, 12.0f}};
@@ -938,10 +942,10 @@ static void TestLengths(Gpu* gpu, Checker* checker)
         error = core > 0.0 ? error / core : error;
         worst = error > worst ? error : worst;
         float most = fmaxf(fabsf(x), fmaxf(fabsf(y), fabsf(z)));
-        small += most < 0x1p-40f;
+        small += most < 0x1p-38f;
         subnormalSquares += most > 0.0f && most * most < FLT_MIN;
     }
-    printf("lengths: largest relative difference from the core's %g of %u, %d below 2^-40, %d "
+    printf("lengths: largest relative difference from the core's %g of %u, %d below 2^-38, %d "
            "with subnormal squares\n",
            worst, count, small, subnormalSquares);
     CHECK(ran && worst <= HELD_ERROR && subnormalSquares > (int32_t)count / 8 &&
@@ -1148,28 +1152,33 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
 // core's mvfxCrossEdges, bit for bit, and its length (shared/length.wgsl)
 // against mvfxLengthOf within 1e-6 of it: edges both below 2^63, one past
 // it and one a spacing long (a soft sheet hanging long enough stretches
-// its edges down so), both past it, at 2^63 and just below, a scaled
-// component, a product and a difference below binary32's least normal
-// (flushed on every device, as D3D12 does), and drawn ones from 2^-30 to
-// 2^100.
+// its edges down so), both past it, at 2^63 and just below, either edge's
+// scaled component, each row's first product, a second product and a
+// difference below binary32's least normal (flushed on every device, as
+// D3D12 does), and drawn ones from 2^-30 to 2^100.
 static void TestCrossEdges(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 10,
+        SPECIAL = 7,
+        FLUSHES = 5,
+        TURNED = 3 * FLUSHES,
         DRAWN = 8192
     };
-    const float special[SPECIAL][6] = {{0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},
-                                       {0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
+    const float special[SPECIAL][6] = {
+        {0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},   {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+        {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},         {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
+        {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
+        {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
+    // Flushes, each deciding one row (test_aero_internal says how): a
+    // second product, a difference, e1's and e2's scaled component and a
+    // first product; each turned to every row.
+    const float flushes[FLUSHES][6] = {{0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
                                        {0x1p63f, 0.0f, 0x1.8p-61f, 0x1p63f, 0.0f, 0x1p-61f},
                                        {0x1p63f, 0x1p-70f, 0.0f, 0.0f, 0.0f, 0x1p127f},
-                                       {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
-                                       {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
-                                       {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
-                                       {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},
-                                       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
-                                       {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
-    const uint32_t count = SPECIAL + DRAWN;
+                                       {0.0f, 0.0f, 0x1p127f, 0x1p63f, 0x1p-70f, 0.0f},
+                                       {0.0f, 0x1p63f, 0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f}};
+    const uint32_t count = SPECIAL + TURNED + DRAWN;
     uint64_t state = 23;
     for (uint32_t e = 0; e < count; ++e)
     {
@@ -1179,8 +1188,17 @@ static void TestCrossEdges(Gpu* gpu, Checker* checker)
             // Drawn into locals first, so every compiler draws the same.
             uint32_t size = Draw(&state);
             uint32_t power = Draw(&state);
-            float drawn = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 131u));
-            w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
+            float value = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 131u));
+            if (e < SPECIAL)
+            {
+                value = special[e][k];
+            }
+            else if (e < SPECIAL + TURNED)
+            {
+                int32_t turn = (int32_t)((e - SPECIAL) % 3u);
+                value = flushes[(e - SPECIAL) / 3u][3 * (k / 3) + (k % 3 + 3 - turn) % 3];
+            }
+            w[k] = Bits(value);
         }
         for (int32_t k = 6; k < 16; ++k)
         {
