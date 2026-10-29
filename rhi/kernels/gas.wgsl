@@ -17,7 +17,8 @@
 //    cell's children), gasProlong, and
 //    gasTail running the levels of at most TAIL_CELLS cells in one
 //    workgroup; gasCorrect closes the walls and takes the pressure's
-//    rise off each open face;
+//    rise off each open face; gasFaces and gasCorrect hold each face's
+//    velocity within MAX_SPEED;
 //  - at the step's end gasHolds marks the statistics record when any
 //    scalar holds anything.
 // The fields live in one buffer (faces then cells, two of each, then the
@@ -41,6 +42,20 @@ const CARRY_BACK: u32 = 1u;
 const CARRY_AHEAD: u32 = 2u;
 const CARRY_CORRECT: u32 = 3u;
 
+// The fastest a face's velocity goes, in the box's lengths a second
+// (MVFX_MAX_SPEED).
+const MAX_SPEED: f32 = 1e9;
+
+// The most divergence a cell's faces carry out of it, each within
+// MAX_SPEED, which holds a burn's expansion as the core's mvfxGasBurn.
+const MOST_EXPANSION: f32 = 6.0 * MAX_SPEED;
+
+// A face's velocity held within MAX_SPEED, as the core's
+// mvfxHoldGasVelocity: a NaN left.
+fn heldFace(v: f32) -> f32 {
+    return select(select(v, -MAX_SPEED, v < -MAX_SPEED), MAX_SPEED, v > MAX_SPEED);
+}
+
 // include: shared/gas_numbers.wgsl
 
 // include: shared/gas_lattice.wgsl
@@ -48,6 +63,8 @@ const CARRY_CORRECT: u32 = 3u;
 // include: shared/pcg4d_hash.wgsl
 
 // include: shared/finite.wgsl
+
+// include: shared/length.wgsl
 
 // include: shared/forces.wgsl
 
@@ -345,7 +362,7 @@ const FACES_SOURCES: u32 = 1u;
 const FACES_AFTER: u32 = 2u;
 
 // Each face: the sources' velocities (the last that holds it), then
-// buoyancy and the forces over the substep.
+// buoyancy and the forces over the substep, held (heldFace).
 @compute @workgroup_size(64, 1, 1)
 fn gasFaces(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
@@ -396,7 +413,7 @@ fn gasFaces(@builtin(global_invocation_id) id: vec3<u32>) {
     if (gas.forceHead.x > 0u) {
         v = pushed(k, localOf(k, at), step, v);
     }
-    fields[i] = v;
+    fields[i] = heldFace(v);
 }
 
 // A face's velocity across k at x after the forces over the substep, as
@@ -508,8 +525,7 @@ fn confineAt(at: vec3<u32>) -> vec3<f32> {
         peak = max(peak, max(below, above));
         gradient[a] = (above - below) / (f32(high[a] - low[a]) * gas.lattice.x);
     }
-    let size = sqrt(gradient[0] * gradient[0] + gradient[1] * gradient[1] +
-                    gradient[2] * gradient[2]);
+    let size = lengthOf(gradient);
     let w = curlAt(at);
     let least = 1e-4 * peak / gas.lattice.x;
     var scale = 0.0;
@@ -658,7 +674,7 @@ fn gasCarryCells(@builtin(global_invocation_id) id: vec3<u32>) {
 
 // The fuel burning over the substep in each cell of the current buffer
 // hot enough, adding its heat and smoke; the divergence it asks for into
-// the work when the burn expands.
+// the work when the burn expands, held within MOST_EXPANSION.
 @compute @workgroup_size(64, 1, 1)
 fn gasBurn(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
@@ -678,7 +694,8 @@ fn gasBurn(@builtin(global_invocation_id) id: vec3<u32>) {
     fields[temperature] += gas.burn.y * burned;
     fields[density] += gas.burn.z * burned;
     if (gas.modes.y != 0u) {
-        fields[gas.cells[0].w + point] = step.burn.y * burned;
+        let asked = step.burn.y * burned;
+        fields[gas.cells[0].w + point] = select(asked, MOST_EXPANSION, asked > MOST_EXPANSION);
     }
 }
 

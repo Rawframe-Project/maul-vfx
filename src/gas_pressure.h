@@ -22,13 +22,21 @@
 // Sets the faces on a gas's closed walls (and a 2D gas's Z faces) to 0.
 void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3]);
 
+// Holds each face's velocity within MVFX_MAX_SPEED in the box's lengths, as
+// the step holds a particle's: what buoyancy, confinement, expansion and
+// the projection make has no bound of its own. A substep holds them after
+// the forces, as the curl confinement squares is a velocity over the
+// cell, and in the projection. A NaN is left.
+void mvfxHoldGasVelocity(const mvfxCompiledGas* gas, float* const velocity[3]);
+
 // Builds each level's faces' open areas from the box's walls and its
 // cells' solids: the solve's weights.
 void mvfxGasAreas(const mvfxCompiledGas* gas, mvfxGasState* state);
 
 // Projects a gas's current velocity: its closed walls' faces set to 0,
 // then (with pressure cycles) its divergence removed by the solve, which
-// starts from the pressure the last solve left. expansion, when not NULL,
+// starts from the pressure the last solve left, then held
+// (mvfxHoldGasVelocity). expansion, when not NULL,
 // is the divergence each cell keeps (in a box closed on every side, less
 // its mean). The solve's passes are split over tasks, or run on this
 // thread for NULL; the results are the same bits either way.

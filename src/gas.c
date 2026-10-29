@@ -145,7 +145,8 @@ mvfxResult mvfxCheckGasDef(const mvfxGasDef* def)
     // The counts bound the arrays read below.
     const mvfxResult fields[] = {
         CheckSize(def->size),
-        mvfxPositiveUpTo(def->cellSize, MVFX_MAX_EXTENT),
+        mvfxFirst(mvfxPositiveUpTo(def->cellSize, MVFX_MAX_EXTENT),
+                  mvfxWithinBound(def->cellSize >= MVFX_MIN_GAS_CELL)),
         mvfxWithinBound(def->substeps <= MVFX_MAX_GAS_SUBSTEPS),
         mvfxWithinBound(def->sourceCount <= MVFX_MAX_GAS_SOURCES),
         mvfxWithinBound(def->pressureCycles <= MVFX_MAX_GAS_CYCLES),

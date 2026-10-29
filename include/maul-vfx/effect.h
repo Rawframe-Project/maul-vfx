@@ -48,7 +48,8 @@ extern "C"
 // is bounded. Its forces (up to 1e12 a second squared) and the instance's
 // velocity it inherits (its move over a step of a tick, 2^20 times the
 // move) build a speed up only to here; far past what a scene asks for, it
-// holds only such extremes.
+// holds only such extremes. A gas holds each face's velocity within it in
+// its box's lengths.
 #define MVFX_MAX_SPEED 1e9f
 
 // The shortest loop an emitter may have, and the shortest interval of a

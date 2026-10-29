@@ -389,6 +389,7 @@ static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxG
     mvfxGasBuoyancy(gas, l, drive->gravity, velocity, scalars);
     mvfxGasPush(l, drive->forces, drive->forceCount, (double)start / (double)MVFX_TICKS_PER_SECOND,
                 velocity);
+    mvfxHoldGasVelocity(gas, velocity);
     mvfxGasConfine(gas, l, velocity, state->work);
     float keep = mvfxExp(-gas->def.velocityDecay * l->h);
     int32_t axes = l->n[2] > 1 ? 3 : 2;

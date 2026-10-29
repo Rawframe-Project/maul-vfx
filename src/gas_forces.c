@@ -3,9 +3,16 @@
 
 #include "gas_forces.h"
 
+#include "direction.h"
 #include "elementary.h"
 
+#include "maul-vfx/effect.h"
+
 #include <math.h>
+
+// The most divergence a cell's faces carry out of it, each within
+// MVFX_MAX_SPEED: twice the bound along each of three axes.
+#define MOST_EXPANSION (6.0f * MVFX_MAX_SPEED)
 
 // A lattice's strides between cells along each axis.
 static void Strides(const mvfxGasLattice* l, int64_t out[3])
@@ -177,8 +184,7 @@ static void ConfineAt(const mvfxGasLattice* l, const float* work, float epsilon,
         peak = fmaxf(peak, fmaxf(below, above));
         gradient[a] = (above - below) / ((float)(high[a] - low[a]) * l->cell);
     }
-    float size =
-        sqrtf(gradient[0] * gradient[0] + gradient[1] * gradient[1] + gradient[2] * gradient[2]);
+    float size = mvfxLengthOf(gradient[0], gradient[1], gradient[2]);
     float w[3];
     CurlAt(l, work, ((int64_t)at[2] * l->n[1] + at[1]) * l->n[0] + at[0], w);
     float floor = 1e-4f * peak / l->cell;
@@ -319,7 +325,11 @@ void mvfxGasBurn(const mvfxCompiledGas* gas, const mvfxGasLattice* l, float* con
         scalars[0][i] += def->burnSmoke * burned;
         if (expansion != nullptr)
         {
-            expansion[i] = grow * burned;
+            // Held within the most faces within MVFX_MAX_SPEED carry out
+            // of a cell: fuel stored unburnt and lit at once in a short
+            // substep would ask for past what the solve's sums hold.
+            float asked = grow * burned;
+            expansion[i] = asked > MOST_EXPANSION ? MOST_EXPANSION : asked;
         }
     }
 }
