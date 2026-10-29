@@ -352,7 +352,7 @@ static void TestChecks(void)
     static const mvfxForce force = {
         .kind = mvfx_forceConstant, .vector = {0, 0, -1}, .strength = 1.0f};
     int32_t refused = 0;
-    for (int32_t rule = 0; rule < 20; ++rule)
+    for (int32_t rule = 0; rule < 21; ++rule)
     {
         mvfxEmitterDef emitter = Beam();
         mvfxBeamDef* b = &emitter.beam;
@@ -361,8 +361,15 @@ static void TestChecks(void)
         case 0:
             b->segments = 0;
             break;
+        case 20:
+            // A count whose successor overflows, refused before it is
+            // taken.
+            b->segments = INT32_MAX;
+            break;
         case 1:
+            // With room for them: past the most segments alone.
             b->segments = MVFX_MAX_BEAM_SEGMENTS + 1;
+            emitter.capacity = MVFX_MAX_BEAM_SEGMENTS + 2;
             break;
         case 2:
             b->segments = 8;
@@ -425,9 +432,13 @@ static void TestChecks(void)
         }
         mvfxEffectDef def = EffectOf(&emitter);
         mvfxEffectId effect = {0};
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past MVFX_MAX_BEAM_SEGMENTS or MVFX_MAX_EXTENT is past a named
+        // bound.
+        mvfxResult want =
+            rule == 1 || rule == 6 || rule == 20 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
-    CHECK(refused == 20, "every check");
+    CHECK(refused == 21, "every check");
     mvfxEmitterDef emitter = Beam();
     emitter.capacity = MVFX_MAX_BEAM_SEGMENTS + 1;
     emitter.beam.segments = MVFX_MAX_BEAM_SEGMENTS;

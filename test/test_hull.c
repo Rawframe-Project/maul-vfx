@@ -307,7 +307,7 @@ static void TestRefused(void)
               mvfxBuildHull(line, 4, &s_allocator, &hull) == mvfx_errorInvalid &&
               mvfxBuildHull(same, 4, &s_allocator, &hull) == mvfx_errorInvalid &&
               mvfxBuildHull(same, 3, &s_allocator, &hull) == mvfx_errorInvalid &&
-              mvfxBuildHull(ball, 200, &s_allocator, &hull) == mvfx_errorInvalid,
+              mvfxBuildHull(ball, 200, &s_allocator, &hull) == mvfx_errorLimit,
           "refused");
 }
 

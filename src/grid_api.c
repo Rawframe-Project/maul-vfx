@@ -33,10 +33,12 @@ mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def, mvfxGrid
     {
         return mvfx_errorBusy;
     }
-    if (!mvfxIsGridDefValid(def))
+    // A def past a bound is data a correct program may pass: no misuse.
+    mvfxResult valid = mvfxCheckGridDef(def);
+    if (valid != mvfx_success)
     {
-        mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        valid == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
+        return valid;
     }
     if (context->grids.firstFree == 0)
     {
@@ -155,11 +157,13 @@ mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid, const float
     {
         return mvfx_errorStale;
     }
-    if (values == nullptr || count != live->count ||
-        !mvfxAreGridValuesValid(live->format, values, count))
+    mvfxResult valid = values == nullptr || count != live->count
+                           ? mvfx_errorInvalid
+                           : mvfxCheckGridValues(live->format, values, count);
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     mvfxStoreGridValues(live, values);
     static const int32_t origin[3] = {0, 0, 0};
@@ -190,11 +194,13 @@ mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid, const int
         fits = first[k] >= 0 && size[k] >= 1 && size[k] <= live->size[k] - first[k];
         points *= fits ? size[k] : 1;
     }
-    if (!fits || values == nullptr || count != points * live->components ||
-        !mvfxAreGridValuesValid(live->format, values, count))
+    mvfxResult valid = !fits || values == nullptr || count != points * live->components
+                           ? mvfx_errorInvalid
+                           : mvfxCheckGridValues(live->format, values, count);
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     mvfxStoreGridBox(live, first, size, values);
     Changed(context, live, first, size);

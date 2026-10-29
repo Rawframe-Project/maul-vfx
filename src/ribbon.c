@@ -9,6 +9,7 @@
 #include "instance_api.h"
 #include "layout_api.h"
 #include "output.h"
+#include "refusal.h"
 #include "sort.h"
 #include "spawn.h"
 #include "tube.h"
@@ -744,16 +745,20 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
                               const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
                               int64_t* indexCountOut, bool plexus, const mvfxTubeDef* tube)
 {
-    bool tubed = tube == nullptr || tube->sides == 0 ||
-                 (tube->sides >= 3 && tube->sides <= MVFX_MAX_TUBE_SIDES);
+    mvfxResult tubed = tube == nullptr || tube->sides == 0
+                           ? mvfx_success
+                           : mvfxCountUpTo(tube->sides, 3, MVFX_MAX_TUBE_SIDES);
     if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
-        indexCountOut == nullptr || !tubed)
+        indexCountOut == nullptr || tubed != mvfx_success)
     {
         if (context != nullptr)
         {
             mvfxCountMisuse(context);
         }
-        return mvfx_errorInvalid;
+        return context == nullptr || view == nullptr || buffers == nullptr ||
+                       vertexCountOut == nullptr || indexCountOut == nullptr
+                   ? mvfx_errorInvalid
+                   : tubed;
     }
     *vertexCountOut = 0;
     *indexCountOut = 0;

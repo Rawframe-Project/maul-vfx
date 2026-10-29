@@ -343,7 +343,7 @@ static void TestHostAndSpaces(void)
             CHECK(mvfxInstance_SetColliders(scene.context, scene.instance, &bad, 1) ==
                           mvfx_errorInvalid &&
                       mvfxInstance_SetColliders(scene.context, scene.instance, &floor,
-                                                MVFX_MAX_COLLIDERS + 1) == mvfx_errorInvalid &&
+                                                MVFX_MAX_COLLIDERS + 1) == mvfx_errorLimit &&
                       mvfxInstance_SetColliders(scene.context, scene.instance, NULL, 1) ==
                           mvfx_errorInvalid,
                   "refused");
@@ -480,6 +480,9 @@ static void TestRefusals(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     for (int32_t field = 0; field < 15; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 10 || field == 14 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxCollider collider = {.kind = mvfx_colliderSphere, .radius = 1.0f};
         mvfxEmitterDef bad = Held(&collider, 1, 4);
         mvfxKillRule rule = {.kind = mvfx_killCollisions, .collisions = 1};
@@ -540,7 +543,7 @@ static void TestRefusals(void)
         effectDef.emitters = &bad;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
     }
     mvfxDestroyContext(context);
 }

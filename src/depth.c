@@ -4,6 +4,7 @@
 #include "depth.h"
 
 #include "direction.h"
+#include "refusal.h"
 
 #include <math.h>
 #include <string.h>
@@ -116,31 +117,38 @@ static bool IsPoseValid(const mvfxDepthImage* image)
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-bool mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out)
+mvfxResult mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out)
 {
     bool bare = planned && image->pixels == nullptr;
-    bool sized = (image->pixels != nullptr || bare) && image->format <= mvfx_depthUnorm24 &&
-                 image->width >= 1 && image->width <= MVFX_MAX_DEPTH_SIZE && image->height >= 1 &&
-                 image->height <= MVFX_MAX_DEPTH_SIZE &&
-                 (bare || RowsFit(image->width, image->height, image->stride,
-                                  PixelBytes(image->format), image->byteCount));
+    if ((image->pixels == nullptr && !bare) || image->format > mvfx_depthUnorm24 ||
+        image->width < 1 || image->height < 1)
+    {
+        return mvfx_errorInvalid;
+    }
+    // The sizes bound the rows measured below.
+    if (image->width > MVFX_MAX_DEPTH_SIZE || image->height > MVFX_MAX_DEPTH_SIZE)
+    {
+        return mvfx_errorLimit;
+    }
+    bool sized = bare || RowsFit(image->width, image->height, image->stride,
+                                 PixelBytes(image->format), image->byteCount);
     bool normals =
         image->normals == nullptr ||
         RowsFit(image->width, image->height, image->normalStride, 12, image->normalByteCount);
     if (!sized || !normals || !IsPoseValid(image))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     for (int32_t k = 0; k < 16; ++k)
     {
         if (!isfinite(image->projection[k]))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
         out->projection[k] = (double)image->projection[k];
     }
     out->image = *image;
-    return Invert(out->projection, out->inverse);
+    return mvfxRequire(Invert(out->projection, out->inverse));
 }
 
 // The column-major matrix m times (v, 1), in binary64.

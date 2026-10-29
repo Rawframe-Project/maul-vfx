@@ -350,7 +350,9 @@ static void TestChecks(void)
             u->selfContacts = MVFX_MAX_NEIGHBORS + 1;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 2 || rule == 7 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 8, "every check");
     emitter = Sheets(MVFX_MAX_EXTENT, &none);

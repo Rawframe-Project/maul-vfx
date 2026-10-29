@@ -313,7 +313,7 @@ static mvfxResult Expand(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, bool tube
     int32_t sides = tubes ? def->tube.sides : 0;
     if (sides != 0 && (sides < 3 || sides > MVFX_MAX_TUBE_SIDES))
     {
-        return mvfx_errorInvalid;
+        return sides < 3 ? mvfx_errorInvalid : mvfx_errorLimit;
     }
     // A ribbons def of the same buffers, its list the indices.
     mvfxGpuRibbonsDef ribbons = {.cookie = MVFX_GPU_RIBBONS_DEF_COOKIE,

@@ -22,10 +22,11 @@ typedef struct mvfxCurveTable
     float scale;
 } mvfxCurveTable;
 
-// Whether a curve is valid: keys present and at most MVFX_CURVE_MAX_KEYS,
-// every field finite, times that never decrease, interpolations and the
-// tangent rule known; with unitDomain, every time also in [0, 1].
-bool mvfxIsCurveValid(const mvfxCurve* curve, bool unitDomain);
+// Whether a curve is valid: keys present, every field finite, times that
+// never decrease, interpolations and the tangent rule known, and with
+// unitDomain every time in [0, 1] (else mvfx_errorInvalid); at most
+// MVFX_CURVE_MAX_KEYS keys (else mvfx_errorLimit).
+mvfxResult mvfxCheckCurve(const mvfxCurve* curve, bool unitDomain);
 
 // The curve's exact value at time, in binary64, from its keys.
 double mvfxCurveValueAt(const mvfxCurve* curve, double time);

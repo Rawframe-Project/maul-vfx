@@ -13,6 +13,7 @@
 #include "instance.h"
 #include "mesh.h"
 #include "plan_resolved.h"
+#include "refusal.h"
 #include "rigid_wake.h"
 #include "slots.h"
 #include "spawn.h"
@@ -57,9 +58,10 @@ static bool IsRotationValid(const float rotation[4])
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-static bool IsScaleValid(float scale)
+// A scale's status: finite, and from MVFX_MIN_SCALE to MVFX_MAX_SCALE.
+static mvfxResult CheckScale(float scale)
 {
-    return scale >= MVFX_MIN_SCALE && scale <= MVFX_MAX_SCALE;
+    return mvfxBounded(scale, MVFX_MIN_SCALE, MVFX_MAX_SCALE);
 }
 
 // A transform from valid values, its rotation normalized.
@@ -92,12 +94,17 @@ static uint32_t SeedFromOrdinal(uint64_t ordinal)
     return seed != 0 ? seed : 1;
 }
 
-// Whether an off-screen policy, and a throttle's interval, are valid.
-static bool IsOffscreenValid(mvfxOffscreen offscreen, int32_t interval)
+// Whether an off-screen policy, and a throttle's interval, are valid:
+// mvfx_errorLimit for an interval past MVFX_MAX_OFFSCREEN_INTERVAL.
+static mvfxResult CheckOffscreen(mvfxOffscreen offscreen, int32_t interval)
 {
-    return offscreen <= mvfx_offscreenPause &&
-           (offscreen != mvfx_offscreenThrottle ||
-            (interval >= 2 && interval <= MVFX_MAX_OFFSCREEN_INTERVAL));
+    if (offscreen > mvfx_offscreenPause)
+    {
+        return mvfx_errorInvalid;
+    }
+    return offscreen == mvfx_offscreenThrottle
+               ? mvfxCountUpTo(interval, 2, MVFX_MAX_OFFSCREEN_INTERVAL)
+               : mvfx_success;
 }
 
 // The first quality level from asked whose particles fit the context's
@@ -119,20 +126,26 @@ static MVFX_NOINLINE mvfxResult mvfxCreateInstanceWork(mvfxContext* context,
                                                        const mvfxInstanceDef* def,
                                                        mvfxInstanceId* instanceOut)
 {
-    if (context == nullptr || instanceOut == nullptr || def == nullptr ||
-        def->cookie != MVFX_INSTANCE_DEF_COOKIE || !IsOriginValid(def->origin) ||
-        !IsRotationValid(def->rotation) || !IsScaleValid(def->scale) || def->quality < 0 ||
-        !IsOffscreenValid(def->offscreen, def->offscreenInterval))
+    mvfxResult valid = mvfx_errorInvalid;
+    if (def != nullptr && def->cookie == MVFX_INSTANCE_DEF_COOKIE && IsOriginValid(def->origin) &&
+        IsRotationValid(def->rotation) && def->quality >= 0)
+    {
+        valid = mvfxFirst(CheckScale(def->scale),
+                          CheckOffscreen(def->offscreen, def->offscreenInterval));
+    }
+    valid = context == nullptr || instanceOut == nullptr ? mvfx_errorInvalid : valid;
+    if (valid != mvfx_success)
     {
         if (instanceOut != nullptr)
         {
             *instanceOut = (mvfxInstanceId){0};
         }
-        if (context != nullptr)
+        // A def past a bound is data a correct program may pass: no misuse.
+        if (context != nullptr && valid == mvfx_errorInvalid)
         {
             mvfxCountMisuse(context);
         }
-        return mvfx_errorInvalid;
+        return valid;
     }
     *instanceOut = (mvfxInstanceId){0};
     if (mvfxRefusesHostCall(context))
@@ -676,10 +689,12 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetTransformWork(mvfxContext* conte
     {
         return mvfx_errorStale;
     }
-    if (!IsOriginValid(origin) || !IsRotationValid(rotation) || !IsScaleValid(scale))
+    mvfxResult valid =
+        IsOriginValid(origin) && IsRotationValid(rotation) ? CheckScale(scale) : mvfx_errorInvalid;
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     live->to = MakeTransform(origin, rotation, scale);
     if (teleport)
@@ -741,10 +756,11 @@ mvfxResult mvfxInstance_SetOffscreen(mvfxContext* context, mvfxInstanceId instan
     {
         return mvfx_errorStale;
     }
-    if (!IsOffscreenValid(offscreen, interval))
+    mvfxResult valid = CheckOffscreen(offscreen, interval);
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     live->offscreen = offscreen;
     live->offscreenInterval = interval;
@@ -769,15 +785,17 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetCollidersWork(mvfxContext* conte
     {
         return mvfx_errorStale;
     }
-    bool valid = count >= 0 && count <= MVFX_MAX_COLLIDERS && (count == 0 || colliders != nullptr);
-    for (int32_t c = 0; valid && c < count; ++c)
+    mvfxResult valid = count > 0 && colliders == nullptr
+                           ? mvfx_errorInvalid
+                           : mvfxCountUpTo(count, 0, MVFX_MAX_COLLIDERS);
+    for (int32_t c = 0; valid == mvfx_success && c < count; ++c)
     {
-        valid = mvfxIsColliderValid(&colliders[c]);
+        valid = mvfxCheckCollider(&colliders[c]);
     }
-    if (!valid)
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     mvfxGrid* grids[MVFX_MAX_COLLIDERS] = {0};
     for (int32_t c = 0; c < count; ++c)
@@ -856,10 +874,11 @@ mvfxResult mvfxInstance_SetParameter(mvfxContext* context, mvfxInstanceId instan
             return mvfx_errorInvalid;
         }
     }
-    if (!mvfxIsParameterWithinReach(value, live->effect->parameterReach[parameter]))
+    mvfxResult reach = mvfxCheckParameterReach(value, live->effect->parameterReach[parameter]);
+    if (reach != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return reach;
     }
     for (int32_t c = 0; c < 4; ++c)
     {

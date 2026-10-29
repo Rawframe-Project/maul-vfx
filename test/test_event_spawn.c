@@ -402,6 +402,9 @@ static void TestRefusals(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     for (int32_t field = 0; field < 13; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 7 || field == 11 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxEmitterDef emitters[3] = {Source(0.5f, 0.5f), Consumer(0, 1, 2), Source(0.5f, 0.5f)};
         mvfxEventSpawn* spawn = &emitters[1].eventSpawn;
         switch (field)
@@ -457,7 +460,7 @@ static void TestRefusals(void)
         effectDef.emitters = emitters;
         effectDef.emitterCount = 3;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
     }
     // A chain is no cycle: 2 from 1's deaths, 1 from 0's.
     mvfxEmitterDef chain[3] = {Source(0.5f, 0.5f), Consumer(0, 1, 1), Consumer(1, 1, 1)};

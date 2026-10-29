@@ -64,7 +64,7 @@ static mvfxMesh* Build(const float* positions, int32_t vertices, const uint32_t*
     def.vertexCount = vertices;
     def.triangles = triangles;
     def.triangleCount = count;
-    CHECK(mvfxIsMeshDefValid(&def), "a valid mesh");
+    CHECK(mvfxCheckMeshDef(&def) == mvfx_success, "a valid mesh");
     mvfxAllocator allocator = {0};
     return mvfxBuildMesh(&def, &allocator);
 }

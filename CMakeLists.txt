@@ -73,6 +73,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/depth.c
     src/direction.c
     src/effect.c
+    src/effect_check.c
     src/effect_gas.c
     src/effect_parts.c
     src/effect_api.c

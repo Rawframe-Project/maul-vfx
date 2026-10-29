@@ -20,9 +20,11 @@ typedef struct mvfxCompiledLife
 } mvfxCompiledLife;
 
 // Whether a life curve is valid: its value finite and its curve valid
-// over [0, 1], its largest (mvfxLifeCurveLargest) at most
-// MVFX_MAX_LIFE_SCALE.
-bool mvfxIsLifeCurveValid(const mvfxLifeCurve* life);
+// over [0, 1] (else mvfx_errorInvalid, or the curve's mvfx_errorLimit);
+// its value at most MVFX_MAX_VALUE in size and its largest
+// (mvfxLifeCurveLargest) at most MVFX_MAX_LIFE_SCALE (else
+// mvfx_errorLimit).
+mvfxResult mvfxCheckLifeCurve(const mvfxLifeCurve* life);
 
 // The largest a life curve with a valid curve is in size at any age: its
 // value's size times its largest baked sample (NaN if one is).

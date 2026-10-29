@@ -8,6 +8,7 @@
 
 #include "direction.h"
 #include "life.h"
+#include "refusal.h"
 
 #include <math.h>
 
@@ -19,133 +20,181 @@ static bool IsWithin(float x, float low, float high)
 
 // Whether a steer point is valid: a weight, a point or parameter, a
 // space and a radius in range.
-static bool IsSteerPointValid(const mvfxSteerPoint* point, int32_t parameterCount)
+static mvfxResult CheckSteerPoint(const mvfxSteerPoint* point, int32_t parameterCount)
 {
-    return IsWithin(point->weight, 0.0f, MVFX_MAX_EXTENT) && point->space <= mvfx_spaceLocal &&
-           IsWithin(point->radius, 0.0f, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           (!point->fromParameter || (point->parameter >= 0 && point->parameter < parameterCount));
+    if (point->space > mvfx_spaceLocal ||
+        (point->fromParameter && (point->parameter < 0 || point->parameter >= parameterCount)))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(mvfxFirst(mvfxUpToBound(point->weight, 0.0f, MVFX_MAX_EXTENT),
+                               mvfxUpToBound(point->radius, 0.0f, MVFX_MAX_EXTENT)),
+                     mvfxBoundedVector(point->point, MVFX_MAX_EXTENT));
 }
 
 // Whether a steering path is valid: none (weight 0), or its points, space,
 // radius and lookahead in range.
-static bool IsSteerPathValid(const mvfxSteerPath* path)
+static mvfxResult CheckSteerPath(const mvfxSteerPath* path)
 {
-    if (!IsWithin(path->weight, 0.0f, MVFX_MAX_EXTENT))
+    mvfxResult weight = mvfxUpToBound(path->weight, 0.0f, MVFX_MAX_EXTENT);
+    if (weight != mvfx_success || path->weight == 0.0f)
     {
-        return false;
+        return weight;
     }
-    if (path->weight == 0.0f)
+    if (path->points == nullptr || path->pointCount < 2 || path->space > mvfx_spaceLocal ||
+        !IsWithin(path->lookahead, 0.0f, 10.0f))
     {
-        return true;
+        return mvfx_errorInvalid;
     }
-    if (path->points == nullptr || path->pointCount < 2 ||
-        path->pointCount > MVFX_MAX_PATH_POINTS || path->space > mvfx_spaceLocal ||
-        !IsWithin(path->radius, 0.0f, MVFX_MAX_EXTENT) || !IsWithin(path->lookahead, 0.0f, 10.0f))
+    // The count bounds the points read below.
+    mvfxResult fields = mvfxFirst(mvfxWithinBound(path->pointCount <= MVFX_MAX_PATH_POINTS),
+                                  mvfxUpToBound(path->radius, 0.0f, MVFX_MAX_EXTENT));
+    if (fields != mvfx_success)
     {
-        return false;
+        return fields;
     }
     for (int32_t i = 0; i < 3 * path->pointCount; ++i)
     {
-        if (!IsWithin(path->points[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT))
+        mvfxResult point = mvfxBounded(path->points[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
+        if (point != mvfx_success)
         {
-            return false;
+            return point;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // Whether a flocking rule is valid: no weight, or a weight with neighbors
 // and a radius within theirs.
-static bool IsFlockRuleValid(const mvfxEmitterDef* def, float weight, float radius)
+static mvfxResult CheckFlockRule(const mvfxEmitterDef* def, float weight, float radius)
 {
-    return IsWithin(weight, 0.0f, MVFX_MAX_EXTENT) &&
-           (weight == 0.0f ||
-            (def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius));
+    mvfxResult bounded = mvfxUpToBound(weight, 0.0f, MVFX_MAX_EXTENT);
+    if (bounded != mvfx_success || weight == 0.0f)
+    {
+        return bounded;
+    }
+    return mvfxRequire(def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius);
 }
 
 // Whether an emitter's pair force is valid: a radius within its
 // neighbors', a strength in range.
-static bool IsPairForceValid(const mvfxEmitterDef* def)
+static mvfxResult CheckPairForce(const mvfxEmitterDef* def)
 {
     const mvfxPairForceDef* pair = &def->pairForce;
-    return !pair->enabled ||
-           (def->neighbors.enabled && pair->radius > 0.0f &&
-            pair->radius <= def->neighbors.radius && mvfxIsLifeCurveValid(&pair->strength) &&
-            IsWithin(pair->strength.value, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+    if (!pair->enabled)
+    {
+        return mvfx_success;
+    }
+    if (!def->neighbors.enabled || !(pair->radius > 0.0f) ||
+        !(pair->radius <= def->neighbors.radius))
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult strength = mvfxCheckLifeCurve(&pair->strength);
+    return strength != mvfx_success
+               ? strength
+               : mvfxBounded(pair->strength.value, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
 }
 
 // Whether a direction is in range and of a length that normalizes; out
 // the direction normalized.
-static bool IsDirectionValid(const float v[3], float out[3])
+static mvfxResult CheckDirection(const float v[3], float out[3])
 {
     for (int32_t k = 0; k < 3; ++k)
     {
         out[k] = v[k];
     }
-    return IsWithin(v[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(v[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(v[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) && mvfxNormalize(out);
+    mvfxResult within = mvfxBoundedVector(v, MVFX_MAX_EXTENT);
+    return within != mvfx_success ? within : mvfxRequire(mvfxNormalize(out));
 }
 
 // Whether a unit's shape is valid: a chain's points, or a sheet's sides
 // and two directions at least 3 degrees apart (the cosine between them
 // at most cos 3 degrees either way).
-static bool IsUnitShapeValid(const mvfxUnitDef* unit)
+static mvfxResult CheckUnitShape(const mvfxUnitDef* unit)
 {
     float across[3];
-    if (!IsDirectionValid(unit->direction, across) || !(unit->spacing > 0.0f) ||
-        !(unit->spacing <= MVFX_MAX_EXTENT))
+    mvfxResult direction = CheckDirection(unit->direction, across);
+    if (direction != mvfx_success)
     {
-        return false;
+        return direction;
+    }
+    mvfxResult spacing = mvfxPositiveUpTo(unit->spacing, MVFX_MAX_EXTENT);
+    if (spacing != mvfx_success)
+    {
+        return spacing;
     }
     if (unit->kind == mvfx_unitChain)
     {
-        return unit->points >= 2 && unit->points <= MVFX_MAX_CHAIN_POINTS;
+        return mvfxCountUpTo(unit->points, 2, MVFX_MAX_CHAIN_POINTS);
+    }
+    if (unit->kind != mvfx_unitSheet)
+    {
+        return mvfx_errorInvalid;
     }
     float down[3];
-    bool sides = unit->points >= 2 && unit->points <= MVFX_MAX_SHEET_SIDE && unit->rows >= 2 &&
-                 unit->rows <= MVFX_MAX_SHEET_SIDE;
-    if (unit->kind != mvfx_unitSheet || !sides || !IsDirectionValid(unit->downDirection, down))
+    mvfxResult sides = mvfxFirst(mvfxCountUpTo(unit->points, 2, MVFX_MAX_SHEET_SIDE),
+                                 mvfxCountUpTo(unit->rows, 2, MVFX_MAX_SHEET_SIDE));
+    mvfxResult downward = CheckDirection(unit->downDirection, down);
+    if (sides != mvfx_success || downward != mvfx_success)
     {
-        return false;
+        return mvfxFirst(sides, downward);
     }
     float cosine = across[0] * down[0] + across[1] * down[1] + across[2] * down[2];
-    return fabsf(cosine) <= 0.99863f && IsWithin(unit->shearCompliance, 0.0f, MVFX_MAX_EXTENT) &&
-           IsWithin(unit->normalDrag, 0.0f, MVFX_MAX_EXTENT) &&
-           IsWithin(unit->tangentDrag, 0.0f, MVFX_MAX_EXTENT);
+    if (!(fabsf(cosine) <= 0.99863f))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(mvfxUpToBound(unit->shearCompliance, 0.0f, MVFX_MAX_EXTENT),
+                     mvfxFirst(mvfxUpToBound(unit->normalDrag, 0.0f, MVFX_MAX_EXTENT),
+                               mvfxUpToBound(unit->tangentDrag, 0.0f, MVFX_MAX_EXTENT)));
 }
 
 // Whether an emitter's units are valid: a particle, or a chain or sheet in
 // range whose capacities hold whole units, not on a beam nor (a sheet)
 // drawn as ribbons.
-static bool IsUnitValid(const mvfxEmitterDef* def)
+static mvfxResult CheckUnit(const mvfxEmitterDef* def)
 {
     const mvfxUnitDef* unit = &def->unit;
     if (unit->kind == mvfx_unitParticle)
     {
-        return true;
+        return mvfx_success;
     }
-    bool shape = IsUnitShapeValid(unit);
-    bool solve = unit->substeps >= 1 && unit->substeps <= MVFX_MAX_SUBSTEPS &&
-                 IsWithin(unit->stretchCompliance, 0.0f, MVFX_MAX_EXTENT) &&
-                 IsWithin(unit->bendCompliance, 0.0f, MVFX_MAX_EXTENT) &&
-                 IsWithin(unit->damping, 0.0f, MVFX_MAX_DRAG) &&
-                 IsWithin(unit->tearStrain, 0.0f, MVFX_MAX_EXTENT) &&
-                 IsWithin(unit->selfThickness, 0.0f, MVFX_MAX_EXTENT) &&
-                 (unit->selfThickness == 0.0f ||
-                  (IsWithin(unit->selfFriction, 0.0f, 1.0f) && unit->selfContacts >= 1 &&
-                   unit->selfContacts <= MVFX_MAX_NEIGHBORS));
     bool sheet = unit->kind == mvfx_unitSheet;
-    // Counted only within the shape's bounds, where the product fits.
-    int32_t points = !shape ? 1 : sheet ? unit->points * unit->rows : unit->points;
-    int32_t units = shape ? def->capacity / points : 0;
-    bool whole = shape && def->capacity % points == 0 && def->hostSpawnCapacity <= units &&
-                 (!def->eventSpawn.enabled || def->eventSpawn.capacity <= units);
-    bool drawn = !def->beam.enabled && !(sheet && def->ribbon.ids != mvfx_ribbonNone);
-    return shape && solve && whole && drawn;
+    if (def->beam.enabled || (sheet && def->ribbon.ids != mvfx_ribbonNone))
+    {
+        return mvfx_errorInvalid;
+    }
+    // The shape first: it bounds the product below.
+    mvfxResult shape = CheckUnitShape(unit);
+    if (shape != mvfx_success)
+    {
+        return shape;
+    }
+    if (unit->substeps < 1 ||
+        (unit->selfThickness != 0.0f &&
+         (!IsWithin(unit->selfFriction, 0.0f, 1.0f) || unit->selfContacts < 1)))
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult solve = mvfxFirst(
+        mvfxFirst(mvfxWithinBound(unit->substeps <= MVFX_MAX_SUBSTEPS),
+                  mvfxFirst(mvfxUpToBound(unit->stretchCompliance, 0.0f, MVFX_MAX_EXTENT),
+                            mvfxUpToBound(unit->bendCompliance, 0.0f, MVFX_MAX_EXTENT))),
+        mvfxFirst(mvfxFirst(mvfxUpToBound(unit->damping, 0.0f, MVFX_MAX_DRAG),
+                            mvfxUpToBound(unit->tearStrain, 0.0f, MVFX_MAX_EXTENT)),
+                  mvfxFirst(mvfxUpToBound(unit->selfThickness, 0.0f, MVFX_MAX_EXTENT),
+                            unit->selfThickness == 0.0f
+                                ? mvfx_success
+                                : mvfxWithinBound(unit->selfContacts <= MVFX_MAX_NEIGHBORS))));
+    if (solve != mvfx_success)
+    {
+        return solve;
+    }
+    int32_t points = sheet ? unit->points * unit->rows : unit->points;
+    int32_t units = def->capacity / points;
+    return mvfxRequire(def->capacity % points == 0 && def->hostSpawnCapacity <= units &&
+                       (!def->eventSpawn.enabled || def->eventSpawn.capacity <= units));
 }
 
 // The length of a + sign b.
@@ -201,28 +250,28 @@ static void CompileUnit(const mvfxUnitDef* unit, mvfxCompiledEmitter* out)
 // Whether emitter i's units' attachment is valid: none; or with a pinned
 // point, the instance for a world-space emitter, the host's frames with
 // room for some, or the particles of an event source in the same space.
-static bool IsAttachValid(const mvfxEffectDef* def, int32_t i)
+static mvfxResult CheckAttach(const mvfxEffectDef* def, int32_t i)
 {
     const mvfxEmitterDef* emitter = &def->emitters[i];
     const mvfxUnitDef* unit = &emitter->unit;
     if (unit->kind == mvfx_unitParticle || unit->attach == mvfx_attachNone)
     {
-        return true;
+        return mvfx_success;
     }
     bool pinned = unit->pinFirst || (unit->kind == mvfx_unitSheet && unit->pinFirstRow);
     switch (unit->attach)
     {
     case mvfx_attachInstance:
-        return pinned && emitter->space == mvfx_spaceWorld;
+        return mvfxRequire(pinned && emitter->space == mvfx_spaceWorld);
     case mvfx_attachHost:
-        return pinned && unit->attachFrameCapacity >= 1 &&
-               unit->attachFrameCapacity <= MVFX_MAX_ATTACH_FRAMES;
+        return pinned ? mvfxCountUpTo(unit->attachFrameCapacity, 1, MVFX_MAX_ATTACH_FRAMES)
+                      : mvfx_errorInvalid;
     case mvfx_attachParticles:
         // The source is in range: the event spawn's own check passed.
-        return pinned && emitter->eventSpawn.enabled &&
-               def->emitters[emitter->eventSpawn.source].space == emitter->space;
+        return mvfxRequire(pinned && emitter->eventSpawn.enabled &&
+                           def->emitters[emitter->eventSpawn.source].space == emitter->space);
     default:
-        return false;
+        return mvfx_errorInvalid;
     }
 }
 
@@ -263,114 +312,175 @@ static bool IsSizeTied(const mvfxEmitterDef* def)
 // Whether an emitter's rigid particles are valid: a shape, a density,
 // substeps, restitution and friction in range, its sizes tied to its
 // shape's axes; particles, not units nor a beam.
-static bool IsRigidValid(const mvfxEmitterDef* def)
+static mvfxResult CheckRigid(const mvfxEmitterDef* def)
 {
     const mvfxRigidDef* rigid = &def->rigid;
     if (!rigid->enabled)
     {
-        return true;
+        return mvfx_success;
     }
-    bool body = rigid->shape <= mvfx_rigidHull && rigid->density > 0.0f &&
-                rigid->density <= MVFX_MAX_EXTENT && rigid->substeps >= 1 &&
-                rigid->substeps <= MVFX_MAX_SUBSTEPS && IsWithin(rigid->restitution, 0.0f, 1.0f) &&
-                IsWithin(rigid->dynamicFriction, 0.0f, MVFX_MAX_DRAG) &&
-                IsWithin(rigid->staticFriction, rigid->dynamicFriction, MVFX_MAX_DRAG) &&
-                rigid->bodyContacts >= 0 && rigid->bodyContacts <= MVFX_MAX_BODY_CONTACTS &&
-                IsWithin(rigid->sleepSpeed, 0.0f, MVFX_MAX_EXTENT) &&
-                (rigid->sleepSpeed == 0.0f ||
-                 (rigid->sleepTime > 0.0f && rigid->sleepTime <= MVFX_MAX_SLEEP_TIME));
-    return body && IsSizeTied(def) && def->unit.kind == mvfx_unitParticle && !def->beam.enabled;
+    if (rigid->shape > mvfx_rigidHull || rigid->substeps < 1 ||
+        !IsWithin(rigid->restitution, 0.0f, 1.0f) || !(rigid->dynamicFriction >= 0.0f) ||
+        !(rigid->staticFriction >= rigid->dynamicFriction) || rigid->bodyContacts < 0 ||
+        (rigid->sleepSpeed != 0.0f && !(rigid->sleepTime > 0.0f)) || !IsSizeTied(def) ||
+        def->unit.kind != mvfx_unitParticle || def->beam.enabled)
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(
+        mvfxFirst(mvfxFirst(mvfxPositiveUpTo(rigid->density, MVFX_MAX_EXTENT),
+                            mvfxWithinBound(rigid->substeps <= MVFX_MAX_SUBSTEPS)),
+                  mvfxFirst(mvfxBounded(rigid->dynamicFriction, 0.0f, MVFX_MAX_DRAG),
+                            mvfxBounded(rigid->staticFriction, 0.0f, MVFX_MAX_DRAG))),
+        mvfxFirst(mvfxFirst(mvfxWithinBound(rigid->bodyContacts <= MVFX_MAX_BODY_CONTACTS),
+                            mvfxUpToBound(rigid->sleepSpeed, 0.0f, MVFX_MAX_EXTENT)),
+                  rigid->sleepSpeed == 0.0f
+                      ? mvfx_success
+                      : mvfxBounded(rigid->sleepTime, 0.0f, MVFX_MAX_SLEEP_TIME)));
 }
 
 // Whether an emitter's liquid is valid: each parameter in range, the
 // kernel radius within the neighbor radii; particles, not units, rigid
 // bodies nor a beam.
-static bool IsLiquidValid(const mvfxEmitterDef* def)
+static mvfxResult CheckLiquid(const mvfxEmitterDef* def)
 {
     const mvfxLiquidDef* liquid = &def->liquid;
     if (!liquid->enabled)
     {
-        return true;
+        return mvfx_success;
     }
-    bool kernel = IsWithin(liquid->kernelScale, MVFX_MIN_LIQUID_KERNEL, MVFX_MAX_LIQUID_KERNEL) &&
-                  IsWithin(liquid->spacing, MVFX_MIN_NEIGHBOR_RADIUS,
-                           MVFX_MAX_NEIGHBOR_RADIUS / liquid->kernelScale);
-    bool solve = liquid->substeps >= 1 && liquid->substeps <= MVFX_MAX_SUBSTEPS &&
-                 liquid->iterations >= 1 && liquid->iterations <= MVFX_MAX_LIQUID_ITERATIONS &&
-                 liquid->relaxation > 0.0f && liquid->relaxation <= 1.0f &&
-                 liquid->maxNeighbors >= 1 && liquid->maxNeighbors <= MVFX_MAX_NEIGHBORS;
-    bool terms = IsWithin(liquid->tensile, 0.0f, 1.0f) && liquid->tensileDistance > 0.0f &&
-                 liquid->tensileDistance < 1.0f && liquid->tensilePower >= 1 &&
-                 liquid->tensilePower <= MVFX_MAX_LIQUID_TENSILE_POWER &&
-                 IsWithin(liquid->viscosity, 0.0f, 1.0f) &&
-                 IsWithin(liquid->vorticity, 0.0f, MVFX_MAX_EXTENT);
-    return kernel && solve && terms && liquid->solver <= mvfx_liquidGrid &&
-           def->unit.kind == mvfx_unitParticle && !def->rigid.enabled && !def->beam.enabled;
+    if (liquid->substeps < 1 || liquid->iterations < 1 ||
+        !(liquid->relaxation > 0.0f && liquid->relaxation <= 1.0f) || liquid->maxNeighbors < 1 ||
+        !IsWithin(liquid->tensile, 0.0f, 1.0f) ||
+        !(liquid->tensileDistance > 0.0f && liquid->tensileDistance < 1.0f) ||
+        liquid->tensilePower < 1 || !IsWithin(liquid->viscosity, 0.0f, 1.0f) ||
+        liquid->solver > mvfx_liquidGrid || def->unit.kind != mvfx_unitParticle ||
+        def->rigid.enabled || def->beam.enabled)
+    {
+        return mvfx_errorInvalid;
+    }
+    // The kernel's scale first: it divides the spacing's bound.
+    mvfxResult kernel =
+        mvfxBounded(liquid->kernelScale, MVFX_MIN_LIQUID_KERNEL, MVFX_MAX_LIQUID_KERNEL);
+    if (kernel != mvfx_success)
+    {
+        return kernel;
+    }
+    return mvfxFirst(
+        mvfxFirst(mvfxBounded(liquid->spacing, MVFX_MIN_NEIGHBOR_RADIUS,
+                              MVFX_MAX_NEIGHBOR_RADIUS / liquid->kernelScale),
+                  mvfxFirst(mvfxWithinBound(liquid->substeps <= MVFX_MAX_SUBSTEPS),
+                            mvfxWithinBound(liquid->iterations <= MVFX_MAX_LIQUID_ITERATIONS))),
+        mvfxFirst(mvfxFirst(mvfxWithinBound(liquid->maxNeighbors <= MVFX_MAX_NEIGHBORS),
+                            mvfxWithinBound(liquid->tensilePower <= MVFX_MAX_LIQUID_TENSILE_POWER)),
+                  mvfxUpToBound(liquid->vorticity, 0.0f, MVFX_MAX_EXTENT)));
 }
 
 // Whether an emitter's plexus links are valid.
-static bool IsPlexusValid(const mvfxPlexusDef* plexus)
+static mvfxResult CheckPlexus(const mvfxPlexusDef* plexus)
 {
-    return !plexus->enabled ||
-           (IsWithin(plexus->distance, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS) &&
-            plexus->maxLinks >= 1 && plexus->maxLinks <= MVFX_MAX_PLEXUS_LINKS &&
-            plexus->maxPerParticle >= 1 && plexus->maxPerParticle <= MVFX_MAX_NEIGHBORS &&
-            IsWithin(plexus->width, 0.0f, MVFX_MAX_EXTENT));
+    if (!plexus->enabled)
+    {
+        return mvfx_success;
+    }
+    return mvfxFirst(
+        mvfxFirst(mvfxBounded(plexus->distance, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS),
+                  mvfxCountUpTo(plexus->maxLinks, 1, MVFX_MAX_PLEXUS_LINKS)),
+        mvfxFirst(mvfxCountUpTo(plexus->maxPerParticle, 1, MVFX_MAX_NEIGHBORS),
+                  mvfxUpToBound(plexus->width, 0.0f, MVFX_MAX_EXTENT)));
 }
 
 // Whether an emitter's particle contacts are valid.
-static bool AreContactsValid(const mvfxContactDef* contacts)
+static mvfxResult CheckContacts(const mvfxContactDef* contacts)
 {
-    return !contacts->enabled ||
-           (contacts->radiusScale > 0.0f && contacts->radiusScale <= MVFX_MAX_EXTENT &&
-            contacts->iterations >= 1 && contacts->iterations <= MVFX_MAX_CONTACT_ITERATIONS &&
-            contacts->maxContacts >= 1 && contacts->maxContacts <= MVFX_MAX_NEIGHBORS &&
-            IsWithin(contacts->restitution, 0.0f, 1.0f) &&
-            IsWithin(contacts->friction, 0.0f, 1.0f));
+    if (!contacts->enabled)
+    {
+        return mvfx_success;
+    }
+    if (!IsWithin(contacts->restitution, 0.0f, 1.0f) || !IsWithin(contacts->friction, 0.0f, 1.0f))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(mvfxPositiveUpTo(contacts->radiusScale, MVFX_MAX_EXTENT),
+                     mvfxFirst(mvfxCountUpTo(contacts->iterations, 1, MVFX_MAX_CONTACT_ITERATIONS),
+                               mvfxCountUpTo(contacts->maxContacts, 1, MVFX_MAX_NEIGHBORS)));
 }
 
 // Whether an emitter's steering is valid.
-static bool IsSteeringValid(const mvfxEmitterDef* def, int32_t parameterCount)
+static mvfxResult CheckSteering(const mvfxEmitterDef* def, int32_t parameterCount)
 {
     const mvfxSteeringDef* s = &def->steering;
     if (!s->enabled)
     {
-        return true;
+        return mvfx_success;
     }
-    return IsFlockRuleValid(def, s->separation, s->separationRadius) &&
-           IsFlockRuleValid(def, s->alignment, s->alignmentRadius) &&
-           IsFlockRuleValid(def, s->cohesion, s->cohesionRadius) &&
-           IsWithin(s->viewAngle, 0.0f, 3.14159274f) &&
-           IsWithin(s->cruiseSpeed, 0.0f, MVFX_MAX_EXTENT) &&
-           IsWithin(s->maxForce, 0.0f, MVFX_MAX_EXTENT) &&
-           IsSteerPointValid(&s->seek, parameterCount) &&
-           IsSteerPointValid(&s->flee, parameterCount) && IsSteerPathValid(&s->path);
+    if (!IsWithin(s->viewAngle, 0.0f, 3.14159274f))
+    {
+        return mvfx_errorInvalid;
+    }
+    const mvfxResult parts[] = {
+        CheckFlockRule(def, s->separation, s->separationRadius),
+        CheckFlockRule(def, s->alignment, s->alignmentRadius),
+        CheckFlockRule(def, s->cohesion, s->cohesionRadius),
+        mvfxUpToBound(s->cruiseSpeed, 0.0f, MVFX_MAX_EXTENT),
+        mvfxUpToBound(s->maxForce, 0.0f, MVFX_MAX_EXTENT),
+        CheckSteerPoint(&s->seek, parameterCount),
+        CheckSteerPoint(&s->flee, parameterCount),
+        CheckSteerPath(&s->path),
+    };
+    for (size_t k = 0; k < sizeof(parts) / sizeof(parts[0]); ++k)
+    {
+        if (parts[k] != mvfx_success)
+        {
+            return parts[k];
+        }
+    }
+    return mvfx_success;
 }
 
 // Whether an emitter's neighbor queries are valid against its effect: a
 // source of its own or in its space, a radius and a cap in range.
-static bool AreNeighborsValid(const mvfxEffectDef* def, int32_t i)
+static mvfxResult CheckNeighbors(const mvfxEffectDef* def, int32_t i)
 {
     const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
     if (!neighbors->enabled)
     {
-        return true;
+        return mvfx_success;
     }
     int32_t source = neighbors->source;
     bool sourceValid = source == -1 || (source >= 0 && source < def->emitterCount &&
                                         def->emitters[source].space == def->emitters[i].space);
-    return sourceValid &&
-           IsWithin(neighbors->radius, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS) &&
-           neighbors->maxNeighbors >= 1 && neighbors->maxNeighbors <= MVFX_MAX_NEIGHBORS;
+    if (!sourceValid)
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(
+        mvfxBounded(neighbors->radius, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS),
+        mvfxCountUpTo(neighbors->maxNeighbors, 1, MVFX_MAX_NEIGHBORS));
 }
 
-static bool AreEmitterPartsValid(const mvfxEffectDef* def, int32_t i)
+static mvfxResult CheckEmitterParts(const mvfxEffectDef* def, int32_t i)
 {
     const mvfxEmitterDef* emitter = &def->emitters[i];
-    return AreNeighborsValid(def, i) && IsSteeringValid(emitter, def->parameterCount) &&
-           AreContactsValid(&emitter->contacts) && IsPairForceValid(emitter) &&
-           IsPlexusValid(&emitter->plexus) && IsUnitValid(emitter) && IsAttachValid(def, i) &&
-           IsRigidValid(emitter) && IsLiquidValid(emitter);
+    const mvfxResult parts[] = {
+        CheckNeighbors(def, i),
+        CheckSteering(emitter, def->parameterCount),
+        CheckContacts(&emitter->contacts),
+        CheckPairForce(emitter),
+        CheckPlexus(&emitter->plexus),
+        CheckUnit(emitter),
+        CheckAttach(def, i),
+        CheckRigid(emitter),
+        CheckLiquid(emitter),
+    };
+    for (size_t k = 0; k < sizeof(parts) / sizeof(parts[0]); ++k)
+    {
+        if (parts[k] != mvfx_success)
+        {
+            return parts[k];
+        }
+    }
+    return mvfx_success;
 }
 
 // Copies an emitter's steering, its path's points into the compiled
@@ -422,16 +532,17 @@ static void ResolveNeighbors(const mvfxEffectDef* def, mvfxEffect* effect)
     }
 }
 
-bool mvfxAreEffectPartsValid(const mvfxEffectDef* def)
+mvfxResult mvfxCheckEffectParts(const mvfxEffectDef* def)
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
-        if (!AreEmitterPartsValid(def, i))
+        mvfxResult parts = CheckEmitterParts(def, i);
+        if (parts != mvfx_success)
         {
-            return false;
+            return parts;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 void mvfxCompileEffectParts(const mvfxEffectDef* def, mvfxEffect* effect)

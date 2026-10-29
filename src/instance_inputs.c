@@ -10,41 +10,46 @@
 #include "instance.h"
 #include "instance_api.h"
 #include "mesh_api.h"
+#include "refusal.h"
 #include "rigid_wake.h"
 #include "spawn.h"
 
 #include <math.h>
 
-// Whether count values of components each are finite and each component
-// at most its bound in size; true for NULL.
-static bool AreValuesWithin(const float* values, int64_t count, int32_t components,
-                            const float* bounds)
+// Whether count values of components each are finite (else
+// mvfx_errorInvalid) and each component at most its bound in size (else
+// mvfx_errorLimit); mvfx_success for NULL.
+static mvfxResult CheckValues(const float* values, int64_t count, int32_t components,
+                              const float* bounds)
 {
+    mvfxResult result = mvfx_success;
     for (int64_t i = 0; values != nullptr && i < count * components; ++i)
     {
-        if (!(fabsf(values[i]) <= bounds[i % components]))
+        if (!isfinite(values[i]))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
+        result = fabsf(values[i]) <= bounds[i % components] ? result : mvfx_errorLimit;
     }
-    return true;
+    return result;
 }
 
-// Whether a spawn request is valid for an emitter with room in its queue.
-static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequest* request)
+// Whether a spawn request is valid for an emitter with room in its queue:
+// mvfx_errorLimit for a value past what the emitter's particles store.
+static mvfxResult CheckSpawn(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequest* request)
 {
     if (request->count < 1 || request->positions == nullptr ||
         (request->colors != nullptr && !mvfxHasAttribute(&emitter->plan, mvfx_attributeColorR)) ||
         (request->sizes != nullptr && !mvfxHasAttribute(&emitter->plan, mvfx_attributeSizeX)))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     int64_t count = request->count;
     for (int64_t i = 0; i < 3 * count; ++i)
     {
         if (!(fabs(request->positions[i]) <= 0x1p52))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
     bool hosted = emitter->unitPoints > 1 && emitter->unit.attach == mvfx_attachHost;
@@ -53,7 +58,7 @@ static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequ
         int32_t frame = request->attachFrames[i];
         if (!hosted || frame < 0 || frame >= emitter->unit.attachFrameCapacity)
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
     // Sizes tied to a rigid shape's axes (mvfxRigidShape).
@@ -61,15 +66,22 @@ static bool IsSpawnValid(const mvfxCompiledEmitter* emitter, const mvfxSpawnRequ
     {
         if (!mvfxIsSizeTied(&emitter->rigid, &request->sizes[3 * i]))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
     // Colours and sizes within what the emitter's particles may store.
     static const float speeds[3] = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT, MVFX_MAX_EXTENT};
     const mvfxStoredCaps* caps = &emitter->overLife.caps;
-    return AreValuesWithin(request->velocities, count, 3, speeds) &&
-           AreValuesWithin(request->colors, count, 4, caps->color) &&
-           AreValuesWithin(request->sizes, count, 3, caps->size);
+    mvfxResult velocities = CheckValues(request->velocities, count, 3, speeds);
+    mvfxResult colors = CheckValues(request->colors, count, 4, caps->color);
+    mvfxResult sizes = CheckValues(request->sizes, count, 3, caps->size);
+    // An invalid value anywhere before one past a bound.
+    if (velocities == mvfx_errorInvalid || colors == mvfx_errorInvalid ||
+        sizes == mvfx_errorInvalid)
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(velocities, mvfxFirst(colors, sizes));
 }
 
 // Copies a request's i-th particle, flagging the values it gives.
@@ -127,11 +139,13 @@ mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int
     {
         return mvfx_errorStale;
     }
-    if (emitter < 0 || emitter >= live->effect->emitterCount ||
-        !IsSpawnValid(&live->effect->emitters[emitter], request))
+    mvfxResult valid = emitter < 0 || emitter >= live->effect->emitterCount
+                           ? mvfx_errorInvalid
+                           : CheckSpawn(&live->effect->emitters[emitter], request);
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     mvfxEmitterState* state = &live->emitters[emitter];
     if (request->count > live->effect->emitters[emitter].hostSpawnCapacity - state->hostCount)
@@ -239,10 +253,11 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetDepthImageWork(mvfxContext* cont
         return mvfx_success;
     }
     mvfxDepthView view;
-    if (!mvfxPrepareDepthView(image, live->planned, &view))
+    mvfxResult prepared = mvfxPrepareDepthView(image, live->planned, &view);
+    if (prepared != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return prepared;
     }
     live->depthSerial += 1u;
     live->depthView = view;

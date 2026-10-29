@@ -37,11 +37,15 @@ typedef struct mvfxGrid
     int32_t end[3];
 } mvfxGrid;
 
-// Whether a grid def is valid.
-bool mvfxIsGridDefValid(const mvfxGridDef* def);
+// Whether a grid def is valid: mvfx_errorLimit for a size, a count of
+// points or a value past its named bound, mvfx_errorInvalid for anything
+// else wrong.
+mvfxResult mvfxCheckGridDef(const mvfxGridDef* def);
 
-// Whether count values are valid for a format.
-bool mvfxAreGridValuesValid(mvfxGridFormat format, const float* values, int64_t count);
+// Whether count values are valid for a format: mvfx_errorInvalid for one
+// not finite or, in binary16, past its largest; else mvfx_errorLimit for
+// one past MVFX_MAX_VALUE.
+mvfxResult mvfxCheckGridValues(mvfxGridFormat format, const float* values, int64_t count);
 
 // Builds a grid from a valid def; NULL when the allocator fails.
 mvfxGrid* mvfxBuildGrid(const mvfxGridDef* def, const mvfxAllocator* allocator);

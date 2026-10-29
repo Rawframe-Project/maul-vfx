@@ -553,8 +553,9 @@ static void OrderCorners(const Build* b, const Gather* g, const double n[3], int
 }
 
 // Adds the face of the triangles of face first's plane: their points in
-// order about the plane's center; false past the most vertices.
-static bool AddFace(const Build* b, Gather* g, int32_t first, bool* taken)
+// order about the plane's center; mvfx_errorLimit past the most vertices,
+// mvfx_errorInvalid for fewer than three corners.
+static mvfxResult AddFace(const Build* b, Gather* g, int32_t first, bool* taken)
 {
     int32_t corners[MVFX_MAX_HULL_VERTICES];
     int32_t count = 0;
@@ -570,7 +571,7 @@ static bool AddFace(const Build* b, Gather* g, int32_t first, bool* taken)
             int32_t v = VertexOf(g, b->faces[f].v[k]);
             if (v < 0)
             {
-                return false;
+                return mvfx_errorLimit;
             }
             bool seen = false;
             for (int32_t j = 0; j < count; ++j)
@@ -583,7 +584,7 @@ static bool AddFace(const Build* b, Gather* g, int32_t first, bool* taken)
     }
     if (count < 3)
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     OrderCorners(b, g, b->faces[first].n, corners, count);
     g->faceStart[g->faceCount] = (uint16_t)g->loopCount;
@@ -594,7 +595,7 @@ static bool AddFace(const Build* b, Gather* g, int32_t first, bool* taken)
         g->loop[g->loopCount++] = (uint8_t)corners[j];
     }
     g->faceStart[g->faceCount] = (uint16_t)g->loopCount;
-    return true;
+    return mvfx_success;
 }
 
 // Eberly's subexpressions of one coordinate's integrals over a triangle.
@@ -692,9 +693,10 @@ static mvfxResult Finish(const Build* b, mvfxHull* out)
     bool taken[BUILD_FACES] = {false};
     for (int32_t f = 0; f < b->faceCount; ++f)
     {
-        if (b->faces[f].alive && !taken[f] && !AddFace(b, &g, f, taken))
+        mvfxResult added = b->faces[f].alive && !taken[f] ? AddFace(b, &g, f, taken) : mvfx_success;
+        if (added != mvfx_success)
         {
-            return mvfx_errorInvalid;
+            return added;
         }
     }
     double ref[3] = {0.0, 0.0, 0.0};
@@ -754,9 +756,9 @@ mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator
         b->points = points;
         b->count = count;
         b->owner = owner;
+        // Past a build's faces is past the most vertices too: the
+        // mvfx_errorLimit of MVFX_MAX_HULL_VERTICES.
         result = Triangles(b);
-        // Past a build's faces, past the most vertices too.
-        result = result == mvfx_errorLimit ? mvfx_errorInvalid : result;
         result = result == mvfx_success ? Finish(b, out) : result;
     }
     mvfxRelease(allocator, owner, (size_t)count * sizeof(int32_t), _Alignof(int32_t));

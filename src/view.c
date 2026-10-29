@@ -9,6 +9,7 @@
 #include "gas_api.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "refusal.h"
 #include "water_api.h"
 
 #include <math.h>
@@ -169,22 +170,26 @@ static void Keep(mvfxDrawItem* heap, int64_t* kept, int64_t capacity, const mvfx
     }
 }
 
-static bool IsViewValid(const double eye[3], const mvfxFrustum* frustum)
+static mvfxResult CheckView(const double eye[3], const mvfxFrustum* frustum)
 {
-    bool valid = fabs(eye[0]) <= 0x1p52 && fabs(eye[1]) <= 0x1p52 && fabs(eye[2]) <= 0x1p52;
+    if (!(fabs(eye[0]) <= 0x1p52 && fabs(eye[1]) <= 0x1p52 && fabs(eye[2]) <= 0x1p52))
+    {
+        return mvfx_errorInvalid;
+    }
     if (frustum == nullptr)
     {
-        return valid;
+        return mvfx_success;
     }
-    valid = valid && frustum->planeCount >= 0 && frustum->planeCount <= MVFX_MAX_FRUSTUM_PLANES;
-    for (int32_t p = 0; valid && p < frustum->planeCount; ++p)
+    // The count bounds the planes read below.
+    mvfxResult count = mvfxCountUpTo(frustum->planeCount, 0, MVFX_MAX_FRUSTUM_PLANES);
+    for (int32_t p = 0; count == mvfx_success && p < frustum->planeCount; ++p)
     {
         for (int32_t k = 0; k < 4; ++k)
         {
-            valid = valid && isfinite(frustum->planes[p][k]);
+            count = isfinite(frustum->planes[p][k]) ? count : mvfx_errorInvalid;
         }
     }
-    return valid;
+    return count;
 }
 
 // The draw item of an emitter for an eye: its bounds' center's distance.
@@ -209,14 +214,17 @@ static MVFX_NOINLINE mvfxResult mvfxContext_OrderEmittersWork(mvfxContext* conte
                                                               mvfxDrawItem* items, int64_t capacity,
                                                               int64_t* countOut)
 {
-    if (context == nullptr || eye == nullptr || countOut == nullptr || capacity < 0 ||
-        (capacity > 0 && items == nullptr) || !IsViewValid(eye, frustum))
+    mvfxResult valid = context == nullptr || eye == nullptr || countOut == nullptr ||
+                               capacity < 0 || (capacity > 0 && items == nullptr)
+                           ? mvfx_errorInvalid
+                           : CheckView(eye, frustum);
+    if (valid != mvfx_success)
     {
         if (context != nullptr)
         {
             mvfxCountMisuse(context);
         }
-        return mvfx_errorInvalid;
+        return valid;
     }
     if (mvfxRefusesHostCall(context))
     {

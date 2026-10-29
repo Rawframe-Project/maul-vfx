@@ -115,13 +115,15 @@ static inline int64_t mvfxWaterFaces(const int32_t n[2], int32_t axis)
 // A rate, or a difference of displacements, at most this is still.
 #define MVFX_WATER_STILL 1e-6f
 
-// Whether a water def is valid.
-bool mvfxIsWaterDefValid(const mvfxWaterDef* def);
+// Whether a water def is valid: mvfx_errorLimit for a value past one of
+// the library's named bounds, mvfx_errorInvalid for anything else wrong.
+mvfxResult mvfxCheckWaterDef(const mvfxWaterDef* def);
 
 // Whether an emitter's coupling is valid against its effect's surfaces:
-// off, or naming one, its values in range, a pour only on shallow water.
-bool mvfxIsWaterCouplingValid(const mvfxWaterCoupling* coupling, const mvfxWaterDef* waters,
-                              int32_t count);
+// off, or naming one, its values in range, a pour only on shallow water;
+// mvfx_errorLimit for a value past its named bound.
+mvfxResult mvfxCheckWaterCoupling(const mvfxWaterCoupling* coupling, const mvfxWaterDef* waters,
+                                  int32_t count);
 
 // An emitter's water surface for a step (mvfxEmitterDef.water): its
 // coupling, the surface and its state as the last water step left them,

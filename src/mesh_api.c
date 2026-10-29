@@ -37,10 +37,12 @@ static MVFX_NOINLINE mvfxResult mvfxCreateMeshWork(mvfxContext* context, const m
     {
         return mvfx_errorBusy;
     }
-    if (!mvfxIsMeshDefValid(def))
+    // A def past a bound is data a correct program may pass: no misuse.
+    mvfxResult valid = mvfxCheckMeshDef(def);
+    if (valid != mvfx_success)
     {
-        mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        valid == mvfx_errorInvalid ? mvfxCountMisuse(context) : (void)0;
+        return valid;
     }
     if (context->meshes.firstFree == 0)
     {
@@ -112,11 +114,13 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_SetPositionsWork(mvfxContext* context, 
     {
         return mvfx_errorStale;
     }
-    if (positions == nullptr || vertexCount != live->vertexCount ||
-        !mvfxArePositionsValid(positions, normals, vertexCount))
+    mvfxResult valid = positions == nullptr || vertexCount != live->vertexCount
+                           ? mvfx_errorInvalid
+                           : mvfxCheckPositions(positions, normals, vertexCount);
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     mvfxMoveMesh(live, positions, normals);
     live->serial = ++context->meshValues;
@@ -185,7 +189,7 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullCenterWork(mvfxContext* context, mv
     // Vertices that span no volume, or whose hull is past what a rigid
     // particle takes, are a model's data: no hull, not an error.
     *hullOut = built == mvfx_success;
-    return built == mvfx_errorInvalid ? mvfx_success : built;
+    return built == mvfx_errorInvalid || built == mvfx_errorLimit ? mvfx_success : built;
 }
 
 mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hullOut,

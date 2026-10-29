@@ -271,7 +271,9 @@ static void TestChecks(void)
             levels[0].omitted = 1u << 4u;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 0 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 9, "every level check");
     levels[0] = (mvfxQualityLevel){.capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 15u};

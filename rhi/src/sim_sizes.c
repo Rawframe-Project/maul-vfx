@@ -31,10 +31,14 @@ mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context, const mvfxCollid
     {
         *bytesOut = 0;
     }
-    if (context == nullptr || bytesOut == nullptr || count < 0 || count > MVFX_MAX_COLLIDERS ||
+    if (context == nullptr || bytesOut == nullptr || count < 0 ||
         (colliders == nullptr && count > 0))
     {
         return mvfx_errorInvalid;
+    }
+    if (count > MVFX_MAX_COLLIDERS)
+    {
+        return mvfx_errorLimit;
     }
     return mvfxHostGridBytes(context, colliders, count, bytesOut) ? mvfx_success : mvfx_errorStale;
 }

@@ -7,6 +7,7 @@
 
 #include "direction.h"
 #include "elementary.h"
+#include "refusal.h"
 
 #include <math.h>
 
@@ -19,25 +20,30 @@ static bool IsWithin(float x, float low, float high)
     return x >= low && x <= high;
 }
 
-bool mvfxIsVelocityValid(const mvfxVelocity* velocity)
+mvfxResult mvfxCheckVelocity(const mvfxVelocity* velocity)
 {
     if (velocity->mode > mvfx_directionFixed || !IsWithin(velocity->coneAngle, 0.0f, PI) ||
         !IsWithin(velocity->randomize, 0.0f, 1.0f) || !(velocity->speed.min >= 0.0f) ||
-        !(velocity->speed.min <= velocity->speed.max) || !(velocity->speed.max <= MVFX_MAX_EXTENT))
+        !(velocity->speed.min <= velocity->speed.max))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     bool needsDirection =
         velocity->mode == mvfx_directionCone || velocity->mode == mvfx_directionFixed;
     float direction[3] = {velocity->direction[0], velocity->direction[1], velocity->direction[2]};
     for (int32_t i = 0; i < 3; ++i)
     {
-        if (!IsWithin(direction[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT))
+        mvfxResult within = mvfxBounded(direction[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
+        if (within != mvfx_success)
         {
-            return false;
+            return within;
         }
     }
-    return !needsDirection || mvfxNormalize(direction);
+    if (needsDirection && !mvfxNormalize(direction))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxBounded(velocity->speed.max, 0.0f, MVFX_MAX_EXTENT);
 }
 
 void mvfxCompileVelocity(const mvfxVelocity* velocity, mvfxCompiledVelocity* out)

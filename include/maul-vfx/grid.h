@@ -78,10 +78,14 @@ extern "C"
     /// @param def      The def, from mvfxDefaultGridDef.
     /// @param gridOut  Receives the grid's id; the null id on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
-    ///         def without its cookie, a size or count out of range or a
-    ///         value out of range, which counts as misuse when the context
-    ///         is given; `mvfx_errorCapacity` when the context holds as
-    ///         many grids as its def allows, or when the allocator fails.
+    ///         def without its cookie, a size or count below its least or a
+    ///         value not finite (or past binary16's largest in a half grid),
+    ///         which counts as misuse when the context is given;
+    ///         `mvfx_errorLimit` for a size past MVFX_MAX_GRID_SIZE, more
+    ///         points than MVFX_MAX_GRID_POINTS or a value past
+    ///         MVFX_MAX_VALUE, which counts none; `mvfx_errorCapacity` when
+    ///         the context holds as many grids as its def allows, or when
+    ///         the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateGrid(mvfxContext* context, const mvfxGridDef* def,
@@ -144,8 +148,10 @@ extern "C"
     /// @param count    How many: the grid's points times its components.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         grid; `mvfx_errorInvalid` for a NULL context or values, a count
-    ///         not the grid's or a value out of range, which counts as misuse
-    ///         when the context is given (the grid is then unchanged).
+    ///         not the grid's or a value not finite (or past binary16's
+    ///         largest in a half grid); `mvfx_errorLimit` for a value past
+    ///         MVFX_MAX_VALUE. Either counts as misuse when the context is
+    ///         given (the grid is then unchanged).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_SetValues(mvfxContext* context, mvfxGridId grid,
@@ -168,8 +174,10 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         grid; `mvfx_errorInvalid` for a NULL context, first, size or
     ///         values, a box not within the grid, a count not the box's or a
-    ///         value out of range, which counts as misuse when the context is
-    ///         given (the grid is then unchanged).
+    ///         value not finite (or past binary16's largest in a half grid);
+    ///         `mvfx_errorLimit` for a value past MVFX_MAX_VALUE. Either
+    ///         counts as misuse when the context is given (the grid is then
+    ///         unchanged).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxGrid_SetValuesIn(mvfxContext* context, mvfxGridId grid,

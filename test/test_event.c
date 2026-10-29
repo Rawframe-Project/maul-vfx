@@ -298,6 +298,9 @@ static void TestRefusals(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     for (int32_t field = 0; field < 4; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxEmitterDef def = Telling(10.0f);
         switch (field)
         {
@@ -318,7 +321,7 @@ static void TestRefusals(void)
         effectDef.emitters = &def;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
     }
     // No events asked: the capacity is not read.
     mvfxEmitterDef quiet = Telling(10.0f);

@@ -397,7 +397,7 @@ static MVFX_NOINLINE mvfxResult mvfxContext_StepTicksWork(mvfxContext* context, 
     if (ticks < 0 || ticks > MAX_STEP_TICKS)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return ticks < 0 ? mvfx_errorInvalid : mvfx_errorLimit;
     }
     mvfxStepInstances(context, ticks);
     return mvfx_success;
@@ -424,7 +424,8 @@ static MVFX_NOINLINE mvfxResult mvfxContext_StepWork(mvfxContext* context, doubl
     if (!(seconds >= 0.0 && seconds <= MVFX_MAX_STEP_SECONDS))
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return seconds > MVFX_MAX_STEP_SECONDS && isfinite(seconds) ? mvfx_errorLimit
+                                                                    : mvfx_errorInvalid;
     }
     // Rounded once to the nearest tick, ties up.
     int64_t ticks = mvfxSecondsToTicks(seconds);
@@ -467,14 +468,15 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_PrewarmWork(mvfxContext* context,
         // Its particles are simulated elsewhere, step by step.
         return mvfx_errorUnsupported;
     }
-    bool valid = seconds >= 0.0 && seconds <= 1e9 && stepSeconds > 0.0 &&
-                 stepSeconds <= MVFX_MAX_STEP_SECONDS && maxSteps >= 1;
-    int64_t left = valid ? mvfxSecondsToTicks(seconds) : 0;
-    int64_t step = valid ? mvfxSecondsToTicks(stepSeconds) : 0;
-    if (!valid || step < 1)
+    bool valid = seconds >= 0.0 && seconds <= 1e9 && stepSeconds > 0.0 && isfinite(stepSeconds) &&
+                 maxSteps >= 1;
+    bool within = stepSeconds <= MVFX_MAX_STEP_SECONDS;
+    int64_t left = valid && within ? mvfxSecondsToTicks(seconds) : 0;
+    int64_t step = valid && within ? mvfxSecondsToTicks(stepSeconds) : 0;
+    if (!valid || !within || step < 1)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid && !within ? mvfx_errorLimit : mvfx_errorInvalid;
     }
     mvfxEnterHost(context);
     for (int32_t i = 0; i < maxSteps && left > 0; ++i)
