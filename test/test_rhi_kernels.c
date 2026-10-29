@@ -998,12 +998,13 @@ static void TestSines(Gpu* gpu, Checker* checker)
 // binary32's least normal (a device may flush it): products far past
 // binary32's largest, a coefficient's and an area's product past it
 // though the whole is small, scaled areas small and past binary32's
-// largest, zeros and NaN speeds, and drawn factors over their ranges.
+// largest, zero coefficients, areas (scaled or not) and speeds, NaN
+// speeds, and drawn factors over their ranges.
 static void TestAirShares(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 8,
+        SPECIAL = 10,
         DRAWN = 8192
     };
     // k, half the area, scaled, speed, substep.
@@ -1011,7 +1012,8 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
         {1e6f, 2.5e23f, 0.0f, 1e9f, 1.0f / 120.0f}, {1e6f, 1e33f, 0.0f, 1e-35f, 0x1p-25f},
         {1.0f, 0.5f, 1.0f, 5.0f, 1.0f / 60.0f},     {1e-6f, 1e-10f, 1.0f, 1e-30f, 0x1p-25f},
         {0.0f, 1.0f, 0.0f, 5.0f, 1.0f / 60.0f},     {1.0f, 1.0f, 0.0f, 0.0f, 1.0f / 60.0f},
-        {1.0f, 1.0f, 0.0f, NAN, 1.0f / 60.0f},      {1.0f, 0.125f, 0.0f, 5.0f, 1.0f / 480.0f}};
+        {1.0f, 1.0f, 0.0f, NAN, 1.0f / 60.0f},      {1.0f, 0.125f, 0.0f, 5.0f, 1.0f / 480.0f},
+        {1.0f, 0.0f, 1.0f, 1.0f, 1.0f / 60.0f},     {1e6f, 0.0f, 0.0f, 1e9f, 1.0f}};
     const uint32_t count = SPECIAL + DRAWN;
     uint64_t state = 17;
     for (uint32_t e = 0; e < count; ++e)

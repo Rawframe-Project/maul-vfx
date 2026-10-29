@@ -22,11 +22,11 @@ fn crossEdges(e1: vec3<f32>, e2: vec3<f32>) -> vec4<f32> {
 // The share of a relative speed a triangle takes over a substep of h
 // seconds at a coefficient k, as the core's mvfxAirShare: k A speed h over
 // its three points, at most a sixth, A half (times 2^128 when scaled);
-// none for a zero coefficient or speed. Its factors' exponents decide a
+// none for a zero coefficient, area or speed. Its factors' exponents decide a
 // share past a sixth before the product is formed: WGSL lets a device
 // assume no infinity occurs.
 fn airShare(k: f32, half: f32, scaled: bool, speed: f32, h: f32) -> f32 {
-    if (!(k > 0.0) || !(speed > 0.0)) {
+    if (!(k > 0.0) || !(half > 0.0) || !(speed > 0.0)) {
         return 0.0;
     }
     let fk = frexp(k);

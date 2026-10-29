@@ -73,7 +73,9 @@ bool mvfxCrossEdges(const float e1[3], const float e2[3], float n[3])
 
 float mvfxAirShare(float k, float half, bool scaled, float speed, float h)
 {
-    if (!(k > 0.0f) || !(speed > 0.0f))
+    // A zero area takes none: frexp gives it the exponent 0, which would
+    // count as a factor of 1/2 (2^128 scaled).
+    if (!(k > 0.0f) || !(half > 0.0f) || !(speed > 0.0f))
     {
         return 0.0f;
     }
