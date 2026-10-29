@@ -16,22 +16,36 @@ void mvfxRandomDirection(uint32_t a, uint32_t b, float out[3]);
 // v normalized; false (and v left) when its length is 0 or not finite.
 bool mvfxNormalize(float v[3]);
 
-// v's length, as sqrtf of its squares' sum in x, y, z order; a vector
+// v's length, as sqrtf of its squares' sum in x, y, z order. A vector
 // whose largest component reaches 2^63, where that sum may pass binary32's
-// largest, is measured scaled by 2^-64 and the length scaled back, so the
-// length is finite wherever it fits and every shorter vector keeps its
-// bits.
+// largest, is measured scaled by 2^-64, and one whose largest component is
+// below 2^-38 scaled by 2^100, the length scaled back. From 2^-38 on, the
+// largest square is at least 2^-76: a partial sum of 2^-101 or more
+// absorbs a square below binary32's least normal, and a smaller one stays,
+// with it, under half a unit of the largest square's last place. So a
+// subnormal square never changes the sum, and a device that flushes
+// subnormals measures every vector of normal or zero components as this
+// does (rhi/kernels/shared/length.wgsl). Scaled, a component is below
+// 2^62 and the sum below 2^126. Scaling by a power of two keeps the bits
+// of every vector whose squares stay normal.
 static inline float mvfxLengthOf(float x, float y, float z)
 {
     float most = fmaxf(fabsf(x), fmaxf(fabsf(y), fabsf(z)));
-    if (!(most >= 0x1p63f))
+    if (most >= 0x1p63f)
     {
-        return sqrtf(x * x + y * y + z * z);
+        x *= 0x1p-64f;
+        y *= 0x1p-64f;
+        z *= 0x1p-64f;
+        return sqrtf(x * x + y * y + z * z) * 0x1p64f;
     }
-    x *= 0x1p-64f;
-    y *= 0x1p-64f;
-    z *= 0x1p-64f;
-    return sqrtf(x * x + y * y + z * z) * 0x1p64f;
+    if (most < 0x1p-38f)
+    {
+        x *= 0x1p100f;
+        y *= 0x1p100f;
+        z *= 0x1p100f;
+        return sqrtf(x * x + y * y + z * z) * 0x1p-100f;
+    }
+    return sqrtf(x * x + y * y + z * z);
 }
 
 // Turns v by a unit quaternion (x, y, z, w); inline, as forces, collision
