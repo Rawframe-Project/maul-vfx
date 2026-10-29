@@ -833,7 +833,7 @@ fn patchOf(list: ptr<function, Contacts>, first: u32, h: f32, b: Solid,
         (*area).n += lambda * c.normal;
     }
     let square = dot3((*area).n, (*area).n);
-    if (!((*area).load > 0.0) || !(square > 0.0 && square <= LARGEST)) {
+    if (!((*area).load > 0.0) || !(square > 0.0 && isFinite(square))) {
         return false;
     }
     (*area).n /= sqrt(square);

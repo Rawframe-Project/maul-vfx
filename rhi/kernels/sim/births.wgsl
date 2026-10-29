@@ -351,7 +351,7 @@ fn moveByModules(start: vec3<f32>, place: vec3<f32>, age: f32, h: f32) -> vec3<f
     let radial = lifeAt(LIFE_RADIAL_SPEED, age) * sigma * h;
     let out = start - params.modules[3].xyz;
     let square = dot3(out, out);
-    let away = square > 0.0 && square < LARGEST;
+    let away = square > 0.0 && isFinite(square);
     let unit = out * inverseSqrt(square);
     var p = start + scale * (place - start) + added * params.modules[0].xyz;
     if (away) {
