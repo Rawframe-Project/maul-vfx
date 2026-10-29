@@ -96,19 +96,11 @@ float mvfxAirShare(float k, float half, bool scaled, float speed, float h)
     {
         return 1.0f / 6.0f;
     }
-    float share = 0.0f;
-    if (ea <= 127 && ek + ea <= 127 && ek + ea + es <= 127)
-    {
-        // Every partial product below 2^127: the product as it is written.
-        float area = scaled ? half * 0x1p64f * 0x1p64f : half;
-        share = k * area * speed * h / 3.0f;
-    }
-    else
-    {
-        // A partial product past binary32's largest though the whole is
-        // below 4 (a speed or a step that small): from the significands.
-        share = (float)ldexp((double)(mk * ma * ms * mh), e) / 3.0f;
-    }
+    // The significands' product, scaled by 2^E: the bits of the product as
+    // written wherever its partial products stay normal, and the true
+    // share where one would pass binary32's largest or fall below its least
+    // normal. The GPU part forms the same product in integers.
+    float share = (float)ldexp((double)(mk * ma * ms * mh), e) / 3.0f;
     return share < 1.0f / 6.0f ? share : 1.0f / 6.0f;
 }
 
