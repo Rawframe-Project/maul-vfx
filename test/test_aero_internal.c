@@ -5,7 +5,7 @@
 // own: a product past binary32's largest held at a sixth from its
 // factors' exponents; a coefficient's and an area's product past it, and
 // a scaled area, though the whole is small, taken from the significands;
-// none for a zero coefficient or speed or a NaN speed; and every share
+// none for a zero coefficient, area or speed or a NaN speed; and every share
 // whose product fits the same bits as the product as written. A step
 // reaches the overflowing products only at places and speeds past what a
 // short scene makes, so only the share on its own shows them.
@@ -41,7 +41,9 @@ static void TestShares(void)
                  fabs((double)scaled / scaledTruth - 1.0) <= 1e-6;
     bool none = mvfxAirShare(0.0f, 1.0f, false, 5.0f, 0.01f) == 0.0f &&
                 mvfxAirShare(1.0f, 1.0f, false, 0.0f, 0.01f) == 0.0f &&
-                mvfxAirShare(1.0f, 1.0f, false, NAN, 0.01f) == 0.0f;
+                mvfxAirShare(1.0f, 1.0f, false, NAN, 0.01f) == 0.0f &&
+                mvfxAirShare(1.0f, 0.0f, true, 1.0f, 1.0f / 60.0f) == 0.0f &&
+                mvfxAirShare(1e6f, 0.0f, false, 1e9f, 1.0f) == 0.0f;
     // Drawn factors over their ranges: where the product as written stays
     // finite, the share is its bits.
     uint64_t state = 5;
