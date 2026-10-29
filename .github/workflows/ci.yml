@@ -344,8 +344,8 @@ jobs:
   # cache the shared workflow keeps per CPU would make later nights faster;
   # it is evicted before it restores until .github#88 lands. The job's
   # limit: a clean run takes up to about 100 minutes on the slowest runner
-  # seen (95 on 10-29), and a hung suite holds it 30 more, its own 1800 s
-  # limit, before ctest names it: 130, so 150.
+  # seen, and a hung suite holds it 30 more, its own 1800 s limit, before
+  # ctest names it: 130, so 150.
   extended:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     strategy:
