@@ -130,8 +130,8 @@ fn unitFloat(word: u32) -> f32 {
 fn randomDirection(a: u32, b: u32) -> vec3<f32> {
     let z = 1.0 - 2.0 * unitFloat(a);
     let ring = sqrt(max(0.0, 1.0 - z * z));
-    let angle = TWO_PI * unitFloat(b);
-    return vec3<f32>(ring * cos(angle), ring * sin(angle), z);
+    let turn = sinCos(TWO_PI * unitFloat(b));
+    return vec3<f32>(ring * turn.y, ring * turn.x, z);
 }
 
 // include: shared/drag.wgsl

@@ -482,14 +482,17 @@ fn orientationOf(age: f32, words: vec4<u32>) -> vec4<f32> {
         let u = unitFloat(words.x);
         let low = sqrt(1.0 - u);
         let high = sqrt(u);
-        let a1 = TWO_PI * unitFloat(words.y);
-        let a2 = TWO_PI * unitFloat(words.z);
-        return vec4<f32>(low * sin(a1), low * cos(a1), high * sin(a2), high * cos(a2));
+        let a1 = sinCos(TWO_PI * unitFloat(words.y));
+        let a2 = sinCos(TWO_PI * unitFloat(words.z));
+        return vec4<f32>(low * a1.x, low * a1.y, high * a2.x, high * a2.y);
     }
     if (mode == ORIENTATION_EULER) {
         let half = 0.5 * drawVector(SOURCE_ORIENTATION, age, words).xyz;
-        let s = sin(half);
-        let c = cos(half);
+        let x = sinCos(half.x);
+        let y = sinCos(half.y);
+        let z = sinCos(half.z);
+        let s = vec3<f32>(x.x, y.x, z.x);
+        let c = vec3<f32>(x.y, y.y, z.y);
         return vec4<f32>(s.x * c.y * c.z - c.x * s.y * s.z, c.x * s.y * c.z + s.x * c.y * s.z,
                          c.x * c.y * s.z - s.x * s.y * c.z, c.x * c.y * c.z + s.x * s.y * s.z);
     }

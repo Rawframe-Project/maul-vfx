@@ -21,6 +21,10 @@
 
 // include: shared/record_bindings.wgsl
 
+// include: shared/finite.wgsl
+
+// include: shared/sincos.wgsl
+
 // The ribbon fields of a layout (mvfxField).
 const FIELD_TANGENT: u32 = 11u;
 const FIELD_WIDTH: u32 = 12u;

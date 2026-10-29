@@ -573,6 +573,14 @@ static void TestFastTurns(Gpu* gpu, mvfxGpu* kernels)
                            .max = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN}};
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2},
             "an orbit and spins far past a turn a step");
+    // Orientations from Euler angles drawn far past 2^24 radians about each
+    // axis, the largest near 1e30.
+    mvfxEmitterDef euler = Sprite();
+    euler.orientationMode = mvfx_orientationEuler;
+    euler.orientation = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {-1e30f, 3e7f, -5e9f}, .max = {1e30f, 9e7f, 5e9f}};
+    Compare(gpu, kernels, &(Run){.emitters = &euler, .emitterCount = 1},
+            "orientations from Euler angles past 2^24");
 }
 
 static void TestModules(Gpu* gpu, mvfxGpu* kernels)
