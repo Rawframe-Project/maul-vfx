@@ -12,6 +12,7 @@
 // include: shared/sincos.wgsl
 // include: shared/air.wgsl
 // include: shared/length.wgsl
+// include: shared/cell_floor.wgsl
 
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
@@ -27,6 +28,7 @@ const CLASSES: u32 = 10u;
 const SINES: u32 = 11u;
 const AIR_SHARES: u32 = 12u;
 const LENGTHS: u32 = 15u;
+const CELLS: u32 = 16u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -63,7 +65,8 @@ var<immediate> root: Root;
 // element, in a coefficient (w0), half an area (w1), whether it is scaled
 // (w2, 1 or 0), a speed (w3) and a substep (w4), out the share in w5.
 // Lengths (shared/length.wgsl): in a vector (w0 to w2), out its length in
-// w3.
+// w3. Cells (shared/cell_floor.wgsl): in a place (w0) and a cell's
+// inverse (w1), out the cell in w2.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -124,6 +127,10 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                 words[w + 3u] = bitcast<u32>(lengthOf(vec3<f32>(bitcast<f32>(words[w]),
                                                                 bitcast<f32>(words[w + 1u]),
                                                                 bitcast<f32>(words[w + 2u]))));
+            }
+            case CELLS: {
+                words[w + 2u] = bitcast<u32>(cellOf(bitcast<f32>(words[w]),
+                                                    bitcast<f32>(words[w + 1u])));
             }
             case SINES: {
                 let sc = sinCos(bitcast<f32>(words[w]));

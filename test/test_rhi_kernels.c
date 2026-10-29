@@ -28,6 +28,7 @@
 #include "exact_check_container.h"
 #include "integrate.h"
 #include "kernels.h"
+#include "neighbor.h"
 #include "random.h"
 #include "rhi_driver.h"
 #include "test_harness.h"
@@ -258,7 +259,8 @@ typedef enum CheckMode
     CHECK_CLASSES = 10,
     CHECK_SINES = 11,
     CHECK_AIR_SHARES = 12,
-    CHECK_LENGTHS = 15
+    CHECK_LENGTHS = 15,
+    CHECK_CELLS = 16
 } CheckMode;
 
 // The bytes of an element of a mode: eight words for remainders apart,
@@ -976,6 +978,117 @@ static void TestClasses(Gpu* gpu, Checker* checker)
     CHECK(ran && right == VALUES, "finite and NaN tests on the bits");
 }
 
+// A place over a cell drawn near an integer n: n over the inverse, then
+// moved up to two binary32 steps either way.
+static float NearInteger(double n, float inverse, uint32_t steps)
+{
+    float x = (float)(n / (double)inverse);
+    for (uint32_t k = 0; k < steps % 5u; ++k)
+    {
+        x = steps % 5u < 3u ? nextafterf(x, INFINITY) : nextafterf(x, -INFINITY);
+    }
+    return x;
+}
+
+// Grid cells (shared/cell_floor.wgsl) against the core's mvfxGridCell, on
+// the device: products of a place and a cell's inverse that are exact
+// integers, that lie just below or above an integer they round to, below
+// 2^24 and past it up to the greatest cell, where binary32 values are 2 or
+// more apart; drawn products; zeros of either sign, products and places
+// below binary32's least normal (a device may flush them), places past
+// 2^100, NaN, infinities, products past the greatest cell, and ones
+// rounded to it whose exact product lies more than one past it.
+static void TestCells(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 23,
+        DRAWN = 65536
+    };
+    const float special[SPECIAL][2] = {{0.0f, 1.0f},
+                                       {-0.0f, 1.0f},
+                                       {0x1p-149f, 1.0f},
+                                       {-0x1p-149f, 1.0f},
+                                       {-0x1p-149f, 0.5f},
+                                       {-1e-30f, 1e-20f},
+                                       {1e-30f, 1e-20f},
+                                       {NAN, 1.0f},
+                                       {INFINITY, 1.0f},
+                                       {-INFINITY, 1.0f},
+                                       {3e9f, 1.0f},
+                                       {-3e9f, 1.0f},
+                                       {0x1p30f, 1.0f},
+                                       {-0x1p30f, 1.0f},
+                                       {0x1.000002p+30f, 0x1.fffffcp-1f},
+                                       {0x1.000002p+29f, 0x1.fffffep+0f},
+                                       {-0x1.000002p+29f, 0x1.fffffep+0f},
+                                       {0x1.46de3ap+31f, 0x1.7e4328p-6f},
+                                       {0x1.d2efcep+22f, 0x1.b5a94cp+2f},
+                                       {0x1.fffffep+127f, 0x1p-120f},
+                                       {1e36f, 1e-30f},
+                                       {-1e36f, 1e-30f},
+                                       {0x1.c363ccp+127f, 0x1.000002p-100f}};
+    const uint32_t count = SPECIAL + DRAWN;
+    uint64_t state = 23;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        // Drawn into locals first, so every compiler draws the same.
+        uint32_t a = Draw(&state);
+        uint32_t b = Draw(&state);
+        uint32_t power = Draw(&state);
+        uint32_t steps = Draw(&state);
+        uint32_t sign = Draw(&state) & 0x80000000u;
+        int32_t s = -20 + (int32_t)(power % 34u);
+        float inverse = ldexpf(1.0f + (float)(b >> 9u) * 0x1p-23f, s);
+        float x = 0.0f;
+        switch (e % 4u)
+        {
+        case 0:
+            // a's 22 bits times an odd b below 2^8: an exact integer.
+            inverse = ldexpf((float)((b % 128u) * 2u + 1u), s);
+            x = ldexpf((float)(1u + a % 0x3FFFFFu), -s);
+            break;
+        case 1:
+            x = NearInteger((double)(1u + a % 0xFFFFFFu), inverse, steps);
+            break;
+        case 2:
+            x = NearInteger((double)(0x1000000u + a % 0x7F000000u), inverse, steps);
+            break;
+        default:
+            x = ldexpf(1.0f + (float)(a >> 9u) * 0x1p-23f, -30 + (int32_t)(steps % 71u));
+            break;
+        }
+        uint32_t* w = &checker->words[4 * e];
+        w[0] = e < SPECIAL ? Bits(special[e][0]) : Bits(x) | sign;
+        w[1] = Bits(e < SPECIAL ? special[e][1] : inverse);
+        w[2] = 0x5A5A5A5Au;
+        w[3] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_CELLS, 0, count);
+    int32_t apart = 0;
+    int32_t exact = 0;
+    int32_t below = 0;
+    int32_t past = 0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        float x = FloatOf(w[0]);
+        float inverse = FloatOf(w[1]);
+        apart += (uint32_t)mvfxGridCell(x, inverse) != w[2] || w[3] != 0x5A5A5A5Au;
+        double product = (double)x * (double)inverse;
+        float t = x * inverse;
+        exact += product != 0.0 && product == floor(product) && fabs(product) <= 0x1p30;
+        below += t == floorf(t) && product < (double)t && fabsf(t) <= 0x1p30f;
+        past += t == floorf(t) && fabsf(t) >= 0x1p24f && fabsf(t) <= 0x1p30f;
+    }
+    printf("cells: %d apart from the core's of %u, %d exact integers, %d just below one, %d "
+           "past 2^24\n",
+           apart, count, exact, below, past);
+    CHECK(ran && apart == 0 && exact > (int32_t)count / 8 && below > (int32_t)count / 8 &&
+              past > (int32_t)count / 8,
+          "cells as the core's floors");
+}
+
 // The most the kernels' sines and cosines (shared/sincos.wgsl) are from
 // the core's mvfxSinCos, in units in the last place: the remainder within
 // two of its own, from its 64-bit fraction and its product by pi/2 in
@@ -1156,6 +1269,7 @@ static void TestExact(Gpu* gpu)
         TestHeldSpeeds(gpu, &checker);
         TestLengths(gpu, &checker);
         TestClasses(gpu, &checker);
+        TestCells(gpu, &checker);
         TestSines(gpu, &checker);
         TestAirShares(gpu, &checker);
     }
