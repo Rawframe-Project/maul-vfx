@@ -11,10 +11,9 @@
 // the expansion's divergence (less its mean in a sealed box); MacCormack's
 // advection sharper than semi-Lagrangian, making no new extremes, and
 // nearer a moved Gaussian; faces held within the speed bound at the
-// forces' limits; the def's refusals. A gas's faces are read and
-// written, and its scalars written, through the test hooks; confinement
-// is seen through a step of 1/64 s in cells of at least 4e5, which
-// carries nothing, without a projection.
+// forces' limits, and buoyancy held under an unbounded density; the def's refusals. A gas's faces
+// are read and written, and its scalars written, through the test hooks; confinement is seen
+// through a step of 1/64 s in cells of at least 4e5, which carries nothing, without a projection.
 
 #include "test_harness.h"
 #include "test_hooks.h"
@@ -364,6 +363,39 @@ static void TestExpansionHeld(void)
         }
     }
     CHECK(held && fastest > 1e8f, "a burn's expansion held");
+    mvfxDestroyContext(s_context);
+}
+
+static void TestLiftHeld(void)
+{
+    // A density of 1e38 (splats grow a gas's scalars without bound),
+    // buoyancy at a gravity and weight of MVFX_MAX_EXTENT, and a wind of
+    // (0, 2, 0) pulling at MVFX_MAX_DRAG over a step of a second: the
+    // wind's drag keeps none of the face's velocity (e^-1000), so an
+    // infinite buoyancy would leave NaN. Each scalar counts as at most 2^80,
+    // and every face ends at the wind's 2.
+    const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {0, 2, 0}, .strength = MVFX_MAX_DRAG};
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 16;
+    def.size[1] = 16;
+    def.cellSize = 1.0f;
+    def.pressureCycles = 0;
+    def.gravitySpace = mvfx_gasLocal;
+    def.gravity[1] = -MVFX_MAX_EXTENT;
+    def.densityWeight = MVFX_MAX_EXTENT;
+    def.forces = &wind;
+    def.forceCount = 1;
+    Open(&def, s_unturned, 1.0f);
+    Uniform(def.size, mvfx_gasDensity, 1e38f);
+    CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    Read(def.size);
+    bool windy = true;
+    for (int64_t f = 0; f < FaceCount(def.size, 1); ++f)
+    {
+        int64_t row = f / 16;
+        windy = windy && (row == 0 || row == 16 || fabsf(s_faces[1][f] - 2.0f) <= 1e-5f);
+    }
+    CHECK(windy, "an unbounded density's buoyancy held, a NaN never made");
     mvfxDestroyContext(s_context);
 }
 
@@ -779,6 +811,7 @@ int main(void)
 {
     TestBuoyancy();
     TestHeld();
+    TestLiftHeld();
     TestConfinement();
     TestConfinement3D();
     TestEvenCurl();

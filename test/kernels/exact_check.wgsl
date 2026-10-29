@@ -12,6 +12,7 @@
 // include: shared/sincos.wgsl
 // include: shared/length.wgsl
 // include: shared/air.wgsl
+// include: shared/gas_lift.wgsl
 
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
@@ -27,6 +28,7 @@ const CLASSES: u32 = 10u;
 const SINES: u32 = 11u;
 const AIR_SHARES: u32 = 12u;
 const CROSS_EDGES: u32 = 13u;
+const GAS_LIFTS: u32 = 14u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -64,7 +66,10 @@ var<immediate> root: Root;
 // (w2, 1 or 0), a speed (w3) and a substep (w4), out the share in w5.
 // Cross edges (shared/air.wgsl, shared/length.wgsl): sixteen words an
 // element, in two edges (w0 to w2, w3 to w5), out their cross product (w6
-// to w8), whether it was scaled (w9, 1 or 0) and its length (w10).
+// to w8), whether it was scaled (w9, 1 or 0) and its length (w10). Gas
+// lifts (shared/gas_lift.wgsl): eight words an element, in a density
+// weight (w0), a density (w1), a heat lift (w2) and a temperature (w3),
+// out the buoyant factor in w4.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -125,6 +130,13 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                 let sc = sinCos(bitcast<f32>(words[w]));
                 words[w + 1u] = bitcast<u32>(sc.x);
                 words[w + 2u] = bitcast<u32>(sc.y);
+            }
+            case GAS_LIFTS: {
+                let a = 2u * w;
+                words[a + 4u] = bitcast<u32>(gasLift(bitcast<f32>(words[a]),
+                                                     bitcast<f32>(words[a + 1u]),
+                                                     bitcast<f32>(words[a + 2u]),
+                                                     bitcast<f32>(words[a + 3u])));
             }
             case CROSS_EDGES: {
                 let a = 4u * w;
