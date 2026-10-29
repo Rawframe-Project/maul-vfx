@@ -698,8 +698,10 @@ static void TestBurns(Gpu* gpu, mvfxGpu* kernels)
     // At the forces' limits: buoyancy at a gravity and a weight of
     // MVFX_MAX_EXTENT and confinement at MVFX_MAX_EXTENT, which make faces
     // far past MVFX_MAX_SPEED within a substep, each held within it after
-    // the forces and in the projection as the core holds it.
+    // the forces and in the projection as the core holds it; closed, so
+    // the smoke stays in the box.
     gas = Plume(40, 32, 1, &s_box);
+    gas.closedWalls = 63;
     gas.gravitySpace = mvfx_gasLocal;
     gas.gravity[1] = -MVFX_MAX_EXTENT;
     gas.densityWeight = MVFX_MAX_EXTENT;
