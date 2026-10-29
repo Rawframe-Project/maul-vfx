@@ -7,7 +7,8 @@
 // alone; a sheet at 45 degrees in a wind pushed along its normal, lift
 // equal to drag; at the largest spacing and scale, and with an area past
 // binary32's largest, a tangent drag alone keeping the speed along the
-// normal; a torn sheet falling free; a drag too strong for a
+// normal; a triangle with an edge past 2^63 and one a spacing long taking
+// its whole share; a torn sheet falling free; a drag too strong for a
 // substep never reversing a point; the checks.
 
 #include "test_harness.h"
@@ -225,6 +226,50 @@ static void TestFar(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Moves the sheet's second point to 10^20 along x once, within
+// MVFX_MAX_PLACE.
+static void MoveSecond(const mvfxModuleCall* call, void* user)
+{
+    bool* done = user;
+    if (!*done && call->particles.count > 1)
+    {
+        call->particles.position[0][1] = 1e20f;
+        *done = true;
+    }
+}
+
+static void TestLongEdge(void)
+{
+    // The sheet's second point moved 10^20 along x, one substep a step:
+    // the first point's one triangle, with the second and the first of the
+    // second row, has an edge past 2^63 and one a spacing long, so it is
+    // crossed scaled and its area, about 2.5e19, scaled back. Thrown along
+    // its normal at 5 with a normal drag of 1, the triangle takes its whole
+    // sixth: the first point leaves the step at -5 + 5/6. (The
+    // constraints, as soft as they go, move the points only in the
+    // sheet's plane.)
+    mvfxEmitterDef emitter = Sheet(1.0f, 0.0f);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.unit.substeps = 1;
+    emitter.unit.stretchCompliance = MVFX_MAX_EXTENT;
+    emitter.unit.shearCompliance = MVFX_MAX_EXTENT;
+    emitter.unit.bendCompliance = MVFX_MAX_EXTENT;
+    static bool moved;
+    moved = false;
+    static const mvfxHostModule mover = {
+        .stage = mvfx_stageBeforeMotion, .function = MoveSecond, .user = &moved};
+    emitter.hostModules = &mover;
+    emitter.hostModuleCount = 1;
+    static const float thrown[3] = {0, -5, 0};
+    Open(&emitter, thrown);
+    Steps(2);
+    double mean[3];
+    Mean(mean);
+    float first = s_scene.records[0].velocity[1];
+    CHECK(moved && fabsf(first + 5.0f * 5.0f / 6.0f) <= 1e-4f, "a long edge and a short one");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestLift(void)
 {
     // At 45 degrees (normal (1, 1, 0) / sqrt 2) in a wind of 10 along x,
@@ -374,6 +419,7 @@ int main(void)
     TestLift();
     TestLarge();
     TestFar();
+    TestLongEdge();
     TestTorn();
     TestHeld();
     TestChecks();
