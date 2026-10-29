@@ -83,9 +83,10 @@ static void TestCross(void)
 {
     // Edges below 2^63 crossed as written; one 1e20 long and one 0.5
     // across it crossed scaled by 2^-64 each, its length then 1e20 0.5
-    // 2^-128; 2^63 itself scaled; a product below binary32's least normal,
-    // and a scaled edge's component there, flushed to +0 as a device that
-    // flushes subnormals leaves them.
+    // 2^-128; 2^63 itself scaled; each row's first product, a second
+    // product, a difference, and either edge's scaled component below
+    // binary32's least normal, each flushed to +0 as a device that flushes
+    // subnormals leaves them.
     uint64_t state = 9;
     bool written = true;
     for (int32_t i = 0; i < 10000; ++i)
@@ -129,7 +130,26 @@ static void TestCross(void)
     static const float up[3] = {0.0f, 0.0f, 0x1p127f};
     mvfxCrossEdges(slight, up, n);
     bool component = n[0] == 0.0f && !signbit(n[0]) && n[1] == -0x1p62f && n[2] == 0.0f;
-    CHECK(written && far && at && under && product && difference && component, "cross edges");
+    // e2's 2^-70 scaled, flushed; unflushed, times 2^63 it would make x
+    // -2^-71.
+    mvfxCrossEdges(up, slight, n);
+    bool second = n[0] == 0.0f && !signbit(n[0]) && n[1] == 0x1p62f && n[2] == 0.0f;
+    // Each row's first product 0.5 2^-126, flushed, less 2^-124 0.5:
+    // -2^-125, where unflushed it would be -1.5 2^-126.
+    static const float rows[3][2][3] = {{{0.0f, 0x1p63f, 0x1p-60f}, {0.0f, 0x1p63f, 0x1p-62f}},
+                                        {{0x1p-60f, 0.0f, 0x1p63f}, {0x1p-62f, 0.0f, 0x1p63f}},
+                                        {{0x1p63f, 0x1p-60f, 0.0f}, {0x1p63f, 0x1p-62f, 0.0f}}};
+    bool firsts = true;
+    for (int32_t r = 0; r < 3; ++r)
+    {
+        mvfxCrossEdges(rows[r][0], rows[r][1], n);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            firsts = firsts && n[k] == (k == r ? -0x1p-125f : 0.0f);
+        }
+    }
+    CHECK(written && far && at && under && product && difference && component && second && firsts,
+          "cross edges");
 }
 
 int main(void)

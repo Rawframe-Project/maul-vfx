@@ -1148,18 +1148,22 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
 // core's mvfxCrossEdges, bit for bit, and its length (shared/length.wgsl)
 // against mvfxLengthOf within 1e-6 of it: edges both below 2^63, one past
 // it and one a spacing long (a soft sheet hanging long enough stretches
-// its edges down so), both past it, at 2^63 and just below, a scaled
-// component, a product and a difference below binary32's least normal
-// (flushed on every device, as D3D12 does), and drawn ones from 2^-30 to
-// 2^100.
+// its edges down so), both past it, at 2^63 and just below, either edge's
+// scaled component, each row's first product, a second product and a
+// difference below binary32's least normal (flushed on every device, as
+// D3D12 does), and drawn ones from 2^-30 to 2^100.
 static void TestCrossEdges(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 10,
+        SPECIAL = 14,
         DRAWN = 8192
     };
-    const float special[SPECIAL][6] = {{0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},
+    const float special[SPECIAL][6] = {{0.0f, 0.0f, 0x1p127f, 0x1p63f, 0x1p-70f, 0.0f},
+                                       {0.0f, 0x1p63f, 0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f},
+                                       {0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f, 0.0f, 0x1p63f},
+                                       {0x1p63f, 0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f, 0.0f},
+                                       {0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},
                                        {0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
                                        {0x1p63f, 0.0f, 0x1.8p-61f, 0x1p63f, 0.0f, 0x1p-61f},
                                        {0x1p63f, 0x1p-70f, 0.0f, 0.0f, 0.0f, 0x1p127f},
