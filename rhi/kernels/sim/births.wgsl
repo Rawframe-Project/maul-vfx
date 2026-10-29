@@ -360,7 +360,8 @@ fn moveByModules(start: vec3<f32>, place: vec3<f32>, age: f32, h: f32) -> vec3<f
     let angle = lifeAt(LIFE_ORBIT_RATE, age) * h;
     if (angle != 0.0) {
         let center = params.modules[2].xyz;
-        let q = vec4<f32>(params.modules[1].xyz * sin(0.5 * angle), cos(0.5 * angle));
+        let half = sinCos(0.5 * angle);
+        let q = vec4<f32>(params.modules[1].xyz * half.x, half.y);
         p = center + rotate(q, p - center);
     }
     return p;
@@ -451,8 +452,8 @@ fn turnBy(q: vec4<f32>, theta: vec3<f32>) -> vec4<f32> {
     if (!(angle > 0.0)) {
         return q;
     }
-    let s = sin(0.5 * angle) / angle;
-    let r = vec4<f32>(theta * s, cos(0.5 * angle));
+    let half = sinCos(0.5 * angle);
+    let r = vec4<f32>(theta * (half.x / angle), half.y);
     let out = vec4<f32>(r.w * q.x + r.x * q.w + r.y * q.z - r.z * q.y,
                         r.w * q.y - r.x * q.z + r.y * q.w + r.z * q.x,
                         r.w * q.z + r.x * q.y - r.y * q.x + r.z * q.w,

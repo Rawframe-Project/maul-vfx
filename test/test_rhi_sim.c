@@ -556,6 +556,25 @@ static void TestTurns(Gpu* gpu, mvfxGpu* kernels)
             "angles, orientations and drag scales");
 }
 
+static void TestFastTurns(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Turns far past the range WGSL bounds its own sine on, which the core
+    // reduces exactly: an orbit at the fastest rate a life curve takes,
+    // 8333 radians a half step, and orientations turning at up to the
+    // fastest spin about each axis, up to 1.4e4 radians a half step.
+    mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
+    emitters[0].velocityModules.orbitAxis[1] = 1.0f;
+    emitters[0].velocityModules.orbitCenter[0] = 0.3f;
+    emitters[0].velocityModules.orbitRate = (mvfxLifeCurve){.value = MVFX_MAX_LIFE_SCALE};
+    emitters[1].orientationMode = mvfx_orientationRandom;
+    emitters[1].angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange,
+                           .min = {-MVFX_MAX_SPIN, -MVFX_MAX_SPIN, -MVFX_MAX_SPIN},
+                           .max = {MVFX_MAX_SPIN, MVFX_MAX_SPIN, MVFX_MAX_SPIN}};
+    Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2},
+            "an orbit and spins far past a turn a step");
+}
+
 static void TestModules(Gpu* gpu, mvfxGpu* kernels)
 {
     // Velocity modules of every kind, each over life: the speed limited by
@@ -1381,6 +1400,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestDepth(gpu, kernels);
     TestValues(gpu, kernels);
     TestTurns(gpu, kernels);
+    TestFastTurns(gpu, kernels);
     TestModules(gpu, kernels);
     TestKillRules(gpu, kernels);
     TestSpawning(gpu, kernels);
