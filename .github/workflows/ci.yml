@@ -104,19 +104,25 @@ jobs:
       - name: The documentation site builds
         run: python3 tools/build_docs.py
       - name: clang-tidy
-        # rhi/src/kernels.c includes 70 MB of kernel containers and takes
-        # clang-tidy minutes, so pull requests leave it to main and the night.
+        # On a Release tree, where an assertion's condition is not evaluated,
+        # and on a Debug one, where the analyzer reads it: each hides findings
+        # the other shows. rhi/src/kernels.c includes 70 MB of kernel
+        # containers and takes clang-tidy minutes, so pull requests leave it
+        # to main and the night.
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          cmake --preset linux-clang-20 -B out/tidy -DMAUL_VFX_RHI=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >/dev/null
           files=(src/*.c rhi/src/*.c)
           if [ "$EVENT" = pull_request ]; then
             mapfile -t files < <(printf '%s\n' "${files[@]}" | grep -vx rhi/src/kernels.c)
           fi
-          printf '%s\n' "${files[@]}" |
-            xargs -P 4 -n 4 clang-tidy-20 -p out/tidy --quiet --warnings-as-errors='*'
+          for build in Release Debug; do
+            echo "clang-tidy, $build"
+            cmake --preset linux-clang-20 -B "out/tidy-$build" -DCMAKE_BUILD_TYPE=$build \
+              -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >/dev/null
+            printf '%s\n' "${files[@]}" |
+              xargs -P 4 -n 4 clang-tidy-20 -p "out/tidy-$build" --quiet --warnings-as-errors='*'
+          done
       - name: No stack frame over 64 KB, unoptimized
         # Both parts at -O0, where every temporary stays on the stack: the
         # optimized cells fold them, so only this build shows a frame past
