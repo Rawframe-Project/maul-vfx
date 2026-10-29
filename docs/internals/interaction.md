@@ -31,7 +31,7 @@ Within a substep a body turns by its free flow ([src/rigid_flow.c](../../src/rig
 
 Where it differs from maul3d's page:
 
-- The CPU path turns in binary64, from mvfxSinCos's binary32 half turns made unit pairs, so it needs neither of the page's length corrections. The GPU path follows the page in binary32, operation by operation, with its own sine and cosine for the page's `cossin` (WGSL has no `remainderf`).
+- The CPU path turns in binary64, from mvfxSinCos's binary32 half turns made unit pairs, so it needs neither of the page's length corrections. The GPU path follows the page in binary32, operation by operation, with `rhi/kernels/shared/sincos.wgsl`'s sine and cosine for the page's `cossin`, reduced exactly as `mvfxSinCos` reduces them.
 - A body touched by a contact takes its angular velocity from its pose's change after the solve, as XPBD does. maul3d never re-derives it.
 - A body's size can change over its life, and its principal frame with it, so the frame is taken each substep rather than once per mass update.
 - A body of one moment about every axis, or of no volume, turns about its spin by the integrator's exact turn.

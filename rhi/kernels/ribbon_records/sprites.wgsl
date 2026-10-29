@@ -54,8 +54,9 @@ fn inView(angle: f32) -> Axes {
     let forward = params.forward.xyz;
     let right = unitOf(cross(forward, ribbon.normal.xyz));
     let up = unitOf(cross(right, forward));
-    let sine = sin(angle);
-    let cosine = cos(angle);
+    let turn = sinCos(angle);
+    let sine = turn.x;
+    let cosine = turn.y;
     return Axes(cosine * right + sine * up, cosine * up - sine * right);
 }
 

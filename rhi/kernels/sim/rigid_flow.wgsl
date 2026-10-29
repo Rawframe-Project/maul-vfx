@@ -6,52 +6,20 @@
 // binary64): each operation in its order, its residual turns held to the
 // length they keep, composed before the orientation takes them, and the
 // spin corrected by what the next substep would miss reading it back,
-// component by component. Its sine and cosine are sinCos's (the shader
-// has no remainderf), made a unit pair as the doc's cossin.
+// component by component. Its sine and cosine are shared/sincos.wgsl's,
+// made a unit pair as the doc's cossin.
 
 // The most sweeps the Jacobi rotations take, as the core's MOST_SWEEPS.
 const MOST_SWEEPS: u32 = 16u;
 // The residual turns' pieces, as the core's MOST_PIECES and PIECE_TURN.
 const MOST_PIECES: f32 = 64.0;
 const PIECE_TURN: f32 = 0.25;
-// The largest half turn sinCos takes.
-const MOST_HALF_TURN: f32 = 16777216.0;
 
 // A body's principal frame, as the core's mvfxPrincipal: its moments,
 // largest first, and the quaternion turning the frame into the body's.
 struct Principal {
     moments: vec3<f32>,
     rotation: vec4<f32>,
-}
-
-// The sine and cosine of x, as the core's mvfxSinCos within binary32: x
-// less the nearest multiple of pi/2 in parts of 12 bits (exact while that
-// multiple is below 2^12, near 6400 radians), the remainder's series; past
-// 2^24 or NaN, as of 0.
-fn sinCos(x: f32) -> vec2<f32> {
-    let value = select(0.0, x, abs(x) <= MOST_HALF_TURN);
-    let k = floor(value * 0x1.45f306p-1f + 0.5);
-    let r = ((value - k * 0x1.922p+0f) + k * 0x1.2aep-18f + k * 0x1.deap-31f) - k * 0x1.18p-44f;
-    let r2 = r * r;
-    let sine = r * (1.0 + r2 * (-1.0 / 6.0 + r2 * (1.0 / 120.0 + r2 * (-1.0 / 5040.0 +
-                                                                     r2 * (1.0 / 362880.0)))));
-    let cosine = 1.0 + r2 * (-0.5 + r2 * (1.0 / 24.0 + r2 * (-1.0 / 720.0 +
-                                                             r2 * (1.0 / 40320.0 +
-                                                                   r2 * (-1.0 / 3628800.0)))));
-    switch (i32(k) & 3) {
-        case 0: {
-            return vec2<f32>(sine, cosine);
-        }
-        case 1: {
-            return vec2<f32>(cosine, -sine);
-        }
-        case 2: {
-            return vec2<f32>(-sine, -cosine);
-        }
-        default: {
-            return vec2<f32>(-cosine, sine);
-        }
-    }
 }
 
 // The principal frame of an inertia (xx, yy, zz, xy, xz, yz), as the

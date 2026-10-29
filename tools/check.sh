@@ -96,14 +96,18 @@ source_checks() {
     fi
 }
 
-# clang-tidy on library sources, in a Release tree as CI's: with NDEBUG
-# an assertion's operands are not evaluated, which the analyzer must see.
+# clang-tidy on library sources, as CI's: in a Release tree, where an
+# assertion's condition is not evaluated, and in a Debug one, where the
+# analyzer reads it. Each hides findings the other shows.
 tidy() { # files
-    configure tidy -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Release -DMAUL_VFX_RHI=ON \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-    printf '%s\n' "$@" |
-        xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy" --quiet --warnings-as-errors='*' \
-            2>/dev/null
+    local build
+    for build in Release Debug; do
+        configure "tidy-$build" -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=$build \
+            -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        printf '%s\n' "$@" |
+            xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy-$build" --quiet \
+                --warnings-as-errors='*' 2>/dev/null
+    done
 }
 
 # The sources clang-format reads: every C file but the generated tables

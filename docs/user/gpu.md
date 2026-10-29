@@ -133,7 +133,7 @@ return made;
 
 ## What matches the CPU path
 
-The simulation numbers, draws and ends its particles as the CPU path does: its integer outputs (counts, serials, birth and death ticks) are the CPU path's. Floating-point results are the CPU path's within stated tolerances, since the device's arithmetic is not the CPU's; the headers state each output's tolerance. On one device and driver the GPU path gives the same bits run after run.
+The simulation numbers, draws and ends its particles as the CPU path does: its integer outputs (counts, serials, birth and death ticks) are the CPU path's. Floating-point results are the CPU path's within stated tolerances, since the device's arithmetic is not the CPU's; the headers state each output's tolerance. A device may flush subnormals to zero, as WGSL allows, so there a subnormal value, an angle for one, reads as zero. On one device and driver the GPU path gives the same bits run after run.
 
 ## What it does not run
 

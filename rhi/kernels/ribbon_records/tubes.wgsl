@@ -72,9 +72,9 @@ fn advanceFrame(frame: ptr<function, Frame>, here: vec3<f32>, tangent: vec3<f32>
 // The unit way out of a frame at angle 2 pi k / sides, and the way around
 // there.
 fn wayAt(normal: vec3<f32>, tangent: vec3<f32>, sides: u32, k: u32) -> array<vec3<f32>, 2> {
-    let angle = 6.2831853 * f32(k % sides) / f32(sides);
-    let sine = sin(angle);
-    let cosine = cos(angle);
+    let turn = sinCos(6.2831853 * f32(k % sides) / f32(sides));
+    let sine = turn.x;
+    let cosine = turn.y;
     let binormal = cross(tangent, normal);
     return array<vec3<f32>, 2>(cosine * normal + sine * binormal,
                                -sine * normal + cosine * binormal);

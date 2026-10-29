@@ -36,7 +36,7 @@ Rigid bodies that meet each other solve their pairs colour by colour in one work
 
 ## Equal within tolerances
 
-The device's floating-point arithmetic differs from the CPU's (fused operations, other rounding of `sqrt` and transcendental functions, other evaluation orders), so floats cannot be bit-equal. The part promises instead:
+The device's floating-point arithmetic differs from the CPU's (fused operations, other rounding of `sqrt` and transcendental functions, other evaluation orders), so floats cannot be bit-equal. A device may also flush subnormals to zero, as WGSL allows and D3D12 does: there a subnormal angle, speed or coordinate reads as zero, which the tolerances absorb, since they are relative to each value's scale and a subnormal is below 2^-126. The part promises instead:
 
 - **Integers are equal.** Serials, birth and death ticks, live counts and every count the plan and the step produce match the CPU path, because they come from the plan's integer arithmetic or from comparisons both paths make the same way.
 - **Floats are within stated tolerances**, relative to each value's scale, which the headers state per output and the parity tests measure.
