@@ -19,12 +19,15 @@ bool mvfxNormalize(float v[3]);
 // v's length, as sqrtf of its squares' sum in x, y, z order. A vector
 // whose largest component reaches 2^63, where that sum may pass binary32's
 // largest, is measured scaled by 2^-64, and one whose largest component is
-// below 2^-40 scaled by 2^100, the length scaled back. From 2^-40 on, a
-// square below binary32's least normal is under half a unit in the last
-// place of the largest square, so it never changes the sum: a device that
-// flushes subnormals measures every vector of normal or zero components
-// as this does (rhi/kernels/shared/length.wgsl). Scaling by a power of two
-// keeps the bits of every vector whose squares stay normal.
+// below 2^-38 scaled by 2^100, the length scaled back. From 2^-38 on, the
+// largest square is at least 2^-76: a partial sum of 2^-101 or more
+// absorbs a square below binary32's least normal, and a smaller one stays,
+// with it, under half a unit of the largest square's last place. So a
+// subnormal square never changes the sum, and a device that flushes
+// subnormals measures every vector of normal or zero components as this
+// does (rhi/kernels/shared/length.wgsl). Scaled, a component is below
+// 2^62 and the sum below 2^126. Scaling by a power of two keeps the bits
+// of every vector whose squares stay normal.
 static inline float mvfxLengthOf(float x, float y, float z)
 {
     float most = fmaxf(fabsf(x), fmaxf(fabsf(y), fabsf(z)));
@@ -35,7 +38,7 @@ static inline float mvfxLengthOf(float x, float y, float z)
         z *= 0x1p-64f;
         return sqrtf(x * x + y * y + z * z) * 0x1p64f;
     }
-    if (most < 0x1p-40f)
+    if (most < 0x1p-38f)
     {
         x *= 0x1p100f;
         y *= 0x1p100f;
