@@ -1,9 +1,32 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A sheet's triangle's share of its relative speed, without bindings,
-// after shared/exact.wgsl: sim/aero.wgsl takes it, and
-// test/kernels/exact_check.wgsl holds it against the core's.
+// A sheet's triangle's normal and its share of its relative speed,
+// without bindings, after shared/exact.wgsl: sim/aero.wgsl takes them,
+// and test/kernels/exact_check.wgsl holds them against the core's.
+
+// v with each component below binary32's least normal 0, as a device that
+// flushes subnormals (D3D12 does) leaves it, so every device gives the
+// core's bits.
+fn flushed(v: vec3<f32>) -> vec3<f32> {
+    return select(v, vec3<f32>(0.0), abs(v) < vec3<f32>(1.17549435e-38));
+}
+
+// A triangle's edges' cross product, as the core's mvfxCrossEdges: both
+// edges scaled by 2^-64 when a component of either reaches 2^63 (w 1
+// then, else 0), so no product overflows; the scaled edges, the products
+// and the components flushed.
+fn crossEdges(e1: vec3<f32>, e2: vec3<f32>) -> vec4<f32> {
+    let most = max(max(abs(e1.x), max(abs(e1.y), abs(e1.z))),
+                   max(abs(e2.x), max(abs(e2.y), abs(e2.z))));
+    let scaled = most >= 0x1p63f;
+    let s = select(1.0, 0x1p-64f, scaled);
+    let a = flushed(e1 * s);
+    let b = flushed(e2 * s);
+    let n = flushed(flushed(vec3<f32>(a.y * b.z, a.z * b.x, a.x * b.y)) -
+                    flushed(vec3<f32>(a.z * b.y, a.x * b.z, a.y * b.x)));
+    return vec4<f32>(n, select(0.0, 1.0, scaled));
+}
 
 // The share of a relative speed a triangle takes over a substep of h
 // seconds at a coefficient k, as the core's mvfxAirShare: k A speed h over
