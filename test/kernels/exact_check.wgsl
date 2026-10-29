@@ -27,6 +27,7 @@ const HELD_SPEEDS: u32 = 9u;
 const CLASSES: u32 = 10u;
 const SINES: u32 = 11u;
 const AIR_SHARES: u32 = 12u;
+const CROSS_EDGES: u32 = 13u;
 const LENGTHS: u32 = 15u;
 const CELLS: u32 = 16u;
 
@@ -64,6 +65,9 @@ var<immediate> root: Root;
 // sine (w1) and cosine (w2). Air shares (shared/air.wgsl): eight words an
 // element, in a coefficient (w0), half an area (w1), whether it is scaled
 // (w2, 1 or 0), a speed (w3) and a substep (w4), out the share in w5.
+// Cross edges (shared/air.wgsl, shared/length.wgsl): sixteen words an
+// element, in two edges (w0 to w2, w3 to w5), out their cross product (w6
+// to w8), whether it was scaled (w9, 1 or 0) and its length (w10).
 // Lengths (shared/length.wgsl): in a vector (w0 to w2), out its length in
 // w3. Cells (shared/cell_floor.wgsl): in a place (w0) and a cell's
 // inverse (w1), out the cell in w2.
@@ -136,6 +140,19 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                 let sc = sinCos(bitcast<f32>(words[w]));
                 words[w + 1u] = bitcast<u32>(sc.x);
                 words[w + 2u] = bitcast<u32>(sc.y);
+            }
+            case CROSS_EDGES: {
+                let a = 4u * w;
+                let e1 = vec3<f32>(bitcast<f32>(words[a]), bitcast<f32>(words[a + 1u]),
+                                   bitcast<f32>(words[a + 2u]));
+                let e2 = vec3<f32>(bitcast<f32>(words[a + 3u]), bitcast<f32>(words[a + 4u]),
+                                   bitcast<f32>(words[a + 5u]));
+                let n = crossEdges(e1, e2);
+                words[a + 6u] = bitcast<u32>(n.x);
+                words[a + 7u] = bitcast<u32>(n.y);
+                words[a + 8u] = bitcast<u32>(n.z);
+                words[a + 9u] = select(0u, 1u, n.w != 0.0);
+                words[a + 10u] = bitcast<u32>(lengthOf(n.xyz));
             }
             case AIR_SHARES: {
                 let a = 2u * w;
