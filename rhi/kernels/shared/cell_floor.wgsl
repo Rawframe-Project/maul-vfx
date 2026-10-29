@@ -24,18 +24,33 @@ fn productBelow(x: f32, y: f32, t: f32) -> f32 {
 }
 
 // The binary64 floor of x times inverse (exact: a product of two binary32
-// values), clamped to MAX_CELL as the core's mvfxGridCell: the rounded
-// product, one less where it is an integer the exact product lies below.
-// A product rounded to 0 is below it for a negative x, told by its bits,
-// which a device flushing subnormals keeps.
+// values), clamped to MAX_CELL as the core's mvfxGridCell. A product
+// rounded to 0 is below it for a negative x, told by its bits, which a
+// device flushing subnormals keeps. A rounded product t that is not an
+// integer is below 2^23, and no integer lies between it and the exact
+// product, so their floors are equal. An integer t is at most MAX_CELL
+// here; past 2^24 binary32 values are 2 or more apart, so the exact
+// product may lie more than one from t either way, and t less one may not
+// be a binary32 value. The cell is then taken in integers: t plus the
+// floor of the exact remainder, itself a binary32 value. A place past
+// 2^100 is scaled by 2^-64 and its inverse by 2^64 first, both exactly, so
+// that its split cannot overflow (its inverse is below 2^-70 there).
 fn cellOf(x: f32, inverse: f32) -> i32 {
     let t = x * inverse;
-    var c = floor(t);
-    if (c == t) {
-        let negative = select(productBelow(x, inverse, t) < 0.0, bitcast<u32>(x) > 0x80000000u,
-                              t == 0.0);
-        c -= select(0.0, 1.0, negative);
+    if (!(t >= -MAX_CELL)) {
+        return -1073741824;
     }
-    c = select(-MAX_CELL, c, c >= -MAX_CELL);
-    return i32(min(c, MAX_CELL));
+    if (t > MAX_CELL) {
+        return 1073741824;
+    }
+    if (t == 0.0) {
+        return select(0, -1, bitcast<u32>(x) > 0x80000000u);
+    }
+    let c = floor(t);
+    if (c != t) {
+        return i32(c);
+    }
+    let far = abs(x) >= 0x1p100f;
+    let below = productBelow(x * select(1.0, 0x1p-64f, far), inverse * select(1.0, 0x1p64f, far), t);
+    return clamp(i32(t) + i32(floor(below)), -1073741824, 1073741824);
 }
