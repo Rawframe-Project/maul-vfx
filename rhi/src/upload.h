@@ -19,7 +19,7 @@ static inline bool mvfxUpload(mrhiDevice* device, uint64_t* uploaded, mrhiPassId
                               mrhiResourceId buffer, uint64_t offset, const void* data,
                               uint64_t bytes)
 {
-    bool written = mrhiWriteBuffer(device, pass, buffer, offset, data, bytes) == mrhi_success;
+    bool written = mrhiPass_WriteBuffer(device, pass, buffer, offset, data, bytes) == mrhi_success;
     *uploaded += written ? bytes : 0u;
     return written;
 }

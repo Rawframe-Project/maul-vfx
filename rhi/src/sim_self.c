@@ -183,11 +183,11 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
     mrhiPassId pass = emitter->selfPasses[SELF_WRITE];
     const mrhiResourceId* c = emitter->selfResources;
     bool recorded =
-        mrhiBeginPass(sim->device, pass) == mrhi_success &&
+        mrhiPass_Begin(sim->device, pass) == mrhi_success &&
         mvfxUpload(sim->device, &sim->uploaded, pass, c[SELF_NUMBERS], 0, emitter->selfWords,
                    sizeof emitter->selfWords) &&
-        mrhiClearBuffer(sim->device, pass, c[SELF_COUNT], 0, MRHI_WHOLE_SIZE) == mrhi_success;
-    return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+        mrhiPass_ClearBuffer(sim->device, pass, c[SELF_COUNT], 0, MRHI_WHOLE_SIZE) == mrhi_success;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
 
 // Records a kernel's pass: its pipeline, bindings, root block and
@@ -202,13 +202,13 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
         bindings[b] =
             (mrhiBinding){.slot = (uint32_t)b, .resource = bound[b], .size = MRHI_WHOLE_SIZE};
     }
-    bool ran = mrhiBeginPass(sim->device, pass) == mrhi_success &&
-               mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
+    bool ran = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+               mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
                    mrhi_success &&
-               mrhiSetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
-               mrhiSetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
-               mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
-    return mrhiEndPass(sim->device, pass) == mrhi_success && ran;
+               mrhiPass_SetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
+               mrhiPass_SetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
+               mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 
 // Records the sort's radix passes over the self keys: each pass's

@@ -188,7 +188,7 @@ static int32_t Refused(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter
     mrhiResourceId resource = {0};
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     CHECK(sim != NULL && mrhiCreateBuffer(gpu->device, &bufferDef, &buffer) == mrhi_success &&
-              mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+              mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
               mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success,
           "a buffer in a frame");
     int32_t refused = 0;
@@ -201,7 +201,7 @@ static int32_t Refused(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter
     CHECK(mvfxGpuSim_AddLights(NULL, &valid) == mvfx_errorInvalid &&
               mvfxGpuSim_AddLights(sim, NULL) == mvfx_errorInvalid,
           "NULL refused");
-    CHECK(mrhiDropFrame(gpu->device) == mrhi_success, "dropped");
+    CHECK(mrhiDevice_DropFrame(gpu->device) == mrhi_success, "dropped");
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());

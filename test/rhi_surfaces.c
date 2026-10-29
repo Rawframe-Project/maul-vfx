@@ -35,7 +35,7 @@ static bool ReadGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t g, const mvfxGasRead* rea
     mrhiResourceId target = {0};
     mrhiPassId pass = {0};
     mrhiRequestId request = {0};
-    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+    bool recorded = mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
                     mrhiImportBuffer(gpu->device, buffer, &target) == mrhi_success;
     const mrhiAccess taken = {.resource = target, .kind = mrhi_accessCopySource};
     mrhiPassDef def = mrhiDefaultPassDef();
@@ -50,20 +50,20 @@ static bool ReadGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t g, const mvfxGasRead* rea
     readDef.bytes = bytes;
     recorded = recorded && mvfxGpuSim_AddGasRead(sim, &readDef) == mvfx_success &&
                mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
-               mrhiCompileFrame(gpu->device) == mrhi_success &&
+               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
                mvfxGpuSim_Record(sim) == mvfx_success &&
-               mrhiBeginPass(gpu->device, pass) == mrhi_success &&
-               mrhiReadBuffer(gpu->device, pass, target, 0, bytes, &request) == mrhi_success &&
-               mrhiEndPass(gpu->device, pass) == mrhi_success;
+               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, pass, target, 0, bytes, &request) == mrhi_success &&
+               mrhiPass_End(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         (void)mrhiDestroyBuffer(gpu->device, buffer);
         return false;
     }
     size_t got = 0;
     bool done = Finish(gpu) &&
-                mrhiTakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+                mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
                 got == bytes;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;

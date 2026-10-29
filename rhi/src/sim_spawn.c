@@ -78,17 +78,17 @@ static bool RecordSpawnCopy(mvfxGpuSim* sim, const Emitter* emitter)
     uint64_t first =
         4u * mvfxSpawnFirst(emitter->capacity, sim->views[emitter - sim->emitters].eventCapacity);
     int32_t capacity = sim->views[emitter->spawnSource].eventCapacity;
-    bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success;
+    bool recorded = mrhiPass_Begin(sim->device, pass) == mrhi_success;
     if (source->capacity > 0)
     {
         recorded = recorded &&
-                   mrhiCopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS],
+                   mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS],
                                   4u * MVFX_GPU_EVENTS_WRITTEN, into,
                                   first + 4u * MVFX_SPAWN_SOURCE, 4u) == mrhi_success &&
-                   mrhiCopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS],
+                   mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS],
                                   4u * MVFX_RECORD_EVENT_FROM, into, first + 4u * MVFX_SPAWN_FROM,
                                   4u) == mrhi_success &&
-                   mrhiCopyBuffer(sim->device, pass, source->resources[BUFFER_EVENTS],
+                   mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_EVENTS],
                                   4u * (uint64_t)mvfxEventFirst(source->capacity), into,
                                   first + 4u * MVFX_SPAWN_EVENTS,
                                   4u * MVFX_EVENT_WORDS * (uint64_t)capacity) == mrhi_success;
@@ -99,7 +99,7 @@ static bool RecordSpawnCopy(mvfxGpuSim* sim, const Emitter* emitter)
                                           first + 4u * MVFX_SPAWN_SOURCE, none, sizeof none);
     }
     recorded = recorded && mvfxRecordSourceCopy(sim, emitter, pass);
-    return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
 
 // Records an emitter's births from events, when it spawns from them.

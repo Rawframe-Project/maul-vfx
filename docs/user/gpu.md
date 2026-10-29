@@ -17,8 +17,8 @@ The CPU path stays in charge of what happens: a **planned** instance (`mvfxInsta
 The program builds each frame as it does for its own rendering:
 
 1. `mvfxContext_StepTicks` steps the context, planned instances included.
-2. After `mrhiBeginFrame`, `mvfxGpuSim_AddPasses` adds the step's passes to the frame, and the output passes the program asks for follow (records, lights, ribbons, sprites, gas and water reads and samples, surface meshes).
-3. After `mrhiCompileFrame`, `mvfxGpuSim_Record` records them.
+2. After `mrhiDevice_BeginFrame`, `mvfxGpuSim_AddPasses` adds the step's passes to the frame, and the output passes the program asks for follow (records, lights, ribbons, sprites, gas and water reads and samples, surface meshes).
+3. After `mrhiDevice_CompileFrame`, `mvfxGpuSim_Record` records them.
 
 Nothing is read back within a step. Each emitter keeps a statistics record (its live count, its bounds and its capacity counts) on the device, which the program reads back as late as its frames lag; `mvfxGpuSim_BoundsOf` maps it to bounds in the world. A program reading an emitter's buffers directly (`mvfxGpuSim_GetParticles`) reads only what the record counts: the first live count of the particles, and the events and links the record says were written; the slots and entries past those counts are undefined, and so is every buffer until the simulation's first step has run. Gases and water surfaces have records too, which the program hands back (`mvfxGpuSim_ReportGas`, `mvfxGpuSim_ReportWater`) so the instance knows when it has finished.
 
@@ -69,17 +69,17 @@ for (int32_t step = 0; made && step < 60; ++step)
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     mrhiRequestId submitted = {0};
     made = mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success &&
-           mrhiBeginFrame(device, &frame) == mrhi_success &&
+           mrhiDevice_BeginFrame(device, &frame) == mrhi_success &&
            mvfxGpuSim_AddPasses(sim) == mvfx_success &&
-           mrhiCompileFrame(device) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
-           mrhiSubmitFrame(device, &submitted) == mrhi_success &&
-           mrhiWaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
+           mrhiDevice_CompileFrame(device) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
+           mrhiDevice_SubmitFrame(device, &submitted) == mrhi_success &&
+           mrhiRequest_WaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
     if (!made)
     {
-        (void)mrhiDropFrame(device); // a frame left open by a failure
+        (void)mrhiDevice_DropFrame(device); // a frame left open by a failure
     }
     mrhiDeviceNotification note;
-    while (mrhiNextDeviceNotification(device, &note) == mrhi_success)
+    while (mrhiDevice_TakeNotification(device, &note) == mrhi_success)
     {
         (void)mvfxGpu_Notify(kernels, &note);
     }
@@ -94,7 +94,7 @@ mrhiPassId pass = {0};
 mrhiRequestId read = {0};
 mrhiRequestId submitted = {0};
 made = made && mvfxGpuSim_GetParticles(sim, 0, &particles) == mvfx_success &&
-       mrhiBeginFrame(device, &frame) == mrhi_success &&
+       mrhiDevice_BeginFrame(device, &frame) == mrhi_success &&
        mrhiImportBuffer(device, particles.statistics, &statistics) == mrhi_success;
 const mrhiAccess reading = {.resource = statistics, .kind = mrhi_accessCopySource};
 mrhiPassDef passDef = mrhiDefaultPassDef();
@@ -104,23 +104,23 @@ passDef.accessCount = 1;
 passDef.neverCull = true;
 static uint32_t record[MVFX_GPU_STATISTICS_WORDS];
 made = made && mrhiAddPass(device, &passDef, &pass) == mrhi_success &&
-       mrhiCompileFrame(device) == mrhi_success &&
-       mrhiBeginPass(device, pass) == mrhi_success &&
-       mrhiReadBuffer(device, pass, statistics, 0, sizeof record, &read) == mrhi_success &&
-       mrhiEndPass(device, pass) == mrhi_success &&
-       mrhiSubmitFrame(device, &submitted) == mrhi_success &&
-       mrhiWaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
+       mrhiDevice_CompileFrame(device) == mrhi_success &&
+       mrhiPass_Begin(device, pass) == mrhi_success &&
+       mrhiPass_ReadBuffer(device, pass, statistics, 0, sizeof record, &read) == mrhi_success &&
+       mrhiPass_End(device, pass) == mrhi_success &&
+       mrhiDevice_SubmitFrame(device, &submitted) == mrhi_success &&
+       mrhiRequest_WaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
 if (!made)
 {
-    (void)mrhiDropFrame(device);
+    (void)mrhiDevice_DropFrame(device);
 }
 mrhiDeviceNotification note;
-while (mrhiNextDeviceNotification(device, &note) == mrhi_success)
+while (mrhiDevice_TakeNotification(device, &note) == mrhi_success)
 {
     (void)mvfxGpu_Notify(kernels, &note);
 }
 size_t taken = 0;
-made = made && mrhiTakeReadback(device, read, record, sizeof record, &taken) == mrhi_success;
+made = made && mrhiRequest_TakeReadback(device, read, record, sizeof record, &taken) == mrhi_success;
 
 // About 50 live, as on the CPU, and their bounds above the ground.
 mvfxBounds bounds;

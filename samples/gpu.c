@@ -56,7 +56,7 @@ static uint32_t s_record[MVFX_GPU_STATISTICS_WORDS];
 static void Drain(Gpu* gpu)
 {
     mrhiDeviceNotification note;
-    while (mrhiNextDeviceNotification(gpu->device, &note) == mrhi_success)
+    while (mrhiDevice_TakeNotification(gpu->device, &note) == mrhi_success)
     {
         (void)mvfxGpu_Notify(gpu->kernels, &note);
     }
@@ -84,16 +84,16 @@ static int Open(Gpu* gpu)
     mrhiResult made = mrhiCreateInstance(&def, &gpu->instance);
     if (made != mrhi_success)
     {
-        printf("the instance was not made: %s\n", mrhiResultName(made));
+        printf("the instance was not made: %s\n", mrhiGetResultName(made));
         return 1;
     }
-    mrhiResult found = mrhiRequestAdapters(gpu->instance, &search, &request);
-    found = found == mrhi_success ? mrhiNextInstanceNotification(gpu->instance, &record) : found;
+    mrhiResult found = mrhiInstance_RequestAdapters(gpu->instance, &search, &request);
+    found = found == mrhi_success ? mrhiInstance_TakeNotification(gpu->instance, &record) : found;
     found = found == mrhi_success ? record.outcome : found;
-    found = found == mrhi_success ? mrhiGetAdapters(gpu->instance, &adapter, 1, &count) : found;
+    found = found == mrhi_success ? mrhiInstance_GetAdapters(gpu->instance, &adapter, 1, &count) : found;
     if (found != mrhi_success)
     {
-        printf("the adapter search failed: %s\n", mrhiResultName(found));
+        printf("the adapter search failed: %s\n", mrhiGetResultName(found));
         return 1;
     }
     const char* required = getenv("MVFX_RHI_REQUIRED");
@@ -105,7 +105,7 @@ static int Open(Gpu* gpu)
     }
     mrhiAdapterInfo info = {0};
     if (required != NULL &&
-        (mrhiGetAdapterInfo(gpu->instance, adapter, &info) != mrhi_success ||
+        (mrhiAdapter_GetInfo(gpu->instance, adapter, &info) != mrhi_success ||
          (strcmp(required, "vulkan") == 0 && info.driver != mrhi_driverVulkan) ||
          (strcmp(required, "d3d12") == 0 && info.driver != mrhi_driverD3d12)))
     {
@@ -115,11 +115,11 @@ static int Open(Gpu* gpu)
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
     mrhiResult opened = mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request);
-    opened = opened == mrhi_success ? mrhiNextInstanceNotification(gpu->instance, &record) : opened;
+    opened = opened == mrhi_success ? mrhiInstance_TakeNotification(gpu->instance, &record) : opened;
     opened = opened == mrhi_success ? record.outcome : opened;
     if (opened != mrhi_success)
     {
-        printf("the adapter's device was not made: %s\n", mrhiResultName(opened));
+        printf("the adapter's device was not made: %s\n", mrhiGetResultName(opened));
         return 1;
     }
     mvfxGpuDef gpuDef = mvfxDefaultGpuDef();
@@ -160,8 +160,8 @@ static void Close(Gpu* gpu)
 static bool Finish(Gpu* gpu)
 {
     mrhiRequestId submitted = {0};
-    mrhiResult waited = mrhiSubmitFrame(gpu->device, &submitted);
-    waited = waited == mrhi_success ? mrhiWaitFrame(gpu->device, submitted, gpu->waitNs) : waited;
+    mrhiResult waited = mrhiDevice_SubmitFrame(gpu->device, &submitted);
+    waited = waited == mrhi_success ? mrhiRequest_WaitFrame(gpu->device, submitted, gpu->waitNs) : waited;
     if (waited == mrhi_timeout)
     {
         printf(gpu->waitNs == FIRST_WAIT_NS
@@ -178,14 +178,14 @@ static bool Finish(Gpu* gpu)
 static bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 {
     mrhiFrameDef frame = mrhiDefaultFrameDef();
-    if (mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+    if (mrhiDevice_BeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
     }
     if (mvfxGpuSim_AddPasses(sim) != mvfx_success ||
-        mrhiCompileFrame(gpu->device) != mrhi_success || mvfxGpuSim_Record(sim) != mvfx_success)
+        mrhiDevice_CompileFrame(gpu->device) != mrhi_success || mvfxGpuSim_Record(sim) != mvfx_success)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         return false;
     }
     return Finish(gpu);
@@ -197,7 +197,7 @@ static bool ReadRecord(Gpu* gpu, const mvfxGpuSim* sim)
     mvfxGpuParticles particles;
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     if (mvfxGpuSim_GetParticles(sim, 0, &particles) != mvfx_success ||
-        mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+        mrhiDevice_BeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
     }
@@ -214,18 +214,18 @@ static bool ReadRecord(Gpu* gpu, const mvfxGpuSim* sim)
     def.neverCull = true;
     recorded =
         recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
-        mrhiCompileFrame(gpu->device) == mrhi_success &&
-        mrhiBeginPass(gpu->device, pass) == mrhi_success &&
-        mrhiReadBuffer(gpu->device, pass, statistics, 0, sizeof s_record, &read) == mrhi_success &&
-        mrhiEndPass(gpu->device, pass) == mrhi_success;
+        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+        mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, pass, statistics, 0, sizeof s_record, &read) == mrhi_success &&
+        mrhiPass_End(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         return false;
     }
     size_t taken = 0;
     return Finish(gpu) &&
-           mrhiTakeReadback(gpu->device, read, s_record, sizeof s_record, &taken) == mrhi_success &&
+           mrhiRequest_TakeReadback(gpu->device, read, s_record, sizeof s_record, &taken) == mrhi_success &&
            taken == sizeof s_record;
 }
 

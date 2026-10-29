@@ -107,7 +107,7 @@ extern "C"
     /// pipeline that failed does.
     ///
     /// @param gpu           The object.
-    /// @param notification  A notification from mrhiNextDeviceNotification.
+    /// @param notification  A notification from mrhiDevice_TakeNotification.
     /// @return Whether it answered one of the object's requests (another
     ///         owner's notifications are the host's to route).
     /// @par Thread safety

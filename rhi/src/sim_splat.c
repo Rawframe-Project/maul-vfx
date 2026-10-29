@@ -312,7 +312,7 @@ bool mvfxWriteSimSplats(mvfxGpuSim* sim, mrhiPassId pass, SimGas* gas)
         const mrhiResourceId* r = splat->resources;
         written = mvfxUpload(sim->device, &sim->uploaded, pass, r[SPLAT_NUMBERS], 0, splat->words,
                              sizeof splat->words) &&
-                  mrhiClearBuffer(sim->device, pass, r[SPLAT_SORTED], 4u * RunsAt(splat),
+                  mrhiPass_ClearBuffer(sim->device, pass, r[SPLAT_SORTED], 4u * RunsAt(splat),
                                   8u * ((uint64_t)splat->runs + 1u)) == mrhi_success;
     }
     return written;

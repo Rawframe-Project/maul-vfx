@@ -204,13 +204,13 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
         bindings[b] =
             (mrhiBinding){.slot = (uint32_t)b, .resource = bound[b], .size = MRHI_WHOLE_SIZE};
     }
-    bool ran = mrhiBeginPass(sim->device, pass) == mrhi_success &&
-               mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
+    bool ran = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+               mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
                    mrhi_success &&
-               mrhiSetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
-               mrhiSetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
-               mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
-    return mrhiEndPass(sim->device, pass) == mrhi_success && ran;
+               mrhiPass_SetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
+               mrhiPass_SetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
+               mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 
 // Records substep s's passes from passes: the move, the grid, the
@@ -276,10 +276,10 @@ bool mvfxRecordSimLiquid(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->liquidPasses[0];
     bool recorded =
-        mrhiBeginPass(sim->device, pass) == mrhi_success &&
+        mrhiPass_Begin(sim->device, pass) == mrhi_success &&
         mvfxUpload(sim->device, &sim->uploaded, pass, emitter->liquidResources[LIQUID_NUMBERS], 0,
                    emitter->liquidWords, sizeof emitter->liquidWords);
-    recorded = mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+    recorded = mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
     const mvfxLiquidDef* def = &sim->views[emitter - sim->emitters].liquid;
     int32_t per = SubstepPasses(def);
     for (int32_t s = 0; recorded && s < def->substeps; ++s)

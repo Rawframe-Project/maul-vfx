@@ -802,7 +802,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
     mrhiPassId pass = emitter->passes[PASS_WRITE];
     const mrhiResourceId* r = emitter->resources;
     bool spawns = emitter->spawnSource >= 0;
-    bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
+    bool recorded = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
                     (!emitter->first || mvfxClearSimBuffers(sim, pass, emitter)) &&
                     WriteNumbers(sim, pass, r[BUFFER_STEP], emitter) &&
                     (emitter->birthCount == 0 ||
@@ -819,7 +819,7 @@ static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
                                    &emitter->gridLayout) &&
                     mvfxWriteSimMesh(sim, pass, emitter) && mvfxCopySimFollow(sim, pass, emitter) &&
                     (!emitter->writesEvents || mvfxWriteEventNumbers(sim, pass, emitter));
-    return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
 
 // Records a kernel's pass over the emitter's buffers.
@@ -847,13 +847,13 @@ bool mvfxRecordSimDispatch(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId p
                                                    .range = TEXTURE_RANGES[t]};
     }
     bool recorded =
-        mrhiBeginPass(sim->device, pass) == mrhi_success &&
-        mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
+        mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+        mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
             mrhi_success &&
-        mrhiSetBindings(sim->device, pass, 0, bindings, BUFFER_COUNT + 2) == mrhi_success &&
-        mrhiSetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
-        mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
-    return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+        mrhiPass_SetBindings(sim->device, pass, 0, bindings, BUFFER_COUNT + 2) == mrhi_success &&
+        mrhiPass_SetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
+        mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
 
 // Records an emitter's step passes, if added: the plan's writes and the

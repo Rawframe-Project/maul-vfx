@@ -85,17 +85,17 @@ static bool AddPasses(mvfxGpuSim* sim, mrhiResourceId numbers, const mrhiAccess*
 static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t points)
 {
     uint32_t groups = (points + GAS_GROUP - 1u) / GAS_GROUP;
-    return groups == 0 || mrhiDispatch(sim->device, pass, groups < GAS_ROW ? groups : GAS_ROW,
+    return groups == 0 || mrhiPass_Dispatch(sim->device, pass, groups < GAS_ROW ? groups : GAS_ROW,
                                        (groups + GAS_ROW - 1u) / GAS_ROW, 1) == mrhi_success;
 }
 
 // Records a read's passes: its numbers' write, then its words.
 static bool RecordRead(mvfxGpuSim* sim, const SimGas* gas, const GasRead* read)
 {
-    bool recorded = mrhiBeginPass(sim->device, read->passes[0]) == mrhi_success &&
+    bool recorded = mrhiPass_Begin(sim->device, read->passes[0]) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, read->passes[0], read->resource, 0,
                                read->words, sizeof read->words);
-    recorded = mrhiEndPass(sim->device, read->passes[0]) == mrhi_success && recorded;
+    recorded = mrhiPass_End(sim->device, read->passes[0]) == mrhi_success && recorded;
     const mrhiBinding bindings[4] = {
         {.slot = 0, .resource = gas->resources[GAS_NUMBERS], .size = MRHI_WHOLE_SIZE},
         {.slot = 1, .resource = gas->resources[GAS_FIELDS], .size = MRHI_WHOLE_SIZE},
@@ -103,21 +103,21 @@ static bool RecordRead(mvfxGpuSim* sim, const SimGas* gas, const GasRead* read)
         {.slot = 3, .resource = read->target, .size = MRHI_WHOLE_SIZE}};
     mrhiPassId pass = read->passes[1];
     bool ran =
-        recorded && mrhiBeginPass(sim->device, pass) == mrhi_success &&
-        mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, mvfx_kernelGasRead)) ==
+        recorded && mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+        mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, mvfx_kernelGasRead)) ==
             mrhi_success &&
-        mrhiSetBindings(sim->device, pass, 0, bindings, 4) == mrhi_success &&
+        mrhiPass_SetBindings(sim->device, pass, 0, bindings, 4) == mrhi_success &&
         Dispatch(sim, pass, read->written);
-    return mrhiEndPass(sim->device, pass) == mrhi_success && ran;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 
 // Records a sample query's passes: its numbers' write, then its samples.
 static bool RecordQuery(mvfxGpuSim* sim, const SimGas* gas, const GasSamples* query)
 {
-    bool recorded = mrhiBeginPass(sim->device, query->passes[0]) == mrhi_success &&
+    bool recorded = mrhiPass_Begin(sim->device, query->passes[0]) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, query->passes[0], query->resource, 0,
                                query->words, sizeof query->words);
-    recorded = mrhiEndPass(sim->device, query->passes[0]) == mrhi_success && recorded;
+    recorded = mrhiPass_End(sim->device, query->passes[0]) == mrhi_success && recorded;
     const mrhiBinding bindings[5] = {
         {.slot = 0, .resource = gas->resources[GAS_NUMBERS], .size = MRHI_WHOLE_SIZE},
         {.slot = 1, .resource = gas->resources[GAS_FIELDS], .size = MRHI_WHOLE_SIZE},
@@ -126,12 +126,12 @@ static bool RecordQuery(mvfxGpuSim* sim, const SimGas* gas, const GasSamples* qu
         {.slot = 4, .resource = query->points, .size = MRHI_WHOLE_SIZE}};
     mrhiPassId pass = query->passes[1];
     bool ran =
-        recorded && mrhiBeginPass(sim->device, pass) == mrhi_success &&
-        mrhiSetComputePipeline(sim->device, pass,
+        recorded && mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+        mrhiPass_SetComputePipeline(sim->device, pass,
                                mvfxGpuPipeline(sim->gpu, mvfx_kernelGasSample)) == mrhi_success &&
-        mrhiSetBindings(sim->device, pass, 0, bindings, 5) == mrhi_success &&
+        mrhiPass_SetBindings(sim->device, pass, 0, bindings, 5) == mrhi_success &&
         Dispatch(sim, pass, query->count);
-    return mrhiEndPass(sim->device, pass) == mrhi_success && ran;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 
 bool mvfxRecordSimGasReads(mvfxGpuSim* sim, SimGas* gas)

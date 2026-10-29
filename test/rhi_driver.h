@@ -37,7 +37,7 @@ static inline bool IsRequiredDriver(mrhiInstance* instance, mrhiAdapterId adapte
         return true;
     }
     mrhiAdapterInfo info;
-    if (mrhiGetAdapterInfo(instance, adapter, &info) != mrhi_success || info.driver != driver)
+    if (mrhiAdapter_GetInfo(instance, adapter, &info) != mrhi_success || info.driver != driver)
     {
         printf("FAIL: the adapter is not the %s driver's, which MVFX_RHI_REQUIRED names\n",
                required);
@@ -51,7 +51,7 @@ static inline bool IsRequiredDriver(mrhiInstance* instance, mrhiAdapterId adapte
 static inline bool IsWarp(mrhiInstance* instance, mrhiAdapterId adapter)
 {
     mrhiAdapterInfo info;
-    return mrhiGetAdapterInfo(instance, adapter, &info) == mrhi_success &&
+    return mrhiAdapter_GetInfo(instance, adapter, &info) == mrhi_success &&
            info.driver == mrhi_driverD3d12 && info.vendorId == 0x1414u && info.deviceId == 0x8Cu;
 }
 
@@ -71,7 +71,7 @@ static inline int OpenDevice(mrhiDeviceDef def, mrhiInstance** instance, mrhiAda
     mrhiResult made = mrhiCreateInstance(&instanceDef, instance);
     if (made != mrhi_success)
     {
-        printf("FAIL: the instance was not made: %s\n", mrhiResultName(made));
+        printf("FAIL: the instance was not made: %s\n", mrhiGetResultName(made));
         return 1;
     }
     mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
@@ -79,13 +79,13 @@ static inline int OpenDevice(mrhiDeviceDef def, mrhiInstance** instance, mrhiAda
     mrhiRequestId request;
     mrhiInstanceNotification record = {0};
     size_t count = 0;
-    mrhiResult found = mrhiRequestAdapters(*instance, &search, &request);
-    found = found == mrhi_success ? mrhiNextInstanceNotification(*instance, &record) : found;
+    mrhiResult found = mrhiInstance_RequestAdapters(*instance, &search, &request);
+    found = found == mrhi_success ? mrhiInstance_TakeNotification(*instance, &record) : found;
     found = found == mrhi_success ? record.outcome : found;
-    found = found == mrhi_success ? mrhiGetAdapters(*instance, adapter, 1, &count) : found;
+    found = found == mrhi_success ? mrhiInstance_GetAdapters(*instance, adapter, 1, &count) : found;
     if (found != mrhi_success)
     {
-        printf("FAIL: the adapter search failed: %s\n", mrhiResultName(found));
+        printf("FAIL: the adapter search failed: %s\n", mrhiGetResultName(found));
         return 1;
     }
     if (count == 0)
@@ -105,11 +105,11 @@ static inline int OpenDevice(mrhiDeviceDef def, mrhiInstance** instance, mrhiAda
     }
     def.adapter = *adapter;
     mrhiResult opened = mrhiCreateDevice(*instance, &def, device, &request);
-    opened = opened == mrhi_success ? mrhiNextInstanceNotification(*instance, &record) : opened;
+    opened = opened == mrhi_success ? mrhiInstance_TakeNotification(*instance, &record) : opened;
     opened = opened == mrhi_success ? record.outcome : opened;
     if (opened != mrhi_success)
     {
-        printf("FAIL: the adapter's device was not made: %s\n", mrhiResultName(opened));
+        printf("FAIL: the adapter's device was not made: %s\n", mrhiGetResultName(opened));
         return 1;
     }
     return 0;

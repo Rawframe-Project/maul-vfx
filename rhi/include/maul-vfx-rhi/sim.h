@@ -423,7 +423,7 @@ extern "C"
                                                                        mrhiResourceId normals);
 
     /// Adds the passes of the context's last step to the frame the host
-    /// builds (after mrhiBeginFrame, before mrhiCompileFrame): a transfer
+    /// builds (after mrhiDevice_BeginFrame, before mrhiDevice_CompileFrame): a transfer
     /// pass and seven compute passes an emitter, four more for one that
     /// writes events (mvfxGpuParticles). It reads the instance's
     /// plans, which must stay until mvfxGpuSim_Record. A step whose
@@ -638,7 +638,7 @@ extern "C"
 
     /// Returns the passes an emitter's step adds at most
     /// (mvfxGpuSim_AddPasses), for a host to size its device's frame by
-    /// (mrhiDeviceLimits' framePasses): its own, and those of its neighbor
+    /// (mrhiDeviceBudgets' framePasses): its own, and those of its neighbor
     /// grid, contacts, plexus links, units' self-collision and particle
     /// liquid when it has them. A particle liquid adds a pass, then each
     /// substep 11, three an iteration, two with viscosity and three with
@@ -656,7 +656,7 @@ extern "C"
     MVFX_RHI_API int32_t mvfxGpuSim_EmitterPasses(const mvfxGpuSim* sim, int32_t emitter);
 
     /// Returns the passes a gas's step adds at most (mvfxGpuSim_AddPasses),
-    /// for a host to size its device's frame by (mrhiDeviceLimits'
+    /// for a host to size its device's frame by (mrhiDeviceBudgets'
     /// framePasses): a transfer pass, two compute passes a level of its
     /// multigrid at its first step and after a clear (each step with
     /// obstacles, after one marking their solids), one for its holds, and
