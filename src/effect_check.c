@@ -547,6 +547,42 @@ static mvfxResult CheckQualityLevels(const mvfxEffectDef* def)
     return mvfx_success;
 }
 
+// Whether an effect's parameters are finite and its gases and water
+// surfaces valid, for counts within their bounds.
+static mvfxResult CheckFields(const mvfxEffectDef* def)
+{
+    for (int32_t i = 0; i < 4 * def->parameterCount; ++i)
+    {
+        if (!isfinite(def->parameters[i]))
+        {
+            return mvfx_errorInvalid;
+        }
+    }
+    mvfxResult valid = mvfx_success;
+    for (int32_t g = 0; valid == mvfx_success && g < def->gasCount; ++g)
+    {
+        valid = mvfxCheckGasDef(&def->gases[g]);
+    }
+    for (int32_t w = 0; valid == mvfx_success && w < def->waterCount; ++w)
+    {
+        valid = mvfxCheckWaterDef(&def->waters[w]);
+    }
+    return valid != mvfx_success ? valid : CheckQualityLevels(def);
+}
+
+// Whether emitter i of an effect is valid against the effect.
+static mvfxResult CheckEmitter(const mvfxEffectDef* def, int32_t i)
+{
+    const mvfxEmitterDef* emitter = &def->emitters[i];
+    mvfxResult checked = CheckEmitterDef(emitter);
+    checked = checked != mvfx_success ? checked : CheckValues(emitter, def->parameterCount);
+    checked = checked != mvfx_success ? checked : CheckEventSpawn(def, i);
+    checked = checked != mvfx_success ? checked : CheckBeam(emitter, def->parameterCount);
+    return checked != mvfx_success
+               ? checked
+               : mvfxCheckWaterCoupling(&emitter->water, def->waters, def->waterCount);
+}
+
 mvfxResult mvfxCheckEffectDef(const mvfxEffectDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE ||
@@ -567,59 +603,13 @@ mvfxResult mvfxCheckEffectDef(const mvfxEffectDef* def)
     {
         return mvfx_errorInvalid;
     }
-    for (int32_t i = 0; i < 4 * def->parameterCount; ++i)
+    mvfxResult valid = CheckFields(def);
+    for (int32_t i = 0; valid == mvfx_success && i < def->emitterCount; ++i)
     {
-        if (!isfinite(def->parameters[i]))
-        {
-            return mvfx_errorInvalid;
-        }
+        valid = CheckEmitter(def, i);
     }
-    for (int32_t g = 0; g < def->gasCount; ++g)
-    {
-        mvfxResult gas = mvfxCheckGasDef(&def->gases[g]);
-        if (gas != mvfx_success)
-        {
-            return gas;
-        }
-    }
-    for (int32_t w = 0; w < def->waterCount; ++w)
-    {
-        mvfxResult water = mvfxCheckWaterDef(&def->waters[w]);
-        if (water != mvfx_success)
-        {
-            return water;
-        }
-    }
-    mvfxResult levels = CheckQualityLevels(def);
-    if (levels != mvfx_success)
-    {
-        return levels;
-    }
-    for (int32_t i = 0; i < def->emitterCount; ++i)
-    {
-        const mvfxEmitterDef* emitter = &def->emitters[i];
-        mvfxResult checked = CheckEmitterDef(emitter);
-        checked = checked != mvfx_success ? checked : CheckValues(emitter, def->parameterCount);
-        checked = checked != mvfx_success ? checked : CheckEventSpawn(def, i);
-        checked = checked != mvfx_success ? checked : CheckBeam(emitter, def->parameterCount);
-        checked = checked != mvfx_success
-                      ? checked
-                      : mvfxCheckWaterCoupling(&emitter->water, def->waters, def->waterCount);
-        if (checked != mvfx_success)
-        {
-            return checked;
-        }
-    }
-    mvfxResult reach = CheckDefaultsReach(def);
-    if (reach != mvfx_success)
-    {
-        return reach;
-    }
-    mvfxResult gases = mvfxCheckEffectGases(def);
-    if (gases != mvfx_success)
-    {
-        return gases;
-    }
+    valid = valid != mvfx_success ? valid : CheckDefaultsReach(def);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectGases(def);
     int32_t order[MVFX_MAX_EMITTERS];
-    return mvfxRequire(mvfxOrderEmitters(def, order));
+    return valid != mvfx_success ? valid : mvfxRequire(mvfxOrderEmitters(def, order));
 }
