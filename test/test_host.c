@@ -386,7 +386,7 @@ static void TestPrewarm(void)
               mvfx_errorInvalid,
           "a step of 0");
     CHECK(mvfxInstance_Prewarm(warmed.context, warmed.instance, 1.0, 2.0, 1, NULL) ==
-              mvfx_errorInvalid,
+              mvfx_errorLimit,
           "a step past a second");
     CHECK(mvfxInstance_Prewarm(warmed.context, warmed.instance, 1.0, 1e-9, 1, NULL) ==
               mvfx_errorInvalid,

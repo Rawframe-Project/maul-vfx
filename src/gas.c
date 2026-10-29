@@ -120,17 +120,15 @@ static mvfxResult CheckKind(const mvfxGasDef* def)
         return mvfx_success;
     }
     const mvfxGasSurface* s = &def->surface;
-    if (def->obstacleCount != 0 || def->hostObstacles || !(s->reach >= 1.0f) ||
-        s->smoothing < 0)
+    if (def->obstacleCount != 0 || def->hostObstacles || !(s->reach >= 1.0f) || s->smoothing < 0)
     {
         return mvfx_errorInvalid;
     }
-    return mvfxFirst(
-        mvfxFirst(mvfxPositiveUpTo(s->radius, MVFX_MAX_EXTENT),
-                  mvfxBounded(s->reach, 1.0f, MVFX_MAX_SURFACE_REACH)),
-        mvfxFirst(mvfxFirst(mvfxUpToBound(s->low, 0.0f, MVFX_MAX_EXTENT),
-                            mvfxUpToBound(s->high, 0.0f, MVFX_MAX_EXTENT)),
-                  mvfxWithinBound(s->smoothing <= MVFX_MAX_SURFACE_SMOOTHING)));
+    return mvfxFirst(mvfxFirst(mvfxPositiveUpTo(s->radius, MVFX_MAX_EXTENT),
+                               mvfxBounded(s->reach, 1.0f, MVFX_MAX_SURFACE_REACH)),
+                     mvfxFirst(mvfxFirst(mvfxUpToBound(s->low, 0.0f, MVFX_MAX_EXTENT),
+                                         mvfxUpToBound(s->high, 0.0f, MVFX_MAX_EXTENT)),
+                               mvfxWithinBound(s->smoothing <= MVFX_MAX_SURFACE_SMOOTHING)));
 }
 
 mvfxResult mvfxCheckGasDef(const mvfxGasDef* def)

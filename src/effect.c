@@ -113,9 +113,9 @@ static mvfxResult CheckBurst(const mvfxBurst* burst)
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult interval = burst->cycles == 1 ? mvfx_success
-                                             : mvfxBounded(burst->interval, MVFX_MIN_DURATION,
-                                                           MVFX_MAX_LIFETIME);
+    mvfxResult interval = burst->cycles == 1
+                              ? mvfx_success
+                              : mvfxBounded(burst->interval, MVFX_MIN_DURATION, MVFX_MAX_LIFETIME);
     return mvfxFirst(mvfxFirst(mvfxUpToBound(burst->time, 0.0f, MVFX_MAX_LIFETIME), interval),
                      mvfxWithinBound(burst->maxCount <= MVFX_MAX_EMITTER_CAPACITY));
 }
@@ -163,9 +163,9 @@ static mvfxResult CheckEmitterDef(const mvfxEmitterDef* def)
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult duration = def->duration == 0.0f ? mvfx_success
-                                                : mvfxBounded(def->duration, MVFX_MIN_DURATION,
-                                                              MVFX_MAX_LIFETIME);
+    mvfxResult duration = def->duration == 0.0f
+                              ? mvfx_success
+                              : mvfxBounded(def->duration, MVFX_MIN_DURATION, MVFX_MAX_LIFETIME);
     mvfxResult fields = mvfxFirst(
         mvfxFirst(mvfxWithinBound(def->capacity <= MVFX_MAX_EMITTER_CAPACITY),
                   mvfxUpToBound(def->rate, 0.0f, MVFX_MAX_SPAWN_RATE)),
@@ -210,9 +210,8 @@ static mvfxResult CheckLifetime(const mvfxScalarSource* lifetime, bool hasDurati
     {
         return source;
     }
-    return lifetime->range.min > 0.0f
-               ? mvfxWithinBound(lifetime->range.max <= MVFX_MAX_LIFETIME)
-               : mvfx_errorInvalid;
+    return lifetime->range.min > 0.0f ? mvfxWithinBound(lifetime->range.max <= MVFX_MAX_LIFETIME)
+                                      : mvfx_errorInvalid;
 }
 
 // Whether a ribbon's tessellation, texture and facing are valid.
@@ -275,19 +274,18 @@ static mvfxResult CheckOutputs(const mvfxEmitterDef* def)
     const mvfxLightDef* light = &def->light;
     const mvfxRibbonDef* ribbon = &def->ribbon;
     if ((light->enabled && (light->every < 1 || light->every > 65536)) ||
-        ribbon->ids > mvfx_ribbonPerSource ||
-        def->sprite.billboard > mvfx_billboardDirectional || def->sortMode > mvfx_sortFrontToBack ||
-        def->sortMeasure > mvfx_sortByDepth || mesh->mode > mvfx_frameRandom || mesh->first < 0 ||
-        mesh->first > mesh->last)
+        ribbon->ids > mvfx_ribbonPerSource || def->sprite.billboard > mvfx_billboardDirectional ||
+        def->sortMode > mvfx_sortFrontToBack || def->sortMeasure > mvfx_sortByDepth ||
+        mesh->mode > mvfx_frameRandom || mesh->first < 0 || mesh->first > mesh->last)
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult lit = light->enabled
-                         ? mvfxFirst(mvfxUpToBound(light->intensity, 0.0f, MVFX_MAX_EXTENT),
-                                     mvfxFirst(mvfxUpToBound(light->radius, 0.0f, MVFX_MAX_EXTENT),
-                                               mvfxUpToBound(light->radiusBySize, 0.0f,
-                                                             MVFX_MAX_EXTENT)))
-                         : mvfx_success;
+    mvfxResult lit =
+        light->enabled
+            ? mvfxFirst(mvfxUpToBound(light->intensity, 0.0f, MVFX_MAX_EXTENT),
+                        mvfxFirst(mvfxUpToBound(light->radius, 0.0f, MVFX_MAX_EXTENT),
+                                  mvfxUpToBound(light->radiusBySize, 0.0f, MVFX_MAX_EXTENT)))
+            : mvfx_success;
     if (lit != mvfx_success)
     {
         return lit;
@@ -319,9 +317,8 @@ static mvfxResult CheckCollisions(const mvfxEmitterDef* def)
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult collision =
-        mvfxFirst(mvfxCheckCollision(&def->collision),
-                  mvfxWithinBound(def->colliderCount <= MVFX_MAX_COLLIDERS));
+    mvfxResult collision = mvfxFirst(mvfxCheckCollision(&def->collision),
+                                     mvfxWithinBound(def->colliderCount <= MVFX_MAX_COLLIDERS));
     if (collision != mvfx_success)
     {
         return collision;
@@ -370,8 +367,7 @@ static mvfxResult CheckCollisions(const mvfxEmitterDef* def)
     {
         return mvfx_errorInvalid;
     }
-    return def->events == 0 ? mvfx_success
-                            : mvfxCountUpTo(def->eventCapacity, 1, MVFX_MAX_EVENTS);
+    return def->events == 0 ? mvfx_success : mvfxCountUpTo(def->eventCapacity, 1, MVFX_MAX_EVENTS);
 }
 
 // Whether host modules are valid: a function each, a known stage.
@@ -562,6 +558,11 @@ static mvfxResult CheckBeam(const mvfxEmitterDef* def, int32_t parameterCount)
                  !def->collision.enabled && def->forceCount == 0 && !def->contacts.enabled &&
                  !def->steering.enabled && !def->pairForce.enabled &&
                  (def->events & mvfx_eventMaskBirth) == 0;
+    // The count first: it bounds the sum below.
+    if (beam->segments > MVFX_MAX_BEAM_SEGMENTS)
+    {
+        return mvfx_errorLimit;
+    }
     if (beam->segments < 1 || def->capacity < beam->segments + 1 || beam->controlCount < 0 ||
         beam->controlCount > 2 || !IsWithin(beam->noiseFrequency, 0.0f, 1000.0f) ||
         !IsWithin(beam->noiseSpeed, -1000.0f, 1000.0f) || !alone ||
@@ -569,11 +570,9 @@ static mvfxResult CheckBeam(const mvfxEmitterDef* def, int32_t parameterCount)
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult shape =
-        mvfxFirst(mvfxFirst(mvfxWithinBound(beam->segments <= MVFX_MAX_BEAM_SEGMENTS),
-                            mvfxUpToBound(beam->noiseAmplitude, 0.0f, MVFX_MAX_EXTENT)),
-                  mvfxFirst(CheckBeamPoint(&beam->start, parameterCount),
-                            CheckBeamPoint(&beam->end, parameterCount)));
+    mvfxResult shape = mvfxFirst(mvfxUpToBound(beam->noiseAmplitude, 0.0f, MVFX_MAX_EXTENT),
+                                 mvfxFirst(CheckBeamPoint(&beam->start, parameterCount),
+                                           CheckBeamPoint(&beam->end, parameterCount)));
     for (int32_t c = 0; shape == mvfx_success && c < beam->controlCount; ++c)
     {
         shape = CheckBeamPoint(&beam->controls[c], parameterCount);
@@ -597,8 +596,7 @@ static mvfxResult CheckEventSpawn(const mvfxEffectDef* def, int32_t i)
     }
     bool written = (def->emitters[spawn->source].events & (1u << spawn->kind)) != 0;
     if (!written || spawn->minCount < 0 || spawn->minCount > spawn->maxCount ||
-        !(spawn->inheritVelocity >= 0.0f && spawn->inheritVelocity <= 1.0f) ||
-        spawn->capacity < 1)
+        !(spawn->inheritVelocity >= 0.0f && spawn->inheritVelocity <= 1.0f) || spawn->capacity < 1)
     {
         return mvfx_errorInvalid;
     }
@@ -674,16 +672,19 @@ mvfxResult mvfxCheckEffectDef(const mvfxEffectDef* def)
         (def->emitterCount > 0 && def->emitters == nullptr) || def->emitterCount < 0 ||
         def->gasCount < 0 || (def->gasCount > 0 && def->gases == nullptr) || def->waterCount < 0 ||
         (def->waterCount > 0 && def->waters == nullptr) || def->parameterCount < 0 ||
-        (def->parameterCount > 0 && def->parameters == nullptr) ||
-        def->emitterCount + def->gasCount + def->waterCount < 1)
+        (def->parameterCount > 0 && def->parameters == nullptr))
     {
         return mvfx_errorInvalid;
     }
-    // The counts bound the arrays the checks below fill.
+    // The counts bound the sum below and the arrays the checks fill.
     if (def->emitterCount > MVFX_MAX_EMITTERS || def->gasCount > MVFX_MAX_GASES ||
         def->waterCount > MVFX_MAX_WATERS || def->parameterCount > MVFX_MAX_PARAMETERS)
     {
         return mvfx_errorLimit;
+    }
+    if (def->emitterCount + def->gasCount + def->waterCount < 1)
+    {
+        return mvfx_errorInvalid;
     }
     for (int32_t i = 0; i < 4 * def->parameterCount; ++i)
     {

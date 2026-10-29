@@ -59,11 +59,11 @@ static mvfxResult CheckShallow(const mvfxWaterDef* def)
         return mvfx_errorInvalid;
     }
     // The count bounds the sources read below.
-    mvfxResult valid = mvfxFirst(
-        mvfxFirst(mvfxPositiveUpTo(def->gravity, MVFX_MAX_EXTENT),
-                  mvfxUpToBound(def->friction, 0.0f, MVFX_MAX_DRAG)),
-        mvfxFirst(mvfxBounded(def->fillLevel, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                  mvfxWithinBound(def->sourceCount <= MVFX_MAX_WATER_SOURCES)));
+    mvfxResult valid =
+        mvfxFirst(mvfxFirst(mvfxPositiveUpTo(def->gravity, MVFX_MAX_EXTENT),
+                            mvfxUpToBound(def->friction, 0.0f, MVFX_MAX_DRAG)),
+                  mvfxFirst(mvfxBounded(def->fillLevel, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                            mvfxWithinBound(def->sourceCount <= MVFX_MAX_WATER_SOURCES)));
     if (valid == mvfx_success && def->hasTerrain)
     {
         valid = mvfxCheckCollider(&def->terrain);

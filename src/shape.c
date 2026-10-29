@@ -63,15 +63,15 @@ mvfxResult mvfxCheckShape(const mvfxShape* shape)
     case mvfx_shapeHemisphere:
         return CheckSize(shape->radius);
     case mvfx_shapeBox:
-        return mvfxFirst(CheckSize(shape->halfExtents[0]),
-                         mvfxFirst(CheckSize(shape->halfExtents[1]), CheckSize(shape->halfExtents[2])));
+        return mvfxFirst(
+            CheckSize(shape->halfExtents[0]),
+            mvfxFirst(CheckSize(shape->halfExtents[1]), CheckSize(shape->halfExtents[2])));
     case mvfx_shapeMesh:
         return mvfxRequire(shape->meshMode <= mvfx_meshVolume);
     case mvfx_shapeCone:
     {
-        mvfxResult sizes =
-            mvfxFirst(mvfxUpToBound(shape->angle, 0.0f, MVFX_MAX_CONE_ANGLE),
-                      mvfxFirst(CheckSize(shape->radius), CheckSize(shape->length)));
+        mvfxResult sizes = mvfxFirst(mvfxUpToBound(shape->angle, 0.0f, MVFX_MAX_CONE_ANGLE),
+                                     mvfxFirst(CheckSize(shape->radius), CheckSize(shape->length)));
         if (sizes != mvfx_success)
         {
             return sizes;

@@ -76,10 +76,13 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         def the def validator refuses (mvfxCreateEffect's checks
     ///         that need no context) or an invalid asset table (a kind past
-    ///         the known ones, a name empty, too long, not UTF-8 or twice a
-    ///         kind); `mvfx_errorMissing` for an object the def refers to
-    ///         that the table lacks; `mvfx_errorCapacity` when the file
-    ///         does not fit in bytes, or is larger than INT32_MAX bytes.
+    ///         the known ones, a name empty, not UTF-8 or twice a kind);
+    ///         `mvfx_errorLimit` for a def past a named bound, as
+    ///         mvfxCreateEffect answers, or a name longer than
+    ///         MVFX_MAX_ASSET_NAME; `mvfx_errorMissing` for an object the
+    ///         def refers to that the table lacks; `mvfx_errorCapacity` when
+    ///         the file does not fit in bytes, or is larger than INT32_MAX
+    ///         bytes.
     ///         The offset is -1.
     /// @par Thread safety
     /// Safe from any thread.
@@ -111,7 +114,8 @@ extern "C"
     /// @param defOut      Receives the def, with its cookies; zeroed on
     ///                    failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument,
-    ///         memory not aligned or an invalid asset table;
+    ///         memory not aligned or an invalid asset table; `mvfx_errorLimit`
+    ///         for a name in the table longer than MVFX_MAX_ASSET_NAME;
     ///         `mvfx_errorFormat` for a file that is not one (a wrong
     ///         magic, size or hash, a unit out of place, a count past its
     ///         cap, a bool neither 0 nor 1, a name not UTF-8 or twice a
@@ -143,8 +147,9 @@ extern "C"
     /// @return As mvfxReadEffect, then as mvfxCreateEffect with the offset
     ///         -1; `mvfx_errorCapacity` also when the allocator fails. An
     ///         invalid argument (a NULL pointer, NULL bytes with a size, a
-    ///         negative size, an invalid asset table) counts as misuse when
-    ///         the context is given. What the file holds is untrusted data:
+    ///         negative size, an invalid asset table or a name in it longer
+    ///         than MVFX_MAX_ASSET_NAME) counts as misuse when the context is
+    ///         given. What the file holds is untrusted data:
     ///         a file refused for its contents, including for what it asks
     ///         of the table's assets, counts none.
     /// @par Thread safety

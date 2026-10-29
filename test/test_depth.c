@@ -507,6 +507,9 @@ static void TestRefusals(void)
     static float normals[SIDE * SIDE * 3];
     for (int32_t field = 0; field < 14; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, as a direct argument still
+        // misuse.
+        mvfxResult want = field == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxDepthImage bad = good;
         switch (field)
         {
@@ -559,7 +562,7 @@ static void TestRefusals(void)
             bad.origin[2] = (double)NAN;
             break;
         }
-        CHECK(mvfxInstance_SetDepthImage(scene.context, scene.instance, &bad) == mvfx_errorInvalid,
+        CHECK(mvfxInstance_SetDepthImage(scene.context, scene.instance, &bad) == want,
               "an image out of range");
     }
     CHECK(mvfxGetContextMisuse(scene.context) == misuse + 14, "each counted");

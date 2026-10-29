@@ -325,7 +325,7 @@ static void TestRefusals(void)
             mvfxContext_OrderEmitters(context, far, NULL, items, 1, &count) == mvfx_errorInvalid &&
             mvfxContext_OrderEmitters(context, farX, NULL, items, 1, &count) == mvfx_errorInvalid &&
             mvfxContext_OrderEmitters(context, farY, NULL, items, 1, &count) == mvfx_errorInvalid &&
-            mvfxContext_OrderEmitters(context, eye, &many, items, 1, &count) == mvfx_errorInvalid &&
+            mvfxContext_OrderEmitters(context, eye, &many, items, 1, &count) == mvfx_errorLimit &&
             mvfxContext_OrderEmitters(context, eye, &negative, items, 1, &count) ==
                 mvfx_errorInvalid &&
             mvfxContext_OrderEmitters(context, eye, &nan, items, 1, &count) == mvfx_errorInvalid &&

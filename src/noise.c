@@ -17,10 +17,10 @@ mvfxResult mvfxCheckNoise(const mvfxNoise* noise)
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult scroll = mvfxFirst(
-        mvfxBounded(noise->scroll[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-        mvfxFirst(mvfxBounded(noise->scroll[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                  mvfxBounded(noise->scroll[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT)));
+    mvfxResult scroll =
+        mvfxFirst(mvfxBounded(noise->scroll[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                  mvfxFirst(mvfxBounded(noise->scroll[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                            mvfxBounded(noise->scroll[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT)));
     return mvfxFirst(scroll, mvfxFirst(mvfxPositiveUpTo(noise->frequency, MVFX_MAX_FREQUENCY),
                                        mvfxWithinBound(noise->octaves <= MVFX_MAX_OCTAVES)));
 }

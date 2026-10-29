@@ -117,8 +117,11 @@ extern "C"
     /// @param def          The def, from mvfxDefaultInstanceDef.
     /// @param instanceOut  Receives the instance's id; the null id on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
-    ///         def without its cookie, or an origin, rotation or scale out
-    ///         of range, which counts as misuse when the context is given;
+    ///         def without its cookie, an origin, rotation, quality or
+    ///         policy out of range or a scale not finite, which counts as
+    ///         misuse when the context is given; `mvfx_errorLimit` for a
+    ///         scale outside MVFX_MIN_SCALE to MVFX_MAX_SCALE or an interval
+    ///         past MVFX_MAX_OFFSCREEN_INTERVAL, which counts none;
     ///         `mvfx_errorStale` for an effect id that names no live
     ///         effect; `mvfx_errorCapacity` when the context holds as many
     ///         instances as its def allows, or when the allocator fails or
@@ -170,8 +173,10 @@ extern "C"
     /// @param scale     From MVFX_MIN_SCALE to MVFX_MAX_SCALE.
     /// @param teleport  Whether it jumps there.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument or a value out
-    ///         of range, which counts as misuse when the context is given.
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, an origin or
+    ///         rotation out of range or a scale not finite; `mvfx_errorLimit`
+    ///         for a scale outside MVFX_MIN_SCALE to MVFX_MAX_SCALE. Either
+    ///         counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetTransform(mvfxContext* context,
@@ -205,9 +210,10 @@ extern "C"
     ///                   steps: from 2 to MVFX_MAX_OFFSCREEN_INTERVAL; read
     ///                   only for that policy.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL context or a policy or
-    ///         interval out of range, which counts as misuse when the context
-    ///         is given.
+    ///         instance; `mvfx_errorInvalid` for a NULL context, a policy out
+    ///         of range or an interval below 2; `mvfx_errorLimit` for an
+    ///         interval past MVFX_MAX_OFFSCREEN_INTERVAL. Either counts as
+    ///         misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetOffscreen(mvfxContext* context,
@@ -261,9 +267,11 @@ extern "C"
     /// @param request   The particles.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, an emitter
-    ///         index out of range, a count below 1, a value out of range, or
-    ///         a color or size for an emitter that does not store it, which
-    ///         counts as misuse when the context is given;
+    ///         index out of range, a count below 1, a value not finite or out
+    ///         of range, or a color or size for an emitter that does not store
+    ///         it; `mvfx_errorLimit` for a velocity, color or size past what
+    ///         the emitter's particles store (MVFX_MAX_EXTENT, the caps of
+    ///         value.h). Either counts as misuse when the context is given;
     ///         `mvfx_errorCapacity` when the emitter's host queue lacks the
     ///         room (none of the particles is queued).
     /// @par Thread safety
@@ -322,8 +330,9 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorUnsupported` for a planned
     ///         instance; `mvfx_errorInvalid` for a NULL context or a value
-    ///         out of range, which counts as misuse when the context is
-    ///         given.
+    ///         out of range; `mvfx_errorLimit` for a step past
+    ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
+    ///         context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Prewarm(mvfxContext* context,
@@ -480,10 +489,11 @@ extern "C"
     /// @param image     The image, or NULL for none.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL context or an image
-    ///         out of range (a size, a stride, a byte count short of its
-    ///         rows, a format, a projection not finite or not invertible,
-    ///         a place or a turn), which counts as misuse when the context
-    ///         is given (the image set before is then kept).
+    ///         out of range (a size below 1, a stride, a byte count short of
+    ///         its rows, a format, a projection not finite or not
+    ///         invertible, a place or a turn); `mvfx_errorLimit` for a size
+    ///         past MVFX_MAX_DEPTH_SIZE. Either counts as misuse when the
+    ///         context is given (the image set before is then kept).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context,
@@ -785,9 +795,10 @@ extern "C"
     ///
     /// @param context  The context.
     /// @param seconds  The span, from 0 to MVFX_MAX_STEP_SECONDS.
-    /// @return `mvfx_success`, or `mvfx_errorInvalid` for a NULL context or a
-    ///         span out of range, which counts as misuse when the context is
-    ///         given.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or a
+    ///         span below 0 or not finite; `mvfx_errorLimit` for a span past
+    ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
+    ///         context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time. Its
     /// work runs on the host's task hooks when the context has them.
@@ -799,9 +810,10 @@ extern "C"
     /// @param context  The context.
     /// @param ticks    The span in ticks, from 0 to MVFX_MAX_STEP_SECONDS
     ///                 seconds' worth.
-    /// @return `mvfx_success`, or `mvfx_errorInvalid` for a NULL context or a
-    ///         span out of range, which counts as misuse when the context is
-    ///         given.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or a
+    ///         span below 0; `mvfx_errorLimit` for a span past
+    ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
+    ///         context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time. Its
     /// work runs on the host's task hooks when the context has them.
@@ -876,8 +888,10 @@ extern "C"
     ///         instance; `mvfx_errorCapacity` for more pushes than the step
     ///         holds, with none of these taken; `mvfx_errorInvalid` for a
     ///         NULL context or pushes with a count, a surface index out of
-    ///         range, a negative count or a push out of range, which counts
-    ///         as misuse when the context is given.
+    ///         range, a negative count or a push out of range;
+    ///         `mvfx_errorLimit` for a push's radius or depth past
+    ///         MVFX_MAX_EXTENT. Either counts as misuse when the context is
+    ///         given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_PushWater(mvfxContext* context,

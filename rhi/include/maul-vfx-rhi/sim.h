@@ -345,8 +345,9 @@ extern "C"
     /// @param count      How many, 0 to MVFX_MAX_COLLIDERS.
     /// @param bytesOut   Receives the bytes; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or
-    ///         bytesOut, a count out of range or NULL colliders with a
-    ///         count; `mvfx_errorStale` for a grid that is gone.
+    ///         bytesOut, a negative count or NULL colliders with a count;
+    ///         `mvfx_errorLimit` for a count past MVFX_MAX_COLLIDERS;
+    ///         `mvfx_errorStale` for a grid that is gone.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context,
@@ -1293,7 +1294,8 @@ extern "C"
     /// @param def  Where the tubes go, from mvfxDefaultGpuExpandDef, with
     ///             its tube's sides and caps.
     /// @return As mvfxGpuSim_ExpandRibbons; `mvfx_errorInvalid` too for
-    ///         sides out of range.
+    ///         fewer than 3 sides, `mvfx_errorLimit` for more than
+    ///         MVFX_MAX_TUBE_SIDES.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim,

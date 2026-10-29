@@ -85,9 +85,8 @@ static mvfxResult CheckAsks(const mvfxCollision* c)
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult scene = c->sceneQueries
-                           ? mvfxWithinBound(c->queryCapacity <= MVFX_MAX_SCENE_QUERIES)
-                           : mvfx_success;
+    mvfxResult scene = c->sceneQueries ? mvfxWithinBound(c->queryCapacity <= MVFX_MAX_SCENE_QUERIES)
+                                       : mvfx_success;
     mvfxResult depth = c->depthImage
                            ? mvfxFirst(mvfxPositiveUpTo(c->depthThickness, MVFX_MAX_EXTENT),
                                        mvfxWithinBound(c->depthSamples <= MVFX_MAX_DEPTH_SAMPLES))

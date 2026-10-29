@@ -1232,7 +1232,7 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
               mvfxGpuSim_HostGridBytes(RunContext(), NULL, 1, &bytes) == mvfx_errorInvalid &&
               mvfxGpuSim_HostGridBytes(RunContext(), colliders, -1, &bytes) == mvfx_errorInvalid &&
               mvfxGpuSim_HostGridBytes(RunContext(), colliders, MVFX_MAX_COLLIDERS + 1, &bytes) ==
-                  mvfx_errorInvalid,
+                  mvfx_errorLimit,
           "the bytes refused");
     CHECK(mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success && Simulate(gpu, sim) &&
               ReadBack(gpu, sim, 0) && StatisticsRecord()[0] > 0,

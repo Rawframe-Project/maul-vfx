@@ -488,7 +488,8 @@ extern "C"
     /// @param vertexCountOut  Receives the vertices there are.
     /// @param indexCountOut   Receives the indices there are.
     /// @return As mvfxInstance_ExpandRibbons; `mvfx_errorInvalid` too for a
-    ///         NULL tube or its sides out of range.
+    ///         NULL tube or fewer than 3 sides, and `mvfx_errorLimit` for
+    ///         more than MVFX_MAX_TUBE_SIDES, either counted as misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once, each with
@@ -852,8 +853,9 @@ extern "C"
     /// @param countOut  Receives how many emitters there are to draw.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, eye or
     ///         count, a frustum out of range, a negative capacity or a NULL
-    ///         buffer with a capacity, which counts as misuse when the
-    ///         context is given.
+    ///         buffer with a capacity; `mvfx_errorLimit` for more planes
+    ///         than MVFX_MAX_FRUSTUM_PLANES. Either counts as misuse when
+    ///         the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.

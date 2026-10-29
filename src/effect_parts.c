@@ -73,8 +73,7 @@ static mvfxResult CheckFlockRule(const mvfxEmitterDef* def, float weight, float 
     {
         return bounded;
     }
-    return mvfxRequire(def->neighbors.enabled && radius > 0.0f &&
-                       radius <= def->neighbors.radius);
+    return mvfxRequire(def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius);
 }
 
 // Whether an emitter's pair force is valid: a radius within its
@@ -373,8 +372,7 @@ static mvfxResult CheckLiquid(const mvfxEmitterDef* def)
                   mvfxFirst(mvfxWithinBound(liquid->substeps <= MVFX_MAX_SUBSTEPS),
                             mvfxWithinBound(liquid->iterations <= MVFX_MAX_LIQUID_ITERATIONS))),
         mvfxFirst(mvfxFirst(mvfxWithinBound(liquid->maxNeighbors <= MVFX_MAX_NEIGHBORS),
-                            mvfxWithinBound(liquid->tensilePower <=
-                                            MVFX_MAX_LIQUID_TENSILE_POWER)),
+                            mvfxWithinBound(liquid->tensilePower <= MVFX_MAX_LIQUID_TENSILE_POWER)),
                   mvfxUpToBound(liquid->vorticity, 0.0f, MVFX_MAX_EXTENT)));
 }
 
@@ -403,10 +401,9 @@ static mvfxResult CheckContacts(const mvfxContactDef* contacts)
     {
         return mvfx_errorInvalid;
     }
-    return mvfxFirst(
-        mvfxPositiveUpTo(contacts->radiusScale, MVFX_MAX_EXTENT),
-        mvfxFirst(mvfxCountUpTo(contacts->iterations, 1, MVFX_MAX_CONTACT_ITERATIONS),
-                  mvfxCountUpTo(contacts->maxContacts, 1, MVFX_MAX_NEIGHBORS)));
+    return mvfxFirst(mvfxPositiveUpTo(contacts->radiusScale, MVFX_MAX_EXTENT),
+                     mvfxFirst(mvfxCountUpTo(contacts->iterations, 1, MVFX_MAX_CONTACT_ITERATIONS),
+                               mvfxCountUpTo(contacts->maxContacts, 1, MVFX_MAX_NEIGHBORS)));
 }
 
 // Whether an emitter's steering is valid.
@@ -466,10 +463,14 @@ static mvfxResult CheckEmitterParts(const mvfxEffectDef* def, int32_t i)
 {
     const mvfxEmitterDef* emitter = &def->emitters[i];
     const mvfxResult parts[] = {
-        CheckNeighbors(def, i),   CheckSteering(emitter, def->parameterCount),
-        CheckContacts(&emitter->contacts), CheckPairForce(emitter),
-        CheckPlexus(&emitter->plexus),     CheckUnit(emitter),
-        CheckAttach(def, i),      CheckRigid(emitter),
+        CheckNeighbors(def, i),
+        CheckSteering(emitter, def->parameterCount),
+        CheckContacts(&emitter->contacts),
+        CheckPairForce(emitter),
+        CheckPlexus(&emitter->plexus),
+        CheckUnit(emitter),
+        CheckAttach(def, i),
+        CheckRigid(emitter),
         CheckLiquid(emitter),
     };
     for (size_t k = 0; k < sizeof(parts) / sizeof(parts[0]); ++k)

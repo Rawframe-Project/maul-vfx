@@ -22,7 +22,8 @@ mvfxResult mvfxCheckLifeCurve(const mvfxLifeCurve* life)
     {
         return value;
     }
-    mvfxResult curve = life->curve.keyCount == 0 ? mvfx_success : mvfxCheckCurve(&life->curve, true);
+    mvfxResult curve =
+        life->curve.keyCount == 0 ? mvfx_success : mvfxCheckCurve(&life->curve, true);
     if (curve != mvfx_success)
     {
         return curve;

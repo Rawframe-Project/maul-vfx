@@ -90,9 +90,8 @@ mvfxResult mvfxCheckScalarSource(const mvfxScalarSource* source, bool optional, 
     case mvfx_sourceCurve:
     {
         mvfxResult curve = mvfxCheckCurve(&source->curve, hasDuration);
-        return curve != mvfx_success
-                   ? curve
-                   : CheckCap(CurveBase(&source->curve, hasDuration), reach, cap);
+        return curve != mvfx_success ? curve
+                                     : CheckCap(CurveBase(&source->curve, hasDuration), reach, cap);
     }
     default:
         return mvfxRequire(source->parameter >= 0 && source->parameter < parameterCount);

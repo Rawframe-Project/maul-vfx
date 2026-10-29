@@ -11,6 +11,7 @@
 #include "instance_api.h"
 #include "layout.h"
 #include "read_format.h"
+#include "refusal.h"
 #include "water.h"
 
 #include "maul-vfx/output.h"
@@ -417,16 +418,20 @@ mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId i
     return result;
 }
 
-// Whether a push is in range.
-static bool IsPushValid(const mvfxWaterPush* push)
+// Whether a push is in range: its point at most 2^52 in size (else
+// mvfx_errorInvalid), its radius and depth within MVFX_MAX_EXTENT (else
+// mvfx_errorLimit).
+static mvfxResult CheckPush(const mvfxWaterPush* push)
 {
-    bool valid = push->radius > 0.0f && push->radius <= MVFX_MAX_EXTENT && isfinite(push->depth) &&
-                 fabsf(push->depth) <= MVFX_MAX_EXTENT;
-    for (int32_t k = 0; valid && k < 3; ++k)
+    for (int32_t k = 0; k < 3; ++k)
     {
-        valid = fabs(push->point[k]) <= 0x1p52;
+        if (!(fabs(push->point[k]) <= 0x1p52))
+        {
+            return mvfx_errorInvalid;
+        }
     }
-    return valid;
+    return mvfxFirst(mvfxPositiveUpTo(push->radius, MVFX_MAX_EXTENT),
+                     mvfxBounded(push->depth, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
 }
 
 static MVFX_NOINLINE mvfxResult mvfxInstance_PushWaterWork(mvfxContext* context,
@@ -444,15 +449,16 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_PushWaterWork(mvfxContext* context,
     {
         return result;
     }
-    bool valid = count >= 0 && (count == 0 || pushes != nullptr);
-    for (int32_t i = 0; valid && i < count; ++i)
+    mvfxResult valid =
+        count >= 0 && (count == 0 || pushes != nullptr) ? mvfx_success : mvfx_errorInvalid;
+    for (int32_t i = 0; valid == mvfx_success && i < count; ++i)
     {
-        valid = IsPushValid(&pushes[i]);
+        valid = CheckPush(&pushes[i]);
     }
-    if (!valid)
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     mvfxWaterState* state = &live->waters[water];
     if (count > MVFX_MAX_WATER_PUSHES - state->pushCount)
