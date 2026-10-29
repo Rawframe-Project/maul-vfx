@@ -6,13 +6,15 @@
 // factors' exponents; a coefficient's and an area's product past it, and
 // a scaled area, though the whole is small, taken from the significands;
 // none for a zero coefficient, area or speed or a NaN speed; and every share
-// whose product fits the same bits as the product as written. A step
+// whose partial products stay normal the same bits as the product as
+// written. A step
 // reaches the overflowing products only at places and speeds past what a
 // short scene makes, so only the share on its own shows them.
 
 #include "aero.h"
 #include "test_harness.h"
 
+#include <float.h>
 #include <math.h>
 
 // A word of a simple generator, the draws.
@@ -44,8 +46,8 @@ static void TestShares(void)
                 mvfxAirShare(1.0f, 1.0f, false, NAN, 0.01f) == 0.0f &&
                 mvfxAirShare(1.0f, 0.0f, true, 1.0f, 1.0f / 60.0f) == 0.0f &&
                 mvfxAirShare(1e6f, 0.0f, false, 1e9f, 1.0f) == 0.0f;
-    // Drawn factors over their ranges: where the product as written stays
-    // finite, the share is its bits.
+    // Drawn factors over their ranges: where the product as written keeps
+    // every partial product normal, the share is its bits.
     uint64_t state = 5;
     int32_t same = 0;
     int32_t drawn = 0;
@@ -56,11 +58,16 @@ static void TestShares(void)
         const int32_t span[4] = {60, 160, 160, 26};
         for (int32_t k = 0; k < 4; ++k)
         {
-            f[k] = ldexpf(0.5f + (float)(Draw(&state) >> 9u) * 0x1p-24f,
-                          low[k] + (int32_t)(Draw(&state) % (uint32_t)span[k]));
+            uint32_t size = Draw(&state);
+            uint32_t power = Draw(&state);
+            f[k] = ldexpf(0.5f + (float)(size >> 9u) * 0x1p-24f,
+                          low[k] + (int32_t)(power % (uint32_t)span[k]));
         }
-        float product = f[0] * f[1] * f[2] * f[3] / 3.0f;
-        if (!isfinite(product))
+        float first = f[0] * f[1];
+        float second = first * f[2];
+        float product = second * f[3] / 3.0f;
+        if (!(fabsf(first) >= FLT_MIN && fabsf(second) >= FLT_MIN && second * f[3] >= FLT_MIN) ||
+            !isfinite(product))
         {
             continue;
         }

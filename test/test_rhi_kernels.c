@@ -1015,9 +1015,12 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
         const int32_t span[5] = {60, 187, 0, 237, 26};
         for (int32_t f = 0; f < 5; ++f)
         {
-            float drawn = f == 2 ? (float)(Draw(&state) % 2u)
-                                 : ldexpf(0.5f + (float)(Draw(&state) >> 9u) * 0x1p-24f,
-                                          low[f] + (int32_t)(Draw(&state) % (uint32_t)span[f]));
+            // Drawn into locals first, so every compiler draws the same.
+            uint32_t size = Draw(&state);
+            uint32_t power = f == 2 ? 0u : Draw(&state);
+            float drawn = f == 2 ? (float)(size % 2u)
+                                 : ldexpf(0.5f + (float)(size >> 9u) * 0x1p-24f,
+                                          low[f] + (int32_t)(power % (uint32_t)span[f]));
             w[f] = f == 2 ? (uint32_t)(e < SPECIAL ? special[e][f] : drawn)
                           : Bits(e < SPECIAL ? special[e][f] : drawn);
         }

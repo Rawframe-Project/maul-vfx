@@ -168,6 +168,40 @@ fn divide(a: f32, b: f32) -> f32 {
     return bitcast<f32>((u32(exponent) << 23u) | (kept & 0x007FFFFFu));
 }
 
+// a b correctly rounded, ties to even, for positive normal a and b whose
+// product is normal: the significands' 48-bit product from 12-bit halves,
+// rounded to 24 bits. In integers, so no compiler reorders a chain of
+// such products (DXC's fast math reassociates float ones).
+fn product(a: f32, b: f32) -> f32 {
+    let x = bitcast<u32>(a);
+    let y = bitcast<u32>(b);
+    let p = (x & 0x007FFFFFu) | 0x00800000u;
+    let q = (y & 0x007FFFFFu) | 0x00800000u;
+    let middle = (p >> 12u) * (q & 0xFFFu) + (p & 0xFFFu) * (q >> 12u);
+    var low = (p & 0xFFFu) * (q & 0xFFFu) + ((middle & 0xFFFu) << 12u);
+    let high = (p >> 12u) * (q >> 12u) + (middle >> 12u) + (low >> 24u);
+    low &= 0x00FFFFFFu;
+    // The product is high 2^24 + low, from 2^46 to below 2^48.
+    var exponent = i32(x >> 23u) + i32(y >> 23u) - 127;
+    var kept = (high << 1u) | (low >> 23u);
+    var rest = low & 0x007FFFFFu;
+    var half = 0x00400000u;
+    if (high >= 0x00800000u) {
+        kept = high;
+        rest = low;
+        half = 0x00800000u;
+        exponent += 1;
+    }
+    if (rest > half || (rest == half && (kept & 1u) == 1u)) {
+        kept += 1u;
+    }
+    if (kept == 0x01000000u) {
+        kept = 0x00800000u;
+        exponent += 1;
+    }
+    return bitcast<f32>((u32(exponent) << 23u) | (kept & 0x007FFFFFu));
+}
+
 // a / b as the core's division gives it, for positive normal b and a
 // quotient below binary32's largest: the exact division on a's magnitude,
 // the sign put back; zero and subnormal a left to the device.
