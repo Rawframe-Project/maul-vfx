@@ -126,14 +126,15 @@ static void TestInvalidDefsAreMisuse(void)
     mvfxEffectDef def2 = OneEmitter(&emitter);
     CHECK(mvfxCreateEffect(NULL, &def2, &effect) == mvfx_errorInvalid, "no context");
 
-    for (int32_t field = 0; field < 14; ++field)
+    for (int32_t field = 0; field < 15; ++field)
     {
         mvfxEmitterDef bad = mvfxDefaultEmitterDef();
         mvfxEffectDef broken = OneEmitter(&bad);
         // Past a named bound: mvfx_errorLimit, data a correct program may
         // pass, so no misuse.
-        mvfxResult want =
-            field == 2 || field == 5 || field == 12 ? mvfx_errorLimit : mvfx_errorInvalid;
+        mvfxResult want = field == 2 || field == 5 || field == 12 || field == 14
+                              ? mvfx_errorLimit
+                              : mvfx_errorInvalid;
         switch (field)
         {
         case 0:
@@ -174,6 +175,12 @@ static void TestInvalidDefsAreMisuse(void)
             break;
         case 12:
             broken.emitterCount = MVFX_MAX_EMITTERS + 1;
+            break;
+        case 14:
+            // Counts whose sum overflows, refused before it is taken.
+            broken.emitterCount = INT32_MAX;
+            broken.waterCount = INT32_MAX;
+            broken.waters = &(mvfxWaterDef){0};
             break;
         default:
             broken.emitters = NULL;
