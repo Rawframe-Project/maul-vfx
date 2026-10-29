@@ -46,6 +46,10 @@ const CARRY_CORRECT: u32 = 3u;
 // (MVFX_MAX_SPEED).
 const MAX_SPEED: f32 = 1e9;
 
+// The most divergence a cell's faces carry out of it, each within
+// MAX_SPEED, which holds a burn's expansion as the core's mvfxGasBurn.
+const MOST_EXPANSION: f32 = 6.0 * MAX_SPEED;
+
 // A face's velocity held within MAX_SPEED, as the core's
 // mvfxHoldGasVelocity: a NaN left.
 fn heldFace(v: f32) -> f32 {
@@ -670,7 +674,7 @@ fn gasCarryCells(@builtin(global_invocation_id) id: vec3<u32>) {
 
 // The fuel burning over the substep in each cell of the current buffer
 // hot enough, adding its heat and smoke; the divergence it asks for into
-// the work when the burn expands.
+// the work when the burn expands, held within MOST_EXPANSION.
 @compute @workgroup_size(64, 1, 1)
 fn gasBurn(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
@@ -690,7 +694,8 @@ fn gasBurn(@builtin(global_invocation_id) id: vec3<u32>) {
     fields[temperature] += gas.burn.y * burned;
     fields[density] += gas.burn.z * burned;
     if (gas.modes.y != 0u) {
-        fields[gas.cells[0].w + point] = step.burn.y * burned;
+        let asked = step.burn.y * burned;
+        fields[gas.cells[0].w + point] = select(asked, MOST_EXPANSION, asked > MOST_EXPANSION);
     }
 }
 

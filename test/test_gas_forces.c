@@ -327,6 +327,46 @@ static void TestHeld(void)
     CHECK(Held(1.0f, 4) && Held(MVFX_MIN_GAS_CELL, 4) && Held(1.0f, 0), "held at the limits");
 }
 
+static void TestExpansionHeld(void)
+{
+    // Fuel of 10^30 in a cell (stored unburnt over far longer than any run,
+    // written here) lit at once over a substep of a tick at the largest
+    // burn rate and expansion: the divergence it asks for, about 6e41,
+    // passes binary32's largest. Held within the most a cell's faces carry
+    // out of it, each within MVFX_MAX_SPEED, the solve and every face stay
+    // finite and held.
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 16;
+    def.size[1] = 16;
+    def.cellSize = 1.0f;
+    def.pressureCycles = 4;
+    def.burnRate = MVFX_MAX_EXTENT;
+    def.burnExpansion = MVFX_MAX_EXTENT;
+    Open(&def, s_unturned, 1.0f);
+    Uniform(def.size, mvfx_gasFuel, 0.0f);
+    static float fuel[256];
+    for (int32_t i = 0; i < 256; ++i)
+    {
+        fuel[i] = i % 16 == 7 && i / 16 == 7 ? 1e30f : 0.0f;
+    }
+    CHECK(mvfxTestWriteGasScalar(s_context, s_instance, 0, mvfx_gasFuel, fuel, 256), "fuel");
+    Uniform(def.size, mvfx_gasTemperature, 1.0f);
+    CHECK(mvfxContext_StepTicks(s_context, 1) == mvfx_success, "step");
+    Read(def.size);
+    bool held = true;
+    float fastest = 0.0f;
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        for (int64_t f = 0; f < FaceCount(def.size, k); ++f)
+        {
+            held = held && fabsf(s_faces[k][f]) <= MVFX_MAX_SPEED;
+            fastest = fmaxf(fastest, fabsf(s_faces[k][f]));
+        }
+    }
+    CHECK(held && fastest > 1e8f, "a burn's expansion held");
+    mvfxDestroyContext(s_context);
+}
+
 // The spin about axis a through a 16-cell cube's middle of its velocity's
 // change since before, over the faces within 4 cells of that axis, and
 // the largest change along a.
@@ -745,6 +785,7 @@ int main(void)
     TestColumns();
     TestBurn();
     TestExpansion();
+    TestExpansionHeld();
     TestMacCormack();
     TestMacCormackAccuracy();
     TestRefusals();
