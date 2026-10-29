@@ -8,6 +8,7 @@
 #include "allocator.h"
 #include "context.h"
 #include "effect.h"
+#include "effect_check.h"
 #include "effect_parts.h"
 #include "fpenv.h"
 #include "grid_api.h"

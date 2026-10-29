@@ -5,6 +5,7 @@
 #include "context.h"
 #include "effect.h"
 #include "effect_api.h"
+#include "effect_check.h"
 #include "effect_parts.h"
 #include "file_codec.h"
 #include "fpenv.h"
