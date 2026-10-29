@@ -360,7 +360,8 @@ fn moveByModules(start: vec3<f32>, place: vec3<f32>, age: f32, h: f32) -> vec3<f
     let angle = lifeAt(LIFE_ORBIT_RATE, age) * h;
     if (angle != 0.0) {
         let center = params.modules[2].xyz;
-        let q = vec4<f32>(params.modules[1].xyz * sin(0.5 * angle), cos(0.5 * angle));
+        let half = sinCos(0.5 * angle);
+        let q = vec4<f32>(params.modules[1].xyz * half.x, half.y);
         p = center + rotate(q, p - center);
     }
     return p;
@@ -451,8 +452,8 @@ fn turnBy(q: vec4<f32>, theta: vec3<f32>) -> vec4<f32> {
     if (!(angle > 0.0)) {
         return q;
     }
-    let s = sin(0.5 * angle) / angle;
-    let r = vec4<f32>(theta * s, cos(0.5 * angle));
+    let half = sinCos(0.5 * angle);
+    let r = vec4<f32>(theta * (half.x / angle), half.y);
     let out = vec4<f32>(r.w * q.x + r.x * q.w + r.y * q.z - r.z * q.y,
                         r.w * q.y - r.x * q.z + r.y * q.w + r.z * q.x,
                         r.w * q.z + r.x * q.y - r.y * q.x + r.z * q.w,
@@ -481,14 +482,17 @@ fn orientationOf(age: f32, words: vec4<u32>) -> vec4<f32> {
         let u = unitFloat(words.x);
         let low = sqrt(1.0 - u);
         let high = sqrt(u);
-        let a1 = TWO_PI * unitFloat(words.y);
-        let a2 = TWO_PI * unitFloat(words.z);
-        return vec4<f32>(low * sin(a1), low * cos(a1), high * sin(a2), high * cos(a2));
+        let a1 = sinCos(TWO_PI * unitFloat(words.y));
+        let a2 = sinCos(TWO_PI * unitFloat(words.z));
+        return vec4<f32>(low * a1.x, low * a1.y, high * a2.x, high * a2.y);
     }
     if (mode == ORIENTATION_EULER) {
         let half = 0.5 * drawVector(SOURCE_ORIENTATION, age, words).xyz;
-        let s = sin(half);
-        let c = cos(half);
+        let x = sinCos(half.x);
+        let y = sinCos(half.y);
+        let z = sinCos(half.z);
+        let s = vec3<f32>(x.x, y.x, z.x);
+        let c = vec3<f32>(x.y, y.y, z.y);
         return vec4<f32>(s.x * c.y * c.z - c.x * s.y * s.z, c.x * s.y * c.z + s.x * c.y * s.z,
                          c.x * c.y * s.z - s.x * s.y * c.z, c.x * c.y * c.z + s.x * s.y * s.z);
     }

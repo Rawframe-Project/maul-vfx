@@ -79,7 +79,7 @@ fn beamPlace(i: u32, seed: u32, chord: vec3<f32>) -> vec3<f32> {
     let t = f32(i) / f32(params.beam.x);
     let value = beamNoise(t, seed);
     let along = value.x * chord.x + value.y * chord.y + value.z * chord.z;
-    let point = beamCurveAt(t) + (value - along * chord) * params.beamNoise.x * sin(PI * t);
+    let point = beamCurveAt(t) + (value - along * chord) * params.beamNoise.x * sinCos(PI * t).x;
     if (params.start.w != 0u) {
         return point;
     }

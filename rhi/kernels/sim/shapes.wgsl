@@ -204,9 +204,9 @@ fn sampleBoxShell(words: vec4<u32>, normal: ptr<function, vec3<f32>>) -> vec3<f3
 // radius there), a ring there; the direction leans from +Z along its slant,
 // or from an apex uniformly within its angle.
 fn sampleCone(words: vec4<u32>, arc: f32, normal: ptr<function, vec3<f32>>) -> vec3<f32> {
-    let angle = arc * params.shapeArc.x;
-    let sine = sin(angle);
-    let cosine = cos(angle);
+    let turn = sinCos(arc * params.shapeArc.x);
+    let sine = turn.x;
+    let cosine = turn.y;
     let base = params.shapeOffset.w;
     let length = params.shapeSize.x;
     let k = params.shapeArc.z;
@@ -360,9 +360,9 @@ fn sampleShape(j: u32, words: vec4<u32>, normal: ptr<function, vec3<f32>>) -> ve
         position.x = (arcFraction(j, words) - 0.5) * params.shapeSize.x;
         n = vec3<f32>(0.0, 1.0, 0.0);
     } else if (kind == SHAPE_CIRCLE) {
-        let angle = arcFraction(j, words) * params.shapeArc.x;
-        let sine = sin(angle);
-        let cosine = cos(angle);
+        let turn = sinCos(arcFraction(j, words) * params.shapeArc.x);
+        let sine = turn.x;
+        let cosine = turn.y;
         let ring = ringRadius(params.shapeOffset.w, params.shapeExtra.x, unitFloat(words.x));
         position = vec3<f32>(ring * cosine, ring * sine, 0.0);
         n = vec3<f32>(cosine, sine, 0.0);
@@ -404,9 +404,9 @@ fn drawVelocity(words: vec4<u32>, local: vec3<f32>, normal: vec3<f32>) -> vec3<f
     } else if (mode == DIRECTION_CONE) {
         let z = 1.0 - unitFloat(words.x) * (1.0 - params.direction.w);
         let across = sqrt(max(0.0, 1.0 - z * z));
-        let angle = TWO_PI * unitFloat(words.y);
-        direction = across * cos(angle) * params.tangentA.xyz +
-                    across * sin(angle) * params.tangentB.xyz + z * params.direction.xyz;
+        let turn = sinCos(TWO_PI * unitFloat(words.y));
+        direction = across * turn.y * params.tangentA.xyz + across * turn.x * params.tangentB.xyz +
+                    z * params.direction.xyz;
     } else if (mode == DIRECTION_FIXED) {
         direction = params.direction.xyz;
     }

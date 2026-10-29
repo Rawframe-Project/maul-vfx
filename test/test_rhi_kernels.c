@@ -20,6 +20,7 @@
 // getenv is standard C; MSVC's runtime deprecates it for its own.
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "elementary.h"
 #include "emitter_step.h"
 #include "exact_check_container.h"
 #include "integrate.h"
@@ -36,6 +37,7 @@
 #include "maul-rhi/resources.h"
 #include "maul-vfx-rhi/gpu.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -250,7 +252,8 @@ typedef enum CheckMode
     CHECK_REMAINDERS_APART = 7,
     CHECK_DRAG_FACTORS = 8,
     CHECK_HELD_SPEEDS = 9,
-    CHECK_CLASSES = 10
+    CHECK_CLASSES = 10,
+    CHECK_SINES = 11
 } CheckMode;
 
 // The bytes of an element of a mode: eight words for remainders apart and
@@ -862,6 +865,87 @@ static void TestClasses(Gpu* gpu, Checker* checker)
     CHECK(ran && right == VALUES, "finite and NaN tests on the bits");
 }
 
+// The most the kernels' sines and cosines (shared/sincos.wgsl) are from
+// the core's mvfxSinCos, in units in the last place: the remainder within
+// two of its own, from its 64-bit fraction and its product by pi/2 in
+// binary32, and the series' few.
+#define SINE_ULPS 10
+
+// The distance between two floats in units in the last place, through
+// their bits' order, across zero too.
+static int64_t UlpsApart(float a, float b)
+{
+    int64_t x = (int32_t)Bits(a);
+    int64_t y = (int32_t)Bits(b);
+    x = x < 0 ? INT32_MIN - x : x;
+    y = y < 0 ? INT32_MIN - y : y;
+    return x > y ? x - y : y - x;
+}
+
+// A subnormal as a device flushing subnormals reads or writes it: a zero
+// of its sign. WGSL allows that, and D3D12 does it.
+static float Flushed(float x)
+{
+    return fabsf(x) < FLT_MIN ? copysignf(0.0f, x) : x;
+}
+
+// Sines and cosines against the core's, on the device: zeros, NaN and
+// infinities (those of 0), the largest floats, the float nearest a
+// multiple of pi/2 (0x1.f37c8ap+95, its remainder 2^-29.9 of a quarter
+// turn), the ends of the core's two reductions at 2^24 and of this one's
+// series at pi/4, and floats drawn over every exponent, of either sign.
+static void TestSines(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 16,
+        DRAWN = 1 << 18
+    };
+    const uint32_t special[SPECIAL] = {0x00000000u, 0x80000000u, 0x7FC00000u, 0x7F800000u,
+                                       0xFF800000u, 0x7F7FFFFFu, 0xFF7FFFFFu, 0x6F79BE45u,
+                                       0xEF79BE45u, 0x4B800000u, 0x4B7FFFFFu, 0x4B800001u,
+                                       0x3F490FDAu, 0x3F490FDBu, 0x3FC90FDBu, 0x00000001u};
+    const uint32_t count = SPECIAL + DRAWN;
+    uint64_t state = 13;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[4 * e];
+        uint32_t drawn = Draw(&state);
+        // An exponent from 0 to 254 and any significand and sign.
+        uint32_t exponent = (Draw(&state) % 255u) << 23;
+        w[0] = e < SPECIAL ? special[e] : (drawn & 0x807FFFFFu) | exponent;
+        w[1] = w[2] = w[3] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_SINES, 0, count);
+    int64_t worst = 0;
+    float worstAt = 0.0f;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        float sine = 0.0f;
+        float cosine = 0.0f;
+        mvfxSinCos(FloatOf(w[0]), &sine, &cosine);
+        float flushedSine = 0.0f;
+        float flushedCosine = 0.0f;
+        mvfxSinCos(Flushed(FloatOf(w[0])), &flushedSine, &flushedCosine);
+        int64_t apart = UlpsApart(FloatOf(w[1]), sine);
+        int64_t cosineApart = UlpsApart(FloatOf(w[2]), cosine);
+        // A device flushing subnormals takes a subnormal angle as 0, and
+        // writes a subnormal sine as 0.
+        int64_t flushedApart = UlpsApart(Flushed(FloatOf(w[1])), Flushed(flushedSine));
+        int64_t flushedCosineApart = UlpsApart(FloatOf(w[2]), flushedCosine);
+        apart = flushedApart < apart ? flushedApart : apart;
+        cosineApart = flushedCosineApart < cosineApart ? flushedCosineApart : cosineApart;
+        apart = cosineApart > apart ? cosineApart : apart;
+        worstAt = apart > worst ? FloatOf(w[0]) : worstAt;
+        worst = apart > worst ? apart : worst;
+    }
+    printf("sines and cosines: largest difference from the core's %lld units in the last place "
+           "(at %a), of %u angles\n",
+           (long long)worst, (double)worstAt, count);
+    CHECK(ran && worst <= SINE_ULPS, "sines and cosines as the core's");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -879,6 +963,7 @@ static void TestExact(Gpu* gpu)
         TestDragFactors(gpu, &checker);
         TestHeldSpeeds(gpu, &checker);
         TestClasses(gpu, &checker);
+        TestSines(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }
