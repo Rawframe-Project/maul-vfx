@@ -24,8 +24,9 @@ void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3]);
 
 // Holds each face's velocity within MVFX_MAX_SPEED in the box's lengths, as
 // the step holds a particle's: what buoyancy, confinement, expansion and
-// the projection make has no bound of its own, and the curl confinement
-// squares is a velocity over the cell. A NaN is left.
+// the projection make has no bound of its own. A substep holds them after
+// the forces, as the curl confinement squares is a velocity over the
+// cell, and in the projection. A NaN is left.
 void mvfxHoldGasVelocity(const mvfxCompiledGas* gas, float* const velocity[3]);
 
 // Builds each level's faces' open areas from the box's walls and its

@@ -17,8 +17,8 @@
 //    cell's children), gasProlong, and
 //    gasTail running the levels of at most TAIL_CELLS cells in one
 //    workgroup; gasCorrect closes the walls and takes the pressure's
-//    rise off each open face; gasFaces, gasConfine and gasCorrect hold
-//    each face's velocity within MAX_SPEED;
+//    rise off each open face; gasFaces and gasCorrect hold each face's
+//    velocity within MAX_SPEED;
 //  - at the step's end gasHolds marks the statistics record when any
 //    scalar holds anything.
 // The fields live in one buffer (faces then cells, two of each, then the
@@ -561,7 +561,7 @@ fn gasConfine(@builtin(global_invocation_id) id: vec3<u32>) {
         sum = 0.5 * sum;
     }
     let i = arrayAt(root.now, k, 0u) + face.y;
-    fields[i] = heldFace(fields[i] + gas.substeps[root.substep].span.x * sum);
+    fields[i] += gas.substeps[root.substep].span.x * sum;
 }
 
 // A lattice's values at place p as sampleAt in all eight corners' order

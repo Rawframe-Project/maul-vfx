@@ -267,23 +267,23 @@ static void TestConfinement(void)
           "confinement spins up");
 }
 
-static void TestHeld(void)
+// Whether a 2D gas of 16 by 16 cells of cell at the forces' limits holds
+// each face within MVFX_MAX_SPEED, reaching it, and every field finite
+// over two steps of a second, with cycles of pressure: a source pouring
+// density at MVFX_MAX_EXTENT a second, buoyancy at gravity and weight
+// MVFX_MAX_EXTENT, confinement at MVFX_MAX_EXTENT, eight substeps.
+static bool Held(float cell, int32_t cycles)
 {
-    // A 2D gas of 16 by 16 cells of 1 at the forces' limits: a source
-    // pouring density at MVFX_MAX_EXTENT a second, buoyancy at gravity and
-    // weight MVFX_MAX_EXTENT, confinement at MVFX_MAX_EXTENT, eight
-    // substeps of steps of a second. Buoyancy alone would make the faces
-    // about 10^16 in the first substep, and confinement squares their curl;
-    // each face is held within MVFX_MAX_SPEED and every field stays finite.
-    static const mvfxGasSource source = {.shape = mvfx_gasSphere,
-                                         .center = {0.0f, -4.0f, 0.0f},
-                                         .radius = 3.0f,
-                                         .density = MVFX_MAX_EXTENT};
+    const mvfxGasSource source = {.shape = mvfx_gasSphere,
+                                  .center = {0.0f, -4.0f * cell, 0.0f},
+                                  .radius = 3.0f * cell,
+                                  .density = MVFX_MAX_EXTENT};
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 16;
     def.size[1] = 16;
-    def.cellSize = 1.0f;
+    def.cellSize = cell;
     def.substeps = 8;
+    def.pressureCycles = cycles;
     def.sources = &source;
     def.sourceCount = 1;
     def.gravitySpace = mvfx_gasLocal;
@@ -315,8 +315,16 @@ static void TestHeld(void)
             }
         }
     }
-    CHECK(held && fastest == MVFX_MAX_SPEED, "held at the limits");
     mvfxDestroyContext(s_context);
+    return held && fastest == MVFX_MAX_SPEED;
+}
+
+static void TestHeld(void)
+{
+    // Buoyancy alone would make the faces about 10^16 in the first
+    // substep, and confinement squares their curl, a velocity over the
+    // cell: in cells of 1 and of MVFX_MIN_GAS_CELL, and without a solve.
+    CHECK(Held(1.0f, 4) && Held(MVFX_MIN_GAS_CELL, 4) && Held(1.0f, 0), "held at the limits");
 }
 
 // The spin about axis a through a 16-cell cube's middle of its velocity's

@@ -17,7 +17,7 @@ A gas (`mvfxGasDef`) is a box of cells, 2D or 3D, holding a velocity at the cell
 - **A liquid's grid** (`mvfx_gasLiquid`): the grid a liquid emitter solves on; see [liquids](#liquids).
 - **A surface** (`mvfx_gasSurface`): the signed distance to the surface of an emitter's particles, made anew each step, for meshing.
 
-A cell's edge is at least `MVFX_MIN_GAS_CELL` (1e-6 of the instance's lengths). Each substep holds every face's velocity within `MVFX_MAX_SPEED` in the box's lengths, after the forces, after vortex confinement and after the pressure solve, as a moved particle's speed is held: buoyancy, confinement and expansion have no bound of their own, and only such extremes reach it.
+A cell's edge is at least `MVFX_MIN_GAS_CELL` (1e-6 of the instance's lengths). Each substep holds every face's velocity within `MVFX_MAX_SPEED` in the box's lengths, after the forces and after the pressure solve, as a moved particle's speed is held: buoyancy, confinement and expansion have no bound of their own, and only such extremes reach it.
 
 Particles meet gases two ways: a gas force (`mvfx_forceGas`) makes them follow its velocity, as embers ride smoke, and `gasSplat` pours their density, heat, fuel and push into it, as a jet feeds a fire.
 
