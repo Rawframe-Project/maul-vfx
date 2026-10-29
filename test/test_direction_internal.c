@@ -123,9 +123,11 @@ static void TestFlushed(void)
         {
             v[k] = special[i][k];
         }
-        float as = Measured(v);
+        // Each result stored through volatile under its own setting, so no
+        // compiler moves the arithmetic past the setting's change.
+        volatile float as = Measured(v);
         TestFloatSet(flushed);
-        float under = Measured(v);
+        volatile float under = Measured(v);
         TestFloatSet(kept);
         apart += Bits(as) != Bits(under);
         ++measured;
