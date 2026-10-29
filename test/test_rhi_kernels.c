@@ -1007,13 +1007,14 @@ static float NearInteger(double n, float inverse, uint32_t steps)
 // 2^24 and past it up to the greatest cell, where binary32 values are 2 or
 // more apart; drawn products; zeros of either sign, products and places
 // below binary32's least normal (a device may flush them), places past
-// 2^100, NaN, infinities, products past the greatest cell, and ones
-// rounded to it whose exact product lies more than one past it.
+// 2^100 and inverses past it, NaN, infinities, products past the greatest
+// cell, and ones rounded to it whose exact product lies more than one past
+// it.
 static void TestCells(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 23,
+        SPECIAL = 26,
         DRAWN = 65536
     };
     const float special[SPECIAL][2] = {{0.0f, 1.0f},
@@ -1038,7 +1039,10 @@ static void TestCells(Gpu* gpu, Checker* checker)
                                        {0x1.fffffep+127f, 0x1p-120f},
                                        {1e36f, 1e-30f},
                                        {-1e36f, 1e-30f},
-                                       {0x1.c363ccp+127f, 0x1.000002p-100f}};
+                                       {0x1.c363ccp+127f, 0x1.000002p-100f},
+                                       {1e-30f, 1e36f},
+                                       {-1e-30f, 1e36f},
+                                       {0x1.000002p-100f, 0x1.c363ccp+127f}};
     const uint32_t count = SPECIAL + DRAWN;
     uint64_t state = 23;
     for (uint32_t e = 0; e < count; ++e)
@@ -1049,7 +1053,9 @@ static void TestCells(Gpu* gpu, Checker* checker)
         uint32_t power = Draw(&state);
         uint32_t steps = Draw(&state);
         uint32_t sign = Draw(&state) & 0x80000000u;
-        int32_t s = -20 + (int32_t)(power % 34u);
+        // An eighth near integers with inverses past 2^100, cells below
+        // 2^-100, their places still normal.
+        int32_t s = e % 8u == 5u ? 100 + (int32_t)(power % 20u) : -20 + (int32_t)(power % 34u);
         float inverse = ldexpf(1.0f + (float)(b >> 9u) * 0x1p-23f, s);
         float x = 0.0f;
         switch (e % 4u)
@@ -1080,6 +1086,7 @@ static void TestCells(Gpu* gpu, Checker* checker)
     int32_t exact = 0;
     int32_t below = 0;
     int32_t past = 0;
+    int32_t far = 0;
     for (uint32_t e = 0; ran && e < count; ++e)
     {
         const uint32_t* w = &checker->words[4 * e];
@@ -1091,12 +1098,13 @@ static void TestCells(Gpu* gpu, Checker* checker)
         exact += product != 0.0 && product == floor(product) && fabs(product) <= 0x1p30;
         below += t == floorf(t) && product < (double)t && fabsf(t) <= 0x1p30f;
         past += t == floorf(t) && fabsf(t) >= 0x1p24f && fabsf(t) <= 0x1p30f;
+        far += t == floorf(t) && t != 0.0f && fabsf(t) <= 0x1p30f && fabsf(inverse) >= 0x1p100f;
     }
     printf("cells: %d apart from the core's of %u, %d exact integers, %d just below one, %d "
-           "past 2^24\n",
-           apart, count, exact, below, past);
+           "past 2^24, %d integers with an inverse past 2^100\n",
+           apart, count, exact, below, past, far);
     CHECK(ran && apart == 0 && exact > (int32_t)count / 8 && below > (int32_t)count / 8 &&
-              past > (int32_t)count / 8,
+              past > (int32_t)count / 8 && far > (int32_t)count / 64,
           "cells as the core's floors");
 }
 
