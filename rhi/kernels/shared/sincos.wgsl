@@ -55,28 +55,29 @@ fn productWide(a: u32, b: u32) -> vec2<u32> {
 
 // x, finite and at least pi/4, an integer m 2^e (m below 2^24), less its
 // nearest multiple of pi/2: Payne and Hanek's reduction, as the core's
-// ReducedPast. 2/pi's bits from bit e - 1 on (those above give multiples
-// of 4) times m in 32-bit limbs put x 2/pi within 2^-102 quarter turns;
-// the remainder's leading 64 bits keep at least 34 significant, as no
-// float's is below 2^-29.9 of a quarter turn. The core takes Cody and
-// Waite's reduction below 2^24, exact there too; binary32 has no room for
-// it, so this one serves every angle.
+// ReducedPast. 96 of 2/pi's bits from bit e - 1 on (those above give
+// multiples of 4) times m in 32-bit limbs put x 2/pi within 2^-71 quarter
+// turns, where the core's 128 serve binary64; the remainder's leading 64
+// bits keep at least 34 significant, as no float's is below 2^-29.9 of a
+// quarter turn. The core takes Cody and Waite's reduction below 2^24,
+// exact there too; binary32 has no room for it, so this one serves every
+// angle.
 fn reducedPast(x: f32) -> Reduced {
     let bits = bitcast<u32>(x);
     let m = (bits & 0x7FFFFFu) | 0x800000u;
     let e = i32((bits >> 23u) & 0xFFu) - 150;
-    // The product's limbs, most significant first: 2^-126 of x 2/pi less
-    // a multiple of 4.
-    var limbs: array<u32, 5>;
+    // The product's limbs, most significant first: 2^-94 of x 2/pi less a
+    // multiple of 4.
+    var limbs: array<u32, 4>;
     var carry = 0u;
-    for (var k = 3; k >= 0; k--) {
+    for (var k = 2; k >= 0; k--) {
         let product = productWide(m, twoOverPiBits(e - 1 + 32 * k));
         let low = product.x + carry;
         limbs[k + 1] = low;
         carry = product.y + select(0u, 1u, low < carry);
     }
     limbs[0] = carry;
-    // Bits 126 and 127 count quarter turns; below them the fraction's
+    // Bits 94 and 95 count quarter turns; below them the fraction's
     // leading 64 bits.
     let turns = limbs[1] >> 30u;
     var high = ((limbs[1] & 0x3FFFFFFFu) << 2u) | (limbs[2] >> 30u);
