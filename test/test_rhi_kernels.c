@@ -1156,24 +1156,25 @@ static void TestCrossEdges(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 14,
+        SPECIAL = 7,
+        FLUSHES = 5,
+        TURNED = 3 * FLUSHES,
         DRAWN = 8192
     };
-    const float special[SPECIAL][6] = {{0.0f, 0.0f, 0x1p127f, 0x1p63f, 0x1p-70f, 0.0f},
-                                       {0.0f, 0x1p63f, 0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f},
-                                       {0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f, 0.0f, 0x1p63f},
-                                       {0x1p63f, 0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f, 0.0f},
-                                       {0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},
-                                       {0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
+    const float special[SPECIAL][6] = {
+        {0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},   {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+        {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},         {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
+        {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
+        {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
+    // Flushes, each deciding one row (test_aero_internal says how): a
+    // second product, a difference, e1's and e2's scaled component and a
+    // first product; each turned to every row.
+    const float flushes[FLUSHES][6] = {{0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
                                        {0x1p63f, 0.0f, 0x1.8p-61f, 0x1p63f, 0.0f, 0x1p-61f},
                                        {0x1p63f, 0x1p-70f, 0.0f, 0.0f, 0.0f, 0x1p127f},
-                                       {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
-                                       {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
-                                       {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
-                                       {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},
-                                       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
-                                       {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
-    const uint32_t count = SPECIAL + DRAWN;
+                                       {0.0f, 0.0f, 0x1p127f, 0x1p63f, 0x1p-70f, 0.0f},
+                                       {0.0f, 0x1p63f, 0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f}};
+    const uint32_t count = SPECIAL + TURNED + DRAWN;
     uint64_t state = 23;
     for (uint32_t e = 0; e < count; ++e)
     {
@@ -1183,8 +1184,17 @@ static void TestCrossEdges(Gpu* gpu, Checker* checker)
             // Drawn into locals first, so every compiler draws the same.
             uint32_t size = Draw(&state);
             uint32_t power = Draw(&state);
-            float drawn = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 131u));
-            w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
+            float value = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 131u));
+            if (e < SPECIAL)
+            {
+                value = special[e][k];
+            }
+            else if (e < SPECIAL + TURNED)
+            {
+                int32_t turn = (int32_t)((e - SPECIAL) % 3u);
+                value = flushes[(e - SPECIAL) / 3u][3 * (k / 3) + (k % 3 + 3 - turn) % 3];
+            }
+            w[k] = Bits(value);
         }
         for (int32_t k = 6; k < 16; ++k)
         {
