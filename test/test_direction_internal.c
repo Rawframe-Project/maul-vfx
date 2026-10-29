@@ -70,12 +70,14 @@ static void TestScaled(void)
           "lengths scale with their vectors, bit for bit, while their components are normal");
 }
 
+#if TEST_HAS_FLUSH
 // A vector's length, read through volatile, so it is measured again under
 // each setting.
 static float Measured(const volatile float* v)
 {
     return mvfxLengthOf(v[0], v[1], v[2]);
 }
+#endif
 
 // Lengths under flush-to-zero against lengths as they are: two vectors
 // just above 2^-40 whose subnormal square tipped the sum's rounding while
@@ -132,6 +134,8 @@ static void TestFlushed(void)
         apart += Bits(as) != Bits(under);
         ++measured;
     }
+#else
+    // No flush-to-zero setting to take (WebAssembly): the check does not run.
 #endif
     CHECK(apart == 0 && (measured > 100000 || !TEST_HAS_FLUSH),
           "lengths under flush-to-zero have the same bits");
