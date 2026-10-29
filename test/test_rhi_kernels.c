@@ -37,6 +37,7 @@
 #include "maul-rhi/resources.h"
 #include "maul-vfx-rhi/gpu.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -881,6 +882,13 @@ static int64_t UlpsApart(float a, float b)
     return x > y ? x - y : y - x;
 }
 
+// A subnormal as a device flushing subnormals reads or writes it: a zero
+// of its sign. WGSL allows that, and D3D12 does it.
+static float Flushed(float x)
+{
+    return fabsf(x) < FLT_MIN ? copysignf(0.0f, x) : x;
+}
+
 // Sines and cosines against the core's, on the device: zeros, NaN and
 // infinities (those of 0), the largest floats, the float nearest a
 // multiple of pi/2 (0x1.f37c8ap+95, its remainder 2^-29.9 of a quarter
@@ -917,8 +925,17 @@ static void TestSines(Gpu* gpu, Checker* checker)
         float sine = 0.0f;
         float cosine = 0.0f;
         mvfxSinCos(FloatOf(w[0]), &sine, &cosine);
+        float flushedSine = 0.0f;
+        float flushedCosine = 0.0f;
+        mvfxSinCos(Flushed(FloatOf(w[0])), &flushedSine, &flushedCosine);
         int64_t apart = UlpsApart(FloatOf(w[1]), sine);
         int64_t cosineApart = UlpsApart(FloatOf(w[2]), cosine);
+        // A device flushing subnormals takes a subnormal angle as 0, and
+        // writes a subnormal sine as 0.
+        int64_t flushedApart = UlpsApart(Flushed(FloatOf(w[1])), Flushed(flushedSine));
+        int64_t flushedCosineApart = UlpsApart(FloatOf(w[2]), flushedCosine);
+        apart = flushedApart < apart ? flushedApart : apart;
+        cosineApart = flushedCosineApart < cosineApart ? flushedCosineApart : cosineApart;
         apart = cosineApart > apart ? cosineApart : apart;
         worstAt = apart > worst ? FloatOf(w[0]) : worstAt;
         worst = apart > worst ? apart : worst;
