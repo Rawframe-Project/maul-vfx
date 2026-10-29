@@ -262,7 +262,8 @@ typedef enum CheckMode
     CHECK_SINES = 11,
     CHECK_AIR_SHARES = 12,
     CHECK_CROSS_EDGES = 13,
-    CHECK_GAS_LIFTS = 14
+    CHECK_GAS_LIFTS = 14,
+    CHECK_LENGTHS = 15
 } CheckMode;
 
 // The bytes of an element of a mode: sixteen words for cross edges,
@@ -882,6 +883,72 @@ static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
           "held speeds as the core's, NaN and infinities left");
 }
 
+// Vectors' lengths (shared/length.wgsl) against the core's mvfxLengthOf,
+// within HELD_ERROR of it (the device's square root): vectors of normal or
+// zero components with a largest from binary32's least normal to past
+// 2^63, among them a long hanging sheet's scaled cross product (about
+// 2^-66, whose square is subnormal) and either side of 2^-40 and 2^63. A
+// device that flushes subnormals (D3D12 does) measured a vector below
+// about 2^-63 as 0 before such vectors were scaled up. A subnormal
+// component it flushes on reading, so none is drawn.
+static void TestLengths(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 8,
+        DRAWN = 65536
+    };
+    const float special[SPECIAL][3] = {{0.0f, 0.0f, 0x1.2p-66f},
+                                       {0x1p-126f, 0.0f, 0.0f},
+                                       {1e-20f, -1e-20f, 1e-20f},
+                                       {0x1p-40f, 0x1p-70f, 0.0f},
+                                       {0x1.fffffep-41f, 0x1p-70f, 0.0f},
+                                       {0x1p63f, 1.0f, -1.0f},
+                                       {0.0f, 0.0f, 0.0f},
+                                       {3.0f, 4.0f, 12.0f}};
+    const uint32_t count = SPECIAL + DRAWN;
+    uint64_t state = 29;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[4 * e];
+        int32_t top = -126 + (int32_t)(Draw(&state) % 254u);
+        for (uint32_t k = 0; k < 3; ++k)
+        {
+            uint32_t size = Draw(&state);
+            uint32_t below = k == e % 3u ? 0u : Draw(&state) % 64u;
+            uint32_t sign = Draw(&state) & 1u;
+            float c = ldexpf(0.5f + (float)(size >> 9u) * 0x1p-24f, top - (int32_t)below);
+            c = fabsf(c) < FLT_MIN ? 0.0f : sign != 0u ? -c : c;
+            w[k] = Bits(e < SPECIAL ? special[e][k] : c);
+        }
+        w[3] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_LENGTHS, 0, count);
+    double worst = 0.0;
+    int32_t small = 0;
+    int32_t subnormalSquares = 0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        float x = FloatOf(w[0]);
+        float y = FloatOf(w[1]);
+        float z = FloatOf(w[2]);
+        double core = (double)mvfxLengthOf(x, y, z);
+        double error = fabs((double)FloatOf(w[3]) - core);
+        error = core > 0.0 ? error / core : error;
+        worst = error > worst ? error : worst;
+        float most = fmaxf(fabsf(x), fmaxf(fabsf(y), fabsf(z)));
+        small += most < 0x1p-40f;
+        subnormalSquares += most > 0.0f && most * most < FLT_MIN;
+    }
+    printf("lengths: largest relative difference from the core's %g of %u, %d below 2^-40, %d "
+           "with subnormal squares\n",
+           worst, count, small, subnormalSquares);
+    CHECK(ran && worst <= HELD_ERROR && subnormalSquares > (int32_t)count / 8 &&
+              mvfxLengthOf(0.0f, 0.0f, 0x1.2p-66f) == 0x1.2p-66f,
+          "lengths as the core's");
+}
+
 // The kernels' float classes (shared/finite.wgsl) against C's, on the
 // device: NaNs quiet and signalling, of either sign and of the largest
 // payload, infinities, the largest and least floats and zeros, alone and
@@ -1027,9 +1094,12 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
         const int32_t span[5] = {60, 187, 0, 237, 26};
         for (int32_t f = 0; f < 5; ++f)
         {
-            float drawn = f == 2 ? (float)(Draw(&state) % 2u)
-                                 : ldexpf(0.5f + (float)(Draw(&state) >> 9u) * 0x1p-24f,
-                                          low[f] + (int32_t)(Draw(&state) % (uint32_t)span[f]));
+            // Drawn into locals first, so every compiler draws the same.
+            uint32_t size = Draw(&state);
+            uint32_t power = f == 2 ? 0u : Draw(&state);
+            float drawn = f == 2 ? (float)(size % 2u)
+                                 : ldexpf(0.5f + (float)(size >> 9u) * 0x1p-24f,
+                                          low[f] + (int32_t)(power % (uint32_t)span[f]));
             w[f] = f == 2 ? (uint32_t)(e < SPECIAL ? special[e][f] : drawn)
                           : Bits(e < SPECIAL ? special[e][f] : drawn);
         }
@@ -1078,19 +1148,27 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
 // core's mvfxCrossEdges, bit for bit, and its length (shared/length.wgsl)
 // against mvfxLengthOf within 1e-6 of it: edges both below 2^63, one past
 // it and one a spacing long (a soft sheet hanging long enough stretches
-// its edges down so), both past it, at 2^63 and just below, and drawn
-// ones from 2^-30 to 2^100.
+// its edges down so), both past it, at 2^63 and just below, a scaled
+// component, a product and a difference below binary32's least normal
+// (flushed on every device, as D3D12 does), and drawn ones from 2^-30 to
+// 2^100.
 static void TestCrossEdges(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 6,
+        SPECIAL = 10,
         DRAWN = 8192
     };
-    const float special[SPECIAL][6] = {
-        {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},     {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
-        {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f}, {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},
-        {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},  {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
+    const float special[SPECIAL][6] = {{0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},
+                                       {0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
+                                       {0x1p63f, 0.0f, 0x1.8p-61f, 0x1p63f, 0.0f, 0x1p-61f},
+                                       {0x1p63f, 0x1p-70f, 0.0f, 0.0f, 0.0f, 0x1p127f},
+                                       {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+                                       {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+                                       {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
+                                       {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},
+                                       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
+                                       {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
     const uint32_t count = SPECIAL + DRAWN;
     uint64_t state = 23;
     for (uint32_t e = 0; e < count; ++e)
@@ -1098,8 +1176,10 @@ static void TestCrossEdges(Gpu* gpu, Checker* checker)
         uint32_t* w = &checker->words[16 * e];
         for (int32_t k = 0; k < 6; ++k)
         {
-            float drawn = ldexpf((float)Draw(&state) / 4294967296.0f - 0.5f,
-                                 -30 + (int32_t)(Draw(&state) % 131u));
+            // Drawn into locals first, so every compiler draws the same.
+            uint32_t size = Draw(&state);
+            uint32_t power = Draw(&state);
+            float drawn = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 131u));
             w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
         }
         for (int32_t k = 6; k < 16; ++k)
@@ -1199,6 +1279,7 @@ static void TestExact(Gpu* gpu)
         TestRemaindersApart(gpu, &checker);
         TestDragFactors(gpu, &checker);
         TestHeldSpeeds(gpu, &checker);
+        TestLengths(gpu, &checker);
         TestClasses(gpu, &checker);
         TestSines(gpu, &checker);
         TestAirShares(gpu, &checker);

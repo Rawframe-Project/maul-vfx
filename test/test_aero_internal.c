@@ -7,13 +7,15 @@
 // factors' exponents; a coefficient's and an area's product past it, and
 // a scaled area, though the whole is small, taken from the significands;
 // none for a zero coefficient, area or speed or a NaN speed; and every share
-// whose product fits the same bits as the product as written. A step
+// whose partial products stay normal the same bits as the product as
+// written. A step
 // reaches the overflowing products only at places and speeds past what a
 // short scene makes, so only the share on its own shows them.
 
 #include "aero.h"
 #include "test_harness.h"
 
+#include <float.h>
 #include <math.h>
 
 // A word of a simple generator, the draws.
@@ -45,8 +47,8 @@ static void TestShares(void)
                 mvfxAirShare(1.0f, 1.0f, false, NAN, 0.01f) == 0.0f &&
                 mvfxAirShare(1.0f, 0.0f, true, 1.0f, 1.0f / 60.0f) == 0.0f &&
                 mvfxAirShare(1e6f, 0.0f, false, 1e9f, 1.0f) == 0.0f;
-    // Drawn factors over their ranges: where the product as written stays
-    // finite, the share is its bits.
+    // Drawn factors over their ranges: where the product as written keeps
+    // every partial product normal, the share is its bits.
     uint64_t state = 5;
     int32_t same = 0;
     int32_t drawn = 0;
@@ -57,11 +59,16 @@ static void TestShares(void)
         const int32_t span[4] = {60, 160, 160, 26};
         for (int32_t k = 0; k < 4; ++k)
         {
-            f[k] = ldexpf(0.5f + (float)(Draw(&state) >> 9u) * 0x1p-24f,
-                          low[k] + (int32_t)(Draw(&state) % (uint32_t)span[k]));
+            uint32_t size = Draw(&state);
+            uint32_t power = Draw(&state);
+            f[k] = ldexpf(0.5f + (float)(size >> 9u) * 0x1p-24f,
+                          low[k] + (int32_t)(power % (uint32_t)span[k]));
         }
-        float product = f[0] * f[1] * f[2] * f[3] / 3.0f;
-        if (!isfinite(product))
+        float first = f[0] * f[1];
+        float second = first * f[2];
+        float product = second * f[3] / 3.0f;
+        if (!(fabsf(first) >= FLT_MIN && fabsf(second) >= FLT_MIN && second * f[3] >= FLT_MIN) ||
+            !isfinite(product))
         {
             continue;
         }
@@ -76,7 +83,9 @@ static void TestCross(void)
 {
     // Edges below 2^63 crossed as written; one 1e20 long and one 0.5
     // across it crossed scaled by 2^-64 each, its length then 1e20 0.5
-    // 2^-128; 2^63 itself scaled.
+    // 2^-128; 2^63 itself scaled; a product below binary32's least normal,
+    // and a scaled edge's component there, flushed to +0 as a device that
+    // flushes subnormals leaves them.
     uint64_t state = 9;
     bool written = true;
     for (int32_t i = 0; i < 10000; ++i)
@@ -84,8 +93,9 @@ static void TestCross(void)
         float e[6];
         for (int32_t k = 0; k < 6; ++k)
         {
-            e[k] = ldexpf((float)Draw(&state) / 4294967296.0f - 0.5f,
-                          -30 + (int32_t)(Draw(&state) % 93u));
+            uint32_t size = Draw(&state);
+            uint32_t power = Draw(&state);
+            e[k] = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 93u));
         }
         float n[3];
         bool scaled = mvfxCrossEdges(e, e + 3, n);
@@ -101,7 +111,25 @@ static void TestCross(void)
     bool at = mvfxCrossEdges(edge, across, n);
     static const float below[3] = {0x1.fffffep62f, 0.0f, 0.0f};
     bool under = !mvfxCrossEdges(below, across, n);
-    CHECK(written && far && at && under, "cross edges");
+    // Scaled, y is 2^-124 0.5 less 0.5 2^-126: the subnormal product
+    // flushed leaves 2^-125, where unflushed it would take 2^-127 off.
+    static const float steep[3] = {0x1p63f, 0.0f, 0x1p-60f};
+    static const float shallow[3] = {0x1p63f, 0.0f, 0x1p-62f};
+    mvfxCrossEdges(steep, shallow, n);
+    bool product = n[0] == 0.0f && n[1] == 0x1p-125f && n[2] == 0.0f;
+    // Scaled, y is 1.5 2^-126 less 2^-126, normal products whose
+    // difference 2^-127 is flushed.
+    static const float near[3] = {0x1p63f, 0.0f, 0x1.8p-61f};
+    static const float nearer[3] = {0x1p63f, 0.0f, 0x1p-61f};
+    mvfxCrossEdges(near, nearer, n);
+    bool difference = n[0] == 0.0f && n[1] == 0.0f && !signbit(n[1]) && n[2] == 0.0f;
+    // 2^-70 scaled is a subnormal component, flushed; unflushed, times
+    // 2^63 it would make x 2^-71.
+    static const float slight[3] = {0x1p63f, 0x1p-70f, 0.0f};
+    static const float up[3] = {0.0f, 0.0f, 0x1p127f};
+    mvfxCrossEdges(slight, up, n);
+    bool component = n[0] == 0.0f && !signbit(n[0]) && n[1] == -0x1p62f && n[2] == 0.0f;
+    CHECK(written && far && at && under && product && difference && component, "cross edges");
 }
 
 int main(void)

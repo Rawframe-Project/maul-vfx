@@ -16,6 +16,7 @@
 #include "direction.h"
 #include "force.h"
 
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -54,6 +55,13 @@ typedef struct Sheets
     const Air* air;
 } Sheets;
 
+// x, or 0 where it is below binary32's least normal, as a device that
+// flushes subnormals (D3D12 does) leaves it.
+static float Flushed(float x)
+{
+    return fabsf(x) < FLT_MIN ? 0.0f : x;
+}
+
 bool mvfxCrossEdges(const float e1[3], const float e2[3], float n[3])
 {
     float most = 0.0f;
@@ -63,11 +71,11 @@ bool mvfxCrossEdges(const float e1[3], const float e2[3], float n[3])
     }
     bool scaled = most >= 0x1p63f;
     float s = scaled ? 0x1p-64f : 1.0f;
-    float a[3] = {e1[0] * s, e1[1] * s, e1[2] * s};
-    float b[3] = {e2[0] * s, e2[1] * s, e2[2] * s};
-    n[0] = a[1] * b[2] - a[2] * b[1];
-    n[1] = a[2] * b[0] - a[0] * b[2];
-    n[2] = a[0] * b[1] - a[1] * b[0];
+    float a[3] = {Flushed(e1[0] * s), Flushed(e1[1] * s), Flushed(e1[2] * s)};
+    float b[3] = {Flushed(e2[0] * s), Flushed(e2[1] * s), Flushed(e2[2] * s)};
+    n[0] = Flushed(Flushed(a[1] * b[2]) - Flushed(a[2] * b[1]));
+    n[1] = Flushed(Flushed(a[2] * b[0]) - Flushed(a[0] * b[2]));
+    n[2] = Flushed(Flushed(a[0] * b[1]) - Flushed(a[1] * b[0]));
     return scaled;
 }
 
@@ -96,19 +104,11 @@ float mvfxAirShare(float k, float half, bool scaled, float speed, float h)
     {
         return 1.0f / 6.0f;
     }
-    float share = 0.0f;
-    if (ea <= 127 && ek + ea <= 127 && ek + ea + es <= 127)
-    {
-        // Every partial product below 2^127: the product as it is written.
-        float area = scaled ? half * 0x1p64f * 0x1p64f : half;
-        share = k * area * speed * h / 3.0f;
-    }
-    else
-    {
-        // A partial product past binary32's largest though the whole is
-        // below 4 (a speed or a step that small): from the significands.
-        share = (float)ldexp((double)(mk * ma * ms * mh), e) / 3.0f;
-    }
+    // The significands' product, scaled by 2^E: the bits of the product as
+    // written wherever its partial products stay normal, and the true
+    // share where one would pass binary32's largest or fall below its least
+    // normal. The GPU part forms the same product in integers.
+    float share = (float)ldexp((double)(mk * ma * ms * mh), e) / 3.0f;
     return share < 1.0f / 6.0f ? share : 1.0f / 6.0f;
 }
 

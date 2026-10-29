@@ -10,8 +10,8 @@
 // include: shared/finite.wgsl
 // include: shared/speed.wgsl
 // include: shared/sincos.wgsl
-// include: shared/length.wgsl
 // include: shared/air.wgsl
+// include: shared/length.wgsl
 // include: shared/gas_lift.wgsl
 
 const RECIPROCALS: u32 = 0u;
@@ -29,6 +29,7 @@ const SINES: u32 = 11u;
 const AIR_SHARES: u32 = 12u;
 const CROSS_EDGES: u32 = 13u;
 const GAS_LIFTS: u32 = 14u;
+const LENGTHS: u32 = 15u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -69,7 +70,8 @@ var<immediate> root: Root;
 // to w8), whether it was scaled (w9, 1 or 0) and its length (w10). Gas
 // lifts (shared/gas_lift.wgsl): eight words an element, in a density
 // weight (w0), a density (w1), a heat lift (w2) and a temperature (w3),
-// out the buoyant factor in w4.
+// out the buoyant factor in w4. Lengths (shared/length.wgsl): in a vector
+// (w0 to w2), out its length in w3.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -125,6 +127,11 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                 let finite = select(vec3<u32>(0u), vec3<u32>(1u, 2u, 4u), areFinite(v));
                 let nan = select(vec3<u32>(0u), vec3<u32>(8u, 16u, 32u), areNan(v));
                 words[w + 3u] = finite.x | finite.y | finite.z | nan.x | nan.y | nan.z;
+            }
+            case LENGTHS: {
+                words[w + 3u] = bitcast<u32>(lengthOf(vec3<f32>(bitcast<f32>(words[w]),
+                                                                bitcast<f32>(words[w + 1u]),
+                                                                bitcast<f32>(words[w + 2u]))));
             }
             case SINES: {
                 let sc = sinCos(bitcast<f32>(words[w]));
