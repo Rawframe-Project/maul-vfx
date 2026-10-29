@@ -2,18 +2,6 @@
 // triangle's normal (pressure) and tangent (skin) drag on its mean
 // velocity less the air's, as the core's src/aero.c.
 
-// The share of a relative speed a triangle of an area takes over a
-// substep of h seconds at a coefficient, as the core's ShareOf: k A |speed|
-// h over its three points, at most a sixth, and none at a zero coefficient
-// or speed.
-fn airShare(k: f32, area: f32, speed: f32, h: f32) -> f32 {
-    if (!(k > 0.0) || !(speed > 0.0)) {
-        return 0.0;
-    }
-    let share = quotient(k * area * speed * h, 3.0);
-    return select(1.0 / 6.0, share, share < 1.0 / 6.0);
-}
-
 // The velocity change the air gives each point of the triangle of points
 // a, b and c over a substep of h seconds from seconds after the plan's
 // start, as the core's Triangle: its normal (pressure) and tangent (skin)
@@ -61,9 +49,9 @@ fn triangleChange(a: u32, b: u32, c: u32, seconds: f32, h: f32) -> vec3<f32> {
     for (var k = 0u; k < 3u; k++) {
         tangent[k] = v[k] - along * n[k];
     }
-    let area = select(0.5 * twice, 0.5 * twice * 0x1p64f * 0x1p64f, scaled);
-    let normalShare = airShare(params.unitAero.x, area, abs(along), h);
-    let tangentShare = airShare(params.unitAero.y, area, lengthOf(tangent), h);
+    let half = 0.5 * twice;
+    let normalShare = airShare(params.unitAero.x, half, scaled, abs(along), h);
+    let tangentShare = airShare(params.unitAero.y, half, scaled, lengthOf(tangent), h);
     var d = vec3<f32>(0.0);
     for (var k = 0u; k < 3u; k++) {
         d[k] = -normalShare * along * n[k] - tangentShare * tangent[k];

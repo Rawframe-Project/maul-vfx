@@ -113,7 +113,7 @@ static void TestSheets(Gpu* gpu, mvfxGpu* kernels)
     emitter.unit.tangentDrag = 300.0f;
     Moved(gpu, kernels, &emitter, false, "sheets blown by a wind and a turbulent field");
     // In a gale, each triangle's share of the speed through the air held
-    // to a sixth, as the core's ShareOf.
+    // to a sixth, as the core's mvfxAirShare.
     emitter.unit.normalDrag = 1e5f;
     Moved(gpu, kernels, &emitter, false, "sheets in a gale, each triangle's share held");
     // In the world's space at the largest spacing and scale: edges of

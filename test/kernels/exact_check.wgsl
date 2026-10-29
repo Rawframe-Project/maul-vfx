@@ -10,6 +10,7 @@
 // include: shared/finite.wgsl
 // include: shared/speed.wgsl
 // include: shared/sincos.wgsl
+// include: shared/air.wgsl
 
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
@@ -23,6 +24,7 @@ const DRAG_FACTORS: u32 = 8u;
 const HELD_SPEEDS: u32 = 9u;
 const CLASSES: u32 = 10u;
 const SINES: u32 = 11u;
+const AIR_SHARES: u32 = 12u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -55,7 +57,9 @@ var<immediate> root: Root;
 // and whether it is a NaN (w2), 1 or 0, and in w3 areFinite (bits 0 to
 // 2) and areNan (bits 3 to 5) of a vector of ones with the float in
 // component e % 3. Sines (shared/sincos.wgsl): in an angle (w0), out its
-// sine (w1) and cosine (w2).
+// sine (w1) and cosine (w2). Air shares (shared/air.wgsl): eight words an
+// element, in a coefficient (w0), half an area (w1), whether it is scaled
+// (w2, 1 or 0), a speed (w3) and a substep (w4), out the share in w5.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -116,6 +120,13 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
                 let sc = sinCos(bitcast<f32>(words[w]));
                 words[w + 1u] = bitcast<u32>(sc.x);
                 words[w + 2u] = bitcast<u32>(sc.y);
+            }
+            case AIR_SHARES: {
+                let a = 2u * w;
+                let share = airShare(bitcast<f32>(words[a]), bitcast<f32>(words[a + 1u]),
+                                     words[a + 2u] != 0u, bitcast<f32>(words[a + 3u]),
+                                     bitcast<f32>(words[a + 4u]));
+                words[a + 5u] = bitcast<u32>(share);
             }
             case HELD_SPEEDS: {
                 let a = 2u * w;
