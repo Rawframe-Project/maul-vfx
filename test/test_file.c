@@ -658,7 +658,7 @@ static void TestParts(void)
           "the writer refuses it too");
 }
 
-// Bytes after the def in its unit, and a def the validator refuses.
+// Bytes after the def in its unit, and defs the validator refuses.
 static void TestTrailing(void)
 {
     Def def;
@@ -671,7 +671,7 @@ static void TestTrailing(void)
     Rehash(bytes, size + 4);
     mvfxEffectDef read;
     CHECK(Refused(Read(bytes, size + 4, &read), mvfx_errorFormat, size), "bytes after the def");
-    // The capacity found by the difference, and set to 0.
+    // The capacity found by the difference, set to 0 and past its most.
     uint8_t other[4096];
     size = Write(&def, bytes);
     def.emitter.capacity = 17;
@@ -679,6 +679,10 @@ static void TestTrailing(void)
     int64_t capacity = FirstDifference(bytes, other, size);
     CHECK(capacity > 114 && Get32(bytes, capacity) == 16, "the capacity found");
     Expect(bytes, size, capacity, 0, mvfx_errorFormat, 114, "a def the validator refuses");
+    // Past a named bound too: what a file holds is malformed, whatever check
+    // it fails.
+    Expect(bytes, size, capacity, MVFX_MAX_EMITTER_CAPACITY + 1, mvfx_errorFormat, 114,
+           "a def past a bound");
 }
 
 // The memory a def needs: measured, a byte short refused, read in exactly.
