@@ -43,6 +43,7 @@ const EVENT_SALT: u32 = 0x45564E54u;
 // include: shared/collider_numbers.wgsl
 // include: shared/speed.wgsl
 // include: shared/length.wgsl
+// include: shared/air.wgsl
 
 // The depth image as resolved for the step: whether it is met, its size
 // and the samples a step takes at most; whether it is reversed, whether

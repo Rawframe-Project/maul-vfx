@@ -11,7 +11,8 @@
 // 64-bit remainders stored over their inputs and eight words apart (the
 // first expected wrong on WARP, the second right everywhere); and the drag
 // factors (rhi/kernels/shared/drag.wgsl) against the core's binary64 ones
-// over seven decades of drag times seconds. Skips (77)
+// over seven decades of drag times seconds; sheets' air shares
+// (rhi/kernels/shared/air.wgsl) against the core's bit for bit. Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set, whose driver the
 // adapter must be; the refusals of mvfxCreateGpu need no device. On the
 // windows-rhi-d3d12 preset it runs under D3D12's debug layer and fails on
@@ -20,6 +21,7 @@
 // getenv is standard C; MSVC's runtime deprecates it for its own.
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "aero.h"
 #include "direction.h"
 #include "elementary.h"
 #include "emitter_step.h"
@@ -255,14 +257,17 @@ typedef enum CheckMode
     CHECK_HELD_SPEEDS = 9,
     CHECK_CLASSES = 10,
     CHECK_SINES = 11,
+    CHECK_AIR_SHARES = 12,
     CHECK_LENGTHS = 15
 } CheckMode;
 
-// The bytes of an element of a mode: eight words for remainders apart and
-// held speeds, four for the others.
+// The bytes of an element of a mode: eight words for remainders apart,
+// held speeds and air shares, four for the others.
 static uint32_t ElementBytes(uint32_t mode)
 {
-    return mode == CHECK_REMAINDERS_APART || mode == CHECK_HELD_SPEEDS ? 32u : 16u;
+    return mode == CHECK_REMAINDERS_APART || mode == CHECK_HELD_SPEEDS || mode == CHECK_AIR_SHARES
+               ? 32u
+               : 16u;
 }
 
 typedef struct Checker
@@ -1052,6 +1057,86 @@ static void TestSines(Gpu* gpu, Checker* checker)
     CHECK(ran && worst <= SINE_ULPS, "sines and cosines as the core's");
 }
 
+// A sheet's triangle's shares of its relative speed (shared/air.wgsl)
+// against the core's mvfxAirShare, bit for bit but where either is below
+// binary32's least normal (a device may flush it): products far past
+// binary32's largest, a coefficient's and an area's product past it
+// though the whole is small, scaled areas small and past binary32's
+// largest, zero coefficients, areas (scaled or not) and speeds, NaN
+// speeds, and drawn factors over their ranges.
+static void TestAirShares(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 10,
+        DRAWN = 8192
+    };
+    // k, half the area, scaled, speed, substep.
+    const float special[SPECIAL][5] = {
+        {1e6f, 2.5e23f, 0.0f, 1e9f, 1.0f / 120.0f}, {1e6f, 1e33f, 0.0f, 1e-35f, 0x1p-25f},
+        {1.0f, 0.5f, 1.0f, 5.0f, 1.0f / 60.0f},     {1e-6f, 1e-10f, 1.0f, 1e-30f, 0x1p-25f},
+        {0.0f, 1.0f, 0.0f, 5.0f, 1.0f / 60.0f},     {1.0f, 1.0f, 0.0f, 0.0f, 1.0f / 60.0f},
+        {1.0f, 1.0f, 0.0f, NAN, 1.0f / 60.0f},      {1.0f, 0.125f, 0.0f, 5.0f, 1.0f / 480.0f},
+        {1.0f, 0.0f, 1.0f, 1.0f, 1.0f / 60.0f},     {1e6f, 0.0f, 0.0f, 1e9f, 1.0f}};
+    const uint32_t count = SPECIAL + DRAWN;
+    uint64_t state = 17;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[8 * e];
+        const int32_t low[5] = {-40, -60, 0, -110, -25};
+        const int32_t span[5] = {60, 187, 0, 237, 26};
+        for (int32_t f = 0; f < 5; ++f)
+        {
+            // Drawn into locals first, so every compiler draws the same.
+            uint32_t size = Draw(&state);
+            uint32_t power = f == 2 ? 0u : Draw(&state);
+            float drawn = f == 2 ? (float)(size % 2u)
+                                 : ldexpf(0.5f + (float)(size >> 9u) * 0x1p-24f,
+                                          low[f] + (int32_t)(power % (uint32_t)span[f]));
+            w[f] = f == 2 ? (uint32_t)(e < SPECIAL ? special[e][f] : drawn)
+                          : Bits(e < SPECIAL ? special[e][f] : drawn);
+        }
+        w[5] = 0;
+        w[6] = w[7] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_AIR_SHARES, 0, count);
+    int32_t apart = 0;
+    int32_t sixths = 0;
+    int32_t written = 0;
+    int32_t significands = 0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[8 * e];
+        float k = FloatOf(w[0]);
+        float half = FloatOf(w[1]);
+        float speed = FloatOf(w[3]);
+        float h = FloatOf(w[4]);
+        float core = mvfxAirShare(k, half, w[2] != 0, speed, h);
+        float device = FloatOf(w[5]);
+        bool flushed = fabsf(core) < FLT_MIN && fabsf(device) < FLT_MIN;
+        apart += Bits(core) != w[5] && !flushed;
+        apart += w[6] != 0x5A5A5A5Au || w[7] != 0x5A5A5A5Au;
+        sixths += core == 1.0f / 6.0f;
+        int32_t exponent = 0;
+        (void)frexp((double)k * (double)half, &exponent);
+        bool overflows = w[2] != 0 || exponent > 127 || !isfinite(k * half * speed);
+        significands += overflows && core < 1.0f / 6.0f && core > 0.0f;
+        written += core > 0.0f && core < 1.0f / 6.0f;
+    }
+    // The special cases: past a sixth from the exponents; the true share
+    // of a coefficient's and an area's product past binary32's largest.
+    float overflowed = mvfxAirShare(1e6f, 1e33f, false, 1e-35f, 0x1p-25f);
+    double truth = (double)1e6f * (double)1e33f * (double)1e-35f * 0x1p-25 / 3.0;
+    printf("air shares: %d apart from the core's of %u, %d held at a sixth, %d below it, %d "
+           "from significands; a product past binary32's largest %g (true %g)\n",
+           apart, count, sixths, written, significands, (double)overflowed, truth);
+    CHECK(ran && apart == 0 && sixths > (int32_t)count / 8 && written > (int32_t)count / 8 &&
+              significands > 0 &&
+              mvfxAirShare(1e6f, 2.5e23f, false, 1e9f, 1.0f / 120.0f) == 1.0f / 6.0f &&
+              fabs((double)overflowed / truth - 1.0) <= 1e-6,
+          "air shares as the core's, no infinity formed");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -1072,6 +1157,7 @@ static void TestExact(Gpu* gpu)
         TestLengths(gpu, &checker);
         TestClasses(gpu, &checker);
         TestSines(gpu, &checker);
+        TestAirShares(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }

@@ -9,6 +9,16 @@
 
 #include "instance.h"
 
+#include <stdbool.h>
+
+// The share of a relative speed a triangle takes over a substep of h
+// seconds at a coefficient k: k A speed h over its three points, at most a
+// sixth, A half the triangle's doubled area (times 2^128 when scaled). None
+// for a zero coefficient, area or speed. Decided by its factors' exponents where
+// the product would pass binary32's largest, so it forms no infinity: the
+// GPU part's airShare (rhi/kernels/shared/air.wgsl) gives the same bits.
+float mvfxAirShare(float k, float half, bool scaled, float speed, float h);
+
 // Changes an emitter of sheets' velocities by their triangles' drag over
 // a substep of h seconds from a tick, each change found from the
 // velocities at its start; room holds three arrays of the capacity.

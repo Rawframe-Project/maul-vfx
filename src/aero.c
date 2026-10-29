@@ -54,18 +54,36 @@ typedef struct Sheets
     const Air* air;
 } Sheets;
 
-// The share of a relative speed a triangle of area A takes over a
-// substep at a coefficient: k A |speed| h over its three points, at most
-// a sixth. A zero coefficient or speed takes none, even where the product
-// of the others overflows (0 times infinity is a NaN, which would read as
-// past a sixth).
-static float ShareOf(const Sheets* s, float k, float area, float speed)
+float mvfxAirShare(float k, float half, bool scaled, float speed, float h)
 {
-    if (!(k > 0.0f) || !(speed > 0.0f))
+    // A zero area takes none: frexp gives it the exponent 0, which would
+    // count as a factor of 1/2 (2^128 scaled).
+    if (!(k > 0.0f) || !(half > 0.0f) || !(speed > 0.0f))
     {
         return 0.0f;
     }
-    float share = k * area * speed * s->h / 3.0f;
+    // Each factor m 2^e with m in [1/2, 1), so the product is M 2^E with
+    // M in [1/16, 1): from E = 3 on it is at least 1/2, its share at least
+    // a sixth, which the product's rounding keeps.
+    int ek = 0;
+    int ea = 0;
+    int es = 0;
+    int eh = 0;
+    float mk = (float)frexp((double)k, &ek);
+    float ma = (float)frexp((double)half, &ea);
+    float ms = (float)frexp((double)speed, &es);
+    float mh = (float)frexp((double)h, &eh);
+    ea += scaled ? 128 : 0;
+    int e = ek + ea + es + eh;
+    if (e >= 3)
+    {
+        return 1.0f / 6.0f;
+    }
+    // The significands' product, scaled by 2^E: the bits of the product as
+    // written wherever its partial products stay normal, and the true
+    // share where one would pass binary32's largest or fall below its least
+    // normal. The GPU part forms the same product in integers.
+    float share = (float)ldexp((double)(mk * ma * ms * mh), e) / 3.0f;
     return share < 1.0f / 6.0f ? share : 1.0f / 6.0f;
 }
 
@@ -84,8 +102,7 @@ static void Triangle(const Sheets* s, int32_t a, int32_t b, int32_t c)
         v[k] = (s->v[k][a] + s->v[k][b] + s->v[k][c]) / 3.0f;
     }
     // Edges with a component past 2^63 are crossed scaled by 2^-64 each,
-    // so no product overflows, and the area scaled back (infinite past
-    // binary32's largest, which holds a share at a sixth).
+    // so no product overflows; the area is the scaled one's times 2^128.
     float most = 0.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -118,10 +135,10 @@ static void Triangle(const Sheets* s, int32_t a, int32_t b, int32_t c)
     {
         tangent[k] = v[k] - along * n[k];
     }
-    float area = scaled ? 0.5f * twice * 0x1p64f * 0x1p64f : 0.5f * twice;
-    float normalShare = ShareOf(s, s->normalDrag, area, fabsf(along));
-    float tangentShare =
-        ShareOf(s, s->tangentDrag, area, mvfxLengthOf(tangent[0], tangent[1], tangent[2]));
+    float half = 0.5f * twice;
+    float normalShare = mvfxAirShare(s->normalDrag, half, scaled, fabsf(along), s->h);
+    float tangentShare = mvfxAirShare(s->tangentDrag, half, scaled,
+                                      mvfxLengthOf(tangent[0], tangent[1], tangent[2]), s->h);
     const int32_t points[3] = {a, b, c};
     for (int32_t k = 0; k < 3; ++k)
     {
