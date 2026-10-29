@@ -16,6 +16,7 @@
 #include "direction.h"
 #include "force.h"
 
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -53,6 +54,30 @@ typedef struct Sheets
     float h;
     const Air* air;
 } Sheets;
+
+// x, or 0 where it is below binary32's least normal, as a device that
+// flushes subnormals (D3D12 does) leaves it.
+static float Flushed(float x)
+{
+    return fabsf(x) < FLT_MIN ? 0.0f : x;
+}
+
+bool mvfxCrossEdges(const float e1[3], const float e2[3], float n[3])
+{
+    float most = 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        most = fmaxf(most, fmaxf(fabsf(e1[k]), fabsf(e2[k])));
+    }
+    bool scaled = most >= 0x1p63f;
+    float s = scaled ? 0x1p-64f : 1.0f;
+    float a[3] = {Flushed(e1[0] * s), Flushed(e1[1] * s), Flushed(e1[2] * s)};
+    float b[3] = {Flushed(e2[0] * s), Flushed(e2[1] * s), Flushed(e2[2] * s)};
+    n[0] = Flushed(Flushed(a[1] * b[2]) - Flushed(a[2] * b[1]));
+    n[1] = Flushed(Flushed(a[2] * b[0]) - Flushed(a[0] * b[2]));
+    n[2] = Flushed(Flushed(a[0] * b[1]) - Flushed(a[1] * b[0]));
+    return scaled;
+}
 
 float mvfxAirShare(float k, float half, bool scaled, float speed, float h)
 {
@@ -101,21 +126,9 @@ static void Triangle(const Sheets* s, int32_t a, int32_t b, int32_t c)
         middle[k] = (s->x[k][a] + s->x[k][b] + s->x[k][c]) / 3.0f;
         v[k] = (s->v[k][a] + s->v[k][b] + s->v[k][c]) / 3.0f;
     }
-    // Edges with a component past 2^63 are crossed scaled by 2^-64 each,
-    // so no product overflows; the area is the scaled one's times 2^128.
-    float most = 0.0f;
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        most = fmaxf(most, fmaxf(fabsf(e1[k]), fabsf(e2[k])));
-    }
-    bool scaled = most >= 0x1p63f;
-    for (int32_t k = 0; scaled && k < 3; ++k)
-    {
-        e1[k] *= 0x1p-64f;
-        e2[k] *= 0x1p-64f;
-    }
-    float n[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
-                  e1[0] * e2[1] - e1[1] * e2[0]};
+    // The area is the scaled one's times 2^128.
+    float n[3];
+    bool scaled = mvfxCrossEdges(e1, e2, n);
     float twice = mvfxLengthOf(n[0], n[1], n[2]);
     if (!(twice > 0.0f))
     {

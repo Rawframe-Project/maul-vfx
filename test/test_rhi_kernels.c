@@ -11,8 +11,10 @@
 // 64-bit remainders stored over their inputs and eight words apart (the
 // first expected wrong on WARP, the second right everywhere); and the drag
 // factors (rhi/kernels/shared/drag.wgsl) against the core's binary64 ones
-// over seven decades of drag times seconds; sheets' air shares
-// (rhi/kernels/shared/air.wgsl) against the core's bit for bit. Skips (77)
+// over seven decades of drag times seconds; sheets' air shares and edges'
+// cross products (rhi/kernels/shared/air.wgsl) and gas cells' buoyant
+// factors (rhi/kernels/shared/gas_lift.wgsl) against the core's bit for
+// bit. Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set, whose driver the
 // adapter must be; the refusals of mvfxCreateGpu need no device. On the
 // windows-rhi-d3d12 preset it runs under D3D12's debug layer and fails on
@@ -26,6 +28,7 @@
 #include "elementary.h"
 #include "emitter_step.h"
 #include "exact_check_container.h"
+#include "gas_forces.h"
 #include "integrate.h"
 #include "kernels.h"
 #include "random.h"
@@ -258,14 +261,22 @@ typedef enum CheckMode
     CHECK_CLASSES = 10,
     CHECK_SINES = 11,
     CHECK_AIR_SHARES = 12,
+    CHECK_CROSS_EDGES = 13,
+    CHECK_GAS_LIFTS = 14,
     CHECK_LENGTHS = 15
 } CheckMode;
 
-// The bytes of an element of a mode: eight words for remainders apart,
-// held speeds and air shares, four for the others.
+// The bytes of an element of a mode: sixteen words for cross edges,
+// eight for remainders apart, held speeds, air shares and gas lifts, four
+// for the others.
 static uint32_t ElementBytes(uint32_t mode)
 {
-    return mode == CHECK_REMAINDERS_APART || mode == CHECK_HELD_SPEEDS || mode == CHECK_AIR_SHARES
+    if (mode == CHECK_CROSS_EDGES)
+    {
+        return 64u;
+    }
+    return mode == CHECK_REMAINDERS_APART || mode == CHECK_HELD_SPEEDS ||
+                   mode == CHECK_AIR_SHARES || mode == CHECK_GAS_LIFTS
                ? 32u
                : 16u;
 }
@@ -1137,6 +1148,138 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
           "air shares as the core's, no infinity formed");
 }
 
+// A sheet's triangle's edges' cross product (shared/air.wgsl) against the
+// core's mvfxCrossEdges, bit for bit, and its length (shared/length.wgsl)
+// against mvfxLengthOf within 1e-6 of it: edges both below 2^63, one past
+// it and one a spacing long (a soft sheet hanging long enough stretches
+// its edges down so), both past it, at 2^63 and just below, either edge's
+// scaled component, each row's first product, a second product and a
+// difference below binary32's least normal (flushed on every device, as
+// D3D12 does), and drawn ones from 2^-30 to 2^100.
+static void TestCrossEdges(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 7,
+        FLUSHES = 5,
+        TURNED = 3 * FLUSHES,
+        DRAWN = 8192
+    };
+    const float special[SPECIAL][6] = {
+        {0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},   {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+        {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},         {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
+        {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
+        {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
+    // Flushes, each deciding one row (test_aero_internal says how): a
+    // second product, a difference, e1's and e2's scaled component and a
+    // first product; each turned to every row.
+    const float flushes[FLUSHES][6] = {{0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
+                                       {0x1p63f, 0.0f, 0x1.8p-61f, 0x1p63f, 0.0f, 0x1p-61f},
+                                       {0x1p63f, 0x1p-70f, 0.0f, 0.0f, 0.0f, 0x1p127f},
+                                       {0.0f, 0.0f, 0x1p127f, 0x1p63f, 0x1p-70f, 0.0f},
+                                       {0.0f, 0x1p63f, 0x1p-60f, 0.0f, 0x1p63f, 0x1p-62f}};
+    const uint32_t count = SPECIAL + TURNED + DRAWN;
+    uint64_t state = 23;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[16 * e];
+        for (int32_t k = 0; k < 6; ++k)
+        {
+            // Drawn into locals first, so every compiler draws the same.
+            uint32_t size = Draw(&state);
+            uint32_t power = Draw(&state);
+            float value = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 131u));
+            if (e < SPECIAL)
+            {
+                value = special[e][k];
+            }
+            else if (e < SPECIAL + TURNED)
+            {
+                int32_t turn = (int32_t)((e - SPECIAL) % 3u);
+                value = flushes[(e - SPECIAL) / 3u][3 * (k / 3) + (k % 3 + 3 - turn) % 3];
+            }
+            w[k] = Bits(value);
+        }
+        for (int32_t k = 6; k < 16; ++k)
+        {
+            w[k] = 0x5A5A5A5Au;
+        }
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_CROSS_EDGES, 0, count);
+    int32_t apart = 0;
+    int32_t scaled = 0;
+    double worst = 0.0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[16 * e];
+        const float e1[3] = {FloatOf(w[0]), FloatOf(w[1]), FloatOf(w[2])};
+        const float e2[3] = {FloatOf(w[3]), FloatOf(w[4]), FloatOf(w[5])};
+        float n[3];
+        bool core = mvfxCrossEdges(e1, e2, n);
+        apart += Bits(n[0]) != w[6] || Bits(n[1]) != w[7] || Bits(n[2]) != w[8] ||
+                 (core ? 1u : 0u) != w[9];
+        for (int32_t k = 11; k < 16; ++k)
+        {
+            apart += w[k] != 0x5A5A5A5Au;
+        }
+        scaled += core;
+        double length = (double)mvfxLengthOf(n[0], n[1], n[2]);
+        double error = fabs((double)FloatOf(w[10]) - length);
+        error = length > 0.0 ? error / length : error;
+        worst = error > worst ? error : worst;
+    }
+    printf("cross edges: %d apart from the core's of %u, %d scaled, largest relative length "
+           "difference %g\n",
+           apart, count, scaled, worst);
+    CHECK(ran && apart == 0 && scaled > (int32_t)count / 8 && worst <= HELD_ERROR,
+          "cross edges as the core's");
+}
+
+// A gas cell's buoyant factor (shared/gas_lift.wgsl) against the core's
+// mvfxGasLift, bit for bit: scalars within 2^80 and past it, up to
+// binary32's largest and infinite, under weights up to MVFX_MAX_EXTENT.
+static void TestGasLifts(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 4,
+        DRAWN = 8192
+    };
+    const float special[SPECIAL][4] = {{1e6f, 3e38f, 1e6f, 0.0f},
+                                       {1e6f, 1e38f, 1e6f, 1e38f},
+                                       {1e6f, INFINITY, 0.0f, 1.0f},
+                                       {0.25f, 4.0f, 1.5f, 2.0f}};
+    const uint32_t count = SPECIAL + DRAWN;
+    uint64_t state = 29;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[8 * e];
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            int32_t top = k % 2 == 0 ? 20 : 127;
+            float drawn = ldexpf((float)Draw(&state) / 4294967296.0f - (k % 2 == 0 ? 0.0f : 0.5f),
+                                 -20 + (int32_t)(Draw(&state) % (uint32_t)(top + 21)));
+            w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
+        }
+        w[4] = 0;
+        w[5] = w[6] = w[7] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_GAS_LIFTS, 0, count);
+    int32_t apart = 0;
+    int32_t held = 0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[8 * e];
+        float core = mvfxGasLift(FloatOf(w[0]), FloatOf(w[1]), FloatOf(w[2]), FloatOf(w[3]));
+        apart +=
+            Bits(core) != w[4] || w[5] != 0x5A5A5A5Au || w[6] != 0x5A5A5A5Au || w[7] != 0x5A5A5A5Au;
+        held += fabsf(FloatOf(w[1])) > 0x1p80f || fabsf(FloatOf(w[3])) > 0x1p80f;
+    }
+    printf("gas lifts: %d apart from the core's of %u, %d with a scalar held\n", apart, count,
+           held);
+    CHECK(ran && apart == 0 && held > (int32_t)count / 8, "gas lifts as the core's");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -1158,6 +1301,8 @@ static void TestExact(Gpu* gpu)
         TestClasses(gpu, &checker);
         TestSines(gpu, &checker);
         TestAirShares(gpu, &checker);
+        TestCrossEdges(gpu, &checker);
+        TestGasLifts(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }

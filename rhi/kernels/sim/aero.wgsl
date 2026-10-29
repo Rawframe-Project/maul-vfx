@@ -23,17 +23,10 @@ fn triangleChange(a: u32, b: u32, c: u32, seconds: f32, h: f32) -> vec3<f32> {
         middle[k] = quotient(xa[k] + xb[k] + xc[k], 3.0);
         v[k] = quotient(va[k] + vb[k] + vc[k], 3.0);
     }
-    // Edges with a component past 2^63 crossed scaled by 2^-64 each, and
-    // the area scaled back, as the core's Triangle.
-    let most = max(max(abs(e1.x), max(abs(e1.y), abs(e1.z))),
-                   max(abs(e2.x), max(abs(e2.y), abs(e2.z))));
-    let scaled = most >= 0x1p63f;
-    if (scaled) {
-        e1 *= 0x1p-64f;
-        e2 *= 0x1p-64f;
-    }
-    var n = vec3<f32>(e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
-                      e1[0] * e2[1] - e1[1] * e2[0]);
+    // The area is the scaled one's times 2^128, as the core's Triangle.
+    let crossed = crossEdges(e1, e2);
+    let scaled = crossed.w != 0.0;
+    var n = crossed.xyz;
     let twice = lengthOf(n);
     if (!(twice > 0.0)) {
         return vec3<f32>(0.0);
