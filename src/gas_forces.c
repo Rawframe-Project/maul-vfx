@@ -22,11 +22,17 @@ static void Strides(const mvfxGasLattice* l, int64_t out[3])
     out[2] = (int64_t)l->n[0] * l->n[1];
 }
 
-// The buoyant factor at a cell: densityWeight density - heatLift
-// temperature.
+float mvfxGasLift(float densityWeight, float density, float heatLift, float temperature)
+{
+    float d = density > 0x1p80f ? 0x1p80f : density < -0x1p80f ? -0x1p80f : density;
+    float t = temperature > 0x1p80f ? 0x1p80f : temperature < -0x1p80f ? -0x1p80f : temperature;
+    return densityWeight * d - heatLift * t;
+}
+
+// The buoyant factor at a cell (mvfxGasLift).
 static float Lift(const mvfxGasDef* def, float* const scalars[3], int64_t i)
 {
-    return def->densityWeight * scalars[0][i] - def->heatLift * scalars[1][i];
+    return mvfxGasLift(def->densityWeight, scalars[0][i], def->heatLift, scalars[1][i]);
 }
 
 // The mean of the buoyant factor over the cells beside the face across k
