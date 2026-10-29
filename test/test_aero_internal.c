@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A sheet's triangle's share of its relative speed (mvfxAirShare) on its
-// own: a product past binary32's largest held at a sixth from its
+// A sheet's triangle's edges' cross product (mvfxCrossEdges), as written
+// below 2^63 and scaled from it, and its share of its relative speed
+// (mvfxAirShare) on its own: a product past binary32's largest held at a sixth from its
 // factors' exponents; a coefficient's and an area's product past it, and
 // a scaled area, though the whole is small, taken from the significands;
 // none for a zero coefficient or speed or a NaN speed; and every share
@@ -69,8 +70,41 @@ static void TestShares(void)
     CHECK(held && exact && none && same == drawn && drawn > 50000, "air shares");
 }
 
+static void TestCross(void)
+{
+    // Edges below 2^63 crossed as written; one 1e20 long and one 0.5
+    // across it crossed scaled by 2^-64 each, its length then 1e20 0.5
+    // 2^-128; 2^63 itself scaled.
+    uint64_t state = 9;
+    bool written = true;
+    for (int32_t i = 0; i < 10000; ++i)
+    {
+        float e[6];
+        for (int32_t k = 0; k < 6; ++k)
+        {
+            e[k] = ldexpf((float)Draw(&state) / 4294967296.0f - 0.5f,
+                          -30 + (int32_t)(Draw(&state) % 93u));
+        }
+        float n[3];
+        bool scaled = mvfxCrossEdges(e, e + 3, n);
+        written = written && !scaled && n[0] == e[1] * e[5] - e[2] * e[4] &&
+                  n[1] == e[2] * e[3] - e[0] * e[5] && n[2] == e[0] * e[4] - e[1] * e[3];
+    }
+    static const float along[3] = {1e20f, 0.0f, 0.0f};
+    static const float across[3] = {0.0f, 0.0f, 0.5f};
+    float n[3];
+    bool scaled = mvfxCrossEdges(along, across, n);
+    bool far = scaled && n[0] == 0.0f && n[2] == 0.0f && n[1] == -(1e20f * 0x1p-64f) * 0x1p-65f;
+    static const float edge[3] = {0x1p63f, 0.0f, 0.0f};
+    bool at = mvfxCrossEdges(edge, across, n);
+    static const float below[3] = {0x1.fffffep62f, 0.0f, 0.0f};
+    bool under = !mvfxCrossEdges(below, across, n);
+    CHECK(written && far && at && under, "cross edges");
+}
+
 int main(void)
 {
     TestShares();
+    TestCross();
     return s_failures == 0 ? 0 : 1;
 }

@@ -11,6 +11,13 @@
 
 #include <stdbool.h>
 
+// A triangle's edges' cross product into n, both edges scaled by 2^-64
+// when a component of either reaches 2^63 (and true then), so no product
+// overflows: its length is twice the triangle's area, times 2^128 when
+// scaled. The GPU part's crossEdges (rhi/kernels/shared/air.wgsl) gives
+// the same bits.
+bool mvfxCrossEdges(const float e1[3], const float e2[3], float n[3]);
+
 // The share of a relative speed a triangle takes over a substep of h
 // seconds at a coefficient k: k A speed h over its three points, at most a
 // sixth, A half the triangle's doubled area (times 2^128 when scaled). None
