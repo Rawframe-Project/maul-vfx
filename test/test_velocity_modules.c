@@ -331,6 +331,9 @@ static void TestRefusals(void)
                                          {.time = 2.0f, .value = 1.0f}};
     for (int32_t field = 0; field < 8; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
         mvfxEmitterDef bad = Held();
         mvfxVelocityModules* m = &bad.velocityModules;
         switch (field)
@@ -370,7 +373,7 @@ static void TestRefusals(void)
         effectDef.emitters = &bad;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
     }
     mvfxDestroyContext(context);
 }

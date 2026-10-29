@@ -284,7 +284,7 @@ static void TestBakeRefusals(const mvfxNoise* baked, const int32_t size[3])
             mvfx_errorInvalid &&
         mvfxBakeCurlNoise(&noise, 0, size, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
         mvfxBakeCurlNoise(&noise, MVFX_MAX_NOISE_PERIOD + 1, size, s_baked, BAKE_VALUES) ==
-            mvfx_errorInvalid &&
+            mvfx_errorLimit &&
         mvfxBakeCurlNoise(&noise, BAKE_PERIOD, empty, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
         mvfxBakeCurlNoise(&noise, BAKE_PERIOD, size, s_baked, BAKE_VALUES - 1) == mvfx_errorInvalid;
     CHECK(refused && s_baked[0] == 12345.0f, "refusals write nothing");

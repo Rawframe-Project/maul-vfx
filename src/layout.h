@@ -19,8 +19,10 @@ typedef struct mvfxOutputLayout
     uint32_t stride;
 } mvfxOutputLayout;
 
-// Whether a layout def is valid.
-bool mvfxIsLayoutDefValid(const mvfxLayoutDef* def);
+// Whether a layout def is valid: mvfx_errorLimit for more fields than
+// MVFX_MAX_LAYOUT_FIELDS or a stride past MVFX_MAX_LAYOUT_STRIDE,
+// mvfx_errorInvalid for anything else wrong.
+mvfxResult mvfxCheckLayoutDef(const mvfxLayoutDef* def);
 
 // Builds a layout from a valid def; NULL when the allocator fails.
 mvfxOutputLayout* mvfxBuildLayout(const mvfxLayoutDef* def, const mvfxAllocator* allocator);

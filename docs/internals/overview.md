@@ -11,7 +11,7 @@ host ── public API (include/maul-vfx/)
            │         layouts, grids and meshes (src/context.c, slots.c)
            │
         effects: defs checked and compiled into one block each
-           │      (effect.c, value.c, curve.c, shape.c, force.c, ...)
+           │      (effect_check.c, effect.c, value.c, curve.c, shape.c, ...)
            │      ── effect files read and written (file.c, file_codec.c)
            │
         instances: one block each; the step advances them

@@ -289,6 +289,11 @@ static void TestRefusals(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     for (int32_t field = 0; field < 14; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 8 || field == 9 || field == 12 || field == 13
+                              ? mvfx_errorLimit
+                              : mvfx_errorInvalid;
         mvfxKillRule rule = {.kind = mvfx_killInsideSphere, .radius = 1.0f};
         mvfxForce force = {.kind = mvfx_forceAttractor, .softening = 1.0f};
         mvfxEmitterDef bad = Held(&rule, 1);
@@ -349,7 +354,7 @@ static void TestRefusals(void)
         effectDef.emitters = &bad;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
     }
     mvfxDestroyContext(context);
 }

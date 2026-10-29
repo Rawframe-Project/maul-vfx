@@ -14,8 +14,10 @@
 #include "maul-vfx/effect.h"
 #include "maul-vfx/plan.h"
 
-// Whether a force is valid for an effect of parameterCount parameters.
-bool mvfxIsForceValid(const mvfxForce* force, int32_t parameterCount);
+// Whether a force is valid for an effect of parameterCount parameters:
+// mvfx_errorLimit for a field past its named bound, mvfx_errorInvalid for
+// anything else wrong.
+mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount);
 
 // A valid force as compiled: its axes normalized.
 mvfxForce mvfxCompileForce(const mvfxForce* force);

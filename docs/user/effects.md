@@ -52,7 +52,7 @@ Every value a particle stores or shows stays within its role's limit, so every o
 | Anything else a source draws | `MVFX_MAX_DRAW` (1e38) | An angle, an orientation, a drag scale, a lifetime. |
 | A place a host module leaves | `MVFX_MAX_PLACE` (1e30) | Each axis, in the emitter's space. The step's own places stay far within it, and times the largest instance scale it is still finite. |
 
-So each stored value has a cap: its role's limit over the most its values over life scale it. A source's base at its largest size (a curve's largest baked value, rises between keys included, a gradient's largest key, a parameter's value) times the larger size of its ends must be within its cap. An effect with a source past it is refused, and so is a parameter default or a value set with `mvfxInstance_SetParameter` that takes a source reading it past it (`mvfx_errorInvalid`). A colour or size the program spawns with (`mvfxSpawnRequest`) past its cap is refused the same way; one inherited from an event is held to the spawning emitter's cap.
+So each stored value has a cap: its role's limit over the most its values over life scale it. A source's base at its largest size (a curve's largest baked value, rises between keys included, a gradient's largest key, a parameter's value) times the larger size of its ends must be within its cap. An effect with a source past it is refused, and so is a parameter default or a value set with `mvfxInstance_SetParameter` that takes a source reading it past it (`mvfx_errorLimit`). A colour or size the program spawns with (`mvfxSpawnRequest`) past its cap is refused the same way; one inherited from an event is held to the spawning emitter's cap.
 
 ## Quality levels and the particle budget
 

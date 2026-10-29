@@ -25,7 +25,9 @@ typedef struct mvfxResolvedKillRule
     int32_t collisions;
 } mvfxResolvedKillRule;
 
-bool mvfxIsKillRuleValid(const mvfxKillRule* rule);
+// Whether a kill rule is valid: mvfx_errorLimit for a place, size, speed
+// or age past its named bound, mvfx_errorInvalid for anything else wrong.
+mvfxResult mvfxCheckKillRule(const mvfxKillRule* rule);
 
 // A valid rule as compiled: its normal and rotation normalized.
 mvfxKillRule mvfxCompileKillRule(const mvfxKillRule* rule);

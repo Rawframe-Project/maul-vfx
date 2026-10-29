@@ -220,7 +220,7 @@ static void TestChecks(void)
     def.offscreenInterval = 1;
     refused += mvfxCreateInstance(s_context, &def, &id) == mvfx_errorInvalid;
     def.offscreenInterval = MVFX_MAX_OFFSCREEN_INTERVAL + 1;
-    refused += mvfxCreateInstance(s_context, &def, &id) == mvfx_errorInvalid;
+    refused += mvfxCreateInstance(s_context, &def, &id) == mvfx_errorLimit;
     def.offscreenInterval = MVFX_MAX_OFFSCREEN_INTERVAL;
     CHECK(refused == 3 && mvfxCreateInstance(s_context, &def, &id) == mvfx_success,
           "the policy and interval checked");
@@ -232,8 +232,9 @@ static void TestChecks(void)
     refused +=
         mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenThrottle, 1) == mvfx_errorInvalid;
     refused +=
-        mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenThrottle, 65) == mvfx_errorInvalid;
-    CHECK(refused == 3 && mvfxGetContextMisuse(s_context) == misuse + 6, "refused, counted");
+        mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenThrottle, 65) == mvfx_errorLimit;
+    // A def's interval past the most counts no misuse; a setter's does.
+    CHECK(refused == 3 && mvfxGetContextMisuse(s_context) == misuse + 5, "refused, counted");
     CHECK(mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenThrottle, 2) == mvfx_success &&
               mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenSimulate, 0) == mvfx_success,
           "changed");

@@ -497,7 +497,9 @@ static void TestChecks(void)
             u->pinFirstRow = true;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past MVFX_MAX_ATTACH_FRAMES is past a named bound.
+        mvfxResult want = rule == 4 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
         emitters[0].space = mvfx_spaceWorld;
     }
     CHECK(refused == 8, "every check");

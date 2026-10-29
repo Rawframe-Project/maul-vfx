@@ -314,7 +314,9 @@ static void TestChecks(void)
             emitter.ribbon.pinHead = true;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 5, "every check");
     emitter = Trail();

@@ -585,7 +585,9 @@ static void PushRefusals(void)
     int32_t wrong = 0;
     for (int32_t b = 0; b < 6; ++b)
     {
-        wrong += mvfxInstance_PushWater(s_context, id, 0, &bad[b], 1) != mvfx_errorInvalid;
+        // A radius or depth past MVFX_MAX_EXTENT is past a named bound.
+        mvfxResult want = b == 1 || b == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
+        wrong += mvfxInstance_PushWater(s_context, id, 0, &bad[b], 1) != want;
     }
     wrong += mvfxInstance_PushWater(s_context, id, 0, nullptr, 1) != mvfx_errorInvalid;
     wrong += mvfxInstance_PushWater(s_context, id, 0, pushes, -1) != mvfx_errorInvalid;

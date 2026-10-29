@@ -423,7 +423,10 @@ static void TestChecks(void)
             r->scroll = -2e6f;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want =
+            rule == 1 || rule == 6 || rule == 11 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 12, "every check");
     emitter = Ribbon(MVFX_MAX_RIBBON_PIECES);

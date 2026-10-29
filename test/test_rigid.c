@@ -2008,7 +2008,9 @@ static void TestChecks(void)
         def.emitters = &bad;
         def.emitterCount = 1;
         mvfxEffectId effect = {0};
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid ? 1 : 0;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = c == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want ? 1 : 0;
     }
     CHECK(refused == 9, "the checks");
     mvfxEmitterDef good = Rigid(mvfx_rigidBox, 1, 1, 1);

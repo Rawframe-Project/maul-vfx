@@ -35,9 +35,9 @@ typedef struct mvfxHull
 } mvfxHull;
 
 // Builds the hull of count points (x, y and z each, finite) into out;
-// mvfx_errorInvalid when they span no volume or the hull has more than
-// MVFX_MAX_HULL_VERTICES vertices, mvfx_errorCapacity when the allocator
-// fails.
+// mvfx_errorInvalid when they span no volume, mvfx_errorLimit when the
+// hull has more than MVFX_MAX_HULL_VERTICES vertices, mvfx_errorCapacity
+// when the allocator fails.
 mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator* allocator,
                          mvfxHull* out);
 

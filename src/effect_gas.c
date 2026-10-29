@@ -7,23 +7,25 @@
 #include "effect_gas.h"
 
 #include "force.h"
+#include "refusal.h"
 
 // Whether an emitter's splat into a gas is in range for an effect of
 // gasCount gases.
-static bool IsSplatValid(const mvfxGasSplat* splat, int32_t gasCount)
+static mvfxResult CheckSplat(const mvfxGasSplat* splat, int32_t gasCount)
 {
     if (!splat->enabled)
     {
-        return true;
+        return mvfx_success;
     }
-    const float rates[3] = {splat->density, splat->temperature, splat->fuel};
-    bool valid = splat->gas >= 0 && splat->gas < gasCount && splat->drag >= 0.0f &&
-                 splat->drag <= MVFX_MAX_DRAG;
-    for (int32_t k = 0; valid && k < 3; ++k)
+    if (splat->gas < 0 || splat->gas >= gasCount)
     {
-        valid = rates[k] >= -MVFX_MAX_EXTENT && rates[k] <= MVFX_MAX_EXTENT;
+        return mvfx_errorInvalid;
     }
-    return valid;
+    return mvfxFirst(
+        mvfxUpToBound(splat->drag, 0.0f, MVFX_MAX_DRAG),
+        mvfxFirst(mvfxBounded(splat->density, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                  mvfxFirst(mvfxBounded(splat->temperature, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                            mvfxBounded(splat->fuel, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT))));
 }
 
 int32_t mvfxLiquidOf(const mvfxEffectDef* def, int32_t g)
@@ -75,7 +77,7 @@ static bool AreLiquidGasesValid(const mvfxEffectDef* def)
 
 // Whether every gas an emitter's forces follow or it splats into is one
 // of the effect's and none a surface, and no gas's force follows a gas.
-static bool AreGasLinksValid(const mvfxEffectDef* def)
+static mvfxResult CheckGasLinks(const mvfxEffectDef* def)
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
@@ -85,7 +87,7 @@ static bool AreGasLinksValid(const mvfxEffectDef* def)
             if (force->kind == mvfx_forceGas &&
                 (force->gas >= def->gasCount || def->gases[force->gas].kind == mvfx_gasSurface))
             {
-                return false;
+                return mvfx_errorInvalid;
             }
         }
     }
@@ -95,49 +97,56 @@ static bool AreGasLinksValid(const mvfxEffectDef* def)
         {
             if (def->gases[g].forces[f].kind == mvfx_forceGas)
             {
-                return false;
+                return mvfx_errorInvalid;
             }
         }
     }
+    // The splats first: the liquid check reads the gas each splats into.
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
-        if (!IsSplatValid(&def->emitters[i].gasSplat, def->gasCount))
+        mvfxResult splat = CheckSplat(&def->emitters[i].gasSplat, def->gasCount);
+        if (splat != mvfx_success)
         {
-            return false;
+            return splat;
         }
     }
-    return AreLiquidGasesValid(def);
+    return mvfxRequire(AreLiquidGasesValid(def));
 }
 
 // Whether a gas's forces are in range for the effect's parameters.
-static bool AreGasForcesValid(const mvfxGasDef* gas, const mvfxEffectDef* def)
+static mvfxResult CheckGasForces(const mvfxGasDef* gas, const mvfxEffectDef* def)
 {
-    if (gas->forceCount < 0 || gas->forceCount > MVFX_MAX_FORCES ||
-        (gas->forceCount > 0 && gas->forces == nullptr))
+    if (gas->forceCount < 0 || (gas->forceCount > 0 && gas->forces == nullptr))
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    if (gas->forceCount > MVFX_MAX_FORCES)
+    {
+        return mvfx_errorLimit;
     }
     int32_t parameters = def->parameterCount >= 0 && def->parameterCount <= MVFX_MAX_PARAMETERS
                              ? def->parameterCount
                              : 0;
     for (int32_t f = 0; f < gas->forceCount; ++f)
     {
-        if (!mvfxIsForceValid(&gas->forces[f], parameters))
+        mvfxResult force = mvfxCheckForce(&gas->forces[f], parameters);
+        if (force != mvfx_success)
         {
-            return false;
+            return force;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
-bool mvfxAreEffectGasesValid(const mvfxEffectDef* def)
+mvfxResult mvfxCheckEffectGases(const mvfxEffectDef* def)
 {
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
-        if (!AreGasForcesValid(&def->gases[g], def))
+        mvfxResult forces = CheckGasForces(&def->gases[g], def);
+        if (forces != mvfx_success)
         {
-            return false;
+            return forces;
         }
     }
-    return AreGasLinksValid(def);
+    return CheckGasLinks(def);
 }

@@ -132,10 +132,11 @@ static void TestLayouts(void)
         {
             many[i] = f[i < 2 ? i : 1];
         }
-        refused += Make(context, rule == 17 ? many : f, count, stride, &id) == mvfx_errorInvalid &&
-                           id.index1 == 0
-                       ? 1
-                       : 0;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 17 || rule == 19 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused +=
+            Make(context, rule == 17 ? many : f, count, stride, &id) == want && id.index1 == 0 ? 1
+                                                                                               : 0;
     }
     CHECK(refused == 20, "every rule refused");
     mvfxLayoutDef noCookie = {.fields = &good, .fieldCount = 1, .stride = 12};
@@ -144,7 +145,8 @@ static void TestLayouts(void)
               mvfxCreateLayout(context, &noCookie, NULL) == mvfx_errorInvalid &&
               mvfxCreateLayout(NULL, &noCookie, &id) == mvfx_errorInvalid,
           "no cookie, no def, no id, no context");
-    CHECK(mvfxGetContextMisuse(context) == misuse + 23, "each counted");
+    // The two past a named bound count none.
+    CHECK(mvfxGetContextMisuse(context) == misuse + 21, "each invalid one counted");
     // Two at most here; destroyed, its id is stale and its slot free.
     mvfxLayoutId second = {0};
     mvfxLayoutId third = {0};
@@ -651,7 +653,9 @@ static void TestMeshIndex(void)
                                  {.mode = mvfx_frameRandom, .first = 4, .last = 3},
                                  {.mode = mvfx_frameRandom, .last = MVFX_MAX_MESH_INDEX}};
         emitters[2].meshIndex = bad[rule];
-        refusals += mvfxCreateEffect(scene.context, &effectDef, &refused) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refusals += mvfxCreateEffect(scene.context, &effectDef, &refused) == want;
     }
     emitters[2].meshIndex =
         (mvfxFrameStart){.mode = mvfx_frameRandom, .last = MVFX_MAX_MESH_INDEX - 1};

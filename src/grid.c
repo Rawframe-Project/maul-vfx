@@ -11,37 +11,47 @@
 // The largest binary16.
 #define HALF_MAX 65504.0f
 
-bool mvfxIsGridDefValid(const mvfxGridDef* def)
+mvfxResult mvfxCheckGridDef(const mvfxGridDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_GRID_DEF_COOKIE || def->values == nullptr ||
-        def->components < 1 || def->components > 4 || def->format > mvfx_gridFloat16)
+        def->components < 1 || def->components > 4 || def->format > mvfx_gridFloat16 ||
+        def->size[0] < 1 || def->size[1] < 1 || def->size[2] < 1)
     {
-        return false;
+        return mvfx_errorInvalid;
     }
+    // The sizes bound the values read below.
     int64_t points = 1;
     for (int32_t k = 0; k < 3; ++k)
     {
-        if (def->size[k] < 1 || def->size[k] > MVFX_MAX_GRID_SIZE)
+        if (def->size[k] > MVFX_MAX_GRID_SIZE)
         {
-            return false;
+            return mvfx_errorLimit;
         }
         points *= def->size[k];
     }
-    return points <= MVFX_MAX_GRID_POINTS &&
-           mvfxAreGridValuesValid(def->format, def->values, points * def->components);
+    if (points > MVFX_MAX_GRID_POINTS)
+    {
+        return mvfx_errorLimit;
+    }
+    return mvfxCheckGridValues(def->format, def->values, points * def->components);
 }
 
-bool mvfxAreGridValuesValid(mvfxGridFormat format, const float* values, int64_t count)
+mvfxResult mvfxCheckGridValues(mvfxGridFormat format, const float* values, int64_t count)
 {
-    float bound = format == mvfx_gridFloat16 ? HALF_MAX : MVFX_MAX_VALUE;
+    // Binary16's largest is the format's own, not a bound of the
+    // library's: a half grid's value past it is invalid.
+    bool half = format == mvfx_gridFloat16;
+    mvfxResult result = mvfx_success;
     for (int64_t i = 0; i < count; ++i)
     {
-        if (!(fabsf(values[i]) <= bound))
+        float size = fabsf(values[i]);
+        if (!isfinite(size) || (half && size > HALF_MAX))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
+        result = size <= MVFX_MAX_VALUE ? result : mvfx_errorLimit;
     }
-    return true;
+    return result;
 }
 
 mvfxGrid* mvfxBuildGrid(const mvfxGridDef* def, const mvfxAllocator* allocator)

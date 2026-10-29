@@ -327,7 +327,9 @@ static void TestRefusals(void)
         def.gases = &gas;
         def.gasCount = 1;
         mvfxEffectId effect = {0};
-        right = right && mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = c == 0 ? mvfx_errorLimit : mvfx_errorInvalid;
+        right = right && mvfxCreateEffect(s_context, &def, &effect) == want;
     }
     forces[0].kind = mvfx_forceConstant;
     forces[0].strengthFromParameter = false;

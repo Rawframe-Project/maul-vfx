@@ -18,7 +18,7 @@ static void TestDrawOfZero(void)
     def.vertexCount = 5;
     def.triangles = firstFlat;
     def.triangleCount = 2;
-    CHECK(mvfxIsMeshDefValid(&def), "a valid mesh");
+    CHECK(mvfxCheckMeshDef(&def) == mvfx_success, "a valid mesh");
     mvfxAllocator allocator = {0};
     mvfxMesh* mesh = mvfxBuildMesh(&def, &allocator);
     float p[3];
