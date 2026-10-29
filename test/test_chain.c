@@ -4,7 +4,8 @@
 // Chains by XPBD: units born whole along their direction, counted in
 // units against a capacity in points; a pendulum's period against
 // 2 pi sqrt(L / g); a rigid hanging chain keeping its spacing; softer
-// compliance stretching more; damping; a kill of one point killing its
+// compliance stretching more; damping; two points moved past 2^63 apart
+// still projected and damped; a kill of one point killing its
 // unit; a pinned first point through a world rebase; quality levels in
 // whole units; each unit a ribbon; the checks.
 
@@ -272,6 +273,64 @@ static void TestDistance(void)
               s_scene.records[0].position[0] > 18.0f && s_scene.records[3].position[0] > 18.0f,
           "a jump's last units born");
     mvfxDestroyContext(s_scene.context);
+}
+
+// Moves the second point of a unit to 10^29 along x once, within
+// MVFX_MAX_PLACE.
+static void MoveFar(const mvfxModuleCall* call, void* user)
+{
+    bool* done = user;
+    if (!*done && call->particles.count > 1)
+    {
+        call->particles.position[0][1] = 1e29f;
+        *done = true;
+    }
+}
+
+// A two-point chain, unpinned, without gravity, its second point moved
+// 10^29 along x before its second step's motion; the gap after it, or a
+// negative one when either point is lost or not finite.
+static double FarGap(float stretchCompliance, float damping)
+{
+    mvfxEmitterDef emitter = Chain(2);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.unit.pinFirst = false;
+    emitter.unit.stretchCompliance = stretchCompliance;
+    emitter.unit.damping = damping;
+    static bool moved;
+    moved = false;
+    static const mvfxHostModule mover = {
+        .stage = mvfx_stageBeforeMotion, .function = MoveFar, .user = &moved};
+    emitter.hostModules = &mover;
+    emitter.hostModuleCount = 1;
+    Open(&emitter, NULL, 0);
+    static const double root[3] = {0, 0, 0};
+    Spawn(1, root, NULL);
+    Steps(2, MVFX_TICKS_PER_SECOND / 60);
+    Read();
+    bool finite = moved && s_scene.count == 2 && Stats().killed == 0;
+    for (int32_t i = 0; finite && i < 2; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            finite = finite && isfinite(s_scene.records[i].position[k]);
+        }
+    }
+    double gap = finite ? Gap(0, 1) : -1.0;
+    mvfxDestroyContext(s_scene.context);
+    return gap;
+}
+
+static void TestFarApart(void)
+{
+    // Moved 10^29 apart, where the square of the distance between them
+    // passes binary32's largest: rigid, the projection still measures it
+    // and pulls them together; soft, they stay far apart and the damping
+    // still measures it and slows their closing.
+    CHECK(FarGap(0.0f, 0.5f) >= 0.0, "rigid, finite");
+    double free = FarGap(1.0f, 0.0f);
+    double damped = FarGap(1.0f, 1.0f);
+    CHECK(free > 1e28 && damped > free, "soft, damped");
 }
 
 static void TestFull(void)
@@ -591,6 +650,7 @@ int main(void)
     TestHanging();
     TestBending();
     TestDistance();
+    TestFarApart();
     TestFull();
     TestKill();
     TestRebaseAndRibbons();

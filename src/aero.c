@@ -13,6 +13,7 @@
 
 #include "aero.h"
 
+#include "direction.h"
 #include "force.h"
 
 #include <math.h>
@@ -55,9 +56,15 @@ typedef struct Sheets
 
 // The share of a relative speed a triangle of area A takes over a
 // substep at a coefficient: k A |speed| h over its three points, at most
-// a sixth.
+// a sixth. A zero coefficient or speed takes none, even where the product
+// of the others overflows (0 times infinity is a NaN, which would read as
+// past a sixth).
 static float ShareOf(const Sheets* s, float k, float area, float speed)
 {
+    if (!(k > 0.0f) || !(speed > 0.0f))
+    {
+        return 0.0f;
+    }
     float share = k * area * speed * s->h / 3.0f;
     return share < 1.0f / 6.0f ? share : 1.0f / 6.0f;
 }
@@ -76,9 +83,23 @@ static void Triangle(const Sheets* s, int32_t a, int32_t b, int32_t c)
         middle[k] = (s->x[k][a] + s->x[k][b] + s->x[k][c]) / 3.0f;
         v[k] = (s->v[k][a] + s->v[k][b] + s->v[k][c]) / 3.0f;
     }
+    // Edges with a component past 2^63 are crossed scaled by 2^-64 each,
+    // so no product overflows, and the area scaled back (infinite past
+    // binary32's largest, which holds a share at a sixth).
+    float most = 0.0f;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        most = fmaxf(most, fmaxf(fabsf(e1[k]), fabsf(e2[k])));
+    }
+    bool scaled = most >= 0x1p63f;
+    for (int32_t k = 0; scaled && k < 3; ++k)
+    {
+        e1[k] *= 0x1p-64f;
+        e2[k] *= 0x1p-64f;
+    }
     float n[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
                   e1[0] * e2[1] - e1[1] * e2[0]};
-    float twice = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    float twice = mvfxLengthOf(n[0], n[1], n[2]);
     if (!(twice > 0.0f))
     {
         return;
@@ -93,15 +114,14 @@ static void Triangle(const Sheets* s, int32_t a, int32_t b, int32_t c)
         along += v[k] * n[k];
     }
     float tangent[3];
-    float square = 0.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
         tangent[k] = v[k] - along * n[k];
-        square += tangent[k] * tangent[k];
     }
-    float area = 0.5f * twice;
+    float area = scaled ? 0.5f * twice * 0x1p64f * 0x1p64f : 0.5f * twice;
     float normalShare = ShareOf(s, s->normalDrag, area, fabsf(along));
-    float tangentShare = ShareOf(s, s->tangentDrag, area, sqrtf(square));
+    float tangentShare =
+        ShareOf(s, s->tangentDrag, area, mvfxLengthOf(tangent[0], tangent[1], tangent[2]));
     const int32_t points[3] = {a, b, c};
     for (int32_t k = 0; k < 3; ++k)
     {

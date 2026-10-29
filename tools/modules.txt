@@ -65,9 +65,9 @@ steer: force instance neighbor space
 contact: appearance instance neighbor
 plexus: instance neighbor
 attach: direction force instance space
-aero: force instance
+aero: direction force instance
 self: attach instance neighbor
-unit: aero attach elementary event instance integrate self
+unit: aero attach direction elementary event instance integrate self
 emitter_step: attach beam birth bounds contact death_heap event event_spawn host_module instance integrate invariant liquid neighbor plexus rigid scene_query spawn steer unit
 emitter_view: effect effect_api fpenv hull
 gas_view: effect effect_api gas

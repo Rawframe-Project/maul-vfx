@@ -116,6 +116,21 @@ static void TestSheets(Gpu* gpu, mvfxGpu* kernels)
     // to a sixth, as the core's ShareOf.
     emitter.unit.normalDrag = 1e5f;
     Moved(gpu, kernels, &emitter, false, "sheets in a gale, each triangle's share held");
+    // In the world's space at the largest spacing and scale: edges of
+    // 10^12, whose cross products' squares pass binary32's largest, each
+    // measured scaled as the core's Triangle measures it; a tangent drag
+    // alone. Within 5e-2: a place there, up to about 10^13 from the
+    // origin, rounds by up to 10^6, which a velocity takes over a substep
+    // of 1/120 s on either path (1.6e-2 measured).
+    emitter = Sheets(8, 4, 2);
+    emitter.space = mvfx_spaceWorld;
+    emitter.unit.spacing = MVFX_MAX_EXTENT;
+    emitter.unit.tangentDrag = 300.0f;
+    Compare(
+        gpu, kernels,
+        &(Run){
+            .emitters = &emitter, .emitterCount = 1, .scale = MVFX_MAX_SCALE, .tolerance = 5e-2f},
+        "sheets at the largest spacing and scale");
 }
 
 // A run of an emitter of units that must meet colliders, or must kill.
