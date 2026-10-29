@@ -477,6 +477,40 @@ static void TestQuotients(Gpu* gpu, Checker* checker)
     CHECK(ran && wrong == 0, "drawn quotients as the core divides");
 }
 
+// Quotients of normal numbers below binary32's least normal, as the core
+// divides: drawn ones from 2^-152 up into the normal numbers, and ones
+// halfway between two of 2^-149's (an odd count of them over 2), whose
+// ties go to even.
+static void TestSmallQuotients(Gpu* gpu, Checker* checker)
+{
+    uint64_t state = 3;
+    for (uint32_t e = 0; e < CHECKS; ++e)
+    {
+        uint32_t* w = &checker->words[4 * e];
+        w[0] = ((1u + Draw(&state) % 24u) << 23u) | (Draw(&state) & 0x007FFFFFu);
+        w[1] = ((127u + Draw(&state) % 26u) << 23u) | (Draw(&state) & 0x007FFFFFu);
+        if (e % 4 == 0)
+        {
+            w[0] = 0x00800001u | (Draw(&state) & 0x007FFFFEu);
+            w[1] = Bits(2.0f);
+        }
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_QUOTIENTS, 0, CHECKS);
+    int64_t wrong = 0;
+    int64_t small = 0;
+    for (uint32_t e = 0; ran && e < CHECKS; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        uint32_t core = Bits(FloatOf(w[0]) / FloatOf(w[1]));
+        wrong += w[2] != core;
+        small += core < 0x00800000u;
+    }
+    printf("small quotients: %lld apart from the core's of %u, %lld below the least normal\n",
+           (long long)wrong, (unsigned)CHECKS, (long long)small);
+    CHECK(ran && wrong == 0 && small > CHECKS / 2,
+          "quotients below the least normal as the core divides");
+}
+
 // 64-bit counts of every length, drawn and at rounding ties (the dropped
 // bits exactly half, and a unit either side), as C converts them.
 static void TestConversions(Gpu* gpu, Checker* checker)
@@ -1106,6 +1140,7 @@ static void TestExact(Gpu* gpu)
     {
         TestReciprocals(gpu, &checker);
         TestQuotients(gpu, &checker);
+        TestSmallQuotients(gpu, &checker);
         TestConversions(gpu, &checker);
         TestLifeTicks(gpu, &checker);
         TestSums(gpu, &checker);

@@ -125,11 +125,13 @@ fn nearestFloat(low: u32, high: u32) -> f32 {
 }
 
 // a / b correctly rounded for positive normal a and b whose quotient is
-// normal: the significands' quotient by long division to 25 bits, rounded
-// up when the 25th is set. A quotient of two binary32 numbers is never
-// halfway between two of them, so no tie needs the remainder; and the
-// significands' quotient is at most 2 - 2^-23, below the midpoint under 2,
-// so the rounding never carries into the exponent.
+// below binary32's largest: the significands' quotient by long division to
+// 25 bits, rounded up when the 25th is set. A quotient of two binary32
+// numbers is never halfway between two normal ones, so no tie needs the
+// remainder; and the significands' quotient is at most 2 - 2^-23, below
+// the midpoint under 2, so the rounding never carries into the exponent.
+// A quotient below binary32's least normal is rounded to 2^-149's, ties to
+// even: there the remainder decides a tie.
 fn divide(a: f32, b: f32) -> f32 {
     let x = bitcast<u32>(a);
     let y = bitcast<u32>(b);
@@ -150,13 +152,25 @@ fn divide(a: f32, b: f32) -> f32 {
         }
         r <<= 1u;
     }
+    if (exponent <= 0) {
+        // q 2^(exponent - 151), in 2^-149's.
+        let shift = u32(2 - exponent);
+        if (shift >= 26u) {
+            return 0.0;
+        }
+        let units = q >> shift;
+        let rest = q & ((1u << shift) - 1u);
+        let half = 1u << (shift - 1u);
+        let up = rest > half || (rest == half && (r != 0u || (units & 1u) == 1u));
+        return bitcast<f32>(units + select(0u, 1u, up));
+    }
     let kept = (q >> 1u) + (q & 1u);
     return bitcast<f32>((u32(exponent) << 23u) | (kept & 0x007FFFFFu));
 }
 
-// a / b as the core's division gives it, for positive normal b: the exact
-// division on a's magnitude, the sign put back; zero and subnormal a
-// (whose quotient is not normal) left to the device.
+// a / b as the core's division gives it, for positive normal b and a
+// quotient below binary32's largest: the exact division on a's magnitude,
+// the sign put back; zero and subnormal a left to the device.
 fn quotient(a: f32, b: f32) -> f32 {
     let magnitude = abs(a);
     if (magnitude < 1.17549435e-38) {
