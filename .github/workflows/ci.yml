@@ -31,7 +31,7 @@ defaults:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@b6e8a6f50a3c8789f11a06858675374ae2ff90a9 # v0.0.33
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@fc8b35efbf2cc1277c890b43071900306f3e3c87 # v0.0.35
     permissions:
       pull-requests: read
 
@@ -44,10 +44,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@b6e8a6f50a3c8789f11a06858675374ae2ff90a9 # v0.0.33
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@fc8b35efbf2cc1277c890b43071900306f3e3c87 # v0.0.35
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@b6e8a6f50a3c8789f11a06858675374ae2ff90a9 # v0.0.33
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@fc8b35efbf2cc1277c890b43071900306f3e3c87 # v0.0.35
     permissions:
       contents: read
 
@@ -153,7 +153,7 @@ jobs:
           - { preset: linux-rhi }
           - { preset: macos-clang, runner: macos-15 }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@b6e8a6f50a3c8789f11a06858675374ae2ff90a9 # v0.0.33
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@fc8b35efbf2cc1277c890b43071900306f3e3c87 # v0.0.35
     permissions:
       contents: read
     with:
@@ -341,19 +341,23 @@ jobs:
   # compared: under the Vulkan validation layer, and under AddressSanitizer
   # and UBSan. Nightly only: lavapipe compiles every kernel on one thread at
   # its first dispatch, and the suites take over an hour. The Mesa shader
-  # cache the shared workflow keeps per CPU makes later nights faster.
+  # cache the shared workflow keeps per CPU would make later nights faster;
+  # it is evicted before it restores until .github#88 lands. The job's
+  # limit: a clean run takes up to about 100 minutes on the slowest runner
+  # seen, and a hung suite holds it 30 more, its own 1800 s limit, before
+  # ctest names it: 130, so 150.
   extended:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
         preset: [linux-rhi-lavapipe, linux-rhi-lavapipe-asan]
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@b6e8a6f50a3c8789f11a06858675374ae2ff90a9 # v0.0.33
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@fc8b35efbf2cc1277c890b43071900306f3e3c87 # v0.0.35
     permissions:
       contents: read
     with:
       preset: ${{ matrix.preset }}
-      timeout: 120
+      timeout: 150
 
   # rhi_kernels on D3D12, on WARP under the Agility SDK's debug layer and
   # GPU-based validation; the suites that build a simulation stay out, as
@@ -362,7 +366,7 @@ jobs:
   # touches the GPU part.
   windows-d3d12:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@b6e8a6f50a3c8789f11a06858675374ae2ff90a9 # v0.0.33
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@fc8b35efbf2cc1277c890b43071900306f3e3c87 # v0.0.35
     permissions:
       contents: read
     with:

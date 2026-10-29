@@ -339,11 +339,13 @@ if(MAUL_VFX_BUILD_TESTS)
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c ${PROJECT_SOURCE_DIR}/test/rhi_waters.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_surfaces.c ${PROJECT_SOURCE_DIR}/test/rhi_samples.c)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi)
-            # Each compares a step at a time on lavapipe: the longest take
-            # over 200 seconds on CI's runners, which vary by half again,
-            # so they get 900 in place of a run's default.
+            # Each compares a step at a time on lavapipe, and compiles every
+            # kernel it dispatches first: on a cold shader cache, as CI's
+            # runs start, rhi_sim takes 335 to 825 seconds on its runners,
+            # and a slow runner half as fast again passed 900. They get 1800
+            # in place of a run's default.
             # hygiene: a device test skips without an adapter, unless a cell requires one
-            set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
+            set_tests_properties(${suite} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800
                                  FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
             set_property(TEST ${suite} APPEND PROPERTY LABELS integration nightly)
         endforeach()
