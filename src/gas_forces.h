@@ -13,6 +13,14 @@
 #include "force.h"
 #include "gas.h"
 
+// A cell's buoyant factor, densityWeight density - heatLift temperature,
+// each scalar held within 2^80 first: a gas's scalars have no bound
+// (particles' splats grow them fastest), and a weight and gravity of up to
+// 1e6 each times 2^81 stay finite, so buoyancy forms no infinity (which a
+// force's drag would make a NaN). The GPU part's gasLift
+// (rhi/kernels/shared/gas_lift.wgsl) gives the same bits.
+float mvfxGasLift(float densityWeight, float density, float heatLift, float temperature);
+
 // Speeds each face by gravity (in the box's frame) times (densityWeight
 // density - heatLift temperature), from the mean of the cells beside it.
 void mvfxGasBuoyancy(const mvfxCompiledGas* gas, const mvfxGasLattice* l, const float gravity[3],

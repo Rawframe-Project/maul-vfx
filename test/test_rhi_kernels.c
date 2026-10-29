@@ -12,7 +12,8 @@
 // first expected wrong on WARP, the second right everywhere); and the drag
 // factors (rhi/kernels/shared/drag.wgsl) against the core's binary64 ones
 // over seven decades of drag times seconds; sheets' air shares and edges'
-// cross products (rhi/kernels/shared/air.wgsl) against the core's bit for
+// cross products (rhi/kernels/shared/air.wgsl) and gas cells' buoyant
+// factors (rhi/kernels/shared/gas_lift.wgsl) against the core's bit for
 // bit. Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set, whose driver the
 // adapter must be; the refusals of mvfxCreateGpu need no device. On the
@@ -27,6 +28,7 @@
 #include "elementary.h"
 #include "emitter_step.h"
 #include "exact_check_container.h"
+#include "gas_forces.h"
 #include "integrate.h"
 #include "kernels.h"
 #include "random.h"
@@ -260,19 +262,21 @@ typedef enum CheckMode
     CHECK_SINES = 11,
     CHECK_AIR_SHARES = 12,
     CHECK_CROSS_EDGES = 13,
+    CHECK_GAS_LIFTS = 14,
     CHECK_LENGTHS = 15
 } CheckMode;
 
 // The bytes of an element of a mode: sixteen words for cross edges,
-// eight for remainders apart, held speeds and air shares, four for the
-// others.
+// eight for remainders apart, held speeds, air shares and gas lifts, four
+// for the others.
 static uint32_t ElementBytes(uint32_t mode)
 {
     if (mode == CHECK_CROSS_EDGES)
     {
         return 64u;
     }
-    return mode == CHECK_REMAINDERS_APART || mode == CHECK_HELD_SPEEDS || mode == CHECK_AIR_SHARES
+    return mode == CHECK_REMAINDERS_APART || mode == CHECK_HELD_SPEEDS ||
+                   mode == CHECK_AIR_SHARES || mode == CHECK_GAS_LIFTS
                ? 32u
                : 16u;
 }
@@ -1231,6 +1235,51 @@ static void TestCrossEdges(Gpu* gpu, Checker* checker)
           "cross edges as the core's");
 }
 
+// A gas cell's buoyant factor (shared/gas_lift.wgsl) against the core's
+// mvfxGasLift, bit for bit: scalars within 2^80 and past it, up to
+// binary32's largest and infinite, under weights up to MVFX_MAX_EXTENT.
+static void TestGasLifts(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        SPECIAL = 4,
+        DRAWN = 8192
+    };
+    const float special[SPECIAL][4] = {{1e6f, 3e38f, 1e6f, 0.0f},
+                                       {1e6f, 1e38f, 1e6f, 1e38f},
+                                       {1e6f, INFINITY, 0.0f, 1.0f},
+                                       {0.25f, 4.0f, 1.5f, 2.0f}};
+    const uint32_t count = SPECIAL + DRAWN;
+    uint64_t state = 29;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t* w = &checker->words[8 * e];
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            int32_t top = k % 2 == 0 ? 20 : 127;
+            float drawn = ldexpf((float)Draw(&state) / 4294967296.0f - (k % 2 == 0 ? 0.0f : 0.5f),
+                                 -20 + (int32_t)(Draw(&state) % (uint32_t)(top + 21)));
+            w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
+        }
+        w[4] = 0;
+        w[5] = w[6] = w[7] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_GAS_LIFTS, 0, count);
+    int32_t apart = 0;
+    int32_t held = 0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[8 * e];
+        float core = mvfxGasLift(FloatOf(w[0]), FloatOf(w[1]), FloatOf(w[2]), FloatOf(w[3]));
+        apart +=
+            Bits(core) != w[4] || w[5] != 0x5A5A5A5Au || w[6] != 0x5A5A5A5Au || w[7] != 0x5A5A5A5Au;
+        held += fabsf(FloatOf(w[1])) > 0x1p80f || fabsf(FloatOf(w[3])) > 0x1p80f;
+    }
+    printf("gas lifts: %d apart from the core's of %u, %d with a scalar held\n", apart, count,
+           held);
+    CHECK(ran && apart == 0 && held > (int32_t)count / 8, "gas lifts as the core's");
+}
+
 static void TestExact(Gpu* gpu)
 {
     Checker checker;
@@ -1253,6 +1302,7 @@ static void TestExact(Gpu* gpu)
         TestSines(gpu, &checker);
         TestAirShares(gpu, &checker);
         TestCrossEdges(gpu, &checker);
+        TestGasLifts(gpu, &checker);
     }
     CloseChecker(gpu, &checker);
 }

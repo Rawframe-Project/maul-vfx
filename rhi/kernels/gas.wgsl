@@ -66,6 +66,8 @@ fn heldFace(v: f32) -> f32 {
 
 // include: shared/length.wgsl
 
+// include: shared/gas_lift.wgsl
+
 // include: shared/forces.wgsl
 
 // include: shared/colliders.wgsl
@@ -349,10 +351,10 @@ fn gasPourCells(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 
-// The buoyant factor at cell i of buffer b.
+// The buoyant factor at cell i of buffer b (shared/gas_lift.wgsl).
 fn lift(b: u32, i: u32) -> f32 {
-    return gas.lattice.z * fields[arrayAt(b, 3u, 0u) + i] -
-           gas.lattice.w * fields[arrayAt(b, 3u, 1u) + i];
+    return gasLift(gas.lattice.z, fields[arrayAt(b, 3u, 0u) + i], gas.lattice.w,
+                   fields[arrayAt(b, 3u, 1u) + i]);
 }
 
 // What gasFaces does (root.word): the sources and what follows them; with
