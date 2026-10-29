@@ -341,7 +341,11 @@ jobs:
   # compared: under the Vulkan validation layer, and under AddressSanitizer
   # and UBSan. Nightly only: lavapipe compiles every kernel on one thread at
   # its first dispatch, and the suites take over an hour. The Mesa shader
-  # cache the shared workflow keeps per CPU makes later nights faster.
+  # cache the shared workflow keeps per CPU would make later nights faster;
+  # it is evicted before it restores until .github#88 lands. The job's
+  # limit: a clean run takes up to about 100 minutes on the slowest runner
+  # seen, and a hung suite holds it 30 more, its own 1800 s limit, before
+  # ctest names it: 130, so 150.
   extended:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     strategy:
@@ -353,7 +357,7 @@ jobs:
       contents: read
     with:
       preset: ${{ matrix.preset }}
-      timeout: 120
+      timeout: 150
 
   # rhi_kernels on D3D12, on WARP under the Agility SDK's debug layer and
   # GPU-based validation; the suites that build a simulation stay out, as
