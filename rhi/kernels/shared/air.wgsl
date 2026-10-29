@@ -26,7 +26,9 @@ fn airShare(k: f32, half: f32, scaled: bool, speed: f32, h: f32) -> f32 {
     }
     var share = 0.0;
     if (ea <= 127 && fk.exp + ea <= 127 && fk.exp + ea + fs.exp <= 127) {
-        let area = select(half, half * 0x1p64f * 0x1p64f, scaled);
+        // Half's significand times 2^ea, not half times 2^64 twice: a
+        // device may fold the two into 2^128, which binary32 cannot hold.
+        let area = select(half, ldexp(fa.fract, ea), scaled);
         share = quotient(k * area * speed * h, 3.0);
     } else {
         share = quotient(ldexp(fk.fract * fa.fract * fs.fract * fh.fract, e), 3.0);
