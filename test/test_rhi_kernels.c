@@ -1144,19 +1144,21 @@ static void TestAirShares(Gpu* gpu, Checker* checker)
 // core's mvfxCrossEdges, bit for bit, and its length (shared/length.wgsl)
 // against mvfxLengthOf within 1e-6 of it: edges both below 2^63, one past
 // it and one a spacing long (a soft sheet hanging long enough stretches
-// its edges down so), both past it, at 2^63 and just below, and drawn
-// ones from 2^-30 to 2^100.
+// its edges down so), both past it, at 2^63 and just below, a product
+// below binary32's least normal (flushed on every device, as D3D12 does),
+// and drawn ones from 2^-30 to 2^100.
 static void TestCrossEdges(Gpu* gpu, Checker* checker)
 {
     enum
     {
-        SPECIAL = 6,
+        SPECIAL = 7,
         DRAWN = 8192
     };
     const float special[SPECIAL][6] = {
-        {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},     {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
-        {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f}, {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},
-        {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},  {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
+        {0x1p63f, 0.0f, 0.0f, 0.0f, 0.0f, 0x1p-62f},   {0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+        {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},         {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
+        {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
+        {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
     const uint32_t count = SPECIAL + DRAWN;
     uint64_t state = 23;
     for (uint32_t e = 0; e < count; ++e)
@@ -1164,8 +1166,10 @@ static void TestCrossEdges(Gpu* gpu, Checker* checker)
         uint32_t* w = &checker->words[16 * e];
         for (int32_t k = 0; k < 6; ++k)
         {
-            float drawn = ldexpf((float)Draw(&state) / 4294967296.0f - 0.5f,
-                                 -30 + (int32_t)(Draw(&state) % 131u));
+            // Drawn into locals first, so every compiler draws the same.
+            uint32_t size = Draw(&state);
+            uint32_t power = Draw(&state);
+            float drawn = ldexpf((float)size / 4294967296.0f - 0.5f, -30 + (int32_t)(power % 131u));
             w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
         }
         for (int32_t k = 6; k < 16; ++k)
