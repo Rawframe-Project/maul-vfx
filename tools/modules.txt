@@ -94,7 +94,7 @@ file_codec: file_fields
 file: allocator context effect effect_api effect_check effect_parts file_codec file_fields fpenv
 marching_table:
 surface_mesh: context fpenv gas gas_api instance marching_table
-gas_forces: elementary force gas
+gas_forces: direction elementary force gas
 gas_pressure: gas tasks
 gas_read: context fpenv gas gas_api gas_lattice instance instance_api layout read_format
 gas_solid: collide direction gas gas_pressure

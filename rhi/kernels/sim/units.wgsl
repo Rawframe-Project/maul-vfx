@@ -440,18 +440,6 @@ fn pinPoint(i: u32, since: u32, to: u32, h: f32) {
     setVector(params.words.velocity, i, v);
 }
 
-// A vector's length, as the core's mvfxLengthOf: measured scaled by 2^-64
-// where its largest component reaches 2^63, so its squares' sum never
-// overflows.
-fn lengthOf(v: vec3<f32>) -> f32 {
-    let most = max(abs(v.x), max(abs(v.y), abs(v.z)));
-    if (!(most >= 0x1p63f)) {
-        return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-    }
-    let u = v * 0x1p-64f;
-    return sqrt(u.x * u.x + u.y * u.y + u.z * u.z) * 0x1p64f;
-}
-
 // Point i's torn edges (1 across, 2 down), 0 for units that do not tear.
 fn tornOf(i: u32) -> u32 {
     if (params.unitTears.x == NONE) {

@@ -10,7 +10,8 @@
 // temperature too), to heat, smoke and expansion; the projection keeping
 // the expansion's divergence (less its mean in a sealed box); MacCormack's
 // advection sharper than semi-Lagrangian, making no new extremes, and
-// nearer a moved Gaussian; the def's refusals. A gas's faces are read and
+// nearer a moved Gaussian; faces held within the speed bound at the
+// forces' limits; the def's refusals. A gas's faces are read and
 // written, and its scalars written, through the test hooks; confinement
 // is seen through a step of 1/64 s in cells of at least 4e5, which
 // carries nothing, without a projection.
@@ -264,6 +265,58 @@ static void TestConfinement(void)
     CHECK(spins[0] > 0.0 && fabs(spins[1] / spins[0] - 2.0) <= 1e-3 &&
               fabs(spins[2] / spins[0] - 1.0) <= 1e-3,
           "confinement spins up");
+}
+
+static void TestHeld(void)
+{
+    // A 2D gas of 16 by 16 cells of 1 at the forces' limits: a source
+    // pouring density at MVFX_MAX_EXTENT a second, buoyancy at gravity and
+    // weight MVFX_MAX_EXTENT, confinement at MVFX_MAX_EXTENT, eight
+    // substeps of steps of a second. Buoyancy alone would make the faces
+    // about 10^16 in the first substep, and confinement squares their curl;
+    // each face is held within MVFX_MAX_SPEED and every field stays finite.
+    static const mvfxGasSource source = {.shape = mvfx_gasSphere,
+                                         .center = {0.0f, -4.0f, 0.0f},
+                                         .radius = 3.0f,
+                                         .density = MVFX_MAX_EXTENT};
+    mvfxGasDef def = mvfxDefaultGasDef();
+    def.size[0] = 16;
+    def.size[1] = 16;
+    def.cellSize = 1.0f;
+    def.substeps = 8;
+    def.sources = &source;
+    def.sourceCount = 1;
+    def.gravitySpace = mvfx_gasLocal;
+    def.gravity[1] = -MVFX_MAX_EXTENT;
+    def.densityWeight = MVFX_MAX_EXTENT;
+    def.vorticity = MVFX_MAX_EXTENT;
+    Open(&def, s_unturned, 1.0f);
+    bool held = true;
+    float fastest = 0.0f;
+    for (int32_t s = 0; s < 2; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+        Read(def.size);
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            for (int64_t f = 0; f < FaceCount(def.size, k); ++f)
+            {
+                held = held && fabsf(s_faces[k][f]) <= MVFX_MAX_SPEED;
+                fastest = fmaxf(fastest, fabsf(s_faces[k][f]));
+            }
+        }
+        static float cells[16 * 16];
+        for (int32_t field = 0; field < 3; ++field)
+        {
+            Field(def.size, (mvfxGasField)field, cells);
+            for (int32_t i = 0; i < 16 * 16; ++i)
+            {
+                held = held && isfinite(cells[i]);
+            }
+        }
+    }
+    CHECK(held && fastest == MVFX_MAX_SPEED, "held at the limits");
+    mvfxDestroyContext(s_context);
 }
 
 // The spin about axis a through a 16-cell cube's middle of its velocity's
@@ -677,6 +730,7 @@ static void TestRefusals(void)
 int main(void)
 {
     TestBuoyancy();
+    TestHeld();
     TestConfinement();
     TestConfinement3D();
     TestEvenCurl();

@@ -313,7 +313,8 @@ fn gasTail(@builtin(local_invocation_index) t: u32) {
 
 // Each face: closed on a wall; with a solve, an open face's velocity less
 // the pressure's rise across it over the distance between the centers
-// (across an open wall the pressure is 0 on the wall, half a cell away).
+// (across an open wall the pressure is 0 on the wall, half a cell away);
+// then held (heldFace).
 @compute @workgroup_size(64, 1, 1)
 fn gasCorrect(@builtin(global_invocation_id) id: vec3<u32>) {
     let point = id.x + id.y * ROW;
@@ -331,6 +332,7 @@ fn gasCorrect(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     let level = gas.levels[0];
     if (gas.walls.y == 0u || solve[level.areas[k] + face.y] == 0.0) {
+        fields[i] = heldFace(fields[i]);
         return;
     }
     let stride = vec3<u32>(1u, n.x, n.x * n.y);
@@ -345,5 +347,5 @@ fn gasCorrect(@builtin(global_invocation_id) id: vec3<u32>) {
     if (!high) {
         after = solve[level.at.x + cell];
     }
-    fields[i] = fields[i] - select(1.0, 2.0, low || high) * (after - before);
+    fields[i] = heldFace(fields[i] - select(1.0, 2.0, low || high) * (after - before));
 }

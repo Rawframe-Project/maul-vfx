@@ -3,6 +3,8 @@
 
 #include "gas_pressure.h"
 
+#include "maul-vfx/effect.h"
+
 // The passes of weighted Jacobi before and after each coarser level's
 // correction, and on the coarsest level (each an even count: a pass reads
 // one buffer and writes the other).
@@ -396,6 +398,23 @@ static void Cycle(const mvfxCompiledGas* gas, mvfxGasState* state, int32_t l, fl
     Smooth(&here, v, SMOOTH_PASSES, omega);
 }
 
+void mvfxHoldGasVelocity(const mvfxCompiledGas* gas, float* const velocity[3])
+{
+    const int32_t* n = gas->def.size;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int64_t faces = (int64_t)(n[0] + (k == 0 ? 1 : 0)) * (n[1] + (k == 1 ? 1 : 0)) *
+                        (n[2] + (k == 2 ? 1 : 0));
+        float* v = velocity[k];
+        for (int64_t f = 0; n[k] > 1 && f < faces; ++f)
+        {
+            v[f] = v[f] > MVFX_MAX_SPEED    ? MVFX_MAX_SPEED
+                   : v[f] < -MVFX_MAX_SPEED ? -MVFX_MAX_SPEED
+                                            : v[f];
+        }
+    }
+}
+
 void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3])
 {
     const int32_t* n = gas->def.size;
@@ -583,6 +602,7 @@ void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float
     mvfxCloseGasWalls(gas, velocity);
     if (gas->def.pressureCycles == 0)
     {
+        mvfxHoldGasVelocity(gas, velocity);
         return;
     }
     // Jacobi's best smoothing weights for the 5 and 7-point Laplacians
@@ -606,6 +626,7 @@ void mvfxProjectGas(const mvfxCompiledGas* gas, mvfxGasState* state, const float
         Cycle(gas, state, 0, omega, tasks);
     }
     Correct(gas, state, velocity);
+    mvfxHoldGasVelocity(gas, velocity);
 }
 
 // A finest face's open area across k at at (at[k] from 0 to n[k]): 0 on a

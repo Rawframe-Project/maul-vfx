@@ -3,6 +3,7 @@
 
 #include "gas_forces.h"
 
+#include "direction.h"
 #include "elementary.h"
 
 #include <math.h>
@@ -177,8 +178,7 @@ static void ConfineAt(const mvfxGasLattice* l, const float* work, float epsilon,
         peak = fmaxf(peak, fmaxf(below, above));
         gradient[a] = (above - below) / ((float)(high[a] - low[a]) * l->cell);
     }
-    float size =
-        sqrtf(gradient[0] * gradient[0] + gradient[1] * gradient[1] + gradient[2] * gradient[2]);
+    float size = mvfxLengthOf(gradient[0], gradient[1], gradient[2]);
     float w[3];
     CurlAt(l, work, ((int64_t)at[2] * l->n[1] + at[1]) * l->n[0] + at[0], w);
     float floor = 1e-4f * peak / l->cell;

@@ -32,6 +32,10 @@ extern "C"
 // The most cells a gas has along an axis.
 #define MVFX_MAX_GAS_SIZE 512
 
+// The least edge of a gas's cell: the curl that vorticity confinement
+// squares grows as a velocity over its cell, which this keeps finite.
+#define MVFX_MIN_GAS_CELL 1e-6f
+
 // The most cells a gas has.
 #define MVFX_MAX_GAS_CELLS (1 << 21)
 
@@ -214,7 +218,7 @@ extern "C"
         // most MVFX_MAX_GAS_CELLS in all; one along Z for a gas in the XY
         // plane, each at least 2 along the others.
         int32_t size[3];
-        // A cell's edge, above 0 and at most MVFX_MAX_EXTENT, in the
+        // A cell's edge, from MVFX_MIN_GAS_CELL to MVFX_MAX_EXTENT, in the
         // instance's lengths.
         float cellSize;
         // The box's center in the instance's frame, each component finite
