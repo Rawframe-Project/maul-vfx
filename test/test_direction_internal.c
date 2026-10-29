@@ -59,7 +59,7 @@ static void TestScaled(void)
             ++measured;
         }
     }
-    // #148's hanging sheet's scaled cross product, about 2^-66.
+    // A long hanging sheet's scaled cross product, about 2^-66.
     bool sheet = mvfxLengthOf(0.0f, 0.0f, 0x1.2p-66f) == 0x1.2p-66f &&
                  mvfxLengthOf(0x1p-126f, 0.0f, 0.0f) == 0x1p-126f &&
                  mvfxLengthOf(0.0f, 0.0f, 0.0f) == 0.0f;

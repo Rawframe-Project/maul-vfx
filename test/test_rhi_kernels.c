@@ -870,7 +870,7 @@ static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
 // Vectors' lengths (shared/length.wgsl) against the core's mvfxLengthOf,
 // within HELD_ERROR of it (the device's square root): vectors of normal or
 // zero components with a largest from binary32's least normal to past
-// 2^63, among them #148's hanging sheet's scaled cross product (about
+// 2^63, among them a long hanging sheet's scaled cross product (about
 // 2^-66, whose square is subnormal) and either side of 2^-40 and 2^63. A
 // device that flushes subnormals (D3D12 does) measured a vector below
 // about 2^-63 as 0 before such vectors were scaled up. A subnormal
