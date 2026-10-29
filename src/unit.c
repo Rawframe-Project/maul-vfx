@@ -25,11 +25,13 @@
 
 #include "aero.h"
 #include "attach.h"
+#include "direction.h"
 #include "elementary.h"
 #include "event.h"
 #include "integrate.h"
 #include "self.h"
 
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -62,13 +64,11 @@ static float WeightOf(const Points* p, int32_t i)
 static void Project(const Points* p, int32_t a, int32_t b, float rest, float compliance)
 {
     float d[3];
-    float square = 0.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
         d[k] = p->x[k][a] - p->x[k][b];
-        square += d[k] * d[k];
     }
-    float length = sqrtf(square);
+    float length = mvfxLengthOf(d[0], d[1], d[2]);
     float wa = WeightOf(p, a);
     float wb = WeightOf(p, b);
     float sum = wa + wb + compliance;
@@ -90,13 +90,11 @@ static void Project(const Points* p, int32_t a, int32_t b, float rest, float com
 static void Damp(const Points* p, int32_t a, int32_t b, float share)
 {
     float d[3];
-    float square = 0.0f;
     for (int32_t k = 0; k < 3; ++k)
     {
         d[k] = p->x[k][a] - p->x[k][b];
-        square += d[k] * d[k];
     }
-    float length = sqrtf(square);
+    float length = mvfxLengthOf(d[0], d[1], d[2]);
     float wa = WeightOf(p, a);
     float wb = WeightOf(p, b);
     if (!(length > 0.0f) || !(wa + wb > 0.0f))
@@ -107,6 +105,16 @@ static void Damp(const Points* p, int32_t a, int32_t b, float share)
     for (int32_t k = 0; k < 3; ++k)
     {
         along += (p->v[k][b] - p->v[k][a]) * d[k] / length;
+    }
+    if (!(fabsf(along) <= FLT_MAX))
+    {
+        // A relative velocity times a distance overflowed where each
+        // fits: along the unit direction instead.
+        along = 0.0f;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            along += (p->v[k][b] - p->v[k][a]) * (d[k] / length);
+        }
     }
     float change = share * along / (wa + wb);
     for (int32_t k = 0; k < 3; ++k)
@@ -244,7 +252,7 @@ static bool TearEdge(mvfxInstance* instance, int32_t emitter, const Points* p, i
     }
     p->torn[a] |= bit;
     instance->emitters[emitter].torn += 1u;
-    float length = sqrtf(square);
+    float length = mvfxLengthOf(d[0], d[1], d[2]);
     float middle[3];
     float along[3];
     for (int32_t k = 0; k < 3; ++k)

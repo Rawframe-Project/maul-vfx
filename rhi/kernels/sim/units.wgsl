@@ -3,7 +3,7 @@
 // them), each of its substeps (for units that collide with themselves, a
 // dispatch for each half of each, the self pass between: self.wgsl)
 //  - blowing a sheet's points in the air (its triangles' normal and
-//    tangent drag);
+//    tangent drag: sim/aero.wgsl);
 //  - moving its points as particles over the substep (forces, drag, the
 //    speed limit, the velocity modules, the colliders and the life their
 //    contacts take, kills and turns), the predicted places kept in the
@@ -440,62 +440,16 @@ fn pinPoint(i: u32, since: u32, to: u32, h: f32) {
     setVector(params.words.velocity, i, v);
 }
 
-// The share of a relative speed a triangle of an area takes over a
-// substep of h seconds at a coefficient, as the core's ShareOf: k A |speed|
-// h over its three points, at most a sixth.
-fn airShare(k: f32, area: f32, speed: f32, h: f32) -> f32 {
-    let share = quotient(k * area * speed * h, 3.0);
-    return select(1.0 / 6.0, share, share < 1.0 / 6.0);
-}
-
-// The velocity change the air gives each point of the triangle of points
-// a, b and c over a substep of h seconds from seconds after the plan's
-// start, as the core's Triangle: its normal (pressure) and tangent (skin)
-// drag on its mean velocity less the air's at its middle.
-fn triangleChange(a: u32, b: u32, c: u32, seconds: f32, h: f32) -> vec3<f32> {
-    let xa = pointPlace(a);
-    let xb = pointPlace(b);
-    let xc = pointPlace(c);
-    let va = readVector(0u, a, params.words.velocity);
-    let vb = readVector(0u, b, params.words.velocity);
-    let vc = readVector(0u, c, params.words.velocity);
-    var e1 = vec3<f32>(0.0);
-    var e2 = vec3<f32>(0.0);
-    var middle = vec3<f32>(0.0);
-    var v = vec3<f32>(0.0);
-    for (var k = 0u; k < 3u; k++) {
-        e1[k] = xb[k] - xa[k];
-        e2[k] = xc[k] - xa[k];
-        middle[k] = quotient(xa[k] + xb[k] + xc[k], 3.0);
-        v[k] = quotient(va[k] + vb[k] + vc[k], 3.0);
+// A vector's length, as the core's mvfxLengthOf: measured scaled by 2^-64
+// where its largest component reaches 2^63, so its squares' sum never
+// overflows.
+fn lengthOf(v: vec3<f32>) -> f32 {
+    let most = max(abs(v.x), max(abs(v.y), abs(v.z)));
+    if (!(most >= 0x1p63f)) {
+        return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
     }
-    var n = vec3<f32>(e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
-                      e1[0] * e2[1] - e1[1] * e2[0]);
-    let twice = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-    if (!(twice > 0.0)) {
-        return vec3<f32>(0.0);
-    }
-    let wind = airAt(middle, seconds);
-    var along = 0.0;
-    for (var k = 0u; k < 3u; k++) {
-        n[k] = quotient(n[k], twice);
-        v[k] -= wind[k];
-        along += v[k] * n[k];
-    }
-    var tangent = vec3<f32>(0.0);
-    var square = 0.0;
-    for (var k = 0u; k < 3u; k++) {
-        tangent[k] = v[k] - along * n[k];
-        square += tangent[k] * tangent[k];
-    }
-    let area = 0.5 * twice;
-    let normalShare = airShare(params.unitAero.x, area, abs(along), h);
-    let tangentShare = airShare(params.unitAero.y, area, sqrt(square), h);
-    var d = vec3<f32>(0.0);
-    for (var k = 0u; k < 3u; k++) {
-        d[k] = -normalShare * along * n[k] - tangentShare * tangent[k];
-    }
-    return d;
+    let u = v * 0x1p-64f;
+    return sqrt(u.x * u.x + u.y * u.y + u.z * u.z) * 0x1p64f;
 }
 
 // Point i's torn edges (1 across, 2 down), 0 for units that do not tear.
@@ -540,62 +494,6 @@ fn isBroken(f: u32, i: u32, w: u32) -> bool {
     }
 }
 
-// The air's change to point q of the unit from its first point over a
-// substep, as the core's BlowSheet sums it: the triangles of the whole
-// quads it is a corner of, in the quads' row-major order (the quad up and left,
-// its second triangle; the quad up, both; the quad left, both; its own,
-// its first).
-fn airChange(first: u32, q: u32, seconds: f32, h: f32) -> vec3<f32> {
-    let w = params.units.y;
-    let rows = unitPoints() / w;
-    let c = q % w;
-    let r = q / w;
-    var d = vec3<f32>(0.0);
-    if (c >= 1u && r >= 1u && isQuadWhole(first + q - w - 1u, w)) {
-        let p = first + q - w - 1u;
-        d += triangleChange(p + w, p + 1u, p + w + 1u, seconds, h);
-    }
-    if (c + 1u < w && r >= 1u && isQuadWhole(first + q - w, w)) {
-        let p = first + q - w;
-        d += triangleChange(p, p + 1u, p + w, seconds, h);
-        d += triangleChange(p + w, p + 1u, p + w + 1u, seconds, h);
-    }
-    if (c >= 1u && r + 1u < rows && isQuadWhole(first + q - 1u, w)) {
-        let p = first + q - 1u;
-        d += triangleChange(p, p + 1u, p + w, seconds, h);
-        d += triangleChange(p + w, p + 1u, p + w + 1u, seconds, h);
-    }
-    if (c + 1u < w && r + 1u < rows && isQuadWhole(first + q, w)) {
-        let p = first + q;
-        d += triangleChange(p, p + 1u, p + w, seconds, h);
-    }
-    return d;
-}
-
-// Blows a sheet from its first point over a substep, as the core's
-// mvfxBlowSheets: each point's change kept in its other buffer's place
-// (free until the move), then added to its velocity, so every triangle
-// reads the velocities from before.
-fn blowSheet(first: u32, local: u32, seconds: f32, h: f32) {
-    let c = params.counts.x;
-    let points = unitPoints();
-    for (var q = local; q < points; q += CHUNK) {
-        let d = airChange(first, q, seconds, h);
-        for (var k = 0u; k < 3u; k++) {
-            moved[(params.words.place + k) * c + first + q] = bitcast<u32>(d[k]);
-        }
-    }
-    storageBarrier();
-    workgroupBarrier();
-    for (var q = local; q < points; q += CHUNK) {
-        let i = first + q;
-        let v = readVector(0u, i, params.words.velocity);
-        setVector(params.words.velocity, i, v + readVector(1u, i, params.words.place));
-    }
-    storageBarrier();
-    workgroupBarrier();
-}
-
 // Notes point a's tear of an edge (0 across, 1 down) at a tick of the
 // plan for its event, when the emitter writes tear events: its flag, the
 // tick, the edge's middle and direction, and the point's velocity and
@@ -635,7 +533,7 @@ fn tearEdge(a: u32, b: u32, bit: u32, longest: f32, tick: u32) {
     }
     source[params.unitTears.x * params.counts.x + a] = torn | bit;
     atomicAdd(&unitTore, 1u);
-    let length = sqrt(square);
+    let length = lengthOf(d);
     var middle = vec3<f32>(0.0);
     var along = vec3<f32>(0.0);
     for (var k = 0u; k < 3u; k++) {
@@ -681,13 +579,8 @@ fn splitRibbon(first: u32, q: u32) {
 fn projectPair(a: u32, b: u32, rest: f32, compliance: f32, wa: f32, wb: f32) {
     let pa = pointPlace(a);
     let pb = pointPlace(b);
-    var d = vec3<f32>(0.0);
-    var square = 0.0;
-    for (var k = 0u; k < 3u; k++) {
-        d[k] = pa[k] - pb[k];
-        square += d[k] * d[k];
-    }
-    let length = sqrt(square);
+    let d = pa - pb;
+    let length = lengthOf(d);
     let sum = wa + wb + compliance;
     if (!(length > 0.0) || !(sum > 0.0)) {
         return;
@@ -709,13 +602,8 @@ fn projectPair(a: u32, b: u32, rest: f32, compliance: f32, wa: f32, wb: f32) {
 fn dampPair(a: u32, b: u32, share: f32, wa: f32, wb: f32) {
     let pa = pointPlace(a);
     let pb = pointPlace(b);
-    var d = vec3<f32>(0.0);
-    var square = 0.0;
-    for (var k = 0u; k < 3u; k++) {
-        d[k] = pa[k] - pb[k];
-        square += d[k] * d[k];
-    }
-    let length = sqrt(square);
+    let d = pa - pb;
+    let length = lengthOf(d);
     if (!(length > 0.0) || !(wa + wb > 0.0)) {
         return;
     }
@@ -724,6 +612,14 @@ fn dampPair(a: u32, b: u32, share: f32, wa: f32, wb: f32) {
     var along = 0.0;
     for (var k = 0u; k < 3u; k++) {
         along += quotient((vb[k] - va[k]) * d[k], length);
+    }
+    if (!isFinite(along)) {
+        // A relative velocity times a distance overflowed where each fits:
+        // along the unit direction instead, as the core's Damp.
+        along = 0.0;
+        for (var k = 0u; k < 3u; k++) {
+            along += (vb[k] - va[k]) * quotient(d[k], length);
+        }
     }
     let change = quotient(share * along, wa + wb);
     var ua = va;

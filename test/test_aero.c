@@ -5,7 +5,9 @@
 // mean velocity's v -= (k A h / N) v^2 a substep, and falling to near
 // its terminal speed sqrt(N g / (k A)) by normal drag; an edge-on one slowed by tangent drag
 // alone; a sheet at 45 degrees in a wind pushed along its normal, lift
-// equal to drag; a torn sheet falling free; a drag too strong for a
+// equal to drag; at the largest spacing and scale, and with an area past
+// binary32's largest, a tangent drag alone keeping the speed along the
+// normal; a torn sheet falling free; a drag too strong for a
 // substep never reversing a point; the checks.
 
 #include "test_harness.h"
@@ -63,7 +65,7 @@ static mvfxEmitterDef Sheet(float normalDrag, float tangentDrag)
     return emitter;
 }
 
-static void Open(const mvfxEmitterDef* emitter, const float* velocity)
+static void OpenScaled(const mvfxEmitterDef* emitter, const float* velocity, float scale)
 {
     memset(&s_scene, 0, sizeof s_scene);
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -75,6 +77,7 @@ static void Open(const mvfxEmitterDef* emitter, const float* velocity)
     CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
+    instanceDef.scale = scale;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
           "instance");
     mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
@@ -86,6 +89,11 @@ static void Open(const mvfxEmitterDef* emitter, const float* velocity)
     mvfxSpawnRequest request = {.count = 1, .positions = root, .velocities = velocity};
     CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
           "spawned");
+}
+
+static void Open(const mvfxEmitterDef* emitter, const float* velocity)
+{
+    OpenScaled(emitter, velocity, 1.0f);
 }
 
 static void Steps(int32_t n)
@@ -158,6 +166,62 @@ static void TestTerminal(void)
     Steps(480);
     Mean(mean);
     CHECK(fabs(-mean[1] - terminal) <= 0.05 * terminal, "edge on, tangent drag alone");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestLarge(void)
+{
+    // At the largest spacing and scale, edges of 10^12 whose cross
+    // product's squares pass binary32's largest: thrown along its normal
+    // with a tangent drag alone, the sheet keeps its speed.
+    mvfxEmitterDef emitter = Sheet(0.0f, 1.0f);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.unit.spacing = MVFX_MAX_EXTENT;
+    static const float thrown[3] = {0, -5, 0};
+    OpenScaled(&emitter, thrown, MVFX_MAX_SCALE);
+    Steps(2);
+    double mean[3];
+    Mean(mean);
+    CHECK(mean[1] == -5.0, "the largest, a tangent drag alone");
+    mvfxDestroyContext(s_scene.context);
+}
+
+// Moves the sheet's first point to 10^29 along x and the first of its
+// second row to 10^29 along z once, within MVFX_MAX_PLACE.
+static void MoveFar(const mvfxModuleCall* call, void* user)
+{
+    bool* done = user;
+    if (!*done && call->particles.count > 4)
+    {
+        call->particles.position[0][0] = 1e29f;
+        call->particles.position[2][4] = 1e29f;
+        *done = true;
+    }
+}
+
+static void TestFar(void)
+{
+    // Two points moved 10^29 apart across the sheet: the triangle between
+    // them and the second's neighbor has an area past binary32's largest,
+    // its normal still along y. Thrown along y
+    // with a tangent drag alone, the sheet keeps its speed over the step
+    // after the move: a zero coefficient takes no share of an infinite
+    // area. (The next step's host module call kills the points, their
+    // speeds past MVFX_MAX_SPEED.)
+    mvfxEmitterDef emitter = Sheet(0.0f, 1.0f);
+    emitter.motion.gravity[1] = 0.0f;
+    static bool moved;
+    moved = false;
+    static const mvfxHostModule mover = {
+        .stage = mvfx_stageBeforeMotion, .function = MoveFar, .user = &moved};
+    emitter.hostModules = &mover;
+    emitter.hostModuleCount = 1;
+    static const float thrown[3] = {0, -5, 0};
+    Open(&emitter, thrown);
+    Steps(2);
+    double mean[3];
+    Mean(mean);
+    CHECK(moved && fabs(mean[1] + 5.0) <= 1e-3, "moved far, a tangent drag alone");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -306,6 +370,8 @@ int main(void)
 {
     TestTerminal();
     TestLift();
+    TestLarge();
+    TestFar();
     TestTorn();
     TestHeld();
     TestChecks();

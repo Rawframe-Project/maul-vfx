@@ -6,6 +6,7 @@
 #ifndef MAUL_VFX_SRC_DIRECTION_H
 #define MAUL_VFX_SRC_DIRECTION_H
 
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -14,6 +15,24 @@ void mvfxRandomDirection(uint32_t a, uint32_t b, float out[3]);
 
 // v normalized; false (and v left) when its length is 0 or not finite.
 bool mvfxNormalize(float v[3]);
+
+// v's length, as sqrtf of its squares' sum in x, y, z order; a vector
+// whose largest component reaches 2^63, where that sum may pass binary32's
+// largest, is measured scaled by 2^-64 and the length scaled back, so the
+// length is finite wherever it fits and every shorter vector keeps its
+// bits.
+static inline float mvfxLengthOf(float x, float y, float z)
+{
+    float most = fmaxf(fabsf(x), fmaxf(fabsf(y), fabsf(z)));
+    if (!(most >= 0x1p63f))
+    {
+        return sqrtf(x * x + y * y + z * z);
+    }
+    x *= 0x1p-64f;
+    y *= 0x1p-64f;
+    z *= 0x1p-64f;
+    return sqrtf(x * x + y * y + z * z) * 0x1p64f;
+}
 
 // Turns v by a unit quaternion (x, y, z, w); inline, as forces, collision
 // and output turn a vector a particle.

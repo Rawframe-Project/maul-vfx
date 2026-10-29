@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Tearing: a two-point chain's edge tearing under gravity, its event at
-// the middle along the edge, the freed point falling; a chain pulled
+// the middle along the edge, the freed point falling; an edge past 2^63
+// tearing along itself; a chain pulled
 // apart splitting into two ribbons; a sheet pulled apart across, its
 // across edges torn and its mesh's quads gone, the tears' events in point
 // order, sparks spawned at each tear; no tear below the strain; torn edges set by hand against the
@@ -176,6 +177,44 @@ static void TestGravity(void)
     Open(&emitter, 1);
     Steps(120);
     CHECK(Stats(0).torn == 0, "below the strain");
+    mvfxDestroyContext(s_scene.context);
+}
+
+// Moves the second point of the chain to 10^29 down once, within
+// MVFX_MAX_PLACE.
+static void MoveFar(const mvfxModuleCall* call, void* user)
+{
+    bool* done = user;
+    if (!*done && call->particles.count > 1)
+    {
+        call->particles.position[1][1] = -1e29f;
+        *done = true;
+    }
+}
+
+static void TestFar(void)
+{
+    // The second point moved 10^29 down, past where the square of the
+    // edge's length passes binary32's largest; soft, it stays that far
+    // and tears: its event still along the edge, down.
+    mvfxEmitterDef emitter = Chain(2);
+    emitter.unit.stretchCompliance = 1.0f;
+    static bool moved;
+    moved = false;
+    static const mvfxHostModule mover = {
+        .stage = mvfx_stageBeforeMotion, .function = MoveFar, .user = &moved};
+    emitter.hostModules = &mover;
+    emitter.hostModuleCount = 1;
+    Open(&emitter, 1);
+    Steps(2);
+    const mvfxEvent* events = NULL;
+    int32_t count = 0;
+    CHECK(moved && Stats(0).torn == 1 &&
+              mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0, &events, &count) ==
+                  mvfx_success &&
+              count == 1 && fabsf(events[0].normal[1] + 1.0f) <= 1e-5f &&
+              events[0].place[1] < -1e28,
+          "a far edge's tear, along it");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -472,6 +511,7 @@ static void TestChecks(void)
 int main(void)
 {
     TestGravity();
+    TestFar();
     TestRibbons();
     TestSheet();
     TestTornBits();

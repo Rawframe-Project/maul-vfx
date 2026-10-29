@@ -373,6 +373,7 @@ var<workgroup> boxHigh: array<vec4<f32>, CHUNK>;
 // include: sim/beam.wgsl
 
 // include: sim/units.wgsl
+// include: sim/aero.wgsl
 
 // include: sim/liquid.wgsl
 
