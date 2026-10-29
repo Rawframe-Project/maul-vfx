@@ -158,7 +158,7 @@
       "name": "lavapipe",
       "hidden": true,
       "inherits": "base",
-      "description": "The GPU part's suites on lavapipe, which must be found; a suite's warm-up may compile every kernel, minutes without a shader cache. The harness suites' own 900-second timeout bounds them; the others get 30 minutes.",
+      "description": "The GPU part's suites on lavapipe, which must be found; a suite's warm-up may compile every kernel, minutes without a shader cache. The harness suites' own 1800-second timeout bounds them; the others get 30 minutes.",
       "filter": { "include": { "name": "^(rhi_|guide_rhi$|sample_gpu$)" } },
       "environment": { "MVFX_RHI_REQUIRED": "vulkan" },
       "execution": { "noTestsAction": "error", "timeout": 1800, "jobs": 1 }
