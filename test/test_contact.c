@@ -297,7 +297,9 @@ static void TestChecks(void)
             c->friction = NAN;
             break;
         }
-        refused += mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 1 || rule == 3 || rule == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(s_context, &def, &effect) == want;
     }
     CHECK(refused == 9, "every check");
     emitter = Emitter();

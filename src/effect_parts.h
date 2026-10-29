@@ -10,9 +10,10 @@
 #include "effect.h"
 
 // Whether every emitter's neighbors, steering, contacts, pair force, plexus
-// links and units are valid against its effect, which mvfxIsEffectDefValid
-// found valid otherwise.
-bool mvfxAreEffectPartsValid(const mvfxEffectDef* def);
+// links and units are valid against its effect, which mvfxCheckEffectDef
+// found valid otherwise: mvfx_errorLimit for a value past a named bound,
+// mvfx_errorInvalid for anything else wrong.
+mvfxResult mvfxCheckEffectParts(const mvfxEffectDef* def);
 
 // Adds those parts to an effect mvfxCompileEffect compiled from the def:
 // each emitter's copied, neighbor sources resolved to indices and grids'

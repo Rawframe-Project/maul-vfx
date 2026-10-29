@@ -427,7 +427,9 @@ static void TestChecks(void)
             emitters[1].neighbors.source = 0;
             break;
         }
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 0 || rule == 1 || rule == 4 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 12, "every check");
     emitters[0] = Emitter(MVFX_MAX_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBORS);

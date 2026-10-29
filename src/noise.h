@@ -12,8 +12,10 @@
 
 #include "maul-vfx/effect.h"
 
-// Whether a turbulence's noise is within its ranges.
-bool mvfxIsNoiseValid(const mvfxNoise* noise);
+// Whether a turbulence's noise is within its ranges: mvfx_errorLimit for
+// a frequency, octaves or scroll past their named bounds,
+// mvfx_errorInvalid for anything else out of range.
+mvfxResult mvfxCheckNoise(const mvfxNoise* noise);
 
 // A lattice coordinate's cell, wrapped to 32 bits, and the fraction past
 // it in binary32, as the noises take them: exact for any finite

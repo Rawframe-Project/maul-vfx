@@ -130,6 +130,10 @@ static void TestInvalidDefsAreMisuse(void)
     {
         mvfxEmitterDef bad = mvfxDefaultEmitterDef();
         mvfxEffectDef broken = OneEmitter(&bad);
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want =
+            field == 2 || field == 5 || field == 12 ? mvfx_errorLimit : mvfx_errorInvalid;
         switch (field)
         {
         case 0:
@@ -176,9 +180,10 @@ static void TestInvalidDefsAreMisuse(void)
             break;
         }
         effect = (mvfxEffectId){7, 7};
-        CHECK(mvfxCreateEffect(context, &broken, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &broken, &effect) == want, "refused");
         CHECK(effect.index1 == 0, "the null id");
-        CHECK(mvfxGetContextMisuse(context) == ++misuse, "each refusal counted");
+        misuse += want == mvfx_errorInvalid ? 1u : 0u;
+        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
     }
     mvfxEmitterDef edges = mvfxDefaultEmitterDef();
     edges.capacity = MVFX_MAX_EMITTER_CAPACITY;
@@ -203,6 +208,12 @@ static void TestLifeFieldsRefused(void)
     uint64_t misuse = mvfxGetContextMisuse(context);
     for (int32_t field = 0; field < 24; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 2 || field == 3 || field == 5 || field == 10 || field == 12 ||
+                                  field == 15 || field == 20 || field == 22 || field == 23
+                              ? mvfx_errorLimit
+                              : mvfx_errorInvalid;
         mvfxBurst burst = {.time = 0.0f,
                            .minCount = 1,
                            .maxCount = 4,
@@ -307,9 +318,10 @@ static void TestLifeFieldsRefused(void)
         }
         mvfxEffectDef def = OneEmitter(&bad);
         mvfxEffectId effect = {7, 7};
-        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "refused");
+        CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
         CHECK(effect.index1 == 0, "the null id");
-        CHECK(mvfxGetContextMisuse(context) == ++misuse, "each refusal counted");
+        misuse += want == mvfx_errorInvalid ? 1u : 0u;
+        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
     }
     // Every field at its edge, and a single burst's interval ignored.
     mvfxBurst edges[MVFX_MAX_BURSTS];
@@ -351,6 +363,11 @@ static void TestShapeAndVelocityRefused(void)
     uint64_t misuse = mvfxGetContextMisuse(context);
     for (int32_t field = 0; field < 28; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 3 || field == 14 || field == 16 || field == 25 || field == 27
+                              ? mvfx_errorLimit
+                              : mvfx_errorInvalid;
         mvfxEmitterDef bad = mvfxDefaultEmitterDef();
         mvfxShape* shape = &bad.shape;
         mvfxVelocity* velocity = &bad.velocity;
@@ -469,8 +486,9 @@ static void TestShapeAndVelocityRefused(void)
         }
         mvfxEffectDef def = OneEmitter(&bad);
         mvfxEffectId effect = {7, 7};
-        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "refused");
-        CHECK(mvfxGetContextMisuse(context) == ++misuse, "each refusal counted");
+        CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
+        misuse += want == mvfx_errorInvalid ? 1u : 0u;
+        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
     }
     // A kind's unread fields are not checked, and every edge is accepted.
     static const mvfxShapeKind kinds[7] = {mvfx_shapePoint,  mvfx_shapeLine,       mvfx_shapeCircle,
@@ -513,6 +531,11 @@ static void TestValuesRefused(void)
     static const mvfxAlphaKey alphas[1] = {{0.0f, 1.0f}};
     for (int32_t field = 0; field < 24; ++field)
     {
+        // Past a named bound: mvfx_errorLimit, data a correct program may
+        // pass, so no misuse.
+        mvfxResult want = field == 14 || field == 17 || field == 18 || field == 21
+                              ? mvfx_errorLimit
+                              : mvfx_errorInvalid;
         mvfxCustomAttribute custom = {.components = 2};
         mvfxEmitterDef bad = mvfxDefaultEmitterDef();
         mvfxEffectDef def = OneEmitter(&bad);
@@ -604,8 +627,9 @@ static void TestValuesRefused(void)
             break;
         }
         mvfxEffectId effect = {7, 7};
-        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "refused");
-        CHECK(mvfxGetContextMisuse(context) == ++misuse, "each refusal counted");
+        CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
+        misuse += want == mvfx_errorInvalid ? 1u : 0u;
+        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
     }
     mvfxDestroyContext(context);
 }

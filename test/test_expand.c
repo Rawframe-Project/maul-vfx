@@ -326,7 +326,9 @@ static void TestChecks(void)
     {
         emitter = Sprites(mvfx_billboardDirectional);
         emitter.sprite.stretch = stretches[s];
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = s == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     emitter = Sprites(mvfx_billboardDirectional);
     emitter.sprite.stretch = 1e6f;

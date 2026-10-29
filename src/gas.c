@@ -3,6 +3,8 @@
 
 #include "gas.h"
 
+#include "refusal.h"
+
 #include "maul-vfx/effect.h"
 #include "maul-vfx/instance.h"
 
@@ -26,142 +28,163 @@ mvfxGasDef mvfxDefaultGasDef(void)
     };
 }
 
-// Whether a value is finite and at most limit in size.
-static bool IsWithin(float value, float limit)
+// A value's status: finite, and at most MVFX_MAX_EXTENT in size.
+static mvfxResult CheckExtent(float value)
 {
-    return isfinite(value) && fabsf(value) <= limit;
+    return mvfxBounded(value, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
 }
 
-static bool IsSourceValid(const mvfxGasSource* source)
+static mvfxResult CheckSource(const mvfxGasSource* source)
 {
-    bool valid = (source->shape == mvfx_gasSphere || source->shape == mvfx_gasBox) &&
-                 IsWithin(source->density, MVFX_MAX_EXTENT) &&
-                 IsWithin(source->temperature, MVFX_MAX_EXTENT) &&
-                 IsWithin(source->fuel, MVFX_MAX_EXTENT);
-    for (int32_t k = 0; valid && k < 3; ++k)
+    if (source->shape != mvfx_gasSphere && source->shape != mvfx_gasBox)
     {
-        valid = IsWithin(source->center[k], MVFX_MAX_EXTENT) &&
-                IsWithin(source->velocity[k], MVFX_MAX_EXTENT);
+        return mvfx_errorInvalid;
+    }
+    mvfxResult valid =
+        mvfxFirst(mvfxFirst(CheckExtent(source->density), CheckExtent(source->temperature)),
+                  mvfxFirst(CheckExtent(source->fuel),
+                            mvfxFirst(mvfxBoundedVector(source->center, MVFX_MAX_EXTENT),
+                                      mvfxBoundedVector(source->velocity, MVFX_MAX_EXTENT))));
+    if (valid != mvfx_success)
+    {
+        return valid;
     }
     if (source->shape == mvfx_gasSphere)
     {
-        return valid && source->radius > 0.0f && source->radius <= MVFX_MAX_EXTENT;
+        return mvfxPositiveUpTo(source->radius, MVFX_MAX_EXTENT);
     }
-    for (int32_t k = 0; valid && k < 3; ++k)
-    {
-        valid = source->halfExtents[k] > 0.0f && source->halfExtents[k] <= MVFX_MAX_EXTENT;
-    }
-    return valid;
+    return mvfxFirst(mvfxPositiveUpTo(source->halfExtents[0], MVFX_MAX_EXTENT),
+                     mvfxFirst(mvfxPositiveUpTo(source->halfExtents[1], MVFX_MAX_EXTENT),
+                               mvfxPositiveUpTo(source->halfExtents[2], MVFX_MAX_EXTENT)));
 }
 
 // Whether a gas's size is in range: each axis from 1 (2 along X and Y)
-// to the most, at most the most cells in all.
-static bool IsSizeValid(const int32_t size[3])
+// (else mvfx_errorInvalid) to the most, at most the most cells in all
+// (else mvfx_errorLimit).
+static mvfxResult CheckSize(const int32_t size[3])
 {
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        if (size[k] < (k < 2 ? 2 : 1))
+        {
+            return mvfx_errorInvalid;
+        }
+    }
     int64_t cells = 1;
     for (int32_t k = 0; k < 3; ++k)
     {
-        if (size[k] < (k < 2 ? 2 : 1) || size[k] > MVFX_MAX_GAS_SIZE)
+        if (size[k] > MVFX_MAX_GAS_SIZE)
         {
-            return false;
+            return mvfx_errorLimit;
         }
         cells *= size[k];
     }
-    return cells <= MVFX_MAX_GAS_CELLS;
+    return mvfxWithinBound(cells <= MVFX_MAX_GAS_CELLS);
 }
 
 // Whether a gas's place, advection, buoyancy, confinement and combustion
 // are in range.
-static bool AreForcesValid(const mvfxGasDef* def)
+static mvfxResult CheckForces(const mvfxGasDef* def)
 {
+    if ((def->advection != mvfx_gasSemiLagrangian && def->advection != mvfx_gasMacCormack) ||
+        (def->gravitySpace != mvfx_gasLocal && def->gravitySpace != mvfx_gasWorld))
+    {
+        return mvfx_errorInvalid;
+    }
     const float weights[7] = {def->densityWeight, def->heatLift,  def->vorticity,    def->burnRate,
                               def->burnHeat,      def->burnSmoke, def->burnExpansion};
-    bool valid =
-        (def->advection == mvfx_gasSemiLagrangian || def->advection == mvfx_gasMacCormack) &&
-        (def->gravitySpace == mvfx_gasLocal || def->gravitySpace == mvfx_gasWorld) &&
-        IsWithin(def->ignitionTemperature, MVFX_MAX_EXTENT);
-    for (int32_t i = 0; valid && i < 7; ++i)
+    mvfxResult valid = CheckExtent(def->ignitionTemperature);
+    for (int32_t i = 0; valid == mvfx_success && i < 7; ++i)
     {
-        valid = weights[i] >= 0.0f && weights[i] <= MVFX_MAX_EXTENT;
+        valid = mvfxUpToBound(weights[i], 0.0f, MVFX_MAX_EXTENT);
     }
-    for (int32_t k = 0; valid && k < 3; ++k)
-    {
-        valid =
-            IsWithin(def->center[k], MVFX_MAX_EXTENT) && IsWithin(def->gravity[k], MVFX_MAX_EXTENT);
-    }
-    return valid;
+    return mvfxFirst(valid, mvfxFirst(mvfxBoundedVector(def->center, MVFX_MAX_EXTENT),
+                                      mvfxBoundedVector(def->gravity, MVFX_MAX_EXTENT)));
 }
 
 // Whether a liquid or surface gas keeps to what its kind has: no sources
 // or forces, one substep, and for a surface no obstacles and its
 // particles' radius, reach, thresholds and smoothing in range.
-static bool IsKindValid(const mvfxGasDef* def)
+static mvfxResult CheckKind(const mvfxGasDef* def)
 {
     if (def->kind == mvfx_gasSmoke)
     {
-        return true;
+        return mvfx_success;
     }
     if (def->sourceCount > 0 || def->forceCount > 0 || def->substeps != 1)
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    if (def->kind == mvfx_gasLiquid)
+    {
+        return mvfx_success;
     }
     const mvfxGasSurface* s = &def->surface;
-    return def->kind == mvfx_gasLiquid ||
-           (def->obstacleCount == 0 && !def->hostObstacles && s->radius > 0.0f &&
-            s->radius <= MVFX_MAX_EXTENT && s->reach >= 1.0f &&
-            s->reach <= MVFX_MAX_SURFACE_REACH && s->low >= 0.0f && s->high >= 0.0f &&
-            IsWithin(s->low, MVFX_MAX_EXTENT) && IsWithin(s->high, MVFX_MAX_EXTENT) &&
-            s->smoothing >= 0 && s->smoothing <= MVFX_MAX_SURFACE_SMOOTHING);
+    if (def->obstacleCount != 0 || def->hostObstacles || !(s->reach >= 1.0f) ||
+        s->smoothing < 0)
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(
+        mvfxFirst(mvfxPositiveUpTo(s->radius, MVFX_MAX_EXTENT),
+                  mvfxBounded(s->reach, 1.0f, MVFX_MAX_SURFACE_REACH)),
+        mvfxFirst(mvfxFirst(mvfxUpToBound(s->low, 0.0f, MVFX_MAX_EXTENT),
+                            mvfxUpToBound(s->high, 0.0f, MVFX_MAX_EXTENT)),
+                  mvfxWithinBound(s->smoothing <= MVFX_MAX_SURFACE_SMOOTHING)));
 }
 
-bool mvfxIsGasDefValid(const mvfxGasDef* def)
+mvfxResult mvfxCheckGasDef(const mvfxGasDef* def)
 {
-    if (def->cookie != MVFX_GAS_DEF_COOKIE || !IsSizeValid(def->size) ||
-        !(def->cellSize > 0.0f && def->cellSize <= MVFX_MAX_EXTENT) ||
+    if (def->cookie != MVFX_GAS_DEF_COOKIE ||
         (def->space != mvfx_gasLocal && def->space != mvfx_gasWorld) || def->substeps < 1 ||
-        def->substeps > MVFX_MAX_GAS_SUBSTEPS || def->sourceCount < 0 ||
-        def->sourceCount > MVFX_MAX_GAS_SOURCES ||
-        (def->sourceCount > 0 && def->sources == nullptr) || def->closedWalls > 63 ||
-        def->pressureCycles < 0 || def->pressureCycles > MVFX_MAX_GAS_CYCLES ||
-        !(def->fillTime > 0.0f && def->fillTime <= (float)MVFX_MAX_STEP_SECONDS) ||
-        !(def->courant > 0.0f && def->courant <= (float)MVFX_MAX_GAS_SIZE) ||
-        def->kind > mvfx_gasSurface || !IsKindValid(def))
+        def->sourceCount < 0 || (def->sourceCount > 0 && def->sources == nullptr) ||
+        def->closedWalls > 63 || def->pressureCycles < 0 || !(def->fillTime > 0.0f) ||
+        !(def->courant > 0.0f) || def->kind > mvfx_gasSurface || def->obstacleCount < 0 ||
+        (def->obstacleCount > 0 && def->obstacles == nullptr))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
-    const float decays[4] = {def->densityDecay, def->temperatureDecay, def->fuelDecay,
-                             def->velocityDecay};
-    for (int32_t i = 0; i < 4; ++i)
+    // The counts bound the arrays read below.
+    const mvfxResult fields[] = {
+        CheckSize(def->size),
+        mvfxPositiveUpTo(def->cellSize, MVFX_MAX_EXTENT),
+        mvfxWithinBound(def->substeps <= MVFX_MAX_GAS_SUBSTEPS),
+        mvfxWithinBound(def->sourceCount <= MVFX_MAX_GAS_SOURCES),
+        mvfxWithinBound(def->pressureCycles <= MVFX_MAX_GAS_CYCLES),
+        mvfxBounded(def->fillTime, 0.0f, (float)MVFX_MAX_STEP_SECONDS),
+        mvfxBounded(def->courant, 0.0f, (float)MVFX_MAX_GAS_SIZE),
+        mvfxWithinBound(def->obstacleCount <= MVFX_MAX_COLLIDERS),
+        CheckKind(def),
+        mvfxUpToBound(def->densityDecay, 0.0f, MVFX_MAX_DRAG),
+        mvfxUpToBound(def->temperatureDecay, 0.0f, MVFX_MAX_DRAG),
+        mvfxUpToBound(def->fuelDecay, 0.0f, MVFX_MAX_DRAG),
+        mvfxUpToBound(def->velocityDecay, 0.0f, MVFX_MAX_DRAG),
+        CheckForces(def),
+    };
+    for (size_t k = 0; k < sizeof(fields) / sizeof(fields[0]); ++k)
     {
-        if (!(decays[i] >= 0.0f && decays[i] <= MVFX_MAX_DRAG))
+        if (fields[k] != mvfx_success)
         {
-            return false;
+            return fields[k];
         }
-    }
-    if (!AreForcesValid(def))
-    {
-        return false;
     }
     for (int32_t s = 0; s < def->sourceCount; ++s)
     {
-        if (!IsSourceValid(&def->sources[s]))
+        mvfxResult source = CheckSource(&def->sources[s]);
+        if (source != mvfx_success)
         {
-            return false;
+            return source;
         }
-    }
-    if (def->obstacleCount < 0 || def->obstacleCount > MVFX_MAX_COLLIDERS ||
-        (def->obstacleCount > 0 && def->obstacles == nullptr))
-    {
-        return false;
     }
     for (int32_t c = 0; c < def->obstacleCount; ++c)
     {
-        if (!mvfxIsColliderValid(&def->obstacles[c]))
+        mvfxResult obstacle = mvfxCheckCollider(&def->obstacles[c]);
+        if (obstacle != mvfx_success)
         {
-            return false;
+            return obstacle;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // Whether a level can be halved: every axis of more than one cell keeps

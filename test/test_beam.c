@@ -362,7 +362,9 @@ static void TestChecks(void)
             b->segments = 0;
             break;
         case 1:
+            // With room for them: past the most segments alone.
             b->segments = MVFX_MAX_BEAM_SEGMENTS + 1;
+            emitter.capacity = MVFX_MAX_BEAM_SEGMENTS + 2;
             break;
         case 2:
             b->segments = 8;
@@ -425,7 +427,10 @@ static void TestChecks(void)
         }
         mvfxEffectDef def = EffectOf(&emitter);
         mvfxEffectId effect = {0};
-        refused += mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+        // Past MVFX_MAX_BEAM_SEGMENTS or MVFX_MAX_EXTENT is past a named
+        // bound.
+        mvfxResult want = rule == 1 || rule == 6 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(context, &def, &effect) == want;
     }
     CHECK(refused == 20, "every check");
     mvfxEmitterDef emitter = Beam();

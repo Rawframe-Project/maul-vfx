@@ -1271,8 +1271,11 @@ extern "C"
     /// @param valueCount  The values the array holds, at least three a point.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         noise out of its ranges or with a lacunarity that is not
-    ///         whole, a period or size out of range, or too few values;
-    ///         nothing is written then.
+    ///         whole, a period or size below 1, or too few values;
+    ///         `mvfx_errorLimit` for a noise past its named bounds, a period
+    ///         past MVFX_MAX_NOISE_PERIOD, a size past MVFX_MAX_GRID_SIZE or
+    ///         more points than MVFX_MAX_GRID_POINTS; nothing is written
+    ///         then.
     /// @par Thread safety
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxBakeCurlNoise(const mvfxNoise* noise, int32_t period,

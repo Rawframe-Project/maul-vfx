@@ -13,6 +13,7 @@
 #include "instance.h"
 #include "mesh.h"
 #include "plan_resolved.h"
+#include "refusal.h"
 #include "rigid_wake.h"
 #include "slots.h"
 #include "spawn.h"
@@ -769,15 +770,17 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetCollidersWork(mvfxContext* conte
     {
         return mvfx_errorStale;
     }
-    bool valid = count >= 0 && count <= MVFX_MAX_COLLIDERS && (count == 0 || colliders != nullptr);
-    for (int32_t c = 0; valid && c < count; ++c)
+    mvfxResult valid = count > 0 && colliders == nullptr
+                           ? mvfx_errorInvalid
+                           : mvfxCountUpTo(count, 0, MVFX_MAX_COLLIDERS);
+    for (int32_t c = 0; valid == mvfx_success && c < count; ++c)
     {
-        valid = mvfxIsColliderValid(&colliders[c]);
+        valid = mvfxCheckCollider(&colliders[c]);
     }
-    if (!valid)
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return valid;
     }
     mvfxGrid* grids[MVFX_MAX_COLLIDERS] = {0};
     for (int32_t c = 0; c < count; ++c)
@@ -856,10 +859,11 @@ mvfxResult mvfxInstance_SetParameter(mvfxContext* context, mvfxInstanceId instan
             return mvfx_errorInvalid;
         }
     }
-    if (!mvfxIsParameterWithinReach(value, live->effect->parameterReach[parameter]))
+    mvfxResult reach = mvfxCheckParameterReach(value, live->effect->parameterReach[parameter]);
+    if (reach != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return mvfx_errorInvalid;
+        return reach;
     }
     for (int32_t c = 0; c < 4; ++c)
     {

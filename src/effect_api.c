@@ -292,10 +292,13 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
 {
     *misuseOut = false;
     *effectOut = (mvfxEffectId){0};
-    if (!mvfxIsEffectDefValid(def) || !mvfxAreEffectPartsValid(def))
+    mvfxResult valid = mvfxCheckEffectDef(def);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectParts(def);
+    if (valid != mvfx_success)
     {
-        *misuseOut = true;
-        return mvfx_errorInvalid;
+        // A def past a bound is data a correct program may pass: no misuse.
+        *misuseOut = valid == mvfx_errorInvalid;
+        return valid;
     }
     mvfxMesh* meshes[MVFX_MAX_EMITTERS] = {0};
     mvfxResult meshed = FindMeshes(context, def, meshes);

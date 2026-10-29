@@ -654,7 +654,8 @@ static void TestRefusals(void)
         def.gasCount = 1;
         mvfxEffectId effect = {0};
         mvfxResult made = mvfxCreateEffect(s_context, &def, &effect);
-        right = right && made == mvfx_errorInvalid;
+        // Past MVFX_MAX_COLLIDERS is past a named bound.
+        right = right && made == (c == 0 ? mvfx_errorLimit : mvfx_errorInvalid);
         many[0].radius = 0.5f;
     }
     mvfxGasDef gas = mvfxDefaultGasDef();

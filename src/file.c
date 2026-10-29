@@ -104,34 +104,42 @@ static bool SameName(const char* a, int32_t aLength, const char* b, int32_t bLen
     return aLength == bLength && memcmp(a, b, (size_t)aLength) == 0;
 }
 
-// Whether a table of assets is valid: known kinds, names UTF-8 of 1 to
-// MVFX_MAX_ASSET_NAME bytes, once a kind.
-static bool AreAssetsValid(const mvfxEffectAsset* assets, int32_t count)
+// Whether a table of assets is valid: known kinds, names UTF-8 of at least
+// 1 byte, once a kind (else mvfx_errorInvalid); names of at most
+// MVFX_MAX_ASSET_NAME bytes (else mvfx_errorLimit).
+static mvfxResult CheckAssets(const mvfxEffectAsset* assets, int32_t count)
 {
     if (count < 0 || (assets == nullptr && count > 0))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     for (int32_t a = 0; a < count; ++a)
     {
         const mvfxEffectAsset* asset = &assets[a];
-        if (asset->kind >= MVFX_ASSET_KINDS || asset->name == nullptr || asset->nameLength < 1 ||
-            asset->nameLength > MVFX_MAX_ASSET_NAME ||
-            Utf8Fault((const uint8_t*)asset->name, (size_t)asset->nameLength) !=
-                (size_t)asset->nameLength)
+        if (asset->kind >= MVFX_ASSET_KINDS || asset->name == nullptr || asset->nameLength < 1)
         {
-            return false;
+            return mvfx_errorInvalid;
+        }
+        // The length bounds the bytes read below.
+        if (asset->nameLength > MVFX_MAX_ASSET_NAME)
+        {
+            return mvfx_errorLimit;
+        }
+        if (Utf8Fault((const uint8_t*)asset->name, (size_t)asset->nameLength) !=
+            (size_t)asset->nameLength)
+        {
+            return mvfx_errorInvalid;
         }
         for (int32_t b = 0; b < a; ++b)
         {
             if (assets[b].kind == asset->kind &&
                 SameName(assets[b].name, assets[b].nameLength, asset->name, asset->nameLength))
             {
-                return false;
+                return mvfx_errorInvalid;
             }
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // The bytes of a kind's names unit as gathered.
@@ -202,11 +210,16 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
     {
         *sizeOut = 0;
     }
-    if (sizeOut == nullptr || def == nullptr || capacity < 0 ||
-        (bytes == nullptr && capacity > 0) || !AreAssetsValid(assets, assetCount) ||
-        !mvfxIsEffectDefValid(def) || !mvfxAreEffectPartsValid(def))
+    if (sizeOut == nullptr || def == nullptr || capacity < 0 || (bytes == nullptr && capacity > 0))
     {
         return Fault(mvfx_errorInvalid, -1);
+    }
+    mvfxResult valid = CheckAssets(assets, assetCount);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectDef(def);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectParts(def);
+    if (valid != mvfx_success)
+    {
+        return Fault(valid, -1);
     }
     int32_t names[MVFX_FILE_MAX_GRIDS + MVFX_FILE_MAX_MESHES + MVFX_FILE_MAX_MODULES];
     mvfxCodec codec = {.writing = true,
@@ -488,10 +501,14 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
         *defOut = (mvfxEffectDef){0};
     }
     if (neededOut == nullptr || defOut == nullptr || size < 0 || (bytes == nullptr && size > 0) ||
-        capacity < 0 || (memory == nullptr && capacity > 0) || (uintptr_t)memory % 16 != 0 ||
-        !AreAssetsValid(assets, assetCount))
+        capacity < 0 || (memory == nullptr && capacity > 0) || (uintptr_t)memory % 16 != 0)
     {
         return Fault(mvfx_errorInvalid, -1);
+    }
+    mvfxResult assetsValid = CheckAssets(assets, assetCount);
+    if (assetsValid != mvfx_success)
+    {
+        return Fault(assetsValid, -1);
     }
     Unit units[UNIT_COUNT] = {0};
     int32_t names[MVFX_FILE_MAX_GRIDS + MVFX_FILE_MAX_MESHES + MVFX_FILE_MAX_MODULES];
@@ -508,8 +525,10 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
         return Fault(mvfx_errorCapacity, -1);
     }
     result = ReadDef(bytes, units, assets, names, memory, (size_t)capacity, defOut, &needed);
-    if (result.result == mvfx_success &&
-        (!mvfxIsEffectDefValid(defOut) || !mvfxAreEffectPartsValid(defOut)))
+    // A def the file holds is the file's bytes: whatever check it fails,
+    // a bound's included, the file is malformed.
+    if (result.result == mvfx_success && (mvfxCheckEffectDef(defOut) != mvfx_success ||
+                                          mvfxCheckEffectParts(defOut) != mvfx_success))
     {
         result = Fault(mvfx_errorFormat, (int64_t)units[EFFECT_UNIT].offset);
     }
@@ -554,10 +573,12 @@ static MVFX_NOINLINE mvfxFileResult mvfxCreateEffectFromBytesWork(mvfxContext* c
     // arguments: a correct program never passes them invalid, so that
     // counts as misuse. What the bytes hold is untrusted data and counts
     // nothing.
-    if (size < 0 || (bytes == nullptr && size > 0) || !AreAssetsValid(assets, assetCount))
+    mvfxResult valid = size < 0 || (bytes == nullptr && size > 0) ? mvfx_errorInvalid
+                                                                  : CheckAssets(assets, assetCount);
+    if (valid != mvfx_success)
     {
         mvfxCountMisuse(context);
-        return Fault(mvfx_errorInvalid, -1);
+        return Fault(valid, -1);
     }
     mvfxEffectDef def;
     int64_t needed = 0;

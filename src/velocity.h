@@ -23,8 +23,9 @@ typedef struct mvfxCompiledVelocity
     mvfxRange speed;
 } mvfxCompiledVelocity;
 
-// Whether a velocity is valid.
-bool mvfxIsVelocityValid(const mvfxVelocity* velocity);
+// Whether a velocity is valid: mvfx_errorLimit for a direction or a
+// speed past MVFX_MAX_EXTENT, mvfx_errorInvalid for anything else wrong.
+mvfxResult mvfxCheckVelocity(const mvfxVelocity* velocity);
 
 // Compiles a valid velocity.
 void mvfxCompileVelocity(const mvfxVelocity* velocity, mvfxCompiledVelocity* out);

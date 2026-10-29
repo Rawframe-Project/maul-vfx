@@ -248,12 +248,13 @@ static void TestAssetTables(void)
         int64_t size = 0;
         int64_t needed = 0;
         mvfxEffectDef read;
-        CHECK(Refused(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size), mvfx_errorInvalid,
-                      -1),
+        // A name past MVFX_MAX_ASSET_NAME is past a named bound.
+        mvfxResult want = c == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
+        CHECK(Refused(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size), want, -1),
               "the writer refuses the table");
         CHECK(Refused(mvfxReadEffect(bytes, written, table, 4, s_memory, sizeof s_memory, &needed,
                                      &read),
-                      mvfx_errorInvalid, -1),
+                      want, -1),
               "the reader refuses the table");
     }
     // A name the longest allowed, once a kind under each kind, in UTF-8 of
@@ -973,9 +974,11 @@ static void TestArgumentMisuse(void)
                        mvfx_errorInvalid, -1);
     for (int32_t t = 0; t < 6; ++t)
     {
+        // A name past MVFX_MAX_ASSET_NAME is past a named bound, and as a
+        // direct argument still misuse.
         counted += Refused(
             mvfxCreateEffectFromBytes(context, bytes, size, tables[t], t == 5 ? 2 : 1, &effect),
-            mvfx_errorInvalid, -1);
+            t == 3 ? mvfx_errorLimit : mvfx_errorInvalid, -1);
     }
     CHECK(counted == 10 && mvfxGetContextMisuse(context) == misuse + 10,
           "each invalid argument refused and counted as misuse");

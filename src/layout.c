@@ -63,19 +63,23 @@ static bool IsFieldValid(const mvfxLayoutField* f, uint32_t stride)
            (uint64_t)f->offset + (uint64_t)bytes * f->components <= stride;
 }
 
-bool mvfxIsLayoutDefValid(const mvfxLayoutDef* def)
+mvfxResult mvfxCheckLayoutDef(const mvfxLayoutDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_LAYOUT_DEF_COOKIE || def->fields == nullptr ||
-        def->fieldCount < 1 || def->fieldCount > MVFX_MAX_LAYOUT_FIELDS || def->stride < 1 ||
-        def->stride > MVFX_MAX_LAYOUT_STRIDE)
+        def->fieldCount < 1 || def->stride < 1)
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    // The count bounds the fields read below.
+    if (def->fieldCount > MVFX_MAX_LAYOUT_FIELDS || def->stride > MVFX_MAX_LAYOUT_STRIDE)
+    {
+        return mvfx_errorLimit;
     }
     for (int32_t i = 0; i < def->fieldCount; ++i)
     {
         if (!IsFieldValid(&def->fields[i], def->stride))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
     // No two fields share a byte.
@@ -89,11 +93,11 @@ bool mvfxIsLayoutDefValid(const mvfxLayoutDef* def)
             uint32_t bEnd = b->offset + FormatBytes(b->format) * b->components;
             if (a->offset < bEnd && b->offset < aEnd)
             {
-                return false;
+                return mvfx_errorInvalid;
             }
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 mvfxOutputLayout* mvfxBuildLayout(const mvfxLayoutDef* def, const mvfxAllocator* allocator)

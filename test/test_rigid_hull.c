@@ -778,7 +778,7 @@ static void TestChecks(void)
     mvfxMeshId gone = MeshOf(s_cube, 8);
     CHECK(mvfxDestroyMesh(s_scene.context, gone) == mvfx_success, "a mesh gone");
     mvfxMeshId shapes[3] = {MeshOf(flat, 4), MeshOf(ball, 200), gone};
-    mvfxResult expected[3] = {mvfx_errorInvalid, mvfx_errorInvalid, mvfx_errorStale};
+    mvfxResult expected[3] = {mvfx_errorInvalid, mvfx_errorLimit, mvfx_errorStale};
     mvfxResult centered[3] = {mvfx_success, mvfx_success, mvfx_errorStale};
     uint64_t misuse = mvfxGetContextMisuse(s_scene.context);
     int32_t refused = 0;

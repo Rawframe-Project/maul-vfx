@@ -3,15 +3,24 @@
 
 #include "over_life.h"
 
+#include "refusal.h"
+
 #include "maul-vfx/shape.h"
 
 #include <math.h>
 
-static bool IsInputValid(mvfxOverLifeInput input, const float range[2])
+static mvfxResult CheckInput(mvfxOverLifeInput input, const float range[2])
 {
-    return input == mvfx_overAge ||
-           (input == mvfx_overSpeed && fabsf(range[0]) <= MVFX_MAX_EXTENT &&
-            fabsf(range[1]) <= MVFX_MAX_EXTENT && range[0] < range[1]);
+    if (input == mvfx_overAge)
+    {
+        return mvfx_success;
+    }
+    if (input != mvfx_overSpeed || !(range[0] < range[1]))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(mvfxBounded(range[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                     mvfxBounded(range[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
 }
 
 static bool IsWhite(const mvfxGradient* gradient)
@@ -19,61 +28,96 @@ static bool IsWhite(const mvfxGradient* gradient)
     return gradient->colorKeyCount == 0 && gradient->alphaKeyCount == 0;
 }
 
-static bool IsColorValid(const mvfxColorOverLife* color)
+static mvfxResult CheckColor(const mvfxColorOverLife* color)
 {
-    return !color->enabled ||
-           (IsInputValid(color->input, color->speedRange) &&
-            (IsWhite(&color->gradient) || mvfxIsGradientValid(&color->gradient)) &&
-            (!color->scaleAlpha || mvfxIsLifeCurveValid(&color->alpha)));
+    if (!color->enabled)
+    {
+        return mvfx_success;
+    }
+    mvfxResult input = CheckInput(color->input, color->speedRange);
+    if (input != mvfx_success)
+    {
+        return input;
+    }
+    mvfxResult gradient =
+        IsWhite(&color->gradient) ? mvfx_success : mvfxCheckGradient(&color->gradient);
+    if (gradient != mvfx_success)
+    {
+        return gradient;
+    }
+    return color->scaleAlpha ? mvfxCheckLifeCurve(&color->alpha) : mvfx_success;
 }
 
-static bool IsSizeValid(const mvfxSizeOverLife* size)
+static mvfxResult CheckSize(const mvfxSizeOverLife* size)
 {
     if (!size->enabled)
     {
-        return true;
+        return mvfx_success;
     }
     int32_t axes = size->perAxis ? 3 : 1;
     for (int32_t k = 0; k < axes; ++k)
     {
-        if (!mvfxIsLifeCurveValid(&size->size[k]))
+        mvfxResult life = mvfxCheckLifeCurve(&size->size[k]);
+        if (life != mvfx_success)
         {
-            return false;
+            return life;
         }
     }
-    return IsInputValid(size->input, size->speedRange);
+    return CheckInput(size->input, size->speedRange);
 }
 
-static bool IsFrameValid(const mvfxFrameOverLife* frame)
+static mvfxResult CheckFrame(const mvfxFrameOverLife* frame)
 {
     switch (frame->animation)
     {
     case mvfx_frameStill:
-        return true;
+        return mvfx_success;
     case mvfx_frameOverLife:
-        return frame->frameCount >= 1 && frame->frameCount <= MVFX_MAX_FRAMES &&
-               frame->cycles > 0.0f && frame->cycles <= 1000.0f;
+        if (!(frame->cycles > 0.0f && frame->cycles <= 1000.0f))
+        {
+            return mvfx_errorInvalid;
+        }
+        return mvfxCountUpTo(frame->frameCount, 1, MVFX_MAX_FRAMES);
     case mvfx_frameAtRate:
-        return frame->frameCount >= 1 && frame->frameCount <= MVFX_MAX_FRAMES &&
-               frame->frameRate > 0.0f && frame->frameRate <= 10000.0f;
+        if (!(frame->frameRate > 0.0f && frame->frameRate <= 10000.0f))
+        {
+            return mvfx_errorInvalid;
+        }
+        return mvfxCountUpTo(frame->frameCount, 1, MVFX_MAX_FRAMES);
     default:
-        return false;
+        return mvfx_errorInvalid;
     }
 }
 
-bool mvfxIsOverLifeValid(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
-                         int32_t customCount)
+mvfxResult mvfxCheckOverLife(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
+                             int32_t customCount)
 {
     for (int32_t i = 0; i < customCount; ++i)
     {
-        if (custom[i].scaledOverLife && !mvfxIsLifeCurveValid(&custom[i].overLife))
+        mvfxResult life =
+            custom[i].scaledOverLife ? mvfxCheckLifeCurve(&custom[i].overLife) : mvfx_success;
+        if (life != mvfx_success)
         {
-            return false;
+            return life;
         }
     }
-    return IsColorValid(&overLife->color) && IsSizeValid(&overLife->size) &&
-           IsFrameValid(&overLife->frame) &&
-           (!overLife->rotation.enabled || mvfxIsLifeCurveValid(&overLife->rotation.scale));
+    mvfxResult color = CheckColor(&overLife->color);
+    if (color != mvfx_success)
+    {
+        return color;
+    }
+    mvfxResult size = CheckSize(&overLife->size);
+    if (size != mvfx_success)
+    {
+        return size;
+    }
+    mvfxResult frame = CheckFrame(&overLife->frame);
+    if (frame != mvfx_success)
+    {
+        return frame;
+    }
+    return overLife->rotation.enabled ? mvfxCheckLifeCurve(&overLife->rotation.scale)
+                                      : mvfx_success;
 }
 
 // A role's limit over the most a value over life scales it by, at most

@@ -337,8 +337,11 @@ typedef struct mvfxEffect
     int32_t waterCount;
 } mvfxEffect;
 
-// Whether a def and every emitter def in it are valid.
-bool mvfxIsEffectDefValid(const mvfxEffectDef* def);
+// Whether a def and every emitter def in it are valid: mvfx_errorLimit
+// for a value past one of the library's named bounds (MVFX_MAX_*,
+// MVFX_MIN_*), mvfx_errorInvalid for anything else wrong. The first check
+// that fails decides.
+mvfxResult mvfxCheckEffectDef(const mvfxEffectDef* def);
 
 // Compiles a valid def into a block from allocator, each mesh shape's
 // emitter i spawning from meshes[i]; NULL when the allocator fails or the

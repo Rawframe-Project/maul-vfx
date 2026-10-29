@@ -223,7 +223,7 @@ static void TestRefusals(void)
     mvfxCurve most = CurveOf(many, MVFX_CURVE_MAX_KEYS, mvfx_tangentsGiven);
     CHECK(Bake(&most, true, NULL) == mvfx_success, "the most keys");
     mvfxCurve tooMany = CurveOf(many, MVFX_CURVE_MAX_KEYS + 1, mvfx_tangentsGiven);
-    CHECK(Bake(&tooMany, true, NULL) == mvfx_errorInvalid, "too many keys");
+    CHECK(Bake(&tooMany, true, NULL) == mvfx_errorLimit, "too many keys");
 
     // Each field of a key out of bounds; then each at its bound, which is
     // taken. A field's bound is 1e18 in size.
@@ -633,9 +633,9 @@ static void TestGradientRefusals(void)
     mvfxGradient most = {many, MVFX_CURVE_MAX_KEYS, manyAlphas, MVFX_CURVE_MAX_KEYS};
     CHECK(BakeGradient(&most, NULL) == mvfx_success, "the most keys");
     mvfxGradient tooManyColors = {many, MVFX_CURVE_MAX_KEYS + 1, alphas, 1};
-    CHECK(BakeGradient(&tooManyColors, NULL) == mvfx_errorInvalid, "too many colour keys");
+    CHECK(BakeGradient(&tooManyColors, NULL) == mvfx_errorLimit, "too many colour keys");
     mvfxGradient tooManyAlphas = {colors, 2, manyAlphas, MVFX_CURVE_MAX_KEYS + 1};
-    CHECK(BakeGradient(&tooManyAlphas, NULL) == mvfx_errorInvalid, "too many alpha keys");
+    CHECK(BakeGradient(&tooManyAlphas, NULL) == mvfx_errorLimit, "too many alpha keys");
     mvfxColorKey backward[2] = {{0.6f, 1, 0, 0}, {0.5f, 0, 0, 1}};
     mvfxGradient reversed = {backward, 2, alphas, 1};
     CHECK(BakeGradient(&reversed, NULL) == mvfx_errorInvalid, "decreasing colour times");

@@ -248,7 +248,9 @@ static void TestChecks(void)
             p->strength.curve = (mvfxCurve){.keys = backwards, .keyCount = 2};
             break;
         }
-        refused += mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 4 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(s_context, &def, &effect) == want;
     }
     CHECK(refused == 6, "every check");
     emitter = Emitter(-MVFX_MAX_EXTENT);

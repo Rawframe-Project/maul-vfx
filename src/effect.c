@@ -14,6 +14,7 @@
 #include "force.h"
 #include "hull.h"
 #include "kill.h"
+#include "refusal.h"
 
 #include <math.h>
 
@@ -74,40 +75,49 @@ static void BakeRateCurve(const mvfxCurve* curve, float rate, mvfxRateCurve* out
 // Whether a rate curve is valid for an emitter of this rate and duration:
 // no keys, or keys over [0, 1] that bake to values never below 0 and never
 // past MVFX_MAX_SPAWN_RATE once times rate.
-static bool IsRateCurveValid(const mvfxEmitterDef* def)
+static mvfxResult CheckRateCurve(const mvfxEmitterDef* def)
 {
     if (def->rateCurve.keyCount == 0)
     {
-        return true;
+        return mvfx_success;
     }
-    if (def->duration <= 0.0f || !mvfxIsCurveValid(&def->rateCurve, true))
+    if (def->duration <= 0.0f)
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    mvfxResult curve = mvfxCheckCurve(&def->rateCurve, true);
+    if (curve != mvfx_success)
+    {
+        return curve;
     }
     mvfxRateCurve baked;
     BakeRateCurve(&def->rateCurve, 1.0f, &baked);
     if (!mvfxIsCurveTableNonNegative(&baked.table))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     for (int32_t i = 0; i < MVFX_CURVE_SAMPLES; ++i)
     {
         if (!((double)baked.table.samples[i] * (double)def->rate <= (double)MVFX_MAX_SPAWN_RATE))
         {
-            return false;
+            return mvfx_errorLimit;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
-static bool IsBurstValid(const mvfxBurst* burst)
+static mvfxResult CheckBurst(const mvfxBurst* burst)
 {
-    return IsWithin(burst->time, 0.0f, MVFX_MAX_LIFETIME) && burst->minCount >= 0 &&
-           burst->minCount <= burst->maxCount && burst->maxCount <= MVFX_MAX_EMITTER_CAPACITY &&
-           burst->cycles >= 0 &&
-           (burst->cycles == 1 ||
-            IsWithin(burst->interval, MVFX_MIN_DURATION, MVFX_MAX_LIFETIME)) &&
-           IsWithin(burst->probability, 0.0f, 1.0f);
+    if (burst->minCount < 0 || burst->minCount > burst->maxCount || burst->cycles < 0 ||
+        !IsWithin(burst->probability, 0.0f, 1.0f))
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult interval = burst->cycles == 1 ? mvfx_success
+                                             : mvfxBounded(burst->interval, MVFX_MIN_DURATION,
+                                                           MVFX_MAX_LIFETIME);
+    return mvfxFirst(mvfxFirst(mvfxUpToBound(burst->time, 0.0f, MVFX_MAX_LIFETIME), interval),
+                     mvfxWithinBound(burst->maxCount <= MVFX_MAX_EMITTER_CAPACITY));
 }
 
 // The most particles a second an emitter's bursts may spawn when they
@@ -131,76 +141,97 @@ static double BurstRate(const mvfxEmitterDef* def)
 }
 
 // Whether a motion's gravity, space and drags are in range.
-static bool IsMotionValid(const mvfxMotion* motion)
+static mvfxResult CheckMotion(const mvfxMotion* motion)
 {
-    for (int32_t k = 0; k < 3; ++k)
+    if (motion->gravitySpace > mvfx_spaceLocal)
     {
-        if (!(fabsf(motion->gravity[k]) <= MVFX_MAX_EXTENT))
-        {
-            return false;
-        }
+        return mvfx_errorInvalid;
     }
-    return motion->gravitySpace <= mvfx_spaceLocal && IsWithin(motion->drag, 0.0f, MVFX_MAX_DRAG) &&
-           IsWithin(motion->angularDrag, 0.0f, MVFX_MAX_DRAG);
+    return mvfxFirst(mvfxBoundedVector(motion->gravity, MVFX_MAX_EXTENT),
+                     mvfxFirst(mvfxUpToBound(motion->drag, 0.0f, MVFX_MAX_DRAG),
+                               mvfxUpToBound(motion->angularDrag, 0.0f, MVFX_MAX_DRAG)));
 }
 
-static bool IsEmitterDefValid(const mvfxEmitterDef* def)
+static mvfxResult CheckEmitterDef(const mvfxEmitterDef* def)
 {
-    if (def->cookie != MVFX_EMITTER_DEF_COOKIE || def->capacity < 1 ||
-        def->capacity > MVFX_MAX_EMITTER_CAPACITY ||
-        !IsWithin(def->rate, 0.0f, MVFX_MAX_SPAWN_RATE) ||
-        !IsWithin(def->startDelay, 0.0f, MVFX_MAX_LIFETIME) ||
-        !(def->duration == 0.0f || IsWithin(def->duration, MVFX_MIN_DURATION, MVFX_MAX_LIFETIME)) ||
-        def->loops < 0 || def->burstCount < 0 || def->burstCount > MVFX_MAX_BURSTS ||
-        def->space > mvfx_spaceLocal || !IsMotionValid(&def->motion) ||
-        !IsWithin(def->ratePerDistance, 0.0f, MVFX_MAX_DISTANCE_RATE) ||
+    if (def->cookie != MVFX_EMITTER_DEF_COOKIE || def->capacity < 1 || def->loops < 0 ||
+        def->burstCount < 0 || def->space > mvfx_spaceLocal ||
         !IsWithin(def->inheritVelocity, -10.0f, 10.0f) ||
         (def->space == mvfx_spaceLocal && def->inheritVelocity != 0.0f) ||
         def->hostSpawnCapacity < 0 || def->hostSpawnCapacity > def->capacity ||
         (def->burstCount > 0 && def->bursts == nullptr) || def->rateCurve.keyCount < 0)
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    mvfxResult duration = def->duration == 0.0f ? mvfx_success
+                                                : mvfxBounded(def->duration, MVFX_MIN_DURATION,
+                                                              MVFX_MAX_LIFETIME);
+    mvfxResult fields = mvfxFirst(
+        mvfxFirst(mvfxWithinBound(def->capacity <= MVFX_MAX_EMITTER_CAPACITY),
+                  mvfxUpToBound(def->rate, 0.0f, MVFX_MAX_SPAWN_RATE)),
+        mvfxFirst(mvfxFirst(mvfxUpToBound(def->startDelay, 0.0f, MVFX_MAX_LIFETIME), duration),
+                  mvfxFirst(mvfxWithinBound(def->burstCount <= MVFX_MAX_BURSTS),
+                            mvfxUpToBound(def->ratePerDistance, 0.0f, MVFX_MAX_DISTANCE_RATE))));
+    if (fields != mvfx_success)
+    {
+        return fields;
+    }
+    mvfxResult motion = CheckMotion(&def->motion);
+    if (motion != mvfx_success)
+    {
+        return motion;
     }
     for (int32_t b = 0; b < def->burstCount; ++b)
     {
-        if (!IsBurstValid(&def->bursts[b]))
+        mvfxResult burst = CheckBurst(&def->bursts[b]);
+        if (burst != mvfx_success)
         {
-            return false;
+            return burst;
         }
     }
-    return BurstRate(def) <= (double)MVFX_MAX_SPAWN_RATE && IsRateCurveValid(def) &&
-           mvfxIsShapeValid(&def->shape) && mvfxIsVelocityValid(&def->velocity);
+    mvfxResult rate = mvfxFirst(mvfxWithinBound(BurstRate(def) <= (double)MVFX_MAX_SPAWN_RATE),
+                                CheckRateCurve(def));
+    if (rate != mvfx_success)
+    {
+        return rate;
+    }
+    return mvfxFirst(mvfxCheckShape(&def->shape), mvfxCheckVelocity(&def->velocity));
 }
 
-// Whether a lifetime is valid: required, and a range of lives above 0 and
-// at most MVFX_MAX_LIFETIME.
-static bool IsLifetimeValid(const mvfxScalarSource* lifetime, bool hasDuration,
-                            int32_t parameterCount)
+// Whether a lifetime is valid: required, and a range of lives above 0
+// (else mvfx_errorInvalid) and at most MVFX_MAX_LIFETIME (else
+// mvfx_errorLimit).
+static mvfxResult CheckLifetime(const mvfxScalarSource* lifetime, bool hasDuration,
+                                int32_t parameterCount)
 {
-    if (!mvfxIsScalarSourceValid(lifetime, false, hasDuration, parameterCount, MVFX_MAX_DRAW))
+    mvfxResult source =
+        mvfxCheckScalarSource(lifetime, false, hasDuration, parameterCount, MVFX_MAX_DRAW);
+    if (source != mvfx_success || lifetime->kind != mvfx_sourceRange)
     {
-        return false;
+        return source;
     }
-    return lifetime->kind != mvfx_sourceRange ||
-           (lifetime->range.min > 0.0f && lifetime->range.max <= MVFX_MAX_LIFETIME);
+    return lifetime->range.min > 0.0f
+               ? mvfxWithinBound(lifetime->range.max <= MVFX_MAX_LIFETIME)
+               : mvfx_errorInvalid;
 }
 
 // Whether a ribbon's tessellation, texture and facing are valid.
-static bool IsRibbonShapeValid(const mvfxRibbonDef* ribbon)
+static mvfxResult CheckRibbonShape(const mvfxRibbonDef* ribbon)
 {
     const float* n = ribbon->normal;
-    bool normal = IsWithin(n[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-                  IsWithin(n[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-                  IsWithin(n[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-                  (n[0] != 0.0f || n[1] != 0.0f || n[2] != 0.0f);
-    return ribbon->pieces >= 1 && ribbon->pieces <= MVFX_MAX_RIBBON_PIECES &&
-           IsWithin(ribbon->bendAngle, 0.0f, 3.14159265f) &&
-           ribbon->texture <= mvfx_ribbonTileByDistance && ribbon->tileLength > 0.0f &&
-           ribbon->tileLength <= MVFX_MAX_EXTENT &&
-           IsWithin(ribbon->scroll, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           ribbon->facing <= mvfx_ribbonFaceNormal && normal &&
-           IsWithin(ribbon->breakDistance, 0.0f, MVFX_MAX_EXTENT) &&
-           (!ribbon->pinHead || ribbon->ids == mvfx_ribbonOne);
+    if (ribbon->pieces < 1 || !IsWithin(ribbon->bendAngle, 0.0f, 3.14159265f) ||
+        ribbon->texture > mvfx_ribbonTileByDistance || ribbon->facing > mvfx_ribbonFaceNormal ||
+        (n[0] == 0.0f && n[1] == 0.0f && n[2] == 0.0f) ||
+        (ribbon->pinHead && ribbon->ids != mvfx_ribbonOne))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(
+        mvfxFirst(mvfxWithinBound(ribbon->pieces <= MVFX_MAX_RIBBON_PIECES),
+                  mvfxPositiveUpTo(ribbon->tileLength, MVFX_MAX_EXTENT)),
+        mvfxFirst(mvfxFirst(mvfxBounded(ribbon->scroll, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                            mvfxBoundedVector(n, MVFX_MAX_EXTENT)),
+                  mvfxUpToBound(ribbon->breakDistance, 0.0f, MVFX_MAX_EXTENT)));
 }
 
 // Compiles a ribbon's tessellation, texture and facing: for a bend angle,
@@ -238,62 +269,95 @@ static bool IsWhite(const mvfxGradient* gradient)
 }
 
 // Whether an emitter's mesh index, lights, sorting and ribbons are valid.
-static bool AreOutputsValid(const mvfxEmitterDef* def)
+static mvfxResult CheckOutputs(const mvfxEmitterDef* def)
 {
     const mvfxFrameStart* mesh = &def->meshIndex;
     const mvfxLightDef* light = &def->light;
-    bool lightValid =
-        !light->enabled || (light->every >= 1 && light->every <= 65536 &&
-                            light->intensity >= 0.0f && light->intensity <= MVFX_MAX_EXTENT &&
-                            light->radius >= 0.0f && light->radius <= MVFX_MAX_EXTENT &&
-                            light->radiusBySize >= 0.0f && light->radiusBySize <= MVFX_MAX_EXTENT);
     const mvfxRibbonDef* ribbon = &def->ribbon;
-    bool ribbonValid = ribbon->ids <= mvfx_ribbonPerSource &&
-                       (ribbon->ids == mvfx_ribbonNone || IsRibbonShapeValid(ribbon)) &&
-                       mvfxIsLifeCurveValid(&ribbon->width) &&
-                       (IsWhite(&ribbon->color) || mvfxIsGradientValid(&ribbon->color));
-    bool spriteValid = def->sprite.billboard <= mvfx_billboardDirectional &&
-                       IsWithin(def->sprite.stretch, 0.0f, MVFX_MAX_EXTENT);
-    return lightValid && ribbonValid && spriteValid && def->sortMode <= mvfx_sortFrontToBack &&
-           def->sortMeasure <= mvfx_sortByDepth && mesh->mode <= mvfx_frameRandom &&
-           mesh->first >= 0 && mesh->first <= mesh->last && mesh->last < MVFX_MAX_MESH_INDEX;
+    if ((light->enabled && (light->every < 1 || light->every > 65536)) ||
+        ribbon->ids > mvfx_ribbonPerSource ||
+        def->sprite.billboard > mvfx_billboardDirectional || def->sortMode > mvfx_sortFrontToBack ||
+        def->sortMeasure > mvfx_sortByDepth || mesh->mode > mvfx_frameRandom || mesh->first < 0 ||
+        mesh->first > mesh->last)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult lit = light->enabled
+                         ? mvfxFirst(mvfxUpToBound(light->intensity, 0.0f, MVFX_MAX_EXTENT),
+                                     mvfxFirst(mvfxUpToBound(light->radius, 0.0f, MVFX_MAX_EXTENT),
+                                               mvfxUpToBound(light->radiusBySize, 0.0f,
+                                                             MVFX_MAX_EXTENT)))
+                         : mvfx_success;
+    if (lit != mvfx_success)
+    {
+        return lit;
+    }
+    mvfxResult shape = ribbon->ids == mvfx_ribbonNone ? mvfx_success : CheckRibbonShape(ribbon);
+    if (shape != mvfx_success)
+    {
+        return shape;
+    }
+    mvfxResult width = mvfxCheckLifeCurve(&ribbon->width);
+    if (width != mvfx_success)
+    {
+        return width;
+    }
+    mvfxResult color = IsWhite(&ribbon->color) ? mvfx_success : mvfxCheckGradient(&ribbon->color);
+    if (color != mvfx_success)
+    {
+        return color;
+    }
+    return mvfxFirst(mvfxUpToBound(def->sprite.stretch, 0.0f, MVFX_MAX_EXTENT),
+                     mvfxWithinBound(mesh->last < MVFX_MAX_MESH_INDEX));
 }
 
 // Whether an emitter's collision and colliders are valid, and a kill rule
 // counting collisions has collisions to count.
-static bool AreCollisionsValid(const mvfxEmitterDef* def)
+static mvfxResult CheckCollisions(const mvfxEmitterDef* def)
 {
-    if (!mvfxIsCollisionValid(&def->collision) || def->colliderCount < 0 ||
-        def->colliderCount > MVFX_MAX_COLLIDERS ||
-        (def->colliderCount > 0 && def->colliders == nullptr))
+    if (def->colliderCount < 0 || (def->colliderCount > 0 && def->colliders == nullptr))
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    mvfxResult collision =
+        mvfxFirst(mvfxCheckCollision(&def->collision),
+                  mvfxWithinBound(def->colliderCount <= MVFX_MAX_COLLIDERS));
+    if (collision != mvfx_success)
+    {
+        return collision;
     }
     for (int32_t c = 0; c < def->colliderCount; ++c)
     {
-        if (!mvfxIsColliderValid(&def->colliders[c]))
+        mvfxResult collider = mvfxCheckCollider(&def->colliders[c]);
+        if (collider != mvfx_success)
         {
-            return false;
+            return collider;
         }
     }
     for (int32_t r = 0; r < def->killRuleCount; ++r)
     {
         if (def->killRules[r].kind == mvfx_killCollisions && !def->collision.enabled)
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
-    if (!AreOutputsValid(def))
+    mvfxResult outputs = CheckOutputs(def);
+    if (outputs != mvfx_success)
     {
-        return false;
+        return outputs;
     }
     for (int32_t k = 0; def->fixedBounds && k < 3; ++k)
     {
-        if (!(fabsf(def->boundsMin[k]) <= MVFX_MAX_EXTENT) ||
-            !(fabsf(def->boundsMax[k]) <= MVFX_MAX_EXTENT) ||
-            !(def->boundsMin[k] <= def->boundsMax[k]))
+        if (!(def->boundsMin[k] <= def->boundsMax[k]))
         {
-            return false;
+            return mvfx_errorInvalid;
+        }
+        mvfxResult bounds =
+            mvfxFirst(mvfxBounded(def->boundsMin[k], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                      mvfxBounded(def->boundsMax[k], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+        if (bounds != mvfx_success)
+        {
+            return bounds;
         }
     }
     // Events of known kinds, collisions only where they collide, tears
@@ -302,30 +366,38 @@ static bool AreCollisionsValid(const mvfxEmitterDef* def)
     bool tears = (def->unit.kind != mvfx_unitParticle && def->unit.tearStrain > 0.0f) ||
                  (def->events & mvfx_eventMaskTear) == 0;
     bool crosses = def->water.enabled || (def->events & mvfx_eventMaskWater) == 0;
-    return def->events <= 31u && collides && tears && crosses &&
-           (def->events == 0 || (def->eventCapacity >= 1 && def->eventCapacity <= MVFX_MAX_EVENTS));
+    if (def->events > 31u || !collides || !tears || !crosses)
+    {
+        return mvfx_errorInvalid;
+    }
+    return def->events == 0 ? mvfx_success
+                            : mvfxCountUpTo(def->eventCapacity, 1, MVFX_MAX_EVENTS);
 }
 
 // Whether host modules are valid: a function each, a known stage.
-static bool AreHostModulesValid(const mvfxHostModule* modules, int32_t count)
+static mvfxResult CheckHostModules(const mvfxHostModule* modules, int32_t count)
 {
-    if (count < 0 || count > MVFX_MAX_HOST_MODULES || (count > 0 && modules == nullptr))
+    if (count < 0 || (count > 0 && modules == nullptr))
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    if (count > MVFX_MAX_HOST_MODULES)
+    {
+        return mvfx_errorLimit;
     }
     for (int32_t m = 0; m < count; ++m)
     {
         if (modules[m].function == nullptr || modules[m].stage > mvfx_stageAfterMotion)
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // Raises reach to the share of its cap of the ends of each source of an
 // emitter's values that reads a parameter's component
-// (mvfxIsParameterWithinReach), for an emitter whose values over life are
+// (mvfxCheckParameterReach), for an emitter whose values over life are
 // valid.
 static void AddParameterReach(const mvfxEmitterDef* def, double reach[MVFX_MAX_PARAMETERS][4])
 {
@@ -352,7 +424,7 @@ static void AddParameterReach(const mvfxEmitterDef* def, double reach[MVFX_MAX_P
 
 // Whether each parameter's defaults keep the sources reading them within
 // their caps, for an effect whose emitters are valid.
-static bool AreDefaultsWithinReach(const mvfxEffectDef* def)
+static mvfxResult CheckDefaultsReach(const mvfxEffectDef* def)
 {
     double reach[MVFX_MAX_PARAMETERS][4] = {{0}};
     for (int32_t i = 0; i < def->emitterCount; ++i)
@@ -361,144 +433,177 @@ static bool AreDefaultsWithinReach(const mvfxEffectDef* def)
     }
     for (int32_t p = 0; p < def->parameterCount; ++p)
     {
-        if (!mvfxIsParameterWithinReach(&def->parameters[4 * p], reach[p]))
+        mvfxResult within = mvfxCheckParameterReach(&def->parameters[4 * p], reach[p]);
+        if (within != mvfx_success)
         {
-            return false;
+            return within;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // Whether an emitter's initial values are valid against its effect's
 // parameters.
-static bool AreValuesValid(const mvfxEmitterDef* def, int32_t parameterCount)
+static mvfxResult CheckValues(const mvfxEmitterDef* def, int32_t parameterCount)
 {
     bool d = def->duration > 0.0f;
-    if (def->customCount < 0 || def->customCount > MVFX_MAX_CUSTOM_ATTRIBUTES ||
-        (def->customCount > 0 && def->custom == nullptr) ||
-        !mvfxAreVelocityModulesValid(&def->velocityModules) ||
-        !mvfxIsOverLifeValid(&def->overLife, def->custom, def->customCount))
+    if (def->customCount < 0 || (def->customCount > 0 && def->custom == nullptr))
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    if (def->customCount > MVFX_MAX_CUSTOM_ATTRIBUTES)
+    {
+        return mvfx_errorLimit;
+    }
+    mvfxResult modules = mvfxCheckVelocityModules(&def->velocityModules);
+    if (modules != mvfx_success)
+    {
+        return modules;
+    }
+    mvfxResult overLife = mvfxCheckOverLife(&def->overLife, def->custom, def->customCount);
+    if (overLife != mvfx_success)
+    {
+        return overLife;
+    }
+    if (def->orientationMode > mvfx_orientationRandom ||
+        (def->orientationMode == mvfx_orientationEuler &&
+         def->orientation.kind == mvfx_sourceNone) ||
+        def->frame.mode > mvfx_frameRandom || def->frame.first < 0 ||
+        def->frame.first > def->frame.last || def->forceCount < 0 ||
+        (def->forceCount > 0 && def->forces == nullptr) || def->killRuleCount < 0 ||
+        (def->killRuleCount > 0 && def->killRules == nullptr))
+    {
+        return mvfx_errorInvalid;
     }
     // The sources' caps follow from the values over life, checked first.
     mvfxSourceCaps caps;
     mvfxSourceCapsOf(&def->overLife, def->custom, def->customCount, &caps);
-    if (!IsLifetimeValid(&def->lifetime, d, parameterCount) ||
-        !mvfxIsVectorSourceValid(&def->size, 3, d, parameterCount, caps.stored.size) ||
-        !mvfxIsVectorSourceValid(&def->color, 4, d, parameterCount, caps.stored.color) ||
-        !mvfxIsScalarSourceValid(&def->angle, true, d, parameterCount, MVFX_MAX_DRAW) ||
-        !mvfxIsScalarSourceValid(&def->spin, true, d, parameterCount, caps.stored.spin) ||
-        !mvfxIsScalarSourceValid(&def->motion.dragScale, true, d, parameterCount, MVFX_MAX_DRAW) ||
-        def->orientationMode > mvfx_orientationRandom ||
-        (def->orientationMode == mvfx_orientationEuler &&
-         def->orientation.kind == mvfx_sourceNone) ||
-        !mvfxIsVectorSourceValid(&def->orientation, 3, d, parameterCount, caps.any) ||
-        !mvfxIsVectorSourceValid(&def->angularVelocity, 3, d, parameterCount, caps.spin) ||
-        def->frame.mode > mvfx_frameRandom || def->frame.first < 0 ||
-        def->frame.first > def->frame.last || def->frame.last >= MVFX_MAX_FRAMES ||
-        def->forceCount < 0 || def->forceCount > MVFX_MAX_FORCES ||
-        (def->forceCount > 0 && def->forces == nullptr))
+    const mvfxResult sources[] = {
+        CheckLifetime(&def->lifetime, d, parameterCount),
+        mvfxCheckVectorSource(&def->size, 3, d, parameterCount, caps.stored.size),
+        mvfxCheckVectorSource(&def->color, 4, d, parameterCount, caps.stored.color),
+        mvfxCheckScalarSource(&def->angle, true, d, parameterCount, MVFX_MAX_DRAW),
+        mvfxCheckScalarSource(&def->spin, true, d, parameterCount, caps.stored.spin),
+        mvfxCheckScalarSource(&def->motion.dragScale, true, d, parameterCount, MVFX_MAX_DRAW),
+        mvfxCheckVectorSource(&def->orientation, 3, d, parameterCount, caps.any),
+        mvfxCheckVectorSource(&def->angularVelocity, 3, d, parameterCount, caps.spin),
+        mvfxWithinBound(def->frame.last < MVFX_MAX_FRAMES),
+        mvfxWithinBound(def->forceCount <= MVFX_MAX_FORCES),
+        mvfxWithinBound(def->killRuleCount <= MVFX_MAX_KILL_RULES),
+    };
+    for (size_t k = 0; k < sizeof(sources) / sizeof(sources[0]); ++k)
     {
-        return false;
+        if (sources[k] != mvfx_success)
+        {
+            return sources[k];
+        }
     }
     for (int32_t f = 0; f < def->forceCount; ++f)
     {
-        if (!mvfxIsForceValid(&def->forces[f], parameterCount))
+        mvfxResult force = mvfxCheckForce(&def->forces[f], parameterCount);
+        if (force != mvfx_success)
         {
-            return false;
+            return force;
         }
-    }
-    if (def->killRuleCount < 0 || def->killRuleCount > MVFX_MAX_KILL_RULES ||
-        (def->killRuleCount > 0 && def->killRules == nullptr))
-    {
-        return false;
     }
     for (int32_t r = 0; r < def->killRuleCount; ++r)
     {
-        if (!mvfxIsKillRuleValid(&def->killRules[r]))
+        mvfxResult rule = mvfxCheckKillRule(&def->killRules[r]);
+        if (rule != mvfx_success)
         {
-            return false;
+            return rule;
         }
     }
-    if (!AreHostModulesValid(def->hostModules, def->hostModuleCount))
+    mvfxResult modulesAndCollisions =
+        mvfxFirst(CheckHostModules(def->hostModules, def->hostModuleCount), CheckCollisions(def));
+    if (modulesAndCollisions != mvfx_success)
     {
-        return false;
-    }
-    if (!AreCollisionsValid(def))
-    {
-        return false;
+        return modulesAndCollisions;
     }
     for (int32_t i = 0; i < def->customCount; ++i)
     {
         const mvfxCustomAttribute* custom = &def->custom[i];
-        if (custom->components < 1 || custom->components > 4 ||
-            !mvfxIsVectorSourceValid(&custom->initial, custom->components, d, parameterCount,
-                                     caps.custom[i]))
+        if (custom->components < 1 || custom->components > 4)
         {
-            return false;
+            return mvfx_errorInvalid;
+        }
+        mvfxResult initial = mvfxCheckVectorSource(&custom->initial, custom->components, d,
+                                                   parameterCount, caps.custom[i]);
+        if (initial != mvfx_success)
+        {
+            return initial;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // Whether a beam's point is finite and in range, its parameter one of the
 // effect's.
-static bool IsBeamPointValid(const mvfxBeamPoint* point, int32_t parameterCount)
+static mvfxResult CheckBeamPoint(const mvfxBeamPoint* point, int32_t parameterCount)
 {
-    return IsWithin(point->point[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           IsWithin(point->point[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) &&
-           (!point->fromParameter || (point->parameter >= 0 && point->parameter < parameterCount));
+    if (point->fromParameter && (point->parameter < 0 || point->parameter >= parameterCount))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxBoundedVector(point->point, MVFX_MAX_EXTENT);
 }
 
 // Whether a beam is valid: its shape in range, and nothing that would
 // spawn or move its points but the beam.
-static bool IsBeamValid(const mvfxEmitterDef* def, int32_t parameterCount)
+static mvfxResult CheckBeam(const mvfxEmitterDef* def, int32_t parameterCount)
 {
     const mvfxBeamDef* beam = &def->beam;
     if (!beam->enabled)
     {
-        return true;
-    }
-    bool shape = beam->segments >= 1 && beam->segments <= MVFX_MAX_BEAM_SEGMENTS &&
-                 def->capacity >= beam->segments + 1 && beam->controlCount >= 0 &&
-                 beam->controlCount <= 2 && IsBeamPointValid(&beam->start, parameterCount) &&
-                 IsBeamPointValid(&beam->end, parameterCount) &&
-                 IsWithin(beam->noiseAmplitude, 0.0f, MVFX_MAX_EXTENT) &&
-                 IsWithin(beam->noiseFrequency, 0.0f, 1000.0f) &&
-                 IsWithin(beam->noiseSpeed, -1000.0f, 1000.0f);
-    for (int32_t c = 0; shape && c < beam->controlCount; ++c)
-    {
-        shape = IsBeamPointValid(&beam->controls[c], parameterCount);
+        return mvfx_success;
     }
     bool alone = def->rate == 0.0f && def->burstCount == 0 && def->ratePerDistance == 0.0f &&
                  !def->eventSpawn.enabled && def->hostSpawnCapacity == 0 &&
                  !def->collision.enabled && def->forceCount == 0 && !def->contacts.enabled &&
                  !def->steering.enabled && !def->pairForce.enabled &&
                  (def->events & mvfx_eventMaskBirth) == 0;
-    return shape && alone && def->ribbon.ids == mvfx_ribbonOne && !def->ribbon.pinHead;
+    if (beam->segments < 1 || def->capacity < beam->segments + 1 || beam->controlCount < 0 ||
+        beam->controlCount > 2 || !IsWithin(beam->noiseFrequency, 0.0f, 1000.0f) ||
+        !IsWithin(beam->noiseSpeed, -1000.0f, 1000.0f) || !alone ||
+        def->ribbon.ids != mvfx_ribbonOne || def->ribbon.pinHead)
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult shape =
+        mvfxFirst(mvfxFirst(mvfxWithinBound(beam->segments <= MVFX_MAX_BEAM_SEGMENTS),
+                            mvfxUpToBound(beam->noiseAmplitude, 0.0f, MVFX_MAX_EXTENT)),
+                  mvfxFirst(CheckBeamPoint(&beam->start, parameterCount),
+                            CheckBeamPoint(&beam->end, parameterCount)));
+    for (int32_t c = 0; shape == mvfx_success && c < beam->controlCount; ++c)
+    {
+        shape = CheckBeamPoint(&beam->controls[c], parameterCount);
+    }
+    return shape;
 }
 
 // Whether an emitter's spawning from events is valid against its effect:
 // a source not its own that writes the kind, counts and a share in range.
-static bool IsEventSpawnValid(const mvfxEffectDef* def, int32_t i)
+static mvfxResult CheckEventSpawn(const mvfxEffectDef* def, int32_t i)
 {
     const mvfxEventSpawn* spawn = &def->emitters[i].eventSpawn;
     if (!spawn->enabled)
     {
-        return true;
+        return mvfx_success;
     }
     if (spawn->source < 0 || spawn->source >= def->emitterCount || spawn->source == i ||
         spawn->kind > mvfx_eventWater)
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     bool written = (def->emitters[spawn->source].events & (1u << spawn->kind)) != 0;
-    return written && spawn->minCount >= 0 && spawn->minCount <= spawn->maxCount &&
-           spawn->maxCount <= MVFX_MAX_EVENT_SPAWN && spawn->inheritVelocity >= 0.0f &&
-           spawn->inheritVelocity <= 1.0f && spawn->capacity >= 1 &&
-           spawn->capacity <= MVFX_MAX_EMITTER_CAPACITY;
+    if (!written || spawn->minCount < 0 || spawn->minCount > spawn->maxCount ||
+        !(spawn->inheritVelocity >= 0.0f && spawn->inheritVelocity <= 1.0f) ||
+        spawn->capacity < 1)
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxFirst(mvfxWithinBound(spawn->maxCount <= MVFX_MAX_EVENT_SPAWN),
+                     mvfxWithinBound(spawn->capacity <= MVFX_MAX_EMITTER_CAPACITY));
 }
 
 // Whether a source is an emitter of the effect already placed: one out of
@@ -539,12 +644,15 @@ static bool OrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITT
 
 // Whether an effect's quality levels are valid: a count in range, scales
 // in range, and only its own emitters left out.
-static bool AreQualityLevelsValid(const mvfxEffectDef* def)
+static mvfxResult CheckQualityLevels(const mvfxEffectDef* def)
 {
-    if (def->qualityLevelCount < 0 || def->qualityLevelCount > MVFX_MAX_QUALITY_LEVELS ||
-        (def->qualityLevelCount > 0 && def->qualityLevels == nullptr))
+    if (def->qualityLevelCount < 0 || (def->qualityLevelCount > 0 && def->qualityLevels == nullptr))
     {
-        return false;
+        return mvfx_errorInvalid;
+    }
+    if (def->qualityLevelCount > MVFX_MAX_QUALITY_LEVELS)
+    {
+        return mvfx_errorLimit;
     }
     uint64_t own =
         def->emitterCount >= 64 ? ~(uint64_t)0 : ((uint64_t)1 << (uint32_t)def->emitterCount) - 1u;
@@ -554,66 +662,84 @@ static bool AreQualityLevelsValid(const mvfxEffectDef* def)
         if (!(level->capacityScale > 0.0f && level->capacityScale <= 1.0f) ||
             !IsWithin(level->rateScale, 0.0f, 1.0f) || (level->omitted & ~own) != 0)
         {
-            return false;
+            return mvfx_errorInvalid;
         }
     }
-    return true;
+    return mvfx_success;
 }
 
-bool mvfxIsEffectDefValid(const mvfxEffectDef* def)
+mvfxResult mvfxCheckEffectDef(const mvfxEffectDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_EFFECT_DEF_COOKIE ||
         (def->emitterCount > 0 && def->emitters == nullptr) || def->emitterCount < 0 ||
-        def->emitterCount > MVFX_MAX_EMITTERS || def->gasCount < 0 ||
-        def->gasCount > MVFX_MAX_GASES || (def->gasCount > 0 && def->gases == nullptr) ||
-        def->waterCount < 0 || def->waterCount > MVFX_MAX_WATERS ||
-        (def->waterCount > 0 && def->waters == nullptr) ||
+        def->gasCount < 0 || (def->gasCount > 0 && def->gases == nullptr) || def->waterCount < 0 ||
+        (def->waterCount > 0 && def->waters == nullptr) || def->parameterCount < 0 ||
+        (def->parameterCount > 0 && def->parameters == nullptr) ||
         def->emitterCount + def->gasCount + def->waterCount < 1)
     {
-        return false;
+        return mvfx_errorInvalid;
     }
-    for (int32_t g = 0; g < def->gasCount; ++g)
+    // The counts bound the arrays the checks below fill.
+    if (def->emitterCount > MVFX_MAX_EMITTERS || def->gasCount > MVFX_MAX_GASES ||
+        def->waterCount > MVFX_MAX_WATERS || def->parameterCount > MVFX_MAX_PARAMETERS)
     {
-        if (!mvfxIsGasDefValid(&def->gases[g]))
-        {
-            return false;
-        }
-    }
-    for (int32_t w = 0; w < def->waterCount; ++w)
-    {
-        if (!mvfxIsWaterDefValid(&def->waters[w]))
-        {
-            return false;
-        }
-    }
-    if (def->parameterCount < 0 || def->parameterCount > MVFX_MAX_PARAMETERS ||
-        (def->parameterCount > 0 && def->parameters == nullptr) || !AreQualityLevelsValid(def))
-    {
-        return false;
+        return mvfx_errorLimit;
     }
     for (int32_t i = 0; i < 4 * def->parameterCount; ++i)
     {
         if (!isfinite(def->parameters[i]))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
+    }
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        mvfxResult gas = mvfxCheckGasDef(&def->gases[g]);
+        if (gas != mvfx_success)
+        {
+            return gas;
+        }
+    }
+    for (int32_t w = 0; w < def->waterCount; ++w)
+    {
+        mvfxResult water = mvfxCheckWaterDef(&def->waters[w]);
+        if (water != mvfx_success)
+        {
+            return water;
+        }
+    }
+    mvfxResult levels = CheckQualityLevels(def);
+    if (levels != mvfx_success)
+    {
+        return levels;
     }
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
-        if (!IsEmitterDefValid(&def->emitters[i]) ||
-            !AreValuesValid(&def->emitters[i], def->parameterCount) || !IsEventSpawnValid(def, i) ||
-            !IsBeamValid(&def->emitters[i], def->parameterCount) ||
-            !mvfxIsWaterCouplingValid(&def->emitters[i].water, def->waters, def->waterCount))
+        const mvfxEmitterDef* emitter = &def->emitters[i];
+        mvfxResult checked = CheckEmitterDef(emitter);
+        checked = checked != mvfx_success ? checked : CheckValues(emitter, def->parameterCount);
+        checked = checked != mvfx_success ? checked : CheckEventSpawn(def, i);
+        checked = checked != mvfx_success ? checked : CheckBeam(emitter, def->parameterCount);
+        checked = checked != mvfx_success
+                      ? checked
+                      : mvfxCheckWaterCoupling(&emitter->water, def->waters, def->waterCount);
+        if (checked != mvfx_success)
         {
-            return false;
+            return checked;
         }
     }
-    if (!AreDefaultsWithinReach(def) || !mvfxAreEffectGasesValid(def))
+    mvfxResult reach = CheckDefaultsReach(def);
+    if (reach != mvfx_success)
     {
-        return false;
+        return reach;
+    }
+    mvfxResult gases = mvfxCheckEffectGases(def);
+    if (gases != mvfx_success)
+    {
+        return gases;
     }
     int32_t order[MVFX_MAX_EMITTERS];
-    return OrderEmitters(def, order);
+    return mvfxRequire(OrderEmitters(def, order));
 }
 
 // Adds count attributes from first to a plan when a condition holds.

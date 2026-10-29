@@ -446,7 +446,9 @@ static void TestChecks(void)
             s->path.space = 2;
             break;
         }
-        refused += mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 10 || rule == 12 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refused += mvfxCreateEffect(s_context, &def, &effect) == want;
     }
     CHECK(refused == 17, "every check");
     emitter = Emitter(true);

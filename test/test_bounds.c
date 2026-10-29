@@ -183,7 +183,9 @@ static void TestFixed(void)
             emitter.boundsMax[2] = 2e6f;
             break;
         }
-        refusals += mvfxCreateEffect(context, &def, &refused) == mvfx_errorInvalid ? 1 : 0;
+        // Past a named bound: mvfx_errorLimit.
+        mvfxResult want = rule == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
+        refusals += mvfxCreateEffect(context, &def, &refused) == want ? 1 : 0;
     }
     CHECK(refusals == 4, "fixed bounds checked");
     emitter.fixedBounds = false;

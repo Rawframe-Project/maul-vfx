@@ -167,9 +167,12 @@ extern "C"
     /// @param def        The def, from mvfxDefaultLayoutDef.
     /// @param layoutOut  Receives the layout's id; the null id on failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
-    ///         def without its cookie, a count, stride, field, format,
-    ///         component count, offset or overlap out of range, which
-    ///         counts as misuse when the context is given;
+    ///         def without its cookie, a count or stride below 1, a field,
+    ///         format, component count, offset or overlap out of range,
+    ///         which counts as misuse when the context is given;
+    ///         `mvfx_errorLimit` for more fields than
+    ///         MVFX_MAX_LAYOUT_FIELDS or a stride past
+    ///         MVFX_MAX_LAYOUT_STRIDE, which counts none;
     ///         `mvfx_errorCapacity` when the context holds as many layouts
     ///         as its def allows, or when the allocator fails.
     /// @par Thread safety

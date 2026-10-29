@@ -341,9 +341,11 @@ extern "C"
     ///                   count is 0.
     /// @param count      How many.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL context, a count out
-    ///         of range or a collider out of range, which counts as misuse
-    ///         when the context is given (the colliders are then unchanged).
+    ///         instance; `mvfx_errorInvalid` for a NULL context, a negative
+    ///         count or a collider out of range; `mvfx_errorLimit` for a
+    ///         count past MVFX_MAX_COLLIDERS or a collider's place or size
+    ///         past MVFX_MAX_EXTENT. Either counts as misuse when the
+    ///         context is given (the colliders are then unchanged).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetColliders(mvfxContext* context,
@@ -591,8 +593,9 @@ extern "C"
     ///                   source's cap (`MVFX_MAX_DRAW`, value.h).
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, an index out
-    ///         of range, a value not finite or one that takes a source past
-    ///         its cap, which counts as misuse when the context is given.
+    ///         of range or a value not finite; `mvfx_errorLimit` for a value
+    ///         that takes a source past its cap. Either counts as misuse
+    ///         when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetParameter(mvfxContext* context,

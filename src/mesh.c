@@ -10,6 +10,7 @@
 
 #include "allocator.h"
 #include "direction.h"
+#include "refusal.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -21,17 +22,20 @@ static bool IsWithin(float x, float low, float high)
     return x >= low && x <= high;
 }
 
-bool mvfxArePositionsValid(const float* positions, const float* normals, int32_t vertexCount)
+mvfxResult mvfxCheckPositions(const float* positions, const float* normals, int32_t vertexCount)
 {
+    mvfxResult result = mvfx_success;
     for (int64_t i = 0; i < 3 * (int64_t)vertexCount; ++i)
     {
-        if (!IsWithin(positions[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT) ||
+        mvfxResult position = mvfxBounded(positions[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
+        if (position == mvfx_errorInvalid ||
             (normals != nullptr && !IsWithin(normals[i], -2.0f, 2.0f)))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
+        result = mvfxFirst(result, position);
     }
-    return true;
+    return result;
 }
 
 static bool AreIndicesValid(const uint32_t* indices, int64_t count, int32_t vertexCount)
@@ -46,20 +50,27 @@ static bool AreIndicesValid(const uint32_t* indices, int64_t count, int32_t vert
     return true;
 }
 
-bool mvfxIsMeshDefValid(const mvfxMeshDef* def)
+mvfxResult mvfxCheckMeshDef(const mvfxMeshDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_MESH_DEF_COOKIE || def->positions == nullptr ||
-        def->vertexCount < 1 || def->vertexCount > MVFX_MAX_MESH_VERTICES ||
-        def->triangleCount < 0 || def->triangleCount > MVFX_MAX_MESH_ELEMENTS ||
-        def->tetrahedronCount < 0 || def->tetrahedronCount > MVFX_MAX_MESH_ELEMENTS ||
+        def->vertexCount < 1 || def->triangleCount < 0 || def->tetrahedronCount < 0 ||
         (def->triangleCount > 0 && def->triangles == nullptr) ||
         (def->tetrahedronCount > 0 && def->tetrahedra == nullptr))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
-    return mvfxArePositionsValid(def->positions, def->normals, def->vertexCount) &&
-           AreIndicesValid(def->triangles, 3 * (int64_t)def->triangleCount, def->vertexCount) &&
-           AreIndicesValid(def->tetrahedra, 4 * (int64_t)def->tetrahedronCount, def->vertexCount);
+    // The counts bound the arrays read below.
+    if (def->vertexCount > MVFX_MAX_MESH_VERTICES || def->triangleCount > MVFX_MAX_MESH_ELEMENTS ||
+        def->tetrahedronCount > MVFX_MAX_MESH_ELEMENTS)
+    {
+        return mvfx_errorLimit;
+    }
+    if (!AreIndicesValid(def->triangles, 3 * (int64_t)def->triangleCount, def->vertexCount) ||
+        !AreIndicesValid(def->tetrahedra, 4 * (int64_t)def->tetrahedronCount, def->vertexCount))
+    {
+        return mvfx_errorInvalid;
+    }
+    return mvfxCheckPositions(def->positions, def->normals, def->vertexCount);
 }
 
 // Orders edges by their lower vertex, then their higher.

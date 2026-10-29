@@ -8,6 +8,7 @@
 #include "direction.h"
 #include "elementary.h"
 #include "mesh.h"
+#include "refusal.h"
 
 #include <math.h>
 
@@ -19,70 +20,71 @@ static bool IsWithin(float x, float low, float high)
     return x >= low && x <= high;
 }
 
-static bool IsSize(float x)
+// A size's status: from 0 up to MVFX_MAX_EXTENT.
+static mvfxResult CheckSize(float x)
 {
-    return IsWithin(x, 0.0f, MVFX_MAX_EXTENT);
+    return mvfxUpToBound(x, 0.0f, MVFX_MAX_EXTENT);
 }
 
-bool mvfxIsShapeValid(const mvfxShape* shape)
+mvfxResult mvfxCheckShape(const mvfxShape* shape)
 {
     double square = 0.0;
     for (int32_t i = 0; i < 4; ++i)
     {
         if (!IsWithin(shape->rotation[i], -1.001f, 1.001f))
         {
-            return false;
+            return mvfx_errorInvalid;
         }
         square += (double)shape->rotation[i] * (double)shape->rotation[i];
     }
-    if (!(fabs(sqrt(square) - 1.0) <= 0.001))
+    bool arcValid = shape->arc > 0.0f && shape->arc <= TWO_PI;
+    if (!(fabs(sqrt(square) - 1.0) <= 0.001) || shape->arcMode > mvfx_arcBurstSpread ||
+        !IsWithin(shape->arcSpeed, 0.0f, 1000.0f) || !IsWithin(shape->thickness, 0.0f, 1.0f) ||
+        ((shape->kind == mvfx_shapeCircle || shape->kind == mvfx_shapeCone) && !arcValid))
     {
-        return false;
+        return mvfx_errorInvalid;
     }
     for (int32_t i = 0; i < 3; ++i)
     {
-        if (!IsWithin(shape->offset[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT))
+        mvfxResult offset = mvfxBounded(shape->offset[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
+        if (offset != mvfx_success)
         {
-            return false;
+            return offset;
         }
     }
-    if (shape->arcMode > mvfx_arcBurstSpread || !IsWithin(shape->arcSpeed, 0.0f, 1000.0f) ||
-        !IsWithin(shape->thickness, 0.0f, 1.0f))
-    {
-        return false;
-    }
-    bool arcValid = shape->arc > 0.0f && shape->arc <= TWO_PI;
     switch (shape->kind)
     {
     case mvfx_shapePoint:
-        return true;
+        return mvfx_success;
     case mvfx_shapeLine:
-        return IsSize(shape->length);
+        return CheckSize(shape->length);
     case mvfx_shapeCircle:
-        return IsSize(shape->radius) && arcValid;
     case mvfx_shapeSphere:
     case mvfx_shapeHemisphere:
-        return IsSize(shape->radius);
+        return CheckSize(shape->radius);
     case mvfx_shapeBox:
-        return IsSize(shape->halfExtents[0]) && IsSize(shape->halfExtents[1]) &&
-               IsSize(shape->halfExtents[2]);
+        return mvfxFirst(CheckSize(shape->halfExtents[0]),
+                         mvfxFirst(CheckSize(shape->halfExtents[1]), CheckSize(shape->halfExtents[2])));
     case mvfx_shapeMesh:
-        return shape->meshMode <= mvfx_meshVolume;
+        return mvfxRequire(shape->meshMode <= mvfx_meshVolume);
     case mvfx_shapeCone:
     {
-        if (!IsSize(shape->radius) || !IsSize(shape->length) ||
-            !IsWithin(shape->angle, 0.0f, MVFX_MAX_CONE_ANGLE) || !arcValid)
+        mvfxResult sizes =
+            mvfxFirst(mvfxUpToBound(shape->angle, 0.0f, MVFX_MAX_CONE_ANGLE),
+                      mvfxFirst(CheckSize(shape->radius), CheckSize(shape->length)));
+        if (sizes != mvfx_success)
         {
-            return false;
+            return sizes;
         }
         float sine = 0.0f;
         float cosine = 0.0f;
         mvfxSinCos(shape->angle, &sine, &cosine);
-        return (double)shape->radius + (double)shape->length * (double)(sine / cosine) <=
-               (double)MVFX_MAX_EXTENT;
+        return mvfxWithinBound((double)shape->radius +
+                                   (double)shape->length * (double)(sine / cosine) <=
+                               (double)MVFX_MAX_EXTENT);
     }
     default:
-        return false;
+        return mvfx_errorInvalid;
     }
 }
 

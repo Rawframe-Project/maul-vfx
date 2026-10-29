@@ -5,17 +5,24 @@
 
 #include "fpenv.h"
 #include "random.h"
+#include "refusal.h"
 
 #include <math.h>
 
-bool mvfxIsNoiseValid(const mvfxNoise* noise)
+mvfxResult mvfxCheckNoise(const mvfxNoise* noise)
 {
-    bool scroll = fabsf(noise->scroll[0]) <= MVFX_MAX_EXTENT &&
-                  fabsf(noise->scroll[1]) <= MVFX_MAX_EXTENT &&
-                  fabsf(noise->scroll[2]) <= MVFX_MAX_EXTENT;
-    return noise->frequency > 0.0f && noise->frequency <= MVFX_MAX_FREQUENCY &&
-           noise->octaves >= 1 && noise->octaves <= MVFX_MAX_OCTAVES && noise->lacunarity >= 1.0f &&
-           noise->lacunarity <= 4.0f && noise->gain >= 0.0f && noise->gain <= 1.0f && scroll;
+    if (!(noise->frequency > 0.0f) || noise->octaves < 1 ||
+        !(noise->lacunarity >= 1.0f && noise->lacunarity <= 4.0f) ||
+        !(noise->gain >= 0.0f && noise->gain <= 1.0f))
+    {
+        return mvfx_errorInvalid;
+    }
+    mvfxResult scroll = mvfxFirst(
+        mvfxBounded(noise->scroll[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+        mvfxFirst(mvfxBounded(noise->scroll[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
+                  mvfxBounded(noise->scroll[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT)));
+    return mvfxFirst(scroll, mvfxFirst(mvfxPositiveUpTo(noise->frequency, MVFX_MAX_FREQUENCY),
+                                       mvfxWithinBound(noise->octaves <= MVFX_MAX_OCTAVES)));
 }
 
 // The twelve edges of a cube, four repeated to fill sixteen (Perlin 2002).
@@ -275,22 +282,38 @@ static MVFX_NOINLINE mvfxResult mvfxBakeCurlNoiseWork(const mvfxNoise* noise, in
                                                       const int32_t size[3], float* values,
                                                       int64_t valueCount)
 {
-    if (noise == nullptr || size == nullptr || values == nullptr || !mvfxIsNoiseValid(noise) ||
-        noise->lacunarity != floorf(noise->lacunarity) || period < 1 ||
-        period > MVFX_MAX_NOISE_PERIOD)
+    if (noise == nullptr || size == nullptr || values == nullptr || period < 1 || size[0] < 1 ||
+        size[1] < 1 || size[2] < 1)
     {
         return mvfx_errorInvalid;
+    }
+    mvfxResult valid = mvfxCheckNoise(noise);
+    if (valid != mvfx_success)
+    {
+        return valid;
+    }
+    if (noise->lacunarity != floorf(noise->lacunarity))
+    {
+        return mvfx_errorInvalid;
+    }
+    if (period > MVFX_MAX_NOISE_PERIOD)
+    {
+        return mvfx_errorLimit;
     }
     int64_t points = 1;
     for (int32_t k = 0; k < 3; ++k)
     {
-        if (size[k] < 1 || size[k] > MVFX_MAX_GRID_SIZE)
+        if (size[k] > MVFX_MAX_GRID_SIZE)
         {
-            return mvfx_errorInvalid;
+            return mvfx_errorLimit;
         }
         points *= size[k];
     }
-    if (points > MVFX_MAX_GRID_POINTS || valueCount < 3 * points)
+    if (points > MVFX_MAX_GRID_POINTS)
+    {
+        return mvfx_errorLimit;
+    }
+    if (valueCount < 3 * points)
     {
         return mvfx_errorInvalid;
     }
