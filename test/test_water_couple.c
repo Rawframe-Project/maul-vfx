@@ -7,7 +7,8 @@
 // once each where and when they cross, their events, and the pushes they
 // leave with the volume kept; once a step through substeps; through water
 // into the floor, not over dry ground; pours adding exactly their
-// particles' volume and killing them. Particles are read from their
+// particles' volume and killing them, and one past binary32's range held
+// at MVFX_MAX_WATER_DEPTH. Particles are read from their
 // records, surfaces through the output, and a shallow flow is held
 // through a test hook.
 
@@ -724,6 +725,51 @@ static void TestPour(void)
     Close();
 }
 
+static void TestPourHeld(void)
+{
+    // A particle of radius MVFX_MAX_EXTENT in the world falls into shallow
+    // water of cells of 2^-19, the instance at a scale of 2^-19: in the
+    // surface's lengths its sphere is 5.2e11 across, and the 6e35 of its
+    // volume over a cell's 3.6e-12 passes binary32's largest. The cell it
+    // pours into is held at MVFX_MAX_WATER_DEPTH, which the step's flow
+    // then spreads with the volume kept, every depth finite; the volume
+    // poured counts in the world.
+    mvfxWaterCoupling coupling = Coupling();
+    coupling.radius = MVFX_MAX_EXTENT;
+    coupling.pour = true;
+    mvfxEmitterDef emitter = Coupled(&coupling);
+    mvfxWaterDef shallow = Surface(mvfx_waterShallow);
+    shallow.cellSize = 0x1p-19f;
+    shallow.fillLevel = 0x1p-17f;
+    CHECK(Open(&emitter, 1, &shallow), "opened");
+    static const double origin[3] = {0.0, 0.0, 0.0};
+    static const float upright[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, upright, 0x1p-19f, true) ==
+              mvfx_success,
+          "scaled");
+    CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "filled");
+    // Over cell (8, 8)'s center, falling from 16 cells above the ground to
+    // 2, through the surface at 4.
+    Place(0x1p-39, 0x1p-34, 0x1p-39, 0.0f, -(0x1p-34f - 0x1p-37f), 0.0f);
+    CHECK(mvfxContext_Step(s_context, 1.0) == mvfx_success, "poured");
+    const float* d = Field(mvfx_waterDepth);
+    int32_t wrong = 0;
+    double sum = 0.0;
+    for (int32_t i = 0; i < 256; ++i)
+    {
+        wrong += !(d[i] >= 0.0f && d[i] <= MVFX_MAX_WATER_DEPTH);
+        sum += (double)d[i];
+    }
+    CHECK(wrong == 0 && fabs(sum / (double)MVFX_MAX_WATER_DEPTH - 1.0) <= 1e-4,
+          "the cell poured into held at MVFX_MAX_WATER_DEPTH, the step's flow keeping it");
+    mvfxWaterInfo info;
+    double poured = 4.0 / 3.0 * 3.14159265358979323846 * 1e18;
+    CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
+              fabs(info.volumePoured / poured - 1.0) <= 1e-6,
+          "the volume poured counted in the world");
+    Close();
+}
+
 int main(void)
 {
     TestRefusals();
@@ -741,5 +787,6 @@ int main(void)
     TestOnSurface();
     TestThrough();
     TestPour();
+    TestPourHeld();
     return s_failures;
 }
