@@ -32,9 +32,11 @@ fn productBelow(x: f32, y: f32, t: f32) -> f32 {
 // here; past 2^24 binary32 values are 2 or more apart, so the exact
 // product may lie more than one from t either way, and t less one may not
 // be a binary32 value. The cell is then taken in integers: t plus the
-// floor of the exact remainder, itself a binary32 value. A place past
-// 2^100 is scaled by 2^-64 and its inverse by 2^64 first, both exactly, so
-// that its split cannot overflow (its inverse is below 2^-70 there).
+// floor of the exact remainder, itself a binary32 value. A factor past
+// 2^100 (a far place, or the inverse of a cell below 2^-100, which
+// contacts and self collision allow) is scaled by 2^-64 and the other one
+// by 2^64 first, both exactly, so that no split overflows: the other one
+// is below 2^-70 there, and below 2^-6 scaled.
 fn cellOf(x: f32, inverse: f32) -> i32 {
     let t = x * inverse;
     if (!(t >= -MAX_CELL)) {
@@ -50,7 +52,10 @@ fn cellOf(x: f32, inverse: f32) -> i32 {
     if (c != t) {
         return i32(c);
     }
-    let far = abs(x) >= 0x1p100f;
-    let below = productBelow(x * select(1.0, 0x1p-64f, far), inverse * select(1.0, 0x1p64f, far), t);
+    let farPlace = abs(x) >= 0x1p100f;
+    let farInverse = abs(inverse) >= 0x1p100f;
+    let a = x * select(select(1.0, 0x1p64f, farInverse), 0x1p-64f, farPlace);
+    let b = inverse * select(select(1.0, 0x1p64f, farPlace), 0x1p-64f, farInverse);
+    let below = productBelow(a, b, t);
     return clamp(i32(t) + i32(floor(below)), -1073741824, 1073741824);
 }
