@@ -66,7 +66,7 @@ static bool Open(int32_t n, int32_t depth, float cell, float radius, mvfxGasKind
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(s_context, &def, &effect) != mvfx_success)
+    if (mvfxCreateEffect(s_context, &def, &effect, NULL) != mvfx_success)
     {
         mvfxDestroyContext(s_context);
         return false;

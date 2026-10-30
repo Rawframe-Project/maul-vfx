@@ -93,7 +93,7 @@ static bool Open(mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxGridDef* gri
     def.gases = &made;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene->context, &def, &effect) == mvfx_success, "a gas's effect");
+    CHECK(mvfxCreateEffect(scene->context, &def, &effect, NULL) == mvfx_success, "a gas's effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.seed = 3;

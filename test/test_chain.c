@@ -72,7 +72,7 @@ static void Open(const mvfxEmitterDef* emitter, const mvfxQualityLevel* level, i
     def.emitterCount = 1;
     def.qualityLevels = level;
     def.qualityLevelCount = level != NULL ? 1 : 0;
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &s_scene.effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &s_scene.effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = s_scene.effect;
     instanceDef.quality = quality;
@@ -627,19 +627,19 @@ static void TestChecks(void)
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want =
             rule == 1 || rule == 6 || rule == 9 || rule == 13 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 15, "every check");
     emitter = Chain(MVFX_MAX_CHAIN_POINTS);
     emitter.unit.substeps = MVFX_MAX_SUBSTEPS;
     emitter.unit.damping = MVFX_MAX_DRAG;
     emitter.unit.stretchCompliance = MVFX_MAX_EXTENT;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the bounds");
     emitter = Chain(4);
     emitter.unit.kind = mvfx_unitParticle;
     emitter.unit.points = -1;
     emitter.capacity = 15;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "particles, unread");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "particles, unread");
     mvfxDestroyContext(context);
 }
 

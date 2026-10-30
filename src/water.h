@@ -117,13 +117,15 @@ static inline int64_t mvfxWaterFaces(const int32_t n[2], int32_t axis)
 
 // Whether a water def is valid: mvfx_errorLimit for a value past one of
 // the library's named bounds, mvfx_errorInvalid for anything else wrong.
-mvfxResult mvfxCheckWaterDef(const mvfxWaterDef* def);
+// Names the field it refuses below at.
+mvfxResult mvfxCheckWaterDef(const mvfxFieldPath* at, const mvfxWaterDef* def);
 
 // Whether an emitter's coupling is valid against its effect's surfaces:
 // off, or naming one, its values in range, a pour only on shallow water;
-// mvfx_errorLimit for a value past its named bound.
-mvfxResult mvfxCheckWaterCoupling(const mvfxWaterCoupling* coupling, const mvfxWaterDef* waters,
-                                  int32_t count);
+// mvfx_errorLimit for a value past its named bound. Names the field it
+// refuses below at.
+mvfxResult mvfxCheckWaterCoupling(const mvfxFieldPath* at, const mvfxWaterCoupling* coupling,
+                                  const mvfxWaterDef* waters, int32_t count);
 
 // An emitter's water surface for a step (mvfxEmitterDef.water): its
 // coupling, the surface and its state as the last water step left them,

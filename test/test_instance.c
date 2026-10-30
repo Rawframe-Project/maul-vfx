@@ -31,7 +31,7 @@ static mvfxEffectId NewEffect(mvfxContext* context)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect created");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect created");
     return effect;
 }
 
@@ -169,7 +169,7 @@ static void TestMemory(void)
     effectDef.emitterCount = 1;
     int64_t before = s_held;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect created");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect created");
     int64_t effectBytes = s_held - before;
     CHECK(effectBytes > 0 && effectBytes <= 16384, "a plain effect within 16 KiB");
     mvfxInstanceDef def = mvfxDefaultInstanceDef();
@@ -280,7 +280,7 @@ static void TestExactAlignmentIsEnough(void)
     effectDef.waters = &water;
     effectDef.waterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect created");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect created");
     mvfxInstanceDef def = mvfxDefaultInstanceDef();
     def.effect = effect;
     mvfxInstanceId instance = {0};
@@ -369,7 +369,8 @@ static void TestMemoryPastSizeIsRefused(void)
         effectDef.emitters = emitters;
         effectDef.emitterCount = emitterCounts[c];
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect created");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success,
+              "effect created");
         mvfxInstanceDef def = mvfxDefaultInstanceDef();
         def.effect = effect;
         mvfxInstanceId instance = {0};
@@ -432,7 +433,7 @@ static size_t BlockFor(mvfxContext* context, int32_t capacity, int32_t hostSpawn
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect created");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect created");
     mvfxInstanceDef def = mvfxDefaultInstanceDef();
     def.effect = effect;
     mvfxInstanceId instance = {0};

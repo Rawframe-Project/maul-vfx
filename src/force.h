@@ -9,6 +9,7 @@
 #define MAUL_VFX_SRC_FORCE_H
 
 #include "direction.h"
+#include "field_path.h"
 #include "gas_lattice.h"
 #include "random.h"
 #include "value.h"
@@ -19,8 +20,9 @@
 // Whether a force is valid for an effect of parameterCount parameters, its
 // strength's curve over [0, 1] when its emitter has a duration:
 // mvfx_errorLimit for a field past its named bound, mvfx_errorInvalid for
-// anything else wrong.
-mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount, bool hasDuration);
+// anything else wrong. Names the field it refuses below at.
+mvfxResult mvfxCheckForce(const mvfxFieldPath* at, const mvfxForce* force, int32_t parameterCount,
+                          bool hasDuration);
 
 // A valid force as compiled: its axes normalized.
 mvfxForce mvfxCompileForce(const mvfxForce* force);

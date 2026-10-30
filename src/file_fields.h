@@ -47,9 +47,9 @@ typedef struct mvfxFileType mvfxFileType;
 
 // A field: its tag, its place in its struct, its kind (an array's
 // elements' too), its elements (a fixed array's count, 1 for one; an
-// array's elements a counted item holds), a struct's table, and at and
-// cap: an array's count's place and the cap on it, a module's user
-// pointer's place, a cookie's value.
+// array's elements a counted item holds), a struct's table, at and cap:
+// an array's count's place and the cap on it, a module's user pointer's
+// place, a cookie's value; and its name in the headers.
 typedef struct mvfxFileField
 {
     uint32_t tag;
@@ -60,6 +60,7 @@ typedef struct mvfxFileField
     const mvfxFileType* type;
     uint32_t at;
     uint32_t cap;
+    const char* name;
 } mvfxFileField;
 
 // A struct: its size and alignment, its fields, and the place of its

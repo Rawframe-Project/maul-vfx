@@ -38,7 +38,7 @@ static Scene NewSeededScene(const mvfxEmitterDef* emitter, int32_t parameterCoun
     effectDef.parameters = parameters;
     effectDef.parameterCount = parameterCount;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.seed = seed;
@@ -552,7 +552,7 @@ static Scene NewFieldScene(mvfxForce* forces, int32_t count, mvfxSimulationSpace
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -903,14 +903,15 @@ static void TestRefusals(void)
         effectDef.emitters = &bad;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == want, "refused");
     }
     mvfxEmitterDef none = Held(NULL, 1);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &none;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "no forces given");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_errorInvalid,
+          "no forces given");
     mvfxDestroyContext(context);
 }
 

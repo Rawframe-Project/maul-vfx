@@ -409,6 +409,8 @@ extern "C"
     // An emitter drawn as ribbons through its particles.
     typedef struct mvfxRibbonDef
     {
+        // mvfx_ribbonOne for a beam (mvfxBeamDef); mvfx_ribbonNone for an
+        // emitter of sheets (mvfxUnitDef).
         mvfxRibbonIds ids;
         // Each segment cut into this many pieces along a centripetal
         // Catmull-Rom spline through the points, from 1 to
@@ -433,7 +435,8 @@ extern "C"
         // With mvfx_ribbonOne: while the emitter may still spawn, its
         // current ribbon ends at a point pinned to its shape's origin at the
         // step's end, so a trail never lags behind its source; the point
-        // takes the youngest particle's values.
+        // takes the youngest particle's values. Never for a beam
+        // (mvfxBeamDef), whose ends are placed.
         bool pinHead;
         // A point's width is its size's X times this over the ribbon's
         // normalized length (0 at its oldest point, 1 at its youngest).
@@ -509,10 +512,12 @@ extern "C"
     // point in row r and place c across its root's plus c spacings along
     // direction and r along downDirection; they die together, a kill of
     // one kills the unit. Counts (owed, refused,
-    // capacities of host spawns and event spawns) are in units; the
-    // emitter's capacity is in points, a multiple of the unit's.
+    // capacities of host spawns and event spawns) are in units, the
+    // emitter's capacity in points, as their comments say.
     typedef struct mvfxUnitDef
     {
+        // Units are never a beam's points (mvfxBeamDef), and a sheet's
+        // emitter draws no ribbons (ribbon ids mvfx_ribbonNone).
         mvfxUnitKind kind;
         // A chain's points, from 2 to MVFX_MAX_CHAIN_POINTS; a sheet's points
         // across, and its rows (read only for a sheet), each from 2 to
@@ -606,13 +611,12 @@ extern "C"
     // A rigid particle's shape, sized by the particle's size in the
     // particles' space and turned by its orientation. Each size axis is the
     // shape's extent along it, so a host may draw a mesh scaled by the size:
-    // an axis a shape does not set is X. An emitter whose size source's
-    // ends on such an axis are not X's, or whose size over life per axis
-    // has another curve on it, is refused, and so is a spawn request's
-    // size that differs there; a host module that writes one kills the
-    // particle (valuesKilled). A birth takes X's draw for those axes, and
-    // a size the effect does not fix, a parameter's or an event's
-    // inherited one, takes X for them, their own values ignored.
+    // an axis a shape does not set is X, as the emitter's size and size
+    // over life say. A spawn request's size that differs there is refused;
+    // a host module that writes one kills the particle (valuesKilled). A
+    // birth takes X's draw for those axes, and a size the effect does not
+    // fix, a parameter's or an event's inherited one, takes X for them,
+    // their own values ignored.
     typedef uint8_t mvfxRigidShape;
     enum
     {
@@ -662,6 +666,8 @@ extern "C"
     // dropped and counted (mvfxEmitterStats.rigidContactsCapped).
     typedef struct mvfxRigidDef
     {
+        // Rigid bodies are plain particles: never units (mvfxUnitDef) or a
+        // beam's points (mvfxBeamDef).
         bool enable;
         mvfxRigidShape shape;
         // Mass a unit of volume, above 0, at most MVFX_MAX_EXTENT.
@@ -763,6 +769,8 @@ extern "C"
 
     typedef struct mvfxLiquidDef
     {
+        // A liquid's particles are plain particles: never units
+        // (mvfxUnitDef), rigid bodies or a beam's points (mvfxBeamDef).
         bool enable;
         // Particles (the default) or a liquid gas, and for a grid the gas's
         // index in the effect's def: a liquid gas no other emitter names.
@@ -851,9 +859,9 @@ extern "C"
     // struck again when they die, with new noise. A beam is drawn as one
     // ribbon; its points are placed, not moved, so it takes no rate,
     // bursts, distance rate, events in, host spawns, forces, collisions,
-    // steering, contacts, pair forces or birth events, its ribbon ids are
-    // mvfx_ribbonOne without a pinned
-    // head, and its capacity holds its points.
+    // steering, contacts, pair forces or birth events (refused at enable).
+    // Its emitter's capacity, ribbon ids and ribbon head are as theirs say,
+    // and it has no units or rigid bodies.
     typedef struct mvfxBeamDef
     {
         bool enable;
@@ -1001,7 +1009,9 @@ extern "C"
         uint32_t cookie;
         // The particles it holds alive at once, from 1 to
         // MVFX_MAX_EMITTER_CAPACITY; a spawn past them is refused and
-        // counted.
+        // counted. With units it counts their points, a multiple of a
+        // unit's (mvfxUnitDef); with a beam, at least its segments plus 1
+        // (mvfxBeamDef).
         int32_t capacity;
         // The particles it spawns a second, from 0 to MVFX_MAX_SPAWN_RATE.
         float rate;
@@ -1035,7 +1045,8 @@ extern "C"
         // from -10 to 10; only in world space.
         float inheritVelocity;
         // How many particles the host may queue for it between steps
-        // (mvfxInstance_Spawn), from 0 to its capacity, reserved in each
+        // (mvfxInstance_Spawn), from 0 to its capacity (with units, a count
+        // of units, at most the units its capacity holds), reserved in each
         // instance.
         int32_t hostSpawnCapacity;
         // Each particle's life in seconds, required: a range above 0 and at
@@ -1126,8 +1137,9 @@ extern "C"
         float boundsMin[3];
         float boundsMax[3];
         // The optional initial values, each stored only when its source is
-        // set: size per axis (X, Y, Z; for a rigid sphere or capsule, the
-        // axes its shape does not set equal to X, mvfxRigidShape), linear
+        // set: size per axis (X, Y, Z; for a rigid sphere or capsule, its
+        // ends on the axes its shape does not set those of X, else the
+        // effect is refused, mvfxRigidShape), linear
         // color (red, green, blue, alpha), a sprite's angle in radians and
         // spin in radians a second (either sets both, the other 0).
         mvfxVectorSource size;
@@ -1215,13 +1227,69 @@ extern "C"
     /// Safe from any thread.
     MVFX_API mvfxEffectDef mvfxDefaultEffectDef(void);
 
+// The most steps of a field's path an effect refusal holds: from
+// mvfxEffectDef down to the field, a step for each struct the path enters.
+#define MVFX_MAX_FIELD_DEPTH 16
+
+    // Why an effect def was refused, and the field refused: its status,
+    // and the path of the field's tags (tools/file-tags.txt, the effect
+    // file's tags, which keep their meaning across versions) from
+    // mvfxEffectDef down to it, tags[0] a field of mvfxEffectDef. A step
+    // into an array or a fixed array of structs names its item in items,
+    // -1 at a step that names no item. A refusal of a whole struct or
+    // item (a def without its cookie, an array's item) ends at that struct
+    // or item; one of no field (a NULL argument, the context's effects
+    // full, the allocator's failure, an effect file's header) holds no
+    // tags. A rule between fields names the field whose header comment
+    // states it, a reference to another emitter, gas or water surface the
+    // field that refers. emitter, gas and water name the emitter, gas or
+    // water surface the field is in, -1 for none. The steps past tagCount
+    // hold 0.
+    // mvfxGetEffectFieldPath writes the path as text.
+    typedef struct mvfxEffectRefusal
+    {
+        mvfxResult result;
+        int32_t emitter;
+        int32_t gas;
+        int32_t water;
+        int32_t tagCount;
+        uint32_t tags[MVFX_MAX_FIELD_DEPTH];
+        int32_t items[MVFX_MAX_FIELD_DEPTH];
+    } mvfxEffectRefusal;
+
+    /// Writes the path of the field a refusal names as text, each field by
+    /// its name in the headers and each item by its index:
+    /// `emitters[2].overLife.size.curve.keys[3].time`. A refusal that
+    /// names no field writes an empty path. The text is ASCII of the
+    /// length given, not terminated.
+    ///
+    /// @param refusal    The refusal, as a creation or a file call wrote it.
+    /// @param textOut    Receives the text; NULL when capacity is 0.
+    /// @param capacity   Its size in bytes, at least 0.
+    /// @param lengthOut  Receives the text's length in bytes, also when the
+    ///                   capacity is too small; 0 on another failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         refusal whose path names no field of this version (a tag it
+    ///         does not know, an item given where the step names none or
+    ///         missing where it does, a tag count past
+    ///         MVFX_MAX_FIELD_DEPTH); `mvfx_errorCapacity` when the text
+    ///         does not fit. On failure the whole capacity is zeroed.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxGetEffectFieldPath(const mvfxEffectRefusal* refusal,
+                                                              char* textOut, int64_t capacity,
+                                                              int64_t* lengthOut);
+
     /// Creates an effect from a def: checks every field of it and of its
     /// emitters, then compiles it, allocating its compiled form in one block
     /// from the context's allocator.
     ///
-    /// @param context    The context that owns the effect.
-    /// @param def        The def, from mvfxDefaultEffectDef.
-    /// @param effectOut  Receives the effect's id; the null id on failure.
+    /// @param context     The context that owns the effect.
+    /// @param def         The def, from mvfxDefaultEffectDef.
+    /// @param effectOut   Receives the effect's id; the null id on failure.
+    /// @param refusalOut  Optional: receives why the def was refused and the
+    ///                    field refused; on success, mvfx_success and no
+    ///                    field.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         def or an emitter def without its cookie, a field out of its
     ///         range or an invalid curve, which counts as misuse when the
@@ -1237,7 +1305,8 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateEffect(mvfxContext* context,
                                                         const mvfxEffectDef* def,
-                                                        mvfxEffectId* effectOut);
+                                                        mvfxEffectId* effectOut,
+                                                        mvfxEffectRefusal* refusalOut);
 
     /// Destroys an effect and returns its memory to the context's allocator.
     ///

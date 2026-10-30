@@ -46,7 +46,7 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -320,7 +320,7 @@ static void TestChecks(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    int32_t refused = mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid;
+    int32_t refused = mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_errorInvalid;
     const float stretches[3] = {-0.5f, (float)NAN, 2e6f};
     for (int32_t s = 0; s < 3; ++s)
     {
@@ -328,11 +328,11 @@ static void TestChecks(void)
         emitter.sprite.stretch = stretches[s];
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = s == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     emitter = Sprites(mvfx_billboardDirectional);
     emitter.sprite.stretch = 1e6f;
-    CHECK(refused == 4 && mvfxCreateEffect(context, &def, &effect) == mvfx_success,
+    CHECK(refused == 4 && mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success,
           "the def's checks");
     // A corner has two components.
     static const mvfxLayoutField one = {

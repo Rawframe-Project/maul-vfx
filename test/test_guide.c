@@ -19,6 +19,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 // A first effect: a fountain stepped for a second and written out.
 static bool FirstEffect(void)
@@ -48,7 +49,7 @@ static bool FirstEffect(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
 
@@ -93,10 +94,10 @@ static bool EffectFile(void)
 
     // Its size first, then the bytes.
     int64_t size = 0;
-    mvfxFileResult sized = mvfxWriteEffect(&def, NULL, 0, NULL, 0, &size);
+    mvfxFileResult sized = mvfxWriteEffect(&def, NULL, 0, NULL, 0, &size, NULL);
     static unsigned char file[4096];
     if (sized.result != mvfx_errorCapacity || size > (int64_t)sizeof file ||
-        mvfxWriteEffect(&def, NULL, 0, file, size, &size).result != mvfx_success)
+        mvfxWriteEffect(&def, NULL, 0, file, size, &size, NULL).result != mvfx_success)
     {
         return false;
     }
@@ -108,16 +109,45 @@ static bool EffectFile(void)
         return false;
     }
     mvfxEffectId effect = {0};
-    bool made =
-        mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &effect).result == mvfx_success;
+    bool made = mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &effect, NULL).result ==
+                mvfx_success;
 
     // A byte changed: refused, at an offset in the file.
     file[size / 2] ^= 0x40u;
     mvfxEffectId damaged = {0};
-    mvfxFileResult refused = mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &damaged);
+    mvfxFileResult refused =
+        mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &damaged, NULL);
     made = made && refused.result == mvfx_errorFormat && refused.offset >= 0;
     mvfxDestroyContext(context);
     return made;
+}
+
+// A def refused, the field named.
+static bool RefusedEffect(void)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    if (mvfxCreateContext(&contextDef, &context) != mvfx_success)
+    {
+        return false;
+    }
+    mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    emitters[1].lifetime.range.min = 0.0f;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = emitters;
+    def.emitterCount = 2;
+
+    // Refused, with the field at fault and its path as text.
+    mvfxEffectId effect = {0};
+    mvfxEffectRefusal refusal;
+    char path[64];
+    int64_t length = 0;
+    bool named = mvfxCreateEffect(context, &def, &effect, &refusal) == mvfx_errorInvalid &&
+                 mvfxGetEffectFieldPath(&refusal, path, sizeof path, &length) == mvfx_success &&
+                 refusal.emitter == 1 && length == 30 &&
+                 memcmp(path, "emitters[1].lifetime.range.min", 30) == 0;
+    mvfxDestroyContext(context);
+    return named;
 }
 
 // Instances: placed far off, turned and scaled, bounded, stopped and
@@ -140,7 +170,7 @@ static bool Instances(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
 
@@ -194,7 +224,7 @@ static bool Output(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success &&
            mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success;
@@ -276,7 +306,7 @@ static bool Ribbons(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
 
@@ -366,7 +396,7 @@ static bool Events(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
 
@@ -438,7 +468,7 @@ static bool Flock(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
 
@@ -513,7 +543,7 @@ static bool Smoke(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
     for (int32_t step = 0; made && step < 60; ++step)
@@ -569,7 +599,7 @@ static bool SurfaceMesh(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
     made = made && mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success;
@@ -622,7 +652,7 @@ static bool Water(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
 
@@ -691,7 +721,7 @@ static bool Rain(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
 
@@ -744,6 +774,7 @@ int main(void)
 {
     CHECK(FirstEffect(), "a first effect");
     CHECK(EffectFile(), "an effect in a file");
+    CHECK(RefusedEffect(), "a refused def's field named");
     CHECK(Instances(), "an instance placed, stopped and finished");
     CHECK(Output(), "records sorted and quads expanded");
     CHECK(Ribbons(), "a trail expanded into a strip");

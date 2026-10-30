@@ -202,7 +202,7 @@ static void Write(mvfxFormat format, bool srgb, int32_t components, const float 
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
         static const double place[3] = {0};
         mvfxSpawnRequest request = {.count = 1, .positions = place};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success &&
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success &&
                   (instanceDef.effect = effect,
                    mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success) &&
                   mvfxInstance_Spawn(context, instance, 0, &request) == mvfx_success,
@@ -280,7 +280,7 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -648,7 +648,7 @@ static void TestMeshIndex(void)
     effectDef.emitters = emitters;
     effectDef.emitterCount = 3;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -710,11 +710,12 @@ static void TestMeshIndex(void)
         emitters[2].meshIndex = bad[rule];
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refusals += mvfxCreateEffect(scene.context, &effectDef, &refused) == want;
+        refusals += mvfxCreateEffect(scene.context, &effectDef, &refused, NULL) == want;
     }
     emitters[2].meshIndex =
         (mvfxFrameStart){.mode = mvfx_frameRandom, .last = MVFX_MAX_MESH_INDEX - 1};
-    CHECK(refusals == 4 && mvfxCreateEffect(scene.context, &effectDef, &refused) == mvfx_success,
+    CHECK(refusals == 4 &&
+              mvfxCreateEffect(scene.context, &effectDef, &refused, NULL) == mvfx_success,
           "mesh indices checked");
     mvfxDestroyContext(scene.context);
 }

@@ -36,7 +36,15 @@ static const int64_t s_sceneSteps[] = {17476, 17477, 16000, 1,     40000, 17476,
 // grid, mesh and host module it makes.
 typedef mvfxResult SceneCreateFn(mvfxContext* context, const mvfxEffectDef* def,
                                  mvfxEffectId* effectOut);
-static SceneCreateFn* s_sceneCreate = mvfxCreateEffect;
+
+// The scene's effects made directly from their defs.
+static mvfxResult SceneCreateDirect(mvfxContext* context, const mvfxEffectDef* def,
+                                    mvfxEffectId* effectOut)
+{
+    return mvfxCreateEffect(context, def, effectOut, NULL);
+}
+
+static SceneCreateFn* s_sceneCreate = SceneCreateDirect;
 static mvfxEffectAsset s_sceneAssets[16];
 static int32_t s_sceneAssetCount;
 

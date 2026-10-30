@@ -70,7 +70,7 @@ static void TestCreateAndDestroy(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     mvfxEffectDef def = OneEmitter(&emitter);
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "created");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "created");
     CHECK(effect.index1 != 0, "a non-null id");
     CHECK(mvfxEffect_IsValid(context, effect), "valid while alive");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "destroyed");
@@ -84,7 +84,7 @@ static void TestCreateAndDestroy(void)
     CHECK(mvfxContext_GetMisuse(context) == 0, "stale ids are not misuse");
 
     mvfxEffectId again = {0};
-    CHECK(mvfxCreateEffect(context, &def, &again) == mvfx_success, "a slot is reused");
+    CHECK(mvfxCreateEffect(context, &def, &again, NULL) == mvfx_success, "a slot is reused");
     CHECK(again.index1 == effect.index1 && again.generation != effect.generation,
           "with a new generation");
     CHECK(!mvfxEffect_IsValid(context, effect), "the old id stays stale");
@@ -102,13 +102,14 @@ static void TestLimit(void)
     mvfxEffectId a = {0};
     mvfxEffectId b = {0};
     mvfxEffectId c = {1, 1};
-    CHECK(mvfxCreateEffect(context, &def, &a) == mvfx_success, "first");
-    CHECK(mvfxCreateEffect(context, &def, &b) == mvfx_success, "second");
-    CHECK(mvfxCreateEffect(context, &def, &c) == mvfx_errorCapacity, "the third is past the table");
+    CHECK(mvfxCreateEffect(context, &def, &a, NULL) == mvfx_success, "first");
+    CHECK(mvfxCreateEffect(context, &def, &b, NULL) == mvfx_success, "second");
+    CHECK(mvfxCreateEffect(context, &def, &c, NULL) == mvfx_errorCapacity,
+          "the third is past the table");
     CHECK(c.index1 == 0 && c.generation == 0, "the null id on failure");
     CHECK(mvfxContext_GetMisuse(context) == 0, "a limit is not misuse");
     CHECK(mvfxDestroyEffect(context, a) == mvfx_success, "one freed");
-    CHECK(mvfxCreateEffect(context, &def, &c) == mvfx_success, "room again");
+    CHECK(mvfxCreateEffect(context, &def, &c, NULL) == mvfx_success, "room again");
     mvfxDestroyContext(context);
 }
 
@@ -117,15 +118,15 @@ static void TestInvalidDefsAreMisuse(void)
     mvfxContext* context = NewContext(NULL, 8);
     mvfxEffectId effect = {0};
     uint64_t misuse = 0;
-    CHECK(mvfxCreateEffect(context, NULL, &effect) == mvfx_errorInvalid, "no def");
+    CHECK(mvfxCreateEffect(context, NULL, &effect, NULL) == mvfx_errorInvalid, "no def");
     CHECK(mvfxContext_GetMisuse(context) == ++misuse, "counted");
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     mvfxEffectDef def = OneEmitter(&emitter);
-    CHECK(mvfxCreateEffect(context, &def, NULL) == mvfx_errorInvalid, "no out-parameter");
+    CHECK(mvfxCreateEffect(context, &def, NULL, NULL) == mvfx_errorInvalid, "no out-parameter");
     CHECK(mvfxContext_GetMisuse(context) == ++misuse, "counted");
     mvfxEffectDef def2 = OneEmitter(&emitter);
     effect = (mvfxEffectId){1, 1};
-    CHECK(mvfxCreateEffect(NULL, &def2, &effect) == mvfx_errorInvalid, "no context");
+    CHECK(mvfxCreateEffect(NULL, &def2, &effect, NULL) == mvfx_errorInvalid, "no context");
     CHECK(effect.index1 == 0 && effect.generation == 0, "the null id without a context");
 
     for (int32_t field = 0; field < 15; ++field)
@@ -189,7 +190,7 @@ static void TestInvalidDefsAreMisuse(void)
             break;
         }
         effect = (mvfxEffectId){7, 7};
-        CHECK(mvfxCreateEffect(context, &broken, &effect) == want, "refused");
+        CHECK(mvfxCreateEffect(context, &broken, &effect, NULL) == want, "refused");
         CHECK(effect.index1 == 0, "the null id");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
         CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
@@ -199,7 +200,8 @@ static void TestInvalidDefsAreMisuse(void)
     edges.rate = 0.0f;
     edges.lifetime = mvfxRangeSource(MVFX_MAX_LIFETIME, MVFX_MAX_LIFETIME);
     mvfxEffectDef atEdges = OneEmitter(&edges);
-    CHECK(mvfxCreateEffect(context, &atEdges, &effect) == mvfx_success, "every edge accepted");
+    CHECK(mvfxCreateEffect(context, &atEdges, &effect, NULL) == mvfx_success,
+          "every edge accepted");
     mvfxDestroyContext(context);
 }
 
@@ -327,7 +329,7 @@ static void TestLifeFieldsRefused(void)
         }
         mvfxEffectDef def = OneEmitter(&bad);
         mvfxEffectId effect = {7, 7};
-        CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
+        CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == want, "refused");
         CHECK(effect.index1 == 0, "the null id");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
         CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
@@ -358,11 +360,11 @@ static void TestLifeFieldsRefused(void)
     edge.rateCurve = (mvfxCurve){ramp, 2, mvfx_tangentsGiven};
     mvfxEffectDef def = OneEmitter(&edge);
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "every edge accepted");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "every edge accepted");
     edge.duration = MVFX_MAX_LIFETIME;
     edge.loops = 0;
     def = OneEmitter(&edge);
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the longest loop");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the longest loop");
     mvfxDestroyContext(context);
 }
 
@@ -495,7 +497,7 @@ static void TestShapeAndVelocityRefused(void)
         }
         mvfxEffectDef def = OneEmitter(&bad);
         mvfxEffectId effect = {7, 7};
-        CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
+        CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == want, "refused");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
         CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
     }
@@ -523,7 +525,8 @@ static void TestShapeAndVelocityRefused(void)
         edge.velocity.speed = (mvfxRange){MVFX_MAX_EXTENT, MVFX_MAX_EXTENT};
         mvfxEffectDef def = OneEmitter(&edge);
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "every edge accepted");
+        CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success,
+              "every edge accepted");
         CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "destroyed");
     }
     mvfxDestroyContext(context);
@@ -636,7 +639,7 @@ static void TestValuesRefused(void)
             break;
         }
         mvfxEffectId effect = {7, 7};
-        CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
+        CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == want, "refused");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
         CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
     }
@@ -655,14 +658,14 @@ static void TestAllocator(void)
     def.emitterCount = 3;
     mvfxEffectId a = {0};
     mvfxEffectId b = {0};
-    CHECK(mvfxCreateEffect(context, &def, &a) == mvfx_success, "first");
+    CHECK(mvfxCreateEffect(context, &def, &a, NULL) == mvfx_success, "first");
     CHECK(counter.blocks == base + 1, "one block per effect");
-    CHECK(mvfxCreateEffect(context, &def, &b) == mvfx_success, "second");
+    CHECK(mvfxCreateEffect(context, &def, &b, NULL) == mvfx_success, "second");
     CHECK(mvfxDestroyEffect(context, a) == mvfx_success, "one destroyed");
     CHECK(counter.blocks == base + 1, "its block returned");
     counter.failAfter = counter.allocations;
     mvfxEffectId c = {0};
-    CHECK(mvfxCreateEffect(context, &def, &c) == mvfx_errorCapacity, "allocator failure");
+    CHECK(mvfxCreateEffect(context, &def, &c, NULL) == mvfx_errorCapacity, "allocator failure");
     CHECK(c.index1 == 0, "the null id");
     mvfxDestroyContext(context);
     CHECK(counter.blocks == 0, "destroying the context frees its live effects");

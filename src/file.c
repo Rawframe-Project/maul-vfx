@@ -7,6 +7,7 @@
 #include "effect_api.h"
 #include "effect_check.h"
 #include "effect_parts.h"
+#include "field_path.h"
 #include "file_codec.h"
 #include "fpenv.h"
 
@@ -240,22 +241,18 @@ static uint64_t Hash(const uint8_t* bytes, size_t size)
     return hash;
 }
 
-static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def,
-                                                        const mvfxEffectAsset* assets,
-                                                        int32_t assetCount, void* bytes,
-                                                        int64_t capacity, int64_t* sizeOut)
+static mvfxFileResult WriteEffect(const mvfxEffectDef* def, const mvfxEffectAsset* assets,
+                                  int32_t assetCount, void* bytes, int64_t capacity,
+                                  int64_t* sizeOut, mvfxEffectRefusal* refusal)
 {
-    if (sizeOut != nullptr)
-    {
-        *sizeOut = 0;
-    }
     if (sizeOut == nullptr || def == nullptr || capacity < 0 || (bytes == nullptr && capacity > 0))
     {
         return Fault(mvfx_errorInvalid, -1);
     }
+    mvfxFieldPath root = mvfxFieldRoot(refusal);
     mvfxResult valid = CheckAssets(assets, assetCount);
-    valid = valid != mvfx_success ? valid : mvfxCheckEffectDef(def);
-    valid = valid != mvfx_success ? valid : mvfxCheckEffectParts(def);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectDef(&root, def);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectParts(&root, def);
     if (valid != mvfx_success)
     {
         return Fault(valid, -1);
@@ -265,6 +262,7 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
     mvfxCodec codec = {.end = SIZE_MAX,
                        .defaults = mvfxFileDefaults,
                        .faultAt = -1,
+                       .path = root,
                        .assets = assets,
                        .assetCount = assetCount,
                        .names = {names, names + MVFX_FILE_MAX_GRIDS,
@@ -302,13 +300,35 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
     return Fault(mvfx_success, -1);
 }
 
+static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def,
+                                                        const mvfxEffectAsset* assets,
+                                                        int32_t assetCount, void* bytes,
+                                                        int64_t capacity, int64_t* sizeOut,
+                                                        mvfxEffectRefusal* refusalOut)
+{
+    if (sizeOut != nullptr)
+    {
+        *sizeOut = 0;
+    }
+    mvfxEffectRefusal refusal;
+    mvfxClearRefusal(&refusal);
+    mvfxFieldPath root = mvfxFieldRoot(&refusal);
+    mvfxFileResult result =
+        WriteEffect(def, assets, assetCount, bytes, capacity, sizeOut, &refusal);
+    // A refusal no check named is of no field: a NULL argument, the asset
+    // table, the capacity.
+    (void)mvfxRefuseHere(&root, result.result);
+    refusalOut != nullptr ? (void)(*refusalOut = refusal) : (void)0;
+    return result;
+}
+
 mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def, const mvfxEffectAsset* assets,
                                int32_t assetCount, void* bytesOut, int64_t capacity,
-                               int64_t* sizeOut)
+                               int64_t* sizeOut, mvfxEffectRefusal* refusalOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxFileResult result =
-        mvfxWriteEffectWork(def, assets, assetCount, bytesOut, capacity, sizeOut);
+        mvfxWriteEffectWork(def, assets, assetCount, bytesOut, capacity, sizeOut, refusalOut);
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -508,10 +528,11 @@ static mvfxFileResult Bind(const uint8_t* bytes, const Section sections[SECTION_
 
 // Walks the effect section: checking and measuring without a def, reading
 // into one from its default with names bound, its arrays in memory of
-// capacity bytes.
+// capacity bytes; a fault in a field recorded in refusal with its path.
 static mvfxFileResult ReadDef(const uint8_t* bytes, const Section sections[SECTION_COUNT],
                               const mvfxEffectAsset* assets, int32_t* names, uint8_t* memory,
-                              size_t capacity, mvfxEffectDef* def, size_t* used)
+                              size_t capacity, mvfxEffectDef* def, size_t* used,
+                              mvfxEffectRefusal* refusal)
 {
     const Section* effect = &sections[EFFECT_TAG - 1];
     mvfxCodec codec = {.in = bytes,
@@ -521,6 +542,7 @@ static mvfxFileResult ReadDef(const uint8_t* bytes, const Section sections[SECTI
                        .memory = memory,
                        .capacity = capacity,
                        .faultAt = -1,
+                       .path = mvfxFieldRoot(refusal),
                        .assets = assets};
     size_t first = 0;
     for (int32_t kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
@@ -561,10 +583,10 @@ static mvfxFileResult ReadDef(const uint8_t* bytes, const Section sections[SECTI
 }
 
 // Checks a file up to the effect section's walk, measuring its memory and
-// binding its names.
+// binding its names; a fault in a field recorded in refusal.
 static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEffectAsset* assets,
                                 int32_t assetCount, Section sections[SECTION_COUNT], int32_t* names,
-                                size_t* needed)
+                                size_t* needed, mvfxEffectRefusal* refusal)
 {
     mvfxFileResult result = ReadHeader(bytes, size);
     if (result.result == mvfx_success)
@@ -577,7 +599,7 @@ static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEff
     }
     if (result.result == mvfx_success)
     {
-        result = ReadDef(bytes, sections, assets, nullptr, nullptr, 0, nullptr, needed);
+        result = ReadDef(bytes, sections, assets, nullptr, nullptr, 0, nullptr, needed, refusal);
     }
     if (result.result == mvfx_success)
     {
@@ -586,20 +608,113 @@ static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEff
     return result;
 }
 
-static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_t size,
-                                                       const mvfxEffectAsset* assets,
-                                                       int32_t assetCount, void* memory,
-                                                       int64_t capacity, int64_t* neededOut,
-                                                       mvfxEffectDef* defOut)
+// The effect section of a file the reader accepted, from its section
+// table; false when the bytes no longer hold one in the file.
+static bool EffectSection(const void* file, int64_t size, Section* effect)
 {
-    if (neededOut != nullptr)
+    const uint8_t* bytes = file;
+    if (size < HEADER_BYTES)
     {
-        *neededOut = 0;
+        return false;
     }
-    if (defOut != nullptr)
+    uint32_t count = Get32(bytes, 12);
+    if (count < 1 || count > ((size_t)size - HEADER_BYTES) / ENTRY_BYTES)
     {
-        *defOut = (mvfxEffectDef){0};
+        return false;
     }
+    size_t entry = HEADER_BYTES + (size_t)(count - 1) * ENTRY_BYTES;
+    size_t at = Get32(bytes, entry + 4);
+    size_t length = Get32(bytes, entry + 8);
+    if (Get32(bytes, entry) != EFFECT_TAG || at > (size_t)size || length > (size_t)size - at)
+    {
+        return false;
+    }
+    *effect = (Section){at, length, 0};
+    return true;
+}
+
+// The field a head at at, in a sequence of fields ending at end, of a tag;
+// SIZE_MAX when the sequence lacks it or does not fit.
+static size_t FindField(const uint8_t* bytes, size_t at, size_t end, uint32_t tag)
+{
+    while (at <= end && end - at >= 8)
+    {
+        uint32_t found = Get32(bytes, at);
+        size_t length = Get32(bytes, at + 4);
+        if (found == tag)
+        {
+            return at;
+        }
+        if (found > tag || length > end - at - 8)
+        {
+            return SIZE_MAX;
+        }
+        at = Padded(at + 8 + length);
+    }
+    return SIZE_MAX;
+}
+
+// The offset in the effect section of the tag of the field a refusal
+// names, or, for a field the file leaves out, of the head of the nearest
+// struct or item holding it that the file has (the section's own when it
+// has none, as for a refusal of the def as a whole). The walk keeps
+// within the section and each length it reads, so bytes that changed
+// since the read find some offset there.
+static int64_t FieldOffset(const uint8_t* bytes, const Section* effect,
+                           const mvfxEffectRefusal* refusal)
+{
+    size_t at = effect->offset;
+    size_t end = effect->offset + effect->size;
+    size_t found = effect->offset;
+    for (int32_t s = 0; s < refusal->tagCount; ++s)
+    {
+        size_t head = FindField(bytes, at, end, refusal->tags[s]);
+        if (head == SIZE_MAX)
+        {
+            break;
+        }
+        found = head;
+        at = head + 8;
+        end = at + Get32(bytes, head + 4);
+        int32_t item = refusal->items[s];
+        if (s + 1 == refusal->tagCount || item < 0)
+        {
+            continue;
+        }
+        // An item: past the list's count and zero word, each item its
+        // length, a zero word and its fields.
+        if (end - at < 8 || (uint32_t)item >= Get32(bytes, at))
+        {
+            break;
+        }
+        at += 8;
+        size_t itemAt = SIZE_MAX;
+        for (int32_t i = 0; itemAt == SIZE_MAX && end - at >= 8; ++i)
+        {
+            size_t length = Get32(bytes, at);
+            if (length > end - at - 8)
+            {
+                break;
+            }
+            itemAt = i == item ? at : SIZE_MAX;
+            at += i == item ? 0 : 8 + length;
+        }
+        if (itemAt == SIZE_MAX)
+        {
+            break;
+        }
+        found = itemAt;
+        end = itemAt + 8 + Get32(bytes, itemAt);
+        at = itemAt + 8;
+    }
+    return (int64_t)found;
+}
+
+static mvfxFileResult ReadEffect(const void* bytes, int64_t size, const mvfxEffectAsset* assets,
+                                 int32_t assetCount, void* memory, int64_t capacity,
+                                 int64_t* neededOut, mvfxEffectDef* defOut,
+                                 mvfxEffectRefusal* refusal)
+{
     if (neededOut == nullptr || defOut == nullptr || size < 0 || (bytes == nullptr && size > 0) ||
         capacity < 0 || (memory == nullptr && capacity > 0) || (uintptr_t)memory % 16 != 0)
     {
@@ -614,7 +729,7 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
     int32_t names[MVFX_FILE_MAX_GRIDS + MVFX_FILE_MAX_MESHES + MVFX_FILE_MAX_MODULES];
     size_t needed = 0;
     mvfxFileResult result =
-        CheckFile(bytes, (size_t)size, assets, assetCount, sections, names, &needed);
+        CheckFile(bytes, (size_t)size, assets, assetCount, sections, names, &needed, refusal);
     if (result.result != mvfx_success)
     {
         return result;
@@ -624,54 +739,74 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
     {
         return Fault(mvfx_errorCapacity, -1);
     }
-    result = ReadDef(bytes, sections, assets, names, memory, (size_t)capacity, defOut, &needed);
-    // A def the file holds is the file's bytes: whatever check it fails,
-    // a bound's included, the file is malformed.
-    if (result.result == mvfx_success && (mvfxCheckEffectDef(defOut) != mvfx_success ||
-                                          mvfxCheckEffectParts(defOut) != mvfx_success))
-    {
-        result = Fault(mvfx_errorFormat, (int64_t)sections[EFFECT_TAG - 1].offset);
-    }
+    result =
+        ReadDef(bytes, sections, assets, names, memory, (size_t)capacity, defOut, &needed, refusal);
     if (result.result != mvfx_success)
+    {
+        return result;
+    }
+    // A def the file holds is the file's bytes: whatever check it fails,
+    // a bound's included, the file is malformed, at the field refused.
+    mvfxFieldPath root = mvfxFieldRoot(refusal);
+    mvfxResult valid = mvfxCheckEffectDef(&root, defOut);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectParts(&root, defOut);
+    if (valid != mvfx_success)
+    {
+        refusal->result = mvfx_errorFormat;
+        return Fault(mvfx_errorFormat, FieldOffset(bytes, &sections[EFFECT_TAG - 1], refusal));
+    }
+    return result;
+}
+
+static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_t size,
+                                                       const mvfxEffectAsset* assets,
+                                                       int32_t assetCount, void* memory,
+                                                       int64_t capacity, int64_t* neededOut,
+                                                       mvfxEffectDef* defOut,
+                                                       mvfxEffectRefusal* refusalOut)
+{
+    if (neededOut != nullptr)
+    {
+        *neededOut = 0;
+    }
+    if (defOut != nullptr)
     {
         *defOut = (mvfxEffectDef){0};
     }
+    mvfxEffectRefusal refusal;
+    mvfxClearRefusal(&refusal);
+    mvfxFieldPath root = mvfxFieldRoot(&refusal);
+    mvfxFileResult result =
+        ReadEffect(bytes, size, assets, assetCount, memory, capacity, neededOut, defOut, &refusal);
+    // A refusal no check named is of no field: a NULL argument, the asset
+    // table, the header, the section table, a names section, the memory.
+    (void)mvfxRefuseHere(&root, result.result);
+    if (result.result != mvfx_success && defOut != nullptr)
+    {
+        *defOut = (mvfxEffectDef){0};
+    }
+    refusalOut != nullptr ? (void)(*refusalOut = refusal) : (void)0;
     return result;
 }
 
 mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size, const mvfxEffectAsset* assets,
                               int32_t assetCount, void* memoryOut, int64_t capacity,
-                              int64_t* neededOut, mvfxEffectDef* defOut)
+                              int64_t* neededOut, mvfxEffectDef* defOut,
+                              mvfxEffectRefusal* refusalOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxFileResult result =
-        mvfxReadEffectWork(bytes, size, assets, assetCount, memoryOut, capacity, neededOut, defOut);
+    mvfxFileResult result = mvfxReadEffectWork(bytes, size, assets, assetCount, memoryOut, capacity,
+                                               neededOut, defOut, refusalOut);
     mvfxFloatEnvLeave(env);
     return result;
 }
 
-static MVFX_NOINLINE mvfxFileResult mvfxCreateEffectFromBytesWork(mvfxContext* context,
-                                                                  const void* bytes, int64_t size,
-                                                                  const mvfxEffectAsset* assets,
-                                                                  int32_t assetCount,
-                                                                  mvfxEffectId* effectOut)
+// Reads a file into memory from the context's allocator and creates its
+// effect, the refusal recorded in refusal.
+static mvfxFileResult CreateFromBytes(mvfxContext* context, const void* bytes, int64_t size,
+                                      const mvfxEffectAsset* assets, int32_t assetCount,
+                                      mvfxEffectId* effectOut, mvfxEffectRefusal* refusal)
 {
-    if (effectOut != nullptr)
-    {
-        *effectOut = (mvfxEffectId){0};
-    }
-    if (context == nullptr || effectOut == nullptr)
-    {
-        if (context != nullptr)
-        {
-            mvfxCountMisuse(context);
-        }
-        return Fault(mvfx_errorInvalid, -1);
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return Fault(mvfx_errorBusy, -1);
-    }
     // The bytes' pointer and size and the asset table are the program's own
     // arguments: a correct program never passes them invalid, so that
     // counts as misuse. What the bytes hold is untrusted data and counts
@@ -686,33 +821,73 @@ static MVFX_NOINLINE mvfxFileResult mvfxCreateEffectFromBytesWork(mvfxContext* c
     mvfxEffectDef def;
     int64_t needed = 0;
     mvfxFileResult result =
-        mvfxReadEffect(bytes, size, assets, assetCount, nullptr, 0, &needed, &def);
+        mvfxReadEffect(bytes, size, assets, assetCount, nullptr, 0, &needed, &def, refusal);
     void* memory = nullptr;
     if (result.result == mvfx_errorCapacity)
     {
         memory = mvfxAllocate(&context->allocator, (size_t)needed, 16);
         result = memory == nullptr ? Fault(mvfx_errorCapacity, -1)
                                    : mvfxReadEffect(bytes, size, assets, assetCount, memory, needed,
-                                                    &needed, &def);
+                                                    &needed, &def, refusal);
     }
     if (result.result == mvfx_success)
     {
         // A file's def is untrusted data: what it asks of the program's
-        // assets is refused with its status, and counts no misuse.
+        // assets is refused with its status, and counts no misuse; the
+        // field refused is found in the file as the reader finds it.
         bool misuse = false;
-        result = Fault(mvfxCreateEffectOf(context, &def, effectOut, &misuse), -1);
+        mvfxResult created = mvfxCreateEffectOf(context, &def, effectOut, refusal, &misuse);
+        Section effect = {0};
+        bool field = created != mvfx_success && refusal->tagCount > 0;
+        int64_t at = field && EffectSection(bytes, size, &effect)
+                         ? FieldOffset(bytes, &effect, refusal)
+                         : -1;
+        result = Fault(created, at);
     }
     mvfxRelease(&context->allocator, memory, (size_t)needed, 16);
     return result;
 }
 
+static MVFX_NOINLINE mvfxFileResult mvfxCreateEffectFromBytesWork(
+    mvfxContext* context, const void* bytes, int64_t size, const mvfxEffectAsset* assets,
+    int32_t assetCount, mvfxEffectId* effectOut, mvfxEffectRefusal* refusalOut)
+{
+    if (effectOut != nullptr)
+    {
+        *effectOut = (mvfxEffectId){0};
+    }
+    mvfxEffectRefusal refusal;
+    mvfxClearRefusal(&refusal);
+    if (context == nullptr || effectOut == nullptr)
+    {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse(context);
+        }
+        refusal.result = mvfx_errorInvalid;
+        refusalOut != nullptr ? (void)(*refusalOut = refusal) : (void)0;
+        return Fault(mvfx_errorInvalid, -1);
+    }
+    // Busy, it writes no output but the id.
+    if (mvfxRefusesHostCall(context))
+    {
+        return Fault(mvfx_errorBusy, -1);
+    }
+    mvfxFileResult result =
+        CreateFromBytes(context, bytes, size, assets, assetCount, effectOut, &refusal);
+    mvfxFieldPath root = mvfxFieldRoot(&refusal);
+    (void)mvfxRefuseHere(&root, result.result);
+    refusalOut != nullptr ? (void)(*refusalOut = refusal) : (void)0;
+    return result;
+}
+
 mvfxFileResult mvfxCreateEffectFromBytes(mvfxContext* context, const void* bytes, int64_t size,
                                          const mvfxEffectAsset* assets, int32_t assetCount,
-                                         mvfxEffectId* effectOut)
+                                         mvfxEffectId* effectOut, mvfxEffectRefusal* refusalOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxFileResult result =
-        mvfxCreateEffectFromBytesWork(context, bytes, size, assets, assetCount, effectOut);
+    mvfxFileResult result = mvfxCreateEffectFromBytesWork(context, bytes, size, assets, assetCount,
+                                                          effectOut, refusalOut);
     mvfxFloatEnvLeave(env);
     return result;
 }

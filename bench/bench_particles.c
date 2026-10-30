@@ -191,7 +191,7 @@ static bool Open(Scene* scene, const mvfxEmitterDef* emitter, int32_t count)
         }
         local.forces = &field;
     }
-    if (mvfxCreateEffect(scene->context, &effectDef, &scene->effect) != mvfx_success)
+    if (mvfxCreateEffect(scene->context, &effectDef, &scene->effect, NULL) != mvfx_success)
     {
         return false;
     }
@@ -571,7 +571,7 @@ static int Memory(void)
         effectDef.emitterCount = 1;
         mvfxEffectId second = {0};
         int64_t start = s_held;
-        if (mvfxCreateEffect(scene.context, &effectDef, &second) != mvfx_success)
+        if (mvfxCreateEffect(scene.context, &effectDef, &second, NULL) != mvfx_success)
         {
             return 1;
         }

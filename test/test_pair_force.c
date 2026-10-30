@@ -78,7 +78,7 @@ static void Run(const mvfxEmitterDef* emitter, const double* places, const float
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};
@@ -250,15 +250,15 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 4 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(s_context, &def, &effect) == want;
+        refused += mvfxCreateEffect(s_context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 6, "every check");
     emitter = Emitter(-MVFX_MAX_EXTENT);
     emitter.pairForce.radius = 4.0f;
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "the bounds");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "the bounds");
     emitter.pairForce.enable = false;
     emitter.pairForce.radius = -1.0f;
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "not enabled, unread");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "not enabled, unread");
     mvfxEmitterDef beam = mvfxDefaultEmitterDef();
     beam.rate = 0.0f;
     beam.capacity = 8;
@@ -266,9 +266,9 @@ static void TestChecks(void)
     beam.beam = (mvfxBeamDef){.enable = true, .segments = 4, .end = {.point = {1, 0, 0}}};
     beam.neighbors = Emitter(1.0f).neighbors;
     def.emitters = &beam;
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "a beam");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "a beam");
     beam.pairForce = Emitter(1.0f).pairForce;
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid, "not on a beam");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_errorInvalid, "not on a beam");
     mvfxDestroyContext(s_context);
 }
 

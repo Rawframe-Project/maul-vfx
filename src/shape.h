@@ -12,6 +12,7 @@
 #define MAUL_VFX_SRC_SHAPE_H
 
 #include "direction.h"
+#include "field_path.h"
 #include "random.h"
 
 #include "maul-vfx/shape.h"
@@ -51,8 +52,8 @@ typedef struct mvfxShapeSample
 // Whether a shape is valid (its kind and arc mode known, the fields its
 // kind reads in range): mvfx_errorLimit for an offset, a size or a cone's
 // angle or reach past its named bound, mvfx_errorInvalid for anything
-// else.
-mvfxResult mvfxCheckShape(const mvfxShape* shape);
+// else. Names the field it refuses below at.
+mvfxResult mvfxCheckShape(const mvfxFieldPath* at, const mvfxShape* shape);
 
 // Compiles a valid shape: its rotation as a normalized matrix, its cone's
 // tangent, a mesh shape's mesh.

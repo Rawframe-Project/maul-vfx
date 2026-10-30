@@ -120,6 +120,7 @@ add_library(maul-vfx ${MAUL_LIBRARY_KIND}
     src/file.c
     src/file_codec.c
     src/file_fields.c
+    src/field_path.c
     src/gas_surface.c
     src/marching_table.c
     src/surface_mesh.c
@@ -212,6 +213,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(depth)
     maul_add_test(direction_internal WHITEBOX)
     maul_add_test(effect)
+    maul_add_test(refusal)
     maul_add_test(force)
     maul_add_test(force_internal WHITEBOX)
     maul_add_test(gas WHITEBOX)

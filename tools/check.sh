@@ -118,7 +118,7 @@ tidy() { # files
 all_c_files() {
     git ls-files 'include/*.h' 'src/*.[ch]' 'rhi/*.[ch]' 'test/*.[ch]' 'tools/*.[ch]' \
         'bench/*.[ch]' 'samples/*.[ch]' |
-        grep -vE '^(src/(file_fields|marching_table)\.c|test/file_pins\.h)$'
+        grep -vE '^(src/(file_fields|marching_table)\.c|src/file_tags\.h|test/file_pins\.h)$'
 }
 
 if [ "$tier" = changed ]; then
@@ -133,7 +133,7 @@ if [ "$tier" = changed ]; then
     fi
     source_checks
     mapfile -t c_files < <(printf '%s\n' "${changed[@]}" | grep -E '\.[ch]$' |
-        grep -vE '^(src/(file_fields|marching_table)\.c|test/file_pins\.h)$' || true)
+        grep -vE '^(src/(file_fields|marching_table)\.c|src/file_tags\.h|test/file_pins\.h)$' || true)
     present=()
     for f in "${c_files[@]+"${c_files[@]}"}"; do [ -f "$f" ] && present+=("$f"); done
     if [ ${#present[@]} -gt 0 ]; then

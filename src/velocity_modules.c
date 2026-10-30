@@ -12,12 +12,14 @@
 #include <math.h>
 
 // A direction's status: within MVFX_MAX_EXTENT, and of length 0 only when
-// it is not used.
-static mvfxResult CheckDirection(const float v[3], bool used)
+// it is not used; naming the field of a tag below at.
+static mvfxResult CheckDirection(const mvfxFieldPath* at, uint32_t tag, const float v[3], bool used)
 {
     float copy[3] = {v[0], v[1], v[2]};
-    mvfxResult within = mvfxBoundedVector(v, MVFX_MAX_EXTENT);
-    return within != mvfx_success ? within : mvfxRequire(!used || mvfxNormalize(copy));
+    mvfxResult within = mvfxRefuseVector(at, tag, v, MVFX_MAX_EXTENT);
+    return within != mvfx_success
+               ? within
+               : mvfxRefuseField(at, tag, mvfxRequire(!used || mvfxNormalize(copy)));
 }
 
 static bool IsUsed(const mvfxLifeCurve* life)
@@ -25,29 +27,49 @@ static bool IsUsed(const mvfxLifeCurve* life)
     return life->value != 0.0f;
 }
 
-mvfxResult mvfxCheckVelocityModules(const mvfxVelocityModules* m)
+mvfxResult mvfxCheckVelocityModules(const mvfxFieldPath* at, const mvfxVelocityModules* m)
 {
-    if (m->limitSpeed && !(m->speedLimit.value >= 0.0f && m->limitDampen > 0.0f))
+    if (m->limitSpeed && !(m->speedLimit.value >= 0.0f))
     {
-        return mvfx_errorInvalid;
+        mvfxFieldPath limit = mvfxFieldIn(at, MVFX_TAG_VELOCITY_MODULES_SPEED_LIMIT, -1);
+        return mvfxRefuseField(&limit, MVFX_TAG_LIFE_CURVE_VALUE, mvfx_errorInvalid);
+    }
+    if (m->limitSpeed && !(m->limitDampen > 0.0f))
+    {
+        return mvfxRefuseField(at, MVFX_TAG_VELOCITY_MODULES_LIMIT_DAMPEN, mvfx_errorInvalid);
     }
     const mvfxLifeCurve* lives[5] = {&m->motionScale, &m->addedSpeed, &m->orbitRate,
                                      &m->radialSpeed, &m->speedLimit};
+    const uint32_t tags[5] = {
+        MVFX_TAG_VELOCITY_MODULES_MOTION_SCALE, MVFX_TAG_VELOCITY_MODULES_ADDED_SPEED,
+        MVFX_TAG_VELOCITY_MODULES_ORBIT_RATE,   MVFX_TAG_VELOCITY_MODULES_RADIAL_SPEED,
+        MVFX_TAG_VELOCITY_MODULES_SPEED_LIMIT,
+    };
     for (int32_t i = 0; i < 5; ++i)
     {
-        mvfxResult life = mvfxCheckLifeCurve(lives[i]);
-        if (life != mvfx_success)
+        mvfxFieldPath life = mvfxFieldIn(at, tags[i], -1);
+        mvfxResult checked = mvfxCheckLifeCurve(&life, lives[i]);
+        if (checked != mvfx_success)
         {
-            return life;
+            return checked;
         }
     }
-    mvfxResult directions = mvfxFirst(CheckDirection(m->addedDirection, IsUsed(&m->addedSpeed)),
-                                      CheckDirection(m->orbitAxis, IsUsed(&m->orbitRate)));
-    mvfxResult centers = mvfxFirst(mvfxBoundedVector(m->orbitCenter, MVFX_MAX_EXTENT),
-                                   mvfxBoundedVector(m->radialCenter, MVFX_MAX_EXTENT));
-    return mvfxFirst(mvfxFirst(directions, centers),
-                     m->limitSpeed ? mvfxBounded(m->limitDampen, 0.0f, MVFX_MAX_DRAG)
-                                   : mvfx_success);
+    mvfxResult checked = CheckDirection(at, MVFX_TAG_VELOCITY_MODULES_ADDED_DIRECTION,
+                                        m->addedDirection, IsUsed(&m->addedSpeed));
+    checked = checked != mvfx_success ? checked
+                                      : CheckDirection(at, MVFX_TAG_VELOCITY_MODULES_ORBIT_AXIS,
+                                                       m->orbitAxis, IsUsed(&m->orbitRate));
+    checked = checked != mvfx_success ? checked
+                                      : mvfxRefuseVector(at, MVFX_TAG_VELOCITY_MODULES_ORBIT_CENTER,
+                                                         m->orbitCenter, MVFX_MAX_EXTENT);
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseVector(at, MVFX_TAG_VELOCITY_MODULES_RADIAL_CENTER, m->radialCenter,
+                                     MVFX_MAX_EXTENT);
+    return checked != mvfx_success || !m->limitSpeed
+               ? checked
+               : mvfxRefuseField(at, MVFX_TAG_VELOCITY_MODULES_LIMIT_DAMPEN,
+                                 mvfxBounded(m->limitDampen, 0.0f, MVFX_MAX_DRAG));
 }
 
 int32_t mvfxVelocityModuleCurves(const mvfxVelocityModules* m)

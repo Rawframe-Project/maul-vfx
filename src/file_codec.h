@@ -11,6 +11,7 @@
 #ifndef MAUL_VFX_SRC_FILE_CODEC_H
 #define MAUL_VFX_SRC_FILE_CODEC_H
 
+#include "field_path.h"
 #include "file_fields.h"
 
 #include "maul-vfx/file.h"
@@ -43,9 +44,12 @@ typedef struct mvfxCodec
     uint8_t* memory;
     size_t capacity;
     size_t used;
-    // The first fault and the offset of its byte, -1 for none.
+    // The first fault and the offset of its byte, -1 for none; and the
+    // path of the field the walk is in, into whose refusal (none for
+    // NULL) the first fault is recorded with it.
     mvfxResult fault;
     int64_t faultAt;
+    mvfxFieldPath path;
     const mvfxEffectAsset* assets;
     int32_t assetCount;
     // Each kind's names as indices of assets: writing, gathered in the
@@ -74,7 +78,8 @@ void mvfxPutPayload(mvfxCodec* codec, const mvfxFileField* field, const uint8_t*
 // holds the type's default; NULL to check and measure only.
 void mvfxReadFields(mvfxCodec* codec, const mvfxFileType* type, uint8_t* object, size_t end);
 
-// Records a fault at an offset unless one is recorded.
+// Records a fault at an offset, and in the path's refusal at the field the
+// walk is in, unless one is recorded.
 void mvfxCodecFault(mvfxCodec* codec, mvfxResult fault, int64_t offset);
 
 #endif

@@ -253,7 +253,7 @@ static mvfxEffectId MakeFountain(mvfxContext* context)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(context, &effectDef, &effect) != mvfx_success)
+    if (mvfxCreateEffect(context, &effectDef, &effect, NULL) != mvfx_success)
     {
         printf("the effect was refused\n");
     }

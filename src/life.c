@@ -13,22 +13,25 @@ double mvfxLifeCurveLargest(const mvfxLifeCurve* life)
     return life->curve.keyCount == 0 ? value : value * mvfxCurveLargest(&life->curve, 0.0f, 1.0f);
 }
 
-mvfxResult mvfxCheckLifeCurve(const mvfxLifeCurve* life)
+mvfxResult mvfxCheckLifeCurve(const mvfxFieldPath* at, const mvfxLifeCurve* life)
 {
     // A value past MVFX_MAX_VALUE is refused before the curve is sampled,
     // so a zero curve cannot hide it.
-    mvfxResult value = mvfxBounded(life->value, -MVFX_MAX_VALUE, MVFX_MAX_VALUE);
+    mvfxResult value = mvfxRefuseField(at, MVFX_TAG_LIFE_CURVE_VALUE,
+                                       mvfxBounded(life->value, -MVFX_MAX_VALUE, MVFX_MAX_VALUE));
     if (value != mvfx_success)
     {
         return value;
     }
+    mvfxFieldPath curveAt = mvfxFieldIn(at, MVFX_TAG_LIFE_CURVE_CURVE, -1);
     mvfxResult curve =
-        life->curve.keyCount == 0 ? mvfx_success : mvfxCheckCurve(&life->curve, true);
+        life->curve.keyCount == 0 ? mvfx_success : mvfxCheckCurve(&curveAt, &life->curve, true);
     if (curve != mvfx_success)
     {
         return curve;
     }
-    return mvfxWithinBound(mvfxLifeCurveLargest(life) <= (double)MVFX_MAX_LIFE_SCALE);
+    return mvfxRefuseHere(
+        at, mvfxWithinBound(mvfxLifeCurveLargest(life) <= (double)MVFX_MAX_LIFE_SCALE));
 }
 
 int32_t mvfxLifeCurves(const mvfxLifeCurve* life)

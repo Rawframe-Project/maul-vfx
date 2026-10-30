@@ -62,7 +62,7 @@ static mvfxEffectId Effect(mvfxContext* context, const mvfxEmitterDef* emitter)
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     return effect;
 }
 
@@ -656,7 +656,7 @@ static void TestHostBirths(void)
     effectDef.qualityLevels = &quarter;
     effectDef.qualityLevelCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
     mvfxInstanceDef low = mvfxDefaultInstanceDef();
@@ -753,7 +753,7 @@ static void TestEventSpawn(void)
     def.emitters = emitters;
     def.emitterCount = 2;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 1, &view) == mvfx_success &&
               view.lifetime.kind == mvfx_sourceRange && view.lifetime.components == 1 &&
@@ -934,7 +934,7 @@ static uint64_t FeaturesOf(mvfxContext* context, const mvfxEmitterDef* emitter)
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
     static mvfxEmitterView view;
-    if (mvfxCreateEffect(context, &def, &effect) != mvfx_success ||
+    if (mvfxCreateEffect(context, &def, &effect, NULL) != mvfx_success ||
         mvfxEffect_GetEmitterView(context, effect, 0, &view) != mvfx_success)
     {
         return ~0ull;
@@ -1327,7 +1327,7 @@ static void TestForces(void)
     def.parameters = defaults;
     def.parameterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     // A planned instance, and one of another seed, whose turbulence's seed
     // differs as the noise's seedPerInstance asks.
     mvfxInstanceId planned = Instance(context, effect, true);

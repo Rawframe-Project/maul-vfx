@@ -42,13 +42,14 @@ typedef struct mvfxResolvedCollider
 } mvfxResolvedCollider;
 
 // Whether a collider is valid: mvfx_errorLimit for a place or a size past
-// MVFX_MAX_EXTENT, mvfx_errorInvalid for anything else wrong.
-mvfxResult mvfxCheckCollider(const mvfxCollider* collider);
+// MVFX_MAX_EXTENT, mvfx_errorInvalid for anything else wrong. Names the
+// field it refuses below at.
+mvfxResult mvfxCheckCollider(const mvfxFieldPath* at, const mvfxCollider* collider);
 
 // Whether an emitter's collision is valid: mvfx_errorLimit for a speed, a
 // size or a count past its named bound, mvfx_errorInvalid for anything
-// else wrong.
-mvfxResult mvfxCheckCollision(const mvfxCollision* collision);
+// else wrong. Names the field it refuses below at.
+mvfxResult mvfxCheckCollision(const mvfxFieldPath* at, const mvfxCollision* collision);
 
 // A valid collider as compiled: its normal and rotation normalized.
 mvfxCollider mvfxCompileCollider(const mvfxCollider* collider);

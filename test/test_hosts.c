@@ -85,7 +85,7 @@ static mvfxInstanceId NewInstance(Out* out, mvfxContext* context, const mvfxEmit
     def.waters = waters;
     def.waterCount = waterCount;
     mvfxEffectId effect = {0};
-    mvfxResult r = mvfxCreateEffect(context, &def, &effect);
+    mvfxResult r = mvfxCreateEffect(context, &def, &effect, NULL);
     PUT(out, r);
     s_effect = effect;
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -346,7 +346,8 @@ static void Files(Out* out)
     static unsigned char file[1 << 15];
     memset(file, 0, sizeof file);
     int64_t size = 0;
-    mvfxFileResult written = mvfxWriteEffect(&def, NULL, 0, file, (int64_t)sizeof file, &size);
+    mvfxFileResult written =
+        mvfxWriteEffect(&def, NULL, 0, file, (int64_t)sizeof file, &size, NULL);
     PUT(out, written);
     PUT(out, size);
     PUT(out, file);
@@ -356,13 +357,13 @@ static void Files(Out* out)
     mvfxEffectDef read;
     memset(&read, 0, sizeof read);
     mvfxFileResult r =
-        mvfxReadEffect(file, size, NULL, 0, memory, (int64_t)sizeof memory, &needed, &read);
+        mvfxReadEffect(file, size, NULL, 0, memory, (int64_t)sizeof memory, &needed, &read, NULL);
     PUT(out, r);
     PUT(out, needed);
     PUT(out, memory);
     mvfxContext* context = NewContext(out);
     mvfxEffectId effect = {0};
-    r = mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &effect);
+    r = mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &effect, NULL);
     PUT(out, r);
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;

@@ -37,7 +37,7 @@ static void Open(const mvfxEmitterDef* emitter, const mvfxGasDef* gas, const flo
     def.gases = gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);
@@ -504,7 +504,7 @@ static void TestRefusals(void)
         def.gases = &gas;
         def.gasCount = 1;
         mvfxEffectId effect = {0};
-        mvfxResult made = mvfxCreateEffect(s_context, &def, &effect);
+        mvfxResult made = mvfxCreateEffect(s_context, &def, &effect, NULL);
         right = right && made == (c == 5 ? mvfx_success : mvfx_errorInvalid);
     }
     CHECK(right, "the couplings' refusals");

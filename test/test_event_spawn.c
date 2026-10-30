@@ -34,7 +34,7 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
     effectDef.emitters = emitters;
     effectDef.emitterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -457,7 +457,7 @@ static void TestRefusals(void)
         effectDef.emitters = emitters;
         effectDef.emitterCount = 3;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == want, "refused");
     }
     // A chain is no cycle: 2 from 1's deaths, 1 from 0's.
     mvfxEmitterDef chain[3] = {Source(0.5f, 0.5f), Consumer(0, 1, 1), Consumer(1, 1, 1)};
@@ -467,7 +467,7 @@ static void TestRefusals(void)
     effectDef.emitters = chain;
     effectDef.emitterCount = 3;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a chain");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "a chain");
     mvfxDestroyContext(context);
 }
 

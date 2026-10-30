@@ -73,7 +73,7 @@ static void Run(const mvfxEmitterDef* emitter, const double* places, const float
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
@@ -299,7 +299,7 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 1 || rule == 3 || rule == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(s_context, &def, &effect) == want;
+        refused += mvfxCreateEffect(s_context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 9, "every check");
     emitter = Emitter();
@@ -309,10 +309,10 @@ static void TestChecks(void)
                                         .maxContacts = MVFX_MAX_NEIGHBORS,
                                         .restitution = 1.0f,
                                         .friction = 1.0f};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "the bounds");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "the bounds");
     emitter.contacts.enable = false;
     emitter.contacts.iterations = -3;
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "not enabled, unread");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "not enabled, unread");
     // A beam takes no contacts and no steering.
     mvfxEmitterDef beam = mvfxDefaultEmitterDef();
     beam.rate = 0.0f;
@@ -320,12 +320,12 @@ static void TestChecks(void)
     beam.ribbon.ids = mvfx_ribbonOne;
     beam.beam = (mvfxBeamDef){.enable = true, .segments = 4, .end = {.point = {1, 0, 0}}};
     def.emitters = &beam;
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "a beam");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "a beam");
     beam.contacts = Emitter().contacts;
-    refused = mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid;
+    refused = mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_errorInvalid;
     beam.contacts.enable = false;
     beam.steering.enable = true;
-    refused += mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid;
+    refused += mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_errorInvalid;
     CHECK(refused == 2, "not on a beam");
     mvfxDestroyContext(s_context);
 }

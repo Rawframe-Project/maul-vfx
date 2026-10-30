@@ -40,7 +40,7 @@ static bool TakenWith(const mvfxEmitterDef* emitters, int32_t count, const float
     effectDef.parameters = parameter;
     effectDef.parameterCount = parameter != NULL ? 1 : 0;
     mvfxEffectId effect = {0};
-    bool taken = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool taken = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     mvfxDestroyContext(context);
     return taken;
 }
@@ -59,7 +59,7 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count, float scale
     effectDef.emitters = emitters;
     effectDef.emitterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.scale = scale;

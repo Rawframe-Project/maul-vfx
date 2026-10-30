@@ -39,13 +39,14 @@ static void* Aligned(int64_t bytes, void** block)
 // A def written as a file, its size in size.
 static uint8_t* Written(const mvfxEffectDef* def, int64_t* size)
 {
-    mvfxFileResult measured = mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, NULL, 0, size);
+    mvfxFileResult measured =
+        mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, NULL, 0, size, NULL);
     CHECK(measured.result == mvfx_errorCapacity && *size > 0, "the file measured");
     uint8_t* bytes = malloc((size_t)*size);
     CHECK(bytes != NULL, "file memory");
     int64_t written = 0;
     mvfxFileResult result =
-        mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, bytes, *size, &written);
+        mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, bytes, *size, &written, NULL);
     CHECK(result.result == mvfx_success && written == *size, "the file written");
     return bytes;
 }
@@ -81,20 +82,20 @@ static mvfxResult ThroughFile(mvfxContext* context, const mvfxEffectDef* def,
     }
     int64_t needed = 0;
     mvfxEffectDef read;
-    mvfxFileResult result =
-        mvfxReadEffect(bytes, size, s_sceneAssets, s_sceneAssetCount, NULL, 0, &needed, &read);
+    mvfxFileResult result = mvfxReadEffect(bytes, size, s_sceneAssets, s_sceneAssetCount, NULL, 0,
+                                           &needed, &read, NULL);
     CHECK(result.result == mvfx_errorCapacity && needed > 0, "the def measured");
     void* block = NULL;
     void* memory = Aligned(needed, &block);
     result = mvfxReadEffect(bytes, size, s_sceneAssets, s_sceneAssetCount, memory, needed, &needed,
-                            &read);
+                            &read, NULL);
     CHECK(result.result == mvfx_success, "the file read");
     int64_t again = 0;
     uint8_t* rewritten = Written(&read, &again);
     CHECK(again == size && memcmp(bytes, rewritten, (size_t)size) == 0,
           "the def read writes the same bytes");
     result = mvfxCreateEffectFromBytes(context, bytes, size, s_sceneAssets, s_sceneAssetCount,
-                                       effectOut);
+                                       effectOut, NULL);
     free(rewritten);
     free(block);
     free(bytes);

@@ -19,33 +19,55 @@ static bool IsFieldValid(float x)
     return x >= -CURVE_FIELD_LIMIT && x <= CURVE_FIELD_LIMIT;
 }
 
-mvfxResult mvfxCheckCurve(const mvfxCurve* curve, bool unitDomain)
+// The field of key i a curve's check refuses, 0 for none.
+static uint32_t RefusedKeyField(const mvfxCurve* curve, int32_t i, bool unitDomain)
 {
-    if (curve == nullptr || curve->keys == nullptr || curve->keyCount < 1 ||
-        curve->tangents > mvfx_tangentsMonotone)
+    const mvfxCurveKey* key = &curve->keys[i];
+    if (!IsFieldValid(key->time) || (unitDomain && (key->time < 0.0f || key->time > 1.0f)) ||
+        (i > 0 && key->time < curve->keys[i - 1].time))
     {
-        return mvfx_errorInvalid;
+        return MVFX_TAG_CURVE_KEY_TIME;
+    }
+    if (!IsFieldValid(key->value))
+    {
+        return MVFX_TAG_CURVE_KEY_VALUE;
+    }
+    if (!IsFieldValid(key->inTangent))
+    {
+        return MVFX_TAG_CURVE_KEY_IN_TANGENT;
+    }
+    if (!IsFieldValid(key->outTangent))
+    {
+        return MVFX_TAG_CURVE_KEY_OUT_TANGENT;
+    }
+    return key->interpolation > mvfx_interpolationCubic ? MVFX_TAG_CURVE_KEY_INTERPOLATION : 0;
+}
+
+mvfxResult mvfxCheckCurve(const mvfxFieldPath* at, const mvfxCurve* curve, bool unitDomain)
+{
+    if (curve == nullptr)
+    {
+        return mvfxRefuseHere(at, mvfx_errorInvalid);
+    }
+    if (curve->keys == nullptr || curve->keyCount < 1)
+    {
+        return mvfxRefuseField(at, MVFX_TAG_CURVE_KEYS, mvfx_errorInvalid);
+    }
+    if (curve->tangents > mvfx_tangentsMonotone)
+    {
+        return mvfxRefuseField(at, MVFX_TAG_CURVE_TANGENTS, mvfx_errorInvalid);
     }
     if (curve->keyCount > MVFX_CURVE_MAX_KEYS)
     {
-        return mvfx_errorLimit;
+        return mvfxRefuseField(at, MVFX_TAG_CURVE_KEYS, mvfx_errorLimit);
     }
     for (int32_t i = 0; i < curve->keyCount; ++i)
     {
-        const mvfxCurveKey* key = &curve->keys[i];
-        if (!IsFieldValid(key->time) || !IsFieldValid(key->value) ||
-            !IsFieldValid(key->inTangent) || !IsFieldValid(key->outTangent) ||
-            key->interpolation > mvfx_interpolationCubic)
+        uint32_t refused = RefusedKeyField(curve, i, unitDomain);
+        if (refused != 0)
         {
-            return mvfx_errorInvalid;
-        }
-        if (unitDomain && (key->time < 0.0f || key->time > 1.0f))
-        {
-            return mvfx_errorInvalid;
-        }
-        if (i > 0 && key->time < curve->keys[i - 1].time)
-        {
-            return mvfx_errorInvalid;
+            mvfxFieldPath key = mvfxFieldIn(at, MVFX_TAG_CURVE_KEYS, i);
+            return mvfxRefuseField(&key, refused, mvfx_errorInvalid);
         }
     }
     return mvfx_success;

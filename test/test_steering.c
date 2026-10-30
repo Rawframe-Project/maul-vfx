@@ -80,7 +80,7 @@ static void Run(const mvfxEmitterDef* emitter, const double* places, const float
     def.parameters = parameters;
     def.parameterCount = parameterCount;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.origin[0] = s_origin;
@@ -448,18 +448,18 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 10 || rule == 12 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(s_context, &def, &effect) == want;
+        refused += mvfxCreateEffect(s_context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 17, "every check");
     emitter = Emitter(true);
     emitter.steering.separation = MVFX_MAX_EXTENT;
     emitter.steering.separationRadius = 4.0f;
     emitter.steering.path = (mvfxSteerPath){.points = NULL, .pointCount = 0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success,
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success,
           "the bounds; a path of no weight unread");
     emitter.steering.enable = false;
     emitter.steering.viewAngle = NAN;
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success,
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success,
           "steering not enabled unread");
     mvfxDestroyContext(s_context);
 }

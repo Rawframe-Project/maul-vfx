@@ -88,31 +88,47 @@ void mvfxGradientLargest(const mvfxGradient* gradient, double* color, double* al
     }
 }
 
-mvfxResult mvfxCheckGradient(const mvfxGradient* gradient)
+mvfxResult mvfxCheckGradient(const mvfxFieldPath* at, const mvfxGradient* gradient)
 {
-    if (gradient == nullptr || gradient->colorKeys == nullptr || gradient->alphaKeys == nullptr ||
-        gradient->colorKeyCount < 1 || gradient->alphaKeyCount < 1)
+    if (gradient == nullptr)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseHere(at, mvfx_errorInvalid);
     }
-    if (gradient->colorKeyCount > MVFX_CURVE_MAX_KEYS ||
-        gradient->alphaKeyCount > MVFX_CURVE_MAX_KEYS)
+    if (gradient->colorKeys == nullptr || gradient->colorKeyCount < 1)
     {
-        return mvfx_errorLimit;
+        return mvfxRefuseField(at, MVFX_TAG_GRADIENT_COLOR_KEYS, mvfx_errorInvalid);
+    }
+    if (gradient->alphaKeys == nullptr || gradient->alphaKeyCount < 1)
+    {
+        return mvfxRefuseField(at, MVFX_TAG_GRADIENT_ALPHA_KEYS, mvfx_errorInvalid);
+    }
+    if (gradient->colorKeyCount > MVFX_CURVE_MAX_KEYS)
+    {
+        return mvfxRefuseField(at, MVFX_TAG_GRADIENT_COLOR_KEYS, mvfx_errorLimit);
+    }
+    if (gradient->alphaKeyCount > MVFX_CURVE_MAX_KEYS)
+    {
+        return mvfxRefuseField(at, MVFX_TAG_GRADIENT_ALPHA_KEYS, mvfx_errorLimit);
     }
     float previous = 0.0f;
     for (int32_t i = 0; i < gradient->colorKeyCount; ++i)
     {
         const mvfxColorKey* key = &gradient->colorKeys[i];
-        if (!(key->time >= previous && key->time <= 1.0f))
+        mvfxFieldPath in = mvfxFieldIn(at, MVFX_TAG_GRADIENT_COLOR_KEYS, i);
+        mvfxResult checked = mvfxRefuseField(
+            &in, MVFX_TAG_COLOR_KEY_TIME, mvfxRequire(key->time >= previous && key->time <= 1.0f));
+        checked = checked != mvfx_success
+                      ? checked
+                      : mvfxRefuseField(&in, MVFX_TAG_COLOR_KEY_RED, CheckChannel(key->red));
+        checked = checked != mvfx_success
+                      ? checked
+                      : mvfxRefuseField(&in, MVFX_TAG_COLOR_KEY_GREEN, CheckChannel(key->green));
+        checked = checked != mvfx_success
+                      ? checked
+                      : mvfxRefuseField(&in, MVFX_TAG_COLOR_KEY_BLUE, CheckChannel(key->blue));
+        if (checked != mvfx_success)
         {
-            return mvfx_errorInvalid;
-        }
-        mvfxResult channels = mvfxFirst(
-            CheckChannel(key->red), mvfxFirst(CheckChannel(key->green), CheckChannel(key->blue)));
-        if (channels != mvfx_success)
-        {
-            return channels;
+            return checked;
         }
         previous = key->time;
     }
@@ -120,14 +136,15 @@ mvfxResult mvfxCheckGradient(const mvfxGradient* gradient)
     for (int32_t i = 0; i < gradient->alphaKeyCount; ++i)
     {
         const mvfxAlphaKey* key = &gradient->alphaKeys[i];
-        if (!(key->time >= previous && key->time <= 1.0f))
+        mvfxFieldPath in = mvfxFieldIn(at, MVFX_TAG_GRADIENT_ALPHA_KEYS, i);
+        mvfxResult checked = mvfxRefuseField(
+            &in, MVFX_TAG_ALPHA_KEY_TIME, mvfxRequire(key->time >= previous && key->time <= 1.0f));
+        checked = checked != mvfx_success
+                      ? checked
+                      : mvfxRefuseField(&in, MVFX_TAG_ALPHA_KEY_ALPHA, CheckChannel(key->alpha));
+        if (checked != mvfx_success)
         {
-            return mvfx_errorInvalid;
-        }
-        mvfxResult alpha = CheckChannel(key->alpha);
-        if (alpha != mvfx_success)
-        {
-            return alpha;
+            return checked;
         }
         previous = key->time;
     }

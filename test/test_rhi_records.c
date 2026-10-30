@@ -378,7 +378,7 @@ static void TestRecordsRefused(Gpu* gpu, mvfxGpu* kernels)
     effectDef.emitterCount = 1;
     effectDef.qualityLevels = &omitted;
     effectDef.qualityLevelCount = 1;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.planned = true;

@@ -200,7 +200,7 @@ static double TimeStep(Pool* pool, bool turbulent, int64_t* live)
         mvfxEffectId effect = {0};
         mvfxInstanceId instances[INSTANCES];
         bool opened = mvfxCreateContext(&def, &context) == mvfx_success &&
-                      mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+                      mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
         for (int32_t i = 0; opened && i < INSTANCES; ++i)
         {
             mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();

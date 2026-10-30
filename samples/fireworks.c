@@ -69,7 +69,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     effectDef.emitters = emitters;
     effectDef.emitterCount = 2;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(context, &effectDef, &effect) != mvfx_success)
+    if (mvfxCreateEffect(context, &effectDef, &effect, NULL) != mvfx_success)
     {
         printf("the effect was refused\n");
     }

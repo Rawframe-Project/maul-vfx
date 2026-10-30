@@ -10,18 +10,25 @@
 #include <math.h>
 
 // A vector's ends' status, in either order: finite, and at most
-// MVFX_MAX_VALUE in size.
-static mvfxResult CheckEnds(float min, float max)
+// MVFX_MAX_VALUE in size; naming the end refused, the fields of minTag
+// and maxTag below at at an item (-1 for none).
+static mvfxResult CheckEnds(const mvfxFieldPath* at, uint32_t minTag, uint32_t maxTag, int32_t item,
+                            float min, float max)
 {
-    return mvfxFirst(mvfxBounded(min, -MVFX_MAX_VALUE, MVFX_MAX_VALUE),
-                     mvfxBounded(max, -MVFX_MAX_VALUE, MVFX_MAX_VALUE));
+    mvfxResult low =
+        mvfxRefuseItem(at, minTag, item, mvfxBounded(min, -MVFX_MAX_VALUE, MVFX_MAX_VALUE));
+    return low != mvfx_success ? low
+                               : mvfxRefuseItem(at, maxTag, item,
+                                                mvfxBounded(max, -MVFX_MAX_VALUE, MVFX_MAX_VALUE));
 }
 
-// A range's bounds' status: as CheckEnds, and min at most max.
-static mvfxResult CheckBounds(float min, float max)
+// A range's bounds' status: as CheckEnds, and min at most max (naming
+// the range at at).
+static mvfxResult CheckBounds(const mvfxFieldPath* at, const mvfxRange* range)
 {
-    mvfxResult ends = CheckEnds(min, max);
-    return ends != mvfx_success ? ends : mvfxRequire(min <= max);
+    mvfxResult ends =
+        CheckEnds(at, MVFX_TAG_RANGE_MIN, MVFX_TAG_RANGE_MAX, -1, range->min, range->max);
+    return ends != mvfx_success ? ends : mvfxRefuseHere(at, mvfxRequire(range->min <= range->max));
 }
 
 // The larger size of two ends.
@@ -59,47 +66,59 @@ static double GradientBase(const mvfxGradient* gradient)
     return color > alpha ? color : alpha;
 }
 
-// Whether a base's largest size times a reach stays within a cap, a named
-// bound: mvfx_errorLimit past it.
-static mvfxResult CheckCap(double base, double reach, float cap)
+// Whether a base's largest size times the reach of two ends stays within
+// a cap, a named bound: mvfx_errorLimit past it, naming the end of the
+// larger size.
+static mvfxResult CheckCap(const mvfxFieldPath* at, uint32_t minTag, uint32_t maxTag, int32_t item,
+                           double base, float min, float max, float cap)
 {
-    return mvfxWithinBound(base * reach <= (double)cap);
+    uint32_t reaching = fabs((double)min) > fabs((double)max) ? minTag : maxTag;
+    return mvfxRefuseItem(at, reaching, item,
+                          mvfxWithinBound(base * Reach(min, max) <= (double)cap));
 }
 
-mvfxResult mvfxCheckScalarSource(const mvfxScalarSource* source, bool optional, bool hasDuration,
-                                 int32_t parameterCount, float cap)
+mvfxResult mvfxCheckScalarSource(const mvfxFieldPath* at, const mvfxScalarSource* source,
+                                 bool optional, bool hasDuration, int32_t parameterCount, float cap)
 {
-    double reach = Reach(source->range.min, source->range.max);
     if (source->kind == mvfx_sourceNone)
     {
-        return mvfxRequire(optional);
+        return mvfxRefuseField(at, MVFX_TAG_SCALAR_SOURCE_KIND, mvfxRequire(optional));
     }
     if (source->kind > mvfx_sourceParameter)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_SCALAR_SOURCE_KIND, mvfx_errorInvalid);
     }
-    mvfxResult bounds = CheckBounds(source->range.min, source->range.max);
+    mvfxFieldPath range = mvfxFieldIn(at, MVFX_TAG_SCALAR_SOURCE_RANGE, -1);
+    mvfxResult bounds = CheckBounds(&range, &source->range);
     if (bounds != mvfx_success)
     {
         return bounds;
     }
+    float min = source->range.min;
+    float max = source->range.max;
     switch (source->kind)
     {
     case mvfx_sourceRange:
-        return CheckCap(1.0, reach, cap);
+        return CheckCap(&range, MVFX_TAG_RANGE_MIN, MVFX_TAG_RANGE_MAX, -1, 1.0, min, max, cap);
     case mvfx_sourceCurve:
     {
-        mvfxResult curve = mvfxCheckCurve(&source->curve, hasDuration);
-        return curve != mvfx_success ? curve
-                                     : CheckCap(CurveBase(&source->curve, hasDuration), reach, cap);
+        mvfxFieldPath curveAt = mvfxFieldIn(at, MVFX_TAG_SCALAR_SOURCE_CURVE, -1);
+        mvfxResult curve = mvfxCheckCurve(&curveAt, &source->curve, hasDuration);
+        return curve != mvfx_success
+                   ? curve
+                   : CheckCap(&range, MVFX_TAG_RANGE_MIN, MVFX_TAG_RANGE_MAX, -1,
+                              CurveBase(&source->curve, hasDuration), min, max, cap);
     }
     default:
-        return mvfxRequire(source->parameter >= 0 && source->parameter < parameterCount);
+        return mvfxRefuseField(
+            at, MVFX_TAG_SCALAR_SOURCE_PARAMETER,
+            mvfxRequire(source->parameter >= 0 && source->parameter < parameterCount));
     }
 }
 
-mvfxResult mvfxCheckVectorSource(const mvfxVectorSource* source, int32_t components,
-                                 bool hasDuration, int32_t parameterCount, const float* cap)
+mvfxResult mvfxCheckVectorSource(const mvfxFieldPath* at, const mvfxVectorSource* source,
+                                 int32_t components, bool hasDuration, int32_t parameterCount,
+                                 const float* cap)
 {
     if (source->kind == mvfx_sourceNone)
     {
@@ -107,11 +126,12 @@ mvfxResult mvfxCheckVectorSource(const mvfxVectorSource* source, int32_t compone
     }
     if (source->kind > mvfx_sourceGradientOverAge)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_VECTOR_SOURCE_KIND, mvfx_errorInvalid);
     }
     for (int32_t c = 0; c < components; ++c)
     {
-        mvfxResult ends = CheckEnds(source->min[c], source->max[c]);
+        mvfxResult ends = CheckEnds(at, MVFX_TAG_VECTOR_SOURCE_MIN, MVFX_TAG_VECTOR_SOURCE_MAX, c,
+                                    source->min[c], source->max[c]);
         if (ends != mvfx_success)
         {
             return ends;
@@ -124,7 +144,8 @@ mvfxResult mvfxCheckVectorSource(const mvfxVectorSource* source, int32_t compone
         break;
     case mvfx_sourceCurve:
     {
-        mvfxResult curve = mvfxCheckCurve(&source->curve, hasDuration);
+        mvfxFieldPath curveAt = mvfxFieldIn(at, MVFX_TAG_VECTOR_SOURCE_CURVE, -1);
+        mvfxResult curve = mvfxCheckCurve(&curveAt, &source->curve, hasDuration);
         if (curve != mvfx_success)
         {
             return curve;
@@ -133,14 +154,17 @@ mvfxResult mvfxCheckVectorSource(const mvfxVectorSource* source, int32_t compone
         break;
     }
     case mvfx_sourceParameter:
-        return mvfxRequire(source->parameter >= 0 && source->parameter < parameterCount);
+        return mvfxRefuseField(
+            at, MVFX_TAG_VECTOR_SOURCE_PARAMETER,
+            mvfxRequire(source->parameter >= 0 && source->parameter < parameterCount));
     default:
     {
         if (components != 4 || (source->kind == mvfx_sourceGradientOverAge && !hasDuration))
         {
-            return mvfx_errorInvalid;
+            return mvfxRefuseField(at, MVFX_TAG_VECTOR_SOURCE_KIND, mvfx_errorInvalid);
         }
-        mvfxResult gradient = mvfxCheckGradient(&source->gradient);
+        mvfxFieldPath gradientAt = mvfxFieldIn(at, MVFX_TAG_VECTOR_SOURCE_GRADIENT, -1);
+        mvfxResult gradient = mvfxCheckGradient(&gradientAt, &source->gradient);
         if (gradient != mvfx_success)
         {
             return gradient;
@@ -151,7 +175,8 @@ mvfxResult mvfxCheckVectorSource(const mvfxVectorSource* source, int32_t compone
     }
     for (int32_t c = 0; c < components; ++c)
     {
-        mvfxResult capped = CheckCap(base, Reach(source->min[c], source->max[c]), cap[c]);
+        mvfxResult capped = CheckCap(at, MVFX_TAG_VECTOR_SOURCE_MIN, MVFX_TAG_VECTOR_SOURCE_MAX, c,
+                                     base, source->min[c], source->max[c], cap[c]);
         if (capped != mvfx_success)
         {
             return capped;

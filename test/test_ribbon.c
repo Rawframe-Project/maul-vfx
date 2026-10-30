@@ -56,7 +56,7 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
     effectDef.emitters = emitters;
     effectDef.emitterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -353,15 +353,17 @@ static void TestChecks(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "ids past the last");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_errorInvalid, "ids past the last");
     emitter = Ribbon(mvfx_ribbonPerSource);
     emitter.ribbon.width.value = (float)NAN;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "a width not finite");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_errorInvalid,
+          "a width not finite");
     emitter = Ribbon(mvfx_ribbonPerSource);
     emitter.ribbon.color.colorKeyCount = 1;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "a gradient without keys");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_errorInvalid,
+          "a gradient without keys");
     emitter = Ribbon(mvfx_ribbonPerSource);
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the last ids");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the last ids");
     mvfxDestroyContext(context);
 }
 

@@ -2662,7 +2662,7 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     effectDef.parameterCount = run->parameterCount;
     effectDef.qualityLevels = run->quality;
     effectDef.qualityLevelCount = run->quality != NULL ? 1 : 0;
-    CHECK(mvfxCreateEffect(s_context, &effectDef, effectOut) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &effectDef, effectOut, NULL) == mvfx_success, "effect");
     for (int32_t e = 0; e < run->emitterCount; ++e)
     {
         mvfxEmitterView view;

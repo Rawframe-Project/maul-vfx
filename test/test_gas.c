@@ -42,7 +42,7 @@ static void Open(const mvfxGasDef* gas)
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.gases = gas;
     def.gasCount = 1;
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &s_scene.effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &s_scene.effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = s_scene.effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -169,11 +169,11 @@ static void TestDefs(void)
         mvfxResult want = c == 3 || c == 4 || c == 9 || c == 13 || c == 18 || c == 20 || c == 21
                               ? mvfx_errorLimit
                               : mvfx_errorInvalid;
-        refused = refused && mvfxCreateEffect(context, &def, &effect) == want;
+        refused = refused && mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     mvfxEffectDef none = mvfxDefaultEffectDef();
     mvfxEffectId effect = {0};
-    bool empty = mvfxCreateEffect(context, &none, &effect) == mvfx_errorInvalid;
+    bool empty = mvfxCreateEffect(context, &none, &effect, NULL) == mvfx_errorInvalid;
     mvfxGasDef gases[MVFX_MAX_GASES + 1];
     for (int32_t g = 0; g <= MVFX_MAX_GASES; ++g)
     {
@@ -181,12 +181,12 @@ static void TestDefs(void)
     }
     none.gases = gases;
     none.gasCount = MVFX_MAX_GASES + 1;
-    bool many = mvfxCreateEffect(context, &none, &effect) == mvfx_errorLimit;
+    bool many = mvfxCreateEffect(context, &none, &effect, NULL) == mvfx_errorLimit;
     none.gasCount = MVFX_MAX_GASES;
-    bool most = mvfxCreateEffect(context, &none, &effect) == mvfx_success;
+    bool most = mvfxCreateEffect(context, &none, &effect, NULL) == mvfx_success;
     gases[0].cellSize = MVFX_MIN_GAS_CELL;
     none.gasCount = 1;
-    bool least = mvfxCreateEffect(context, &none, &effect) == mvfx_success;
+    bool least = mvfxCreateEffect(context, &none, &effect, NULL) == mvfx_success;
     CHECK(refused && empty && many && most && least, "gas defs checked");
     mvfxDestroyContext(context);
 }

@@ -70,7 +70,7 @@ static Scene Run(const mvfxEmitterDef* emitter, const double* places, int32_t co
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -343,17 +343,17 @@ static void TestChecks(void)
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want =
             rule == 0 || rule == 1 || rule == 3 || rule == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 8, "every check");
     emitter = Emitter(MVFX_MAX_NEIGHBOR_RADIUS);
     emitter.plexus.maxLinks = 4;
     emitter.plexus.maxPerParticle = MVFX_MAX_NEIGHBORS;
     emitter.plexus.width = MVFX_MAX_EXTENT;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the bounds");
     emitter.plexus.enable = false;
     emitter.plexus.maxLinks = -1;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "not enabled, unread");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "not enabled, unread");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};

@@ -9,18 +9,28 @@
 
 #include <math.h>
 
-static mvfxResult CheckInput(mvfxOverLifeInput input, const float range[2])
+// An input's status, naming the field of inputTag or rangeTag below at.
+static mvfxResult CheckInput(const mvfxFieldPath* at, uint32_t inputTag, uint32_t rangeTag,
+                             mvfxOverLifeInput input, const float range[2])
 {
     if (input == mvfx_overAge)
     {
         return mvfx_success;
     }
-    if (input != mvfx_overSpeed || !(range[0] < range[1]))
+    if (input != mvfx_overSpeed)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, inputTag, mvfx_errorInvalid);
     }
-    return mvfxFirst(mvfxBounded(range[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                     mvfxBounded(range[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+    if (!(range[0] < range[1]))
+    {
+        return mvfxRefuseField(at, rangeTag, mvfx_errorInvalid);
+    }
+    mvfxResult low =
+        mvfxRefuseItem(at, rangeTag, 0, mvfxBounded(range[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+    return low != mvfx_success
+               ? low
+               : mvfxRefuseItem(at, rangeTag, 1,
+                                mvfxBounded(range[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
 }
 
 static bool IsWhite(const mvfxGradient* gradient)
@@ -28,27 +38,31 @@ static bool IsWhite(const mvfxGradient* gradient)
     return gradient->colorKeyCount == 0 && gradient->alphaKeyCount == 0;
 }
 
-static mvfxResult CheckColor(const mvfxColorOverLife* color)
+static mvfxResult CheckColor(const mvfxFieldPath* at, const mvfxColorOverLife* color)
 {
     if (!color->enable)
     {
         return mvfx_success;
     }
-    mvfxResult input = CheckInput(color->input, color->speedRange);
+    mvfxResult input =
+        CheckInput(at, MVFX_TAG_COLOR_OVER_LIFE_INPUT, MVFX_TAG_COLOR_OVER_LIFE_SPEED_RANGE,
+                   color->input, color->speedRange);
     if (input != mvfx_success)
     {
         return input;
     }
+    mvfxFieldPath gradientAt = mvfxFieldIn(at, MVFX_TAG_COLOR_OVER_LIFE_GRADIENT, -1);
     mvfxResult gradient =
-        IsWhite(&color->gradient) ? mvfx_success : mvfxCheckGradient(&color->gradient);
+        IsWhite(&color->gradient) ? mvfx_success : mvfxCheckGradient(&gradientAt, &color->gradient);
     if (gradient != mvfx_success)
     {
         return gradient;
     }
-    return color->scaleAlpha ? mvfxCheckLifeCurve(&color->alpha) : mvfx_success;
+    mvfxFieldPath alpha = mvfxFieldIn(at, MVFX_TAG_COLOR_OVER_LIFE_ALPHA, -1);
+    return color->scaleAlpha ? mvfxCheckLifeCurve(&alpha, &color->alpha) : mvfx_success;
 }
 
-static mvfxResult CheckSize(const mvfxSizeOverLife* size)
+static mvfxResult CheckSize(const mvfxFieldPath* at, const mvfxSizeOverLife* size)
 {
     if (!size->enable)
     {
@@ -57,16 +71,18 @@ static mvfxResult CheckSize(const mvfxSizeOverLife* size)
     int32_t axes = size->perAxis ? 3 : 1;
     for (int32_t k = 0; k < axes; ++k)
     {
-        mvfxResult life = mvfxCheckLifeCurve(&size->size[k]);
+        mvfxFieldPath axis = mvfxFieldIn(at, MVFX_TAG_SIZE_OVER_LIFE_SIZE, k);
+        mvfxResult life = mvfxCheckLifeCurve(&axis, &size->size[k]);
         if (life != mvfx_success)
         {
             return life;
         }
     }
-    return CheckInput(size->input, size->speedRange);
+    return CheckInput(at, MVFX_TAG_SIZE_OVER_LIFE_INPUT, MVFX_TAG_SIZE_OVER_LIFE_SPEED_RANGE,
+                      size->input, size->speedRange);
 }
 
-static mvfxResult CheckFrame(const mvfxFrameOverLife* frame)
+static mvfxResult CheckFrame(const mvfxFieldPath* at, const mvfxFrameOverLife* frame)
 {
     switch (frame->animation)
     {
@@ -75,48 +91,59 @@ static mvfxResult CheckFrame(const mvfxFrameOverLife* frame)
     case mvfx_frameOverLife:
         if (!(frame->cycles > 0.0f && frame->cycles <= 1000.0f))
         {
-            return mvfx_errorInvalid;
+            return mvfxRefuseField(at, MVFX_TAG_FRAME_OVER_LIFE_CYCLES, mvfx_errorInvalid);
         }
-        return mvfxCountUpTo(frame->frameCount, 1, MVFX_MAX_FRAMES);
+        return mvfxRefuseField(at, MVFX_TAG_FRAME_OVER_LIFE_FRAME_COUNT,
+                               mvfxCountUpTo(frame->frameCount, 1, MVFX_MAX_FRAMES));
     case mvfx_frameAtRate:
         if (!(frame->frameRate > 0.0f && frame->frameRate <= 10000.0f))
         {
-            return mvfx_errorInvalid;
+            return mvfxRefuseField(at, MVFX_TAG_FRAME_OVER_LIFE_FRAME_RATE, mvfx_errorInvalid);
         }
-        return mvfxCountUpTo(frame->frameCount, 1, MVFX_MAX_FRAMES);
+        return mvfxRefuseField(at, MVFX_TAG_FRAME_OVER_LIFE_FRAME_COUNT,
+                               mvfxCountUpTo(frame->frameCount, 1, MVFX_MAX_FRAMES));
     default:
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_FRAME_OVER_LIFE_ANIMATION, mvfx_errorInvalid);
     }
 }
 
-mvfxResult mvfxCheckOverLife(const mvfxOverLife* overLife, const mvfxCustomAttribute* custom,
-                             int32_t customCount)
+mvfxResult mvfxCheckOverLife(const mvfxFieldPath* emitter, const mvfxOverLife* overLife,
+                             const mvfxCustomAttribute* custom, int32_t customCount)
 {
     for (int32_t i = 0; i < customCount; ++i)
     {
-        mvfxResult life =
-            custom[i].scaledOverLife ? mvfxCheckLifeCurve(&custom[i].overLife) : mvfx_success;
+        mvfxFieldPath item = mvfxFieldIn(emitter, MVFX_TAG_EMITTER_DEF_CUSTOM, i);
+        mvfxFieldPath scale = mvfxFieldIn(&item, MVFX_TAG_CUSTOM_ATTRIBUTE_OVER_LIFE, -1);
+        mvfxResult life = custom[i].scaledOverLife ? mvfxCheckLifeCurve(&scale, &custom[i].overLife)
+                                                   : mvfx_success;
         if (life != mvfx_success)
         {
             return life;
         }
     }
-    mvfxResult color = CheckColor(&overLife->color);
+    mvfxFieldPath at = mvfxFieldIn(emitter, MVFX_TAG_EMITTER_DEF_OVER_LIFE, -1);
+    mvfxFieldPath colorAt = mvfxFieldIn(&at, MVFX_TAG_OVER_LIFE_COLOR, -1);
+    mvfxResult color = CheckColor(&colorAt, &overLife->color);
     if (color != mvfx_success)
     {
         return color;
     }
-    mvfxResult size = CheckSize(&overLife->size);
+    mvfxFieldPath sizeAt = mvfxFieldIn(&at, MVFX_TAG_OVER_LIFE_SIZE, -1);
+    mvfxResult size = CheckSize(&sizeAt, &overLife->size);
     if (size != mvfx_success)
     {
         return size;
     }
-    mvfxResult frame = CheckFrame(&overLife->frame);
+    mvfxFieldPath frameAt = mvfxFieldIn(&at, MVFX_TAG_OVER_LIFE_FRAME, -1);
+    mvfxResult frame = CheckFrame(&frameAt, &overLife->frame);
     if (frame != mvfx_success)
     {
         return frame;
     }
-    return overLife->rotation.enable ? mvfxCheckLifeCurve(&overLife->rotation.scale) : mvfx_success;
+    mvfxFieldPath rotation = mvfxFieldIn(&at, MVFX_TAG_OVER_LIFE_ROTATION, -1);
+    mvfxFieldPath scale = mvfxFieldIn(&rotation, MVFX_TAG_ROTATION_OVER_LIFE_SCALE, -1);
+    return overLife->rotation.enable ? mvfxCheckLifeCurve(&scale, &overLife->rotation.scale)
+                                     : mvfx_success;
 }
 
 // A role's limit over the most a value over life scales it by, at most

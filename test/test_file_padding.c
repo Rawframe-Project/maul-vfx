@@ -116,7 +116,7 @@ static uint8_t* WrittenPatterned(const mvfxEffectDef* def, uint8_t pattern, int6
     }
     SetFields(mvfxFileEffectDef, (const uint8_t*)def, copy, pattern);
     mvfxFileResult measured = mvfxWriteEffect((const mvfxEffectDef*)copy, s_sceneAssets,
-                                              s_sceneAssetCount, NULL, 0, size);
+                                              s_sceneAssetCount, NULL, 0, size, NULL);
     uint8_t* bytes = malloc((size_t)*size);
     CHECK(measured.result == mvfx_errorCapacity && bytes != NULL, "a patterned def measured");
     if (bytes == NULL)
@@ -126,7 +126,7 @@ static uint8_t* WrittenPatterned(const mvfxEffectDef* def, uint8_t pattern, int6
     memset(bytes, pattern, (size_t)*size);
     int64_t written = 0;
     mvfxFileResult result = mvfxWriteEffect((const mvfxEffectDef*)copy, s_sceneAssets,
-                                            s_sceneAssetCount, bytes, *size, &written);
+                                            s_sceneAssetCount, bytes, *size, &written, NULL);
     CHECK(result.result == mvfx_success && written == *size, "a patterned def written");
     return bytes;
 }
@@ -150,15 +150,15 @@ static mvfxResult CreatePatterned(mvfxContext* context, const mvfxEffectDef* def
           "the same bytes whatever the padding holds");
     int64_t own = 0;
     uint8_t* direct = NULL;
-    if (mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, NULL, 0, &own).result ==
+    if (mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, NULL, 0, &own, NULL).result ==
             mvfx_errorCapacity &&
         own == size[0])
     {
         direct = malloc((size_t)own);
     }
     CHECK(direct != NULL &&
-              mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, direct, own, &own).result ==
-                  mvfx_success &&
+              mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, direct, own, &own, NULL)
+                      .result == mvfx_success &&
               bytes[0] != NULL && memcmp(direct, bytes[0], (size_t)own) == 0,
           "and the def's own");
     free(direct);
@@ -167,7 +167,7 @@ static mvfxResult CreatePatterned(mvfxContext* context, const mvfxEffectDef* def
         free(bytes[i]);
     }
     ++s_patternedDefs;
-    return mvfxCreateEffect(context, def, effectOut);
+    return mvfxCreateEffect(context, def, effectOut, NULL);
 }
 
 static void TestPadding(void)
@@ -177,7 +177,7 @@ static void TestPadding(void)
     CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "context");
     s_sceneCreate = CreatePatterned;
     BuildScene(context);
-    s_sceneCreate = mvfxCreateEffect;
+    s_sceneCreate = SceneCreateDirect;
     CHECK(s_patternedDefs == 8, "every effect of the scene");
     mvfxDestroyContext(context);
 }
