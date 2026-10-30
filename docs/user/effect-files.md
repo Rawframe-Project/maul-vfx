@@ -47,6 +47,8 @@ return made;
 
 A file is read as hostile input. `mvfxReadEffect` checks the header (its magic, its version and its size), a hash over the whole file, each part of it on its own, the names it holds against the program's asset table, and finally the def itself, by the rules `mvfxCreateEffect` applies (a rigid sphere's size Y and Z equal to its X, for one). A refusal comes with `offset`, the first byte to blame, so a tool can point at the damage. A file written by another format version is refused with `mvfx_errorVersion`.
 
+A file holds only the fields that differ from their defaults, the values `mvfxDefaultEffectDef`, `mvfxDefaultEmitterDef`, `mvfxDefaultGasDef` and `mvfxDefaultWaterDef` give (zero for the items of other arrays): a field a file leaves out is read as its default, so an effect that sets few fields makes a small file. A field the reader does not know, which only a later version of the format writes, is refused with `mvfx_errorVersion` at its offset rather than skipped, so a def is never read as less than what was written.
+
 `mvfxReadEffect` puts the def's arrays into memory the program gives and reports the bytes it needs. `mvfxCreateEffectFromBytes` reads, makes the effect and frees the memory in one call, with the context's allocator.
 
 ## Assets
@@ -62,7 +64,7 @@ python3 tools/effect_json.py to-json effect.mvfx effect.json
 python3 tools/effect_json.py to-binary effect.json effect.mvfx
 ```
 
-The JSON holds every field of every struct the def reaches, in declaration order, with enums by their names and floats as numbers that read back to the same bits. Every field is required and none is unknown, so a file says all it means. Grids, meshes and host modules appear as their asset names.
+The JSON holds the fields the file holds, in the file's order, with enums by their names and floats as numbers that read back to the same bits. A field it leaves out takes its default, as in the file, and a field the struct does not have is refused. Grids, meshes and host modules appear as their asset names.
 
 ## Versions
 

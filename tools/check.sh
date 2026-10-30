@@ -85,6 +85,7 @@ source_checks() {
     python3 tools/check_test_hygiene.py --self-test
     python3 tools/check_test_hygiene.py
     step "generated files"
+    python3 tools/gen_file.py --self-test
     python3 tools/gen_file.py --check
     python3 tools/gen_marching_cubes.py --check
     python3 tools/gen_kernels.py --check
