@@ -156,6 +156,18 @@ void mvfxEndHeldEvents(mvfxInstance* instance, int32_t emitter, int32_t count)
 mvfxResult mvfxInstance_GetEvents(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                                   const mvfxEvent** eventsOut, int32_t* countOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
+    if (eventsOut != nullptr)
+    {
+        *eventsOut = nullptr;
+    }
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     if (context == nullptr || eventsOut == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
@@ -163,12 +175,6 @@ mvfxResult mvfxInstance_GetEvents(mvfxContext* context, mvfxInstanceId instance,
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    *eventsOut = nullptr;
-    *countOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);

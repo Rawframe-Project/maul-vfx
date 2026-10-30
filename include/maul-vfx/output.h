@@ -4,6 +4,19 @@
 // Output: what the host draws, as data in its own layout. The library
 // draws nothing; after a step the host asks, per view and per emitter,
 // for records written into its buffers.
+//
+// What a refused call leaves: every count, size and bounds it gives is 0
+// (empty bounds), whatever else it refuses, a NULL context included. Each of
+// the host's buffers is zeroed over the span the call is given (its
+// capacity, count or bytes), unless that span is itself refused (a NULL
+// or misaligned buffer, a negative size). Records of a layout (records,
+// ribbon points, expanded vertices) are as long as the layout's stride,
+// which only the context knows: they are zeroed while the layout is live,
+// and left as they were with a NULL context or a layout that names nothing
+// live, since no clear could know where the buffer ends. A call refused
+// with mvfx_errorBusy, which only host code calling back in meets, writes
+// none of its outputs, counts and bounds included: any of them may be one
+// the call in progress fills.
 
 #ifndef MAUL_VFX_OUTPUT_H
 #define MAUL_VFX_OUTPUT_H
@@ -259,7 +272,7 @@ extern "C"
     /// @param context   The context that owns the instance.
     /// @param instance  The instance.
     /// @param emitter   The emitter's index in the effect's def.
-    /// @param bytesOut  Receives the bytes.
+    /// @param bytesOut  Receives the bytes; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
     ///         parameter or an emitter out of range, which counts as misuse
@@ -294,10 +307,10 @@ extern "C"
     /// @param records       The buffer, capacity times the layout's stride
     ///                      bytes; NULL when capacity is 0.
     /// @param capacity      The records it holds, at least 0.
-    /// @param countOut      Receives the records there are.
+    /// @param countOut      Receives the records there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
     ///         that names nothing live; `mvfx_errorCapacity` for scratch too
-    ///         small for a sort by place, with nothing written;
+    ///         small for a sort by place, with its buffers zeroed;
     ///         `mvfx_errorInvalid` for a NULL context, view or count, a
     ///         view out of range, an emitter out of range, a negative
     ///         capacity or scratch size, a NULL or misaligned buffer with a
@@ -350,11 +363,11 @@ extern "C"
     /// @param layout          The points' layout.
     /// @param view            The view.
     /// @param buffers         The buffers.
-    /// @param pointCountOut   Receives the points there are.
-    /// @param ribbonCountOut  Receives the ribbons there are.
+    /// @param pointCountOut   Receives the points there are; 0 on failure.
+    /// @param ribbonCountOut  Receives the ribbons there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
     ///         that names nothing live; `mvfx_errorCapacity` for scratch too
-    ///         small, with nothing written; `mvfx_errorInvalid` for a NULL
+    ///         small, with its buffers zeroed; `mvfx_errorInvalid` for a NULL
     ///         context, view, buffers or count, a view out of range, an
     ///         emitter out of range, a negative size or a NULL or misaligned
     ///         buffer with a size, which counts as misuse when the context is
@@ -398,10 +411,10 @@ extern "C"
     /// @param layout      The vertices' layout.
     /// @param view        The view.
     /// @param buffers     The buffers.
-    /// @param countOut    Receives the quads there are.
+    /// @param countOut    Receives the quads there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
     ///         that names nothing live; `mvfx_errorCapacity` for scratch too
-    ///         small for the emitter's sort, with nothing written;
+    ///         small for the emitter's sort, with its buffers zeroed;
     ///         `mvfx_errorInvalid` for a NULL context, view, buffers or
     ///         count, a view out of range, an emitter out of range, a
     ///         negative size or a NULL or misaligned buffer with a size, which
@@ -432,11 +445,11 @@ extern "C"
     /// @param view            The view.
     /// @param buffers         The buffers; scratch as for
     ///                        mvfxInstance_WriteRibbons.
-    /// @param vertexCountOut  Receives the vertices there are.
-    /// @param indexCountOut   Receives the indices there are.
+    /// @param vertexCountOut  Receives the vertices there are; 0 on failure.
+    /// @param indexCountOut   Receives the indices there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
     ///         that names nothing live; `mvfx_errorCapacity` for scratch too
-    ///         small, with nothing written; `mvfx_errorInvalid` for a NULL
+    ///         small, with its buffers zeroed; `mvfx_errorInvalid` for a NULL
     ///         context, view, buffers or count, a view out of range, an
     ///         emitter out of range, a negative size or a NULL or misaligned
     ///         buffer with a size, which counts as misuse when the context is
@@ -485,8 +498,8 @@ extern "C"
     /// @param tube            The tubes' sides and caps.
     /// @param buffers         The buffers; scratch as for
     ///                        mvfxInstance_WriteRibbons.
-    /// @param vertexCountOut  Receives the vertices there are.
-    /// @param indexCountOut   Receives the indices there are.
+    /// @param vertexCountOut  Receives the vertices there are; 0 on failure.
+    /// @param indexCountOut   Receives the indices there are; 0 on failure.
     /// @return As mvfxInstance_ExpandRibbons; `mvfx_errorInvalid` too for a
     ///         NULL tube or fewer than 3 sides, and `mvfx_errorLimit` for
     ///         more than MVFX_MAX_TUBE_SIDES, either counted as misuse.
@@ -515,8 +528,8 @@ extern "C"
     /// @param layout          The points' layout.
     /// @param view            The view.
     /// @param buffers         The buffers.
-    /// @param pointCountOut   Receives the points there are.
-    /// @param ribbonCountOut  Receives the links there are.
+    /// @param pointCountOut   Receives the points there are; 0 on failure.
+    /// @param ribbonCountOut  Receives the links there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
     ///         that names nothing live; `mvfx_errorInvalid` for a NULL
     ///         context, view, buffers or count, a view out of range, an
@@ -544,8 +557,8 @@ extern "C"
     /// @param layout          The vertices' layout.
     /// @param view            The view.
     /// @param buffers         The buffers.
-    /// @param vertexCountOut  Receives the vertices there are.
-    /// @param indexCountOut   Receives the indices there are.
+    /// @param vertexCountOut  Receives the vertices there are; 0 on failure.
+    /// @param indexCountOut   Receives the indices there are; 0 on failure.
     /// @return As mvfxInstance_WritePlexus.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
@@ -573,8 +586,8 @@ extern "C"
     /// @param layout          The vertices' layout.
     /// @param view            The view.
     /// @param buffers         The buffers.
-    /// @param vertexCountOut  Receives the vertices there are.
-    /// @param indexCountOut   Receives the indices there are.
+    /// @param vertexCountOut  Receives the vertices there are; 0 on failure.
+    /// @param indexCountOut   Receives the indices there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance or a layout
     ///         that names nothing live; `mvfx_errorInvalid` for a NULL
     ///         context, view, buffers or count, a view out of range, an
@@ -613,7 +626,7 @@ extern "C"
     /// @param view        The view.
     /// @param lights      The buffer; NULL when capacity is 0.
     /// @param capacity    The lights it holds, at least 0.
-    /// @param countOut    Receives the lights there are.
+    /// @param countOut    Receives the lights there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context, view or
     ///         count, a view out of range, an emitter out of range, a
@@ -646,7 +659,7 @@ extern "C"
     /// @param context    The context that owns the instance.
     /// @param instance   The instance.
     /// @param emitter    The emitter's index in the effect's def, or -1.
-    /// @param boundsOut  Receives the bounds.
+    /// @param boundsOut  Receives the bounds; empty on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument or an emitter
     ///         out of range, which counts as misuse when the context is
@@ -687,7 +700,7 @@ extern "C"
     /// @param instance  The instance.
     /// @param gas       The gas's index in its effect's def.
     /// @param read      What to read and how.
-    /// @param out       Receives the values.
+    /// @param out       Receives the values; its bytes zeroed on failure.
     /// @param bytes     out's size in bytes: at least the last value's end.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
@@ -717,7 +730,7 @@ extern "C"
     /// @param points    count points, x, y and z each, finite.
     /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
     ///                  be NULL for 0.
-    /// @param out       Receives count values.
+    /// @param out       Receives count values; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
     ///         gas index or field out of range, a count out of range or a
@@ -758,7 +771,7 @@ extern "C"
     /// @param instance  The instance.
     /// @param water     The surface's index in its effect's def.
     /// @param read      The field, format, box, range and pitch.
-    /// @param out       The buffer.
+    /// @param out       The buffer; its bytes zeroed on failure.
     /// @param bytes     Its bytes, at least the read's.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
@@ -798,7 +811,7 @@ extern "C"
     /// @param points    count points, x, y and z each, finite.
     /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
     ///                  be NULL for 0.
-    /// @param out       Receives count samples.
+    /// @param out       Receives count samples; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
     ///         surface index out of range, a count out of range or a point
@@ -850,7 +863,8 @@ extern "C"
     ///                  MVFX_MAX_FRUSTUM_PLANES finite planes.
     /// @param items     The buffer; NULL when capacity is 0.
     /// @param capacity  The items it holds, at least 0.
-    /// @param countOut  Receives how many emitters there are to draw.
+    /// @param countOut  Receives how many emitters there are to draw; 0 on
+    ///                  failure.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context, eye or
     ///         count, a frustum out of range, a negative capacity or a NULL
     ///         buffer with a capacity; `mvfx_errorLimit` for more planes
@@ -929,7 +943,7 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorUnsupported` for a planned instance
     ///         (its fields are its simulation's); `mvfx_errorCapacity` for
-    ///         scratch too small, with nothing written; `mvfx_errorInvalid`
+    ///         scratch too small, with its buffers zeroed; `mvfx_errorInvalid`
     ///         for a NULL context, origin, buffers or count, a gas out of
     ///         range or not a surface, an origin or level out of range, a
     ///         negative size or a NULL or misaligned buffer with a size,

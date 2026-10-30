@@ -117,7 +117,10 @@ extern "C"
         // The object is in use by work under way and the same call
         // succeeds once it ends: a call from host code the object is
         // running (the allocator, the task hooks, host modules), or one
-        // that would change an object another still uses.
+        // that would change an object another still uses. Refused from
+        // host code, a call writes none of its outputs, whatever their
+        // documented value on failure, since any may be one the call in
+        // progress fills; a creation still gives the null id.
         mvfx_errorBusy = -10,
         // An object or a name the call needs is not in the table it was
         // given.

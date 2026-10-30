@@ -692,12 +692,37 @@ static mvfxResult OpenRibbons(mvfxContext* context, mvfxInstanceId instance, int
     return mvfx_success;
 }
 
-// The ribbons or plexus links of an emitter as points with a list.
-static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                              mvfxLayoutId layout, const mvfxView* view,
-                              const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
-                              int64_t* ribbonCountOut, bool plexus)
+// Zeroes a ribbon list's points (mvfxClearRecords) and ribbons after a
+// refused call.
+static void ClearRibbonBuffers(const mvfxContext* context, mvfxLayoutId layout,
+                               const mvfxRibbonBuffers* buffers)
 {
+    if (buffers != nullptr)
+    {
+        mvfxClearRecords(context, layout, buffers->points, buffers->pointCapacity);
+        mvfxClearSpan(buffers->ribbons, buffers->ribbonCapacity, sizeof(mvfxRibbon),
+                      alignof(mvfxRibbon));
+    }
+}
+
+// The ribbons or plexus links of an emitter as points with a list.
+static mvfxResult TryWritePoints(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                 mvfxLayoutId layout, const mvfxView* view,
+                                 const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+                                 int64_t* ribbonCountOut, bool plexus)
+{
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
+    if (pointCountOut != nullptr)
+    {
+        *pointCountOut = 0;
+    }
+    if (ribbonCountOut != nullptr)
+    {
+        *ribbonCountOut = 0;
+    }
     if (context == nullptr || view == nullptr || buffers == nullptr || pointCountOut == nullptr ||
         ribbonCountOut == nullptr)
     {
@@ -706,12 +731,6 @@ static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    *pointCountOut = 0;
-    *ribbonCountOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     bool valid = buffers->pointCapacity >= 0 &&
                  (buffers->pointCapacity == 0 || buffers->points != nullptr) &&
@@ -740,14 +759,26 @@ static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int
 
 // The ribbons or plexus links of an emitter as strips, or as tubes of
 // tube's sides (0 for strips).
-static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                              mvfxLayoutId layout, const mvfxView* view,
-                              const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
-                              int64_t* indexCountOut, bool plexus, const mvfxTubeDef* tube)
+static mvfxResult TryWriteStrips(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                 mvfxLayoutId layout, const mvfxView* view,
+                                 const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                                 int64_t* indexCountOut, bool plexus, const mvfxTubeDef* tube)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     mvfxResult tubed = tube == nullptr || tube->sides == 0
                            ? mvfx_success
                            : mvfxCountUpTo(tube->sides, 3, MVFX_MAX_TUBE_SIDES);
+    if (vertexCountOut != nullptr)
+    {
+        *vertexCountOut = 0;
+    }
+    if (indexCountOut != nullptr)
+    {
+        *indexCountOut = 0;
+    }
     if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
         indexCountOut == nullptr || tubed != mvfx_success)
     {
@@ -759,12 +790,6 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
                        vertexCountOut == nullptr || indexCountOut == nullptr
                    ? mvfx_errorInvalid
                    : tubed;
-    }
-    *vertexCountOut = 0;
-    *indexCountOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     bool valid = buffers->vertexCapacity >= 0 &&
                  (buffers->vertexCapacity == 0 || buffers->vertices != nullptr) &&
@@ -792,6 +817,36 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
     *vertexCountOut = totals.records;
     *indexCountOut = totals.indices;
     return mvfx_success;
+}
+
+// TryWritePoints, its buffers zeroed after any refusal but a busy one.
+static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              mvfxLayoutId layout, const mvfxView* view,
+                              const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
+                              int64_t* ribbonCountOut, bool plexus)
+{
+    mvfxResult result = TryWritePoints(context, instance, emitter, layout, view, buffers,
+                                       pointCountOut, ribbonCountOut, plexus);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        ClearRibbonBuffers(context, layout, buffers);
+    }
+    return result;
+}
+
+// TryWriteStrips, its buffers zeroed after any refusal but a busy one.
+static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              mvfxLayoutId layout, const mvfxView* view,
+                              const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                              int64_t* indexCountOut, bool plexus, const mvfxTubeDef* tube)
+{
+    mvfxResult result = TryWriteStrips(context, instance, emitter, layout, view, buffers,
+                                       vertexCountOut, indexCountOut, plexus, tube);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
+    return result;
 }
 
 static MVFX_NOINLINE mvfxResult mvfxInstance_WriteRibbonsWork(
@@ -843,6 +898,19 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandTubesWork(
 {
     if (tube == nullptr || tube->sides == 0)
     {
+        if (mvfxRefusesHostCall(context))
+        {
+            return mvfx_errorBusy;
+        }
+        if (vertexCountOut != nullptr)
+        {
+            *vertexCountOut = 0;
+        }
+        if (indexCountOut != nullptr)
+        {
+            *indexCountOut = 0;
+        }
+        mvfxClearExpandBuffers(context, layout, buffers);
         if (context != nullptr)
         {
             mvfxCountMisuse(context);

@@ -14,6 +14,7 @@
 #include "maul-vfx/output.h"
 
 #include <math.h>
+#include <string.h>
 
 static mvfxContext* NewContext(void)
 {
@@ -291,6 +292,20 @@ static void TestTies(void)
     mvfxDestroyContext(context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestRefusals(void)
 {
     mvfxContext* context = NewContext();
@@ -334,6 +349,23 @@ static void TestRefusals(void)
             mvfxContext_OrderEmitters(NULL, eye, NULL, items, 1, &count) == mvfx_errorInvalid,
         "order refused");
     CHECK(mvfxGetContextMisuse(context) == misuse + 14, "each counted");
+    // What a refusal leaves: empty bounds, the count 0 and the items
+    // zeroed.
+    bounds = (mvfxBounds){.min = {1, 1, 1}, .max = {2, 2, 2}};
+    CHECK(mvfxInstance_GetBounds(NULL, instance, 0, &bounds) == mvfx_errorInvalid && bounds.empty &&
+              bounds.min[0] == 0.0 && bounds.max[2] == 0.0,
+          "no context: empty bounds");
+    mvfxDrawItem held[2];
+    memset(held, 0xEE, sizeof held);
+    count = 7;
+    CHECK(mvfxContext_OrderEmitters(NULL, eye, NULL, held, 2, &count) == mvfx_errorInvalid &&
+              count == 0 && Filled(held, sizeof held, 0),
+          "no context: the count 0, the items zeroed");
+    memset(held, 0xEE, sizeof held);
+    count = 7;
+    CHECK(mvfxContext_OrderEmitters(context, far, NULL, held, 2, &count) == mvfx_errorInvalid &&
+              count == 0 && Filled(held, sizeof held, 0),
+          "an eye out of range: the count 0, the items zeroed");
     mvfxDestroyContext(context);
 }
 
