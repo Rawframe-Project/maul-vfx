@@ -1,5 +1,5 @@
 {
-  "format": 3,
+  "format": 4,
   "effect": {
     "emitters": [
       {
@@ -43,7 +43,38 @@
             "min": 2.0,
             "max": 2.0
           }
-        }
+        },
+        "forces": [
+          {
+            "kind": "mvfx_forceAttractor",
+            "point": [0.0, 1.0, 0.0],
+            "softening": 0.5,
+            "strength": {
+              "kind": "mvfx_sourceCurve",
+              "range": {
+                "min": 1.0,
+                "max": 1.0
+              },
+              "curve": {
+                "keys": [
+                  {
+                    "interpolation": "mvfx_interpolationLinear"
+                  },
+                  {
+                    "time": 0.5,
+                    "value": 5.0,
+                    "interpolation": "mvfx_interpolationLinear"
+                  },
+                  {
+                    "time": 1.0,
+                    "value": -2.0,
+                    "interpolation": "mvfx_interpolationLinear"
+                  }
+                ]
+              }
+            }
+          }
+        ]
       },
       {
         "capacity": 40,

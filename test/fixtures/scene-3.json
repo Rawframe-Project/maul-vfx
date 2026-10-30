@@ -1,5 +1,5 @@
 {
-  "format": 3,
+  "format": 4,
   "effect": {
     "emitters": [
       {
@@ -70,8 +70,14 @@
             "kind": "mvfx_forceAttractor",
             "space": "mvfx_spaceLocal",
             "point": [0.0, -1.0, 0.5],
-            "strength": 3.0,
-            "softening": 0.25
+            "softening": 0.25,
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 3.0,
+                "max": 3.0
+              }
+            }
           }
         ],
         "events": 8,
@@ -114,7 +120,6 @@
         "forces": [
           {
             "kind": "mvfx_forceTurbulence",
-            "strength": 4.0,
             "fieldMode": "mvfx_fieldVelocity",
             "tightness": 2.0,
             "noise": {
@@ -123,6 +128,13 @@
               "lacunarity": 2.0,
               "gain": 0.5,
               "seed": 21
+            },
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 3.0,
+                "max": 5.0
+              }
             }
           }
         ],

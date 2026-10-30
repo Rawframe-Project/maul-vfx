@@ -3,8 +3,9 @@
 //
 // The scene the determinism tests step: an effect of three endless
 // emitters over four instances, with full and churning emitters among
-// them, and an effect of emitter lives (a rate curve, looping bursts,
-// delays) over two, and an effect of mesh emitters over one, rigid
+// them and a force's strength following a curve, and an effect of
+// emitter lives (a rate curve, a force over the loop's age, looping
+// bursts, delays) over two, and an effect of mesh emitters over one, rigid
 // particles, gases and liquids; a fixed sequence of steps, and a hash of
 // every instance's state.
 
@@ -330,7 +331,7 @@ static inline void BuildGasScene(mvfxContext* context)
     // Turbulence stirring the 2D gas, scrolling, its seed the instance's;
     // a vortex about the 3D gas's Y in the instance's frame.
     static const mvfxForce stir = {.kind = mvfx_forceTurbulence,
-                                   .strength = 1.5f,
+                                   .strength = {.kind = mvfx_sourceRange, .range = {1.5f, 1.5f}},
                                    .noise = {.frequency = 1.5f,
                                              .octaves = 2,
                                              .lacunarity = 2,
@@ -341,7 +342,7 @@ static inline void BuildGasScene(mvfxContext* context)
                                    .space = mvfx_spaceLocal,
                                    .vector = {0, 1, 0},
                                    .point = {0.05f, 0, 0.1f},
-                                   .strength = 0.7f,
+                                   .strength = {.kind = mvfx_sourceRange, .range = {0.7f, 0.7f}},
                                    .pull = 0.2f};
     mvfxGasDef gases[2] = {mvfxDefaultGasDef(), mvfxDefaultGasDef()};
     gases[0].size[0] = 24;
@@ -384,7 +385,7 @@ static inline void BuildGasScene(mvfxContext* context)
     gases[1].sourceCount = 1;
     // Motes in the world following the 3D gas and pouring smoke into it.
     static const mvfxForce follow = {.kind = mvfx_forceGas,
-                                     .strength = 1.0f,
+                                     .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                                      .fieldMode = mvfx_fieldVelocity,
                                      .tightness = 3.0f,
                                      .gas = 1};
@@ -754,7 +755,7 @@ static inline void BuildScene(mvfxContext* context)
         .kind = mvfx_forceAttractor,
         .space = mvfx_spaceLocal,
         .point = {0, 2, 0},
-        .strength = 6.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {6.0f, 6.0f}},
         .softening = 0.5f,
         .killRadius = 1.0f,
         .falloff = {
@@ -763,14 +764,14 @@ static inline void BuildScene(mvfxContext* context)
         {.kind = mvfx_forceVortex,
          .space = mvfx_spaceLocal,
          .vector = {0, 1, 0},
-         .strength = 4.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {4.0f, 4.0f}},
          .pull = 1.0f,
          .falloff =
              {.kind = mvfx_falloffTube, .axis = {0, 1, 0}, .radius = 3.0f, .exponent = 1.0f}},
         {.kind = mvfx_forceVectorField,
          .space = mvfx_spaceLocal,
          .point = {0, 3, 0},
-         .strength = 3.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
          .grid = fieldGrid,
          .boxSize = {4, 2, 6},
          .boxRotation = {0.6f, 0, 0, 0.8f},
@@ -780,8 +781,16 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].forceCount = 1;
     emitters[2].forces = swirlAndField;
     emitters[2].forceCount = 2;
+    // The turbulence's strength rises by a curve over the emitter's
+    // seconds, read at each step.
+    static const mvfxCurveKey stirring[2] = {
+        {.time = 0.0f, .value = 1.0f, .interpolation = mvfx_interpolationCubic},
+        {.time = 0.3f, .value = 3.5f, .interpolation = mvfx_interpolationLinear},
+    };
     static const mvfxForce turbulence = {.kind = mvfx_forceTurbulence,
-                                         .strength = 2.5f,
+                                         .strength = {.kind = mvfx_sourceCurve,
+                                                      .range = {1.0f, 1.0f},
+                                                      .curve = {.keys = stirring, .keyCount = 2}},
                                          .noise = {.frequency = 0.4f,
                                                    .octaves = 3,
                                                    .lacunarity = 2.0f,
@@ -1030,6 +1039,20 @@ static inline void BuildScene(mvfxContext* context)
     lives[0].rateCurve = (mvfxCurve){rise, 3, mvfx_tangentsMonotone};
     lives[0].duration = 0.75f;
     lives[0].lifetime = mvfxRangeSource(0.05f, 0.3f);
+    // An attractor whose strength follows the loop's age, peaking mid-loop.
+    static const mvfxCurveKey pulse[3] = {
+        {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 0.5f, .value = 5.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = -2.0f, .interpolation = mvfx_interpolationLinear},
+    };
+    static const mvfxForce pulling = {.kind = mvfx_forceAttractor,
+                                      .point = {0, 1, 0},
+                                      .strength = {.kind = mvfx_sourceCurve,
+                                                   .range = {1.0f, 1.0f},
+                                                   .curve = {.keys = pulse, .keyCount = 3}},
+                                      .softening = 0.5f};
+    lives[0].forces = &pulling;
+    lives[0].forceCount = 1;
     lives[1].capacity = 40;
     lives[1].rate = 0.0f;
     lives[1].bursts = bursts;
@@ -1156,7 +1179,7 @@ static inline void BuildScene(mvfxContext* context)
     static const mvfxForce meshSwirl = {
         .kind = mvfx_forceTurbulence,
         .space = mvfx_spaceLocal,
-        .strength = 1.5f,
+        .strength = {.kind = mvfx_sourceRange, .range = {1.5f, 1.5f}},
         .fieldMode = mvfx_fieldVelocity,
         .tightness = 3.0f,
         .noise = {.frequency = 1.25f,
@@ -1175,14 +1198,14 @@ static inline void BuildScene(mvfxContext* context)
     // A world wind on the local emitter, its strength from parameter 1,
     // and a constant in a cone.
     static const mvfxForce meshForces[2] = {
-        {.kind = mvfx_forceWind,
-         .vector = {2, 0, -1},
-         .strength = 0.5f,
-         .strengthFromParameter = true,
-         .parameter = 1},
+        {
+            .kind = mvfx_forceWind,
+            .vector = {2, 0, -1},
+            .strength = {.kind = mvfx_sourceParameter, .range = {0.5f, 0.5f}, .parameter = 1},
+        },
         {.kind = mvfx_forceConstant,
          .vector = {0, 0, 1},
-         .strength = 2.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
          .falloff = {.kind = mvfx_falloffCone,
                      .axis = {0, 0, 1},
                      .radius = 8.0f,
@@ -1251,7 +1274,7 @@ static inline void BuildScene(mvfxContext* context)
     static const mvfxForce push = {.kind = mvfx_forceAttractor,
                                    .space = mvfx_spaceLocal,
                                    .point = {0, -1, 0.5f},
-                                   .strength = 3.0f,
+                                   .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
                                    .softening = 0.25f};
     chainEmitters[1].forces = &push;
     chainEmitters[1].forceCount = 1;
@@ -1297,7 +1320,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[2].motion.drag = 0.8f;
     static const mvfxForce gust = {
         .kind = mvfx_forceTurbulence,
-        .strength = 4.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 5.0f}},
         .fieldMode = mvfx_fieldVelocity,
         .tightness = 2.0f,
         .noise = {.frequency = 0.7f, .octaves = 1, .lacunarity = 2.0f, .gain = 0.5f, .seed = 21u}};

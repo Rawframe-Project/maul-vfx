@@ -43,9 +43,11 @@ typedef struct mvfxCompiledGas
     mvfxCollider obstacles[MVFX_MAX_COLLIDERS];
     struct mvfxGrid* obstacleGrids[MVFX_MAX_COLLIDERS];
     bool hasObstacles;
-    // Its forces, compiled, and each vector field's grid (NULL for
-    // others), which the effect holds.
+    // Its forces, compiled, their strengths' sources (compiled by the
+    // effect, which holds their tables), and each vector field's grid
+    // (NULL for others), which the effect holds.
     mvfxForce forces[MVFX_MAX_FORCES];
+    mvfxCompiledScalar forceStrengths[MVFX_MAX_FORCES];
     struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
     // For a liquid gas the emitter whose particles move on it, for a
     // surface gas the one whose particles it wraps; -1 for smoke.

@@ -14,7 +14,7 @@ An emitter spawns particles and decides how they live. Start from `mvfxDefaultEm
 
 **Where they are born.** `shape` is a point, line, circle, sphere, hemisphere, box, cone or one of the context's meshes (vertices, edges, surface or volume), with an offset, a rotation and a thickness from its surface inward. Points are uniform over the shape by length, area or volume. `velocity` sets off each particle along the shape's normal, away from its center, within a cone or in a fixed direction, blended toward a random direction, at a speed drawn from a range.
 
-**Initial values.** `lifetime` is required. `size`, `color`, `angle` and `spin`, `orientation` and `angularVelocity`, the flipbook `frame`, the `meshIndex` and up to `MVFX_MAX_CUSTOM_ATTRIBUTES` custom attributes are stored only when their source is set, so an emitter pays only for what it uses. Every source (`mvfxScalarSource`, `mvfxVectorSource`) is a base times a uniform draw between a minimum and a maximum: the base is 1, a curve or a gradient over the emitter's age (the share of its loop with a duration, the loop's start for a birth before `startDelay` ends; else seconds since it began), a gradient at a random point, or an instance parameter.
+**Initial values.** `lifetime` is required. `size`, `color`, `angle` and `spin`, `orientation` and `angularVelocity`, the flipbook `frame`, the `meshIndex` and up to `MVFX_MAX_CUSTOM_ATTRIBUTES` custom attributes are stored only when their source is set, so an emitter pays only for what it uses. Every source (`mvfxScalarSource`, `mvfxVectorSource`) is a base times a uniform draw between a minimum and a maximum: the base is 1, a curve or a gradient over the emitter's age (the share of its loop with a duration, the loop's start for a birth before `startDelay` ends; else seconds since it began), a gradient at a random point, or an instance parameter. An initial value draws its source once, at the particle's birth.
 
 **Curves and gradients.** Curves are keys with constant, linear or cubic segments; gradients are colour and alpha keys. The effect bakes both into fixed tables when it is made, so its keys may be released then.
 
@@ -22,7 +22,9 @@ An emitter spawns particles and decides how they live. Start from `mvfxDefaultEm
 
 `motion` sets a constant `gravity` (in the world's or the emitter's space), linear `drag`, an optional per-particle drag scale and angular drag. The integrator moves particles exactly under constant acceleration and drag over each step, so a particle lands at the same place whatever the step length. Each step then holds a moved particle's speed within `MVFX_MAX_SPEED` (1e9 of the emitter's units a second, times the instance's scale for a world-space emitter), scaling a faster velocity down to it so its heading is kept, so forces and an inherited instance velocity build a speed up only to there. A rigid body's speed is held the same way at the end of its step, and a gas's velocity at each face ([gases](fluids.md#gases)). Units and a particle liquid keep their velocities apart.
 
-`forces` apply in order: a constant acceleration, wind (drag toward a wind velocity), an attractor (with a kill radius), a vortex, curl-noise turbulence, a vector field sampled from one of the context's grids, or a gas's velocity. Each may fall off with distance within a sphere, a tube or a cone. Turbulence is analytic, or baked into a periodic grid by `mvfxBakeCurlNoise` and read as a vector field, which is cheaper for many particles.
+`forces` apply in order: a constant acceleration, wind (drag toward a wind velocity), an attractor (with a kill radius), a vortex, curl-noise turbulence, a vector field sampled from one of the context's grids, or a gas's velocity. Each may fall off with distance within a sphere, a tube or a cone.
+
+A force's `strength` is a scalar source as well, but it is resolved per instance per step, not per particle, and never stored. A range draws once per instance and force, from the instance's seed and the force's index, and stays the same for every step. A curve reads the emitter's loop age at the step's start (its seconds since it began without a duration; a gas's force reads the instance's seconds). A parameter reads the instance's value at each step, so `mvfxInstance_SetParameter` changes the strength from the next step on. Turbulence is analytic, or baked into a periodic grid by `mvfxBakeCurlNoise` and read as a vector field, which is cheaper for many particles.
 
 `velocityModules` act on top of the motion: scale a particle's own motion over life, add a velocity, orbit about an axis, move away from or toward a point, and limit the speed with a smooth loss that holds whatever the steps.
 
@@ -36,7 +38,7 @@ An emitter spawns particles and decides how they live. Start from `mvfxDefaultEm
 
 ## Parameters
 
-An effect's `parameters` are four floats each, with defaults in the def. `mvfxInstance_SetParameter` changes them per instance, and a value source of the parameter kind reads them at a birth. Births from the next step read the new value; particles already alive keep what they drew. Parameters let one effect take a colour, a size or a direction from the game.
+An effect's `parameters` are four floats each, with defaults in the def. `mvfxInstance_SetParameter` changes them per instance, and a value source of the parameter kind reads them at a birth, or at each step for a force's strength. Births from the next step read the new value; particles already alive keep what they drew. Parameters let one effect take a colour, a size or a direction from the game.
 
 ## Limits of what particles show
 

@@ -115,7 +115,7 @@ static void TestConstant(void)
         const mvfxForce force = {.kind = mvfx_forceConstant,
                                  .space = cases[c].space,
                                  .vector = {0, 2, 0},
-                                 .strength = 1.5f};
+                                 .strength = {.kind = mvfx_sourceRange, .range = {1.5f, 1.5f}}};
         mvfxGasDef def = Pushed(&force, 1);
         mvfxInstanceId instance = {0};
         OpenWith(&def, NULL, 0, cases[c].rotation, cases[c].scale, 1, &instance);
@@ -137,7 +137,9 @@ static void TestWind(void)
     // A wind of (1.5, 0, 0) pulling at 3 a second: from rest, the gas's X
     // velocity is 1.5 (1 - e^(-3 t)) after each step of 1/64 s.
     Context();
-    const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {1.5f, 0, 0}, .strength = 3.0f};
+    const mvfxForce wind = {.kind = mvfx_forceWind,
+                            .vector = {1.5f, 0, 0},
+                            .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}}};
     mvfxGasDef def = Pushed(&wind, 1);
     mvfxInstanceId instance = {0};
     OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
@@ -165,8 +167,9 @@ static void TestVortex(void)
     for (int32_t r = 0; r < 2; ++r)
     {
         Context();
-        const mvfxForce vortex = {
-            .kind = mvfx_forceVortex, .vector = {0, 0, r == 0 ? 1.0f : 2.0f}, .strength = 2.0f};
+        const mvfxForce vortex = {.kind = mvfx_forceVortex,
+                                  .vector = {0, 0, r == 0 ? 1.0f : 2.0f},
+                                  .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}}};
         mvfxGasDef def = Pushed(&vortex, 1);
         mvfxInstanceId instance = {0};
         OpenWith(&def, NULL, 0, s_unturned, 1.0f, 1, &instance);
@@ -193,11 +196,11 @@ static void TestParameter(void)
     // A constant force whose strength is parameter 0's x: its default 1
     // speeds the gas along Y by 2/64 a step; set to 3, by 6/64.
     Context();
-    const mvfxForce force = {.kind = mvfx_forceConstant,
-                             .vector = {0, 2, 0},
-                             .strength = 1.0f,
-                             .strengthFromParameter = true,
-                             .parameter = 0};
+    const mvfxForce force = {
+        .kind = mvfx_forceConstant,
+        .vector = {0, 2, 0},
+        .strength = {.kind = mvfx_sourceParameter, .range = {1.0f, 1.0f}, .parameter = 0},
+    };
     const float defaults[4] = {1, 0, 0, 0};
     mvfxGasDef def = Pushed(&force, 1);
     mvfxInstanceId instance = {0};
@@ -222,7 +225,7 @@ static void TestTurbulence(void)
     // differently.
     Context();
     const mvfxForce turbulence = {.kind = mvfx_forceTurbulence,
-                                  .strength = 4.0f,
+                                  .strength = {.kind = mvfx_sourceRange, .range = {4.0f, 4.0f}},
                                   .noise = {.frequency = 2.0f,
                                             .octaves = 2,
                                             .lacunarity = 2,
@@ -281,7 +284,7 @@ static void TestField(void)
     mvfxGridId grid = {0};
     CHECK(mvfxCreateGrid(s_context, &gridDef, &grid) == mvfx_success, "grid");
     const mvfxForce field = {.kind = mvfx_forceVectorField,
-                             .strength = 2.0f,
+                             .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                              .grid = grid,
                              .boxSize = {4, 4, 4},
                              .boxRotation = {0, 0, 0, 1}};
@@ -322,7 +325,7 @@ static void TestRefusals(void)
     {
         mvfxGasDef gas = Pushed(c == 1 ? NULL : forces, c == 0 ? MVFX_MAX_FORCES + 1 : 1);
         forces[0].kind = c == 2 ? 9 : mvfx_forceConstant;
-        forces[0].strengthFromParameter = c == 3;
+        forces[0].strength.kind = c == 3 ? mvfx_sourceParameter : mvfx_sourceNone;
         mvfxEffectDef def = mvfxDefaultEffectDef();
         def.gases = &gas;
         def.gasCount = 1;
@@ -332,7 +335,7 @@ static void TestRefusals(void)
         right = right && mvfxCreateEffect(s_context, &def, &effect, NULL) == want;
     }
     forces[0].kind = mvfx_forceConstant;
-    forces[0].strengthFromParameter = false;
+    forces[0].strength.kind = mvfx_sourceNone;
     mvfxGasDef gas = Pushed(forces, MVFX_MAX_FORCES);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.gases = &gas;

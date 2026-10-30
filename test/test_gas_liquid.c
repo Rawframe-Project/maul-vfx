@@ -165,7 +165,9 @@ static void TestRefusals(void)
     // no emitter names; an emitter splatting into a liquid gas. Then the
     // valid pair is taken.
     const mvfxGasSource source = {.shape = mvfx_gasSphere, .radius = 0.1f, .density = 1};
-    const mvfxForce force = {.kind = mvfx_forceConstant, .strength = 1, .vector = {1, 0, 0}};
+    const mvfxForce force = {.kind = mvfx_forceConstant,
+                             .strength = {.kind = mvfx_sourceRange, .range = {1, 1}},
+                             .vector = {1, 0, 0}};
     bool right = true;
     for (int32_t c = 0; c < 9; ++c)
     {

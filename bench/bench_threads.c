@@ -189,7 +189,7 @@ static double TimeStep(Pool* pool, bool turbulent, int64_t* live)
         mvfxEmitterDef sprite = Sprite(17000, 7800.0f);
         static const mvfxForce turbulence = {
             .kind = mvfx_forceTurbulence,
-            .strength = 2.0f,
+            .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
             .noise = {.frequency = 1.0f, .octaves = 1, .lacunarity = 2.0f, .gain = 0.5f}};
         sprite.forces = turbulent ? &turbulence : NULL;
         sprite.forceCount = turbulent ? 1 : 0;

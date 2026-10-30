@@ -770,7 +770,7 @@ static void Gases(Out* out)
                                          .density = 1.3f,
                                          .temperature = 3.7f};
     static const mvfxForce stir = {.kind = mvfx_forceTurbulence,
-                                   .strength = 1.7f,
+                                   .strength = {.kind = mvfx_sourceRange, .range = {1.7f, 1.7f}},
                                    .noise = {.frequency = 1.3f,
                                              .octaves = 2,
                                              .lacunarity = 2.0f,
@@ -1030,7 +1030,7 @@ static void Plans(Out* out)
     // smoke gas each stirred by a turbulence, its noise taken at the plan's
     // start, and the shallow water.
     static const mvfxForce stir = {.kind = mvfx_forceTurbulence,
-                                   .strength = 1.3f,
+                                   .strength = {.kind = mvfx_sourceRange, .range = {1.3f, 1.3f}},
                                    .noise = {.frequency = 0.73f,
                                              .octaves = 3,
                                              .lacunarity = 2.0f,

@@ -43,8 +43,9 @@ static mvfxEffectId MakeFountain(mvfxContext* context)
         {.time = 0.0f, .value = 0.05f, .interpolation = mvfx_interpolationLinear},
         {.time = 1.0f, .value = 0.15f, .interpolation = mvfx_interpolationLinear}};
     // A wind blowing along +X at 1 a second, and the ground at y = 0.
-    static const mvfxForce wind = {
-        .kind = mvfx_forceWind, .vector = {1.0f, 0.0f, 0.0f}, .strength = 0.3f};
+    static const mvfxForce wind = {.kind = mvfx_forceWind,
+                                   .vector = {1.0f, 0.0f, 0.0f},
+                                   .strength = {.kind = mvfx_sourceRange, .range = {0.3f, 0.3f}}};
     static const mvfxCollider ground = {.kind = mvfx_colliderPlane, .normal = {0.0f, 1.0f, 0.0f}};
 
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();

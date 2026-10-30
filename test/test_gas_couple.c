@@ -113,10 +113,12 @@ static void TestFollow(void)
     float oldest[2] = {0.0f, 0.0f};
     for (int32_t mode = 0; mode < 2; ++mode)
     {
-        mvfxForce follow = {.kind = mvfx_forceGas,
-                            .strength = mode == 0 ? 1.0f : 2.0f,
-                            .fieldMode = mode == 0 ? mvfx_fieldVelocity : mvfx_fieldAcceleration,
-                            .tightness = 8.0f};
+        mvfxForce follow = {
+            .kind = mvfx_forceGas,
+            .strength = {.kind = mvfx_sourceRange,
+                         .range = {mode == 0 ? 1.0f : 2.0f, mode == 0 ? 1.0f : 2.0f}},
+            .fieldMode = mode == 0 ? mvfx_fieldVelocity : mvfx_fieldAcceleration,
+            .tightness = 8.0f};
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
         emitter.forces = &follow;
         emitter.forceCount = 1;
@@ -148,7 +150,7 @@ static void TestTurned(void)
     // following it move up the world's Y.
     const float quarter[4] = {0, 0, 0.70710678f, 0.70710678f};
     const mvfxForce follow = {.kind = mvfx_forceGas,
-                              .strength = 1.0f,
+                              .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                               .fieldMode = mvfx_fieldVelocity,
                               .tightness = 8.0f};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -176,7 +178,7 @@ static void TestOutside(void)
     // The gas's box moved 5 away along X: particles born at the origin,
     // outside it, are not moved.
     const mvfxForce follow = {.kind = mvfx_forceGas,
-                              .strength = 1.0f,
+                              .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                               .fieldMode = mvfx_fieldVelocity,
                               .tightness = 8.0f};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -424,7 +426,7 @@ static void TestFollowPlace(void)
     for (int32_t mode = 0; mode < 2; ++mode)
     {
         const mvfxForce follow = {.kind = mvfx_forceGas,
-                                  .strength = 1.0f,
+                                  .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                                   .fieldMode =
                                       mode == 0 ? mvfx_fieldAcceleration : mvfx_fieldVelocity,
                                   .tightness = 8.0f};
@@ -453,8 +455,9 @@ static void TestFollowMoving(void)
     // the step: it reads the gas as it last stepped, where the step starts,
     // face 24 under it (not face 14, where the box will be), so as an
     // acceleration of strength 1 it moves at 24/64 after the step.
-    const mvfxForce follow = {
-        .kind = mvfx_forceGas, .strength = 1.0f, .fieldMode = mvfx_fieldAcceleration};
+    const mvfxForce follow = {.kind = mvfx_forceGas,
+                              .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
+                              .fieldMode = mvfx_fieldAcceleration};
     mvfxEmitterDef emitter = One(0.8f, 0.0f);
     emitter.space = mvfx_spaceLocal;
     emitter.forces = &follow;

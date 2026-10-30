@@ -374,7 +374,10 @@ static void TestLiftHeld(void)
     // wind's drag keeps none of the face's velocity (e^-1000), so an
     // infinite buoyancy would leave NaN. Each scalar counts as at most 2^80,
     // and every face ends at the wind's 2.
-    const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {0, 2, 0}, .strength = MVFX_MAX_DRAG};
+    const mvfxForce wind = {
+        .kind = mvfx_forceWind,
+        .vector = {0, 2, 0},
+        .strength = {.kind = mvfx_sourceRange, .range = {MVFX_MAX_DRAG, MVFX_MAX_DRAG}}};
     mvfxGasDef def = mvfxDefaultGasDef();
     def.size[0] = 16;
     def.size[1] = 16;

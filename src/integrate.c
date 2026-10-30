@@ -823,6 +823,8 @@ void mvfxResolveForces(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
+    // Held over the step: its strengths read the step's start.
+    float age = mvfxSourceAge(compiled, instance->stepStart);
     for (int32_t f = 0; f < compiled->forceCount; ++f)
     {
         const mvfxForce* force = &compiled->forces[f];
@@ -833,8 +835,11 @@ void mvfxResolveForces(mvfxInstance* instance, int32_t emitter)
             mvfxSpaceMap world = SpaceMapOf(instance, emitter, mvfx_spaceWorld);
             map = mvfxGasToSpace(instance, force->gas, &world);
         }
-        state->forces[f] = mvfxResolveForce(force, &map, (const float (*)[4])instance->parameters,
-                                            instance->seed, compiled->forceGrids[f]);
+        float strength = mvfxForceStrength(force, &compiled->forceStrengths[f], age,
+                                           (const float (*)[4])instance->parameters,
+                                           mvfxForceDraw(instance->seed, emitter, false, f));
+        state->forces[f] =
+            mvfxResolveForce(force, strength, &map, instance->seed, compiled->forceGrids[f]);
         if (force->kind == mvfx_forceGas)
         {
             mvfxGasFollow(instance, force->gas, &state->forces[f]);

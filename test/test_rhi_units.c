@@ -95,16 +95,20 @@ static void TestSheets(Gpu* gpu, mvfxGpu* kernels)
     // weak ones give it whole while their own drag leaves the sheets
     // moving through it.
     static const mvfxForce air[4] = {
-        {.kind = mvfx_forceWind, .vector = {8, 0, 3}, .strength = 0.01f},
+        {.kind = mvfx_forceWind,
+         .vector = {8, 0, 3},
+         .strength = {.kind = mvfx_sourceRange, .range = {0.01f, 0.01f}}},
         {.kind = mvfx_forceTurbulence,
-         .strength = 3.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
          .fieldMode = mvfx_fieldVelocity,
          .tightness = 0.01f,
          .falloff = {.kind = mvfx_falloffSphere, .center = {0, 0.5f, 0}, .radius = 1.0f},
          .noise = {.frequency = 2.0f, .octaves = 1, .lacunarity = 1.0f, .gain = 1.0f, .seed = 4}},
-        {.kind = mvfx_forceConstant, .vector = {0, 1, 0}, .strength = 2.0f},
+        {.kind = mvfx_forceConstant,
+         .vector = {0, 1, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}}},
         {.kind = mvfx_forceTurbulence,
-         .strength = 1.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
          .noise = {.frequency = 0.7f, .octaves = 1, .lacunarity = 1.0f, .gain = 1.0f, .seed = 5}}};
     emitter = Sheets(8, 4, 2);
     emitter.forces = air;
@@ -210,11 +214,12 @@ static void TestKills(Gpu* gpu, mvfxGpu* kernels)
     emitter.eventCapacity = 4096;
     Met(gpu, kernels, &emitter, true, "the deaths of sheets killed whole");
     emitter.events = 0;
-    static const mvfxForce attractor = {.kind = mvfx_forceAttractor,
-                                        .point = {-0.2f, 0.6f, 0},
-                                        .strength = 2.0f,
-                                        .softening = 0.2f,
-                                        .killRadius = 0.1f};
+    static const mvfxForce attractor = {
+        .kind = mvfx_forceAttractor,
+        .point = {-0.2f, 0.6f, 0},
+        .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
+        .softening = 0.2f,
+        .killRadius = 0.1f};
     emitter.killRules = NULL;
     emitter.killRuleCount = 0;
     emitter.forces = &attractor;
@@ -476,7 +481,9 @@ static void TestTears(Gpu* gpu, mvfxGpu* kernels)
     Torn(gpu, kernels, &emitter, 20, "chains torn under a pull, their tears' events");
     // Sheets hanging from their first rows in the air, torn the same way:
     // a quad a torn edge bounds takes no air and no shear.
-    static const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {6, 0, 2}, .strength = 0.01f};
+    static const mvfxForce wind = {.kind = mvfx_forceWind,
+                                   .vector = {6, 0, 2},
+                                   .strength = {.kind = mvfx_sourceRange, .range = {0.01f, 0.01f}}};
     emitter = Sheets(8, 4, 2);
     emitter.unit.pinFirstRow = true;
     emitter.unit.stretchCompliance = 2e-4f;
@@ -620,7 +627,9 @@ static void TestSheetMeshes(Gpu* gpu, mvfxGpu* kernels)
     // Sheets torn hanging from their first rows in the air (a torn sheet
     // flaps chaotically without it): a quad a torn edge bounds takes no
     // indices, the sheets after it fewer places.
-    static const mvfxForce wind = {.kind = mvfx_forceWind, .vector = {6, 0, 2}, .strength = 0.01f};
+    static const mvfxForce wind = {.kind = mvfx_forceWind,
+                                   .vector = {6, 0, 2},
+                                   .strength = {.kind = mvfx_sourceRange, .range = {0.01f, 0.01f}}};
     emitter.unit.pinFirstRow = true;
     emitter.unit.stretchCompliance = 2e-4f;
     emitter.unit.tearStrain = 0.3f;

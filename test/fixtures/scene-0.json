@@ -1,5 +1,5 @@
 {
-  "format": 3,
+  "format": 4,
   "effect": {
     "emitters": [
       {
@@ -31,7 +31,6 @@
             "kind": "mvfx_forceAttractor",
             "space": "mvfx_spaceLocal",
             "point": [0.0, 2.0, 0.0],
-            "strength": 6.0,
             "softening": 0.5,
             "killRadius": 1.0,
             "falloff": {
@@ -39,6 +38,13 @@
               "center": [0.0, 2.0, 0.0],
               "radius": 5.0,
               "exponent": 1.5
+            },
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 6.0,
+                "max": 6.0
+              }
             }
           }
         ],
@@ -171,7 +177,6 @@
         "forces": [
           {
             "kind": "mvfx_forceTurbulence",
-            "strength": 2.5,
             "noise": {
               "frequency": 0.4,
               "octaves": 3,
@@ -179,6 +184,26 @@
               "gain": 0.5,
               "scroll": [0.5, 0.0, 0.25],
               "seed": 12345
+            },
+            "strength": {
+              "kind": "mvfx_sourceCurve",
+              "range": {
+                "min": 1.0,
+                "max": 1.0
+              },
+              "curve": {
+                "keys": [
+                  {
+                    "value": 1.0,
+                    "interpolation": "mvfx_interpolationCubic"
+                  },
+                  {
+                    "time": 0.3,
+                    "value": 3.5,
+                    "interpolation": "mvfx_interpolationLinear"
+                  }
+                ]
+              }
             }
           }
         ],
@@ -382,24 +407,36 @@
             "kind": "mvfx_forceVortex",
             "space": "mvfx_spaceLocal",
             "vector": [0.0, 1.0, 0.0],
-            "strength": 4.0,
             "pull": 1.0,
             "falloff": {
               "kind": "mvfx_falloffTube",
               "axis": [0.0, 1.0, 0.0],
               "radius": 3.0,
               "exponent": 1.0
+            },
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 4.0,
+                "max": 4.0
+              }
             }
           },
           {
             "kind": "mvfx_forceVectorField",
             "space": "mvfx_spaceLocal",
             "point": [0.0, 3.0, 0.0],
-            "strength": 3.0,
             "grid": "scene grid",
             "boxSize": [4.0, 2.0, 6.0],
             "boxRotation": [0.6, 0.0, 0.0, 0.8],
-            "border": "mvfx_borderRepeat"
+            "border": "mvfx_borderRepeat",
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 3.0,
+                "max": 3.0
+              }
+            }
           }
         ],
         "collision": {

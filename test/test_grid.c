@@ -87,7 +87,7 @@ static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, 
                   float out[3])
 {
     mvfxForce force = {.kind = mvfx_forceVectorField,
-                       .strength = 1.0f,
+                       .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                        .grid = grid,
                        .boxSize = {1, 1, 1},
                        .boxRotation = {0, 0, 0, 1},
@@ -444,7 +444,7 @@ static void TestBusy(void)
     mvfxGridId grid = {0};
     CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "created");
     mvfxForce force = {.kind = mvfx_forceVectorField,
-                       .strength = 1.0f,
+                       .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                        .grid = grid,
                        .boxSize = {1, 1, 1},
                        .boxRotation = {0, 0, 0, 1}};

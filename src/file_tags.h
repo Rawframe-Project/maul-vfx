@@ -85,25 +85,23 @@
 #define MVFX_TAG_NOISE_SEED_PER_INSTANCE 7u
 
 // mvfxForce
-#define MVFX_TAG_FORCE_KIND                    1u
-#define MVFX_TAG_FORCE_SPACE                   2u
-#define MVFX_TAG_FORCE_VECTOR                  3u
-#define MVFX_TAG_FORCE_POINT                   4u
-#define MVFX_TAG_FORCE_STRENGTH                5u
-#define MVFX_TAG_FORCE_SOFTENING               6u
-#define MVFX_TAG_FORCE_KILL_RADIUS             7u
-#define MVFX_TAG_FORCE_PULL                    8u
-#define MVFX_TAG_FORCE_STRENGTH_FROM_PARAMETER 9u
-#define MVFX_TAG_FORCE_PARAMETER               10u
-#define MVFX_TAG_FORCE_FALLOFF                 11u
-#define MVFX_TAG_FORCE_FIELD_MODE              12u
-#define MVFX_TAG_FORCE_TIGHTNESS               13u
-#define MVFX_TAG_FORCE_NOISE                   14u
-#define MVFX_TAG_FORCE_GRID                    15u
-#define MVFX_TAG_FORCE_BOX_SIZE                16u
-#define MVFX_TAG_FORCE_BOX_ROTATION            17u
-#define MVFX_TAG_FORCE_BORDER                  18u
-#define MVFX_TAG_FORCE_GAS                     19u
+#define MVFX_TAG_FORCE_KIND         1u
+#define MVFX_TAG_FORCE_SPACE        2u
+#define MVFX_TAG_FORCE_VECTOR       3u
+#define MVFX_TAG_FORCE_POINT        4u
+#define MVFX_TAG_FORCE_SOFTENING    6u
+#define MVFX_TAG_FORCE_KILL_RADIUS  7u
+#define MVFX_TAG_FORCE_PULL         8u
+#define MVFX_TAG_FORCE_FALLOFF      11u
+#define MVFX_TAG_FORCE_FIELD_MODE   12u
+#define MVFX_TAG_FORCE_TIGHTNESS    13u
+#define MVFX_TAG_FORCE_NOISE        14u
+#define MVFX_TAG_FORCE_GRID         15u
+#define MVFX_TAG_FORCE_BOX_SIZE     16u
+#define MVFX_TAG_FORCE_BOX_ROTATION 17u
+#define MVFX_TAG_FORCE_BORDER       18u
+#define MVFX_TAG_FORCE_GAS          19u
+#define MVFX_TAG_FORCE_STRENGTH     20u
 
 // mvfxGasSplat
 #define MVFX_TAG_GAS_SPLAT_ENABLE      1u

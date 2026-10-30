@@ -8,9 +8,13 @@
 #include "field_path.h"
 #include "grid.h"
 #include "noise.h"
+#include "random.h"
 #include "refusal.h"
 
 #include <math.h>
+
+// The salt of a force's draw.
+#define FORCE_SALT 0x46524345u
 
 // An axis's status: within MVFX_MAX_EXTENT, and of a length to normalize;
 // naming the field of a tag below at.
@@ -80,9 +84,9 @@ static mvfxResult CheckBox(const mvfxFieldPath* at, const mvfxForce* force)
     return mvfxRefuseSizes(at, MVFX_TAG_FORCE_BOX_SIZE, force->boxSize, MVFX_MAX_EXTENT);
 }
 
-// The field of a force whose kind, space, mode, parameter or gas is out
-// of range, 0 for none.
-static uint32_t RefusedChoice(const mvfxForce* force, int32_t parameterCount)
+// The field of a force whose kind, space, mode or gas is out of range,
+// 0 for none.
+static uint32_t RefusedChoice(const mvfxForce* force)
 {
     // A gas past MVFX_MAX_GASES is an index naming no gas, not a count.
     if (force->kind > mvfx_forceGas)
@@ -97,19 +101,59 @@ static uint32_t RefusedChoice(const mvfxForce* force, int32_t parameterCount)
     {
         return MVFX_TAG_FORCE_FIELD_MODE;
     }
-    if (force->strengthFromParameter &&
-        (force->parameter < 0 || force->parameter >= parameterCount))
-    {
-        return MVFX_TAG_FORCE_PARAMETER;
-    }
     return force->kind == mvfx_forceGas && (force->gas < 0 || force->gas >= MVFX_MAX_GASES)
                ? MVFX_TAG_FORCE_GAS
                : 0;
 }
 
-mvfxResult mvfxCheckForce(const mvfxFieldPath* at, const mvfxForce* force, int32_t parameterCount)
+// A wind's strength curve, a rate, never below 0: refused at its first
+// key of a value below 0, else at the interpolation of the first cubic
+// segment dipping below 0 between keys.
+static mvfxResult CheckWindCurve(const mvfxFieldPath* strength, const mvfxScalarSource* source,
+                                 bool hasDuration)
 {
-    uint32_t choice = RefusedChoice(force, parameterCount);
+    mvfxFieldPath curve = mvfxFieldIn(strength, MVFX_TAG_SCALAR_SOURCE_CURVE, -1);
+    for (int32_t k = 0; k < source->curve.keyCount; ++k)
+    {
+        if (source->curve.keys[k].value < 0.0f)
+        {
+            mvfxFieldPath key = mvfxFieldIn(&curve, MVFX_TAG_CURVE_KEYS, k);
+            return mvfxRefuseField(&key, MVFX_TAG_CURVE_KEY_VALUE, mvfx_errorInvalid);
+        }
+    }
+    int32_t dip = mvfxCurveSourceDip(source, hasDuration);
+    if (dip >= 0)
+    {
+        mvfxFieldPath key = mvfxFieldIn(&curve, MVFX_TAG_CURVE_KEYS, dip);
+        return mvfxRefuseField(&key, MVFX_TAG_CURVE_KEY_INTERPOLATION, mvfx_errorInvalid);
+    }
+    return mvfx_success;
+}
+
+// A force's strength: a source within its cap, and wind's, a rate, never
+// below 0 but for a parameter's, which is held.
+static mvfxResult CheckStrength(const mvfxFieldPath* at, const mvfxForce* force,
+                                int32_t parameterCount, bool hasDuration)
+{
+    bool wind = force->kind == mvfx_forceWind;
+    mvfxFieldPath strength = mvfxFieldIn(at, MVFX_TAG_FORCE_STRENGTH, -1);
+    if (wind && force->strength.kind != mvfx_sourceNone && !(force->strength.range.min >= 0.0f))
+    {
+        mvfxFieldPath range = mvfxFieldIn(&strength, MVFX_TAG_SCALAR_SOURCE_RANGE, -1);
+        return mvfxRefuseField(&range, MVFX_TAG_RANGE_MIN, mvfx_errorInvalid);
+    }
+    mvfxResult checked =
+        mvfxCheckScalarSource(&strength, &force->strength, true, hasDuration, parameterCount,
+                              wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT);
+    return checked != mvfx_success || !wind || force->strength.kind != mvfx_sourceCurve
+               ? checked
+               : CheckWindCurve(&strength, &force->strength, hasDuration);
+}
+
+mvfxResult mvfxCheckForce(const mvfxFieldPath* at, const mvfxForce* force, int32_t parameterCount,
+                          bool hasDuration)
+{
+    uint32_t choice = RefusedChoice(force);
     if (choice != 0)
     {
         return mvfxRefuseField(at, choice, mvfx_errorInvalid);
@@ -117,10 +161,7 @@ mvfxResult mvfxCheckForce(const mvfxFieldPath* at, const mvfxForce* force, int32
     mvfxResult checked = mvfxRefuseField(at, MVFX_TAG_FORCE_TIGHTNESS,
                                          mvfxUpToBound(force->tightness, 0.0f, MVFX_MAX_DRAG));
     checked =
-        checked != mvfx_success
-            ? checked
-            : mvfxRefuseField(at, MVFX_TAG_FORCE_STRENGTH,
-                              mvfxBounded(force->strength, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+        checked != mvfx_success ? checked : CheckStrength(at, force, parameterCount, hasDuration);
     checked = checked != mvfx_success
                   ? checked
                   : mvfxRefuseVector(at, MVFX_TAG_FORCE_VECTOR, force->vector, MVFX_MAX_EXTENT);
@@ -139,9 +180,6 @@ mvfxResult mvfxCheckForce(const mvfxFieldPath* at, const mvfxForce* force, int32
     }
     switch (force->kind)
     {
-    case mvfx_forceWind:
-        return mvfxRefuseField(at, MVFX_TAG_FORCE_STRENGTH,
-                               mvfxUpToBound(force->strength, 0.0f, MVFX_MAX_DRAG));
     case mvfx_forceAttractor:
         checked =
             mvfxRefuseField(at, MVFX_TAG_FORCE_SOFTENING,
@@ -222,17 +260,27 @@ static float Hold(float x, float low, float bound)
     return x < low ? low : (x > bound ? bound : x);
 }
 
-mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
-                                   const float (*parameters)[4], uint32_t instanceSeed,
-                                   const struct mvfxGrid* grid)
+mvfxWords4 mvfxForceDraw(uint32_t instanceSeed, int32_t owner, bool gas, int32_t index)
 {
-    float strength = force->strength;
-    if (force->strengthFromParameter)
-    {
-        bool wind = force->kind == mvfx_forceWind;
-        strength = Hold(strength * parameters[force->parameter][0], wind ? 0.0f : -MVFX_MAX_EXTENT,
-                        wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT);
-    }
+    return mvfxPcg4d((mvfxWords4){
+        instanceSeed,
+        ((uint32_t)owner * 0x9E3779B9u) ^ FORCE_SALT,
+        (uint32_t)index,
+        gas ? 1u : 0u,
+    });
+}
+
+float mvfxForceStrength(const mvfxForce* force, const mvfxCompiledScalar* strength, float age,
+                        const float (*parameters)[4], mvfxWords4 draw)
+{
+    bool wind = force->kind == mvfx_forceWind;
+    return Hold(mvfxDrawScalar(strength, age, parameters, draw), wind ? 0.0f : -MVFX_MAX_EXTENT,
+                wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT);
+}
+
+mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, float strength, const mvfxSpaceMap* map,
+                                   uint32_t instanceSeed, const struct mvfxGrid* grid)
+{
     float sigma = map->sigma;
     mvfxResolvedForce out = {
         .kind = force->kind,

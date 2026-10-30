@@ -4,7 +4,9 @@
 // Forces: each kind's acceleration where the host places a particle at
 // rest, wind exact as drag is, the falloffs' weights, forces given in the
 // emitter's space or the world's under a turned, scaled instance, a
-// strength from a parameter and its hold, the order of several forces,
+// strength from a parameter and its hold, a strength drawn once per
+// instance and force or read from a curve at each step, the order of
+// several forces,
 // and the refusals. A turbulence's field against the noise itself, and
 // the quick paths of an unturned box and map, are tested in
 // test_force_internal.c.
@@ -99,14 +101,18 @@ static bool Is(const float a[3], float x, float y, float z)
 static void TestKinds(void)
 {
     float a[3];
-    mvfxForce force = {.kind = mvfx_forceConstant, .vector = {1, -2, 3}, .strength = 2.0f};
+    mvfxForce force = {.kind = mvfx_forceConstant,
+                       .vector = {1, -2, 3},
+                       .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}}};
     mvfxEmitterDef emitter = Held(&force, 1);
     AccelerationAt(&emitter, 5, 6, 7, a);
     CHECK(Is(a, 2, -4, 6), "a constant: vector times strength");
 
     // Attractor at (0, 0, 0), strength 8, softening 2: 8 toward it at the
     // softening radius, 2 at twice it, 4 at half it, none at the point.
-    force = (mvfxForce){.kind = mvfx_forceAttractor, .strength = 8.0f, .softening = 2.0f};
+    force = (mvfxForce){.kind = mvfx_forceAttractor,
+                        .strength = {.kind = mvfx_sourceRange, .range = {8.0f, 8.0f}},
+                        .softening = 2.0f};
     emitter = Held(&force, 1);
     AccelerationAt(&emitter, 2, 0, 0, a);
     CHECK(Is(a, -8, 0, 0), "at the softening radius");
@@ -116,7 +122,7 @@ static void TestKinds(void)
     CHECK(Is(a, 0, 0, 4), "within it, linearly");
     AccelerationAt(&emitter, 0, 0, 0, a);
     CHECK(Is(a, 0, 0, 0), "none at the point");
-    force.strength = -8.0f;
+    force.strength = mvfxRangeSource(-8.0f, -8.0f);
     force.point[0] = 1.0f;
     emitter = Held(&force, 1);
     AccelerationAt(&emitter, 3, 0, 0, a);
@@ -127,7 +133,7 @@ static void TestKinds(void)
     force = (mvfxForce){.kind = mvfx_forceVortex,
                         .vector = {0, 0, 4},
                         .point = {1, 1, 0},
-                        .strength = 3.0f,
+                        .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
                         .pull = 2.0f};
     emitter = Held(&force, 1);
     AccelerationAt(&emitter, 2, 1, 5, a);
@@ -141,7 +147,9 @@ static void TestWindExact(void)
     // Wind (5, 0, 0) taking 2 of the difference a second, with drag 0.5:
     // v(t) = 5 c / k + (v0 - 5 c / k) e^(-k t) along X with k = 2.5, from
     // v0 = -3, the same over one step or many.
-    mvfxForce force = {.kind = mvfx_forceWind, .vector = {5, 0, 0}, .strength = 2.0f};
+    mvfxForce force = {.kind = mvfx_forceWind,
+                       .vector = {5, 0, 0},
+                       .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}}};
     mvfxEmitterDef emitter = Held(&force, 1);
     emitter.motion.drag = 0.5f;
     for (int32_t steps = 1; steps <= 16; steps *= 16)
@@ -179,7 +187,7 @@ static void TestFalloffs(void)
     mvfxForce force = {
         .kind = mvfx_forceConstant,
         .vector = {0, 1, 0},
-        .strength = 1.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
         .falloff = {
             .kind = mvfx_falloffSphere, .center = {1, 0, 0}, .radius = 4.0f, .exponent = 2.0f}};
     mvfxEmitterDef emitter = Held(&force, 1);
@@ -236,7 +244,7 @@ static void TestSpaces(void)
     mvfxForce force = {.kind = mvfx_forceAttractor,
                        .space = mvfx_spaceLocal,
                        .point = {1, 0, 0},
-                       .strength = 3.0f,
+                       .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
                        .softening = 1.0f};
     mvfxEmitterDef emitter = Held(&force, 1);
     Scene scene = NewScene(&emitter, 0);
@@ -252,8 +260,12 @@ static void TestSpaces(void)
     // emitter: turned back and unscaled, the constant (0, -2, 0) and the
     // wind toward (3, 0, 0).
     mvfxForce forces[2] = {
-        {.kind = mvfx_forceConstant, .vector = {4, 0, 0}, .strength = 1.0f},
-        {.kind = mvfx_forceWind, .vector = {0, 6, 0}, .strength = 1.0f},
+        {.kind = mvfx_forceConstant,
+         .vector = {4, 0, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}}},
+        {.kind = mvfx_forceWind,
+         .vector = {0, 6, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}}},
     };
     emitter = Held(forces, 2);
     emitter.space = mvfx_spaceLocal;
@@ -274,7 +286,7 @@ static void TestSpaces(void)
     force = (mvfxForce){
         .kind = mvfx_forceAttractor,
         .point = {100, 3, 0},
-        .strength = 2.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
         .softening = 1.0f,
         .falloff = {
             .kind = mvfx_falloffSphere, .center = {100, 3, 0}, .radius = 100.0f, .exponent = 0.0f}};
@@ -307,7 +319,7 @@ static void TestScaledAndWindy(void)
         .space = mvfx_spaceLocal,
         .vector = {0, 0, 1},
         .point = {1, 0, 0},
-        .strength = 3.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
         .pull = 1.0f,
         .falloff = {.kind = mvfx_falloffTube, .axis = {1, 0, 0}, .radius = 2.0f, .exponent = 1.0f}};
     mvfxEmitterDef emitter = Held(&force, 1);
@@ -324,7 +336,7 @@ static void TestScaledAndWindy(void)
     // exponent 1: at distance 1 a drag of 1 and a pull of 4.
     force = (mvfxForce){.kind = mvfx_forceWind,
                         .vector = {4, 0, 0},
-                        .strength = 2.0f,
+                        .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                         .falloff = {.kind = mvfx_falloffSphere, .radius = 2.0f, .exponent = 1.0f}};
     emitter = Held(&force, 1);
     AccelerationAt(&emitter, 0, 1, 0, a);
@@ -333,7 +345,8 @@ static void TestScaledAndWindy(void)
 
     // With a drag per particle of 1 and a wind of 3: drag 4 over a second,
     // from 8 along X with a wind at rest.
-    force = (mvfxForce){.kind = mvfx_forceWind, .strength = 3.0f};
+    force = (mvfxForce){.kind = mvfx_forceWind,
+                        .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}}};
     emitter = Held(&force, 1);
     emitter.motion.drag = 1.0f;
     emitter.motion.dragScale = mvfxRangeSource(1.0f, 1.0f);
@@ -349,8 +362,10 @@ static void TestScaledAndWindy(void)
 
     // A world attractor at (5000, 2, 0) after the anchor moved to (5000,
     // 0, 0): at its softening radius from a particle there.
-    force = (mvfxForce){
-        .kind = mvfx_forceAttractor, .point = {5000, 2, 0}, .strength = 8.0f, .softening = 2.0f};
+    force = (mvfxForce){.kind = mvfx_forceAttractor,
+                        .point = {5000, 2, 0},
+                        .strength = {.kind = mvfx_sourceRange, .range = {8.0f, 8.0f}},
+                        .softening = 2.0f};
     emitter = Held(&force, 1);
     scene = NewScene(&emitter, 0);
     static const double far[3] = {5000.0, 0.0, 0.0};
@@ -385,7 +400,9 @@ static void TestTurbulence(void)
     // A world turbulence on a world emitter far out (the anchor rebased),
     // the same as on one whose instance is elsewhere near: the field is
     // the world's at the particle's place, whatever the anchor.
-    mvfxForce force = {.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
+    mvfxForce force = {.kind = mvfx_forceTurbulence,
+                       .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
+                       .noise = s_noise};
     mvfxEmitterDef emitter = Held(&force, 1);
     static const double place[3] = {123456.5, -6999.25, 9.75};
     float a[3];
@@ -427,7 +444,9 @@ static void TestTurbulence(void)
     // As a velocity, tightness 2: drag 2 toward strength times the field,
     // so over a step of h its push is the force's times 2 (1 - e^(-2 h)) /
     // (2 h).
-    force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
+    force = (mvfxForce){.kind = mvfx_forceTurbulence,
+                        .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
+                        .noise = s_noise};
     emitter = Held(&force, 1);
     static const double home[3] = {0.5, 0.25, 0.125};
     PlainAcceleration(&emitter, home, b);
@@ -443,7 +462,9 @@ static void TestTurbulence(void)
     // start, sampled where the particle was then, as a particle placed
     // there at that time is pushed over a step twice as long (the same a
     // second only if the field is the step's start's).
-    force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
+    force = (mvfxForce){.kind = mvfx_forceTurbulence,
+                        .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
+                        .noise = s_noise};
     emitter = Held(&force, 1);
     scene = NewScene(&emitter, 0);
     AccelerationIn(&scene, home, a);
@@ -481,7 +502,9 @@ static void TestTurbulence(void)
     // agree.
     for (int32_t per = 0; per < 2; ++per)
     {
-        force = (mvfxForce){.kind = mvfx_forceTurbulence, .strength = 1.0f, .noise = s_noise};
+        force = (mvfxForce){.kind = mvfx_forceTurbulence,
+                            .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
+                            .noise = s_noise};
         force.noise.seedPerInstance = per != 0;
         emitter = Held(&force, 1);
         Scene first = NewSeededScene(&emitter, 0, 5);
@@ -544,7 +567,7 @@ static void TestVectorField(void)
     // the field u turned out with the box, (-0.25, 0.75, 0.75), times 2.
     mvfxForce force = {.kind = mvfx_forceVectorField,
                        .point = {5, 0, 0},
-                       .strength = 2.0f,
+                       .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                        .boxSize = {2, 4, 8},
                        .boxRotation = {0, 0, 0.70710678f, 0.70710678f}};
     mvfxGridId grid = {0};
@@ -588,7 +611,7 @@ static void TestVectorField(void)
     // and doubled with the instance, times 2.
     force = (mvfxForce){.kind = mvfx_forceVectorField,
                         .space = mvfx_spaceLocal,
-                        .strength = 2.0f,
+                        .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                         .boxSize = {4, 4, 4},
                         .boxRotation = {0, 0, 0, 1}};
     scene = NewFieldScene(&force, 1, mvfx_spaceWorld, &grid);
@@ -604,7 +627,7 @@ static void TestVectorField(void)
 
     // As a velocity, tightness 4.
     force = (mvfxForce){.kind = mvfx_forceVectorField,
-                        .strength = 1.0f,
+                        .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                         .boxSize = {2, 2, 2},
                         .boxRotation = {0, 0, 0, 1},
                         .fieldMode = mvfx_fieldVelocity,
@@ -622,16 +645,16 @@ static void TestParameters(void)
     // A constant's strength from parameter 0, then held; a wind's to 0 and
     // the most drag.
     mvfxForce forces[2] = {
-        {.kind = mvfx_forceConstant,
-         .vector = {1, 0, 0},
-         .strength = 2.0f,
-         .strengthFromParameter = true,
-         .parameter = 0},
-        {.kind = mvfx_forceWind,
-         .vector = {0, 1, 0},
-         .strength = 1.0f,
-         .strengthFromParameter = true,
-         .parameter = 0},
+        {
+            .kind = mvfx_forceConstant,
+            .vector = {1, 0, 0},
+            .strength = {.kind = mvfx_sourceParameter, .range = {2.0f, 2.0f}, .parameter = 0},
+        },
+        {
+            .kind = mvfx_forceWind,
+            .vector = {0, 1, 0},
+            .strength = {.kind = mvfx_sourceParameter, .range = {1.0f, 1.0f}, .parameter = 0},
+        },
     };
     mvfxEmitterDef emitter = Held(forces, 2);
     Scene scene = NewScene(&emitter, 1);
@@ -655,6 +678,97 @@ static void TestParameters(void)
     AccelerationIn(&scene, home, a);
     CHECK(Is(a, -10, 0, 0), "a wind holds to 0");
     mvfxDestroyContext(scene.context);
+}
+
+// The strength a constant force along X gives a particle placed at each
+// of count steps of 1/1024 s, in the instance of the seed.
+static void StrengthsOverSteps(const mvfxEmitterDef* emitter, uint32_t seed, int32_t count,
+                               float out[][3])
+{
+    Scene scene = NewSeededScene(emitter, 0, seed);
+    static const double home[3] = {0, 0, 0};
+    for (int32_t step = 0; step < count; ++step)
+    {
+        AccelerationIn(&scene, home, out[step]);
+    }
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestStrengthSources(void)
+{
+    // A range draws once per instance and force: the same at every step,
+    // another for another force or another instance seed.
+    mvfxForce forces[2] = {
+        {.kind = mvfx_forceConstant,
+         .vector = {1, 0, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 9.0f}}},
+        {.kind = mvfx_forceConstant,
+         .vector = {0, 1, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 9.0f}}},
+    };
+    mvfxEmitterDef emitter = Held(forces, 2);
+    float first[4][3];
+    float second[4][3];
+    StrengthsOverSteps(&emitter, 1, 4, first);
+    StrengthsOverSteps(&emitter, 2, 4, second);
+    bool stable = true;
+    for (int32_t step = 1; step < 4; ++step)
+    {
+        stable = stable && memcmp(first[step], first[0], sizeof first[0]) == 0 &&
+                 memcmp(second[step], second[0], sizeof second[0]) == 0;
+    }
+    CHECK(stable, "a range's draw the same at every step");
+    CHECK(first[0][0] >= 1.0f && first[0][0] <= 9.0f && first[0][1] >= 1.0f && first[0][1] <= 9.0f,
+          "a draw within the range");
+    CHECK(first[0][0] != first[0][1], "another force draws another");
+    CHECK(first[0][0] != second[0][0] && first[0][1] != second[0][1],
+          "another instance seed draws another");
+    // A curve reads the emitter's age at each step: in seconds without a
+    // duration, 0 to 1,024 over a second; over the loop with one, a loop
+    // of four steps rising 0 to 4.
+    static const mvfxCurveKey rising[2] = {
+        {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear},
+    };
+    mvfxCurveKey seconds[2] = {rising[0], rising[1]};
+    seconds[1].value = 1024.0f;
+    mvfxForce curved = {.kind = mvfx_forceConstant,
+                        .vector = {1, 0, 0},
+                        .strength = {.kind = mvfx_sourceCurve,
+                                     .range = {1.0f, 1.0f},
+                                     .curve = {.keys = seconds, .keyCount = 2}}};
+    emitter = Held(&curved, 1);
+    float a[6][3];
+    StrengthsOverSteps(&emitter, 1, 6, a);
+    bool along = true;
+    for (int32_t step = 0; step < 6; ++step)
+    {
+        along = along && Is(a[step], (float)step, 0, 0);
+    }
+    CHECK(along, "a curve over the emitter's seconds at each step");
+    mvfxCurveKey loop[2] = {rising[0], rising[1]};
+    loop[1].value = 4.0f;
+    curved.strength.curve.keys = loop;
+    emitter = Held(&curved, 1);
+    emitter.duration = 4.0f / 1024.0f;
+    StrengthsOverSteps(&emitter, 1, 6, a);
+    CHECK(Is(a[0], 0, 0, 0) && Is(a[1], 1, 0, 0) && Is(a[3], 3, 0, 0) && Is(a[4], 0, 0, 0) &&
+              Is(a[5], 1, 0, 0),
+          "a curve over the loop's age at each step");
+    // A wind's curve that stays at or above 0, cubic between keys of 0
+    // and 2, is a rate it takes.
+    mvfxCurveKey gusting[2] = {
+        {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationCubic},
+        {.time = 1.0f, .value = 2.0f}};
+    mvfxForce wind = {
+        .kind = mvfx_forceWind,
+        .vector = {1, 0, 0},
+        .strength = {.kind = mvfx_sourceCurve,
+                     .range = {1.0f, 1.0f},
+                     .curve = {.keys = gusting, .keyCount = 2, .tangents = mvfx_tangentsMonotone}}};
+    emitter = Held(&wind, 1);
+    StrengthsOverSteps(&emitter, 1, 2, a);
+    CHECK(a[1][0] > 0.0f, "a wind's curve at or above 0 taken");
 }
 
 static void TestRefusals(void)
@@ -688,7 +802,7 @@ static void TestRefusals(void)
             force.point[2] = 2.0f * MVFX_MAX_EXTENT;
             break;
         case 4:
-            force.strength = -2.0f * MVFX_MAX_EXTENT;
+            force.strength = mvfxRangeSource(-2.0f * MVFX_MAX_EXTENT, -2.0f * MVFX_MAX_EXTENT);
             break;
         case 5:
             force.softening = 0.0f;
@@ -700,10 +814,11 @@ static void TestRefusals(void)
             force = (mvfxForce){.kind = mvfx_forceVortex, .vector = {0, 0, 1}, .pull = (float)NAN};
             break;
         case 8:
-            force = (mvfxForce){.kind = mvfx_forceWind, .strength = -1.0f};
+            force = (mvfxForce){.kind = mvfx_forceWind,
+                                .strength = {.kind = mvfx_sourceRange, .range = {-1.0f, -1.0f}}};
             break;
         case 9:
-            force.strengthFromParameter = true;
+            force.strength.kind = mvfx_sourceParameter;
             break;
         case 10:
             force.falloff = (mvfxFalloff){.kind = 4, .radius = 1.0f};
@@ -824,6 +939,7 @@ int main(void)
     TestTurbulence();
     TestVectorField();
     TestParameters();
+    TestStrengthSources();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

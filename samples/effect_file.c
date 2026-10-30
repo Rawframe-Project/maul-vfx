@@ -107,7 +107,7 @@ int main(int argc, char** argv)
     static const mvfxAlphaKey fade[2] = {{0.0f, 1.0f}, {1.0f, 0.0f}};
     static const mvfxColorKey orange[1] = {{0.0f, 1.0f, 0.5f, 0.1f}};
     const mvfxForce swirl = {.kind = mvfx_forceVectorField,
-                             .strength = 4.0f,
+                             .strength = {.kind = mvfx_sourceRange, .range = {4.0f, 4.0f}},
                              .grid = MakeField(context),
                              .boxSize = {4.0f, 4.0f, 4.0f},
                              .boxRotation = {0.0f, 0.0f, 0.0f, 1.0f}};

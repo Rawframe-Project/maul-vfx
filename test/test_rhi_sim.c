@@ -78,9 +78,10 @@ static void TestSpeedHeld(Gpu* gpu, mvfxGpu* kernels)
     // MVFX_MAX_SPEED, from the births' first move on, in the instance's
     // space and in the world's under a growing instance (the limit times
     // its scale).
-    static const mvfxForce strongest = {.kind = mvfx_forceConstant,
-                                        .vector = {0, -MVFX_MAX_EXTENT, 0},
-                                        .strength = MVFX_MAX_EXTENT};
+    static const mvfxForce strongest = {
+        .kind = mvfx_forceConstant,
+        .vector = {0, -MVFX_MAX_EXTENT, 0},
+        .strength = {.kind = mvfx_sourceRange, .range = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT}}};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
     for (int32_t e = 0; e < 2; ++e)
     {
@@ -103,7 +104,7 @@ static void TestSpeedHeld(Gpu* gpu, mvfxGpu* kernels)
     static const mvfxForce slanted = {
         .kind = mvfx_forceConstant,
         .vector = {MVFX_MAX_EXTENT, -0.5f * MVFX_MAX_EXTENT, 0.25f * MVFX_MAX_EXTENT},
-        .strength = MVFX_MAX_EXTENT};
+        .strength = {.kind = mvfx_sourceRange, .range = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT}}};
     for (int32_t e = 0; e < 2; ++e)
     {
         emitters[e].velocity.direction[0] = 1.0f;
@@ -143,11 +144,13 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
     // the instance's space, under a moving, turning, growing instance;
     // then a wind everywhere (the drag every particle shares), a constant
     // force in a tube, an attractor in a sphere, in the world.
-    mvfxForce forces[4] = {{.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
+    mvfxForce forces[4] = {{.kind = mvfx_forceConstant,
+                            .vector = {1, 0, 0},
+                            .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}}},
                            {.kind = mvfx_forceWind,
                             .space = mvfx_spaceLocal,
                             .vector = {0, 0, 3},
-                            .strength = 0.5f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {0.5f, 0.5f}},
                             .falloff = {.kind = mvfx_falloffCone,
                                         .center = {0, -0.5f, 0},
                                         .axis = {0, 1, 0},
@@ -157,30 +160,32 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
                            {.kind = mvfx_forceAttractor,
                             .space = mvfx_spaceLocal,
                             .point = {0, 0.75f, 0},
-                            .strength = 3.0f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
                             .softening = 0.5f,
                             .killRadius = 0.3f},
                            {.kind = mvfx_forceVortex,
                             .space = mvfx_spaceLocal,
                             .vector = {0, 1, 0},
                             .point = {0.5f, 0, 0},
-                            .strength = 1.5f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {1.5f, 1.5f}},
                             .pull = 0.25f}};
     mvfxEmitterDef emitter = Sprite();
     emitter.forces = forces;
     emitter.forceCount = 4;
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true},
             "forces of four kinds under a moving instance");
-    forces[0] = (mvfxForce){.kind = mvfx_forceWind, .vector = {2, 0, 0}, .strength = 1.5f};
+    forces[0] = (mvfxForce){.kind = mvfx_forceWind,
+                            .vector = {2, 0, 0},
+                            .strength = {.kind = mvfx_sourceRange, .range = {1.5f, 1.5f}}};
     forces[1] = (mvfxForce){
         .kind = mvfx_forceConstant,
         .vector = {0, 0, 1},
-        .strength = 4.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {4.0f, 4.0f}},
         .falloff = {.kind = mvfx_falloffTube, .axis = {0, 1, 0}, .radius = 0.4f, .exponent = 1.0f}};
     forces[2] =
         (mvfxForce){.kind = mvfx_forceAttractor,
                     .point = {0.5f, 1.0f, 0},
-                    .strength = -2.0f,
+                    .strength = {.kind = mvfx_sourceRange, .range = {-2.0f, -2.0f}},
                     .softening = 0.25f,
                     .falloff = {.kind = mvfx_falloffSphere, .center = {0, 1, 0}, .radius = 1.5f}};
     emitter.forceCount = 3;
@@ -191,7 +196,7 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
     // step can cross it with both ends outside.
     forces[0] = (mvfxForce){.kind = mvfx_forceAttractor,
                             .point = {0, 0.7f, 0},
-                            .strength = 20.0f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {20.0f, 20.0f}},
                             .softening = 0.2f,
                             .killRadius = 0.05f};
     emitter.forceCount = 1;
@@ -214,7 +219,7 @@ static void TestTurbulence(Gpu* gpu, mvfxGpu* kernels)
     mvfxForce forces[2] = {
         {.kind = mvfx_forceTurbulence,
          .space = mvfx_spaceLocal,
-         .strength = 3.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
          .noise = {.frequency = 1.5f,
                    .octaves = 3,
                    .lacunarity = 2.0f,
@@ -229,7 +234,7 @@ static void TestTurbulence(Gpu* gpu, mvfxGpu* kernels)
             &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .pace = 0.01},
             "turbulence in the instance's space under a moving instance");
     forces[0] = (mvfxForce){.kind = mvfx_forceTurbulence,
-                            .strength = 1.0f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                             .fieldMode = mvfx_fieldVelocity,
                             .tightness = 2.0f,
                             .noise = {.frequency = 0.7f,
@@ -240,7 +245,7 @@ static void TestTurbulence(Gpu* gpu, mvfxGpu* kernels)
                                       .seedPerInstance = true}};
     forces[1] = (mvfxForce){
         .kind = mvfx_forceTurbulence,
-        .strength = 4.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {4.0f, 4.0f}},
         .fieldMode = mvfx_fieldVelocity,
         .tightness = 1.0f,
         .falloff = {.kind = mvfx_falloffSphere, .center = {0, 0.5f, 0}, .radius = 1.0f},
@@ -300,7 +305,7 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
     // particles fly out of.
     mvfxForce forces[1] = {{.kind = mvfx_forceVectorField,
                             .point = {0.2f, 0.5f, -0.1f},
-                            .strength = 3.0f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
                             .boxSize = {1.5f, 1.0f, 1.2f},
                             .boxRotation = {0.0f, 0.38268343f, 0.0f, 0.92387953f},
                             .border = mvfx_borderRepeat}};
@@ -316,14 +321,14 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
     forces[0].boxSize[0] = 100.0f;
     forces[0].boxRotation[1] = 0.0f;
     forces[0].boxRotation[3] = 1.0f;
-    forces[0].strength = 0.5f;
+    forces[0].strength = mvfxRangeSource(0.5f, 0.5f);
     grid = LongGrid();
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .grid = &grid},
             "a long grid repeating");
     forces[0] = (mvfxForce){.kind = mvfx_forceVectorField,
                             .space = mvfx_spaceLocal,
                             .point = {0, 0.3f, 0},
-                            .strength = 2.0f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                             .fieldMode = mvfx_fieldVelocity,
                             .tightness = 3.0f,
                             .boxSize = {0.8f, 0.8f, 0.8f},
@@ -338,7 +343,7 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
         "a binary16 grid clamped, as velocities, under a moving instance");
     forces[0] = (mvfxForce){.kind = mvfx_forceVectorField,
                             .point = {0, 0.2f, 0},
-                            .strength = 6.0f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {6.0f, 6.0f}},
                             .boxSize = {0.8f, 0.6f, 0.8f},
                             .boxRotation = {0, 0, 0, 1},
                             .border = mvfx_borderNone};
@@ -414,9 +419,9 @@ static void TestOldDeaths(Gpu* gpu, mvfxGpu* kernels)
     // Lives of 24 to 30 seconds in steps of half a second, the particles
     // sliding on a floor that takes all their speed into it, meeting it
     // each step (no rest speed, whose edge each path decides alone), a
-    // share of their life lost each time: the GPU recomputes death ticks past 2^24 ticks of age,
-    // within their bound of the CPU path's. Their spin's speed over life
-    // reads the age the lost life leaves.
+    // share of their life lost each time: the GPU recomputes death ticks past 2^24 ticks of
+    // age, within their bound of the CPU path's. Their spin's speed over life reads the age the
+    // lost life leaves.
     static const mvfxCollider floor = {
         .kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}};
     static const mvfxCurveKey keys[2] = {
@@ -517,10 +522,12 @@ static void TestTurns(Gpu* gpu, mvfxGpu* kernels)
         {.time = 1, .value = -0.5f, .interpolation = mvfx_interpolationLinear}};
     const mvfxCurve curve = {.keys = keys, .keyCount = 3};
     mvfxForce forces[2] = {
-        {.kind = mvfx_forceWind, .vector = {1, 0, 0}, .strength = 0.75f},
+        {.kind = mvfx_forceWind,
+         .vector = {1, 0, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {0.75f, 0.75f}}},
         {.kind = mvfx_forceWind,
          .vector = {0, 0, -2},
-         .strength = 1.5f,
+         .strength = {.kind = mvfx_sourceRange, .range = {1.5f, 1.5f}},
          .falloff = {.kind = mvfx_falloffSphere, .radius = 1.0f, .exponent = 1.0f}}};
     static const float parameters[4] = {-1.5f, 0, 0, 0};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};

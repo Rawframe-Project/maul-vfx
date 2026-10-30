@@ -90,8 +90,11 @@ static float* Distance(int64_t cells)
 }
 
 static const mvfxGasSource s_source = {.shape = mvfx_gasSphere, .radius = 0.1f, .density = 1};
-static const mvfxForce s_push = {.kind = mvfx_forceConstant, .strength = 1, .vector = {1, 0, 0}};
-static const mvfxForce s_follow = {.kind = mvfx_forceGas, .strength = 1, .gas = 0};
+static const mvfxForce s_push = {.kind = mvfx_forceConstant,
+                                 .strength = {.kind = mvfx_sourceRange, .range = {1, 1}},
+                                 .vector = {1, 0, 0}};
+static const mvfxForce s_follow = {
+    .kind = mvfx_forceGas, .strength = {.kind = mvfx_sourceRange, .range = {1, 1}}, .gas = 0};
 static const mvfxCollider s_ball = {.kind = mvfx_colliderSphere, .radius = 0.1f};
 
 // Spoils a valid surface and its emitter by case c (none for 13).

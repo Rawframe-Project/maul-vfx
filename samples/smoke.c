@@ -63,7 +63,9 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     gas.burnExpansion = 0.1f;
 
     // Embers born in the fire, carried by the gas.
-    static const mvfxForce carried = {.kind = mvfx_forceGas, .strength = 1.0f, .gas = 0};
+    static const mvfxForce carried = {.kind = mvfx_forceGas,
+                                      .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
+                                      .gas = 0};
     mvfxEmitterDef embers = mvfxDefaultEmitterDef();
     embers.capacity = 256;
     embers.rate = 40.0f;

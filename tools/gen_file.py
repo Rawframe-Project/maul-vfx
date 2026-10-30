@@ -525,6 +525,7 @@ def value(term):
 LAYOUTS = {
     1: "a53afec9fc6a364b",
     2: "0e339e17fd8d1a0b",
+    3: "2b545a9627a6baaa",
 }
 
 

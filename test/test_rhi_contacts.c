@@ -143,7 +143,10 @@ static void TestRefused(mvfxGpu* kernels)
     CHECK(RefusedForContacts(kernels, &emitter), "contacts beside colliders that kill refused");
     emitter = Touching(2, 16);
     static const mvfxForce attractor = {
-        .kind = mvfx_forceAttractor, .strength = 1.0f, .softening = 0.2f, .killRadius = 0.1f};
+        .kind = mvfx_forceAttractor,
+        .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
+        .softening = 0.2f,
+        .killRadius = 0.1f};
     emitter.forces = &attractor;
     emitter.forceCount = 1;
     CHECK(RefusedForContacts(kernels, &emitter), "contacts beside an attractor that kills refused");

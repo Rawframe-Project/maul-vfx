@@ -15,4 +15,9 @@
 // obstacles.
 void mvfxPlanGases(mvfxInstance* instance);
 
+// A gas's force f resolved for the step, on either path: its strength
+// read at the step's start, by the instance's seconds (a gas has no
+// duration), and drawn apart from its emitters' forces.
+mvfxResolvedForce mvfxResolveGasForce(const mvfxInstance* instance, int32_t g, int32_t f);
+
 #endif

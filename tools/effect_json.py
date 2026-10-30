@@ -39,18 +39,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gen_file  # noqa: E402
 
-VERSION = 2
+VERSION = 3
 
 # The JSON form's own format, which names fields where the binary form
 # places them: each format's names of every field (names()). Renaming a
 # field keeps the binary layout but not the JSON form: bump JSON_FORMAT
 # and record the new names under it. A change of the binary layout
 # changes the names' fingerprint too, so both move together then.
-JSON_FORMAT = 3
+JSON_FORMAT = 4
 NAMES = {
     1: "74fbb09047c22002",
     2: "bf3b95e3c138a4d7",
     3: "57c1059eb670f758",
+    4: "aa64a80931323845",
 }
 MAGIC = b"MVFX"
 HEADER = 24

@@ -59,6 +59,11 @@ mvfxResult mvfxCheckScalarSource(const mvfxFieldPath* at, const mvfxScalarSource
                                  bool optional, bool hasDuration, int32_t parameterCount,
                                  float cap);
 
+// The key starting the first segment of a valid curve source's curve
+// whose baked samples fall below 0, -1 for none: where a cubic segment
+// between keys of no negative value dips.
+int32_t mvfxCurveSourceDip(const mvfxScalarSource* source, bool hasDuration);
+
 // Whether a vector source of components (1 to 4) is valid likewise, the
 // gradient kinds only for four components, over age only with a
 // duration; its base's largest size (a gradient's largest key) times each

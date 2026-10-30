@@ -187,9 +187,7 @@ static void StepGases(mvfxInstance* instance, const mvfxTasks* tasks)
         mvfxGasGravity(instance, g, drive.gravity);
         for (int32_t f = 0; f < gas->def.forceCount; ++f)
         {
-            mvfxSpaceMap map = mvfxGasMap(instance, g, (mvfxSimulationSpace)gas->forces[f].space);
-            forces[f] = mvfxResolveForce(&gas->forces[f], &map, instance->parameters,
-                                         instance->seed, gas->forceGrids[f]);
+            forces[f] = mvfxResolveGasForce(instance, g, f);
         }
         if (gas->hasObstacles)
         {

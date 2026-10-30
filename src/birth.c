@@ -48,19 +48,6 @@ static mvfxWords4 Draw(const mvfxInstance* instance, int32_t emitter, uint32_t s
     });
 }
 
-float mvfxSourceAge(const mvfxCompiledEmitter* emitter, int64_t tick)
-{
-    int64_t since = tick - emitter->delay;
-    if (emitter->duration > 0)
-    {
-        // A birth before the delay ends (a host's spawn) reads the loop's
-        // start.
-        since = since > 0 ? since : 0;
-        return (float)((double)(since % emitter->duration) / (double)emitter->duration);
-    }
-    return (float)((double)since / (double)MVFX_TICKS_PER_SECOND);
-}
-
 float mvfxInverseLifeOf(const mvfxInstance* instance, int32_t emitter, uint64_t serial,
                         int64_t tick)
 {

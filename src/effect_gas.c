@@ -153,7 +153,7 @@ static mvfxResult CheckGasForces(const mvfxFieldPath* at, const mvfxGasDef* gas,
     for (int32_t f = 0; f < gas->forceCount; ++f)
     {
         mvfxFieldPath force = mvfxFieldIn(at, MVFX_TAG_GAS_DEF_FORCES, f);
-        mvfxResult checked = mvfxCheckForce(&force, &gas->forces[f], parameters);
+        mvfxResult checked = mvfxCheckForce(&force, &gas->forces[f], parameters, false);
         if (checked != mvfx_success)
         {
             return checked;

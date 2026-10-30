@@ -349,8 +349,9 @@ static void TestChecks(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     static const mvfxBurst burst = {
         .time = 0.0f, .minCount = 1, .maxCount = 1, .cycles = 1, .probability = 1.0f};
-    static const mvfxForce force = {
-        .kind = mvfx_forceConstant, .vector = {0, 0, -1}, .strength = 1.0f};
+    static const mvfxForce force = {.kind = mvfx_forceConstant,
+                                    .vector = {0, 0, -1},
+                                    .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}}};
     int32_t refused = 0;
     for (int32_t rule = 0; rule < 21; ++rule)
     {

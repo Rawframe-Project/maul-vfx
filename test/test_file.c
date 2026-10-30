@@ -461,7 +461,7 @@ static void TestLayout(void)
     {
         fnv = (fnv ^ bytes[i]) * 0x100000001B3ull;
     }
-    CHECK(fnv == 0x2D6E3E6CB3A98595ull && size == 376, "the bytes as committed");
+    CHECK(fnv == 0xE29AFF58A1326978ull && size == 376, "the bytes as committed");
     CHECK(memcmp(bytes, "MVFX", 4) == 0, "the magic");
     CHECK(Get32(bytes, 4) == MVFX_FILE_VERSION && Get32(bytes, 8) == (uint32_t)size &&
               Get32(bytes, 12) == 3 && size % 8 == 0,
@@ -1389,7 +1389,7 @@ static void TestUntrustedAssets(void)
 
     emitter = mvfxDefaultEmitterDef();
     const mvfxForce field = {.kind = mvfx_forceVectorField,
-                             .strength = 1.0f,
+                             .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                              .grid = table[0].grid,
                              .boxSize = {1, 1, 1},
                              .boxRotation = {0, 0, 0, 1}};

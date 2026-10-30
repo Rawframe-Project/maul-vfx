@@ -643,7 +643,7 @@ static mvfxResult CheckValues(const mvfxFieldPath* at, const mvfxEmitterDef* def
     for (int32_t f = 0; valid == mvfx_success && f < def->forceCount; ++f)
     {
         mvfxFieldPath force = mvfxFieldIn(at, MVFX_TAG_EMITTER_DEF_FORCES, f);
-        valid = mvfxCheckForce(&force, &def->forces[f], parameterCount);
+        valid = mvfxCheckForce(&force, &def->forces[f], parameterCount, def->duration > 0.0f);
     }
     for (int32_t r = 0; valid == mvfx_success && r < def->killRuleCount; ++r)
     {

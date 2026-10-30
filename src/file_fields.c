@@ -153,13 +153,9 @@ static const mvfxFileField s_fields_mvfxForce[] = {
     {2, offsetof(mvfxForce, space), mvfx_fieldU8, 0, 1, nullptr, 0, 0, "space"},
     {3, offsetof(mvfxForce, vector), mvfx_fieldF32, 0, 3, nullptr, 0, 0, "vector"},
     {4, offsetof(mvfxForce, point), mvfx_fieldF32, 0, 3, nullptr, 0, 0, "point"},
-    {5, offsetof(mvfxForce, strength), mvfx_fieldF32, 0, 1, nullptr, 0, 0, "strength"},
     {6, offsetof(mvfxForce, softening), mvfx_fieldF32, 0, 1, nullptr, 0, 0, "softening"},
     {7, offsetof(mvfxForce, killRadius), mvfx_fieldF32, 0, 1, nullptr, 0, 0, "killRadius"},
     {8, offsetof(mvfxForce, pull), mvfx_fieldF32, 0, 1, nullptr, 0, 0, "pull"},
-    {9, offsetof(mvfxForce, strengthFromParameter), mvfx_fieldBool, 0, 1, nullptr, 0, 0,
-     "strengthFromParameter"},
-    {10, offsetof(mvfxForce, parameter), mvfx_fieldI32, 0, 1, nullptr, 0, 0, "parameter"},
     {11, offsetof(mvfxForce, falloff), mvfx_fieldStruct, 0, 1, &s_mvfxFalloff, 0, 0, "falloff"},
     {12, offsetof(mvfxForce, fieldMode), mvfx_fieldU8, 0, 1, nullptr, 0, 0, "fieldMode"},
     {13, offsetof(mvfxForce, tightness), mvfx_fieldF32, 0, 1, nullptr, 0, 0, "tightness"},
@@ -169,9 +165,11 @@ static const mvfxFileField s_fields_mvfxForce[] = {
     {17, offsetof(mvfxForce, boxRotation), mvfx_fieldF32, 0, 4, nullptr, 0, 0, "boxRotation"},
     {18, offsetof(mvfxForce, border), mvfx_fieldU8, 0, 1, nullptr, 0, 0, "border"},
     {19, offsetof(mvfxForce, gas), mvfx_fieldI32, 0, 1, nullptr, 0, 0, "gas"},
+    {20, offsetof(mvfxForce, strength), mvfx_fieldStruct, 0, 1, &s_mvfxScalarSource, 0, 0,
+     "strength"},
 };
 static const mvfxFileType s_mvfxForce =
-    MVFX_FILE_TYPE(mvfxForce, 19, offsetof(mvfxFileDefaultBlock, mvfxForce));
+    MVFX_FILE_TYPE(mvfxForce, 17, offsetof(mvfxFileDefaultBlock, mvfxForce));
 
 static const mvfxFileField s_fields_mvfxGasSplat[] = {
     {1, offsetof(mvfxGasSplat, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0, "enable"},
