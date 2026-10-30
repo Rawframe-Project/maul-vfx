@@ -15,11 +15,9 @@
 // obstacles.
 void mvfxPlanGases(mvfxInstance* instance);
 
-// The age a gas's forces' strengths read at a step's start: the
-// instance's seconds, a gas having no duration.
-static inline float mvfxGasSourceAge(const mvfxInstance* instance)
-{
-    return (float)((double)instance->stepStart / (double)MVFX_TICKS_PER_SECOND);
-}
+// A gas's force f resolved for the step, on either path: its strength
+// read at the step's start, by the instance's seconds (a gas has no
+// duration), and drawn apart from its emitters' forces.
+mvfxResolvedForce mvfxResolveGasForce(const mvfxInstance* instance, int32_t g, int32_t f);
 
 #endif

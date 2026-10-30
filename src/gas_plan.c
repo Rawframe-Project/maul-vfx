@@ -58,6 +58,17 @@ static void PlanPours(const mvfxInstance* instance, int32_t g, mvfxGasState* sta
     state->planLiquid = wraps ? MapOf(instance, g, gas->emitter) : (mvfxPlannedPour){.emitter = -1};
 }
 
+mvfxResolvedForce mvfxResolveGasForce(const mvfxInstance* instance, int32_t g, int32_t f)
+{
+    const mvfxCompiledGas* gas = &instance->effect->gases[g];
+    mvfxSpaceMap map = mvfxGasMap(instance, g, (mvfxSimulationSpace)gas->forces[f].space);
+    float age = (float)((double)instance->stepStart / (double)MVFX_TICKS_PER_SECOND);
+    float strength =
+        mvfxForceStrength(&gas->forces[f], &gas->forceStrengths[f], age, instance->parameters,
+                          mvfxForceDraw(instance->seed, g, true, f));
+    return mvfxResolveForce(&gas->forces[f], strength, &map, instance->seed, gas->forceGrids[f]);
+}
+
 void mvfxPlanGases(mvfxInstance* instance)
 {
     for (int32_t g = 0; g < instance->effect->gasCount; ++g)
@@ -67,12 +78,7 @@ void mvfxPlanGases(mvfxInstance* instance)
         mvfxGasGravity(instance, g, state->planGravity);
         for (int32_t f = 0; f < gas->def.forceCount; ++f)
         {
-            mvfxSpaceMap map = mvfxGasMap(instance, g, (mvfxSimulationSpace)gas->forces[f].space);
-            float strength = mvfxForceStrength(&gas->forces[f], &gas->forceStrengths[f],
-                                               mvfxGasSourceAge(instance), instance->parameters,
-                                               mvfxForceDraw(instance->seed, g, true, f));
-            state->planForces[f] = mvfxResolveForce(&gas->forces[f], strength, &map, instance->seed,
-                                                    gas->forceGrids[f]);
+            state->planForces[f] = mvfxResolveGasForce(instance, g, f);
         }
         if (gas->hasObstacles)
         {
