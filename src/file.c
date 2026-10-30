@@ -557,6 +557,10 @@ static MVFX_NOINLINE mvfxFileResult mvfxCreateEffectFromBytesWork(mvfxContext* c
                                                                   int32_t assetCount,
                                                                   mvfxEffectId* effectOut)
 {
+    if (effectOut != nullptr)
+    {
+        *effectOut = (mvfxEffectId){0};
+    }
     if (context == nullptr || effectOut == nullptr)
     {
         if (context != nullptr)
@@ -565,7 +569,6 @@ static MVFX_NOINLINE mvfxFileResult mvfxCreateEffectFromBytesWork(mvfxContext* c
         }
         return Fault(mvfx_errorInvalid, -1);
     }
-    *effectOut = (mvfxEffectId){0};
     if (mvfxRefusesHostCall(context))
     {
         return Fault(mvfx_errorBusy, -1);
