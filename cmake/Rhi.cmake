@@ -32,6 +32,31 @@ add_library(maul-vfx-rhi::maul-vfx-rhi ALIAS maul-vfx-rhi)
 target_include_directories(maul-vfx-rhi PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rhi/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+# The kernel containers are committed as bytes, FOLDER/NAME.container
+# (tools/gen_kernels.py), and the build writes each into the C array
+# kernels/NAME_container.h under MVFX_KERNEL_HEADERS, which the sources
+# include. The target TARGET writes a folder's arrays.
+set(MVFX_KERNEL_HEADERS "${PROJECT_BINARY_DIR}/mvfx-kernels")
+function(mvfx_kernel_containers target folder)
+    file(GLOB containers CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/${folder}/*.container")
+    set(headers "")
+    foreach(container IN LISTS containers)
+        get_filename_component(name "${container}" NAME_WE)
+        set(header "${MVFX_KERNEL_HEADERS}/kernels/${name}_container.h")
+        add_custom_command(OUTPUT "${header}"
+            COMMAND "${CMAKE_COMMAND}" -DNAME=${name} -DFOLDER=${folder} "-DIN=${container}"
+                    "-DOUT=${header}" -P "${PROJECT_SOURCE_DIR}/cmake/KernelContainer.cmake"
+            DEPENDS "${container}" "${PROJECT_SOURCE_DIR}/cmake/KernelContainer.cmake"
+            COMMENT "Writing kernels/${name}_container.h"
+            VERBATIM)
+        list(APPEND headers "${header}")
+    endforeach()
+    add_custom_target(${target} DEPENDS ${headers})
+endfunction()
+mvfx_kernel_containers(mvfx-rhi-kernels rhi/kernels)
+add_dependencies(maul-vfx-rhi mvfx-rhi-kernels)
+target_include_directories(maul-vfx-rhi PRIVATE "${MVFX_KERNEL_HEADERS}")
 target_link_libraries(maul-vfx-rhi PUBLIC maul-vfx maul-rhi::maul-rhi)
 set_target_properties(maul-vfx-rhi PROPERTIES LINKER_LANGUAGE C)
 maul_apply_flags(maul-vfx-rhi)

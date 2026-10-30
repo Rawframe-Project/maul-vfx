@@ -316,10 +316,13 @@ if(MAUL_VFX_BUILD_TESTS)
     if(MAUL_VFX_RHI)
         # The GPU part's kernels on a real device; skipped (77) without an
         # adapter unless MVFX_RHI_REQUIRED is set.
+        # The test-only kernels' containers, written as the part's are.
+        mvfx_kernel_containers(mvfx-test-kernels test/kernels)
         maul_add_test(rhi_kernels WHITEBOX)
         target_link_libraries(test_rhi_kernels PRIVATE maul-vfx-rhi)
         target_include_directories(test_rhi_kernels PRIVATE ${PROJECT_SOURCE_DIR}/rhi/src
-            ${PROJECT_SOURCE_DIR}/test/kernels)
+            "${MVFX_KERNEL_HEADERS}")
+        add_dependencies(test_rhi_kernels mvfx-test-kernels)
         # The suites that drive a device carry integration, and nightly: they
         # compile and run many kernels on lavapipe, which takes over an hour,
         # so they run in the nightly extended check. Any message of the
@@ -339,6 +342,8 @@ if(MAUL_VFX_BUILD_TESTS)
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c ${PROJECT_SOURCE_DIR}/test/rhi_waters.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_surfaces.c ${PROJECT_SOURCE_DIR}/test/rhi_samples.c)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi)
+            target_include_directories(test_${suite} PRIVATE "${MVFX_KERNEL_HEADERS}")
+            add_dependencies(test_${suite} mvfx-test-kernels)
             # Each compares a step at a time on lavapipe, and compiles every
             # kernel it dispatches first: on a cold shader cache, as CI's
             # runs start, rhi_sim takes 335 to 825 seconds on its runners,
