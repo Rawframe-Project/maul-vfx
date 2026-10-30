@@ -118,6 +118,14 @@ static int32_t BuildEdges(const uint32_t* triangles, int32_t triangleCount, uint
 
 mvfxMesh* mvfxBuildMesh(const mvfxMeshDef* def, const mvfxAllocator* allocator)
 {
+    // The hull first: the block keeps one only when it is built.
+    mvfxHull hull;
+    mvfxHullMeasure measure;
+    if (mvfxMeasureHull(def->positions, def->vertexCount, allocator, &measure, &hull) !=
+        mvfx_success)
+    {
+        return nullptr;
+    }
     size_t vertices = (size_t)def->vertexCount;
     size_t triangles = (size_t)def->triangleCount;
     size_t tetrahedra = (size_t)def->tetrahedronCount;
@@ -132,6 +140,8 @@ mvfxMesh* mvfxBuildMesh(const mvfxMeshDef* def, const mvfxAllocator* allocator)
     size_t edgeSumsAt = mvfxLayoutAdd(&layout, 3 * triangles, sizeof(double), alignof(double));
     size_t triangleSumsAt = mvfxLayoutAdd(&layout, triangles, sizeof(double), alignof(double));
     size_t tetrahedronSumsAt = mvfxLayoutAdd(&layout, tetrahedra, sizeof(double), alignof(double));
+    size_t hullAt = mvfxLayoutAdd(&layout, measure.built == mvfx_success ? 1 : 0, sizeof(mvfxHull),
+                                  alignof(mvfxHull));
     if (layout.overflow)
     {
         return nullptr;
@@ -154,8 +164,14 @@ mvfxMesh* mvfxBuildMesh(const mvfxMeshDef* def, const mvfxAllocator* allocator)
         .edgeSums = (double*)(block + edgeSumsAt),
         .triangleSums = (double*)(block + triangleSumsAt),
         .tetrahedronSums = (double*)(block + tetrahedronSumsAt),
+        .hullMeasure = measure,
+        .hull = measure.built == mvfx_success ? (mvfxHull*)(block + hullAt) : nullptr,
         .blockBytes = layout.size,
     };
+    if (mesh->hull != nullptr)
+    {
+        *mesh->hull = hull;
+    }
     if (triangles > 0)
     {
         memcpy(mesh->triangles, def->triangles, 3 * triangles * sizeof(uint32_t));

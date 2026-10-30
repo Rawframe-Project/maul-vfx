@@ -17,6 +17,7 @@
 #include "maul-vfx/plan.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define SAMPLES 40000
@@ -27,6 +28,38 @@ static bool NearShare(int64_t count, double share)
 {
     double deviation = sqrt(SAMPLES * share * (1.0 - share));
     return fabs((double)count - SAMPLES * share) <= 5.0 * deviation + 1e-9;
+}
+
+// An allocator that counts the blocks it holds; its allocation of the
+// number failAt (from 1) fails.
+typedef struct Failing
+{
+    int64_t blocks;
+    int64_t calls;
+    int64_t failAt;
+} Failing;
+
+static void* FailingAlloc(size_t size, size_t alignment, void* context)
+{
+    Failing* failing = context;
+    failing->calls += 1;
+    if (failing->calls == failing->failAt)
+    {
+        return NULL;
+    }
+    // A mesh and its context ask for nothing aligned past max_align_t.
+    (void)alignment;
+    failing->blocks += 1;
+    return malloc(size);
+}
+
+static void FailingFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    Failing* failing = context;
+    (void)size;
+    (void)alignment;
+    failing->blocks -= 1;
+    free(memory);
 }
 
 // The context the samples' meshes live in.
@@ -366,6 +399,47 @@ static void TestMoving(void)
     Free(mesh);
 }
 
+static void TestAllocatorFailing(void)
+{
+    // A mesh takes three allocations: its hull's scratch (two, released
+    // before it returns) and its block. Each failing in turn fails the
+    // whole mesh: capacity, the null id, every block taken returned and
+    // its slot free, the context's one mesh made after.
+    Failing failing = {0};
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    contextDef.limits.meshes = 1;
+    contextDef.allocator = (mvfxAllocator){FailingAlloc, FailingFree, &failing};
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const float corner[] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+    mvfxMeshDef def = mvfxDefaultMeshDef();
+    def.positions = corner;
+    def.vertexCount = 4;
+    int64_t held = failing.blocks;
+    int32_t clean = 0;
+    for (int64_t n = 1; n <= 3; ++n)
+    {
+        failing.failAt = failing.calls + n;
+        mvfxMeshId mesh = {1, 1};
+        clean += mvfxCreateMesh(context, &def, &mesh) == mvfx_errorCapacity && mesh.index1 == 0 &&
+                         mesh.generation == 0 && failing.blocks == held
+                     ? 1
+                     : 0;
+    }
+    failing.failAt = 0;
+    int64_t calls = failing.calls;
+    mvfxMeshId mesh = {0};
+    bool hull = false;
+    float center[3];
+    CHECK(clean == 3, "each allocation failing: capacity, the null id, nothing kept");
+    CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_success && failing.calls == calls + 3 &&
+              failing.blocks == held + 1 &&
+              mvfxMesh_GetHullCenter(context, mesh, &hull, center) == mvfx_success && hull,
+          "the mesh made after, in three allocations, one kept");
+    mvfxDestroyContext(context);
+    CHECK(failing.blocks == 0, "everything returned");
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -647,6 +721,7 @@ int main(void)
     TestMoving();
     mvfxDestroyContext(s_context);
     TestRefusals();
+    TestAllocatorFailing();
     TestThroughTheStep();
     return s_failures == 0 ? 0 : 1;
 }

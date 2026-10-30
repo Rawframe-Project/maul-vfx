@@ -29,6 +29,7 @@ reports a stored count, tick, flag, identity, name or the version, computing no 
     mvfxInstance_GetPlanSteps
     mvfxInstance_GetSortScratchBytes
     mvfxInstance_GetSurfaceMeshScratchBytes
+    mvfxMesh_GetHullVertexCount
     mvfxGetEffectFieldPath
 
 hands over stored or compiled values as they are, copying them, computing no float:
@@ -37,6 +38,7 @@ hands over stored or compiled values as they are, copying them, computing no flo
     mvfxGrid_GetView
     mvfxLayout_GetView
     mvfxMesh_GetView
+    mvfxMesh_GetHullCenter
     mvfxInstance_GetEmitterMesh
     mvfxInstance_GetEvents
     mvfxInstance_GetSceneQueries

@@ -629,9 +629,9 @@ extern "C"
         mvfx_rigidCapsule = 1,
         // A box of size X by Y by Z.
         mvfx_rigidBox = 2,
-        // The convex hull of a mesh's vertices (mvfxRigidDef.hull) scaled by
-        // size along the mesh's axes, at most MVFX_MAX_HULL_VERTICES
-        // vertices. Its place is its centroid: a host draws its mesh moved
+        // The convex hull of the positions a mesh was created with
+        // (mvfxRigidDef.hull) scaled by size along the mesh's axes, at most
+        // MVFX_MAX_HULL_VERTICES vertices. Its place is its centroid: a host draws its mesh moved
         // by the scaled mvfxMesh_GetHullCenter from the particle.
         mvfx_rigidHull = 3,
     };
@@ -702,8 +702,9 @@ extern "C"
         // impact's substeps (dropped 2 m, 1.2 mm at 8, 9 mm at 16, 22 mm at
         // 27), pushed back out after.
         int32_t bodyContacts;
-        // A hull's mesh, its hull taken from its vertices when the effect is
-        // created (the effect does not follow its later positions).
+        // A hull's mesh, its hull that of the positions the mesh was
+        // created with: mvfxMesh_SetPositions moves no hull, before the
+        // effect is created or after.
         mvfxMeshId hull;
         // Sleeping: a body is still while its farthest point's speed (its
         // speed plus its angular speed times its reach) is below sleepSpeed,

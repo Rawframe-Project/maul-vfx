@@ -34,18 +34,30 @@ typedef struct mvfxHull
     float centroid[3];
 } mvfxHull;
 
-// Builds the hull of count points (x, y and z each, finite) into out;
-// mvfx_errorInvalid when they span no volume, mvfx_errorLimit when the
-// hull has more than MVFX_MAX_HULL_VERTICES vertices, mvfx_errorCapacity
-// when the allocator fails.
+// What the hull of a mesh's points is: how many vertices it has, and
+// whether a rigid particle takes it.
+typedef struct mvfxHullMeasure
+{
+    // mvfx_success with the count of the hull's vertices (0 for points
+    // that span no volume), or mvfx_errorLimit, the count then 0, for a
+    // hull past a build's room (at least MVFX_MAX_HULL_COUNT vertices).
+    mvfxResult counted;
+    int32_t count;
+    // mvfx_success when the hull was built, mvfx_errorInvalid when the
+    // points span no volume, mvfx_errorLimit when the hull has more than
+    // MVFX_MAX_HULL_VERTICES vertices.
+    mvfxResult built;
+} mvfxHullMeasure;
+
+// Measures the hull of count points (x, y and z each, finite) into
+// measure, and when it is built, builds it into out, all from one
+// build; mvfx_errorCapacity when the allocator fails.
+mvfxResult mvfxMeasureHull(const float* points, int32_t count, const mvfxAllocator* allocator,
+                           mvfxHullMeasure* measure, mvfxHull* out);
+
+// Builds the hull of count points into out: the build of
+// mvfxMeasureHull's, or mvfx_errorCapacity when the allocator fails.
 mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator* allocator,
                          mvfxHull* out);
-
-// Counts the vertices of the hull of count points, however many up to a
-// build's room (at least MVFX_MAX_HULL_COUNT); mvfx_errorInvalid when they
-// span no volume, mvfx_errorLimit past the room, mvfx_errorCapacity when
-// the allocator fails (out then 0).
-mvfxResult mvfxCountHullVertices(const float* points, int32_t count, const mvfxAllocator* allocator,
-                                 int32_t* out);
 
 #endif

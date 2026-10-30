@@ -263,10 +263,7 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     static mvfxBounds bounds;
     static mvfxEmitterStats stats;
     static float values[4];
-    static float center[3];
-    static bool hull;
     static int32_t level;
-    static int32_t vertexCount;
     static double remaining;
     static const mvfxEvent* events;
     static const mvfxSceneQuery* queries;
@@ -282,10 +279,7 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     memset(&bounds, 0xEE, sizeof bounds);
     memset(&stats, 0xEE, sizeof stats);
     memset(values, 0xEE, sizeof values);
-    memset(center, 0xEE, sizeof center);
-    memset(&hull, 0xEE, sizeof hull);
     memset(&level, 0xEE, sizeof level);
-    memset(&vertexCount, 0xEE, sizeof vertexCount);
     memset(&remaining, 0xEE, sizeof remaining);
     memset(&eventCount, 0xEE, sizeof eventCount);
     memset(&queryCount, 0xEE, sizeof queryCount);
@@ -301,7 +295,6 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     memset(n, 0xEE, sizeof n);
     mvfxInstanceId i = s_instance;
     mvfxLayoutId l = s_layout;
-    const mvfxMeshId m = {1, 1};
     bool busy =
         mvfxInstance_WriteParticles(target, i, 0, l, &view, NULL, 0, records, 4, &n[0]) ==
             mvfx_errorBusy &&
@@ -328,17 +321,13 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
         mvfxInstance_GetQuality(target, i, &level) == mvfx_errorBusy &&
         mvfxInstance_GetEvents(target, i, 0, &events, &eventCount) == mvfx_errorBusy &&
         mvfxInstance_GetSceneQueries(target, i, 0, &queries, &queryCount) == mvfx_errorBusy &&
-        mvfxInstance_Prewarm(target, i, 1.0, 0.1, 4, &remaining) == mvfx_errorBusy &&
-        mvfxMesh_GetHullCenter(target, m, &hull, center) == mvfx_errorBusy &&
-        mvfxMesh_GetHullVertexCount(target, m, &vertexCount) == mvfx_errorBusy;
+        mvfxInstance_Prewarm(target, i, 1.0, 0.1, 4, &remaining) == mvfx_errorBusy;
     s_left = busy && Filled(n, sizeof n, 0xEE) && Filled(records, sizeof records, 0xEE) &&
              Filled(vertices, sizeof vertices, 0xEE) && Filled(indices, sizeof indices, 0xEE) &&
              Filled(lights, sizeof lights, 0xEE) && Filled(items, sizeof items, 0xEE) &&
              Filled(ribbons, sizeof ribbons, 0xEE) && Filled(positions, sizeof positions, 0xEE) &&
              Filled(&bounds, sizeof bounds, 0xEE) && Filled(&stats, sizeof stats, 0xEE) &&
-             Filled(values, sizeof values, 0xEE) && Filled(center, sizeof center, 0xEE) &&
-             Filled(&hull, sizeof hull, 0xEE) && Filled(&level, sizeof level, 0xEE) &&
-             Filled(&vertexCount, sizeof vertexCount, 0xEE) &&
+             Filled(values, sizeof values, 0xEE) && Filled(&level, sizeof level, 0xEE) &&
              Filled(&remaining, sizeof remaining, 0xEE) &&
              Filled(&eventCount, sizeof eventCount, 0xEE) &&
              Filled(&queryCount, sizeof queryCount, 0xEE) && events == (const mvfxEvent*)records &&
@@ -380,7 +369,7 @@ static void TestBusyLeavesBuffers(void)
 static void TestHostSettings(void)
 {
     // An effect's compile allocates inside the library's environment, a
-    // rigid body's hull frees its scratch inside it as the effect is made,
+    // mesh's hull frees its scratch inside it as the mesh is made,
     // and a step calls the task hooks and the host module inside it; the
     // instance's release frees outside it.
     s_library = TestFloatGet();

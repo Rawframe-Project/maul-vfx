@@ -189,7 +189,7 @@ static mvfxResult FindMeshes(mvfxContext* context, const mvfxFieldPath* root,
     return mvfx_success;
 }
 
-// Returns the hulls built for an effect's emitters.
+// Returns the hulls copied for an effect's emitters.
 static void FreeHulls(mvfxContext* context, mvfxHull* hulls[MVFX_MAX_EMITTERS])
 {
     for (int32_t i = 0; i < MVFX_MAX_EMITTERS; ++i)
@@ -199,12 +199,13 @@ static void FreeHulls(mvfxContext* context, mvfxHull* hulls[MVFX_MAX_EMITTERS])
     }
 }
 
-// Builds the hull of each hull emitter's mesh; mvfx_errorStale for a mesh
-// that is gone, mvfx_errorInvalid for one whose vertices span no volume
-// or whose hull has too many vertices. The mesh's vertices are data a
-// correct program meets (a model file's), so that is never misuse.
-static mvfxResult BuildHulls(mvfxContext* context, const mvfxFieldPath* root,
-                             const mvfxEffectDef* def, mvfxHull* hulls[MVFX_MAX_EMITTERS])
+// Copies the hull each hull emitter's mesh keeps; mvfx_errorStale for a
+// mesh that is gone, mvfx_errorInvalid for one whose vertices span no
+// volume, mvfx_errorLimit for one whose hull has too many vertices. The
+// mesh's vertices are data a correct program meets (a model file's), so
+// that is never misuse.
+static mvfxResult CopyHulls(mvfxContext* context, const mvfxFieldPath* root,
+                            const mvfxEffectDef* def, mvfxHull* hulls[MVFX_MAX_EMITTERS])
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
@@ -214,13 +215,14 @@ static mvfxResult BuildHulls(mvfxContext* context, const mvfxFieldPath* root,
             continue;
         }
         const mvfxMesh* mesh = mvfxContextMesh(context, rigid->hull);
-        hulls[i] = mesh != nullptr
+        hulls[i] = mesh != nullptr && mesh->hull != nullptr
                        ? mvfxAllocate(&context->allocator, sizeof(mvfxHull), alignof(mvfxHull))
                        : nullptr;
-        mvfxResult built = mesh == nullptr       ? mvfx_errorStale
-                           : hulls[i] == nullptr ? mvfx_errorCapacity
-                                                 : mvfxBuildHull(mesh->positions, mesh->vertexCount,
-                                                                 &context->allocator, hulls[i]);
+        mvfxResult built = mesh == nullptr         ? mvfx_errorStale
+                           : mesh->hull == nullptr ? mesh->hullMeasure.built
+                           : hulls[i] == nullptr   ? mvfx_errorCapacity
+                                                   : mvfx_success;
+        hulls[i] != nullptr ? (void)(*hulls[i] = *mesh->hull) : (void)0;
         if (built != mvfx_success)
         {
             FreeHulls(context, hulls);
@@ -341,7 +343,7 @@ static mvfxResult CreateEffect(mvfxContext* context, const mvfxFieldPath* root,
         return mvfx_errorCapacity;
     }
     mvfxHull* hulls[MVFX_MAX_EMITTERS] = {0};
-    mvfxResult built = BuildHulls(context, root, def, hulls);
+    mvfxResult built = CopyHulls(context, root, def, hulls);
     if (built != mvfx_success)
     {
         return built;
