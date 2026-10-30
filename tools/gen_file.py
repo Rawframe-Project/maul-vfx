@@ -28,7 +28,8 @@ for a field that is not a struct, its default: the hex of the bytes the
 file would write for it, at every place a default holds it but the places
 named apart ("= 00000000 mvfxB.inner.x=0000803f"). The defaults are read
 from src/defaults.h, the initializers the default functions return, float
-literals and operations rounded to binary32 as C rounds them; an item of
+literals and operations rounded to binary32 as C rounds them, and any form
+the reader does not take as C does refused rather than guessed; an item of
 an array of another struct defaults to zero bytes. It refuses a field
 without a tag, a tag used twice in a struct, a retired tag used again, an
 entry that names no field (it must be retired), a field whose wire kind is
@@ -537,51 +538,112 @@ def constants():
     return known
 
 
-def evaluate(words, known):
-    """A constant expression of the defaults: float literals and float
-    operations rounded as C rounds them, integers, constants."""
-    floating = False
-    terms = []
-    for word in words:
-        if re.fullmatch(r"\d+\.\d*(?:[eE][-+]?\d+)?f|\d+f", word):
-            terms.append(f"binary32(Fraction('{word[:-1]}'))")
-            floating = True
-        elif re.fullmatch(r"0x[0-9A-Fa-f]+u?|\d+u?", word):
-            terms.append(str(int(word.rstrip("u"), 0)))
-        elif word in known:
-            terms.append(str(known[word]))
-        elif word in "+-*/()":
-            terms.append(word)
-        else:
-            raise SystemExit(f"{DEFAULTS_H.name}: cannot read {word!r}")
-    if floating:
-        # Each operation of two floats rounds: here a literal, or a literal
-        # over a literal, so rounding the result once is exact.
-        if len([w for w in words if w in "+-*/"]) > 1:
-            raise SystemExit(f"{DEFAULTS_H.name}: {' '.join(words)} has more than one operation")
-        return binary32(eval(" ".join(terms), {"binary32": binary32, "Fraction": Fraction}))
-    return eval(" ".join(terms))
+class DefaultsError(TagError):
+    """An initializer of src/defaults.h the generator does not read as C
+    does, and where."""
+
+
+# The words src/defaults.h may use, whitespace aside: float literals with
+# their f (a literal without it is a double, which a float rounds twice),
+# integer literals with an optional u, names, and the punctuation of an
+# initializer, a unary minus, parentheses and a float division. Anything
+# else is refused, never skipped: the reader must take every character as
+# C does, or say it cannot.
+WORD = re.compile(r"\s*(?:(?P<float>\d+\.\d*(?:[eE][-+]?\d+)?f|\d+[eE][-+]?\d+f)"
+                  r"|(?P<int>0x[0-9A-Fa-f]+u?|\d+u?)(?![\w.])"
+                  r"|(?P<name>[A-Za-z_]\w*)|(?P<mark>[{}.,=()/-]))")
+
+
+def words_of(text):
+    """The words of an initializer's text, (kind, word), covering all of
+    it."""
+    out = []
+    at = 0
+    while text[at:].strip():
+        m = WORD.match(text, at)
+        if m is None:
+            rest = " ".join(text[at:].split())
+            raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {rest[:24]!r}")
+        out.append((m.lastgroup, m.group(m.lastgroup)))
+        at = m.end()
+    out.append(("end", ""))
+    return out
+
+
+def unary(words, at, known):
+    """A literal, a known name, a negation or a parenthesized quotient: its
+    value, a Fraction for a float and an int for an integer."""
+    kind, word = words[at]
+    if word == "-" and kind == "mark":
+        value, at = unary(words, at + 1, known)
+        return -value, at
+    if word == "(" and kind == "mark":
+        value, at = quotient(words, at + 1, known)
+        if words[at] != ("mark", ")"):
+            raise DefaultsError(f"{DEFAULTS_H.name}: a parenthesis is not closed")
+        return value, at + 1
+    if kind == "float":
+        return binary32(Fraction(word[:-1])), at + 1
+    if kind == "int":
+        return int(word.rstrip("u"), 0), at + 1
+    if kind == "name":
+        if word not in known:
+            raise DefaultsError(f"{DEFAULTS_H.name}: {word} is an unknown name")
+        return known[word], at + 1
+    raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {word!r} as a value")
+
+
+def quotient(words, at, known):
+    """A value, or one float over another, rounded to binary32 as C
+    divides floats. An integer division is refused: C truncates it, and a
+    default written so is a float literal's work."""
+    value, at = unary(words, at, known)
+    if words[at] != ("mark", "/"):
+        return value, at
+    divisor, at = unary(words, at + 1, known)
+    if not (isinstance(value, Fraction) and isinstance(divisor, Fraction)):
+        raise DefaultsError(f"{DEFAULTS_H.name}: an integer division is refused; write the "
+                            f"float literals")
+    if divisor == 0 or words[at] == ("mark", "/"):
+        raise DefaultsError(f"{DEFAULTS_H.name}: a division by 0 or a second one is refused")
+    return binary32(value / divisor), at
 
 
 def initializer(words, at, known):
     """The initializer at words[at]: [(designator or None, value)] for a
     braced one, else its value; and where it ends."""
-    if words[at] != "{":
-        end = at
-        while words[end] not in (",", "}"):
-            end += 1
-        return evaluate(words[at:end], known), end
+    if words[at] != ("mark", "{"):
+        value, at = quotient(words, at, known)
+        if words[at] not in (("mark", ","), ("mark", "}")):
+            raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {words[at][1]!r} after a value")
+        return value, at
     items = []
     at += 1
-    while words[at] != "}":
+    while words[at] != ("mark", "}"):
         name = None
-        if words[at] == ".":
-            name = words[at + 1]
+        if words[at] == ("mark", "."):
+            if words[at + 1][0] != "name" or words[at + 2] != ("mark", "="):
+                raise DefaultsError(f"{DEFAULTS_H.name}: a designator is not .name =")
+            name = words[at + 1][1]
             at += 3
         value, at = initializer(words, at, known)
         items.append((name, value))
-        at += 1 if words[at] == "," else 0
+        if words[at] == ("mark", ","):
+            at += 1
+        elif words[at] != ("mark", "}"):
+            raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {words[at][1]!r} in a list")
     return items, at + 1
+
+
+def read_initializer(text, known):
+    """A braced initializer's text, read whole."""
+    words = words_of(text)
+    if words[0] != ("mark", "{"):
+        raise DefaultsError(f"{DEFAULTS_H.name}: a default is a braced initializer")
+    value, at = initializer(words, 0, known)
+    if words[at][0] != "end":
+        raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {words[at][1]!r} after a default")
+    return value
 
 
 def read_defaults():
@@ -591,21 +653,26 @@ def read_defaults():
     known = constants()
     out = {}
     for name, macro in DEFAULTS.items():
-        m = re.search(rf"#define\s+{macro}\s+(\{{.*)", text)
+        m = re.search(rf"#define\s+{macro}\s+(.*)", text)
         if m is None:
-            raise SystemExit(f"{DEFAULTS_H.name} has no {macro}")
-        word = r"0x[0-9A-Fa-f]+u?|\d+\.\d*(?:[eE][-+]?\d+)?f|\d+f|\d+u?|\w+|[{}.,=/*+()-]"
-        words = re.findall(word, m.group(1))
-        out[name], _ = initializer(words, 0, known)
+            raise DefaultsError(f"{DEFAULTS_H.name} has no {macro}")
+        out[name] = read_initializer(m.group(1), known)
     return out
 
 
 def scalar_bytes(base, value):
-    if base == "float":
-        return struct.pack("<f", float(value))
-    if base == "double":
-        return struct.pack("<d", float(value))
-    return struct.pack("<" + FORMATS[base], int(value))
+    """A default's bytes in its field's type, refusing a value C would
+    convert: a float in an integer, a bool other than 0 or 1, an integer a
+    float does not hold exactly."""
+    if base in ("float", "double"):
+        if base == "float" and binary32(value) != value:
+            raise DefaultsError(f"{DEFAULTS_H.name}: {value} is not exactly a binary32")
+        return struct.pack("<f" if base == "float" else "<d", float(value))
+    if isinstance(value, Fraction):
+        raise DefaultsError(f"{DEFAULTS_H.name}: a float literal in a {base} field")
+    if base == "bool" and value not in (0, 1):
+        raise DefaultsError(f"{DEFAULTS_H.name}: a bool of {value}")
+    return struct.pack("<" + FORMATS[base], value)
 
 
 def default_places(typedefs, structs, name, given, path, out):
@@ -668,7 +735,11 @@ def generate(registry_text=None):
     if registry_text is None:
         registry_text = TAGS.read_text(encoding="utf-8")
     try:
-        tags = assign_tags(declared, registry_text, default_pins(typedefs, structs, order))
+        pins = default_pins(typedefs, structs, order)
+    except DefaultsError as error:
+        raise SystemExit(str(error)) from error
+    try:
+        tags = assign_tags(declared, registry_text, pins)
     except TagError as error:
         raise SystemExit(f"{TAGS.name}: {error}") from error
     defaults = defaulted(typedefs, structs, order)
@@ -794,6 +865,45 @@ def self_test():
             assign_tags(declared, text, pins)
             message = "accepted"
         except TagError as error:
+            message = str(error)
+        if expected not in message:
+            print(f"gen_file.py --self-test: {what}: {message!r} lacks {expected!r}")
+            failed += 1
+    # The defaults' reader: what it reads as C does, and what it refuses
+    # rather than guess at.
+    known = {"MVFX_ONE": 1}
+    read = read_initializer("{.x = -9.81f, .y = (1.0f / 60.0f), .z = {MVFX_ONE, 0x10u}}", known)
+    if read != [("x", -binary32(Fraction("9.81"))), ("y", binary32(binary32(1) / binary32(60))),
+                ("z", [(None, 1), (None, 16)])]:
+        print(f"gen_file.py --self-test: the defaults' reader read {read!r}")
+        failed += 1
+    readings = [
+        ("a bitwise not", "{.x = ~0u}", "cannot read '~0u}'"),
+        ("an integer division", "{.x = 3 / 2}", "an integer division is refused"),
+        ("an unknown name", "{.x = MVFX_TWO}", "MVFX_TWO is an unknown name"),
+        ("a double literal", "{.x = 0.1}", "cannot read '0.1}'"),
+        ("a sum", "{.x = 1.0f + 2.0f}", "cannot read '+ 2.0f}'"),
+        ("a second division", "{.x = 1.0f / 2.0f / 2.0f}", "a second one is refused"),
+        ("a value then a word", "{.x = 1 2}", "cannot read '2' after a value"),
+    ]
+    for what, text, expected in readings:
+        try:
+            read_initializer(text, known)
+            message = "accepted"
+        except DefaultsError as error:
+            message = str(error)
+        if expected not in message:
+            print(f"gen_file.py --self-test: {what}: {message!r} lacks {expected!r}")
+            failed += 1
+    for what, base, value, expected in [("a float in an integer", "int32_t", binary32(1),
+                                         "a float literal in a int32_t field"),
+                                        ("a bool of 2", "bool", 2, "a bool of 2"),
+                                        ("an integer past binary32", "float", 2**24 + 1,
+                                         "is not exactly a binary32")]:
+        try:
+            scalar_bytes(base, value)
+            message = "accepted"
+        except DefaultsError as error:
             message = str(error)
         if expected not in message:
             print(f"gen_file.py --self-test: {what}: {message!r} lacks {expected!r}")
