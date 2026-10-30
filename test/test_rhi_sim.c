@@ -867,12 +867,12 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     CHECK(mvfxInstance_SetDepthImage(RunContext(), PlannedInstance(), &bare) == mvfx_success &&
               mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success &&
-              mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+              mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
               mvfxGpuSim_AddPasses(sim) == mvfx_errorState &&
               mvfxGpuSim_SetDepthTextures(NULL, (mrhiResourceId){0}, (mrhiResourceId){0}) ==
                   mvfx_errorInvalid,
           "a depth image without its texture refused");
-    (void)mrhiDropFrame(gpu->device);
+    (void)mrhiDevice_DropFrame(gpu->device);
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());
 }
@@ -1270,11 +1270,12 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
               mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success,
           "stepped with a heightfield");
     mrhiFrameDef frame = mrhiDefaultFrameDef();
-    CHECK(mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+    CHECK(mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
               mvfxGpuSim_AddPasses(sim) == mvfx_errorCapacity,
           "a heightfield of the instance past the room refused");
-    CHECK(mrhiCompileFrame(gpu->device) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
-              Finish(gpu) && ReadBack(gpu, sim, 0) && StatisticsRecord()[0] == (uint32_t)before,
+    CHECK(mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+              mvfxGpuSim_Record(sim) == mvfx_success && Finish(gpu) && ReadBack(gpu, sim, 0) &&
+              StatisticsRecord()[0] == (uint32_t)before,
           "a refused step adds no pass");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());

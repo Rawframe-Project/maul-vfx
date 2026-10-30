@@ -92,7 +92,7 @@ static bool RunQuery(Gpu* gpu, mvfxGpuSim* sim, const Asked* asked, const float*
     mrhiResourceId ids[2] = {{0}, {0}};
     mrhiPassId passes[2] = {{0}, {0}};
     mrhiRequestId request = {0};
-    bool recorded = made && mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+    bool recorded = made && mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
                     mrhiImportBuffer(gpu->device, buffers[0], &ids[0]) == mrhi_success &&
                     mrhiImportBuffer(gpu->device, buffers[1], &ids[1]) == mrhi_success;
     const mrhiAccess filled = {.resource = ids[0], .kind = mrhi_accessCopyDestination};
@@ -107,23 +107,24 @@ static bool RunQuery(Gpu* gpu, mvfxGpuSim* sim, const Asked* asked, const float*
                AddQuery(sim, asked, ids[0], ids[1]);
     def.accesses = &taken;
     recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
-               mrhiCompileFrame(gpu->device) == mrhi_success &&
-               mrhiBeginPass(gpu->device, passes[0]) == mrhi_success &&
-               mrhiWriteBuffer(gpu->device, passes[0], ids[0], POINT_OFFSET, points, pointBytes) ==
-                   mrhi_success &&
-               mrhiEndPass(gpu->device, passes[0]) == mrhi_success &&
+               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+               mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success &&
+               mrhiPass_WriteBuffer(gpu->device, passes[0], ids[0], POINT_OFFSET, points,
+                                    pointBytes) == mrhi_success &&
+               mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
                mvfxGpuSim_Record(sim) == mvfx_success &&
-               mrhiBeginPass(gpu->device, passes[1]) == mrhi_success &&
-               mrhiReadBuffer(gpu->device, passes[1], ids[1], SAMPLE_OFFSET, bytes, &request) ==
-                   mrhi_success &&
-               mrhiEndPass(gpu->device, passes[1]) == mrhi_success;
+               mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, passes[1], ids[1], SAMPLE_OFFSET, bytes,
+                                   &request) == mrhi_success &&
+               mrhiPass_End(gpu->device, passes[1]) == mrhi_success;
     size_t got = 0;
-    bool done = recorded && Finish(gpu) &&
-                mrhiTakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
-                got == bytes;
+    bool done =
+        recorded && Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+        got == bytes;
     if (made && !recorded)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
     }
     for (int32_t b = 0; b < 2; ++b)
     {

@@ -161,12 +161,12 @@ static bool RecordEventValues(mvfxGpuSim* sim, const Emitter* emitter)
             (mrhiBinding){.slot = (uint32_t)b, .resource = bound[b], .size = MRHI_WHOLE_SIZE};
     }
     bool recorded =
-        mrhiBeginPass(sim->device, pass) == mrhi_success &&
-        mrhiSetComputePipeline(sim->device, pass,
-                               mvfxGpuPipeline(sim->gpu, mvfx_kernelEventValues)) == mrhi_success &&
-        mrhiSetBindings(sim->device, pass, 0, bindings, 8) == mrhi_success &&
-        mrhiDispatch(sim->device, pass, emitter->eventWords[5], 1, 1) == mrhi_success;
-    return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+        mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+        mrhiPass_SetComputePipeline(
+            sim->device, pass, mvfxGpuPipeline(sim->gpu, mvfx_kernelEventValues)) == mrhi_success &&
+        mrhiPass_SetBindings(sim->device, pass, 0, bindings, 8) == mrhi_success &&
+        mrhiPass_Dispatch(sim->device, pass, emitter->eventWords[5], 1, 1) == mrhi_success;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
 
 // Records an emitter's events kernels, when it writes events or lists its

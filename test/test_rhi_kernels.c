@@ -74,8 +74,8 @@ static int Open(Gpu* gpu)
 {
     *gpu = (Gpu){0};
     mrhiDeviceDef def = mrhiDefaultDeviceDef();
-    def.deviceLimits.frameUploadBytes = CHECK_BYTES;
-    def.deviceLimits.readbackBytes = 2u * CHECK_BYTES;
+    def.budgets.frameUploadBytes = CHECK_BYTES;
+    def.budgets.readbackBytes = 2u * CHECK_BYTES;
     mrhiAdapterId adapter;
     int opened = OpenDevice(def, &gpu->instance, &adapter, &gpu->device);
     gpu->warp = opened == 0 && IsWarp(gpu->instance, adapter);
@@ -110,7 +110,7 @@ static bool AwaitReady(Gpu* gpu, mvfxGpu* kernels)
     while (!mvfxGpu_IsReady(kernels) && Seconds() < deadline)
     {
         mrhiDeviceNotification record;
-        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
         {
             (void)mvfxGpu_Notify(kernels, &record);
         }
@@ -138,16 +138,17 @@ static bool Record(Gpu* gpu, mvfxGpu* kernels, mrhiResourceId words, mrhiRequest
     const mrhiBinding binding = {.slot = 0, .resource = words, .size = MRHI_WHOLE_SIZE};
     return mrhiAddPass(gpu->device, &hashDef, &hashing) == mrhi_success &&
            mrhiAddPass(gpu->device, &readDef, &reading) == mrhi_success &&
-           mrhiCompileFrame(gpu->device) == mrhi_success &&
-           mrhiBeginPass(gpu->device, hashing) == mrhi_success &&
-           mrhiSetComputePipeline(gpu->device, hashing,
-                                  mvfxGpuPipeline(kernels, mvfx_kernelPcg4d)) == mrhi_success &&
-           mrhiSetBindings(gpu->device, hashing, 0, &binding, 1) == mrhi_success &&
-           mrhiDispatch(gpu->device, hashing, WORDS / 64, 1, 1) == mrhi_success &&
-           mrhiEndPass(gpu->device, hashing) == mrhi_success &&
-           mrhiBeginPass(gpu->device, reading) == mrhi_success &&
-           mrhiReadBuffer(gpu->device, reading, words, 0, WORDS * 16, readback) == mrhi_success &&
-           mrhiEndPass(gpu->device, reading) == mrhi_success;
+           mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+           mrhiPass_Begin(gpu->device, hashing) == mrhi_success &&
+           mrhiPass_SetComputePipeline(
+               gpu->device, hashing, mvfxGpuPipeline(kernels, mvfx_kernelPcg4d)) == mrhi_success &&
+           mrhiPass_SetBindings(gpu->device, hashing, 0, &binding, 1) == mrhi_success &&
+           mrhiPass_Dispatch(gpu->device, hashing, WORDS / 64, 1, 1) == mrhi_success &&
+           mrhiPass_End(gpu->device, hashing) == mrhi_success &&
+           mrhiPass_Begin(gpu->device, reading) == mrhi_success &&
+           mrhiPass_ReadBuffer(gpu->device, reading, words, 0, WORDS * 16, readback) ==
+               mrhi_success &&
+           mrhiPass_End(gpu->device, reading) == mrhi_success;
 }
 
 // Runs pcg4d on the device and reads its words.
@@ -165,25 +166,26 @@ static bool Hash(Gpu* gpu, mvfxGpu* kernels, uint32_t* out)
     {
         return false;
     }
-    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+    bool recorded = mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
                     mrhiImportBuffer(gpu->device, buffer, &words) == mrhi_success &&
                     Record(gpu, kernels, words, &readback);
     if (!recorded)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         (void)mrhiDestroyBuffer(gpu->device, buffer);
         return false;
     }
-    bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+    bool done = mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
+                mrhiRequest_WaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
     mrhiDeviceNotification record;
-    while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+    while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
     {
     }
     size_t taken = 0;
-    done = done &&
-           mrhiTakeReadback(gpu->device, readback, out, WORDS * 16, &taken) == mrhi_success &&
-           taken == WORDS * 16;
+    done =
+        done &&
+        mrhiRequest_TakeReadback(gpu->device, readback, out, WORDS * 16, &taken) == mrhi_success &&
+        taken == WORDS * 16;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;
 }
@@ -320,7 +322,7 @@ static bool OpenChecker(Gpu* gpu, Checker* checker)
     while (Seconds() < deadline)
     {
         mrhiDeviceNotification record;
-        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
         {
             if (record.kind == mrhi_devicePipelineReady &&
                 record.request.index1 == request.index1 &&
@@ -372,21 +374,21 @@ static bool RecordChecks(Gpu* gpu, const Checker* checker, mrhiResourceId words,
         recorded = recorded && mrhiAddPass(gpu->device, &defs[p], &passes[p]) == mrhi_success;
     }
     const mrhiBinding binding = {.slot = 0, .resource = words, .size = MRHI_WHOLE_SIZE};
-    return recorded && mrhiCompileFrame(gpu->device) == mrhi_success &&
-           mrhiBeginPass(gpu->device, passes[0]) == mrhi_success &&
-           mrhiWriteBuffer(gpu->device, passes[0], words, 0, checker->words, bytes) ==
+    return recorded && mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+           mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success &&
+           mrhiPass_WriteBuffer(gpu->device, passes[0], words, 0, checker->words, bytes) ==
                mrhi_success &&
-           mrhiEndPass(gpu->device, passes[0]) == mrhi_success &&
-           mrhiBeginPass(gpu->device, passes[1]) == mrhi_success &&
-           mrhiSetComputePipeline(gpu->device, passes[1], checker->pipeline) == mrhi_success &&
-           mrhiSetBindings(gpu->device, passes[1], 0, &binding, 1) == mrhi_success &&
-           mrhiSetRootBlock(gpu->device, passes[1], 0, root, 4 * sizeof(uint32_t)) ==
+           mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
+           mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
+           mrhiPass_SetComputePipeline(gpu->device, passes[1], checker->pipeline) == mrhi_success &&
+           mrhiPass_SetBindings(gpu->device, passes[1], 0, &binding, 1) == mrhi_success &&
+           mrhiPass_SetRootBlock(gpu->device, passes[1], 0, root, 4 * sizeof(uint32_t)) ==
                mrhi_success &&
-           mrhiDispatch(gpu->device, passes[1], root[3], 1, 1) == mrhi_success &&
-           mrhiEndPass(gpu->device, passes[1]) == mrhi_success &&
-           mrhiBeginPass(gpu->device, passes[2]) == mrhi_success &&
-           mrhiReadBuffer(gpu->device, passes[2], words, 0, bytes, readback) == mrhi_success &&
-           mrhiEndPass(gpu->device, passes[2]) == mrhi_success;
+           mrhiPass_Dispatch(gpu->device, passes[1], root[3], 1, 1) == mrhi_success &&
+           mrhiPass_End(gpu->device, passes[1]) == mrhi_success &&
+           mrhiPass_Begin(gpu->device, passes[2]) == mrhi_success &&
+           mrhiPass_ReadBuffer(gpu->device, passes[2], words, 0, bytes, readback) == mrhi_success &&
+           mrhiPass_End(gpu->device, passes[2]) == mrhi_success;
 }
 
 // Runs a frame of checks over the checker's words, count elements, and
@@ -399,24 +401,24 @@ static bool RunChecks(Gpu* gpu, Checker* checker, CheckMode mode, uint32_t first
     mrhiResourceId words = {0};
     mrhiRequestId readback = {0};
     mrhiRequestId token = {0};
-    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+    bool recorded = mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
                     mrhiImportBuffer(gpu->device, checker->buffer, &words) == mrhi_success &&
                     RecordChecks(gpu, checker, words, root, &readback);
     if (!recorded)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         return false;
     }
-    bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+    bool done = mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
+                mrhiRequest_WaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
     mrhiDeviceNotification record;
-    while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+    while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
     {
     }
     size_t taken = 0;
     return done &&
-           mrhiTakeReadback(gpu->device, readback, checker->words,
-                            (size_t)count * ElementBytes(mode), &taken) == mrhi_success &&
+           mrhiRequest_TakeReadback(gpu->device, readback, checker->words,
+                                    (size_t)count * ElementBytes(mode), &taken) == mrhi_success &&
            taken == (size_t)count * ElementBytes(mode);
 }
 

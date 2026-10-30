@@ -713,8 +713,8 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
 // GAS_ROW.
 static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t groups)
 {
-    return groups == 0 || mrhiDispatch(sim->device, pass, groups < GAS_ROW ? groups : GAS_ROW,
-                                       (groups + GAS_ROW - 1u) / GAS_ROW, 1) == mrhi_success;
+    return groups == 0 || mrhiPass_Dispatch(sim->device, pass, groups < GAS_ROW ? groups : GAS_ROW,
+                                            (groups + GAS_ROW - 1u) / GAS_ROW, 1) == mrhi_success;
 }
 
 // Records the pass writing the numbers, and the fields and solve emptied
@@ -723,19 +723,20 @@ static bool RecordWrite(mvfxGpuSim* sim, SimGas* gas)
 {
     mrhiPassId pass = gas->passes[0];
     const mrhiResourceId* r = gas->resources;
-    bool recorded = mrhiBeginPass(sim->device, pass) == mrhi_success &&
+    bool recorded = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, pass, r[GAS_NUMBERS], 0, gas->words,
                                sizeof gas->words);
     for (int32_t b = GAS_FIELDS; recorded && gas->clears && b <= GAS_SOLVE; ++b)
     {
-        recorded = mrhiClearBuffer(sim->device, pass, r[b], 0, MRHI_WHOLE_SIZE) == mrhi_success;
+        recorded =
+            mrhiPass_ClearBuffer(sim->device, pass, r[b], 0, MRHI_WHOLE_SIZE) == mrhi_success;
     }
     recorded = recorded && mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[GAS_GRIDS],
                                           sim->context, &gas->grids);
     recorded = recorded && mvfxUpload(sim->device, &sim->uploaded, pass, r[GAS_STATISTICS], 0,
                                       gas->record, sizeof gas->record);
     recorded = recorded && mvfxWriteSimSplats(sim, pass, gas);
-    return mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
 
 // Records the step's dispatches.
@@ -756,13 +757,13 @@ static bool RecordStep(mvfxGpuSim* sim, SimGas* gas)
         bool owns = d->binds == GAS_BINDS_GAS;
         uint32_t count = owns ? GAS_BUFFERS : (uint32_t)mvfxSimSplatBindings(gas, d, splat);
         bool ran =
-            mrhiBeginPass(sim->device, pass) == mrhi_success &&
-            mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, d->kernel)) ==
+            mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+            mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, d->kernel)) ==
                 mrhi_success &&
-            mrhiSetBindings(sim->device, pass, 0, owns ? own : splat, count) == mrhi_success &&
-            mrhiSetRootBlock(sim->device, pass, 0, d->root, sizeof d->root) == mrhi_success &&
+            mrhiPass_SetBindings(sim->device, pass, 0, owns ? own : splat, count) == mrhi_success &&
+            mrhiPass_SetRootBlock(sim->device, pass, 0, d->root, sizeof d->root) == mrhi_success &&
             Dispatch(sim, pass, d->groups);
-        recorded = mrhiEndPass(sim->device, pass) == mrhi_success && ran;
+        recorded = mrhiPass_End(sim->device, pass) == mrhi_success && ran;
     }
     gas->prepared = gas->prepared || recorded;
     return recorded;

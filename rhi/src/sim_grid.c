@@ -214,12 +214,12 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
     uint32_t words = emitter->gridNumbersWritten ? StepWords(emitter) : MVFX_GRID_WORDS;
     bool empties = (emitter->gridFlags & MVFX_GRID_BUILDS) != 0 && !emitter->gridEmptied;
     bool recorded =
-        mrhiBeginPass(sim->device, pass) == mrhi_success &&
+        mrhiPass_Begin(sim->device, pass) == mrhi_success &&
         mvfxUpload(sim->device, &sim->uploaded, pass, g[GRID_NUMBERS], (uint64_t)first * 4u,
                    emitter->gridNumberWords + first, (uint64_t)words * 4u) &&
-        (!empties ||
-         mrhiClearBuffer(sim->device, pass, g[GRID_COUNT], 0, MRHI_WHOLE_SIZE) == mrhi_success);
-    recorded = mrhiEndPass(sim->device, pass) == mrhi_success && recorded;
+        (!empties || mrhiPass_ClearBuffer(sim->device, pass, g[GRID_COUNT], 0, MRHI_WHOLE_SIZE) ==
+                         mrhi_success);
+    recorded = mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
     emitter->gridNumbersWritten = emitter->gridNumbersWritten || recorded;
     emitter->gridEmptied = emitter->gridEmptied || (recorded && empties);
     return recorded;
@@ -237,14 +237,15 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
         bindings[b] =
             (mrhiBinding){.slot = (uint32_t)b, .resource = bound[b], .size = MRHI_WHOLE_SIZE};
     }
-    bool ran = mrhiBeginPass(sim->device, pass) == mrhi_success &&
-               mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
-                   mrhi_success &&
-               mrhiSetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
-               (root == nullptr || mrhiSetRootBlock(sim->device, pass, 0, root,
-                                                    4 * sizeof(uint32_t)) == mrhi_success) &&
-               mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
-    return mrhiEndPass(sim->device, pass) == mrhi_success && ran;
+    bool ran =
+        mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+        mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
+            mrhi_success &&
+        mrhiPass_SetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
+        (root == nullptr ||
+         mrhiPass_SetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success) &&
+        mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+    return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 
 // Records the sort's radix passes over the grid's keys: each pass's
