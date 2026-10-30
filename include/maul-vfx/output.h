@@ -244,10 +244,10 @@ extern "C"
     /// them it is not below (none for NaN), as records are written; for a
     /// simulation elsewhere to write the same bytes.
     ///
-    /// @param steps  Receives MVFX_SRGB_STEPS values, rising.
+    /// @param stepsOut  Receives MVFX_SRGB_STEPS values, rising.
     /// @par Thread safety
     /// Safe from any thread.
-    MVFX_API void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS]);
+    MVFX_API void mvfxGetSrgbSteps(float stepsOut[MVFX_SRGB_STEPS]);
 
     // A view the host draws: where positions are made relative to, the eye
     // a sort measures from, and the direction it looks.
@@ -304,7 +304,7 @@ extern "C"
     ///                      for any step); NULL when scratchBytes is 0.
     ///                      Its contents are not kept.
     /// @param scratchBytes  Its bytes, at least 0.
-    /// @param records       The buffer, capacity times the layout's stride
+    /// @param recordsOut    The buffer, capacity times the layout's stride
     ///                      bytes; NULL when capacity is 0.
     /// @param capacity      The records it holds, at least 0.
     /// @param countOut      Receives the records there are; 0 on failure.
@@ -322,8 +322,8 @@ extern "C"
     /// with its own scratch.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteParticles(
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
-        const mvfxView* view, void* scratch, int64_t scratchBytes, void* records, int64_t capacity,
-        int64_t* countOut);
+        const mvfxView* view, void* scratch, int64_t scratchBytes, void* recordsOut,
+        int64_t capacity, int64_t* countOut);
 
     // A ribbon of a ribbon list: its points in the point buffer and its id.
     typedef struct mvfxRibbon
@@ -620,13 +620,13 @@ extern "C"
     /// a host that wants at most n lights passes n; the count is always all
     /// of them, 0 for an emitter without lights.
     ///
-    /// @param context     The context that owns the instance.
-    /// @param instance    The instance.
-    /// @param emitter     The emitter's index in the effect's def.
-    /// @param view        The view.
-    /// @param lights      The buffer; NULL when capacity is 0.
-    /// @param capacity    The lights it holds, at least 0.
-    /// @param countOut    Receives the lights there are; 0 on failure.
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param emitter    The emitter's index in the effect's def.
+    /// @param view       The view.
+    /// @param lightsOut  The buffer; NULL when capacity is 0.
+    /// @param capacity   The lights it holds, at least 0.
+    /// @param countOut   Receives the lights there are; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context, view or
     ///         count, a view out of range, an emitter out of range, a
@@ -637,7 +637,7 @@ extern "C"
     /// except that outputs may run on several threads at once.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_WriteLights(
         mvfxContext* context, mvfxInstanceId instance, int32_t emitter, const mvfxView* view,
-        mvfxLight* lights, int64_t capacity, int64_t* countOut);
+        mvfxLight* lightsOut, int64_t capacity, int64_t* countOut);
 
     // A box in the world.
     typedef struct mvfxBounds
@@ -696,12 +696,12 @@ extern "C"
     /// format, as the last step left it, X fastest, then Y, then Z: for a
     /// volume texture, or a region of one.
     ///
-    /// @param context   The context that owns the instance.
-    /// @param instance  The instance.
-    /// @param gas       The gas's index in its effect's def.
-    /// @param read      What to read and how.
-    /// @param out       Receives the values; its bytes zeroed on failure.
-    /// @param bytes     out's size in bytes: at least the last value's end.
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param gas        The gas's index in its effect's def.
+    /// @param read       What to read and how.
+    /// @param valuesOut  Receives the values; its bytes zeroed on failure.
+    /// @param bytes      valuesOut's size in bytes: at least the last value's end.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
     ///         gas index, field, format, box, range or pitch out of range
@@ -714,8 +714,8 @@ extern "C"
     /// except that outputs may run on several threads at once.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context,
                                                               mvfxInstanceId instance, int32_t gas,
-                                                              const mvfxGasRead* read, void* out,
-                                                              int64_t bytes);
+                                                              const mvfxGasRead* read,
+                                                              void* valuesOut, int64_t bytes);
 
     /// Samples a field of a gas of an instance at points in the world, as
     /// the last step left it: trilinear, as particles following the gas
@@ -723,14 +723,14 @@ extern "C"
     /// gas's reaching along its Z without end); a velocity's component
     /// along the box's axis.
     ///
-    /// @param context   The context that owns the instance.
-    /// @param instance  The instance.
-    /// @param gas       The gas's index in its effect's def.
-    /// @param field     The field.
-    /// @param points    count points, x, y and z each, finite.
-    /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
-    ///                  be NULL for 0.
-    /// @param out       Receives count values; zeroed on failure.
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param gas        The gas's index in its effect's def.
+    /// @param field      The field.
+    /// @param points     count points, x, y and z each, finite.
+    /// @param count      How many, from 0 to INT64_MAX / 3; points and valuesOut may
+    ///                   be NULL for 0.
+    /// @param valuesOut  Receives count values; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
     ///         gas index or field out of range, a count out of range or a
@@ -744,7 +744,7 @@ extern "C"
                                                               mvfxInstanceId instance, int32_t gas,
                                                               mvfxGasField field,
                                                               const double* points, int64_t count,
-                                                              float* out);
+                                                              float* valuesOut);
 
     // How a water surface's field is read out: over a box of cells (first,
     // then size, along X and Z), in a format, a row of cells (along X) from
@@ -767,12 +767,12 @@ extern "C"
     /// Writes a field of a water surface of an instance over a box of its
     /// cells in a format, as the last step left it.
     ///
-    /// @param context   The context that owns the instance.
-    /// @param instance  The instance.
-    /// @param water     The surface's index in its effect's def.
-    /// @param read      The field, format, box, range and pitch.
-    /// @param out       The buffer; its bytes zeroed on failure.
-    /// @param bytes     Its bytes, at least the read's.
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param water      The surface's index in its effect's def.
+    /// @param read       The field, format, box, range and pitch.
+    /// @param valuesOut  The buffer; its bytes zeroed on failure.
+    /// @param bytes      Its bytes, at least the read's.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
     ///         surface index, field, format, box, range or pitch out of
@@ -785,8 +785,8 @@ extern "C"
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadWater(const mvfxContext* context,
                                                               mvfxInstanceId instance,
                                                               int32_t water,
-                                                              const mvfxWaterRead* read, void* out,
-                                                              int64_t bytes);
+                                                              const mvfxWaterRead* read,
+                                                              void* valuesOut, int64_t bytes);
 
     // A water surface at a point: the surface's point along its frame's Y
     // through it (in the world), its unit normal and its velocity (in the
@@ -805,13 +805,13 @@ extern "C"
     /// between the cells' centers, held at the outer cells' within the
     /// grid's edge.
     ///
-    /// @param context   The context that owns the instance.
-    /// @param instance  The instance.
-    /// @param water     The surface's index in its effect's def.
-    /// @param points    count points, x, y and z each, finite.
-    /// @param count     How many, from 0 to INT64_MAX / 3; points and out may
-    ///                  be NULL for 0.
-    /// @param out       Receives count samples; zeroed on failure.
+    /// @param context     The context that owns the instance.
+    /// @param instance    The instance.
+    /// @param water       The surface's index in its effect's def.
+    /// @param points      count points, x, y and z each, finite.
+    /// @param count       How many, from 0 to INT64_MAX / 3; points and samplesOut may
+    ///                    be NULL for 0.
+    /// @param samplesOut  Receives count samples; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
     ///         surface index out of range, a count out of range or a point
@@ -825,7 +825,7 @@ extern "C"
                                                                 mvfxInstanceId instance,
                                                                 int32_t water, const double* points,
                                                                 int64_t count,
-                                                                mvfxWaterSample* out);
+                                                                mvfxWaterSample* samplesOut);
 
 // The most planes a frustum has.
 #define MVFX_MAX_FRUSTUM_PLANES 8
@@ -861,7 +861,7 @@ extern "C"
     ///                  2^52 in size).
     /// @param frustum   Its frustum, or NULL to keep every emitter; from 0 to
     ///                  MVFX_MAX_FRUSTUM_PLANES finite planes.
-    /// @param items     The buffer; NULL when capacity is 0.
+    /// @param itemsOut  The buffer; NULL when capacity is 0.
     /// @param capacity  The items it holds, at least 0.
     /// @param countOut  Receives how many emitters there are to draw; 0 on
     ///                  failure.
@@ -875,7 +875,7 @@ extern "C"
     /// except that outputs may run on several threads at once.
     MVFX_NODISCARD MVFX_API mvfxResult
     mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3], const mvfxFrustum* frustum,
-                              mvfxDrawItem* items, int64_t capacity, int64_t* countOut);
+                              mvfxDrawItem* itemsOut, int64_t capacity, int64_t* countOut);
 
     // Where mvfxInstance_WriteSurfaceMesh writes: each vertex's position (3
     // floats) and, unless normals is NULL, its unit normal (3 floats); the

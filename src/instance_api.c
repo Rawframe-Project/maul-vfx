@@ -315,7 +315,7 @@ static void SpawnWindow(const mvfxInstance* instance, int32_t emitter, mvfxEmitt
 {
     int64_t first = 1;
     int64_t last = 0;
-    if (instance->effect->emitters[emitter].eventSpawn.enabled)
+    if (instance->effect->emitters[emitter].eventSpawn.enable)
     {
         mvfxEventSpawnWindow(instance, emitter, plan->start, plan->start + plan->ticks, &first,
                              &last);

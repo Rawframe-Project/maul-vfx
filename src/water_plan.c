@@ -81,7 +81,7 @@ static void StepPlan(const mvfxInstance* live, int32_t w, int32_t s, mvfxWaterPl
         .stopTick = live->stopTick,
         .cleared = s == 0 && live->planCleared,
         .pushCount = s == 0 ? state->planPushCount : 0,
-        .hasTerrain = state->planHasTerrain,
+        .enableTerrain = state->planHasTerrain,
         .terrain = state->planTerrain,
     };
     double scale = (double)mvfxWaterPlace(live, w).scale;
@@ -231,7 +231,7 @@ static bool IsStirringOver(const mvfxInstance* live, int32_t w, int64_t tick)
     for (int32_t e = 0; e < live->effect->emitterCount; ++e)
     {
         const mvfxWaterCoupling* coupling = &live->effect->emitters[e].water;
-        if (coupling->enabled && coupling->water == w && live->emitters[e].lastDeath > tick)
+        if (coupling->enable && coupling->water == w && live->emitters[e].lastDeath > tick)
         {
             return false;
         }

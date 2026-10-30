@@ -257,7 +257,7 @@ static void MarkPastLimits(mvfxInstance* instance, int32_t emitter, const mvfxPa
     float* angle[1] = {a->angle};
     float* spin[1] = {a->spin};
     int32_t axes = mvfxSizeAxes(&instance->effect->emitters[emitter].rigid);
-    bool rigid = instance->effect->emitters[emitter].rigid.enabled;
+    bool rigid = instance->effect->emitters[emitter].rigid.enable;
     // An array at a time first: the particles are looked at one by one
     // only where some value is past its limit.
     int32_t n = a->count;
@@ -330,13 +330,13 @@ void mvfxRunHostModules(mvfxInstance* instance, int32_t emitter, mvfxModuleStage
     }
 }
 
-void mvfxModule_Random(const mvfxModuleCall* call, uint32_t serial, uint32_t stream,
-                       uint32_t out[4])
+void mvfxDrawModuleRandom(const mvfxModuleCall* call, uint32_t serial, uint32_t stream,
+                          uint32_t wordsOut[4])
 {
     mvfxWords4 words =
         mvfxPcg4d((mvfxWords4){call->seed, serial, stream, (uint32_t)(uint64_t)call->endTick});
-    out[0] = words.x;
-    out[1] = words.y;
-    out[2] = words.z;
-    out[3] = words.w;
+    wordsOut[0] = words.x;
+    wordsOut[1] = words.y;
+    wordsOut[2] = words.z;
+    wordsOut[3] = words.w;
 }

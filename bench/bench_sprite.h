@@ -30,11 +30,11 @@ static inline mvfxEmitterDef Sprite(int32_t capacity, float rate)
     emitter.motion.gravity[1] = -9.8f;
     emitter.motion.drag = 0.5f;
     emitter.overLife.color = (mvfxColorOverLife){
-        .enabled = true,
+        .enable = true,
         .gradient = {
             .colorKeys = s_colors, .colorKeyCount = 2, .alphaKeys = s_alphas, .alphaKeyCount = 2}};
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .size = {{.value = 1.0f, .curve = {.keys = s_growing, .keyCount = 2}}}};
+        .enable = true, .size = {{.value = 1.0f, .curve = {.keys = s_growing, .keyCount = 2}}}};
     return emitter;
 }
 

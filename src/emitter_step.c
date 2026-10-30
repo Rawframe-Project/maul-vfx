@@ -157,18 +157,18 @@ static void MoveLive(mvfxInstance* instance, int32_t emitter)
         mvfxStepUnits(instance, emitter);
         return;
     }
-    if (instance->effect->emitters[emitter].rigid.enabled)
+    if (instance->effect->emitters[emitter].rigid.enable)
     {
         mvfxStepRigid(instance, emitter);
         return;
     }
     const mvfxLiquidDef* liquid = &instance->effect->emitters[emitter].liquid;
-    if (liquid->enabled && liquid->solver == mvfx_liquidGrid)
+    if (liquid->enable && liquid->solver == mvfx_liquidGrid)
     {
         mvfxMoveGridLiquid(instance, emitter);
         return;
     }
-    if (liquid->enabled)
+    if (liquid->enable)
     {
         mvfxStepLiquid(instance, emitter);
         return;
@@ -228,7 +228,7 @@ bool mvfxNextStrike(mvfxInstance* instance, int32_t emitter, mvfxStrike* strike)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
-    if (!compiled->beam.enabled)
+    if (!compiled->beam.enable)
     {
         return false;
     }
@@ -509,7 +509,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     // No kill or crossing yet: the integrator and the host modules mark
     // them.
     memset(instance->killScratch, 0, (size_t)state->capacity);
-    if (instance->effect->emitters[emitter].water.enabled)
+    if (instance->effect->emitters[emitter].water.enable)
     {
         memset(instance->crossScratch, 0, (size_t)state->capacity);
     }

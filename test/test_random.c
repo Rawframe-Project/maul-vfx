@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Random numbers where a host meets them: mvfxModule_Random's words
+// Random numbers where a host meets them: mvfxDrawModuleRandom's words
 // against pcg4d from Jarzynski and Olano's listing, which is itself
 // checked against the vectors tools/pcg4d_vectors.py prints, over many
 // serials, streams and steps; and the uniform values a range draws for
@@ -108,15 +108,15 @@ static void Draw(const mvfxModuleCall* call, void* user)
         uint32_t serial = k < 32 ? 1u << k : (k - 32u) * 0x9E3779B9u;
         uint32_t stream = k < 32 ? ~(1u << k) : k;
         uint32_t out[4] = {0};
-        mvfxModule_Random(call, serial, stream, out);
+        mvfxDrawModuleRandom(call, serial, stream, out);
         Words want = Pcg4d((Words){call->seed, serial, stream, (uint32_t)call->endTick});
         seen->differing +=
             out[0] != want.x || out[1] != want.y || out[2] != want.z || out[3] != want.w ? 1 : 0;
         // One bit of the serial, then of the stream, changes every word.
         uint32_t moved[4] = {0};
-        mvfxModule_Random(call, serial ^ 1u, stream, moved);
+        mvfxDrawModuleRandom(call, serial ^ 1u, stream, moved);
         uint32_t streamed[4] = {0};
-        mvfxModule_Random(call, serial, stream ^ 1u, streamed);
+        mvfxDrawModuleRandom(call, serial, stream ^ 1u, streamed);
         for (int32_t c = 0; c < 4; ++c)
         {
             seen->unmoved += moved[c] == out[c] || streamed[c] == out[c] ? 1 : 0;

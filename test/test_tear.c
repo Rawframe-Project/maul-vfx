@@ -294,7 +294,7 @@ static void TestSheet(void)
         emitters[1].rate = 0.0f;
         emitters[1].capacity = 16;
         emitters[1].lifetime = mvfxRangeSource(1000.0f, 1000.0f);
-        emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+        emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                   .source = 0,
                                                   .kind = mvfx_eventTear,
                                                   .minCount = 1,
@@ -486,7 +486,7 @@ static void TestChecks(void)
             emitters[0].events = 16;
             break;
         default:
-            emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+            emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                       .source = 0,
                                                       .kind = mvfx_eventTear + 1,
                                                       .minCount = 1,

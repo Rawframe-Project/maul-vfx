@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The bytes a step of the GPU part uploads, on Maul RHI's test driver
-// (mvfxGpuSim_UploadBytes): after the first step, each emitter's as
+// (mvfxGpuSim_GetUploadBytes): after the first step, each emitter's as
 // mvfxGpuSim_Record states them, from its plan's forces, colliders, kill
 // rules, births and host births, for a plain emitter, one with forces,
 // colliders and kill rules, one the host spawns into, and one writing
@@ -119,11 +119,11 @@ static mvfxEmitterDef Sprite(void)
 static int64_t GridBytes(const mvfxEmitterDef* emitter)
 {
     const mvfxSteeringDef* s = &emitter->steering;
-    if (s->enabled || emitter->pairForce.enabled)
+    if (s->enable || emitter->pairForce.enable)
     {
         return 160 + 16 * (s->path.weight > 0.0f ? s->path.pointCount : 0);
     }
-    return emitter->neighbors.enabled ? 32 : 0;
+    return emitter->neighbors.enable ? 32 : 0;
 }
 
 // The bytes an emitter's step uploads after the first, from its plan,
@@ -191,7 +191,8 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
     mvfxGpuRefusal refusal;
     CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_success, "simulation");
     int64_t none = -1;
-    CHECK(mvfxGpuSim_UploadBytes(sim, &none) == mvfx_success && none == 0, "none before a record");
+    CHECK(mvfxGpuSim_GetUploadBytes(sim, &none) == mvfx_success && none == 0,
+          "none before a record");
     static const double places[3 * 4] = {0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1};
     const mvfxSpawnRequest spawn = {.positions = places, .count = 4};
     bool exact = true;
@@ -225,12 +226,12 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
         {
             mvfxEmitterPlan plan;
             exact = mvfxInstance_GetEmitterPlan(context, instance, e, &plan) == mvfx_success;
-            expected += StepBytes(&plan, emitters[e].events != 0, emitters[e].beam.enabled,
-                                  emitters[e].contacts.enabled, GridBytes(&emitters[e]));
+            expected += StepBytes(&plan, emitters[e].events != 0, emitters[e].beam.enable,
+                                  emitters[e].contacts.enable, GridBytes(&emitters[e]));
             births += plan.birthCount + plan.hostBirthCount;
         }
         int64_t uploaded = -1;
-        exact = exact && mvfxGpuSim_UploadBytes(sim, &uploaded) == mvfx_success;
+        exact = exact && mvfxGpuSim_GetUploadBytes(sim, &uploaded) == mvfx_success;
         if (exact && s > 0 && uploaded != expected)
         {
             printf("step %d: %lld bytes uploaded, %lld stated\n", s, (long long)uploaded,
@@ -264,7 +265,7 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     modules.forceCount = 2;
     modules.colliders = colliders;
     modules.colliderCount = 3;
-    modules.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
+    modules.collision = (mvfxCollision){.enable = true, .restitution = 0.5f};
     modules.killRules = &rule;
     modules.killRuleCount = 1;
     Measure(gpu, kernels, &modules, 1, "forces, colliders and a kill rule");
@@ -279,7 +280,7 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     pair[1].rate = 0.0f;
     pair[1].burstCount = 0;
     pair[1].eventSpawn = (mvfxEventSpawn){
-        .enabled = true, .kind = mvfx_eventDeath, .minCount = 1, .maxCount = 2, .capacity = 512};
+        .enable = true, .kind = mvfx_eventDeath, .minCount = 1, .maxCount = 2, .capacity = 512};
     Measure(gpu, kernels, pair, 2, "events and births from them");
 
     // A mesh shape's mesh goes up at the first step alone while it stays
@@ -295,26 +296,26 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     beam.lifetime = mvfxRangeSource(0.05f, 0.1f);
     beam.ribbon.ids = mvfx_ribbonOne;
     beam.beam = (mvfxBeamDef){
-        .enabled = true, .segments = 8, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
+        .enable = true, .segments = 8, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
     Measure(gpu, kernels, &beam, 1, "a beam");
     mvfxEmitterDef neighbors = Sprite();
     neighbors.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.2f, .maxNeighbors = 8};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = 0.2f, .maxNeighbors = 8};
     Measure(gpu, kernels, &neighbors, 1, "an emitter finding its neighbors");
     static const float path[9] = {0, 0, 0, 1, 1, 0, 2, 0, 1};
     neighbors.steering = (mvfxSteeringDef){
-        .enabled = true,
+        .enable = true,
         .cruiseSpeed = 2.0f,
         .path = {.weight = 1.0f, .points = path, .pointCount = 3, .lookahead = 0.2f}};
     Measure(gpu, kernels, &neighbors, 1, "an emitter steering along a path");
     mvfxEmitterDef touching = Sprite();
     touching.contacts =
-        (mvfxContactDef){.enabled = true, .radiusScale = 0.02f, .iterations = 2, .maxContacts = 8};
+        (mvfxContactDef){.enable = true, .radiusScale = 0.02f, .iterations = 2, .maxContacts = 8};
     Measure(gpu, kernels, &touching, 1, "an emitter keeping its particles apart");
     // Its plexus numbers go up at the first step alone.
     mvfxEmitterDef linked = Sprite();
     linked.plexus = (mvfxPlexusDef){
-        .enabled = true, .distance = 0.2f, .maxLinks = 256, .maxPerParticle = 4, .width = 1.0f};
+        .enable = true, .distance = 0.2f, .maxLinks = 256, .maxPerParticle = 4, .width = 1.0f};
     Measure(gpu, kernels, &linked, 1, "an emitter linking its particles");
     mvfxWaterDef water = mvfxDefaultWaterDef();
     s_water = &water;
@@ -327,8 +328,8 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
 static void TestRefusals(void)
 {
     int64_t bytes = -1;
-    CHECK(mvfxGpuSim_UploadBytes(NULL, &bytes) == mvfx_errorInvalid && bytes == 0 &&
-              mvfxGpuSim_UploadBytes((const mvfxGpuSim*)&bytes, NULL) == mvfx_errorInvalid,
+    CHECK(mvfxGpuSim_GetUploadBytes(NULL, &bytes) == mvfx_errorInvalid && bytes == 0 &&
+              mvfxGpuSim_GetUploadBytes((const mvfxGpuSim*)&bytes, NULL) == mvfx_errorInvalid,
           "NULL arguments refused");
 }
 

@@ -53,7 +53,7 @@ static mvfxEmitterDef Emitter(float distance)
     emitter.capacity = MOST;
     emitter.hostSpawnCapacity = MOST;
     emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
-    emitter.plexus = (mvfxPlexusDef){.enabled = true,
+    emitter.plexus = (mvfxPlexusDef){.enable = true,
                                      .distance = distance,
                                      .maxLinks = 4096,
                                      .maxPerParticle = MVFX_MAX_NEIGHBORS,
@@ -237,7 +237,7 @@ static void TestPoints(void)
     WriteLinks(&scene, 4096, 2048);
     CHECK(s_links.points[0].color[3] == 1.0f, "no fade");
     mvfxDestroyContext(scene.context);
-    emitter.plexus.enabled = false;
+    emitter.plexus.enable = false;
     scene = Run(&emitter, pair, 2);
     WriteLinks(&scene, 4096, 2048);
     CHECK(s_links.result == mvfx_success && s_links.linkCount == 0 && s_links.pointCount == 0,
@@ -351,7 +351,7 @@ static void TestChecks(void)
     emitter.plexus.maxPerParticle = MVFX_MAX_NEIGHBORS;
     emitter.plexus.width = MVFX_MAX_EXTENT;
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds");
-    emitter.plexus.enabled = false;
+    emitter.plexus.enable = false;
     emitter.plexus.maxLinks = -1;
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "not enabled, unread");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -368,7 +368,7 @@ static void TestChecks(void)
     mvfxExpandBuffers strips = {0};
     int64_t a = 0;
     int64_t b = 0;
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     refused = mvfxInstance_WritePlexus(context, instance, 0, layout, NULL, &buffers, &a, &b) ==
               mvfx_errorInvalid;
     refused += mvfxInstance_WritePlexus(context, instance, 1, layout, &s_view, &buffers, &a, &b) ==
@@ -378,7 +378,7 @@ static void TestChecks(void)
     strips.vertexCapacity = -1;
     refused += mvfxInstance_ExpandPlexus(context, instance, 0, layout, &s_view, &strips, &a, &b) ==
                mvfx_errorInvalid;
-    CHECK(refused == 4 && mvfxGetContextMisuse(context) == misuse + 4, "refused, counted");
+    CHECK(refused == 4 && mvfxContext_GetMisuse(context) == misuse + 4, "refused, counted");
     // What a refusal leaves: the counts 0, and the ribbons and indices
     // zeroed; the points and vertices too while the layout is live.
     Record held[2];

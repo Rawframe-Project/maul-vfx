@@ -79,15 +79,16 @@ mvfxResult mvfxCheckCollider(const mvfxCollider* c)
 // asks for are in range.
 static mvfxResult CheckAsks(const mvfxCollision* c)
 {
-    if ((c->sceneQueries &&
+    if ((c->enableSceneQueries &&
          (c->queryCapacity < 1 || !(c->lookahead > 0.0f && c->lookahead <= 1.0f))) ||
-        (c->depthImage && c->depthSamples < 1))
+        (c->enableDepthImage && c->depthSamples < 1))
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult scene = c->sceneQueries ? mvfxWithinBound(c->queryCapacity <= MVFX_MAX_SCENE_QUERIES)
-                                       : mvfx_success;
-    mvfxResult depth = c->depthImage
+    mvfxResult scene = c->enableSceneQueries
+                           ? mvfxWithinBound(c->queryCapacity <= MVFX_MAX_SCENE_QUERIES)
+                           : mvfx_success;
+    mvfxResult depth = c->enableDepthImage
                            ? mvfxFirst(mvfxPositiveUpTo(c->depthThickness, MVFX_MAX_EXTENT),
                                        mvfxWithinBound(c->depthSamples <= MVFX_MAX_DEPTH_SAMPLES))
                            : mvfx_success;
@@ -96,7 +97,7 @@ static mvfxResult CheckAsks(const mvfxCollision* c)
 
 mvfxResult mvfxCheckCollision(const mvfxCollision* c)
 {
-    if (!c->enabled)
+    if (!c->enable)
     {
         return mvfx_success;
     }

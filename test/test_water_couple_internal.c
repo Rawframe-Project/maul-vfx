@@ -18,7 +18,7 @@ static mvfxInstanceId s_instance;
 // A coupling to surface 0 of particles of radius 0.05.
 static mvfxWaterCoupling Coupling(void)
 {
-    return (mvfxWaterCoupling){.enabled = true, .water = 0, .radius = 0.05f};
+    return (mvfxWaterCoupling){.enable = true, .water = 0, .radius = 0.05f};
 }
 
 // An emitter of up to 16 particles the host places, living 100 s, writing

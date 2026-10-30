@@ -56,4 +56,4 @@ Each refusal names the first emitter, gas or water surface at fault and the feat
 
 ## Memory and budgets
 
-A simulation takes all of its device memory when it is made ([rhi/src/allocator.c](../../rhi/src/allocator.c)): each emitter's buffers at its capacity, its sort and event scratch, and room for the instance's grids and meshes set aside at sizes its def gives ([rhi/src/grids.c](../../rhi/src/grids.c)). Grids are uploaded only when their serial changes. The passes and upload bytes each step takes are bounded and stated (`mvfxGpuSim_EmitterPasses`, `mvfxGpuSim_UploadBytes`), so a host can size Maul RHI's frame limits once.
+A simulation takes all of its device memory when it is made ([rhi/src/allocator.c](../../rhi/src/allocator.c)): each emitter's buffers at its capacity, its sort and event scratch, and room for the instance's grids and meshes set aside at sizes its def gives ([rhi/src/grids.c](../../rhi/src/grids.c)). Grids are uploaded only when their serial changes. The passes and upload bytes each step takes are bounded and stated (`mvfxGpuSim_GetEmitterPasses`, `mvfxGpuSim_GetUploadBytes`), so a host can size Maul RHI's frame limits once.

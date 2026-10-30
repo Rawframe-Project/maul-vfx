@@ -30,7 +30,7 @@ static bool IsWhite(const mvfxGradient* gradient)
 
 static mvfxResult CheckColor(const mvfxColorOverLife* color)
 {
-    if (!color->enabled)
+    if (!color->enable)
     {
         return mvfx_success;
     }
@@ -50,7 +50,7 @@ static mvfxResult CheckColor(const mvfxColorOverLife* color)
 
 static mvfxResult CheckSize(const mvfxSizeOverLife* size)
 {
-    if (!size->enabled)
+    if (!size->enable)
     {
         return mvfx_success;
     }
@@ -116,8 +116,7 @@ mvfxResult mvfxCheckOverLife(const mvfxOverLife* overLife, const mvfxCustomAttri
     {
         return frame;
     }
-    return overLife->rotation.enabled ? mvfxCheckLifeCurve(&overLife->rotation.scale)
-                                      : mvfx_success;
+    return overLife->rotation.enable ? mvfxCheckLifeCurve(&overLife->rotation.scale) : mvfx_success;
 }
 
 // A role's limit over the most a value over life scales it by, at most
@@ -135,17 +134,17 @@ void mvfxStoredCapsOf(const mvfxOverLife* overLife, const mvfxCustomAttribute* c
     for (int32_t k = 0; k < 3; ++k)
     {
         double scale =
-            size->enabled ? mvfxLifeCurveLargest(&size->size[size->perAxis ? k : 0]) : 1.0;
+            size->enable ? mvfxLifeCurveLargest(&size->size[size->perAxis ? k : 0]) : 1.0;
         out->size[k] = CapOf(MVFX_MAX_EXTENT, scale);
     }
     const mvfxColorOverLife* color = &overLife->color;
     double tint = 1.0;
     double alpha = 1.0;
-    if (color->enabled && !IsWhite(&color->gradient))
+    if (color->enable && !IsWhite(&color->gradient))
     {
         mvfxGradientLargest(&color->gradient, &tint, &alpha);
     }
-    if (color->enabled && color->scaleAlpha)
+    if (color->enable && color->scaleAlpha)
     {
         alpha *= mvfxLifeCurveLargest(&color->alpha);
     }
@@ -156,7 +155,7 @@ void mvfxStoredCapsOf(const mvfxOverLife* overLife, const mvfxCustomAttribute* c
     out->color[3] = CapOf(MVFX_MAX_COLOR, alpha);
     const mvfxRotationOverLife* rotation = &overLife->rotation;
     out->spin =
-        CapOf(MVFX_MAX_SPIN, rotation->enabled ? mvfxLifeCurveLargest(&rotation->scale) : 1.0);
+        CapOf(MVFX_MAX_SPIN, rotation->enable ? mvfxLifeCurveLargest(&rotation->scale) : 1.0);
     for (int32_t i = 0; i < MVFX_MAX_CUSTOM_ATTRIBUTES; ++i)
     {
         bool scaled = i < customCount && custom[i].scaledOverLife;
@@ -184,17 +183,17 @@ void mvfxOverLifeTables(const mvfxOverLife* overLife, const mvfxCustomAttribute*
                         int32_t customCount, int32_t* curves, int32_t* gradients)
 {
     const mvfxColorOverLife* color = &overLife->color;
-    if (color->enabled)
+    if (color->enable)
     {
         *gradients += IsWhite(&color->gradient) ? 0 : 1;
         *curves += color->scaleAlpha ? mvfxLifeCurves(&color->alpha) : 0;
     }
     const mvfxSizeOverLife* size = &overLife->size;
-    for (int32_t k = 0; size->enabled && k < (size->perAxis ? 3 : 1); ++k)
+    for (int32_t k = 0; size->enable && k < (size->perAxis ? 3 : 1); ++k)
     {
         *curves += mvfxLifeCurves(&size->size[k]);
     }
-    *curves += overLife->rotation.enabled ? mvfxLifeCurves(&overLife->rotation.scale) : 0;
+    *curves += overLife->rotation.enable ? mvfxLifeCurves(&overLife->rotation.scale) : 0;
     for (int32_t i = 0; i < customCount; ++i)
     {
         *curves += custom[i].scaledOverLife ? mvfxLifeCurves(&custom[i].overLife) : 0;
@@ -204,12 +203,12 @@ void mvfxOverLifeTables(const mvfxOverLife* overLife, const mvfxCustomAttribute*
 static void CompileColor(const mvfxColorOverLife* color, mvfxTableSpace* space,
                          mvfxCompiledOverLife* out)
 {
-    out->color = color->enabled;
+    out->color = color->enable;
     out->colorInput = color->input;
     out->colorRange[0] = color->speedRange[0];
     out->colorRange[1] = color->speedRange[1];
     out->alpha = (mvfxCompiledLife){.value = 1.0f};
-    if (!color->enabled)
+    if (!color->enable)
     {
         return;
     }
@@ -233,23 +232,23 @@ void mvfxCompileOverLife(const mvfxOverLife* overLife, const mvfxCustomAttribute
     *out = (mvfxCompiledOverLife){0};
     CompileColor(&overLife->color, space, out);
     const mvfxSizeOverLife* size = &overLife->size;
-    out->size = size->enabled;
+    out->size = size->enable;
     out->sizeInput = size->input;
     out->sizeRange[0] = size->speedRange[0];
     out->sizeRange[1] = size->speedRange[1];
     out->perAxis = size->perAxis;
-    for (int32_t k = 0; size->enabled && k < (size->perAxis ? 3 : 1); ++k)
+    for (int32_t k = 0; size->enable && k < (size->perAxis ? 3 : 1); ++k)
     {
         mvfxCompileLife(&size->size[k], space, &out->sizes[k]);
     }
     for (int32_t k = 0; k < 3; ++k)
     {
         out->sizeBounds[k] =
-            size->enabled ? mvfxLifeBound(&out->sizes[size->perAxis ? k : 0]) : 1.0f;
+            size->enable ? mvfxLifeBound(&out->sizes[size->perAxis ? k : 0]) : 1.0f;
     }
-    out->sizeMargin = size->enabled ? 1.0f + 0x1p-20f : 1.0f;
+    out->sizeMargin = size->enable ? 1.0f + 0x1p-20f : 1.0f;
     out->frame = overLife->frame;
-    out->rotation = overLife->rotation.enabled;
+    out->rotation = overLife->rotation.enable;
     out->rotationScale = (mvfxCompiledLife){.value = 1.0f};
     if (out->rotation)
     {

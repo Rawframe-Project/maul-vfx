@@ -311,7 +311,7 @@ static void TestRefusals(void)
     mvfxContext* context = NewContext();
     mvfxEmitterDef emitter = Held(1.0f);
     mvfxInstanceId instance = NewInstance(context, NewEffect(context, &emitter, 1));
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     mvfxBounds bounds = {0};
     CHECK(mvfxInstance_GetBounds(context, instance, 1, &bounds) == mvfx_errorInvalid &&
               mvfxInstance_GetBounds(context, instance, -2, &bounds) == mvfx_errorInvalid &&
@@ -321,7 +321,7 @@ static void TestRefusals(void)
     mvfxInstanceId stale = instance;
     stale.generation += 1;
     CHECK(mvfxInstance_GetBounds(context, stale, 0, &bounds) == mvfx_errorStale, "stale");
-    CHECK(mvfxGetContextMisuse(context) == misuse + 3, "each counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 3, "each counted");
     static const double eye[3] = {0, 0, 0};
     static const double far[3] = {0, 0, 0x1p53};
     static const double farX[3] = {-0x1p53, 0, 0};
@@ -348,7 +348,7 @@ static void TestRefusals(void)
                 mvfx_errorInvalid &&
             mvfxContext_OrderEmitters(NULL, eye, NULL, items, 1, &count) == mvfx_errorInvalid,
         "order refused");
-    CHECK(mvfxGetContextMisuse(context) == misuse + 14, "each counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 14, "each counted");
     // What a refusal leaves: empty bounds, the count 0 and the items
     // zeroed.
     bounds = (mvfxBounds){.min = {1, 1, 1}, .max = {2, 2, 2}};
@@ -389,7 +389,7 @@ static void TestSizeOverLife(void)
         mvfxContext* context = NewContext();
         mvfxEmitterDef emitter = Held(0.5f);
         emitter.overLife.size = (mvfxSizeOverLife){
-            .enabled = true,
+            .enable = true,
             .size = {{.value = values[c], .curve = {.keys = curves[c], .keyCount = keys[c]}}}};
         mvfxInstanceId instance = NewInstance(context, NewEffect(context, &emitter, 1));
         Place(context, instance, 0, 1, 2, 3);

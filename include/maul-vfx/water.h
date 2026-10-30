@@ -129,14 +129,14 @@ extern "C"
         float friction;
         // The ground: a heightfield collider (its grid held while the
         // effect is; space 0 the world's, 1 the instance's frame) when
-        // hasTerrain, else a flat floor at the grid's center; with
+        // enableTerrain, else a flat floor at the grid's center; with
         // hostTerrain, the instance's first heightfield collider instead
         // (mvfxInstance_SetColliders), the floor while it has none. Read at
         // each step where the vertical through a cell's center meets it
         // (through the point below the center in the collider's frame when
         // the two frames turn apart), the floor outside its box.
         mvfxCollider terrain;
-        bool hasTerrain;
+        bool enableTerrain;
         bool hostTerrain;
         // From 0 to MVFX_MAX_WATER_SOURCES, NULL when sourceCount is 0; the
         // effect copies them.

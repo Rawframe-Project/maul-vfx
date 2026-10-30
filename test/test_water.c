@@ -582,7 +582,7 @@ static void PushRefusals(void)
         {.point = {0.0, 0x1p53, 0.0}, .radius = 1.0f},
         {.point = {(double)NAN, 0.0, 0.0}, .radius = 1.0f},
     };
-    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     int32_t wrong = 0;
     for (int32_t b = 0; b < 6; ++b)
     {
@@ -595,7 +595,7 @@ static void PushRefusals(void)
     wrong += mvfxInstance_PushWater(s_context, id, 1, pushes, 1) != mvfx_errorInvalid;
     wrong += mvfxInstance_PushWater(s_context, id, -1, pushes, 1) != mvfx_errorInvalid;
     CHECK(wrong == 0, "pushes out of range, NULL, negative or of no surface refused");
-    CHECK(mvfxGetContextMisuse(s_context) == misuse + 10, "misuse counted");
+    CHECK(mvfxContext_GetMisuse(s_context) == misuse + 10, "misuse counted");
     CHECK(mvfxInstance_PushWater(nullptr, id, 0, pushes, 1) == mvfx_errorInvalid, "no context");
     CHECK(mvfxDestroyInstance(s_context, id) == mvfx_success, "destroyed");
     CHECK(mvfxInstance_PushWater(s_context, id, 0, pushes, 1) == mvfx_errorStale, "stale");
@@ -750,7 +750,7 @@ static void ReadRefusals(void)
     bad[8].low = NAN;
     bad[9].high = INFINITY;
     unsigned char out[16 * 8];
-    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     for (int32_t b = 0; b < 10; ++b)
     {
         CHECK(mvfxInstance_ReadWater(s_context, s_instance, 0, &bad[b], out, sizeof out) ==
@@ -768,7 +768,7 @@ static void ReadRefusals(void)
           "no buffer");
     CHECK(mvfxInstance_ReadWater(s_context, s_instance, 1, &good, out, 99) == mvfx_errorInvalid,
           "index");
-    CHECK(mvfxGetContextMisuse(s_context) == misuse + 14, "misuse counted");
+    CHECK(mvfxContext_GetMisuse(s_context) == misuse + 14, "misuse counted");
     // What a refusal leaves: the span the caller gives zeroed.
     memset(out, 0xEE, sizeof out);
     CHECK(mvfxInstance_ReadWater(s_context, s_instance, 0, &bad[0], out, sizeof out) ==
@@ -869,7 +869,7 @@ static void SampleMotion(const mvfxWaterDef* water)
 // The frame tests' instance's samples refused, each counted as misuse.
 static void SampleRefusals(void)
 {
-    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     const double nan[3] = {0.0, (double)NAN, 0.0};
     const double at[3] = {0.0, 0.0, 0.0};
     mvfxWaterSample sample;
@@ -883,7 +883,7 @@ static void SampleRefusals(void)
     wrong += mvfxInstance_SampleWater(s_context, id, 0, at, 1, nullptr) != mvfx_errorInvalid;
     wrong += mvfxInstance_SampleWater(s_context, id, 4, at, 1, &sample) != mvfx_errorInvalid;
     CHECK(wrong == 0, "samples not finite, negative, NULL or of no surface refused");
-    CHECK(mvfxGetContextMisuse(s_context) == misuse + 6, "misuse counted");
+    CHECK(mvfxContext_GetMisuse(s_context) == misuse + 6, "misuse counted");
     CHECK(mvfxInstance_SampleWater(s_context, id, 0, nullptr, 0, nullptr) == mvfx_success, "none");
 }
 

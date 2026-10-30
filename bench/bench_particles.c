@@ -367,7 +367,7 @@ static int Updates(void)
     mvfxEmitterDef colliding = sprite;
     colliding.colliders = walls;
     colliding.colliderCount = 4;
-    colliding.collision.enabled = true;
+    colliding.collision.enable = true;
     colliding.collision.radius = 0.02f;
     colliding.collision.restitution = 0.5f;
     measure = Per(TimeSteps(&colliding, 1, WARM, &live), live);

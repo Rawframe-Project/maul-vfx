@@ -80,8 +80,8 @@ void mvfxSelfNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
 
 uint32_t mvfxGridFlags(const mvfxEmitterView* view, bool own)
 {
-    bool finds = view->neighbors.enabled;
-    bool steers = view->steering.enabled || view->pairRadius > 0.0f;
+    bool finds = view->neighbors.enable;
+    bool steers = view->steering.enable || view->pairRadius > 0.0f;
     return (view->gridCell > 0.0f ? MVFX_GRID_BUILDS : 0u) | (finds ? MVFX_GRID_FINDS : 0u) |
            (finds && own ? MVFX_GRID_OWN : 0u) | (steers ? MVFX_GRID_STEERS : 0u);
 }
@@ -106,7 +106,7 @@ static void SteeringWords(const mvfxEmitterView* view, const mvfxEmitterPlan* pl
 {
     const mvfxSteeringDef* s = &view->steering;
     const mvfxPlannedSteering* t = &plan->steering;
-    bool flock = s->enabled && (s->separation > 0.0f || s->alignment > 0.0f || s->cohesion > 0.0f);
+    bool flock = s->enable && (s->separation > 0.0f || s->alignment > 0.0f || s->cohesion > 0.0f);
     words[0] = flock ? MVFX_STEER_FLOCK : 0u;
     words[1] = (uint32_t)t->pointCount;
     words[2] = (uint32_t)t->segmentCount;

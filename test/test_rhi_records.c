@@ -101,7 +101,7 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
     emitter.custom = custom;
     emitter.customCount = 2;
     emitter.overLife = (mvfxOverLife){
-        .color = {.enabled = true,
+        .color = {.enable = true,
                   .input = mvfx_overSpeed,
                   .speedRange = {0.5f, 4},
                   .gradient = {.colorKeys = colors,
@@ -110,7 +110,7 @@ static void TestRecords(Gpu* gpu, mvfxGpu* kernels)
                                .alphaKeyCount = 2},
                   .scaleAlpha = true,
                   .alpha = {.value = 1, .curve = curve}},
-        .size = {.enabled = true,
+        .size = {.enable = true,
                  .perAxis = true,
                  .size = {{.value = 2, .curve = curve},
                           {.value = 1},
@@ -149,7 +149,7 @@ static void TestExactRecords(Gpu* gpu, mvfxGpu* kernels)
     // snorm, custom values past [0, 1] in unorm, the age, a byte field
     // ending inside its word before a gap.
     float steps[MVFX_SRGB_STEPS];
-    mvfxSrgbSteps(steps);
+    mvfxGetSrgbSteps(steps);
     static const mvfxLayoutField fields[8] = {
         {.field = mvfx_recordColor, .format = mvfx_formatUnorm8, .components = 3},
         {.field = mvfx_recordColor,

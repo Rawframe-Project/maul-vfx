@@ -42,7 +42,7 @@ static void PlanPours(const mvfxInstance* instance, int32_t g, mvfxGasState* sta
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
         const mvfxGasSplat* splat = &instance->effect->emitters[e].gasSplat;
-        if (!splat->enabled || splat->gas != g)
+        if (!splat->enable || splat->gas != g)
         {
             continue;
         }
@@ -241,7 +241,7 @@ static bool IsPouringOver(const mvfxInstance* live, int32_t g, int64_t tick)
     for (int32_t e = 0; e < live->effect->emitterCount; ++e)
     {
         const mvfxGasSplat* splat = &live->effect->emitters[e].gasSplat;
-        if (splat->enabled && splat->gas == g && live->emitters[e].lastDeath > tick)
+        if (splat->enable && splat->gas == g && live->emitters[e].lastDeath > tick)
         {
             return false;
         }

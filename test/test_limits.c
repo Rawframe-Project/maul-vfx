@@ -130,14 +130,14 @@ static mvfxEmitterDef HoldingLife(int32_t place, mvfxLifeCurve life)
     switch (place)
     {
     case 0:
-        emitter.overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {life}};
+        emitter.overLife.size = (mvfxSizeOverLife){.enable = true, .size = {life}};
         break;
     case 1:
         emitter.overLife.color =
-            (mvfxColorOverLife){.enabled = true, .scaleAlpha = true, .alpha = life};
+            (mvfxColorOverLife){.enable = true, .scaleAlpha = true, .alpha = life};
         break;
     case 2:
-        emitter.overLife.rotation = (mvfxRotationOverLife){.enabled = true, .scale = life};
+        emitter.overLife.rotation = (mvfxRotationOverLife){.enable = true, .scale = life};
         break;
     case 3:
         custom = (mvfxCustomAttribute){.components = 1, .scaledOverLife = true, .overLife = life};
@@ -199,7 +199,7 @@ static void TestSizes(void)
     emitter.rate = 4.0f;
     emitter.size = Range3(1e3f, -1e3f, 1e6f);
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .perAxis = true, .size = {{.value = 1e3f}, {.value = 1e3f}, {.value = 1}}};
+        .enable = true, .perAxis = true, .size = {{.value = 1e3f}, {.value = 1e3f}, {.value = 1}}};
     CHECK(Taken(&emitter, 1), "a size at its cap on every axis");
     Scene scene = NewScene(&emitter, 1, 1.0f);
     Step(&scene, MVFX_TICKS_PER_SECOND);
@@ -222,7 +222,7 @@ static void TestColors(void)
     static const mvfxAlphaKey alphas[1] = {{0.0f, 2.0f}};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.color = Range4(1e3f, 1e3f, -1e3f, 2.5e5f);
-    emitter.overLife.color = (mvfxColorOverLife){.enabled = true,
+    emitter.overLife.color = (mvfxColorOverLife){.enable = true,
                                                  .gradient = {colors, 2, alphas, 1},
                                                  .scaleAlpha = true,
                                                  .alpha = {.value = 2.0f}};
@@ -247,7 +247,7 @@ static void TestTurnsAndCustom(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.spin = mvfxRangeSource(-1e3f, 1e3f);
-    emitter.overLife.rotation = (mvfxRotationOverLife){.enabled = true, .scale = {.value = 1e3f}};
+    emitter.overLife.rotation = (mvfxRotationOverLife){.enable = true, .scale = {.value = 1e3f}};
     CHECK(Taken(&emitter, 1), "a spin at its cap");
     emitter.spin = mvfxRangeSource(-1e3f, Past(1e3f));
     CHECK(!Taken(&emitter, 1), "a spin past");
@@ -286,9 +286,9 @@ static void TestHostSpawns(void)
     mvfxEmitterDef emitter = Hosted();
     emitter.size = Range3(1, 1, 1);
     emitter.color = Range4(1, 1, 1, 1);
-    emitter.overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 1e3f}}};
+    emitter.overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 1e3f}}};
     emitter.overLife.color =
-        (mvfxColorOverLife){.enabled = true, .gradient = {colors, 1, alphas, 1}};
+        (mvfxColorOverLife){.enable = true, .gradient = {colors, 1, alphas, 1}};
     Scene scene = NewScene(&emitter, 1, 1.0f);
     static const double places[6] = {0};
     float sizes[6] = {1e3f, -1e3f, 1e3f, 1, 1, 1};
@@ -296,10 +296,10 @@ static void TestHostSpawns(void)
     mvfxSpawnRequest request = {.count = 2, .positions = places, .colors = tints, .sizes = sizes};
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_success,
           "at the caps, taken");
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     sizes[4] = Past(1e3f);
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &request) == mvfx_errorLimit &&
-              mvfxGetContextMisuse(scene.context) == misuse + 1,
+              mvfxContext_GetMisuse(scene.context) == misuse + 1,
           "a size past, refused as misuse");
     sizes[4] = 1;
     tints[7] = Past(5e5f);
@@ -327,10 +327,10 @@ static void TestInherited(void)
     emitters[0].eventCapacity = 8;
     emitters[1].size = Range3(1, 1, 1);
     emitters[1].color = Range4(1, 1, 1, 1);
-    emitters[1].overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 1e3f}}};
+    emitters[1].overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 1e3f}}};
     emitters[1].overLife.color =
-        (mvfxColorOverLife){.enabled = true, .gradient = {colors, 1, alphas, 1}};
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+        (mvfxColorOverLife){.enable = true, .gradient = {colors, 1, alphas, 1}};
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 1,
@@ -383,7 +383,7 @@ static void TestSpeedHold(void)
             // Colliding with a plane above it, which it falls away from.
             emitter.colliders = &far;
             emitter.colliderCount = 1;
-            emitter.collision.enabled = true;
+            emitter.collision.enable = true;
         }
         else if (way == 2)
         {
@@ -550,7 +550,7 @@ static void TestModules(void)
             emitter.spin = mvfxRangeSource(0.0f, 0.0f);
             emitter.orientationMode = mvfx_orientationRandom;
             emitter.angularVelocity = Range3(0, 0, 0);
-            emitter.overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 1e3f}}};
+            emitter.overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 1e3f}}};
             emitter.custom = &custom;
             emitter.customCount = 1;
             emitter.hostModules = &module;

@@ -181,7 +181,7 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
     // About 50 live, as on the CPU, and their bounds above the ground.
     mvfxBounds bounds;
     made = made && record[0] >= 45 && record[0] <= 55 &&
-           mvfxGpuSim_BoundsOf(sim, 0, record, &bounds) == mvfx_success && bounds.max[1] > 1.0;
+           mvfxGpuSim_GetBounds(sim, 0, record, &bounds) == mvfx_success && bounds.max[1] > 1.0;
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);
     return made;

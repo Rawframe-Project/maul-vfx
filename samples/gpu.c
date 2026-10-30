@@ -129,7 +129,7 @@ static int Open(Gpu* gpu)
     mvfxResult kernels = mvfxCreateGpu(&gpuDef, &gpu->kernels);
     if (kernels != mvfx_success)
     {
-        printf("the GPU object was not made: %s\n", mvfxResultName(kernels));
+        printf("the GPU object was not made: %s\n", mvfxGetResultName(kernels));
         return 1;
     }
     double deadline = Seconds() + 60.0;
@@ -248,7 +248,7 @@ static mvfxEffectId MakeFountain(mvfxContext* context)
     emitter.motion.gravity[1] = -9.8f;
     emitter.colliders = &ground;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.3f, .friction = 0.4f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 0.3f, .friction = 0.4f};
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
@@ -311,7 +311,7 @@ static bool Play(Gpu* gpu)
             ok = ReadRecord(gpu, sim) &&
                  mvfxInstance_GetEmitterStats(context, cpu, 0, &stats) == mvfx_success &&
                  mvfxInstance_GetBounds(context, cpu, 0, &onCpu) == mvfx_success &&
-                 mvfxGpuSim_BoundsOf(sim, 0, s_record, &onGpu) == mvfx_success;
+                 mvfxGpuSim_GetBounds(sim, 0, s_record, &onGpu) == mvfx_success;
             double gap = ok ? Gap(&onCpu, &onGpu) : (double)INFINITY;
             printf("%d s: %d live on the CPU, %u on the device; their bounds %.2g apart, up to "
                    "%.2f\n",

@@ -178,10 +178,10 @@ static MVFX_NOINLINE void mvfxSrgbStepsWork(float steps[MVFX_SRGB_STEPS])
     }
 }
 
-void mvfxSrgbSteps(float steps[MVFX_SRGB_STEPS])
+void mvfxGetSrgbSteps(float stepsOut[MVFX_SRGB_STEPS])
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxSrgbStepsWork(steps);
+    mvfxSrgbStepsWork(stepsOut);
     mvfxFloatEnvLeave(env);
 }
 

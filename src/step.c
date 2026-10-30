@@ -133,7 +133,7 @@ static int32_t PoursInto(mvfxInstance* instance, int32_t g, mvfxGasPour* pours)
     {
         const mvfxCompiledEmitter* emitter = &instance->effect->emitters[e];
         const mvfxEmitterState* state = &instance->emitters[e];
-        if (!emitter->gasSplat.enabled || emitter->gasSplat.gas != g || state->count == 0)
+        if (!emitter->gasSplat.enable || emitter->gasSplat.gas != g || state->count == 0)
         {
             continue;
         }

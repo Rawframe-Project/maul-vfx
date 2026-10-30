@@ -52,9 +52,9 @@ static mvfxEmitterDef Seeing(void)
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
     emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
-    emitter.collision = (mvfxCollision){.enabled = true,
+    emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 1.0f,
-                                        .depthImage = true,
+                                        .enableDepthImage = true,
                                         .depthThickness = 0.5f,
                                         .depthSamples = 64};
     emitter.events = mvfx_eventMaskCollision;
@@ -480,7 +480,7 @@ static void TestTurnedAndPlanes(void)
     Paint(0.0, 0, SIDE, false);
     mvfxDepthImage wall = Camera(s_floats, mvfx_depthFloat32, false);
     emitter = Seeing();
-    emitter.collision.sceneQueries = true;
+    emitter.collision.enableSceneQueries = true;
     emitter.collision.queryCapacity = 4;
     emitter.collision.lookahead = 0.5f;
     scene = NewScene(&emitter);
@@ -503,7 +503,7 @@ static void TestRefusals(void)
     Scene scene = NewScene(&emitter);
     mvfxDepthImage good = Camera(s_floats, mvfx_depthFloat32, false);
     Show(&scene, &good);
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     static float normals[SIDE * SIDE * 3];
     for (int32_t field = 0; field < 14; ++field)
     {
@@ -565,7 +565,7 @@ static void TestRefusals(void)
         CHECK(mvfxInstance_SetDepthImage(scene.context, scene.instance, &bad) == want,
               "an image out of range");
     }
-    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 14, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 14, "each counted");
     // The good image kept: the wall still met.
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);

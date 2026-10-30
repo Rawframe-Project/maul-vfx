@@ -43,11 +43,11 @@ static void TestResultNames(void)
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; ++i)
     {
         CHECK(cases[i].result == cases[i].value, cases[i].name);
-        CHECK(strcmp(mvfxResultName(cases[i].result), cases[i].name) == 0, cases[i].name);
+        CHECK(strcmp(mvfxGetResultName(cases[i].result), cases[i].name) == 0, cases[i].name);
     }
-    CHECK(strcmp(mvfxResultName(12345), "unknown result") == 0, "unknown name");
-    CHECK(strcmp(mvfxResultName(-11), "unknown result") == 0, "past the shared errors");
-    CHECK(strcmp(mvfxResultName(-33), "unknown result") == 0, "past the library's own");
+    CHECK(strcmp(mvfxGetResultName(12345), "unknown result") == 0, "unknown name");
+    CHECK(strcmp(mvfxGetResultName(-11), "unknown result") == 0, "past the shared errors");
+    CHECK(strcmp(mvfxGetResultName(-33), "unknown result") == 0, "past the library's own");
 }
 
 static void TestHash64KnownValues(void)

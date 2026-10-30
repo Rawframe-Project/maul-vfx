@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "effect": {
     "emitters": [
       {
@@ -75,7 +75,7 @@
         },
         "forces": [],
         "gasSplat": {
-          "enabled": false,
+          "enable": false,
           "gas": 0,
           "density": 0.0,
           "temperature": 0.0,
@@ -83,7 +83,7 @@
           "drag": 0.0
         },
         "water": {
-          "enabled": true,
+          "enable": true,
           "water": 0,
           "radius": 0.03,
           "push": 0.01,
@@ -136,7 +136,7 @@
         },
         "overLife": {
           "color": {
-            "enabled": false,
+            "enable": false,
             "input": "mvfx_overAge",
             "speedRange": [0.0, 0.0],
             "gradient": {
@@ -153,7 +153,7 @@
             }
           },
           "size": {
-            "enabled": false,
+            "enable": false,
             "input": "mvfx_overAge",
             "speedRange": [0.0, 0.0],
             "perAxis": false,
@@ -189,7 +189,7 @@
             "loop": false
           },
           "rotation": {
-            "enabled": false,
+            "enable": false,
             "scale": {
               "value": 0.0,
               "curve": {
@@ -201,7 +201,7 @@
         },
         "killRules": [],
         "collision": {
-          "enabled": false,
+          "enable": false,
           "hostColliders": false,
           "restitution": 0.0,
           "friction": 0.0,
@@ -209,10 +209,10 @@
           "killOnCollision": false,
           "restSpeed": 0.0,
           "radius": 0.0,
-          "sceneQueries": false,
+          "enableSceneQueries": false,
           "queryCapacity": 0,
           "lookahead": 0.0,
-          "depthImage": false,
+          "enableDepthImage": false,
           "depthThickness": 0.0,
           "depthSamples": 0,
           "killOutsideView": false
@@ -222,7 +222,7 @@
         "events": 16,
         "eventCapacity": 64,
         "eventSpawn": {
-          "enabled": false,
+          "enable": false,
           "source": 0,
           "kind": "mvfx_eventBirth",
           "minCount": 0,
@@ -233,13 +233,13 @@
           "capacity": 0
         },
         "neighbors": {
-          "enabled": false,
+          "enable": false,
           "source": 0,
           "radius": 0.0,
           "maxNeighbors": 0
         },
         "steering": {
-          "enabled": false,
+          "enable": false,
           "separation": 0.0,
           "separationRadius": 0.0,
           "alignment": 0.0,
@@ -275,7 +275,7 @@
           }
         },
         "contacts": {
-          "enabled": false,
+          "enable": false,
           "radiusScale": 0.0,
           "iterations": 0,
           "maxContacts": 0,
@@ -283,7 +283,7 @@
           "friction": 0.0
         },
         "pairForce": {
-          "enabled": false,
+          "enable": false,
           "radius": 0.0,
           "strength": {
             "value": 0.0,
@@ -294,7 +294,7 @@
           }
         },
         "light": {
-          "enabled": false,
+          "enable": false,
           "every": 0,
           "intensity": 0.0,
           "alphaScales": false,
@@ -325,7 +325,7 @@
           }
         },
         "plexus": {
-          "enabled": false,
+          "enable": false,
           "distance": 0.0,
           "maxLinks": 0,
           "maxPerParticle": 0,
@@ -356,7 +356,7 @@
           "attachFrameCapacity": 0
         },
         "rigid": {
-          "enabled": false,
+          "enable": false,
           "shape": "mvfx_rigidSphere",
           "density": 0.0,
           "substeps": 0,
@@ -369,7 +369,7 @@
           "sleepTime": 0.5
         },
         "liquid": {
-          "enabled": false,
+          "enable": false,
           "solver": "mvfx_liquidParticles",
           "gas": 0,
           "planar": false,
@@ -386,7 +386,7 @@
           "maxNeighbors": 64
         },
         "beam": {
-          "enabled": false,
+          "enable": false,
           "segments": 0,
           "start": {
             "point": [0.0, 0.0, 0.0],
@@ -595,7 +595,7 @@
         },
         "forces": [],
         "gasSplat": {
-          "enabled": false,
+          "enable": false,
           "gas": 0,
           "density": 0.0,
           "temperature": 0.0,
@@ -603,7 +603,7 @@
           "drag": 0.0
         },
         "water": {
-          "enabled": true,
+          "enable": true,
           "water": 2,
           "radius": 0.04,
           "push": 0.005,
@@ -656,7 +656,7 @@
         },
         "overLife": {
           "color": {
-            "enabled": false,
+            "enable": false,
             "input": "mvfx_overAge",
             "speedRange": [0.0, 0.0],
             "gradient": {
@@ -673,7 +673,7 @@
             }
           },
           "size": {
-            "enabled": false,
+            "enable": false,
             "input": "mvfx_overAge",
             "speedRange": [0.0, 0.0],
             "perAxis": false,
@@ -709,7 +709,7 @@
             "loop": false
           },
           "rotation": {
-            "enabled": false,
+            "enable": false,
             "scale": {
               "value": 0.0,
               "curve": {
@@ -721,7 +721,7 @@
         },
         "killRules": [],
         "collision": {
-          "enabled": false,
+          "enable": false,
           "hostColliders": false,
           "restitution": 0.0,
           "friction": 0.0,
@@ -729,10 +729,10 @@
           "killOnCollision": false,
           "restSpeed": 0.0,
           "radius": 0.0,
-          "sceneQueries": false,
+          "enableSceneQueries": false,
           "queryCapacity": 0,
           "lookahead": 0.0,
-          "depthImage": false,
+          "enableDepthImage": false,
           "depthThickness": 0.0,
           "depthSamples": 0,
           "killOutsideView": false
@@ -742,7 +742,7 @@
         "events": 16,
         "eventCapacity": 64,
         "eventSpawn": {
-          "enabled": false,
+          "enable": false,
           "source": 0,
           "kind": "mvfx_eventBirth",
           "minCount": 0,
@@ -753,13 +753,13 @@
           "capacity": 0
         },
         "neighbors": {
-          "enabled": false,
+          "enable": false,
           "source": 0,
           "radius": 0.0,
           "maxNeighbors": 0
         },
         "steering": {
-          "enabled": false,
+          "enable": false,
           "separation": 0.0,
           "separationRadius": 0.0,
           "alignment": 0.0,
@@ -795,7 +795,7 @@
           }
         },
         "contacts": {
-          "enabled": false,
+          "enable": false,
           "radiusScale": 0.0,
           "iterations": 0,
           "maxContacts": 0,
@@ -803,7 +803,7 @@
           "friction": 0.0
         },
         "pairForce": {
-          "enabled": false,
+          "enable": false,
           "radius": 0.0,
           "strength": {
             "value": 0.0,
@@ -814,7 +814,7 @@
           }
         },
         "light": {
-          "enabled": false,
+          "enable": false,
           "every": 0,
           "intensity": 0.0,
           "alphaScales": false,
@@ -845,7 +845,7 @@
           }
         },
         "plexus": {
-          "enabled": false,
+          "enable": false,
           "distance": 0.0,
           "maxLinks": 0,
           "maxPerParticle": 0,
@@ -876,7 +876,7 @@
           "attachFrameCapacity": 0
         },
         "rigid": {
-          "enabled": false,
+          "enable": false,
           "shape": "mvfx_rigidSphere",
           "density": 0.0,
           "substeps": 0,
@@ -889,7 +889,7 @@
           "sleepTime": 0.5
         },
         "liquid": {
-          "enabled": false,
+          "enable": false,
           "solver": "mvfx_liquidParticles",
           "gas": 0,
           "planar": false,
@@ -906,7 +906,7 @@
           "maxNeighbors": 64
         },
         "beam": {
-          "enabled": false,
+          "enable": false,
           "segments": 0,
           "start": {
             "point": [0.0, 0.0, 0.0],
@@ -1069,7 +1069,7 @@
           "rotation": [0.0, 0.0, 0.0, 1.0],
           "grid": null
         },
-        "hasTerrain": false,
+        "enableTerrain": false,
         "hostTerrain": false,
         "sources": [],
         "fillLevel": 0.0
@@ -1096,7 +1096,7 @@
           "rotation": [0.0, 0.0, 0.0, 1.0],
           "grid": null
         },
-        "hasTerrain": false,
+        "enableTerrain": false,
         "hostTerrain": false,
         "sources": [],
         "fillLevel": 0.0
@@ -1123,7 +1123,7 @@
           "rotation": [0.0, 0.0, 0.0, 1.0],
           "grid": "water slope"
         },
-        "hasTerrain": true,
+        "enableTerrain": true,
         "hostTerrain": false,
         "sources": [
           {

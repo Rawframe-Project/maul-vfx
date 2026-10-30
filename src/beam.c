@@ -109,7 +109,7 @@ void mvfxResolveBeam(const mvfxInstance* instance, int32_t emitter, mvfxPlannedB
 {
     *beamOut = (mvfxPlannedBeam){0};
     const mvfxBeamDef* beam = &instance->effect->emitters[emitter].beam;
-    if (!beam->enabled)
+    if (!beam->enable)
     {
         return;
     }
@@ -128,7 +128,7 @@ void mvfxPlaceBeam(mvfxInstance* instance, int32_t emitter)
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxBeamDef* beam = &compiled->beam;
     mvfxEmitterState* state = &instance->emitters[emitter];
-    if (!beam->enabled || state->count == 0)
+    if (!beam->enable || state->count == 0)
     {
         return;
     }

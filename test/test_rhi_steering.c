@@ -20,7 +20,7 @@ static mvfxEmitterDef WithNeighbors(float radius, int32_t most)
 {
     mvfxEmitterDef emitter = Sprite();
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = radius, .maxNeighbors = most};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = radius, .maxNeighbors = most};
     return emitter;
 }
 
@@ -32,7 +32,7 @@ static void Steered(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, c
 static void TestFlocking(Gpu* gpu, mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = WithNeighbors(0.3f, 32);
-    emitter.steering = (mvfxSteeringDef){.enabled = true,
+    emitter.steering = (mvfxSteeringDef){.enable = true,
                                          .separation = 0.5f,
                                          .separationRadius = 0.15f,
                                          .alignment = 0.4f,
@@ -52,7 +52,7 @@ static void TestTargets(Gpu* gpu, mvfxGpu* kernels)
     // space within a radius.
     mvfxEmitterDef emitter = WithNeighbors(0.2f, 16);
     emitter.steering = (mvfxSteeringDef){
-        .enabled = true,
+        .enable = true,
         .cruiseSpeed = 3.0f,
         .seek = {.weight = 1.0f, .space = 0, .point = {1.0f, 2.0f, 0.5f}, .radius = 0.8f},
         .flee = {.weight = 0.5f, .space = 1, .point = {0.0f, 0.2f, 0.0f}, .radius = 1.0f}};
@@ -73,7 +73,7 @@ static void TestPaths(Gpu* gpu, mvfxGpu* kernels)
 {
     static const float points[15] = {0, 0, 0, 1, 1, 0, 0, 2, 1, -1, 1, 1, -0.5f, 0.5f, -1};
     mvfxEmitterDef emitter = Sprite();
-    emitter.steering = (mvfxSteeringDef){.enabled = true,
+    emitter.steering = (mvfxSteeringDef){.enable = true,
                                          .cruiseSpeed = 2.5f,
                                          .maxForce = 6.0f,
                                          .path = {.weight = 1.5f,
@@ -107,7 +107,7 @@ static void TestPairForce(Gpu* gpu, mvfxGpu* kernels)
         {.time = 1, .value = 2, .interpolation = mvfx_interpolationLinear}};
     mvfxEmitterDef emitter = WithNeighbors(0.25f, 32);
     emitter.pairForce =
-        (mvfxPairForceDef){.enabled = true,
+        (mvfxPairForceDef){.enable = true,
                            .radius = 0.2f,
                            .strength = {.value = 3.0f, .curve = {.keys = keys, .keyCount = 2}}};
     // A pull's direction from a close neighbor turns by the places'
@@ -118,7 +118,7 @@ static void TestPairForce(Gpu* gpu, mvfxGpu* kernels)
             "a pair force by a curve");
     emitter.pairForce.strength = (mvfxLifeCurve){.value = -2.0f};
     emitter.steering = (mvfxSteeringDef){
-        .enabled = true, .cohesion = 0.6f, .cohesionRadius = 0.2f, .viewAngle = 3.14159274f};
+        .enable = true, .cohesion = 0.6f, .cohesionRadius = 0.2f, .viewAngle = 3.14159274f};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .tolerance = 1e-3f},
             "a constant pair force with cohesion");

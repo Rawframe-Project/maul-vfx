@@ -10,7 +10,7 @@ mvfxVersion mvfxGetVersion(void)
     return (mvfxVersion){MVFX_VERSION_MAJOR, MVFX_VERSION_MINOR, MVFX_VERSION_PATCH};
 }
 
-const char* mvfxResultName(mvfxResult result)
+const char* mvfxGetResultName(mvfxResult result)
 {
     switch (result)
     {

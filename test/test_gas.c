@@ -723,7 +723,7 @@ static void TestReadRefusals(void)
 {
     mvfxGasDef gas = mvfxDefaultGasDef();
     Open(&gas);
-    uint64_t misuse = mvfxGetContextMisuse(s_scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_scene.context);
     mvfxGasInfo info;
     bool refused =
         mvfxInstance_ReadGas(s_scene.context, s_scene.instance, 1, mvfx_gasDensity, s_field,
@@ -737,7 +737,7 @@ static void TestReadRefusals(void)
         mvfxInstance_GetGasInfo(s_scene.context, s_scene.instance, -1, &info) ==
             mvfx_errorInvalid &&
         mvfxInstance_GetGasInfo(s_scene.context, s_scene.instance, 0, NULL) == mvfx_errorInvalid;
-    bool counted = mvfxGetContextMisuse(s_scene.context) == misuse + 6;
+    bool counted = mvfxContext_GetMisuse(s_scene.context) == misuse + 6;
     bool stale = mvfxInstance_ReadGas(s_scene.context, (mvfxInstanceId){0}, 0, mvfx_gasDensity,
                                       s_field, 4096) == mvfx_errorStale &&
                  mvfxInstance_GetGasInfo(NULL, s_scene.instance, 0, &info) == mvfx_errorInvalid;

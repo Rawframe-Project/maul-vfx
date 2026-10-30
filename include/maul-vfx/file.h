@@ -49,7 +49,7 @@ extern "C"
         int32_t nameLength;
         mvfxGridId grid;
         mvfxMeshId mesh;
-        mvfxModuleFn* function;
+        mvfxModuleFunction* function;
         void* user;
     } mvfxEffectAsset;
 
@@ -69,7 +69,7 @@ extern "C"
     /// @param def         The def, from mvfxDefaultEffectDef.
     /// @param assets      The table of assets; NULL when assetCount is 0.
     /// @param assetCount  Its length, at least 0.
-    /// @param bytes       Receives the file; NULL when capacity is 0.
+    /// @param bytesOut    Receives the file; NULL when capacity is 0.
     /// @param capacity    Its size in bytes, at least 0.
     /// @param sizeOut     Receives the file's size in bytes, also when the
     ///                    capacity is too small; 0 on another failure.
@@ -88,7 +88,7 @@ extern "C"
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def,
                                                            const mvfxEffectAsset* assets,
-                                                           int32_t assetCount, void* bytes,
+                                                           int32_t assetCount, void* bytesOut,
                                                            int64_t capacity, int64_t* sizeOut);
 
     /// Reads a file into an effect def, its arrays in caller memory. Checks
@@ -102,7 +102,7 @@ extern "C"
     /// @param size        Its size in bytes, at least 0.
     /// @param assets      The table of assets; NULL when assetCount is 0.
     /// @param assetCount  Its length, at least 0.
-    /// @param memory      Receives the def's arrays, aligned to 16 bytes;
+    /// @param memoryOut   Receives the def's arrays, aligned to 16 bytes;
     ///                    NULL when capacity is 0. The def points into it.
     /// @param capacity    Its size in bytes, at least 0.
     /// @param neededOut   Receives the bytes of memory the def needs, also
@@ -130,7 +130,7 @@ extern "C"
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size,
                                                           const mvfxEffectAsset* assets,
-                                                          int32_t assetCount, void* memory,
+                                                          int32_t assetCount, void* memoryOut,
                                                           int64_t capacity, int64_t* neededOut,
                                                           mvfxEffectDef* defOut);
 

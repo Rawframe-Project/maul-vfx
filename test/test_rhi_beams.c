@@ -28,7 +28,7 @@ static mvfxEmitterDef Beam(int32_t segments)
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.ribbon.texture = mvfx_ribbonTileByDistance;
     emitter.ribbon.tileLength = 0.25f;
-    emitter.beam = (mvfxBeamDef){.enabled = true,
+    emitter.beam = (mvfxBeamDef){.enable = true,
                                  .segments = segments,
                                  .start = {.point = {0, 0, 0}},
                                  .end = {.point = {4, 0, 0}},

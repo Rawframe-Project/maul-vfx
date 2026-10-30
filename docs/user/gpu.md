@@ -20,7 +20,7 @@ The program builds each frame as it does for its own rendering:
 2. After `mrhiDevice_BeginFrame`, `mvfxGpuSim_AddPasses` adds the step's passes to the frame, and the output passes the program asks for follow (records, lights, ribbons, sprites, gas and water reads and samples, surface meshes).
 3. After `mrhiDevice_CompileFrame`, `mvfxGpuSim_Record` records them.
 
-Nothing is read back within a step. Each emitter keeps a statistics record (its live count, its bounds and its capacity counts) on the device, which the program reads back as late as its frames lag; `mvfxGpuSim_BoundsOf` maps it to bounds in the world. A program reading an emitter's buffers directly (`mvfxGpuSim_GetParticles`) reads only what the record counts: the first live count of the particles, and the events and links the record says were written; the slots and entries past those counts are undefined, and so is every buffer until the simulation's first step has run. Gases and water surfaces have records too, which the program hands back (`mvfxGpuSim_ReportGas`, `mvfxGpuSim_ReportWater`) so the instance knows when it has finished.
+Nothing is read back within a step. Each emitter keeps a statistics record (its live count, its bounds and its capacity counts) on the device, which the program reads back as late as its frames lag; `mvfxGpuSim_GetBounds` maps it to bounds in the world. A program reading an emitter's buffers directly (`mvfxGpuSim_GetParticles`) reads only what the record counts: the first live count of the particles, and the events and links the record says were written; the slots and entries past those counts are undefined, and so is every buffer until the simulation's first step has run. Gases and water surfaces have records too, which the program hands back (`mvfxGpuSim_ReportGas`, `mvfxGpuSim_ReportWater`) so the instance knows when it has finished.
 
 A GPU object (`mvfxCreateGpu`) holds the part's kernels for one device. Their pipelines build asynchronously: the program passes the device's notifications to `mvfxGpu_Notify` until `mvfxGpu_IsReady`. Its def is a root, as the context's is: `mvfxDefaultGpuDef` is built into the program from the headers it includes and stamps their ABI version, so `mvfxCreateGpu` refuses a program built against another release with `mvfx_errorVersion`.
 
@@ -127,7 +127,7 @@ made = made &&
 // About 50 live, as on the CPU, and their bounds above the ground.
 mvfxBounds bounds;
 made = made && record[0] >= 45 && record[0] <= 55 &&
-       mvfxGpuSim_BoundsOf(sim, 0, record, &bounds) == mvfx_success && bounds.max[1] > 1.0;
+       mvfxGpuSim_GetBounds(sim, 0, record, &bounds) == mvfx_success && bounds.max[1] > 1.0;
 mvfxDestroyGpuSim(sim);
 mvfxDestroyContext(context);
 return made;
@@ -149,9 +149,9 @@ Rigid bodies that meet each other step in one workgroup, as the CPU path solves 
 
 ## Budgets
 
-A simulation keeps its memory on the device from its creation: each emitter's buffers at its capacity, room for the instance's grids (`hostGridBytes`, sized with `mvfxGpuSim_HostGridBytes`) and meshes (`hostMeshBytes`, `mvfxGpuSim_MeshBytes`). A mesh or a grid too large for that room is refused when it is set, not every step after.
+A simulation keeps its memory on the device from its creation: each emitter's buffers at its capacity, room for the instance's grids (`hostGridBytes`, sized with `mvfxContext_GetGpuHostGridBytes`) and meshes (`hostMeshBytes`, `mvfxMesh_GetGpuBytes`). A mesh or a grid too large for that room is refused when it is set, not every step after.
 
-An emitter's step adds a few passes, more with neighbors, contacts, units and liquids; a liquid of many substeps and iterations can add thousands. `mvfxGpuSim_EmitterPasses`, `mvfxGpuSim_GasPasses` and `mvfxGpuSim_WaterPasses` give the most each adds, and `mvfxGpuSim_UploadBytes` the bytes a frame uploads, so a program can size Maul RHI's frame limits (`framePasses`, `frameUploadBytes`) to its effects.
+An emitter's step adds a few passes, more with neighbors, contacts, units and liquids; a liquid of many substeps and iterations can add thousands. `mvfxGpuSim_GetEmitterPasses`, `mvfxGpuSim_GetGasPasses` and `mvfxGpuSim_GetWaterPasses` give the most each adds, and `mvfxGpuSim_GetUploadBytes` the bytes a frame uploads, so a program can size Maul RHI's frame limits (`framePasses`, `frameUploadBytes`) to its effects.
 
 ## Depth and meshes
 

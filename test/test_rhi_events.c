@@ -45,7 +45,7 @@ static void TestCollisions(Gpu* gpu, mvfxGpu* kernels)
     emitter.eventCapacity = 4096;
     emitter.colliders = &s_ceiling;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 0.5f};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .colliding = true},
             "collisions bounced, in the instance's space");
@@ -102,7 +102,7 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f}, .max = {0.4f, 0.5f, 0.6f}};
     emitter.overLife = (mvfxOverLife){
-        .color = {.enabled = true,
+        .color = {.enable = true,
                   .input = mvfx_overSpeed,
                   .speedRange = {0.5f, 4},
                   .gradient = {.colorKeys = colors,
@@ -112,7 +112,7 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
                   .scaleAlpha = true,
                   .alpha = {.value = 1, .curve = curve}},
         .size = {
-            .enabled = true,
+            .enable = true,
             .perAxis = true,
             .size = {{.value = 2, .curve = curve}, {.value = 1}, {.value = 3, .curve = curve}}}};
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true},
@@ -123,7 +123,7 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     emitter.space = mvfx_spaceWorld;
     emitter.colliders = &s_ceiling;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f, .lifeLoss = 0.6f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 0.5f, .lifeLoss = 0.6f};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .moving = true, .colliding = true},
             "events' values over life after contacts' life loss");
@@ -145,7 +145,7 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     static const mvfxCollider middle = {
         .kind = mvfx_colliderPlane, .center = {0, 0.02f, 0}, .normal = {0, -1, 0}};
     emitter.colliders = &middle;
-    emitter.collision = (mvfxCollision){.enabled = true, .killOnCollision = true};
+    emitter.collision = (mvfxCollision){.enable = true, .killOnCollision = true};
     Compare(
         gpu, kernels,
         &(Run){

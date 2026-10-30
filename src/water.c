@@ -53,7 +53,7 @@ static mvfxResult CheckShallow(const mvfxWaterDef* def)
 {
     if (def->model > mvfx_waterShallow || def->sourceCount < 0 ||
         (def->sourceCount > 0 && def->sources == nullptr) ||
-        (def->hasTerrain &&
+        (def->enableTerrain &&
          (def->terrain.kind != mvfx_colliderHeightfield || def->terrain.space > 1)))
     {
         return mvfx_errorInvalid;
@@ -64,7 +64,7 @@ static mvfxResult CheckShallow(const mvfxWaterDef* def)
                             mvfxUpToBound(def->friction, 0.0f, MVFX_MAX_DRAG)),
                   mvfxFirst(mvfxBounded(def->fillLevel, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
                             mvfxWithinBound(def->sourceCount <= MVFX_MAX_WATER_SOURCES)));
-    if (valid == mvfx_success && def->hasTerrain)
+    if (valid == mvfx_success && def->enableTerrain)
     {
         valid = mvfxCheckCollider(&def->terrain);
     }
@@ -103,7 +103,7 @@ mvfxResult mvfxCheckWaterDef(const mvfxWaterDef* def)
 mvfxResult mvfxCheckWaterCoupling(const mvfxWaterCoupling* coupling, const mvfxWaterDef* waters,
                                   int32_t count)
 {
-    if (!coupling->enabled)
+    if (!coupling->enable)
     {
         return mvfx_success;
     }
@@ -130,7 +130,7 @@ mvfxCompiledWater mvfxCompileWater(const mvfxWaterDef* def)
         water.sources[s] = def->sources[s];
     }
     water.def.sources = nullptr;
-    water.terrain = def->hasTerrain ? mvfxCompileCollider(&def->terrain) : def->terrain;
+    water.terrain = def->enableTerrain ? mvfxCompileCollider(&def->terrain) : def->terrain;
     return water;
 }
 

@@ -182,7 +182,7 @@ mvfxResult mvfxGpuSim_AddLights(mvfxGpuSim* sim, const mvfxGpuLightsDef* def)
         return result;
     }
     const mvfxEmitterView* view = &sim->views[def->emitter];
-    if (emitter->capacity == 0 || !view->light.enabled)
+    if (emitter->capacity == 0 || !view->light.enable)
     {
         // No particles at the instance's quality level, or no lights: a
         // count of 0.
@@ -233,7 +233,7 @@ static mvfxResult AddRibbons(mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def, mvfx
     }
     const mvfxEmitterView* view = &sim->views[def->emitter];
     if (emitter->capacity == 0 ||
-        (links ? !view->plexus.enabled : view->ribbon.ids == mvfx_ribbonNone))
+        (links ? !view->plexus.enable : view->ribbon.ids == mvfx_ribbonNone))
     {
         // No particles at the instance's quality level, or no ribbons or
         // links: counts of 0.
@@ -530,8 +530,8 @@ bool mvfxClearSimBuffers(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitte
     return cleared;
 }
 
-mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,
-                               mvfxBounds* boundsOut)
+mvfxResult mvfxGpuSim_GetBounds(const mvfxGpuSim* sim, int32_t emitter, const uint32_t* record,
+                                mvfxBounds* boundsOut)
 {
     if (boundsOut != nullptr)
     {

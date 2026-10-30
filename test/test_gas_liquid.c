@@ -66,11 +66,11 @@ static mvfxEmitterDef Emitter(float spacing, const mvfxCollider* box, int32_t ca
     emitter.capacity = capacity;
     emitter.hostSpawnCapacity = capacity;
     emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
     emitter.liquid.spacing = spacing;
-    emitter.collision.enabled = box != NULL;
+    emitter.collision.enable = box != NULL;
     emitter.colliders = box;
     emitter.colliderCount = box != NULL ? 1 : 0;
     return emitter;
@@ -178,9 +178,9 @@ static void TestRefusals(void)
         gas.kind = c == 3 ? mvfx_gasSmoke : mvfx_gasLiquid;
         mvfxEmitterDef emitters[2] = {Emitter(0.05f, NULL, 16), Emitter(0.05f, NULL, 16)};
         emitters[0].liquid.gas = c == 4 ? 1 : 0;
-        emitters[1].liquid.enabled = c == 5;
-        emitters[0].liquid.enabled = c != 6;
-        emitters[1].gasSplat = (mvfxGasSplat){.enabled = c == 7, .gas = 0, .density = 1};
+        emitters[1].liquid.enable = c == 5;
+        emitters[0].liquid.enable = c != 6;
+        emitters[1].gasSplat = (mvfxGasSplat){.enable = c == 7, .gas = 0, .density = 1};
         bool opened = Open(emitters, 2, &gas, 1);
         right = right && opened == (c == 8);
         CHECK(opened == (c == 8), "a grid liquid's refusal");
@@ -877,7 +877,7 @@ static void OpenTwins(const float courant[2], mvfxEffectId effects[2], mvfxInsta
         emitters[2].burstCount = 0;
         emitters[2].capacity = 512;
         emitters[2].lifetime = mvfxRangeSource(1.0f, 1.0f);
-        emitters[2].eventSpawn = (mvfxEventSpawn){.enabled = true,
+        emitters[2].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                   .source = 1,
                                                   .kind = mvfx_eventDeath,
                                                   .minCount = 2,

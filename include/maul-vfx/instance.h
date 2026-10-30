@@ -561,14 +561,14 @@ extern "C"
     /// and the step's end tick, so the same call in the same step gives the
     /// same words however the work is split.
     ///
-    /// @param call    The module's call.
-    /// @param serial  A particle's serial (or any number).
-    /// @param stream  The module's own number for this draw.
-    /// @param out     Receives the four words.
+    /// @param call      The module's call.
+    /// @param serial    A particle's serial (or any number).
+    /// @param stream    The module's own number for this draw.
+    /// @param wordsOut  Receives the four words.
     /// @par Thread safety
     /// Safe from any thread.
-    MVFX_API void mvfxModule_Random(const mvfxModuleCall* call, uint32_t serial, uint32_t stream,
-                                    uint32_t out[4]);
+    MVFX_API void mvfxDrawModuleRandom(const mvfxModuleCall* call, uint32_t serial, uint32_t stream,
+                                       uint32_t wordsOut[4]);
 
     /// Makes an emitter of an instance spawn from another mesh, as each
     /// character's skinned mesh feeds its own instance. The mesh may not be
@@ -852,12 +852,12 @@ extern "C"
     /// fastest, then Y, then Z; a velocity's component the mean of the two
     /// faces' about the center.
     ///
-    /// @param context  The context that owns the instance.
-    /// @param instance The instance.
-    /// @param gas      The gas's index in its effect's def.
-    /// @param field    The field.
-    /// @param out      Receives count values; zeroed on failure.
-    /// @param count    How many: the gas's cells.
+    /// @param context    The context that owns the instance.
+    /// @param instance   The instance.
+    /// @param gas        The gas's index in its effect's def.
+    /// @param field      The field.
+    /// @param valuesOut  Receives count values; zeroed on failure.
+    /// @param count      How many: the gas's cells.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a
     ///         gas index or field out of range (a surface's only field its
@@ -869,7 +869,7 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_ReadGas(const mvfxContext* context,
                                                             mvfxInstanceId instance, int32_t gas,
-                                                            mvfxGasField field, float* out,
+                                                            mvfxGasField field, float* valuesOut,
                                                             int64_t count);
 
     /// Pushes a water surface of an instance at the start of the instance's

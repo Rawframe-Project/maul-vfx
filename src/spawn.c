@@ -355,12 +355,12 @@ bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter)
     {
         return false;
     }
-    if (compiled->ratePerDistance > 0.0f || compiled->beam.enabled)
+    if (compiled->ratePerDistance > 0.0f || compiled->beam.enable)
     {
         // It spawns whenever the instance moves, or strikes its beam again.
         return true;
     }
-    if (compiled->eventSpawn.enabled && SourceMayWrite(instance, compiled->eventSpawn.source))
+    if (compiled->eventSpawn.enable && SourceMayWrite(instance, compiled->eventSpawn.source))
     {
         return true;
     }

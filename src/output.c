@@ -609,13 +609,13 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteParticlesWork(
 
 mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId instance,
                                        int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
-                                       void* scratch, int64_t scratchBytes, void* records,
+                                       void* scratch, int64_t scratchBytes, void* recordsOut,
                                        int64_t capacity, int64_t* countOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
         mvfxInstance_WriteParticlesWork(context, instance, emitter, layout, view, scratch,
-                                        scratchBytes, records, capacity, countOut);
+                                        scratchBytes, recordsOut, capacity, countOut);
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -675,7 +675,7 @@ static mvfxResult TryWriteLights(mvfxContext* context, mvfxInstanceId instance, 
         return mvfx_errorInvalid;
     }
     const mvfxLightDef* def = &live->effect->emitters[emitter].light;
-    if (!def->enabled)
+    if (!def->enable)
     {
         return mvfx_success;
     }
@@ -719,12 +719,12 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteLightsWork(mvfxContext* contex
 }
 
 mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                                    const mvfxView* view, mvfxLight* lights, int64_t capacity,
+                                    const mvfxView* view, mvfxLight* lightsOut, int64_t capacity,
                                     int64_t* countOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result =
-        mvfxInstance_WriteLightsWork(context, instance, emitter, view, lights, capacity, countOut);
+    mvfxResult result = mvfxInstance_WriteLightsWork(context, instance, emitter, view, lightsOut,
+                                                     capacity, countOut);
     mvfxFloatEnvLeave(env);
     return result;
 }

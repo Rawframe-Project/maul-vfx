@@ -165,11 +165,11 @@ static void Spoil(int32_t c, mvfxWaterDef* water, mvfxWaterSource* source)
         source->halfExtents[2] = 0.0f;
         break;
     case 10:
-        water->hasTerrain = true;
+        water->enableTerrain = true;
         water->terrain.kind = mvfx_colliderSphere;
         break;
     case 11:
-        water->hasTerrain = true;
+        water->enableTerrain = true;
         water->terrain.space = 2;
         break;
     case 12:
@@ -385,7 +385,7 @@ static bool StillLake(bool host, const float rotation[4], float* depths)
     mvfxWaterDef water = Shallow(40, 40, 0.1f);
     mvfxCollider terrain = Slope(rotation);
     water.terrain = terrain;
-    water.hasTerrain = !host;
+    water.enableTerrain = !host;
     water.hostTerrain = host;
     CHECK(Open(&water, 1), "opened");
     if (host)
@@ -464,7 +464,7 @@ static void ReadGround(float a, float b, const float rotation[4], float up, int3
     mvfxWaterDef water = Shallow(n, n, 0.1f);
     water.terrain = Field(a, b, rotation);
     water.terrain.center[1] = up;
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     CHECK(Open(&water, 1), "opened");
     Steps(1, 0.0);
     memcpy(ground, Read(&water, mvfx_waterHeight), (size_t)n * (size_t)n * sizeof(float));
@@ -553,7 +553,7 @@ static double Cliff(bool turned, float depths[128], uint64_t* held)
                        .halfExtents = {0.8f, 1.0f, 0.1f},
                        .rotation = {0.0f, turned ? 1.0f : 0.0f, 0.0f, turned ? 0.0f : 1.0f}};
     CHECK(mvfxCreateGrid(s_context, &grid, &water.terrain.grid) == mvfx_success, "grid");
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     mvfxWaterSource source = {
         .shape = mvfx_gasSphere, .center = {turned ? -0.4f : 0.4f}, .radius = 0.1f, .rate = 0.5f};
     water.sources = &source;
@@ -620,7 +620,7 @@ static bool Column(bool pinnacle, float deep, int32_t row, uint64_t* held)
                                    .halfExtents = {0.8f, 1.0f, 0.8f},
                                    .rotation = {0.0f, 0.0f, 0.0f, 1.0f}};
     CHECK(mvfxCreateGrid(s_context, &grid, &water.terrain.grid) == mvfx_success, "grid");
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     CHECK(Open(&water, 1), "opened");
     Steps(1, 0.0);
     static float column[256];
@@ -675,7 +675,7 @@ static void TestReads(void)
     mvfxWaterDef water = Shallow(40, 40, 0.1f);
     static const float upright[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     water.terrain = Slope(upright);
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     CHECK(Open(&water, 1), "opened");
     CHECK(mvfxDestroyGrid(s_context, water.terrain.grid) == mvfx_errorBusy,
           "the effect holds its terrain's grid");

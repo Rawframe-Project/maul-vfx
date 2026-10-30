@@ -177,7 +177,7 @@ extern "C"
     /// @return A static, NUL-terminated string such as "mvfx_errorCapacity".
     /// @par Thread safety
     /// Safe from any thread.
-    MVFX_API const char* mvfxResultName(mvfxResult result);
+    MVFX_API const char* mvfxGetResultName(mvfxResult result);
 
 #ifdef __cplusplus
 }

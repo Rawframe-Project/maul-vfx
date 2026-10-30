@@ -48,9 +48,9 @@ static mvfxEmitterDef Asking(int32_t capacity)
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
     emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
-    emitter.collision = (mvfxCollision){.enabled = true,
+    emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 1.0f,
-                                        .sceneQueries = true,
+                                        .enableSceneQueries = true,
                                         .queryCapacity = capacity,
                                         .lookahead = 0.5f};
     return emitter;
@@ -342,7 +342,7 @@ static void TestRefusals(void)
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 5, 0, 0, -4, 0);
     Step(&scene, 1);
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     const mvfxSceneQuery* queries = NULL;
     int32_t count = 0;
     mvfxSceneAnswer good = {.hit = true, .normal = {0, 1, 0}};
@@ -373,7 +373,7 @@ static void TestRefusals(void)
               mvfxInstance_AnswerSceneQueries(scene.context, scene.instance, -1, &good, 1) ==
                   mvfx_errorInvalid,
           "counts and emitters refused");
-    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 11, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 11, "each counted");
     CHECK(Queries(&scene, &queries) == 1, "the queries kept");
     // A miss's fields are not read.
     CHECK(mvfxInstance_AnswerSceneQueries(scene.context, scene.instance, 0, &bad[4], 1) ==
@@ -411,7 +411,7 @@ static void TestRefusals(void)
     mvfxDestroyContext(scene.context);
 
     // An emitter without scene queries writes none.
-    emitter.collision.sceneQueries = false;
+    emitter.collision.enableSceneQueries = false;
     scene = NewScene(&emitter);
     Place(&scene, 0, 5, 0, 0, -4, 0);
     Step(&scene, 1);

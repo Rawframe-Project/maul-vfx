@@ -364,7 +364,7 @@ static void Steps(Gpu* gpu, mvfxGpu* kernels, const mvfxGasDef* gas, const mvfxG
         finished = ended ? s : -1;
     }
     printf("%s: largest relative difference %g, most density %g, %d passes a step\n", what,
-           (double)worst, (double)most, mvfxGpuSim_GasPasses(scene.sim, 0));
+           (double)worst, (double)most, mvfxGpuSim_GetGasPasses(scene.sim, 0));
     if (s_stopAt >= 0)
     {
         printf("  stopped at step %d, finished at %d on both paths\n", s_stopAt, finished);
@@ -574,8 +574,8 @@ static void TestReads(Gpu* gpu, mvfxGpu* kernels)
     {
         refused = refused && mvfxGpuSim_AddGasRead(scene.sim, &bad[b]) == mvfx_errorInvalid;
     }
-    CHECK(refused && mvfxGpuSim_GasPasses(scene.sim, 1) == 0 &&
-              mvfxGpuSim_GasPasses(NULL, 0) == 0 && mvfxGpuSim_GasPasses(scene.sim, 0) == 74,
+    CHECK(refused && mvfxGpuSim_GetGasPasses(scene.sim, 1) == 0 &&
+              mvfxGpuSim_GetGasPasses(NULL, 0) == 0 && mvfxGpuSim_GetGasPasses(scene.sim, 0) == 74,
           "a gas read's refusals");
     // A gas's buffers and its report: refused for a NULL argument, a gas
     // out of range or another context.
@@ -872,7 +872,7 @@ static void TestSplats(Gpu* gpu, mvfxGpu* kernels)
     splatter.motion.gravity[1] = 0.0f;
     splatter.space = mvfx_spaceLocal;
     splatter.gasSplat = (mvfxGasSplat){
-        .enabled = true, .density = 2.0f, .temperature = 1.0f, .fuel = 0.5f, .drag = 4.0f};
+        .enable = true, .density = 2.0f, .temperature = 1.0f, .fuel = 0.5f, .drag = 4.0f};
     s_splatter = &splatter;
     mvfxGasDef gas = Plume(16, 24, 16, &s_sphere);
     Steps(gpu, kernels, &gas, NULL, 30, false, "a plume splatted into");

@@ -192,8 +192,8 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullCenterWork(mvfxContext* context, mv
     return built == mvfx_errorInvalid || built == mvfx_errorLimit ? mvfx_success : built;
 }
 
-mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hullOut,
-                               float centerOut[3])
+mvfxResult mvfxMesh_GetHullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hullOut,
+                                  float centerOut[3])
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxMesh_HullCenterWork(context, mesh, hullOut, centerOut);
@@ -226,7 +226,7 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullVertexCountWork(mvfxContext* contex
     return counted == mvfx_errorInvalid ? mvfx_success : counted;
 }
 
-mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
+mvfxResult mvfxMesh_GetHullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxMesh_HullVertexCountWork(context, mesh, countOut);

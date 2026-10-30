@@ -367,7 +367,7 @@ static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
     emitter.colliders = own;
     emitter.colliderCount = 3;
     emitter.collision = (mvfxCollision){
-        .enabled = true, .restitution = 0.6f, .friction = 0.2f, .restSpeed = 0.6f, .radius = 0.02f};
+        .enable = true, .restitution = 0.6f, .friction = 0.2f, .restSpeed = 0.6f, .radius = 0.02f};
     emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true},
             "a floor, a box and a sphere bounced off");
@@ -392,7 +392,7 @@ static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
         {.time = 1, .value = 8, .interpolation = mvfx_interpolationLinear}};
     emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {2, 4}};
     emitter.overLife.rotation = (mvfxRotationOverLife){
-        .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
+        .enable = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -404,7 +404,7 @@ static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
             "life lost at contacts, the instance's colliders, a moving instance");
     emitter.colliders = own;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .killOnCollision = true};
+    emitter.collision = (mvfxCollision){.enable = true, .killOnCollision = true};
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .killing = true},
             "a contact that kills");
 }
@@ -426,10 +426,10 @@ static void TestOldDeaths(Gpu* gpu, mvfxGpu* kernels)
     emitter.lifetime = mvfxRangeSource(24.0f, 30.0f);
     emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {1, 2}};
     emitter.overLife.rotation = (mvfxRotationOverLife){
-        .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
+        .enable = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
     emitter.colliders = &floor;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .lifeLoss = 0.005f};
+    emitter.collision = (mvfxCollision){.enable = true, .lifeLoss = 0.005f};
     SetStepTicks(MVFX_TICKS_PER_SECOND / 2);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
@@ -492,7 +492,7 @@ static void TestValues(Gpu* gpu, mvfxGpu* kernels)
     // A size over life for each axis grows the bounds by the largest of
     // each axis's largest size times its factor: here the second's.
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .perAxis = true, .size = {{.value = 1}, {.value = 3}, {.value = 2}}};
+        .enable = true, .perAxis = true, .size = {{.value = 1}, {.value = 3}, {.value = 2}}};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -534,7 +534,7 @@ static void TestTurns(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].motion.angularDrag = 1.5f;
     emitters[0].motion.dragScale = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {-1, 3}};
     emitters[0].overLife.rotation =
-        (mvfxRotationOverLife){.enabled = true, .scale = {.value = 2, .curve = curve}};
+        (mvfxRotationOverLife){.enable = true, .scale = {.value = 2, .curve = curve}};
     emitters[0].forces = forces;
     emitters[0].forceCount = 2;
     emitters[1].orientationMode = mvfx_orientationRandom;
@@ -546,7 +546,7 @@ static void TestTurns(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].motion.dragScale =
         (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {0.001f, 4}};
     emitters[1].overLife.rotation =
-        (mvfxRotationOverLife){.enabled = true, .scale = {.value = 0.5f}};
+        (mvfxRotationOverLife){.enable = true, .scale = {.value = 0.5f}};
     Compare(gpu, kernels,
             &(Run){.emitters = emitters,
                    .emitterCount = 2,
@@ -729,7 +729,7 @@ static void TestKillRules(Gpu* gpu, mvfxGpu* kernels)
         {
             emitter.colliders = &ceiling;
             emitter.colliderCount = 1;
-            emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
+            emitter.collision = (mvfxCollision){.enable = true, .restitution = 0.5f};
         }
         Compare(gpu, kernels,
                 &(Run){.emitters = &emitter,
@@ -784,11 +784,11 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.coneAngle = 0.3f;
     emitter.velocity.speed = (mvfxRange){3, 5};
     emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
-    emitter.collision = (mvfxCollision){.enabled = true,
+    emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 0.5f,
                                         .friction = 0.1f,
                                         .radius = 0.02f,
-                                        .depthImage = true,
+                                        .enableDepthImage = true,
                                         .depthThickness = 0.3f,
                                         .depthSamples = 16};
     Compare(gpu, kernels,
@@ -821,10 +821,10 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     image.rotation[3] = 0.70710678f;
     emitter = Sprite();
     emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
-    emitter.collision = (mvfxCollision){.enabled = true,
+    emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 0.4f,
                                         .radius = 0.02f,
-                                        .depthImage = true,
+                                        .enableDepthImage = true,
                                         .depthThickness = 0.3f,
                                         .depthSamples = 16};
     Compare(gpu, kernels,
@@ -848,10 +848,10 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.coneAngle = 0.05f;
     emitter.velocity.speed = (mvfxRange){20, 25};
     emitter.motion.gravity[1] = 0;
-    emitter.collision = (mvfxCollision){.enabled = true,
+    emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 0.5f,
                                         .radius = 0.02f,
-                                        .depthImage = true,
+                                        .enableDepthImage = true,
                                         .depthThickness = 2.0f,
                                         .depthSamples = 64};
     Compare(gpu, kernels,
@@ -965,7 +965,7 @@ static void TestGridColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.colliders = own;
     emitter.colliderCount = 3;
     emitter.collision = (mvfxCollision){
-        .enabled = true, .restitution = 0.5f, .friction = 0.1f, .restSpeed = 0.3f, .radius = 0.02f};
+        .enable = true, .restitution = 0.5f, .friction = 0.1f, .restSpeed = 0.3f, .radius = 0.02f};
     emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
@@ -1014,7 +1014,7 @@ static void TestGridColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.speed = (mvfxRange){15, 20};
     emitter.colliders = &teeth;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f, .radius = 0.02f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 0.5f, .radius = 0.02f};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -1165,7 +1165,7 @@ static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.speed = (mvfxRange){0.001f, 0.002f};
     emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {1e-3f, 2e-3f}};
     emitter.overLife.rotation = (mvfxRotationOverLife){
-        .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
+        .enable = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
     emitter.overLife.frame = (mvfxFrameOverLife){
         .animation = mvfx_frameAtRate, .frameCount = 1000, .frameRate = 7.3f, .loop = true};
     static const mvfxLayoutField fields[3] = {
@@ -1198,18 +1198,19 @@ static void TestBoundsRefused(mvfxGpu* kernels)
     mvfxGpuSim* sim = OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1}, &effect);
     uint32_t record[MVFX_GPU_STATISTICS_WORDS] = {0};
     mvfxBounds box = {.empty = false};
-    CHECK(mvfxGpuSim_BoundsOf(sim, 0, record, &box) == mvfx_success && box.empty,
+    CHECK(mvfxGpuSim_GetBounds(sim, 0, record, &box) == mvfx_success && box.empty,
           "no particles, empty");
     box.empty = false;
-    CHECK(mvfxGpuSim_BoundsOf(sim, 1, record, &box) == mvfx_errorInvalid && box.empty, "past");
+    CHECK(mvfxGpuSim_GetBounds(sim, 1, record, &box) == mvfx_errorInvalid && box.empty, "past");
     box.empty = false;
-    CHECK(mvfxGpuSim_BoundsOf(sim, -1, record, &box) == mvfx_errorInvalid && box.empty, "negative");
+    CHECK(mvfxGpuSim_GetBounds(sim, -1, record, &box) == mvfx_errorInvalid && box.empty,
+          "negative");
     box.empty = false;
-    CHECK(mvfxGpuSim_BoundsOf(NULL, 0, record, &box) == mvfx_errorInvalid && box.empty,
+    CHECK(mvfxGpuSim_GetBounds(NULL, 0, record, &box) == mvfx_errorInvalid && box.empty,
           "no simulation");
     box.empty = false;
-    CHECK(mvfxGpuSim_BoundsOf(sim, 0, NULL, &box) == mvfx_errorInvalid && box.empty, "no record");
-    CHECK(mvfxGpuSim_BoundsOf(sim, 0, record, NULL) == mvfx_errorInvalid, "no bounds");
+    CHECK(mvfxGpuSim_GetBounds(sim, 0, NULL, &box) == mvfx_errorInvalid && box.empty, "no record");
+    CHECK(mvfxGpuSim_GetBounds(sim, 0, record, NULL) == mvfx_errorInvalid, "no bounds");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());
 }
@@ -1222,7 +1223,7 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
     // (its particles stay as the step before left them). The bytes a set of colliders needs: a
     // grid named twice counted once, a sphere none.
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
-    emitters[1].collision = (mvfxCollision){.enabled = true, .hostColliders = true};
+    emitters[1].collision = (mvfxCollision){.enable = true, .hostColliders = true};
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(
         kernels, &(Run){.emitters = emitters, .emitterCount = 2, .hostGridBytes = 12}, &effect);
@@ -1243,23 +1244,27 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
                                         .rotation = {0, 0, 0, 1},
                                         .grid = grid}};
     int64_t bytes = -1;
-    CHECK(mvfxGpuSim_HostGridBytes(RunContext(), colliders, 3, &bytes) == mvfx_success &&
+    CHECK(mvfxContext_GetGpuHostGridBytes(RunContext(), colliders, 3, &bytes) == mvfx_success &&
               bytes == 16 &&
-              mvfxGpuSim_HostGridBytes(RunContext(), colliders + 1, 1, &bytes) == mvfx_success &&
-              bytes == 0 && mvfxGpuSim_HostGridBytes(RunContext(), NULL, 0, &bytes) == mvfx_success,
+              mvfxContext_GetGpuHostGridBytes(RunContext(), colliders + 1, 1, &bytes) ==
+                  mvfx_success &&
+              bytes == 0 &&
+              mvfxContext_GetGpuHostGridBytes(RunContext(), NULL, 0, &bytes) == mvfx_success,
           "the bytes a set of colliders needs");
     const mvfxCollider gone = {.kind = mvfx_colliderHeightfield,
                                .halfExtents = {1, 1, 1},
                                .rotation = {0, 0, 0, 1},
                                .grid = {.index1 = 999, .generation = 1}};
-    CHECK(mvfxGpuSim_HostGridBytes(RunContext(), &gone, 1, &bytes) == mvfx_errorStale &&
+    CHECK(mvfxContext_GetGpuHostGridBytes(RunContext(), &gone, 1, &bytes) == mvfx_errorStale &&
               bytes == 0 &&
-              mvfxGpuSim_HostGridBytes(NULL, colliders, 1, &bytes) == mvfx_errorInvalid &&
-              mvfxGpuSim_HostGridBytes(RunContext(), colliders, 1, NULL) == mvfx_errorInvalid &&
-              mvfxGpuSim_HostGridBytes(RunContext(), NULL, 1, &bytes) == mvfx_errorInvalid &&
-              mvfxGpuSim_HostGridBytes(RunContext(), colliders, -1, &bytes) == mvfx_errorInvalid &&
-              mvfxGpuSim_HostGridBytes(RunContext(), colliders, MVFX_MAX_COLLIDERS + 1, &bytes) ==
-                  mvfx_errorLimit,
+              mvfxContext_GetGpuHostGridBytes(NULL, colliders, 1, &bytes) == mvfx_errorInvalid &&
+              mvfxContext_GetGpuHostGridBytes(RunContext(), colliders, 1, NULL) ==
+                  mvfx_errorInvalid &&
+              mvfxContext_GetGpuHostGridBytes(RunContext(), NULL, 1, &bytes) == mvfx_errorInvalid &&
+              mvfxContext_GetGpuHostGridBytes(RunContext(), colliders, -1, &bytes) ==
+                  mvfx_errorInvalid &&
+              mvfxContext_GetGpuHostGridBytes(RunContext(), colliders, MVFX_MAX_COLLIDERS + 1,
+                                              &bytes) == mvfx_errorLimit,
           "the bytes refused");
     CHECK(mvfxContext_StepTicks(RunContext(), StepTicks()) == mvfx_success && Simulate(gpu, sim) &&
               ReadBack(gpu, sim, 0) && StatisticsRecord()[0] > 0,
@@ -1372,7 +1377,7 @@ static void TestRefused(mvfxGpu* kernels)
     for (int32_t c = 0; c < 4; ++c)
     {
         coupled[c].water = (mvfxWaterCoupling){
-            .enabled = true, .water = c == 2 ? 1 : 0, .radius = 0.05f, .drag = 1.0f};
+            .enable = true, .water = c == 2 ? 1 : 0, .radius = 0.05f, .drag = 1.0f};
     }
     coupled[1].water.push = 0.1f;
     coupled[2].water.pour = true;

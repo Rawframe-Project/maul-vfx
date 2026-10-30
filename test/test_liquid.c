@@ -94,7 +94,7 @@ static void TestRefusals(void)
         l->viscosity = c == 13 ? -0.01f : 0.01f;
         l->vorticity = c == 14 ? -1.0f : 0.0f;
         l->maxNeighbors = c == 15 ? MVFX_MAX_NEIGHBORS + 1 : 64;
-        e.rigid.enabled = c == 16;
+        e.rigid.enable = c == 16;
         const double place[3] = {0, 0, 0};
         bool refused = !OpenScaled(&e, place, 1, 1.0f);
         CHECK(refused, "a liquid's refusal");
@@ -114,7 +114,7 @@ static void TestRefusals(void)
     bool refused = !OpenScaled(&chain, place, 1, 1.0f);
     right = right && refused;
     mvfxDestroyContext(s_context);
-    chain.liquid.enabled = false;
+    chain.liquid.enable = false;
     bool taken = OpenScaled(&chain, place, 1, 1.0f);
     right = right && taken;
     mvfxDestroyContext(s_context);
@@ -311,7 +311,7 @@ static void TestDeep(void)
     mvfxEmitterDef emitter = Emitter(0.05f);
     emitter.liquid.planar = false;
     emitter.motion.gravity[1] = -9.81f;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.colliders = &box;
     emitter.colliderCount = 1;
     Open(&emitter, places, 512);
@@ -484,7 +484,7 @@ static void TestPlanned(void)
                Near(l->softening, k.softening, 1e-5) &&
                Near(l->tensileInverse, k.tensileInverse, 1e-5) &&
                Near(l->tensileScale, k.tensileScale, 1e-5) && l->sigma == sigma &&
-               l->spacing == 0.05f * sigma && compiled.enabled &&
+               l->spacing == 0.05f * sigma && compiled.enable &&
                compiled.planar == emitters[e].liquid.planar && compiled.spacing == 0.05f;
     }
     CHECK(same, "a plan's liquid kernels at its scale");

@@ -213,7 +213,7 @@ static void TestChecks(void)
     mvfxInstanceDef def = mvfxDefaultInstanceDef();
     def.effect = s_effect;
     mvfxInstanceId id = {0};
-    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     def.offscreen = 3;
     int32_t refused = mvfxCreateInstance(s_context, &def, &id) == mvfx_errorInvalid;
     def.offscreen = mvfx_offscreenThrottle;
@@ -234,7 +234,7 @@ static void TestChecks(void)
     refused +=
         mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenThrottle, 65) == mvfx_errorLimit;
     // A def's interval past the most counts no misuse; a setter's does.
-    CHECK(refused == 3 && mvfxGetContextMisuse(s_context) == misuse + 5, "refused, counted");
+    CHECK(refused == 3 && mvfxContext_GetMisuse(s_context) == misuse + 5, "refused, counted");
     CHECK(mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenThrottle, 2) == mvfx_success &&
               mvfxInstance_SetOffscreen(s_context, id, mvfx_offscreenSimulate, 0) == mvfx_success,
           "changed");

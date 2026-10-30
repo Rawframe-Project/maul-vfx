@@ -73,7 +73,7 @@ static mvfxEffectId PeekedEffect(mvfxContext* context, const mvfxEmitterDef* emi
 {
     mvfxEmitterDef peeking = Peeking(emitter);
     peeking.events =
-        emitter->beam.enabled ? mvfx_eventMaskDeath : mvfx_eventMaskBirth | mvfx_eventMaskDeath;
+        emitter->beam.enable ? mvfx_eventMaskDeath : mvfx_eventMaskBirth | mvfx_eventMaskDeath;
     peeking.eventCapacity = 4096;
     return Effect(context, &peeking);
 }
@@ -742,7 +742,7 @@ static void TestEventSpawn(void)
     emitters[1].startDelay = 0.1f;
     emitters[1].duration = 0.3f;
     emitters[1].loops = 1;
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 1,
@@ -758,7 +758,7 @@ static void TestEventSpawn(void)
     CHECK(mvfxEffect_GetEmitterView(context, effect, 1, &view) == mvfx_success &&
               view.lifetime.kind == mvfx_sourceRange && view.lifetime.components == 1 &&
               view.lifetime.min[0] == 0.3f && view.lifetime.max[0] == 0.5f &&
-              view.eventSpawn.enabled && view.eventSpawn.source == 0 &&
+              view.eventSpawn.enable && view.eventSpawn.source == 0 &&
               view.eventSpawn.kind == mvfx_eventDeath && view.eventSpawn.maxCount == 2 &&
               view.eventSpawn.inheritColor && view.eventSpawn.capacity == 32 &&
               view.delayTicks == (int64_t)floor((double)0.1f * MVFX_TICKS_PER_SECOND + 0.5) &&
@@ -900,7 +900,7 @@ static void TestBeams(void)
     emitter.capacity = 6;
     emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
     emitter.ribbon.ids = mvfx_ribbonOne;
-    emitter.beam = (mvfxBeamDef){.enabled = true,
+    emitter.beam = (mvfxBeamDef){.enable = true,
                                  .segments = 5,
                                  .start = {.point = {0, 0.5f, 0}},
                                  .end = {.point = {4, 0, -1}},
@@ -1077,7 +1077,7 @@ static void TestView(void)
         .components = 2, .initial = {.kind = mvfx_sourceRange, .min = {0, 0}, .max = {1, 1}}};
     stores.custom = &custom;
     stores.customCount = 1;
-    stores.collision = (mvfxCollision){.enabled = true};
+    stores.collision = (mvfxCollision){.enable = true};
     mvfxEffectId storing = Effect(context, &stores);
     CHECK(mvfxEffect_GetEmitterView(context, storing, 0, &view) == mvfx_success &&
               arrays->size == 10 && arrays->color == 13 && arrays->custom[0] == 17 &&
@@ -1148,7 +1148,7 @@ static void TestView(void)
     parts[count].def.killRules = &rule;
     parts[count].def.killRuleCount = 1;
     parts[count++].bit = MVFX_FEATURE_KILL_RULES;
-    parts[count].def.collision.enabled = true;
+    parts[count].def.collision.enable = true;
     parts[count++].bit = MVFX_FEATURE_COLLISION;
     parts[count].def.events = mvfx_eventMaskDeath;
     parts[count].def.eventCapacity = 8;
@@ -1418,7 +1418,7 @@ static void TestColliders(void)
                             .grid = grid}};
     emitter.colliders = own;
     emitter.colliderCount = 4;
-    emitter.collision = (mvfxCollision){.enabled = true,
+    emitter.collision = (mvfxCollision){.enable = true,
                                         .hostColliders = true,
                                         .restitution = 0.5f,
                                         .friction = 0.25f,
@@ -1480,7 +1480,8 @@ static void TestColliders(void)
     static mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success &&
               view.colliderKinds == 0xFu && view.colliderGrids[3].index1 == grid.index1 &&
-              view.colliderGrids[0].index1 == 0 && !view.sceneQueries && !view.depthImage,
+              view.colliderGrids[0].index1 == 0 && !view.enableSceneQueries &&
+              !view.enableDepthImage,
           "the view's colliders");
     mvfxDestroyContext(context);
 }
@@ -1624,7 +1625,7 @@ static void TestOverLifeView(void)
     emitter.custom = custom;
     emitter.customCount = 2;
     emitter.overLife = (mvfxOverLife){
-        .color = {.enabled = true,
+        .color = {.enable = true,
                   .input = mvfx_overSpeed,
                   .speedRange = {1, 4},
                   .gradient = {.colorKeys = colors,
@@ -1633,7 +1634,7 @@ static void TestOverLifeView(void)
                                .alphaKeyCount = 2},
                   .scaleAlpha = true,
                   .alpha = {.value = 0.5f, .curve = curve}},
-        .size = {.enabled = true,
+        .size = {.enable = true,
                  .perAxis = true,
                  .size = {{.value = 1, .curve = curve}, {.value = 2}, {.value = 3}}},
         .frame = {.animation = mvfx_frameAtRate, .frameCount = 16, .frameRate = 24, .loop = true}};
@@ -1705,7 +1706,7 @@ static void Apply(const float m[16], const double v[3], double out[4])
 static bool SameDepth(const mvfxPlannedDepth* planned, const mvfxDepthImage* image,
                       const Frame* world, double radius, const mvfxCollision* collision)
 {
-    bool same = planned->enabled && planned->width == image->width &&
+    bool same = planned->enable && planned->width == image->width &&
                 planned->height == image->height && planned->reversed == image->reversed &&
                 Near(planned->radius, radius) &&
                 Near(planned->thickness, (double)collision->depthThickness * world->sigma) &&
@@ -1776,8 +1777,8 @@ static void TestDepth(void)
     {
         mvfxEmitterDef emitter = Emitter(256);
         emitter.space = (mvfxSimulationSpace)space;
-        emitter.collision = (mvfxCollision){.enabled = true,
-                                            .depthImage = true,
+        emitter.collision = (mvfxCollision){.enable = true,
+                                            .enableDepthImage = true,
                                             .depthThickness = 0.5f,
                                             .depthSamples = 12,
                                             .killOutsideView = space == 1,

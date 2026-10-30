@@ -42,7 +42,7 @@ static mvfxEmitterDef Emitter(bool splats)
     emitter.bursts = &s_burst;
     emitter.burstCount = 1;
     emitter.lifetime = mvfxRangeSource(0.3f, 0.3f);
-    emitter.gasSplat = (mvfxGasSplat){.enabled = splats, .gas = 0, .density = 1.0f};
+    emitter.gasSplat = (mvfxGasSplat){.enable = splats, .gas = 0, .density = 1.0f};
     return emitter;
 }
 
@@ -299,7 +299,7 @@ static void TestPours(void)
     emitters[0].space = mvfx_spaceWorld;
     emitters[2].space = mvfx_spaceLocal;
     emitters[2].gasSplat = (mvfxGasSplat){
-        .enabled = true, .density = 0.5f, .temperature = 2.0f, .fuel = 0.25f, .drag = 3.0f};
+        .enable = true, .density = 0.5f, .temperature = 2.0f, .fuel = 0.25f, .drag = 3.0f};
     mvfxGasDef gas = Smoke();
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
@@ -393,13 +393,13 @@ static void TestThrottled(void)
 static bool SetterRefuses(mvfxContext* context, mvfxInstanceId planned, mvfxInstanceId cpu,
                           int64_t clock)
 {
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     bool refused =
         mvfxInstance_SetGasHolds(NULL, planned, 0, 0, false) == mvfx_errorInvalid &&
         mvfxInstance_SetGasHolds(context, planned, 1, 0, false) == mvfx_errorInvalid &&
         mvfxInstance_SetGasHolds(context, planned, 0, -1, false) == mvfx_errorInvalid &&
         mvfxInstance_SetGasHolds(context, planned, 0, clock + 1, false) == mvfx_errorInvalid &&
-        mvfxGetContextMisuse(context) == misuse + 3 &&
+        mvfxContext_GetMisuse(context) == misuse + 3 &&
         mvfxInstance_SetGasHolds(context, cpu, 0, 0, false) == mvfx_errorUnsupported &&
         mvfxInstance_SetGasHolds(context, (mvfxInstanceId){0}, 0, 0, false) == mvfx_errorStale;
     static mvfxGasPlan plan;

@@ -338,10 +338,10 @@ static MVFX_NOINLINE mvfxResult mvfxBakeCurlNoiseWork(const mvfxNoise* noise, in
 }
 
 mvfxResult mvfxBakeCurlNoise(const mvfxNoise* noise, int32_t period, const int32_t size[3],
-                             float* values, int64_t valueCount)
+                             float* valuesOut, int64_t valueCount)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxBakeCurlNoiseWork(noise, period, size, values, valueCount);
+    mvfxResult result = mvfxBakeCurlNoiseWork(noise, period, size, valuesOut, valueCount);
     mvfxFloatEnvLeave(env);
     return result;
 }

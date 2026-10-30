@@ -642,7 +642,7 @@ static void TestParts(void)
     Def def;
     MakeDef(&def);
     def.emitter.plexus = (mvfxPlexusDef){
-        .enabled = true, .distance = 0.5f, .maxLinks = 1, .maxPerParticle = 1, .width = 0.01f};
+        .enable = true, .distance = 0.5f, .maxLinks = 1, .maxPerParticle = 1, .width = 0.01f};
     uint8_t bytes[4096];
     uint8_t other[4096];
     int64_t size = Write(&def, bytes);
@@ -834,10 +834,10 @@ static void TestCreate(void)
                   mvfx_errorStale, -1),
           "a grid destroyed, refused by the effect");
     CHECK(s_live == live - 1, "the read memory freed");
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, NULL),
                   mvfx_errorInvalid, -1) &&
-              mvfxGetContextMisuse(context) == misuse + 1,
+              mvfxContext_GetMisuse(context) == misuse + 1,
           "a NULL out counted as misuse");
     effect = (mvfxEffectId){1, 1};
     CHECK(Refused(mvfxCreateEffectFromBytes(NULL, bytes, size, table, 4, &effect),
@@ -863,13 +863,13 @@ static bool RefusedFromFile(mvfxContext* context, const mvfxEmitterDef* emitter,
     int64_t size = 0;
     bool written =
         mvfxWriteEffect(&def, table, count, bytes, sizeof bytes, &size).result == mvfx_success;
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     mvfxEffectId effect = {1, 1};
     bool file = Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, count, &effect),
                         mvfx_errorInvalid, -1) &&
-                effect.index1 == 0 && mvfxGetContextMisuse(context) == misuse;
+                effect.index1 == 0 && mvfxContext_GetMisuse(context) == misuse;
     bool program = mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid &&
-                   mvfxGetContextMisuse(context) == misuse + (counted ? 1 : 0);
+                   mvfxContext_GetMisuse(context) == misuse + (counted ? 1 : 0);
     return written && file && program;
 }
 
@@ -907,7 +907,7 @@ static void TestUntrustedAssets(void)
                                   .halfExtents = {2, 1, 2},
                                   .rotation = {0, 0, 0, 1},
                                   .grid = table[0].grid};
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.colliders = &heights;
     emitter.colliderCount = 1;
     CHECK(RefusedFromFile(context, &emitter, table, 3, true), "a heightfield of a tall grid");
@@ -932,7 +932,7 @@ static void TestUntrustedAssets(void)
     emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.rigid = (mvfxRigidDef){.enabled = true,
+    emitter.rigid = (mvfxRigidDef){.enable = true,
                                    .shape = mvfx_rigidHull,
                                    .density = 1.0f,
                                    .substeps = 8,
@@ -968,7 +968,7 @@ static void TestArgumentMisuse(void)
          {.kind = mvfx_assetGrid, .name = "a", .nameLength = 1}},
     };
     mvfxEffectId effect = {0};
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     int32_t counted = 0;
     counted += Refused(mvfxCreateEffectFromBytes(context, NULL, size, s_assets, 4, &effect),
                        mvfx_errorInvalid, -1);
@@ -986,16 +986,16 @@ static void TestArgumentMisuse(void)
             mvfxCreateEffectFromBytes(context, bytes, size, tables[t], t == 5 ? 2 : 1, &effect),
             t == 3 ? mvfx_errorLimit : mvfx_errorInvalid, -1);
     }
-    CHECK(counted == 10 && mvfxGetContextMisuse(context) == misuse + 10,
+    CHECK(counted == 10 && mvfxContext_GetMisuse(context) == misuse + 10,
           "each invalid argument refused and counted as misuse");
-    misuse = mvfxGetContextMisuse(context);
+    misuse = mvfxContext_GetMisuse(context);
     bytes[size - 1] ^= 1;
     bool damaged = Refused(mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 4, &effect),
                            mvfx_errorFormat, 16);
     bytes[size - 1] ^= 1;
     bool missing = mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 3, &effect).result ==
                    mvfx_errorMissing;
-    CHECK(damaged && missing && mvfxGetContextMisuse(context) == misuse,
+    CHECK(damaged && missing && mvfxContext_GetMisuse(context) == misuse,
           "a damaged file and one naming an asset the table lacks counted as nothing");
     mvfxDestroyContext(context);
 }

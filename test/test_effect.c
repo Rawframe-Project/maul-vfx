@@ -81,7 +81,7 @@ static void TestCreateAndDestroy(void)
     CHECK(!mvfxEffect_IsValid(context, none), "the null id is not valid");
     mvfxEffectId beyond = {9999, 1};
     CHECK(!mvfxEffect_IsValid(context, beyond), "an id past the table is not valid");
-    CHECK(mvfxGetContextMisuse(context) == 0, "stale ids are not misuse");
+    CHECK(mvfxContext_GetMisuse(context) == 0, "stale ids are not misuse");
 
     mvfxEffectId again = {0};
     CHECK(mvfxCreateEffect(context, &def, &again) == mvfx_success, "a slot is reused");
@@ -106,7 +106,7 @@ static void TestLimit(void)
     CHECK(mvfxCreateEffect(context, &def, &b) == mvfx_success, "second");
     CHECK(mvfxCreateEffect(context, &def, &c) == mvfx_errorCapacity, "the third is past the table");
     CHECK(c.index1 == 0 && c.generation == 0, "the null id on failure");
-    CHECK(mvfxGetContextMisuse(context) == 0, "a limit is not misuse");
+    CHECK(mvfxContext_GetMisuse(context) == 0, "a limit is not misuse");
     CHECK(mvfxDestroyEffect(context, a) == mvfx_success, "one freed");
     CHECK(mvfxCreateEffect(context, &def, &c) == mvfx_success, "room again");
     mvfxDestroyContext(context);
@@ -118,11 +118,11 @@ static void TestInvalidDefsAreMisuse(void)
     mvfxEffectId effect = {0};
     uint64_t misuse = 0;
     CHECK(mvfxCreateEffect(context, NULL, &effect) == mvfx_errorInvalid, "no def");
-    CHECK(mvfxGetContextMisuse(context) == ++misuse, "counted");
+    CHECK(mvfxContext_GetMisuse(context) == ++misuse, "counted");
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     mvfxEffectDef def = OneEmitter(&emitter);
     CHECK(mvfxCreateEffect(context, &def, NULL) == mvfx_errorInvalid, "no out-parameter");
-    CHECK(mvfxGetContextMisuse(context) == ++misuse, "counted");
+    CHECK(mvfxContext_GetMisuse(context) == ++misuse, "counted");
     mvfxEffectDef def2 = OneEmitter(&emitter);
     effect = (mvfxEffectId){1, 1};
     CHECK(mvfxCreateEffect(NULL, &def2, &effect) == mvfx_errorInvalid, "no context");
@@ -192,7 +192,7 @@ static void TestInvalidDefsAreMisuse(void)
         CHECK(mvfxCreateEffect(context, &broken, &effect) == want, "refused");
         CHECK(effect.index1 == 0, "the null id");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
-        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
+        CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
     }
     mvfxEmitterDef edges = mvfxDefaultEmitterDef();
     edges.capacity = MVFX_MAX_EMITTER_CAPACITY;
@@ -214,7 +214,7 @@ static void TestLifeFieldsRefused(void)
     static const mvfxCurveKey dips[2] = {{0.0f, 0.0f, 0.0f, -20.0f, mvfx_interpolationCubic},
                                          {1.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
     static const mvfxCurveKey high[1] = {{0.5f, 2.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     for (int32_t field = 0; field < 24; ++field)
     {
         // Past a named bound: mvfx_errorLimit, data a correct program may
@@ -330,7 +330,7 @@ static void TestLifeFieldsRefused(void)
         CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
         CHECK(effect.index1 == 0, "the null id");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
-        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
+        CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
     }
     // Every field at its edge, and a single burst's interval ignored.
     mvfxBurst edges[MVFX_MAX_BURSTS];
@@ -369,7 +369,7 @@ static void TestLifeFieldsRefused(void)
 static void TestShapeAndVelocityRefused(void)
 {
     mvfxContext* context = NewContext(NULL, 8);
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     for (int32_t field = 0; field < 28; ++field)
     {
         // Past a named bound: mvfx_errorLimit, data a correct program may
@@ -497,7 +497,7 @@ static void TestShapeAndVelocityRefused(void)
         mvfxEffectId effect = {7, 7};
         CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
-        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
+        CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
     }
     // A kind's unread fields are not checked, and every edge is accepted.
     static const mvfxShapeKind kinds[7] = {mvfx_shapePoint,  mvfx_shapeLine,       mvfx_shapeCircle,
@@ -532,7 +532,7 @@ static void TestShapeAndVelocityRefused(void)
 static void TestValuesRefused(void)
 {
     mvfxContext* context = NewContext(NULL, 8);
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     static const float parameters[8] = {1, 2, 3, 4, 5, 6, 7, 8};
     static const float notFinite[4] = {0, 0, NAN, 0};
     static const mvfxCurveKey late[1] = {{2.0f, 1.0f, 0.0f, 0.0f, mvfx_interpolationLinear}};
@@ -638,7 +638,7 @@ static void TestValuesRefused(void)
         mvfxEffectId effect = {7, 7};
         CHECK(mvfxCreateEffect(context, &def, &effect) == want, "refused");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
-        CHECK(mvfxGetContextMisuse(context) == misuse, "each invalid one counted");
+        CHECK(mvfxContext_GetMisuse(context) == misuse, "each invalid one counted");
     }
     mvfxDestroyContext(context);
 }

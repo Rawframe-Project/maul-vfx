@@ -13,8 +13,8 @@
 // A context's task system: the host's hooks, or none.
 typedef struct mvfxTasks
 {
-    mvfxEnqueueTaskFn* enqueueTask;
-    mvfxFinishTaskFn* finishTask;
+    mvfxEnqueueTaskFunction* enqueueTask;
+    mvfxFinishTaskFunction* finishTask;
     void* userContext;
 } mvfxTasks;
 
@@ -22,7 +22,7 @@ typedef struct mvfxTasks
 // returns when every range has run. The ranges may run on several threads
 // at once: task must write only what its own items own. NULL tasks run
 // it on this thread.
-void mvfxRunTasks(const mvfxTasks* tasks, mvfxTaskFn* task, int32_t itemCount, int32_t minRange,
-                  void* taskContext);
+void mvfxRunTasks(const mvfxTasks* tasks, mvfxTaskFunction* task, int32_t itemCount,
+                  int32_t minRange, void* taskContext);
 
 #endif

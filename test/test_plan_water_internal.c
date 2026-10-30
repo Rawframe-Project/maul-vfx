@@ -53,7 +53,7 @@ static void Open(void)
                                    .halfExtents = {2.0f, 1.0f, 2.0f},
                                    .rotation = {0, 0, 0, 1},
                                    .grid = id};
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.waters = &water;
     def.waterCount = 1;
@@ -118,7 +118,7 @@ static void TestTerrain(void)
         CHECK(mvfxContext_StepTicks(s_context, 4 * STEP_TICKS) == mvfx_success, "stepped");
         static mvfxWaterPlan plan;
         CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success, "a plan");
-        wrong += !plan.hasTerrain ||
+        wrong += !plan.enableTerrain ||
                  memcmp(plan.terrain.center, terrain.center, sizeof terrain.center) != 0 ||
                  memcmp(plan.terrain.halfExtents, terrain.halfExtents,
                         sizeof terrain.halfExtents) != 0 ||

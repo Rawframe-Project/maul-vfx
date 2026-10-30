@@ -301,7 +301,7 @@ static void GatherRows(int32_t start, int32_t end, void* context)
 }
 
 // Runs a rows pass over each axis's faces.
-static void EachAxis(const Step* s, mvfxTaskFn* pass, const mvfxTasks* tasks)
+static void EachAxis(const Step* s, mvfxTaskFunction* pass, const mvfxTasks* tasks)
 {
     for (int32_t k = 0; k < 3; ++k)
     {

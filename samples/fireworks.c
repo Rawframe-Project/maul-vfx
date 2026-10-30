@@ -51,14 +51,14 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     sparks->velocity.speed = (mvfxRange){3.0f, 5.0f};
     sparks->motion.gravity[1] = -9.8f;
     sparks->motion.drag = 0.8f;
-    sparks->eventSpawn = (mvfxEventSpawn){.enabled = true,
+    sparks->eventSpawn = (mvfxEventSpawn){.enable = true,
                                           .source = 0,
                                           .kind = mvfx_eventDeath,
                                           .minCount = SPARKS_EACH,
                                           .maxCount = SPARKS_EACH,
                                           .inheritVelocity = 0.3f,
                                           .capacity = 256};
-    sparks->overLife.color.enabled = true;
+    sparks->overLife.color.enable = true;
     sparks->overLife.color.gradient = (mvfxGradient){
         .colorKeys = colors, .colorKeyCount = 3, .alphaKeys = alphas, .alphaKeyCount = 2};
     // Their births written as events too, for the host to count.

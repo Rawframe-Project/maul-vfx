@@ -149,7 +149,7 @@ void ApartTakeStep(int32_t emitter, const uint32_t* serials, const float* const 
         // meet a depth image anywhere it sees (each scene's bound limits
         // how many go apart).
         nearest = fmax(nearest - (double)radius, 0.0);
-        nearest = radius > 0.0f && plan->depth.enabled ? 0.0 : nearest;
+        nearest = radius > 0.0f && plan->depth.enable ? 0.0 : nearest;
         if (nearest <= reach)
         {
             near->shares[near->count] = (float)(nearest / reach);

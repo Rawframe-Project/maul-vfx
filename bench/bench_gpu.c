@@ -10,7 +10,7 @@
 // crossing halved 10 times. Each case prints the best of three runs of 20
 // steps, per particle a step; the collision's figure is the extra over the
 // plain emitter. Then the bytes the plain emitter's step uploads
-// (mvfxGpuSim_UploadBytes) and their share of its step: a frame writing
+// (mvfxGpuSim_GetUploadBytes) and their share of its step: a frame writing
 // that many bytes into a buffer against one writing 4, the best of three
 // runs of 20 frames. Then births from events at 4,096 and 16,384 events a
 // step: a source dying whole each step, its events buffer full, and a
@@ -182,7 +182,7 @@ static mvfxEmitterDef Emitter(const mvfxCollider* colliders, int32_t colliderCou
     emitter.colliders = colliders;
     emitter.colliderCount = colliderCount;
     emitter.collision = (mvfxCollision){
-        .enabled = colliderCount > 0, .hostColliders = colliderCount > 0, .restitution = 1};
+        .enable = colliderCount > 0, .hostColliders = colliderCount > 0, .restitution = 1};
     return emitter;
 }
 
@@ -226,12 +226,11 @@ static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding, int64_t* uploadedO
     mvfxGpuSim* sim = NULL;
     made = made && mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
     instanceDef.effect = effect;
-    made =
-        made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success &&
-        (!colliding ||
-         (mvfxInstance_SetColliders(context, instance, balls, MVFX_MAX_COLLIDERS) == mvfx_success &&
-          mvfxGpuSim_HostGridBytes(context, balls, MVFX_MAX_COLLIDERS, &simDef.hostGridBytes) ==
-              mvfx_success));
+    made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success &&
+           (!colliding || (mvfxInstance_SetColliders(context, instance, balls,
+                                                     MVFX_MAX_COLLIDERS) == mvfx_success &&
+                           mvfxContext_GetGpuHostGridBytes(context, balls, MVFX_MAX_COLLIDERS,
+                                                           &simDef.hostGridBytes) == mvfx_success));
     simDef.gpu = kernels;
     simDef.context = context;
     simDef.effect = effect;
@@ -252,7 +251,7 @@ static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding, int64_t* uploadedO
         double seconds = Now() - start;
         best = seconds < best ? seconds : best;
     }
-    made = made && mvfxGpuSim_UploadBytes(sim, uploadedOut) == mvfx_success;
+    made = made && mvfxGpuSim_GetUploadBytes(sim, uploadedOut) == mvfx_success;
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);
     return made ? best * 1e9 / ((double)STEPS * CAPACITY) : -1.0;
@@ -288,7 +287,7 @@ static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, b
     emitters[1].rate = 0.0f;
     emitters[1].lifetime = mvfxRangeSource(1.0f / 60.0f, 1.0f / 60.0f);
     emitters[1].startDelay = spawning ? 0.0f : 1000.0f;
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 1,

@@ -231,11 +231,12 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadWaterWork(const mvfxContext* co
 }
 
 mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId instance,
-                                  int32_t water, const mvfxWaterRead* read, void* out,
+                                  int32_t water, const mvfxWaterRead* read, void* valuesOut,
                                   int64_t bytes)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxInstance_ReadWaterWork(context, instance, water, read, out, bytes);
+    mvfxResult result =
+        mvfxInstance_ReadWaterWork(context, instance, water, read, valuesOut, bytes);
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -436,10 +437,11 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SampleWaterWork(const mvfxContext* 
 
 mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId instance,
                                     int32_t water, const double* points, int64_t count,
-                                    mvfxWaterSample* out)
+                                    mvfxWaterSample* samplesOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxInstance_SampleWaterWork(context, instance, water, points, count, out);
+    mvfxResult result =
+        mvfxInstance_SampleWaterWork(context, instance, water, points, count, samplesOut);
     mvfxFloatEnvLeave(env);
     return result;
 }

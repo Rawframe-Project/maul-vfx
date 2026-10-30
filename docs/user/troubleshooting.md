@@ -18,7 +18,7 @@ Every fallible call says why it failed:
 | `mvfx_errorBusy` | The object is in use: an effect an instance plays, a grid or mesh an effect holds, or a call from the allocator, a task hook or a host module that would change the context while it runs them. The GPU part answers it too when its device refuses a call from inside the device's own allocator. |
 | `mvfx_errorMissing` | A name or object the call needs is not in the table it was given, such as an asset of an effect file. |
 
-`mvfxResultName` names any result for a log. `mvfxGetContextMisuse` counts the calls refused as invalid since the context was made: a program can assert in its own tests that it stays at zero, and log it in a release build.
+`mvfxGetResultName` names any result for a log. `mvfxContext_GetMisuse` counts the calls refused as invalid since the context was made: a program can assert in its own tests that it stays at zero, and log it in a release build.
 
 Each function's documentation in its header lists the results it returns and what each means there.
 
@@ -46,7 +46,7 @@ The same effects, seeds, inputs and steps give the same bits everywhere. When tw
 - **Seeds.** An instance with seed 0 takes its seed from the order the context created its instances.
 - **Inputs between steps:** transforms, parameters, the program's spawns, colliders, scene answers, depth images, grids and meshes, and when they were set. How often an instance is moved changes where births along its way fall.
 - **The steps:** their sequence in ticks. A span stepped in different pieces reaches the same state, but only when the inputs between the pieces are the same.
-- **Host modules,** whose determinism is the program's to keep; `mvfxModule_Random` gives each module a stream that is deterministic.
+- **Host modules,** whose determinism is the program's to keep; `mvfxDrawModuleRandom` gives each module a stream that is deterministic.
 - **The library's version.** A release may change results, and its changelog says so.
 
 A thread's floating-point setting is not among them: a program may run its threads with flush-to-zero or another rounding mode, and every call that computes sets the library's own and gives the thread its setting back. The allocator and the task hooks run in the thread's setting; host modules run in the library's.

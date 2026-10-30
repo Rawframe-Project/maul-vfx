@@ -30,7 +30,7 @@
 #include <float.h>
 #include <math.h>
 
-static const mvfxRigidDef s_box = {.enabled = true, .shape = mvfx_rigidBox, .density = 1.0f};
+static const mvfxRigidDef s_box = {.enable = true, .shape = mvfx_rigidBox, .density = 1.0f};
 
 // A unit quaternion turning by angle about axis k.
 static void TurnAbout(int32_t k, float angle, float out[4])
@@ -145,7 +145,7 @@ static void TestCapsuleCorner(void)
     // above a unit box's top corner at (0.5, 0.5, 0.5) less 0.01, its
     // ends far past the corner: met by its deepest point, over the corner.
     static const mvfxRigidDef capsule = {
-        .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
+        .enable = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
     mvfxBodyPose pose = {.x = {0.5f, 0.5f + 0.39f, 0.5f}};
     TurnAbout(2, 1.5707963f, pose.q);
     static const float identity[4] = {0, 0, 0, 1};
@@ -168,7 +168,7 @@ static void TestCapsuleFlat(void)
     // it: its core is as deep all along, so it meets the box at its ends
     // only, never at a middle point rounding would place.
     static const mvfxRigidDef capsule = {
-        .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
+        .enable = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
     mvfxBodyPose pose = {.x = {0.1f, 0.5f + 0.25f - 0.01f, 0.2f}};
     TurnAbout(2, 1.5707963f, pose.q);
     static const float identity[4] = {0, 0, 0, 1};
@@ -224,7 +224,7 @@ static void TestHeights(void)
     // A capsule of length 2 lying along x, 0.01 into the bump's top by
     // its core's middle, its ends above the slopes: met in the middle.
     static const mvfxRigidDef capsule = {
-        .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
+        .enable = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
     mvfxResolvedCollider bump = Heights(context, true);
     mvfxBodyPose lying = {.x = {0, 0.3f + 0.25f - 0.01f, 0}};
     TurnAbout(2, 1.5707963f, lying.q);
@@ -242,7 +242,7 @@ static void TestHeights(void)
                                    -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
                                    -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
     CHECK(mvfxBuildHull(cube, 8, &(mvfxAllocator){0}, &s_hull) == mvfx_success, "a cube's hull");
-    static const mvfxRigidDef hull = {.enabled = true, .shape = mvfx_rigidHull, .density = 1.0f};
+    static const mvfxRigidDef hull = {.enable = true, .shape = mvfx_rigidHull, .density = 1.0f};
     mvfxBodyContacts hullCorners = Gather(&flat, &level, &hull, unit);
     bool four = hullCorners.count == 4;
     for (int32_t i = 0; four && i < hullCorners.count; ++i)
@@ -330,7 +330,7 @@ static void TestCapsulePairs(void)
     // it 0.01 into it meeting at the crossing; two along x side by side
     // 0.01 into each other meeting at both ends.
     static const mvfxRigidDef capsule = {
-        .enabled = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
+        .enable = true, .shape = mvfx_rigidCapsule, .density = 1.0f};
     static const float rod[3] = {0.5f, 2, 0.5f};
     mvfxBodyMass mass;
     mvfxBodyShape shape = mvfxBodyShapeOf(&capsule, nullptr, rod, &mass);
@@ -397,7 +397,7 @@ static void TestCrest(void)
                                    -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
                                    -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
     CHECK(mvfxBuildHull(cube, 8, &(mvfxAllocator){0}, &s_hull) == mvfx_success, "a cube's hull");
-    static const mvfxRigidDef hull = {.enabled = true, .shape = mvfx_rigidHull, .density = 1.0f};
+    static const mvfxRigidDef hull = {.enable = true, .shape = mvfx_rigidHull, .density = 1.0f};
     const mvfxRigidDef* shapes[2] = {&s_box, &hull};
     bool met = true;
     // The edge across the crest at its middle, then at a quarter along.
@@ -428,7 +428,7 @@ static void TestSolverRules(void)
     // A unit box turned 0.01 about y over a substep: a patch holding up to
     // its static coefficient times the limit cancels the turn; one past it
     // leaves it to dynamic friction.
-    const mvfxRigidDef rigid = {.enabled = true, .staticFriction = 0.6f};
+    const mvfxRigidDef rigid = {.enable = true, .staticFriction = 0.6f};
     const mvfxRigidSolve solve = {.rigid = &rigid, .h = 1.0f / 480.0f};
     static const float up[3] = {0, 1, 0};
     bool held = false;
@@ -457,7 +457,7 @@ static void TestSolverRules(void)
     // is pushed, the upper along the slide, balanced by the 0.5 side, and
     // does not turn; the lower against it, past the 0.1 side's balance,
     // and turns.
-    const mvfxRigidDef rubbing = {.enabled = true, .staticFriction = 1.0f};
+    const mvfxRigidDef rubbing = {.enable = true, .staticFriction = 1.0f};
     const mvfxRigidSolve slide = {.rigid = &rubbing, .h = 1.0f / 480.0f};
     mvfxBody upper = {.x = {0.6f, 0, 0},
                       .q = {0, 0, 0, 1},
@@ -490,7 +490,7 @@ static void TestTurningUnits(void)
     // mvfxTurnLimit's and slowed by dynamic friction: the first's twist is
     // cancelled and its spin stopped, as against the world, the second
     // turned by a share below binary32's range, both finite.
-    const mvfxRigidDef rigid = {.enabled = true, .staticFriction = 0.6f};
+    const mvfxRigidDef rigid = {.enable = true, .staticFriction = 0.6f};
     const mvfxRigidSolve solve = {.rigid = &rigid, .h = 1.0f / 480.0f};
     static const float up[3] = {0, 1, 0};
     mvfxBody light = {.q = {0, sinf(0.005f), 0, cosf(0.005f)},
@@ -537,7 +537,7 @@ static void TestNeedleInertia(void)
         s_hull.moments[k] = 0x1p-20f;
         s_hull.moments[3 + k] = 0x1p-20f - 0x3p-43f;
     }
-    static const mvfxRigidDef hull = {.enabled = true, .shape = mvfx_rigidHull, .density = 1.0f};
+    static const mvfxRigidDef hull = {.enable = true, .shape = mvfx_rigidHull, .density = 1.0f};
     static const float unit[3] = {1, 1, 1};
     mvfxBodyMass mass;
     (void)mvfxBodyShapeOf(&hull, &s_hull, unit, &mass);

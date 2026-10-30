@@ -51,7 +51,7 @@ static mvfxEmitterDef Emitter(void)
     emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
     emitter.velocity.speed = (mvfxRange){1.0f, 2.0f};
     emitter.motion.gravity[1] = -9.81f;
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
     emitter.liquid.spacing = 0.05f;
@@ -362,7 +362,7 @@ static void TestSpeedSetter(void)
         mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
         mvfxInstance_GetPlanSteps(context, planned, &count) == mvfx_success && count == three;
     CHECK(latest, "the latest report counts");
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     bool refused =
         mvfxInstance_SetLiquidSpeed(NULL, planned, 0, 0, 1.0f) == mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 1, 0, 1.0f) == mvfx_errorInvalid &&
@@ -373,7 +373,7 @@ static void TestSpeedSetter(void)
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, -1.0f) == mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, NAN) == mvfx_errorInvalid &&
         mvfxInstance_SetLiquidSpeed(context, planned, 0, 0, INFINITY) == mvfx_errorInvalid &&
-        mvfxGetContextMisuse(context) == misuse + 7 &&
+        mvfxContext_GetMisuse(context) == misuse + 7 &&
         mvfxInstance_SetLiquidSpeed(context, cpu, 0, 0, 1.0f) == mvfx_errorUnsupported &&
         mvfxInstance_SetLiquidSpeed(context, (mvfxInstanceId){0}, 0, 0, 1.0f) == mvfx_errorStale;
     // The report kept through the refusals: the next step counts from it.
@@ -410,7 +410,7 @@ static void TestPlanRoom(void)
     emitters[1].lifetime = mvfxRangeSource(0.001f, 0.001f);
     emitters[1].ribbon.ids = mvfx_ribbonOne;
     emitters[1].beam = (mvfxBeamDef){
-        .enabled = true, .segments = 5, .start = {.point = {0, 0, 0}}, .end = {.point = {1, 0, 0}}};
+        .enable = true, .segments = 5, .start = {.point = {0, 0, 0}}, .end = {.point = {1, 0, 0}}};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 2;
@@ -500,7 +500,7 @@ static void TestSurfaceMap(void)
     gas.surface.radius = 0.1f;
     gas.center[1] = -0.2f;
     mvfxEmitterDef emitter = Emitter();
-    emitter.liquid.enabled = false;
+    emitter.liquid.enable = false;
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;

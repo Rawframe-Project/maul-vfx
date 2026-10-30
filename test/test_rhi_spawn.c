@@ -23,7 +23,7 @@ static mvfxEmitterDef Child(int32_t source, mvfxEventKind kind)
     emitter.burstCount = 0;
     emitter.lifetime = mvfxRangeSource(0.1f, 0.3f);
     emitter.velocity.speed = (mvfxRange){0.5f, 1.0f};
-    emitter.eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitter.eventSpawn = (mvfxEventSpawn){.enable = true,
                                           .source = source,
                                           .kind = kind,
                                           .minCount = 1,
@@ -79,9 +79,9 @@ static void TestInheritedHeld(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].size =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {1, 1, 1}};
     emitters[1].eventSpawn.inheritSize = true;
-    emitters[1].overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 1e3f}}};
+    emitters[1].overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 1e3f}}};
     emitters[1].overLife.color =
-        (mvfxColorOverLife){.enabled = true, .gradient = {colors, 1, alphas, 1}};
+        (mvfxColorOverLife){.enable = true, .gradient = {colors, 1, alphas, 1}};
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "inherited colours and sizes held to the child's caps");
 }
@@ -115,7 +115,7 @@ static void TestCollisions(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].eventCapacity = 4096;
     emitters[0].colliders = &ceiling;
     emitters[0].colliderCount = 1;
-    emitters[0].collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
+    emitters[0].collision = (mvfxCollision){.enable = true, .restitution = 0.5f};
     emitters[0].space = mvfx_spaceWorld;
     emitters[1].space = mvfx_spaceWorld;
     Compare(gpu, kernels,

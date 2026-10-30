@@ -23,7 +23,7 @@ void mvfxOrderSimEmitters(mvfxGpuSim* sim)
         for (int32_t e = 0; next < 0 && e < sim->emitterCount; ++e)
         {
             const mvfxEventSpawn* spawn = &sim->views[e].eventSpawn;
-            next = !placed[e] && (!spawn->enabled || placed[spawn->source]) ? e : next;
+            next = !placed[e] && (!spawn->enable || placed[spawn->source]) ? e : next;
         }
         placed[next] = true;
         sim->order[n] = next;

@@ -12,7 +12,7 @@
 // What a wrapped range needs: the library's task and its context.
 typedef struct WrappedTask
 {
-    mvfxTaskFn* task;
+    mvfxTaskFunction* task;
     void* taskContext;
 } WrappedTask;
 
@@ -42,8 +42,8 @@ static MVFX_NOINLINE void Finish(const mvfxTasks* tasks, void* handle)
     mvfxFloatHostLeave(host);
 }
 
-void mvfxRunTasks(const mvfxTasks* tasks, mvfxTaskFn* task, int32_t itemCount, int32_t minRange,
-                  void* taskContext)
+void mvfxRunTasks(const mvfxTasks* tasks, mvfxTaskFunction* task, int32_t itemCount,
+                  int32_t minRange, void* taskContext)
 {
     if (itemCount <= 0)
     {

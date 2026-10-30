@@ -11,7 +11,7 @@
 #include "sim_state.h"
 #include "upload.h"
 
-mvfxResult mvfxGpuSim_MeshBytes(const mvfxContext* context, mvfxMeshId mesh, mvfxMeshMode mode,
+mvfxResult mvfxMesh_GetGpuBytes(const mvfxContext* context, mvfxMeshId mesh, mvfxMeshMode mode,
                                 int64_t* bytesOut)
 {
     if (bytesOut != nullptr)

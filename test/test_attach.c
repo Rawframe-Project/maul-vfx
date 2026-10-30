@@ -225,7 +225,7 @@ static void TestParticles(void)
     emitters[0].eventCapacity = 4;
     emitters[0].angularVelocity = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0, 2.0f, 0, 0}, .max = {0, 2.0f, 0, 0}};
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventBirth,
                                               .minCount = 1,
@@ -380,7 +380,7 @@ static void TestSources(void)
     emitters[0].velocity.speed = (mvfxRange){3.0f, 3.0f};
     emitters[0].events = mvfx_eventMaskBirth;
     emitters[0].eventCapacity = 16;
-    static const mvfxEventSpawn fromZero = {.enabled = true,
+    static const mvfxEventSpawn fromZero = {.enable = true,
                                             .source = 0,
                                             .kind = mvfx_eventBirth,
                                             .minCount = 1,
@@ -454,7 +454,7 @@ static void TestChecks(void)
     def.emitters = emitters;
     def.emitterCount = 2;
     mvfxEffectId effect = {0};
-    static const mvfxEventSpawn spawn = {.enabled = true,
+    static const mvfxEventSpawn spawn = {.enable = true,
                                          .source = 0,
                                          .kind = mvfx_eventBirth,
                                          .minCount = 1,

@@ -51,7 +51,7 @@ static mvfxEmitterDef Lit(void)
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.5f, 2.0f, 1.0f, 0}, .max = {0.5f, 2.0f, 1.0f, 0}};
     emitter.light = (mvfxLightDef){
-        .enabled = true, .every = 3, .intensity = 4.0f, .radius = 1.0f, .radiusBySize = 0.5f};
+        .enable = true, .every = 3, .intensity = 4.0f, .radius = 1.0f, .radiusBySize = 0.5f};
     return emitter;
 }
 
@@ -158,7 +158,7 @@ static void TestUnlit(void)
 {
     // Without lights, or without colour and size: 0, and white of size 1.
     mvfxEmitterDef emitters[2] = {Lit(), Lit()};
-    emitters[0].light.enabled = false;
+    emitters[0].light.enable = false;
     emitters[1].color.kind = mvfx_sourceNone;
     emitters[1].size.kind = mvfx_sourceNone;
     emitters[1].light.every = 1;
@@ -233,7 +233,7 @@ static void TestChecks(void)
     emitter.light = (mvfxLightDef){.every = 0, .intensity = -1.0f};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "ignored when off");
     emitter.light = (mvfxLightDef){
-        .enabled = true, .every = 65536, .intensity = 1e6f, .radius = 1e6f, .radiusBySize = 1e6f};
+        .enable = true, .every = 65536, .intensity = 1e6f, .radius = 1e6f, .radiusBySize = 1e6f};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the largest");
     mvfxDestroyContext(context);
 }
@@ -262,7 +262,7 @@ static void TestRefusals(void)
     static const mvfxView far = {.origin = {0, -0x1p53, 0}};
     mvfxLight lights[1];
     int64_t count = 0;
-    uint64_t misuse = mvfxGetContextMisuse(c);
+    uint64_t misuse = mvfxContext_GetMisuse(c);
     CHECK(mvfxInstance_WriteLights(c, i, 1, &view, lights, 1, &count) == mvfx_errorInvalid &&
               mvfxInstance_WriteLights(c, i, 0, NULL, lights, 1, &count) == mvfx_errorInvalid &&
               mvfxInstance_WriteLights(c, i, 0, &view, lights, 1, NULL) == mvfx_errorInvalid &&
@@ -270,7 +270,7 @@ static void TestRefusals(void)
               mvfxInstance_WriteLights(c, i, 0, &view, NULL, 1, &count) == mvfx_errorInvalid &&
               mvfxInstance_WriteLights(c, i, 0, &far, lights, 1, &count) == mvfx_errorInvalid,
           "refused");
-    CHECK(mvfxGetContextMisuse(c) == misuse + 6, "each counted");
+    CHECK(mvfxContext_GetMisuse(c) == misuse + 6, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     CHECK(mvfxInstance_WriteLights(c, stale, 0, &view, lights, 1, &count) == mvfx_errorStale &&

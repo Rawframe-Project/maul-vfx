@@ -46,7 +46,7 @@ static void TestLayouts(void)
     mvfxLayoutId id = {0};
     CHECK(Make(context, &good, 1, 12, &id) == mvfx_success && mvfxLayout_IsValid(context, id),
           "a layout");
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     int32_t refused = 0;
     for (int32_t rule = 0; rule < 20; ++rule)
     {
@@ -146,7 +146,7 @@ static void TestLayouts(void)
               mvfxCreateLayout(NULL, &noCookie, &id) == mvfx_errorInvalid,
           "no cookie, no def, no id, no context");
     // The two past a named bound count none.
-    CHECK(mvfxGetContextMisuse(context) == misuse + 21, "each invalid one counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 21, "each invalid one counted");
     // Two at most here; destroyed, its id is stale and its slot free.
     mvfxLayoutId second = {0};
     mvfxLayoutId third = {0};
@@ -393,12 +393,12 @@ static void TestRuns(void)
     emitter.rate = 100.0f;
     emitter.lifetime = mvfxRangeSource(4.0f, 4.0f);
     emitter.overLife.color =
-        (mvfxColorOverLife){.enabled = true,
+        (mvfxColorOverLife){.enable = true,
                             .gradient = {s_redToBlue, 2, s_fading, 2},
                             .scaleAlpha = true,
                             .alpha = {.value = 1.0f, .curve = {.keys = s_rising, .keyCount = 2}}};
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .size = {{.value = 2.0f, .curve = {.keys = s_rising, .keyCount = 2}}}};
+        .enable = true, .size = {{.value = 2.0f, .curve = {.keys = s_rising, .keyCount = 2}}}};
     Scene scene = NewScene(&emitter);
     for (int32_t step = 0; step < 90; ++step)
     {
@@ -511,7 +511,7 @@ static void TestRefusals(void)
     static const mvfxView farZ = {.origin = {0, 0, -0x1p53}};
     Record records[1];
     int64_t count = 0;
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     mvfxContext* c = scene.context;
     mvfxInstanceId i = scene.instance;
     CHECK(mvfxInstance_WriteParticles(c, i, 1, layout, &view, NULL, 0, records, 1, &count) ==
@@ -531,7 +531,7 @@ static void TestRefusals(void)
               mvfxInstance_WriteParticles(c, i, 0, layout, &farZ, NULL, 0, records, 1, &count) ==
                   mvfx_errorInvalid,
           "refused");
-    CHECK(mvfxGetContextMisuse(c) == misuse + 8, "each counted");
+    CHECK(mvfxContext_GetMisuse(c) == misuse + 8, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     mvfxLayoutId staleLayout = layout;
@@ -749,7 +749,7 @@ static void TestSrgbSteps(void)
     // Each step is the least value whose sRGB byte reaches it: its byte is
     // the step's count, the value below's one less.
     float steps[MVFX_SRGB_STEPS];
-    mvfxSrgbSteps(steps);
+    mvfxGetSrgbSteps(steps);
     bool rising = steps[0] > 0.0f && steps[MVFX_SRGB_STEPS - 1] <= 1.0f;
     for (int32_t k = 0; rising && k < MVFX_SRGB_STEPS; ++k)
     {

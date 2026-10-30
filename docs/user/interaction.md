@@ -49,8 +49,8 @@ emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone,
                                   .speed = {1.0f, 1.0f}};
 // Each sees the rest of its own emitter within 4, in every direction.
 emitter.neighbors =
-    (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 4.0f, .maxNeighbors = 32};
-emitter.steering.enabled = true;
+    (mvfxNeighborDef){.enable = true, .source = -1, .radius = 4.0f, .maxNeighbors = 32};
+emitter.steering.enable = true;
 emitter.steering.separation = 1.0f;
 emitter.steering.separationRadius = 0.5f;
 emitter.steering.alignment = 2.0f;

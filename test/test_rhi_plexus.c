@@ -21,7 +21,7 @@
 static mvfxEmitterDef Linked(int32_t maxLinks, int32_t maxPerParticle)
 {
     mvfxEmitterDef emitter = Sprite();
-    emitter.plexus = (mvfxPlexusDef){.enabled = true,
+    emitter.plexus = (mvfxPlexusDef){.enable = true,
                                      .distance = 0.15f,
                                      .maxLinks = maxLinks,
                                      .maxPerParticle = maxPerParticle,
@@ -58,7 +58,7 @@ static void TestOthers(Gpu* gpu, mvfxGpu* kernels)
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.04f, 0.04f, 0.04f}, .max = {0.1f, 0.1f, 0.1f}};
     emitter.contacts =
-        (mvfxContactDef){.enabled = true, .radiusScale = 0.5f, .iterations = 2, .maxContacts = 16};
+        (mvfxContactDef){.enable = true, .radiusScale = 0.5f, .iterations = 2, .maxContacts = 16};
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,

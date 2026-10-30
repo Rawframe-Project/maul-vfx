@@ -121,7 +121,7 @@ int main(int argc, char** argv)
     emitter.velocity.speed = (mvfxRange){0.2f, 0.5f};
     emitter.forces = &swirl;
     emitter.forceCount = 1;
-    emitter.overLife.color.enabled = true;
+    emitter.overLife.color.enable = true;
     emitter.overLife.color.gradient = (mvfxGradient){
         .colorKeys = orange, .colorKeyCount = 1, .alphaKeys = fade, .alphaKeyCount = 2};
     mvfxEffectDef def = mvfxDefaultEffectDef();

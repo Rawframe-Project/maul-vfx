@@ -545,7 +545,7 @@ static void AppendPoint(mvfxInstance* instance, int32_t emitter, const mvfxBirth
                                      .particle = at,
                                      .tick = birth->tick,
                                      .placeTick = birth->tick});
-    if (compiled->rigid.enabled)
+    if (compiled->rigid.enable)
     {
         mvfxIntegrateRigidNewborn(instance, emitter, at, birth->tick);
     }

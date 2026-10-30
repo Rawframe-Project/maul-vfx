@@ -268,7 +268,7 @@ static void TestQueueAndRoom(void)
           "a restart empties the queue");
 
     // Refusals.
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     static const double far[3] = {0x1p53, 0, 0};
     static const float nan[3] = {0, (float)NAN, 0};
     static const float sizes[3] = {1, 1, 1};
@@ -289,7 +289,7 @@ static void TestQueueAndRoom(void)
           "no emitter 1");
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, NULL) == mvfx_errorInvalid,
           "no request");
-    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 8, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 8, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_Spawn(scene.context, stale, 0, &one) == mvfx_errorStale, "stale");
@@ -376,7 +376,7 @@ static void TestPrewarm(void)
     }
     CHECK(after, "the same in the steps after");
 
-    uint64_t misuse = mvfxGetContextMisuse(warmed.context);
+    uint64_t misuse = mvfxContext_GetMisuse(warmed.context);
     double out = 7.0;
     CHECK(mvfxInstance_Prewarm(warmed.context, warmed.instance, -1.0, 0.25, 1, &out) ==
                   mvfx_errorInvalid &&
@@ -397,7 +397,7 @@ static void TestPrewarm(void)
     CHECK(mvfxInstance_Prewarm(warmed.context, warmed.instance, (double)NAN, 0.25, 1, NULL) ==
               mvfx_errorInvalid,
           "a NaN span");
-    CHECK(mvfxGetContextMisuse(warmed.context) == misuse + 6, "each counted");
+    CHECK(mvfxContext_GetMisuse(warmed.context) == misuse + 6, "each counted");
     mvfxInstanceId stale = warmed.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_Prewarm(warmed.context, stale, 1.0, 0.25, 1, NULL) == mvfx_errorStale,

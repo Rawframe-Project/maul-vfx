@@ -34,7 +34,7 @@ void mvfxLaySimFollow(mvfxGpuSim* sim, int32_t e)
 {
     Emitter* emitter = &sim->emitters[e];
     const mvfxWaterCoupling* coupling = &sim->views[e].water;
-    int32_t water = coupling->enabled ? coupling->water : -1;
+    int32_t water = coupling->enable ? coupling->water : -1;
     emitter->water = water;
     // None until its events buffer has them (mvfxCreateSimEvents).
     emitter->crossingFacts = UINT32_MAX;

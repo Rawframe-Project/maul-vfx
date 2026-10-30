@@ -105,7 +105,7 @@ bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords)
     // Shallow water's terrain: its own grid, or room for the host's.
     static const mvfxGridId noForces[MVFX_MAX_FORCES] = {0};
     mvfxGridId terrain[MVFX_MAX_COLLIDERS] = {0};
-    bool own = shallow && def->hasTerrain && !def->hostTerrain;
+    bool own = shallow && def->enableTerrain && !def->hostTerrain;
     terrain[0] = own ? def->terrain.grid : (mvfxGridId){0};
     if (!mvfxLayGrids(sim->context, noForces, terrain, shallow && def->hostTerrain ? hostWords : 0,
                       &water->grids))
@@ -280,7 +280,8 @@ static uint32_t PlanShallow(SimWater* water, const mvfxWaterPlan* plan, uint32_t
                    (float)mvfxExpMinus((double)(def->friction * dt)), def->fillLevel, dt);
     w[WORD_HEAD] = (uint32_t)plan->pushCount;
     w[WORD_HEAD + 2] = (uint32_t)def->sourceCount;
-    w[WORD_HEAD + 3] = (plan->cleared ? FLAG_FILLS : 0u) | (plan->hasTerrain ? FLAG_TERRAIN : 0u);
+    w[WORD_HEAD + 3] =
+        (plan->cleared ? FLAG_FILLS : 0u) | (plan->enableTerrain ? FLAG_TERRAIN : 0u);
     // The poured volume into the world's, rounded once.
     float cube = (float)plan->volumeScale;
     memcpy(&w[WORD_SINK + 3u], &cube, sizeof cube);
@@ -296,12 +297,12 @@ static uint32_t PlanShallow(SimWater* water, const mvfxWaterPlan* plan, uint32_t
     }
     SourceWords(water, plan);
     uint32_t grid[5] = {0};
-    if (plan->hasTerrain)
+    if (plan->enableTerrain)
     {
         mvfxColliderGridWords(&water->grids, &plan->terrain, def->hostTerrain ? 0 : 1, 0, grid);
     }
     memset(w + WORD_TERRAIN, 0, MVFX_COLLIDER_WORDS * sizeof(uint32_t));
-    if (plan->hasTerrain)
+    if (plan->enableTerrain)
     {
         mvfxColliderWords(&plan->terrain, grid, w + WORD_TERRAIN);
     }
@@ -384,7 +385,7 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
         return result;
     }
     // A host's terrain's grid into the room for it.
-    if (IsShallow(water) && water->view.def.hostTerrain && plan.hasTerrain &&
+    if (IsShallow(water) && water->view.def.hostTerrain && plan.enableTerrain &&
         !mvfxPlaceHostGrids(sim->context, &plan.terrain, 1, 0, &water->grids))
     {
         return mvfx_errorCapacity;
@@ -666,7 +667,7 @@ mvfxResult mvfxGpuSim_AddWaterRead(mvfxGpuSim* sim, const mvfxGpuWaterReadDef* d
     return mvfx_success;
 }
 
-int32_t mvfxGpuSim_WaterPasses(const mvfxGpuSim* sim, int32_t water)
+int32_t mvfxGpuSim_GetWaterPasses(const mvfxGpuSim* sim, int32_t water)
 {
     if (sim == nullptr || water < 0 || water >= sim->waterCount)
     {

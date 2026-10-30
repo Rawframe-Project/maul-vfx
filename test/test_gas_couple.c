@@ -225,7 +225,7 @@ static void TestSplat(void)
     emitter.shape.offset[0] = 0.13f;
     emitter.shape.offset[1] = -0.07f;
     emitter.gasSplat =
-        (mvfxGasSplat){.enabled = true, .density = 2.0f, .temperature = 3.0f, .fuel = 0.5f};
+        (mvfxGasSplat){.enable = true, .density = 2.0f, .temperature = 3.0f, .fuel = 0.5f};
     mvfxGasDef gas = Still();
     Open(&emitter, &gas, s_unturned);
     double poured = 0.0;
@@ -251,7 +251,7 @@ static void TestSplatDrag(void)
     emitter.velocity.direction[0] = 1.0f;
     emitter.velocity.direction[2] = 0.0f;
     emitter.velocity.speed = (mvfxRange){2.0f, 2.0f};
-    emitter.gasSplat = (mvfxGasSplat){.enabled = true, .drag = 20.0f};
+    emitter.gasSplat = (mvfxGasSplat){.enable = true, .drag = 20.0f};
     mvfxGasDef gas = Still();
     Open(&emitter, &gas, s_unturned);
     Steps(3);
@@ -275,7 +275,7 @@ static void TestSplatOutside(void)
 {
     // Particles outside the gas's box pour nothing.
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    emitter.gasSplat = (mvfxGasSplat){.enabled = true, .density = 2.0f, .drag = 5.0f};
+    emitter.gasSplat = (mvfxGasSplat){.enable = true, .density = 2.0f, .drag = 5.0f};
     mvfxGasDef gas = Still();
     gas.center[1] = -4.0f;
     Open(&emitter, &gas, s_unturned);
@@ -303,8 +303,8 @@ static void TestSplatExact(void)
         emitter.rate = 0.0f;
         emitter.hostSpawnCapacity = 2;
         emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
-        emitter.gasSplat = pass == 0 ? (mvfxGasSplat){.enabled = true, .density = 2.0f}
-                                     : (mvfxGasSplat){.enabled = true, .drag = 10.0f};
+        emitter.gasSplat = pass == 0 ? (mvfxGasSplat){.enable = true, .density = 2.0f}
+                                     : (mvfxGasSplat){.enable = true, .drag = 10.0f};
         mvfxGasDef gas = Still();
         Open(&emitter, &gas, s_unturned);
         // Slow, so carrying the faces by what the splat gives them, later
@@ -392,7 +392,7 @@ static void TestSplatPlace(void)
     // middle, cells (16.8, 14.8) less a half, its density after a step is
     // 2/64 times the weights 0.04, 0.16, 0.16, 0.64 about cell (16, 14).
     mvfxEmitterDef emitter = One(0.13f, -0.07f);
-    emitter.gasSplat = (mvfxGasSplat){.enabled = true, .density = 2.0f};
+    emitter.gasSplat = (mvfxGasSplat){.enable = true, .density = 2.0f};
     mvfxGasDef gas = Still();
     const double origin[3] = {2000, 0, 0};
     OpenAt(&emitter, &gas, origin, 1.0f);
@@ -488,7 +488,7 @@ static void TestRefusals(void)
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
         emitter.forces = &follow;
         emitter.forceCount = c == 0 ? 1 : 0;
-        emitter.gasSplat = (mvfxGasSplat){.enabled = c >= 2,
+        emitter.gasSplat = (mvfxGasSplat){.enable = c >= 2,
                                           .gas = c == 2 ? 1 : 0,
                                           .drag = c == 3 ? -1.0f : 0.0f,
                                           .fuel = c == 4 ? NAN : 0.0f};

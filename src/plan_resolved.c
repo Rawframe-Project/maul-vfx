@@ -81,7 +81,7 @@ static mvfxPlannedLiquid PlannedLiquid(const mvfxInstance* instance, int32_t emi
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxLiquidDef* def = &compiled->liquid;
-    if (!def->enabled || def->solver != mvfx_liquidParticles)
+    if (!def->enable || def->solver != mvfx_liquidParticles)
     {
         return (mvfxPlannedLiquid){0};
     }

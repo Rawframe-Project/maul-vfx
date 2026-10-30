@@ -386,7 +386,7 @@ static void TestRefusals(void)
     mvfxView upNan = s_view;
     upNan.up[2] = (float)NAN;
     int64_t count = 0;
-    uint64_t misuse = mvfxGetContextMisuse(c);
+    uint64_t misuse = mvfxContext_GetMisuse(c);
     int32_t refused = 0;
     for (int32_t b = 0; b < 6; ++b)
     {
@@ -398,7 +398,7 @@ static void TestRefusals(void)
     refused += mvfxInstance_ExpandSprites(c, i, 0, l, &s_view, NULL, &count) == mvfx_errorInvalid;
     refused += mvfxInstance_ExpandSprites(c, i, 0, l, &s_view, &good, NULL) == mvfx_errorInvalid;
     refused += mvfxInstance_ExpandSprites(c, i, 1, l, &s_view, &good, &count) == mvfx_errorInvalid;
-    CHECK(refused == 11 && mvfxGetContextMisuse(c) == misuse + 11, "refused, each counted");
+    CHECK(refused == 11 && mvfxContext_GetMisuse(c) == misuse + 11, "refused, each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     mvfxLayoutId staleLayout = l;

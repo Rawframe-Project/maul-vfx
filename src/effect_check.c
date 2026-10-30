@@ -203,7 +203,7 @@ static mvfxResult CheckOutputs(const mvfxEmitterDef* def)
     const mvfxFrameStart* mesh = &def->meshIndex;
     const mvfxLightDef* light = &def->light;
     const mvfxRibbonDef* ribbon = &def->ribbon;
-    if ((light->enabled && (light->every < 1 || light->every > 65536)) ||
+    if ((light->enable && (light->every < 1 || light->every > 65536)) ||
         ribbon->ids > mvfx_ribbonPerSource || def->sprite.billboard > mvfx_billboardDirectional ||
         def->sortMode > mvfx_sortFrontToBack || def->sortMeasure > mvfx_sortByDepth ||
         mesh->mode > mvfx_frameRandom || mesh->first < 0 || mesh->first > mesh->last)
@@ -211,7 +211,7 @@ static mvfxResult CheckOutputs(const mvfxEmitterDef* def)
         return mvfx_errorInvalid;
     }
     mvfxResult lit =
-        light->enabled
+        light->enable
             ? mvfxFirst(mvfxUpToBound(light->intensity, 0.0f, MVFX_MAX_EXTENT),
                         mvfxFirst(mvfxUpToBound(light->radius, 0.0f, MVFX_MAX_EXTENT),
                                   mvfxUpToBound(light->radiusBySize, 0.0f, MVFX_MAX_EXTENT)))
@@ -263,7 +263,7 @@ static mvfxResult CheckCollisions(const mvfxEmitterDef* def)
     }
     for (int32_t r = 0; r < def->killRuleCount; ++r)
     {
-        if (def->killRules[r].kind == mvfx_killCollisions && !def->collision.enabled)
+        if (def->killRules[r].kind == mvfx_killCollisions && !def->collision.enable)
         {
             return mvfx_errorInvalid;
         }
@@ -289,10 +289,10 @@ static mvfxResult CheckCollisions(const mvfxEmitterDef* def)
     }
     // Events of known kinds, collisions only where they collide, tears
     // only where units tear, crossings only where they meet water.
-    bool collides = def->collision.enabled || (def->events & mvfx_eventMaskCollision) == 0;
+    bool collides = def->collision.enable || (def->events & mvfx_eventMaskCollision) == 0;
     bool tears = (def->unit.kind != mvfx_unitParticle && def->unit.tearStrain > 0.0f) ||
                  (def->events & mvfx_eventMaskTear) == 0;
-    bool crosses = def->water.enabled || (def->events & mvfx_eventMaskWater) == 0;
+    bool crosses = def->water.enable || (def->events & mvfx_eventMaskWater) == 0;
     if (def->events > 31u || !collides || !tears || !crosses)
     {
         return mvfx_errorInvalid;
@@ -466,15 +466,14 @@ static mvfxResult CheckBeamPoint(const mvfxBeamPoint* point, int32_t parameterCo
 static mvfxResult CheckBeam(const mvfxEmitterDef* def, int32_t parameterCount)
 {
     const mvfxBeamDef* beam = &def->beam;
-    if (!beam->enabled)
+    if (!beam->enable)
     {
         return mvfx_success;
     }
     bool alone = def->rate == 0.0f && def->burstCount == 0 && def->ratePerDistance == 0.0f &&
-                 !def->eventSpawn.enabled && def->hostSpawnCapacity == 0 &&
-                 !def->collision.enabled && def->forceCount == 0 && !def->contacts.enabled &&
-                 !def->steering.enabled && !def->pairForce.enabled &&
-                 (def->events & mvfx_eventMaskBirth) == 0;
+                 !def->eventSpawn.enable && def->hostSpawnCapacity == 0 && !def->collision.enable &&
+                 def->forceCount == 0 && !def->contacts.enable && !def->steering.enable &&
+                 !def->pairForce.enable && (def->events & mvfx_eventMaskBirth) == 0;
     // The count first: it bounds the sum below.
     if (beam->segments > MVFX_MAX_BEAM_SEGMENTS)
     {
@@ -502,7 +501,7 @@ static mvfxResult CheckBeam(const mvfxEmitterDef* def, int32_t parameterCount)
 static mvfxResult CheckEventSpawn(const mvfxEffectDef* def, int32_t i)
 {
     const mvfxEventSpawn* spawn = &def->emitters[i].eventSpawn;
-    if (!spawn->enabled)
+    if (!spawn->enable)
     {
         return mvfx_success;
     }

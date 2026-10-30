@@ -44,8 +44,8 @@ bool mvfxCreateSimPlexus(mvfxGpuSim* sim, int32_t e)
 {
     Emitter* emitter = &sim->emitters[e];
     const mvfxPlexusDef* def = &sim->views[e].plexus;
-    emitter->plexus = def->enabled;
-    if (!def->enabled)
+    emitter->plexus = def->enable;
+    if (!def->enable)
     {
         return true;
     }

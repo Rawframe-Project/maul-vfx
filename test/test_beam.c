@@ -76,7 +76,7 @@ static mvfxEmitterDef Beam(void)
     emitter.lifetime = mvfxRangeSource(9.0f, 9.0f);
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.beam = (mvfxBeamDef){
-        .enabled = true, .segments = 4, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
+        .enable = true, .segments = 4, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
     return emitter;
 }
 
@@ -407,13 +407,13 @@ static void TestChecks(void)
             emitter.ratePerDistance = 1.0f;
             break;
         case 13:
-            emitter.eventSpawn = (mvfxEventSpawn){.enabled = true, .source = 0, .capacity = 1};
+            emitter.eventSpawn = (mvfxEventSpawn){.enable = true, .source = 0, .capacity = 1};
             break;
         case 14:
             emitter.hostSpawnCapacity = 1;
             break;
         case 15:
-            emitter.collision.enabled = true;
+            emitter.collision.enable = true;
             break;
         case 16:
             emitter.forces = &force;

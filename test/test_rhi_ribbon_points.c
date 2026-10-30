@@ -197,7 +197,7 @@ static void TestSources(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].burstCount = 0;
     emitters[1].lifetime = mvfxRangeSource(0.1f, 0.3f);
     emitters[1].velocity.speed = (mvfxRange){0.5f, 1.0f};
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 1,

@@ -552,7 +552,7 @@ static mvfxRigidSolve SolveOf(mvfxInstance* instance, int32_t emitter)
                         .mass = state->rigidMass,
                         .flags = state->rigidFlags,
                         .stride = (size_t)state->capacity,
-                        .collides = compiled->collision.enabled};
+                        .collides = compiled->collision.enable};
     float gravity[3];
     mvfxGravityOf(instance, compiled, gravity);
     s.gravity = sqrtf(Dot(gravity, gravity));

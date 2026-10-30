@@ -16,8 +16,8 @@ makes a default from constants, computing no float:
 
 reports a stored count, tick, flag, identity, name or the version, computing no float:
     mvfxGetVersion
-    mvfxResultName
-    mvfxGetContextMisuse
+    mvfxGetResultName
+    mvfxContext_GetMisuse
     mvfxContext_GetParticles
     mvfxEffect_IsValid
     mvfxGrid_IsValid
@@ -43,7 +43,7 @@ hands over stored or compiled values as they are, copying them, computing no flo
 
 hashes or draws integers, computing no float:
     mvfxHash64
-    mvfxModule_Random
+    mvfxDrawModuleRandom
 
 makes, frees or changes objects from integers, pointers, flags and ticks, computing no float:
     mvfxCreateContext

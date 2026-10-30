@@ -68,7 +68,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
                                .damping = 1.0f};
     cloth.colliders = colliders;
     cloth.colliderCount = 2;
-    cloth.collision = (mvfxCollision){.enabled = true, .friction = 0.5f, .radius = 0.02f};
+    cloth.collision = (mvfxCollision){.enable = true, .friction = 0.5f, .radius = 0.02f};
 
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &cloth;

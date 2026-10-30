@@ -178,7 +178,7 @@ void mvfxBuildEventBirths(mvfxInstance* instance, int32_t emitter)
     mvfxEmitterState* state = &instance->emitters[emitter];
     state->eventQueueCount = 0;
     const mvfxEventSpawn* spawn = &compiled->eventSpawn;
-    if (!spawn->enabled)
+    if (!spawn->enable)
     {
         return;
     }

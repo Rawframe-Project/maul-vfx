@@ -35,7 +35,7 @@ static mvfxEmitterDef Lit(int32_t every, bool alphaScales)
     emitter.color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.2f, 0.2f, 0.2f, 1}, .max = {1, 1, 1, 1}};
     emitter.overLife = (mvfxOverLife){
-        .color = {.enabled = true,
+        .color = {.enable = true,
                   .input = mvfx_overAge,
                   .gradient = {.colorKeys = s_colors,
                                .colorKeyCount = 2,
@@ -44,10 +44,10 @@ static mvfxEmitterDef Lit(int32_t every, bool alphaScales)
                   .scaleAlpha = true,
                   .alpha = {.value = 1, .curve = curve}},
         .size = {
-            .enabled = true,
+            .enable = true,
             .perAxis = true,
             .size = {{.value = 2, .curve = curve}, {.value = 1}, {.value = 3, .curve = curve}}}};
-    emitter.light = (mvfxLightDef){.enabled = true,
+    emitter.light = (mvfxLightDef){.enable = true,
                                    .every = every,
                                    .intensity = 2.5f,
                                    .alphaScales = alphaScales,

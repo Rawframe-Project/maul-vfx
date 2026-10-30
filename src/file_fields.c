@@ -133,7 +133,7 @@ static const mvfxFileField s_fields_mvfxForce[] = {
 static const mvfxFileType s_mvfxForce = MVFX_FILE_TYPE(mvfxForce, 19);
 
 static const mvfxFileField s_fields_mvfxGasSplat[] = {
-    {offsetof(mvfxGasSplat, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxGasSplat, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxGasSplat, gas), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxGasSplat, density), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxGasSplat, temperature), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
@@ -143,7 +143,7 @@ static const mvfxFileField s_fields_mvfxGasSplat[] = {
 static const mvfxFileType s_mvfxGasSplat = MVFX_FILE_TYPE(mvfxGasSplat, 6);
 
 static const mvfxFileField s_fields_mvfxWaterCoupling[] = {
-    {offsetof(mvfxWaterCoupling, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxWaterCoupling, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxWaterCoupling, water), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxWaterCoupling, radius), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxWaterCoupling, push), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
@@ -197,7 +197,7 @@ static const mvfxFileField s_fields_mvfxGradient[] = {
 static const mvfxFileType s_mvfxGradient = MVFX_FILE_TYPE(mvfxGradient, 2);
 
 static const mvfxFileField s_fields_mvfxColorOverLife[] = {
-    {offsetof(mvfxColorOverLife, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxColorOverLife, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxColorOverLife, input), mvfx_fieldU8, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxColorOverLife, speedRange), mvfx_fieldF32, 0, 2, nullptr, 0, 0},
     {offsetof(mvfxColorOverLife, gradient), mvfx_fieldStruct, 0, 1, &s_mvfxGradient, 0, 0},
@@ -207,7 +207,7 @@ static const mvfxFileField s_fields_mvfxColorOverLife[] = {
 static const mvfxFileType s_mvfxColorOverLife = MVFX_FILE_TYPE(mvfxColorOverLife, 6);
 
 static const mvfxFileField s_fields_mvfxSizeOverLife[] = {
-    {offsetof(mvfxSizeOverLife, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxSizeOverLife, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxSizeOverLife, input), mvfx_fieldU8, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxSizeOverLife, speedRange), mvfx_fieldF32, 0, 2, nullptr, 0, 0},
     {offsetof(mvfxSizeOverLife, perAxis), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
@@ -225,7 +225,7 @@ static const mvfxFileField s_fields_mvfxFrameOverLife[] = {
 static const mvfxFileType s_mvfxFrameOverLife = MVFX_FILE_TYPE(mvfxFrameOverLife, 5);
 
 static const mvfxFileField s_fields_mvfxRotationOverLife[] = {
-    {offsetof(mvfxRotationOverLife, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxRotationOverLife, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxRotationOverLife, scale), mvfx_fieldStruct, 0, 1, &s_mvfxLifeCurve, 0, 0},
 };
 static const mvfxFileType s_mvfxRotationOverLife = MVFX_FILE_TYPE(mvfxRotationOverLife, 2);
@@ -253,7 +253,7 @@ static const mvfxFileField s_fields_mvfxKillRule[] = {
 static const mvfxFileType s_mvfxKillRule = MVFX_FILE_TYPE(mvfxKillRule, 10);
 
 static const mvfxFileField s_fields_mvfxCollision[] = {
-    {offsetof(mvfxCollision, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxCollision, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, hostColliders), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, restitution), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, friction), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
@@ -261,10 +261,10 @@ static const mvfxFileField s_fields_mvfxCollision[] = {
     {offsetof(mvfxCollision, killOnCollision), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, restSpeed), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, radius), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
-    {offsetof(mvfxCollision, sceneQueries), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxCollision, enableSceneQueries), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, queryCapacity), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, lookahead), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
-    {offsetof(mvfxCollision, depthImage), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxCollision, enableDepthImage), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, depthThickness), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, depthSamples), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxCollision, killOutsideView), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
@@ -292,7 +292,7 @@ static const mvfxFileField s_fields_mvfxHostModule[] = {
 static const mvfxFileType s_mvfxHostModule = MVFX_FILE_TYPE(mvfxHostModule, 2);
 
 static const mvfxFileField s_fields_mvfxEventSpawn[] = {
-    {offsetof(mvfxEventSpawn, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxEventSpawn, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxEventSpawn, source), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxEventSpawn, kind), mvfx_fieldU8, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxEventSpawn, minCount), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
@@ -305,7 +305,7 @@ static const mvfxFileField s_fields_mvfxEventSpawn[] = {
 static const mvfxFileType s_mvfxEventSpawn = MVFX_FILE_TYPE(mvfxEventSpawn, 9);
 
 static const mvfxFileField s_fields_mvfxNeighborDef[] = {
-    {offsetof(mvfxNeighborDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxNeighborDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxNeighborDef, source), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxNeighborDef, radius), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxNeighborDef, maxNeighbors), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
@@ -334,7 +334,7 @@ static const mvfxFileField s_fields_mvfxSteerPath[] = {
 static const mvfxFileType s_mvfxSteerPath = MVFX_FILE_TYPE(mvfxSteerPath, 6);
 
 static const mvfxFileField s_fields_mvfxSteeringDef[] = {
-    {offsetof(mvfxSteeringDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxSteeringDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxSteeringDef, separation), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxSteeringDef, separationRadius), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxSteeringDef, alignment), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
@@ -351,7 +351,7 @@ static const mvfxFileField s_fields_mvfxSteeringDef[] = {
 static const mvfxFileType s_mvfxSteeringDef = MVFX_FILE_TYPE(mvfxSteeringDef, 13);
 
 static const mvfxFileField s_fields_mvfxContactDef[] = {
-    {offsetof(mvfxContactDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxContactDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxContactDef, radiusScale), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxContactDef, iterations), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxContactDef, maxContacts), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
@@ -361,14 +361,14 @@ static const mvfxFileField s_fields_mvfxContactDef[] = {
 static const mvfxFileType s_mvfxContactDef = MVFX_FILE_TYPE(mvfxContactDef, 6);
 
 static const mvfxFileField s_fields_mvfxPairForceDef[] = {
-    {offsetof(mvfxPairForceDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxPairForceDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxPairForceDef, radius), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxPairForceDef, strength), mvfx_fieldStruct, 0, 1, &s_mvfxLifeCurve, 0, 0},
 };
 static const mvfxFileType s_mvfxPairForceDef = MVFX_FILE_TYPE(mvfxPairForceDef, 3);
 
 static const mvfxFileField s_fields_mvfxLightDef[] = {
-    {offsetof(mvfxLightDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxLightDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxLightDef, every), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxLightDef, intensity), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxLightDef, alphaScales), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
@@ -394,7 +394,7 @@ static const mvfxFileField s_fields_mvfxRibbonDef[] = {
 static const mvfxFileType s_mvfxRibbonDef = MVFX_FILE_TYPE(mvfxRibbonDef, 12);
 
 static const mvfxFileField s_fields_mvfxPlexusDef[] = {
-    {offsetof(mvfxPlexusDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxPlexusDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxPlexusDef, distance), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxPlexusDef, maxLinks), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxPlexusDef, maxPerParticle), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
@@ -429,7 +429,7 @@ static const mvfxFileField s_fields_mvfxUnitDef[] = {
 static const mvfxFileType s_mvfxUnitDef = MVFX_FILE_TYPE(mvfxUnitDef, 21);
 
 static const mvfxFileField s_fields_mvfxRigidDef[] = {
-    {offsetof(mvfxRigidDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxRigidDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxRigidDef, shape), mvfx_fieldU8, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxRigidDef, density), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxRigidDef, substeps), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
@@ -444,7 +444,7 @@ static const mvfxFileField s_fields_mvfxRigidDef[] = {
 static const mvfxFileType s_mvfxRigidDef = MVFX_FILE_TYPE(mvfxRigidDef, 11);
 
 static const mvfxFileField s_fields_mvfxLiquidDef[] = {
-    {offsetof(mvfxLiquidDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxLiquidDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxLiquidDef, solver), mvfx_fieldU8, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxLiquidDef, gas), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxLiquidDef, planar), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
@@ -470,7 +470,7 @@ static const mvfxFileField s_fields_mvfxBeamPoint[] = {
 static const mvfxFileType s_mvfxBeamPoint = MVFX_FILE_TYPE(mvfxBeamPoint, 3);
 
 static const mvfxFileField s_fields_mvfxBeamDef[] = {
-    {offsetof(mvfxBeamDef, enabled), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxBeamDef, enable), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxBeamDef, segments), mvfx_fieldI32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxBeamDef, start), mvfx_fieldStruct, 0, 1, &s_mvfxBeamPoint, 0, 0},
     {offsetof(mvfxBeamDef, end), mvfx_fieldStruct, 0, 1, &s_mvfxBeamPoint, 0, 0},
@@ -671,7 +671,7 @@ static const mvfxFileField s_fields_mvfxWaterDef[] = {
     {offsetof(mvfxWaterDef, gravity), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxWaterDef, friction), mvfx_fieldF32, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxWaterDef, terrain), mvfx_fieldStruct, 0, 1, &s_mvfxCollider, 0, 0},
-    {offsetof(mvfxWaterDef, hasTerrain), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
+    {offsetof(mvfxWaterDef, enableTerrain), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxWaterDef, hostTerrain), mvfx_fieldBool, 0, 1, nullptr, 0, 0},
     {offsetof(mvfxWaterDef, sources), mvfx_fieldArray, mvfx_fieldStruct, 1, &s_mvfxWaterSource,
      offsetof(mvfxWaterDef, sourceCount), MVFX_MAX_WATER_SOURCES},

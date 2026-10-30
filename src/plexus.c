@@ -71,7 +71,7 @@ void mvfxFindLinks(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxPlexusDef* def = &instance->effect->emitters[emitter].plexus;
     mvfxEmitterState* state = &instance->emitters[emitter];
-    if (!def->enabled)
+    if (!def->enable)
     {
         return;
     }

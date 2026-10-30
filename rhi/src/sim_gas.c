@@ -782,7 +782,7 @@ bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas)
     return recorded;
 }
 
-int32_t mvfxGpuSim_GasPasses(const mvfxGpuSim* sim, int32_t gas)
+int32_t mvfxGpuSim_GetGasPasses(const mvfxGpuSim* sim, int32_t gas)
 {
     if (sim == nullptr || gas < 0 || gas >= sim->gasCount)
     {

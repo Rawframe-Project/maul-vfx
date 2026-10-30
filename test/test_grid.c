@@ -171,7 +171,7 @@ static void TestLife(void)
     CHECK(mvfxDestroyGrid(NULL, a) == mvfx_errorInvalid, "no context");
     CHECK(!mvfxGrid_IsValid(NULL, a), "no context, not valid");
 
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     static const float nan[1] = {(float)NAN};
     static const float big[1] = {70000.0f};
     for (int32_t field = 0; field < 11; ++field)
@@ -223,7 +223,7 @@ static void TestLife(void)
         }
         CHECK(mvfxCreateGrid(context, &bad, &c) == want && c.index1 == 0, "refused");
     }
-    CHECK(mvfxGetContextMisuse(context) == misuse + 9, "each invalid one counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 9, "each invalid one counted");
     CHECK(mvfxCreateGrid(context, &def, NULL) == mvfx_errorInvalid, "no out-parameter");
     CHECK(mvfxCreateGrid(NULL, &def, &c) == mvfx_errorInvalid, "no context");
 
@@ -336,7 +336,7 @@ static void TestSetValuesIn(void)
         CHECK(mvfxGrid_GetView(context, id, &view) == mvfx_success && view.serial == created + 2 &&
                   Stored(context, id, 2 * 15) == 1.0f && Stored(context, id, 2 * 15 + 1) == 2.0f,
               "a point set, a serial each");
-        uint64_t misuse = mvfxGetContextMisuse(context);
+        uint64_t misuse = mvfxContext_GetMisuse(context);
         static const int32_t before[3] = {-1, 0, 0};
         static const int32_t past[3] = {3, 0, 0};
         static const int32_t none[3] = {0, 1, 1};
@@ -352,7 +352,7 @@ static void TestSetValuesIn(void)
             mvfxGrid_SetValuesIn(context, id, NULL, size, box, 8) == mvfx_errorInvalid &&
             mvfxGrid_SetValuesIn(context, id, first, NULL, box, 8) == mvfx_errorInvalid &&
             mvfxGrid_SetValuesIn(context, id, first, size, NULL, 8) == mvfx_errorInvalid;
-        CHECK(refused && mvfxGetContextMisuse(context) == misuse + 8 &&
+        CHECK(refused && mvfxContext_GetMisuse(context) == misuse + 8 &&
                   mvfxGrid_GetView(context, id, &view) == mvfx_success && view.serial == serial,
               "bad boxes refused and counted");
         CHECK(mvfxGrid_SetValuesIn(NULL, id, first, size, box, 8) == mvfx_errorInvalid,
@@ -469,9 +469,9 @@ static void TestBusy(void)
     def = LinearDef(1);
     CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "a scalar grid");
     force.grid = grid;
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     CHECK(mvfxCreateEffect(context, &effectDef, &none) == mvfx_errorInvalid &&
-              mvfxGetContextMisuse(context) == misuse + 1,
+              mvfxContext_GetMisuse(context) == misuse + 1,
           "a vector field needs three components");
     mvfxDestroyContext(context);
 }
