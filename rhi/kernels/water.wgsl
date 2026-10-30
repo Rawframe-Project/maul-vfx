@@ -22,6 +22,10 @@
 // 64: a dispatch's one row.
 
 const STILL: f32 = 1e-6;
+// MVFX_MAX_WATER_DEPTH: a wave's height from the rest level and shallow
+// water's depth are held within it after the step's pushes, crossings,
+// pours and sources.
+const MAX_DEPTH: f32 = 1e12;
 const SETTLE_GROUP: u32 = 256u;
 const WALL_MIN_X: u32 = 1u;
 const WALL_MAX_X: u32 = 2u;
@@ -83,6 +87,11 @@ var<immediate> root: Root;
 
 fn height(b: u32, i: u32) -> f32 {
     return fields[b * water.size.z + i];
+}
+
+// A height or depth held within MAX_DEPTH, a NaN left as it is.
+fn heldDepth(u: f32) -> f32 {
+    return select(select(u, -MAX_DEPTH, u < -MAX_DEPTH), MAX_DEPTH, u > MAX_DEPTH);
 }
 
 fn rate(b: u32, i: u32) -> f32 {
@@ -177,9 +186,11 @@ fn waterSink(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     // Then the crossings, emitter by emitter, each in order.
     var list = CROSSINGS_FIRST;
+    var crossedAny = false;
     for (var k = 0u; k < water.faces.z; k++) {
         let reach = bitcast<f32>(crossings[list + 2u]);
         let depth = bitcast<f32>(crossings[list + 3u]);
+        crossedAny = crossedAny || crossings[list] > 0u;
         for (var c = 0u; c < crossings[list]; c++) {
             u -= sunk(x, z, crossingAt(list, c), reach, depth);
         }
@@ -189,7 +200,10 @@ fn waterSink(@builtin(global_invocation_id) id: vec3<u32>) {
     // is coupled.
     let crossed = select(0.0, bitcast<f32>(crossings[0]) / f32(water.size.z), water.faces.z > 0u);
     let lift = water.sink.y + crossed;
-    fields[root.now * water.size.z + i] = u + lift;
+    // Held, as the core's Displace, when anything pushed or crossed.
+    let lifted = u + lift;
+    fields[root.now * water.size.z + i] =
+        select(lifted, heldDepth(lifted), water.head.x > 0u || crossedAny);
 }
 
 // Whether cell i lies on an open wall.
@@ -535,6 +549,13 @@ fn shallowSpill(@builtin(local_invocation_index) lane: u32) {
     if (lane == 0u) {
         _ = atomicExchange(&statistics[POURED], bitcast<u32>(poured));
     }
+    // The step's fill, sources, pushes and pours held, as the core's
+    // mvfxPushShallow: dispatched every step.
+    storageBarrier();
+    workgroupBarrier();
+    for (var i = lane; i < water.size.z; i += SETTLE_GROUP) {
+        fields[base + i] = heldDepth(fields[base + i]);
+    }
 }
 
 var<workgroup> listCount: u32;
@@ -604,7 +625,10 @@ fn spillCrossing(lane: u32, on: vec2<f32>, reach: f32, depth: f32) {
 }
 
 // PourAt: a volume added to the depths of the four cells about `on` (X
-// and Z of the surface's frame), bilinear; none off the grid.
+// and Z of the surface's frame), bilinear; none off the grid. A share
+// past MAX_DEPTH over a cell adds MAX_DEPTH, where the core's forms an
+// infinity its hold takes to the bound: WGSL lets a device assume none
+// is formed.
 fn pourAt(on: vec2<f32>, volume: f32) {
     let n = vec2<f32>(f32(water.size.x), f32(water.size.y));
     let h = water.sink.x;
@@ -624,7 +648,8 @@ fn pourAt(on: vec2<f32>, volume: f32) {
         let share = select(1.0 - t.x, t.x, (corner & 1u) != 0u) *
                     select(1.0 - t.y, t.y, (corner >> 1u) != 0u);
         let at = base + z * water.size.x + x;
-        fields[at] = fields[at] + share * volume / (h * h);
+        let added = share * volume;
+        fields[at] = fields[at] + select(added / (h * h), MAX_DEPTH, added > MAX_DEPTH * h * h);
     }
 }
 

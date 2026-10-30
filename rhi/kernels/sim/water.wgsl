@@ -132,7 +132,12 @@ fn waterDrag(x: vec3<f32>, a: ptr<function, vec3<f32>>, drag: ptr<function, f32>
         return touch;
     }
     let r = params.waterUp.w;
-    let share = min(max((touch.height - touch.at.y + r) / (2.0 * r), 0.0), 1.0);
+    let under = touch.height - touch.at.y;
+    // A radius the device flushes to 0 leaves no band: the core's share
+    // of its subnormal radius, all under the surface, none over it and a
+    // half on it (WGSL's division by 0 is not IEEE's).
+    let edge = select(select(0.0, 1.0, under > 0.0), 0.5, under == 0.0);
+    let share = select(min(max((under + r) / (2.0 * r), 0.0), 1.0), edge, 2.0 * r == 0.0);
     let pull = params.waterNumbers.y * share;
     if (!(pull > 0.0)) {
         return touch;
@@ -155,7 +160,8 @@ fn alongWater(v: vec3<f32>) -> f32 {
 // the move (velocity v, the drag's carry and push) it makes: along the
 // surface's Y, where the step ends without it, c, and its pieces, full
 // below the height less the radius, none above the height plus it,
-// falling linearly between; the end y1 = c + push L(y1) is on one.
+// falling linearly between; the end y1 = c + push L(y1) is on one, the
+// spring's lift (top - c) / (2 r / full + push), at most full.
 fn waterLift(touch: Touch, v: vec3<f32>, carry: f32, push: f32, a: ptr<function, vec3<f32>>) {
     if (!touch.over) {
         return;
@@ -168,9 +174,11 @@ fn waterLift(touch: Touch, v: vec3<f32>, carry: f32, push: f32, a: ptr<function,
     if (c + push * full <= touch.height - r) {
         lift = full;
     } else if (c < top) {
-        let k = full / (2.0 * r);
-        let end = (c + push * k * top) / (1.0 + push * k);
-        lift = k * (top - end);
+        // WGSL's division by 0 is not IEEE's, so the core's limits are
+        // chosen: a full of 0 lifts by 0, and a spring with no give (no
+        // push, and 2 r / full flushed) by full.
+        let give = 2.0 * r / full + push;
+        lift = select(select(min((top - c) / give, full), full, give == 0.0), 0.0, full == 0.0);
     }
     *a += params.waterUp.xyz * lift * params.waterOrigin.w;
 }

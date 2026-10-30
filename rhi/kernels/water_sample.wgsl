@@ -103,7 +103,9 @@ fn waterSample(@builtin(global_invocation_id) id: vec3<u32>) {
     let back = vec4<f32>(-query.rotation.xyz, query.rotation.w);
     let surface = rotate(back, vec3<f32>(local.x, height, local.z)) / query.into.w + query.back.xyz;
     let turned = rotate(back, normal) / query.into.w;
-    let length = sqrt(turned.x * turned.x + turned.y * turned.y + turned.z * turned.z);
+    // Steep corners' Y, opposite slopes cancelling, may leave the blend's
+    // squares below binary32's least normal: measured scaled.
+    let length = lengthOf(turned);
     let moved = rotate(back, velocity) / query.into.w;
     let words = query.head.w + SAMPLE_WORDS * i;
     for (var k = 0u; k < 3u; k++) {

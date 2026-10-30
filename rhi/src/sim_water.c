@@ -307,11 +307,9 @@ static uint32_t PlanShallow(SimWater* water, const mvfxWaterPlan* plan, uint32_t
     }
     uint32_t cells = ((uint32_t)water->view.cells + WATER_GROUP - 1u) / WATER_GROUP;
     uint32_t faces = (uint32_t)(water->view.faces[0] + water->view.faces[1]);
+    // The spill holds the depths after the pushes and pours, every step.
     Push(water, mvfx_kernelShallowStart, now, cells);
-    if (plan->pushCount > 0 || water->couplings > 0)
-    {
-        Push(water, mvfx_kernelShallowSpill, now, 1);
-    }
+    Push(water, mvfx_kernelShallowSpill, now, 1);
     for (int32_t s = 0; s < plan->substeps; ++s)
     {
         Push(water, mvfx_kernelShallowFaces, now, (faces + WATER_GROUP - 1u) / WATER_GROUP);

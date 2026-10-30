@@ -53,8 +53,11 @@ typedef struct Run
     // The effect's water surfaces (none for NULL), pushed by the host
     // (rhi_waters.c's PushWaters) and their fields compared after every
     // step; a terrain's grid {.index1 = n} the run's nth collider grid.
+    // With pushesAtLimits, every step's pushes are the most at the most
+    // depth, two of the first surface's cells across, at the origin.
     const mvfxWaterDef* waters;
     int32_t waterCount;
+    bool pushesAtLimits;
     bool moving;
     bool clearing;
     // Its steps, STEPS for 0; the most the first emitter must hold at

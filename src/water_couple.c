@@ -110,8 +110,11 @@ void mvfxWaterLift(const mvfxResolvedWater* water, const mvfxWaterTouch* touch, 
     }
     // Along the surface's Y: where the step ends without the lift, c, and
     // the lift's pieces, full below h - r, none above h + r, falling
-    // linearly between (a spring of stiffness k); the end y1 = c + push
-    // L(y1) is on one of them, y - push L(y) rising in y.
+    // linearly between (a spring of stiffness k = full / 2r); the end y1 =
+    // c + push L(y1) is on one of them, y - push L(y) rising in y. On the
+    // spring, k (top - y1) = (top - c) / (1 / k + push), at most full: a
+    // radius so small that k passes binary32's range lifts by the limit,
+    // where k (top - y1) would take infinity times 0.
     float r = water->radius;
     float full = water->coupling->buoyancy * water->strength;
     float c = touch->at[1] + Along(water, v) * carry + Along(water, a) * push;
@@ -123,9 +126,7 @@ void mvfxWaterLift(const mvfxResolvedWater* water, const mvfxWaterTouch* touch, 
     }
     else if (c < top)
     {
-        float k = full / (2.0f * r);
-        float end = (c + push * k * top) / (1.0f + push * k);
-        lift = k * (top - end);
+        lift = fminf((top - c) / (2.0f * r / full + push), full);
     }
     for (int32_t k = 0; k < 3; ++k)
     {

@@ -22,8 +22,34 @@ static float s_moved;
 static double s_poured;
 static uint64_t s_held;
 
+// MVFX_MAX_WATER_PUSHES pushes at the origin of MVFX_MAX_EXTENT, two of
+// the first surface's cells across in the world.
+static void PushAtLimits(const Run* run)
+{
+    float scale = run->scale > 0.0f ? run->scale : 1.0f;
+    mvfxWaterPush pushes[MVFX_MAX_WATER_PUSHES];
+    for (int32_t p = 0; p < MVFX_MAX_WATER_PUSHES; ++p)
+    {
+        pushes[p] = (mvfxWaterPush){.radius = 2.0f * run->waters[0].cellSize * scale,
+                                    .depth = MVFX_MAX_EXTENT};
+    }
+    for (int32_t w = 0; w < run->waterCount; ++w)
+    {
+        CHECK(mvfxInstance_PushWater(RunContext(), CpuInstance(), w, pushes,
+                                     MVFX_MAX_WATER_PUSHES) == mvfx_success &&
+                  mvfxInstance_PushWater(RunContext(), PlannedInstance(), w, pushes,
+                                         MVFX_MAX_WATER_PUSHES) == mvfx_success,
+              "the surfaces pushed at the limits");
+    }
+}
+
 void PushWaters(const Run* run, int32_t s)
 {
+    if (run->pushesAtLimits)
+    {
+        PushAtLimits(run);
+        return;
+    }
     if (s % 4 != 0 || s >= 24)
     {
         return;

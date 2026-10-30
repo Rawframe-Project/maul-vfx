@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Particles meeting water: the refusals; a particle at rest floating at g
-// / buoyancy below a still surface, its instance still or moving; drag
+// / buoyancy below a still surface, and one of a radius below binary32's
+// least normal at it, its instance still or moving; drag
 // slowing one in still water and carrying one with a flow; crossings met
 // once each where and when they cross, their events, and the pushes they
 // leave with the volume kept; once a step through substeps; through water
@@ -265,6 +266,23 @@ static void TestFloat(void)
     float y = Particle(0).position[1];
     CHECK(fabsf(y + 0.03f) <= 1e-4f && fabsf(Particle(0).velocity[1]) <= 1e-3f,
           "a particle floats at g / buoyancy");
+    Close();
+    // A radius of 1e-38, below binary32's least normal: its lift's spring,
+    // buoyancy times g over twice the radius, passes binary32's range. It
+    // lifts by the spring's limit and rests at the surface, its place held
+    // there each step against gravity.
+    coupling.radius = 1e-38f;
+    emitter = Coupled(&coupling);
+    emitter.motion.gravity[1] = -9.81f;
+    CHECK(Open(&emitter, 1, &waves), "opened");
+    Place(0.0, -0.1, 0.0, 0.0f, 0.0f, 0.0f);
+    for (int32_t s = 0; s < 600; ++s)
+    {
+        CHECK(mvfxContext_Step(s_context, 1.0 / 60.0) == mvfx_success, "stepped");
+    }
+    y = Particle(0).position[1];
+    CHECK(fabsf(y) <= 1e-4f && isfinite(Particle(0).velocity[1]),
+          "a particle of a radius below binary32's least normal floats at the surface");
     Close();
 }
 
