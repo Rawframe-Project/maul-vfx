@@ -22,13 +22,19 @@ does not name is an error, so none is missed), a host module's function
 and user pointer as a name. A def's cookie is not stored: its entry has
 tag 0, and its default gives it.
 
-The registry gives each field its tag and its wire kind (what its bytes
-are: "f32", "f32[3]", "mvfxCurve", "array mvfxForce", "grid", "module").
-It refuses a field without a tag, a tag used twice in a struct, a retired
-tag used again, an entry that names no field (it must be retired) and a
-field whose wire kind is no longer its entry's: a field whose type or
-default changes gets a new tag, and its old one is retired. The output
-goes through clang-format, as every source does.
+The registry gives each field its tag, its wire kind (what its bytes are:
+"f32", "f32[3]", "mvfxCurve", "array mvfxForce", "grid", "module") and,
+for a field that is not a struct, its default: the hex of the bytes the
+file would write for it, at every place a default holds it but the places
+named apart ("= 00000000 mvfxB.inner.x=0000803f"). The defaults are read
+from src/defaults.h, the initializers the default functions return, float
+literals and operations rounded to binary32 as C rounds them; an item of
+an array of another struct defaults to zero bytes. It refuses a field
+without a tag, a tag used twice in a struct, a retired tag used again, an
+entry that names no field (it must be retired), a field whose wire kind is
+no longer its entry's and a field whose default is no longer its entry's:
+a field whose type or default changes gets a new tag, and its old one is
+retired. The output goes through clang-format, as every source does.
 
 Usage: gen_file.py [--check | --self-test]. With --check it writes nothing
 and fails when the file differs from what it would write; --self-test
@@ -39,8 +45,10 @@ import hashlib
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -267,8 +275,26 @@ class TagError(Exception):
     """A registry the generator refuses, and why."""
 
 
+def read_pin(text, number_):
+    """An entry's default: (common, {path: exception}), the hex of the
+    field's bytes as written, at every place but those named; None for an
+    entry without one."""
+    if text is None:
+        return None
+    words = text.split()
+    exceptions = {}
+    for word in words[1:]:
+        path, _, value = word.partition("=")
+        if not path or not re.fullmatch(r"[0-9a-f]+", value):
+            raise TagError(f"line {number_}: {word!r} is not a place and its default in hex")
+        exceptions[path] = value
+    if not re.fullmatch(r"[0-9a-f]+", words[0]):
+        raise TagError(f"line {number_}: {words[0]!r} is not a default in hex")
+    return words[0], exceptions
+
+
 def read_registry(text):
-    """The registry's structs: {struct: ({tag: (field, wire, line)},
+    """The registry's structs: {struct: ({tag: (field, wire, line, pin)},
     {tag: line})}, its entries and its retired tags. A tag used twice in a
     struct, retired or not, is refused here."""
     structs = {}
@@ -279,7 +305,7 @@ def read_registry(text):
             continue
         head = re.fullmatch(r"(mvfx\w+)", line)
         retired = re.fullmatch(r"\s+retired\s+(\d+)", line)
-        entry = re.fullmatch(r"\s+(\d+)\s+(\w+)\s+(\S.*)", line)
+        entry = re.fullmatch(r"\s+(\d+)\s+(\w+)\s+(\S.*?)(?:\s+=\s+(\S.*))?", line)
         if head:
             if head.group(1) in structs:
                 raise TagError(f"line {number_}: {head.group(1)} listed twice")
@@ -295,15 +321,37 @@ def read_registry(text):
         if retired:
             current[1][tag] = number_
         else:
-            current[0][tag] = (entry.group(2), " ".join(entry.group(3).split()), number_)
+            current[0][tag] = (entry.group(2), " ".join(entry.group(3).split()), number_,
+                               read_pin(entry.group(4), number_))
     return structs
 
 
-def assign_tags(declared, text):
+def check_pin(name, field, tag, line, pin, places):
+    """A field's recorded default against its bytes at each place a def's
+    default holds it, places {path: hex}."""
+    if pin is None:
+        raise TagError(f"line {line}: {name}.{field} records no default: add "
+                       f"= {max(set(places.values()), key=list(places.values()).count)}")
+    common, exceptions = pin
+    for path, value in places.items():
+        want = exceptions.get(path, common)
+        if value != want:
+            raise TagError(f"line {line}: {name}.{field}'s default at {path} is {value}, not "
+                           f"{want}: a changed default gets a new tag, so retire tag {tag} and "
+                           f"give the field a new one (a new place of {name} records its "
+                           f"default as {path}={value})")
+    for path in exceptions:
+        if path not in places:
+            raise TagError(f"line {line}: {name}.{field} records a default at {path}, which no "
+                           f"def holds: remove it")
+
+
+def assign_tags(declared, text, pins=None):
     """Each declared struct's fields' tags, {struct: {field: tag}}, from
     the registry's text; declared is {struct: [(field, wire)]} in
-    declaration order. Raises TagError for what the registry may not
-    say."""
+    declaration order. With pins, {(struct, field): {path: hex}}, each
+    field's recorded default is checked against them too. Raises TagError
+    for what the registry may not say."""
     registry = read_registry(text)
     for name in registry:
         if name not in declared:
@@ -312,22 +360,27 @@ def assign_tags(declared, text):
     for name, fields in declared.items():
         entries, retired = registry.get(name, ({}, {}))
         by_field = {}
-        for tag, (field, wire, line) in entries.items():
+        for tag, (field, wire, line, pin) in entries.items():
             if field in by_field:
                 raise TagError(f"line {line}: {name}.{field} has two tags")
-            by_field[field] = (tag, wire, line)
+            by_field[field] = (tag, wire, line, pin)
         names = {field for field, _ in fields}
-        for field, (tag, _, line) in by_field.items():
+        for field, (tag, _, line, _) in by_field.items():
             if field not in names:
                 raise TagError(f"line {line}: {name} has no field {field}: retire tag {tag}")
         tags[name] = {}
         for field, wire in fields:
             if field not in by_field:
                 raise TagError(f"{name}.{field} has no tag in {TAGS.name}")
-            tag, recorded, line = by_field[field]
+            tag, recorded, line, pin = by_field[field]
             if recorded != wire:
                 raise TagError(f"line {line}: {name}.{field} is {wire}, not {recorded}: retire "
                                f"tag {tag} and give the field a new one")
+            if pins is not None and (name, field) in pins:
+                check_pin(name, field, tag, line, pin, pins[(name, field)])
+            elif pins is not None and pin is not None:
+                raise TagError(f"line {line}: {name}.{field} is a struct, whose fields record "
+                               f"its defaults: remove its own")
             tags[name][field] = tag
     return tags
 
@@ -444,6 +497,169 @@ def defaulted(typedefs, structs, order):
     return out
 
 
+DEFAULTS_H = ROOT / "src" / "defaults.h"
+
+# Each scalar's struct format, little-endian.
+FORMATS = {"bool": "B", "uint8_t": "B", "int8_t": "b", "uint16_t": "H", "int16_t": "h",
+           "uint32_t": "I", "int32_t": "i", "uint64_t": "Q", "int64_t": "q"}
+
+
+def binary32(value):
+    """The binary32 nearest a value, ties to even, as an exact fraction, as
+    C rounds a float literal and each float operation."""
+    value = Fraction(value)
+    if value == 0:
+        return Fraction(0)
+    sign = -1 if value < 0 else 1
+    value = abs(value)
+    exponent = value.numerator.bit_length() - value.denominator.bit_length()
+    if Fraction(2) ** exponent > value:
+        exponent -= 1
+    if exponent < -126:
+        raise SystemExit(f"{DEFAULTS_H.name}: {float(value)} is below binary32's least normal")
+    unit = Fraction(2) ** (exponent - 23)
+    whole, rest = divmod(value, unit)
+    whole = int(whole)
+    if rest > unit / 2 or (rest == unit / 2 and whole % 2):
+        whole += 1
+    return sign * whole * unit
+
+
+def constants():
+    """The headers' enum constants and defines, by name."""
+    known = dict(DEFINES)
+    for header in HEADERS:
+        text = strip_comments(header.read_text(encoding="utf-8"))
+        for m in re.finditer(r"#define\s+(MVFX_\w+)\s+(0x[0-9A-Fa-f]+|\d+)u?\s*$", text, re.M):
+            known[m.group(1)] = int(m.group(2), 0)
+        for m in re.finditer(r"\b(mvfx_\w+)\s*=\s*([0-9]+)u?\s*[,}]", text):
+            known[m.group(1)] = int(m.group(2))
+    return known
+
+
+def evaluate(words, known):
+    """A constant expression of the defaults: float literals and float
+    operations rounded as C rounds them, integers, constants."""
+    floating = False
+    terms = []
+    for word in words:
+        if re.fullmatch(r"\d+\.\d*(?:[eE][-+]?\d+)?f|\d+f", word):
+            terms.append(f"binary32(Fraction('{word[:-1]}'))")
+            floating = True
+        elif re.fullmatch(r"0x[0-9A-Fa-f]+u?|\d+u?", word):
+            terms.append(str(int(word.rstrip("u"), 0)))
+        elif word in known:
+            terms.append(str(known[word]))
+        elif word in "+-*/()":
+            terms.append(word)
+        else:
+            raise SystemExit(f"{DEFAULTS_H.name}: cannot read {word!r}")
+    if floating:
+        # Each operation of two floats rounds: here a literal, or a literal
+        # over a literal, so rounding the result once is exact.
+        if len([w for w in words if w in "+-*/"]) > 1:
+            raise SystemExit(f"{DEFAULTS_H.name}: {' '.join(words)} has more than one operation")
+        return binary32(eval(" ".join(terms), {"binary32": binary32, "Fraction": Fraction}))
+    return eval(" ".join(terms))
+
+
+def initializer(words, at, known):
+    """The initializer at words[at]: [(designator or None, value)] for a
+    braced one, else its value; and where it ends."""
+    if words[at] != "{":
+        end = at
+        while words[end] not in (",", "}"):
+            end += 1
+        return evaluate(words[at:end], known), end
+    items = []
+    at += 1
+    while words[at] != "}":
+        name = None
+        if words[at] == ".":
+            name = words[at + 1]
+            at += 3
+        value, at = initializer(words, at, known)
+        items.append((name, value))
+        at += 1 if words[at] == "," else 0
+    return items, at + 1
+
+
+def read_defaults():
+    """The initializers of src/defaults.h, by the struct they default."""
+    text = DEFAULTS_H.read_text(encoding="utf-8").replace("\\\n", " ")
+    text = strip_comments(text)
+    known = constants()
+    out = {}
+    for name, macro in DEFAULTS.items():
+        m = re.search(rf"#define\s+{macro}\s+(\{{.*)", text)
+        if m is None:
+            raise SystemExit(f"{DEFAULTS_H.name} has no {macro}")
+        word = r"0x[0-9A-Fa-f]+u?|\d+\.\d*(?:[eE][-+]?\d+)?f|\d+f|\d+u?|\w+|[{}.,=/*+()-]"
+        words = re.findall(word, m.group(1))
+        out[name], _ = initializer(words, 0, known)
+    return out
+
+
+def scalar_bytes(base, value):
+    if base == "float":
+        return struct.pack("<f", float(value))
+    if base == "double":
+        return struct.pack("<d", float(value))
+    return struct.pack("<" + FORMATS[base], int(value))
+
+
+def default_places(typedefs, structs, name, given, path, out):
+    """Each stored field of a struct under its initializer (None for zero
+    bytes): out[(struct, field)][path] is the hex of the bytes the file
+    writes for it. A grid, a mesh or a host module is none (-1), an
+    array no items (a count of 0)."""
+    # A positional item is the struct's next field in declaration order.
+    declared = [field for _, field, _, _ in structs[name]]
+    values = {}
+    for k, (field, value) in enumerate(given or []):
+        if field is None and k > 0 and given[k - 1][0] is not None:
+            raise SystemExit(f"{DEFAULTS_H.name}: {name}'s initializer mixes designators")
+        values[field if field is not None else declared[k]] = value
+    names = {field for _, field, _, _, _ in stored(typedefs, structs, name)}
+    for field in values:
+        if field not in names and not (field == "cookie" and name in COOKIES):
+            raise SystemExit(f"{DEFAULTS_H.name}: {name} has no stored field {field}")
+    for kind, field, dims, pointer, wire in stored(typedefs, structs, name):
+        value = values.get(field)
+        here = f"{path}.{field}"
+        many = 1
+        for d in dims:
+            many *= number(d)
+        base = scalar(typedefs, kind)
+        if base is None and not pointer and wire != "module" and kind not in IDS:
+            items = value if isinstance(value, list) and many > 1 else None
+            for k in range(many):
+                inner = value if many == 1 else (items[k][1] if items and k < len(items) else None)
+                place = here + (f"[{k}]" if many > 1 else "")
+                default_places(typedefs, structs, kind, inner, place, out)
+            continue
+        if wire == "module" or kind in IDS or pointer:
+            if value is not None:
+                raise SystemExit(f"{DEFAULTS_H.name}: {name}.{field} must default to none")
+            hexed = "ffffffff" * many if not pointer else "00000000"
+        else:
+            listed = [v for _, v in value] if isinstance(value, list) else [value or 0]
+            listed += [0] * (many - len(listed))
+            hexed = b"".join(scalar_bytes(base, v) for v in listed).hex()
+        out.setdefault((name, field), {})[here] = hexed
+
+
+def default_pins(typedefs, structs, order):
+    """Every stored field's default at each place a default holds it:
+    {(struct, field): {path: hex}}, from the roots' and the array items'
+    defaults."""
+    given = read_defaults()
+    out = {}
+    for name in defaulted(typedefs, structs, order):
+        default_places(typedefs, structs, name, given.get(name), name, out)
+    return out
+
+
 def generate(registry_text=None):
     typedefs, structs = parse()
     order = reachable(typedefs, structs, "mvfxEffectDef")
@@ -452,7 +668,7 @@ def generate(registry_text=None):
     if registry_text is None:
         registry_text = TAGS.read_text(encoding="utf-8")
     try:
-        tags = assign_tags(declared, registry_text)
+        tags = assign_tags(declared, registry_text, default_pins(typedefs, structs, order))
     except TagError as error:
         raise SystemExit(f"{TAGS.name}: {error}") from error
     defaults = defaulted(typedefs, structs, order)
@@ -526,31 +742,56 @@ def format_c(text):
 
 def self_test():
     """Each refusal of the registry, on made-up structs."""
-    declared = {"mvfxA": [("x", "f32"), ("y", "f32[3]")], "mvfxB": [("items", "array mvfxA")]}
-    good = "mvfxA\n    1 x f32\n    2 y f32[3]\n    retired 3\nmvfxB\n    1 items array mvfxA\n"
-    if assign_tags(declared, good) != {"mvfxA": {"x": 1, "y": 2}, "mvfxB": {"items": 1}}:
+    declared = {"mvfxA": [("x", "f32"), ("y", "f32[3]")],
+                "mvfxB": [("items", "array mvfxA"), ("inner", "mvfxA")]}
+    pins = {("mvfxA", "x"): {"mvfxA.x": "00000000", "mvfxB.inner.x": "0000803f"},
+            ("mvfxA", "y"): {"mvfxA.y": "00" * 12, "mvfxB.inner.y": "00" * 12},
+            ("mvfxB", "items"): {"mvfxB.items": "00000000"}}
+    good = ("mvfxA\n    1 x f32 = 00000000 mvfxB.inner.x=0000803f\n"
+            "    2 y f32[3] = 000000000000000000000000\n    retired 3\n"
+            "mvfxB\n    1 items array mvfxA = 00000000\n    2 inner mvfxA\n")
+    wanted = {"mvfxA": {"x": 1, "y": 2}, "mvfxB": {"items": 1, "inner": 2}}
+    if assign_tags(declared, good, pins) != wanted:
         print("gen_file.py --self-test: a good registry's tags")
         return 1
+    y = "    2 y f32[3] = 000000000000000000000000\n"
     cases = [
-        ("a field without a tag", "mvfxA\n    1 x f32\nmvfxB\n    1 items array mvfxA\n",
-         "mvfxA.y has no tag"),
-        ("a struct without its tags", "mvfxA\n    1 x f32\n    2 y f32[3]\n", "mvfxB.items has no tag"),
+        ("a field without a tag", good.replace(y, ""), "mvfxA.y has no tag"),
+        ("a struct without its tags", good[:good.index("\nmvfxB\n") + 1],
+         "mvfxB.items has no tag"),
         ("a tag used twice", good.replace("2 y", "1 y"), "tag 1 used twice"),
-        ("a retired tag used again", good.replace("    retired 3\n", "").replace("    1 x", "    retired 2\n    1 x", 1),
+        ("a retired tag used again",
+         good.replace("    retired 3\n", "").replace("    1 x", "    retired 2\n    1 x", 1),
          "tag 2 used twice"),
-        ("a field given two tags", good.replace("retired 3", "4 x f32"), "mvfxA.x has two tags"),
-        ("an entry naming no field", good.replace("retired 3", "3 z f32"),
+        ("a field given two tags", good.replace("retired 3", "4 x f32 = 00000000"),
+         "mvfxA.x has two tags"),
+        ("an entry naming no field", good.replace("retired 3", "3 z f32 = 00000000"),
          "mvfxA has no field z: retire tag 3"),
         ("a changed wire kind", good.replace("2 y f32[3]", "2 y f32[4]"),
          "mvfxA.y is f32[3], not f32[4]"),
-        ("a struct no def reaches", good + "mvfxC\n    1 z f32\n", "mvfxC is in the registry"),
+        ("a struct no def reaches", good + "mvfxC\n    1 z f32 = 00000000\n",
+         "mvfxC is in the registry"),
         ("tag 0", good.replace("retired 3", "0 z f32"), "tag 0 is not from 1"),
         ("a line of neither kind", good + "    x f32\n", "not a struct, an entry"),
+        ("a changed default", good.replace("mvfxB.inner.x=0000803f", "mvfxB.inner.x=00000040"),
+         "mvfxA.x's default at mvfxB.inner.x is 0000803f, not 00000040: a changed default gets "
+         "a new tag, so retire tag 1"),
+        ("a changed common default", good.replace("1 x f32 = 00000000", "1 x f32 = 00008040"),
+         "mvfxA.x's default at mvfxA.x is 00000000, not 00008040"),
+        ("a default left out", good.replace(" = 000000000000000000000000", ""),
+         "mvfxA.y records no default"),
+        ("a default at no place", good.replace("=0000803f", "=0000803f mvfxC.x=00000000"),
+         "records a default at mvfxC.x, which no def holds"),
+        ("a struct's own default", good.replace("2 inner mvfxA", "2 inner mvfxA = 00"),
+         "mvfxB.inner is a struct"),
+        ("a default not in hex", good.replace("1 items array mvfxA = 00000000",
+                                              "1 items array mvfxA = none"),
+         "'none' is not a default in hex"),
     ]
     failed = 0
     for what, text, expected in cases:
         try:
-            assign_tags(declared, text)
+            assign_tags(declared, text, pins)
             message = "accepted"
         except TagError as error:
             message = str(error)

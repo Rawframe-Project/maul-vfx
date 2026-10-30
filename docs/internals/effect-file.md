@@ -21,13 +21,13 @@ A struct's fields are in ascending tag order, each once, so equal defs with equa
 
 ## Tags
 
-[tools/file-tags.txt](../../tools/file-tags.txt) gives each stored field of each struct the def reaches its tag, numbered within its struct, and its wire kind: what its bytes are, such as `f32`, `f32[3]`, `mvfxCurve`, `array mvfxForce` or `grid`. A tag names a field's bytes and their meaning for good:
+[tools/file-tags.txt](../../tools/file-tags.txt) gives each stored field of each struct the def reaches its tag, numbered within its struct, its wire kind: what its bytes are, such as `f32`, `f32[3]`, `mvfxCurve`, `array mvfxForce` or `grid`, and, for a field that is not a struct, its default: the hex of the bytes a file would write for it, with each place whose default differs named apart (`mvfxCollider.kind` is `00` in an array's items and `03` at `mvfxWaterDef.terrain.kind`). A grid, a mesh or a host module defaults to none (`ffffffff`), an array to no items (a count of `00000000`). A tag names a field's bytes and their meaning for good:
 
 - A renamed field keeps its tag.
 - **A field whose wire kind or default changes gets a new tag**, and its old tag is retired (`retired N`). A file that leaves a field out means "its default", so a new default read under an old tag would change what every file that left it out means.
 - A removed field's tag is retired. A retired tag is never used again.
 
-`tools/gen_file.py` refuses a field without a tag, a tag used twice in a struct, a retired tag used again, an entry that names no field (it must be retired) and a field whose wire kind is no longer its entry's; `gen_file.py --self-test` checks each refusal. A default the generator cannot see: the fixtures are written with defaults left out, so a default that changes changes them, and the check of the fixtures fails.
+`tools/gen_file.py` refuses a field without a tag, a tag used twice in a struct, a retired tag used again, an entry that names no field (it must be retired), a field whose wire kind is no longer its entry's, and a field whose default is no longer its entry's. The registry is what checks the defaults: the generator reads them from [src/defaults.h](../../src/defaults.h), the initializers the default functions return, rounds each float literal and operation to binary32 as C does, and compares each field's bytes at each place with its entry. The fixtures cannot catch a changed default: a field that holds its default is left out of every file, so its bytes do not change when the default does. `gen_file.py --self-test` checks each refusal.
 
 ## Defaults
 

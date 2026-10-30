@@ -2,181 +2,184 @@
 # Copyright (c) 2026 Sirac Ozmen
 #
 # The effect file's field tags (docs/internals/effect-file.md): under each
-# struct an effect def reaches, each stored field's tag, its name and its
-# wire kind, what its bytes are. tools/gen_file.py reads it. A tag is
-# numbered within its struct and never reused: a renamed field keeps its
-# tag; a field removed, or whose wire kind or default changes, has its tag
-# retired ("retired N") and a changed field takes a new one.
+# struct an effect def reaches, each stored field's tag, its name, its wire
+# kind (what its bytes are) and, for a field that is not a struct, after
+# "=", its default: the hex of the bytes a file would write for it, then
+# path=hex for each place whose default differs. tools/gen_file.py reads it
+# and checks each default against src/defaults.h. A tag is numbered within
+# its struct and never reused: a renamed field keeps its tag; a field
+# removed, or whose wire kind or default changes, has its tag retired
+# ("retired N") and a changed field takes a new one.
 
 mvfxCurveKey
-    1   time           f32
-    2   value          f32
-    3   inTangent      f32
-    4   outTangent     f32
-    5   interpolation  u8
+    1   time           f32  = 00000000
+    2   value          f32  = 00000000
+    3   inTangent      f32  = 00000000
+    4   outTangent     f32  = 00000000
+    5   interpolation  u8   = 00
 
 mvfxCurve
-    1   keys      array mvfxCurveKey
-    2   tangents  u8
+    1   keys      array mvfxCurveKey  = 00000000
+    2   tangents  u8                  = 00
 
 mvfxBurst
-    1   time         f32
-    2   minCount     i32
-    3   maxCount     i32
-    4   cycles       i32
-    5   interval     f32
-    6   probability  f32
+    1   time         f32  = 00000000
+    2   minCount     i32  = 00000000
+    3   maxCount     i32  = 00000000
+    4   cycles       i32  = 00000000
+    5   interval     f32  = 00000000
+    6   probability  f32  = 00000000
 
 mvfxRange
-    1   min  f32
-    2   max  f32
+    1   min  f32  = 00000000 mvfxEmitterDef.lifetime.range.min=0000803f
+    2   max  f32  = 00000000 mvfxEmitterDef.lifetime.range.max=0000803f
 
 mvfxScalarSource
-    1   kind       u8
+    1   kind       u8         = 00 mvfxEmitterDef.lifetime.kind=01
     2   range      mvfxRange
     3   curve      mvfxCurve
-    4   parameter  i32
+    4   parameter  i32        = 00000000
 
 mvfxShape
-    1   kind         u8
-    2   offset       f32[3]
-    3   rotation     f32[4]
-    4   radius       f32
-    5   length       f32
-    6   halfExtents  f32[3]
-    7   angle        f32
-    8   thickness    f32
-    9   coneVolume   bool
-    10  arc          f32
-    11  arcMode      u8
-    12  arcSpeed     f32
-    13  mesh         mesh
-    14  meshMode     u8
+    1   kind         u8      = 00
+    2   offset       f32[3]  = 000000000000000000000000
+    3   rotation     f32[4]  = 0000000000000000000000000000803f
+    4   radius       f32     = 00000000
+    5   length       f32     = 00000000
+    6   halfExtents  f32[3]  = 000000000000000000000000
+    7   angle        f32     = 00000000
+    8   thickness    f32     = 00000000
+    9   coneVolume   bool    = 00
+    10  arc          f32     = db0fc940
+    11  arcMode      u8      = 00
+    12  arcSpeed     f32     = 00000000
+    13  mesh         mesh    = ffffffff
+    14  meshMode     u8      = 00
 
 mvfxVelocity
-    1   mode       u8
-    2   direction  f32[3]
-    3   coneAngle  f32
-    4   randomize  f32
+    1   mode       u8         = 00
+    2   direction  f32[3]     = 00000000000000000000803f
+    3   coneAngle  f32        = 00000000
+    4   randomize  f32        = 00000000
     5   speed      mvfxRange
 
 mvfxMotion
-    1   gravity       f32[3]
-    2   gravitySpace  u8
-    3   drag          f32
+    1   gravity       f32[3]            = 000000000000000000000000
+    2   gravitySpace  u8                = 00
+    3   drag          f32               = 00000000
     4   dragScale     mvfxScalarSource
-    5   angularDrag   f32
+    5   angularDrag   f32               = 00000000
 
 mvfxFalloff
-    1   kind      u8
-    2   center    f32[3]
-    3   axis      f32[3]
-    4   radius    f32
-    5   angle     f32
-    6   exponent  f32
+    1   kind      u8      = 00
+    2   center    f32[3]  = 000000000000000000000000
+    3   axis      f32[3]  = 000000000000000000000000
+    4   radius    f32     = 00000000
+    5   angle     f32     = 00000000
+    6   exponent  f32     = 00000000
 
 mvfxNoise
-    1   frequency        f32
-    2   octaves          i32
-    3   lacunarity       f32
-    4   gain             f32
-    5   scroll           f32[3]
-    6   seed             u32
-    7   seedPerInstance  bool
+    1   frequency        f32     = 00000000
+    2   octaves          i32     = 00000000
+    3   lacunarity       f32     = 00000000
+    4   gain             f32     = 00000000
+    5   scroll           f32[3]  = 000000000000000000000000
+    6   seed             u32     = 00000000
+    7   seedPerInstance  bool    = 00
 
 mvfxForce
-    1   kind                   u8
-    2   space                  u8
-    3   vector                 f32[3]
-    4   point                  f32[3]
-    5   strength               f32
-    6   softening              f32
-    7   killRadius             f32
-    8   pull                   f32
-    9   strengthFromParameter  bool
-    10  parameter              i32
+    1   kind                   u8           = 00
+    2   space                  u8           = 00
+    3   vector                 f32[3]       = 000000000000000000000000
+    4   point                  f32[3]       = 000000000000000000000000
+    5   strength               f32          = 00000000
+    6   softening              f32          = 00000000
+    7   killRadius             f32          = 00000000
+    8   pull                   f32          = 00000000
+    9   strengthFromParameter  bool         = 00
+    10  parameter              i32          = 00000000
     11  falloff                mvfxFalloff
-    12  fieldMode              u8
-    13  tightness              f32
+    12  fieldMode              u8           = 00
+    13  tightness              f32          = 00000000
     14  noise                  mvfxNoise
-    15  grid                   grid
-    16  boxSize                f32[3]
-    17  boxRotation            f32[4]
-    18  border                 u8
-    19  gas                    i32
+    15  grid                   grid         = ffffffff
+    16  boxSize                f32[3]       = 000000000000000000000000
+    17  boxRotation            f32[4]       = 00000000000000000000000000000000
+    18  border                 u8           = 00
+    19  gas                    i32          = 00000000
 
 mvfxGasSplat
-    1   enable       bool
-    2   gas          i32
-    3   density      f32
-    4   temperature  f32
-    5   fuel         f32
-    6   drag         f32
+    1   enable       bool  = 00
+    2   gas          i32   = 00000000
+    3   density      f32   = 00000000
+    4   temperature  f32   = 00000000
+    5   fuel         f32   = 00000000
+    6   drag         f32   = 00000000
 
 mvfxWaterCoupling
-    1   enable    bool
-    2   water     i32
-    3   radius    f32
-    4   push      f32
-    5   pour      bool
-    6   buoyancy  f32
-    7   drag      f32
+    1   enable    bool  = 00
+    2   water     i32   = 00000000
+    3   radius    f32   = 00000000
+    4   push      f32   = 00000000
+    5   pour      bool  = 00
+    6   buoyancy  f32   = 00000000
+    7   drag      f32   = 00000000
 
 mvfxLifeCurve
-    1   value  f32
+    1   value  f32        = 00000000 mvfxEmitterDef.ribbon.width.value=0000803f mvfxEmitterDef.velocityModules.motionScale.value=0000803f
     2   curve  mvfxCurve
 
 mvfxVelocityModules
     1   motionScale     mvfxLifeCurve
-    2   addedDirection  f32[3]
+    2   addedDirection  f32[3]         = 000000000000000000000000
     3   addedSpeed      mvfxLifeCurve
-    4   orbitAxis       f32[3]
-    5   orbitCenter     f32[3]
+    4   orbitAxis       f32[3]         = 000000000000000000000000
+    5   orbitCenter     f32[3]         = 000000000000000000000000
     6   orbitRate       mvfxLifeCurve
-    7   radialCenter    f32[3]
+    7   radialCenter    f32[3]         = 000000000000000000000000
     8   radialSpeed     mvfxLifeCurve
-    9   limitSpeed      bool
+    9   limitSpeed      bool           = 00
     10  speedLimit      mvfxLifeCurve
-    11  limitDampen     f32
+    11  limitDampen     f32            = 00000000
 
 mvfxColorKey
-    1   time   f32
-    2   red    f32
-    3   green  f32
-    4   blue   f32
+    1   time   f32  = 00000000
+    2   red    f32  = 00000000
+    3   green  f32  = 00000000
+    4   blue   f32  = 00000000
 
 mvfxAlphaKey
-    1   time   f32
-    2   alpha  f32
+    1   time   f32  = 00000000
+    2   alpha  f32  = 00000000
 
 mvfxGradient
-    1   colorKeys  array mvfxColorKey
-    2   alphaKeys  array mvfxAlphaKey
+    1   colorKeys  array mvfxColorKey  = 00000000
+    2   alphaKeys  array mvfxAlphaKey  = 00000000
 
 mvfxColorOverLife
-    1   enable      bool
-    2   input       u8
-    3   speedRange  f32[2]
+    1   enable      bool           = 00
+    2   input       u8             = 00
+    3   speedRange  f32[2]         = 0000000000000000
     4   gradient    mvfxGradient
-    5   scaleAlpha  bool
+    5   scaleAlpha  bool           = 00
     6   alpha       mvfxLifeCurve
 
 mvfxSizeOverLife
-    1   enable      bool
-    2   input       u8
-    3   speedRange  f32[2]
-    4   perAxis     bool
+    1   enable      bool              = 00
+    2   input       u8                = 00
+    3   speedRange  f32[2]            = 0000000000000000
+    4   perAxis     bool              = 00
     5   size        mvfxLifeCurve[3]
 
 mvfxFrameOverLife
-    1   animation   u8
-    2   frameCount  i32
-    3   cycles      f32
-    4   frameRate   f32
-    5   loop        bool
+    1   animation   u8    = 00
+    2   frameCount  i32   = 00000000
+    3   cycles      f32   = 00000000
+    4   frameRate   f32   = 00000000
+    5   loop        bool  = 00
 
 mvfxRotationOverLife
-    1   enable  bool
+    1   enable  bool           = 00
     2   scale   mvfxLifeCurve
 
 mvfxOverLife
@@ -186,260 +189,260 @@ mvfxOverLife
     4   rotation  mvfxRotationOverLife
 
 mvfxKillRule
-    1   kind         u8
-    2   space        u8
-    3   center       f32[3]
-    4   radius       f32
-    5   halfExtents  f32[3]
-    6   rotation     f32[4]
-    7   normal       f32[3]
-    8   speed        f32
-    9   minimumAge   f32
-    10  collisions   i32
+    1   kind         u8      = 00
+    2   space        u8      = 00
+    3   center       f32[3]  = 000000000000000000000000
+    4   radius       f32     = 00000000
+    5   halfExtents  f32[3]  = 000000000000000000000000
+    6   rotation     f32[4]  = 00000000000000000000000000000000
+    7   normal       f32[3]  = 000000000000000000000000
+    8   speed        f32     = 00000000
+    9   minimumAge   f32     = 00000000
+    10  collisions   i32     = 00000000
 
 mvfxCollision
-    1   enable              bool
-    2   hostColliders       bool
-    3   restitution         f32
-    4   friction            f32
-    5   lifeLoss            f32
-    6   killOnCollision     bool
-    7   restSpeed           f32
-    8   radius              f32
-    9   enableSceneQueries  bool
-    10  queryCapacity       i32
-    11  lookahead           f32
-    12  enableDepthImage    bool
-    13  depthThickness      f32
-    14  depthSamples        i32
-    15  killOutsideView     bool
+    1   enable              bool  = 00
+    2   hostColliders       bool  = 00
+    3   restitution         f32   = 00000000
+    4   friction            f32   = 00000000
+    5   lifeLoss            f32   = 00000000
+    6   killOnCollision     bool  = 00
+    7   restSpeed           f32   = 00000000
+    8   radius              f32   = 00000000
+    9   enableSceneQueries  bool  = 00
+    10  queryCapacity       i32   = 00000000
+    11  lookahead           f32   = 00000000
+    12  enableDepthImage    bool  = 00
+    13  depthThickness      f32   = 00000000
+    14  depthSamples        i32   = 00000000
+    15  killOutsideView     bool  = 00
 
 mvfxCollider
-    1   kind         u8
-    2   space        u8
-    3   inside       bool
-    4   center       f32[3]
-    5   normal       f32[3]
-    6   radius       f32
-    7   halfExtents  f32[3]
-    8   rotation     f32[4]
-    9   grid         grid
+    1   kind         u8      = 00 mvfxWaterDef.terrain.kind=03
+    2   space        u8      = 00
+    3   inside       bool    = 00
+    4   center       f32[3]  = 000000000000000000000000
+    5   normal       f32[3]  = 000000000000000000000000
+    6   radius       f32     = 00000000
+    7   halfExtents  f32[3]  = 000000000000000000000000
+    8   rotation     f32[4]  = 00000000000000000000000000000000 mvfxWaterDef.terrain.rotation=0000000000000000000000000000803f
+    9   grid         grid    = ffffffff
 
 mvfxHostModule
-    1   stage     u8
-    2   function  module
+    1   stage     u8      = 00
+    2   function  module  = 00000000
 
 mvfxEventSpawn
-    1   enable           bool
-    2   source           i32
-    3   kind             u8
-    4   minCount         i32
-    5   maxCount         i32
-    6   inheritVelocity  f32
-    7   inheritColor     bool
-    8   inheritSize      bool
-    9   capacity         i32
+    1   enable           bool  = 00
+    2   source           i32   = 00000000
+    3   kind             u8    = 00
+    4   minCount         i32   = 00000000
+    5   maxCount         i32   = 00000000
+    6   inheritVelocity  f32   = 00000000
+    7   inheritColor     bool  = 00
+    8   inheritSize      bool  = 00
+    9   capacity         i32   = 00000000
 
 mvfxNeighborDef
-    1   enable        bool
-    2   source        i32
-    3   radius        f32
-    4   maxNeighbors  i32
+    1   enable        bool  = 00
+    2   source        i32   = 00000000
+    3   radius        f32   = 00000000
+    4   maxNeighbors  i32   = 00000000
 
 mvfxSteerPoint
-    1   weight         f32
-    2   space          u8
-    3   point          f32[3]
-    4   fromParameter  bool
-    5   parameter      i32
-    6   radius         f32
+    1   weight         f32     = 00000000
+    2   space          u8      = 00
+    3   point          f32[3]  = 000000000000000000000000
+    4   fromParameter  bool    = 00
+    5   parameter      i32     = 00000000
+    6   radius         f32     = 00000000
 
 mvfxSteerPath
-    1   weight     f32
-    2   space      u8
-    3   points     array f32[3]
-    4   closed     bool
-    5   radius     f32
-    6   lookahead  f32
+    1   weight     f32           = 00000000
+    2   space      u8            = 00
+    3   points     array f32[3]  = 00000000
+    4   closed     bool          = 00
+    5   radius     f32           = 00000000
+    6   lookahead  f32           = 00000000
 
 mvfxSteeringDef
-    1   enable            bool
-    2   separation        f32
-    3   separationRadius  f32
-    4   alignment         f32
-    5   alignmentRadius   f32
-    6   cohesion          f32
-    7   cohesionRadius    f32
-    8   viewAngle         f32
-    9   cruiseSpeed       f32
-    10  maxForce          f32
+    1   enable            bool            = 00
+    2   separation        f32             = 00000000
+    3   separationRadius  f32             = 00000000
+    4   alignment         f32             = 00000000
+    5   alignmentRadius   f32             = 00000000
+    6   cohesion          f32             = 00000000
+    7   cohesionRadius    f32             = 00000000
+    8   viewAngle         f32             = 00000000
+    9   cruiseSpeed       f32             = 00000000
+    10  maxForce          f32             = 00000000
     11  seek              mvfxSteerPoint
     12  flee              mvfxSteerPoint
     13  path              mvfxSteerPath
 
 mvfxContactDef
-    1   enable       bool
-    2   radiusScale  f32
-    3   iterations   i32
-    4   maxContacts  i32
-    5   restitution  f32
-    6   friction     f32
+    1   enable       bool  = 00
+    2   radiusScale  f32   = 00000000
+    3   iterations   i32   = 00000000
+    4   maxContacts  i32   = 00000000
+    5   restitution  f32   = 00000000
+    6   friction     f32   = 00000000
 
 mvfxPairForceDef
-    1   enable    bool
-    2   radius    f32
+    1   enable    bool           = 00
+    2   radius    f32            = 00000000
     3   strength  mvfxLifeCurve
 
 mvfxLightDef
-    1   enable        bool
-    2   every         i32
-    3   intensity     f32
-    4   alphaScales   bool
-    5   radius        f32
-    6   radiusBySize  f32
+    1   enable        bool  = 00
+    2   every         i32   = 00000000
+    3   intensity     f32   = 00000000
+    4   alphaScales   bool  = 00
+    5   radius        f32   = 00000000
+    6   radiusBySize  f32   = 00000000
 
 mvfxRibbonDef
-    1   ids            u8
-    2   pieces         i32
-    3   bendAngle      f32
-    4   texture        u8
-    5   tileLength     f32
-    6   scroll         f32
-    7   facing         u8
-    8   normal         f32[3]
-    9   breakDistance  f32
-    10  pinHead        bool
+    1   ids            u8             = 00
+    2   pieces         i32            = 01000000
+    3   bendAngle      f32            = 00000000
+    4   texture        u8             = 00
+    5   tileLength     f32            = 0000803f
+    6   scroll         f32            = 00000000
+    7   facing         u8             = 00
+    8   normal         f32[3]         = 00000000000000000000803f
+    9   breakDistance  f32            = 00000000
+    10  pinHead        bool           = 00
     11  width          mvfxLifeCurve
     12  color          mvfxGradient
 
 mvfxPlexusDef
-    1   enable          bool
-    2   distance        f32
-    3   maxLinks        i32
-    4   maxPerParticle  i32
-    5   width           f32
-    6   fade            bool
+    1   enable          bool  = 00
+    2   distance        f32   = 00000000
+    3   maxLinks        i32   = 00000000
+    4   maxPerParticle  i32   = 00000000
+    5   width           f32   = 00000000
+    6   fade            bool  = 00
 
 mvfxUnitDef
-    1   kind                 u8
-    2   points               i32
-    3   rows                 i32
-    4   spacing              f32
-    5   direction            f32[3]
-    6   downDirection        f32[3]
-    7   substeps             i32
-    8   stretchCompliance    f32
-    9   shearCompliance      f32
-    10  bendCompliance       f32
-    11  damping              f32
-    12  pinFirst             bool
-    13  pinFirstRow          bool
-    14  normalDrag           f32
-    15  tangentDrag          f32
-    16  selfThickness        f32
-    17  selfFriction         f32
-    18  selfContacts         i32
-    19  tearStrain           f32
-    20  attach               u8
-    21  attachFrameCapacity  i32
+    1   kind                 u8      = 00
+    2   points               i32     = 00000000
+    3   rows                 i32     = 00000000
+    4   spacing              f32     = 00000000
+    5   direction            f32[3]  = 000000000000000000000000
+    6   downDirection        f32[3]  = 000000000000000000000000
+    7   substeps             i32     = 00000000
+    8   stretchCompliance    f32     = 00000000
+    9   shearCompliance      f32     = 00000000
+    10  bendCompliance       f32     = 00000000
+    11  damping              f32     = 00000000
+    12  pinFirst             bool    = 00
+    13  pinFirstRow          bool    = 00
+    14  normalDrag           f32     = 00000000
+    15  tangentDrag          f32     = 00000000
+    16  selfThickness        f32     = 00000000
+    17  selfFriction         f32     = 00000000
+    18  selfContacts         i32     = 00000000
+    19  tearStrain           f32     = 00000000
+    20  attach               u8      = 00
+    21  attachFrameCapacity  i32     = 00000000
 
 mvfxRigidDef
-    1   enable           bool
-    2   shape            u8
-    3   density          f32
-    4   substeps         i32
-    5   restitution      f32
-    6   staticFriction   f32
-    7   dynamicFriction  f32
-    8   bodyContacts     i32
-    9   hull             mesh
-    10  sleepSpeed       f32
-    11  sleepTime        f32
+    1   enable           bool  = 00
+    2   shape            u8    = 00
+    3   density          f32   = 00000000
+    4   substeps         i32   = 00000000
+    5   restitution      f32   = 00000000
+    6   staticFriction   f32   = 00000000
+    7   dynamicFriction  f32   = 00000000
+    8   bodyContacts     i32   = 00000000
+    9   hull             mesh  = ffffffff
+    10  sleepSpeed       f32   = cdcc4c3d
+    11  sleepTime        f32   = 0000003f
 
 mvfxLiquidDef
-    1   enable           bool
-    2   solver           u8
-    3   gas              i32
-    4   planar           bool
-    5   spacing          f32
-    6   kernelScale      f32
-    7   substeps         i32
-    8   iterations       i32
-    9   relaxation       f32
-    10  tensile          f32
-    11  tensileDistance  f32
-    12  tensilePower     i32
-    13  viscosity        f32
-    14  vorticity        f32
-    15  maxNeighbors     i32
+    1   enable           bool  = 00
+    2   solver           u8    = 00
+    3   gas              i32   = 00000000
+    4   planar           bool  = 00
+    5   spacing          f32   = cdcccc3d
+    6   kernelScale      f32   = 00000040
+    7   substeps         i32   = 04000000
+    8   iterations       i32   = 03000000
+    9   relaxation       f32   = 0ad7233c
+    10  tensile          f32   = 00000000
+    11  tensileDistance  f32   = cdcc4c3e
+    12  tensilePower     i32   = 04000000
+    13  viscosity        f32   = 0ad7233c
+    14  vorticity        f32   = 00000000
+    15  maxNeighbors     i32   = 40000000
 
 mvfxBeamPoint
-    1   point          f32[3]
-    2   fromParameter  bool
-    3   parameter      i32
+    1   point          f32[3]  = 000000000000000000000000
+    2   fromParameter  bool    = 00
+    3   parameter      i32     = 00000000
 
 mvfxBeamDef
-    1   enable          bool
-    2   segments        i32
+    1   enable          bool              = 00
+    2   segments        i32               = 00000000
     3   start           mvfxBeamPoint
     4   end             mvfxBeamPoint
-    5   controlCount    i32
+    5   controlCount    i32               = 00000000
     6   controls        mvfxBeamPoint[2]
-    7   noiseAmplitude  f32
-    8   noiseFrequency  f32
-    9   noiseSpeed      f32
+    7   noiseAmplitude  f32               = 00000000
+    8   noiseFrequency  f32               = 00000000
+    9   noiseSpeed      f32               = 00000000
 
 mvfxSpriteDef
-    1   billboard  u8
-    2   stretch    f32
+    1   billboard  u8   = 00
+    2   stretch    f32  = 00000000
 
 mvfxVectorSource
-    1   kind       u8
-    2   min        f32[4]
-    3   max        f32[4]
-    4   uniform    bool
+    1   kind       u8            = 00
+    2   min        f32[4]        = 00000000000000000000000000000000
+    3   max        f32[4]        = 00000000000000000000000000000000
+    4   uniform    bool          = 00
     5   curve      mvfxCurve
     6   gradient   mvfxGradient
-    7   parameter  i32
+    7   parameter  i32           = 00000000
 
 mvfxFrameStart
-    1   mode   u8
-    2   first  i32
-    3   last   i32
+    1   mode   u8   = 00
+    2   first  i32  = 00000000
+    3   last   i32  = 00000000
 
 mvfxCustomAttribute
-    1   components      i32
+    1   components      i32               = 00000000
     2   initial         mvfxVectorSource
-    3   scaledOverLife  bool
+    3   scaledOverLife  bool              = 00
     4   overLife        mvfxLifeCurve
 
 mvfxEmitterDef
-    1   capacity           i32
-    2   rate               f32
+    1   capacity           i32                        = 00040000
+    2   rate               f32                        = 00008042
     3   rateCurve          mvfxCurve
-    4   bursts             array mvfxBurst
-    5   startDelay         f32
-    6   duration           f32
-    7   loops              i32
-    8   space              u8
-    9   ratePerDistance    f32
-    10  inheritVelocity    f32
-    11  hostSpawnCapacity  i32
+    4   bursts             array mvfxBurst            = 00000000
+    5   startDelay         f32                        = 00000000
+    6   duration           f32                        = 00000000
+    7   loops              i32                        = 00000000
+    8   space              u8                         = 00
+    9   ratePerDistance    f32                        = 00000000
+    10  inheritVelocity    f32                        = 00000000
+    11  hostSpawnCapacity  i32                        = 00000000
     12  lifetime           mvfxScalarSource
     13  shape              mvfxShape
     14  velocity           mvfxVelocity
     15  motion             mvfxMotion
-    16  forces             array mvfxForce
+    16  forces             array mvfxForce            = 00000000
     17  gasSplat           mvfxGasSplat
     18  water              mvfxWaterCoupling
     19  velocityModules    mvfxVelocityModules
     20  overLife           mvfxOverLife
-    21  killRules          array mvfxKillRule
+    21  killRules          array mvfxKillRule         = 00000000
     22  collision          mvfxCollision
-    23  colliders          array mvfxCollider
-    24  hostModules        array mvfxHostModule
-    25  events             u8
-    26  eventCapacity      i32
+    23  colliders          array mvfxCollider         = 00000000
+    24  hostModules        array mvfxHostModule       = 00000000
+    25  events             u8                         = 00
+    26  eventCapacity      i32                        = 00000000
     27  eventSpawn         mvfxEventSpawn
     28  neighbors          mvfxNeighborDef
     29  steering           mvfxSteeringDef
@@ -453,106 +456,106 @@ mvfxEmitterDef
     37  liquid             mvfxLiquidDef
     38  beam               mvfxBeamDef
     39  sprite             mvfxSpriteDef
-    40  sortMode           u8
-    41  sortMeasure        u8
-    42  drawPriority       i32
-    43  fixedBounds        bool
-    44  boundsMin          f32[3]
-    45  boundsMax          f32[3]
+    40  sortMode           u8                         = 00
+    41  sortMeasure        u8                         = 00
+    42  drawPriority       i32                        = 00000000
+    43  fixedBounds        bool                       = 00
+    44  boundsMin          f32[3]                     = 000000000000000000000000
+    45  boundsMax          f32[3]                     = 000000000000000000000000
     46  size               mvfxVectorSource
     47  color              mvfxVectorSource
     48  angle              mvfxScalarSource
     49  spin               mvfxScalarSource
-    50  orientationMode    u8
+    50  orientationMode    u8                         = 00
     51  orientation        mvfxVectorSource
     52  angularVelocity    mvfxVectorSource
     53  frame              mvfxFrameStart
     54  meshIndex          mvfxFrameStart
-    55  custom             array mvfxCustomAttribute
+    55  custom             array mvfxCustomAttribute  = 00000000
 
 mvfxQualityLevel
-    1   capacityScale  f32
-    2   rateScale      f32
-    3   omitted        u64
+    1   capacityScale  f32  = 00000000
+    2   rateScale      f32  = 00000000
+    3   omitted        u64  = 0000000000000000
 
 mvfxGasSource
-    1   shape         u8
-    2   center        f32[3]
-    3   radius        f32
-    4   halfExtents   f32[3]
-    5   density       f32
-    6   temperature   f32
-    7   fuel          f32
-    8   setsVelocity  bool
-    9   velocity      f32[3]
+    1   shape         u8      = 00
+    2   center        f32[3]  = 000000000000000000000000
+    3   radius        f32     = 00000000
+    4   halfExtents   f32[3]  = 000000000000000000000000
+    5   density       f32     = 00000000
+    6   temperature   f32     = 00000000
+    7   fuel          f32     = 00000000
+    8   setsVelocity  bool    = 00
+    9   velocity      f32[3]  = 000000000000000000000000
 
 mvfxGasSurface
-    1   emitter    i32
-    2   radius     f32
-    3   reach      f32
-    4   low        f32
-    5   high       f32
-    6   smoothing  i32
+    1   emitter    i32  = 00000000
+    2   radius     f32  = cdcccc3d
+    3   reach      f32  = 00008040
+    4   low        f32  = cdcccc3e
+    5   high       f32  = 00000040
+    6   smoothing  i32  = 01000000
 
 mvfxGasDef
-    1   size                 i32[3]
-    2   cellSize             f32
-    3   center               f32[3]
-    4   space                u8
-    5   kind                 u8
-    6   fillTime             f32
-    7   courant              f32
-    8   substeps             i32
-    9   densityDecay         f32
-    10  temperatureDecay     f32
-    11  fuelDecay            f32
-    12  velocityDecay        f32
-    13  sources              array mvfxGasSource
-    14  closedWalls          u8
-    15  pressureCycles       i32
-    16  advection            u8
-    17  gravity              f32[3]
-    18  gravitySpace         u8
-    19  densityWeight        f32
-    20  heatLift             f32
-    21  vorticity            f32
-    22  ignitionTemperature  f32
-    23  burnRate             f32
-    24  burnHeat             f32
-    25  burnSmoke            f32
-    26  burnExpansion        f32
-    27  obstacles            array mvfxCollider
-    28  hostObstacles        bool
-    29  forces               array mvfxForce
+    1   size                 i32[3]               = 400000004000000001000000
+    2   cellSize             f32                  = cdcccc3d
+    3   center               f32[3]               = 000000000000000000000000
+    4   space                u8                   = 00
+    5   kind                 u8                   = 00
+    6   fillTime             f32                  = 8988883c
+    7   courant              f32                  = 0000803f
+    8   substeps             i32                  = 01000000
+    9   densityDecay         f32                  = 00000000
+    10  temperatureDecay     f32                  = 00000000
+    11  fuelDecay            f32                  = 00000000
+    12  velocityDecay        f32                  = 00000000
+    13  sources              array mvfxGasSource  = 00000000
+    14  closedWalls          u8                   = 00
+    15  pressureCycles       i32                  = 04000000
+    16  advection            u8                   = 00
+    17  gravity              f32[3]               = 00000000c3f51cc100000000
+    18  gravitySpace         u8                   = 01
+    19  densityWeight        f32                  = 00000000
+    20  heatLift             f32                  = 00000000
+    21  vorticity            f32                  = 00000000
+    22  ignitionTemperature  f32                  = 00000000
+    23  burnRate             f32                  = 00000000
+    24  burnHeat             f32                  = 00000000
+    25  burnSmoke            f32                  = 00000000
+    26  burnExpansion        f32                  = 00000000
+    27  obstacles            array mvfxCollider   = 00000000
+    28  hostObstacles        bool                 = 00
+    29  forces               array mvfxForce      = 00000000
     30  surface              mvfxGasSurface
 
 mvfxWaterSource
-    1   shape        u8
-    2   center       f32[3]
-    3   radius       f32
-    4   halfExtents  f32[3]
-    5   rate         f32
+    1   shape        u8      = 00
+    2   center       f32[3]  = 000000000000000000000000
+    3   radius       f32     = 00000000
+    4   halfExtents  f32[3]  = 000000000000000000000000
+    5   rate         f32     = 00000000
 
 mvfxWaterDef
-    1   size           i32[2]
-    2   cellSize       f32
-    3   center         f32[3]
-    4   space          u8
-    5   closedWalls    u8
-    6   waveSpeed      f32
-    7   damping        f32
-    8   model          u8
-    9   gravity        f32
-    10  friction       f32
+    1   size           i32[2]                 = 4000000040000000
+    2   cellSize       f32                    = cdcccc3d
+    3   center         f32[3]                 = 000000000000000000000000
+    4   space          u8                     = 00
+    5   closedWalls    u8                     = 0f
+    6   waveSpeed      f32                    = 0000803f
+    7   damping        f32                    = 0000003f
+    8   model          u8                     = 00
+    9   gravity        f32                    = c3f51c41
+    10  friction       f32                    = 00000000
     11  terrain        mvfxCollider
-    12  enableTerrain  bool
-    13  hostTerrain    bool
-    14  sources        array mvfxWaterSource
-    15  fillLevel      f32
+    12  enableTerrain  bool                   = 00
+    13  hostTerrain    bool                   = 00
+    14  sources        array mvfxWaterSource  = 00000000
+    15  fillLevel      f32                    = 00000000
 
 mvfxEffectDef
-    1   emitters       array mvfxEmitterDef
-    2   parameters     array f32[4]
-    3   qualityLevels  array mvfxQualityLevel
-    4   gases          array mvfxGasDef
-    5   waters         array mvfxWaterDef
+    1   emitters       array mvfxEmitterDef    = 00000000
+    2   parameters     array f32[4]            = 00000000
+    3   qualityLevels  array mvfxQualityLevel  = 00000000
+    4   gases          array mvfxGasDef        = 00000000
+    5   waters         array mvfxWaterDef      = 00000000
