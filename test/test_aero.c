@@ -284,8 +284,12 @@ static void TestLift(void)
     emitter.unit.downDirection[1] = -1.0f;
     emitter.unit.downDirection[2] = 0.0f;
     static const mvfxForce forces[2] = {
-        {.kind = mvfx_forceWind, .vector = {10, 0, 0}, .strength = 1e-6f},
-        {.kind = mvfx_forceConstant, .vector = {0, 0, 1}, .strength = 0.3f}};
+        {.kind = mvfx_forceWind,
+         .vector = {10, 0, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1e-6f, 1e-6f}}},
+        {.kind = mvfx_forceConstant,
+         .vector = {0, 0, 1},
+         .strength = {.kind = mvfx_sourceRange, .range = {0.3f, 0.3f}}}};
     emitter.forces = forces;
     emitter.forceCount = 2;
     Open(&emitter, NULL);

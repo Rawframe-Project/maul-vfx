@@ -1,5 +1,5 @@
 {
-  "format": 3,
+  "format": 4,
   "effect": {
     "emitters": [
       {
@@ -19,10 +19,16 @@
         "forces": [
           {
             "kind": "mvfx_forceGas",
-            "strength": 1.0,
             "fieldMode": "mvfx_fieldVelocity",
             "tightness": 3.0,
-            "gas": 1
+            "gas": 1,
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 1.0,
+                "max": 1.0
+              }
+            }
           }
         ],
         "gasSplat": {
@@ -75,7 +81,6 @@
         "forces": [
           {
             "kind": "mvfx_forceTurbulence",
-            "strength": 1.5,
             "noise": {
               "frequency": 1.5,
               "octaves": 2,
@@ -83,6 +88,13 @@
               "gain": 0.5,
               "scroll": [0.2, 0.1, 0.0],
               "seedPerInstance": true
+            },
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 1.5,
+                "max": 1.5
+              }
             }
           }
         ]
@@ -123,8 +135,14 @@
             "space": "mvfx_spaceLocal",
             "vector": [0.0, 1.0, 0.0],
             "point": [0.05, 0.0, 0.1],
-            "strength": 0.7,
-            "pull": 0.2
+            "pull": 0.2,
+            "strength": {
+              "kind": "mvfx_sourceRange",
+              "range": {
+                "min": 0.7,
+                "max": 0.7
+              }
+            }
           }
         ]
       }

@@ -275,13 +275,14 @@ static void TestGasSteps(void)
                                           .center = {0.3f, 0.0f, 0.0f},
                                           .radius = 0.2f,
                                           .rotation = {0, 0, 0, 1}};
-    static const mvfxForce turbulence = {.kind = mvfx_forceTurbulence,
-                                         .strength = 1.0f,
-                                         .noise = {.frequency = 2.0f,
-                                                   .octaves = 2,
-                                                   .lacunarity = 2.0f,
-                                                   .gain = 0.5f,
-                                                   .scroll = {1.0f, 0.0f, -2.0f}}};
+    static const mvfxForce turbulence = {
+        .kind = mvfx_forceTurbulence,
+        .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
+        .noise = {.frequency = 2.0f,
+                  .octaves = 2,
+                  .lacunarity = 2.0f,
+                  .gain = 0.5f,
+                  .scroll = {1.0f, 0.0f, -2.0f}}};
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");

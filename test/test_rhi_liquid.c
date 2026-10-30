@@ -251,8 +251,10 @@ static void TestSplitBeside(Gpu* gpu, mvfxGpu* kernels)
     // splatting into the smoke and pushed by it: each substep the smoke's
     // passes splat that substep's particles, and the emitter reads the
     // faces the substep before left.
-    static const mvfxForce pushed = {
-        .kind = mvfx_forceGas, .strength = 2.0f, .fieldMode = mvfx_fieldAcceleration, .gas = 1};
+    static const mvfxForce pushed = {.kind = mvfx_forceGas,
+                                     .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
+                                     .fieldMode = mvfx_fieldAcceleration,
+                                     .gas = 1};
     mvfxGasDef gases[2] = {Tank(0.2f), Smoke()};
     mvfxEmitterDef emitters[2] = {Pour(), Sprite()};
     emitters[1].capacity = 512;

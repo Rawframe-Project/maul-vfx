@@ -631,14 +631,14 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
     const mvfxForce forces[5] = {{.kind = mvfx_forceWind,
                                   .space = mvfx_spaceWorld,
                                   .vector = {1, 0, 0.5f},
-                                  .strength = 0.8f,
+                                  .strength = {.kind = mvfx_sourceRange, .range = {0.8f, 0.8f}},
                                   .falloff = {.kind = mvfx_falloffSphere,
                                               .center = {0, 0.2f, 0},
                                               .radius = 1.2f,
                                               .exponent = 1.5f}},
                                  {.kind = mvfx_forceTurbulence,
                                   .space = mvfx_spaceLocal,
-                                  .strength = 2.0f,
+                                  .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                                   .noise = {.frequency = 1.5f,
                                             .octaves = 2,
                                             .lacunarity = 2.0f,
@@ -649,17 +649,17 @@ static void TestForces(Gpu* gpu, mvfxGpu* kernels)
                                   .space = mvfx_spaceLocal,
                                   .vector = {0, 1, 0},
                                   .point = {0.1f, 0, -0.1f},
-                                  .strength = 1.5f,
+                                  .strength = {.kind = mvfx_sourceRange, .range = {1.5f, 1.5f}},
                                   .pull = 0.25f},
                                  {.kind = mvfx_forceAttractor,
                                   .space = mvfx_spaceLocal,
                                   .point = {0.3f, 0.5f, 0},
-                                  .strength = 1.0f,
+                                  .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                                   .softening = 0.2f},
                                  {.kind = mvfx_forceVectorField,
                                   .space = mvfx_spaceLocal,
                                   .point = {0, 0.3f, 0},
-                                  .strength = 2.0f,
+                                  .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                                   .fieldMode = mvfx_fieldVelocity,
                                   .tightness = 3.0f,
                                   .boxSize = {1.6f, 1.6f, 1.6f},
@@ -814,11 +814,12 @@ static void TestObstacles(Gpu* gpu, mvfxGpu* kernels)
 static void TestFollowing(Gpu* gpu, mvfxGpu* kernels)
 {
     static const mvfxForce pulled = {.kind = mvfx_forceGas,
-                                     .strength = 1.0f,
+                                     .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                                      .fieldMode = mvfx_fieldVelocity,
                                      .tightness = 8.0f};
-    static const mvfxForce pushed = {
-        .kind = mvfx_forceGas, .strength = 2.0f, .fieldMode = mvfx_fieldAcceleration};
+    static const mvfxForce pushed = {.kind = mvfx_forceGas,
+                                     .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
+                                     .fieldMode = mvfx_fieldAcceleration};
     mvfxEmitterDef emitters[2] = {Sprite(), Sprite()};
     emitters[0].space = mvfx_spaceWorld;
     emitters[0].forces = &pulled;
@@ -843,10 +844,13 @@ static void TestFollowing(Gpu* gpu, mvfxGpu* kernels)
     // the second, whose faces sit past the first's in its grids.
     static const mvfxForce both[2] = {
         {.kind = mvfx_forceGas,
-         .strength = 1.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
          .fieldMode = mvfx_fieldVelocity,
          .tightness = 8.0f},
-        {.kind = mvfx_forceGas, .strength = 2.0f, .fieldMode = mvfx_fieldAcceleration, .gas = 1}};
+        {.kind = mvfx_forceGas,
+         .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
+         .fieldMode = mvfx_fieldAcceleration,
+         .gas = 1}};
     mvfxGasDef gases[2] = {Plume(16, 24, 16, &s_sphere), Plume(16, 24, 16, &s_sphere)};
     gases[1].center[1] = -1.0f;
     emitters[0].forces = both;

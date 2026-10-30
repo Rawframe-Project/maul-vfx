@@ -418,9 +418,10 @@ static void TestSpeedHold(void)
     // A birth set off at the fastest valid speed under the strongest
     // constant force, 1e12 a second squared, is held as it moves its first
     // step.
-    static const mvfxForce strongest = {.kind = mvfx_forceConstant,
-                                        .vector = {0, -MVFX_MAX_EXTENT, 0},
-                                        .strength = MVFX_MAX_EXTENT};
+    static const mvfxForce strongest = {
+        .kind = mvfx_forceConstant,
+        .vector = {0, -MVFX_MAX_EXTENT, 0},
+        .strength = {.kind = mvfx_sourceRange, .range = {MVFX_MAX_EXTENT, MVFX_MAX_EXTENT}}};
     emitter = Hosted();
     emitter.forces = &strongest;
     emitter.forceCount = 1;
@@ -437,7 +438,9 @@ static void TestSpeedHold(void)
     // heading: under a force of 1e12 along X and 5e11 along Y, held from
     // about (1e12, 5e11) to 1e9 at half as much Y as X, not to (1e9, 1e9).
     static const mvfxForce diagonal = {
-        .kind = mvfx_forceConstant, .vector = {1e6f, 5e5f, 0}, .strength = 1e6f};
+        .kind = mvfx_forceConstant,
+        .vector = {1e6f, 5e5f, 0},
+        .strength = {.kind = mvfx_sourceRange, .range = {1e6f, 1e6f}}};
     emitter = Hosted();
     emitter.forces = &diagonal;
     emitter.forceCount = 1;
@@ -452,8 +455,9 @@ static void TestSpeedHold(void)
     mvfxDestroyContext(scene.context);
     // Within the bound on each axis, past it in speed: built to about
     // (8e8, 8e8) in a second, held to 1e9 at 45 degrees.
-    static const mvfxForce even = {
-        .kind = mvfx_forceConstant, .vector = {8e5f, 8e5f, 0}, .strength = 1e3f};
+    static const mvfxForce even = {.kind = mvfx_forceConstant,
+                                   .vector = {8e5f, 8e5f, 0},
+                                   .strength = {.kind = mvfx_sourceRange, .range = {1e3f, 1e3f}}};
     emitter = Hosted();
     emitter.forces = &even;
     emitter.forceCount = 1;

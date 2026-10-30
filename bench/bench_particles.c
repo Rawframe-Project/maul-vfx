@@ -298,7 +298,7 @@ static int Updates(void)
 
     static const mvfxForce turbulence = {
         .kind = mvfx_forceTurbulence,
-        .strength = 2.0f,
+        .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
         .noise = {.frequency = 1.0f, .octaves = 1, .lacunarity = 2.0f, .gain = 0.5f}};
     mvfxEmitterDef noisy = sprite;
     noisy.forces = &turbulence;
@@ -330,7 +330,7 @@ static int Updates(void)
     grid.components = 3;
     grid.values = baked;
     static const mvfxForce field = {.kind = mvfx_forceVectorField,
-                                    .strength = 2.0f,
+                                    .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                                     .boxSize = {8.0f, 8.0f, 8.0f},
                                     .boxRotation = {0, 0, 0, 1},
                                     .border = mvfx_borderRepeat};

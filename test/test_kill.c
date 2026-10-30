@@ -136,7 +136,7 @@ static void TestAttractorAndSpaces(void)
     // killed, one beside it not, whatever its pull.
     mvfxForce force = {.kind = mvfx_forceAttractor,
                        .point = {0, 5, 0},
-                       .strength = 0.0f,
+                       .strength = {.kind = mvfx_sourceRange, .range = {0.0f, 0.0f}},
                        .softening = 1.0f,
                        .killRadius = 1.0f};
     mvfxEmitterDef emitter = Held(NULL, 0);

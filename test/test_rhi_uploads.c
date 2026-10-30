@@ -252,8 +252,13 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     Measure(gpu, kernels, &plain, 1, "a plain emitter");
 
     static const mvfxForce forces[2] = {
-        {.kind = mvfx_forceConstant, .vector = {1, 0, 0}, .strength = 2.0f},
-        {.kind = mvfx_forceAttractor, .point = {0, 1, 0}, .strength = 1.0f, .softening = 0.2f}};
+        {.kind = mvfx_forceConstant,
+         .vector = {1, 0, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}}},
+        {.kind = mvfx_forceAttractor,
+         .point = {0, 1, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
+         .softening = 0.2f}};
     static const mvfxCollider colliders[3] = {
         {.kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}},
         {.kind = mvfx_colliderPlane, .center = {0, 2, 0}, .normal = {0, -1, 0}},

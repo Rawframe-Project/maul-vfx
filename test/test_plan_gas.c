@@ -212,7 +212,7 @@ static void TestResolved(void)
         {.kind = mvfx_forceConstant, .space = mvfx_spaceWorld, .vector = {1, 0, 0}},
         {.kind = mvfx_forceTurbulence,
          .space = mvfx_spaceLocal,
-         .strength = 2.0f,
+         .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
          .noise = {.frequency = 0.8f,
                    .octaves = 3,
                    .lacunarity = 2.0f,

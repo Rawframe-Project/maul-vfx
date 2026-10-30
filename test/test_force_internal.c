@@ -39,7 +39,9 @@ static void TestCurl(void)
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    mvfxForce force = {.kind = mvfx_forceTurbulence, .strength = 3.0f, .noise = s_noise};
+    mvfxForce force = {.kind = mvfx_forceTurbulence,
+                       .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}},
+                       .noise = s_noise};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
@@ -121,7 +123,6 @@ static void TestUnturnedBits(void)
     // Places: a lattice past the box's periods each way, its cells' edges,
     // and places not finite or far.
     static const float wild[7] = {INFINITY, -INFINITY, NAN, 1e30f, -3e38f, -0.0f, 0.0f};
-    static const float zero[1][4] = {{0}};
     int32_t same = 0;
     int32_t count = 0;
     // Sources: a vector field under each border in an unturned box, a box
@@ -138,7 +139,7 @@ static void TestUnturnedBits(void)
             sources[sourceCount++] =
                 (mvfxForce){.kind = mvfx_forceVectorField,
                             .point = {0.25f, -1, 2},
-                            .strength = -1.5f,
+                            .strength = {.kind = mvfx_sourceRange, .range = {-1.5f, -1.5f}},
                             .boxSize = {2, 3, 1.5f},
                             .boxRotation = {turns[r][0], turns[r][1], turns[r][2], turns[r][3]},
                             .border = border};
@@ -146,7 +147,7 @@ static void TestUnturnedBits(void)
     }
     sources[sourceCount++] =
         (mvfxForce){.kind = mvfx_forceTurbulence,
-                    .strength = 2.0f,
+                    .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
                     .noise = {.frequency = 1.0f, .octaves = 2, .lacunarity = 2.0f, .gain = 0.5f}};
     for (int32_t s = 0; s < sourceCount; ++s)
     {
@@ -154,7 +155,8 @@ static void TestUnturnedBits(void)
         bool box = sources[s].kind == mvfx_forceVectorField;
         for (int32_t m = 0; m < 3; ++m)
         {
-            mvfxResolvedForce force = mvfxResolveForce(&compiled, &maps[m], zero, 0, grid);
+            mvfxResolvedForce force =
+                mvfxResolveForce(&compiled, sources[s].strength.range.min, &maps[m], 0, grid);
             CHECK(!box || (force.unturned == (sources[s].boxRotation[2] == 0.0f) &&
                            force.mapUnturned == (m < 2)),
                   "the quick paths chosen");

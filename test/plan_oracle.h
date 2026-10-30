@@ -113,13 +113,14 @@ static inline void Normalized(const float v[3], double out[3])
 // parameter's x: its lengths scaled, its points and vectors mapped (the
 // vortex's axis and a falloff's axis turned, not scaled), an attractor's
 // and a vortex's strength scaled as accelerations, the strength from its
-// parameter held as effect.h says.
+// parameter held as effect.h says (a range of one value, or a parameter
+// times one).
 static inline bool SameForce(const mvfxPlannedForce* p, const mvfxForce* def, const Frame* f,
                              float parameter)
 {
     double sigma = f->sigma;
-    double strength = (double)def->strength;
-    if (def->strengthFromParameter)
+    double strength = def->strength.kind == mvfx_sourceNone ? 0.0 : (double)def->strength.range.min;
+    if (def->strength.kind == mvfx_sourceParameter)
     {
         strength = fmin(fmax(strength * (double)parameter, -(double)MVFX_MAX_EXTENT),
                         (double)MVFX_MAX_EXTENT);
