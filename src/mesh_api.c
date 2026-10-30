@@ -158,6 +158,10 @@ mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMes
 static MVFX_NOINLINE mvfxResult mvfxMesh_HullCenterWork(mvfxContext* context, mvfxMeshId mesh,
                                                         bool* hullOut, float centerOut[3])
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     hullOut != nullptr ? (void)(*hullOut = false) : (void)0;
     for (int32_t k = 0; centerOut != nullptr && k < 3; ++k)
     {
@@ -167,10 +171,6 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullCenterWork(mvfxContext* context, mv
     {
         context != nullptr ? mvfxCountMisuse(context) : (void)0;
         return mvfx_errorInvalid;
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
@@ -204,6 +204,10 @@ mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hull
 static MVFX_NOINLINE mvfxResult mvfxMesh_HullVertexCountWork(mvfxContext* context, mvfxMeshId mesh,
                                                              int32_t* countOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     if (context == nullptr || countOut == nullptr)
     {
         context != nullptr ? mvfxCountMisuse(context) : (void)0;
@@ -211,10 +215,6 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullVertexCountWork(mvfxContext* contex
         return mvfx_errorInvalid;
     }
     *countOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
-    }
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
     {

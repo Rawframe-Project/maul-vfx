@@ -6,6 +6,7 @@
 #include "layout_api.h"
 
 #include "context.h"
+#include "refusal.h"
 #include "slots.h"
 
 mvfxLayoutDef mvfxDefaultLayoutDef(void)
@@ -57,6 +58,28 @@ mvfxResult mvfxCreateLayout(mvfxContext* context, const mvfxLayoutDef* def, mvfx
 mvfxOutputLayout* mvfxContextLayout(const mvfxContext* context, mvfxLayoutId layout)
 {
     return mvfxSlotObject(&context->layouts, layout.index1, layout.generation);
+}
+
+void mvfxClearRecords(const mvfxContext* context, mvfxLayoutId layout, void* records,
+                      int64_t capacity)
+{
+    const mvfxOutputLayout* live =
+        context != nullptr ? mvfxContextLayout(context, layout) : nullptr;
+    if (live != nullptr)
+    {
+        mvfxClearSpan(records, capacity, live->stride, 1);
+    }
+}
+
+void mvfxClearExpandBuffers(const mvfxContext* context, mvfxLayoutId layout,
+                            const mvfxExpandBuffers* buffers)
+{
+    if (buffers != nullptr)
+    {
+        mvfxClearRecords(context, layout, buffers->vertices, buffers->vertexCapacity);
+        mvfxClearSpan(buffers->indices, buffers->indexCapacity, sizeof(uint32_t),
+                      alignof(uint32_t));
+    }
 }
 
 mvfxResult mvfxDestroyLayout(mvfxContext* context, mvfxLayoutId layout)

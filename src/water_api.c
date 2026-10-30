@@ -175,10 +175,8 @@ static bool IsReadValid(const mvfxWaterRead* read, const mvfxCompiledWater* wate
     return *pitch >= row;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_ReadWaterWork(const mvfxContext* context,
-                                                           mvfxInstanceId instance, int32_t water,
-                                                           const mvfxWaterRead* read, void* out,
-                                                           int64_t bytes)
+static mvfxResult TryReadWater(const mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                               const mvfxWaterRead* read, void* out, int64_t bytes)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindWater(context, instance, water, &result);
@@ -217,6 +215,19 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadWaterWork(const mvfxContext* co
         }
     }
     return mvfx_success;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_ReadWaterWork(const mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t water,
+                                                           const mvfxWaterRead* read, void* out,
+                                                           int64_t bytes)
+{
+    mvfxResult result = TryReadWater(context, instance, water, read, out, bytes);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, bytes, 1, 1);
+    }
+    return result;
 }
 
 mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId instance,
@@ -376,10 +387,8 @@ static void SampleOne(const mvfxInstance* live, int32_t water, const mvfxSpaceMa
     mvfxUnmapVector(map, velocity, out->velocity);
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_SampleWaterWork(const mvfxContext* context,
-                                                             mvfxInstanceId instance, int32_t water,
-                                                             const double* points, int64_t count,
-                                                             mvfxWaterSample* out)
+static mvfxResult TrySampleWater(const mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                                 const double* points, int64_t count, mvfxWaterSample* out)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindWater(context, instance, water, &result);
@@ -410,6 +419,19 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SampleWaterWork(const mvfxContext* 
         SampleOne(live, water, &map, &points[3 * i], &out[i]);
     }
     return mvfx_success;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_SampleWaterWork(const mvfxContext* context,
+                                                             mvfxInstanceId instance, int32_t water,
+                                                             const double* points, int64_t count,
+                                                             mvfxWaterSample* out)
+{
+    mvfxResult result = TrySampleWater(context, instance, water, points, count, out);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, count, sizeof(mvfxWaterSample), alignof(mvfxWaterSample));
+    }
+    return result;
 }
 
 mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId instance,

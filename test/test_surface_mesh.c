@@ -242,6 +242,20 @@ static mvfxResult Spoiled(int32_t c, int64_t bytes)
                                          &i);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestRefusals(void)
 {
     // A smoke gas, its outputs cleared; each spoiled call (scratch too
@@ -260,6 +274,14 @@ static void TestRefusals(void)
                  mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, zero, 0.0f, &b, &v, &i) ==
                      mvfx_errorInvalid &&
                  bytes == 0 && v == 0 && i == 0;
+    memset(s_positions, 0xEE, sizeof s_positions);
+    memset(s_normals, 0xEE, sizeof s_normals);
+    memset(s_indices, 0xEE, sizeof s_indices);
+    right = right &&
+            mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, zero, 0.0f, &b, &v, &i) ==
+                mvfx_errorInvalid &&
+            Filled(s_positions, sizeof s_positions, 0) && Filled(s_normals, sizeof s_normals, 0) &&
+            Filled(s_indices, sizeof s_indices, 0);
     mvfxDestroyContext(s_context);
     CHECK(Open(8, 8, 0.1f, 0.1f, mvfx_gasSurface), "opened");
     right =

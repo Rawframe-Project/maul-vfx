@@ -291,6 +291,24 @@ static void TestRefusals(void)
     CHECK(mvfxInstance_GetEvents(scene.context, stale, 0, &events, &count) == mvfx_errorStale &&
               mvfxInstance_GetEvents(NULL, scene.instance, 0, &events, &count) == mvfx_errorInvalid,
           "stale, no context");
+    // What a refusal leaves: no events and a count of 0, whichever
+    // argument is refused.
+    static const mvfxEvent earlier[1];
+    events = earlier;
+    count = 7;
+    CHECK(mvfxInstance_GetEvents(NULL, scene.instance, 0, &events, &count) == mvfx_errorInvalid &&
+              events == NULL && count == 0,
+          "no context: none");
+    count = 7;
+    CHECK(mvfxInstance_GetEvents(scene.context, scene.instance, 0, NULL, &count) ==
+                  mvfx_errorInvalid &&
+              count == 0,
+          "no events pointer: the count 0");
+    events = earlier;
+    CHECK(mvfxInstance_GetEvents(scene.context, scene.instance, 0, &events, NULL) ==
+                  mvfx_errorInvalid &&
+              events == NULL,
+          "no count: no events");
     mvfxDestroyContext(scene.context);
 
     mvfxContextDef contextDef = mvfxDefaultContextDef();

@@ -12,6 +12,7 @@
 #include "gas.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "refusal.h"
 
 #include "maul-vfx/instance.h"
 
@@ -221,10 +222,8 @@ static void CopyVelocity(const mvfxCompiledGas* gas, const float* faces, int32_t
     }
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasWork(const mvfxContext* context,
-                                                         mvfxInstanceId instance, int32_t gas,
-                                                         mvfxGasField field, float* out,
-                                                         int64_t count)
+static mvfxResult TryReadGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                             mvfxGasField field, float* out, int64_t count)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
@@ -257,6 +256,19 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasWork(const mvfxContext* cont
         out[i] = values[i];
     }
     return mvfx_success;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasWork(const mvfxContext* context,
+                                                         mvfxInstanceId instance, int32_t gas,
+                                                         mvfxGasField field, float* out,
+                                                         int64_t count)
+{
+    mvfxResult result = TryReadGas(context, instance, gas, field, out, count);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, count, sizeof(float), alignof(float));
+    }
+    return result;
 }
 
 mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,

@@ -391,9 +391,9 @@ extern "C"
     /// @param context     The context that owns the instance.
     /// @param instance    The instance.
     /// @param emitter     The emitter's index in the effect's def.
-    /// @param queriesOut  Receives the queries (NULL when there are none),
-    ///                    the instance's own, read only.
-    /// @param countOut    Receives how many.
+    /// @param queriesOut  Receives the queries (NULL when there are none or
+    ///                    on failure), the instance's own, read only.
+    /// @param countOut    Receives how many; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument or an emitter
     ///         out of range, which counts as misuse when the context is
@@ -540,9 +540,9 @@ extern "C"
     /// @param context    The context that owns the instance.
     /// @param instance   The instance.
     /// @param emitter    The emitter's index in the effect's def.
-    /// @param eventsOut  Receives the events (NULL when there are none), the
-    ///                   instance's own, read only.
-    /// @param countOut   Receives how many.
+    /// @param eventsOut  Receives the events (NULL when there are none or on
+    ///                   failure), the instance's own, read only.
+    /// @param countOut   Receives how many; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument or an emitter
     ///         out of range, which counts as misuse when the context is
@@ -758,7 +758,7 @@ extern "C"
     ///
     /// @param context   The context that owns the instance.
     /// @param instance  The instance.
-    /// @param levelOut  Receives its level: 0 the full one.
+    /// @param levelOut  Receives its level: 0 the full one; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument, which counts
     ///         as misuse when the context is given.
@@ -856,7 +856,7 @@ extern "C"
     /// @param instance The instance.
     /// @param gas      The gas's index in its effect's def.
     /// @param field    The field.
-    /// @param out      Receives count values.
+    /// @param out      Receives count values; zeroed on failure.
     /// @param count    How many: the gas's cells.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorInvalid` for a NULL argument, a

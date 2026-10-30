@@ -446,6 +446,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_PrewarmWork(mvfxContext* context,
                                                          double stepSeconds, int32_t maxSteps,
                                                          double* remainingOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     if (remainingOut != nullptr)
     {
         *remainingOut = 0.0;
@@ -453,10 +457,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_PrewarmWork(mvfxContext* context,
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)

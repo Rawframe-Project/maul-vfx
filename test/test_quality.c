@@ -292,6 +292,9 @@ static void TestChecks(void)
     mvfxInstanceId stale = instance;
     stale.generation += 1;
     CHECK(mvfxInstance_GetQuality(context, stale, &level) == mvfx_errorStale, "stale");
+    level = 7;
+    CHECK(mvfxInstance_GetQuality(NULL, instance, &level) == mvfx_errorInvalid && level == 0,
+          "no context: level 0");
     mvfxDestroyContext(context);
     // A budget from 0 to 2^40.
     mvfxContextDef contextDef = mvfxDefaultContextDef();

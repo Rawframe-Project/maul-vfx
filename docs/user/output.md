@@ -108,6 +108,8 @@ Positions are written relative to the view's `eye`, so a world far from its orig
 
 Sorting by place is a stable radix sort, so particles at equal depth keep their order and the result never flickers. It works in scratch memory the program gives; `mvfxInstance_GetSortScratchBytes` says how much. A buffer smaller than the live count takes the first records of that order, and the count returned is always the live count.
 
+A refused output call gives counts of 0 and zeroes the buffers it was given over the span it was told, so nothing from an earlier frame reads as this one's. Buffers of layout records (particle records, ribbon points, quad and strip vertices) are zeroed only while the layout is live: with no context or a stale layout the call cannot know a record's size, so it leaves them. A call refused as busy, which only the program's own allocator, task hooks or host modules can meet by calling back in, writes none of its outputs, counts included, since any of them may be one the call in progress fills.
+
 ## Quads for renderers without instancing
 
 `mvfxInstance_ExpandSprites` writes four vertices and six indices a particle, turned by the emitter's sprite def: facing the camera, turned by the particle's angle, stretched along its velocity, upright on the world's Y, or in the plane of the particle's own orientation. The vertex layout uses the same fields as records, plus `corner`.

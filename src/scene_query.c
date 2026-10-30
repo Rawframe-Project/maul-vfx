@@ -54,6 +54,18 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
                                         int32_t emitter, const mvfxSceneQuery** queriesOut,
                                         int32_t* countOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
+    if (queriesOut != nullptr)
+    {
+        *queriesOut = nullptr;
+    }
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     if (context == nullptr || queriesOut == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
@@ -61,12 +73,6 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    *queriesOut = nullptr;
-    *countOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);

@@ -13,6 +13,21 @@
 #include "maul-vfx/base.h"
 
 #include <math.h>
+#include <stdint.h>
+#include <string.h>
+
+// Zeroes the count items of size bytes a caller states an output buffer
+// holds, so a refused call leaves no earlier answer there. A NULL or
+// misaligned buffer, a count below 1 or a span no buffer could hold is
+// left: that statement was itself refused.
+static inline void mvfxClearSpan(void* buffer, int64_t count, int64_t size, uintptr_t alignment)
+{
+    if (buffer != nullptr && (uintptr_t)buffer % alignment == 0 && count > 0 && size > 0 &&
+        count <= INT64_MAX / size && (uint64_t)(count * size) <= SIZE_MAX)
+    {
+        memset(buffer, 0, (size_t)(count * size));
+    }
+}
 
 // The first of two statuses that refuses, or mvfx_success. Both are
 // evaluated, so b may not read what a checks.

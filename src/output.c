@@ -9,6 +9,7 @@
 #include "fpenv.h"
 #include "instance_api.h"
 #include "layout_api.h"
+#include "refusal.h"
 #include "sort.h"
 #include "space.h"
 
@@ -508,6 +509,14 @@ int32_t mvfxOrderAt(const mvfxRecordOrder* order, int64_t r)
 mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId instance,
                                             int32_t emitter, int64_t* bytesOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
+    if (bytesOut != nullptr)
+    {
+        *bytesOut = 0;
+    }
     if (context == nullptr || bytesOut == nullptr)
     {
         if (context != nullptr)
@@ -515,11 +524,6 @@ mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    *bytesOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -539,11 +543,19 @@ bool mvfxIsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment)
     return bytes >= 0 && (bytes == 0 || buffer != nullptr) && ((uintptr_t)buffer % alignment) == 0;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_WriteParticlesWork(
-    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
-    const mvfxView* view, void* scratch, int64_t scratchBytes, void* records, int64_t capacity,
-    int64_t* countOut)
+static mvfxResult TryWriteParticles(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    mvfxLayoutId layout, const mvfxView* view, void* scratch,
+                                    int64_t scratchBytes, void* records, int64_t capacity,
+                                    int64_t* countOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     if (context == nullptr || view == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
@@ -551,11 +563,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteParticlesWork(
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    *countOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -584,6 +591,20 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteParticlesWork(
     mvfxWriteRecords(live, emitter, format, view->origin, &order, records,
                      count < capacity ? count : capacity);
     return mvfx_success;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_WriteParticlesWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, void* scratch, int64_t scratchBytes, void* records, int64_t capacity,
+    int64_t* countOut)
+{
+    mvfxResult result = TryWriteParticles(context, instance, emitter, layout, view, scratch,
+                                          scratchBytes, records, capacity, countOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearRecords(context, layout, records, capacity);
+    }
+    return result;
 }
 
 mvfxResult mvfxInstance_WriteParticles(mvfxContext* context, mvfxInstanceId instance,
@@ -622,12 +643,18 @@ static mvfxLight LightOf(const mvfxRecordSource* s, const mvfxLightDef* def, int
     return light;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_WriteLightsWork(mvfxContext* context,
-                                                             mvfxInstanceId instance,
-                                                             int32_t emitter, const mvfxView* view,
-                                                             mvfxLight* lights, int64_t capacity,
-                                                             int64_t* countOut)
+static mvfxResult TryWriteLights(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                 const mvfxView* view, mvfxLight* lights, int64_t capacity,
+                                 int64_t* countOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     if (context == nullptr || view == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
@@ -635,11 +662,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteLightsWork(mvfxContext* contex
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    *countOut = 0;
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -679,6 +701,21 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteLightsWork(mvfxContext* contex
     }
     *countOut = count;
     return mvfx_success;
+}
+
+static MVFX_NOINLINE mvfxResult mvfxInstance_WriteLightsWork(mvfxContext* context,
+                                                             mvfxInstanceId instance,
+                                                             int32_t emitter, const mvfxView* view,
+                                                             mvfxLight* lights, int64_t capacity,
+                                                             int64_t* countOut)
+{
+    mvfxResult result =
+        TryWriteLights(context, instance, emitter, view, lights, capacity, countOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearSpan(lights, capacity, sizeof(mvfxLight), alignof(mvfxLight));
+    }
+    return result;
 }
 
 mvfxResult mvfxInstance_WriteLights(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,

@@ -351,6 +351,10 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
 static MVFX_NOINLINE mvfxResult mvfxCreateEffectWork(mvfxContext* context, const mvfxEffectDef* def,
                                                      mvfxEffectId* effectOut)
 {
+    if (effectOut != nullptr)
+    {
+        *effectOut = (mvfxEffectId){0};
+    }
     if (effectOut == nullptr || context == nullptr)
     {
         if (context != nullptr)
@@ -359,7 +363,6 @@ static MVFX_NOINLINE mvfxResult mvfxCreateEffectWork(mvfxContext* context, const
         }
         return mvfx_errorInvalid;
     }
-    *effectOut = (mvfxEffectId){0};
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;

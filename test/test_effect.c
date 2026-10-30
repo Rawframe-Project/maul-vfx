@@ -124,7 +124,9 @@ static void TestInvalidDefsAreMisuse(void)
     CHECK(mvfxCreateEffect(context, &def, NULL) == mvfx_errorInvalid, "no out-parameter");
     CHECK(mvfxGetContextMisuse(context) == ++misuse, "counted");
     mvfxEffectDef def2 = OneEmitter(&emitter);
+    effect = (mvfxEffectId){1, 1};
     CHECK(mvfxCreateEffect(NULL, &def2, &effect) == mvfx_errorInvalid, "no context");
+    CHECK(effect.index1 == 0 && effect.generation == 0, "the null id without a context");
 
     for (int32_t field = 0; field < 15; ++field)
     {

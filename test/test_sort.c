@@ -235,8 +235,8 @@ static void TestScratch(void)
     int64_t count = -1;
     CHECK(mvfxInstance_WriteParticles(c, i, 0, scene.layout, &view, scratch, 47, serials, 3,
                                       &count) == mvfx_errorCapacity &&
-              count == 0 && serials[0] == 9,
-          "too small for three: nothing written");
+              count == 0 && serials[0] == 0 && serials[1] == 0 && serials[2] == 0,
+          "too small for three: the records zeroed");
     CHECK(mvfxInstance_WriteParticles(c, i, 0, scene.layout, &view, scratch, 48, serials, 3,
                                       &count) == mvfx_success &&
               count == 3 && serials[0] == 1 && serials[1] == 2 && serials[2] == 0,
@@ -273,6 +273,9 @@ static void TestScratch(void)
     mvfxInstanceId stale = i;
     stale.generation += 1;
     CHECK(mvfxInstance_GetSortScratchBytes(c, stale, 0, &bytes) == mvfx_errorStale, "stale");
+    bytes = 7;
+    CHECK(mvfxInstance_GetSortScratchBytes(NULL, i, 0, &bytes) == mvfx_errorInvalid && bytes == 0,
+          "no context: 0 bytes");
     mvfxDestroyContext(c);
     // No scratch for none and youngest first; none needed to write them.
     for (mvfxSortMode mode = mvfx_sortNone; mode <= mvfx_sortYoungestFirst; ++mode)

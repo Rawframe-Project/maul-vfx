@@ -839,9 +839,11 @@ static void TestCreate(void)
                   mvfx_errorInvalid, -1) &&
               mvfxGetContextMisuse(context) == misuse + 1,
           "a NULL out counted as misuse");
+    effect = (mvfxEffectId){1, 1};
     CHECK(Refused(mvfxCreateEffectFromBytes(NULL, bytes, size, table, 4, &effect),
-                  mvfx_errorInvalid, -1),
-          "a NULL context");
+                  mvfx_errorInvalid, -1) &&
+              effect.index1 == 0 && effect.generation == 0,
+          "a NULL context, the null id given");
     mvfxDestroyContext(context);
     CHECK(s_live == 0, "everything freed");
 }
