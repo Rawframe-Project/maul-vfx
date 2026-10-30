@@ -99,13 +99,15 @@ static void Rehash(uint8_t* bytes, int64_t size)
     Set32(bytes, 20, (uint32_t)(hash >> 32));
 }
 
-// A file of a def with the table, in bytes of 4096.
+// A file of a def with the table, in bytes of 4096; its size, 0 when it
+// is not written.
 static int64_t Write(const Def* def, uint8_t* bytes)
 {
     int64_t size = 0;
     mvfxFileResult result = mvfxWriteEffect(&def->effect, s_assets, 4, bytes, 4096, &size);
-    CHECK(result.result == mvfx_success && result.offset == -1, "written");
-    return size;
+    bool written = result.result == mvfx_success && result.offset == -1;
+    CHECK(written, "written");
+    return written ? size : 0;
 }
 
 // Memory for read defs, aligned to 16.
