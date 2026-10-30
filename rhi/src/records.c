@@ -241,10 +241,10 @@ bool mvfxAddEmptyRecordPass(mrhiDevice* device, mvfxRecordPasses* passes, mrhiRe
 static bool RecordEmpty(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordPass* pass)
 {
     static const uint32_t zero[4] = {0};
-    bool recorded = mrhiBeginPass(device, pass->write) == mrhi_success &&
+    bool recorded = mrhiPass_Begin(device, pass->write) == mrhi_success &&
                     mvfxUpload(device, uploaded, pass->write, pass->resources.count,
                                (uint64_t)pass->words[0] * 4u, zero, pass->words[1] * 4u);
-    return mrhiEndPass(device, pass->write) == mrhi_success && recorded;
+    return mrhiPass_End(device, pass->write) == mrhi_success && recorded;
 }
 
 // Records a kernel's pass: its pipeline, bindings, root block (none for
@@ -259,13 +259,13 @@ static bool RecordKernel(mrhiDevice* device, mrhiPassId pass, mrhiComputePipelin
         bindings[b] =
             (mrhiBinding){.slot = (uint32_t)b, .resource = bound[b], .size = MRHI_WHOLE_SIZE};
     }
-    bool ran = mrhiBeginPass(device, pass) == mrhi_success &&
-               mrhiSetComputePipeline(device, pass, pipeline) == mrhi_success &&
-               mrhiSetBindings(device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
-               (root == nullptr ||
-                mrhiSetRootBlock(device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success) &&
-               mrhiDispatch(device, pass, groups, 1, 1) == mrhi_success;
-    return mrhiEndPass(device, pass) == mrhi_success && ran;
+    bool ran = mrhiPass_Begin(device, pass) == mrhi_success &&
+               mrhiPass_SetComputePipeline(device, pass, pipeline) == mrhi_success &&
+               mrhiPass_SetBindings(device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
+               (root == nullptr || mrhiPass_SetRootBlock(device, pass, 0, root,
+                                                         4 * sizeof(uint32_t)) == mrhi_success) &&
+               mrhiPass_Dispatch(device, pass, groups, 1, 1) == mrhi_success;
+    return mrhiPass_End(device, pass) == mrhi_success && ran;
 }
 
 // The workgroups of a sort's keys and scatter kernels, striding over its
@@ -353,12 +353,12 @@ static bool RecordPass(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordP
         return RecordEmpty(device, uploaded, pass);
     }
     bool recorded =
-        mrhiBeginPass(device, pass->write) == mrhi_success &&
+        mrhiPass_Begin(device, pass->write) == mrhi_success &&
         mvfxUpload(device, uploaded, pass->write, pass->numbers, 0, pass->words,
                    sizeof pass->words) &&
         (!IsNumbered(pass) || mvfxUpload(device, uploaded, pass->write, pass->ribbonNumbers, 0,
                                          pass->ribbonWords, sizeof pass->ribbonWords));
-    recorded = mrhiEndPass(device, pass->write) == mrhi_success && recorded;
+    recorded = mrhiPass_End(device, pass->write) == mrhi_success && recorded;
     const mvfxRecordResources* r = &pass->resources;
     const mrhiResourceId bound[RIBBON_BINDINGS] = {
         pass->numbers, r->particles, r->statistics, r->grids, r->records,

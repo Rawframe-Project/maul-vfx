@@ -178,11 +178,12 @@ static bool CopyWater(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
     {
         uint64_t bytes = (uint64_t)floats[k] * 4u;
         uint32_t from = emitter->waterSources[k];
-        mrhiResult result = bytes == 0 ? mrhi_success
-                            : from == UINT32_MAX
-                                ? mrhiClearBuffer(sim->device, pass, grids, room, bytes)
-                                : mrhiCopyBuffer(sim->device, pass, water->resources[WATER_FIELDS],
-                                                 (uint64_t)from * 4u, grids, room, bytes);
+        mrhiResult result =
+            bytes == 0 ? mrhi_success
+            : from == UINT32_MAX
+                ? mrhiPass_ClearBuffer(sim->device, pass, grids, room, bytes)
+                : mrhiPass_CopyBuffer(sim->device, pass, water->resources[WATER_FIELDS],
+                                      (uint64_t)from * 4u, grids, room, bytes);
         copied = result == mrhi_success;
         room += bytes;
     }
@@ -204,9 +205,9 @@ bool mvfxCopySimFollow(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
         uint64_t bytes = (uint64_t)mvfxSimGasFaces(&gas->view) * 4u;
         mrhiResult result =
             emitter->gasSources[g] == UINT32_MAX
-                ? mrhiClearBuffer(sim->device, pass, grids, room, bytes)
-                : mrhiCopyBuffer(sim->device, pass, gas->resources[GAS_FIELDS],
-                                 (uint64_t)emitter->gasSources[g] * 4u, grids, room, bytes);
+                ? mrhiPass_ClearBuffer(sim->device, pass, grids, room, bytes)
+                : mrhiPass_CopyBuffer(sim->device, pass, gas->resources[GAS_FIELDS],
+                                      (uint64_t)emitter->gasSources[g] * 4u, grids, room, bytes);
         copied = result == mrhi_success;
     }
     return copied && (emitter->water < 0 || CopyWater(sim, pass, emitter));

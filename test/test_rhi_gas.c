@@ -136,7 +136,7 @@ static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint6
     mrhiResourceId target = {0};
     mrhiPassId passes[2] = {{0}, {0}};
     mrhiRequestId request = {0};
-    bool recorded = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+    bool recorded = mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
                     mrhiImportBuffer(gpu->device, buffer, &target) == mrhi_success;
     const mrhiAccess filled = {.resource = target, .kind = mrhi_accessCopyDestination};
     const mrhiAccess taken = {.resource = target, .kind = mrhi_accessCopySource};
@@ -154,33 +154,37 @@ static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint6
                mrhiAddPass(gpu->device, &def, &passes[0]) == mrhi_success &&
                mvfxGpuSim_AddGasRead(scene->sim, &readDef) == mvfx_success;
     def.accesses = &taken;
-    recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
-               mrhiCompileFrame(gpu->device) == mrhi_success &&
-               mrhiBeginPass(gpu->device, passes[0]) == mrhi_success &&
-               mrhiClearBuffer(gpu->device, passes[0], target, 0, MRHI_WHOLE_SIZE) == mrhi_success;
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
+        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+        mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success &&
+        mrhiPass_ClearBuffer(gpu->device, passes[0], target, 0, MRHI_WHOLE_SIZE) == mrhi_success;
     // The fill: words of fill bytes over the buffer, cleared first.
     static uint8_t fills[1 << 16];
     memset(fills, fill, sizeof fills);
     for (uint64_t at = 0; recorded && at < bytes; at += sizeof fills)
     {
         uint64_t span = bytes - at < sizeof fills ? bytes - at : sizeof fills;
-        recorded = mrhiWriteBuffer(gpu->device, passes[0], target, at, fills, span) == mrhi_success;
+        recorded =
+            mrhiPass_WriteBuffer(gpu->device, passes[0], target, at, fills, span) == mrhi_success;
     }
-    recorded = recorded && mrhiEndPass(gpu->device, passes[0]) == mrhi_success &&
-               mvfxGpuSim_Record(scene->sim) == mvfx_success &&
-               mrhiBeginPass(gpu->device, passes[1]) == mrhi_success &&
-               mrhiReadBuffer(gpu->device, passes[1], target, 0, bytes, &request) == mrhi_success &&
-               mrhiEndPass(gpu->device, passes[1]) == mrhi_success;
+    recorded =
+        recorded && mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
+        mvfxGpuSim_Record(scene->sim) == mvfx_success &&
+        mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, passes[1], target, 0, bytes, &request) == mrhi_success &&
+        mrhiPass_End(gpu->device, passes[1]) == mrhi_success;
     if (!recorded)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         (void)mrhiDestroyBuffer(gpu->device, buffer);
         return false;
     }
     size_t got = 0;
-    bool done = Finish(gpu) &&
-                mrhiTakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
-                got == bytes;
+    bool done =
+        Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+        got == bytes;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;
 }
@@ -195,7 +199,7 @@ static bool ReportHolds(Gpu* gpu, const Scene* scene)
     mrhiPassId pass = {0};
     mrhiRequestId request = {0};
     if (mvfxGpuSim_GetGas(scene->sim, 0, &buffers) != mvfx_success ||
-        mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+        mrhiDevice_BeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
     }
@@ -207,24 +211,24 @@ static bool ReportHolds(Gpu* gpu, const Scene* scene)
     def.accessCount = 1;
     def.neverCull = true;
     uint32_t record[MVFX_GPU_GAS_STATISTICS_WORDS];
-    recorded =
-        recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
-        mrhiCompileFrame(gpu->device) == mrhi_success &&
-        mrhiBeginPass(gpu->device, pass) == mrhi_success &&
-        mrhiReadBuffer(gpu->device, pass, statistics, 0, sizeof record, &request) == mrhi_success &&
-        mrhiEndPass(gpu->device, pass) == mrhi_success;
+    recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, pass, statistics, 0, sizeof record, &request) ==
+                   mrhi_success &&
+               mrhiPass_End(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         return false;
     }
     size_t got = 0;
     static mvfxGasPlan plan;
-    bool read =
-        Finish(gpu) &&
-        mrhiTakeReadback(gpu->device, request, record, sizeof record, &got) == mrhi_success &&
-        got == sizeof record &&
-        mvfxInstance_GetGasPlan(scene->context, scene->planned, 0, &plan) == mvfx_success;
+    bool read = Finish(gpu) &&
+                mrhiRequest_TakeReadback(gpu->device, request, record, sizeof record, &got) ==
+                    mrhi_success &&
+                got == sizeof record &&
+                mvfxInstance_GetGasPlan(scene->context, scene->planned, 0, &plan) == mvfx_success;
     // The record is of the step the plan spans.
     uint64_t tick = (uint64_t)record[MVFX_GPU_GAS_TICK] | (uint64_t)record[MVFX_GPU_GAS_TICK + 1]
                                                               << 32u;
@@ -1044,7 +1048,7 @@ static void TestSampleRefusals(Gpu* gpu, mvfxGpu* kernels)
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     bool opened = mrhiCreateBuffer(gpu->device, &bufferDef, &buffers[0]) == mrhi_success &&
                   mrhiCreateBuffer(gpu->device, &bufferDef, &buffers[1]) == mrhi_success &&
-                  mrhiBeginFrame(gpu->device, &frame) == mrhi_success;
+                  mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success;
     bool taken = opened &&
                  mrhiImportBuffer(gpu->device, buffers[0], &good.points) == mrhi_success &&
                  mrhiImportBuffer(gpu->device, buffers[1], &good.target) == mrhi_success;
@@ -1056,7 +1060,7 @@ static void TestSampleRefusals(Gpu* gpu, mvfxGpu* kernels)
           "a gas's queries past the most a frame");
     if (opened)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
     }
     for (int32_t b = 0; b < 2; ++b)
     {
