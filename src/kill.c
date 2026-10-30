@@ -22,13 +22,14 @@ static bool IsRotation(const float q[4])
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-mvfxResult mvfxCheckKillRule(const mvfxKillRule* rule)
+mvfxResult mvfxCheckKillRule(const mvfxFieldPath* at, const mvfxKillRule* rule)
 {
     if (rule->space > mvfx_spaceLocal)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_KILL_RULE_SPACE, mvfx_errorInvalid);
     }
-    mvfxResult center = mvfxBoundedVector(rule->center, MVFX_MAX_EXTENT);
+    mvfxResult center =
+        mvfxRefuseVector(at, MVFX_TAG_KILL_RULE_CENTER, rule->center, MVFX_MAX_EXTENT);
     if (center != mvfx_success)
     {
         return center;
@@ -38,28 +39,38 @@ mvfxResult mvfxCheckKillRule(const mvfxKillRule* rule)
     {
     case mvfx_killInsideSphere:
     case mvfx_killOutsideSphere:
-        return mvfxPositiveUpTo(rule->radius, MVFX_MAX_EXTENT);
+        return mvfxRefuseField(at, MVFX_TAG_KILL_RULE_RADIUS,
+                               mvfxPositiveUpTo(rule->radius, MVFX_MAX_EXTENT));
     case mvfx_killInsideBox:
     case mvfx_killOutsideBox:
         if (!IsRotation(rule->rotation))
         {
-            return mvfx_errorInvalid;
+            return mvfxRefuseField(at, MVFX_TAG_KILL_RULE_ROTATION, mvfx_errorInvalid);
         }
-        return mvfxFirst(mvfxPositiveUpTo(rule->halfExtents[0], MVFX_MAX_EXTENT),
-                         mvfxFirst(mvfxPositiveUpTo(rule->halfExtents[1], MVFX_MAX_EXTENT),
-                                   mvfxPositiveUpTo(rule->halfExtents[2], MVFX_MAX_EXTENT)));
+        return mvfxRefuseSizes(at, MVFX_TAG_KILL_RULE_HALF_EXTENTS, rule->halfExtents,
+                               MVFX_MAX_EXTENT);
     case mvfx_killPastPlane:
     {
-        mvfxResult within = mvfxBoundedVector(rule->normal, MVFX_MAX_EXTENT);
-        return within != mvfx_success ? within : mvfxRequire(mvfxNormalize(normal));
+        mvfxResult within =
+            mvfxRefuseVector(at, MVFX_TAG_KILL_RULE_NORMAL, rule->normal, MVFX_MAX_EXTENT);
+        return within != mvfx_success ? within
+                                      : mvfxRefuseField(at, MVFX_TAG_KILL_RULE_NORMAL,
+                                                        mvfxRequire(mvfxNormalize(normal)));
     }
     case mvfx_killSlower:
-        return mvfxFirst(mvfxUpToBound(rule->speed, 0.0f, MVFX_MAX_EXTENT),
-                         mvfxUpToBound(rule->minimumAge, 0.0f, MVFX_MAX_LIFETIME));
+    {
+        mvfxResult speed = mvfxRefuseField(at, MVFX_TAG_KILL_RULE_SPEED,
+                                           mvfxUpToBound(rule->speed, 0.0f, MVFX_MAX_EXTENT));
+        return speed != mvfx_success
+                   ? speed
+                   : mvfxRefuseField(at, MVFX_TAG_KILL_RULE_MINIMUM_AGE,
+                                     mvfxUpToBound(rule->minimumAge, 0.0f, MVFX_MAX_LIFETIME));
+    }
     case mvfx_killCollisions:
-        return mvfxRequire(rule->collisions >= 1);
+        return mvfxRefuseField(at, MVFX_TAG_KILL_RULE_COLLISIONS,
+                               mvfxRequire(rule->collisions >= 1));
     default:
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_KILL_RULE_KIND, mvfx_errorInvalid);
     }
 }
 

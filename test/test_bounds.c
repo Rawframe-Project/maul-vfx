@@ -44,7 +44,7 @@ static mvfxEffectId NewEffect(mvfxContext* context, const mvfxEmitterDef* emitte
     def.emitters = emitters;
     def.emitterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     return effect;
 }
 
@@ -186,11 +186,12 @@ static void TestFixed(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refusals += mvfxCreateEffect(context, &def, &refused) == want ? 1 : 0;
+        refusals += mvfxCreateEffect(context, &def, &refused, NULL) == want ? 1 : 0;
     }
     CHECK(refusals == 4, "fixed bounds checked");
     emitter.fixedBounds = false;
-    CHECK(mvfxCreateEffect(context, &def, &refused) == mvfx_success, "ignored when not fixed");
+    CHECK(mvfxCreateEffect(context, &def, &refused, NULL) == mvfx_success,
+          "ignored when not fixed");
     mvfxDestroyContext(context);
 }
 

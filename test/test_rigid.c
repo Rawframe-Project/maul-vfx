@@ -128,7 +128,7 @@ static void Open(const mvfxEmitterDef* emitter, const double place[3], const flo
     def.emitters = &peeked;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -927,7 +927,7 @@ static void OpenOn(mvfxEmitterDef* emitter, mvfxCollider (*make)(mvfxContext*, b
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     memset(&s_scene, 0, sizeof s_scene);
@@ -1398,7 +1398,7 @@ static void TestNeedles(void)
         def.emitters = &emitter;
         def.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+        CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
         instanceDef.effect = effect;
         CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -1446,7 +1446,7 @@ static void TestNeedles(void)
         def.emitters = &emitter;
         def.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+        CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
         instanceDef.effect = effect;
         CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -1522,7 +1522,7 @@ static bool Made(mvfxContext* context, const mvfxEmitterDef* emitters, int32_t c
     def.parameters = parameters;
     def.parameterCount = parameters != NULL ? 1 : 0;
     mvfxEffectId effect = {0};
-    return mvfxCreateEffect(context, &def, &effect) == mvfx_success;
+    return mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success;
 }
 
 // Steps emitters (their last one's sizes peeked) from four of the last
@@ -1546,7 +1546,7 @@ static bool Sized(const mvfxEmitterDef* emitters, int32_t count, const float* pa
     def.parameters = parameters;
     def.parameterCount = parameters != NULL ? 1 : 0;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -1734,7 +1734,7 @@ static void TestSpinBound(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -1783,7 +1783,7 @@ static void TestSpinBound(void)
         .kind = mvfx_sourceRange, .min = {0, 0, 1.5707964f}, .max = {0, 0, 1.5707964f}};
     emitter.hostModules = &spin;
     emitter.hostModuleCount = 1;
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
           "instance");
@@ -1811,7 +1811,7 @@ static void TestSpinBound(void)
     emitter.colliderCount = 0;
     emitter.hostModules = &spin;
     emitter.hostModuleCount = 1;
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
           "instance");
@@ -1859,7 +1859,7 @@ static void TestFastTurn(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -1942,7 +1942,7 @@ static void TestHeldSpeed(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.scale = 1e-6f;
@@ -2010,7 +2010,7 @@ static void TestChecks(void)
         mvfxEffectId effect = {0};
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = c == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want ? 1 : 0;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want ? 1 : 0;
     }
     CHECK(refused == 9, "the checks");
     mvfxEmitterDef good = Rigid(mvfx_rigidBox, 1, 1, 1);
@@ -2018,7 +2018,7 @@ static void TestChecks(void)
     def.emitters = &good;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a valid one");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "a valid one");
     mvfxDestroyContext(context);
 }
 

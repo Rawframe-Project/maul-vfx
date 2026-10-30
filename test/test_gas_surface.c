@@ -58,7 +58,7 @@ static bool Open(const mvfxEmitterDef* emitters, int32_t emitterCount, const mvf
     def.gases = gases;
     def.gasCount = gasCount;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(s_context, &def, &effect) != mvfx_success)
+    if (mvfxCreateEffect(s_context, &def, &effect, NULL) != mvfx_success)
     {
         mvfxDestroyContext(s_context);
         return false;

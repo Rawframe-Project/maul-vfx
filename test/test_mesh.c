@@ -83,7 +83,7 @@ static int32_t Sample(mvfxMeshId mesh, mvfxMeshMode mode, int32_t count)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};
@@ -532,14 +532,14 @@ static void TestThroughTheStep(void)
     mvfxEffectDef effectDef = MeshEffect(emitters, flat, mvfx_meshVolume);
     mvfxEffectId effect = {0};
     uint64_t misuse = mvfxContext_GetMisuse(context);
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid,
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_errorInvalid,
           "a volume needs tetrahedra");
     CHECK(mvfxContext_GetMisuse(context) == misuse + 1, "counted");
     effectDef =
         MeshEffect(emitters, (mvfxMeshId){flat.index1, flat.generation + 1}, mvfx_meshSurface);
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorStale, "a stale mesh");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_errorStale, "a stale mesh");
     effectDef = MeshEffect(emitters, flat, mvfx_meshSurface);
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a surface effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "a surface effect");
     CHECK(mvfxDestroyMesh(context, flat) == mvfx_errorBusy, "busy while an effect uses it");
 
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();

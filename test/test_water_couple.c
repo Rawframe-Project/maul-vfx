@@ -74,7 +74,7 @@ static bool Open(const mvfxEmitterDef* emitters, int32_t count, const mvfxWaterD
     def.waters = water;
     def.waterCount = 1;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(s_context, &def, &effect) != mvfx_success)
+    if (mvfxCreateEffect(s_context, &def, &effect, NULL) != mvfx_success)
     {
         return false;
     }
@@ -231,7 +231,7 @@ static void TestRoom(void)
     def.waters = waters;
     def.waterCount = 2;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");

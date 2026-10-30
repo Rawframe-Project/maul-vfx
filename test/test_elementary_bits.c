@@ -38,7 +38,7 @@ static void TestConeCosine(void)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxEmitterView view;
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "view");
     CHECK(Bits(view.velocity.coneCosine) == 0x3F43CCB3u &&
@@ -66,7 +66,7 @@ static void TestDragDecay(void)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};

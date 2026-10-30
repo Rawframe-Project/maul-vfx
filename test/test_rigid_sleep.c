@@ -122,7 +122,7 @@ static mvfxResult EffectOf(const mvfxEmitterDef* emitter, mvfxEffectId* effect)
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitter;
     def.emitterCount = 1;
-    return mvfxCreateEffect(s_scene.context, &def, effect);
+    return mvfxCreateEffect(s_scene.context, &def, effect, NULL);
 }
 
 static void Play(const mvfxEmitterDef* emitter)

@@ -8,6 +8,8 @@
 #ifndef MAUL_VFX_SRC_CURVE_H
 #define MAUL_VFX_SRC_CURVE_H
 
+#include "field_path.h"
+
 #include "maul-vfx/curve.h"
 
 #include <stdbool.h>
@@ -25,8 +27,9 @@ typedef struct mvfxCurveTable
 // Whether a curve is valid: keys present, every field finite, times that
 // never decrease, interpolations and the tangent rule known, and with
 // unitDomain every time in [0, 1] (else mvfx_errorInvalid); at most
-// MVFX_CURVE_MAX_KEYS keys (else mvfx_errorLimit).
-mvfxResult mvfxCheckCurve(const mvfxCurve* curve, bool unitDomain);
+// MVFX_CURVE_MAX_KEYS keys (else mvfx_errorLimit). Names the field it
+// refuses below at.
+mvfxResult mvfxCheckCurve(const mvfxFieldPath* at, const mvfxCurve* curve, bool unitDomain);
 
 // The curve's exact value at time, in binary64, from its keys.
 double mvfxCurveValueAt(const mvfxCurve* curve, double time);

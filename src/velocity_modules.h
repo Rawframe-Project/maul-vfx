@@ -43,8 +43,8 @@ typedef struct mvfxResolvedVelocityModules
 
 // Whether velocity modules are valid: mvfx_errorLimit for a life curve,
 // direction, center or dampening past its named bound, mvfx_errorInvalid
-// for anything else wrong.
-mvfxResult mvfxCheckVelocityModules(const mvfxVelocityModules* modules);
+// for anything else wrong. Names the field it refuses below at.
+mvfxResult mvfxCheckVelocityModules(const mvfxFieldPath* at, const mvfxVelocityModules* modules);
 
 // The curve tables they need.
 int32_t mvfxVelocityModuleCurves(const mvfxVelocityModules* modules);

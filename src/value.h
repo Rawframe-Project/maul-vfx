@@ -53,17 +53,20 @@ typedef struct mvfxTableSpace
 // base's largest size (1 for a range, a curve's largest baked sample)
 // times its bounds' larger size within cap, a named bound (at most
 // MVFX_MAX_DRAW), else mvfx_errorLimit. A parameter's share is checked
-// against its value (mvfxCheckParameterReach).
-mvfxResult mvfxCheckScalarSource(const mvfxScalarSource* source, bool optional, bool hasDuration,
-                                 int32_t parameterCount, float cap);
+// against its value (mvfxCheckParameterReach). Names the field it refuses
+// below at: past a cap, the end of the larger size.
+mvfxResult mvfxCheckScalarSource(const mvfxFieldPath* at, const mvfxScalarSource* source,
+                                 bool optional, bool hasDuration, int32_t parameterCount,
+                                 float cap);
 
 // Whether a vector source of components (1 to 4) is valid likewise, the
 // gradient kinds only for four components, over age only with a
 // duration; its base's largest size (a gradient's largest key) times each
 // component's ends' larger size within that component's cap (cap holds
 // one a component).
-mvfxResult mvfxCheckVectorSource(const mvfxVectorSource* source, int32_t components,
-                                 bool hasDuration, int32_t parameterCount, const float* cap);
+mvfxResult mvfxCheckVectorSource(const mvfxFieldPath* at, const mvfxVectorSource* source,
+                                 int32_t components, bool hasDuration, int32_t parameterCount,
+                                 const float* cap);
 
 // Raises reach[p][c] to the larger size of the ends of a source that reads
 // component c of parameter p over the source's cap for it, for each such

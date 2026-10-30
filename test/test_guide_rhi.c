@@ -102,7 +102,7 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     // Planned: the context plans its steps, the simulation runs them.
     instanceDef.effect = effect;
     instanceDef.planned = true;

@@ -1206,13 +1206,69 @@ extern "C"
     /// Safe from any thread.
     MVFX_API mvfxEffectDef mvfxDefaultEffectDef(void);
 
+// The most steps of a field's path an effect refusal holds: from
+// mvfxEffectDef down to the field, a step for each struct the path enters.
+#define MVFX_MAX_FIELD_DEPTH 16
+
+    // Why an effect def was refused, and the field refused: its status,
+    // and the path of the field's tags (tools/file-tags.txt, the effect
+    // file's tags, which keep their meaning across versions) from
+    // mvfxEffectDef down to it, tags[0] a field of mvfxEffectDef. A step
+    // into an array or a fixed array of structs names its item in items,
+    // -1 at a step that names no item. A refusal of a whole struct or
+    // item (a def without its cookie, an array's item) ends at that struct
+    // or item; one of no field (a NULL argument, the context's effects
+    // full, the allocator's failure, an effect file's header) holds no
+    // tags. A rule between fields names the field whose header comment
+    // states it, a reference to another emitter, gas or water surface the
+    // field that refers. emitter, gas and water name the emitter, gas or
+    // water surface the field is in, -1 for none. The steps past tagCount
+    // hold 0.
+    // mvfxGetEffectFieldPath writes the path as text.
+    typedef struct mvfxEffectRefusal
+    {
+        mvfxResult result;
+        int32_t emitter;
+        int32_t gas;
+        int32_t water;
+        int32_t tagCount;
+        uint32_t tags[MVFX_MAX_FIELD_DEPTH];
+        int32_t items[MVFX_MAX_FIELD_DEPTH];
+    } mvfxEffectRefusal;
+
+    /// Writes the path of the field a refusal names as text, each field by
+    /// its name in the headers and each item by its index:
+    /// `emitters[2].overLife.size.curve.keys[3].time`. A refusal that
+    /// names no field writes an empty path. The text is ASCII of the
+    /// length given, not terminated.
+    ///
+    /// @param refusal    The refusal, as a creation or a file call wrote it.
+    /// @param textOut    Receives the text; NULL when capacity is 0.
+    /// @param capacity   Its size in bytes, at least 0.
+    /// @param lengthOut  Receives the text's length in bytes, also when the
+    ///                   capacity is too small; 0 on another failure.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument or a
+    ///         refusal whose path names no field of this version (a tag it
+    ///         does not know, an item given where the step names none or
+    ///         missing where it does, a tag count past
+    ///         MVFX_MAX_FIELD_DEPTH); `mvfx_errorCapacity` when the text
+    ///         does not fit. On failure the whole capacity is zeroed.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxGetEffectFieldPath(const mvfxEffectRefusal* refusal,
+                                                              char* textOut, int64_t capacity,
+                                                              int64_t* lengthOut);
+
     /// Creates an effect from a def: checks every field of it and of its
     /// emitters, then compiles it, allocating its compiled form in one block
     /// from the context's allocator.
     ///
-    /// @param context    The context that owns the effect.
-    /// @param def        The def, from mvfxDefaultEffectDef.
-    /// @param effectOut  Receives the effect's id; the null id on failure.
+    /// @param context     The context that owns the effect.
+    /// @param def         The def, from mvfxDefaultEffectDef.
+    /// @param effectOut   Receives the effect's id; the null id on failure.
+    /// @param refusalOut  Optional: receives why the def was refused and the
+    ///                    field refused; on success, mvfx_success and no
+    ///                    field.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         def or an emitter def without its cookie, a field out of its
     ///         range or an invalid curve, which counts as misuse when the
@@ -1228,7 +1284,8 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateEffect(mvfxContext* context,
                                                         const mvfxEffectDef* def,
-                                                        mvfxEffectId* effectOut);
+                                                        mvfxEffectId* effectOut,
+                                                        mvfxEffectRefusal* refusalOut);
 
     /// Destroys an effect and returns its memory to the context's allocator.
     ///

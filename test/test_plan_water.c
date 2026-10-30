@@ -53,7 +53,7 @@ static void Open(const mvfxWaterDef* waters, int32_t count, const mvfxEmitterDef
     def.emitterCount = emitterCount;
     def.gases = gases;
     def.gasCount = gasCount;
-    CHECK(mvfxCreateEffect(s_context, &def, &s_effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &s_effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = s_effect;
     memcpy(instanceDef.origin, origin, sizeof instanceDef.origin);

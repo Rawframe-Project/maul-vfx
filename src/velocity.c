@@ -20,30 +20,41 @@ static bool IsWithin(float x, float low, float high)
     return x >= low && x <= high;
 }
 
-mvfxResult mvfxCheckVelocity(const mvfxVelocity* velocity)
+mvfxResult mvfxCheckVelocity(const mvfxFieldPath* at, const mvfxVelocity* velocity)
 {
-    if (velocity->mode > mvfx_directionFixed || !IsWithin(velocity->coneAngle, 0.0f, PI) ||
-        !IsWithin(velocity->randomize, 0.0f, 1.0f) || !(velocity->speed.min >= 0.0f) ||
-        !(velocity->speed.min <= velocity->speed.max))
+    mvfxFieldPath speed = mvfxFieldIn(at, MVFX_TAG_VELOCITY_SPEED, -1);
+    mvfxResult checked = mvfxRefuseField(at, MVFX_TAG_VELOCITY_MODE,
+                                         mvfxRequire(velocity->mode <= mvfx_directionFixed));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_VELOCITY_CONE_ANGLE,
+                                    mvfxRequire(IsWithin(velocity->coneAngle, 0.0f, PI)));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_VELOCITY_RANDOMIZE,
+                                    mvfxRequire(IsWithin(velocity->randomize, 0.0f, 1.0f)));
+    checked = checked != mvfx_success ? checked
+                                      : mvfxRefuseField(&speed, MVFX_TAG_RANGE_MIN,
+                                                        mvfxRequire(velocity->speed.min >= 0.0f));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseHere(&speed, mvfxRequire(velocity->speed.min <= velocity->speed.max));
+    checked = checked != mvfx_success ? checked
+                                      : mvfxRefuseVector(at, MVFX_TAG_VELOCITY_DIRECTION,
+                                                         velocity->direction, MVFX_MAX_EXTENT);
+    if (checked != mvfx_success)
     {
-        return mvfx_errorInvalid;
+        return checked;
     }
     bool needsDirection =
         velocity->mode == mvfx_directionCone || velocity->mode == mvfx_directionFixed;
     float direction[3] = {velocity->direction[0], velocity->direction[1], velocity->direction[2]};
-    for (int32_t i = 0; i < 3; ++i)
-    {
-        mvfxResult within = mvfxBounded(direction[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
-        if (within != mvfx_success)
-        {
-            return within;
-        }
-    }
     if (needsDirection && !mvfxNormalize(direction))
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_VELOCITY_DIRECTION, mvfx_errorInvalid);
     }
-    return mvfxBounded(velocity->speed.max, 0.0f, MVFX_MAX_EXTENT);
+    return mvfxRefuseField(&speed, MVFX_TAG_RANGE_MAX,
+                           mvfxBounded(velocity->speed.max, 0.0f, MVFX_MAX_EXTENT));
 }
 
 void mvfxCompileVelocity(const mvfxVelocity* velocity, mvfxCompiledVelocity* out)

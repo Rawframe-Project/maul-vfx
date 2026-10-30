@@ -19,80 +19,130 @@ mvfxWaterDef mvfxDefaultWaterDef(void)
 }
 
 // Whether a shallow surface's source is in range.
-static mvfxResult CheckSource(const mvfxWaterSource* source)
+static mvfxResult CheckSource(const mvfxFieldPath* at, const mvfxWaterSource* source)
 {
     if (source->shape != mvfx_gasSphere && source->shape != mvfx_gasBox)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_WATER_SOURCE_SHAPE, mvfx_errorInvalid);
     }
-    mvfxResult valid = mvfxFirst(mvfxPositiveUpTo(source->rate, MVFX_MAX_EXTENT),
-                                 mvfxBoundedVector(source->center, MVFX_MAX_EXTENT));
+    mvfxResult valid = mvfxRefuseField(at, MVFX_TAG_WATER_SOURCE_RATE,
+                                       mvfxPositiveUpTo(source->rate, MVFX_MAX_EXTENT));
+    valid = valid != mvfx_success ? valid
+                                  : mvfxRefuseVector(at, MVFX_TAG_WATER_SOURCE_CENTER,
+                                                     source->center, MVFX_MAX_EXTENT);
     if (valid != mvfx_success)
     {
         return valid;
     }
     if (source->shape == mvfx_gasSphere)
     {
-        return mvfxPositiveUpTo(source->radius, MVFX_MAX_EXTENT);
+        return mvfxRefuseField(at, MVFX_TAG_WATER_SOURCE_RADIUS,
+                               mvfxPositiveUpTo(source->radius, MVFX_MAX_EXTENT));
     }
-    return mvfxFirst(mvfxPositiveUpTo(source->halfExtents[0], MVFX_MAX_EXTENT),
-                     mvfxPositiveUpTo(source->halfExtents[2], MVFX_MAX_EXTENT));
+    // A box's height is the column's: no half extent along Y.
+    valid = mvfxRefuseItem(at, MVFX_TAG_WATER_SOURCE_HALF_EXTENTS, 0,
+                           mvfxPositiveUpTo(source->halfExtents[0], MVFX_MAX_EXTENT));
+    return valid != mvfx_success
+               ? valid
+               : mvfxRefuseItem(at, MVFX_TAG_WATER_SOURCE_HALF_EXTENTS, 2,
+                                mvfxPositiveUpTo(source->halfExtents[2], MVFX_MAX_EXTENT));
 }
 
 // Whether a def's shallow water fields are in range.
-static mvfxResult CheckShallow(const mvfxWaterDef* def)
+static mvfxResult CheckShallow(const mvfxFieldPath* at, const mvfxWaterDef* def)
 {
-    if (def->model > mvfx_waterShallow || def->sourceCount < 0 ||
-        (def->sourceCount > 0 && def->sources == nullptr) ||
-        (def->enableTerrain &&
-         (def->terrain.kind != mvfx_colliderHeightfield || def->terrain.space > 1)))
+    mvfxFieldPath terrain = mvfxFieldIn(at, MVFX_TAG_WATER_DEF_TERRAIN, -1);
+    if (def->model > mvfx_waterShallow)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_WATER_DEF_MODEL, mvfx_errorInvalid);
+    }
+    if (def->sourceCount < 0 || (def->sourceCount > 0 && def->sources == nullptr))
+    {
+        return mvfxRefuseField(at, MVFX_TAG_WATER_DEF_SOURCES, mvfx_errorInvalid);
+    }
+    if (def->enableTerrain && def->terrain.kind != mvfx_colliderHeightfield)
+    {
+        return mvfxRefuseField(&terrain, MVFX_TAG_COLLIDER_KIND, mvfx_errorInvalid);
+    }
+    if (def->enableTerrain && def->terrain.space > 1)
+    {
+        return mvfxRefuseField(&terrain, MVFX_TAG_COLLIDER_SPACE, mvfx_errorInvalid);
     }
     // The count bounds the sources read below.
-    mvfxResult valid =
-        mvfxFirst(mvfxFirst(mvfxPositiveUpTo(def->gravity, MVFX_MAX_EXTENT),
-                            mvfxUpToBound(def->friction, 0.0f, MVFX_MAX_DRAG)),
-                  mvfxFirst(mvfxBounded(def->fillLevel, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                            mvfxWithinBound(def->sourceCount <= MVFX_MAX_WATER_SOURCES)));
+    mvfxResult valid = mvfxRefuseField(at, MVFX_TAG_WATER_DEF_GRAVITY,
+                                       mvfxPositiveUpTo(def->gravity, MVFX_MAX_EXTENT));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseField(at, MVFX_TAG_WATER_DEF_FRICTION,
+                                  mvfxUpToBound(def->friction, 0.0f, MVFX_MAX_DRAG));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseField(at, MVFX_TAG_WATER_DEF_FILL_LEVEL,
+                                  mvfxBounded(def->fillLevel, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseField(at, MVFX_TAG_WATER_DEF_SOURCES,
+                                  mvfxWithinBound(def->sourceCount <= MVFX_MAX_WATER_SOURCES));
     if (valid == mvfx_success && def->enableTerrain)
     {
-        valid = mvfxCheckCollider(&def->terrain);
+        valid = mvfxCheckCollider(&terrain, &def->terrain);
     }
     for (int32_t s = 0; valid == mvfx_success && s < def->sourceCount; ++s)
     {
-        valid = CheckSource(&def->sources[s]);
+        mvfxFieldPath source = mvfxFieldIn(at, MVFX_TAG_WATER_DEF_SOURCES, s);
+        valid = CheckSource(&source, &def->sources[s]);
     }
     return valid;
 }
 
-mvfxResult mvfxCheckWaterDef(const mvfxWaterDef* def)
+mvfxResult mvfxCheckWaterDef(const mvfxFieldPath* at, const mvfxWaterDef* def)
 {
-    if (def->cookie != MVFX_WATER_DEF_COOKIE || def->size[0] < 2 || def->size[1] < 2 ||
-        (def->space != mvfx_gasLocal && def->space != mvfx_gasWorld) || def->closedWalls > 15 ||
-        !(def->waveSpeed > 0.0f))
+    if (def->cookie != MVFX_WATER_DEF_COOKIE)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseHere(at, mvfx_errorInvalid);
     }
-    const mvfxResult fields[] = {
-        mvfxWithinBound(def->size[0] <= MVFX_MAX_WATER_SIZE && def->size[1] <= MVFX_MAX_WATER_SIZE),
-        mvfxBounded(def->cellSize, MVFX_MIN_WATER_CELL, MVFX_MAX_EXTENT),
-        mvfxBounded(def->waveSpeed, 0.0f, MVFX_MAX_EXTENT),
-        mvfxUpToBound(def->damping, 0.0f, MVFX_MAX_DRAG),
-        mvfxBoundedVector(def->center, MVFX_MAX_EXTENT),
-    };
-    for (size_t k = 0; k < sizeof(fields) / sizeof(fields[0]); ++k)
+    for (int32_t k = 0; k < 2; ++k)
     {
-        if (fields[k] != mvfx_success)
+        if (def->size[k] < 2)
         {
-            return fields[k];
+            return mvfxRefuseItem(at, MVFX_TAG_WATER_DEF_SIZE, k, mvfx_errorInvalid);
         }
     }
-    return CheckShallow(def);
+    uint32_t choice = def->space != mvfx_gasLocal && def->space != mvfx_gasWorld
+                          ? MVFX_TAG_WATER_DEF_SPACE
+                      : def->closedWalls > 15    ? MVFX_TAG_WATER_DEF_CLOSED_WALLS
+                      : !(def->waveSpeed > 0.0f) ? MVFX_TAG_WATER_DEF_WAVE_SPEED
+                                                 : 0;
+    if (choice != 0)
+    {
+        return mvfxRefuseField(at, choice, mvfx_errorInvalid);
+    }
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        if (def->size[k] > MVFX_MAX_WATER_SIZE)
+        {
+            return mvfxRefuseItem(at, MVFX_TAG_WATER_DEF_SIZE, k, mvfx_errorLimit);
+        }
+    }
+    mvfxResult valid =
+        mvfxRefuseField(at, MVFX_TAG_WATER_DEF_CELL_SIZE,
+                        mvfxBounded(def->cellSize, MVFX_MIN_WATER_CELL, MVFX_MAX_EXTENT));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseField(at, MVFX_TAG_WATER_DEF_WAVE_SPEED,
+                                  mvfxBounded(def->waveSpeed, 0.0f, MVFX_MAX_EXTENT));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseField(at, MVFX_TAG_WATER_DEF_DAMPING,
+                                  mvfxUpToBound(def->damping, 0.0f, MVFX_MAX_DRAG));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseVector(at, MVFX_TAG_WATER_DEF_CENTER, def->center, MVFX_MAX_EXTENT);
+    return valid != mvfx_success ? valid : CheckShallow(at, def);
 }
 
-mvfxResult mvfxCheckWaterCoupling(const mvfxWaterCoupling* coupling, const mvfxWaterDef* waters,
-                                  int32_t count)
+mvfxResult mvfxCheckWaterCoupling(const mvfxFieldPath* at, const mvfxWaterCoupling* coupling,
+                                  const mvfxWaterDef* waters, int32_t count)
 {
     if (!coupling->enable)
     {
@@ -100,17 +150,27 @@ mvfxResult mvfxCheckWaterCoupling(const mvfxWaterCoupling* coupling, const mvfxW
     }
     if (coupling->water < 0 || coupling->water >= count)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_WATER_COUPLING_WATER, mvfx_errorInvalid);
     }
     bool shallow = waters[coupling->water].model == mvfx_waterShallow;
     if (coupling->pour && !shallow)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_WATER_COUPLING_POUR, mvfx_errorInvalid);
     }
-    return mvfxFirst(mvfxFirst(mvfxPositiveUpTo(coupling->radius, MVFX_MAX_EXTENT),
-                               mvfxUpToBound(coupling->push, 0.0f, MVFX_MAX_EXTENT)),
-                     mvfxFirst(mvfxUpToBound(coupling->buoyancy, 0.0f, MVFX_MAX_BUOYANCY),
-                               mvfxUpToBound(coupling->drag, 0.0f, MVFX_MAX_DRAG)));
+    mvfxResult valid = mvfxRefuseField(at, MVFX_TAG_WATER_COUPLING_RADIUS,
+                                       mvfxPositiveUpTo(coupling->radius, MVFX_MAX_EXTENT));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseField(at, MVFX_TAG_WATER_COUPLING_PUSH,
+                                  mvfxUpToBound(coupling->push, 0.0f, MVFX_MAX_EXTENT));
+    valid = valid != mvfx_success
+                ? valid
+                : mvfxRefuseField(at, MVFX_TAG_WATER_COUPLING_BUOYANCY,
+                                  mvfxUpToBound(coupling->buoyancy, 0.0f, MVFX_MAX_BUOYANCY));
+    return valid != mvfx_success
+               ? valid
+               : mvfxRefuseField(at, MVFX_TAG_WATER_COUPLING_DRAG,
+                                 mvfxUpToBound(coupling->drag, 0.0f, MVFX_MAX_DRAG));
 }
 
 mvfxCompiledWater mvfxCompileWater(const mvfxWaterDef* def)

@@ -99,7 +99,7 @@ static void Open(const mvfxEmitterDef* emitter, const double* places, int32_t un
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -352,17 +352,17 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 2 || rule == 7 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 8, "every check");
     emitter = Sheets(MVFX_MAX_EXTENT, &none);
     emitter.unit.selfFriction = 1.0f;
     emitter.unit.selfContacts = MVFX_MAX_NEIGHBORS;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the bounds");
     emitter = Sheets(0.0f, &none);
     emitter.unit.selfFriction = NAN;
     emitter.unit.selfContacts = -4;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "none, unread");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "none, unread");
     mvfxDestroyContext(context);
 }
 

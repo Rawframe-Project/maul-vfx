@@ -269,17 +269,17 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     int64_t needed = 0;
     mvfxEffectDef def;
     mvfxFileResult read = mvfxReadEffect(bytes, (int64_t)size, s_sceneAssets, s_sceneAssetCount,
-                                         NULL, 0, &needed, &def);
+                                         NULL, 0, &needed, &def, NULL);
     if (read.result == mvfx_errorCapacity)
     {
         void* block = malloc((size_t)needed + 16);
         Expect(block != NULL);
         void* memory = (void*)(((uintptr_t)block + 15) & ~(uintptr_t)15);
         read = mvfxReadEffect(bytes, (int64_t)size, s_sceneAssets, s_sceneAssetCount, memory,
-                              needed, &needed, &def);
+                              needed, &needed, &def, NULL);
         mvfxEffectId effect = {0};
         mvfxResult created = read.result == mvfx_success && IsCheap(&def)
-                                 ? mvfxCreateEffect(s_fuzzContext, &def, &effect)
+                                 ? mvfxCreateEffect(s_fuzzContext, &def, &effect, NULL)
                                  : mvfx_errorCapacity;
         Expect(created <= 0);
         if (created == mvfx_success)

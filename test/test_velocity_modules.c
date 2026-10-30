@@ -31,7 +31,8 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &scene.effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &scene.effect, NULL) == mvfx_success,
+          "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = scene.effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -373,7 +374,7 @@ static void TestRefusals(void)
         effectDef.emitters = &bad;
         effectDef.emitterCount = 1;
         mvfxEffectId effect = {0};
-        CHECK(mvfxCreateEffect(context, &effectDef, &effect) == want, "refused");
+        CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == want, "refused");
     }
     mvfxDestroyContext(context);
 }

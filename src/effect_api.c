@@ -10,6 +10,7 @@
 #include "effect.h"
 #include "effect_check.h"
 #include "effect_parts.h"
+#include "field_path.h"
 #include "fpenv.h"
 #include "grid_api.h"
 #include "hull.h"
@@ -19,7 +20,8 @@
 
 // Finds the grid of each vector field of a valid def: stale for an id
 // that names no live grid, invalid for one not of three components.
-static mvfxResult FindGrids(mvfxContext* context, const mvfxEffectDef* def,
+static mvfxResult FindGrids(mvfxContext* context, const mvfxFieldPath* root,
+                            const mvfxEffectDef* def,
                             mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_FORCES])
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
@@ -32,13 +34,14 @@ static mvfxResult FindGrids(mvfxContext* context, const mvfxEffectDef* def,
                 continue;
             }
             grids[i][f] = mvfxContextGrid(context, force->grid);
-            if (grids[i][f] == nullptr)
+            mvfxResult found = grids[i][f] == nullptr         ? mvfx_errorStale
+                               : grids[i][f]->components != 3 ? mvfx_errorInvalid
+                                                              : mvfx_success;
+            if (found != mvfx_success)
             {
-                return mvfx_errorStale;
-            }
-            if (grids[i][f]->components != 3)
-            {
-                return mvfx_errorInvalid;
+                mvfxFieldPath emitter = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
+                mvfxFieldPath at = mvfxFieldIn(&emitter, MVFX_TAG_EMITTER_DEF_FORCES, f);
+                return mvfxRefuseField(&at, MVFX_TAG_FORCE_GRID, found);
             }
         }
     }
@@ -47,7 +50,8 @@ static mvfxResult FindGrids(mvfxContext* context, const mvfxEffectDef* def,
 
 // Finds the grid of each grid collider of a valid def, as
 // mvfxFindColliderGrid.
-static mvfxResult FindColliderGrids(mvfxContext* context, const mvfxEffectDef* def,
+static mvfxResult FindColliderGrids(mvfxContext* context, const mvfxFieldPath* root,
+                                    const mvfxEffectDef* def,
                                     mvfxGrid* grids[MVFX_MAX_EMITTERS][MVFX_MAX_COLLIDERS])
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
@@ -58,7 +62,9 @@ static mvfxResult FindColliderGrids(mvfxContext* context, const mvfxEffectDef* d
                 mvfxFindColliderGrid(context, &def->emitters[i].colliders[c], &grids[i][c]);
             if (found != mvfx_success)
             {
-                return found;
+                mvfxFieldPath emitter = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
+                mvfxFieldPath at = mvfxFieldIn(&emitter, MVFX_TAG_EMITTER_DEF_COLLIDERS, c);
+                return mvfxRefuseField(&at, MVFX_TAG_COLLIDER_GRID, found);
             }
         }
     }
@@ -67,7 +73,8 @@ static mvfxResult FindColliderGrids(mvfxContext* context, const mvfxEffectDef* d
 
 // Finds the grid of each grid obstacle of a valid def's gases, as
 // mvfxFindColliderGrid.
-static mvfxResult FindObstacleGrids(mvfxContext* context, const mvfxEffectDef* def,
+static mvfxResult FindObstacleGrids(mvfxContext* context, const mvfxFieldPath* root,
+                                    const mvfxEffectDef* def,
                                     mvfxGrid* grids[MVFX_MAX_GASES][MVFX_MAX_COLLIDERS])
 {
     for (int32_t g = 0; g < def->gasCount; ++g)
@@ -78,7 +85,9 @@ static mvfxResult FindObstacleGrids(mvfxContext* context, const mvfxEffectDef* d
                 mvfxFindColliderGrid(context, &def->gases[g].obstacles[c], &grids[g][c]);
             if (found != mvfx_success)
             {
-                return found;
+                mvfxFieldPath gas = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_GASES, g);
+                mvfxFieldPath at = mvfxFieldIn(&gas, MVFX_TAG_GAS_DEF_OBSTACLES, c);
+                return mvfxRefuseField(&at, MVFX_TAG_COLLIDER_GRID, found);
             }
         }
     }
@@ -88,7 +97,8 @@ static mvfxResult FindObstacleGrids(mvfxContext* context, const mvfxEffectDef* d
 // Finds the grid of each vector field on a valid def's gases: stale for
 // an id that names no live grid, invalid for one not of three
 // components.
-static mvfxResult FindGasForceGrids(mvfxContext* context, const mvfxEffectDef* def,
+static mvfxResult FindGasForceGrids(mvfxContext* context, const mvfxFieldPath* root,
+                                    const mvfxEffectDef* def,
                                     mvfxGrid* grids[MVFX_MAX_GASES][MVFX_MAX_FORCES])
 {
     for (int32_t g = 0; g < def->gasCount; ++g)
@@ -101,13 +111,14 @@ static mvfxResult FindGasForceGrids(mvfxContext* context, const mvfxEffectDef* d
                 continue;
             }
             grids[g][f] = mvfxContextGrid(context, force->grid);
-            if (grids[g][f] == nullptr)
+            mvfxResult found = grids[g][f] == nullptr         ? mvfx_errorStale
+                               : grids[g][f]->components != 3 ? mvfx_errorInvalid
+                                                              : mvfx_success;
+            if (found != mvfx_success)
             {
-                return mvfx_errorStale;
-            }
-            if (grids[g][f]->components != 3)
-            {
-                return mvfx_errorInvalid;
+                mvfxFieldPath gas = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_GASES, g);
+                mvfxFieldPath at = mvfxFieldIn(&gas, MVFX_TAG_GAS_DEF_FORCES, f);
+                return mvfxRefuseField(&at, MVFX_TAG_FORCE_GRID, found);
             }
         }
     }
@@ -154,8 +165,8 @@ static void HoldGrids(mvfxEffect* effect, int32_t by)
 // The mesh each mesh shape spawns from; mvfx_errorStale for one that is
 // gone, mvfx_errorInvalid for one without the elements its mode needs
 // (misuse).
-static mvfxResult FindMeshes(mvfxContext* context, const mvfxEffectDef* def,
-                             mvfxMesh* meshes[MVFX_MAX_EMITTERS])
+static mvfxResult FindMeshes(mvfxContext* context, const mvfxFieldPath* root,
+                             const mvfxEffectDef* def, mvfxMesh* meshes[MVFX_MAX_EMITTERS])
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
@@ -165,13 +176,14 @@ static mvfxResult FindMeshes(mvfxContext* context, const mvfxEffectDef* def,
             continue;
         }
         meshes[i] = mvfxContextMesh(context, shape->mesh);
-        if (meshes[i] == nullptr)
+        mvfxResult found = meshes[i] == nullptr                           ? mvfx_errorStale
+                           : !mvfxMeshHasMode(meshes[i], shape->meshMode) ? mvfx_errorInvalid
+                                                                          : mvfx_success;
+        if (found != mvfx_success)
         {
-            return mvfx_errorStale;
-        }
-        if (!mvfxMeshHasMode(meshes[i], shape->meshMode))
-        {
-            return mvfx_errorInvalid;
+            mvfxFieldPath emitter = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
+            mvfxFieldPath at = mvfxFieldIn(&emitter, MVFX_TAG_EMITTER_DEF_SHAPE, -1);
+            return mvfxRefuseField(&at, MVFX_TAG_SHAPE_MESH, found);
         }
     }
     return mvfx_success;
@@ -191,8 +203,8 @@ static void FreeHulls(mvfxContext* context, mvfxHull* hulls[MVFX_MAX_EMITTERS])
 // that is gone, mvfx_errorInvalid for one whose vertices span no volume
 // or whose hull has too many vertices. The mesh's vertices are data a
 // correct program meets (a model file's), so that is never misuse.
-static mvfxResult BuildHulls(mvfxContext* context, const mvfxEffectDef* def,
-                             mvfxHull* hulls[MVFX_MAX_EMITTERS])
+static mvfxResult BuildHulls(mvfxContext* context, const mvfxFieldPath* root,
+                             const mvfxEffectDef* def, mvfxHull* hulls[MVFX_MAX_EMITTERS])
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
@@ -212,7 +224,14 @@ static mvfxResult BuildHulls(mvfxContext* context, const mvfxEffectDef* def,
         if (built != mvfx_success)
         {
             FreeHulls(context, hulls);
-            return built;
+            // The allocator's failure is no field's.
+            if (built == mvfx_errorCapacity)
+            {
+                return mvfxRefuseHere(root, built);
+            }
+            mvfxFieldPath emitter = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
+            mvfxFieldPath at = mvfxFieldIn(&emitter, MVFX_TAG_EMITTER_DEF_RIGID, -1);
+            return mvfxRefuseField(&at, MVFX_TAG_RIGID_DEF_HULL, built);
         }
     }
     return mvfx_success;
@@ -230,8 +249,8 @@ typedef struct EffectGrids
 
 // Finds the grid of each water surface's terrain, as
 // mvfxFindColliderGrid.
-static mvfxResult FindTerrainGrids(mvfxContext* context, const mvfxEffectDef* def,
-                                   mvfxGrid* grids[MVFX_MAX_WATERS])
+static mvfxResult FindTerrainGrids(mvfxContext* context, const mvfxFieldPath* root,
+                                   const mvfxEffectDef* def, mvfxGrid* grids[MVFX_MAX_WATERS])
 {
     for (int32_t w = 0; w < def->waterCount; ++w)
     {
@@ -240,21 +259,23 @@ static mvfxResult FindTerrainGrids(mvfxContext* context, const mvfxEffectDef* de
                                : mvfx_success;
         if (found != mvfx_success)
         {
-            return found;
+            mvfxFieldPath water = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_WATERS, w);
+            mvfxFieldPath at = mvfxFieldIn(&water, MVFX_TAG_WATER_DEF_TERRAIN, -1);
+            return mvfxRefuseField(&at, MVFX_TAG_COLLIDER_GRID, found);
         }
     }
     return mvfx_success;
 }
 
 // Finds every grid of a valid def, as the finders above.
-static mvfxResult FindEffectGrids(mvfxContext* context, const mvfxEffectDef* def,
-                                  EffectGrids* grids)
+static mvfxResult FindEffectGrids(mvfxContext* context, const mvfxFieldPath* root,
+                                  const mvfxEffectDef* def, EffectGrids* grids)
 {
-    mvfxResult found = FindGrids(context, def, grids->forces);
-    found = found == mvfx_success ? FindColliderGrids(context, def, grids->colliders) : found;
-    found = found == mvfx_success ? FindObstacleGrids(context, def, grids->obstacles) : found;
-    found = found == mvfx_success ? FindGasForceGrids(context, def, grids->gasForces) : found;
-    return found == mvfx_success ? FindTerrainGrids(context, def, grids->terrains) : found;
+    mvfxResult found = FindGrids(context, root, def, grids->forces);
+    found = found == mvfx_success ? FindColliderGrids(context, root, def, grids->colliders) : found;
+    found = found == mvfx_success ? FindObstacleGrids(context, root, def, grids->obstacles) : found;
+    found = found == mvfx_success ? FindGasForceGrids(context, root, def, grids->gasForces) : found;
+    return found == mvfx_success ? FindTerrainGrids(context, root, def, grids->terrains) : found;
 }
 
 // Gives a compiled effect the grids found for its def.
@@ -288,13 +309,13 @@ static void AttachGrids(mvfxEffect* effect, const mvfxEffectDef* def, const Effe
     }
 }
 
-mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
-                              mvfxEffectId* effectOut, bool* misuseOut)
+// mvfxCreateEffectOf's work, the refusal recorded below root where a check
+// names its field.
+static mvfxResult CreateEffect(mvfxContext* context, const mvfxFieldPath* root,
+                               const mvfxEffectDef* def, mvfxEffectId* effectOut, bool* misuseOut)
 {
-    *misuseOut = false;
-    *effectOut = (mvfxEffectId){0};
-    mvfxResult valid = mvfxCheckEffectDef(def);
-    valid = valid != mvfx_success ? valid : mvfxCheckEffectParts(def);
+    mvfxResult valid = mvfxCheckEffectDef(root, def);
+    valid = valid != mvfx_success ? valid : mvfxCheckEffectParts(root, def);
     if (valid != mvfx_success)
     {
         // A def past a bound is data a correct program may pass: no misuse.
@@ -302,14 +323,14 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
         return valid;
     }
     mvfxMesh* meshes[MVFX_MAX_EMITTERS] = {0};
-    mvfxResult meshed = FindMeshes(context, def, meshes);
+    mvfxResult meshed = FindMeshes(context, root, def, meshes);
     if (meshed != mvfx_success)
     {
         *misuseOut = meshed == mvfx_errorInvalid;
         return meshed;
     }
     EffectGrids grids = {0};
-    mvfxResult found = FindEffectGrids(context, def, &grids);
+    mvfxResult found = FindEffectGrids(context, root, def, &grids);
     if (found != mvfx_success)
     {
         *misuseOut = found == mvfx_errorInvalid;
@@ -320,7 +341,7 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
         return mvfx_errorCapacity;
     }
     mvfxHull* hulls[MVFX_MAX_EMITTERS] = {0};
-    mvfxResult built = BuildHulls(context, def, hulls);
+    mvfxResult built = BuildHulls(context, root, def, hulls);
     if (built != mvfx_success)
     {
         return built;
@@ -348,35 +369,56 @@ mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
     return mvfx_success;
 }
 
+mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
+                              mvfxEffectId* effectOut, mvfxEffectRefusal* refusal, bool* misuseOut)
+{
+    *misuseOut = false;
+    *effectOut = (mvfxEffectId){0};
+    mvfxClearRefusal(refusal);
+    mvfxFieldPath root = mvfxFieldRoot(refusal);
+    mvfxResult created = CreateEffect(context, &root, def, effectOut, misuseOut);
+    // A refusal no check named (the context's effects full, the
+    // allocator's failure) is of no field.
+    return mvfxRefuseHere(&root, created);
+}
+
 static MVFX_NOINLINE mvfxResult mvfxCreateEffectWork(mvfxContext* context, const mvfxEffectDef* def,
-                                                     mvfxEffectId* effectOut)
+                                                     mvfxEffectId* effectOut,
+                                                     mvfxEffectRefusal* refusalOut)
 {
     if (effectOut != nullptr)
     {
         *effectOut = (mvfxEffectId){0};
     }
+    mvfxEffectRefusal refusal;
+    mvfxClearRefusal(&refusal);
     if (effectOut == nullptr || context == nullptr)
     {
         if (context != nullptr)
         {
             mvfxCountMisuse(context);
         }
+        refusal.result = mvfx_errorInvalid;
+        refusalOut != nullptr ? (void)(*refusalOut = refusal) : (void)0;
         return mvfx_errorInvalid;
     }
+    // Busy, it writes no output but the id.
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;
     }
     bool misuse = false;
-    mvfxResult created = mvfxCreateEffectOf(context, def, effectOut, &misuse);
+    mvfxResult created = mvfxCreateEffectOf(context, def, effectOut, &refusal, &misuse);
     misuse ? mvfxCountMisuse(context) : (void)0;
+    refusalOut != nullptr ? (void)(*refusalOut = refusal) : (void)0;
     return created;
 }
 
-mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut)
+mvfxResult mvfxCreateEffect(mvfxContext* context, const mvfxEffectDef* def, mvfxEffectId* effectOut,
+                            mvfxEffectRefusal* refusalOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxCreateEffectWork(context, def, effectOut);
+    mvfxResult result = mvfxCreateEffectWork(context, def, effectOut, refusalOut);
     mvfxFloatEnvLeave(env);
     return result;
 }

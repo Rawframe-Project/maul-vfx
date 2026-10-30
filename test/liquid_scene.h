@@ -55,7 +55,7 @@ static inline void OpenWith(const mvfxEmitterDef* emitter, const double* places,
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");

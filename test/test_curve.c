@@ -160,7 +160,7 @@ static mvfxResult Bake(const mvfxCurve* curve, bool duration, Baked* bakedOut)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    mvfxResult result = mvfxCreateEffect(context, &effectDef, &effect);
+    mvfxResult result = mvfxCreateEffect(context, &effectDef, &effect, NULL);
     if (result == mvfx_success && bakedOut != NULL)
     {
         mvfxEmitterView view;
@@ -528,7 +528,7 @@ static void TestReadPastTheEnds(void)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};
@@ -555,7 +555,7 @@ static mvfxResult Rate(const mvfxCurveKey* keys, int32_t count, float duration)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    mvfxResult result = mvfxCreateEffect(context, &effectDef, &effect);
+    mvfxResult result = mvfxCreateEffect(context, &effectDef, &effect, NULL);
     mvfxDestroyContext(context);
     return result;
 }
@@ -593,7 +593,7 @@ static mvfxResult BakeGradient(const mvfxGradient* gradient, float (*rgbaOut)[4]
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    mvfxResult result = mvfxCreateEffect(context, &effectDef, &effect);
+    mvfxResult result = mvfxCreateEffect(context, &effectDef, &effect, NULL);
     if (result == mvfx_success && rgbaOut != NULL)
     {
         mvfxEmitterView view;
@@ -757,7 +757,7 @@ static void TestGradientBeforeTheFirstLoop(void)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};

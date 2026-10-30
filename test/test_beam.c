@@ -55,7 +55,7 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     CHECK(mvfxCreateContext(&contextDef, &scene.context) == mvfx_success, "context");
     mvfxEffectDef effectDef = EffectOf(emitter);
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -436,7 +436,7 @@ static void TestChecks(void)
         // bound.
         mvfxResult want =
             rule == 1 || rule == 6 || rule == 20 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 21, "every check");
     mvfxEmitterDef emitter = Beam();
@@ -451,7 +451,7 @@ static void TestChecks(void)
     emitter.eventCapacity = 4;
     mvfxEffectDef def = EffectOf(&emitter);
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the largest");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the largest");
     mvfxDestroyContext(context);
 }
 

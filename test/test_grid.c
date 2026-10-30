@@ -106,7 +106,7 @@ static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, 
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a field");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "a field");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};
@@ -456,8 +456,8 @@ static void TestBusy(void)
     effectDef.emitterCount = 1;
     mvfxEffectId first = {0};
     mvfxEffectId second = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &first) == mvfx_success, "an effect");
-    CHECK(mvfxCreateEffect(context, &effectDef, &second) == mvfx_success, "another");
+    CHECK(mvfxCreateEffect(context, &effectDef, &first, NULL) == mvfx_success, "an effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &second, NULL) == mvfx_success, "another");
     CHECK(mvfxDestroyGrid(context, grid) == mvfx_errorBusy, "busy while read");
     CHECK(mvfxDestroyEffect(context, first) == mvfx_success, "one gone");
     CHECK(mvfxDestroyGrid(context, grid) == mvfx_errorBusy, "busy while the other reads");
@@ -465,12 +465,12 @@ static void TestBusy(void)
     CHECK(mvfxDestroyGrid(context, grid) == mvfx_success, "free once unread");
 
     mvfxEffectId none = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &none) == mvfx_errorStale, "a stale grid");
+    CHECK(mvfxCreateEffect(context, &effectDef, &none, NULL) == mvfx_errorStale, "a stale grid");
     def = LinearDef(1);
     CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "a scalar grid");
     force.grid = grid;
     uint64_t misuse = mvfxContext_GetMisuse(context);
-    CHECK(mvfxCreateEffect(context, &effectDef, &none) == mvfx_errorInvalid &&
+    CHECK(mvfxCreateEffect(context, &effectDef, &none, NULL) == mvfx_errorInvalid &&
               mvfxContext_GetMisuse(context) == misuse + 1,
           "a vector field needs three components");
     mvfxDestroyContext(context);

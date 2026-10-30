@@ -38,7 +38,7 @@ static Scene NewScene(mvfxContext* context, const mvfxEmitterDef* emitter)
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &scene.instance) == mvfx_success, "instance");
@@ -400,14 +400,14 @@ static void TestHeldAndRefused(void)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     CHECK(mvfxDestroyGrid(context, slopeGrid) == mvfx_errorBusy, "held by the effect");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "effect gone");
     CHECK(mvfxDestroyGrid(context, slopeGrid) == mvfx_success, "let go");
 
     // Stale, of three components, a heightfield two points tall.
     uint64_t misuse = mvfxContext_GetMisuse(context);
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorStale, "a stale grid");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_errorStale, "a stale grid");
     static const float vectors[6] = {0};
     mvfxGridDef def = mvfxDefaultGridDef();
     def.size[0] = 2;
@@ -416,22 +416,24 @@ static void TestHeldAndRefused(void)
     mvfxGridId three = {0};
     CHECK(mvfxCreateGrid(context, &def, &three) == mvfx_success, "three components");
     slope.grid = three;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "three refused");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_errorInvalid,
+          "three refused");
     def.size[0] = 1;
     def.size[1] = 2;
     def.components = 1;
     mvfxGridId tall = {0};
     CHECK(mvfxCreateGrid(context, &def, &tall) == mvfx_success, "two tall");
     slope.grid = tall;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid, "tall refused");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_errorInvalid,
+          "tall refused");
     CHECK(mvfxContext_GetMisuse(context) == misuse + 2, "each counted");
     // A distance grid may be two tall, and a heightfield need not set its Y.
     mvfxCollider tallDistance = Distance(tall);
     emitter.colliders = &tallDistance;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a distance grid");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "a distance grid");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "gone");
     tallDistance.halfExtents[1] = 0.0f;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid,
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_errorInvalid,
           "a distance grid reads its Y");
 
     // Held by an instance's own colliders: busy until replaced, cleared or

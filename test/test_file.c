@@ -103,7 +103,7 @@ static void Rehash(uint8_t* bytes, int64_t size)
 static int64_t Write(const Def* def, uint8_t* bytes)
 {
     int64_t size = 0;
-    mvfxFileResult result = mvfxWriteEffect(&def->effect, s_assets, 4, bytes, 4096, &size);
+    mvfxFileResult result = mvfxWriteEffect(&def->effect, s_assets, 4, bytes, 4096, &size, NULL);
     bool written = result.result == mvfx_success && result.offset == -1;
     CHECK(written, "written");
     return written ? size : 0;
@@ -115,12 +115,21 @@ static _Alignas(16) uint8_t s_memory[1 << 16];
 static mvfxFileResult Read(const uint8_t* bytes, int64_t size, mvfxEffectDef* def)
 {
     int64_t needed = 0;
-    return mvfxReadEffect(bytes, size, s_assets, 4, s_memory, sizeof s_memory, &needed, def);
+    return mvfxReadEffect(bytes, size, s_assets, 4, s_memory, sizeof s_memory, &needed, def, NULL);
 }
 
 static bool Refused(mvfxFileResult result, mvfxResult status, int64_t offset)
 {
     return result.result == status && result.offset == offset;
+}
+
+// Whether a refusal names the field of a path, as text.
+static bool IsPath(const mvfxEffectRefusal* refusal, const char* path)
+{
+    char text[256];
+    int64_t length = 0;
+    return mvfxGetEffectFieldPath(refusal, text, sizeof text, &length) == mvfx_success &&
+           length == (int64_t)strlen(path) && memcmp(text, path, (size_t)length) == 0;
 }
 
 // Whether a def reads from bytes and writes them again.
@@ -129,7 +138,7 @@ static bool SameBytesAgain(const uint8_t* bytes, int64_t size, mvfxEffectDef* re
     static uint8_t again[4096];
     int64_t rewritten = 0;
     return Refused(Read(bytes, size, read), mvfx_success, -1) &&
-           mvfxWriteEffect(read, s_assets, 4, again, sizeof again, &rewritten).result ==
+           mvfxWriteEffect(read, s_assets, 4, again, sizeof again, &rewritten, NULL).result ==
                mvfx_success &&
            rewritten == size && memcmp(bytes, again, (size_t)size) == 0;
 }
@@ -298,56 +307,59 @@ static void TestArguments(void)
     MakeDef(&def);
     uint8_t bytes[4096];
     int64_t size = 1;
-    CHECK(Refused(mvfxWriteEffect(NULL, s_assets, 4, bytes, 4096, &size), mvfx_errorInvalid, -1) &&
+    CHECK(Refused(mvfxWriteEffect(NULL, s_assets, 4, bytes, 4096, &size, NULL), mvfx_errorInvalid,
+                  -1) &&
               size == 0,
           "a NULL def");
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, NULL), mvfx_errorInvalid,
-                  -1),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, NULL, NULL),
+                  mvfx_errorInvalid, -1),
           "a NULL size");
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, NULL, 4096, &size), mvfx_errorInvalid,
-                  -1),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, NULL, 4096, &size, NULL),
+                  mvfx_errorInvalid, -1),
           "NULL bytes with a capacity");
-    CHECK(
-        Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, -1, &size), mvfx_errorInvalid, -1),
-        "a capacity below 0");
-    CHECK(Refused(mvfxWriteEffect(&def.effect, NULL, 1, bytes, 4096, &size), mvfx_errorInvalid, -1),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, -1, &size, NULL),
+                  mvfx_errorInvalid, -1),
+          "a capacity below 0");
+    CHECK(Refused(mvfxWriteEffect(&def.effect, NULL, 1, bytes, 4096, &size, NULL),
+                  mvfx_errorInvalid, -1),
           "a NULL table with a count");
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, -1, bytes, 4096, &size), mvfx_errorInvalid,
-                  -1),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, -1, bytes, 4096, &size, NULL),
+                  mvfx_errorInvalid, -1),
           "a count below 0");
     def.emitter.capacity = 0;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size), mvfx_errorInvalid,
-                  -1),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size, NULL),
+                  mvfx_errorInvalid, -1),
           "a def the validator refuses");
     MakeDef(&def);
     def.effect.cookie = 0;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size), mvfx_errorInvalid,
-                  -1),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size, NULL),
+                  mvfx_errorInvalid, -1),
           "a def without its cookie");
     MakeDef(&def);
     int64_t written = Write(&def, bytes);
     int64_t needed = 1;
     mvfxEffectDef read = {.cookie = 1};
-    CHECK(Refused(mvfxReadEffect(NULL, 8, s_assets, 4, s_memory, 64, &needed, &read),
+    CHECK(Refused(mvfxReadEffect(NULL, 8, s_assets, 4, s_memory, 64, &needed, &read, NULL),
                   mvfx_errorInvalid, -1) &&
               needed == 0 && read.cookie == 0,
           "NULL bytes with a size");
-    CHECK(Refused(mvfxReadEffect(bytes, -1, s_assets, 4, s_memory, 64, &needed, &read),
+    CHECK(Refused(mvfxReadEffect(bytes, -1, s_assets, 4, s_memory, 64, &needed, &read, NULL),
                   mvfx_errorInvalid, -1),
           "a size below 0");
-    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, NULL, 64, &needed, &read),
+    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, NULL, 64, &needed, &read, NULL),
                   mvfx_errorInvalid, -1),
           "NULL memory with a capacity");
-    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory, -1, &needed, &read),
+    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory, -1, &needed, &read, NULL),
                   mvfx_errorInvalid, -1),
           "a capacity below 0");
-    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory + 8, 64, &needed, &read),
-                  mvfx_errorInvalid, -1),
-          "memory not aligned to 16");
-    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory, 64, NULL, &read),
+    CHECK(
+        Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory + 8, 64, &needed, &read, NULL),
+                mvfx_errorInvalid, -1),
+        "memory not aligned to 16");
+    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory, 64, NULL, &read, NULL),
                   mvfx_errorInvalid, -1),
           "a NULL needed");
-    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory, 64, &needed, NULL),
+    CHECK(Refused(mvfxReadEffect(bytes, written, s_assets, 4, s_memory, 64, &needed, NULL, NULL),
                   mvfx_errorInvalid, -1),
           "a NULL def");
 }
@@ -410,10 +422,10 @@ static void TestAssetTables(void)
         mvfxEffectDef read;
         // A name past MVFX_MAX_ASSET_NAME is past a named bound.
         mvfxResult want = c == 3 ? mvfx_errorLimit : mvfx_errorInvalid;
-        CHECK(Refused(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size), want, -1),
+        CHECK(Refused(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size, NULL), want, -1),
               "the writer refuses the table");
         CHECK(Refused(mvfxReadEffect(bytes, written, table, 4, s_memory, sizeof s_memory, &needed,
-                                     &read),
+                                     &read, NULL),
                       want, -1),
               "the reader refuses the table");
     }
@@ -427,7 +439,8 @@ static void TestAssetTables(void)
     table[6] = (mvfxEffectAsset){
         .kind = mvfx_assetGrid, .name = "\xC3\xA9\xE2\x82\xAC\xF0\x9F\x8C\x8A", .nameLength = 9};
     int64_t size = 0;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, table, 7, bytes, 4096, &size), mvfx_success, -1) &&
+    CHECK(Refused(mvfxWriteEffect(&def.effect, table, 7, bytes, 4096, &size, NULL), mvfx_success,
+                  -1) &&
               size == written,
           "names allowed");
 }
@@ -471,11 +484,11 @@ static void TestLayout(void)
               Get32(bytes, 88) == 1 && Get32(bytes, 92) == 4 && memcmp(bytes + 96, "kick", 4) == 0,
           "the names in the order referred to");
     int64_t needed = 0;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, NULL, 0, &needed), mvfx_errorCapacity,
-                  -1) &&
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, NULL, 0, &needed, NULL),
+                  mvfx_errorCapacity, -1) &&
               needed == size,
           "measured");
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, size - 1, &needed),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, size - 1, &needed, NULL),
                   mvfx_errorCapacity, -1) &&
               needed == size,
           "a byte short");
@@ -513,7 +526,8 @@ static void TestDefaults(void)
     effect.emitterCount = 1;
     uint8_t bytes[4096];
     int64_t size = 0;
-    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size, NULL).result ==
+              mvfx_success,
           "a default emitter written");
     Span span = EffectOf(bytes);
     int64_t head = Head(bytes, span, TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
@@ -538,7 +552,8 @@ static void TestDefaults(void)
 
     // A shape that differs in its radius alone: the shape's one field.
     emitter.shape.radius = 2.0f;
-    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size, NULL).result ==
+              mvfx_success,
           "a radius written");
     const mvfxFileType* shape = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, shape));
     Span item = Emitter(bytes);
@@ -560,7 +575,8 @@ static void TestDefaults(void)
                                  {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}}};
     emitter.colliders = colliders;
     emitter.colliderCount = 2;
-    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size, NULL).result ==
+              mvfx_success,
           "colliders written");
     CHECK(Collider(bytes, 0).end - Collider(bytes, 0).at == 32 &&
               Collider(bytes, 1).end - Collider(bytes, 1).at == 24,
@@ -575,7 +591,8 @@ static void TestDefaults(void)
     // A fixed list of three curves, the middle one's value alone set.
     emitter.colliderCount = 0;
     emitter.overLife.size.size[1].value = 2.0f;
-    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size, NULL).result ==
+              mvfx_success,
           "a size curve written");
     int64_t list = SizeCurves(bytes);
     CHECK(Get32(bytes, list + 8) == 3 && Get32(bytes, ItemHead(bytes, list, 0)) == 0 &&
@@ -597,25 +614,25 @@ static void TestMissing(void)
     uint8_t bytes[4096];
     int64_t size = 0;
     def.colliders[0].grid.generation = 2;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size), mvfx_errorMissing,
-                  -1) &&
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size, NULL),
+                  mvfx_errorMissing, -1) &&
               size == 0,
           "a grid the table lacks");
     MakeDef(&def);
     def.module.user = NULL;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size), mvfx_errorMissing,
-                  -1),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size, NULL),
+                  mvfx_errorMissing, -1),
           "a module with another user");
     MakeDef(&def);
     size = Write(&def, bytes);
     int64_t needed = 0;
     mvfxEffectDef read;
-    CHECK(
-        Refused(mvfxReadEffect(bytes, size, s_assets, 3, s_memory, sizeof s_memory, &needed, &read),
-                mvfx_errorMissing, 92),
-        "the module's name missing");
+    CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 3, s_memory, sizeof s_memory, &needed,
+                                 &read, NULL),
+                  mvfx_errorMissing, 92),
+          "the module's name missing");
     CHECK(Refused(mvfxReadEffect(bytes, size, s_assets + 1, 3, s_memory, sizeof s_memory, &needed,
-                                 &read),
+                                 &read, NULL),
                   mvfx_errorMissing, 76),
           "ground's name missing");
 }
@@ -914,13 +931,14 @@ static void TestDecoys(void)
     };
     memcpy(table + 3, s_assets, sizeof s_assets);
     int64_t written = 0;
-    CHECK(
-        Refused(mvfxWriteEffect(&def.effect, table, 7, other, 4096, &written), mvfx_success, -1) &&
-            written == size && memcmp(bytes, other, (size_t)size) == 0,
-        "decoys passed over in writing");
+    CHECK(Refused(mvfxWriteEffect(&def.effect, table, 7, other, 4096, &written, NULL), mvfx_success,
+                  -1) &&
+              written == size && memcmp(bytes, other, (size_t)size) == 0,
+          "decoys passed over in writing");
     int64_t needed = 0;
     mvfxEffectDef read;
-    CHECK(Refused(mvfxReadEffect(bytes, size, table, 7, s_memory, sizeof s_memory, &needed, &read),
+    CHECK(Refused(mvfxReadEffect(bytes, size, table, 7, s_memory, sizeof s_memory, &needed, &read,
+                                 NULL),
                   mvfx_success, -1) &&
               read.emitters[0].colliders[0].grid.index1 == 2,
           "decoys passed over in reading");
@@ -935,7 +953,7 @@ static void TestDecoys(void)
               read.emitters[0].shape.mesh.generation == 1,
           "the mesh bound");
     def.emitter.shape.mesh.generation = 2;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &written),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &written, NULL),
                   mvfx_errorMissing, -1),
           "a mesh of another generation missing");
 }
@@ -976,17 +994,19 @@ static void TestCuts(void)
     table[1].name = longName;
     table[1].nameLength = MVFX_MAX_ASSET_NAME;
     int64_t longSize = 0;
-    CHECK(mvfxWriteEffect(&def.effect, table, 4, longFile, sizeof longFile, &longSize).result ==
-              mvfx_success,
-          "a name of the most bytes written");
+    CHECK(
+        mvfxWriteEffect(&def.effect, table, 4, longFile, sizeof longFile, &longSize, NULL).result ==
+            mvfx_success,
+        "a name of the most bytes written");
     int64_t needed = 0;
-    CHECK(mvfxReadEffect(longFile, longSize, table, 4, s_memory, sizeof s_memory, &needed, &read)
+    CHECK(mvfxReadEffect(longFile, longSize, table, 4, s_memory, sizeof s_memory, &needed, &read,
+                         NULL)
                   .result == mvfx_success,
           "and read");
     Set32(longFile, 68, MVFX_MAX_ASSET_NAME + 1);
     Rehash(longFile, longSize);
     CHECK(Refused(mvfxReadEffect(longFile, longSize, table, 4, s_memory, sizeof s_memory, &needed,
-                                 &read),
+                                 &read, NULL),
                   mvfx_errorFormat, 68),
           "a name a byte too long");
 }
@@ -1006,10 +1026,10 @@ static void TestParts(void)
              TagOf(plexus, offsetof(mvfxPlexusDef, maxLinks))) +
         8;
     CHECK(Get32(bytes, links) == 1, "the links found");
-    Expect(bytes, size, links, 0, mvfx_errorFormat, 104, "no plexus links");
+    Expect(bytes, size, links, 0, mvfx_errorFormat, links - 8, "no plexus links");
     def.emitter.plexus.maxLinks = 0;
     int64_t written = 0;
-    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &written),
+    CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &written, NULL),
                   mvfx_errorInvalid, -1),
           "the writer refuses it too");
 }
@@ -1036,14 +1056,96 @@ static void TestTrailing(void)
     // The capacity set to 0 and past its most.
     int64_t capacity = EmitterPayload(bytes, offsetof(mvfxEmitterDef, capacity));
     CHECK(Get32(bytes, capacity) == 16, "the capacity found");
-    Expect(bytes, size, capacity, 0, mvfx_errorFormat, 104, "a def the validator refuses");
+    // At the tag of the field refused.
+    Expect(bytes, size, capacity, 0, mvfx_errorFormat, capacity - 8, "a def the validator refuses");
     // Past a named bound too: what a file holds is malformed, whatever check
     // it fails.
-    Expect(bytes, size, capacity, MVFX_MAX_EMITTER_CAPACITY + 1, mvfx_errorFormat, 104,
+    Expect(bytes, size, capacity, MVFX_MAX_EMITTER_CAPACITY + 1, mvfx_errorFormat, capacity - 8,
            "a def past a bound");
 }
 
 // The memory a def needs: measured, a byte short refused, read in exactly.
+// Reads bytes after a change at at, the hash set again; the result and
+// the refusal.
+static mvfxFileResult ReadChanged(const uint8_t* file, int64_t size, int64_t at, uint32_t value,
+                                  mvfxEffectRefusal* refusal)
+{
+    static uint8_t bytes[4096];
+    memcpy(bytes, file, (size_t)size);
+    Set32(bytes, at, value);
+    Rehash(bytes, size);
+    mvfxEffectDef read;
+    int64_t needed = 0;
+    return mvfxReadEffect(bytes, size, s_assets, 4, s_memory, sizeof s_memory, &needed, &read,
+                          refusal);
+}
+
+// The field each refusal of a file names, and its offset: a fault of the
+// effect section's walk at the field the walk is in, a def refused at its
+// field's tag or, for a field the file leaves out, at the nearest struct
+// or item holding it that the file has; the writer's at the field that
+// refers to an asset the table lacks.
+static void TestRefusedFields(void)
+{
+    Def def;
+    MakeDef(&def);
+    uint8_t bytes[4096];
+    int64_t size = Write(&def, bytes);
+    mvfxEffectRefusal refusal;
+    // A count past its cap: in the array.
+    int64_t colliders =
+        Head(bytes, Emitter(bytes), TagOf(EmitterType(), offsetof(mvfxEmitterDef, colliders)));
+    mvfxFileResult read = ReadChanged(bytes, size, colliders + 8, MVFX_MAX_COLLIDERS + 1, &refusal);
+    CHECK(Refused(read, mvfx_errorFormat, colliders + 8) && refusal.result == mvfx_errorFormat &&
+              IsPath(&refusal, "emitters[0].colliders") && refusal.emitter == 0,
+          "a count past its cap: the array");
+    // A tag this version does not know, in an item: the item.
+    int64_t grid =
+        Head(bytes, Collider(bytes, 1), TagOf(ColliderType(), offsetof(mvfxCollider, grid)));
+    read = ReadChanged(bytes, size, grid, LaterTag(ColliderType()), &refusal);
+    CHECK(Refused(read, mvfx_errorVersion, grid) && refusal.result == mvfx_errorVersion &&
+              IsPath(&refusal, "emitters[0].colliders[1]"),
+          "an unknown tag: the item it is in");
+    // Bad header bytes: no field.
+    read = ReadChanged(bytes, size, 0, 0, &refusal);
+    CHECK(Refused(read, mvfx_errorFormat, 0) && refusal.tagCount == 0 && IsPath(&refusal, ""),
+          "the magic: no field");
+
+    // Emitter 1 spawns at emitter 0's births (kind 0, its default, left
+    // out); emitter 0 writing none refuses the kind, at the event spawn.
+    mvfxEmitterDef two[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    two[0].events = mvfx_eventMaskBirth;
+    two[0].eventCapacity = 4;
+    two[1].eventSpawn =
+        (mvfxEventSpawn){.enable = true, .source = 0, .minCount = 1, .maxCount = 1, .capacity = 4};
+    mvfxEffectDef spawning = mvfxDefaultEffectDef();
+    spawning.emitters = two;
+    spawning.emitterCount = 2;
+    size = 0;
+    CHECK(mvfxWriteEffect(&spawning, NULL, 0, bytes, sizeof bytes, &size, &refusal).result ==
+                  mvfx_success &&
+              refusal.result == mvfx_success && refusal.tagCount == 0,
+          "the spawning effect written");
+    int64_t list =
+        Head(bytes, EffectOf(bytes), TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+    int64_t events =
+        Head(bytes, Item(bytes, list, 0), TagOf(EmitterType(), offsetof(mvfxEmitterDef, events)));
+    int64_t spawn = Head(bytes, Item(bytes, list, 1),
+                         TagOf(EmitterType(), offsetof(mvfxEmitterDef, eventSpawn)));
+    read = ReadChanged(bytes, size, events + 8, 0, &refusal);
+    CHECK(Refused(read, mvfx_errorFormat, spawn) && refusal.result == mvfx_errorFormat &&
+              IsPath(&refusal, "emitters[1].eventSpawn.kind") && refusal.emitter == 1,
+          "a field left out: at the struct holding it");
+
+    // The writer: the field that refers to an object the table lacks.
+    MakeDef(&def);
+    size = 0;
+    read = mvfxWriteEffect(&def.effect, s_assets, 3, bytes, sizeof bytes, &size, &refusal);
+    CHECK(Refused(read, mvfx_errorMissing, -1) && refusal.result == mvfx_errorMissing &&
+              IsPath(&refusal, "emitters[0].hostModules[0].function"),
+          "the writer: a module the table lacks");
+}
+
 static void TestMemory(void)
 {
     Def def;
@@ -1052,19 +1154,20 @@ static void TestMemory(void)
     int64_t size = Write(&def, bytes);
     int64_t needed = 0;
     mvfxEffectDef read;
-    CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 4, NULL, 0, &needed, &read),
+    CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 4, NULL, 0, &needed, &read, NULL),
                   mvfx_errorCapacity, -1),
           "measured");
     CHECK(needed >=
               (int64_t)(sizeof(mvfxEmitterDef) + 2 * sizeof(mvfxCollider) + sizeof(mvfxHostModule)),
           "the arrays' bytes");
     int64_t again = 0;
-    CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 4, s_memory, needed - 1, &again, &read),
-                  mvfx_errorCapacity, -1) &&
-              again == needed,
-          "a byte short");
+    CHECK(
+        Refused(mvfxReadEffect(bytes, size, s_assets, 4, s_memory, needed - 1, &again, &read, NULL),
+                mvfx_errorCapacity, -1) &&
+            again == needed,
+        "a byte short");
     memset(s_memory, 0xAB, sizeof s_memory);
-    CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 4, s_memory, needed, &again, &read),
+    CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 4, s_memory, needed, &again, &read, NULL),
                   mvfx_success, -1) &&
               again == needed,
           "read in exactly");
@@ -1072,10 +1175,10 @@ static void TestMemory(void)
           "the memory from its start, not past its end");
     uint8_t written[4096];
     int64_t rewritten = 0;
-    CHECK(
-        Refused(mvfxWriteEffect(&read, s_assets, 4, written, 4096, &rewritten), mvfx_success, -1) &&
-            rewritten == size && memcmp(bytes, written, (size_t)size) == 0,
-        "the same bytes again");
+    CHECK(Refused(mvfxWriteEffect(&read, s_assets, 4, written, 4096, &rewritten, NULL),
+                  mvfx_success, -1) &&
+              rewritten == size && memcmp(bytes, written, (size_t)size) == 0,
+          "the same bytes again");
 }
 
 // A walk given less memory than it lays, as when the bytes change between
@@ -1090,7 +1193,7 @@ static void TestMemoryGuard(void)
     int64_t size = Write(&def, bytes);
     int64_t needed = 0;
     mvfxEffectDef read;
-    CHECK(mvfxReadEffect(bytes, size, s_assets, 4, NULL, 0, &needed, &read).result ==
+    CHECK(mvfxReadEffect(bytes, size, s_assets, 4, NULL, 0, &needed, &read, NULL).result ==
               mvfx_errorCapacity,
           "measured");
     memset(s_memory, 0xAB, sizeof s_memory);
@@ -1168,39 +1271,44 @@ static void TestCreate(void)
     def.colliders[1].grid = table[0].grid;
     uint8_t bytes[4096];
     int64_t size = 0;
-    CHECK(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size).result == mvfx_success,
+    CHECK(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size, NULL).result == mvfx_success,
           "written");
     int32_t live = s_live;
     mvfxEffectId effect = {0};
-    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect), mvfx_success,
-                  -1) &&
+    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect, NULL),
+                  mvfx_success, -1) &&
               mvfxEffect_IsValid(context, effect),
           "created from bytes");
     CHECK(s_live == live + 1, "the effect's block alone kept");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_success, "destroyed");
     s_failAllocations = true;
-    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect),
+    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect, NULL),
                   mvfx_errorCapacity, -1) &&
               effect.index1 == 0,
           "the allocator failing");
     s_failAllocations = false;
     bytes[size - 1] ^= 1;
-    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect),
+    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect, NULL),
                   mvfx_errorFormat, 16),
           "a file refused at its offset");
     bytes[size - 1] ^= 1;
     CHECK(mvfxDestroyGrid(context, table[0].grid) == mvfx_success, "grid destroyed");
-    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect),
-                  mvfx_errorStale, -1),
-          "a grid destroyed, refused by the effect");
+    // At the tag of the field that names it.
+    mvfxEffectRefusal refusal;
+    mvfxFileResult stale =
+        mvfxCreateEffectFromBytes(context, bytes, size, table, 4, &effect, &refusal);
+    CHECK(stale.result == mvfx_errorStale && refusal.result == mvfx_errorStale &&
+              stale.offset > 0 && Get32(bytes, stale.offset) == 9 &&
+              IsPath(&refusal, "emitters[0].colliders[1].grid"),
+          "a grid destroyed, refused by the effect at its field");
     CHECK(s_live == live - 1, "the read memory freed");
     uint64_t misuse = mvfxContext_GetMisuse(context);
-    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, NULL),
+    CHECK(Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, 4, NULL, NULL),
                   mvfx_errorInvalid, -1) &&
               mvfxContext_GetMisuse(context) == misuse + 1,
           "a NULL out counted as misuse");
     effect = (mvfxEffectId){1, 1};
-    CHECK(Refused(mvfxCreateEffectFromBytes(NULL, bytes, size, table, 4, &effect),
+    CHECK(Refused(mvfxCreateEffectFromBytes(NULL, bytes, size, table, 4, &effect, NULL),
                   mvfx_errorInvalid, -1) &&
               effect.index1 == 0 && effect.generation == 0,
           "a NULL context, the null id given");
@@ -1214,21 +1322,26 @@ static void TestCreate(void)
 // The same def passed by the program itself counts one when counted is
 // true: a correct program does not pass it.
 static bool RefusedFromFile(mvfxContext* context, const mvfxEmitterDef* emitter,
-                            const mvfxEffectAsset* table, int32_t count, bool counted)
+                            const mvfxEffectAsset* table, int32_t count, bool counted,
+                            const char* path)
 {
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitter;
     def.emitterCount = 1;
     static uint8_t bytes[4096];
     int64_t size = 0;
-    bool written =
-        mvfxWriteEffect(&def, table, count, bytes, sizeof bytes, &size).result == mvfx_success;
+    bool written = mvfxWriteEffect(&def, table, count, bytes, sizeof bytes, &size, NULL).result ==
+                   mvfx_success;
     uint64_t misuse = mvfxContext_GetMisuse(context);
     mvfxEffectId effect = {1, 1};
-    bool file = Refused(mvfxCreateEffectFromBytes(context, bytes, size, table, count, &effect),
-                        mvfx_errorInvalid, -1) &&
+    mvfxEffectRefusal refusal;
+    mvfxFileResult result =
+        mvfxCreateEffectFromBytes(context, bytes, size, table, count, &effect, &refusal);
+    // Refused at the field that names the asset.
+    bool file = result.result == mvfx_errorInvalid && result.offset > 0 && IsPath(&refusal, path) &&
                 effect.index1 == 0 && mvfxContext_GetMisuse(context) == misuse;
-    bool program = mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid &&
+    bool program = mvfxCreateEffect(context, &def, &effect, &refusal) == mvfx_errorInvalid &&
+                   IsPath(&refusal, path) &&
                    mvfxContext_GetMisuse(context) == misuse + (counted ? 1 : 0);
     return written && file && program;
 }
@@ -1270,7 +1383,8 @@ static void TestUntrustedAssets(void)
     emitter.collision.enable = true;
     emitter.colliders = &heights;
     emitter.colliderCount = 1;
-    CHECK(RefusedFromFile(context, &emitter, table, 3, true), "a heightfield of a tall grid");
+    CHECK(RefusedFromFile(context, &emitter, table, 3, true, "emitters[0].colliders[0].grid"),
+          "a heightfield of a tall grid");
 
     emitter = mvfxDefaultEmitterDef();
     const mvfxForce field = {.kind = mvfx_forceVectorField,
@@ -1280,14 +1394,15 @@ static void TestUntrustedAssets(void)
                              .boxRotation = {0, 0, 0, 1}};
     emitter.forces = &field;
     emitter.forceCount = 1;
-    CHECK(RefusedFromFile(context, &emitter, table, 3, true),
+    CHECK(RefusedFromFile(context, &emitter, table, 3, true, "emitters[0].forces[0].grid"),
           "a vector field over a grid of one component");
 
     emitter = mvfxDefaultEmitterDef();
     emitter.shape.kind = mvfx_shapeMesh;
     emitter.shape.mesh = table[1].mesh;
     emitter.shape.meshMode = mvfx_meshSurface;
-    CHECK(RefusedFromFile(context, &emitter, table, 3, true), "a surface of a mesh without one");
+    CHECK(RefusedFromFile(context, &emitter, table, 3, true, "emitters[0].shape.mesh"),
+          "a surface of a mesh without one");
 
     emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
@@ -1299,7 +1414,7 @@ static void TestUntrustedAssets(void)
                                    .staticFriction = 0.6f,
                                    .dynamicFriction = 0.4f,
                                    .hull = table[2].mesh};
-    CHECK(RefusedFromFile(context, &emitter, table, 3, false),
+    CHECK(RefusedFromFile(context, &emitter, table, 3, false, "emitters[0].rigid.hull"),
           "a hull of a flat mesh, misuse from neither");
     mvfxDestroyContext(context);
 }
@@ -1330,31 +1445,33 @@ static void TestArgumentMisuse(void)
     mvfxEffectId effect = {0};
     uint64_t misuse = mvfxContext_GetMisuse(context);
     int32_t counted = 0;
-    counted += Refused(mvfxCreateEffectFromBytes(context, NULL, size, s_assets, 4, &effect),
+    counted += Refused(mvfxCreateEffectFromBytes(context, NULL, size, s_assets, 4, &effect, NULL),
                        mvfx_errorInvalid, -1);
-    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, -1, s_assets, 4, &effect),
+    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, -1, s_assets, 4, &effect, NULL),
                        mvfx_errorInvalid, -1);
-    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, size, NULL, 4, &effect),
+    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, size, NULL, 4, &effect, NULL),
                        mvfx_errorInvalid, -1);
-    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, size, s_assets, -1, &effect),
+    counted += Refused(mvfxCreateEffectFromBytes(context, bytes, size, s_assets, -1, &effect, NULL),
                        mvfx_errorInvalid, -1);
     for (int32_t t = 0; t < 6; ++t)
     {
         // A name past MVFX_MAX_ASSET_NAME is past a named bound, and as a
         // direct argument still misuse.
-        counted += Refused(
-            mvfxCreateEffectFromBytes(context, bytes, size, tables[t], t == 5 ? 2 : 1, &effect),
-            t == 3 ? mvfx_errorLimit : mvfx_errorInvalid, -1);
+        counted += Refused(mvfxCreateEffectFromBytes(context, bytes, size, tables[t],
+                                                     t == 5 ? 2 : 1, &effect, NULL),
+                           t == 3 ? mvfx_errorLimit : mvfx_errorInvalid, -1);
     }
     CHECK(counted == 10 && mvfxContext_GetMisuse(context) == misuse + 10,
           "each invalid argument refused and counted as misuse");
     misuse = mvfxContext_GetMisuse(context);
     bytes[size - 1] ^= 1;
-    bool damaged = Refused(mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 4, &effect),
-                           mvfx_errorFormat, 16);
+    bool damaged =
+        Refused(mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 4, &effect, NULL),
+                mvfx_errorFormat, 16);
     bytes[size - 1] ^= 1;
-    bool missing = mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 3, &effect).result ==
-                   mvfx_errorMissing;
+    bool missing =
+        mvfxCreateEffectFromBytes(context, bytes, size, s_assets, 3, &effect, NULL).result ==
+        mvfx_errorMissing;
     CHECK(damaged && missing && mvfxContext_GetMisuse(context) == misuse,
           "a damaged file and one naming an asset the table lacks counted as nothing");
     mvfxDestroyContext(context);
@@ -1377,6 +1494,7 @@ int main(void)
     TestDecoys();
     TestCuts();
     TestParts();
+    TestRefusedFields();
     TestMemory();
     TestMemoryGuard();
     TestCreate();

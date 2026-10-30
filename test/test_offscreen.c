@@ -29,7 +29,7 @@ static void Open(void)
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
-    CHECK(mvfxCreateEffect(s_context, &def, &s_effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &s_effect, NULL) == mvfx_success, "effect");
 }
 
 static mvfxInstanceId New(mvfxOffscreen offscreen, int32_t interval, uint32_t seed)

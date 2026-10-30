@@ -10,8 +10,8 @@
 #include "refusal.h"
 
 // Whether an emitter's splat into a gas is in range for an effect of
-// gasCount gases.
-static mvfxResult CheckSplat(const mvfxGasSplat* splat, int32_t gasCount)
+// gasCount gases; naming the field it refuses below at.
+static mvfxResult CheckSplat(const mvfxFieldPath* at, const mvfxGasSplat* splat, int32_t gasCount)
 {
     if (!splat->enable)
     {
@@ -19,13 +19,19 @@ static mvfxResult CheckSplat(const mvfxGasSplat* splat, int32_t gasCount)
     }
     if (splat->gas < 0 || splat->gas >= gasCount)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_GAS_SPLAT_GAS, mvfx_errorInvalid);
     }
-    return mvfxFirst(
-        mvfxUpToBound(splat->drag, 0.0f, MVFX_MAX_DRAG),
-        mvfxFirst(mvfxBounded(splat->density, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                  mvfxFirst(mvfxBounded(splat->temperature, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                            mvfxBounded(splat->fuel, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT))));
+    mvfxResult valid = mvfxRefuseField(at, MVFX_TAG_GAS_SPLAT_DRAG,
+                                       mvfxUpToBound(splat->drag, 0.0f, MVFX_MAX_DRAG));
+    const float amounts[3] = {splat->density, splat->temperature, splat->fuel};
+    const uint32_t tags[3] = {MVFX_TAG_GAS_SPLAT_DENSITY, MVFX_TAG_GAS_SPLAT_TEMPERATURE,
+                              MVFX_TAG_GAS_SPLAT_FUEL};
+    for (int32_t k = 0; valid == mvfx_success && k < 3; ++k)
+    {
+        valid = mvfxRefuseField(at, tags[k],
+                                mvfxBounded(amounts[k], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+    }
+    return valid;
 }
 
 int32_t mvfxLiquidOf(const mvfxEffectDef* def, int32_t g)
@@ -44,40 +50,50 @@ int32_t mvfxLiquidOf(const mvfxEffectDef* def, int32_t g)
 
 // Whether every grid liquid names a liquid gas of the effect, each liquid
 // gas is named by exactly one, no emitter splats into a liquid or surface
-// gas, and each surface gas names an emitter of the effect.
-static bool AreLiquidGasesValid(const mvfxEffectDef* def)
+// gas, and each surface gas names an emitter of the effect; naming the
+// field it refuses below root, a liquid gas's kind for one named by none
+// or by two.
+static mvfxResult CheckLiquidGases(const mvfxFieldPath* root, const mvfxEffectDef* def)
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         const mvfxEmitterDef* emitter = &def->emitters[i];
         const mvfxLiquidDef* liquid = &emitter->liquid;
+        mvfxFieldPath at = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
         bool grid = liquid->enable && liquid->solver == mvfx_liquidGrid;
         if (grid && (liquid->gas < 0 || liquid->gas >= def->gasCount ||
                      def->gases[liquid->gas].kind != mvfx_gasLiquid))
         {
-            return false;
+            mvfxFieldPath liquidAt = mvfxFieldIn(&at, MVFX_TAG_EMITTER_DEF_LIQUID, -1);
+            return mvfxRefuseField(&liquidAt, MVFX_TAG_LIQUID_DEF_GAS, mvfx_errorInvalid);
         }
         if (emitter->gasSplat.enable && def->gases[emitter->gasSplat.gas].kind != mvfx_gasSmoke)
         {
-            return false;
+            mvfxFieldPath splat = mvfxFieldIn(&at, MVFX_TAG_EMITTER_DEF_GAS_SPLAT, -1);
+            return mvfxRefuseField(&splat, MVFX_TAG_GAS_SPLAT_GAS, mvfx_errorInvalid);
         }
     }
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
         const mvfxGasDef* gas = &def->gases[g];
-        if ((gas->kind == mvfx_gasLiquid && mvfxLiquidOf(def, g) < 0) ||
-            (gas->kind == mvfx_gasSurface &&
-             (gas->surface.emitter < 0 || gas->surface.emitter >= def->emitterCount)))
+        mvfxFieldPath at = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_GASES, g);
+        if (gas->kind == mvfx_gasLiquid && mvfxLiquidOf(def, g) < 0)
         {
-            return false;
+            return mvfxRefuseField(&at, MVFX_TAG_GAS_DEF_KIND, mvfx_errorInvalid);
+        }
+        if (gas->kind == mvfx_gasSurface &&
+            (gas->surface.emitter < 0 || gas->surface.emitter >= def->emitterCount))
+        {
+            mvfxFieldPath surface = mvfxFieldIn(&at, MVFX_TAG_GAS_DEF_SURFACE, -1);
+            return mvfxRefuseField(&surface, MVFX_TAG_GAS_SURFACE_EMITTER, mvfx_errorInvalid);
         }
     }
-    return true;
+    return mvfx_success;
 }
 
 // Whether every gas an emitter's forces follow or it splats into is one
 // of the effect's and none a surface, and no gas's force follows a gas.
-static mvfxResult CheckGasLinks(const mvfxEffectDef* def)
+static mvfxResult CheckGasLinks(const mvfxFieldPath* root, const mvfxEffectDef* def)
 {
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
@@ -87,7 +103,9 @@ static mvfxResult CheckGasLinks(const mvfxEffectDef* def)
             if (force->kind == mvfx_forceGas &&
                 (force->gas >= def->gasCount || def->gases[force->gas].kind == mvfx_gasSurface))
             {
-                return mvfx_errorInvalid;
+                mvfxFieldPath emitter = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
+                mvfxFieldPath at = mvfxFieldIn(&emitter, MVFX_TAG_EMITTER_DEF_FORCES, f);
+                return mvfxRefuseField(&at, MVFX_TAG_FORCE_GAS, mvfx_errorInvalid);
             }
         }
     }
@@ -97,56 +115,63 @@ static mvfxResult CheckGasLinks(const mvfxEffectDef* def)
         {
             if (def->gases[g].forces[f].kind == mvfx_forceGas)
             {
-                return mvfx_errorInvalid;
+                mvfxFieldPath gas = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_GASES, g);
+                mvfxFieldPath at = mvfxFieldIn(&gas, MVFX_TAG_GAS_DEF_FORCES, f);
+                return mvfxRefuseField(&at, MVFX_TAG_FORCE_KIND, mvfx_errorInvalid);
             }
         }
     }
     // The splats first: the liquid check reads the gas each splats into.
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
-        mvfxResult splat = CheckSplat(&def->emitters[i].gasSplat, def->gasCount);
+        mvfxFieldPath emitter = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
+        mvfxFieldPath at = mvfxFieldIn(&emitter, MVFX_TAG_EMITTER_DEF_GAS_SPLAT, -1);
+        mvfxResult splat = CheckSplat(&at, &def->emitters[i].gasSplat, def->gasCount);
         if (splat != mvfx_success)
         {
             return splat;
         }
     }
-    return mvfxRequire(AreLiquidGasesValid(def));
+    return CheckLiquidGases(root, def);
 }
 
 // Whether a gas's forces are in range for the effect's parameters.
-static mvfxResult CheckGasForces(const mvfxGasDef* gas, const mvfxEffectDef* def)
+static mvfxResult CheckGasForces(const mvfxFieldPath* at, const mvfxGasDef* gas,
+                                 const mvfxEffectDef* def)
 {
     if (gas->forceCount < 0 || (gas->forceCount > 0 && gas->forces == nullptr))
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_GAS_DEF_FORCES, mvfx_errorInvalid);
     }
     if (gas->forceCount > MVFX_MAX_FORCES)
     {
-        return mvfx_errorLimit;
+        return mvfxRefuseField(at, MVFX_TAG_GAS_DEF_FORCES, mvfx_errorLimit);
     }
     int32_t parameters = def->parameterCount >= 0 && def->parameterCount <= MVFX_MAX_PARAMETERS
                              ? def->parameterCount
                              : 0;
     for (int32_t f = 0; f < gas->forceCount; ++f)
     {
-        mvfxResult force = mvfxCheckForce(&gas->forces[f], parameters);
-        if (force != mvfx_success)
+        mvfxFieldPath force = mvfxFieldIn(at, MVFX_TAG_GAS_DEF_FORCES, f);
+        mvfxResult checked = mvfxCheckForce(&force, &gas->forces[f], parameters);
+        if (checked != mvfx_success)
         {
-            return force;
+            return checked;
         }
     }
     return mvfx_success;
 }
 
-mvfxResult mvfxCheckEffectGases(const mvfxEffectDef* def)
+mvfxResult mvfxCheckEffectGases(const mvfxFieldPath* root, const mvfxEffectDef* def)
 {
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
-        mvfxResult forces = CheckGasForces(&def->gases[g], def);
+        mvfxFieldPath at = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_GASES, g);
+        mvfxResult forces = CheckGasForces(&at, &def->gases[g], def);
         if (forces != mvfx_success)
         {
             return forces;
         }
     }
-    return CheckGasLinks(def);
+    return CheckGasLinks(root, def);
 }

@@ -12,10 +12,10 @@ def.emitterCount = 1;
 
 // Its size first, then the bytes.
 int64_t size = 0;
-mvfxFileResult sized = mvfxWriteEffect(&def, NULL, 0, NULL, 0, &size);
+mvfxFileResult sized = mvfxWriteEffect(&def, NULL, 0, NULL, 0, &size, NULL);
 static unsigned char file[4096];
 if (sized.result != mvfx_errorCapacity || size > (int64_t)sizeof file ||
-    mvfxWriteEffect(&def, NULL, 0, file, size, &size).result != mvfx_success)
+    mvfxWriteEffect(&def, NULL, 0, file, size, &size, NULL).result != mvfx_success)
 {
     return false;
 }
@@ -27,13 +27,14 @@ if (mvfxCreateContext(&contextDef, &context) != mvfx_success)
     return false;
 }
 mvfxEffectId effect = {0};
-bool made =
-    mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &effect).result == mvfx_success;
+bool made = mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &effect, NULL).result ==
+            mvfx_success;
 
 // A byte changed: refused, at an offset in the file.
 file[size / 2] ^= 0x40u;
 mvfxEffectId damaged = {0};
-mvfxFileResult refused = mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &damaged);
+mvfxFileResult refused =
+    mvfxCreateEffectFromBytes(context, file, size, NULL, 0, &damaged, NULL);
 made = made && refused.result == mvfx_errorFormat && refused.offset >= 0;
 mvfxDestroyContext(context);
 return made;
@@ -45,7 +46,7 @@ return made;
 
 ## Reading
 
-A file is read as hostile input. `mvfxReadEffect` checks the header (its magic, its version and its size), a hash over the whole file, each part of it on its own, the names it holds against the program's asset table, and finally the def itself, by the rules `mvfxCreateEffect` applies (a rigid sphere's size Y and Z equal to its X, for one). A refusal comes with `offset`, the first byte to blame, so a tool can point at the damage. A file written by another format version is refused with `mvfx_errorVersion`.
+A file is read as hostile input. `mvfxReadEffect` checks the header (its magic, its version and its size), a hash over the whole file, each part of it on its own, the names it holds against the program's asset table, and finally the def itself, by the rules `mvfxCreateEffect` applies (a rigid sphere's size Y and Z equal to its X, for one). A refusal comes with `offset`, the first byte to blame, so a tool can point at the damage, and, given an `mvfxEffectRefusal`, the field at fault ([an effect that is refused](troubleshooting.md#an-effect-that-is-refused)). A file written by another format version is refused with `mvfx_errorVersion`.
 
 A file holds only the fields that differ from their defaults, the values `mvfxDefaultEffectDef`, `mvfxDefaultEmitterDef`, `mvfxDefaultGasDef` and `mvfxDefaultWaterDef` give (zero for the items of other arrays): a field a file leaves out is read as its default, so an effect that sets few fields makes a small file. A field the reader does not know, which only a later version of the format writes, is refused with `mvfx_errorVersion` at its offset rather than skipped, so a def is never read as less than what was written.
 

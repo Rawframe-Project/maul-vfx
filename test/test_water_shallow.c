@@ -59,7 +59,7 @@ static bool Open(const mvfxWaterDef* waters, int32_t count)
     def.waters = waters;
     def.waterCount = count;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(s_context, &def, &effect) != mvfx_success)
+    if (mvfxCreateEffect(s_context, &def, &effect, NULL) != mvfx_success)
     {
         return false;
     }

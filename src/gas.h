@@ -181,7 +181,8 @@ static inline float mvfxSurfaceReach(const mvfxCompiledGas* gas)
 
 // Whether a gas def is valid: mvfx_errorLimit for a value past one of the
 // library's named bounds, mvfx_errorInvalid for anything else wrong.
-mvfxResult mvfxCheckGasDef(const mvfxGasDef* def);
+// Names the field it refuses below at.
+mvfxResult mvfxCheckGasDef(const mvfxFieldPath* at, const mvfxGasDef* def);
 
 // A valid gas def compiled.
 mvfxCompiledGas mvfxCompileGas(const mvfxGasDef* def);

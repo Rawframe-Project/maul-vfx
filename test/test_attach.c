@@ -78,7 +78,7 @@ static void Open(const mvfxEmitterDef* emitters, int32_t count)
     def.emitters = emitters;
     def.emitterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
@@ -499,26 +499,26 @@ static void TestChecks(void)
         }
         // Past MVFX_MAX_ATTACH_FRAMES is past a named bound.
         mvfxResult want = rule == 4 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
         emitters[0].space = mvfx_spaceWorld;
     }
     CHECK(refused == 8, "every check");
     emitters[1] = Chain(mvfx_attachParticles);
     emitters[1].eventSpawn = spawn;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "particles");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "particles");
     emitters[1] = Chain(mvfx_attachHost);
     emitters[1].unit.attachFrameCapacity = MVFX_MAX_ATTACH_FRAMES;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the most frames");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the most frames");
     emitters[1] = Chain(mvfx_attachInstance);
     emitters[1].unit.attachFrameCapacity = -3;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "capacity unread");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "capacity unread");
     emitters[1] = Chain(mvfx_attachHost);
     emitters[1].unit.kind = mvfx_unitSheet;
     emitters[1].unit.rows = 2;
     emitters[1].unit.downDirection[2] = 1.0f;
     emitters[1].unit.pinFirst = false;
     emitters[1].unit.pinFirstRow = true;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a sheet's row");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "a sheet's row");
     mvfxDestroyContext(context);
 }
 

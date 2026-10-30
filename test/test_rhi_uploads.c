@@ -176,7 +176,7 @@ static void Measure(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitters, 
     effectDef.waters = s_water;
     effectDef.waterCount = s_water != NULL ? 1 : 0;
     mvfxEffectId effect;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.planned = true;

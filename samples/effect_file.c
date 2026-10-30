@@ -137,10 +137,11 @@ int main(int argc, char** argv)
     int64_t needed = 0;
     mvfxEffectDef read;
     bool ok =
-        mvfxWriteEffect(&def, assets, 1, s_file, sizeof s_file, &size).result == mvfx_success &&
-        mvfxReadEffect(s_file, size, assets, 1, s_memory, sizeof s_memory, &needed, &read).result ==
+        mvfxWriteEffect(&def, assets, 1, s_file, sizeof s_file, &size, NULL).result ==
             mvfx_success &&
-        mvfxWriteEffect(&read, assets, 1, s_again, sizeof s_again, &againSize).result ==
+        mvfxReadEffect(s_file, size, assets, 1, s_memory, sizeof s_memory, &needed, &read, NULL)
+                .result == mvfx_success &&
+        mvfxWriteEffect(&read, assets, 1, s_again, sizeof s_again, &againSize, NULL).result ==
             mvfx_success &&
         againSize == size && memcmp(s_file, s_again, (size_t)size) == 0;
     printf("the file: %lld bytes, its def read back in %lld bytes of memory, written again %s\n",
@@ -160,8 +161,8 @@ int main(int argc, char** argv)
     mvfxEffectId fromFile = {0};
     int64_t counts[2] = {0, 0};
     ok = ok && mvfxCreateLayout(context, &layoutDef, &layout) == mvfx_success &&
-         mvfxCreateEffect(context, &def, &fromCode) == mvfx_success &&
-         mvfxCreateEffectFromBytes(context, s_file, size, assets, 1, &fromFile).result ==
+         mvfxCreateEffect(context, &def, &fromCode, NULL) == mvfx_success &&
+         mvfxCreateEffectFromBytes(context, s_file, size, assets, 1, &fromFile, NULL).result ==
              mvfx_success &&
          Run(context, fromCode, layout, s_records[0], &counts[0]) &&
          Run(context, fromFile, layout, s_records[1], &counts[1]);
@@ -174,7 +175,8 @@ int main(int argc, char** argv)
     memcpy(s_again, s_file, (size_t)size);
     s_again[size / 2] ^= 0x10u;
     mvfxEffectId damaged = {0};
-    mvfxFileResult refused = mvfxCreateEffectFromBytes(context, s_again, size, assets, 1, &damaged);
+    mvfxFileResult refused =
+        mvfxCreateEffectFromBytes(context, s_again, size, assets, 1, &damaged, NULL);
     bool caught = refused.result == mvfx_errorFormat && refused.offset >= 0;
     printf("a bit flipped at byte %lld: refused at byte %lld, the header's hash of the "
            "payload, which no longer matches\n",
