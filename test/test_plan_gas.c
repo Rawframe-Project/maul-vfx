@@ -7,8 +7,9 @@
 // instance (the oracles in plan_oracle.h); a throttled plan's obstacles
 // before are the last plan's; a planned gas holds until its simulation
 // reports it empty past the stop and the splatting emitters' deaths; the
-// emitters pouring into it map into the box as mvfxPlannedPour says; its
-// fields are not read on the CPU path; a gas's view.
+// emitters pouring into it map into the box as mvfxPlannedPour says; a
+// gas's force draws its strength apart from its emitter's; its fields
+// are not read on the CPU path; a gas's view.
 
 #include "plan_oracle.h"
 #include "test_harness.h"
@@ -275,6 +276,45 @@ static void TestResolved(void)
     mvfxDestroyContext(context);
 }
 
+static void TestDrawn(void)
+{
+    // A gas's force and its emitter's of the same indices, each a range:
+    // two draws, each kept over the steps.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const mvfxForce drawn = {.kind = mvfx_forceConstant,
+                                    .space = mvfx_spaceWorld,
+                                    .vector = {1, 0, 0},
+                                    .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 9.0f}}};
+    mvfxGasDef gas = Smoke();
+    gas.forces = &drawn;
+    gas.forceCount = 1;
+    mvfxEmitterDef emitter = Emitter(false);
+    emitter.forces = &drawn;
+    emitter.forceCount = 1;
+    mvfxInstanceId planned = Instance(context, Effect(context, &emitter, &gas), true);
+    static mvfxGasPlan plan;
+    float first[2] = {0};
+    bool kept = true;
+    for (int32_t s = 0; s < 3; ++s)
+    {
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success &&
+                  mvfxInstance_GetGasPlan(context, planned, 0, &plan) == mvfx_success &&
+                  mvfxInstance_GetEmitterPlan(context, planned, 0, &s_emitter) == mvfx_success,
+              "the plans");
+        float now[2] = {plan.forces[0].strength, s_emitter.forces[0].strength};
+        first[0] = s == 0 ? now[0] : first[0];
+        first[1] = s == 0 ? now[1] : first[1];
+        kept = kept && now[0] == first[0] && now[1] == first[1];
+    }
+    CHECK(kept, "each draw kept over the steps");
+    CHECK(first[0] >= 1.0f && first[0] <= 9.0f && first[1] >= 1.0f && first[1] <= 9.0f &&
+              first[0] != first[1],
+          "the gas's force draws apart from its emitter's");
+    mvfxDestroyContext(context);
+}
+
 // Whether a planned pour is its emitter's (plan.h, mvfxPlannedPour): the
 // map of its particles, in its space, into the box's frame (a world
 // emitter's offsets from its anchor after the step); its splat's rates
@@ -525,6 +565,7 @@ static void TestView(void)
 int main(void)
 {
     TestResolved();
+    TestDrawn();
     TestPours();
     TestThrottled();
     TestHolds();
