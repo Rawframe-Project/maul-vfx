@@ -76,14 +76,14 @@ static mvfxEmitterDef Rigid(mvfxRigidShape shape, mvfxMeshId hull, const float s
     emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange,
                                              .min = {turn[0], turn[1], turn[2]},
                                              .max = {turn[0], turn[1], turn[2]}};
-    emitter.rigid = (mvfxRigidDef){.enabled = true,
+    emitter.rigid = (mvfxRigidDef){.enable = true,
                                    .shape = shape,
                                    .density = 1.0f,
                                    .substeps = 8,
                                    .staticFriction = 0.6f,
                                    .dynamicFriction = 0.4f,
                                    .hull = hull};
-    emitter.collision.enabled = gravity;
+    emitter.collision.enable = gravity;
     emitter.colliders = gravity ? &s_ground : NULL;
     emitter.colliderCount = gravity ? 1 : 0;
     return emitter;
@@ -227,7 +227,7 @@ static void TestOffCenter(void)
     mvfxMeshId corner = MeshOf(s_corner, 4);
     float center[3];
     bool hull = false;
-    CHECK(mvfxMesh_HullCenter(s_scene.context, corner, &hull, center) == mvfx_success && hull &&
+    CHECK(mvfxMesh_GetHullCenter(s_scene.context, corner, &hull, center) == mvfx_success && hull &&
               fabsf(center[0] - 1.25f) <= 1e-5f && fabsf(center[1] - 2.25f) <= 1e-5f &&
               fabsf(center[2] - 3.25f) <= 1e-5f,
           "the hull's center");
@@ -403,7 +403,7 @@ static void TestMeeting(void)
     mvfxEmitterDef pair = Rigid(mvfx_rigidHull, cube, unit, turn, false);
     pair.rigid.bodyContacts = 8;
     pair.rigid.restitution = 1.0f;
-    pair.collision.enabled = true;
+    pair.collision.enable = true;
     static const double apart[6] = {-1.5, 0, 0, 0, 0, 0};
     static const float toward[6] = {2, 0, 0, 0, 0, 0};
     PlayAt(&pair, 1, apart, toward, 2);
@@ -730,29 +730,30 @@ static void TestVertexCount(void)
     int32_t count = 0;
     float center[3] = {1, 1, 1};
     bool hull = true;
-    uint64_t misuse = mvfxGetContextMisuse(s_scene.context);
-    bool counted = mvfxMesh_HullVertexCount(s_scene.context, mesh, &count) == mvfx_success &&
+    uint64_t misuse = mvfxContext_GetMisuse(s_scene.context);
+    bool counted = mvfxMesh_GetHullVertexCount(s_scene.context, mesh, &count) == mvfx_success &&
                    count == 100 &&
-                   mvfxMesh_HullCenter(s_scene.context, mesh, &hull, center) == mvfx_success &&
+                   mvfxMesh_GetHullCenter(s_scene.context, mesh, &hull, center) == mvfx_success &&
                    !hull && center[0] == 0.0f && center[1] == 0.0f && center[2] == 0.0f &&
-                   mvfxGetContextMisuse(s_scene.context) == misuse;
+                   mvfxContext_GetMisuse(s_scene.context) == misuse;
     // A flat mesh has no hull: none of its vertices, no center, and no
     // misuse, since a model file's vertices may well be flat.
     static const float flat[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0};
     mvfxMeshId plane = MeshOf(flat, 4);
     count = 1;
     hull = true;
-    bool none = mvfxMesh_HullVertexCount(s_scene.context, plane, &count) == mvfx_success &&
+    bool none = mvfxMesh_GetHullVertexCount(s_scene.context, plane, &count) == mvfx_success &&
                 count == 0 &&
-                mvfxMesh_HullCenter(s_scene.context, plane, &hull, center) == mvfx_success &&
-                !hull && mvfxGetContextMisuse(s_scene.context) == misuse;
+                mvfxMesh_GetHullCenter(s_scene.context, plane, &hull, center) == mvfx_success &&
+                !hull && mvfxContext_GetMisuse(s_scene.context) == misuse;
     bool refused =
-        mvfxMesh_HullVertexCount(s_scene.context, mesh, NULL) == mvfx_errorInvalid &&
-        mvfxMesh_HullVertexCount(NULL, mesh, &count) == mvfx_errorInvalid && count == 0 &&
-        mvfxMesh_HullVertexCount(s_scene.context, (mvfxMeshId){0}, &count) == mvfx_errorStale &&
-        mvfxMesh_HullCenter(s_scene.context, mesh, NULL, center) == mvfx_errorInvalid &&
-        mvfxMesh_HullCenter(s_scene.context, (mvfxMeshId){0}, &hull, center) == mvfx_errorStale &&
-        mvfxGetContextMisuse(s_scene.context) == misuse + 2;
+        mvfxMesh_GetHullVertexCount(s_scene.context, mesh, NULL) == mvfx_errorInvalid &&
+        mvfxMesh_GetHullVertexCount(NULL, mesh, &count) == mvfx_errorInvalid && count == 0 &&
+        mvfxMesh_GetHullVertexCount(s_scene.context, (mvfxMeshId){0}, &count) == mvfx_errorStale &&
+        mvfxMesh_GetHullCenter(s_scene.context, mesh, NULL, center) == mvfx_errorInvalid &&
+        mvfxMesh_GetHullCenter(s_scene.context, (mvfxMeshId){0}, &hull, center) ==
+            mvfx_errorStale &&
+        mvfxContext_GetMisuse(s_scene.context) == misuse + 2;
     CHECK(counted, "a hull's vertices counted past the most, with no center");
     CHECK(none, "a flat mesh: no hull, no misuse");
     CHECK(refused, "NULL arguments counted as misuse, a stale mesh not");
@@ -780,7 +781,7 @@ static void TestChecks(void)
     mvfxMeshId shapes[3] = {MeshOf(flat, 4), MeshOf(ball, 200), gone};
     mvfxResult expected[3] = {mvfx_errorInvalid, mvfx_errorLimit, mvfx_errorStale};
     mvfxResult centered[3] = {mvfx_success, mvfx_success, mvfx_errorStale};
-    uint64_t misuse = mvfxGetContextMisuse(s_scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_scene.context);
     int32_t refused = 0;
     for (int32_t i = 0; i < 3; ++i)
     {
@@ -788,15 +789,15 @@ static void TestChecks(void)
         mvfxEffectId effect = {0};
         float center[3];
         bool hull = true;
-        refused +=
-            EffectOf(&emitter, 1, &effect) == expected[i] &&
-                    mvfxMesh_HullCenter(s_scene.context, shapes[i], &hull, center) == centered[i] &&
-                    !hull
-                ? 1
-                : 0;
+        refused += EffectOf(&emitter, 1, &effect) == expected[i] &&
+                           mvfxMesh_GetHullCenter(s_scene.context, shapes[i], &hull, center) ==
+                               centered[i] &&
+                           !hull
+                       ? 1
+                       : 0;
     }
     CHECK(refused == 3, "the checks");
-    CHECK(mvfxGetContextMisuse(s_scene.context) == misuse,
+    CHECK(mvfxContext_GetMisuse(s_scene.context) == misuse,
           "a mesh with no hull a particle takes is refused, not misuse");
     mvfxEmitterDef inside = Rigid(mvfx_rigidHull, cube, unit, turn, true);
     static const mvfxCollider room = {.kind = mvfx_colliderBox,

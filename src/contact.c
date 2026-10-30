@@ -209,7 +209,7 @@ void mvfxSolveContacts(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxContactDef* def = &instance->effect->emitters[emitter].contacts;
     mvfxEmitterState* state = &instance->emitters[emitter];
-    if (!def->enabled || state->count == 0)
+    if (!def->enable || state->count == 0)
     {
         return;
     }

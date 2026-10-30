@@ -75,7 +75,7 @@ static uint64_t PowerAbove(uint64_t n)
 // lists; none for an emitter whose bodies do not meet each other.
 static uint64_t RigidPairWords(const mvfxEmitterView* view, int32_t capacity)
 {
-    if (!view->rigid.enabled || capacity <= 0 || !MeetsBodies(view))
+    if (!view->rigid.enable || capacity <= 0 || !MeetsBodies(view))
     {
         return 0u;
     }
@@ -94,7 +94,7 @@ static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
         .features =
             (view->features & ~RUN_FEATURES) |
             ((view->forceKinds & ~RUN_FORCES) != 0 ? MVFX_FEATURE_FORCES : 0) |
-            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->sceneQueries
+            ((view->colliderKinds & ~RUN_COLLIDERS) != 0 || view->enableSceneQueries
                  ? MVFX_FEATURE_COLLISION
                  : 0) |
             // Contacts see the particles a step kills, and move births
@@ -223,8 +223,8 @@ static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emit
     uint64_t blocks = mvfxSortBlocks(emitter->capacity);
     if (mvfxRecordOrder(view) != MVFX_ORDER_SORTED && !ribbons)
     {
-        return (!view->light.enabled || CreateBuffer(sim, 2u * (blocks > 0 ? blocks : 1u) * 4u,
-                                                     mrhi_bufferStorage, &emitter->digits)) &&
+        return (!view->light.enable || CreateBuffer(sim, 2u * (blocks > 0 ? blocks : 1u) * 4u,
+                                                    mrhi_bufferStorage, &emitter->digits)) &&
                (!sheets || CreateBuffer(sim, 4u * (2u * (uint64_t)emitter->capacity + 1u),
                                         mrhi_bufferStorage, &emitter->sort));
     }
@@ -279,22 +279,22 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
     emitter->capacity = plan.capacity;
     emitter->hostCapacity = plan.capacity > 0 ? sim->views[e].hostSpawnCapacity : 0;
     const mvfxEventSpawn* spawn = &sim->views[e].eventSpawn;
-    emitter->spawnSource = spawn->enabled ? spawn->source : -1;
+    emitter->spawnSource = spawn->enable ? spawn->source : -1;
     // Event births past the births' room are never written.
     int32_t room = 2 * plan.capacity;
     emitter->hostRecords = emitter->hostCapacity +
-                           (spawn->enabled ? (spawn->capacity < room ? spawn->capacity : room) : 0);
+                           (spawn->enable ? (spawn->capacity < room ? spawn->capacity : room) : 0);
     // The host's frames after the births, the host records and a spawning
     // emitter's staged births.
-    emitter->framesAt = StagedBirths(emitter) + (spawn->enabled ? BirthBytes(emitter) : 0);
+    emitter->framesAt = StagedBirths(emitter) + (spawn->enable ? BirthBytes(emitter) : 0);
     emitter->particleWords = sim->views[e].arrays.count + MVFX_GPU_OWN_WORDS;
     emitter->ribbons = sim->views[e].ribbon.ids != mvfx_ribbonNone;
     emitter->tears = sim->views[e].unitPoints > 1 && sim->views[e].unit.tearStrain > 0.0f;
-    emitter->beam = sim->views[e].beam.enabled;
+    emitter->beam = sim->views[e].beam.enable;
     // A unit a workgroup of the unit pass, at most a dispatch's.
     int32_t points = sim->views[e].unitPoints;
     emitter->units = points > 1 && plan.capacity > 0;
-    emitter->rigid = sim->views[e].rigid.enabled && plan.capacity > 0;
+    emitter->rigid = sim->views[e].rigid.enable && plan.capacity > 0;
     emitter->rigidPairWords = RigidPairWords(&sim->views[e], plan.capacity);
     emitter->rigidPairs = emitter->rigidPairWords > 0u;
     int32_t units = points > 1 ? plan.capacity / points : 0;
@@ -408,7 +408,7 @@ mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def, mvfxGpuSim** simOut,
     {
         result = mvfx_errorCapacity;
     }
-    mvfxSrgbSteps(sim->srgb);
+    mvfxGetSrgbSteps(sim->srgb);
     if (result == mvfx_success &&
         (!CreateTextures(sim) ||
          !CreateBuffer(sim, 4u * MVFX_GPU_RIBBON_COUNTS, mrhi_bufferStorage, &sim->ownCount) ||
@@ -978,7 +978,7 @@ mvfxResult mvfxGpuSim_Record(mvfxGpuSim* sim)
     return mvfx_success;
 }
 
-mvfxResult mvfxGpuSim_UploadBytes(const mvfxGpuSim* sim, int64_t* bytesOut)
+mvfxResult mvfxGpuSim_GetUploadBytes(const mvfxGpuSim* sim, int64_t* bytesOut)
 {
     if (bytesOut != nullptr)
     {

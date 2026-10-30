@@ -65,7 +65,7 @@ static float Uniform(float lo, float hi)
 static bool Meets(const mvfxResolvedCollider* c, const float a[3], const float b[3])
 {
     const mvfxOwnColliders none = {0};
-    const mvfxCollision response = {.enabled = true, .restitution = 0.5f};
+    const mvfxCollision response = {.enable = true, .restitution = 0.5f};
     float place[3] = {b[0], b[1], b[2]};
     float velocity[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
     mvfxContact first = {0};

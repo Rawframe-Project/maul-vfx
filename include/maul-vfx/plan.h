@@ -161,7 +161,7 @@ extern "C"
     // kills.
     typedef struct mvfxPlannedDepth
     {
-        bool enabled;
+        bool enable;
         float toClip[16];
         float fromClip[16];
         float normalTurn[4];
@@ -533,9 +533,9 @@ extern "C"
         float sourceDepths[MVFX_MAX_WATER_SOURCES];
         // Shallow water's ground: its terrain resolved into the surface's
         // frame (its own, or with hostTerrain the instance's first
-        // heightfield collider), or none (hasTerrain false) for the flat
+        // heightfield collider), or none (enableTerrain false) for the flat
         // floor at the grid's center.
-        bool hasTerrain;
+        bool enableTerrain;
         mvfxPlannedCollider terrain;
         // The surface's volume in the world's lengths over its own: its
         // scale cubed where it stands at the step's end, which a volume
@@ -832,8 +832,8 @@ extern "C"
         // and whether it collides with the host's scene or a depth image.
         uint32_t colliderKinds;
         mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS];
-        bool sceneQueries;
-        bool depthImage;
+        bool enableSceneQueries;
+        bool enableDepthImage;
         // Whether its bounds are a fixed box in the instance's space
         // rather than measured from its particles, and the box.
         bool fixedBounds;
@@ -884,7 +884,7 @@ extern "C"
         int32_t eventCapacity;
         // Its lifetime in seconds as a birth draws it (one component, held
         // to [2^-20, MVFX_MAX_LIFETIME] after the draw), and the births it
-        // takes from another emitter's events (eventSpawn.enabled), which a
+        // takes from another emitter's events (eventSpawn.enable), which a
         // simulation of its plan builds, numbers and draws the lives of
         // itself (mvfxPlannedBirth).
         mvfxSourceView lifetime;

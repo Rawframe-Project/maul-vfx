@@ -177,8 +177,8 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
     const mvfxPlannedDepth* depth = &plan->depth;
     words[0] = (uint32_t)plan->colliderCount;
     words[1] = plan->killOnCollision || plan->lifeLoss >= 1.0f ? 1u : 0u;
-    words[2] = plan->colliderCount > 0 || depth->enabled ? 1u : 0u;
-    if (depth->enabled)
+    words[2] = plan->colliderCount > 0 || depth->enable ? 1u : 0u;
+    if (depth->enable)
     {
         const uint32_t head[8] = {1u,
                                   (uint32_t)depth->width,
@@ -267,7 +267,7 @@ void mvfxSpawnNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
                       int32_t hostRecords, uint32_t words[MVFX_STEP_WORDS])
 {
     const mvfxEventSpawn* spawn = &view->eventSpawn;
-    if (!spawn->enabled)
+    if (!spawn->enable)
     {
         return;
     }
@@ -811,7 +811,7 @@ static void Words(const mvfxAttributeArrays* arrays, uint32_t* words)
 static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uint32_t rigid[36])
 {
     const mvfxRigidDef* r = &view->rigid;
-    const uint32_t head[4] = {r->shape, r->enabled ? (uint32_t)r->substeps : 0u,
+    const uint32_t head[4] = {r->shape, r->enable ? (uint32_t)r->substeps : 0u,
                               mvfxWordOf(view->arrays.sleep), (uint32_t)view->hullVertexCount};
     memcpy(rigid, head, sizeof head);
     mvfxFloatWords(rigid + 4, r->density, r->sleepSpeed, r->sleepTime, view->hullVolume);
@@ -838,7 +838,7 @@ static void Rigid(const mvfxEmitterView* view, const mvfxStepTables* tables, uin
 static void Beam(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint32_t* at)
 {
     const mvfxBeamDef* beam = &view->beam;
-    if (!beam->enabled)
+    if (!beam->enable)
     {
         return;
     }
@@ -912,8 +912,8 @@ static void Units(const mvfxEmitterView* view, const mvfxEmitterPlan* plan, uint
 // matrices' first word (sim/step.wgsl's, zero at birth; NONE for others).
 static void Liquid(const mvfxEmitterView* view, uint32_t liquid[4])
 {
-    bool particles = view->liquid.enabled && view->liquid.solver == mvfx_liquidParticles;
-    bool grid = view->liquid.enabled && view->liquid.solver == mvfx_liquidGrid;
+    bool particles = view->liquid.enable && view->liquid.solver == mvfx_liquidParticles;
+    bool grid = view->liquid.enable && view->liquid.solver == mvfx_liquidGrid;
     liquid[0] = particles ? 1u : 0u;
     liquid[1] = particles ? (uint32_t)view->liquid.substeps : 0u;
     liquid[2] = particles ? (uint32_t)view->liquid.iterations : 0u;

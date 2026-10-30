@@ -192,7 +192,7 @@ static void TestWaves(void)
         static mvfxWaterPlan plan;
         CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success, "a plan");
         double bound = 0.9 * (double)water.cellSize / ((double)water.waveSpeed * sqrt(2.0));
-        CHECK(SubstepsAre(&plan, steps[k], bound) && !plan.hasTerrain &&
+        CHECK(SubstepsAre(&plan, steps[k], bound) && !plan.enableTerrain &&
                   plan.sourceDepths[0] == 0.0f,
               "the waves' substeps");
         CHECK(plan.slowed == (k == 1), "a second's step slowed");
@@ -238,7 +238,7 @@ static mvfxWaterDef Lake(void)
     water.size[1] = 40;
     water.cellSize = 0.1f;
     water.terrain = Slope();
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     water.sources = &spring;
     water.sourceCount = 1;
     return water;
@@ -280,7 +280,7 @@ static void TestShallow(void)
         double bound = s == 0 ? (double)INFINITY : 0.5 * (double)water.cellSize / (double)speed;
         float depth = playing ? (float)(0.25 * (double)plan.ticks / MVFX_TICKS_PER_SECOND) : 0.0f;
         wrong += !SubstepsAre(&plan, 4 * STEP_TICKS, bound) || plan.sourceDepths[0] != depth;
-        wrong += !plan.hasTerrain || plan.terrain.grid.index1 != water.terrain.grid.index1;
+        wrong += !plan.enableTerrain || plan.terrain.grid.index1 != water.terrain.grid.index1;
         split += plan.substeps > 1;
         slowed += plan.slowed ? 1u : 0u;
         clock = plan.start + plan.ticks;
@@ -315,7 +315,7 @@ static void TestTerrain(void)
     waters[1].terrain.center[1] = -0.25f;
     waters[1].terrain.rotation[1] = sinf(0.2f);
     waters[1].terrain.rotation[3] = cosf(0.2f);
-    waters[2].hasTerrain = false;
+    waters[2].enableTerrain = false;
     waters[2].hostTerrain = true;
     mvfxCollider hosts[2] = {
         {.kind = mvfx_colliderPlane, .center = {0, -1, 0}, .normal = {0, 1, 0}}, waters[1].terrain};
@@ -346,7 +346,7 @@ static void TestTerrain(void)
                   "a plan and its surface");
             const mvfxCollider* def = defs[w];
             Frame frame = SurfaceFrame(&surface, &emitterPlan.to, def->space);
-            wrong += !plan.hasTerrain || !SameCollider(&plan.terrain, def, true, &frame, 0.0) ||
+            wrong += !plan.enableTerrain || !SameCollider(&plan.terrain, def, true, &frame, 0.0) ||
                      plan.terrain.grid.index1 != def->grid.index1;
         }
     }
@@ -411,7 +411,7 @@ static void TestSplit(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 64;
     emitter.motion.gravity[1] = -9.81f;
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
     emitter.liquid.spacing = 0.05f;
@@ -452,7 +452,7 @@ static void TestHolds(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 600.0f;
     emitter.lifetime = mvfxRangeSource(0.5f, 0.5f);
-    emitter.water = (mvfxWaterCoupling){.enabled = true, .water = 0, .radius = 0.05f};
+    emitter.water = (mvfxWaterCoupling){.enable = true, .water = 0, .radius = 0.05f};
     const double origin[3] = {0.0, 0.0, 0.0};
     Open(&water, 1, &emitter, 1, NULL, 0, origin, 1.0f);
     CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success &&
@@ -474,13 +474,13 @@ static void TestHolds(void)
               mvfxInstance_SetWaterHolds(s_context, s_planned, 0, clock, false) == mvfx_success &&
               mvfxInstance_IsFinished(s_context, s_planned),
           "still after the last death, finished");
-    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     CHECK(mvfxInstance_SetWaterHolds(NULL, s_planned, 0, 0, true) == mvfx_errorInvalid &&
               mvfxInstance_SetWaterHolds(s_context, s_planned, 1, 0, true) == mvfx_errorInvalid &&
               mvfxInstance_SetWaterHolds(s_context, s_planned, 0, clock + 1, true) ==
                   mvfx_errorInvalid &&
               mvfxInstance_SetWaterHolds(s_context, s_planned, 0, -1, true) == mvfx_errorInvalid &&
-              mvfxGetContextMisuse(s_context) == misuse + 3 &&
+              mvfxContext_GetMisuse(s_context) == misuse + 3 &&
               mvfxInstance_SetWaterHolds(s_context, s_cpu, 0, 0, true) == mvfx_errorUnsupported &&
               mvfxInstance_SetWaterHolds(s_context, (mvfxInstanceId){0}, 0, 0, true) ==
                   mvfx_errorStale,
@@ -507,7 +507,7 @@ static void TestCoupling(void)
     water.model = mvfx_waterShallow;
     mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
     emitters[0].space = mvfx_spaceWorld;
-    emitters[0].water = (mvfxWaterCoupling){.enabled = true,
+    emitters[0].water = (mvfxWaterCoupling){.enable = true,
                                             .water = 0,
                                             .radius = 0.05f,
                                             .push = 0.04f,
@@ -581,7 +581,7 @@ static void TestView(void)
               view.def.model == mvfx_waterShallow && view.cells == 1600 &&
               view.faces[0] == 41 * 40 && view.faces[1] == 40 * 41 && view.def.sourceCount == 1 &&
               view.def.sources != NULL && view.def.sources != waters[0].sources &&
-              view.def.sources[0].rate == 0.25f && view.def.hasTerrain &&
+              view.def.sources[0].rate == 0.25f && view.def.enableTerrain &&
               view.def.terrain.grid.index1 == waters[0].terrain.grid.index1,
           "a lake's view");
     CHECK(mvfxEffect_GetWaterView(s_context, effect, 1, &view) == mvfx_success &&
@@ -626,7 +626,7 @@ static void TestCounts(void)
               mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
               info.facesHeld == 0 && info.volumePoured == 0.0,
           "a clear empties them, the reports before it ignored");
-    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     bool refused =
         mvfxInstance_SetWaterCounts(NULL, s_planned, 0, 0, 0.0f, 0, 0.0) == mvfx_errorInvalid &&
         mvfxInstance_SetWaterCounts(s_context, s_planned, 1, 0, 0.0f, 0, 0.0) ==
@@ -643,7 +643,7 @@ static void TestCounts(void)
             mvfx_errorInvalid &&
         mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 0, 0.0f, 0, -1.0) ==
             mvfx_errorInvalid &&
-        mvfxGetContextMisuse(s_context) == misuse + 7 &&
+        mvfxContext_GetMisuse(s_context) == misuse + 7 &&
         mvfxInstance_SetWaterCounts(s_context, s_cpu, 0, 0, 0.0f, 0, 0.0) ==
             mvfx_errorUnsupported &&
         mvfxInstance_SetWaterCounts(s_context, (mvfxInstanceId){0}, 0, 0, 0.0f, 0, 0.0) ==
@@ -660,7 +660,7 @@ static void TestRefusals(void)
     Open(waters, 2, NULL, 0, NULL, 0, origin, 1.0f);
     CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success, "stepped");
     static mvfxWaterPlan plan;
-    uint64_t misuse = mvfxGetContextMisuse(s_context);
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     bool refused =
         mvfxInstance_GetWaterPlan(NULL, s_planned, 0, &plan) == mvfx_errorInvalid &&
         mvfxInstance_GetWaterPlan(s_context, s_planned, 0, NULL) == mvfx_errorInvalid &&
@@ -678,7 +678,7 @@ static void TestRefusals(void)
             mvfx_errorInvalid &&
         mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, 0, -1.0f) == mvfx_errorInvalid &&
         mvfxInstance_SetWaterSpeed(s_context, s_planned, 0, 0, NAN) == mvfx_errorInvalid &&
-        mvfxGetContextMisuse(s_context) == misuse + 6 &&
+        mvfxContext_GetMisuse(s_context) == misuse + 6 &&
         mvfxInstance_SetWaterSpeed(s_context, s_cpu, 0, 0, 1.0f) == mvfx_errorUnsupported &&
         mvfxInstance_SetWaterSpeed(s_context, (mvfxInstanceId){0}, 0, 0, 1.0f) == mvfx_errorStale;
     CHECK(refused, "the plans' and the speed setter's refusals");

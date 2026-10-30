@@ -139,7 +139,7 @@ static void TestKillsAndCollisions(void)
     static const mvfxCollider floor = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
     emitter = Telling(10.0f);
     emitter.events = mvfx_eventMaskCollision;
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 1.0f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 1.0f};
     emitter.colliders = &floor;
     emitter.colliderCount = 1;
     scene = NewScene(&emitter);
@@ -273,7 +273,7 @@ static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Telling(10.0f);
     Scene scene = NewScene(&emitter);
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     const mvfxEvent* events = NULL;
     int32_t count = 0;
     CHECK(mvfxInstance_GetEvents(scene.context, scene.instance, 0, NULL, &count) ==
@@ -285,7 +285,7 @@ static void TestRefusals(void)
               mvfxInstance_GetEvents(scene.context, scene.instance, -1, &events, &count) ==
                   mvfx_errorInvalid,
           "refused");
-    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 4, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 4, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_GetEvents(scene.context, stale, 0, &events, &count) == mvfx_errorStale &&

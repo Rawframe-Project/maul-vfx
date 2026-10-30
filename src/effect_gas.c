@@ -13,7 +13,7 @@
 // gasCount gases.
 static mvfxResult CheckSplat(const mvfxGasSplat* splat, int32_t gasCount)
 {
-    if (!splat->enabled)
+    if (!splat->enable)
     {
         return mvfx_success;
     }
@@ -34,7 +34,7 @@ int32_t mvfxLiquidOf(const mvfxEffectDef* def, int32_t g)
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         const mvfxLiquidDef* liquid = &def->emitters[i].liquid;
-        if (liquid->enabled && liquid->solver == mvfx_liquidGrid && liquid->gas == g)
+        if (liquid->enable && liquid->solver == mvfx_liquidGrid && liquid->gas == g)
         {
             found = found == -1 ? i : -2;
         }
@@ -51,13 +51,13 @@ static bool AreLiquidGasesValid(const mvfxEffectDef* def)
     {
         const mvfxEmitterDef* emitter = &def->emitters[i];
         const mvfxLiquidDef* liquid = &emitter->liquid;
-        bool grid = liquid->enabled && liquid->solver == mvfx_liquidGrid;
+        bool grid = liquid->enable && liquid->solver == mvfx_liquidGrid;
         if (grid && (liquid->gas < 0 || liquid->gas >= def->gasCount ||
                      def->gases[liquid->gas].kind != mvfx_gasLiquid))
         {
             return false;
         }
-        if (emitter->gasSplat.enabled && def->gases[emitter->gasSplat.gas].kind != mvfx_gasSmoke)
+        if (emitter->gasSplat.enable && def->gases[emitter->gasSplat.gas].kind != mvfx_gasSmoke)
         {
             return false;
         }

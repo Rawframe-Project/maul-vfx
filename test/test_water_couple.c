@@ -31,7 +31,7 @@ static mvfxInstanceId s_instance;
 // A coupling to surface 0 of particles of radius 0.05.
 static mvfxWaterCoupling Coupling(void)
 {
-    return (mvfxWaterCoupling){.enabled = true, .water = 0, .radius = 0.05f};
+    return (mvfxWaterCoupling){.enable = true, .water = 0, .radius = 0.05f};
 }
 
 // An emitter of up to 16 particles the host places, living 100 s, writing
@@ -164,7 +164,7 @@ static void Spoil(int32_t c, mvfxEmitterDef* emitter)
         coupling->drag = 1001.0f;
         break;
     case 8:
-        coupling->enabled = false;
+        coupling->enable = false;
         break;
     case 9:
         emitter->events |= 1u << (mvfx_eventWater + 1);
@@ -200,7 +200,7 @@ static void TestRefusals(void)
     emitters[1].capacity = 16;
     emitters[1].rate = 0.0f;
     emitters[1].lifetime = mvfxRangeSource(1.0f, 1.0f);
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventWater,
                                               .minCount = 1,
@@ -521,7 +521,7 @@ static void TestOnce(void)
     coupling.buoyancy = 4.0f;
     mvfxEmitterDef emitter = Coupled(&coupling);
     emitter.motion.gravity[1] = -9.81f;
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.substeps = 32;
     mvfxWaterDef waves = Surface(mvfx_waterWaves);
     CHECK(Open(&emitter, 1, &waves), "opened");
@@ -652,7 +652,7 @@ static void TestRecorded(void)
 static void TestOnSurface(void)
 {
     // A particle let go on the surface itself, moving down, crosses it.
-    mvfxEmitterDef emitter = Coupled(&(mvfxWaterCoupling){.enabled = true, .radius = 0.05f});
+    mvfxEmitterDef emitter = Coupled(&(mvfxWaterCoupling){.enable = true, .radius = 0.05f});
     mvfxWaterDef waves = Surface(mvfx_waterWaves);
     CHECK(Open(&emitter, 1, &waves), "opened");
     Place(0.0, 0.0, 0.0, 0.0f, -1.0f, 0.0f);
@@ -667,7 +667,7 @@ static void TestOnSurface(void)
 // filled to level onto its floor and past it: its crossings.
 static int32_t Through(float level)
 {
-    mvfxEmitterDef emitter = Coupled(&(mvfxWaterCoupling){.enabled = true, .radius = 0.05f});
+    mvfxEmitterDef emitter = Coupled(&(mvfxWaterCoupling){.enable = true, .radius = 0.05f});
     mvfxWaterDef shallow = Surface(mvfx_waterShallow);
     shallow.fillLevel = level;
     CHECK(Open(&emitter, 1, &shallow), "opened");

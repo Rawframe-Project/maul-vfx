@@ -65,7 +65,7 @@ static mvfxEmitterDef Consumer(int32_t source, int32_t minCount, int32_t maxCoun
     emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
     emitter.events = mvfx_eventMaskBirth;
     emitter.eventCapacity = 64;
-    emitter.eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitter.eventSpawn = (mvfxEventSpawn){.enable = true,
                                           .source = source,
                                           .kind = mvfx_eventDeath,
                                           .minCount = minCount,
@@ -367,7 +367,7 @@ static void TestRoomAndStatus(void)
     };
     mvfxEmitterDef bouncing[2] = {Source(100.0f, 100.0f), Consumer(0, 0, 4)};
     bouncing[0].events = mvfx_eventMaskCollision;
-    bouncing[0].collision = (mvfxCollision){.enabled = true, .restitution = 1.0f};
+    bouncing[0].collision = (mvfxCollision){.enable = true, .restitution = 1.0f};
     bouncing[0].colliders = walls;
     bouncing[0].colliderCount = 2;
     bouncing[1].eventSpawn.kind = mvfx_eventCollision;
@@ -449,11 +449,8 @@ static void TestRefusals(void)
             // A cycle: the source spawns from its consumer's deaths.
             emitters[1].events = mvfx_eventMaskDeath;
             emitters[1].eventCapacity = 8;
-            emitters[0].eventSpawn = (mvfxEventSpawn){.enabled = true,
-                                                      .source = 1,
-                                                      .kind = mvfx_eventDeath,
-                                                      .maxCount = 1,
-                                                      .capacity = 8};
+            emitters[0].eventSpawn = (mvfxEventSpawn){
+                .enable = true, .source = 1, .kind = mvfx_eventDeath, .maxCount = 1, .capacity = 8};
             break;
         }
         mvfxEffectDef effectDef = mvfxDefaultEffectDef();

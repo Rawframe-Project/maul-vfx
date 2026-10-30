@@ -97,7 +97,7 @@ extern "C"
     // read (output, events, ribbons), never written back.
     typedef struct mvfxColorOverLife
     {
-        bool enabled;
+        bool enable;
         mvfxOverLifeInput input;
         // Finite, the first below the second, at most MVFX_MAX_EXTENT.
         float speedRange[2];
@@ -112,7 +112,7 @@ extern "C"
     // size[0] on every axis, or size[0], [1] and [2] on X, Y and Z.
     typedef struct mvfxSizeOverLife
     {
-        bool enabled;
+        bool enable;
         mvfxOverLifeInput input;
         float speedRange[2];
         bool perAxis;
@@ -151,7 +151,7 @@ extern "C"
     // over steps, so this one is not taken where it is read).
     typedef struct mvfxRotationOverLife
     {
-        bool enabled;
+        bool enable;
         mvfxLifeCurve scale;
     } mvfxRotationOverLife;
 
@@ -284,7 +284,7 @@ extern "C"
     // were, though their serials move.
     typedef struct mvfxEventSpawn
     {
-        bool enabled;
+        bool enable;
         // The source's index in the effect's emitters, not its own; it must
         // write the kind.
         int32_t source;
@@ -314,7 +314,7 @@ extern "C"
     // output records read them).
     typedef struct mvfxNeighborDef
     {
-        bool enabled;
+        bool enable;
         // The emitter whose particles are the neighbors: -1 or its own index
         // for its own (a particle is never its own neighbor), else another
         // of the effect in the same space, which steps first (a cycle with
@@ -383,7 +383,7 @@ extern "C"
     // held by the velocity modules' speed limit.
     typedef struct mvfxSteeringDef
     {
-        bool enabled;
+        bool enable;
         // The rules from neighbors (mvfxEmitterDef.neighbors, which they
         // need when their weights are above 0): each a weight (0 for none,
         // at most MVFX_MAX_EXTENT) and a radius (above 0, at most the
@@ -420,7 +420,7 @@ extern "C"
     // pulls equal and opposite.
     typedef struct mvfxPairForceDef
     {
-        bool enabled;
+        bool enable;
         // Above 0 and at most the neighbors' radius
         // (mvfxEmitterDef.neighbors, which it needs).
         float radius;
@@ -442,7 +442,7 @@ extern "C"
     // also averaged. The projection itself changes no velocity.
     typedef struct mvfxContactDef
     {
-        bool enabled;
+        bool enable;
         // A particle's radius is its size's X times this (this alone for an
         // emitter that stores no size); above 0, at most MVFX_MAX_EXTENT.
         float radiusScale;
@@ -543,7 +543,7 @@ extern "C"
     {
         // Whether they collide at all (with the emitter's colliders, and with
         // the instance's when hostColliders is set).
-        bool enabled;
+        bool enable;
         bool hostColliders;
         // The share of the speed into a surface it bounces back with, and the
         // share of the speed along it a collision takes, each 0 to 1.
@@ -567,7 +567,7 @@ extern "C"
         // (mvfxInstance_AnswerSceneQueries) before the next step, which
         // collides the particle's segment with its plane; a particle keeps
         // its last plane until an answer replaces it.
-        bool sceneQueries;
+        bool enableSceneQueries;
         int32_t queryCapacity;
         float lookahead;
         // Whether they collide with the depth image the host sets on the
@@ -579,7 +579,7 @@ extern "C"
         // particle does not pass a thin wall. Outside the image (or behind
         // the camera) there is no depth and they do not collide, or are
         // killed there when killOutsideView is set.
-        bool depthImage;
+        bool enableDepthImage;
         float depthThickness;
         int32_t depthSamples;
         bool killOutsideView;
@@ -675,7 +675,7 @@ extern "C"
         double anchor[3];
         bool worldSpace;
         // The seed of this module's random stream in this instance
-        // (mvfxModule_Random).
+        // (mvfxDrawModuleRandom).
         uint32_t seed;
     } mvfxModuleCall;
 
@@ -683,15 +683,15 @@ extern "C"
     // the step on the thread stepping the instance (instances may step on
     // several threads at once), so it must be safe to run beside itself;
     // and the step stays deterministic only if the module is, which is the
-    // host's to keep (mvfxModule_Random gives it a stream that is). It calls
+    // host's to keep (mvfxDrawModuleRandom gives it a stream that is). It calls
     // none of the context's functions that take it mutable: such a call is
     // refused with mvfx_errorBusy and counted as misuse.
-    typedef void mvfxModuleFn(const mvfxModuleCall* call, void* user);
+    typedef void mvfxModuleFunction(const mvfxModuleCall* call, void* user);
 
     typedef struct mvfxHostModule
     {
         mvfxModuleStage stage;
-        mvfxModuleFn* function;
+        mvfxModuleFunction* function;
         void* user;
     } mvfxHostModule;
 

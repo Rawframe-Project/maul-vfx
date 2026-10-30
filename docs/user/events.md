@@ -32,7 +32,7 @@ emitters[1].capacity = 256;
 emitters[1].rate = 0.0f;
 emitters[1].lifetime = mvfxRangeSource(0.5f, 0.8f);
 emitters[1].velocity.speed = (mvfxRange){2.0f, 4.0f};
-emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                           .source = 0,
                                           .kind = mvfx_eventDeath,
                                           .minCount = 20,

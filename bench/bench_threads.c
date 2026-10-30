@@ -53,7 +53,7 @@ typedef struct Pool
     pthread_cond_t done;
     // The job: its task, items and range, the next range's start, the
     // workers still in it, and its number (0 before the first).
-    mvfxTaskFn* task;
+    mvfxTaskFunction* task;
     void* taskContext;
     int32_t itemCount;
     int32_t range;
@@ -105,7 +105,7 @@ static void* Work(void* argument)
     }
 }
 
-static void* Enqueue(mvfxTaskFn* task, int32_t itemCount, int32_t minRange, void* taskContext,
+static void* Enqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange, void* taskContext,
                      void* userContext)
 {
     Pool* pool = userContext;

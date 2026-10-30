@@ -37,7 +37,7 @@ static int32_t SubstepPasses(const mvfxLiquidDef* def)
 int32_t mvfxSimLiquidPasses(const mvfxEmitterView* view)
 {
     const mvfxLiquidDef* def = &view->liquid;
-    bool particles = def->enabled && def->solver == mvfx_liquidParticles;
+    bool particles = def->enable && def->solver == mvfx_liquidParticles;
     return particles ? 1 + def->substeps * SubstepPasses(def) : 0;
 }
 

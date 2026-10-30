@@ -58,7 +58,7 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
         {
             return result;
         }
-        if (emitter->capacity > 0 && plan.depth.enabled && sim->hostDepth.index1 == 0)
+        if (emitter->capacity > 0 && plan.depth.enable && sim->hostDepth.index1 == 0)
         {
             return mvfx_errorState;
         }

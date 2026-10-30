@@ -93,7 +93,7 @@ return made;
 
 A layout (`mvfxCreateLayout`) names the fields of a record, each at an offset with a format and a component count, and the stride between records. Fields cover what a particle is (position, size, colour, angle, orientation, velocity, age, flipbook frame, mesh index, custom attributes, serial), what its neighbors are ([interaction](interaction.md)), and what ribbon and quad vertices need (tangent, width, length, place along, side, face normal, corner). Formats are `float32`, `float16`, `unorm8`, `snorm8`, `unorm16`, `snorm16` and `uint32`.
 
-The library converts values itself, by integer arithmetic, so a record has the same bytes on every platform: half floats round to nearest even, and normalized integers clamp and round to nearest. A colour field in `unorm8` can be written as sRGB; `mvfxSrgbSteps` gives the exact thresholds for a GPU path that must write the same bytes.
+The library converts values itself, by integer arithmetic, so a record has the same bytes on every platform: half floats round to nearest even, and normalized integers clamp and round to nearest. A colour field in `unorm8` can be written as sRGB; `mvfxGetSrgbSteps` gives the exact thresholds for a GPU path that must write the same bytes.
 
 Positions are written relative to the view's `eye`, so a world far from its origin keeps full precision in `float32` records. A renderer adds the eye back in its view matrix, or keeps the eye at the origin.
 

@@ -297,8 +297,8 @@ static void TestMeshRoom(mvfxGpu* kernels)
     int64_t largerBytes = 0;
     int64_t smallerBytes = 0;
     mvfxMeshView before;
-    CHECK(mvfxGpuSim_MeshBytes(context, larger, mvfx_meshSurface, &largerBytes) == mvfx_success &&
-              mvfxGpuSim_MeshBytes(context, smaller, mvfx_meshSurface, &smallerBytes) ==
+    CHECK(mvfxMesh_GetGpuBytes(context, larger, mvfx_meshSurface, &largerBytes) == mvfx_success &&
+              mvfxMesh_GetGpuBytes(context, smaller, mvfx_meshSurface, &smallerBytes) ==
                   mvfx_success &&
               largerBytes == 976 && smallerBytes == 108 &&
               mvfxInstance_GetEmitterMesh(context, PlannedInstance(), 0, &before) == mvfx_success,
@@ -317,9 +317,9 @@ static void TestMeshRoom(mvfxGpu* kernels)
               mvfxGpuSim_SetEmitterMesh(sim, NULL, 0, smaller) == mvfx_errorInvalid &&
               mvfxGpuSim_SetEmitterMesh(NULL, context, 0, smaller) == mvfx_errorInvalid &&
               mvfxGpuSim_SetEmitterMesh(sim, context, 0, (mvfxMeshId){0}) == mvfx_errorStale &&
-              mvfxGpuSim_MeshBytes(context, (mvfxMeshId){0}, mvfx_meshSurface, &room) ==
+              mvfxMesh_GetGpuBytes(context, (mvfxMeshId){0}, mvfx_meshSurface, &room) ==
                   mvfx_errorStale &&
-              mvfxGpuSim_MeshBytes(context, smaller, (mvfxMeshMode)9, &room) == mvfx_errorInvalid,
+              mvfxMesh_GetGpuBytes(context, smaller, (mvfxMeshMode)9, &room) == mvfx_errorInvalid,
           "no mesh shape, no emitter, no context, no simulation, a stale mesh, a bad mode");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);

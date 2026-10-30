@@ -438,7 +438,7 @@ static void TestRefusals(void)
         mvfxMeshId mesh = {5, 5};
         CHECK(mvfxCreateMesh(context, &def, &mesh) == want, "refused");
         misuse += want == mvfx_errorInvalid ? 1u : 0u;
-        CHECK(mesh.index1 == 0 && mvfxGetContextMisuse(context) == misuse, "counted");
+        CHECK(mesh.index1 == 0 && mvfxContext_GetMisuse(context) == misuse, "counted");
     }
     mvfxMeshId mesh = {0};
     CHECK(mvfxCreateMesh(context, NULL, &mesh) == mvfx_errorInvalid, "no def");
@@ -470,7 +470,7 @@ static void TestRefusals(void)
     bad[4] = INFINITY;
     CHECK(mvfxMesh_SetPositions(context, a, bad, NULL, 7) == mvfx_errorInvalid, "a bad position");
     misuse += 3;
-    CHECK(mvfxGetContextMisuse(context) == misuse, "each counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse, "each counted");
     CHECK(mvfxMesh_SetPositions(NULL, a, s_quad, NULL, 7) == mvfx_errorInvalid, "no context");
     CHECK(mvfxMesh_SetPositions(context, (mvfxMeshId){a.index1, a.generation + 1}, s_quad, NULL,
                                 7) == mvfx_errorStale,
@@ -479,7 +479,7 @@ static void TestRefusals(void)
     CHECK(mvfxDestroyMesh(context, b) == mvfx_success, "destroyed");
     CHECK(mvfxDestroyMesh(context, b) == mvfx_errorStale, "twice is stale");
     CHECK(mvfxDestroyMesh(NULL, a) == mvfx_errorInvalid, "no context");
-    CHECK(mvfxGetContextMisuse(context) == misuse, "stale ids are not misuse");
+    CHECK(mvfxContext_GetMisuse(context) == misuse, "stale ids are not misuse");
     mvfxDestroyContext(context);
 
     contextDef.limits.meshes = 0;
@@ -531,10 +531,10 @@ static void TestThroughTheStep(void)
     mvfxEmitterDef emitters[2];
     mvfxEffectDef effectDef = MeshEffect(emitters, flat, mvfx_meshVolume);
     mvfxEffectId effect = {0};
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorInvalid,
           "a volume needs tetrahedra");
-    CHECK(mvfxGetContextMisuse(context) == misuse + 1, "counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 1, "counted");
     effectDef =
         MeshEffect(emitters, (mvfxMeshId){flat.index1, flat.generation + 1}, mvfx_meshSurface);
     CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_errorStale, "a stale mesh");
@@ -583,12 +583,12 @@ static void TestThroughTheStep(void)
     }
     CHECK(onFlat, "born on the flat mesh, moved by the offset");
 
-    misuse = mvfxGetContextMisuse(context);
+    misuse = mvfxContext_GetMisuse(context);
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 1, solid) == mvfx_errorInvalid,
           "not a mesh shape");
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 2, solid) == mvfx_errorInvalid,
           "no such emitter");
-    CHECK(mvfxGetContextMisuse(context) == misuse + 2, "counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 2, "counted");
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, (mvfxMeshId){0}) == mvfx_errorStale,
           "a stale mesh");
     static const uint32_t onlyCells[] = {0, 1, 2, 3};
@@ -599,10 +599,10 @@ static void TestThroughTheStep(void)
     cellsDef.tetrahedronCount = 1;
     mvfxMeshId cellsOnly = {0};
     CHECK(mvfxCreateMesh(context, &cellsDef, &cellsOnly) == mvfx_success, "a mesh of cells");
-    misuse = mvfxGetContextMisuse(context);
+    misuse = mvfxContext_GetMisuse(context);
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, cellsOnly) == mvfx_errorInvalid,
           "a surface needs triangles");
-    CHECK(mvfxGetContextMisuse(context) == misuse + 1, "counted");
+    CHECK(mvfxContext_GetMisuse(context) == misuse + 1, "counted");
     CHECK(mvfxInstance_SetEmitterMesh(NULL, instance, 0, solid) == mvfx_errorInvalid, "no context");
     CHECK(mvfxInstance_SetEmitterMesh(context, instance, 0, solid) == mvfx_success, "bound");
     CHECK(mvfxInstance_GetEmitterMesh(context, instance, 0, &spawning) == mvfx_success &&

@@ -43,9 +43,10 @@ VERSION = 1
 # field keeps the binary layout but not the JSON form: bump JSON_FORMAT
 # and record the new names under it. A change of the binary layout
 # changes the names' fingerprint too, so both move together then.
-JSON_FORMAT = 1
+JSON_FORMAT = 2
 NAMES = {
     1: "74fbb09047c22002",
+    2: "bf3b95e3c138a4d7",
 }
 MAGIC = b"MVFX"
 HEADER = 24
@@ -377,7 +378,7 @@ class Writer:
 def to_binary(layout, form):
     """A JSON form's file bytes."""
     if not isinstance(form, dict) or list(form) != ["format", "effect"]:
-        raise FileError('the form is {"format": 1, "effect": {...}}')
+        raise FileError(f'the form is {{"format": {JSON_FORMAT}, "effect": {{...}}}}')
     if form["format"] != JSON_FORMAT:
         raise FileError(f"format {form['format']!r}, not {JSON_FORMAT}")
     writer = Writer(layout)

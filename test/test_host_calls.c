@@ -79,12 +79,12 @@ static void CallBack(Callback from)
     }
     s_target = NULL;
     s_armed = NONE;
-    uint64_t before = mvfxGetContextMisuse(target);
+    uint64_t before = mvfxContext_GetMisuse(target);
     bool refused = mvfxContext_StepTicks(target, 1) == mvfx_errorBusy &&
                    mvfxInstance_SetVisible(target, s_instance, false) == mvfx_errorBusy &&
                    mvfxDestroyInstance(target, s_instance) == mvfx_errorBusy;
     mvfxDestroyContext(target);
-    s_refused += refused && mvfxGetContextMisuse(target) == before + 4 ? 1 : 0;
+    s_refused += refused && mvfxContext_GetMisuse(target) == before + 4 ? 1 : 0;
     s_made += 1;
 }
 
@@ -116,7 +116,7 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
 }
 
 // Task hooks running every range at once, calling back in from each.
-static void* Enqueue(mvfxTaskFn* task, int32_t itemCount, int32_t minRange, void* taskContext,
+static void* Enqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange, void* taskContext,
                      void* userContext)
 {
     (void)minRange;
@@ -329,8 +329,8 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
         mvfxInstance_GetEvents(target, i, 0, &events, &eventCount) == mvfx_errorBusy &&
         mvfxInstance_GetSceneQueries(target, i, 0, &queries, &queryCount) == mvfx_errorBusy &&
         mvfxInstance_Prewarm(target, i, 1.0, 0.1, 4, &remaining) == mvfx_errorBusy &&
-        mvfxMesh_HullCenter(target, m, &hull, center) == mvfx_errorBusy &&
-        mvfxMesh_HullVertexCount(target, m, &vertexCount) == mvfx_errorBusy;
+        mvfxMesh_GetHullCenter(target, m, &hull, center) == mvfx_errorBusy &&
+        mvfxMesh_GetHullVertexCount(target, m, &vertexCount) == mvfx_errorBusy;
     s_left = busy && Filled(n, sizeof n, 0xEE) && Filled(records, sizeof records, 0xEE) &&
              Filled(vertices, sizeof vertices, 0xEE) && Filled(indices, sizeof indices, 0xEE) &&
              Filled(lights, sizeof lights, 0xEE) && Filled(items, sizeof items, 0xEE) &&
@@ -402,7 +402,7 @@ static void TestHostSettings(void)
     body.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {1, 1, 1}};
     body.orientationMode = mvfx_orientationEuler;
     body.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
-    body.rigid = (mvfxRigidDef){.enabled = true,
+    body.rigid = (mvfxRigidDef){.enable = true,
                                 .shape = mvfx_rigidHull,
                                 .density = 1.0f,
                                 .substeps = 8,

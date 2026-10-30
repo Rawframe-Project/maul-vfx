@@ -45,9 +45,9 @@ static mvfxEmitterDef Poured(void)
     emitter.motion.drag = 0.0f;
     emitter.colliders = &s_floor;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.collision = (mvfxCollision){.enable = true};
     emitter.liquid = mvfxDefaultEmitterDef().liquid;
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.spacing = 0.04f;
     emitter.liquid.viscosity = 0.1f;
     emitter.liquid.vorticity = 0.5f;
@@ -122,9 +122,9 @@ static mvfxEmitterDef Pour(void)
     emitter.motion.drag = 0.0f;
     emitter.colliders = &s_tank;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.collision = (mvfxCollision){.enable = true};
     emitter.liquid = mvfxDefaultEmitterDef().liquid;
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
     emitter.liquid.spacing = 0.05f;
@@ -203,13 +203,13 @@ static void TestSplitRecords(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.speed = (mvfxRange){1.0f, 1.5f};
     emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
     emitter.overLife =
-        (mvfxOverLife){.color = {.enabled = true,
+        (mvfxOverLife){.color = {.enable = true,
                                  .input = mvfx_overAge,
                                  .gradient = {.colorKeys = colors,
                                               .colorKeyCount = 2,
                                               .alphaKeys = alphas,
                                               .alphaKeyCount = 2}},
-                       .size = {.enabled = true, .size = {{.value = 2, .curve = curve}}}};
+                       .size = {.enable = true, .size = {{.value = 2, .curve = curve}}}};
     Run run = {.mostApart = 4,
                .emitters = &emitter,
                .emitterCount = 1,
@@ -265,7 +265,7 @@ static void TestSplitBeside(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].forces = &pushed;
     emitters[1].forceCount = 1;
     emitters[1].gasSplat = (mvfxGasSplat){
-        .enabled = true, .gas = 1, .density = 2.0f, .temperature = 1.0f, .drag = 4.0f};
+        .enable = true, .gas = 1, .density = 2.0f, .temperature = 1.0f, .drag = 4.0f};
     Run run = {.mostApart = 4,
                .emitters = emitters,
                .emitterCount = 2,
@@ -298,12 +298,12 @@ static void TestSplitEvents(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
     emitters[1].eventCapacity = 256;
     emitters[1].overLife =
-        (mvfxOverLife){.size = {.enabled = true, .size = {{.value = 2, .curve = curve}}}};
+        (mvfxOverLife){.size = {.enable = true, .size = {{.value = 2, .curve = curve}}}};
     emitters[2].capacity = 1024;
     emitters[2].rate = 0.0f;
     emitters[2].burstCount = 0;
     emitters[2].lifetime = mvfxRangeSource(0.2f, 0.2f);
-    emitters[2].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[2].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 1,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 2,
@@ -357,15 +357,15 @@ static void TestPasses(mvfxGpu* kernels)
     mvfxEmitterDef emitter = Poured();
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1}, &effect);
-    CHECK(mvfxGpuSim_EmitterPasses(sim, 0) == 21 + 1 + 4 * (11 + 9 + 2 + 3) &&
-              mvfxGpuSim_EmitterPasses(sim, 1) == 0 && mvfxGpuSim_EmitterPasses(NULL, 0) == 0,
+    CHECK(mvfxGpuSim_GetEmitterPasses(sim, 0) == 21 + 1 + 4 * (11 + 9 + 2 + 3) &&
+              mvfxGpuSim_GetEmitterPasses(sim, 1) == 0 && mvfxGpuSim_GetEmitterPasses(NULL, 0) == 0,
           "a liquid's passes");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());
     emitter.liquid.viscosity = 0.0f;
     emitter.liquid.vorticity = 0.0f;
     sim = OpenRun(kernels, &(Run){.emitters = &emitter, .emitterCount = 1}, &effect);
-    CHECK(mvfxGpuSim_EmitterPasses(sim, 0) == 21 + 1 + 4 * (11 + 9),
+    CHECK(mvfxGpuSim_GetEmitterPasses(sim, 0) == 21 + 1 + 4 * (11 + 9),
           "a liquid's passes without viscosity or confinement");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());

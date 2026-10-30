@@ -96,8 +96,8 @@ static mvfxEmitterDef Bodies(mvfxRigidShape shape, bool gravity)
     emitter.motion.gravity[2] = 0.0f;
     emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {1, 1, 1}};
     emitter.rigid = (mvfxRigidDef){
-        .enabled = true, .shape = shape, .density = 1.0f, .substeps = 8, .bodyContacts = 8};
-    emitter.collision.enabled = true;
+        .enable = true, .shape = shape, .density = 1.0f, .substeps = 8, .bodyContacts = 8};
+    emitter.collision.enable = true;
     emitter.colliders = gravity ? &s_ground : NULL;
     emitter.colliderCount = gravity ? 1 : 0;
     return emitter;

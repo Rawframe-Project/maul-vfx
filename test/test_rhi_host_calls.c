@@ -120,14 +120,15 @@ static void CallBack(void)
     int64_t after = -1;
     mvfxGpuRecordsDef records = mvfxDefaultGpuRecordsDef();
     records.records = (mrhiResourceId){.index1 = 1};
-    bool refused = mvfxGpuSim_UploadBytes(sim, &before) == mvfx_success && before > 0 &&
+    bool refused = mvfxGpuSim_GetUploadBytes(sim, &before) == mvfx_success && before > 0 &&
                    mvfxGpuSim_SetDepthTextures(sim, (mrhiResourceId){0}, (mrhiResourceId){0}) ==
                        mvfx_errorBusy &&
                    mvfxGpuSim_AddPasses(sim) == mvfx_errorBusy &&
                    mvfxGpuSim_AddRecords(sim, &records) == mvfx_errorBusy &&
                    mvfxGpuSim_Record(sim) == mvfx_errorBusy;
     mvfxDestroyGpuSim(sim);
-    s_refused = refused && mvfxGpuSim_UploadBytes(sim, &after) == mvfx_success && after == before;
+    s_refused =
+        refused && mvfxGpuSim_GetUploadBytes(sim, &after) == mvfx_success && after == before;
     s_made += 1;
 }
 
@@ -232,7 +233,7 @@ static void TestFailedMemory(mvfxGpu* kernels)
     gas.cellSize = 0.1f;
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 256;
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
     emitter.liquid.spacing = 0.05f;

@@ -50,8 +50,8 @@ static mvfxAllocator CountingAllocatorFor(CountingAllocator* counter)
     return allocator;
 }
 
-static void* InlineEnqueue(mvfxTaskFn* task, int32_t itemCount, int32_t minRange, void* taskContext,
-                           void* userContext)
+static void* InlineEnqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange,
+                           void* taskContext, void* userContext)
 {
     (void)minRange;
     (void)userContext;
@@ -71,7 +71,7 @@ static void TestDefaultDefCreatesAndDestroys(void)
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "default def creates");
     CHECK(context != NULL, "context returned");
-    CHECK(mvfxGetContextMisuse(context) == 0, "no misuse yet");
+    CHECK(mvfxContext_GetMisuse(context) == 0, "no misuse yet");
     mvfxDestroyContext(context);
 }
 

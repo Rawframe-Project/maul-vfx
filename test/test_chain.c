@@ -481,7 +481,7 @@ static void TestLifeLossKeepsUnitsWhole(void)
                                         .rotation = {0, 0, 0, 1}};
     emitter.colliders = &sphere;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .lifeLoss = 0.3f, .restitution = 1.0f};
+    emitter.collision = (mvfxCollision){.enable = true, .lifeLoss = 0.3f, .restitution = 1.0f};
     Open(&emitter, NULL, 0);
     static const double root[3] = {0, 0, 0};
     static const float down[3] = {0, -6, 0};
@@ -512,7 +512,7 @@ static void TestCollisionEvents(void)
         .kind = mvfx_colliderPlane, .center = {0, -0.01f, 0}, .normal = {0, 1, 0}};
     emitter.colliders = &floor;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.collision = (mvfxCollision){.enable = true};
     emitter.events = mvfx_eventMaskCollision;
     emitter.eventCapacity = 64;
     Open(&emitter, NULL, 0);
@@ -616,7 +616,7 @@ static void TestChecks(void)
             u->spacing = 2.0f * MVFX_MAX_EXTENT;
             break;
         default:
-            emitter.eventSpawn = (mvfxEventSpawn){.enabled = true,
+            emitter.eventSpawn = (mvfxEventSpawn){.enable = true,
                                                   .source = 0,
                                                   .kind = mvfx_eventBirth,
                                                   .minCount = 1,

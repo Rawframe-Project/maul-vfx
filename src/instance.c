@@ -136,8 +136,8 @@ static void AddUnits(mvfxLayout* layout, const mvfxEffect* effect, int32_t e,
 static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
                      EmitterAt* at)
 {
-    size_t rigid = compiled->rigid.enabled ? (size_t)capacity : 0u;
-    size_t met = compiled->collision.enabled ? rigid : 0u;
+    size_t rigid = compiled->rigid.enable ? (size_t)capacity : 0u;
+    size_t met = compiled->collision.enable ? rigid : 0u;
     at->rigidStart = mvfxLayoutAdd(layout, 7u * rigid, sizeof(float), alignof(float));
     at->rigidMass = mvfxLayoutAdd(layout, (size_t)MVFX_RIGID_MASS_ARRAYS * rigid, sizeof(float),
                                   alignof(float));
@@ -175,7 +175,7 @@ static void AddRigid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, in
 static void AddLiquid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
                       EmitterAt* at)
 {
-    if (!compiled->liquid.enabled)
+    if (!compiled->liquid.enable)
     {
         return;
     }
@@ -206,11 +206,11 @@ static void AddGrid(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int
 static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compiled)
 {
     int32_t colliders = compiled->colliderCount;
-    if (compiled->collision.enabled && compiled->collision.hostColliders)
+    if (compiled->collision.enable && compiled->collision.hostColliders)
     {
         colliders += MVFX_MAX_COLLIDERS;
     }
-    bool scene = compiled->collision.enabled && compiled->collision.sceneQueries;
+    bool scene = compiled->collision.enable && compiled->collision.enableSceneQueries;
     int32_t queries = scene ? compiled->collision.queryCapacity : 0;
     return (EmitterAt){
         .queue = mvfxLayoutAdd(layout, (size_t)compiled->hostSpawnCapacity, sizeof(mvfxHostBirth),
@@ -226,7 +226,7 @@ static EmitterAt AddEmitter(mvfxLayout* layout, const mvfxCompiledEmitter* compi
         .events = mvfxLayoutAdd(layout, (size_t)compiled->eventCapacity, sizeof(mvfxEvent),
                                 alignof(mvfxEvent)),
         .eventQueue = mvfxLayoutAdd(
-            layout, compiled->eventSpawn.enabled ? (size_t)compiled->eventSpawn.capacity : 0,
+            layout, compiled->eventSpawn.enable ? (size_t)compiled->eventSpawn.capacity : 0,
             sizeof(mvfxHostBirth), alignof(mvfxHostBirth)),
     };
 }
@@ -239,7 +239,7 @@ int32_t mvfxCapacityAt(const mvfxEffect* effect, int32_t emitter, int32_t qualit
     {
         return 0;
     }
-    if (compiled->beam.enabled)
+    if (compiled->beam.enable)
     {
         return compiled->capacity;
     }
@@ -266,7 +266,7 @@ int64_t mvfxParticlesAt(const mvfxEffect* effect, int32_t quality)
 static void AddContacts(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
                         EmitterAt* at)
 {
-    if (!compiled->contacts.enabled)
+    if (!compiled->contacts.enable)
     {
         return;
     }
@@ -283,7 +283,7 @@ static void AddContacts(mvfxLayout* layout, const mvfxCompiledEmitter* compiled,
 static void AddPlexus(mvfxLayout* layout, const mvfxCompiledEmitter* compiled, int32_t capacity,
                       EmitterAt* at)
 {
-    if (!compiled->plexus.enabled)
+    if (!compiled->plexus.enable)
     {
         return;
     }
@@ -451,7 +451,7 @@ static int64_t CrossingsOf(const mvfxEffect* effect, int32_t w, const int32_t* c
     for (int32_t e = 0; e < effect->emitterCount; ++e)
     {
         const mvfxWaterCoupling* coupling = &effect->emitters[e].water;
-        count += coupling->enabled && coupling->water == w ? capacities[e] : 0;
+        count += coupling->enable && coupling->water == w ? capacities[e] : 0;
     }
     return count;
 }

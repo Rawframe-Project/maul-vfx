@@ -82,7 +82,7 @@ void mvfxEndPlanStep(mvfxInstance* instance)
 // events.
 static bool NumberedElsewhere(const mvfxInstance* instance, int32_t emitter)
 {
-    return instance->effect->emitters[emitter].eventSpawn.enabled;
+    return instance->effect->emitters[emitter].eventSpawn.enable;
 }
 
 // The births an emitter holds at most: its particles, or for an emitter

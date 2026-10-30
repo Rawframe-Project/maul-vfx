@@ -53,7 +53,7 @@ static mvfxEffectId NewEffect(mvfxContext* context)
     s_emitters[2].ratePerDistance = 2.0f;
     s_emitters[3].capacity = 5;
     s_emitters[3].ribbon.ids = mvfx_ribbonOne;
-    s_emitters[3].beam = (mvfxBeamDef){.enabled = true, .segments = 4, .end = {.point = {4, 0, 0}}};
+    s_emitters[3].beam = (mvfxBeamDef){.enable = true, .segments = 4, .end = {.point = {4, 0, 0}}};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = s_emitters;
     def.emitterCount = 4;
@@ -279,10 +279,10 @@ static void TestChecks(void)
     levels[0] = (mvfxQualityLevel){.capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 15u};
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds of each");
     mvfxInstanceId instance = {0};
-    uint64_t misuse = mvfxGetContextMisuse(context);
+    uint64_t misuse = mvfxContext_GetMisuse(context);
     CHECK(NewInstance(context, effect, 3, &instance) == mvfx_errorInvalid &&
               NewInstance(context, effect, -1, &instance) == mvfx_errorInvalid &&
-              mvfxGetContextMisuse(context) == misuse + 2,
+              mvfxContext_GetMisuse(context) == misuse + 2,
           "a level it does not have, counted");
     CHECK(NewInstance(context, effect, 2, &instance) == mvfx_success, "its last level");
     int32_t level = 0;

@@ -73,7 +73,7 @@ static mvfxResult CheckFlockRule(const mvfxEmitterDef* def, float weight, float 
     {
         return bounded;
     }
-    return mvfxRequire(def->neighbors.enabled && radius > 0.0f && radius <= def->neighbors.radius);
+    return mvfxRequire(def->neighbors.enable && radius > 0.0f && radius <= def->neighbors.radius);
 }
 
 // Whether an emitter's pair force is valid: a radius within its
@@ -81,11 +81,11 @@ static mvfxResult CheckFlockRule(const mvfxEmitterDef* def, float weight, float 
 static mvfxResult CheckPairForce(const mvfxEmitterDef* def)
 {
     const mvfxPairForceDef* pair = &def->pairForce;
-    if (!pair->enabled)
+    if (!pair->enable)
     {
         return mvfx_success;
     }
-    if (!def->neighbors.enabled || !(pair->radius > 0.0f) ||
+    if (!def->neighbors.enable || !(pair->radius > 0.0f) ||
         !(pair->radius <= def->neighbors.radius))
     {
         return mvfx_errorInvalid;
@@ -161,7 +161,7 @@ static mvfxResult CheckUnit(const mvfxEmitterDef* def)
         return mvfx_success;
     }
     bool sheet = unit->kind == mvfx_unitSheet;
-    if (def->beam.enabled || (sheet && def->ribbon.ids != mvfx_ribbonNone))
+    if (def->beam.enable || (sheet && def->ribbon.ids != mvfx_ribbonNone))
     {
         return mvfx_errorInvalid;
     }
@@ -194,7 +194,7 @@ static mvfxResult CheckUnit(const mvfxEmitterDef* def)
     int32_t points = sheet ? unit->points * unit->rows : unit->points;
     int32_t units = def->capacity / points;
     return mvfxRequire(def->capacity % points == 0 && def->hostSpawnCapacity <= units &&
-                       (!def->eventSpawn.enabled || def->eventSpawn.capacity <= units));
+                       (!def->eventSpawn.enable || def->eventSpawn.capacity <= units));
 }
 
 // The length of a + sign b.
@@ -268,7 +268,7 @@ static mvfxResult CheckAttach(const mvfxEffectDef* def, int32_t i)
                       : mvfx_errorInvalid;
     case mvfx_attachParticles:
         // The source is in range: the event spawn's own check passed.
-        return mvfxRequire(pinned && emitter->eventSpawn.enabled &&
+        return mvfxRequire(pinned && emitter->eventSpawn.enable &&
                            def->emitters[emitter->eventSpawn.source].space == emitter->space);
     default:
         return mvfx_errorInvalid;
@@ -302,7 +302,7 @@ static bool IsSizeTied(const mvfxEmitterDef* def)
     for (int32_t k = axes; k < 3; ++k)
     {
         tied = tied && (!drawn || (size->min[k] == size->min[0] && size->max[k] == size->max[0]));
-        tied = tied && (!over->enabled || !over->perAxis ||
+        tied = tied && (!over->enable || !over->perAxis ||
                         (over->size[k].value == over->size[0].value &&
                          IsSameCurve(&over->size[k].curve, &over->size[0].curve)));
     }
@@ -315,7 +315,7 @@ static bool IsSizeTied(const mvfxEmitterDef* def)
 static mvfxResult CheckRigid(const mvfxEmitterDef* def)
 {
     const mvfxRigidDef* rigid = &def->rigid;
-    if (!rigid->enabled)
+    if (!rigid->enable)
     {
         return mvfx_success;
     }
@@ -323,7 +323,7 @@ static mvfxResult CheckRigid(const mvfxEmitterDef* def)
         !IsWithin(rigid->restitution, 0.0f, 1.0f) || !(rigid->dynamicFriction >= 0.0f) ||
         !(rigid->staticFriction >= rigid->dynamicFriction) || rigid->bodyContacts < 0 ||
         (rigid->sleepSpeed != 0.0f && !(rigid->sleepTime > 0.0f)) || !IsSizeTied(def) ||
-        def->unit.kind != mvfx_unitParticle || def->beam.enabled)
+        def->unit.kind != mvfx_unitParticle || def->beam.enable)
     {
         return mvfx_errorInvalid;
     }
@@ -345,7 +345,7 @@ static mvfxResult CheckRigid(const mvfxEmitterDef* def)
 static mvfxResult CheckLiquid(const mvfxEmitterDef* def)
 {
     const mvfxLiquidDef* liquid = &def->liquid;
-    if (!liquid->enabled)
+    if (!liquid->enable)
     {
         return mvfx_success;
     }
@@ -355,7 +355,7 @@ static mvfxResult CheckLiquid(const mvfxEmitterDef* def)
         !(liquid->tensileDistance > 0.0f && liquid->tensileDistance < 1.0f) ||
         liquid->tensilePower < 1 || !IsWithin(liquid->viscosity, 0.0f, 1.0f) ||
         liquid->solver > mvfx_liquidGrid || def->unit.kind != mvfx_unitParticle ||
-        def->rigid.enabled || def->beam.enabled)
+        def->rigid.enable || def->beam.enable)
     {
         return mvfx_errorInvalid;
     }
@@ -379,7 +379,7 @@ static mvfxResult CheckLiquid(const mvfxEmitterDef* def)
 // Whether an emitter's plexus links are valid.
 static mvfxResult CheckPlexus(const mvfxPlexusDef* plexus)
 {
-    if (!plexus->enabled)
+    if (!plexus->enable)
     {
         return mvfx_success;
     }
@@ -393,7 +393,7 @@ static mvfxResult CheckPlexus(const mvfxPlexusDef* plexus)
 // Whether an emitter's particle contacts are valid.
 static mvfxResult CheckContacts(const mvfxContactDef* contacts)
 {
-    if (!contacts->enabled)
+    if (!contacts->enable)
     {
         return mvfx_success;
     }
@@ -410,7 +410,7 @@ static mvfxResult CheckContacts(const mvfxContactDef* contacts)
 static mvfxResult CheckSteering(const mvfxEmitterDef* def, int32_t parameterCount)
 {
     const mvfxSteeringDef* s = &def->steering;
-    if (!s->enabled)
+    if (!s->enable)
     {
         return mvfx_success;
     }
@@ -443,7 +443,7 @@ static mvfxResult CheckSteering(const mvfxEmitterDef* def, int32_t parameterCoun
 static mvfxResult CheckNeighbors(const mvfxEffectDef* def, int32_t i)
 {
     const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
-    if (!neighbors->enabled)
+    if (!neighbors->enable)
     {
         return mvfx_success;
     }
@@ -487,7 +487,7 @@ static mvfxResult CheckEmitterParts(const mvfxEffectDef* def, int32_t i)
 // emitter so nothing of the host's is kept.
 static void CopySteering(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
 {
-    out->steering = def->steering.enabled ? def->steering : (mvfxSteeringDef){0};
+    out->steering = def->steering.enable ? def->steering : (mvfxSteeringDef){0};
     const mvfxSteerPath* path = &out->steering.path;
     for (int32_t i = 0; path->weight > 0.0f && i < path->pointCount; ++i)
     {
@@ -502,11 +502,11 @@ static void CopySteering(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
 static void CompileEmitterParts(const mvfxEmitterDef* def, mvfxCompiledEmitter* out)
 {
     CopySteering(def, out);
-    out->rigid = def->rigid.enabled ? def->rigid : (mvfxRigidDef){0};
-    out->liquid = def->liquid.enabled ? def->liquid : (mvfxLiquidDef){0};
-    out->plexus = def->plexus.enabled ? def->plexus : (mvfxPlexusDef){0};
+    out->rigid = def->rigid.enable ? def->rigid : (mvfxRigidDef){0};
+    out->liquid = def->liquid.enable ? def->liquid : (mvfxLiquidDef){0};
+    out->plexus = def->plexus.enable ? def->plexus : (mvfxPlexusDef){0};
     CompileUnit(&def->unit, out);
-    out->contacts = def->contacts.enabled ? def->contacts : (mvfxContactDef){0};
+    out->contacts = def->contacts.enable ? def->contacts : (mvfxContactDef){0};
 }
 
 // Resolves each emitter's neighbor source to an index, and sizes each
@@ -521,7 +521,7 @@ static void ResolveNeighbors(const mvfxEffectDef* def, mvfxEffect* effect)
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         mvfxNeighborDef neighbors = def->emitters[i].neighbors;
-        if (!neighbors.enabled)
+        if (!neighbors.enable)
         {
             continue;
         }

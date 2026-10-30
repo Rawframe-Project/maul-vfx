@@ -130,10 +130,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasAsWork(const mvfxContext* co
 }
 
 mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                  const mvfxGasRead* read, void* out, int64_t bytes)
+                                  const mvfxGasRead* read, void* valuesOut, int64_t bytes)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxInstance_ReadGasAsWork(context, instance, gas, read, out, bytes);
+    mvfxResult result = mvfxInstance_ReadGasAsWork(context, instance, gas, read, valuesOut, bytes);
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -214,11 +214,11 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SampleGasWork(const mvfxContext* co
 
 mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                                   mvfxGasField field, const double* points, int64_t count,
-                                  float* out)
+                                  float* valuesOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
-        mvfxInstance_SampleGasWork(context, instance, gas, field, points, count, out);
+        mvfxInstance_SampleGasWork(context, instance, gas, field, points, count, valuesOut);
     mvfxFloatEnvLeave(env);
     return result;
 }

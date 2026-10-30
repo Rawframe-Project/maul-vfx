@@ -37,7 +37,7 @@ static inline mvfxEmitterDef Emitter(float spacing)
     emitter.capacity = MOST;
     emitter.hostSpawnCapacity = MOST;
     emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.planar = true;
     emitter.liquid.spacing = spacing;
     return emitter;

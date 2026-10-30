@@ -50,7 +50,7 @@ typedef struct ReverseHost
     bool returnNull;
 } ReverseHost;
 
-static void* ReverseEnqueue(mvfxTaskFn* task, int32_t itemCount, int32_t minRange,
+static void* ReverseEnqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange,
                             void* taskContext, void* userContext)
 {
     ReverseHost* host = userContext;

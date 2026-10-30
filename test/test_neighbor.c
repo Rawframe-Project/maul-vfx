@@ -62,7 +62,7 @@ static mvfxEmitterDef Emitter(float radius, int32_t most)
     emitter.hostModules = &s_capture;
     emitter.hostModuleCount = 1;
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = radius, .maxNeighbors = most};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = radius, .maxNeighbors = most};
     return emitter;
 }
 
@@ -261,7 +261,7 @@ static void TestOtherGrid(void)
     mvfxEmitterDef emitters[2] = {Emitter(0.5f, MVFX_MAX_NEIGHBORS),
                                   Emitter(0.5f, MVFX_MAX_NEIGHBORS)};
     emitters[0].neighbors.source = 1;
-    emitters[1].neighbors.enabled = false;
+    emitters[1].neighbors.enable = false;
     Scene scene = NewScene(emitters, 2, NULL);
     Spawn(&scene, 0, 150, 3.0f);
     Spawn(&scene, 1, 250, 3.0f);
@@ -273,7 +273,7 @@ static void TestOtherGrid(void)
     mvfxDestroyContext(scene.context);
     // Queried within 0.5 by the first and 0.2 by itself: its cells are the
     // larger.
-    emitters[1].neighbors.enabled = true;
+    emitters[1].neighbors.enable = true;
     emitters[1].neighbors.radius = 0.2f;
     scene = NewScene(emitters, 2, NULL);
     Spawn(&scene, 0, 150, 2.0f);
@@ -414,7 +414,7 @@ static void TestChecks(void)
             // A cycle: 0 finds 1's neighbors, 1 spawns from 0's births.
             n->source = 1;
             emitters[0].events = mvfx_eventMaskBirth;
-            emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+            emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                       .source = 0,
                                                       .kind = mvfx_eventBirth,
                                                       .minCount = 1,
@@ -435,7 +435,7 @@ static void TestChecks(void)
     emitters[0] = Emitter(MVFX_MAX_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBORS);
     emitters[1] = Emitter(MVFX_MIN_NEIGHBOR_RADIUS, 1);
     emitters[1].neighbors.source = 1;
-    emitters[0].neighbors.enabled = false;
+    emitters[0].neighbors.enable = false;
     emitters[0].neighbors.radius = NAN;
     CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success,
           "the bounds; its own index; a def not enabled unread");

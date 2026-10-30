@@ -65,13 +65,13 @@ static mvfxEffectId MakeFountain(mvfxContext* context)
     emitter.forceCount = 1;
     emitter.colliders = &ground;
     emitter.colliderCount = 1;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.collision.restitution = 0.3f;
     emitter.collision.friction = 0.4f;
-    emitter.overLife.color.enabled = true;
+    emitter.overLife.color.enable = true;
     emitter.overLife.color.gradient = (mvfxGradient){
         .colorKeys = colors, .colorKeyCount = 2, .alphaKeys = alphas, .alphaKeyCount = 2};
-    emitter.overLife.size.enabled = true;
+    emitter.overLife.size.enable = true;
     emitter.overLife.size.size[0] =
         (mvfxLifeCurve){.value = 1.0f, .curve = {.keys = growth, .keyCount = 2}};
     emitter.sortMode = mvfx_sortBackToFront;

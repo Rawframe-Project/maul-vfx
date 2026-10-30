@@ -94,14 +94,14 @@ static mvfxEmitterDef Rigid(mvfxRigidShape shape, float x, float y, float z)
     emitter.motion.gravity[1] = -9.81f;
     emitter.motion.gravity[2] = 0.0f;
     emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {x, y, z}, .max = {x, y, z}};
-    emitter.rigid = (mvfxRigidDef){.enabled = true,
+    emitter.rigid = (mvfxRigidDef){.enable = true,
                                    .shape = shape,
                                    .density = 1.0f,
                                    .substeps = 8,
                                    .staticFriction = 0.6f,
                                    .dynamicFriction = 0.4f};
     s_colliders[0] = (mvfxCollider){.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.colliders = s_colliders;
     emitter.colliderCount = 1;
     return emitter;
@@ -660,7 +660,7 @@ static void TestGyroscopic(void)
     // A 1 by 2 by 3 box spun about its middle axis (Y) flips over.
     mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, 1, 2, 3);
     emitter.motion.gravity[1] = 0.0f;
-    emitter.collision.enabled = false;
+    emitter.collision.enable = false;
     emitter.colliders = NULL;
     emitter.colliderCount = 0;
     emitter.angularVelocity =
@@ -764,7 +764,7 @@ static void FreeDrift(float x, float y, float z, const float w[3], double drift[
 {
     mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, x, y, z);
     emitter.motion.gravity[1] = 0.0f;
-    emitter.collision.enabled = false;
+    emitter.collision.enable = false;
     emitter.colliders = NULL;
     emitter.colliderCount = 0;
     emitter.angularVelocity = (mvfxVectorSource){
@@ -995,7 +995,7 @@ static void TestSceneQueries(void)
     emitter.motion.gravity[2] = -9.81f;
     emitter.colliders = NULL;
     emitter.colliderCount = 0;
-    emitter.collision.sceneQueries = true;
+    emitter.collision.enableSceneQueries = true;
     emitter.collision.queryCapacity = 4;
     emitter.collision.lookahead = 0.25f;
     static const double above[3] = {0, 0, 1.5};
@@ -1055,7 +1055,7 @@ static void TestDepth(void)
         emitter.motion.gravity[2] = -9.81f;
         emitter.colliders = NULL;
         emitter.colliderCount = 0;
-        emitter.collision.depthImage = true;
+        emitter.collision.enableDepthImage = true;
         emitter.collision.depthThickness = 0.5f;
         emitter.collision.depthSamples = 4;
         emitter.collision.killOutsideView = true;
@@ -1263,7 +1263,7 @@ static void Scaled(bool drop, int32_t size, int32_t density, Track* out)
     emitter.rigid.density = (float)ldexp(1.0, density);
     emitter.rigid.restitution = 0.3f;
     emitter.motion.gravity[1] = drop ? -9.81f * unit : 0.0f;
-    emitter.collision.enabled = drop;
+    emitter.collision.enable = drop;
     emitter.colliderCount = drop ? 1 : 0;
     emitter.angularVelocity = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.05f, 4, 0.3f}, .max = {0.05f, 4, 0.3f}};
@@ -1434,7 +1434,7 @@ static void TestNeedles(void)
         mvfxEmitterDef emitter =
             Rigid(c % 2 == 0 ? mvfx_rigidCapsule : mvfx_rigidBox, across, 1.0f, across);
         emitter.motion.gravity[1] = 0.0f;
-        emitter.collision.enabled = false;
+        emitter.collision.enable = false;
         emitter.colliderCount = 0;
         emitter.angularVelocity =
             (mvfxVectorSource){.kind = mvfx_sourceRange,
@@ -1599,13 +1599,13 @@ static void TestTiedSizes(void)
         bad.size.min[1] = c == 0 ? 0.5f : bad.size.min[1];
         bad.size.max[2] = c == 1 || c == 2 ? 2.0f : bad.size.max[2];
         bad.overLife.size =
-            (mvfxSizeOverLife){.enabled = c == 3, .perAxis = true, .size = {grows, shrinks, grows}};
+            (mvfxSizeOverLife){.enable = c == 3, .perAxis = true, .size = {grows, shrinks, grows}};
         refused += Made(context, &bad, 1, NULL) ? 0 : 1;
     }
     mvfxEmitterDef good[3] = {Rigid(mvfx_rigidCapsule, 1, 3, 1), Rigid(mvfx_rigidBox, 1, 2, 3),
                               Rigid(mvfx_rigidSphere, 1, 1, 1)};
     good[2].overLife.size =
-        (mvfxSizeOverLife){.enabled = true, .perAxis = true, .size = {grows, grows, grows}};
+        (mvfxSizeOverLife){.enable = true, .perAxis = true, .size = {grows, grows, grows}};
     bool made = true;
     for (int32_t c = 0; c < 3; ++c)
     {
@@ -1658,7 +1658,7 @@ static void TestTiedSizes(void)
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3}, .max = {1, 2, 3}};
     emitters[0].events = mvfx_eventMaskDeath;
     emitters[0].eventCapacity = 64;
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 1,
@@ -1726,7 +1726,7 @@ static void TestSpinBound(void)
     CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
     mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1, 1, 1);
     emitter.motion.gravity[1] = 0.0f;
-    emitter.collision.enabled = false;
+    emitter.collision.enable = false;
     emitter.colliderCount = 0;
     emitter.hostModules = &spin;
     emitter.hostModuleCount = 1;
@@ -1776,7 +1776,7 @@ static void TestSpinBound(void)
     CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
     emitter = Rigid(mvfx_rigidBox, 1e4f, 1e2f, 1e2f);
     emitter.motion.gravity[1] = 0.0f;
-    emitter.collision.enabled = false;
+    emitter.collision.enable = false;
     emitter.colliderCount = 0;
     emitter.orientationMode = mvfx_orientationEuler;
     emitter.orientation = (mvfxVectorSource){
@@ -1807,7 +1807,7 @@ static void TestSpinBound(void)
     CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
     emitter = Rigid(mvfx_rigidBox, 1, 1, 0);
     emitter.motion.gravity[1] = 0.0f;
-    emitter.collision.enabled = false;
+    emitter.collision.enable = false;
     emitter.colliderCount = 0;
     emitter.hostModules = &spin;
     emitter.hostModuleCount = 1;
@@ -1851,7 +1851,7 @@ static void TestFastTurn(void)
     CHECK(mvfxCreateContext(&contextDef, &s_scene.context) == mvfx_success, "context");
     mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1e-3f, 1e-3f, 1e-3f);
     emitter.motion.gravity[1] = 0.0f;
-    emitter.collision.enabled = false;
+    emitter.collision.enable = false;
     emitter.colliderCount = 0;
     emitter.hostModules = modules;
     emitter.hostModuleCount = 2;
@@ -2001,7 +2001,7 @@ static void TestChecks(void)
                                      .substeps = 1};
             break;
         default:
-            bad.beam.enabled = true;
+            bad.beam.enable = true;
             break;
         }
         mvfxEffectDef def = mvfxDefaultEffectDef();

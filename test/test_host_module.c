@@ -205,19 +205,19 @@ static void TestOrderAndRandom(void)
     mvfxModuleCall call = {.seed = 7u, .endTick = 99};
     uint32_t a[4];
     uint32_t b[4];
-    mvfxModule_Random(&call, 3u, 1u, a);
-    mvfxModule_Random(&call, 3u, 1u, b);
+    mvfxDrawModuleRandom(&call, 3u, 1u, a);
+    mvfxDrawModuleRandom(&call, 3u, 1u, b);
     CHECK(a[0] == b[0] && a[3] == b[3], "the same inputs, the same words");
-    mvfxModule_Random(&call, 4u, 1u, b);
+    mvfxDrawModuleRandom(&call, 4u, 1u, b);
     CHECK(a[0] != b[0], "another serial, other words");
-    mvfxModule_Random(&call, 3u, 2u, b);
+    mvfxDrawModuleRandom(&call, 3u, 2u, b);
     CHECK(a[0] != b[0], "another stream, other words");
     call.endTick = 100;
-    mvfxModule_Random(&call, 3u, 1u, b);
+    mvfxDrawModuleRandom(&call, 3u, 1u, b);
     CHECK(a[0] != b[0], "another step, other words");
     call.endTick = 99;
     call.seed = 8u;
-    mvfxModule_Random(&call, 3u, 1u, b);
+    mvfxDrawModuleRandom(&call, 3u, 1u, b);
     CHECK(a[0] != b[0], "another seed, other words");
 }
 

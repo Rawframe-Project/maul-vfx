@@ -51,7 +51,7 @@ static const mvfxCollider* TerrainOf(const mvfxInstance* instance, int32_t w, co
         return nullptr;
     }
     *grid = water->terrainGrid;
-    return water->def.hasTerrain ? &water->terrain : nullptr;
+    return water->def.enableTerrain ? &water->terrain : nullptr;
 }
 
 // The height along a vertical, from start along along in the field's

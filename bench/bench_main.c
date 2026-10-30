@@ -135,7 +135,7 @@ static int RunRain(const char* name, float rate, bool meets, bool pushes)
                              .thickness = 1.0f};
     rain.velocity = (mvfxVelocity){
         .mode = mvfx_directionFixed, .direction = {0.0f, -1.0f, 0.0f}, .speed = {4.0f, 4.0f}};
-    rain.water = (mvfxWaterCoupling){.enabled = meets,
+    rain.water = (mvfxWaterCoupling){.enable = meets,
                                      .radius = 0.01f,
                                      .push = pushes ? 0.002f : 0.0f,
                                      .buoyancy = 0.5f,

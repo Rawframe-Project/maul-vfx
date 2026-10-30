@@ -279,12 +279,12 @@ static MVFX_NOINLINE mvfxResult mvfxContext_OrderEmittersWork(mvfxContext* conte
 }
 
 mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3],
-                                     const mvfxFrustum* frustum, mvfxDrawItem* items,
+                                     const mvfxFrustum* frustum, mvfxDrawItem* itemsOut,
                                      int64_t capacity, int64_t* countOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
-        mvfxContext_OrderEmittersWork(context, eye, frustum, items, capacity, countOut);
+        mvfxContext_OrderEmittersWork(context, eye, frustum, itemsOut, capacity, countOut);
     mvfxFloatEnvLeave(env);
     return result;
 }

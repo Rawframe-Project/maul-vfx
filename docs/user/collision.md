@@ -20,7 +20,7 @@ A collision bounces by `restitution` and slows along the surface by `friction`, 
 
 ## The program's scene
 
-The library knows nothing of the program's world. With `sceneQueries`, each step ends with a query for each moving particle: its place and the segment it will cover in `lookahead` seconds. The program answers each with a contact plane from its own ray casts, or none (`mvfxInstance_GetSceneQueries`, `mvfxInstance_AnswerSceneQueries`), before the next step, which collides the particle's segment with its plane. A particle keeps its last plane until an answer replaces it, so a program may answer only some queries each frame. Queries past `queryCapacity` are counted, not lost.
+The library knows nothing of the program's world. With `enableSceneQueries`, each step ends with a query for each moving particle: its place and the segment it will cover in `lookahead` seconds. The program answers each with a contact plane from its own ray casts, or none (`mvfxInstance_GetSceneQueries`, `mvfxInstance_AnswerSceneQueries`), before the next step, which collides the particle's segment with its plane. A particle keeps its last plane until an answer replaces it, so a program may answer only some queries each frame. Queries past `queryCapacity` are counted, not lost.
 
 Rain on an emitter's ball and the program's ground: the ball is the effect's collider, the ground the program's answer to the scene queries.
 
@@ -49,10 +49,10 @@ emitter.shape.halfExtents[2] = 1.0f;
 emitter.motion.gravity[1] = -9.8f;
 emitter.colliders = &ball;
 emitter.colliderCount = 1;
-emitter.collision.enabled = true;
+emitter.collision.enable = true;
 emitter.collision.restitution = 0.3f;
 emitter.collision.friction = 0.5f;
-emitter.collision.sceneQueries = true;
+emitter.collision.enableSceneQueries = true;
 emitter.collision.queryCapacity = 64;
 emitter.collision.lookahead = 0.25f;
 mvfxEffectDef effectDef = mvfxDefaultEffectDef();
@@ -112,7 +112,7 @@ return made;
 
 ## The depth image
 
-With `depthImage`, particles collide with the depth buffer the program renders (`mvfxInstance_SetDepthImage`): its pixels in one of the depth formats, normal or reversed depth, the view's projection and place, and optionally a normal for each pixel, made from the depth otherwise. A particle that passes behind the image's surface by less than `depthThickness` has met it. A step is tested at points along its segment, one a pixel it crosses, so fast particles do not pass thin walls. Outside the image, or behind the camera, there is no depth: particles do not collide there, or die when `killOutsideView` is set. This is the screen-space collision a GPU particle system does, on the CPU and the same everywhere.
+With `enableDepthImage`, particles collide with the depth buffer the program renders (`mvfxInstance_SetDepthImage`): its pixels in one of the depth formats, normal or reversed depth, the view's projection and place, and optionally a normal for each pixel, made from the depth otherwise. A particle that passes behind the image's surface by less than `depthThickness` has met it. A step is tested at points along its segment, one a pixel it crosses, so fast particles do not pass thin walls. Outside the image, or behind the camera, there is no depth: particles do not collide there, or die when `killOutsideView` is set. This is the screen-space collision a GPU particle system does, on the CPU and the same everywhere.
 
 ## Kill rules
 

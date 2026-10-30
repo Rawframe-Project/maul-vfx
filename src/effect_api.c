@@ -197,7 +197,7 @@ static mvfxResult BuildHulls(mvfxContext* context, const mvfxEffectDef* def,
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         const mvfxRigidDef* rigid = &def->emitters[i].rigid;
-        if (!rigid->enabled || rigid->shape != mvfx_rigidHull)
+        if (!rigid->enable || rigid->shape != mvfx_rigidHull)
         {
             continue;
         }
@@ -235,7 +235,7 @@ static mvfxResult FindTerrainGrids(mvfxContext* context, const mvfxEffectDef* de
 {
     for (int32_t w = 0; w < def->waterCount; ++w)
     {
-        mvfxResult found = def->waters[w].hasTerrain
+        mvfxResult found = def->waters[w].enableTerrain
                                ? mvfxFindColliderGrid(context, &def->waters[w].terrain, &grids[w])
                                : mvfx_success;
         if (found != mvfx_success)

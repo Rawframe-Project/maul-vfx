@@ -165,11 +165,11 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.colliders = own;
     emitter.colliderCount = 2;
     emitter.collision = (mvfxCollision){
-        .enabled = true, .restitution = 0.5f, .friction = 0.2f, .lifeLoss = 0.2f, .radius = 0.02f};
+        .enable = true, .restitution = 0.5f, .friction = 0.2f, .lifeLoss = 0.2f, .radius = 0.02f};
     emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {2, 4}};
     emitter.motion.angularDrag = 1.5f;
     emitter.overLife.rotation = (mvfxRotationOverLife){
-        .enabled = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
+        .enable = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
     Met(gpu, kernels, &emitter, false, "chains bounced off a floor and a sphere, life lost");
     // Their events: births, deaths by age and a point's first contact a
     // step, taken at its substep, off the sphere alone (points resting on
@@ -182,7 +182,7 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     // Sizes over life, which a contact's event takes at the life it met
     // the contact with.
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .size = {{.value = 1, .curve = {.keys = keys, .keyCount = 2}}}};
+        .enable = true, .size = {{.value = 1, .curve = {.keys = keys, .keyCount = 2}}}};
     Met(gpu, kernels, &emitter, false, "chains' births, deaths and first contacts");
     emitter.overLife.size = (mvfxSizeOverLife){0};
     emitter.colliders = own;
@@ -190,9 +190,9 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.events = 0;
     // Contacts that kill: a unit goes whole; or that take the life left
     // (a second contact ends any of these lives).
-    emitter.collision = (mvfxCollision){.enabled = true, .killOnCollision = true};
+    emitter.collision = (mvfxCollision){.enable = true, .killOnCollision = true};
     Met(gpu, kernels, &emitter, true, "chains a contact kills whole");
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f, .lifeLoss = 0.9f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 0.5f, .lifeLoss = 0.9f};
     Met(gpu, kernels, &emitter, true, "chains the life a contact takes kills whole");
 }
 
@@ -241,8 +241,8 @@ static void TestNeighbors(Gpu* gpu, mvfxGpu* kernels)
     // which runs apart over steps.
     mvfxEmitterDef emitter = Chains(8, 4);
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.3f, .maxNeighbors = 32};
-    emitter.steering = (mvfxSteeringDef){.enabled = true,
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = 0.3f, .maxNeighbors = 32};
+    emitter.steering = (mvfxSteeringDef){.enable = true,
                                          .separation = 0.5f,
                                          .separationRadius = 0.15f,
                                          .alignment = 0.4f,
@@ -254,7 +254,7 @@ static void TestNeighbors(Gpu* gpu, mvfxGpu* kernels)
            "chains steered by their neighbors");
     emitter.steering = (mvfxSteeringDef){0};
     emitter.pairForce = (mvfxPairForceDef){
-        .enabled = true, .radius = 0.2f, .strength = (mvfxLifeCurve){.value = -2.0f}};
+        .enable = true, .radius = 0.2f, .strength = (mvfxLifeCurve){.value = -2.0f}};
     Beside(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .adopting = true},
            "chains under a pair force");
 }
@@ -271,7 +271,7 @@ static void TestContacts(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Sheets(8, 4, 2);
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.02f, 0.02f, 0.02f}, .max = {0.04f, 0.04f, 0.04f}};
-    emitter.contacts = (mvfxContactDef){.enabled = true,
+    emitter.contacts = (mvfxContactDef){.enable = true,
                                         .radiusScale = 0.5f,
                                         .iterations = 2,
                                         .maxContacts = 32,
@@ -302,7 +302,7 @@ static void TestEventBirths(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].eventCapacity = 4096;
     emitters[1].rate = 0.0f;
     emitters[1].burstCount = 0;
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 1,
@@ -416,7 +416,7 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef pair[2] = {Sprite(), Chains(4, 2)};
     pair[0].colliders = &floor;
     pair[0].colliderCount = 1;
-    pair[0].collision = (mvfxCollision){.enabled = true, .restitution = 0.6f, .radius = 0.02f};
+    pair[0].collision = (mvfxCollision){.enable = true, .restitution = 0.6f, .radius = 0.02f};
     pair[0].lifetime = mvfxRangeSource(0.4f, 0.8f);
     pair[0].angularVelocity =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, -3, -3, 0}, .max = {3, 3, 3, 0}};
@@ -426,7 +426,7 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
     pair[1].burstCount = 0;
     pair[1].unit.pinFirst = true;
     pair[1].unit.attach = mvfx_attachParticles;
-    pair[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    pair[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                           .source = 0,
                                           .kind = mvfx_eventCollision,
                                           .minCount = 1,
@@ -470,7 +470,7 @@ static void TestTears(Gpu* gpu, mvfxGpu* kernels)
     emitter.motion.gravity[1] = -40.0f;
     emitter.colliders = &floor;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 0.3f, .radius = 0.01f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 0.3f, .radius = 0.01f};
     emitter.events = mvfx_eventMaskTear | mvfx_eventMaskCollision;
     emitter.eventCapacity = 4096;
     Torn(gpu, kernels, &emitter, 20, "chains torn under a pull, their tears' events");

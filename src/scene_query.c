@@ -16,7 +16,7 @@ void mvfxWriteSceneQueries(mvfxInstance* instance, int32_t emitter)
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     mvfxEmitterState* state = &instance->emitters[emitter];
     state->queryCount = 0;
-    if (!compiled->collision.enabled || !compiled->collision.sceneQueries)
+    if (!compiled->collision.enable || !compiled->collision.enableSceneQueries)
     {
         return;
     }

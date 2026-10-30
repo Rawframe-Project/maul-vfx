@@ -51,9 +51,9 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     birds.shape.thickness = 1.0f;
     birds.velocity = (mvfxVelocity){.mode = mvfx_directionFromCenter, .speed = {1.0f, 2.0f}};
     birds.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 5.0f, .maxNeighbors = 32};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = 5.0f, .maxNeighbors = 32};
     birds.steering = (mvfxSteeringDef){
-        .enabled = true,
+        .enable = true,
         .separation = 4.0f,
         .separationRadius = 0.6f,
         .alignment = 1.5f,
@@ -76,7 +76,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     birds.velocityModules.limitDampen = 5.0f;
     birds.colliders = s_pillars;
     birds.colliderCount = 2;
-    birds.collision = (mvfxCollision){.enabled = true, .restitution = 0.5f, .radius = 0.1f};
+    birds.collision = (mvfxCollision){.enable = true, .restitution = 0.5f, .radius = 0.1f};
     birds.events = mvfx_eventMaskCollision;
     birds.eventCapacity = BIRDS;
 

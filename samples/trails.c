@@ -65,7 +65,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     beam->rate = 0.0f;
     beam->lifetime = mvfxRangeSource(0.1f, 0.1f);
     beam->ribbon.ids = mvfx_ribbonOne;
-    beam->beam = (mvfxBeamDef){.enabled = true,
+    beam->beam = (mvfxBeamDef){.enable = true,
                                .segments = BEAM_SEGMENTS,
                                .end = {.fromParameter = true, .parameter = 0},
                                .noiseAmplitude = 0.1f,

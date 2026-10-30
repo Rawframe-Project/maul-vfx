@@ -15,7 +15,7 @@ void mvfxResolveWaterCoupling(mvfxInstance* instance, int32_t emitter,
 {
     const mvfxWaterCoupling* coupling = &instance->effect->emitters[emitter].water;
     mvfxResolvedWater* out = &instance->emitters[emitter].water;
-    if (!coupling->enabled)
+    if (!coupling->enable)
     {
         *out = (mvfxResolvedWater){0};
         return;

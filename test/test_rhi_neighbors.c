@@ -27,7 +27,7 @@ static mvfxEmitterDef AtRest(float radius, int32_t most)
         .kind = mvfx_shapeBox, .rotation = {0, 0, 0, 1}, .halfExtents = {1.0f, 0.5f, 1.0f}};
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone, .direction = {0, 1, 0}};
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = radius, .maxNeighbors = most};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = radius, .maxNeighbors = most};
     return emitter;
 }
 
@@ -36,7 +36,7 @@ static mvfxEmitterDef Moving(float radius, int32_t most)
 {
     mvfxEmitterDef emitter = Sprite();
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = radius, .maxNeighbors = most};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = radius, .maxNeighbors = most};
     return emitter;
 }
 

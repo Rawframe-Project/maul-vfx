@@ -677,7 +677,7 @@ static mvfxResult OpenRibbons(mvfxContext* context, mvfxInstanceId instance, int
     }
     if (plexus)
     {
-        *liveOut = live->effect->emitters[emitter].plexus.enabled ? live : nullptr;
+        *liveOut = live->effect->emitters[emitter].plexus.enable ? live : nullptr;
         return mvfx_success;
     }
     if (live->effect->emitters[emitter].ribbonIds == mvfx_ribbonNone)

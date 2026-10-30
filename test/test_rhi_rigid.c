@@ -58,7 +58,7 @@ static mvfxEmitterDef Bodies(mvfxRigidShape shape)
     emitter.angularVelocity =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-20, -20, -20}, .max = {20, 20, 20}};
     emitter.motion.angularDrag = 0.3f;
-    emitter.rigid = (mvfxRigidDef){.enabled = true,
+    emitter.rigid = (mvfxRigidDef){.enable = true,
                                    .shape = shape,
                                    .density = 500.0f,
                                    .substeps = 4,
@@ -100,7 +100,7 @@ static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* colliders
     emitter.velocity.direction[1] = -1.0f;
     emitter.colliders = colliders;
     emitter.colliderCount = count;
-    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.collision = (mvfxCollision){.enable = true};
     emitter.rigid.restitution = 0.4f;
     emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath | mvfx_eventMaskCollision;
     emitter.eventCapacity = 4096;
@@ -155,7 +155,7 @@ static void TestSizes(Gpu* gpu, mvfxGpu* kernels)
         {.time = 1, .value = 0.5f, .interpolation = mvfx_interpolationLinear}};
     mvfxEmitterDef emitter = Bodies(mvfx_rigidBox);
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .size = {{.value = 1.0f, .curve = {.keys = grow, .keyCount = 2}}}};
+        .enable = true, .size = {{.value = 1.0f, .curve = {.keys = grow, .keyCount = 2}}}};
     Tumbled(gpu, kernels, &emitter, false, "boxes growing over life");
     emitter.overLife.size.perAxis = true;
     emitter.overLife.size.size[1] =
@@ -366,7 +366,7 @@ static void TestStrikes(Gpu* gpu, mvfxGpu* kernels)
     emitter.collision.lifeLoss = 0.9f;
     emitter.rigid.restitution = 0.8f;
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .size = {{.value = 1.0f, .curve = {.keys = grow, .keyCount = 2}}}};
+        .enable = true, .size = {{.value = 1.0f, .curve = {.keys = grow, .keyCount = 2}}}};
     Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .killing = true},
         "spheres losing life at each strike");
     // A strike scales the life: born just above the floor, living a
@@ -471,13 +471,13 @@ static bool RefusedForRigid(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
 static void TestRefused(mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = Bodies(mvfx_rigidCapsule);
-    emitter.collision.enabled = true;
-    emitter.collision.depthImage = true;
+    emitter.collision.enable = true;
+    emitter.collision.enableDepthImage = true;
     emitter.collision.depthThickness = 0.3f;
     emitter.collision.depthSamples = 16;
     emitter.collision.killOutsideView = true;
     CHECK(RefusedForRigid(kernels, &emitter), "bodies killed out of the view refused");
-    emitter.collision.depthImage = false;
+    emitter.collision.enableDepthImage = false;
     emitter.collision.killOutsideView = false;
     emitter.collision.killOnCollision = true;
     CHECK(RefusedForRigid(kernels, &emitter), "bodies a contact kills refused");
@@ -588,7 +588,7 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     for (int32_t shape = 0; shape < 4; ++shape)
     {
         mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, NULL, 0);
-        emitter.collision.depthImage = true;
+        emitter.collision.enableDepthImage = true;
         emitter.collision.depthThickness = 0.3f;
         emitter.collision.depthSamples = 16;
         Met(gpu, kernels,
@@ -613,7 +613,7 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.direction[1] = 0;
     emitter.velocity.direction[2] = -1;
     emitter.velocity.speed = (mvfxRange){2, 3};
-    emitter.collision.depthImage = true;
+    emitter.collision.enableDepthImage = true;
     emitter.collision.depthThickness = 0.3f;
     emitter.collision.depthSamples = 16;
     Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .depth = &image},
@@ -641,7 +641,7 @@ static void TestLargestSizes(Gpu* gpu, mvfxGpu* kernels)
                                          .grid = {.index1 = 2}}};
     mvfxEmitterDef emitter = Thrown(mvfx_rigidCapsule, own, 2);
     emitter.overLife.size =
-        (mvfxSizeOverLife){.enabled = true, .size = {{.value = MVFX_MAX_LIFE_SCALE}}};
+        (mvfxSizeOverLife){.enable = true, .size = {{.value = MVFX_MAX_LIFE_SCALE}}};
     mvfxEffectId effect = {0};
     mvfxGpuSim* sim = OpenRun(kernels,
                               &(Run){.emitters = &emitter,
@@ -921,7 +921,7 @@ static void TestTiedSizes(Gpu* gpu, mvfxGpu* kernels)
             .kind = mvfx_sourceRange, .min = {0.1f, 0.3f, 0.2f}, .max = {0.2f, 0.5f, 0.3f}};
         emitters[1].rate = 0.0f;
         emitters[1].burstCount = 0;
-        emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+        emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                   .source = 0,
                                                   .kind = mvfx_eventDeath,
                                                   .minCount = 1,

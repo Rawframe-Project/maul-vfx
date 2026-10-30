@@ -19,7 +19,7 @@ extern "C"
 
     // A range of work items, [startIndex, endIndex), run by the host on any
     // thread. The library passes taskContext through unchanged.
-    typedef void mvfxTaskFn(int32_t startIndex, int32_t endIndex, void* taskContext);
+    typedef void mvfxTaskFunction(int32_t startIndex, int32_t endIndex, void* taskContext);
 
     // Hands the host itemCount items of work: the host splits [0, itemCount)
     // into ranges of at least minRange items (the last may be shorter),
@@ -28,15 +28,15 @@ extern "C"
     // before returning may return NULL, and finishTask is then not called.
     // Results never depend on the split or the order: each item writes only
     // its own slots.
-    typedef void* mvfxEnqueueTaskFn(mvfxTaskFn* task, int32_t itemCount, int32_t minRange,
-                                    void* taskContext, void* userContext);
+    typedef void* mvfxEnqueueTaskFunction(mvfxTaskFunction* task, int32_t itemCount,
+                                          int32_t minRange, void* taskContext, void* userContext);
 
     // Waits until every range of the work behind userTask has run.
     //
     // The task hooks, and the tasks they run, call none of the context's
     // functions that take it mutable (it is stepping): such a call is
     // refused with mvfx_errorBusy and counted as misuse.
-    typedef void mvfxFinishTaskFn(void* userTask, void* userContext);
+    typedef void mvfxFinishTaskFunction(void* userTask, void* userContext);
 
     // The named limits of a context. A creation past one is refused.
     typedef struct mvfxContextLimits
@@ -69,8 +69,8 @@ extern "C"
         // The host's task system; both NULL, the default, runs every item
         // serially on the calling thread. One without the other is
         // invalid.
-        mvfxEnqueueTaskFn* enqueueTask;
-        mvfxFinishTaskFn* finishTask;
+        mvfxEnqueueTaskFunction* enqueueTask;
+        mvfxFinishTaskFunction* finishTask;
         // Passed to enqueueTask and finishTask as their userContext.
         void* userTaskContext;
         mvfxContextLimits limits;
@@ -137,7 +137,7 @@ extern "C"
     /// @return The count since the context was created.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_API uint64_t mvfxGetContextMisuse(const mvfxContext* context);
+    MVFX_API uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
 
     /// Returns the particles the context's instances hold against its
     /// budget: the sum of their emitters' capacities at their quality

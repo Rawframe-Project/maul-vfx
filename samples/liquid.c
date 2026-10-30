@@ -63,8 +63,8 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     water.motion.gravity[1] = -9.8f;
     water.colliders = &tank;
     water.colliderCount = 1;
-    water.collision = (mvfxCollision){.enabled = true, .friction = 0.1f, .radius = 0.5f * SPACING};
-    water.liquid.enabled = true;
+    water.collision = (mvfxCollision){.enable = true, .friction = 0.1f, .radius = 0.5f * SPACING};
+    water.liquid.enable = true;
     water.liquid.spacing = SPACING;
     water.liquid.viscosity = 0.05f;
 

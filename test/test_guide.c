@@ -348,7 +348,7 @@ static bool Events(void)
     emitters[1].rate = 0.0f;
     emitters[1].lifetime = mvfxRangeSource(0.5f, 0.8f);
     emitters[1].velocity.speed = (mvfxRange){2.0f, 4.0f};
-    emitters[1].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
                                               .minCount = 20,
@@ -422,8 +422,8 @@ static bool Flock(void)
                                       .speed = {1.0f, 1.0f}};
     // Each sees the rest of its own emitter within 4, in every direction.
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 4.0f, .maxNeighbors = 32};
-    emitter.steering.enabled = true;
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = 4.0f, .maxNeighbors = 32};
+    emitter.steering.enable = true;
     emitter.steering.separation = 1.0f;
     emitter.steering.separationRadius = 0.5f;
     emitter.steering.alignment = 2.0f;
@@ -679,10 +679,10 @@ static bool Rain(void)
     emitter.motion.gravity[1] = -9.8f;
     emitter.colliders = &ball;
     emitter.colliderCount = 1;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.collision.restitution = 0.3f;
     emitter.collision.friction = 0.5f;
-    emitter.collision.sceneQueries = true;
+    emitter.collision.enableSceneQueries = true;
     emitter.collision.queryCapacity = 64;
     emitter.collision.lookahead = 0.25f;
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();

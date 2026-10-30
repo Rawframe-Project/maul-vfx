@@ -91,7 +91,7 @@ static void SetFields(const mvfxFileType* type, const uint8_t* from, uint8_t* to
             memcpy(target, source, f->count * sizeof(mvfxGridId));
             break;
         case mvfx_fieldModule:
-            memcpy(target, source, sizeof(mvfxModuleFn*));
+            memcpy(target, source, sizeof(mvfxModuleFunction*));
             memcpy(to + f->at, from + f->at, sizeof(void*));
             break;
         case mvfx_fieldCookie:

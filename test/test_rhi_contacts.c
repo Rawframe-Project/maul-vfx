@@ -23,7 +23,7 @@ static mvfxEmitterDef Touching(int32_t iterations, int32_t most)
     mvfxEmitterDef emitter = Sprite();
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.04f, 0.04f, 0.04f}, .max = {0.1f, 0.1f, 0.1f}};
-    emitter.contacts = (mvfxContactDef){.enabled = true,
+    emitter.contacts = (mvfxContactDef){.enable = true,
                                         .radiusScale = 0.5f,
                                         .iterations = iterations,
                                         .maxContacts = most,
@@ -83,7 +83,7 @@ static void TestSizes(Gpu* gpu, mvfxGpu* kernels)
         {.time = 1, .value = 2.0f, .interpolation = mvfx_interpolationLinear}};
     mvfxEmitterDef emitter = Touching(2, 16);
     emitter.overLife.size = (mvfxSizeOverLife){
-        .enabled = true, .size = {{.value = 1.0f, .curve = {.keys = keys, .keyCount = 2}}}};
+        .enable = true, .size = {{.value = 1.0f, .curve = {.keys = keys, .keyCount = 2}}}};
     Touched(gpu, kernels, &emitter, false, 0, "sizes over life by age");
     emitter.overLife.size.input = mvfx_overSpeed;
     emitter.overLife.size.speedRange[0] = 0.5f;
@@ -139,7 +139,7 @@ static void TestRefused(mvfxGpu* kernels)
                                        .rotation = {0, 0, 0, 1}};
     emitter.colliders = &plane;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true, .killOnCollision = true};
+    emitter.collision = (mvfxCollision){.enable = true, .killOnCollision = true};
     CHECK(RefusedForContacts(kernels, &emitter), "contacts beside colliders that kill refused");
     emitter = Touching(2, 16);
     static const mvfxForce attractor = {
@@ -151,7 +151,7 @@ static void TestRefused(mvfxGpu* kernels)
     emitter.ribbon.ids = mvfx_ribbonOne;
     CHECK(RefusedForContacts(kernels, &emitter), "contacts beside ribbons refused");
     emitter = Touching(2, 16);
-    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.collision = (mvfxCollision){.enable = true};
     emitter.colliders = &plane;
     emitter.colliderCount = 1;
     CHECK(!RefusedForContacts(kernels, &emitter), "contacts beside colliders that do not kill run");

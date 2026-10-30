@@ -44,9 +44,9 @@ bool mvfxCreateSimContacts(mvfxGpuSim* sim, int32_t e)
 {
     Emitter* emitter = &sim->emitters[e];
     const mvfxContactDef* def = &sim->views[e].contacts;
-    emitter->contacts = def->enabled;
-    emitter->contactIterations = def->enabled ? def->iterations : 0;
-    if (!def->enabled)
+    emitter->contacts = def->enable;
+    emitter->contactIterations = def->enable ? def->iterations : 0;
+    if (!def->enable)
     {
         return true;
     }

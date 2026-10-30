@@ -64,7 +64,7 @@ static mvfxEmitterDef Drops(void)
     emitter.velocity.speed = (mvfxRange){0.2f, 0.5f};
     emitter.colliders = &s_floor;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.collision = (mvfxCollision){.enable = true};
     return emitter;
 }
 
@@ -129,7 +129,7 @@ static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
     // began, the drops in the instance.
     mvfxEmitterDef emitter = Drops();
     emitter.colliderCount = 0;
-    emitter.collision.enabled = false;
+    emitter.collision.enable = false;
     emitter.space = mvfx_spaceWorld;
     mvfxGasDef gas = Wrap(24, 24, 16);
     Wrapped(gpu, kernels, &gas, &emitter, (Run){.moving = true, .pace = 0.001},
@@ -176,7 +176,7 @@ static void TestPasses(mvfxGpu* kernels)
     mvfxEffectId effect = {0};
     const Run run = {.emitters = &emitter, .emitterCount = 1, .gases = &gas, .gasCount = 1};
     mvfxGpuSim* sim = OpenRun(kernels, &run, &effect);
-    CHECK(mvfxGpuSim_GasPasses(sim, 0) == 1 + 1 + 8 + 1 + 1 + 2 * 3, "a surface gas's passes");
+    CHECK(mvfxGpuSim_GetGasPasses(sim, 0) == 1 + 1 + 8 + 1 + 1 + 2 * 3, "a surface gas's passes");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());
 }

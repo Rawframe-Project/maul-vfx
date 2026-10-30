@@ -185,7 +185,7 @@ static void Events(Out* out, mvfxContext* context, mvfxInstanceId instance, int3
 static void Constants(Out* out)
 {
     static float steps[MVFX_SRGB_STEPS];
-    mvfxSrgbSteps(steps);
+    mvfxGetSrgbSteps(steps);
     PUT(out, steps);
     mvfxNoise noise = {.frequency = 0.37f,
                        .octaves = 2,
@@ -222,14 +222,14 @@ static mvfxEmitterDef Thrown(void)
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.0f, 0.0f}, .max = {0.3f, 0.4f, 0.0f, 0.0f}};
     emitter.light = (mvfxLightDef){
-        .enabled = true, .every = 3, .intensity = 2.7f, .radius = 0.9f, .radiusBySize = 0.3f};
+        .enable = true, .every = 3, .intensity = 2.7f, .radius = 0.9f, .radiusBySize = 0.3f};
     emitter.sortMode = mvfx_sortBackToFront;
     emitter.sortMeasure = mvfx_sortByDistance;
     static const mvfxCollider ground = {
         .kind = mvfx_colliderPlane, .center = {0.0f, -0.37f, 0.0f}, .normal = {0.0f, 1.0f, 0.0f}};
     emitter.colliders = &ground;
     emitter.colliderCount = 1;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.collision.hostColliders = true;
     emitter.collision.restitution = 0.43f;
     emitter.collision.friction = 0.21f;
@@ -408,11 +408,11 @@ static void Meshes(Out* out)
     bool hull = false;
     float center[3] = {0.0f, 0.0f, 0.0f};
     int32_t vertices = 0;
-    r = mvfxMesh_HullCenter(context, mesh, &hull, center);
+    r = mvfxMesh_GetHullCenter(context, mesh, &hull, center);
     PUT(out, r);
     PUT(out, hull);
     PUT(out, center);
-    r = mvfxMesh_HullVertexCount(context, mesh, &vertices);
+    r = mvfxMesh_GetHullVertexCount(context, mesh, &vertices);
     PUT(out, r);
     PUT(out, vertices);
     static const float moved[5][3] = {{-0.71f, 0.01f, -0.3f},
@@ -426,7 +426,7 @@ static void Meshes(Out* out)
     PUT(out, r);
     Put(out, view.normals, 5 * 3 * sizeof(float));
     Put(out, view.triangleSums, 6 * sizeof(double));
-    r = mvfxMesh_HullCenter(context, mesh, &hull, center);
+    r = mvfxMesh_GetHullCenter(context, mesh, &hull, center);
     PUT(out, r);
     PUT(out, center);
     static const mvfxCollider ground = {
@@ -442,14 +442,14 @@ static void Meshes(Out* out)
     emitter.orientationMode = mvfx_orientationEuler;
     emitter.orientation = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f}, .max = {0.1f, 0.2f, 0.3f}};
-    emitter.rigid.enabled = true;
+    emitter.rigid.enable = true;
     emitter.rigid.shape = mvfx_rigidHull;
     emitter.rigid.hull = mesh;
     emitter.rigid.density = 1.0f;
     emitter.rigid.substeps = 8;
     emitter.rigid.staticFriction = 0.6f;
     emitter.rigid.dynamicFriction = 0.4f;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.colliders = &ground;
     emitter.colliderCount = 1;
     mvfxInstanceId instance = NewInstance(out, context, &emitter, 1, NULL, 0, NULL, 0, false);
@@ -530,7 +530,7 @@ static void Strips(Out* out)
     emitters[1].capacity = 8;
     emitters[1].hostSpawnCapacity = 8;
     emitters[1].lifetime = mvfxRangeSource(100.0f, 100.0f);
-    emitters[1].plexus = (mvfxPlexusDef){.enabled = true,
+    emitters[1].plexus = (mvfxPlexusDef){.enable = true,
                                          .distance = 0.9f,
                                          .maxLinks = 64,
                                          .maxPerParticle = 4,
@@ -675,9 +675,9 @@ static void Scenes(Out* out)
     emitters[0].capacity = 8;
     emitters[0].hostSpawnCapacity = 8;
     emitters[0].lifetime = mvfxRangeSource(100.0f, 100.0f);
-    emitters[0].collision = (mvfxCollision){.enabled = true,
+    emitters[0].collision = (mvfxCollision){.enable = true,
                                             .restitution = 0.7f,
-                                            .depthImage = true,
+                                            .enableDepthImage = true,
                                             .depthThickness = 0.5f,
                                             .depthSamples = 64};
     emitters[0].events = mvfx_eventMaskCollision;
@@ -694,10 +694,10 @@ static void Scenes(Out* out)
     emitters[1].shape.halfExtents[0] = 0.7f;
     emitters[1].shape.halfExtents[2] = 0.7f;
     emitters[1].motion.gravity[1] = -9.81f;
-    emitters[1].collision.enabled = true;
+    emitters[1].collision.enable = true;
     emitters[1].collision.restitution = 0.3f;
     emitters[1].collision.friction = 0.5f;
-    emitters[1].collision.sceneQueries = true;
+    emitters[1].collision.enableSceneQueries = true;
     emitters[1].collision.queryCapacity = 32;
     emitters[1].collision.lookahead = 0.25f;
     mvfxInstanceId instance = NewInstance(out, context, emitters, 2, NULL, 0, NULL, 0, false);
@@ -954,7 +954,7 @@ static void Plans(Out* out)
     emitters[1].lifetime = mvfxRangeSource(1000.0f, 1000.0f);
     emitters[1].velocity.speed = (mvfxRange){1.0f, 2.0f};
     emitters[1].motion.gravity[1] = -9.81f;
-    emitters[1].liquid.enabled = true;
+    emitters[1].liquid.enable = true;
     emitters[1].liquid.solver = mvfx_liquidGrid;
     emitters[1].liquid.gas = 0;
     emitters[1].liquid.spacing = 0.05f;

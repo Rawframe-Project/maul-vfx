@@ -217,8 +217,8 @@ static bool HasSolver(const mvfxEffectDef* def)
     for (int32_t i = 0; i < def->emitterCount; ++i)
     {
         const mvfxEmitterDef* e = &def->emitters[i];
-        solver = solver || e->rigid.enabled || e->unit.kind != mvfx_unitParticle ||
-                 e->contacts.enabled || e->liquid.enabled;
+        solver = solver || e->rigid.enable || e->unit.kind != mvfx_unitParticle ||
+                 e->contacts.enable || e->liquid.enable;
     }
     return solver;
 }

@@ -68,7 +68,7 @@ static inline void SceneKick(const mvfxModuleCall* call, void* user)
     for (int32_t i = 0; i < p->count; ++i)
     {
         uint32_t words[4];
-        mvfxModule_Random(call, p->serial[i], 0u, words);
+        mvfxDrawModuleRandom(call, p->serial[i], 0u, words);
         for (int32_t k = 0; k < 3; ++k)
         {
             p->velocity[k][i] += ((float)(words[k] >> 8u) * 0x1p-24f - 0.5f);
@@ -194,7 +194,7 @@ static inline void BuildRigidScene(mvfxContext* context)
             (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, -3, -3}, .max = {3, 3, 3}};
         emitter->size = (mvfxVectorSource){
             .kind = mvfx_sourceRange, .min = {0.2f, 0.3f, 0.2f}, .max = {0.5f, 0.6f, 0.4f}};
-        emitter->rigid = (mvfxRigidDef){.enabled = true,
+        emitter->rigid = (mvfxRigidDef){.enable = true,
                                         .shape = (mvfxRigidShape)e,
                                         .density = 1.0f + (float)e,
                                         .substeps = 4,
@@ -203,7 +203,7 @@ static inline void BuildRigidScene(mvfxContext* context)
                                         .dynamicFriction = 0.3f,
                                         .bodyContacts = 8,
                                         .hull = hullMesh};
-        emitter->collision.enabled = true;
+        emitter->collision.enable = true;
         emitter->colliders = ground;
         emitter->colliderCount = 3;
     }
@@ -217,7 +217,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[1].size.max[1] = 0.9f;
     emitters[1].size.max[2] = 0.5f;
     emitters[0].collision.hostColliders = true;
-    emitters[0].collision.depthImage = true;
+    emitters[0].collision.enableDepthImage = true;
     emitters[0].collision.depthThickness = 0.3f;
     emitters[0].collision.depthSamples = 2;
     emitters[1].colliders = bowl;
@@ -230,7 +230,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     emitters[2].killRuleCount = 1;
     emitters[2].colliders = hills;
     emitters[2].colliderCount = 2;
-    emitters[2].collision.sceneQueries = true;
+    emitters[2].collision.enableSceneQueries = true;
     emitters[2].collision.queryCapacity = 8;
     emitters[2].collision.lookahead = 0.2f;
     emitters[3].colliders = bowl;
@@ -252,13 +252,13 @@ static inline void BuildRigidScene(mvfxContext* context)
     resting->motion.gravity[1] = -9.81f;
     resting->size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.5f, 0.5f, 0.5f}, .max = {0.5f, 0.5f, 0.5f}};
-    resting->rigid.enabled = true;
+    resting->rigid.enable = true;
     resting->rigid.shape = mvfx_rigidBox;
     resting->rigid.density = 1.0f;
     resting->rigid.substeps = 4;
     resting->rigid.staticFriction = 0.6f;
     resting->rigid.dynamicFriction = 0.4f;
-    resting->collision.enabled = true;
+    resting->collision.enable = true;
     resting->colliders = &floor;
     resting->colliderCount = 1;
     mvfxEffectDef def = mvfxDefaultEffectDef();
@@ -389,7 +389,7 @@ static inline void BuildGasScene(mvfxContext* context)
     motes.shape.offset[1] = 0.4f;
     motes.forces = &follow;
     motes.forceCount = 1;
-    motes.gasSplat = (mvfxGasSplat){.enabled = true, .gas = 1, .density = 1.5f, .drag = 2.0f};
+    motes.gasSplat = (mvfxGasSplat){.enable = true, .gas = 1, .density = 1.5f, .drag = 2.0f};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &motes;
     def.emitterCount = 1;
@@ -439,8 +439,8 @@ static inline void BuildLiquidScene(mvfxContext* context)
         liquid->lifetime = mvfxRangeSource(1.2f, 1.6f);
         liquid->velocity.speed = (mvfxRange){0.2f, 0.6f};
         liquid->motion.gravity[1] = -9.81f;
-        liquid->collision.enabled = true;
-        liquid->liquid.enabled = true;
+        liquid->collision.enable = true;
+        liquid->liquid.enable = true;
         liquid->liquid.spacing = 0.08f;
     }
     liquids[0].shape.kind = mvfx_shapeBox;
@@ -572,7 +572,7 @@ static inline void BuildWaterScene(mvfxContext* context)
     waters[2].center[1] = -0.5f;
     waters[2].closedWalls = (mvfxWaterWalls)(15 & ~mvfx_waterWallMinZ);
     waters[2].friction = 0.5f;
-    waters[2].hasTerrain = true;
+    waters[2].enableTerrain = true;
     waters[2].terrain = (mvfxCollider){.kind = mvfx_colliderHeightfield,
                                        .space = 1,
                                        .center = {0.0f, -0.5f, 0.0f},
@@ -594,9 +594,8 @@ static inline void BuildWaterScene(mvfxContext* context)
     waters[1].waveSpeed = 5.0f;
     waters[1].damping = 0.1f;
     const mvfxWaterCoupling rain = {
-        .enabled = true, .radius = 0.03f, .push = 0.01f, .buoyancy = 2.0f, .drag = 1.0f};
-    const mvfxWaterCoupling drops = {
-        .enabled = true, .radius = 0.04f, .push = 0.005f, .pour = true};
+        .enable = true, .radius = 0.03f, .push = 0.01f, .buoyancy = 2.0f, .drag = 1.0f};
+    const mvfxWaterCoupling drops = {.enable = true, .radius = 0.04f, .push = 0.005f, .pour = true};
     const mvfxEmitterDef falls[2] = {WaterFall(0, 30.0f, 0.2f, &rain),
                                      WaterFall(2, 12.0f, -0.5f, &drops)};
     mvfxEffectDef def = mvfxDefaultEffectDef();
@@ -646,7 +645,7 @@ static inline void BuildScene(mvfxContext* context)
         .kind = mvfx_sourceRange, .min = {0.5f, 0.7f, 1.0f, 1.0f}, .max = {0.7f, 0.9f, 1.0f, 1.0f}};
     emitters[4].ribbon.ids = mvfx_ribbonOne;
     emitters[4].ribbon.texture = mvfx_ribbonTileByDistance;
-    emitters[4].beam = (mvfxBeamDef){.enabled = true,
+    emitters[4].beam = (mvfxBeamDef){.enable = true,
                                      .segments = 6,
                                      .start = {.point = {0.0f, 0.0f, 0.5f}},
                                      .end = {.fromParameter = true, .parameter = 0},
@@ -656,7 +655,7 @@ static inline void BuildScene(mvfxContext* context)
                                      .noiseFrequency = 2.0f,
                                      .noiseSpeed = 1.5f};
     emitters[0].capacity = 100;
-    emitters[0].light = (mvfxLightDef){.enabled = true,
+    emitters[0].light = (mvfxLightDef){.enable = true,
                                        .every = 2,
                                        .intensity = 3.0f,
                                        .alphaScales = true,
@@ -864,17 +863,17 @@ static inline void BuildScene(mvfxContext* context)
                                .halfExtents = {1, 1, 1},
                                .rotation = {0, 0, 0, 1},
                                .grid = ballGrid};
-    emitters[1].collision = (mvfxCollision){.enabled = true, .restitution = 0.3f};
+    emitters[1].collision = (mvfxCollision){.enable = true, .restitution = 0.3f};
     emitters[1].colliders = &ball;
     emitters[1].colliderCount = 1;
-    emitters[0].collision = (mvfxCollision){.enabled = true,
+    emitters[0].collision = (mvfxCollision){.enable = true,
                                             .hostColliders = true,
                                             .restitution = 0.6f,
                                             .friction = 0.2f,
                                             .lifeLoss = 0.1f,
                                             .restSpeed = 1.0f,
                                             .radius = 0.05f,
-                                            .sceneQueries = true,
+                                            .enableSceneQueries = true,
                                             .queryCapacity = 24,
                                             .lookahead = 0.1f};
     emitters[0].colliders = ground;
@@ -885,11 +884,11 @@ static inline void BuildScene(mvfxContext* context)
     // at most 4; emitter 2 finds the second's within 3 (so the second's
     // grid's cells are 3), at most 4.
     emitters[0].neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 2.5f, .maxNeighbors = 3};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = 2.5f, .maxNeighbors = 3};
     emitters[2].neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = 1, .radius = 3.0f, .maxNeighbors = 4};
+        (mvfxNeighborDef){.enable = true, .source = 1, .radius = 3.0f, .maxNeighbors = 4};
     emitters[1].neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 0.5f, .maxNeighbors = 4};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = 0.5f, .maxNeighbors = 4};
     // The second's particles push each other within 0.4, harder the
     // nearer.
     static const mvfxCurveKey nearer[2] = {
@@ -897,19 +896,19 @@ static inline void BuildScene(mvfxContext* context)
         {.time = 1.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
     };
     emitters[1].pairForce =
-        (mvfxPairForceDef){.enabled = true,
+        (mvfxPairForceDef){.enable = true,
                            .radius = 0.4f,
                            .strength = {.value = -1.5f, .curve = {.keys = nearer, .keyCount = 2}}};
     // The second links its particles within 0.6, at most 3 each and 64 in
     // all, fading.
-    emitters[1].plexus = (mvfxPlexusDef){.enabled = true,
+    emitters[1].plexus = (mvfxPlexusDef){.enable = true,
                                          .distance = 0.6f,
                                          .maxLinks = 64,
                                          .maxPerParticle = 3,
                                          .width = 0.2f,
                                          .fade = true};
     // The second keeps its particles apart, a tenth of their size each.
-    emitters[1].contacts = (mvfxContactDef){.enabled = true,
+    emitters[1].contacts = (mvfxContactDef){.enable = true,
                                             .radiusScale = 0.1f,
                                             .iterations = 3,
                                             .maxContacts = 2,
@@ -919,7 +918,7 @@ static inline void BuildScene(mvfxContext* context)
     // its own and follows a closed square round the instance.
     static const float squarePath[12] = {-2, 0, -2, 2, 0, -2, 2, 0, 2, -2, 0, 2};
     emitters[1].steering = (mvfxSteeringDef){
-        .enabled = true,
+        .enable = true,
         .separation = 0.2f,
         .separationRadius = 0.3f,
         .alignment = 0.5f,
@@ -944,9 +943,9 @@ static inline void BuildScene(mvfxContext* context)
     };
     emitters[0].eventCapacity = 12;
     // The third collides with the depth image each instance carries.
-    emitters[2].collision = (mvfxCollision){.enabled = true,
+    emitters[2].collision = (mvfxCollision){.enable = true,
                                             .restitution = 0.5f,
-                                            .depthImage = true,
+                                            .enableDepthImage = true,
                                             .depthThickness = 1.0f,
                                             .depthSamples = 8};
     // Seven a second, so it spawns within the scene's 1.4 seconds and
@@ -976,7 +975,7 @@ static inline void BuildScene(mvfxContext* context)
     emitters[3].ribbon.facing = mvfx_ribbonFaceNormal;
     emitters[3].ribbon.normal[1] = 1.0f;
     emitters[3].eventCapacity = 16;
-    emitters[3].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    emitters[3].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventCollision,
                                               .minCount = 1,
@@ -985,7 +984,7 @@ static inline void BuildScene(mvfxContext* context)
                                               .inheritColor = true,
                                               .capacity = 48};
     emitters[2].eventSpawn = (mvfxEventSpawn){
-        .enabled = true, .source = 3, .kind = mvfx_eventDeath, .maxCount = 1, .capacity = 8};
+        .enable = true, .source = 3, .kind = mvfx_eventDeath, .maxCount = 1, .capacity = 8};
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 5;
@@ -1145,7 +1144,7 @@ static inline void BuildScene(mvfxContext* context)
         {.time = 0.0f, .value = 1.5f, .interpolation = mvfx_interpolationLinear},
         {.time = 1.0f, .value = 0.25f, .interpolation = mvfx_interpolationLinear}};
     meshEmitters[0].overLife.rotation = (mvfxRotationOverLife){
-        .enabled = true, .scale = {.value = 1.0f, .curve = {.keys = easing, .keyCount = 2}}};
+        .enable = true, .scale = {.value = 1.0f, .curve = {.keys = easing, .keyCount = 2}}};
     static const mvfxForce meshSwirl = {
         .kind = mvfx_forceTurbulence,
         .space = mvfx_spaceLocal,
@@ -1265,7 +1264,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[5].capacity = 16;
     chainEmitters[5].lifetime = mvfxRangeSource(0.3f, 0.5f);
     chainEmitters[5].velocity.speed = (mvfxRange){0.5f, 1.5f};
-    chainEmitters[5].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    chainEmitters[5].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                    .source = 1,
                                                    .kind = mvfx_eventTear,
                                                    .minCount = 1,
@@ -1326,7 +1325,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[4].capacity = 4 * 3;
     chainEmitters[4].lifetime = mvfxRangeSource(1.6f, 1.6f);
     chainEmitters[4].motion.gravity[1] = -6.0f;
-    chainEmitters[4].eventSpawn = (mvfxEventSpawn){.enabled = true,
+    chainEmitters[4].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                    .source = 3,
                                                    .kind = mvfx_eventBirth,
                                                    .minCount = 1,

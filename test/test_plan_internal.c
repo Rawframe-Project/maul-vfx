@@ -25,7 +25,7 @@ static void TestBeamStrikes(void)
     emitter.capacity = 6;
     emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
     emitter.ribbon.ids = mvfx_ribbonOne;
-    emitter.beam = (mvfxBeamDef){.enabled = true,
+    emitter.beam = (mvfxBeamDef){.enable = true,
                                  .segments = 5,
                                  .start = {.point = {0, 0.5f, 0}},
                                  .end = {.point = {4, 0, -1}},

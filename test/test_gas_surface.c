@@ -136,7 +136,7 @@ static void Spoil(int32_t c, mvfxGasDef* gas, mvfxEmitterDef* emitter)
         gas->surface.emitter = 1;
         break;
     case 11:
-        emitter->gasSplat = (mvfxGasSplat){.enabled = true, .gas = 0, .density = 1};
+        emitter->gasSplat = (mvfxGasSplat){.enable = true, .gas = 0, .density = 1};
         break;
     case 12:
         emitter->forces = &s_follow;

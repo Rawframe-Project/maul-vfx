@@ -74,7 +74,7 @@ static void TestColumn(void)
                               .rotation = {0, 0, 0, 1}};
     mvfxEmitterDef emitter = Emitter(0.05f);
     emitter.motion.gravity[1] = -9.81f;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.colliders = &box;
     emitter.colliderCount = 1;
     Open(&emitter, places, 12 * 24);
@@ -177,7 +177,7 @@ static void TestDamBreak(void)
                               .rotation = {0, 0, 0, 1}};
     mvfxEmitterDef emitter = Emitter((float)spacing);
     emitter.motion.gravity[1] = -9.81f;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.colliders = &box;
     emitter.colliderCount = 1;
     Open(&emitter, places, 24 * 24);

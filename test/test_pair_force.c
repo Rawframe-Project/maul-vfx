@@ -59,9 +59,9 @@ static mvfxEmitterDef Emitter(float strength)
     emitter.hostModules = &s_capture;
     emitter.hostModuleCount = 1;
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = true, .source = -1, .radius = 4.0f, .maxNeighbors = MOST};
+        (mvfxNeighborDef){.enable = true, .source = -1, .radius = 4.0f, .maxNeighbors = MOST};
     emitter.pairForce =
-        (mvfxPairForceDef){.enabled = true, .radius = 2.0f, .strength = {.value = strength}};
+        (mvfxPairForceDef){.enable = true, .radius = 2.0f, .strength = {.value = strength}};
     return emitter;
 }
 
@@ -198,7 +198,7 @@ static void TestNotHeld(void)
     // held.
     mvfxEmitterDef emitter = Emitter(3.0f);
     emitter.steering = (mvfxSteeringDef){
-        .enabled = true,
+        .enable = true,
         .viewAngle = 3.14159274f,
         .cruiseSpeed = 10.0f,
         .maxForce = 0.5f,
@@ -230,7 +230,7 @@ static void TestChecks(void)
         switch (rule)
         {
         case 0:
-            emitter.neighbors.enabled = false;
+            emitter.neighbors.enable = false;
             break;
         case 1:
             p->radius = 0.0f;
@@ -256,14 +256,14 @@ static void TestChecks(void)
     emitter = Emitter(-MVFX_MAX_EXTENT);
     emitter.pairForce.radius = 4.0f;
     CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "the bounds");
-    emitter.pairForce.enabled = false;
+    emitter.pairForce.enable = false;
     emitter.pairForce.radius = -1.0f;
     CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "not enabled, unread");
     mvfxEmitterDef beam = mvfxDefaultEmitterDef();
     beam.rate = 0.0f;
     beam.capacity = 8;
     beam.ribbon.ids = mvfx_ribbonOne;
-    beam.beam = (mvfxBeamDef){.enabled = true, .segments = 4, .end = {.point = {1, 0, 0}}};
+    beam.beam = (mvfxBeamDef){.enable = true, .segments = 4, .end = {.point = {1, 0, 0}}};
     beam.neighbors = Emitter(1.0f).neighbors;
     def.emitters = &beam;
     CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "a beam");

@@ -564,7 +564,7 @@ static void TestLivesAndParameters(void)
               read[3] == 4.0f,
           "a restart keeps the parameters");
 
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     static const float notFinite[4] = {0, INFINITY, 0, 0};
     CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 2, zero) == mvfx_errorInvalid,
           "past the count");
@@ -578,14 +578,14 @@ static void TestLivesAndParameters(void)
     CHECK(mvfxInstance_GetParameter(scene.context, scene.instance, 5, read) == mvfx_errorInvalid &&
               read[0] == 0.0f,
           "zeroed on failure");
-    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 5, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 5, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_SetParameter(scene.context, stale, 0, zero) == mvfx_errorStale, "stale");
     CHECK(mvfxInstance_GetParameter(scene.context, stale, 0, read) == mvfx_errorStale, "stale");
     CHECK(mvfxInstance_SetParameter(NULL, scene.instance, 0, zero) == mvfx_errorInvalid,
           "no context");
-    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 5, "stale ids are not misuse");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 5, "stale ids are not misuse");
     mvfxDestroyContext(scene.context);
 
     // A parameter's life past the longest is held to it.
@@ -695,13 +695,13 @@ static void TestDrawBounds(void)
     CHECK(!TakenWith(&emitter, pastY, 2), "another component's default past");
     CHECK(!TakenWith(&emitter, pastAngle, 2), "a scalar's default past");
     Scene scene = NewScene(&emitter, spread, 2);
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     static const float setPast[4] = {2e3f, 0, 0, 0};
     static const float setAnglePast[4] = {1e9f, 0, 0, 0};
     static const float setWithin[4] = {-1e3f, 1e6f, -1e6f, 3e38f};
     float read[4];
     CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, setPast) == mvfx_errorLimit &&
-              mvfxGetContextMisuse(scene.context) == misuse + 1,
+              mvfxContext_GetMisuse(scene.context) == misuse + 1,
           "a value past, refused as misuse");
     CHECK(mvfxInstance_GetParameter(scene.context, scene.instance, 0, read) == mvfx_success &&
               read[0] == 1e3f && read[1] == 1e6f,
@@ -710,7 +710,7 @@ static void TestDrawBounds(void)
               mvfx_errorLimit,
           "a scalar's value past");
     CHECK(mvfxInstance_SetParameter(scene.context, scene.instance, 0, setWithin) == mvfx_success &&
-              mvfxGetContextMisuse(scene.context) == misuse + 2,
+              mvfxContext_GetMisuse(scene.context) == misuse + 2,
           "a value within");
     mvfxDestroyContext(scene.context);
 

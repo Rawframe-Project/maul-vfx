@@ -265,10 +265,12 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
 }
 
 mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def, const mvfxEffectAsset* assets,
-                               int32_t assetCount, void* bytes, int64_t capacity, int64_t* sizeOut)
+                               int32_t assetCount, void* bytesOut, int64_t capacity,
+                               int64_t* sizeOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxFileResult result = mvfxWriteEffectWork(def, assets, assetCount, bytes, capacity, sizeOut);
+    mvfxFileResult result =
+        mvfxWriteEffectWork(def, assets, assetCount, bytesOut, capacity, sizeOut);
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -541,12 +543,12 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
 }
 
 mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size, const mvfxEffectAsset* assets,
-                              int32_t assetCount, void* memory, int64_t capacity,
+                              int32_t assetCount, void* memoryOut, int64_t capacity,
                               int64_t* neededOut, mvfxEffectDef* defOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxFileResult result =
-        mvfxReadEffectWork(bytes, size, assets, assetCount, memory, capacity, neededOut, defOut);
+        mvfxReadEffectWork(bytes, size, assets, assetCount, memoryOut, capacity, neededOut, defOut);
     mvfxFloatEnvLeave(env);
     return result;
 }

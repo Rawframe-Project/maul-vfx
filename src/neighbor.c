@@ -242,8 +242,8 @@ mvfxNeighborQuery mvfxOpenNeighborQuery(const mvfxInstance* instance, int32_t em
     const mvfxNeighborDef* neighbors = &compiled->neighbors;
     const mvfxSteeringDef* steering = &compiled->steering;
     int32_t source = neighbors->source;
-    bool flock = steering->enabled && (steering->separation > 0.0f || steering->alignment > 0.0f ||
-                                       steering->cohesion > 0.0f);
+    bool flock = steering->enable && (steering->separation > 0.0f || steering->alignment > 0.0f ||
+                                      steering->cohesion > 0.0f);
     return (mvfxNeighborQuery){
         .grid = &instance->emitters[source].grid,
         .inverseCell = 1.0f / instance->effect->emitters[source].gridCell,
@@ -288,7 +288,7 @@ void mvfxFindNeighbors(mvfxInstance* instance, int32_t emitter)
     {
         BuildGrid(instance, emitter, compiled->gridCell);
     }
-    if (!compiled->neighbors.enabled || compiled->steering.enabled || compiled->pairRadius > 0.0f)
+    if (!compiled->neighbors.enable || compiled->steering.enable || compiled->pairRadius > 0.0f)
     {
         // Steering and the pair force walk the neighbors themselves
         // (mvfxSteerEmitter).

@@ -138,10 +138,9 @@ bool mvfxOrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITTERS
         {
             const mvfxEventSpawn* spawn = &def->emitters[i].eventSpawn;
             const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
-            bool ready =
-                (!spawn->enabled || IsPlaced(placed, spawn->source, def->emitterCount)) &&
-                (!neighbors->enabled || neighbors->source == -1 || neighbors->source == i ||
-                 IsPlaced(placed, neighbors->source, def->emitterCount));
+            bool ready = (!spawn->enable || IsPlaced(placed, spawn->source, def->emitterCount)) &&
+                         (!neighbors->enable || neighbors->source == -1 || neighbors->source == i ||
+                          IsPlaced(placed, neighbors->source, def->emitterCount));
             next = !placed[i] && ready ? i : next;
         }
         if (next < 0)
@@ -174,7 +173,7 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     bool sprite = def->angle.kind != mvfx_sourceNone || def->spin.kind != mvfx_sourceNone;
     Store(plan, sprite, mvfx_attributeAngle, 2);
     bool mesh = def->orientationMode != mvfx_orientationNone ||
-                def->angularVelocity.kind != mvfx_sourceNone || def->rigid.enabled;
+                def->angularVelocity.kind != mvfx_sourceNone || def->rigid.enable;
     Store(plan, mesh, mvfx_attributeOrientationX, 7);
     Store(plan, def->frame.mode != mvfx_frameNone, mvfx_attributeFrame, 1);
     Store(plan, def->meshIndex.mode != mvfx_frameNone, mvfx_attributeMesh, 1);
@@ -183,8 +182,8 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
           def->ribbon.ids != mvfx_ribbonNone && def->ribbon.texture == mvfx_ribbonTileByDistance,
           mvfx_attributeRibbonDistance, 1);
     Store(plan, def->motion.dragScale.kind != mvfx_sourceNone, mvfx_attributeDrag, 1);
-    Store(plan, def->collision.enabled, mvfx_attributeCollisions, 1);
-    Store(plan, def->neighbors.enabled, mvfx_attributeNeighborCount, 7);
+    Store(plan, def->collision.enable, mvfx_attributeCollisions, 1);
+    Store(plan, def->neighbors.enable, mvfx_attributeNeighborCount, 7);
     bool pinned =
         def->unit.kind != mvfx_unitParticle &&
         (def->unit.pinFirst || (def->unit.kind == mvfx_unitSheet && def->unit.pinFirstRow));
@@ -198,10 +197,10 @@ static void StoreAttributes(const mvfxEmitterDef* def, mvfxAttributePlan* plan)
     Store(plan, attach != mvfx_attachNone, mvfx_attributeAttachFlags, 1);
     Store(plan, def->unit.kind != mvfx_unitParticle && def->unit.tearStrain > 0.0f,
           mvfx_attributeTorn, 1);
-    Store(plan, def->collision.enabled && def->collision.sceneQueries, mvfx_attributeScenePointX,
-          6);
-    Store(plan, def->rigid.enabled && def->rigid.sleepSpeed > 0.0f, mvfx_attributeSleep, 4);
-    Store(plan, def->liquid.enabled && def->liquid.solver == mvfx_liquidGrid, mvfx_attributeAffine,
+    Store(plan, def->collision.enable && def->collision.enableSceneQueries,
+          mvfx_attributeScenePointX, 6);
+    Store(plan, def->rigid.enable && def->rigid.sleepSpeed > 0.0f, mvfx_attributeSleep, 4);
+    Store(plan, def->liquid.enable && def->liquid.solver == mvfx_liquidGrid, mvfx_attributeAffine,
           9);
     for (int32_t i = 0; i < def->customCount; ++i)
     {
@@ -244,7 +243,7 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
     }
     mvfxOverLifeTables(&def->overLife, def->custom, def->customCount, curves, gradients);
     *curves += mvfxLifeCurves(&def->ribbon.width);
-    *curves += def->pairForce.enabled ? mvfxLifeCurves(&def->pairForce.strength) : 0;
+    *curves += def->pairForce.enable ? mvfxLifeCurves(&def->pairForce.strength) : 0;
     *gradients += IsWhite(&def->ribbon.color) ? 0 : 1;
 }
 
@@ -252,9 +251,9 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
 static void CompilePairForce(const mvfxPairForceDef* pair, mvfxTableSpace* space,
                              mvfxCompiledEmitter* out)
 {
-    out->pairRadius = pair->enabled ? pair->radius : 0.0f;
+    out->pairRadius = pair->enable ? pair->radius : 0.0f;
     out->pairStrength = (mvfxCompiledLife){0};
-    if (pair->enabled)
+    if (pair->enable)
     {
         mvfxCompileLife(&pair->strength, space, &out->pairStrength);
     }

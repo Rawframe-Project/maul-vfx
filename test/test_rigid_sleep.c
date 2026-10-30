@@ -98,13 +98,13 @@ static mvfxEmitterDef Boxes(void)
     emitter.orientationMode = mvfx_orientationEuler;
     emitter.orientation =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 0}, .max = {0, 0, 0}};
-    emitter.rigid.enabled = true;
+    emitter.rigid.enable = true;
     emitter.rigid.shape = mvfx_rigidBox;
     emitter.rigid.density = 1.0f;
     emitter.rigid.substeps = 8;
     emitter.rigid.staticFriction = 0.6f;
     emitter.rigid.dynamicFriction = 0.4f;
-    emitter.collision.enabled = true;
+    emitter.collision.enable = true;
     emitter.colliders = &s_ground;
     emitter.colliderCount = 1;
     return emitter;
@@ -636,7 +636,7 @@ static void TestDepthWakes(void)
     // again wakes it (its pixels may have changed).
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
-    boxes.collision.depthImage = true;
+    boxes.collision.enableDepthImage = true;
     boxes.collision.depthThickness = 0.5f;
     boxes.collision.depthSamples = 4;
     Play(&boxes);
@@ -672,7 +672,7 @@ static void TestSpinning(void)
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
     boxes.motion.gravity[1] = 0.0f;
-    boxes.collision.enabled = false;
+    boxes.collision.enable = false;
     boxes.colliders = NULL;
     boxes.colliderCount = 0;
     boxes.angularVelocity =

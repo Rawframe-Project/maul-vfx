@@ -362,7 +362,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
 // particles that collides and writes collision events.
 static inline bool mvfxHoldsContacts(const mvfxCompiledEmitter* emitter)
 {
-    return (emitter->unitPoints > 1 || emitter->rigid.enabled) && emitter->collision.enabled &&
+    return (emitter->unitPoints > 1 || emitter->rigid.enable) && emitter->collision.enable &&
            (emitter->events & mvfx_eventMaskCollision) != 0;
 }
 
@@ -396,7 +396,7 @@ static inline bool mvfxIsQuadWhole(const uint32_t* torn, int32_t q, int32_t widt
 // and particles not rigid. The axes past them are copies of X.
 static inline int32_t mvfxSizeAxes(const mvfxRigidDef* rigid)
 {
-    if (!rigid->enabled)
+    if (!rigid->enable)
     {
         return 3;
     }

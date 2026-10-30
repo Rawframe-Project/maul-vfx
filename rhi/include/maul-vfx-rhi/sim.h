@@ -8,7 +8,7 @@
 // host builds, and mvfxGpuSim_Record records them once the frame is
 // compiled. Nothing is read back in a step: each emitter's statistics
 // record (its count and bounds) is the host's to read back, as late as its
-// frames lag, and mvfxGpuSim_BoundsOf maps it to the world. What it does
+// frames lag, and mvfxGpuSim_GetBounds maps it to the world. What it does
 // not run yet is refused when it is made.
 
 #ifndef MAUL_VFX_RHI_SIM_H
@@ -45,13 +45,13 @@ extern "C"
         // terrain keeps for the grids its instance's colliders read
         // (mvfxInstance_SetColliders: heightfields and distance grids),
         // their values as stored (mvfxGridView's bytes, each rounded up to
-        // 4, each grid once), as mvfxGpuSim_HostGridBytes counts them; 0
+        // 4, each grid once), as mvfxContext_GetGpuHostGridBytes counts them; 0
         // for none.
         int64_t hostGridBytes;
         // The bytes each emitter of a mesh shape keeps for its mesh beyond
         // the one it spawns from at the simulation's creation (room for
         // mvfxInstance_SetEmitterMesh to bind a larger one), as
-        // mvfxGpuSim_MeshBytes counts a mesh's, at most MVFX_GPU_MESH_BYTES;
+        // mvfxMesh_GetGpuBytes counts a mesh's, at most MVFX_GPU_MESH_BYTES;
         // 0 for the mesh at creation's alone.
         int64_t hostMeshBytes;
     } mvfxGpuSimDef;
@@ -96,7 +96,7 @@ extern "C"
     // word the step uses; and its statistics record,
     // MVFX_GPU_STATISTICS_WORDS words of the last recorded step: the live
     // count first, then what the step uses and the bounds, which
-    // mvfxGpuSim_BoundsOf reads; a word the emitter does not keep (one of
+    // mvfxGpuSim_GetBounds reads; a word the emitter does not keep (one of
     // a kind it is not, from MVFX_GPU_EVENT_SERIALS on) holds 0. A slot
     // past the live count is undefined, and a host reads none: only the
     // first live count of each array. A world-space emitter's places are
@@ -220,7 +220,7 @@ extern "C"
 
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
-// mvfxGpuSim_BoundsOf joins as the CPU path's bounds do).
+// mvfxGpuSim_GetBounds joins as the CPU path's bounds do).
 #define MVFX_GPU_STATISTICS_WORDS 54
 
     /// Returns the default simulation def: the C library's allocation, no
@@ -350,10 +350,9 @@ extern "C"
     ///         `mvfx_errorStale` for a grid that is gone.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context,
-                                                                    const mvfxCollider* colliders,
-                                                                    int32_t count,
-                                                                    int64_t* bytesOut);
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult
+    mvfxContext_GetGpuHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders,
+                                    int32_t count, int64_t* bytesOut);
 
     /// Counts the bytes a mesh takes on the GPU for a mesh shape's mode,
     /// the room mvfxGpuSimDef.hostMeshBytes keeps for it: 16, 24 a vertex,
@@ -369,7 +368,7 @@ extern "C"
     ///         that is gone.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_MeshBytes(const mvfxContext* context,
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxMesh_GetGpuBytes(const mvfxContext* context,
                                                                 mvfxMeshId mesh, mvfxMeshMode mode,
                                                                 int64_t* bytesOut);
 
@@ -653,7 +652,7 @@ extern "C"
     ///         range or one of no room.
     /// @par Thread safety
     /// Safe from any thread.
-    MVFX_RHI_API int32_t mvfxGpuSim_EmitterPasses(const mvfxGpuSim* sim, int32_t emitter);
+    MVFX_RHI_API int32_t mvfxGpuSim_GetEmitterPasses(const mvfxGpuSim* sim, int32_t emitter);
 
     /// Returns the passes a gas's step adds at most (mvfxGpuSim_AddPasses),
     /// for a host to size its device's frame by (mrhiDeviceBudgets'
@@ -682,7 +681,7 @@ extern "C"
     /// @return The passes; 0 for a NULL simulation or a gas out of range.
     /// @par Thread safety
     /// Safe from any thread.
-    MVFX_RHI_API int32_t mvfxGpuSim_GasPasses(const mvfxGpuSim* sim, int32_t gas);
+    MVFX_RHI_API int32_t mvfxGpuSim_GetGasPasses(const mvfxGpuSim* sim, int32_t gas);
 
 // A gas's statistics record, 32-bit words, which its step writes: whether
 // it holds anything at the step's end (a scalar past MVFX_GAS_EMPTY, or for
@@ -756,7 +755,7 @@ extern "C"
     ///         range.
     /// @par Thread safety
     /// Safe from any thread.
-    MVFX_RHI_API int32_t mvfxGpuSim_WaterPasses(const mvfxGpuSim* sim, int32_t water);
+    MVFX_RHI_API int32_t mvfxGpuSim_GetWaterPasses(const mvfxGpuSim* sim, int32_t water);
 
 // A water surface's statistics record, 32-bit words, which its step
 // writes: whether it moves at the step's end (1 or 0) and that end's tick
@@ -1390,7 +1389,7 @@ extern "C"
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
     /// when it added none. The bytes are the frame's uploads
-    /// (mvfxGpuSim_UploadBytes counts them): 1,960 an emitter (its
+    /// (mvfxGpuSim_GetUploadBytes counts them): 1,960 an emitter (its
     /// numbers' 1,888 and its record map's 72; 28 more for one whose
     /// ribbons pin a head), 432 a force, 128 a collider
     /// and 80 a kill rule it has (8,104 at most), 104 more for one that
@@ -1419,7 +1418,7 @@ extern "C"
     /// forces and colliders read (mvfxGridView's bytes)
     /// at the first step, after each change and, for the instance's,
     /// after each move in the room the def keeps; and a mesh shape's mesh
-    /// (mvfxGpuSim_MeshBytes) at the first step and after each change of
+    /// (mvfxMesh_GetGpuBytes) at the first step and after each change of
     /// it or of the mesh bound; 1,124 a surface of waves (its numbers'
     /// 1,104 and its record's 20) and 2,532 one of shallow water (its
     /// numbers' 2,512), its terrain's values (mvfxGridView's bytes) at the
@@ -1447,8 +1446,8 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_UploadBytes(const mvfxGpuSim* sim,
-                                                                  int64_t* bytesOut);
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetUploadBytes(const mvfxGpuSim* sim,
+                                                                     int64_t* bytesOut);
 
     /// Returns an emitter's particles: the buffer the last recorded step
     /// left them in, which the host imports to draw or read them. Every
@@ -1484,10 +1483,10 @@ extern "C"
     ///         an emitter out of range.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_BoundsOf(const mvfxGpuSim* sim,
-                                                               int32_t emitter,
-                                                               const uint32_t* record,
-                                                               mvfxBounds* boundsOut);
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_GetBounds(const mvfxGpuSim* sim,
+                                                                int32_t emitter,
+                                                                const uint32_t* record,
+                                                                mvfxBounds* boundsOut);
 
 #ifdef __cplusplus
 }

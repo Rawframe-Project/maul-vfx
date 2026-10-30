@@ -163,7 +163,7 @@ static void MoveAngular(mvfxInstance* instance, int32_t emitter, int32_t i, mvfx
         float carry = f.carry * speedScale;
         float theta[3] = {w[0][i] * carry, w[1][i] * carry, w[2][i] * carry};
         float turned[4] = {q[0][i], q[1][i], q[2][i], q[3][i]};
-        if (!compiled->rigid.enabled)
+        if (!compiled->rigid.enable)
         {
             mvfxTurnBy(turned, theta);
         }
@@ -442,7 +442,7 @@ static bool IsKilled(const Range* r, int32_t i, const float start[3], const floa
     double age = (double)(r->tick - birth) / (double)MVFX_TICKS_PER_SECOND + r->seconds;
     const float velocity[3] = {r->v[0][i], r->v[1][i], r->v[2][i]};
     uint32_t collisions = 0;
-    if (compiled->collision.enabled)
+    if (compiled->collision.enable)
     {
         collisions = ((const uint32_t*)mvfxAttributeArray(r->instance, r->emitter,
                                                           mvfx_attributeCollisions))[i];
@@ -496,7 +496,7 @@ static void MoveParticle(const Range* r, int32_t i)
     mvfxMoveByModules(r->modules, age, r->seconds, start, place);
     // Rigid particles meet the colliders at their shapes' surfaces, in their
     // own solve.
-    bool collisionKills = r->compiled->collision.enabled && !r->compiled->rigid.enabled &&
+    bool collisionKills = r->compiled->collision.enable && !r->compiled->rigid.enable &&
                           Collide(r, i, start, place, nullptr);
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -527,7 +527,7 @@ static bool IsPlain(const Range* r)
 // Whether a plain range's particles meet the colliders.
 static bool Collides(const Range* r)
 {
-    return r->compiled->collision.enabled && !r->compiled->rigid.enabled;
+    return r->compiled->collision.enable && !r->compiled->rigid.enable;
 }
 
 // MoveLinear over a plain range, an axis at a time, in the same operations
@@ -660,7 +660,7 @@ static void IntegrateSpan(mvfxInstance* instance, int32_t emitter, int32_t first
         .birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow),
         .birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh),
         .inverseLife = mvfxAttributeArray(instance, emitter, mvfx_attributeInverseLife),
-        .water = compiled->water.enabled ? &instance->emitters[emitter].water : nullptr,
+        .water = compiled->water.enable ? &instance->emitters[emitter].water : nullptr,
         .tick = tick,
         .time = (double)tick / (double)MVFX_TICKS_PER_SECOND,
         .seconds = seconds,
@@ -769,14 +769,14 @@ static void ResolveColliders(mvfxInstance* instance, int32_t emitter)
     bool had = state->hasDepth;
     const mvfxSpaceMap seen = state->depth.map;
     state->colliderCount = 0;
-    if (!compiled->collision.enabled)
+    if (!compiled->collision.enable)
     {
         return;
     }
     mvfxSpaceMap local = SpaceMapOf(instance, emitter, mvfx_spaceLocal);
     // Rigid particles meet colliders at their shapes, not grown.
-    float radius = compiled->rigid.enabled ? 0.0f : compiled->collision.radius * local.sigma;
-    state->hasDepth = compiled->collision.depthImage && instance->hasDepthView;
+    float radius = compiled->rigid.enable ? 0.0f : compiled->collision.radius * local.sigma;
+    state->hasDepth = compiled->collision.enableDepthImage && instance->hasDepthView;
     if (state->hasDepth)
     {
         state->depth = (mvfxResolvedDepth){

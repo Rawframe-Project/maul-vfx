@@ -175,7 +175,7 @@ extern "C"
     ///
     /// A mesh from a model file may have no hull a rigid particle takes:
     /// vertices that span no volume, or a hull of more than
-    /// MVFX_MAX_HULL_VERTICES vertices (mvfxMesh_HullVertexCount tells by
+    /// MVFX_MAX_HULL_VERTICES vertices (mvfxMesh_GetHullVertexCount tells by
     /// how much). That is a result, not an error.
     ///
     /// @param context    The context that owns the mesh.
@@ -190,10 +190,10 @@ extern "C"
     ///         `mvfx_errorCapacity` when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullCenter(mvfxContext* context, mvfxMeshId mesh,
-                                                           bool* hullOut, float centerOut[3]);
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetHullCenter(mvfxContext* context, mvfxMeshId mesh,
+                                                              bool* hullOut, float centerOut[3]);
 
-// The most vertices of a hull mvfxMesh_HullVertexCount counts.
+// The most vertices of a hull mvfxMesh_GetHullVertexCount counts.
 #define MVFX_MAX_HULL_COUNT 500
 
     /// Counts the vertices of the convex hull of a mesh's vertices, past
@@ -215,8 +215,9 @@ extern "C"
     ///         allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_HullVertexCount(mvfxContext* context,
-                                                                mvfxMeshId mesh, int32_t* countOut);
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetHullVertexCount(mvfxContext* context,
+                                                                   mvfxMeshId mesh,
+                                                                   int32_t* countOut);
 
 #ifdef __cplusplus
 }

@@ -3,7 +3,7 @@
 //
 // The GPU part's uploads, counted: each write into a frame's buffer adds
 // its bytes to the count of the frame being recorded, which
-// mvfxGpuSim_UploadBytes reports.
+// mvfxGpuSim_GetUploadBytes reports.
 
 #ifndef MAUL_VFX_RHI_SRC_UPLOAD_H
 #define MAUL_VFX_RHI_SRC_UPLOAD_H

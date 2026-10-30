@@ -8,7 +8,7 @@
 #include "grids.h"
 #include "sim_state.h"
 
-int32_t mvfxGpuSim_EmitterPasses(const mvfxGpuSim* sim, int32_t emitter)
+int32_t mvfxGpuSim_GetEmitterPasses(const mvfxGpuSim* sim, int32_t emitter)
 {
     if (sim == nullptr || emitter < 0 || emitter >= sim->emitterCount)
     {
@@ -24,8 +24,9 @@ int32_t mvfxGpuSim_EmitterPasses(const mvfxGpuSim* sim, int32_t emitter)
            (e->writesEvents ? 1 : 0) + e->liquidPassCount;
 }
 
-mvfxResult mvfxGpuSim_HostGridBytes(const mvfxContext* context, const mvfxCollider* colliders,
-                                    int32_t count, int64_t* bytesOut)
+mvfxResult mvfxContext_GetGpuHostGridBytes(const mvfxContext* context,
+                                           const mvfxCollider* colliders, int32_t count,
+                                           int64_t* bytesOut)
 {
     if (bytesOut != nullptr)
     {

@@ -47,7 +47,7 @@ void mvfxResolveSteering(const mvfxInstance* instance, int32_t emitter, const mv
     const mvfxSteeringDef* s = &compiled->steering;
     mvfxPlannedSteering* t = targetsOut;
     *t = (mvfxPlannedSteering){0};
-    if (!s->enabled)
+    if (!s->enable)
     {
         return;
     }
@@ -225,13 +225,13 @@ void mvfxSteerEmitter(mvfxInstance* instance, int32_t emitter)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     const mvfxSteeringDef* s = &compiled->steering;
-    if (!s->enabled && !(compiled->pairRadius > 0.0f))
+    if (!s->enable && !(compiled->pairRadius > 0.0f))
     {
         return;
     }
     mvfxPlannedSteering targets;
     mvfxResolveSteering(instance, emitter, &instance->from, &targets);
-    bool neighbors = compiled->neighbors.enabled;
+    bool neighbors = compiled->neighbors.enable;
     mvfxNeighborQuery query = {0};
     if (neighbors)
     {

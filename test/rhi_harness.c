@@ -690,7 +690,7 @@ static bool SameParticle(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t 
     // thousandth of the step, as the events' (SameEvent).
     const mvfxEventSpawn* spawn = &cpu->effect->emitters[e].eventSpawn;
     int64_t slack =
-        spawn->enabled && spawn->kind == mvfx_eventCollision ? 1 + s_stepTicks / 1000 : 0;
+        spawn->enable && spawn->kind == mvfx_eventCollision ? 1 + s_stepTicks / 1000 : 0;
     uint32_t lifeBits;
     memcpy(&lifeBits, &inverseLife[c], sizeof lifeBits);
     const mvfxAttributeArrays* a = &s_arrays;
@@ -810,7 +810,7 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
 {
     s_leftOut[e] = false;
     s_ribbons[e].seen = false;
-    if (cpu->effect->emitters[e].eventSpawn.enabled)
+    if (cpu->effect->emitters[e].eventSpawn.enable)
     {
         return SameChildren(cpu, e);
     }
@@ -1222,7 +1222,7 @@ static bool SpawnedFrom(const mvfxInstance* cpu, int32_t source)
     for (int32_t e = 0; e < cpu->effect->emitterCount; ++e)
     {
         const mvfxEventSpawn* spawn = &cpu->effect->emitters[e].eventSpawn;
-        spawned = spawned || (spawn->enabled && spawn->source == source);
+        spawned = spawned || (spawn->enable && spawn->source == source);
     }
     return spawned;
 }
@@ -2097,7 +2097,7 @@ static bool SameBounds(const mvfxGpuSim* sim, int32_t e)
 {
     mvfxBounds gpuBox;
     mvfxBounds cpuBox;
-    if (mvfxGpuSim_BoundsOf(sim, e, s_record, &gpuBox) != mvfx_success ||
+    if (mvfxGpuSim_GetBounds(sim, e, s_record, &gpuBox) != mvfx_success ||
         mvfxInstance_GetBounds(s_context, s_cpu, e, &cpuBox) != mvfx_success ||
         gpuBox.empty != cpuBox.empty)
     {
@@ -2474,7 +2474,7 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
     {
         return false;
     }
-    bool rigid = def->rigid.enabled && def->collision.enabled;
+    bool rigid = def->rigid.enable && def->collision.enable;
     const struct
     {
         bool skipped;
@@ -2483,15 +2483,15 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
     } counts[15] = {
         {def->events == 0, MVFX_GPU_EVENTS_WRITTEN, 0},
         {def->events == 0, MVFX_GPU_EVENTS_WRITTEN + 1, 0},
-        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS, 0},
-        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 1, 0},
-        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 2, 0},
-        {!def->eventSpawn.enabled, MVFX_GPU_EVENT_SERIALS + 3, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 1, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 2, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 3, 0},
         {def->ribbon.ids == mvfx_ribbonNone, MVFX_GPU_RIBBON_BREAKS, 0},
-        {!def->neighbors.enabled, MVFX_GPU_NEIGHBORS_CAPPED, stats.neighborsCapped},
-        {!def->contacts.enabled, MVFX_GPU_CONTACTS_CAPPED, stats.contactsCapped},
-        {!def->plexus.enabled, MVFX_GPU_LINKS, 0},
-        {!def->plexus.enabled, MVFX_GPU_LINKS_DROPPED, stats.linksDropped},
+        {!def->neighbors.enable, MVFX_GPU_NEIGHBORS_CAPPED, stats.neighborsCapped},
+        {!def->contacts.enable, MVFX_GPU_CONTACTS_CAPPED, stats.contactsCapped},
+        {!def->plexus.enable, MVFX_GPU_LINKS, 0},
+        {!def->plexus.enable, MVFX_GPU_LINKS_DROPPED, stats.linksDropped},
         {!(def->unit.tearStrain > 0.0f), MVFX_GPU_TORN, stats.torn},
         {!(def->unit.selfThickness > 0.0f), MVFX_GPU_SELF_CAPPED, stats.selfContactsCapped},
         {!rigid, MVFX_GPU_RIGID_CAPPED, stats.rigidContactsCapped},
@@ -2570,7 +2570,7 @@ static const mvfxEmitterDef* WithGrid(const Run* run)
         {
             s_emitters[e].shape.mesh = s_mesh;
         }
-        if (run->mesh != NULL && s_emitters[e].rigid.enabled &&
+        if (run->mesh != NULL && s_emitters[e].rigid.enable &&
             s_emitters[e].rigid.shape == mvfx_rigidHull)
         {
             s_emitters[e].rigid.hull = s_mesh;
@@ -2670,10 +2670,10 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
         s_runArrays[e] = view.arrays;
         const float* most = view.sizeBounds;
         s_bodyRadius[e] =
-            view.rigid.enabled
+            view.rigid.enable
                 ? 0.5f * sqrtf(most[0] * most[0] + most[1] * most[1] + most[2] * most[2])
                 : 0.0f;
-        s_bodiesMeet[e] = view.rigid.enabled && view.rigid.bodyContacts > 0 &&
+        s_bodiesMeet[e] = view.rigid.enable && view.rigid.bodyContacts > 0 &&
                           (view.features & MVFX_FEATURE_COLLISION) != 0;
     }
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
@@ -2851,13 +2851,13 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
             const mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
             same = SameAsCpu(cpu, e) && (s_leftOut[e] || SameBounds(sim, e)) &&
                    (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(cpu, e)) &&
-                   (!run->emitters[e].neighbors.enabled || SameCapped(e)) &&
-                   (!run->emitters[e].contacts.enabled || SameContactsCapped(e)) &&
+                   (!run->emitters[e].neighbors.enable || SameCapped(e)) &&
+                   (!run->emitters[e].contacts.enable || SameContactsCapped(e)) &&
                    (!(run->emitters[e].unit.tearStrain > 0.0f) || SameTorn(e)) &&
                    (!(run->emitters[e].unit.selfThickness > 0.0f) || SameSelfCapped(e)) &&
-                   (!run->emitters[e].rigid.enabled || !run->emitters[e].collision.enabled ||
+                   (!run->emitters[e].rigid.enable || !run->emitters[e].collision.enable ||
                     SameRigidCapped(e)) &&
-                   (!run->emitters[e].plexus.enabled || SameLinks(gpu, sim, e)) &&
+                   (!run->emitters[e].plexus.enable || SameLinks(gpu, sim, e)) &&
                    SameSkipped(&run->emitters[e], e) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
                    (!run->adopting || AdoptGpu(e));
@@ -2917,7 +2917,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     for (int32_t e = 0; e < run->emitterCount; ++e)
     {
         const mvfxEventSpawn* spawn = &run->emitters[e].eventSpawn;
-        if (spawn->enabled)
+        if (spawn->enable)
         {
             int32_t bound = 2 * UncertainCount() * spawn->maxCount;
             printf("  uncertain events: %d; children left out at a step: %d (at most %d)\n",
@@ -2970,7 +2970,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         printf("  torn: %u (at least %d)\n", s_torn, run->leastTorn);
         CHECK(s_torn >= (uint32_t)run->leastTorn, "torn");
     }
-    if (run->emitters[0].contacts.enabled)
+    if (run->emitters[0].contacts.enable)
     {
         printf("  contacts capped: %u (at least %d)\n", s_contactsCapped, run->leastContactsCapped);
         CHECK(s_contactsCapped >= (uint32_t)run->leastContactsCapped, "contacts capped");
@@ -2980,18 +2980,18 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         printf("  self-contacts capped: %u (at least %d)\n", s_selfCapped, run->leastSelfCapped);
         CHECK(s_selfCapped >= (uint32_t)run->leastSelfCapped, "self-contacts capped");
     }
-    if (run->emitters[0].rigid.enabled && run->emitters[0].collision.enabled)
+    if (run->emitters[0].rigid.enable && run->emitters[0].collision.enable)
     {
         printf("  rigid contacts capped: %u (at least %d)\n", s_rigidCapped, run->leastRigidCapped);
         CHECK(s_rigidCapped >= (uint32_t)run->leastRigidCapped, "rigid contacts capped");
     }
-    if (run->emitters[0].rigid.enabled && run->emitters[0].rigid.sleepSpeed > 0.0f)
+    if (run->emitters[0].rigid.enable && run->emitters[0].rigid.sleepSpeed > 0.0f)
     {
         printf("  bodies asleep: at most %d at a step (at least %d), %d woken (at least %d)\n",
                s_mostAsleep, run->leastAsleep, s_woken, run->leastWoken);
         CHECK(s_mostAsleep >= run->leastAsleep && s_woken >= run->leastWoken, "bodies asleep");
     }
-    if (run->emitters[0].plexus.enabled)
+    if (run->emitters[0].plexus.enable)
     {
         printf("  links: at most %u at a step (at least %d), %llu dropped (at least %d)\n",
                s_mostLinks, run->leastLinks, (unsigned long long)s_linksDropped, run->leastDropped);
@@ -3065,12 +3065,12 @@ static void WarmUp(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].eventCapacity = 4096;
     emitters[0].colliders = &ceiling;
     emitters[0].colliderCount = 1;
-    emitters[0].collision = (mvfxCollision){.enabled = true, .restitution = 0.5f};
+    emitters[0].collision = (mvfxCollision){.enable = true, .restitution = 0.5f};
     emitters[0].sortMode = mvfx_sortBackToFront;
     emitters[1].rate = 0.0f;
     emitters[1].burstCount = 0;
     emitters[1].eventSpawn = (mvfxEventSpawn){
-        .enabled = true, .kind = mvfx_eventDeath, .minCount = 1, .maxCount = 2, .capacity = 512};
+        .enable = true, .kind = mvfx_eventDeath, .minCount = 1, .maxCount = 2, .capacity = 512};
     Compare(gpu, kernels,
             &(Run){.emitters = emitters,
                    .emitterCount = 2,

@@ -176,7 +176,7 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
     const mvfxGridDef ground = Ground();
     water = Basin(48, 40, 0.06f, 0.05f);
     water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     water.terrain = Terrain(0.0f);
     water.sources = s_springs;
     water.sourceCount = 2;
@@ -188,7 +188,7 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
     // The instance's own heightfield as the terrain.
     const mvfxCollider host = Terrain(0.0f);
     water.terrain = (mvfxCollider){0};
-    water.hasTerrain = false;
+    water.enableTerrain = false;
     water.hostTerrain = true;
     run.hostColliders = &host;
     run.hostColliderCount = 1;
@@ -198,7 +198,7 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
     // most substeps, each step slowed, so the bound holds the faces where
     // the water falls fastest (counted on both paths alike).
     water.hostTerrain = false;
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     water.terrain = Terrain(0.0f);
     run.hostColliders = NULL;
     run.hostColliderCount = 0;
@@ -225,7 +225,7 @@ static mvfxEmitterDef Floating(void)
     mvfxEmitterDef emitter = Sprite();
     emitter.lifetime = mvfxRangeSource(0.5f, 0.9f);
     emitter.water = (mvfxWaterCoupling){
-        .enabled = true, .radius = 0.08f, .push = 0.03f, .buoyancy = 2.0f, .drag = 3.0f};
+        .enable = true, .radius = 0.08f, .push = 0.03f, .buoyancy = 2.0f, .drag = 3.0f};
     return emitter;
 }
 
@@ -268,7 +268,7 @@ static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
     const mvfxGridDef ground = Ground();
     water = Basin(48, 40, 0.06f, 0.05f);
     water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     water.terrain = Terrain(0.0f);
     water.sources = s_springs;
     water.sourceCount = 2;
@@ -284,7 +284,7 @@ static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
     crossing.eventCapacity = 1024;
     crossing.colliders = &s_floor;
     crossing.colliderCount = 1;
-    crossing.collision = (mvfxCollision){.enabled = true, .restitution = 0.3f};
+    crossing.collision = (mvfxCollision){.enable = true, .restitution = 0.3f};
     water = Pond(48, 40, 0.1f, 1.5f, 15);
     Floats(gpu, kernels, crossing, &water, (Run){.colliding = true}, "sprites crossing a pond");
     water.space = mvfx_spaceWorld;
@@ -315,7 +315,7 @@ static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
            "sprites carried pouring into a moving basin");
     water = Basin(48, 40, 0.06f, 0.05f);
     water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     water.terrain = Terrain(0.0f);
     water.sources = s_springs;
     water.sourceCount = 2;
@@ -362,7 +362,7 @@ static void TestHeld(Gpu* gpu, mvfxGpu* kernels)
                                 .offset = {0x1p-20f, 0x1p-15f, 0x1p-20f}};
     pouring.velocity = (mvfxVelocity){
         .mode = mvfx_directionFixed, .direction = {0, -1, 0}, .speed = {0x1p-8f, 0x1p-8f}};
-    pouring.water = (mvfxWaterCoupling){.enabled = true, .radius = MVFX_MAX_EXTENT, .pour = true};
+    pouring.water = (mvfxWaterCoupling){.enable = true, .radius = MVFX_MAX_EXTENT, .pour = true};
     Floats(gpu, kernels, pouring, &basin, (Run){.scale = 0x1p-19f, .steps = 8, .least = -1},
            "a basin poured into past binary32's range");
     CHECK(WaterPoured() > 1e18, "the basin poured into");
@@ -392,9 +392,9 @@ static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
     emitter.motion.drag = 0.0f;
     emitter.colliders = &s_tank;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true};
+    emitter.collision = (mvfxCollision){.enable = true};
     emitter.liquid = mvfxDefaultEmitterDef().liquid;
-    emitter.liquid.enabled = true;
+    emitter.liquid.enable = true;
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
     emitter.liquid.spacing = 0.05f;
@@ -561,8 +561,8 @@ static void Refusals(mvfxGpuSim* sim)
     {
         refused = refused && mvfxGpuSim_AddWaterRead(sim, &bad[b]) == mvfx_errorInvalid;
     }
-    CHECK(refused && mvfxGpuSim_WaterPasses(sim, 1) == 0 && mvfxGpuSim_WaterPasses(NULL, 0) == 0 &&
-              mvfxGpuSim_WaterPasses(sim, 0) == 68,
+    CHECK(refused && mvfxGpuSim_GetWaterPasses(sim, 1) == 0 &&
+              mvfxGpuSim_GetWaterPasses(NULL, 0) == 0 && mvfxGpuSim_GetWaterPasses(sim, 0) == 68,
           "a water read's refusals, a surface's passes");
     mvfxGpuWater buffers = {.statistics = {1, 1}};
     const uint32_t record[MVFX_GPU_WATER_STATISTICS_WORDS] = {0};
@@ -794,7 +794,7 @@ static void TestSamples(Gpu* gpu, mvfxGpu* kernels)
     const mvfxGridDef ground = Ground();
     water = Basin(48, 40, 0.06f, 0.05f);
     water.closedWalls = mvfx_waterWallMinX | mvfx_waterWallMinZ;
-    water.hasTerrain = true;
+    water.enableTerrain = true;
     water.terrain = Terrain(0.0f);
     water.sources = s_springs;
     water.sourceCount = 2;

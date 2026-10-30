@@ -48,8 +48,8 @@ static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* floor, in
     emitter.velocity.direction[1] = -1.0f;
     emitter.colliders = floor;
     emitter.colliderCount = 1;
-    emitter.collision = (mvfxCollision){.enabled = true};
-    emitter.rigid = (mvfxRigidDef){.enabled = true,
+    emitter.collision = (mvfxCollision){.enable = true};
+    emitter.rigid = (mvfxRigidDef){.enable = true,
                                    .shape = shape,
                                    .density = 500.0f,
                                    .substeps = 4,

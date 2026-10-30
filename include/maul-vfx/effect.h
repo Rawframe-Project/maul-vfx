@@ -617,7 +617,7 @@ extern "C"
         // The convex hull of a mesh's vertices (mvfxRigidDef.hull) scaled by
         // size along the mesh's axes, at most MVFX_MAX_HULL_VERTICES
         // vertices. Its place is its centroid: a host draws its mesh moved
-        // by the scaled mvfxMesh_HullCenter from the particle.
+        // by the scaled mvfxMesh_GetHullCenter from the particle.
         mvfx_rigidHull = 3,
     };
 
@@ -637,8 +637,8 @@ extern "C"
     // surface (a box on a box face to face, edge to edge or on an edge;
     // grids at points: a sphere's center, a capsule's core at most its
     // radius apart, a box's corners and its faces' centers where the
-    // surface bulges under them), its scene plane with sceneQueries, and the
-    // depth image with depthImage (each point's way over the substep, and
+    // surface bulges under them), its scene plane with enableSceneQueries, and the
+    // depth image with enableDepthImage (each point's way over the substep, and
     // killed outside the view with killOutsideView). Contacts push it out; friction holds or slows
     // each patch of contacts with one collider or one face of a box kept inside (at their center,
     // PhysX's patch friction); its velocities are its pose's change, then turned back by
@@ -653,7 +653,7 @@ extern "C"
     // dropped and counted (mvfxEmitterStats.rigidContactsCapped).
     typedef struct mvfxRigidDef
     {
-        bool enabled;
+        bool enable;
         mvfxRigidShape shape;
         // Mass a unit of volume, above 0, at most MVFX_MAX_EXTENT.
         float density;
@@ -754,7 +754,7 @@ extern "C"
 
     typedef struct mvfxLiquidDef
     {
-        bool enabled;
+        bool enable;
         // Particles (the default) or a liquid gas, and for a grid the gas's
         // index in the effect's def: a liquid gas no other emitter names.
         mvfxLiquidSolver solver;
@@ -805,7 +805,7 @@ extern "C"
     // 1, facing the eye.
     typedef struct mvfxPlexusDef
     {
-        bool enabled;
+        bool enable;
         // From MVFX_MIN_NEIGHBOR_RADIUS to MVFX_MAX_NEIGHBOR_RADIUS.
         float distance;
         // The most links an emitter keeps, from 1 to MVFX_MAX_PLEXUS_LINKS,
@@ -847,7 +847,7 @@ extern "C"
     // head, and its capacity holds its points.
     typedef struct mvfxBeamDef
     {
-        bool enabled;
+        bool enable;
         // From 1 to MVFX_MAX_BEAM_SEGMENTS.
         int32_t segments;
         mvfxBeamPoint start;
@@ -916,7 +916,7 @@ extern "C"
     // serial, so the same particles keep their lights from step to step.
     typedef struct mvfxLightDef
     {
-        bool enabled;
+        bool enable;
         // A particle carries one when its serial is a multiple of this,
         // from 1 to 65,536.
         int32_t every;
@@ -939,7 +939,7 @@ extern "C"
     // the gas's box (a 2D gas's reaches along its Z without end).
     typedef struct mvfxGasSplat
     {
-        bool enabled;
+        bool enable;
         // The gas: its index in the effect's def.
         int32_t gas;
         float density;
@@ -972,7 +972,7 @@ extern "C"
     // The memory for crossings is 20 bytes a particle of its capacity.
     typedef struct mvfxWaterCoupling
     {
-        bool enabled;
+        bool enable;
         // The surface: its index in the effect's def.
         int32_t water;
         // Its particles' radius in its space, above 0 and at most
@@ -1270,7 +1270,7 @@ extern "C"
     /// @param size        The grid's points along X, Y and Z, each from 1 to
     ///                    MVFX_MAX_GRID_SIZE, at most MVFX_MAX_GRID_POINTS in
     ///                    all.
-    /// @param values      Receives three values a point, X fastest, then Y,
+    /// @param valuesOut   Receives three values a point, X fastest, then Y,
     ///                    then Z.
     /// @param valueCount  The values the array holds, at least three a point.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
@@ -1283,7 +1283,7 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxBakeCurlNoise(const mvfxNoise* noise, int32_t period,
-                                                         const int32_t size[3], float* values,
+                                                         const int32_t size[3], float* valuesOut,
                                                          int64_t valueCount);
 
 #ifdef __cplusplus

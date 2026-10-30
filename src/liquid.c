@@ -201,8 +201,8 @@ static void Slide(mvfxInstance* instance, int32_t emitter, const Liquid* l, floa
                   float* const moved[3])
 {
     const mvfxEmitterState* state = &instance->emitters[emitter];
-    bool collides = instance->effect->emitters[emitter].collision.enabled;
-    const mvfxCollision slide = {.enabled = true};
+    bool collides = instance->effect->emitters[emitter].collision.enable;
+    const mvfxCollision slide = {.enable = true};
     for (int32_t i = 0; i < l->count; ++i)
     {
         const float start[3] = {l->x[0][i], l->x[1][i], l->x[2][i]};

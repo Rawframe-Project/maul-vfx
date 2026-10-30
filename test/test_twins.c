@@ -19,7 +19,7 @@
 // One step's work as the host cuts it.
 typedef struct HostWork
 {
-    mvfxTaskFn* task;
+    mvfxTaskFunction* task;
     void* taskContext;
     int32_t starts[MAX_RANGES];
     int32_t ends[MAX_RANGES];
@@ -55,7 +55,7 @@ static void* Worker(void* argument)
     }
 }
 
-static void* Enqueue(mvfxTaskFn* task, int32_t itemCount, int32_t minRange, void* taskContext,
+static void* Enqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange, void* taskContext,
                      void* userContext)
 {
     Host* host = userContext;

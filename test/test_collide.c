@@ -50,7 +50,7 @@ static mvfxEmitterDef Held(const mvfxCollider* colliders, int32_t count, int32_t
     emitter.capacity = capacity;
     emitter.hostSpawnCapacity = capacity;
     emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
-    emitter.collision = (mvfxCollision){.enabled = true, .restitution = 1.0f};
+    emitter.collision = (mvfxCollision){.enable = true, .restitution = 1.0f};
     emitter.colliders = colliders;
     emitter.colliderCount = count;
     return emitter;
@@ -338,7 +338,7 @@ static void TestHostAndSpaces(void)
             CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success,
                   "step");
             CHECK(fabsf(At(&scene, 1).position[1] + 1.0f) <= 1e-4f, "cleared");
-            uint64_t misuse = mvfxGetContextMisuse(scene.context);
+            uint64_t misuse = mvfxContext_GetMisuse(scene.context);
             mvfxCollider bad = {.kind = mvfx_colliderSphere};
             CHECK(mvfxInstance_SetColliders(scene.context, scene.instance, &bad, 1) ==
                           mvfx_errorInvalid &&
@@ -347,7 +347,7 @@ static void TestHostAndSpaces(void)
                       mvfxInstance_SetColliders(scene.context, scene.instance, NULL, 1) ==
                           mvfx_errorInvalid,
                   "refused");
-            CHECK(mvfxGetContextMisuse(scene.context) == misuse + 3, "each counted");
+            CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 3, "each counted");
             mvfxInstanceId stale = scene.instance;
             stale.generation += 1;
             CHECK(mvfxInstance_SetColliders(scene.context, stale, &floor, 1) == mvfx_errorStale &&
@@ -523,7 +523,7 @@ static void TestRefusals(void)
             bad.colliderCount = MVFX_MAX_COLLIDERS + 1;
             break;
         case 11:
-            bad.collision.enabled = false;
+            bad.collision.enable = false;
             bad.killRules = &rule;
             bad.killRuleCount = 1;
             break;

@@ -597,7 +597,7 @@ void mvfxPlanDepth(const mvfxResolvedDepth* depth, const mvfxCollision* collisio
     double turn[4];
     Compose(map->rotation, image->rotation, turn);
     *out = (mvfxPlannedDepth){
-        .enabled = true,
+        .enable = true,
         .width = image->width,
         .height = image->height,
         .reversed = image->reversed,

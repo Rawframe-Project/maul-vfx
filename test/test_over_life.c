@@ -97,7 +97,7 @@ static void TestColor(void)
     emitter.color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.5f, 1, 1, 0.8f}, .max = {0.5f, 1, 1, 0.8f}};
     emitter.overLife.color =
-        (mvfxColorOverLife){.enabled = true,
+        (mvfxColorOverLife){.enable = true,
                             .gradient = s_gradient,
                             .scaleAlpha = true,
                             .alpha = {.value = 1.0f, .curve = {.keys = s_rising, .keyCount = 2}}};
@@ -120,7 +120,7 @@ static void TestColor(void)
     // speed of 10 is 5 in the emitter's units, half way; no stored colour
     // is white.
     emitter = Held();
-    emitter.overLife.color = (mvfxColorOverLife){.enabled = true,
+    emitter.overLife.color = (mvfxColorOverLife){.enable = true,
                                                  .input = mvfx_overSpeed,
                                                  .speedRange = {0.0f, 10.0f},
                                                  .gradient = s_gradient};
@@ -154,14 +154,14 @@ static void TestSize(void)
     mvfxEmitterDef emitter = Held();
     emitter.size =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3, 0}, .max = {1, 2, 3, 0}};
-    emitter.overLife.size = (mvfxSizeOverLife){.enabled = true, .size = {{.value = 2.0f}}};
+    emitter.overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 2.0f}}};
     Scene scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND);
     TestParticle record = Record(&scene);
     const float* size = record.size;
     CHECK(size[0] == 2.0f && size[1] == 4.0f && size[2] == 6.0f, "uniform");
     mvfxDestroyContext(scene.context);
     emitter.overLife.size =
-        (mvfxSizeOverLife){.enabled = true,
+        (mvfxSizeOverLife){.enable = true,
                            .perAxis = true,
                            .size = {{.value = 1.0f, .curve = {.keys = s_rising, .keyCount = 2}},
                                     {.value = 3.0f},
@@ -171,7 +171,7 @@ static void TestSize(void)
     CHECK(Near(size[0], 0.5f) && size[1] == 6.0f && size[2] == 3.0f, "per axis");
     mvfxDestroyContext(scene.context);
     emitter.overLife.size =
-        (mvfxSizeOverLife){.enabled = true,
+        (mvfxSizeOverLife){.enable = true,
                            .input = mvfx_overSpeed,
                            .speedRange = {1.0f, 3.0f},
                            .size = {{.value = 2.0f, .curve = {.keys = s_rising, .keyCount = 2}}}};
@@ -260,7 +260,7 @@ static void TestCustomAndRotation(void)
     emitter.spin = mvfxRangeSource(2.0f, 2.0f);
     emitter.angularVelocity =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 2, 0}, .max = {0, 0, 2, 0}};
-    emitter.overLife.rotation = (mvfxRotationOverLife){.enabled = true, .scale = {.value = 0.5f}};
+    emitter.overLife.rotation = (mvfxRotationOverLife){.enable = true, .scale = {.value = 0.5f}};
     scene = Run(&emitter, 0.0f, MVFX_TICKS_PER_SECOND / 2);
     record = Record(&scene);
     CHECK(Near(record.angle, 0.5f), "a sprite's turn scaled");
@@ -283,21 +283,21 @@ static void TestRefusals(void)
         {
         case 0:
             o->color = (mvfxColorOverLife){
-                .enabled = true, .input = mvfx_overSpeed, .speedRange = {2.0f, 1.0f}};
+                .enable = true, .input = mvfx_overSpeed, .speedRange = {2.0f, 1.0f}};
             break;
         case 1:
-            o->color = (mvfxColorOverLife){.enabled = true, .input = 2};
+            o->color = (mvfxColorOverLife){.enable = true, .input = 2};
             break;
         case 2:
-            o->color = (mvfxColorOverLife){.enabled = true, .gradient = {s_redToBlue, 2, NULL, 1}};
+            o->color = (mvfxColorOverLife){.enable = true, .gradient = {s_redToBlue, 2, NULL, 1}};
             break;
         case 3:
             o->color = (mvfxColorOverLife){
-                .enabled = true, .scaleAlpha = true, .alpha = {.value = (float)NAN}};
+                .enable = true, .scaleAlpha = true, .alpha = {.value = (float)NAN}};
             break;
         case 4:
             o->size =
-                (mvfxSizeOverLife){.enabled = true,
+                (mvfxSizeOverLife){.enable = true,
                                    .perAxis = true,
                                    .size = {{.value = 1},
                                             {.value = 1},
@@ -322,10 +322,10 @@ static void TestRefusals(void)
             break;
         case 9:
             o->rotation =
-                (mvfxRotationOverLife){.enabled = true, .scale = {.value = (float)INFINITY}};
+                (mvfxRotationOverLife){.enable = true, .scale = {.value = (float)INFINITY}};
             break;
         case 10:
-            o->size = (mvfxSizeOverLife){.enabled = true,
+            o->size = (mvfxSizeOverLife){.enable = true,
                                          .input = mvfx_overSpeed,
                                          .speedRange = {0.0f, (float)NAN},
                                          .size = {{.value = 1}}};

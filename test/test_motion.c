@@ -383,7 +383,7 @@ static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     Scene scene = NewScene(&emitter);
-    uint64_t misuse = mvfxGetContextMisuse(scene.context);
+    uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     const double origin[3] = {0.0, 0.0, 0.0};
     const double far[3] = {0.0, 0x1p53, 0.0};
     const float half[4] = {0.0f, 0.0f, 0.0f, 0.5f};
@@ -399,7 +399,7 @@ static void TestRefusals(void)
     CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, NULL, s_identity, 1.0f, false) ==
               mvfx_errorInvalid,
           "no origin");
-    CHECK(mvfxGetContextMisuse(scene.context) == misuse + 4, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 4, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_SetTransform(scene.context, stale, origin, s_identity, 1.0f, false) ==
@@ -412,9 +412,9 @@ static void TestRefusals(void)
     def.effect = (mvfxEffectId){1, 1};
     def.scale = 2e6f;
     mvfxInstanceId none = {0};
-    uint64_t counted = mvfxGetContextMisuse(scene.context);
+    uint64_t counted = mvfxContext_GetMisuse(scene.context);
     CHECK(mvfxCreateInstance(scene.context, &def, &none) == mvfx_errorLimit &&
-              mvfxGetContextMisuse(scene.context) == counted,
+              mvfxContext_GetMisuse(scene.context) == counted,
           "a def's scale past MVFX_MAX_SCALE, no misuse");
     def.scale = 1.0f;
     def.rotation[3] = 0.9f;

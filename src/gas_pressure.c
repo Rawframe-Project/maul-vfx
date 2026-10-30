@@ -53,7 +53,7 @@ typedef struct Pass
 } Pass;
 
 // Runs a pass's range function over rows rows.
-static void Rows(const Level* l, mvfxTaskFn* range, int32_t rows, Pass* pass)
+static void Rows(const Level* l, mvfxTaskFunction* range, int32_t rows, Pass* pass)
 {
     mvfxRunTasks(l->tasks, range, rows, ROW_RANGE, pass);
 }

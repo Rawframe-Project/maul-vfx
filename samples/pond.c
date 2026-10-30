@@ -50,12 +50,8 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     leaves.shape.rotation[0] = 0.70710678f; // the disc turned into the XZ plane
     leaves.shape.rotation[3] = 0.70710678f;
     leaves.motion.gravity[1] = -9.8f;
-    leaves.water = (mvfxWaterCoupling){.enabled = true,
-                                       .water = 0,
-                                       .radius = 0.05f,
-                                       .push = 0.1f,
-                                       .buoyancy = 2.0f,
-                                       .drag = 10.0f};
+    leaves.water = (mvfxWaterCoupling){
+        .enable = true, .water = 0, .radius = 0.05f, .push = 0.1f, .buoyancy = 2.0f, .drag = 10.0f};
 
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &leaves;

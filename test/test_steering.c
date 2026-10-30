@@ -58,8 +58,8 @@ static mvfxEmitterDef Emitter(bool neighbors)
     emitter.hostModules = &s_capture;
     emitter.hostModuleCount = 1;
     emitter.neighbors =
-        (mvfxNeighborDef){.enabled = neighbors, .source = -1, .radius = 4.0f, .maxNeighbors = MOST};
-    emitter.steering = (mvfxSteeringDef){.enabled = true, .viewAngle = 3.14159274f};
+        (mvfxNeighborDef){.enable = neighbors, .source = -1, .radius = 4.0f, .maxNeighbors = MOST};
+    emitter.steering = (mvfxSteeringDef){.enable = true, .viewAngle = 3.14159274f};
     return emitter;
 }
 
@@ -395,7 +395,7 @@ static void TestChecks(void)
         switch (rule)
         {
         case 0:
-            emitter.neighbors.enabled = false, s->separation = 1.0f, s->separationRadius = 1.0f;
+            emitter.neighbors.enable = false, s->separation = 1.0f, s->separationRadius = 1.0f;
             break;
         case 1:
             s->alignment = 1.0f, s->alignmentRadius = 5.0f;
@@ -457,7 +457,7 @@ static void TestChecks(void)
     emitter.steering.path = (mvfxSteerPath){.points = NULL, .pointCount = 0};
     CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success,
           "the bounds; a path of no weight unread");
-    emitter.steering.enabled = false;
+    emitter.steering.enable = false;
     emitter.steering.viewAngle = NAN;
     CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success,
           "steering not enabled unread");

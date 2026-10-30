@@ -48,15 +48,14 @@ static uint64_t MotionFeatures(const mvfxCompiledEmitter* e)
     return If(e->forceCount > 0, MVFX_FEATURE_FORCES) | If(modules, MVFX_FEATURE_VELOCITY_MODULES) |
            If(overLife, MVFX_FEATURE_OVER_LIFE) |
            If(e->killRuleCount > 0, MVFX_FEATURE_KILL_RULES) |
-           If(e->collision.enabled, MVFX_FEATURE_COLLISION) |
+           If(e->collision.enable, MVFX_FEATURE_COLLISION) |
            If(e->hostModuleCount > 0, MVFX_FEATURE_HOST_MODULES) |
-           If(e->neighbors.enabled, MVFX_FEATURE_NEIGHBORS) |
-           If(e->steering.enabled, MVFX_FEATURE_STEERING) |
-           If(e->contacts.enabled, MVFX_FEATURE_CONTACTS) |
+           If(e->neighbors.enable, MVFX_FEATURE_NEIGHBORS) |
+           If(e->steering.enable, MVFX_FEATURE_STEERING) |
+           If(e->contacts.enable, MVFX_FEATURE_CONTACTS) |
            If(e->pairRadius > 0.0f, MVFX_FEATURE_PAIR_FORCE) |
-           If(e->rigid.enabled, MVFX_FEATURE_RIGID) | If(e->liquid.enabled, MVFX_FEATURE_LIQUID) |
-           If(e->gasSplat.enabled, MVFX_FEATURE_GAS_SPLAT) |
-           If(e->water.enabled, MVFX_FEATURE_WATER);
+           If(e->rigid.enable, MVFX_FEATURE_RIGID) | If(e->liquid.enable, MVFX_FEATURE_LIQUID) |
+           If(e->gasSplat.enable, MVFX_FEATURE_GAS_SPLAT) | If(e->water.enable, MVFX_FEATURE_WATER);
 }
 
 uint64_t mvfxFeaturesOf(const mvfxCompiledEmitter* e)
@@ -65,12 +64,12 @@ uint64_t mvfxFeaturesOf(const mvfxCompiledEmitter* e)
                         If(e->ratePerDistance > 0.0f, MVFX_FEATURE_DISTANCE) |
                         If(e->hostSpawnCapacity > 0, MVFX_FEATURE_HOST_SPAWN) |
                         If(e->inheritVelocity != 0.0f, MVFX_FEATURE_INHERIT_VELOCITY) |
-                        If(e->eventSpawn.enabled, MVFX_FEATURE_EVENT_SPAWN);
+                        If(e->eventSpawn.enable, MVFX_FEATURE_EVENT_SPAWN);
     uint64_t output =
-        If(e->events != 0, MVFX_FEATURE_EVENTS) | If(e->plexus.enabled, MVFX_FEATURE_PLEXUS) |
+        If(e->events != 0, MVFX_FEATURE_EVENTS) | If(e->plexus.enable, MVFX_FEATURE_PLEXUS) |
         If(e->ribbonIds != mvfx_ribbonNone, MVFX_FEATURE_RIBBON) |
-        If(e->beam.enabled, MVFX_FEATURE_BEAM) | If(e->unitPoints > 1, MVFX_FEATURE_UNITS) |
-        If(e->light.enabled, MVFX_FEATURE_LIGHT) |
+        If(e->beam.enable, MVFX_FEATURE_BEAM) | If(e->unitPoints > 1, MVFX_FEATURE_UNITS) |
+        If(e->light.enable, MVFX_FEATURE_LIGHT) |
         If(e->sortMode != mvfx_sortNone, MVFX_FEATURE_SORT);
     return spawning | StoredFeatures(e) | MotionFeatures(e) | output;
 }
@@ -113,7 +112,7 @@ static bool Kills(const mvfxCompiledEmitter* e)
 {
     bool kills =
         e->killRuleCount > 0 ||
-        (e->collision.enabled && (e->collision.killOnCollision || e->collision.killOutsideView));
+        (e->collision.enable && (e->collision.killOnCollision || e->collision.killOutsideView));
     for (int32_t f = 0; f < e->forceCount; ++f)
     {
         kills =
@@ -287,7 +286,7 @@ static void ValuesOf(const mvfxCompiledEmitter* e, mvfxEmitterView* viewOut)
     viewOut->neighbors = e->neighbors;
     viewOut->gridCell = e->gridCell;
     viewOut->steering = e->steering;
-    viewOut->steering.path.points = e->steering.enabled ? &e->pathPoints[0][0] : nullptr;
+    viewOut->steering.path.points = e->steering.enable ? &e->pathPoints[0][0] : nullptr;
     viewOut->pairRadius = e->pairRadius;
     viewOut->pairStrength = LifeOf(&e->pairStrength);
     viewOut->contacts = e->contacts;
@@ -394,16 +393,16 @@ static MVFX_NOINLINE mvfxResult mvfxEffect_GetEmitterViewWork(const mvfxContext*
         .gravitySpace = e->gravitySpace,
         .drag = e->drag,
         .fixedBounds = e->fixedBounds,
-        .sceneQueries = e->collision.enabled && e->collision.sceneQueries,
-        .depthImage = e->collision.enabled && e->collision.depthImage,
+        .enableSceneQueries = e->collision.enable && e->collision.enableSceneQueries,
+        .enableDepthImage = e->collision.enable && e->collision.enableDepthImage,
     };
-    for (int32_t c = 0; e->collision.enabled && c < e->colliderCount; ++c)
+    for (int32_t c = 0; e->collision.enable && c < e->colliderCount; ++c)
     {
         viewOut->colliderKinds |= 1u << e->colliders[c].kind;
         viewOut->colliderGrids[c] = e->colliders[c].grid;
     }
     ForcesOf(e, viewOut);
-    viewOut->splatGas = e->gasSplat.enabled ? e->gasSplat.gas : -1;
+    viewOut->splatGas = e->gasSplat.enable ? e->gasSplat.gas : -1;
     viewOut->liquid = e->liquid;
     viewOut->water = e->water;
     ValuesOf(e, viewOut);

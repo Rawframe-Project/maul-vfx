@@ -49,7 +49,7 @@ bool mvfxCreateSimGrid(mvfxGpuSim* sim, int32_t e)
 {
     Emitter* emitter = &sim->emitters[e];
     const mvfxEmitterView* view = &sim->views[e];
-    emitter->gridSource = view->neighbors.enabled ? view->neighbors.source : -1;
+    emitter->gridSource = view->neighbors.enable ? view->neighbors.source : -1;
     emitter->gridFlags = mvfxGridFlags(view, emitter->gridSource == e);
     if (emitter->gridFlags == 0)
     {
