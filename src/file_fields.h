@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The effect file's tables of the def's structs: for each, its fields in
-// declaration order, as tools/gen_file.py writes them into file_fields.c
-// from the public headers.
+// ascending tag order, and the defaults an absent field takes, as
+// tools/gen_file.py writes them into file_fields.c from the public headers
+// and tools/file-tags.txt.
 
 #ifndef MAUL_VFX_SRC_FILE_FIELDS_H
 #define MAUL_VFX_SRC_FILE_FIELDS_H
@@ -37,19 +38,21 @@ enum
     mvfx_fieldMesh = 14,
     // A host module's function, its user pointer at another place, named.
     mvfx_fieldModule = 15,
-    // A def's cookie, not stored: set when read.
+    // A def's cookie, its value at at: tag 0, not stored, its default
+    // gives it.
     mvfx_fieldCookie = 16,
 };
 
 typedef struct mvfxFileType mvfxFileType;
 
-// A field: its place in its struct, its kind (an array's elements' too),
-// its elements (a fixed array's count, 1 for one; an array's elements a
-// counted item holds), a struct's table, and at and cap: an array's
-// count's place and the cap on it, a module's user pointer's place, a
-// cookie's value.
+// A field: its tag, its place in its struct, its kind (an array's
+// elements' too), its elements (a fixed array's count, 1 for one; an
+// array's elements a counted item holds), a struct's table, and at and
+// cap: an array's count's place and the cap on it, a module's user
+// pointer's place, a cookie's value.
 typedef struct mvfxFileField
 {
+    uint32_t tag;
     uint32_t offset;
     mvfxFieldKind kind;
     mvfxFieldKind element;
@@ -59,17 +62,30 @@ typedef struct mvfxFileField
     uint32_t cap;
 } mvfxFileField;
 
-// A struct: its size and alignment and its fields.
+// A struct: its size and alignment, its fields, and the place of its
+// default in the block of defaults (MVFX_FILE_NO_DEFAULT for a struct
+// only ever held whole by another, whose default holds its own).
 struct mvfxFileType
 {
     uint32_t size;
     uint32_t alignment;
     const mvfxFileField* fields;
     int32_t fieldCount;
+    uint32_t defaultAt;
 };
 
+#define MVFX_FILE_NO_DEFAULT UINT32_MAX
+
 // A struct T's table, its fields in s_fields_T.
-#define MVFX_FILE_TYPE(T, count) {sizeof(T), alignof(T), s_fields_##T, count}
+#define MVFX_FILE_TYPE(T, count, defaultAt) {sizeof(T), alignof(T), s_fields_##T, count, defaultAt}
+
+// The most bytes the block of defaults takes: the root's default and one
+// of each array's items' (file_fields.c checks it).
+#define MVFX_FILE_DEFAULT_BYTES 4096
+
+// Writes the block of defaults into block, MVFX_FILE_DEFAULT_BYTES aligned
+// to 16: the defs' own (mvfxDefault*Def), zero bytes for other structs.
+void mvfxFileDefaults(void* block);
 
 // The most references of each kind a def holds (its grids, its meshes, its
 // host modules), so the most names of each a file holds; file_fields.c

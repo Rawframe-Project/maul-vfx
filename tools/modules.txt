@@ -90,7 +90,7 @@ water_shallow: elementary instance tasks water water_ground
 water_ground: box collide direction grid instance tasks water water_api
 water_couple: box event force instance water water_api
 file_fields:
-file_codec: file_fields
+file_codec: file_fields invariant
 file: allocator context effect effect_api effect_check effect_parts file_codec file_fields fpenv
 marching_table:
 surface_mesh: context fpenv gas gas_api instance marching_table refusal

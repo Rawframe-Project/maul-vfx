@@ -10,28 +10,36 @@
 #include "file_codec.h"
 #include "fpenv.h"
 
+#include <stdalign.h>
 #include <string.h>
 
-// The header: magic, version, size, unit count, then the payload's hash.
+// The header: magic, version, size, section count, then the hash of
+// everything after it.
 #define HEADER_BYTES 24
-// A unit table entry: kind, offset, size, count.
-#define ENTRY_BYTES 16
-// The units: the three kinds of names, then the effect.
-#define UNIT_COUNT  4
-#define EFFECT_UNIT 3
-#define UNITS_START (HEADER_BYTES + UNIT_COUNT * ENTRY_BYTES)
-#define MAGIC       0x5846564Du
+// A section table entry: tag, offset, length.
+#define ENTRY_BYTES 12
+// The sections' tags: a kind of names is its mvfxAssetKind plus 1, then
+// the effect, the last.
+#define EFFECT_TAG    4
+#define SECTION_COUNT 4
+#define MAGIC         0x5846564Du
 
 static const int32_t s_nameCaps[MVFX_ASSET_KINDS] = {MVFX_FILE_MAX_GRIDS, MVFX_FILE_MAX_MESHES,
                                                      MVFX_FILE_MAX_MODULES};
 
-// A unit as the table places it.
-typedef struct Unit
+// A section as the table places it (size 0 for one absent), and a names
+// section's count.
+typedef struct Section
 {
     size_t offset;
     size_t size;
     uint32_t count;
-} Unit;
+} Section;
+
+static size_t Padded(size_t at)
+{
+    return (at + MVFX_FILE_ALIGNMENT - 1) & ~(size_t)(MVFX_FILE_ALIGNMENT - 1);
+}
 
 static mvfxFileResult Fault(mvfxResult result, int64_t offset)
 {
@@ -143,10 +151,11 @@ static mvfxResult CheckAssets(const mvfxEffectAsset* assets, int32_t count)
     return mvfx_success;
 }
 
-// The bytes of a kind's names unit as gathered.
+// The bytes of the section of a kind's names as gathered, 0 when it has
+// none and is left out: the count, then each name's length and bytes.
 static size_t NamesBytes(const mvfxCodec* codec, mvfxAssetKind kind)
 {
-    size_t bytes = 0;
+    size_t bytes = codec->nameCount[kind] > 0 ? 4 : 0;
     for (int32_t i = 0; i < codec->nameCount[kind]; ++i)
     {
         bytes += 4 + (size_t)codec->assets[codec->names[kind][i]].nameLength;
@@ -154,31 +163,61 @@ static size_t NamesBytes(const mvfxCodec* codec, mvfxAssetKind kind)
     return bytes;
 }
 
-// Writes the header, the unit table and the names units of a file whose
-// effect unit is effectBytes long.
-static void WriteFrame(const mvfxCodec* codec, uint8_t* bytes, size_t size, size_t effectBytes)
+// The sections a file of an effect section of effectBytes holds, each
+// placed after the last, and the offset where the last ends.
+static size_t PlaceSections(const mvfxCodec* codec, size_t effectBytes,
+                            Section sections[SECTION_COUNT], uint32_t* count)
 {
+    *count = 1;
+    for (mvfxAssetKind kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
+    {
+        *count += codec->nameCount[kind] > 0 ? 1 : 0;
+    }
+    size_t at = Padded(HEADER_BYTES + *count * ENTRY_BYTES);
+    for (uint32_t s = 0; s < SECTION_COUNT; ++s)
+    {
+        size_t bytes = s + 1 < EFFECT_TAG ? NamesBytes(codec, (mvfxAssetKind)s) : effectBytes;
+        sections[s] = (Section){at, bytes, 0};
+        at = Padded(at + bytes);
+    }
+    return at;
+}
+
+// Writes the header, the section table and the names sections, every byte
+// between them 0.
+static void WriteFrame(const mvfxCodec* codec, uint8_t* bytes, size_t size, uint32_t count,
+                       const Section sections[SECTION_COUNT])
+{
+    memset(bytes, 0, size);
     Set32(bytes, 0, MAGIC);
     Set32(bytes, 4, MVFX_FILE_VERSION);
     Set32(bytes, 8, (uint32_t)size);
-    Set32(bytes, 12, UNIT_COUNT);
-    size_t at = UNITS_START;
-    for (uint32_t kind = 0; kind < UNIT_COUNT; ++kind)
+    Set32(bytes, 12, count);
+    size_t entry = HEADER_BYTES;
+    for (uint32_t s = 0; s < SECTION_COUNT; ++s)
     {
-        size_t unit = kind < EFFECT_UNIT ? NamesBytes(codec, (mvfxAssetKind)kind) : effectBytes;
-        size_t entry = HEADER_BYTES + kind * ENTRY_BYTES;
-        Set32(bytes, entry, kind);
-        Set32(bytes, entry + 4, (uint32_t)at);
-        Set32(bytes, entry + 8, (uint32_t)unit);
-        Set32(bytes, entry + 12, kind < EFFECT_UNIT ? (uint32_t)codec->nameCount[kind] : 1);
-        for (int32_t i = 0; kind < EFFECT_UNIT && i < codec->nameCount[kind]; ++i)
+        if (s + 1 < EFFECT_TAG && codec->nameCount[s] == 0)
         {
-            const mvfxEffectAsset* asset = &codec->assets[codec->names[kind][i]];
+            continue;
+        }
+        Set32(bytes, entry, s + 1);
+        Set32(bytes, entry + 4, (uint32_t)sections[s].offset);
+        Set32(bytes, entry + 8, (uint32_t)sections[s].size);
+        entry += ENTRY_BYTES;
+        if (s + 1 == EFFECT_TAG)
+        {
+            continue;
+        }
+        size_t at = sections[s].offset;
+        Set32(bytes, at, (uint32_t)codec->nameCount[s]);
+        at += 4;
+        for (int32_t i = 0; i < codec->nameCount[s]; ++i)
+        {
+            const mvfxEffectAsset* asset = &codec->assets[codec->names[s][i]];
             Set32(bytes, at, (uint32_t)asset->nameLength);
             memcpy(bytes + at + 4, asset->name, (size_t)asset->nameLength);
             at += 4 + (size_t)asset->nameLength;
         }
-        at += kind < EFFECT_UNIT ? 0 : unit;
     }
 }
 
@@ -223,8 +262,11 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
         return Fault(valid, -1);
     }
     int32_t names[MVFX_FILE_MAX_GRIDS + MVFX_FILE_MAX_MESHES + MVFX_FILE_MAX_MODULES];
-    mvfxCodec codec = {.writing = true,
-                       .end = SIZE_MAX,
+    alignas(16) uint8_t defaults[MVFX_FILE_DEFAULT_BYTES];
+    mvfxFileDefaults(defaults);
+    const uint8_t* base = defaults + mvfxFileEffectDef->defaultAt;
+    mvfxCodec codec = {.end = SIZE_MAX,
+                       .defaults = defaults,
                        .faultAt = -1,
                        .assets = assets,
                        .assetCount = assetCount,
@@ -232,17 +274,14 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
                                  names + MVFX_FILE_MAX_GRIDS + MVFX_FILE_MAX_MESHES}};
     memcpy(codec.nameCap, s_nameCaps, sizeof s_nameCaps);
     // Measured first, gathering the names; then written after them.
-    mvfxCodeStruct(&codec, mvfxFileEffectDef, (uint8_t*)def);
+    mvfxWriteFields(&codec, mvfxFileEffectDef, (const uint8_t*)def, base);
     if (codec.fault != mvfx_success)
     {
         return Fault(codec.fault, -1);
     }
-    size_t effectBytes = codec.at;
-    size_t size = UNITS_START + effectBytes;
-    for (mvfxAssetKind kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
-    {
-        size += NamesBytes(&codec, kind);
-    }
+    Section sections[SECTION_COUNT];
+    uint32_t count = 0;
+    size_t size = PlaceSections(&codec, codec.at, sections, &count);
     if (size > INT32_MAX)
     {
         return Fault(mvfx_errorCapacity, -1);
@@ -253,11 +292,11 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
         return Fault(mvfx_errorCapacity, -1);
     }
     uint8_t* out = bytes;
-    WriteFrame(&codec, out, size, effectBytes);
+    WriteFrame(&codec, out, size, count, sections);
     codec.out = out;
-    codec.at = size - effectBytes;
+    codec.at = sections[EFFECT_TAG - 1].offset;
     codec.end = size;
-    mvfxCodeStruct(&codec, mvfxFileEffectDef, (uint8_t*)def);
+    mvfxWriteFields(&codec, mvfxFileEffectDef, (const uint8_t*)def, base);
     uint64_t hash = Hash(out, size);
     Set32(out, 16, (uint32_t)hash);
     Set32(out, 20, (uint32_t)(hash >> 32));
@@ -286,11 +325,13 @@ static mvfxFileResult ReadHeader(const uint8_t* bytes, size_t size)
     {
         return Fault(size < 8 ? mvfx_errorFormat : mvfx_errorVersion, 4);
     }
-    if (size < UNITS_START || size > INT32_MAX || Get32(bytes, 8) != size)
+    if (size < HEADER_BYTES || size > INT32_MAX || size % MVFX_FILE_ALIGNMENT != 0 ||
+        Get32(bytes, 8) != size)
     {
         return Fault(mvfx_errorFormat, 8);
     }
-    if (Get32(bytes, 12) != UNIT_COUNT)
+    uint32_t count = Get32(bytes, 12);
+    if (count < 1 || count > (size - HEADER_BYTES) / ENTRY_BYTES)
     {
         return Fault(mvfx_errorFormat, 12);
     }
@@ -302,42 +343,79 @@ static mvfxFileResult ReadHeader(const uint8_t* bytes, size_t size)
     return Fault(mvfx_success, -1);
 }
 
-// Checks the unit table: the kinds in order, each unit where the last
-// ends, within the file, its count within its cap, the last ending with
-// the file.
-static mvfxFileResult ReadTable(const uint8_t* bytes, size_t size, Unit units[UNIT_COUNT])
+// The offset of the first byte from at to end that is not 0, or -1.
+static int64_t NonZero(const uint8_t* bytes, size_t at, size_t end)
 {
-    size_t at = UNITS_START;
-    for (uint32_t kind = 0; kind < UNIT_COUNT; ++kind)
+    for (; at < end; ++at)
     {
-        size_t entry = HEADER_BYTES + kind * ENTRY_BYTES;
-        Unit* unit = &units[kind];
-        *unit = (Unit){Get32(bytes, entry + 4), Get32(bytes, entry + 8), Get32(bytes, entry + 12)};
-        uint32_t cap = kind < EFFECT_UNIT ? (uint32_t)s_nameCaps[kind] : 1;
-        if (Get32(bytes, entry) != kind)
+        if (bytes[at] != 0)
+        {
+            return (int64_t)at;
+        }
+    }
+    return -1;
+}
+
+// Checks the section table: tags ascending and known, each section where
+// the last ends after its padding, within the file, the bytes between
+// them 0, the last ending with the file and the effect present.
+static mvfxFileResult ReadTable(const uint8_t* bytes, size_t size, Section sections[SECTION_COUNT])
+{
+    uint32_t count = Get32(bytes, 12);
+    size_t at = HEADER_BYTES + (size_t)count * ENTRY_BYTES;
+    uint32_t last = 0;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        int64_t padding = NonZero(bytes, at, Padded(at));
+        if (padding >= 0)
+        {
+            return Fault(mvfx_errorFormat, padding);
+        }
+        at = Padded(at);
+        size_t entry = HEADER_BYTES + (size_t)i * ENTRY_BYTES;
+        uint32_t tag = Get32(bytes, entry);
+        if (tag <= last)
         {
             return Fault(mvfx_errorFormat, (int64_t)entry);
         }
-        if (unit->offset != at)
+        // Only a later version writes a section this one does not know.
+        if (tag > SECTION_COUNT)
+        {
+            return Fault(mvfx_errorVersion, (int64_t)entry);
+        }
+        if (Get32(bytes, entry + 4) != at)
         {
             return Fault(mvfx_errorFormat, (int64_t)entry + 4);
         }
-        if (unit->size > size - at || (kind == EFFECT_UNIT && unit->size != size - at))
+        size_t length = Get32(bytes, entry + 8);
+        if (length > size - at)
         {
             return Fault(mvfx_errorFormat, (int64_t)entry + 8);
         }
-        if (unit->count > cap || (kind == EFFECT_UNIT && unit->count != 1))
-        {
-            return Fault(mvfx_errorFormat, (int64_t)entry + 12);
-        }
-        at += unit->size;
+        sections[tag - 1] = (Section){at, length, 0};
+        at += length;
+        last = tag;
+    }
+    int64_t padding = NonZero(bytes, at, Padded(at));
+    if (padding >= 0)
+    {
+        return Fault(mvfx_errorFormat, padding);
+    }
+    if (Padded(at) != size)
+    {
+        return Fault(mvfx_errorFormat, (int64_t)Padded(at));
+    }
+    if (last != EFFECT_TAG)
+    {
+        return Fault(mvfx_errorFormat, 12);
     }
     return Fault(mvfx_success, -1);
 }
 
-// The length of the name at at in a unit ending at end, or -1 when it does
-// not fit there. Each walk after a unit's check reads lengths through it,
-// so none leaves the unit even if the bytes changed meanwhile.
+// The length of the name at at in a section ending at end, or -1 when it
+// does not fit there. Each walk after a section's check reads lengths
+// through it, so none leaves the section even if the bytes changed
+// meanwhile.
 static int64_t NameLength(const uint8_t* bytes, size_t at, size_t end)
 {
     if (end - at < 4)
@@ -348,13 +426,25 @@ static int64_t NameLength(const uint8_t* bytes, size_t at, size_t end)
     return length <= end - at - 4 ? (int64_t)length : -1;
 }
 
-// Checks a names unit alone: each name's length, its bytes UTF-8 and in
-// the unit, none twice, the unit ending with the last.
-static mvfxFileResult ReadNames(const uint8_t* bytes, const Unit* unit)
+// Where a names section's first name is: after its count, if it is there.
+static size_t FirstName(const Section* section)
 {
-    size_t end = unit->offset + unit->size;
-    size_t at = unit->offset;
-    for (uint32_t i = 0; i < unit->count; ++i)
+    return section->offset + (section->size > 0 ? 4 : 0);
+}
+
+// Checks a names section alone, absent for none: its count within its
+// cap, each name's length, its bytes UTF-8 and in the section, none twice,
+// the section ending with the last.
+static mvfxFileResult ReadNames(const uint8_t* bytes, Section* section, int32_t cap)
+{
+    size_t end = section->offset + section->size;
+    if (section->size > 0 && (section->size < 4 || Get32(bytes, section->offset) > (uint32_t)cap))
+    {
+        return Fault(mvfx_errorFormat, (int64_t)section->offset);
+    }
+    section->count = section->size > 0 ? Get32(bytes, section->offset) : 0;
+    size_t at = FirstName(section);
+    for (uint32_t i = 0; i < section->count; ++i)
     {
         int64_t length = NameLength(bytes, at, end);
         if (length < 1 || length > MVFX_MAX_ASSET_NAME)
@@ -366,7 +456,7 @@ static mvfxFileResult ReadNames(const uint8_t* bytes, const Unit* unit)
         {
             return Fault(mvfx_errorFormat, (int64_t)(at + 4 + bad));
         }
-        for (size_t before = unit->offset; before < at;)
+        for (size_t before = FirstName(section); before < at;)
         {
             int64_t earlier = NameLength(bytes, before, end);
             if (earlier < 0 || SameName((const char*)bytes + before + 4, (int32_t)earlier,
@@ -381,15 +471,16 @@ static mvfxFileResult ReadNames(const uint8_t* bytes, const Unit* unit)
     return Fault(at == end ? mvfx_success : mvfx_errorFormat, at == end ? -1 : (int64_t)at);
 }
 
-// Binds each name of each names unit to the asset of its kind named so.
-static mvfxFileResult Bind(const uint8_t* bytes, const Unit units[UNIT_COUNT],
+// Binds each name of each names section to the asset of its kind named
+// so.
+static mvfxFileResult Bind(const uint8_t* bytes, const Section sections[SECTION_COUNT],
                            const mvfxEffectAsset* assets, int32_t assetCount, int32_t* names)
 {
     for (mvfxAssetKind kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
     {
-        size_t at = units[kind].offset;
-        size_t end = at + units[kind].size;
-        for (uint32_t i = 0; i < units[kind].count; ++i)
+        size_t at = FirstName(&sections[kind]);
+        size_t end = sections[kind].offset + sections[kind].size;
+        for (uint32_t i = 0; i < sections[kind].count; ++i)
         {
             int64_t length = NameLength(bytes, at, end);
             if (length < 0)
@@ -416,15 +507,19 @@ static mvfxFileResult Bind(const uint8_t* bytes, const Unit units[UNIT_COUNT],
     return Fault(mvfx_success, -1);
 }
 
-// Walks the effect unit: checking and measuring without a def, reading
-// into one with names bound, its arrays in memory of capacity bytes.
-static mvfxFileResult ReadDef(const uint8_t* bytes, const Unit units[UNIT_COUNT],
-                              const mvfxEffectAsset* assets, int32_t* names, uint8_t* memory,
-                              size_t capacity, mvfxEffectDef* def, size_t* used)
+// Walks the effect section: checking and measuring without a def, reading
+// into one from its default with names bound, its arrays in memory of
+// capacity bytes.
+static mvfxFileResult ReadDef(const uint8_t* bytes, const Section sections[SECTION_COUNT],
+                              const uint8_t* defaults, const mvfxEffectAsset* assets,
+                              int32_t* names, uint8_t* memory, size_t capacity, mvfxEffectDef* def,
+                              size_t* used)
 {
+    const Section* effect = &sections[EFFECT_TAG - 1];
     mvfxCodec codec = {.in = bytes,
-                       .at = units[EFFECT_UNIT].offset,
-                       .end = units[EFFECT_UNIT].offset + units[EFFECT_UNIT].size,
+                       .at = effect->offset,
+                       .end = effect->offset + effect->size,
+                       .defaults = defaults,
                        .memory = memory,
                        .capacity = capacity,
                        .faultAt = -1,
@@ -433,10 +528,14 @@ static mvfxFileResult ReadDef(const uint8_t* bytes, const Unit units[UNIT_COUNT]
     for (int32_t kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
     {
         codec.names[kind] = names != nullptr ? names + first : nullptr;
-        codec.nameCap[kind] = (int32_t)units[kind].count;
-        first += units[kind].count;
+        codec.nameCap[kind] = (int32_t)sections[kind].count;
+        first += sections[kind].count;
     }
-    mvfxCodeStruct(&codec, mvfxFileEffectDef, (uint8_t*)def);
+    if (def != nullptr)
+    {
+        memcpy(def, defaults + mvfxFileEffectDef->defaultAt, sizeof *def);
+    }
+    mvfxReadFields(&codec, mvfxFileEffectDef, (uint8_t*)def, codec.end);
     *used = codec.used;
     if (codec.fault != mvfx_success)
     {
@@ -449,8 +548,8 @@ static mvfxFileResult ReadDef(const uint8_t* bytes, const Unit units[UNIT_COUNT]
     // Every name is referred to: the first one never is lies at fault.
     for (int32_t kind = 0; kind < MVFX_ASSET_KINDS; ++kind)
     {
-        size_t at = units[kind].offset;
-        size_t end = at + units[kind].size;
+        size_t at = FirstName(&sections[kind]);
+        size_t end = sections[kind].offset + sections[kind].size;
         for (int32_t i = 0; i < codec.nameCount[kind] && NameLength(bytes, at, end) >= 0; ++i)
         {
             at += 4 + (size_t)NameLength(bytes, at, end);
@@ -463,28 +562,28 @@ static mvfxFileResult ReadDef(const uint8_t* bytes, const Unit units[UNIT_COUNT]
     return Fault(mvfx_success, -1);
 }
 
-// Checks a file up to the effect unit's walk, measuring its memory and
+// Checks a file up to the effect section's walk, measuring its memory and
 // binding its names.
 static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEffectAsset* assets,
-                                int32_t assetCount, Unit units[UNIT_COUNT], int32_t* names,
+                                int32_t assetCount, Section sections[SECTION_COUNT], int32_t* names,
                                 size_t* needed)
 {
     mvfxFileResult result = ReadHeader(bytes, size);
     if (result.result == mvfx_success)
     {
-        result = ReadTable(bytes, size, units);
+        result = ReadTable(bytes, size, sections);
     }
     for (int32_t kind = 0; kind < MVFX_ASSET_KINDS && result.result == mvfx_success; ++kind)
     {
-        result = ReadNames(bytes, &units[kind]);
+        result = ReadNames(bytes, &sections[kind], s_nameCaps[kind]);
     }
     if (result.result == mvfx_success)
     {
-        result = ReadDef(bytes, units, assets, nullptr, nullptr, 0, nullptr, needed);
+        result = ReadDef(bytes, sections, nullptr, assets, nullptr, nullptr, 0, nullptr, needed);
     }
     if (result.result == mvfx_success)
     {
-        result = Bind(bytes, units, assets, assetCount, names);
+        result = Bind(bytes, sections, assets, assetCount, names);
     }
     return result;
 }
@@ -513,11 +612,11 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
     {
         return Fault(assetsValid, -1);
     }
-    Unit units[UNIT_COUNT] = {0};
+    Section sections[SECTION_COUNT] = {0};
     int32_t names[MVFX_FILE_MAX_GRIDS + MVFX_FILE_MAX_MESHES + MVFX_FILE_MAX_MODULES];
     size_t needed = 0;
     mvfxFileResult result =
-        CheckFile(bytes, (size_t)size, assets, assetCount, units, names, &needed);
+        CheckFile(bytes, (size_t)size, assets, assetCount, sections, names, &needed);
     if (result.result != mvfx_success)
     {
         return result;
@@ -527,13 +626,16 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
     {
         return Fault(mvfx_errorCapacity, -1);
     }
-    result = ReadDef(bytes, units, assets, names, memory, (size_t)capacity, defOut, &needed);
+    alignas(16) uint8_t defaults[MVFX_FILE_DEFAULT_BYTES];
+    mvfxFileDefaults(defaults);
+    result = ReadDef(bytes, sections, defaults, assets, names, memory, (size_t)capacity, defOut,
+                     &needed);
     // A def the file holds is the file's bytes: whatever check it fails,
     // a bound's included, the file is malformed.
     if (result.result == mvfx_success && (mvfxCheckEffectDef(defOut) != mvfx_success ||
                                           mvfxCheckEffectParts(defOut) != mvfx_success))
     {
-        result = Fault(mvfx_errorFormat, (int64_t)units[EFFECT_UNIT].offset);
+        result = Fault(mvfx_errorFormat, (int64_t)sections[EFFECT_TAG - 1].offset);
     }
     if (result.result != mvfx_success)
     {

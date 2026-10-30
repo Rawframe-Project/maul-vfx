@@ -2,13 +2,15 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Effect files: the refusals of the calls' arguments and of asset tables;
-// a file's header, unit table and names as written, names in the order
-// the def first refers to them; objects the table lacks; every refusal of
-// a reader at the offset of its byte, each field found by writing two
-// defs that differ in it; every file cut short refused; the memory a def
-// needs; and effects created from bytes. The golden test runs the whole
-// scene through files, and test_file_padding writes each of its effects
-// whatever their structs' padding holds.
+// a file's header, section table and names as written, names in the order
+// the def first refers to them; objects the table lacks; fields left out
+// that hold their defaults, at each level, and read back as them; every
+// refusal of a reader at the offset of its byte, each field found by
+// walking the file's sections, fields and items: unknown tags (a later
+// version's) refused, not misread; every file cut short refused; the
+// memory a def needs; and effects created from bytes. The golden test
+// runs the whole scene through files, and test_file_padding writes each
+// of its effects whatever their structs' padding holds.
 
 #include "file_codec.h"
 #include "file_fields.h"
@@ -18,6 +20,8 @@
 #include "maul-vfx/grid.h"
 #include "maul-vfx/mesh.h"
 
+#include <stdalign.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -48,7 +52,7 @@ typedef struct Def
 {
     mvfxEffectDef effect;
     mvfxEmitterDef emitter;
-    mvfxCollider colliders[2];
+    mvfxCollider colliders[3];
     mvfxHostModule module;
 } Def;
 
@@ -56,12 +60,12 @@ static void MakeDef(Def* def)
 {
     def->emitter = mvfxDefaultEmitterDef();
     def->emitter.capacity = 16;
-    for (int32_t i = 0; i < 2; ++i)
+    for (int32_t i = 0; i < 3; ++i)
     {
         def->colliders[i] = (mvfxCollider){.kind = mvfx_colliderHeightfield,
                                            .halfExtents = {2, 0, 2},
                                            .rotation = {0, 0, 0, 1},
-                                           .grid = {2 - (uint32_t)i, 1}};
+                                           .grid = {2 - (uint32_t)(i % 2), 1}};
     }
     def->emitter.colliders = def->colliders;
     def->emitter.colliderCount = 2;
@@ -113,23 +117,178 @@ static mvfxFileResult Read(const uint8_t* bytes, int64_t size, mvfxEffectDef* de
     return mvfxReadEffect(bytes, size, s_assets, 4, s_memory, sizeof s_memory, &needed, def);
 }
 
-// The offset of the first byte two files differ in past their hashes, -1
-// for none.
-static int64_t FirstDifference(const uint8_t* a, const uint8_t* b, int64_t size)
+static bool Refused(mvfxFileResult result, mvfxResult status, int64_t offset)
 {
-    for (int64_t i = 24; i < size; ++i)
+    return result.result == status && result.offset == offset;
+}
+
+// Whether a def reads from bytes and writes them again.
+static bool SameBytesAgain(const uint8_t* bytes, int64_t size, mvfxEffectDef* read)
+{
+    static uint8_t again[4096];
+    int64_t rewritten = 0;
+    return Refused(Read(bytes, size, read), mvfx_success, -1) &&
+           mvfxWriteEffect(read, s_assets, 4, again, sizeof again, &rewritten).result ==
+               mvfx_success &&
+           rewritten == size && memcmp(bytes, again, (size_t)size) == 0;
+}
+
+// The field of a table at an offset of its struct, its cookie aside.
+static const mvfxFileField* FieldOf(const mvfxFileType* type, size_t offset)
+{
+    for (int32_t i = 0; i < type->fieldCount; ++i)
     {
-        if (a[i] != b[i])
+        if (type->fields[i].offset == offset && type->fields[i].kind != mvfx_fieldCookie)
         {
-            return i;
+            return &type->fields[i];
+        }
+    }
+    CHECK(false, "a field of the table");
+    return &type->fields[0];
+}
+
+static uint32_t TagOf(const mvfxFileType* type, size_t offset)
+{
+    return FieldOf(type, offset)->tag;
+}
+
+static const mvfxFileType* TypeOf(const mvfxFileType* type, size_t offset)
+{
+    return FieldOf(type, offset)->type;
+}
+
+// The tag past a table's last, which only a later version would write.
+static uint32_t LaterTag(const mvfxFileType* type)
+{
+    return type->fields[type->fieldCount - 1].tag + 1;
+}
+
+static const mvfxFileType* EmitterType(void)
+{
+    return TypeOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters));
+}
+
+static const mvfxFileType* ColliderType(void)
+{
+    return TypeOf(EmitterType(), offsetof(mvfxEmitterDef, colliders));
+}
+
+// A sequence of fields in a file: from at to end.
+typedef struct Span
+{
+    int64_t at;
+    int64_t end;
+} Span;
+
+// The section of a tag, an empty span at -1 when the file has none.
+static Span SectionOf(const uint8_t* bytes, uint32_t tag)
+{
+    for (uint32_t i = 0; i < Get32(bytes, 12); ++i)
+    {
+        int64_t entry = 24 + 12 * (int64_t)i;
+        if (Get32(bytes, entry) == tag)
+        {
+            return (Span){Get32(bytes, entry + 4),
+                          Get32(bytes, entry + 4) + Get32(bytes, entry + 8)};
+        }
+    }
+    return (Span){-1, -1};
+}
+
+static Span EffectOf(const uint8_t* bytes)
+{
+    return SectionOf(bytes, 4);
+}
+
+static int64_t Padded(int64_t at)
+{
+    return (at + 7) & ~(int64_t)7;
+}
+
+// The head of the field of a tag in a sequence, -1 when it is left out.
+static int64_t HeadOf(const uint8_t* bytes, Span span, uint32_t tag)
+{
+    for (int64_t at = span.at; at < span.end; at = Padded(at + 8 + Get32(bytes, at + 4)))
+    {
+        if (Get32(bytes, at) == tag)
+        {
+            return at;
         }
     }
     return -1;
 }
 
-static bool Refused(mvfxFileResult result, mvfxResult status, int64_t offset)
+// The head of the field of a tag, which the sequence holds.
+static int64_t Head(const uint8_t* bytes, Span span, uint32_t tag)
 {
-    return result.result == status && result.offset == offset;
+    int64_t head = HeadOf(bytes, span, tag);
+    CHECK(head >= 0, "the field written");
+    return head;
+}
+
+// A struct field's payload, a sequence.
+static Span Nested(const uint8_t* bytes, int64_t head)
+{
+    return (Span){head + 8, head + 8 + Get32(bytes, head + 4)};
+}
+
+// The head of item i of the list in the field at head.
+static int64_t ItemHead(const uint8_t* bytes, int64_t head, int32_t i)
+{
+    int64_t at = head + 16;
+    for (int32_t k = 0; k < i; ++k)
+    {
+        at += 8 + Get32(bytes, at);
+    }
+    return at;
+}
+
+// Item i of the list in the field at head, a sequence.
+static Span Item(const uint8_t* bytes, int64_t head, int32_t i)
+{
+    int64_t at = ItemHead(bytes, head, i);
+    return (Span){at + 8, at + 8 + Get32(bytes, at)};
+}
+
+// The fields of the first emitter of a file.
+static Span Emitter(const uint8_t* bytes)
+{
+    return Item(
+        bytes,
+        Head(bytes, EffectOf(bytes), TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters))),
+        0);
+}
+
+// The fields of collider i of the first emitter.
+static Span Collider(const uint8_t* bytes, int32_t i)
+{
+    return Item(
+        bytes,
+        Head(bytes, Emitter(bytes), TagOf(EmitterType(), offsetof(mvfxEmitterDef, colliders))), i);
+}
+
+// The payload of the field at an offset of an emitter.
+static int64_t EmitterPayload(const uint8_t* bytes, size_t offset)
+{
+    return Head(bytes, Emitter(bytes), TagOf(EmitterType(), offset)) + 8;
+}
+
+// The head of the list of an emitter's three size curves.
+static int64_t SizeCurves(const uint8_t* bytes)
+{
+    const mvfxFileType* overLife = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, overLife));
+    const mvfxFileType* size = TypeOf(overLife, offsetof(mvfxOverLife, size));
+    Span span = Nested(bytes, EmitterPayload(bytes, offsetof(mvfxEmitterDef, overLife)) - 8);
+    span = Nested(bytes, Head(bytes, span, TagOf(overLife, offsetof(mvfxOverLife, size))));
+    return Head(bytes, span, TagOf(size, offsetof(mvfxSizeOverLife, size)));
+}
+
+// The table of the size curves' items.
+static const mvfxFileType* CurveType(void)
+{
+    const mvfxFileType* overLife = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, overLife));
+    const mvfxFileType* size = TypeOf(overLife, offsetof(mvfxOverLife, size));
+    return TypeOf(size, offsetof(mvfxSizeOverLife, size));
 }
 
 static void TestArguments(void)
@@ -272,8 +431,9 @@ static void TestAssetTables(void)
           "names allowed");
 }
 
-// The header, the unit table and the names as written: ball before ground,
-// as the colliders first refer to them; the module once.
+// The header, the section table and the names as written: ball before
+// ground, as the colliders first refer to them; no mesh section; the
+// module once; each section at a multiple of 8.
 static void TestLayout(void)
 {
     Def def;
@@ -287,25 +447,27 @@ static void TestLayout(void)
     {
         fnv = (fnv ^ bytes[i]) * 0x100000001B3ull;
     }
-    CHECK(fnv == 0x5E7AFA0B90468DE3ull && size == 1592, "the bytes as committed");
+    CHECK(fnv == 0x2D6E3E6CB3A98595ull && size == 376, "the bytes as committed");
     CHECK(memcmp(bytes, "MVFX", 4) == 0, "the magic");
     CHECK(Get32(bytes, 4) == MVFX_FILE_VERSION && Get32(bytes, 8) == (uint32_t)size &&
-              Get32(bytes, 12) == 4,
-          "the version, the size, the units");
-    // Grid names: ball, ground; mesh names: none; modules: kick.
-    static const uint32_t table[4][4] = {
-        {0, 88, 18, 2}, {1, 106, 0, 0}, {2, 106, 8, 1}, {3, 114, 0, 1}};
-    for (int32_t u = 0; u < 4; ++u)
+              Get32(bytes, 12) == 3 && size % 8 == 0,
+          "the version, the size, the sections");
+    // Grid names, 22 bytes from 64; module names, 12 from 88; the effect
+    // from 104 to the end.
+    static const uint32_t table[3][3] = {{1, 64, 22}, {3, 88, 12}, {4, 104, 0}};
+    for (int32_t s = 0; s < 3; ++s)
     {
-        for (int32_t k = 0; k < 4; ++k)
+        for (int32_t k = 0; k < 3; ++k)
         {
-            uint32_t expected = u == 3 && k == 2 ? (uint32_t)size - 114 : table[u][k];
-            CHECK(Get32(bytes, 24 + 16 * u + 4 * k) == expected, "the unit table");
+            uint32_t expected = s == 2 && k == 2 ? (uint32_t)size - 104 : table[s][k];
+            CHECK(Get32(bytes, 24 + 12 * s + 4 * k) == expected, "the section table");
         }
     }
-    CHECK(Get32(bytes, 88) == 4 && memcmp(bytes + 92, "ball", 4) == 0 && Get32(bytes, 96) == 6 &&
-              memcmp(bytes + 100, "ground", 6) == 0 && Get32(bytes, 106) == 4 &&
-              memcmp(bytes + 110, "kick", 4) == 0,
+    CHECK(Get32(bytes, 60) == 0 && bytes[86] == 0 && bytes[87] == 0 && Get32(bytes, 100) == 0,
+          "zero bytes to each section");
+    CHECK(Get32(bytes, 64) == 2 && Get32(bytes, 68) == 4 && memcmp(bytes + 72, "ball", 4) == 0 &&
+              Get32(bytes, 76) == 6 && memcmp(bytes + 80, "ground", 6) == 0 &&
+              Get32(bytes, 88) == 1 && Get32(bytes, 92) == 4 && memcmp(bytes + 96, "kick", 4) == 0,
           "the names in the order referred to");
     int64_t needed = 0;
     CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, NULL, 0, &needed), mvfx_errorCapacity,
@@ -326,13 +488,103 @@ static void TestLayout(void)
               read.emitters[0].hostModules[0].function == Kick &&
               read.emitters[0].hostModules[0].user == &s_kickUser,
           "the def read");
-    // Without colliders and modules, no names.
+    // Without colliders and modules, no names: the effect alone, at 40.
     def.emitter.colliderCount = 0;
     def.emitter.hostModuleCount = 0;
     size = Write(&def, bytes);
-    CHECK(Get32(bytes, 24 + 4) == 88 && Get32(bytes, 24 + 8) == 0 && Get32(bytes, 24 + 12) == 0 &&
-              Get32(bytes, 72 + 4) == 88,
+    CHECK(Get32(bytes, 12) == 1 && Get32(bytes, 24) == 4 && Get32(bytes, 28) == 40 &&
+              Get32(bytes, 36) == 0,
           "no names");
+}
+
+// Fields that hold their defaults are left out, at each level, and read
+// back as them: a def of one default emitter writes its emitters field
+// alone, the emitter an empty item; with that field left out too, the def
+// is the default, which the validator refuses (an effect has something to
+// play); a nested struct holds only what differs; an item of a struct with
+// no default function is read from zero bytes; an item of a fixed list
+// that holds its default is empty.
+static void TestDefaults(void)
+{
+    mvfxEffectDef effect = mvfxDefaultEffectDef();
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    effect.emitters = &emitter;
+    effect.emitterCount = 1;
+    uint8_t bytes[4096];
+    int64_t size = 0;
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+          "a default emitter written");
+    Span span = EffectOf(bytes);
+    int64_t head = Head(bytes, span, TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+    CHECK(size == 64 && Get32(bytes, 12) == 1 && span.at == 40 && span.end - span.at == 24 &&
+              Get32(bytes, head + 4) == 16 && Get32(bytes, head + 8) == 1 &&
+              Get32(bytes, head + 16) == 0,
+          "the emitters field alone, one empty item");
+    mvfxEffectDef read;
+    uint8_t empty[40];
+    memcpy(empty, bytes, sizeof empty);
+    Set32(empty, 8, 40);
+    Set32(empty, 32, 0);
+    Rehash(empty, 40);
+    CHECK(Refused(Read(empty, 40, &read), mvfx_errorFormat, 40),
+          "no effect field: the default def, refused by the validator");
+    CHECK(SameBytesAgain(bytes, size, &read) &&
+              read.emitters[0].cookie == MVFX_EMITTER_DEF_COOKIE &&
+              read.emitters[0].capacity == 1024 && read.emitters[0].rate == 64.0f &&
+              read.emitters[0].shape.rotation[3] == 1.0f && read.emitters[0].liquid.substeps == 4 &&
+              read.emitters[0].ribbon.width.value == 1.0f,
+          "the item read as the default emitter");
+
+    // A shape that differs in its radius alone: the shape's one field.
+    emitter.shape.radius = 2.0f;
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+          "a radius written");
+    const mvfxFileType* shape = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, shape));
+    Span item = Emitter(bytes);
+    int64_t shapeHead = Head(bytes, item, TagOf(EmitterType(), offsetof(mvfxEmitterDef, shape)));
+    Span fields = Nested(bytes, shapeHead);
+    CHECK(item.end - item.at == 24 && fields.end - fields.at == 16 &&
+              Get32(bytes, fields.at) == TagOf(shape, offsetof(mvfxShape, radius)),
+          "the shape holds the radius alone");
+    CHECK(SameBytesAgain(bytes, size, &read) && read.emitters[0].shape.radius == 2.0f &&
+              read.emitters[0].shape.rotation[3] == 1.0f &&
+              read.emitters[0].shape.arc == emitter.shape.arc &&
+              read.emitters[0].shape.kind == mvfx_shapePoint,
+          "the shape's other fields read as their defaults");
+
+    // A sphere of a radius, and a plane (kind 0) of a normal: their other
+    // fields from zero bytes.
+    emitter.shape.radius = 0.0f;
+    mvfxCollider colliders[2] = {{.kind = mvfx_colliderSphere, .radius = 1.0f},
+                                 {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}}};
+    emitter.colliders = colliders;
+    emitter.colliderCount = 2;
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+          "colliders written");
+    CHECK(Collider(bytes, 0).end - Collider(bytes, 0).at == 32 &&
+              Collider(bytes, 1).end - Collider(bytes, 1).at == 24,
+          "a sphere's two fields, a plane's one");
+    CHECK(SameBytesAgain(bytes, size, &read) && read.emitters[0].colliders[0].radius == 1.0f &&
+              read.emitters[0].colliders[0].rotation[3] == 0.0f &&
+              read.emitters[0].colliders[1].normal[1] == 1.0f &&
+              read.emitters[0].colliders[1].radius == 0.0f &&
+              read.emitters[0].colliders[1].halfExtents[0] == 0.0f,
+          "the colliders' other fields read as zero");
+
+    // A fixed list of three curves, the middle one's value alone set.
+    emitter.colliderCount = 0;
+    emitter.overLife.size.size[1].value = 2.0f;
+    CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size).result == mvfx_success,
+          "a size curve written");
+    int64_t list = SizeCurves(bytes);
+    CHECK(Get32(bytes, list + 8) == 3 && Get32(bytes, ItemHead(bytes, list, 0)) == 0 &&
+              Get32(bytes, ItemHead(bytes, list, 1)) == 16 &&
+              Get32(bytes, ItemHead(bytes, list, 2)) == 0,
+          "the list's items, the middle one alone holding a field");
+    CHECK(SameBytesAgain(bytes, size, &read) &&
+              read.emitters[0].overLife.size.size[1].value == 2.0f &&
+              read.emitters[0].overLife.size.size[0].value == 0.0f,
+          "the list read");
 }
 
 // An object the table lacks: refused on writing; a name the table lacks
@@ -359,11 +611,11 @@ static void TestMissing(void)
     mvfxEffectDef read;
     CHECK(
         Refused(mvfxReadEffect(bytes, size, s_assets, 3, s_memory, sizeof s_memory, &needed, &read),
-                mvfx_errorMissing, 106),
+                mvfx_errorMissing, 92),
         "the module's name missing");
     CHECK(Refused(mvfxReadEffect(bytes, size, s_assets + 1, 3, s_memory, sizeof s_memory, &needed,
                                  &read),
-                  mvfx_errorMissing, 96),
+                  mvfx_errorMissing, 76),
           "ground's name missing");
 }
 
@@ -391,24 +643,37 @@ static void TestHeaderAndTable(void)
     changed[1] = 'W';
     mvfxEffectDef read;
     CHECK(Refused(Read(changed, size, &read), mvfx_errorFormat, 0), "the magic");
-    Expect(bytes, size, 4, 2, mvfx_errorVersion, 4, "another version");
+    Expect(bytes, size, 4, 1, mvfx_errorVersion, 4, "an earlier version");
     Expect(bytes, size, 8, (uint32_t)size + 1, mvfx_errorFormat, 8, "the size");
-    Expect(bytes, size, 12, 5, mvfx_errorFormat, 12, "the unit count");
+    Expect(bytes, size, 12, 0, mvfx_errorFormat, 12, "no sections");
+    Expect(bytes, size, 12, (uint32_t)(size - 24) / 12 + 1, mvfx_errorFormat, 12,
+           "a table past the file");
     memcpy(changed, bytes, (size_t)size);
     changed[size - 1] ^= 1;
     CHECK(Refused(Read(changed, size, &read), mvfx_errorFormat, 16), "the hash");
-    Expect(bytes, size, 24 + 16, 2, mvfx_errorFormat, 40, "a kind out of order");
-    Expect(bytes, size, 24 + 16 + 4, 105, mvfx_errorFormat, 44, "a unit not where the last ends");
-    Expect(bytes, size, 24 + 8, (uint32_t)size, mvfx_errorFormat, 32, "a unit past the file");
-    Expect(bytes, size, 24 + 12, MVFX_FILE_MAX_GRIDS + 1, mvfx_errorFormat, 36,
-           "more names than a def refers to");
-    Expect(bytes, size, 24 + 16 + 12, MVFX_FILE_MAX_MESHES + 1, mvfx_errorFormat, 52,
-           "more mesh names");
-    Expect(bytes, size, 24 + 32 + 12, MVFX_FILE_MAX_MODULES + 1, mvfx_errorFormat, 68,
-           "more module names");
-    Expect(bytes, size, 24 + 48 + 12, 2, mvfx_errorFormat, 84, "two effects");
-    Expect(bytes, size, 24 + 48 + 8, (uint32_t)size - 115, mvfx_errorFormat, 80,
-           "an effect ending before the file");
+    // A size not a multiple of 8, its bytes 0.
+    memcpy(changed, bytes, (size_t)size);
+    Set32(changed, size, 0);
+    Set32(changed, 8, (uint32_t)size + 4);
+    Rehash(changed, size + 4);
+    CHECK(Refused(Read(changed, size + 4, &read), mvfx_errorFormat, 8), "a size off the alignment");
+    Expect(bytes, size, 24, 0, mvfx_errorFormat, 24, "a tag of 0");
+    Expect(bytes, size, 36, 1, mvfx_errorFormat, 36, "a tag twice");
+    Expect(bytes, size, 36, 5, mvfx_errorVersion, 36, "a section of a later version");
+    Expect(bytes, size, 48, 5, mvfx_errorVersion, 48, "the last of a later version");
+    Expect(bytes, size, 40, 92, mvfx_errorFormat, 40, "a section not where the last ends");
+    Expect(bytes, size, 28, 60, mvfx_errorFormat, 28, "a section on the table's padding");
+    Expect(bytes, size, 56, (uint32_t)size, mvfx_errorFormat, 56, "a section past the file");
+    Expect(bytes, size, 32, 30, mvfx_errorFormat, 40, "a section running into the next");
+    Expect(bytes, size, 60, 1, mvfx_errorFormat, 60, "a byte of the table's padding");
+    Expect(bytes, size, 84, 0x01000000u | Get32(bytes, 84), mvfx_errorFormat, 87,
+           "a byte of a section's padding");
+    // No effect: its section named the meshes', in a file of grid names.
+    MakeDef(&def);
+    def.emitter.hostModuleCount = 0;
+    size = Write(&def, bytes);
+    CHECK(Get32(bytes, 12) == 2 && Get32(bytes, 36) == 4, "grid names and the effect");
+    Expect(bytes, size, 36, 2, mvfx_errorFormat, 12, "no effect");
     // Every byte cut off.
     for (int64_t cut = 0; cut < size; ++cut)
     {
@@ -426,75 +691,180 @@ static void TestNames(void)
     MakeDef(&def);
     uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
-    Expect(bytes, size, 88, 0, mvfx_errorFormat, 88, "an empty name");
-    Expect(bytes, size, 88, MVFX_MAX_ASSET_NAME + 1, mvfx_errorFormat, 88, "a name too long");
-    Expect(bytes, size, 96, 7, mvfx_errorFormat, 96, "a name past its unit");
+    Expect(bytes, size, 68, 0, mvfx_errorFormat, 68, "an empty name");
+    Expect(bytes, size, 68, MVFX_MAX_ASSET_NAME + 1, mvfx_errorFormat, 68, "a name too long");
+    Expect(bytes, size, 76, 7, mvfx_errorFormat, 76, "a name past its section");
     // "ball" as "bal\xFF", "ground" as "ball\0\0" with the length 4 and two
     // bytes over.
-    Expect(bytes, size, 92, 0xFF6C6162u, mvfx_errorFormat, 95, "a name not UTF-8");
+    Expect(bytes, size, 72, 0xFF6C6162u, mvfx_errorFormat, 75, "a name not UTF-8");
     uint8_t changed[4096];
     memcpy(changed, bytes, (size_t)size);
-    Set32(changed, 96, 4);
-    memcpy(changed + 100, "ball", 4);
+    Set32(changed, 76, 4);
+    memcpy(changed + 80, "ball", 4);
     Rehash(changed, size);
     mvfxEffectDef read;
-    CHECK(Refused(Read(changed, size, &read), mvfx_errorFormat, 96), "a name twice");
-    // One name counted: the unit's bytes left over.
-    Expect(bytes, size, 24 + 12, 1, mvfx_errorFormat, 96, "bytes left in a unit");
-    // Three counted: the next name's length runs out of the unit.
-    Expect(bytes, size, 24 + 12, 3, mvfx_errorFormat, 106, "a name past its unit's end");
+    CHECK(Refused(Read(changed, size, &read), mvfx_errorFormat, 76), "a name twice");
+    // One name counted: the section's bytes left over.
+    Expect(bytes, size, 64, 1, mvfx_errorFormat, 76, "bytes left in a section");
+    // Three counted: the next name's length runs out of the section.
+    Expect(bytes, size, 64, 3, mvfx_errorFormat, 86, "a name past its section's end");
+    Expect(bytes, size, 64, MVFX_FILE_MAX_GRIDS + 1, mvfx_errorFormat, 64,
+           "more grid names than a def refers to");
+    Expect(bytes, size, 88, MVFX_FILE_MAX_MODULES + 1, mvfx_errorFormat, 88, "more module names");
+    // The grid names' section taking its padding: two bytes after the names.
+    Expect(bytes, size, 32, 24, mvfx_errorFormat, 86, "a section's bytes left over");
+    // A grid names section of 2 bytes, too short for its count, before an
+    // effect of 24.
+    uint8_t shortNames[80] = {0};
+    memcpy(shortNames, "MVFX", 4);
+    Set32(shortNames, 4, MVFX_FILE_VERSION);
+    Set32(shortNames, 8, 80);
+    Set32(shortNames, 12, 2);
+    static const uint32_t entries[6] = {1, 48, 2, 4, 56, 24};
+    for (int32_t k = 0; k < 6; ++k)
+    {
+        Set32(shortNames, 24 + 4 * k, entries[k]);
+    }
+    Rehash(shortNames, 80);
+    CHECK(Refused(Read(shortNames, 80, &read), mvfx_errorFormat, 48),
+          "a names section too short for its count");
 }
 
-// The offsets of the effect unit's fields, found by the first byte two
-// files differ in.
-static void TestEffectUnit(void)
+// A field's or an item's bytes changed: refused at the byte at fault.
+static void TestFields(void)
+{
+    Def def;
+    MakeDef(&def);
+    def.emitter.fixedBounds = true;
+    def.emitter.shape.radius = 2.0f;
+    def.emitter.overLife.size.size[1].value = 2.0f;
+    uint8_t bytes[4096];
+    int64_t size = Write(&def, bytes);
+    mvfxEffectDef read;
+    CHECK(SameBytesAgain(bytes, size, &read), "the def read");
+    Span effect = EffectOf(bytes);
+    int64_t emitters =
+        Head(bytes, effect, TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+    int64_t listEnd = emitters + 8 + Get32(bytes, emitters + 4);
+    Expect(bytes, size, emitters + 8, (uint32_t)-1, mvfx_errorFormat, emitters + 8,
+           "a count below 0");
+    Expect(bytes, size, emitters + 8, MVFX_MAX_EMITTERS + 1, mvfx_errorFormat, emitters + 8,
+           "a count past its cap");
+    Expect(bytes, size, emitters + 8, 2, mvfx_errorFormat, listEnd,
+           "a second emitter past the list");
+    Expect(bytes, size, emitters + 12, 1, mvfx_errorFormat, emitters + 12, "a list's zero word");
+    int64_t item = ItemHead(bytes, emitters, 0);
+    Expect(bytes, size, item + 4, 1, mvfx_errorFormat, item + 4, "an item's zero word");
+    Expect(bytes, size, item, 4096, mvfx_errorFormat, item, "an item past its list");
+    Expect(bytes, size, emitters + 4, 4096, mvfx_errorFormat, emitters + 4,
+           "a field past its struct");
+    // An emitter's fields in tag order: capacity is its first.
+    Span fields = Emitter(bytes);
+    int64_t capacity =
+        Head(bytes, fields, TagOf(EmitterType(), offsetof(mvfxEmitterDef, capacity)));
+    CHECK(capacity == fields.at, "the capacity first");
+    Expect(bytes, size, capacity + 4, 3, mvfx_errorFormat, capacity + 4, "a scalar of 3 bytes");
+    Expect(bytes, size, capacity + 4, 8, mvfx_errorFormat, capacity + 4, "a scalar of 8 bytes");
+    int64_t second = Padded(capacity + 8 + 4);
+    int64_t third = Padded(second + 8 + Get32(bytes, second + 4));
+    Expect(bytes, size, second, Get32(bytes, capacity), mvfx_errorFormat, second, "a tag twice");
+    Expect(bytes, size, third, Get32(bytes, capacity), mvfx_errorFormat, third,
+           "a tag out of order");
+    Expect(bytes, size, capacity + 12, 1, mvfx_errorFormat, capacity + 12,
+           "a byte of a field's padding");
+    int64_t fixedBounds = EmitterPayload(bytes, offsetof(mvfxEmitterDef, fixedBounds));
+    Expect(bytes, size, fixedBounds, 2, mvfx_errorFormat, fixedBounds, "a bool of 2");
+    Expect(bytes, size, fixedBounds, 0x0101, mvfx_errorFormat, fixedBounds + 1, "a bool's padding");
+    int64_t rotation =
+        Head(bytes, Collider(bytes, 0), TagOf(ColliderType(), offsetof(mvfxCollider, rotation)));
+    Expect(bytes, size, rotation + 4, 12, mvfx_errorFormat, rotation + 4,
+           "a fixed array of 3 floats for 4");
+    int64_t list = SizeCurves(bytes);
+    Expect(bytes, size, list + 8, 2, mvfx_errorFormat, list + 8, "a fixed list of 2 for 3");
+    Expect(bytes, size, list + 8, 4, mvfx_errorFormat, list + 8, "a fixed list of 4 for 3");
+}
+
+// A tag a struct does not have, at each level, as only a later version
+// writes: refused with mvfx_errorVersion at the field, never misread.
+static void TestLaterFields(void)
+{
+    Def def;
+    MakeDef(&def);
+    def.emitter.shape.radius = 2.0f;
+    def.emitter.overLife.size.size[1].value = 2.0f;
+    uint8_t bytes[4096];
+    int64_t size = Write(&def, bytes);
+    Span effect = EffectOf(bytes);
+    int64_t emitters =
+        Head(bytes, effect, TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+    CHECK(Padded(emitters + 8 + Get32(bytes, emitters + 4)) == effect.end,
+          "the effect's last field");
+    Expect(bytes, size, emitters, LaterTag(mvfxFileEffectDef), mvfx_errorVersion, emitters,
+           "a later field of the effect");
+    // The emitter's last field: its colliders, modules and shape come first.
+    Span fields = Emitter(bytes);
+    int64_t last = fields.at;
+    while (Padded(last + 8 + Get32(bytes, last + 4)) < fields.end)
+    {
+        last = Padded(last + 8 + Get32(bytes, last + 4));
+    }
+    Expect(bytes, size, last, LaterTag(EmitterType()), mvfx_errorVersion, last,
+           "a later field of an emitter");
+    const mvfxFileType* shape = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, shape));
+    int64_t radius = EmitterPayload(bytes, offsetof(mvfxEmitterDef, shape));
+    Expect(bytes, size, radius, LaterTag(shape), mvfx_errorVersion, radius,
+           "a later field of a nested struct");
+    int64_t grid =
+        Head(bytes, Collider(bytes, 0), TagOf(ColliderType(), offsetof(mvfxCollider, grid)));
+    Expect(bytes, size, grid, LaterTag(ColliderType()), mvfx_errorVersion, grid,
+           "a later field of an array's item");
+    int64_t list = SizeCurves(bytes);
+    int64_t value = Item(bytes, list, 1).at;
+    Expect(bytes, size, value, LaterTag(CurveType()), mvfx_errorVersion, value,
+           "a later field of a fixed list's item");
+    // A tag between the struct's own is as unknown: none is retired yet, so
+    // the effect's tag 0 stands for one.
+    Expect(bytes, size, emitters, 0, mvfx_errorFormat, emitters, "a tag of 0");
+}
+
+// The references: each collider's grid is its last field. The first names
+// ball (0): as 1, before 0 is named; as -2. The second names ground (1):
+// as 0 too, ground is never referred to; as 2, past the names.
+static void TestReferences(void)
 {
     Def def;
     MakeDef(&def);
     uint8_t bytes[4096];
-    uint8_t other[4096];
     int64_t size = Write(&def, bytes);
-    int64_t unit = 114;
-    // The emitters' count is the unit's first field.
-    Expect(bytes, size, unit, (uint32_t)-1, mvfx_errorFormat, unit, "a count below 0");
-    Expect(bytes, size, unit, 65, mvfx_errorFormat, unit, "a count past its cap");
-    Expect(bytes, size, unit, 2, mvfx_errorFormat, size, "a second emitter past the unit");
-    // A bool neither 0 nor 1.
-    Write(&def, bytes);
-    def.emitter.fixedBounds = true;
-    Write(&def, other);
-    int64_t flag = FirstDifference(bytes, other, size);
-    CHECK(flag > unit, "a bool found");
-    Expect(bytes, size, flag, Get32(bytes, flag) + 2, mvfx_errorFormat, flag, "a bool of 2");
-    // The references: a collider's grid follows its rotation, whose last
-    // component's sign is the last byte of its bytes. The first names
-    // ball (0): as 1, before 0 is named; as -2. The second names ground
-    // (1): as 0 too, ground is never referred to; as 2, past the names.
-    MakeDef(&def);
-    size = Write(&def, bytes);
     int64_t refs[2];
     for (int32_t i = 0; i < 2; ++i)
     {
-        MakeDef(&def);
-        def.colliders[i].rotation[3] = -1.0f;
-        Write(&def, other);
-        refs[i] = FirstDifference(bytes, other, size) + 1;
-        CHECK(refs[i] > unit && Get32(bytes, refs[i]) == (uint32_t)i, "a reference found");
+        refs[i] =
+            Head(bytes, Collider(bytes, i), TagOf(ColliderType(), offsetof(mvfxCollider, grid))) +
+            8;
+        CHECK(Get32(bytes, refs[i]) == (uint32_t)i, "a reference found");
     }
     Expect(bytes, size, refs[0], 1, mvfx_errorFormat, refs[0], "a name before its turn");
     Expect(bytes, size, refs[0], (uint32_t)-2, mvfx_errorFormat, refs[0], "a name below -1");
-    Expect(bytes, size, refs[1], 0, mvfx_errorFormat, 96, "a name never referred to");
+    Expect(bytes, size, refs[1], 0, mvfx_errorFormat, 76, "a name never referred to");
     Expect(bytes, size, refs[1], 2, mvfx_errorFormat, refs[1], "a name past the names");
     // As -1, none: the second, 1, comes before its turn; both none, no
     // name is referred to, the first found, before the def's validator
     // would refuse heightfields without their grids.
     Expect(bytes, size, refs[0], (uint32_t)-1, mvfx_errorFormat, refs[1], "none, then 1");
     Set32(bytes, refs[1], (uint32_t)-1);
-    Expect(bytes, size, refs[0], (uint32_t)-1, mvfx_errorFormat, 88, "no name referred to");
+    Expect(bytes, size, refs[0], (uint32_t)-1, mvfx_errorFormat, 68, "no name referred to");
+    // Ball, ground, then ball again; the third as 2 names past every name.
+    MakeDef(&def);
+    def.emitter.colliderCount = 3;
+    size = Write(&def, bytes);
+    int64_t third =
+        Head(bytes, Collider(bytes, 2), TagOf(ColliderType(), offsetof(mvfxCollider, grid))) + 8;
+    CHECK(Get32(bytes, third) == 0, "the third reference found");
+    Expect(bytes, size, third, 2, mvfx_errorFormat, third, "a name past every name");
 }
 
-// Arrays at their caps read back; a reference to the next name when every
-// name is taken; arrays of none read as NULL.
+// Arrays at their caps read back; arrays of none read as NULL.
 static void TestCaps(void)
 {
     Def def;
@@ -510,28 +880,12 @@ static void TestCaps(void)
     def.emitter.colliders = planes;
     def.emitter.colliderCount = MVFX_MAX_COLLIDERS;
     uint8_t bytes[4096];
-    uint8_t again[4096];
     int64_t size = Write(&def, bytes);
     mvfxEffectDef read;
-    CHECK(Refused(Read(bytes, size, &read), mvfx_success, -1) &&
+    CHECK(SameBytesAgain(bytes, size, &read) &&
               read.emitters[0].colliderCount == MVFX_MAX_COLLIDERS &&
               read.emitters[0].colliders[MVFX_MAX_COLLIDERS - 1].center[1] == 7.0f,
-          "colliders at their cap");
-    int64_t rewritten = 0;
-    CHECK(mvfxWriteEffect(&read, s_assets, 4, again, 4096, &rewritten).result == mvfx_success &&
-              rewritten == size && memcmp(bytes, again, (size_t)size) == 0,
-          "the same bytes at the cap");
-    // Ball, ground, then a plane naming 2 when there are two names.
-    MakeDef(&def);
-    mvfxCollider three[3] = {def.colliders[0], def.colliders[1], planes[0]};
-    def.emitter.colliders = three;
-    def.emitter.colliderCount = 3;
-    size = Write(&def, bytes);
-    three[2].rotation[3] = -1.0f;
-    Write(&def, again);
-    int64_t plane = FirstDifference(bytes, again, size) + 1;
-    CHECK(Get32(bytes, plane) == (uint32_t)-1, "the plane's reference found");
-    Expect(bytes, size, plane, 2, mvfx_errorFormat, plane, "a name past every name");
+          "colliders at their cap, the same bytes again");
     // No colliders, no modules: NULL arrays.
     MakeDef(&def);
     def.emitter.colliderCount = 0;
@@ -573,7 +927,8 @@ static void TestDecoys(void)
     def.emitter.shape.kind = mvfx_shapeMesh;
     def.emitter.shape.mesh = (mvfxMeshId){1, 1};
     size = Write(&def, bytes);
-    CHECK(Get32(bytes, 24 + 16 + 12) == 1, "the mesh named");
+    Span meshes = SectionOf(bytes, 2);
+    CHECK(meshes.at > 0 && Get32(bytes, meshes.at) == 1, "the mesh named");
     CHECK(Refused(Read(bytes, size, &read), mvfx_success, -1) &&
               read.emitters[0].shape.mesh.index1 == 1 &&
               read.emitters[0].shape.mesh.generation == 1,
@@ -584,7 +939,7 @@ static void TestDecoys(void)
           "a mesh of another generation missing");
 }
 
-// Files cut inside their header, their effect unit or a name's bytes;
+// Files cut inside their header, their effect section or a name's bytes;
 // counts and hashes off by what the first checks miss.
 static void TestCuts(void)
 {
@@ -592,27 +947,26 @@ static void TestCuts(void)
     MakeDef(&def);
     uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
-    // A header alone, hashed: too short for its unit table.
+    // A header alone, hashed: too short for its section table.
     uint8_t header[4096] = {0};
     memcpy(header, bytes, 24);
     Set32(header, 8, 24);
     Rehash(header, 24);
     mvfxEffectDef read;
-    CHECK(Refused(Read(header, 24, &read), mvfx_errorFormat, 8), "a header alone");
-    // The effect unit a byte short.
+    CHECK(Refused(Read(header, 24, &read), mvfx_errorFormat, 12), "a header alone");
+    // The effect section 8 bytes short: its one field runs past it.
     uint8_t cut[4096];
     memcpy(cut, bytes, (size_t)size);
-    Set32(cut, 8, (uint32_t)size - 1);
-    Set32(cut, 24 + 48 + 8, Get32(cut, 24 + 48 + 8) - 1);
-    Rehash(cut, size - 1);
-    CHECK(Refused(Read(cut, size - 1, &read), mvfx_errorFormat, size - 1),
-          "the effect unit a byte short");
-    Expect(bytes, size, 24 + 48 + 12, 0, mvfx_errorFormat, 84, "no effect");
+    Set32(cut, 8, (uint32_t)size - 8);
+    Set32(cut, 24 + 24 + 8, Get32(cut, 24 + 24 + 8) - 8);
+    Rehash(cut, size - 8);
+    CHECK(Refused(Read(cut, size - 8, &read), mvfx_errorFormat, 104 + 4),
+          "the effect section cut short");
     memcpy(cut, bytes, (size_t)size);
     cut[20] ^= 1;
     CHECK(Refused(Read(cut, size, &read), mvfx_errorFormat, 16), "the hash's high half");
     // A name of the most bytes, then its length one more: it would end
-    // inside its unit.
+    // inside its section.
     static uint8_t longFile[8192];
     static char longName[MVFX_MAX_ASSET_NAME];
     memset(longName, 'a', sizeof longName);
@@ -628,11 +982,11 @@ static void TestCuts(void)
     CHECK(mvfxReadEffect(longFile, longSize, table, 4, s_memory, sizeof s_memory, &needed, &read)
                   .result == mvfx_success,
           "and read");
-    Set32(longFile, 88, MVFX_MAX_ASSET_NAME + 1);
+    Set32(longFile, 68, MVFX_MAX_ASSET_NAME + 1);
     Rehash(longFile, longSize);
     CHECK(Refused(mvfxReadEffect(longFile, longSize, table, 4, s_memory, sizeof s_memory, &needed,
                                  &read),
-                  mvfx_errorFormat, 88),
+                  mvfx_errorFormat, 68),
           "a name a byte too long");
 }
 
@@ -644,13 +998,14 @@ static void TestParts(void)
     def.emitter.plexus = (mvfxPlexusDef){
         .enable = true, .distance = 0.5f, .maxLinks = 1, .maxPerParticle = 1, .width = 0.01f};
     uint8_t bytes[4096];
-    uint8_t other[4096];
     int64_t size = Write(&def, bytes);
-    def.emitter.plexus.maxLinks = 2;
-    Write(&def, other);
-    int64_t links = FirstDifference(bytes, other, size);
-    CHECK(links > 114 && Get32(bytes, links) == 1, "the links found");
-    Expect(bytes, size, links, 0, mvfx_errorFormat, 114, "no plexus links");
+    const mvfxFileType* plexus = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, plexus));
+    int64_t links =
+        Head(bytes, Nested(bytes, EmitterPayload(bytes, offsetof(mvfxEmitterDef, plexus)) - 8),
+             TagOf(plexus, offsetof(mvfxPlexusDef, maxLinks))) +
+        8;
+    CHECK(Get32(bytes, links) == 1, "the links found");
+    Expect(bytes, size, links, 0, mvfx_errorFormat, 104, "no plexus links");
     def.emitter.plexus.maxLinks = 0;
     int64_t written = 0;
     CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &written),
@@ -658,30 +1013,32 @@ static void TestParts(void)
           "the writer refuses it too");
 }
 
-// Bytes after the def in its unit, and defs the validator refuses.
+// Bytes after the def in its section and after the last section, and defs
+// the validator refuses.
 static void TestTrailing(void)
 {
     Def def;
     MakeDef(&def);
     uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
-    Set32(bytes, size, 0);
-    Set32(bytes, 8, (uint32_t)size + 4);
-    Set32(bytes, 24 + 48 + 8, Get32(bytes, 24 + 48 + 8) + 4);
-    Rehash(bytes, size + 4);
+    uint8_t longer[4096];
+    memcpy(longer, bytes, (size_t)size);
+    memset(longer + size, 0, 8);
+    Set32(longer, 8, (uint32_t)size + 8);
+    Rehash(longer, size + 8);
     mvfxEffectDef read;
-    CHECK(Refused(Read(bytes, size + 4, &read), mvfx_errorFormat, size), "bytes after the def");
-    // The capacity found by the difference, set to 0 and past its most.
-    uint8_t other[4096];
-    size = Write(&def, bytes);
-    def.emitter.capacity = 17;
-    Write(&def, other);
-    int64_t capacity = FirstDifference(bytes, other, size);
-    CHECK(capacity > 114 && Get32(bytes, capacity) == 16, "the capacity found");
-    Expect(bytes, size, capacity, 0, mvfx_errorFormat, 114, "a def the validator refuses");
+    CHECK(Refused(Read(longer, size + 8, &read), mvfx_errorFormat, size),
+          "bytes after the last section");
+    Set32(longer, 24 + 24 + 8, Get32(longer, 24 + 24 + 8) + 8);
+    Rehash(longer, size + 8);
+    CHECK(Refused(Read(longer, size + 8, &read), mvfx_errorFormat, size), "bytes after the def");
+    // The capacity set to 0 and past its most.
+    int64_t capacity = EmitterPayload(bytes, offsetof(mvfxEmitterDef, capacity));
+    CHECK(Get32(bytes, capacity) == 16, "the capacity found");
+    Expect(bytes, size, capacity, 0, mvfx_errorFormat, 104, "a def the validator refuses");
     // Past a named bound too: what a file holds is malformed, whatever check
     // it fails.
-    Expect(bytes, size, capacity, MVFX_MAX_EMITTER_CAPACITY + 1, mvfx_errorFormat, 114,
+    Expect(bytes, size, capacity, MVFX_MAX_EMITTER_CAPACITY + 1, mvfx_errorFormat, 104,
            "a def past a bound");
 }
 
@@ -736,14 +1093,18 @@ static void TestMemoryGuard(void)
               mvfx_errorCapacity,
           "measured");
     memset(s_memory, 0xAB, sizeof s_memory);
+    alignas(16) static uint8_t defaults[MVFX_FILE_DEFAULT_BYTES];
+    mvfxFileDefaults(defaults);
+    Span effect = EffectOf(bytes);
     mvfxCodec codec = {.in = bytes,
-                       .at = 88,
-                       .end = (size_t)size,
+                       .at = (size_t)effect.at,
+                       .end = (size_t)effect.end,
+                       .defaults = defaults,
                        .memory = s_memory,
                        .capacity = (size_t)needed - 1,
                        .faultAt = -1};
     mvfxEffectDef def2 = {0};
-    mvfxCodeStruct(&codec, mvfxFileEffectDef, (uint8_t*)&def2);
+    mvfxReadFields(&codec, mvfxFileEffectDef, (uint8_t*)&def2, (size_t)effect.end);
     CHECK(codec.fault == mvfx_errorCapacity && s_memory[needed - 1] == 0xAB,
           "nothing laid past the memory");
 }
@@ -1005,10 +1366,13 @@ int main(void)
     TestArguments();
     TestAssetTables();
     TestLayout();
+    TestDefaults();
     TestMissing();
     TestHeaderAndTable();
     TestNames();
-    TestEffectUnit();
+    TestFields();
+    TestLaterFields();
+    TestReferences();
     TestTrailing();
     TestCaps();
     TestDecoys();

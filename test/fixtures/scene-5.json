@@ -1,113 +1,27 @@
 {
-  "format": 2,
+  "format": 3,
   "effect": {
     "emitters": [
       {
         "capacity": 64,
         "rate": 40.0,
-        "rateCurve": {
-          "keys": [],
-          "tangents": "mvfx_tangentsGiven"
-        },
-        "bursts": [],
-        "startDelay": 0.0,
-        "duration": 0.0,
-        "loops": 0,
-        "space": "mvfx_spaceWorld",
-        "ratePerDistance": 0.0,
-        "inheritVelocity": 0.0,
-        "hostSpawnCapacity": 0,
         "lifetime": {
-          "kind": "mvfx_sourceRange",
           "range": {
             "min": 0.4,
             "max": 0.6
-          },
-          "curve": {
-            "keys": [],
-            "tangents": "mvfx_tangentsGiven"
-          },
-          "parameter": 0
+          }
         },
         "shape": {
           "kind": "mvfx_shapeSphere",
           "offset": [0.0, 0.4, 0.0],
-          "rotation": [0.0, 0.0, 0.0, 1.0],
-          "radius": 0.2,
-          "length": 0.0,
-          "halfExtents": [0.0, 0.0, 0.0],
-          "angle": 0.0,
-          "thickness": 0.0,
-          "coneVolume": false,
-          "arc": 6.2831855,
-          "arcMode": "mvfx_arcRandom",
-          "arcSpeed": 0.0,
-          "mesh": null,
-          "meshMode": "mvfx_meshVertices"
-        },
-        "velocity": {
-          "mode": "mvfx_directionShapeNormal",
-          "direction": [0.0, 0.0, 1.0],
-          "coneAngle": 0.0,
-          "randomize": 0.0,
-          "speed": {
-            "min": 0.0,
-            "max": 0.0
-          }
-        },
-        "motion": {
-          "gravity": [0.0, 0.0, 0.0],
-          "gravitySpace": "mvfx_spaceWorld",
-          "drag": 0.0,
-          "dragScale": {
-            "kind": "mvfx_sourceNone",
-            "range": {
-              "min": 0.0,
-              "max": 0.0
-            },
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            },
-            "parameter": 0
-          },
-          "angularDrag": 0.0
+          "radius": 0.2
         },
         "forces": [
           {
             "kind": "mvfx_forceGas",
-            "space": "mvfx_spaceWorld",
-            "vector": [0.0, 0.0, 0.0],
-            "point": [0.0, 0.0, 0.0],
             "strength": 1.0,
-            "softening": 0.0,
-            "killRadius": 0.0,
-            "pull": 0.0,
-            "strengthFromParameter": false,
-            "parameter": 0,
-            "falloff": {
-              "kind": "mvfx_falloffNone",
-              "center": [0.0, 0.0, 0.0],
-              "axis": [0.0, 0.0, 0.0],
-              "radius": 0.0,
-              "angle": 0.0,
-              "exponent": 0.0
-            },
             "fieldMode": "mvfx_fieldVelocity",
             "tightness": 3.0,
-            "noise": {
-              "frequency": 0.0,
-              "octaves": 0,
-              "lacunarity": 0.0,
-              "gain": 0.0,
-              "scroll": [0.0, 0.0, 0.0],
-              "seed": 0,
-              "seedPerInstance": false
-            },
-            "grid": null,
-            "boxSize": [0.0, 0.0, 0.0],
-            "boxRotation": [0.0, 0.0, 0.0, 0.0],
-            "border": "mvfx_borderNone",
             "gas": 1
           }
         ],
@@ -115,496 +29,34 @@
           "enable": true,
           "gas": 1,
           "density": 1.5,
-          "temperature": 0.0,
-          "fuel": 0.0,
           "drag": 2.0
-        },
-        "water": {
-          "enable": false,
-          "water": 0,
-          "radius": 0.0,
-          "push": 0.0,
-          "pour": false,
-          "buoyancy": 0.0,
-          "drag": 0.0
-        },
-        "velocityModules": {
-          "motionScale": {
-            "value": 1.0,
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            }
-          },
-          "addedDirection": [0.0, 0.0, 0.0],
-          "addedSpeed": {
-            "value": 0.0,
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            }
-          },
-          "orbitAxis": [0.0, 0.0, 0.0],
-          "orbitCenter": [0.0, 0.0, 0.0],
-          "orbitRate": {
-            "value": 0.0,
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            }
-          },
-          "radialCenter": [0.0, 0.0, 0.0],
-          "radialSpeed": {
-            "value": 0.0,
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            }
-          },
-          "limitSpeed": false,
-          "speedLimit": {
-            "value": 0.0,
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            }
-          },
-          "limitDampen": 0.0
-        },
-        "overLife": {
-          "color": {
-            "enable": false,
-            "input": "mvfx_overAge",
-            "speedRange": [0.0, 0.0],
-            "gradient": {
-              "colorKeys": [],
-              "alphaKeys": []
-            },
-            "scaleAlpha": false,
-            "alpha": {
-              "value": 0.0,
-              "curve": {
-                "keys": [],
-                "tangents": "mvfx_tangentsGiven"
-              }
-            }
-          },
-          "size": {
-            "enable": false,
-            "input": "mvfx_overAge",
-            "speedRange": [0.0, 0.0],
-            "perAxis": false,
-            "size": [
-              {
-                "value": 0.0,
-                "curve": {
-                  "keys": [],
-                  "tangents": "mvfx_tangentsGiven"
-                }
-              },
-              {
-                "value": 0.0,
-                "curve": {
-                  "keys": [],
-                  "tangents": "mvfx_tangentsGiven"
-                }
-              },
-              {
-                "value": 0.0,
-                "curve": {
-                  "keys": [],
-                  "tangents": "mvfx_tangentsGiven"
-                }
-              }
-            ]
-          },
-          "frame": {
-            "animation": "mvfx_frameStill",
-            "frameCount": 0,
-            "cycles": 0.0,
-            "frameRate": 0.0,
-            "loop": false
-          },
-          "rotation": {
-            "enable": false,
-            "scale": {
-              "value": 0.0,
-              "curve": {
-                "keys": [],
-                "tangents": "mvfx_tangentsGiven"
-              }
-            }
-          }
-        },
-        "killRules": [],
-        "collision": {
-          "enable": false,
-          "hostColliders": false,
-          "restitution": 0.0,
-          "friction": 0.0,
-          "lifeLoss": 0.0,
-          "killOnCollision": false,
-          "restSpeed": 0.0,
-          "radius": 0.0,
-          "enableSceneQueries": false,
-          "queryCapacity": 0,
-          "lookahead": 0.0,
-          "enableDepthImage": false,
-          "depthThickness": 0.0,
-          "depthSamples": 0,
-          "killOutsideView": false
-        },
-        "colliders": [],
-        "hostModules": [],
-        "events": 0,
-        "eventCapacity": 0,
-        "eventSpawn": {
-          "enable": false,
-          "source": 0,
-          "kind": "mvfx_eventBirth",
-          "minCount": 0,
-          "maxCount": 0,
-          "inheritVelocity": 0.0,
-          "inheritColor": false,
-          "inheritSize": false,
-          "capacity": 0
-        },
-        "neighbors": {
-          "enable": false,
-          "source": 0,
-          "radius": 0.0,
-          "maxNeighbors": 0
-        },
-        "steering": {
-          "enable": false,
-          "separation": 0.0,
-          "separationRadius": 0.0,
-          "alignment": 0.0,
-          "alignmentRadius": 0.0,
-          "cohesion": 0.0,
-          "cohesionRadius": 0.0,
-          "viewAngle": 0.0,
-          "cruiseSpeed": 0.0,
-          "maxForce": 0.0,
-          "seek": {
-            "weight": 0.0,
-            "space": 0,
-            "point": [0.0, 0.0, 0.0],
-            "fromParameter": false,
-            "parameter": 0,
-            "radius": 0.0
-          },
-          "flee": {
-            "weight": 0.0,
-            "space": 0,
-            "point": [0.0, 0.0, 0.0],
-            "fromParameter": false,
-            "parameter": 0,
-            "radius": 0.0
-          },
-          "path": {
-            "weight": 0.0,
-            "space": 0,
-            "points": [],
-            "closed": false,
-            "radius": 0.0,
-            "lookahead": 0.0
-          }
-        },
-        "contacts": {
-          "enable": false,
-          "radiusScale": 0.0,
-          "iterations": 0,
-          "maxContacts": 0,
-          "restitution": 0.0,
-          "friction": 0.0
-        },
-        "pairForce": {
-          "enable": false,
-          "radius": 0.0,
-          "strength": {
-            "value": 0.0,
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            }
-          }
-        },
-        "light": {
-          "enable": false,
-          "every": 0,
-          "intensity": 0.0,
-          "alphaScales": false,
-          "radius": 0.0,
-          "radiusBySize": 0.0
-        },
-        "ribbon": {
-          "ids": "mvfx_ribbonNone",
-          "pieces": 1,
-          "bendAngle": 0.0,
-          "texture": "mvfx_ribbonStretch",
-          "tileLength": 1.0,
-          "scroll": 0.0,
-          "facing": "mvfx_ribbonFaceCamera",
-          "normal": [0.0, 0.0, 1.0],
-          "breakDistance": 0.0,
-          "pinHead": false,
-          "width": {
-            "value": 1.0,
-            "curve": {
-              "keys": [],
-              "tangents": "mvfx_tangentsGiven"
-            }
-          },
-          "color": {
-            "colorKeys": [],
-            "alphaKeys": []
-          }
-        },
-        "plexus": {
-          "enable": false,
-          "distance": 0.0,
-          "maxLinks": 0,
-          "maxPerParticle": 0,
-          "width": 0.0,
-          "fade": false
-        },
-        "unit": {
-          "kind": "mvfx_unitParticle",
-          "points": 0,
-          "rows": 0,
-          "spacing": 0.0,
-          "direction": [0.0, 0.0, 0.0],
-          "downDirection": [0.0, 0.0, 0.0],
-          "substeps": 0,
-          "stretchCompliance": 0.0,
-          "shearCompliance": 0.0,
-          "bendCompliance": 0.0,
-          "damping": 0.0,
-          "pinFirst": false,
-          "pinFirstRow": false,
-          "normalDrag": 0.0,
-          "tangentDrag": 0.0,
-          "selfThickness": 0.0,
-          "selfFriction": 0.0,
-          "selfContacts": 0,
-          "tearStrain": 0.0,
-          "attach": "mvfx_attachNone",
-          "attachFrameCapacity": 0
-        },
-        "rigid": {
-          "enable": false,
-          "shape": "mvfx_rigidSphere",
-          "density": 0.0,
-          "substeps": 0,
-          "restitution": 0.0,
-          "staticFriction": 0.0,
-          "dynamicFriction": 0.0,
-          "bodyContacts": 0,
-          "hull": null,
-          "sleepSpeed": 0.05,
-          "sleepTime": 0.5
-        },
-        "liquid": {
-          "enable": false,
-          "solver": "mvfx_liquidParticles",
-          "gas": 0,
-          "planar": false,
-          "spacing": 0.1,
-          "kernelScale": 2.0,
-          "substeps": 4,
-          "iterations": 3,
-          "relaxation": 0.01,
-          "tensile": 0.0,
-          "tensileDistance": 0.2,
-          "tensilePower": 4,
-          "viscosity": 0.01,
-          "vorticity": 0.0,
-          "maxNeighbors": 64
-        },
-        "beam": {
-          "enable": false,
-          "segments": 0,
-          "start": {
-            "point": [0.0, 0.0, 0.0],
-            "fromParameter": false,
-            "parameter": 0
-          },
-          "end": {
-            "point": [0.0, 0.0, 0.0],
-            "fromParameter": false,
-            "parameter": 0
-          },
-          "controlCount": 0,
-          "controls": [
-            {
-              "point": [0.0, 0.0, 0.0],
-              "fromParameter": false,
-              "parameter": 0
-            },
-            {
-              "point": [0.0, 0.0, 0.0],
-              "fromParameter": false,
-              "parameter": 0
-            }
-          ],
-          "noiseAmplitude": 0.0,
-          "noiseFrequency": 0.0,
-          "noiseSpeed": 0.0
-        },
-        "sprite": {
-          "billboard": "mvfx_billboardCamera",
-          "stretch": 0.0
-        },
-        "sortMode": "mvfx_sortNone",
-        "sortMeasure": "mvfx_sortByDistance",
-        "drawPriority": 0,
-        "fixedBounds": false,
-        "boundsMin": [0.0, 0.0, 0.0],
-        "boundsMax": [0.0, 0.0, 0.0],
-        "size": {
-          "kind": "mvfx_sourceNone",
-          "min": [0.0, 0.0, 0.0, 0.0],
-          "max": [0.0, 0.0, 0.0, 0.0],
-          "uniform": false,
-          "curve": {
-            "keys": [],
-            "tangents": "mvfx_tangentsGiven"
-          },
-          "gradient": {
-            "colorKeys": [],
-            "alphaKeys": []
-          },
-          "parameter": 0
-        },
-        "color": {
-          "kind": "mvfx_sourceNone",
-          "min": [0.0, 0.0, 0.0, 0.0],
-          "max": [0.0, 0.0, 0.0, 0.0],
-          "uniform": false,
-          "curve": {
-            "keys": [],
-            "tangents": "mvfx_tangentsGiven"
-          },
-          "gradient": {
-            "colorKeys": [],
-            "alphaKeys": []
-          },
-          "parameter": 0
-        },
-        "angle": {
-          "kind": "mvfx_sourceNone",
-          "range": {
-            "min": 0.0,
-            "max": 0.0
-          },
-          "curve": {
-            "keys": [],
-            "tangents": "mvfx_tangentsGiven"
-          },
-          "parameter": 0
-        },
-        "spin": {
-          "kind": "mvfx_sourceNone",
-          "range": {
-            "min": 0.0,
-            "max": 0.0
-          },
-          "curve": {
-            "keys": [],
-            "tangents": "mvfx_tangentsGiven"
-          },
-          "parameter": 0
-        },
-        "orientationMode": "mvfx_orientationNone",
-        "orientation": {
-          "kind": "mvfx_sourceNone",
-          "min": [0.0, 0.0, 0.0, 0.0],
-          "max": [0.0, 0.0, 0.0, 0.0],
-          "uniform": false,
-          "curve": {
-            "keys": [],
-            "tangents": "mvfx_tangentsGiven"
-          },
-          "gradient": {
-            "colorKeys": [],
-            "alphaKeys": []
-          },
-          "parameter": 0
-        },
-        "angularVelocity": {
-          "kind": "mvfx_sourceNone",
-          "min": [0.0, 0.0, 0.0, 0.0],
-          "max": [0.0, 0.0, 0.0, 0.0],
-          "uniform": false,
-          "curve": {
-            "keys": [],
-            "tangents": "mvfx_tangentsGiven"
-          },
-          "gradient": {
-            "colorKeys": [],
-            "alphaKeys": []
-          },
-          "parameter": 0
-        },
-        "frame": {
-          "mode": "mvfx_frameNone",
-          "first": 0,
-          "last": 0
-        },
-        "meshIndex": {
-          "mode": "mvfx_frameNone",
-          "first": 0,
-          "last": 0
-        },
-        "custom": []
+        }
       }
     ],
-    "parameters": [],
-    "qualityLevels": [],
     "gases": [
       {
         "size": [24, 16, 1],
-        "cellSize": 0.1,
-        "center": [0.0, 0.0, 0.0],
         "space": "mvfx_gasWorld",
-        "kind": "mvfx_gasSmoke",
-        "fillTime": 0.016666668,
-        "courant": 1.0,
         "substeps": 2,
         "densityDecay": 0.4,
         "temperatureDecay": 1.5,
-        "fuelDecay": 0.0,
-        "velocityDecay": 0.0,
         "sources": [
           {
-            "shape": "mvfx_gasSphere",
             "center": [-0.6, -0.3, 0.0],
             "radius": 0.25,
-            "halfExtents": [0.0, 0.0, 0.0],
             "density": 3.0,
             "temperature": 40.0,
-            "fuel": 0.5,
-            "setsVelocity": false,
-            "velocity": [0.0, 0.0, 0.0]
+            "fuel": 0.5
           },
           {
             "shape": "mvfx_gasBox",
             "center": [-0.4, 0.0, 0.0],
-            "radius": 0.0,
             "halfExtents": [0.3, 0.6, 1.0],
-            "density": 0.0,
-            "temperature": 0.0,
-            "fuel": 0.0,
             "setsVelocity": true,
             "velocity": [1.3, 0.45, 0.0]
           }
         ],
         "closedWalls": 5,
-        "pressureCycles": 4,
-        "advection": "mvfx_gasSemiLagrangian",
-        "gravity": [0.0, -9.81, 0.0],
-        "gravitySpace": "mvfx_gasWorld",
         "densityWeight": 0.02,
         "heatLift": 0.05,
         "vorticity": 1.5,
@@ -616,86 +68,36 @@
         "obstacles": [
           {
             "kind": "mvfx_colliderSphere",
-            "space": 0,
-            "inside": false,
             "center": [0.3, 0.2, -310.0],
-            "normal": [0.0, 0.0, 0.0],
-            "radius": 0.2,
-            "halfExtents": [0.0, 0.0, 0.0],
-            "rotation": [0.0, 0.0, 0.0, 0.0],
-            "grid": null
+            "radius": 0.2
           }
         ],
-        "hostObstacles": false,
         "forces": [
           {
             "kind": "mvfx_forceTurbulence",
-            "space": "mvfx_spaceWorld",
-            "vector": [0.0, 0.0, 0.0],
-            "point": [0.0, 0.0, 0.0],
             "strength": 1.5,
-            "softening": 0.0,
-            "killRadius": 0.0,
-            "pull": 0.0,
-            "strengthFromParameter": false,
-            "parameter": 0,
-            "falloff": {
-              "kind": "mvfx_falloffNone",
-              "center": [0.0, 0.0, 0.0],
-              "axis": [0.0, 0.0, 0.0],
-              "radius": 0.0,
-              "angle": 0.0,
-              "exponent": 0.0
-            },
-            "fieldMode": "mvfx_fieldAcceleration",
-            "tightness": 0.0,
             "noise": {
               "frequency": 1.5,
               "octaves": 2,
               "lacunarity": 2.0,
               "gain": 0.5,
               "scroll": [0.2, 0.1, 0.0],
-              "seed": 0,
               "seedPerInstance": true
-            },
-            "grid": null,
-            "boxSize": [0.0, 0.0, 0.0],
-            "boxRotation": [0.0, 0.0, 0.0, 0.0],
-            "border": "mvfx_borderNone",
-            "gas": 0
+            }
           }
-        ],
-        "surface": {
-          "emitter": 0,
-          "radius": 0.1,
-          "reach": 4.0,
-          "low": 0.4,
-          "high": 2.0,
-          "smoothing": 1
-        }
+        ]
       },
       {
         "size": [12, 10, 6],
-        "cellSize": 0.1,
         "center": [0.0, 0.5, 0.0],
-        "space": "mvfx_gasLocal",
-        "kind": "mvfx_gasSmoke",
-        "fillTime": 0.016666668,
-        "courant": 1.0,
-        "substeps": 1,
-        "densityDecay": 0.0,
-        "temperatureDecay": 0.0,
-        "fuelDecay": 0.0,
         "velocityDecay": 0.2,
         "sources": [
           {
             "shape": "mvfx_gasBox",
             "center": [0.1, -0.35, 0.0],
-            "radius": 0.0,
             "halfExtents": [0.15, 0.08, 0.15],
             "density": 5.0,
             "temperature": 10.0,
-            "fuel": 0.0,
             "setsVelocity": true,
             "velocity": [0.2, 1.7, -0.3]
           }
@@ -703,27 +105,15 @@
         "closedWalls": "mvfx_gasWallMinY",
         "pressureCycles": 3,
         "advection": "mvfx_gasMacCormack",
-        "gravity": [0.0, -9.81, 0.0],
-        "gravitySpace": "mvfx_gasWorld",
-        "densityWeight": 0.0,
         "heatLift": 0.02,
         "vorticity": 0.8,
-        "ignitionTemperature": 0.0,
-        "burnRate": 0.0,
-        "burnHeat": 0.0,
-        "burnSmoke": 0.0,
-        "burnExpansion": 0.0,
         "obstacles": [
           {
             "kind": "mvfx_colliderBox",
             "space": 1,
-            "inside": false,
             "center": [0.35, 0.75, 0.0],
-            "normal": [0.0, 0.0, 0.0],
-            "radius": 0.0,
             "halfExtents": [0.2, 0.06, 0.3],
-            "rotation": [0.0, 0.0, 0.19509032, 0.98078525],
-            "grid": null
+            "rotation": [0.0, 0.0, 0.19509032, 0.98078525]
           }
         ],
         "hostObstacles": true,
@@ -734,47 +124,10 @@
             "vector": [0.0, 1.0, 0.0],
             "point": [0.05, 0.0, 0.1],
             "strength": 0.7,
-            "softening": 0.0,
-            "killRadius": 0.0,
-            "pull": 0.2,
-            "strengthFromParameter": false,
-            "parameter": 0,
-            "falloff": {
-              "kind": "mvfx_falloffNone",
-              "center": [0.0, 0.0, 0.0],
-              "axis": [0.0, 0.0, 0.0],
-              "radius": 0.0,
-              "angle": 0.0,
-              "exponent": 0.0
-            },
-            "fieldMode": "mvfx_fieldAcceleration",
-            "tightness": 0.0,
-            "noise": {
-              "frequency": 0.0,
-              "octaves": 0,
-              "lacunarity": 0.0,
-              "gain": 0.0,
-              "scroll": [0.0, 0.0, 0.0],
-              "seed": 0,
-              "seedPerInstance": false
-            },
-            "grid": null,
-            "boxSize": [0.0, 0.0, 0.0],
-            "boxRotation": [0.0, 0.0, 0.0, 0.0],
-            "border": "mvfx_borderNone",
-            "gas": 0
+            "pull": 0.2
           }
-        ],
-        "surface": {
-          "emitter": 0,
-          "radius": 0.1,
-          "reach": 4.0,
-          "low": 0.4,
-          "high": 2.0,
-          "smoothing": 1
-        }
+        ]
       }
-    ],
-    "waters": []
+    ]
   }
 }
