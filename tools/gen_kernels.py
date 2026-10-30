@@ -193,7 +193,13 @@ def read_stamp(directory):
             dict(re.findall(r"^container (\S+) ([0-9a-f]{64})$", text, re.M)))
 
 
-def write_stamp(directory, names, release, flags):
+def write_stamp(directory, names, cooked, release, flags):
+    """Writes a directory's stamp: the digests of the containers cooked
+    now, and for the others the ones the old stamp holds, so a cook by name
+    vouches for no container it did not make; one the old stamp lacks is
+    left out, and --check refuses it."""
+    old = read_stamp(directory)
+    kept = old[2] if old is not None else {}
     lines = [
         "# Written by tools/gen_kernels.py and read by its --check: the Maul RHI",
         "# release whose tools cooked these containers, the flags its DXC",
@@ -202,9 +208,10 @@ def write_stamp(directory, names, release, flags):
         f"dxc-flags {' '.join(flags)}",
     ]
     for name in sorted(names):
-        data = committed(name)
-        if data is not None:
-            lines.append(f"container {name} {hashlib.sha256(data).hexdigest()}")
+        data = committed(name) if name in cooked else None
+        digest = hashlib.sha256(data).hexdigest() if data is not None else kept.get(name)
+        if digest is not None:
+            lines.append(f"container {name} {digest}")
     with open(os.path.join(directory, STAMP), "w", encoding="utf-8", newline="\n") as file:
         file.write("\n".join(lines) + "\n")
 
@@ -306,7 +313,7 @@ def main():
             file.write(header(name, data))
         print(f"{os.path.relpath(path, ROOT)}: {len(data)} bytes")
     for directory, held in directories().items():
-        write_stamp(directory, held, release, flags)
+        write_stamp(directory, held, set(names), release, flags)
 
 
 if __name__ == "__main__":

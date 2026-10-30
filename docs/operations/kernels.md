@@ -31,7 +31,7 @@ python3 tools/gen_kernels.py ../maul-rhi            # every kernel
 python3 tools/gen_kernels.py ../maul-rhi sim gas    # some, by name
 ```
 
-The script refuses a tree of another release than the pin, and one whose `tools/mrhi_dxil.py` passes DXC no `-Gis`. Cooking some kernels by name needs a stamp of the same release and flags; after a move of Maul RHI, cook every kernel. The script then writes both stamps again.
+The script refuses a tree of another release than the pin, and one whose `tools/mrhi_dxil.py` passes DXC no `-Gis`. Cooking some kernels by name needs a stamp of the same release and flags; after a move of Maul RHI, cook every kernel. The script then writes both stamps again: the digests of the containers it cooked, and the old stamp's for the rest, so a cook by name never vouches for a container it did not make.
 
 For each kernel the script splices its sources, compiles them to SPIR-V with naga under its Restrict index policy (every index held in range, [gpu.md](../internals/gpu.md#kernels)), validates them for Vulkan 1.3, crosses them to DXIL and to Metal with Maul RHI's tools, and writes the container with the WGSL beside the compiled forms into `<name>_container.h`. Each kernel's bindings are described by `<name>.json` beside it.
 
