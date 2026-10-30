@@ -20,7 +20,6 @@
 #include "maul-vfx/grid.h"
 #include "maul-vfx/mesh.h"
 
-#include <stdalign.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1095,13 +1094,11 @@ static void TestMemoryGuard(void)
               mvfx_errorCapacity,
           "measured");
     memset(s_memory, 0xAB, sizeof s_memory);
-    alignas(16) static uint8_t defaults[MVFX_FILE_DEFAULT_BYTES];
-    mvfxFileDefaults(defaults);
     Span effect = EffectOf(bytes);
     mvfxCodec codec = {.in = bytes,
                        .at = (size_t)effect.at,
                        .end = (size_t)effect.end,
-                       .defaults = defaults,
+                       .defaults = mvfxFileDefaults,
                        .memory = s_memory,
                        .capacity = (size_t)needed - 1,
                        .faultAt = -1};

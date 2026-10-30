@@ -4,6 +4,7 @@
 #include "water.h"
 
 #include "collide.h"
+#include "defaults.h"
 #include "refusal.h"
 
 #include "maul-vfx/effect.h"
@@ -14,17 +15,7 @@
 
 mvfxWaterDef mvfxDefaultWaterDef(void)
 {
-    return (mvfxWaterDef){
-        .cookie = MVFX_WATER_DEF_COOKIE,
-        .size = {64, 64},
-        .cellSize = 0.1f,
-        .space = mvfx_gasLocal,
-        .closedWalls = 15,
-        .waveSpeed = 1.0f,
-        .damping = 0.5f,
-        .gravity = 9.81f,
-        .terrain = {.kind = mvfx_colliderHeightfield, .rotation = {0.0f, 0.0f, 0.0f, 1.0f}},
-    };
+    return (mvfxWaterDef)MVFX_DEFAULT_WATER_DEF;
 }
 
 // Whether a shallow surface's source is in range.

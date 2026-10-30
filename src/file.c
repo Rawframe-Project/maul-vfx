@@ -10,7 +10,6 @@
 #include "file_codec.h"
 #include "fpenv.h"
 
-#include <stdalign.h>
 #include <string.h>
 
 // The header: magic, version, size, section count, then the hash of
@@ -262,11 +261,9 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
         return Fault(valid, -1);
     }
     int32_t names[MVFX_FILE_MAX_GRIDS + MVFX_FILE_MAX_MESHES + MVFX_FILE_MAX_MODULES];
-    alignas(16) uint8_t defaults[MVFX_FILE_DEFAULT_BYTES];
-    mvfxFileDefaults(defaults);
-    const uint8_t* base = defaults + mvfxFileEffectDef->defaultAt;
+    const uint8_t* base = mvfxFileDefaults + mvfxFileEffectDef->defaultAt;
     mvfxCodec codec = {.end = SIZE_MAX,
-                       .defaults = defaults,
+                       .defaults = mvfxFileDefaults,
                        .faultAt = -1,
                        .assets = assets,
                        .assetCount = assetCount,
@@ -513,15 +510,14 @@ static mvfxFileResult Bind(const uint8_t* bytes, const Section sections[SECTION_
 // into one from its default with names bound, its arrays in memory of
 // capacity bytes.
 static mvfxFileResult ReadDef(const uint8_t* bytes, const Section sections[SECTION_COUNT],
-                              const uint8_t* defaults, const mvfxEffectAsset* assets,
-                              int32_t* names, uint8_t* memory, size_t capacity, mvfxEffectDef* def,
-                              size_t* used)
+                              const mvfxEffectAsset* assets, int32_t* names, uint8_t* memory,
+                              size_t capacity, mvfxEffectDef* def, size_t* used)
 {
     const Section* effect = &sections[EFFECT_TAG - 1];
     mvfxCodec codec = {.in = bytes,
                        .at = effect->offset,
                        .end = effect->offset + effect->size,
-                       .defaults = defaults,
+                       .defaults = mvfxFileDefaults,
                        .memory = memory,
                        .capacity = capacity,
                        .faultAt = -1,
@@ -535,7 +531,7 @@ static mvfxFileResult ReadDef(const uint8_t* bytes, const Section sections[SECTI
     }
     if (def != nullptr)
     {
-        memcpy(def, defaults + mvfxFileEffectDef->defaultAt, sizeof *def);
+        memcpy(def, mvfxFileDefaults + mvfxFileEffectDef->defaultAt, sizeof *def);
     }
     mvfxReadFields(&codec, mvfxFileEffectDef, (uint8_t*)def, codec.end);
     *used = codec.used;
@@ -581,7 +577,7 @@ static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEff
     }
     if (result.result == mvfx_success)
     {
-        result = ReadDef(bytes, sections, nullptr, assets, nullptr, nullptr, 0, nullptr, needed);
+        result = ReadDef(bytes, sections, assets, nullptr, nullptr, 0, nullptr, needed);
     }
     if (result.result == mvfx_success)
     {
@@ -628,10 +624,7 @@ static MVFX_NOINLINE mvfxFileResult mvfxReadEffectWork(const void* bytes, int64_
     {
         return Fault(mvfx_errorCapacity, -1);
     }
-    alignas(16) uint8_t defaults[MVFX_FILE_DEFAULT_BYTES];
-    mvfxFileDefaults(defaults);
-    result = ReadDef(bytes, sections, defaults, assets, names, memory, (size_t)capacity, defOut,
-                     &needed);
+    result = ReadDef(bytes, sections, assets, names, memory, (size_t)capacity, defOut, &needed);
     // A def the file holds is the file's bytes: whatever check it fails,
     // a bound's included, the file is malformed.
     if (result.result == mvfx_success && (mvfxCheckEffectDef(defOut) != mvfx_success ||

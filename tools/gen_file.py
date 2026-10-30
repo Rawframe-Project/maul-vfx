@@ -85,14 +85,15 @@ COOKIES = {
     "mvfxWaterDef": "MVFX_WATER_DEF_COOKIE",
 }
 
-# The structs whose defaults their own function gives; an item of any
-# other struct defaults to zero bytes. Each struct with a cookie has one,
-# so a def read from a file gets its cookie from its default.
+# The structs whose defaults their own function gives, by the initializer
+# src/defaults.h shares with it; an item of any other struct defaults to
+# zero bytes. Each struct with a cookie has one, so a def read from a file
+# gets its cookie from its default.
 DEFAULTS = {
-    "mvfxEffectDef": "mvfxDefaultEffectDef",
-    "mvfxEmitterDef": "mvfxDefaultEmitterDef",
-    "mvfxGasDef": "mvfxDefaultGasDef",
-    "mvfxWaterDef": "mvfxDefaultWaterDef",
+    "mvfxEffectDef": "MVFX_DEFAULT_EFFECT_DEF",
+    "mvfxEmitterDef": "MVFX_DEFAULT_EMITTER_DEF",
+    "mvfxGasDef": "MVFX_DEFAULT_GAS_DEF",
+    "mvfxWaterDef": "MVFX_DEFAULT_WATER_DEF",
 }
 
 
@@ -473,13 +474,12 @@ def generate(registry_text=None):
         "",
         '#include "file_fields.h"',
         "",
+        '#include "defaults.h"',
+        "",
         '#include "maul-vfx/effect.h"',
-        '#include "maul-vfx/gas.h"',
-        '#include "maul-vfx/water.h"',
         "",
         "#include <stdalign.h>",
         "#include <stddef.h>",
-        "#include <string.h>",
         "",
         "// The defaults the codec takes whole: the root's and each array's",
         "// items'.",
@@ -490,17 +490,15 @@ def generate(registry_text=None):
     lines += [
         "} mvfxFileDefaultBlock;",
         "",
-        "static_assert(sizeof(mvfxFileDefaultBlock) <= MVFX_FILE_DEFAULT_BYTES, "
-        "\"the block fits\");",
-        "static_assert(alignof(mvfxFileDefaultBlock) <= 16, \"the block's alignment\");",
-        "",
-        "void mvfxFileDefaults(void* block)",
-        "{",
-        "    mvfxFileDefaultBlock* defaults = block;",
-        "    memset(defaults, 0, sizeof *defaults);",
+        "static const mvfxFileDefaultBlock s_defaults = {",
     ]
-    lines += [f"    defaults->{name} = {DEFAULTS[name]}();" for name in defaults if name in DEFAULTS]
-    lines += ["}", ""]
+    lines += [f"    .{name} = {DEFAULTS[name]}," for name in defaults if name in DEFAULTS]
+    lines += [
+        "};",
+        "",
+        "const uint8_t* const mvfxFileDefaults = (const uint8_t*)&s_defaults;",
+        "",
+    ]
     lines += tables
     sums = references(typedefs, structs, "mvfxEffectDef", {})
     lines += [

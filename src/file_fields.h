@@ -79,13 +79,11 @@ struct mvfxFileType
 // A struct T's table, its fields in s_fields_T.
 #define MVFX_FILE_TYPE(T, count, defaultAt) {sizeof(T), alignof(T), s_fields_##T, count, defaultAt}
 
-// The most bytes the block of defaults takes: the root's default and one
-// of each array's items' (file_fields.c checks it).
-#define MVFX_FILE_DEFAULT_BYTES 4096
-
-// Writes the block of defaults into block, MVFX_FILE_DEFAULT_BYTES aligned
-// to 16: the defs' own (mvfxDefault*Def), zero bytes for other structs.
-void mvfxFileDefaults(void* block);
+// The block of defaults, constant: the root's default and one of each
+// array's items', the defs' own as mvfxDefault*Def gives them (by the
+// initializers of defaults.h), zero bytes for other structs. A type's
+// default is at its defaultAt.
+extern const uint8_t* const mvfxFileDefaults;
 
 // The most references of each kind a def holds (its grids, its meshes, its
 // host modules), so the most names of each a file holds; file_fields.c

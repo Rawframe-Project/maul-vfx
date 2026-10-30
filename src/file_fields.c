@@ -8,13 +8,12 @@
 
 #include "file_fields.h"
 
+#include "defaults.h"
+
 #include "maul-vfx/effect.h"
-#include "maul-vfx/gas.h"
-#include "maul-vfx/water.h"
 
 #include <stdalign.h>
 #include <stddef.h>
-#include <string.h>
 
 // The defaults the codec takes whole: the root's and each array's
 // items'.
@@ -38,18 +37,14 @@ typedef struct mvfxFileDefaultBlock
     mvfxWaterDef mvfxWaterDef;
 } mvfxFileDefaultBlock;
 
-static_assert(sizeof(mvfxFileDefaultBlock) <= MVFX_FILE_DEFAULT_BYTES, "the block fits");
-static_assert(alignof(mvfxFileDefaultBlock) <= 16, "the block's alignment");
+static const mvfxFileDefaultBlock s_defaults = {
+    .mvfxEffectDef = MVFX_DEFAULT_EFFECT_DEF,
+    .mvfxEmitterDef = MVFX_DEFAULT_EMITTER_DEF,
+    .mvfxGasDef = MVFX_DEFAULT_GAS_DEF,
+    .mvfxWaterDef = MVFX_DEFAULT_WATER_DEF,
+};
 
-void mvfxFileDefaults(void* block)
-{
-    mvfxFileDefaultBlock* defaults = block;
-    memset(defaults, 0, sizeof *defaults);
-    defaults->mvfxEffectDef = mvfxDefaultEffectDef();
-    defaults->mvfxEmitterDef = mvfxDefaultEmitterDef();
-    defaults->mvfxGasDef = mvfxDefaultGasDef();
-    defaults->mvfxWaterDef = mvfxDefaultWaterDef();
-}
+const uint8_t* const mvfxFileDefaults = (const uint8_t*)&s_defaults;
 
 static const mvfxFileField s_fields_mvfxCurveKey[] = {
     {1, offsetof(mvfxCurveKey, time), mvfx_fieldF32, 0, 1, nullptr, 0, 0},

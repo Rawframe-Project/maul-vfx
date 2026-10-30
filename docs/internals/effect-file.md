@@ -35,7 +35,7 @@ A field the file leaves out takes the value its struct's default holds there: th
 
 ## One table for both directions
 
-The codec has no hand-written reader or writer for each struct. `tools/gen_file.py` reads the public headers and the tags and writes [src/file_fields.c](../../src/file_fields.c): a table of each struct's fields (tag, place, kind, element count, nested type) in ascending tag order, and the block of defaults. The writer walks a struct's table and puts each field that differs from its default; the reader walks the file's tags against the same table. A field added to a def is refused by the generator until it has a tag, and is in the file once it has one; CI runs the generator with `--check`, so a header change without the regenerated table fails.
+The codec has no hand-written reader or writer for each struct. `tools/gen_file.py` reads the public headers and the tags and writes [src/file_fields.c](../../src/file_fields.c): a table of each struct's fields (tag, place, kind, element count, nested type) in ascending tag order, and the block of defaults, a constant built from the initializers [src/defaults.h](../../src/defaults.h) shares with the default functions. The writer walks a struct's table and puts each field that differs from its default; the reader walks the file's tags against the same table. A field added to a def is refused by the generator until it has a tag, and is in the file once it has one; CI runs the generator with `--check`, so a header change without the regenerated table fails.
 
 The generator refuses a pointer field it has no count for, so no array is silently left out, and passes its output through clang-format like any source.
 
