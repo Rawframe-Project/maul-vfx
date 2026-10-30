@@ -829,9 +829,9 @@ static void TestBits(void)
         CHECK(mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, s_origin, 0.01f, &b, &v,
                                             &i) == mvfx_success,
               "meshed");
-        hash = mvfxHash64(hash, s_positions, (int32_t)(12 * v));
-        hash = mvfxHash64(hash, s_normals, (int32_t)(12 * v));
-        hash = mvfxHash64(hash, s_indices, (int32_t)(4 * i));
+        hash = mvfxHash64(hash, s_positions, 12 * v);
+        hash = mvfxHash64(hash, s_normals, 12 * v);
+        hash = mvfxHash64(hash, s_indices, 4 * i);
         mvfxDestroyContext(s_context);
     }
     CHECK(hash == 0x5FC7FA883FE07A31u, "a mesh's bytes as committed");

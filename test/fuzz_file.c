@@ -189,7 +189,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     if (size >= 24 && (data[16] & 7) != 0)
     {
         PutLittle(bytes + 8, size, 4);
-        PutLittle(bytes + 16, mvfxHash64(MVFX_HASH_INIT, bytes + 24, (int32_t)(size - 24)), 8);
+        PutLittle(bytes + 16, mvfxHash64(MVFX_HASH_INIT, bytes + 24, size - 24), 8);
     }
     ReadSealed(bytes, (int64_t)size);
     free(bytes);

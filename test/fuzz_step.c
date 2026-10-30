@@ -265,7 +265,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     // The seed comes from the hash's bytes, which sealing writes over.
     uint32_t seed = (uint32_t)bytes[16] | (uint32_t)bytes[17] << 8;
     PutLittle(bytes + 8, size, 4);
-    PutLittle(bytes + 16, mvfxHash64(MVFX_HASH_INIT, bytes + 24, (int32_t)(size - 24)), 8);
+    PutLittle(bytes + 16, mvfxHash64(MVFX_HASH_INIT, bytes + 24, size - 24), 8);
     int64_t needed = 0;
     mvfxEffectDef def;
     mvfxFileResult read = mvfxReadEffect(bytes, (int64_t)size, s_sceneAssets, s_sceneAssetCount,

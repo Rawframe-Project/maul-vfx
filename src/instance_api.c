@@ -89,7 +89,7 @@ static mvfxTransform MakeTransform(const double origin[3], const float rotation[
 // the context's instances, hashed, never 0.
 static uint32_t SeedFromOrdinal(uint64_t ordinal)
 {
-    uint64_t hash = mvfxHash64(MVFX_HASH_INIT, &ordinal, (int32_t)sizeof ordinal);
+    uint64_t hash = mvfxHash64(MVFX_HASH_INIT, &ordinal, (int64_t)sizeof ordinal);
     uint32_t seed = (uint32_t)(hash ^ (hash >> 32u));
     return seed != 0 ? seed : 1;
 }
