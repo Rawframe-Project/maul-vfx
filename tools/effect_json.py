@@ -378,7 +378,7 @@ class Writer:
 def to_binary(layout, form):
     """A JSON form's file bytes."""
     if not isinstance(form, dict) or list(form) != ["format", "effect"]:
-        raise FileError('the form is {"format": 1, "effect": {...}}')
+        raise FileError(f'the form is {{"format": {JSON_FORMAT}, "effect": {{...}}}}')
     if form["format"] != JSON_FORMAT:
         raise FileError(f"format {form['format']!r}, not {JSON_FORMAT}")
     writer = Writer(layout)

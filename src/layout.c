@@ -152,7 +152,7 @@ static uint32_t SrgbByte(float linear)
     return Unorm(ToSrgb(linear), 255.0f);
 }
 
-static MVFX_NOINLINE void mvfxSrgbStepsWork(float steps[MVFX_SRGB_STEPS])
+static MVFX_NOINLINE void mvfxGetSrgbStepsWork(float steps[MVFX_SRGB_STEPS])
 {
     // The byte rises with the value: each step by bisection over the
     // binary32 values from 0 to 1, ordered as their bits are.
@@ -181,7 +181,7 @@ static MVFX_NOINLINE void mvfxSrgbStepsWork(float steps[MVFX_SRGB_STEPS])
 void mvfxGetSrgbSteps(float stepsOut[MVFX_SRGB_STEPS])
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxSrgbStepsWork(stepsOut);
+    mvfxGetSrgbStepsWork(stepsOut);
     mvfxFloatEnvLeave(env);
 }
 

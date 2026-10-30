@@ -155,8 +155,8 @@ mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMes
     return mvfx_success;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxMesh_HullCenterWork(mvfxContext* context, mvfxMeshId mesh,
-                                                        bool* hullOut, float centerOut[3])
+static MVFX_NOINLINE mvfxResult mvfxMesh_GetHullCenterWork(mvfxContext* context, mvfxMeshId mesh,
+                                                           bool* hullOut, float centerOut[3])
 {
     if (mvfxRefusesHostCall(context))
     {
@@ -196,13 +196,13 @@ mvfxResult mvfxMesh_GetHullCenter(mvfxContext* context, mvfxMeshId mesh, bool* h
                                   float centerOut[3])
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxMesh_HullCenterWork(context, mesh, hullOut, centerOut);
+    mvfxResult result = mvfxMesh_GetHullCenterWork(context, mesh, hullOut, centerOut);
     mvfxFloatEnvLeave(env);
     return result;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxMesh_HullVertexCountWork(mvfxContext* context, mvfxMeshId mesh,
-                                                             int32_t* countOut)
+static MVFX_NOINLINE mvfxResult mvfxMesh_GetHullVertexCountWork(mvfxContext* context,
+                                                                mvfxMeshId mesh, int32_t* countOut)
 {
     if (mvfxRefusesHostCall(context))
     {
@@ -229,7 +229,7 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_HullVertexCountWork(mvfxContext* contex
 mvfxResult mvfxMesh_GetHullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
 {
     uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxMesh_HullVertexCountWork(context, mesh, countOut);
+    mvfxResult result = mvfxMesh_GetHullVertexCountWork(context, mesh, countOut);
     mvfxFloatEnvLeave(env);
     return result;
 }
