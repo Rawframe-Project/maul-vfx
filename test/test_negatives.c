@@ -1121,6 +1121,61 @@ static void TestCallBuffers(void)
     CHECK(made == 22 && refused == 22, "a call's buffer sizes");
 }
 
+static void TestAssetNames(void)
+{
+    // An asset's name length, in the tables the file calls take: each call
+    // shown to succeed with a valid table, then refused as invalid with the
+    // length -1 and the least integer.
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    static unsigned char bytes[4096];
+    static unsigned char memory[1 << 16];
+    static unsigned char written[4096];
+    int64_t size = 0;
+    CHECK(mvfxWriteEffect(&def, NULL, 0, bytes, sizeof bytes, &size, NULL).result == mvfx_success,
+          "a file to read");
+    int32_t made = 0;
+    int32_t refused = 0;
+    for (int32_t f = 0; f < 3; ++f)
+    {
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            mvfxEffectAsset asset = {
+                .kind = mvfx_assetMesh, .name = "corner", .nameLength = 6, .mesh = s_mesh};
+            for (int32_t pass = 0; pass < 2; ++pass)
+            {
+                asset.nameLength = pass == 0 ? 6 : s_negatives[k];
+                int64_t length = 0;
+                mvfxEffectDef read;
+                mvfxEffectId effect = {0};
+                mvfxResult result = f == 0   ? mvfxWriteEffect(&def, &asset, 1, written,
+                                                               sizeof written, &length, NULL)
+                                                   .result
+                                    : f == 1 ? mvfxReadEffect(bytes, size, &asset, 1, memory,
+                                                              sizeof memory, &length, &read, NULL)
+                                                   .result
+                                             : mvfxCreateEffectFromBytes(s_context, bytes, size,
+                                                                         &asset, 1, &effect, NULL)
+                                                   .result;
+                (void)(f == 2 && result == mvfx_success ? mvfxDestroyEffect(s_context, effect) : 0);
+                made += pass == 0 && result == mvfx_success ? 1 : 0;
+                refused += pass == 1 && result == mvfx_errorInvalid ? 1 : 0;
+                if (pass == 0 && result != mvfx_success)
+                {
+                    printf("  file call %d's valid call: %s\n", f, mvfxGetResultName(result));
+                }
+                if (pass == 1)
+                {
+                    Refused(result, "an asset's name length", k);
+                }
+            }
+        }
+    }
+    CHECK(made == 6 && refused == 6, "an asset's name length in each file call");
+}
+
 static void TestOtherDefCounts(void)
 {
     // The counts of a mesh, a grid and a layout def, each from a def made.
@@ -1200,6 +1255,7 @@ int main(void)
     TestInstanceAndContextDefs();
     TestCallStructs();
     TestCallBuffers();
+    TestAssetNames();
     CHECK(s_taken == 0, "every negative index and count refused as invalid");
     mvfxDestroyContext(s_context);
     return s_failures == 0 ? 0 : 1;
