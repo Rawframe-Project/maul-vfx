@@ -87,8 +87,10 @@ mvfxResult mvfxDestroyMesh(mvfxContext* context, mvfxMeshId mesh)
     {
         return mvfx_errorBusy;
     }
-    mvfxReleaseMesh(live, &context->allocator);
+    // The slot freed first: the allocator's free, host code, may look the
+    // id up, and finds it gone rather than a released block.
     mvfxFreeSlot(&context->meshes, mesh.index1);
+    mvfxReleaseMesh(live, &context->allocator);
     return mvfx_success;
 }
 

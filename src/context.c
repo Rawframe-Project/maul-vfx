@@ -106,11 +106,15 @@ void mvfxDestroyContext(mvfxContext* context)
     }
     mvfxAllocator allocator = context->allocator;
     mvfxAllocator host = context->hostAllocator;
+    // Each object's slot freed before its memory, and each table emptied
+    // before its own: the allocator's free, host code, may look an id up,
+    // and finds it gone rather than a released block.
     for (uint32_t i = 0; i < context->instances.capacity; ++i)
     {
         mvfxInstance* instance = context->instances.slots[i].object;
         if (instance != nullptr)
         {
+            mvfxFreeSlot(&context->instances, i + 1);
             mvfxReleaseInstance(instance, &allocator);
         }
     }
@@ -120,6 +124,7 @@ void mvfxDestroyContext(mvfxContext* context)
         mvfxEffect* effect = context->effects.slots[i].object;
         if (effect != nullptr)
         {
+            mvfxFreeSlot(&context->effects, i + 1);
             mvfxReleaseEffect(effect, &allocator);
         }
     }
@@ -129,6 +134,7 @@ void mvfxDestroyContext(mvfxContext* context)
         mvfxMesh* mesh = context->meshes.slots[i].object;
         if (mesh != nullptr)
         {
+            mvfxFreeSlot(&context->meshes, i + 1);
             mvfxReleaseMesh(mesh, &allocator);
         }
     }
@@ -138,6 +144,7 @@ void mvfxDestroyContext(mvfxContext* context)
         mvfxGrid* grid = context->grids.slots[i].object;
         if (grid != nullptr)
         {
+            mvfxFreeSlot(&context->grids, i + 1);
             mvfxReleaseGrid(grid, &allocator);
         }
     }
@@ -147,6 +154,7 @@ void mvfxDestroyContext(mvfxContext* context)
         mvfxOutputLayout* layout = context->layouts.slots[i].object;
         if (layout != nullptr)
         {
+            mvfxFreeSlot(&context->layouts, i + 1);
             mvfxReleaseLayout(layout, &allocator);
         }
     }
