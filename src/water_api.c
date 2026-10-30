@@ -6,6 +6,7 @@
 #include "water_api.h"
 
 #include "context.h"
+#include "direction.h"
 #include "force.h"
 #include "fpenv.h"
 #include "instance_api.h"
@@ -117,7 +118,8 @@ static void NormalAt(const mvfxCompiledWater* water, const mvfxWaterState* state
         (SurfaceAt(water, state, x1, z) - SurfaceAt(water, state, x0, z)) / ((float)(x1 - x0) * h);
     float dz =
         (SurfaceAt(water, state, x, z1) - SurfaceAt(water, state, x, z0)) / ((float)(z1 - z0) * h);
-    float length = sqrtf(dx * dx + 1.0f + dz * dz);
+    // Measured scaled where a slope's square passes binary32's range.
+    float length = mvfxLengthOf(dx, 1.0f, dz);
     out[0] = -dx / length;
     out[1] = 1.0f / length;
     out[2] = -dz / length;
@@ -333,7 +335,9 @@ void mvfxWaterNormal(const mvfxCompiledWater* water, const mvfxWaterState* state
             sum[k] += mvfxWaterShare(t, corner) * cornerNormal[k];
         }
     }
-    float length = sqrtf(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
+    // Steep corners' Y, opposite slopes cancelling, may leave the sum's
+    // squares below binary32's least normal: measured scaled.
+    float length = mvfxLengthOf(sum[0], sum[1], sum[2]);
     for (int32_t k = 0; k < 3; ++k)
     {
         normal[k] = sum[k] / length;

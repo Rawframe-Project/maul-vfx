@@ -161,7 +161,11 @@ static void LiftRows(int32_t start, int32_t end, void* context)
     const Lift* lift = context;
     for (int64_t i = (int64_t)start * lift->width; i < (int64_t)end * lift->width; ++i)
     {
-        lift->u[i] += lift->by;
+        // Held within MVFX_MAX_WATER_DEPTH of the rest level.
+        float u = lift->u[i] + lift->by;
+        lift->u[i] = u > MVFX_MAX_WATER_DEPTH    ? MVFX_MAX_WATER_DEPTH
+                     : u < -MVFX_MAX_WATER_DEPTH ? -MVFX_MAX_WATER_DEPTH
+                                                 : u;
     }
 }
 
@@ -169,6 +173,7 @@ static void LiftRows(int32_t start, int32_t end, void* context)
 // them all: the water a body displaces lifts the level, and the
 // surface's volume stays. Kept in the heights rather than as a level
 // apart, their mean stays at the rest level however long a body pushes.
+// Each height is then held within MVFX_MAX_WATER_DEPTH.
 static void Displace(const mvfxCompiledWater* water, mvfxWaterState* state, double sank,
                      const mvfxTasks* tasks)
 {
