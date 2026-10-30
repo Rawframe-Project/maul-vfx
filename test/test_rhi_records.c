@@ -411,26 +411,28 @@ static void TestRecordsRefused(Gpu* gpu, mvfxGpu* kernels)
     mvfxGpuRecordsDef records = RecordsDef(resource, layout);
     records.count = resource;
     records.countOffset = 4;
-    recorded = recorded && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
-               mvfxGpuSim_AddPasses(sim) == mvfx_success &&
-               mvfxGpuSim_AddRecords(sim, &records) == mvfx_success &&
-               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
-               mrhiPass_WriteBuffer(gpu->device, pass, resource, 0, fill, sizeof fill) == mrhi_success &&
-               mrhiPass_End(gpu->device, pass) == mrhi_success &&
-               mvfxGpuSim_Record(sim) == mvfx_success && Finish(gpu);
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
+        mvfxGpuSim_AddPasses(sim) == mvfx_success &&
+        mvfxGpuSim_AddRecords(sim, &records) == mvfx_success &&
+        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+        mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+        mrhiPass_WriteBuffer(gpu->device, pass, resource, 0, fill, sizeof fill) == mrhi_success &&
+        mrhiPass_End(gpu->device, pass) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
+        Finish(gpu);
     recorded = recorded && mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
                mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success;
     const mrhiAccess reading[1] = {{.resource = resource, .kind = mrhi_accessCopySource}};
     passDef.accesses = reading;
     uint32_t back[4] = {0};
     size_t taken = 0;
-    recorded = recorded && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
-               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
-               mrhiPass_ReadBuffer(gpu->device, pass, resource, 0, sizeof back, &read) == mrhi_success &&
-               mrhiPass_End(gpu->device, pass) == mrhi_success && Finish(gpu) &&
-               mrhiRequest_TakeReadback(gpu->device, read, back, sizeof back, &taken) == mrhi_success;
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
+        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+        mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, pass, resource, 0, sizeof back, &read) == mrhi_success &&
+        mrhiPass_End(gpu->device, pass) == mrhi_success && Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, read, back, sizeof back, &taken) == mrhi_success;
     CHECK(recorded && back[0] == RECORD_FILL * 0x01010101u && back[1] == 0 &&
               back[2] == RECORD_FILL * 0x01010101u,
           "an emitter left out: a count of 0, no record");

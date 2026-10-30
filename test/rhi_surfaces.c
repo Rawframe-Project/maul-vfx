@@ -62,9 +62,10 @@ static bool ReadGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t g, const mvfxGasRead* rea
         return false;
     }
     size_t got = 0;
-    bool done = Finish(gpu) &&
-                mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
-                got == bytes;
+    bool done =
+        Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+        got == bytes;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;
 }

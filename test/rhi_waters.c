@@ -99,13 +99,15 @@ bool ReadWaterGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t water, const mvfxWaterRead*
     for (uint64_t at = 0; recorded && at < bytes; at += sizeof fills)
     {
         uint64_t span = bytes - at < sizeof fills ? bytes - at : sizeof fills;
-        recorded = mrhiPass_WriteBuffer(gpu->device, passes[0], target, at, fills, span) == mrhi_success;
+        recorded =
+            mrhiPass_WriteBuffer(gpu->device, passes[0], target, at, fills, span) == mrhi_success;
     }
-    recorded = recorded && mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
-               mvfxGpuSim_Record(sim) == mvfx_success &&
-               mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
-               mrhiPass_ReadBuffer(gpu->device, passes[1], target, 0, bytes, &request) == mrhi_success &&
-               mrhiPass_End(gpu->device, passes[1]) == mrhi_success;
+    recorded =
+        recorded && mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
+        mvfxGpuSim_Record(sim) == mvfx_success &&
+        mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, passes[1], target, 0, bytes, &request) == mrhi_success &&
+        mrhiPass_End(gpu->device, passes[1]) == mrhi_success;
     if (!recorded)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
@@ -113,9 +115,10 @@ bool ReadWaterGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t water, const mvfxWaterRead*
         return false;
     }
     size_t got = 0;
-    bool done = Finish(gpu) &&
-                mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
-                got == bytes;
+    bool done =
+        Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+        got == bytes;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;
 }

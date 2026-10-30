@@ -525,7 +525,7 @@ bool mvfxClearSimBuffers(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitte
     for (int32_t b = 0; cleared && b < ClearedBuffers(emitter); ++b)
     {
         cleared = mrhiPass_ClearBuffer(sim->device, pass, emitter->resources[buffers[b]], 0,
-                                  MRHI_WHOLE_SIZE) == mrhi_success;
+                                       MRHI_WHOLE_SIZE) == mrhi_success;
     }
     return cleared;
 }

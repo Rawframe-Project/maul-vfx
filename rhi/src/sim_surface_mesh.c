@@ -310,12 +310,12 @@ static bool RecordMesh(mvfxGpuSim* sim, SimGas* gas, const SurfaceMesh* mesh)
     {
         mrhiPassId pass = mesh->passes[p];
         uint32_t groups = kernels[p - 1] == mvfx_kernelMeshOffsets ? 1u : mesh->groups;
-        bool ran =
-            mrhiPass_Begin(sim->device, pass) == mrhi_success &&
-            mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernels[p - 1])) ==
-                mrhi_success &&
-            mrhiPass_SetBindings(sim->device, pass, 0, bindings, 9) == mrhi_success &&
-            mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+        bool ran = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+                   mrhiPass_SetComputePipeline(sim->device, pass,
+                                               mvfxGpuPipeline(sim->gpu, kernels[p - 1])) ==
+                       mrhi_success &&
+                   mrhiPass_SetBindings(sim->device, pass, 0, bindings, 9) == mrhi_success &&
+                   mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
         recorded = mrhiPass_End(sim->device, pass) == mrhi_success && ran;
     }
     return recorded;

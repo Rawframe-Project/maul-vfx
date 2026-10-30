@@ -125,7 +125,8 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
         made = mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success &&
                mrhiDevice_BeginFrame(device, &frame) == mrhi_success &&
                mvfxGpuSim_AddPasses(sim) == mvfx_success &&
-               mrhiDevice_CompileFrame(device) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
+               mrhiDevice_CompileFrame(device) == mrhi_success &&
+               mvfxGpuSim_Record(sim) == mvfx_success &&
                mrhiDevice_SubmitFrame(device, &submitted) == mrhi_success &&
                mrhiRequest_WaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
         if (!made)
@@ -174,7 +175,8 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
         (void)mvfxGpu_Notify(kernels, &note);
     }
     size_t taken = 0;
-    made = made && mrhiRequest_TakeReadback(device, read, record, sizeof record, &taken) == mrhi_success;
+    made = made &&
+           mrhiRequest_TakeReadback(device, read, record, sizeof record, &taken) == mrhi_success;
 
     // About 50 live, as on the CPU, and their bounds above the ground.
     mvfxBounds bounds;

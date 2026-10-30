@@ -262,8 +262,8 @@ static bool RecordKernel(mrhiDevice* device, mrhiPassId pass, mrhiComputePipelin
     bool ran = mrhiPass_Begin(device, pass) == mrhi_success &&
                mrhiPass_SetComputePipeline(device, pass, pipeline) == mrhi_success &&
                mrhiPass_SetBindings(device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
-               (root == nullptr ||
-                mrhiPass_SetRootBlock(device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success) &&
+               (root == nullptr || mrhiPass_SetRootBlock(device, pass, 0, root,
+                                                         4 * sizeof(uint32_t)) == mrhi_success) &&
                mrhiPass_Dispatch(device, pass, groups, 1, 1) == mrhi_success;
     return mrhiPass_End(device, pass) == mrhi_success && ran;
 }

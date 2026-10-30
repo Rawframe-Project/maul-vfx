@@ -83,15 +83,15 @@ static bool RecordSpawnCopy(mvfxGpuSim* sim, const Emitter* emitter)
     {
         recorded = recorded &&
                    mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS],
-                                  4u * MVFX_GPU_EVENTS_WRITTEN, into,
-                                  first + 4u * MVFX_SPAWN_SOURCE, 4u) == mrhi_success &&
+                                       4u * MVFX_GPU_EVENTS_WRITTEN, into,
+                                       first + 4u * MVFX_SPAWN_SOURCE, 4u) == mrhi_success &&
                    mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS],
-                                  4u * MVFX_RECORD_EVENT_FROM, into, first + 4u * MVFX_SPAWN_FROM,
-                                  4u) == mrhi_success &&
+                                       4u * MVFX_RECORD_EVENT_FROM, into,
+                                       first + 4u * MVFX_SPAWN_FROM, 4u) == mrhi_success &&
                    mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_EVENTS],
-                                  4u * (uint64_t)mvfxEventFirst(source->capacity), into,
-                                  first + 4u * MVFX_SPAWN_EVENTS,
-                                  4u * MVFX_EVENT_WORDS * (uint64_t)capacity) == mrhi_success;
+                                       4u * (uint64_t)mvfxEventFirst(source->capacity), into,
+                                       first + 4u * MVFX_SPAWN_EVENTS,
+                                       4u * MVFX_EVENT_WORDS * (uint64_t)capacity) == mrhi_success;
     }
     else
     {

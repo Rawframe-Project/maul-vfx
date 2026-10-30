@@ -140,13 +140,14 @@ static bool Record(Gpu* gpu, mvfxGpu* kernels, mrhiResourceId words, mrhiRequest
            mrhiAddPass(gpu->device, &readDef, &reading) == mrhi_success &&
            mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
            mrhiPass_Begin(gpu->device, hashing) == mrhi_success &&
-           mrhiPass_SetComputePipeline(gpu->device, hashing,
-                                  mvfxGpuPipeline(kernels, mvfx_kernelPcg4d)) == mrhi_success &&
+           mrhiPass_SetComputePipeline(
+               gpu->device, hashing, mvfxGpuPipeline(kernels, mvfx_kernelPcg4d)) == mrhi_success &&
            mrhiPass_SetBindings(gpu->device, hashing, 0, &binding, 1) == mrhi_success &&
            mrhiPass_Dispatch(gpu->device, hashing, WORDS / 64, 1, 1) == mrhi_success &&
            mrhiPass_End(gpu->device, hashing) == mrhi_success &&
            mrhiPass_Begin(gpu->device, reading) == mrhi_success &&
-           mrhiPass_ReadBuffer(gpu->device, reading, words, 0, WORDS * 16, readback) == mrhi_success &&
+           mrhiPass_ReadBuffer(gpu->device, reading, words, 0, WORDS * 16, readback) ==
+               mrhi_success &&
            mrhiPass_End(gpu->device, reading) == mrhi_success;
 }
 
@@ -181,9 +182,10 @@ static bool Hash(Gpu* gpu, mvfxGpu* kernels, uint32_t* out)
     {
     }
     size_t taken = 0;
-    done = done &&
-           mrhiRequest_TakeReadback(gpu->device, readback, out, WORDS * 16, &taken) == mrhi_success &&
-           taken == WORDS * 16;
+    done =
+        done &&
+        mrhiRequest_TakeReadback(gpu->device, readback, out, WORDS * 16, &taken) == mrhi_success &&
+        taken == WORDS * 16;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;
 }
@@ -416,7 +418,7 @@ static bool RunChecks(Gpu* gpu, Checker* checker, CheckMode mode, uint32_t first
     size_t taken = 0;
     return done &&
            mrhiRequest_TakeReadback(gpu->device, readback, checker->words,
-                            (size_t)count * ElementBytes(mode), &taken) == mrhi_success &&
+                                    (size_t)count * ElementBytes(mode), &taken) == mrhi_success &&
            taken == (size_t)count * ElementBytes(mode);
 }
 

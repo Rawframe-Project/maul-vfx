@@ -162,8 +162,8 @@ static bool RecordEventValues(mvfxGpuSim* sim, const Emitter* emitter)
     }
     bool recorded =
         mrhiPass_Begin(sim->device, pass) == mrhi_success &&
-        mrhiPass_SetComputePipeline(sim->device, pass,
-                               mvfxGpuPipeline(sim->gpu, mvfx_kernelEventValues)) == mrhi_success &&
+        mrhiPass_SetComputePipeline(
+            sim->device, pass, mvfxGpuPipeline(sim->gpu, mvfx_kernelEventValues)) == mrhi_success &&
         mrhiPass_SetBindings(sim->device, pass, 0, bindings, 8) == mrhi_success &&
         mrhiPass_Dispatch(sim->device, pass, emitter->eventWords[5], 1, 1) == mrhi_success;
     return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;

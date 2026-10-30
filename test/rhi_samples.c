@@ -109,18 +109,19 @@ static bool RunQuery(Gpu* gpu, mvfxGpuSim* sim, const Asked* asked, const float*
     recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
                mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
                mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success &&
-               mrhiPass_WriteBuffer(gpu->device, passes[0], ids[0], POINT_OFFSET, points, pointBytes) ==
-                   mrhi_success &&
+               mrhiPass_WriteBuffer(gpu->device, passes[0], ids[0], POINT_OFFSET, points,
+                                    pointBytes) == mrhi_success &&
                mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
                mvfxGpuSim_Record(sim) == mvfx_success &&
                mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
-               mrhiPass_ReadBuffer(gpu->device, passes[1], ids[1], SAMPLE_OFFSET, bytes, &request) ==
-                   mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, passes[1], ids[1], SAMPLE_OFFSET, bytes,
+                                   &request) == mrhi_success &&
                mrhiPass_End(gpu->device, passes[1]) == mrhi_success;
     size_t got = 0;
-    bool done = recorded && Finish(gpu) &&
-                mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
-                got == bytes;
+    bool done =
+        recorded && Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+        got == bytes;
     if (made && !recorded)
     {
         (void)mrhiDevice_DropFrame(gpu->device);

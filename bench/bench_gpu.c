@@ -128,7 +128,8 @@ static bool Step(Gpu* gpu, mvfxContext* context, mvfxGpuSim* sim)
         return false;
     }
     if (mvfxGpuSim_AddPasses(sim) != mvfx_success ||
-        mrhiDevice_CompileFrame(gpu->device) != mrhi_success || mvfxGpuSim_Record(sim) != mvfx_success)
+        mrhiDevice_CompileFrame(gpu->device) != mrhi_success ||
+        mvfxGpuSim_Record(sim) != mvfx_success)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
         return false;
@@ -362,14 +363,14 @@ static double Uploads(Gpu* gpu, uint64_t bytes)
             passDef.accesses = written;
             passDef.accessCount = 1;
             passDef.neverCull = true;
-            made =
-                made && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
-                mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-                mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
-                mrhiPass_WriteBuffer(gpu->device, pass, resource, 0, s_bytes, bytes) == mrhi_success &&
-                mrhiPass_End(gpu->device, pass) == mrhi_success &&
-                mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiRequest_WaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+            made = made && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
+                   mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+                   mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+                   mrhiPass_WriteBuffer(gpu->device, pass, resource, 0, s_bytes, bytes) ==
+                       mrhi_success &&
+                   mrhiPass_End(gpu->device, pass) == mrhi_success &&
+                   mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
+                   mrhiRequest_WaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
         }
         double seconds = Now() - start;
         best = seconds < best ? seconds : best;

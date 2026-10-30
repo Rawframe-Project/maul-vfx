@@ -266,9 +266,10 @@ static bool ReadBytes(Gpu* gpu, mvfxGpuSim* sim, const mvfxGasRead* read, uint64
         return false;
     }
     size_t got = 0;
-    bool done = Finish(gpu) &&
-                mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
-                got == bytes;
+    bool done =
+        Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+        got == bytes;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;
 }
@@ -463,7 +464,7 @@ static bool MeshGpu(Gpu* gpu, mvfxGpuSim* sim, mvfxGpuSurfaceMeshDef def,
     for (int32_t b = 0; recorded && b < 4; ++b)
     {
         recorded = bytes[b] == 0 || mrhiPass_ReadBuffer(gpu->device, pass, ids[b], s_meshOffsets[b],
-                                                   bytes[b], &requests[b]) == mrhi_success;
+                                                        bytes[b], &requests[b]) == mrhi_success;
     }
     recorded = recorded && mrhiPass_End(gpu->device, pass) == mrhi_success;
     bool done = recorded && Finish(gpu);
@@ -471,7 +472,7 @@ static bool MeshGpu(Gpu* gpu, mvfxGpuSim* sim, mvfxGpuSurfaceMeshDef def,
     {
         size_t got = 0;
         done = bytes[b] == 0 || (mrhiRequest_TakeReadback(gpu->device, requests[b], outs[b],
-                                                  (size_t)bytes[b], &got) == mrhi_success &&
+                                                          (size_t)bytes[b], &got) == mrhi_success &&
                                  got == bytes[b]);
     }
     if (made && !recorded)

@@ -152,13 +152,14 @@ static bool RecordQuery(mvfxGpuSim* sim, const SimWater* water, const WaterSampl
         {.slot = 4, .resource = query->points, .size = MRHI_WHOLE_SIZE}};
     mrhiPassId pass = query->passes[1];
     uint32_t groups = (query->count + SAMPLE_GROUP - 1u) / SAMPLE_GROUP;
-    bool ran =
-        recorded && mrhiPass_Begin(sim->device, pass) == mrhi_success &&
-        mrhiPass_SetComputePipeline(sim->device, pass,
-                               mvfxGpuPipeline(sim->gpu, mvfx_kernelWaterSample)) == mrhi_success &&
-        mrhiPass_SetBindings(sim->device, pass, 0, bindings, 5) == mrhi_success &&
-        (groups == 0 || mrhiPass_Dispatch(sim->device, pass, groups < SAMPLE_ROW ? groups : SAMPLE_ROW,
-                                     (groups + SAMPLE_ROW - 1u) / SAMPLE_ROW, 1) == mrhi_success);
+    bool ran = recorded && mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+               mrhiPass_SetComputePipeline(sim->device, pass,
+                                           mvfxGpuPipeline(sim->gpu, mvfx_kernelWaterSample)) ==
+                   mrhi_success &&
+               mrhiPass_SetBindings(sim->device, pass, 0, bindings, 5) == mrhi_success &&
+               (groups == 0 ||
+                mrhiPass_Dispatch(sim->device, pass, groups < SAMPLE_ROW ? groups : SAMPLE_ROW,
+                                  (groups + SAMPLE_ROW - 1u) / SAMPLE_ROW, 1) == mrhi_success);
     return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 

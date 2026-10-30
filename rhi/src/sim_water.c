@@ -441,7 +441,8 @@ static bool CopyCrossings(mvfxGpuSim* sim, mrhiPassId pass, const SimWater* wate
     for (int32_t k = 0; copied && k < water->couplings; ++k)
     {
         const Emitter* emitter = &sim->emitters[water->coupled[k]];
-        copied = mrhiPass_CopyBuffer(sim->device, pass, emitter->resources[BUFFER_EVENTS],
+        copied =
+            mrhiPass_CopyBuffer(sim->device, pass, emitter->resources[BUFFER_EVENTS],
                                 4u * (uint64_t)emitter->crossingList,
                                 water->resources[WATER_CROSSINGS], 4u * (uint64_t)water->lists[k],
                                 4u * mvfxCrossingListWords(emitter->capacity)) == mrhi_success;
@@ -468,8 +469,8 @@ static bool RecordWrite(mvfxGpuSim* sim, SimWater* water)
                     CopyCrossings(sim, pass, water);
     if (recorded && water->clears)
     {
-        recorded =
-            mrhiPass_ClearBuffer(sim->device, pass, r[WATER_FIELDS], 0, MRHI_WHOLE_SIZE) == mrhi_success;
+        recorded = mrhiPass_ClearBuffer(sim->device, pass, r[WATER_FIELDS], 0, MRHI_WHOLE_SIZE) ==
+                   mrhi_success;
     }
     return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
@@ -489,12 +490,13 @@ static bool RecordStep(mvfxGpuSim* sim, SimWater* water)
         const WaterDispatch* d = &water->dispatches[p];
         mrhiPassId pass = water->passes[p + 1];
         const uint32_t root[4] = {d->now, 0, 0, 0};
-        bool ran = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
-                   mrhiPass_SetComputePipeline(sim->device, pass,
-                                          mvfxGpuPipeline(sim->gpu, d->kernel)) == mrhi_success &&
-                   mrhiPass_SetBindings(sim->device, pass, 0, bindings, WATER_BUFFERS) == mrhi_success &&
-                   mrhiPass_SetRootBlock(sim->device, pass, 0, root, sizeof root) == mrhi_success &&
-                   mrhiPass_Dispatch(sim->device, pass, d->groups, 1, 1) == mrhi_success;
+        bool ran =
+            mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+            mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, d->kernel)) ==
+                mrhi_success &&
+            mrhiPass_SetBindings(sim->device, pass, 0, bindings, WATER_BUFFERS) == mrhi_success &&
+            mrhiPass_SetRootBlock(sim->device, pass, 0, root, sizeof root) == mrhi_success &&
+            mrhiPass_Dispatch(sim->device, pass, d->groups, 1, 1) == mrhi_success;
         recorded = mrhiPass_End(sim->device, pass) == mrhi_success && ran;
     }
     return recorded;
@@ -516,11 +518,11 @@ static bool RecordRead(mvfxGpuSim* sim, const SimWater* water, const WaterRead* 
     uint32_t groups = (read->written + WATER_GROUP - 1u) / WATER_GROUP;
     bool ran =
         recorded && mrhiPass_Begin(sim->device, pass) == mrhi_success &&
-        mrhiPass_SetComputePipeline(sim->device, pass,
-                               mvfxGpuPipeline(sim->gpu, mvfx_kernelWaterRead)) == mrhi_success &&
+        mrhiPass_SetComputePipeline(
+            sim->device, pass, mvfxGpuPipeline(sim->gpu, mvfx_kernelWaterRead)) == mrhi_success &&
         mrhiPass_SetBindings(sim->device, pass, 0, bindings, 4) == mrhi_success &&
         (groups == 0 || mrhiPass_Dispatch(sim->device, pass, groups < READ_ROW ? groups : READ_ROW,
-                                     (groups + READ_ROW - 1u) / READ_ROW, 1) == mrhi_success);
+                                          (groups + READ_ROW - 1u) / READ_ROW, 1) == mrhi_success);
     return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 

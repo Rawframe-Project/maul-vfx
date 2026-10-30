@@ -129,8 +129,9 @@ bool Finish(Gpu* gpu)
     mrhiRequestId token = {0};
     double start = Seconds();
     mrhiResult submitted = mrhiDevice_SubmitFrame(gpu->device, &token);
-    mrhiResult waited =
-        submitted == mrhi_success ? mrhiRequest_WaitFrame(gpu->device, token, s_waitNs) : mrhi_success;
+    mrhiResult waited = submitted == mrhi_success
+                            ? mrhiRequest_WaitFrame(gpu->device, token, s_waitNs)
+                            : mrhi_success;
     bool done = submitted == mrhi_success && waited == mrhi_success;
     double* longest = s_waitNs == FRAME_WAIT_NS ? &s_longestFrame : &s_longestWarmFrame;
     if (Seconds() - start > *longest)
@@ -318,10 +319,10 @@ static bool RecordDepthPasses(Gpu* gpu)
     bool recorded =
         mrhiPass_Begin(gpu->device, write) == mrhi_success &&
         mrhiPass_WriteBuffer(gpu->device, write, r[0], 0, s_depthWords,
-                        (uint64_t)(1 + w * h) * sizeof(float)) == mrhi_success &&
-        (r[2].index1 == 0 ||
-         mrhiPass_WriteTexture(gpu->device, write, &normals, s_normalWords,
-                          (size_t)(4 * w * h) * sizeof(float), &layout, &size) == mrhi_success);
+                             (uint64_t)(1 + w * h) * sizeof(float)) == mrhi_success &&
+        (r[2].index1 == 0 || mrhiPass_WriteTexture(gpu->device, write, &normals, s_normalWords,
+                                                   (size_t)(4 * w * h) * sizeof(float), &layout,
+                                                   &size) == mrhi_success);
     recorded = mrhiPass_End(gpu->device, write) == mrhi_success && recorded;
     const mrhiBinding binding = {.slot = 0, .resource = r[0], .size = MRHI_WHOLE_SIZE};
     recorded = recorded && mrhiPass_Begin(gpu->device, fill) == mrhi_success &&
@@ -380,13 +381,14 @@ bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
     def.accesses = reading;
     def.accessCount = 2;
     def.neverCull = true;
-    recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
-               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
-               mrhiPass_ReadBuffer(gpu->device, pass, buffers[0], 0, bytes, &reads[0]) == mrhi_success &&
-               mrhiPass_ReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_record, &reads[1]) ==
-                   mrhi_success &&
-               mrhiPass_End(gpu->device, pass) == mrhi_success;
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+        mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, pass, buffers[0], 0, bytes, &reads[0]) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_record, &reads[1]) ==
+            mrhi_success &&
+        mrhiPass_End(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
@@ -1051,9 +1053,9 @@ static bool RecordFill(mrhiDevice* device, mrhiPassId fill)
 {
     bool recorded = mrhiPass_Begin(device, fill) == mrhi_success &&
                     mrhiPass_WriteBuffer(device, fill, s_recordResource, 0, s_fillBytes,
-                                    sizeof s_fillBytes) == mrhi_success &&
+                                         sizeof s_fillBytes) == mrhi_success &&
                     mrhiPass_WriteBuffer(device, fill, s_listResource, 0, s_fillBytes,
-                                    sizeof s_gpuList) == mrhi_success;
+                                         sizeof s_gpuList) == mrhi_success;
     return mrhiPass_End(device, fill) == mrhi_success && recorded;
 }
 
@@ -1079,16 +1081,16 @@ static bool ReadRecords(Gpu* gpu)
     def.accesses = reading;
     def.accessCount = 3;
     def.neverCull = true;
-    recorded =
-        recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
-        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-        mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
-        mrhiPass_ReadBuffer(gpu->device, pass, buffers[0], 0, RECORD_BYTES, &reads[0]) == mrhi_success &&
-        mrhiPass_ReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_gpuCount, &reads[1]) ==
-            mrhi_success &&
-        mrhiPass_ReadBuffer(gpu->device, pass, buffers[2], 0, sizeof s_gpuList, &reads[2]) ==
-            mrhi_success &&
-        mrhiPass_End(gpu->device, pass) == mrhi_success;
+    recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, pass, buffers[0], 0, RECORD_BYTES, &reads[0]) ==
+                   mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, pass, buffers[1], 0, sizeof s_gpuCount,
+                                   &reads[1]) == mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, pass, buffers[2], 0, sizeof s_gpuList, &reads[2]) ==
+                   mrhi_success &&
+               mrhiPass_End(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
@@ -1098,10 +1100,10 @@ static bool ReadRecords(Gpu* gpu)
     size_t counted = 0;
     size_t listed = 0;
     return Finish(gpu) &&
-           mrhiRequest_TakeReadback(gpu->device, reads[0], s_gpuRecords, sizeof s_gpuRecords, &taken) ==
-               mrhi_success &&
-           mrhiRequest_TakeReadback(gpu->device, reads[1], s_gpuCount, sizeof s_gpuCount, &counted) ==
-               mrhi_success &&
+           mrhiRequest_TakeReadback(gpu->device, reads[0], s_gpuRecords, sizeof s_gpuRecords,
+                                    &taken) == mrhi_success &&
+           mrhiRequest_TakeReadback(gpu->device, reads[1], s_gpuCount, sizeof s_gpuCount,
+                                    &counted) == mrhi_success &&
            mrhiRequest_TakeReadback(gpu->device, reads[2], s_gpuList, sizeof s_gpuList, &listed) ==
                mrhi_success &&
            taken == RECORD_BYTES && counted == sizeof s_gpuCount && listed == sizeof s_gpuList;
@@ -1135,18 +1137,20 @@ bool ReadRange(Gpu* gpu, mrhiBufferId source, uint64_t first, uint64_t bytes, vo
     def.accesses = reading;
     def.accessCount = 1;
     def.neverCull = true;
-    recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
-               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
-               mrhiPass_ReadBuffer(gpu->device, pass, buffer, first, bytes, &read) == mrhi_success &&
-               mrhiPass_End(gpu->device, pass) == mrhi_success;
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+        mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, pass, buffer, first, bytes, &read) == mrhi_success &&
+        mrhiPass_End(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
         return false;
     }
     size_t taken = 0;
-    return Finish(gpu) && mrhiRequest_TakeReadback(gpu->device, read, out, room, &taken) == mrhi_success &&
+    return Finish(gpu) &&
+           mrhiRequest_TakeReadback(gpu->device, read, out, room, &taken) == mrhi_success &&
            taken == bytes;
 }
 
@@ -2058,9 +2062,9 @@ void DropFrames(bool dropping)
 bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
 {
     mrhiFrameDef frame = mrhiDefaultFrameDef();
-    if (s_dropping &&
-        (mrhiDevice_BeginFrame(gpu->device, &frame) != mrhi_success ||
-         mvfxGpuSim_AddPasses(sim) != mvfx_success || mrhiDevice_DropFrame(gpu->device) != mrhi_success))
+    if (s_dropping && (mrhiDevice_BeginFrame(gpu->device, &frame) != mrhi_success ||
+                       mvfxGpuSim_AddPasses(sim) != mvfx_success ||
+                       mrhiDevice_DropFrame(gpu->device) != mrhi_success))
     {
         return false;
     }
@@ -2073,8 +2077,9 @@ bool Simulate(Gpu* gpu, mvfxGpuSim* sim)
     mrhiPassId fill = {0};
     if ((depth && !AddDepthPasses(gpu, sim)) || mvfxGpuSim_AddPasses(sim) != mvfx_success ||
         (records && !AddRecordPasses(sim, gpu->device, &fill)) ||
-        mrhiDevice_CompileFrame(gpu->device) != mrhi_success || (depth && !RecordDepthPasses(gpu)) ||
-        (records && !RecordFill(gpu->device, fill)) || mvfxGpuSim_Record(sim) != mvfx_success)
+        mrhiDevice_CompileFrame(gpu->device) != mrhi_success ||
+        (depth && !RecordDepthPasses(gpu)) || (records && !RecordFill(gpu->device, fill)) ||
+        mvfxGpuSim_Record(sim) != mvfx_success)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
         return false;

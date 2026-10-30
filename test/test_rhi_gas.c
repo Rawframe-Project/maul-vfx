@@ -154,23 +154,26 @@ static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint6
                mrhiAddPass(gpu->device, &def, &passes[0]) == mrhi_success &&
                mvfxGpuSim_AddGasRead(scene->sim, &readDef) == mvfx_success;
     def.accesses = &taken;
-    recorded = recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
-               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-               mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success &&
-               mrhiPass_ClearBuffer(gpu->device, passes[0], target, 0, MRHI_WHOLE_SIZE) == mrhi_success;
+    recorded =
+        recorded && mrhiAddPass(gpu->device, &def, &passes[1]) == mrhi_success &&
+        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+        mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success &&
+        mrhiPass_ClearBuffer(gpu->device, passes[0], target, 0, MRHI_WHOLE_SIZE) == mrhi_success;
     // The fill: words of fill bytes over the buffer, cleared first.
     static uint8_t fills[1 << 16];
     memset(fills, fill, sizeof fills);
     for (uint64_t at = 0; recorded && at < bytes; at += sizeof fills)
     {
         uint64_t span = bytes - at < sizeof fills ? bytes - at : sizeof fills;
-        recorded = mrhiPass_WriteBuffer(gpu->device, passes[0], target, at, fills, span) == mrhi_success;
+        recorded =
+            mrhiPass_WriteBuffer(gpu->device, passes[0], target, at, fills, span) == mrhi_success;
     }
-    recorded = recorded && mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
-               mvfxGpuSim_Record(scene->sim) == mvfx_success &&
-               mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
-               mrhiPass_ReadBuffer(gpu->device, passes[1], target, 0, bytes, &request) == mrhi_success &&
-               mrhiPass_End(gpu->device, passes[1]) == mrhi_success;
+    recorded =
+        recorded && mrhiPass_End(gpu->device, passes[0]) == mrhi_success &&
+        mvfxGpuSim_Record(scene->sim) == mvfx_success &&
+        mrhiPass_Begin(gpu->device, passes[1]) == mrhi_success &&
+        mrhiPass_ReadBuffer(gpu->device, passes[1], target, 0, bytes, &request) == mrhi_success &&
+        mrhiPass_End(gpu->device, passes[1]) == mrhi_success;
     if (!recorded)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
@@ -178,9 +181,10 @@ static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint6
         return false;
     }
     size_t got = 0;
-    bool done = Finish(gpu) &&
-                mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
-                got == bytes;
+    bool done =
+        Finish(gpu) &&
+        mrhiRequest_TakeReadback(gpu->device, request, out, (size_t)bytes, &got) == mrhi_success &&
+        got == bytes;
     (void)mrhiDestroyBuffer(gpu->device, buffer);
     return done;
 }
@@ -207,12 +211,12 @@ static bool ReportHolds(Gpu* gpu, const Scene* scene)
     def.accessCount = 1;
     def.neverCull = true;
     uint32_t record[MVFX_GPU_GAS_STATISTICS_WORDS];
-    recorded =
-        recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
-        mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
-        mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
-        mrhiPass_ReadBuffer(gpu->device, pass, statistics, 0, sizeof record, &request) == mrhi_success &&
-        mrhiPass_End(gpu->device, pass) == mrhi_success;
+    recorded = recorded && mrhiAddPass(gpu->device, &def, &pass) == mrhi_success &&
+               mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+               mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+               mrhiPass_ReadBuffer(gpu->device, pass, statistics, 0, sizeof record, &request) ==
+                   mrhi_success &&
+               mrhiPass_End(gpu->device, pass) == mrhi_success;
     if (!recorded)
     {
         (void)mrhiDevice_DropFrame(gpu->device);
@@ -220,11 +224,11 @@ static bool ReportHolds(Gpu* gpu, const Scene* scene)
     }
     size_t got = 0;
     static mvfxGasPlan plan;
-    bool read =
-        Finish(gpu) &&
-        mrhiRequest_TakeReadback(gpu->device, request, record, sizeof record, &got) == mrhi_success &&
-        got == sizeof record &&
-        mvfxInstance_GetGasPlan(scene->context, scene->planned, 0, &plan) == mvfx_success;
+    bool read = Finish(gpu) &&
+                mrhiRequest_TakeReadback(gpu->device, request, record, sizeof record, &got) ==
+                    mrhi_success &&
+                got == sizeof record &&
+                mvfxInstance_GetGasPlan(scene->context, scene->planned, 0, &plan) == mvfx_success;
     // The record is of the step the plan spans.
     uint64_t tick = (uint64_t)record[MVFX_GPU_GAS_TICK] | (uint64_t)record[MVFX_GPU_GAS_TICK + 1]
                                                               << 32u;

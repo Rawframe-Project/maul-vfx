@@ -1273,8 +1273,9 @@ static void TestHostGridRefused(Gpu* gpu, mvfxGpu* kernels)
     CHECK(mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
               mvfxGpuSim_AddPasses(sim) == mvfx_errorCapacity,
           "a heightfield of the instance past the room refused");
-    CHECK(mrhiDevice_CompileFrame(gpu->device) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
-              Finish(gpu) && ReadBack(gpu, sim, 0) && StatisticsRecord()[0] == (uint32_t)before,
+    CHECK(mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+              mvfxGpuSim_Record(sim) == mvfx_success && Finish(gpu) && ReadBack(gpu, sim, 0) &&
+              StatisticsRecord()[0] == (uint32_t)before,
           "a refused step adds no pass");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(RunContext());

@@ -186,7 +186,7 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
         }
     }
     recorded = recorded && mrhiPass_ClearBuffer(sim->device, pass, c[CONTACT_COUNT], 0,
-                                           MRHI_WHOLE_SIZE) == mrhi_success;
+                                                MRHI_WHOLE_SIZE) == mrhi_success;
     return mrhiPass_End(sim->device, pass) == mrhi_success && recorded;
 }
 
@@ -202,12 +202,13 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
         bindings[b] =
             (mrhiBinding){.slot = (uint32_t)b, .resource = bound[b], .size = MRHI_WHOLE_SIZE};
     }
-    bool ran = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
-               mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
-                   mrhi_success &&
-               mrhiPass_SetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
-               mrhiPass_SetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
-               mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+    bool ran =
+        mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+        mrhiPass_SetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernel)) ==
+            mrhi_success &&
+        mrhiPass_SetBindings(sim->device, pass, 0, bindings, (uint32_t)count) == mrhi_success &&
+        mrhiPass_SetRootBlock(sim->device, pass, 0, root, 4 * sizeof(uint32_t)) == mrhi_success &&
+        mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
     return mrhiPass_End(sim->device, pass) == mrhi_success && ran;
 }
 

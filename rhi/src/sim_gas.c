@@ -714,7 +714,7 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
 static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t groups)
 {
     return groups == 0 || mrhiPass_Dispatch(sim->device, pass, groups < GAS_ROW ? groups : GAS_ROW,
-                                       (groups + GAS_ROW - 1u) / GAS_ROW, 1) == mrhi_success;
+                                            (groups + GAS_ROW - 1u) / GAS_ROW, 1) == mrhi_success;
 }
 
 // Records the pass writing the numbers, and the fields and solve emptied
@@ -728,7 +728,8 @@ static bool RecordWrite(mvfxGpuSim* sim, SimGas* gas)
                                sizeof gas->words);
     for (int32_t b = GAS_FIELDS; recorded && gas->clears && b <= GAS_SOLVE; ++b)
     {
-        recorded = mrhiPass_ClearBuffer(sim->device, pass, r[b], 0, MRHI_WHOLE_SIZE) == mrhi_success;
+        recorded =
+            mrhiPass_ClearBuffer(sim->device, pass, r[b], 0, MRHI_WHOLE_SIZE) == mrhi_success;
     }
     recorded = recorded && mvfxWriteGrids(sim->device, &sim->uploaded, pass, r[GAS_GRIDS],
                                           sim->context, &gas->grids);
