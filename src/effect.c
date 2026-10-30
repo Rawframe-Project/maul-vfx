@@ -412,6 +412,25 @@ static void CompileFields(const mvfxEffectDef* def, mvfxTableSpace* space, mvfxE
     effect->waterCount = def->waterCount;
 }
 
+// The rate curves, bursts and value tables an effect's block holds.
+static void CountEffect(const mvfxEffectDef* def, int32_t* curveCount, int32_t* burstCount,
+                        int32_t* valueCurves, int32_t* valueGradients)
+{
+    for (int32_t i = 0; i < def->emitterCount; ++i)
+    {
+        *curveCount += def->emitters[i].rateCurve.keyCount > 0 ? 1 : 0;
+        *burstCount += def->emitters[i].burstCount;
+        CountTables(&def->emitters[i], valueCurves, valueGradients);
+    }
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
+        {
+            *valueCurves += mvfxScalarCurves(&def->gases[g].forces[f].strength);
+        }
+    }
+}
+
 mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* meshes,
                               const mvfxAllocator* allocator)
 {
@@ -419,19 +438,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
     int32_t burstCount = 0;
     int32_t valueCurves = 0;
     int32_t valueGradients = 0;
-    for (int32_t i = 0; i < def->emitterCount; ++i)
-    {
-        curveCount += def->emitters[i].rateCurve.keyCount > 0 ? 1 : 0;
-        burstCount += def->emitters[i].burstCount;
-        CountTables(&def->emitters[i], &valueCurves, &valueGradients);
-    }
-    for (int32_t g = 0; g < def->gasCount; ++g)
-    {
-        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
-        {
-            valueCurves += mvfxScalarCurves(&def->gases[g].forces[f].strength);
-        }
-    }
+    CountEffect(def, &curveCount, &burstCount, &valueCurves, &valueGradients);
     mvfxLayout layout = {0};
     (void)mvfxLayoutAdd(&layout, 1, sizeof(mvfxEffect), alignof(mvfxEffect));
     size_t emittersAt = mvfxLayoutAdd(&layout, (size_t)def->emitterCount,
