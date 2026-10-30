@@ -4,7 +4,9 @@
 // Forces: each kind's acceleration where the host places a particle at
 // rest, wind exact as drag is, the falloffs' weights, forces given in the
 // emitter's space or the world's under a turned, scaled instance, a
-// strength from a parameter and its hold, the order of several forces,
+// strength from a parameter and its hold, a strength drawn once per
+// instance and force or read from a curve at each step, the order of
+// several forces,
 // and the refusals. A turbulence's field against the noise itself, and
 // the quick paths of an unturned box and map, are tested in
 // test_force_internal.c.
@@ -678,6 +680,83 @@ static void TestParameters(void)
     mvfxDestroyContext(scene.context);
 }
 
+// The strength a constant force along X gives a particle placed at each
+// of count steps of 1/1024 s, in the instance of the seed.
+static void StrengthsOverSteps(const mvfxEmitterDef* emitter, uint32_t seed, int32_t count,
+                               float out[][3])
+{
+    Scene scene = NewSeededScene(emitter, 0, seed);
+    static const double home[3] = {0, 0, 0};
+    for (int32_t step = 0; step < count; ++step)
+    {
+        AccelerationIn(&scene, home, out[step]);
+    }
+    mvfxDestroyContext(scene.context);
+}
+
+static void TestStrengthSources(void)
+{
+    // A range draws once per instance and force: the same at every step,
+    // another for another force or another instance seed.
+    mvfxForce forces[2] = {
+        {.kind = mvfx_forceConstant,
+         .vector = {1, 0, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 9.0f}}},
+        {.kind = mvfx_forceConstant,
+         .vector = {0, 1, 0},
+         .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 9.0f}}},
+    };
+    mvfxEmitterDef emitter = Held(forces, 2);
+    float first[4][3];
+    float second[4][3];
+    StrengthsOverSteps(&emitter, 1, 4, first);
+    StrengthsOverSteps(&emitter, 2, 4, second);
+    bool stable = true;
+    for (int32_t step = 1; step < 4; ++step)
+    {
+        stable = stable && memcmp(first[step], first[0], sizeof first[0]) == 0 &&
+                 memcmp(second[step], second[0], sizeof second[0]) == 0;
+    }
+    CHECK(stable, "a range's draw the same at every step");
+    CHECK(first[0][0] >= 1.0f && first[0][0] <= 9.0f && first[0][1] >= 1.0f && first[0][1] <= 9.0f,
+          "a draw within the range");
+    CHECK(first[0][0] != first[0][1], "another force draws another");
+    CHECK(first[0][0] != second[0][0] && first[0][1] != second[0][1],
+          "another instance seed draws another");
+    // A curve reads the emitter's age at each step: in seconds without a
+    // duration, 0 to 1,024 over a second; over the loop with one, a loop
+    // of four steps rising 0 to 4.
+    static const mvfxCurveKey rising[2] = {
+        {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear},
+    };
+    mvfxCurveKey seconds[2] = {rising[0], rising[1]};
+    seconds[1].value = 1024.0f;
+    mvfxForce curved = {.kind = mvfx_forceConstant,
+                        .vector = {1, 0, 0},
+                        .strength = {.kind = mvfx_sourceCurve,
+                                     .range = {1.0f, 1.0f},
+                                     .curve = {.keys = seconds, .keyCount = 2}}};
+    emitter = Held(&curved, 1);
+    float a[6][3];
+    StrengthsOverSteps(&emitter, 1, 6, a);
+    bool along = true;
+    for (int32_t step = 0; step < 6; ++step)
+    {
+        along = along && Is(a[step], (float)step, 0, 0);
+    }
+    CHECK(along, "a curve over the emitter's seconds at each step");
+    mvfxCurveKey loop[2] = {rising[0], rising[1]};
+    loop[1].value = 4.0f;
+    curved.strength.curve.keys = loop;
+    emitter = Held(&curved, 1);
+    emitter.duration = 4.0f / 1024.0f;
+    StrengthsOverSteps(&emitter, 1, 6, a);
+    CHECK(Is(a[0], 0, 0, 0) && Is(a[1], 1, 0, 0) && Is(a[3], 3, 0, 0) && Is(a[4], 0, 0, 0) &&
+              Is(a[5], 1, 0, 0),
+          "a curve over the loop's age at each step");
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -845,6 +924,7 @@ int main(void)
     TestTurbulence();
     TestVectorField();
     TestParameters();
+    TestStrengthSources();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

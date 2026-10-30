@@ -3,8 +3,9 @@
 //
 // The scene the determinism tests step: an effect of three endless
 // emitters over four instances, with full and churning emitters among
-// them, and an effect of emitter lives (a rate curve, looping bursts,
-// delays) over two, and an effect of mesh emitters over one, rigid
+// them and a force's strength following a curve, and an effect of
+// emitter lives (a rate curve, a force over the loop's age, looping
+// bursts, delays) over two, and an effect of mesh emitters over one, rigid
 // particles, gases and liquids; a fixed sequence of steps, and a hash of
 // every instance's state.
 
@@ -772,15 +773,22 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].forceCount = 1;
     emitters[2].forces = swirlAndField;
     emitters[2].forceCount = 2;
-    static const mvfxForce turbulence = {
-        .kind = mvfx_forceTurbulence,
-        .strength = {.kind = mvfx_sourceRange, .range = {2.5f, 2.5f}},
-        .noise = {.frequency = 0.4f,
-                  .octaves = 3,
-                  .lacunarity = 2.0f,
-                  .gain = 0.5f,
-                  .scroll = {0.5f, 0.0f, 0.25f},
-                  .seed = 12345u}};
+    // The turbulence's strength rises by a curve over the emitter's
+    // seconds, read at each step.
+    static const mvfxCurveKey stirring[2] = {
+        {.time = 0.0f, .value = 1.0f, .interpolation = mvfx_interpolationCubic},
+        {.time = 0.3f, .value = 3.5f, .interpolation = mvfx_interpolationLinear},
+    };
+    static const mvfxForce turbulence = {.kind = mvfx_forceTurbulence,
+                                         .strength = {.kind = mvfx_sourceCurve,
+                                                      .range = {1.0f, 1.0f},
+                                                      .curve = {.keys = stirring, .keyCount = 2}},
+                                         .noise = {.frequency = 0.4f,
+                                                   .octaves = 3,
+                                                   .lacunarity = 2.0f,
+                                                   .gain = 0.5f,
+                                                   .scroll = {0.5f, 0.0f, 0.25f},
+                                                   .seed = 12345u}};
     emitters[1].forces = &turbulence;
     emitters[1].forceCount = 1;
     emitters[2].capacity = 7;
@@ -1023,6 +1031,20 @@ static inline void BuildScene(mvfxContext* context)
     lives[0].rateCurve = (mvfxCurve){rise, 3, mvfx_tangentsMonotone};
     lives[0].duration = 0.75f;
     lives[0].lifetime = mvfxRangeSource(0.05f, 0.3f);
+    // An attractor whose strength follows the loop's age, peaking mid-loop.
+    static const mvfxCurveKey pulse[3] = {
+        {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 0.5f, .value = 5.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = -2.0f, .interpolation = mvfx_interpolationLinear},
+    };
+    static const mvfxForce pulling = {.kind = mvfx_forceAttractor,
+                                      .point = {0, 1, 0},
+                                      .strength = {.kind = mvfx_sourceCurve,
+                                                   .range = {1.0f, 1.0f},
+                                                   .curve = {.keys = pulse, .keyCount = 3}},
+                                      .softening = 0.5f};
+    lives[0].forces = &pulling;
+    lives[0].forceCount = 1;
     lives[1].capacity = 40;
     lives[1].rate = 0.0f;
     lives[1].bursts = bursts;
@@ -1290,7 +1312,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[2].motion.drag = 0.8f;
     static const mvfxForce gust = {
         .kind = mvfx_forceTurbulence,
-        .strength = {.kind = mvfx_sourceRange, .range = {4.0f, 4.0f}},
+        .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 5.0f}},
         .fieldMode = mvfx_fieldVelocity,
         .tightness = 2.0f,
         .noise = {.frequency = 0.7f, .octaves = 1, .lacunarity = 2.0f, .gain = 0.5f, .seed = 21u}};
