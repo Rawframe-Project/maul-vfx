@@ -67,12 +67,11 @@ jobs:
         with:
           persist-credentials: false
       - name: clang-format
-        # Every source but the generated tables and kernel containers.
+        # Every source but the generated tables.
         run: |
           clang-format --version
           # A checkout git refused would list nothing and pass unchecked.
-          files=$(git ls-files '*.c' '*.h' ':!*_container.h' ':!src/file_fields.c' \
-            ':!src/marching_table.c')
+          files=$(git ls-files '*.c' '*.h' ':!src/file_fields.c' ':!src/marching_table.c')
           [ -n "$files" ] || { echo "::error::git listed no sources"; exit 1; }
           echo "$files" | xargs -P 4 -n 32 clang-format --dry-run -Werror
       - name: Family checks
@@ -120,6 +119,8 @@ jobs:
             echo "clang-tidy, $build"
             cmake --preset linux-clang-20 -B "out/tidy-$build" -DCMAKE_BUILD_TYPE=$build \
               -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >/dev/null
+            # rhi/src/kernels.c includes the containers' arrays the build writes.
+            cmake --build "out/tidy-$build" --target mvfx-rhi-kernels >/dev/null
             printf '%s\n' "${files[@]}" |
               xargs -P 4 -n 4 clang-tidy-20 -p "out/tidy-$build" --quiet --warnings-as-errors='*'
           done

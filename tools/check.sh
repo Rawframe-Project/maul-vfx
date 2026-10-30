@@ -104,18 +104,20 @@ tidy() { # files
     for build in Release Debug; do
         configure "tidy-$build" -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=$build \
             -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        # rhi/src/kernels.c includes the containers' arrays the build writes.
+        build "tidy-$build" --target mvfx-rhi-kernels
         printf '%s\n' "$@" |
             xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy-$build" --quiet \
                 --warnings-as-errors='*' 2>/dev/null
     done
 }
 
-# The sources clang-format reads: every C file but the generated tables
-# and kernel containers, which tools write and no one edits.
+# The sources clang-format reads: every C file but the generated tables,
+# which tools write and no one edits.
 all_c_files() {
     git ls-files 'include/*.h' 'src/*.[ch]' 'rhi/*.[ch]' 'test/*.[ch]' 'tools/*.[ch]' \
         'bench/*.[ch]' 'samples/*.[ch]' |
-        grep -vE '_container\.h$|^src/(file_fields|marching_table)\.c$'
+        grep -vE '^src/(file_fields|marching_table)\.c$'
 }
 
 if [ "$tier" = changed ]; then
@@ -130,7 +132,7 @@ if [ "$tier" = changed ]; then
     fi
     source_checks
     mapfile -t c_files < <(printf '%s\n' "${changed[@]}" | grep -E '\.[ch]$' |
-        grep -vE '_container\.h$|^src/(file_fields|marching_table)\.c$' || true)
+        grep -vE '^src/(file_fields|marching_table)\.c$' || true)
     present=()
     for f in "${c_files[@]+"${c_files[@]}"}"; do [ -f "$f" ] && present+=("$f"); done
     if [ ${#present[@]} -gt 0 ]; then

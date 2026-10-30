@@ -27,7 +27,6 @@
 #include "direction.h"
 #include "elementary.h"
 #include "emitter_step.h"
-#include "exact_check_container.h"
 #include "gas_forces.h"
 #include "integrate.h"
 #include "kernels.h"
@@ -35,6 +34,8 @@
 #include "random.h"
 #include "rhi_driver.h"
 #include "test_harness.h"
+
+#include "kernels/exact_check_container.h"
 #ifdef MVFX_RHI_D3D12_DEBUG
 #include "d3d12_debug.h"
 #endif
