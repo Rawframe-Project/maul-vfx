@@ -9,6 +9,7 @@
 
 #include "allocator.h"
 #include "collide.h"
+#include "defaults.h"
 #include "effect_gas.h"
 #include "elementary.h"
 #include "force.h"
@@ -19,39 +20,12 @@
 
 mvfxEmitterDef mvfxDefaultEmitterDef(void)
 {
-    return (mvfxEmitterDef){
-        .cookie = MVFX_EMITTER_DEF_COOKIE,
-        .capacity = 1024,
-        .rate = 64.0f,
-        .lifetime = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
-        .shape =
-            {
-                .kind = mvfx_shapePoint,
-                .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
-                .arc = 6.28318530717958647692f,
-            },
-        .velocity = {.mode = mvfx_directionShapeNormal, .direction = {0.0f, 0.0f, 1.0f}},
-        .velocityModules = {.motionScale = {.value = 1.0f}},
-        .rigid = {.sleepSpeed = 0.05f, .sleepTime = 0.5f},
-        .liquid = {.spacing = 0.1f,
-                   .kernelScale = 2.0f,
-                   .substeps = 4,
-                   .iterations = 3,
-                   .relaxation = 0.01f,
-                   .tensileDistance = 0.2f,
-                   .tensilePower = 4,
-                   .viscosity = 0.01f,
-                   .maxNeighbors = 64},
-        .ribbon = {.pieces = 1,
-                   .tileLength = 1.0f,
-                   .normal = {0.0f, 0.0f, 1.0f},
-                   .width = {.value = 1.0f}},
-    };
+    return (mvfxEmitterDef)MVFX_DEFAULT_EMITTER_DEF;
 }
 
 mvfxEffectDef mvfxDefaultEffectDef(void)
 {
-    return (mvfxEffectDef){.cookie = MVFX_EFFECT_DEF_COOKIE};
+    return (mvfxEffectDef)MVFX_DEFAULT_EFFECT_DEF;
 }
 
 void mvfxBakeRateCurve(const mvfxCurve* curve, float rate, mvfxRateCurve* out)

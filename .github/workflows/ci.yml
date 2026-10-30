@@ -71,7 +71,7 @@ jobs:
         run: |
           clang-format --version
           # A checkout git refused would list nothing and pass unchecked.
-          files=$(git ls-files '*.c' '*.h' ':!src/file_fields.c' ':!src/marching_table.c')
+          files=$(git ls-files '*.c' '*.h' ':!src/file_fields.c' ':!src/marching_table.c' ':!test/file_pins.h')
           [ -n "$files" ] || { echo "::error::git listed no sources"; exit 1; }
           echo "$files" | xargs -P 4 -n 32 clang-format --dry-run -Werror
       - name: Family checks
@@ -94,8 +94,9 @@ jobs:
       - name: Generated files
         # The effect file's tables, the marching cubes tables, the kernel
         # containers' sources and the effect fixtures each match what their
-        # tool writes.
+        # tool writes; the effect file's tag registry refuses what it must.
         run: |
+          python3 tools/gen_file.py --self-test
           python3 tools/gen_file.py --check
           python3 tools/gen_marching_cubes.py --check
           python3 tools/gen_kernels.py --check

@@ -50,7 +50,7 @@ A device suite and the GPU sample exit 77 and count as skipped when the adapter 
 
 | Files | Generator | Inputs | In CI |
 |---|---|---|---|
-| `src/file_fields.c` | `python3 tools/gen_file.py` | the public headers | checked with `--check` |
+| `src/file_fields.c`, `test/file_pins.h` | `python3 tools/gen_file.py` | the public headers and `tools/file-tags.txt` | checked with `--check`; `test_file_defaults` checks the pinned defaults against the default functions |
 | `src/marching_table.c`, `rhi/src/marching_words.c` and `.h`, `rhi/kernels/shared/marching_words.wgsl` | `python3 tools/gen_marching_cubes.py` | none; the cases are derived | checked with `--check` |
 | `rhi/kernels/*.container`, `test/kernels/*.container` | `python3 tools/gen_kernels.py <maul-rhi tree>` | the WGSL sources and JSON bindings beside them | committed; `--check` checks the WGSL they carry |
 | `test/fixtures/*.mvfx` | `python3 tools/effect_json.py --write test/fixtures` | the JSON forms beside them | checked with `--check`, and against the library's own writing |

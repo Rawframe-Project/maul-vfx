@@ -1,26 +1,46 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sirac Ozmen
-"""Writes src/file_fields.c: the effect file's table of every def field.
+"""Writes src/file_fields.c, the effect file's table of every def field,
+and test/file_pins.h, the defaults its tag registry pins.
 
-The effect unit of an effect file holds an mvfxEffectDef: every field of
-every struct reachable from it, in declaration order. This reads those
-structs from the public headers and writes a table of each one's fields
-(place, kind, elements, nested type), which the codec (src/file_codec.c)
-walks to read, write or measure, so the file and the def cannot drift: a
-field added to a def is in the file once this runs, and the gate and CI
-run it with --check.
+The effect section of an effect file holds an mvfxEffectDef as tagged
+fields: each struct a sequence of its fields that differ from their
+defaults, each field a 32-bit tag, a 32-bit length and its payload. This
+reads the structs reachable from mvfxEffectDef from the public headers,
+gives each field the tag tools/file-tags.txt records for it, and writes a
+table of each struct's fields in ascending tag order (tag, place, kind,
+elements, nested type), which the codec (src/file_codec.c) walks to read,
+write or measure. It also writes the block of defaults an absent field
+takes: the defs' own (mvfxDefault*Def) and zero bytes for the items of
+other structs. The gate and CI run it with --check.
 
 A field's kind is its type's: an integer, a bool, a float or a double (an
 enum by the width it is declared as), a nested struct by its table, a
 fixed array by its element count, a context id (a grid's, a mesh's) as a
 name, a pointer as an array whose count field ARRAYS names (a pointer it
 does not name is an error, so none is missed), a host module's function
-and user pointer as a name. A def's cookie is not stored: the reader sets
-it. The output goes through clang-format, as every source does.
+and user pointer as a name. A def's cookie is not stored: its entry has
+tag 0, and its default gives it.
 
-Usage: gen_file.py [--check]. With --check it writes nothing and fails
-when the file differs from what it would write.
+The registry gives each field its tag, its wire kind (what its bytes are:
+"f32", "f32[3]", "mvfxCurve", "array mvfxForce", "grid", "module") and,
+for a field that is not a struct, its default: the hex of the bytes the
+file would write for it, at every place a default holds it but the places
+named apart ("= 00000000 mvfxB.inner.x=0000803f"). It refuses a field
+without a tag, a tag used twice in a struct, a retired tag used again, an
+entry that names no field (it must be retired), a field whose wire kind is
+no longer its entry's, and a field without a default, or with one of the
+wrong length or at a place no def holds: a field whose type or default
+changes gets a new tag, and its old one is retired. The defaults' bytes
+themselves C checks: this writes them into test/file_pins.h beside the
+tables, and test_file_defaults writes each field at each place from the
+default functions with the library's own field writer and compares. The
+output goes through clang-format, as every source does.
+
+Usage: gen_file.py [--check | --self-test]. With --check it writes nothing
+and fails when the file differs from what it would write; --self-test
+runs the registry's refusals on made-up structs.
 """
 
 import hashlib
@@ -33,6 +53,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "src" / "file_fields.c"
+PINS = ROOT / "test" / "file_pins.h"
+TAGS = ROOT / "tools" / "file-tags.txt"
 HEADERS = sorted((ROOT / "include" / "maul-vfx").glob("*.h"))
 
 # A pointer field's count field, the cap on that count, and how many
@@ -70,6 +92,17 @@ COOKIES = {
     "mvfxEmitterDef": "MVFX_EMITTER_DEF_COOKIE",
     "mvfxGasDef": "MVFX_GAS_DEF_COOKIE",
     "mvfxWaterDef": "MVFX_WATER_DEF_COOKIE",
+}
+
+# The structs whose defaults their own function gives, by the initializer
+# src/defaults.h shares with it; an item of any other struct defaults to
+# zero bytes. Each struct with a cookie has one, so a def read from a file
+# gets its cookie from its default.
+DEFAULTS = {
+    "mvfxEffectDef": "MVFX_DEFAULT_EFFECT_DEF",
+    "mvfxEmitterDef": "MVFX_DEFAULT_EMITTER_DEF",
+    "mvfxGasDef": "MVFX_DEFAULT_GAS_DEF",
+    "mvfxWaterDef": "MVFX_DEFAULT_WATER_DEF",
 }
 
 
@@ -169,6 +202,22 @@ KINDS = {
 }
 
 
+# Each scalar's name in a wire kind.
+WIRES = {
+    "bool": "bool",
+    "uint8_t": "u8",
+    "int8_t": "i8",
+    "uint16_t": "u16",
+    "int16_t": "i16",
+    "uint32_t": "u32",
+    "int32_t": "i32",
+    "uint64_t": "u64",
+    "int64_t": "i64",
+    "float": "f32",
+    "double": "f64",
+}
+
+
 def kind_of(typedefs, kind):
     """A field type's kind in the table, and its element type's table or
     nullptr."""
@@ -182,44 +231,192 @@ def kind_of(typedefs, kind):
     return "mvfx_fieldStruct", f"&s_{kind}"
 
 
-def table(typedefs, structs, name):
-    """One struct's fields and type."""
-    fields = structs[name]
-    counts = {}
-    for (owner, field), (count, cap, per) in ARRAYS.items():
-        if owner == name:
-            counts[count] = field
-    entries = []
-    for kind, field, dims, pointer in fields:
-        at = f"offsetof({name}, {field})"
+def wire_of(typedefs, kind):
+    """A type's name in a wire kind: a scalar's, grid, mesh or a struct's."""
+    s = scalar(typedefs, kind)
+    if s is not None:
+        return WIRES[s]
+    return {"mvfxGridId": "grid", "mvfxMeshId": "mesh"}.get(kind, kind)
+
+
+def stored(typedefs, structs, name):
+    """A struct's fields the file stores, in declaration order: (type,
+    field, dims, pointer, wire). An array's count, a def's cookie and a
+    host module's user pointer are not fields of their own."""
+    counts = {count for (owner, _), (count, _, _) in ARRAYS.items() if owner == name}
+    out = []
+    for kind, field, dims, pointer in structs[name]:
         if field in counts:
             if kind != "int32_t":
                 raise SystemExit(f"{name}.{field}: an array's count must be int32_t")
             continue
         if field == "cookie" and name in COOKIES:
-            entries.append(f"{{{at}, mvfx_fieldCookie, 0, 1, nullptr, {COOKIES[name]}, 0}}")
             continue
         if name == "mvfxHostModule" and field == "user":
             continue
         if name == "mvfxHostModule" and field == "function":
-            user = f"offsetof({name}, user)"
-            entries.append(f"{{{at}, mvfx_fieldModule, 0, 1, nullptr, {user}, 0}}")
+            out.append((kind, field, dims, pointer, "module"))
             continue
         if pointer:
             if (name, field) not in ARRAYS:
                 raise SystemExit(f"{name}.{field}: a pointer with no count in ARRAYS")
+            per = ARRAYS[(name, field)][2]
+            wire = f"array {wire_of(typedefs, kind)}" + (f"[{per}]" if per > 1 else "")
+            out.append((kind, field, dims, pointer, wire))
+            continue
+        many = 1
+        for d in dims:
+            many *= number(d)
+        wire = wire_of(typedefs, kind) + (f"[{many}]" if dims else "")
+        out.append((kind, field, dims, pointer, wire))
+    return out
+
+
+class TagError(Exception):
+    """A registry the generator refuses, and why."""
+
+
+def read_pin(text, number_):
+    """An entry's default: (common, {path: exception}), the hex of the
+    field's bytes as written, at every place but those named; None for an
+    entry without one."""
+    if text is None:
+        return None
+    words = text.split()
+    exceptions = {}
+    for word in words[1:]:
+        path, _, value = word.partition("=")
+        if not path or not re.fullmatch(r"[0-9a-f]+", value):
+            raise TagError(f"line {number_}: {word!r} is not a place and its default in hex")
+        exceptions[path] = value
+    if not re.fullmatch(r"[0-9a-f]+", words[0]):
+        raise TagError(f"line {number_}: {words[0]!r} is not a default in hex")
+    return words[0], exceptions
+
+
+def read_registry(text):
+    """The registry's structs: {struct: ({tag: (field, wire, line, pin)},
+    {tag: line})}, its entries and its retired tags. A tag used twice in a
+    struct, retired or not, is refused here."""
+    structs = {}
+    current = None
+    for number_, raw in enumerate(text.splitlines(), 1):
+        line = raw.split("#", 1)[0].rstrip()
+        if not line:
+            continue
+        head = re.fullmatch(r"(mvfx\w+)", line)
+        retired = re.fullmatch(r"\s+retired\s+(\d+)", line)
+        entry = re.fullmatch(r"\s+(\d+)\s+(\w+)\s+(\S.*?)(?:\s+=\s+(\S.*))?", line)
+        if head:
+            if head.group(1) in structs:
+                raise TagError(f"line {number_}: {head.group(1)} listed twice")
+            current = structs[head.group(1)] = ({}, {})
+            continue
+        if current is None or not (retired or entry):
+            raise TagError(f"line {number_}: not a struct, an entry or a retired tag: {raw!r}")
+        tag = int((retired or entry).group(1))
+        if not 1 <= tag <= 0xFFFFFFFF:
+            raise TagError(f"line {number_}: tag {tag} is not from 1 to 2^32 - 1")
+        if tag in current[0] or tag in current[1]:
+            raise TagError(f"line {number_}: tag {tag} used twice in its struct")
+        if retired:
+            current[1][tag] = number_
+        else:
+            current[0][tag] = (entry.group(2), " ".join(entry.group(3).split()), number_,
+                               read_pin(entry.group(4), number_))
+    return structs
+
+
+def check_pin(name, field, line, pin, places):
+    """A field's recorded default against its places, {path: (steps,
+    bytes)}: one for every place, each the hex of its payload's bytes. Its
+    bytes themselves the file_defaults suite checks against the default
+    functions."""
+    if pin is None:
+        raise TagError(f"line {line}: {name}.{field} records no default")
+    common, exceptions = pin
+    size = next(iter(places.values()))[1]
+    for value in [common] + list(exceptions.values()):
+        if len(value) != 2 * size:
+            raise TagError(f"line {line}: {name}.{field}'s default {value} is "
+                           f"{len(value) // 2} bytes, not {size}")
+    for path in exceptions:
+        if path not in places:
+            raise TagError(f"line {line}: {name}.{field} records a default at {path}, which no "
+                           f"def holds: remove it")
+
+
+def assign_tags(declared, text, places=None):
+    """Each declared struct's fields' tags, {struct: {field: tag}}, from
+    the registry's text; declared is {struct: [(field, wire)]} in
+    declaration order. With places, {(struct, field): {path: (steps,
+    bytes)}}, each field that is not a struct must record a default for
+    them. Raises TagError for what the registry may not say."""
+    registry = read_registry(text)
+    for name in registry:
+        if name not in declared:
+            raise TagError(f"{name} is in the registry but no def reaches it: remove it")
+    tags = {}
+    for name, fields in declared.items():
+        entries, retired = registry.get(name, ({}, {}))
+        by_field = {}
+        for tag, (field, wire, line, pin) in entries.items():
+            if field in by_field:
+                raise TagError(f"line {line}: {name}.{field} has two tags")
+            by_field[field] = (tag, wire, line, pin)
+        names = {field for field, _ in fields}
+        for field, (tag, _, line, _) in by_field.items():
+            if field not in names:
+                raise TagError(f"line {line}: {name} has no field {field}: retire tag {tag}")
+        tags[name] = {}
+        for field, wire in fields:
+            if field not in by_field:
+                raise TagError(f"{name}.{field} has no tag in {TAGS.name}")
+            tag, recorded, line, pin = by_field[field]
+            if recorded != wire:
+                raise TagError(f"line {line}: {name}.{field} is {wire}, not {recorded}: retire "
+                               f"tag {tag} and give the field a new one")
+            if places is not None and (name, field) in places:
+                check_pin(name, field, line, pin, places[(name, field)])
+            elif places is not None and pin is not None:
+                raise TagError(f"line {line}: {name}.{field} is a struct, whose fields record "
+                               f"its defaults: remove its own")
+            tags[name][field] = tag
+    return tags
+
+
+def table(typedefs, structs, name, tags, defaults):
+    """One struct's fields, in ascending tag order, and type."""
+    entries = []
+    if name in COOKIES:
+        # Not stored: tag 0, first, which no field in a file has.
+        at = f"offsetof({name}, cookie)"
+        entries.append((0, f"{{0, {at}, mvfx_fieldCookie, 0, 1, nullptr, {COOKIES[name]}, 0}}"))
+    for kind, field, dims, pointer, wire in stored(typedefs, structs, name):
+        tag = tags[name][field]
+        at = f"offsetof({name}, {field})"
+        if wire == "module":
+            user = f"offsetof({name}, user)"
+            entries.append((tag, f"{{{tag}, {at}, mvfx_fieldModule, 0, 1, nullptr, {user}, 0}}"))
+            continue
+        if pointer:
             count, cap, per = ARRAYS[(name, field)]
             element, type_ = kind_of(typedefs, kind)
-            entries.append(f"{{{at}, mvfx_fieldArray, {element}, {per}, {type_}, "
-                           f"offsetof({name}, {count}), {cap}}}")
+            if element in ("mvfx_fieldGrid", "mvfx_fieldMesh"):
+                raise SystemExit(f"{name}.{field}: an array of ids is not supported")
+            entries.append((tag, f"{{{tag}, {at}, mvfx_fieldArray, {element}, {per}, {type_}, "
+                                 f"offsetof({name}, {count}), {cap}}}"))
             continue
-        number = " * ".join(dims) if dims else "1"
+        number_ = " * ".join(dims) if dims else "1"
         k, type_ = kind_of(typedefs, kind)
-        entries.append(f"{{{at}, {k}, 0, {number}, {type_}, 0, 0}}")
+        entries.append((tag, f"{{{tag}, {at}, {k}, 0, {number_}, {type_}, 0, 0}}"))
+    entries.sort()
+    default = (f"offsetof(mvfxFileDefaultBlock, {name})" if name in defaults
+               else "MVFX_FILE_NO_DEFAULT")
     out = [f"static const mvfxFileField s_fields_{name}[] = {{"]
-    out += [f"    {e}," for e in entries]
-    out += ["};", f"static const mvfxFileType s_{name} = MVFX_FILE_TYPE({name}, {len(entries)});",
-            ""]
+    out += [f"    {e}," for _, e in entries]
+    out += ["};", f"static const mvfxFileType s_{name} = MVFX_FILE_TYPE({name}, {len(entries)}, "
+                  f"{default});", ""]
     return out
 
 
@@ -264,12 +461,13 @@ def value(term):
     return result
 
 
-# Each format version's layout of the effect unit (layout()). A def whose
+# Each format version's layout of the effect section (layout()). A def whose
 # layout is none of these changed the bytes: bump MVFX_FILE_VERSION in
 # maul-vfx/file.h and record the new layout under it, so no file of one
 # layout is read as another (an older version is then mvfx_errorVersion).
 LAYOUTS = {
     1: "a53afec9fc6a364b",
+    2: "0e339e17fd8d1a0b",
 }
 
 
@@ -285,30 +483,122 @@ def layout(tables):
     return hashlib.sha256("\n".join(wire).encode("utf-8")).hexdigest()[:16]
 
 
-def generate():
+def defaulted(typedefs, structs, order):
+    """The structs whose default the codec needs whole: the root, and each
+    array's element struct, in order."""
+    out = ["mvfxEffectDef"]
+    for name in order:
+        for kind, _, _, _, wire in stored(typedefs, structs, name):
+            if wire.startswith("array ") and scalar(typedefs, kind) is None and kind not in out:
+                out.append(kind)
+    for name in COOKIES:
+        if name not in DEFAULTS:
+            raise SystemExit(f"{name} has a cookie but no default function in DEFAULTS")
+    return out
+
+
+# The bytes of each scalar.
+SIZES = {"bool": 1, "uint8_t": 1, "int8_t": 1, "uint16_t": 2, "int16_t": 2, "uint32_t": 4,
+         "int32_t": 4, "uint64_t": 8, "int64_t": 8, "float": 4, "double": 8}
+
+
+def payload_bytes(typedefs, kind, dims, pointer, wire):
+    """The bytes a field's payload takes when it holds a default: its
+    scalars', 4 for each grid, mesh or host module (its name, none), and
+    for an array, which holds no items then, its count and zero word."""
+    many = 1
+    for d in dims:
+        many *= number(d)
+    if wire == "module" or kind in IDS:
+        return 4 * many
+    if pointer:
+        return 8
+    return many * SIZES[scalar(typedefs, kind)]
+
+
+def default_places(typedefs, structs, name, path, steps, out):
+    """Each stored field of a struct that is not a struct, at each place a
+    default holds it: out[(struct, field)][path] = (steps, bytes), steps
+    the fields and fixed items from the default's root, bytes its
+    payload's."""
+    for kind, field, dims, pointer, wire in stored(typedefs, structs, name):
+        here = f"{path}.{field}"
+        if scalar(typedefs, kind) is None and not pointer and wire != "module" and kind not in IDS:
+            many = 1
+            for d in dims:
+                many *= number(d)
+            for k in range(many):
+                place = here + (f"[{k}]" if many > 1 else "")
+                item = k if many > 1 else -1
+                default_places(typedefs, structs, kind, place, steps + [(name, field, item)], out)
+            continue
+        size = payload_bytes(typedefs, kind, dims, pointer, wire)
+        out.setdefault((name, field), {})[here] = (steps + [(name, field, -1)], size)
+
+
+def all_places(typedefs, structs, order):
+    """Every stored field's places, {(struct, field): {path: (steps,
+    bytes)}}, under the roots' and the array items' defaults."""
+    out = {}
+    for name in defaulted(typedefs, structs, order):
+        default_places(typedefs, structs, name, name, [], out)
+    return out
+
+
+def generate(registry_text=None):
     typedefs, structs = parse()
     order = reachable(typedefs, structs, "mvfxEffectDef")
+    declared = {name: [(f, w) for _, f, _, _, w in stored(typedefs, structs, name)]
+                for name in order}
+    if registry_text is None:
+        registry_text = TAGS.read_text(encoding="utf-8")
+    places = all_places(typedefs, structs, order)
+    try:
+        tags = assign_tags(declared, registry_text, places)
+    except TagError as error:
+        raise SystemExit(f"{TAGS.name}: {error}") from error
+    defaults = defaulted(typedefs, structs, order)
     tables = []
     for name in order:
-        tables += table(typedefs, structs, name)
+        tables += table(typedefs, structs, name, tags, defaults)
     version = DEFINES["MVFX_FILE_VERSION"]
     if LAYOUTS.get(version) != layout(tables):
-        raise SystemExit(f"the effect unit's layout is {layout(tables)}, not format "
+        raise SystemExit(f"the effect section's layout is {layout(tables)}, not format "
                          f"{version}'s: bump MVFX_FILE_VERSION and record it in LAYOUTS")
     lines = [
         "// SPDX-License-Identifier: MIT",
         "// Copyright (c) 2026 Sirac Ozmen",
         "//",
-        "// Generated by tools/gen_file.py from the public headers: do not edit.",
-        "// Every struct an effect def holds, each field in declaration order,",
-        "// as the effect file's codec reads and writes it.",
+        "// Generated by tools/gen_file.py from the public headers and",
+        "// tools/file-tags.txt: do not edit. Every struct an effect def holds,",
+        "// each field in ascending tag order, as the effect file's codec reads",
+        "// and writes it, and the defaults an absent field takes.",
         "",
         '#include "file_fields.h"',
+        "",
+        '#include "defaults.h"',
         "",
         '#include "maul-vfx/effect.h"',
         "",
         "#include <stdalign.h>",
         "#include <stddef.h>",
+        "",
+        "// The defaults the codec takes whole: the root's and each array's",
+        "// items'.",
+        "typedef struct mvfxFileDefaultBlock",
+        "{",
+    ]
+    lines += [f"    {name} {name};" for name in defaults]
+    lines += [
+        "} mvfxFileDefaultBlock;",
+        "",
+        "static const mvfxFileDefaultBlock s_defaults = {",
+    ]
+    lines += [f"    .{name} = {DEFAULTS[name]}," for name in defaults if name in DEFAULTS]
+    lines += [
+        "};",
+        "",
+        "const uint8_t* const mvfxFileDefaults = (const uint8_t*)&s_defaults;",
         "",
     ]
     lines += tables
@@ -322,28 +612,208 @@ def generate():
     for macro, terms in zip(("GRIDS", "MESHES", "MODULES"), sums):
         total = sum(value(t) for t in terms)
         lines += [f"static_assert(MVFX_FILE_MAX_{macro} == {' + '.join(terms)}, \"{total}\");"]
-    return format_c("\n".join(lines) + "\n")
+    pins = pins_header(typedefs, structs, order, tags, read_registry(registry_text), places)
+    return {OUT: format_c("\n".join(lines) + "\n", OUT), PINS: format_c(pins, PINS)}
 
 
-def format_c(text):
+def root_tags(typedefs, structs, tags, root):
+    """The tags from mvfxEffectDef to the first array of a root's items,
+    breadth first; none for mvfxEffectDef."""
+    queue = [("mvfxEffectDef", [])]
+    seen = set()
+    while queue:
+        name, path = queue.pop(0)
+        if name == root:
+            return path
+        if name in seen:
+            continue
+        seen.add(name)
+        for kind, field, _, _, _ in stored(typedefs, structs, name):
+            if scalar(typedefs, kind) is None and kind in structs:
+                queue.append((kind, path + [tags[name][field]]))
+    raise SystemExit(f"no def reaches {root}")
+
+
+def pins_header(typedefs, structs, order, tags, registry, places):
+    """test/file_pins.h: each default the registry pins, at each place,
+    with the tags that reach it and the bytes pinned, for test_file_defaults
+    to check against the default functions."""
+    roots = defaulted(typedefs, structs, order)
+    pins = {}
+    for name, (entries, _) in registry.items():
+        for tag, (field, _, _, pin) in entries.items():
+            if pin is not None:
+                pins[(name, field)] = pin
+    rows = []
+    for (name, field), at in sorted(places.items(), key=lambda item: (order.index(item[0][0]),
+                                                                       tags[item[0][0]][item[0][1]])):
+        common, exceptions = pins[(name, field)]
+        for path, (steps, _) in sorted(at.items()):
+            value = exceptions.get(path, common)
+            walk = ", ".join(f"{{{tags[s][f]}, {k}}}" for s, f, k in steps)
+            escaped = "".join(f"\\x{value[i:i + 2]}" for i in range(0, len(value), 2))
+            rows.append(f'    {{{roots.index(path.split(".")[0])}, "{path}", "{name}.{field}", '
+                        f'{tags[name][field]}, {len(steps)}, {{{walk}}}, "{escaped}", '
+                        f'{len(value) // 2}}},')
+    depth = max(len(steps) for at in places.values() for steps, _ in at.values())
+    reach = [root_tags(typedefs, structs, tags, root) for root in roots]
+    lines = [
+        "// SPDX-License-Identifier: MIT",
+        "// Copyright (c) 2026 Sirac Ozmen",
+        "//",
+        "// Generated by tools/gen_file.py from tools/file-tags.txt: do not edit.",
+        "// Each default the registry pins: every field that is not a struct, at",
+        "// each place a def's default or an array item's holds it, and the bytes",
+        "// a file writes for it there. test_file_defaults checks them against",
+        "// the default functions.",
+        "",
+        "#ifndef MAUL_VFX_TEST_FILE_PINS_H",
+        "#define MAUL_VFX_TEST_FILE_PINS_H",
+        "",
+        '#include "maul-vfx/effect.h"',
+        "",
+        "#include <stdint.h>",
+        "#include <string.h>",
+        "",
+        f"#define FILE_PIN_MAX_STEPS {depth}",
+        f"#define FILE_PIN_MAX_ROOT_TAGS {max(1, max(len(r) for r in reach))}",
+        "",
+        "// A step from a struct to its field of a tag, and to an item of it when",
+        "// it is a fixed list (-1 when it is not).",
+        "typedef struct FilePinStep",
+        "{",
+        "    uint32_t tag;",
+        "    int32_t item;",
+        "} FilePinStep;",
+        "",
+        "// A pinned default: its root, its place, its field and tag, the steps from",
+        "// the root to it, and the bytes the registry pins.",
+        "typedef struct FilePin",
+        "{",
+        "    int32_t root;",
+        "    const char* place;",
+        "    const char* field;",
+        "    uint32_t tag;",
+        "    int32_t stepCount;",
+        "    FilePinStep steps[FILE_PIN_MAX_STEPS];",
+        "    const char* bytes;",
+        "    int32_t byteCount;",
+        "} FilePin;",
+        "",
+        "// A default's root: its struct's name, the tags from mvfxEffectDef to an",
+        "// array of its items (none for mvfxEffectDef), its size, and how its",
+        "// default is made: by its default function, or zero bytes for an item",
+        "// of a struct that has none.",
+        "typedef struct FilePinRoot",
+        "{",
+        "    const char* name;",
+        "    int32_t tagCount;",
+        "    uint32_t tags[FILE_PIN_MAX_ROOT_TAGS];",
+        "    size_t size;",
+        "    void (*fill)(void* out);",
+        "} FilePinRoot;",
+        "",
+    ]
+    for k, root in enumerate(roots):
+        lines += [f"static void FillPinRoot{k}(void* out)", "{"]
+        if root in DEFAULTS:
+            function = "mvfxDefault" + root[4:]
+            lines += [f"    {root} made = {function}();", "    memcpy(out, &made, sizeof made);"]
+        else:
+            lines += [f"    memset(out, 0, sizeof({root}));"]
+        lines += ["}", ""]
+    lines += ["static const FilePinRoot s_filePinRoots[] = {"]
+    for k, (root, path) in enumerate(zip(roots, reach)):
+        listed = ", ".join(str(t) for t in path) or "0"
+        lines += [f'    {{"{root}", {len(path)}, {{{listed}}}, sizeof({root}), FillPinRoot{k}}},']
+    lines += ["};", "", "static const FilePin s_filePins[] = {"] + rows + ["};", "", "#endif", ""]
+    return "\n".join(lines)
+
+
+def format_c(text, path):
     """The text as the family's clang-format writes it (CLANG_FORMAT, or
     clang-format-20, or clang-format)."""
     for tool in (os.environ.get("CLANG_FORMAT"), "clang-format-20", "clang-format"):
         if tool and shutil.which(tool):
-            done = subprocess.run([tool, f"--assume-filename={OUT}"], input=text, text=True,
+            done = subprocess.run([tool, f"--assume-filename={path}"], input=text, text=True,
                                   capture_output=True, check=True, cwd=ROOT)
             return done.stdout
     raise SystemExit("gen_file.py needs clang-format")
 
 
+def self_test():
+    """Each refusal of the registry, on made-up structs. Whether a pinned
+    default's bytes are the default's is the file_defaults suite's check."""
+    declared = {"mvfxA": [("x", "f32"), ("y", "f32[3]")],
+                "mvfxB": [("items", "array mvfxA"), ("inner", "mvfxA")]}
+    places = {("mvfxA", "x"): {"mvfxA.x": ([], 4), "mvfxB.inner.x": ([], 4)},
+              ("mvfxA", "y"): {"mvfxA.y": ([], 12), "mvfxB.inner.y": ([], 12)},
+              ("mvfxB", "items"): {"mvfxB.items": ([], 8)}}
+    good = ("mvfxA\n    1 x f32 = 00000000 mvfxB.inner.x=0000803f\n"
+            "    2 y f32[3] = 000000000000000000000000\n    retired 3\n"
+            "mvfxB\n    1 items array mvfxA = 0000000000000000\n    2 inner mvfxA\n")
+    wanted = {"mvfxA": {"x": 1, "y": 2}, "mvfxB": {"items": 1, "inner": 2}}
+    if assign_tags(declared, good, places) != wanted:
+        print("gen_file.py --self-test: a good registry's tags")
+        return 1
+    y = "    2 y f32[3] = 000000000000000000000000\n"
+    cases = [
+        ("a field without a tag", good.replace(y, ""), "mvfxA.y has no tag"),
+        ("a struct without its tags", good[:good.index("\nmvfxB\n") + 1],
+         "mvfxB.items has no tag"),
+        ("a tag used twice", good.replace("2 y", "1 y"), "tag 1 used twice"),
+        ("a retired tag used again",
+         good.replace("    retired 3\n", "").replace("    1 x", "    retired 2\n    1 x", 1),
+         "tag 2 used twice"),
+        ("a field given two tags", good.replace("retired 3", "4 x f32 = 00000000"),
+         "mvfxA.x has two tags"),
+        ("an entry naming no field", good.replace("retired 3", "3 z f32 = 00000000"),
+         "mvfxA has no field z: retire tag 3"),
+        ("a changed wire kind", good.replace("2 y f32[3]", "2 y f32[4]"),
+         "mvfxA.y is f32[3], not f32[4]"),
+        ("a struct no def reaches", good + "mvfxC\n    1 z f32 = 00000000\n",
+         "mvfxC is in the registry"),
+        ("tag 0", good.replace("retired 3", "0 z f32"), "tag 0 is not from 1"),
+        ("a line of neither kind", good + "    x f32\n", "not a struct, an entry"),
+        ("a default left out", good.replace(" = 000000000000000000000000", ""),
+         "mvfxA.y records no default"),
+        ("a default of the wrong length", good.replace("= 00000000 ", "= 000000 "),
+         "mvfxA.x's default 000000 is 3 bytes, not 4"),
+        ("an exception of the wrong length", good.replace("=0000803f", "=0000803f00"),
+         "mvfxA.x's default 0000803f00 is 5 bytes, not 4"),
+        ("a default at no place", good.replace("=0000803f", "=0000803f mvfxC.x=00000000"),
+         "records a default at mvfxC.x, which no def holds"),
+        ("a struct's own default", good.replace("2 inner mvfxA", "2 inner mvfxA = 00"),
+         "mvfxB.inner is a struct"),
+        ("a default not in hex", good.replace("1 items array mvfxA = 0000000000000000",
+                                              "1 items array mvfxA = none"),
+         "'none' is not a default in hex"),
+    ]
+    failed = 0
+    for what, text, expected in cases:
+        try:
+            assign_tags(declared, text, places)
+            message = "accepted"
+        except TagError as error:
+            message = str(error)
+        if expected not in message:
+            print(f"gen_file.py --self-test: {what}: {message!r} lacks {expected!r}")
+            failed += 1
+    return 1 if failed else 0
+
+
 def main():
-    text = generate()
+    if "--self-test" in sys.argv[1:]:
+        return self_test()
+    outputs = generate()
     if "--check" in sys.argv[1:]:
-        if not OUT.exists() or OUT.read_text(encoding="utf-8") != text:
-            print(f"{OUT.relative_to(ROOT)} is stale: run tools/gen_file.py")
-            return 1
-        return 0
-    OUT.write_text(text, encoding="utf-8")
+        stale = [path for path, text in outputs.items()
+                 if not path.exists() or path.read_text(encoding="utf-8") != text]
+        for path in stale:
+            print(f"{path.relative_to(ROOT)} is stale: run tools/gen_file.py")
+        return 1 if stale else 0
+    for path, text in outputs.items():
+        path.write_text(text, encoding="utf-8")
     return 0
 
 

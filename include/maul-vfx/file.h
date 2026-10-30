@@ -5,10 +5,10 @@
 // field by field, every integer and every float's bits little-endian
 // whatever the host's order, checked by a hash of 64-bit words read
 // little-endian, and refused with the offset of the first byte at fault. A file holds exactly a
-// valid def: every field of every struct the def reaches, its arrays counted, and the names of the
-// host's objects it refers to (its grids, its meshes, its host modules), which the host binds
-// through a table of assets when it writes and when it reads. Equal defs with equal assets give
-// equal bytes.
+// valid def as tagged fields, each field of each struct that differs from its default (a field
+// left out reads as its default), its arrays counted, and the names of the host's objects it
+// refers to (its grids, its meshes, its host modules), which the host binds through a table of
+// assets when it writes and when it reads. Equal defs with equal assets give equal bytes.
 
 #ifndef MAUL_VFX_FILE_H
 #define MAUL_VFX_FILE_H
@@ -21,7 +21,7 @@ extern "C"
 #endif
 
 // The format version a file is written in, the one a reader takes.
-#define MVFX_FILE_VERSION 1
+#define MVFX_FILE_VERSION 2
 
 // The longest name of an asset, in bytes.
 #define MVFX_MAX_ASSET_NAME 4096
@@ -93,8 +93,9 @@ extern "C"
 
     /// Reads a file into an effect def, its arrays in caller memory. Checks
     /// in order the header (its magic, its version, its size), the hash,
-    /// the unit table, each unit alone, the bindings of the names it holds
-    /// through the asset table, and the def validator. The bytes must not
+    /// the section table, each names section alone, the effect's fields,
+    /// the bindings of the names it holds through the asset table, and the
+    /// def validator. A field the file leaves out takes its default. The bytes must not
     /// change during the call: bytes that do are refused or read as some
     /// valid def, but never read or laid past.
     ///
@@ -117,15 +118,19 @@ extern "C"
     ///         memory not aligned or an invalid asset table; `mvfx_errorLimit`
     ///         for a name in the table longer than MVFX_MAX_ASSET_NAME;
     ///         `mvfx_errorFormat` for a file that is not one (a wrong
-    ///         magic, size or hash, a unit out of place, a count past its
-    ///         cap, a bool neither 0 nor 1, a name not UTF-8 or twice a
-    ///         kind, a reference past its names or out of their order) or
-    ///         holds a def the def validator refuses; `mvfx_errorVersion`
-    ///         for another format version; `mvfx_errorMissing` for a name
-    ///         the table lacks; `mvfx_errorCapacity` when the def does not
-    ///         fit in memory. The offset is the first byte at fault: the
-    ///         version's, a name's, a count's; the effect unit's for a def
-    ///         refused; -1 for a fault outside the file.
+    ///         magic, size or hash, a section out of place, a tag out of
+    ///         order or twice, a field of the wrong length, padding not
+    ///         zero, a count past its cap, a bool neither 0 nor 1, a name
+    ///         not UTF-8 or twice a kind, a reference past its names or
+    ///         out of their order) or holds a def the def validator
+    ///         refuses; `mvfx_errorVersion` for another format version or
+    ///         a section or field tag this version does not know, which
+    ///         only a later one writes; `mvfx_errorMissing` for a name the
+    ///         table lacks; `mvfx_errorCapacity` when the def does not fit
+    ///         in memory. The offset is the first byte at fault: the
+    ///         version's, a tag's, a name's, a count's; the effect
+    ///         section's for a def refused; -1 for a fault outside the
+    ///         file.
     /// @par Thread safety
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size,

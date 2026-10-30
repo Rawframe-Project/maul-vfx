@@ -3,13 +3,15 @@
 //
 // Fuzzes the effect file reader: the bytes a program reads from disk or a
 // network and hands the library. Most inputs have the header's size and
-// hash set to match first, so mutations reach the units rather than
-// stopping at the seal; one in eight goes in as it is. A file that reads must write
-// back to the same bytes and is created as an effect on a context holding
-// the golden scene's grids, meshes and host module, which it names; a
-// refusal must be one the reader documents, at an offset in the file, and
-// creating from the bytes must refuse them alike. A file the def validator
-// refuses is measured first, then refused at its effect unit.
+// hash set to match first, so mutations reach the sections rather than
+// stopping at the seal; one in eight goes in as it is. A file that reads
+// writes back to bytes that read and write again to themselves (a field
+// that holds its default is read, and left out when written), and is
+// created as an effect on a context holding the golden scene's grids,
+// meshes and host module, which it names; a refusal must be one the
+// reader documents, at an offset in the file, and creating from the bytes
+// must refuse them alike. A file the def validator refuses is measured
+// first, then refused at its effect section.
 
 #include "vfx_scene.h"
 
@@ -46,6 +48,33 @@ static uint32_t Get32(const uint8_t* at, size_t offset)
            (uint32_t)at[offset + 3] << 24;
 }
 
+// The offset of a file's effect section, whose tag is 4 in its table.
+static int64_t EffectSection(const uint8_t* bytes)
+{
+    for (uint32_t i = 0; i < Get32(bytes, 12); ++i)
+    {
+        if (Get32(bytes, 24 + 12 * (size_t)i) == 4)
+        {
+            return Get32(bytes, 24 + 12 * (size_t)i + 4);
+        }
+    }
+    return -1;
+}
+
+// The bytes a def writes, in written; malloc's, its size in size.
+static uint8_t* Rewritten(const mvfxEffectDef* def, int64_t* size)
+{
+    Expect(mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, NULL, 0, size).result ==
+           mvfx_errorCapacity);
+    uint8_t* bytes = malloc((size_t)*size);
+    Expect(bytes != NULL);
+    int64_t written = 0;
+    Expect(mvfxWriteEffect(def, s_sceneAssets, s_sceneAssetCount, bytes, *size, &written).result ==
+               mvfx_success &&
+           written == *size);
+    return bytes;
+}
+
 // Reads a file whose header is whole and sealed; checks what it gives.
 static void ReadSealed(const uint8_t* bytes, int64_t size)
 {
@@ -70,22 +99,31 @@ static void ReadSealed(const uint8_t* bytes, int64_t size)
     result = mvfxReadEffect(bytes, size, s_sceneAssets, s_sceneAssetCount, memory, needed, &needed,
                             &def);
     // Measured before the def validator, which needs the def in memory:
-    // a def it refuses lies at the effect unit.
+    // a def it refuses lies at the effect section.
     if (result.result != mvfx_success)
     {
-        Expect(result.result == mvfx_errorFormat && result.offset == (int64_t)Get32(bytes, 76));
+        Expect(result.result == mvfx_errorFormat && result.offset == EffectSection(bytes));
         mvfxFileResult created = mvfxCreateEffectFromBytes(
             s_fuzzContext, bytes, size, s_sceneAssets, s_sceneAssetCount, &effect);
         Expect(created.result == result.result && created.offset == result.offset);
         free(block);
         return;
     }
-    uint8_t* again = malloc((size_t)size);
-    Expect(again != NULL);
     int64_t written = 0;
-    Expect(mvfxWriteEffect(&def, s_sceneAssets, s_sceneAssetCount, again, size, &written).result ==
-           mvfx_success);
-    Expect(written == size && memcmp(again, bytes, (size_t)size) == 0);
+    uint8_t* again = Rewritten(&def, &written);
+    void* second = malloc((size_t)needed + 16);
+    Expect(second != NULL);
+    void* secondMemory = (void*)(((uintptr_t)second + 15) & ~(uintptr_t)15);
+    mvfxEffectDef reread;
+    int64_t neededAgain = 0;
+    Expect(mvfxReadEffect(again, written, s_sceneAssets, s_sceneAssetCount, secondMemory, needed,
+                          &neededAgain, &reread)
+               .result == mvfx_success);
+    int64_t thirdSize = 0;
+    uint8_t* third = Rewritten(&reread, &thirdSize);
+    Expect(thirdSize == written && memcmp(third, again, (size_t)written) == 0);
+    free(third);
+    free(second);
     free(again);
     free(block);
     mvfxFileResult created = mvfxCreateEffectFromBytes(s_fuzzContext, bytes, size, s_sceneAssets,

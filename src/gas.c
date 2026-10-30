@@ -3,6 +3,7 @@
 
 #include "gas.h"
 
+#include "defaults.h"
 #include "refusal.h"
 
 #include "maul-vfx/effect.h"
@@ -13,19 +14,7 @@
 
 mvfxGasDef mvfxDefaultGasDef(void)
 {
-    return (mvfxGasDef){
-        .cookie = MVFX_GAS_DEF_COOKIE,
-        .size = {64, 64, 1},
-        .cellSize = 0.1f,
-        .fillTime = 1.0f / 60.0f,
-        .courant = 1.0f,
-        .space = mvfx_gasLocal,
-        .substeps = 1,
-        .pressureCycles = 4,
-        .gravity = {0.0f, -9.81f, 0.0f},
-        .gravitySpace = mvfx_gasWorld,
-        .surface = {.radius = 0.1f, .reach = 4.0f, .low = 0.4f, .high = 2.0f, .smoothing = 1},
-    };
+    return (mvfxGasDef)MVFX_DEFAULT_GAS_DEF;
 }
 
 // A value's status: finite, and at most MVFX_MAX_EXTENT in size.

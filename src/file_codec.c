@@ -3,6 +3,8 @@
 
 #include "file_codec.h"
 
+#include "invariant.h"
+
 #include <string.h>
 
 static_assert(sizeof(bool) == 1, "a bool is one byte, as the file's");
@@ -10,6 +12,10 @@ static_assert(sizeof(mvfxGridId) == sizeof(mvfxMeshId), "ids are coded alike");
 
 // The bytes of each scalar kind.
 static const uint8_t s_scalarBytes[] = {1, 1, 1, 2, 2, 4, 4, 8, 8, 4, 8};
+
+// A field's head: its tag and its payload's length. A list's head is its
+// count and a zero word, an item's its length and a zero word.
+#define HEAD_BYTES 8
 
 void mvfxCodecFault(mvfxCodec* codec, mvfxResult fault, int64_t offset)
 {
@@ -91,7 +97,25 @@ static void Put(mvfxCodec* codec, uint64_t value, size_t bytes)
     codec->at += bytes;
 }
 
-// Takes a little-endian value of some bytes; false past the unit's end.
+// Sets the 32-bit value put at place.
+static void Patch(mvfxCodec* codec, size_t place, uint32_t value)
+{
+    for (size_t i = 0; codec->out != nullptr && codec->fault == mvfx_success && i < 4; ++i)
+    {
+        codec->out[place + i] = (uint8_t)(value >> (8 * i));
+    }
+}
+
+// Puts zero bytes to the next multiple of the alignment.
+static void PutPadding(mvfxCodec* codec)
+{
+    while (codec->at % MVFX_FILE_ALIGNMENT != 0 && codec->fault == mvfx_success)
+    {
+        Put(codec, 0, 1);
+    }
+}
+
+// Takes a little-endian value of some bytes; false past the end.
 static bool Take(mvfxCodec* codec, size_t bytes, uint64_t* value)
 {
     if (codec->fault != mvfx_success)
@@ -112,49 +136,90 @@ static bool Take(mvfxCodec* codec, size_t bytes, uint64_t* value)
     return true;
 }
 
-// Whether there is a def to write from: a reading walk may visit without
-// one, a writing walk never does.
-static bool HasSource(mvfxCodec* codec, const void* from)
+// Takes a word that must be 0.
+static void TakeZero(mvfxCodec* codec)
 {
-    if (from == nullptr)
+    size_t at = codec->at;
+    uint64_t value = 0;
+    if (Take(codec, 4, &value) && value != 0)
     {
-        mvfxCodecFault(codec, mvfx_errorInvalid, -1);
-        return false;
+        mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
     }
-    return true;
 }
 
-static void CodeScalars(mvfxCodec* codec, mvfxFieldKind kind, uint8_t* place, size_t count)
+// Takes the zero bytes to the next multiple of the alignment.
+static void TakePadding(mvfxCodec* codec)
 {
-    size_t bytes = s_scalarBytes[kind];
-    for (size_t i = 0; i < count; ++i)
+    while (codec->at % MVFX_FILE_ALIGNMENT != 0 && codec->fault == mvfx_success)
     {
-        uint8_t* item = place != nullptr ? place + i * bytes : nullptr;
-        if (codec->writing)
-        {
-            if (!HasSource(codec, item))
-            {
-                return;
-            }
-            Put(codec, Load(item, bytes), bytes);
-            continue;
-        }
         size_t at = codec->at;
         uint64_t value = 0;
-        if (!Take(codec, bytes, &value))
-        {
-            return;
-        }
-        if (kind == mvfx_fieldBool && value > 1)
+        if (Take(codec, 1, &value) && value != 0)
         {
             mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
-            return;
-        }
-        if (item != nullptr)
-        {
-            Store(item, value, bytes);
         }
     }
+}
+
+// The bytes a field of scalars, ids or a module's function takes in its
+// struct.
+static size_t ValueBytes(const mvfxFileField* field)
+{
+    switch (field->kind)
+    {
+    case mvfx_fieldGrid:
+    case mvfx_fieldMesh:
+        return field->count * sizeof(mvfxGridId);
+    case mvfx_fieldModule:
+        return sizeof(mvfxModuleFunction*);
+    default:
+        return field->count * (size_t)s_scalarBytes[field->kind];
+    }
+}
+
+static bool IsDefault(const mvfxFileType* type, const uint8_t* object, const uint8_t* base);
+
+// Whether a field's bits are its default's: an array's when it has no
+// items, as no default has; a cookie's always, as it is never stored.
+static bool FieldIsDefault(const mvfxFileField* field, const uint8_t* object, const uint8_t* base)
+{
+    const uint8_t* place = object + field->offset;
+    const uint8_t* was = base + field->offset;
+    switch (field->kind)
+    {
+    case mvfx_fieldArray:
+        MVFX_ASSERT(Load(base + field->at, 4) == 0);
+        return Load(object + field->at, 4) == 0;
+    case mvfx_fieldStruct:
+        for (uint32_t i = 0; i < field->count; ++i)
+        {
+            size_t item = (size_t)i * field->type->size;
+            if (!IsDefault(field->type, place + item, was + item))
+            {
+                return false;
+            }
+        }
+        return true;
+    case mvfx_fieldModule:
+        return memcmp(place, was, ValueBytes(field)) == 0 &&
+               memcmp(object + field->at, base + field->at, sizeof(void*)) == 0;
+    case mvfx_fieldCookie:
+        return true;
+    default:
+        return memcmp(place, was, ValueBytes(field)) == 0;
+    }
+}
+
+static bool IsDefault(const mvfxFileType* type, const uint8_t* object, const uint8_t* base)
+{
+    for (int32_t i = 0; i < type->fieldCount; ++i)
+    {
+        if (!FieldIsDefault(&type->fields[i], object, base))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 // The asset a host object is, the first of the table; -1 for none.
@@ -229,23 +294,30 @@ static int32_t TakeName(mvfxCodec* codec, mvfxAssetKind kind)
     return codec->names[kind] != nullptr ? codec->names[kind][index] : -1;
 }
 
-// A grid's or a mesh's id at place.
-static void CodeId(mvfxCodec* codec, mvfxFieldKind field, uint8_t* place)
+static mvfxAssetKind IdKind(mvfxFieldKind field)
 {
-    mvfxAssetKind kind = field == mvfx_fieldGrid ? mvfx_assetGrid : mvfx_assetMesh;
+    return field == mvfx_fieldGrid ? mvfx_assetGrid : mvfx_assetMesh;
+}
+
+// Puts the name of a grid's or a mesh's id at place.
+static void PutId(mvfxCodec* codec, mvfxFieldKind field, const uint8_t* place)
+{
+    mvfxAssetKind kind = IdKind(field);
     mvfxEffectAsset like = {0};
-    if (codec->writing && HasSource(codec, place))
+    memcpy(&like.grid, place, sizeof like.grid);
+    like.mesh = (mvfxMeshId){like.grid.index1, like.grid.generation};
+    int32_t asset = like.grid.index1 == 0 ? -1 : FindAsset(codec, kind, &like);
+    if (like.grid.index1 != 0 && asset < 0)
     {
-        memcpy(&like.grid, place, sizeof like.grid);
-        like.mesh = (mvfxMeshId){like.grid.index1, like.grid.generation};
-        int32_t asset = like.grid.index1 == 0 ? -1 : FindAsset(codec, kind, &like);
-        if (like.grid.index1 != 0 && asset < 0)
-        {
-            mvfxCodecFault(codec, mvfx_errorMissing, -1);
-        }
-        PutName(codec, kind, asset);
-        return;
+        mvfxCodecFault(codec, mvfx_errorMissing, -1);
     }
+    PutName(codec, kind, asset);
+}
+
+// Takes the name of a grid or a mesh into the id at place.
+static void TakeId(mvfxCodec* codec, mvfxFieldKind field, uint8_t* place)
+{
+    mvfxAssetKind kind = IdKind(field);
     int32_t asset = TakeName(codec, kind);
     if (place != nullptr && asset >= 0)
     {
@@ -256,42 +328,164 @@ static void CodeId(mvfxCodec* codec, mvfxFieldKind field, uint8_t* place)
     }
 }
 
-// A host module's function at place and its user pointer at user.
-static void CodeModule(mvfxCodec* codec, uint8_t* place, uint8_t* user)
+// Puts the name of the host module whose function is at place and whose
+// user pointer is at user.
+static void PutModule(mvfxCodec* codec, const uint8_t* place, const uint8_t* user)
 {
     mvfxEffectAsset like = {0};
-    if (codec->writing && HasSource(codec, place) && HasSource(codec, user))
+    memcpy((void*)&like.function, place, sizeof like.function);
+    memcpy((void*)&like.user, user, sizeof like.user);
+    int32_t asset = like.function == nullptr ? -1 : FindAsset(codec, mvfx_assetModule, &like);
+    if (like.function != nullptr && asset < 0)
     {
-        memcpy((void*)&like.function, place, sizeof like.function);
-        memcpy((void*)&like.user, user, sizeof like.user);
-        int32_t asset = like.function == nullptr ? -1 : FindAsset(codec, mvfx_assetModule, &like);
-        if (like.function != nullptr && asset < 0)
-        {
-            mvfxCodecFault(codec, mvfx_errorMissing, -1);
-        }
-        PutName(codec, mvfx_assetModule, asset);
-        return;
+        mvfxCodecFault(codec, mvfx_errorMissing, -1);
     }
+    PutName(codec, mvfx_assetModule, asset);
+}
+
+// Takes a host module's name into its function at place and its user
+// pointer at user.
+static void TakeModule(mvfxCodec* codec, uint8_t* place, uint8_t* user)
+{
     int32_t asset = TakeName(codec, mvfx_assetModule);
     if (place != nullptr && asset >= 0)
     {
-        memcpy(place, (const void*)&codec->assets[asset].function, sizeof like.function);
-        memcpy(user, (const void*)&codec->assets[asset].user, sizeof like.user);
+        memcpy(place, (const void*)&codec->assets[asset].function,
+               sizeof codec->assets[asset].function);
+        memcpy(user, (const void*)&codec->assets[asset].user, sizeof codec->assets[asset].user);
     }
 }
 
-// count items of a kind (a struct's by its type) from place.
-static void CodeItems(mvfxCodec* codec, mvfxFieldKind kind, const mvfxFileType* type,
-                      uint8_t* place, size_t count)
+static void PutScalars(mvfxCodec* codec, mvfxFieldKind kind, const uint8_t* place, size_t count)
 {
-    if (kind != mvfx_fieldStruct)
+    size_t bytes = s_scalarBytes[kind];
+    for (size_t i = 0; i < count; ++i)
     {
-        CodeScalars(codec, kind, place, count);
-        return;
+        Put(codec, Load(place + i * bytes, bytes), bytes);
     }
+}
+
+static void TakeScalars(mvfxCodec* codec, mvfxFieldKind kind, uint8_t* place, size_t count)
+{
+    size_t bytes = s_scalarBytes[kind];
+    for (size_t i = 0; i < count; ++i)
+    {
+        size_t at = codec->at;
+        uint64_t value = 0;
+        if (!Take(codec, bytes, &value))
+        {
+            return;
+        }
+        if (kind == mvfx_fieldBool && value > 1)
+        {
+            mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
+            return;
+        }
+        if (place != nullptr)
+        {
+            Store(place + i * bytes, value, bytes);
+        }
+    }
+}
+
+// Puts a list of count structs: its count and a zero word, then each item's
+// length, a zero word and its fields that differ from its base's (bases
+// step baseStep bytes an item).
+static void PutItems(mvfxCodec* codec, const mvfxFileType* type, const uint8_t* items,
+                     const uint8_t* bases, size_t baseStep, size_t count)
+{
+    Put(codec, count, 4);
+    Put(codec, 0, 4);
     for (size_t i = 0; i < count && codec->fault == mvfx_success; ++i)
     {
-        mvfxCodeStruct(codec, type, place != nullptr ? place + i * type->size : nullptr);
+        size_t head = codec->at;
+        Put(codec, 0, 4);
+        Put(codec, 0, 4);
+        mvfxWriteFields(codec, type, items + i * type->size, bases + i * baseStep);
+        Patch(codec, head, (uint32_t)(codec->at - head - HEAD_BYTES));
+    }
+}
+
+// An array: its count and a zero word, then its items, scalars packed.
+static void PutArray(mvfxCodec* codec, const mvfxFileField* field, const uint8_t* object)
+{
+    uint32_t count = (uint32_t)Load(object + field->at, 4);
+    const uint8_t* items = nullptr;
+    memcpy((void*)&items, object + field->offset, sizeof items);
+    if (count > field->cap || (count > 0 && items == nullptr))
+    {
+        mvfxCodecFault(codec, mvfx_errorInvalid, -1);
+        return;
+    }
+    if (field->element != mvfx_fieldStruct)
+    {
+        Put(codec, count, 4);
+        Put(codec, 0, 4);
+        PutScalars(codec, field->element, items, (size_t)count * field->count);
+        return;
+    }
+    PutItems(codec, field->type, items, codec->defaults + field->type->defaultAt, 0, count);
+}
+
+void mvfxPutPayload(mvfxCodec* codec, const mvfxFileField* field, const uint8_t* object,
+                    const uint8_t* base)
+{
+    const uint8_t* place = object + field->offset;
+    switch (field->kind)
+    {
+    case mvfx_fieldArray:
+        PutArray(codec, field, object);
+        break;
+    case mvfx_fieldStruct:
+        if (field->count == 1)
+        {
+            mvfxWriteFields(codec, field->type, place, base + field->offset);
+        }
+        else
+        {
+            PutItems(codec, field->type, place, base + field->offset, field->type->size,
+                     field->count);
+        }
+        break;
+    case mvfx_fieldGrid:
+    case mvfx_fieldMesh:
+        for (uint32_t i = 0; i < field->count; ++i)
+        {
+            PutId(codec, field->kind, place + (size_t)i * sizeof(mvfxGridId));
+        }
+        break;
+    case mvfx_fieldModule:
+        PutModule(codec, place, object + field->at);
+        break;
+    default:
+        PutScalars(codec, field->kind, place, field->count);
+        break;
+    }
+}
+
+// A field that differs from its default: its tag, its payload's length,
+// the payload and zero bytes to the alignment.
+static void PutField(mvfxCodec* codec, const mvfxFileField* field, const uint8_t* object,
+                     const uint8_t* base)
+{
+    if (FieldIsDefault(field, object, base))
+    {
+        return;
+    }
+    size_t head = codec->at;
+    Put(codec, field->tag, 4);
+    Put(codec, 0, 4);
+    mvfxPutPayload(codec, field, object, base);
+    Patch(codec, head + 4, (uint32_t)(codec->at - head - HEAD_BYTES));
+    PutPadding(codec);
+}
+
+void mvfxWriteFields(mvfxCodec* codec, const mvfxFileType* type, const uint8_t* object,
+                     const uint8_t* base)
+{
+    for (int32_t i = 0; i < type->fieldCount && codec->fault == mvfx_success; ++i)
+    {
+        PutField(codec, &type->fields[i], object, base);
     }
 }
 
@@ -320,88 +514,179 @@ static uint8_t* Lay(mvfxCodec* codec, size_t bytes, size_t alignment)
     return place;
 }
 
-// A pointer field and its count: the count, capped, then the items.
-static void CodeArray(mvfxCodec* codec, const mvfxFileField* field, uint8_t* object)
+// Takes a list's count and its zero word: the count, at most most (exactly
+// most when exact), or -1.
+static int64_t TakeCount(mvfxCodec* codec, uint32_t most, bool exact)
 {
-    uint8_t* counted = object != nullptr ? object + field->at : nullptr;
     size_t at = codec->at;
     uint64_t value = 0;
-    if (codec->writing && HasSource(codec, object))
+    if (!Take(codec, 4, &value))
     {
-        value = Load(counted, 4);
-        Put(codec, value, 4);
+        return -1;
     }
-    else if (!Take(codec, 4, &value))
+    if (value > most || (exact && value != most))
     {
-        return;
+        mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
+        return -1;
     }
-    int32_t count = (int32_t)(uint32_t)value;
-    if (count < 0 || count > (int32_t)field->cap)
+    TakeZero(codec);
+    return codec->fault == mvfx_success ? (int64_t)value : -1;
+}
+
+// Takes count structs, each its length, a zero word and its fields, into
+// items (NULL to check only), which hold their defaults.
+static void TakeItems(mvfxCodec* codec, const mvfxFileType* type, uint8_t* items, size_t count)
+{
+    size_t end = codec->end;
+    for (size_t i = 0; i < count && codec->fault == mvfx_success; ++i)
     {
-        mvfxCodecFault(codec, codec->writing ? mvfx_errorInvalid : mvfx_errorFormat,
-                       codec->writing ? -1 : (int64_t)at);
+        size_t at = codec->at;
+        uint64_t length = 0;
+        if (!Take(codec, 4, &length))
+        {
+            return;
+        }
+        TakeZero(codec);
+        if (codec->fault == mvfx_success && length > end - codec->at)
+        {
+            mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
+            return;
+        }
+        mvfxReadFields(codec, type, items != nullptr ? items + i * type->size : nullptr,
+                       codec->at + length);
+    }
+}
+
+// An array: its count, a zero word and its items, laid in the memory, each
+// struct item from its default.
+static void TakeArray(mvfxCodec* codec, const mvfxFileField* field, uint8_t* object,
+                      size_t lengthAt)
+{
+    int64_t count = TakeCount(codec, field->cap, false);
+    if (count < 0)
+    {
         return;
     }
     bool scalar = field->element != mvfx_fieldStruct;
     size_t size = scalar ? s_scalarBytes[field->element] : field->type->size;
     size_t items = (size_t)count * field->count;
-    uint8_t* place = nullptr;
-    if (codec->writing && object != nullptr)
+    if (scalar && codec->end - codec->at != items * size)
     {
-        memcpy((void*)&place, object + field->offset, sizeof place);
-        if (items > 0 && place == nullptr)
-        {
-            mvfxCodecFault(codec, mvfx_errorInvalid, -1);
-            return;
-        }
+        mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)lengthAt);
+        return;
     }
-    else
+    uint8_t* place = Lay(codec, items * size, scalar ? size : field->type->alignment);
+    if (object != nullptr)
     {
-        place = Lay(codec, items * size, scalar ? size : field->type->alignment);
-        if (counted != nullptr)
-        {
-            Store(counted, value, 4);
-            memcpy(object + field->offset, (const void*)&place, sizeof place);
-        }
+        Store(object + field->at, (uint64_t)count, 4);
+        memcpy(object + field->offset, (const void*)&place, sizeof place);
     }
-    CodeItems(codec, field->element, field->type, place, items);
+    if (scalar)
+    {
+        TakeScalars(codec, field->element, place, items);
+        return;
+    }
+    for (size_t i = 0; place != nullptr && i < items; ++i)
+    {
+        memcpy(place + i * size, codec->defaults + field->type->defaultAt, size);
+    }
+    TakeItems(codec, field->type, place, items);
 }
 
-static void CodeField(mvfxCodec* codec, const mvfxFileField* field, uint8_t* object)
+// A field's payload, which ends at the codec's end; its length is at
+// lengthAt.
+static void TakeField(mvfxCodec* codec, const mvfxFileField* field, uint8_t* object,
+                      size_t lengthAt)
 {
     uint8_t* place = object != nullptr ? object + field->offset : nullptr;
+    size_t length = codec->end - codec->at;
     switch (field->kind)
     {
     case mvfx_fieldArray:
-        CodeArray(codec, field, object);
-        break;
-    case mvfx_fieldGrid:
-    case mvfx_fieldMesh:
-        for (uint32_t i = 0; i < field->count; ++i)
+        TakeArray(codec, field, object, lengthAt);
+        return;
+    case mvfx_fieldStruct:
+        if (field->count == 1)
         {
-            CodeId(codec, field->kind,
-                   place != nullptr ? place + (size_t)i * sizeof(mvfxGridId) : nullptr);
+            mvfxReadFields(codec, field->type, place, codec->end);
+            return;
         }
-        break;
-    case mvfx_fieldModule:
-        CodeModule(codec, place, object != nullptr ? object + field->at : nullptr);
-        break;
-    case mvfx_fieldCookie:
-        if (!codec->writing && place != nullptr)
+        if (TakeCount(codec, field->count, true) >= 0)
         {
-            Store(place, field->at, 4);
+            TakeItems(codec, field->type, place, field->count);
         }
-        break;
+        return;
     default:
-        CodeItems(codec, field->kind, field->type, place, field->count);
         break;
+    }
+    bool id = field->kind == mvfx_fieldGrid || field->kind == mvfx_fieldMesh;
+    size_t item = id || field->kind == mvfx_fieldModule ? 4 : s_scalarBytes[field->kind];
+    if (length != field->count * item)
+    {
+        mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)lengthAt);
+        return;
+    }
+    if (field->kind == mvfx_fieldModule)
+    {
+        TakeModule(codec, place, object != nullptr ? object + field->at : nullptr);
+        return;
+    }
+    for (uint32_t i = 0; id && i < field->count; ++i)
+    {
+        TakeId(codec, field->kind,
+               place != nullptr ? place + (size_t)i * sizeof(mvfxGridId) : nullptr);
+    }
+    if (!id)
+    {
+        TakeScalars(codec, field->kind, place, field->count);
     }
 }
 
-void mvfxCodeStruct(mvfxCodec* codec, const mvfxFileType* type, uint8_t* object)
+void mvfxReadFields(mvfxCodec* codec, const mvfxFileType* type, uint8_t* object, size_t end)
 {
-    for (int32_t i = 0; i < type->fieldCount && codec->fault == mvfx_success; ++i)
+    size_t outer = codec->end;
+    codec->end = end;
+    uint64_t last = 0;
+    int32_t next = 0;
+    while (codec->at < end && codec->fault == mvfx_success)
     {
-        CodeField(codec, &type->fields[i], object);
+        size_t head = codec->at;
+        uint64_t tag = 0;
+        uint64_t length = 0;
+        if (!Take(codec, 4, &tag) || !Take(codec, 4, &length))
+        {
+            break;
+        }
+        if (tag <= last)
+        {
+            mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)head);
+            break;
+        }
+        while (next < type->fieldCount && type->fields[next].tag < tag)
+        {
+            ++next;
+        }
+        // Only a later version writes a tag this one does not know.
+        if (next == type->fieldCount || type->fields[next].tag != tag)
+        {
+            mvfxCodecFault(codec, mvfx_errorVersion, (int64_t)head);
+            break;
+        }
+        if (length > end - codec->at)
+        {
+            mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)head + 4);
+            break;
+        }
+        size_t payload = codec->at + length;
+        codec->end = payload;
+        TakeField(codec, &type->fields[next], object, head + 4);
+        if (codec->fault == mvfx_success && codec->at != payload)
+        {
+            mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)codec->at);
+        }
+        codec->end = end;
+        TakePadding(codec);
+        last = tag;
     }
+    codec->end = outer;
 }

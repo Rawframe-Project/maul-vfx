@@ -85,6 +85,7 @@ source_checks() {
     python3 tools/check_test_hygiene.py --self-test
     python3 tools/check_test_hygiene.py
     step "generated files"
+    python3 tools/gen_file.py --self-test
     python3 tools/gen_file.py --check
     python3 tools/gen_marching_cubes.py --check
     python3 tools/gen_kernels.py --check
@@ -117,7 +118,7 @@ tidy() { # files
 all_c_files() {
     git ls-files 'include/*.h' 'src/*.[ch]' 'rhi/*.[ch]' 'test/*.[ch]' 'tools/*.[ch]' \
         'bench/*.[ch]' 'samples/*.[ch]' |
-        grep -vE '^src/(file_fields|marching_table)\.c$'
+        grep -vE '^(src/(file_fields|marching_table)\.c|test/file_pins\.h)$'
 }
 
 if [ "$tier" = changed ]; then
@@ -132,7 +133,7 @@ if [ "$tier" = changed ]; then
     fi
     source_checks
     mapfile -t c_files < <(printf '%s\n' "${changed[@]}" | grep -E '\.[ch]$' |
-        grep -vE '^src/(file_fields|marching_table)\.c$' || true)
+        grep -vE '^(src/(file_fields|marching_table)\.c|test/file_pins\.h)$' || true)
     present=()
     for f in "${c_files[@]+"${c_files[@]}"}"; do [ -f "$f" ] && present+=("$f"); done
     if [ ${#present[@]} -gt 0 ]; then

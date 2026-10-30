@@ -5,17 +5,20 @@
 
 The library reads and writes the binary form only (maul-vfx/file.h); the
 JSON form is for diffs, reviews and test fixtures. It holds the effect def
-as the binary form does: every field of every struct the def reaches, in
-declaration order, read from the public headers as tools/gen_file.py reads
-them, so the two forms cannot drift. A struct is an object of its fields;
-a fixed array and an array of scalars a list (an item of several, such as
-a parameter's four values, a list of its own); a grid, a mesh or a host
-module the name the asset table gives it, null for none; an enum the name
-of its constant when the value has one; a float or a double a number that
-reads back to its bits (non-finite ones as their bits in hex, "0x7FC00000").
-Every field is required and none unknown, so a fixture says all it means.
-The form's "format" is its own, apart from the binary form's version: a
-renamed field bumps it alone, a changed layout bumps both.
+as the binary form does: the fields of each struct the binary form holds,
+in ascending tag order, read from the public headers and
+tools/file-tags.txt as tools/gen_file.py reads them, so the two forms
+cannot drift. A field the form leaves out takes its default, as in the
+binary form; the library's writer leaves out every field that holds its
+default, so a fixture says only what differs. A struct is an object of
+its fields; a fixed array and an array a list (an item of several scalars,
+such as a parameter's four values, a list of its own); a grid, a mesh or a
+host module the name the asset table gives it, null for none; an enum the
+name of its constant when the value has one; a float or a double a number
+that reads back to its bits (non-finite ones as their bits in hex,
+"0x7FC00000"). A field the struct does not have is refused. The form's
+"format" is its own, apart from the binary form's version: a renamed
+field bumps it alone, a changed layout bumps both.
 
 Usage:
   effect_json.py to-json <file.mvfx> <file.json>
@@ -36,22 +39,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gen_file  # noqa: E402
 
-VERSION = 1
+VERSION = 2
 
 # The JSON form's own format, which names fields where the binary form
 # places them: each format's names of every field (names()). Renaming a
 # field keeps the binary layout but not the JSON form: bump JSON_FORMAT
 # and record the new names under it. A change of the binary layout
 # changes the names' fingerprint too, so both move together then.
-JSON_FORMAT = 2
+JSON_FORMAT = 3
 NAMES = {
     1: "74fbb09047c22002",
     2: "bf3b95e3c138a4d7",
+    3: "57c1059eb670f758",
 }
 MAGIC = b"MVFX"
 HEADER = 24
-ENTRY = 16
-UNITS = 4
+# A section table entry: tag, offset, length.
+ENTRY = 12
+# Every section, field and item starts at a multiple of it.
+ALIGNMENT = 8
+# The sections' tags: the three kinds of names, then the effect.
+EFFECT = 4
 KINDS = ("grids", "meshes", "modules")
 
 # Each scalar's struct format, little-endian.
@@ -125,41 +133,52 @@ def parse_enums():
 
 
 class Layout:
-    """The def's structs as the headers declare them, field by field."""
+    """The def's structs as the headers declare them, field by field, with
+    the tags the registry gives them."""
 
     def __init__(self):
         self.typedefs, self.structs = gen_file.parse()
         self.enums = parse_enums()
+        order = gen_file.reachable(self.typedefs, self.structs, "mvfxEffectDef")
+        declared = {name: [(f, w) for _, f, _, _, w in self.stored(name)] for name in order}
+        try:
+            self.tags = gen_file.assign_tags(
+                declared, gen_file.TAGS.read_text(encoding="utf-8"))
+        except gen_file.TagError as error:
+            raise FileError(f"{gen_file.TAGS.name}: {error}") from error
 
     def scalar(self, kind):
         return gen_file.scalar(self.typedefs, kind)
 
+    def stored(self, name):
+        return gen_file.stored(self.typedefs, self.structs, name)
+
     def fields(self, name):
-        """A struct's fields as the file holds them: (field, what, type,
-        count, extra). what is scalar, struct, grid, mesh, module or array;
-        count a fixed array's elements; extra an array's count field, cap
-        and items an element holds."""
-        counts = {c for (owner, _), (c, _, _) in gen_file.ARRAYS.items() if owner == name}
+        """A struct's fields as the file holds them, in ascending tag
+        order: (tag, field, what, type, count, extra). what is scalar,
+        struct, grid, mesh, module or array; count a fixed array's
+        elements; extra an array's cap and the items an element holds."""
         out = []
-        for kind, field, dims, pointer in self.structs[name]:
-            if field in counts or (field == "cookie" and name in gen_file.COOKIES):
+        for kind, field, dims, pointer, wire in self.stored(name):
+            tag = self.tags[name][field]
+            if wire == "module":
+                out.append((tag, field, "module", kind, 1, None))
                 continue
-            if name == "mvfxHostModule" and field == "user":
-                continue
-            if name == "mvfxHostModule" and field == "function":
-                out.append((field, "module", kind, 1, None))
+            what = ("grid" if kind == "mvfxGridId" else "mesh" if kind == "mvfxMeshId" else
+                    "scalar" if self.scalar(kind) else "struct")
+            if pointer:
+                _, cap, per = gen_file.ARRAYS[(name, field)]
+                out.append((tag, field, "array", kind, 1, (gen_file.number(cap), per, what)))
                 continue
             many = 1
             for d in dims:
                 many *= gen_file.number(d)
-            what = ("grid" if kind == "mvfxGridId" else "mesh" if kind == "mvfxMeshId" else
-                    "scalar" if self.scalar(kind) else "struct")
-            if pointer:
-                count, cap, per = gen_file.ARRAYS[(name, field)]
-                out.append((field, "array", kind, 1, (count, gen_file.number(cap), per, what)))
-                continue
-            out.append((field, what, kind, many, None))
-        return out
+            out.append((tag, field, what, kind, many, None))
+        return sorted(out)
+
+
+def padded(at):
+    return (at + ALIGNMENT - 1) // ALIGNMENT * ALIGNMENT
 
 
 def float_text(value, fmt):
@@ -185,67 +204,98 @@ class Reader:
     def __init__(self, layout, data):
         self.layout = layout
         self.data = data
-        self.at = 0
-        self.end = 0
         self.names = [[], [], []]
 
-    def take(self, fmt):
-        size = struct.calcsize("<" + fmt)
-        if self.at + size > self.end:
-            raise FileError(f"the effect unit ends at {self.end} inside a field at {self.at}")
-        value = struct.unpack_from("<" + fmt, self.data, self.at)[0]
-        self.at += size
-        return value
+    def u32s(self, at, end, count=1):
+        if at + 4 * count > end:
+            raise FileError(f"a field at {at} runs past {end}")
+        return struct.unpack_from(f"<{count}I", self.data, at)
 
-    def scalar(self, kind):
+    def scalars(self, kind, at, end, count):
         base = self.layout.scalar(kind)
         fmt = FORMATS[base]
-        if fmt in ("f", "d"):
-            raw = self.take("I" if fmt == "f" else "Q")
-            value = struct.unpack("<" + fmt, struct.pack("<I" if fmt == "f" else "<Q", raw))[0]
-            return float_text(value, fmt)
-        value = self.take(fmt)
-        if base == "bool":
-            if value > 1:
-                raise FileError(f"a bool of {value} at {self.at - 1}")
-            return value == 1
-        return self.layout.enums.get(kind, {}).get(value, value)
+        size = struct.calcsize("<" + fmt)
+        if end - at != size * count:
+            raise FileError(f"{count} of {kind} at {at} are not {end - at} bytes")
+        out = []
+        for i in range(count):
+            here = at + i * size
+            if fmt in ("f", "d"):
+                value = struct.unpack_from("<" + fmt, self.data, here)[0]
+                out.append(float_text(value, fmt))
+                continue
+            value = struct.unpack_from("<" + fmt, self.data, here)[0]
+            if base == "bool":
+                if value > 1:
+                    raise FileError(f"a bool of {value} at {here}")
+                out.append(value == 1)
+                continue
+            out.append(self.layout.enums.get(kind, {}).get(value, value))
+        return out
 
-    def name(self, k):
-        at = self.at
-        index = self.take("i")
-        if index == -1:
-            return None
-        if not 0 <= index < len(self.names[k]):
-            raise FileError(f"a name {index} past the names at {at}")
-        return self.names[k][index]
+    def names_of(self, k, at, end, count):
+        if end - at != 4 * count:
+            raise FileError(f"{count} names at {at} are not {end - at} bytes")
+        out = []
+        for i in range(count):
+            index = struct.unpack_from("<i", self.data, at + 4 * i)[0]
+            if index != -1 and not 0 <= index < len(self.names[k]):
+                raise FileError(f"a name {index} past the names at {at + 4 * i}")
+            out.append(None if index == -1 else self.names[k][index])
+        return out
 
-    def item(self, what, kind):
+    def items(self, kind, at, end, count):
+        out = []
+        for _ in range(count):
+            length, zero = self.u32s(at, end, 2)
+            if zero != 0 or length > end - at - 8:
+                raise FileError(f"an item of {kind} at {at} out of place")
+            out.append(self.struct(kind, at + 8, at + 8 + length))
+            at += 8 + length
+        if at != end:
+            raise FileError(f"bytes after the items at {at}")
+        return out
+
+    def field(self, what, kind, count, extra, at, end):
+        if what == "array":
+            cap, per, inner = extra
+            n, zero = self.u32s(at, end, 2)
+            if zero != 0 or n > cap:
+                raise FileError(f"a count of {n} at {at}, past its cap {cap}")
+            if inner == "struct":
+                return self.items(kind, at + 8, end, n)
+            values = self.scalars(kind, at + 8, end, n * per)
+            return values if per == 1 else [values[i:i + per] for i in range(0, n * per, per)]
         if what == "struct":
-            return self.struct(kind)
-        if what == "grid":
-            return self.name(0)
-        if what == "mesh":
-            return self.name(1)
-        return self.scalar(kind)
+            if count == 1:
+                return self.struct(kind, at, end)
+            n, zero = self.u32s(at, end, 2)
+            if zero != 0 or n != count:
+                raise FileError(f"a list of {n} at {at}, not {count}")
+            return self.items(kind, at + 8, end, count)
+        if what in ("grid", "mesh", "module"):
+            values = self.names_of(("grid", "mesh", "module").index(what), at, end, count)
+        else:
+            values = self.scalars(kind, at, end, count)
+        return values[0] if count == 1 else values
 
-    def struct(self, name):
+    def struct(self, name, at, end):
+        fields = {f[0]: f for f in self.layout.fields(name)}
         out = {}
-        for field, what, kind, count, extra in self.layout.fields(name):
-            if what == "module":
-                out[field] = self.name(2)
-            elif what == "array":
-                _, cap, per, inner = extra
-                at = self.at
-                n = self.take("i")
-                if not 0 <= n <= cap:
-                    raise FileError(f"a count of {n} at {at}, past its cap {cap}")
-                items = [[self.item(inner, kind) for _ in range(per)] for _ in range(n)]
-                out[field] = [i[0] for i in items] if per == 1 else items
-            elif count == 1:
-                out[field] = self.item(what, kind)
-            else:
-                out[field] = [self.item(what, kind) for _ in range(count)]
+        last = 0
+        while at < end:
+            tag, length = self.u32s(at, end, 2)
+            if tag <= last or tag not in fields:
+                raise FileError(f"{name} has no tag {tag} after {last} at {at}")
+            if length > end - at - 8:
+                raise FileError(f"a field at {at} runs past {end}")
+            _, field, what, kind, count, extra = fields[tag]
+            out[field] = self.field(what, kind, count, extra, at + 8, at + 8 + length)
+            after = padded(at + 8 + length)
+            if after > end or any(self.data[at + 8 + length:after]):
+                raise FileError(f"the padding after {at + 8 + length}")
+            at = after
+            last = tag
         return out
 
 
@@ -255,32 +305,39 @@ def u32(data, at):
 
 def to_json(layout, data):
     """A file's JSON form, as an object."""
-    if len(data) < HEADER + UNITS * ENTRY or data[:4] != MAGIC:
+    if len(data) < HEADER or data[:4] != MAGIC:
         raise FileError("not an effect file")
     if u32(data, 4) != VERSION:
         raise FileError(f"version {u32(data, 4)}, not {VERSION}")
-    if u32(data, 8) != len(data) or u32(data, 12) != UNITS:
-        raise FileError("the header's size or unit count is wrong")
+    count = u32(data, 12)
+    if u32(data, 8) != len(data) or HEADER + count * ENTRY > len(data):
+        raise FileError("the header's size or section count is wrong")
     if struct.unpack_from("<Q", data, 16)[0] != hash64(data[HEADER:]):
         raise FileError("the hash does not match")
     reader = Reader(layout, data)
-    for k in range(UNITS):
-        kind, offset, size, count = struct.unpack_from("<4I", data, HEADER + k * ENTRY)
-        if kind != k or offset + size > len(data):
-            raise FileError(f"unit {k} out of place")
-        if k < 3:
-            at = offset
-            for _ in range(count):
-                length = u32(data, at)
-                reader.names[k].append(data[at + 4:at + 4 + length].decode("utf-8"))
-                at += 4 + length
+    effect = None
+    last = 0
+    at = padded(HEADER + count * ENTRY)
+    for i in range(count):
+        tag, offset, size = struct.unpack_from("<3I", data, HEADER + i * ENTRY)
+        if tag <= last or tag > EFFECT or offset != at or offset + size > len(data):
+            raise FileError(f"section {i} out of place")
+        if tag < EFFECT:
+            names = u32(data, offset)
+            here = offset + 4
+            for _ in range(names):
+                length = u32(data, here)
+                reader.names[tag - 1].append(data[here + 4:here + 4 + length].decode("utf-8"))
+                here += 4 + length
+            if here != offset + size:
+                raise FileError(f"bytes after the names at {here}")
         else:
-            reader.at = offset
-            reader.end = offset + size
-    effect = reader.struct("mvfxEffectDef")
-    if reader.at != reader.end:
-        raise FileError(f"bytes after the def at {reader.at}")
-    return {"format": JSON_FORMAT, "effect": effect}
+            effect = (offset, offset + size)
+        at = padded(offset + size)
+        last = tag
+    if effect is None or at != len(data):
+        raise FileError("no effect section, or bytes after the last")
+    return {"format": JSON_FORMAT, "effect": reader.struct("mvfxEffectDef", *effect)}
 
 
 class Writer:
@@ -288,7 +345,6 @@ class Writer:
 
     def __init__(self, layout):
         self.layout = layout
-        self.out = bytearray()
         self.names = [[], [], []]
 
     def scalar(self, kind, value, path):
@@ -301,8 +357,7 @@ class Writer:
         elif fmt in ("f", "d"):
             if isinstance(value, str) and re.fullmatch(r"0x[0-9A-Fa-f]+", value):
                 bits = "I" if fmt == "f" else "Q"
-                self.out += struct.pack("<" + bits, int(value, 16))
-                return
+                return struct.pack("<" + bits, int(value, 16))
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise FileError(f"{path}: a number, not {value!r}")
             value = float(value)
@@ -315,64 +370,68 @@ class Writer:
             if isinstance(value, bool) or not isinstance(value, int):
                 raise FileError(f"{path}: an integer, not {value!r}")
         try:
-            self.out += struct.pack("<" + fmt, value)
+            return struct.pack("<" + fmt, value)
         except (struct.error, OverflowError) as error:
             raise FileError(f"{path}: {value!r} does not fit {kind}") from error
 
     def name(self, k, value, path):
         if value is None:
-            index = -1
-        elif not isinstance(value, str) or not value:
+            return struct.pack("<i", -1)
+        if not isinstance(value, str) or not value:
             raise FileError(f"{path}: a name or null, not {value!r}")
-        else:
-            if value not in self.names[k]:
-                self.names[k].append(value)
-            index = self.names[k].index(value)
-        self.out += struct.pack("<i", index)
+        if value not in self.names[k]:
+            self.names[k].append(value)
+        return struct.pack("<i", self.names[k].index(value))
 
     def item(self, what, kind, value, path):
         if what == "struct":
-            self.struct(kind, value, path)
-        elif what in ("grid", "mesh"):
-            self.name(0 if what == "grid" else 1, value, path)
-        else:
-            self.scalar(kind, value, path)
+            body = self.struct(kind, value, path)
+            return struct.pack("<II", len(body), 0) + body
+        if what in ("grid", "mesh", "module"):
+            return self.name(("grid", "mesh", "module").index(what), value, path)
+        return self.scalar(kind, value, path)
 
     def items(self, what, kind, value, count, path):
         if not isinstance(value, list) or len(value) != count:
             raise FileError(f"{path}: a list of {count}")
-        for i, v in enumerate(value):
-            self.item(what, kind, v, f"{path}[{i}]")
+        return b"".join(self.item(what, kind, v, f"{path}[{i}]") for i, v in enumerate(value))
+
+    def field(self, what, kind, count, extra, value, path):
+        if what == "array":
+            cap, per, inner = extra
+            if not isinstance(value, list) or len(value) > cap:
+                raise FileError(f"{path}: a list of at most {cap}")
+            out = struct.pack("<II", len(value), 0)
+            for i, element in enumerate(value):
+                if per == 1:
+                    out += self.item(inner, kind, element, f"{path}[{i}]")
+                else:
+                    out += self.items(inner, kind, element, per, f"{path}[{i}]")
+            return out
+        if what == "struct" and count == 1:
+            return self.struct(kind, value, path)
+        if what == "struct":
+            return struct.pack("<II", count, 0) + self.items(what, kind, value, count, path)
+        if count == 1:
+            return self.item(what, kind, value, path)
+        return self.items(what, kind, value, count, path)
 
     def struct(self, name, value, path):
-        fields = self.layout.fields(name)
+        """A struct's fields the object holds, in ascending tag order."""
         if not isinstance(value, dict):
             raise FileError(f"{path}: an object of {name}")
-        wanted = [f[0] for f in fields]
-        if list(value) != wanted:
-            missing = [f for f in wanted if f not in value]
-            unknown = [f for f in value if f not in wanted]
-            raise FileError(f"{path}: {name}'s fields in order; missing {missing}, "
-                            f"unknown {unknown}")
-        for field, what, kind, count, extra in fields:
-            here = f"{path}.{field}"
-            v = value[field]
-            if what == "module":
-                self.name(2, v, here)
-            elif what == "array":
-                _, cap, per, inner = extra
-                if not isinstance(v, list) or len(v) > cap:
-                    raise FileError(f"{here}: a list of at most {cap}")
-                self.out += struct.pack("<i", len(v))
-                for i, element in enumerate(v):
-                    if per == 1:
-                        self.item(inner, kind, element, f"{here}[{i}]")
-                    else:
-                        self.items(inner, kind, element, per, f"{here}[{i}]")
-            elif count == 1:
-                self.item(what, kind, v, here)
-            else:
-                self.items(what, kind, v, count, here)
+        fields = self.layout.fields(name)
+        unknown = [f for f in value if f not in {field[1] for field in fields}]
+        if unknown:
+            raise FileError(f"{path}: {name} has no fields {unknown}")
+        out = bytearray()
+        for tag, field, what, kind, count, extra in fields:
+            if field not in value:
+                continue
+            payload = self.field(what, kind, count, extra, value[field], f"{path}.{field}")
+            out += struct.pack("<II", tag, len(payload)) + payload
+            out += bytes(padded(len(out)) - len(out))
+        return bytes(out)
 
 
 def to_binary(layout, form):
@@ -382,23 +441,27 @@ def to_binary(layout, form):
     if form["format"] != JSON_FORMAT:
         raise FileError(f"format {form['format']!r}, not {JSON_FORMAT}")
     writer = Writer(layout)
-    writer.struct("mvfxEffectDef", form["effect"], "effect")
-    units = []
-    for names in writer.names:
-        unit = bytearray()
-        for name in names:
-            encoded = name.encode("utf-8")
-            unit += struct.pack("<I", len(encoded)) + encoded
-        units.append((bytes(unit), len(names)))
-    units.append((bytes(writer.out), 1))
+    effect = writer.struct("mvfxEffectDef", form["effect"], "effect")
+    sections = []
+    for k, names in enumerate(writer.names):
+        if names:
+            body = bytearray(struct.pack("<I", len(names)))
+            for name in names:
+                encoded = name.encode("utf-8")
+                body += struct.pack("<I", len(encoded)) + encoded
+            sections.append((k + 1, bytes(body)))
+    sections.append((EFFECT, effect))
     table = bytearray()
-    at = HEADER + UNITS * ENTRY
-    for k, (unit, count) in enumerate(units):
-        table += struct.pack("<4I", k, at, len(unit), count)
-        at += len(unit)
-    payload = bytes(table) + b"".join(u for u, _ in units)
+    bodies = bytearray()
+    at = padded(HEADER + len(sections) * ENTRY)
+    for tag, body in sections:
+        table += struct.pack("<3I", tag, at, len(body))
+        bodies += body + bytes(padded(len(body)) - len(body))
+        at = padded(at + len(body))
+    start = padded(HEADER + len(table))
+    payload = bytes(table) + bytes(start - HEADER - len(table)) + bytes(bodies)
     size = HEADER + len(payload)
-    return MAGIC + struct.pack("<3IQ", VERSION, size, UNITS, hash64(payload)) + payload
+    return MAGIC + struct.pack("<3IQ", VERSION, size, len(sections), hash64(payload)) + payload
 
 
 def dumps(value, indent=0):
@@ -446,7 +509,8 @@ def check(layout, folder, write):
 
 def names(layout):
     """A fingerprint of the JSON form's shape: every struct the def
-    reaches, each field's name, what it is and its elements, in order."""
+    reaches, each field's tag, name, what it is and its elements, in
+    order."""
     seen = []
     order = ["mvfxEffectDef"]
     while order:
@@ -454,16 +518,20 @@ def names(layout):
         if name in seen:
             continue
         seen.append(name)
-        for field, what, kind, count, extra in layout.fields(name):
-            seen.append(f"{field} {what} {kind} {count} {extra}")
-            inner = extra[3] if extra else what
+        for tag, field, what, kind, count, extra in layout.fields(name):
+            seen.append(f"{tag} {field} {what} {kind} {count} {extra}")
+            inner = extra[2] if extra else what
             if inner == "struct":
                 order.append(kind)
     return hashlib.sha256("\n".join(seen).encode("utf-8")).hexdigest()[:16]
 
 
 def main(argv):
-    layout = Layout()
+    try:
+        layout = Layout()
+    except FileError as error:
+        print(f"effect_json.py: {error}")
+        return 1
     if NAMES.get(JSON_FORMAT) != names(layout):
         print(f"effect_json.py: the JSON form's names are {names(layout)}, not format "
               f"{JSON_FORMAT}'s: bump JSON_FORMAT and record them in NAMES")
