@@ -93,12 +93,12 @@ mvfxForce
     2   space                  u8           = 00
     3   vector                 f32[3]       = 000000000000000000000000
     4   point                  f32[3]       = 000000000000000000000000
-    5   strength               f32          = 00000000
+    retired 5
     6   softening              f32          = 00000000
     7   killRadius             f32          = 00000000
     8   pull                   f32          = 00000000
-    9   strengthFromParameter  bool         = 00
-    10  parameter              i32          = 00000000
+    retired 9
+    retired 10
     11  falloff                mvfxFalloff
     12  fieldMode              u8           = 00
     13  tightness              f32          = 00000000
@@ -108,6 +108,7 @@ mvfxForce
     17  boxRotation            f32[4]       = 00000000000000000000000000000000
     18  border                 u8           = 00
     19  gas                    i32          = 00000000
+    20  strength               mvfxScalarSource
 
 mvfxGasSplat
     1   enable       bool  = 00

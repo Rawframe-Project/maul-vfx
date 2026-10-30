@@ -260,7 +260,20 @@ extern "C"
         float vector[3];
         // The attractor's point or a point on the vortex's axis.
         float point[3];
-        float strength;
+        // The force's strength, a value source that means here not what it
+        // means for a particle's values: it is resolved for the whole
+        // instance once a step (the forces hold over the step), and never
+        // stored in particles. A range draws once per instance and force
+        // (its seed, the force's index) and keeps that draw for every step;
+        // a curve reads the emitter's loop age at the step's start (its
+        // seconds since it began without a duration; a gas's force, the
+        // instance's seconds); a parameter, the parameter's x at the step,
+        // times the range's draw. None is a strength of 0. Its ends' larger
+        // size times its base's largest is at most MVFX_MAX_EXTENT (wind's
+        // at most MVFX_MAX_DRAG, its min at least 0); a parameter's
+        // strength is held to MVFX_MAX_EXTENT in size (wind's to 0 and
+        // MVFX_MAX_DRAG), not refused.
+        mvfxScalarSource strength;
         // The attractor's softening radius, from MVFX_MIN_SOFTENING.
         float softening;
         // The attractor's kill radius: a particle whose step passes within it
@@ -270,10 +283,6 @@ extern "C"
         // The vortex's acceleration toward its axis; a negative one pushes
         // out.
         float pull;
-        // Whether strength is multiplied by a parameter's x, then held to
-        // MVFX_MAX_EXTENT in size (to 0 and MVFX_MAX_DRAG for wind).
-        bool strengthFromParameter;
-        int32_t parameter;
         mvfxFalloff falloff;
         // A field's mode and, as a velocity, its tightness, from 0 to
         // MVFX_MAX_DRAG.

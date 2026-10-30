@@ -21,7 +21,7 @@ extern "C"
 #endif
 
 // The format version a file is written in, the one a reader takes.
-#define MVFX_FILE_VERSION 2
+#define MVFX_FILE_VERSION 3
 
 // The longest name of an asset, in bytes.
 #define MVFX_MAX_ASSET_NAME 4096

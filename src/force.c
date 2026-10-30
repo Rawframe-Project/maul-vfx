@@ -7,9 +7,13 @@
 #include "elementary.h"
 #include "grid.h"
 #include "noise.h"
+#include "random.h"
 #include "refusal.h"
 
 #include <math.h>
+
+// The salt of a force's draw.
+#define FORCE_SALT 0x46524345u
 
 // An axis's status: within MVFX_MAX_EXTENT, and of a length to normalize.
 static mvfxResult CheckAxis(const float v[3])
@@ -69,22 +73,24 @@ static mvfxResult CheckBox(const mvfxForce* force)
                                mvfxPositiveUpTo(force->boxSize[2], MVFX_MAX_EXTENT)));
 }
 
-mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount)
+mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount, bool hasDuration)
 {
-    // A gas past MVFX_MAX_GASES is an index naming no gas, not a count.
+    // A gas past MVFX_MAX_GASES is an index naming no gas, not a count;
+    // wind's strength is a rate, never below 0.
+    bool wind = force->kind == mvfx_forceWind;
     if (force->kind > mvfx_forceGas || force->space > mvfx_spaceLocal ||
         force->fieldMode > mvfx_fieldVelocity ||
-        (force->strengthFromParameter &&
-         (force->parameter < 0 || force->parameter >= parameterCount)) ||
-        (force->kind == mvfx_forceGas && (force->gas < 0 || force->gas >= MVFX_MAX_GASES)))
+        (force->kind == mvfx_forceGas && (force->gas < 0 || force->gas >= MVFX_MAX_GASES)) ||
+        (wind && force->strength.kind != mvfx_sourceNone && !(force->strength.range.min >= 0.0f)))
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult common =
-        mvfxFirst(mvfxFirst(mvfxUpToBound(force->tightness, 0.0f, MVFX_MAX_DRAG),
-                            mvfxBounded(force->strength, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT)),
-                  mvfxFirst(mvfxBoundedVector(force->vector, MVFX_MAX_EXTENT),
-                            mvfxBoundedVector(force->point, MVFX_MAX_EXTENT)));
+    mvfxResult common = mvfxFirst(
+        mvfxFirst(mvfxUpToBound(force->tightness, 0.0f, MVFX_MAX_DRAG),
+                  mvfxCheckScalarSource(&force->strength, true, hasDuration, parameterCount,
+                                        wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT)),
+        mvfxFirst(mvfxBoundedVector(force->vector, MVFX_MAX_EXTENT),
+                  mvfxBoundedVector(force->point, MVFX_MAX_EXTENT)));
     if (common != mvfx_success)
     {
         return common;
@@ -96,8 +102,6 @@ mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount)
     }
     switch (force->kind)
     {
-    case mvfx_forceWind:
-        return mvfxUpToBound(force->strength, 0.0f, MVFX_MAX_DRAG);
     case mvfx_forceAttractor:
         return mvfxFirst(mvfxBounded(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT),
                          mvfxUpToBound(force->killRadius, 0.0f, MVFX_MAX_EXTENT));
@@ -167,17 +171,27 @@ static float Hold(float x, float low, float bound)
     return x < low ? low : (x > bound ? bound : x);
 }
 
-mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
-                                   const float (*parameters)[4], uint32_t instanceSeed,
-                                   const struct mvfxGrid* grid)
+mvfxWords4 mvfxForceDraw(uint32_t instanceSeed, int32_t owner, bool gas, int32_t index)
 {
-    float strength = force->strength;
-    if (force->strengthFromParameter)
-    {
-        bool wind = force->kind == mvfx_forceWind;
-        strength = Hold(strength * parameters[force->parameter][0], wind ? 0.0f : -MVFX_MAX_EXTENT,
-                        wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT);
-    }
+    return mvfxPcg4d((mvfxWords4){
+        instanceSeed,
+        ((uint32_t)owner * 0x9E3779B9u) ^ FORCE_SALT,
+        (uint32_t)index,
+        gas ? 1u : 0u,
+    });
+}
+
+float mvfxForceStrength(const mvfxForce* force, const mvfxCompiledScalar* strength, float age,
+                        const float (*parameters)[4], mvfxWords4 draw)
+{
+    bool wind = force->kind == mvfx_forceWind;
+    return Hold(mvfxDrawScalar(strength, age, parameters, draw), wind ? 0.0f : -MVFX_MAX_EXTENT,
+                wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT);
+}
+
+mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, float strength, const mvfxSpaceMap* map,
+                                   uint32_t instanceSeed, const struct mvfxGrid* grid)
+{
     float sigma = map->sigma;
     mvfxResolvedForce out = {
         .kind = force->kind,

@@ -68,7 +68,10 @@ void mvfxPlanGases(mvfxInstance* instance)
         for (int32_t f = 0; f < gas->def.forceCount; ++f)
         {
             mvfxSpaceMap map = mvfxGasMap(instance, g, (mvfxSimulationSpace)gas->forces[f].space);
-            state->planForces[f] = mvfxResolveForce(&gas->forces[f], &map, instance->parameters,
+            float strength = mvfxForceStrength(
+                &gas->forces[f], &gas->forceStrengths[f], mvfxGasSourceAge(instance),
+                instance->parameters, mvfxForceDraw(instance->seed, g, true, f));
+            state->planForces[f] = mvfxResolveForce(&gas->forces[f], strength, &map,
                                                     instance->seed, gas->forceGrids[f]);
         }
         if (gas->hasObstacles)

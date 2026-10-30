@@ -413,7 +413,7 @@ static mvfxResult CheckValues(const mvfxEmitterDef* def, int32_t parameterCount)
     }
     for (int32_t f = 0; f < def->forceCount; ++f)
     {
-        mvfxResult force = mvfxCheckForce(&def->forces[f], parameterCount);
+        mvfxResult force = mvfxCheckForce(&def->forces[f], parameterCount, d);
         if (force != mvfx_success)
         {
             return force;

@@ -46,7 +46,7 @@ VERSION = 2
 # field keeps the binary layout but not the JSON form: bump JSON_FORMAT
 # and record the new names under it. A change of the binary layout
 # changes the names' fingerprint too, so both move together then.
-JSON_FORMAT = 3
+JSON_FORMAT = 4
 NAMES = {
     1: "74fbb09047c22002",
     2: "bf3b95e3c138a4d7",

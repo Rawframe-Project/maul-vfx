@@ -221,8 +221,9 @@ typedef struct mvfxCompiledEmitter
     float drag;
     float angularDrag;
     mvfxCompiledScalar dragScale;
-    // Its forces, compiled.
+    // Its forces, compiled, and their strengths' sources.
     mvfxForce forces[MVFX_MAX_FORCES];
+    mvfxCompiledScalar forceStrengths[MVFX_MAX_FORCES];
     int32_t forceCount;
     // The grid each vector field reads, which the effect counts a user of.
     struct mvfxGrid* forceGrids[MVFX_MAX_FORCES];
@@ -424,6 +425,12 @@ static inline void mvfxTieSize(const mvfxRigidDef* rigid, float size[3])
         size[k] = size[0];
     }
 }
+
+// The age a value source of an emitter reads at a tick (a birth's, or a
+// step's start for its forces' strengths): the loop's normalized age, in
+// [0, 1), with a duration (0 before the delay ends); else the seconds
+// since the emitter began (negative before).
+float mvfxSourceAge(const mvfxCompiledEmitter* emitter, int64_t tick);
 
 // Returns a compiled effect's block.
 void mvfxReleaseEffect(mvfxEffect* effect, const mvfxAllocator* allocator);

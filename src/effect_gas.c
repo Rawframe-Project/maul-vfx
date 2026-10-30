@@ -129,7 +129,7 @@ static mvfxResult CheckGasForces(const mvfxGasDef* gas, const mvfxEffectDef* def
                              : 0;
     for (int32_t f = 0; f < gas->forceCount; ++f)
     {
-        mvfxResult force = mvfxCheckForce(&gas->forces[f], parameters);
+        mvfxResult force = mvfxCheckForce(&gas->forces[f], parameters, false);
         if (force != mvfx_success)
         {
             return force;

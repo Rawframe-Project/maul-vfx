@@ -108,7 +108,7 @@ step: context effect emitter_step event fpenv force gas_api gas_liquid gas_plan 
 curve:
 curve_integral: curve
 grid: allocator half
-force: direction elementary gas_lattice grid noise refusal
+force: direction elementary gas_lattice grid noise random refusal value
 plan_resolved: beam collide depth force instance kill liquid_kernel steer velocity_modules water
 gas_plan: context force fpenv gas gas_api gas_solid instance instance_api plan_resolved water_plan
 water_plan: box context effect effect_api force fpenv instance instance_api plan_resolved water water_api water_ground water_shallow water_step

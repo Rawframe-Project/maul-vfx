@@ -219,6 +219,10 @@ static void CountTables(const mvfxEmitterDef* def, int32_t* curves, int32_t* gra
     *curves += mvfxLifeCurves(&def->ribbon.width);
     *curves += def->pairForce.enable ? mvfxLifeCurves(&def->pairForce.strength) : 0;
     *gradients += IsWhite(&def->ribbon.color) ? 0 : 1;
+    for (int32_t f = 0; f < def->forceCount; ++f)
+    {
+        *curves += mvfxScalarCurves(&def->forces[f].strength);
+    }
 }
 
 // Compiles an emitter's pair force, its strength's table into space.
@@ -285,6 +289,7 @@ static void CompileValues(const mvfxEmitterDef* def, mvfxTableSpace* space,
     for (int32_t f = 0; f < def->forceCount; ++f)
     {
         out->forces[f] = mvfxCompileForce(&def->forces[f]);
+        mvfxCompileScalar(&def->forces[f].strength, d, space, &out->forceStrengths[f]);
     }
     out->orientationMode = def->orientationMode;
     mvfxCompileVector(&def->orientation, 3, d, space, &out->orientation);
@@ -384,12 +389,18 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
 }
 
 // Compiles an effect's gases and water surfaces into the room its block
-// holds for them.
-static void CompileFields(const mvfxEffectDef* def, mvfxEffect* effect)
+// holds for them, their forces' strengths' tables into space.
+static void CompileFields(const mvfxEffectDef* def, mvfxTableSpace* space, mvfxEffect* effect)
 {
     for (int32_t g = 0; g < def->gasCount; ++g)
     {
         effect->gases[g] = mvfxCompileGas(&def->gases[g]);
+        // A gas has no duration: its forces' curves are over seconds.
+        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
+        {
+            mvfxCompileScalar(&def->gases[g].forces[f].strength, false, space,
+                              &effect->gases[g].forceStrengths[f]);
+        }
         bool surface = def->gases[g].kind == mvfx_gasSurface;
         effect->gases[g].emitter = surface ? def->gases[g].surface.emitter : mvfxLiquidOf(def, g);
     }
@@ -413,6 +424,13 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         curveCount += def->emitters[i].rateCurve.keyCount > 0 ? 1 : 0;
         burstCount += def->emitters[i].burstCount;
         CountTables(&def->emitters[i], &valueCurves, &valueGradients);
+    }
+    for (int32_t g = 0; g < def->gasCount; ++g)
+    {
+        for (int32_t f = 0; f < def->gases[g].forceCount; ++f)
+        {
+            valueCurves += mvfxScalarCurves(&def->gases[g].forces[f].strength);
+        }
     }
     mvfxLayout layout = {0};
     (void)mvfxLayoutAdd(&layout, 1, sizeof(mvfxEffect), alignof(mvfxEffect));
@@ -481,8 +499,21 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
         CompileEmitter(&def->emitters[i], meshes[i], &emitterSpace, &effect->emitters[i]);
     }
     (void)mvfxOrderEmitters(def, effect->stepOrder);
-    CompileFields(def, effect);
+    CompileFields(def, &emitterSpace.values, effect);
     return effect;
+}
+
+float mvfxSourceAge(const mvfxCompiledEmitter* emitter, int64_t tick)
+{
+    int64_t since = tick - emitter->delay;
+    if (emitter->duration > 0)
+    {
+        // A birth before the delay ends (a host's spawn) reads the loop's
+        // start.
+        since = since > 0 ? since : 0;
+        return (float)((double)(since % emitter->duration) / (double)emitter->duration);
+    }
+    return (float)((double)since / (double)MVFX_TICKS_PER_SECOND);
 }
 
 void mvfxReleaseEffect(mvfxEffect* effect, const mvfxAllocator* allocator)

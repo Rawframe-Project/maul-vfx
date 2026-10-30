@@ -16,11 +16,6 @@
 float mvfxInverseLifeOf(const mvfxInstance* instance, int32_t emitter, uint64_t serial,
                         int64_t tick);
 
-// The age a value source reads for a birth at a tick: the loop's
-// normalized age, in [0, 1), with a duration (0 before the delay ends);
-// else the seconds since the emitter began (negative before).
-float mvfxSourceAge(const mvfxCompiledEmitter* emitter, int64_t tick);
-
 // The velocity of a host's queued particle of a serial born at a tick, in
 // the particles' space: as given, or drawn in the instance's space at its
 // place (its direction from the instance's origin standing for the

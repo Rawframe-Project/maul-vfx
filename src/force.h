@@ -10,14 +10,17 @@
 
 #include "direction.h"
 #include "gas_lattice.h"
+#include "random.h"
+#include "value.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/plan.h"
 
-// Whether a force is valid for an effect of parameterCount parameters:
+// Whether a force is valid for an effect of parameterCount parameters, its
+// strength's curve over [0, 1] when its emitter has a duration:
 // mvfx_errorLimit for a field past its named bound, mvfx_errorInvalid for
 // anything else wrong.
-mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount);
+mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount, bool hasDuration);
 
 // A valid force as compiled: its axes normalized.
 mvfxForce mvfxCompileForce(const mvfxForce* force);
@@ -67,7 +70,7 @@ static inline void mvfxUnmapPoint(const mvfxSpaceMap* map, const float x[3], dou
 struct mvfxGrid;
 
 // A force resolved for a step, in the particles' space, its strength
-// taken from its parameter and held.
+// resolved (mvfxForceStrength).
 typedef struct mvfxResolvedForce
 {
     mvfxForceKind kind;
@@ -104,12 +107,23 @@ typedef struct mvfxResolvedForce
     mvfxGasLattice gasLattice;
 } mvfxResolvedForce;
 
-// Resolves a compiled force with the map, the instance's parameters and
-// its seed, and a vector field's grid; the force and the grid must outlive
-// the resolved one.
-mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, const mvfxSpaceMap* map,
-                                   const float (*parameters)[4], uint32_t instanceSeed,
-                                   const struct mvfxGrid* grid);
+// The words a force's strength draws from: once per instance and force,
+// from the instance's seed, the force's owner (an emitter's index, or a
+// gas's with gas) and its index among the owner's forces.
+mvfxWords4 mvfxForceDraw(uint32_t instanceSeed, int32_t owner, bool gas, int32_t index);
+
+// A force's strength for a step: its compiled source at age (its owner's
+// source age at the step's start) with the instance's parameters and its
+// draw, held to MVFX_MAX_EXTENT in size (wind's to 0 and MVFX_MAX_DRAG); 0
+// for none.
+float mvfxForceStrength(const mvfxForce* force, const mvfxCompiledScalar* strength, float age,
+                        const float (*parameters)[4], mvfxWords4 draw);
+
+// Resolves a compiled force with its strength for the step, the map, the
+// instance's seed and a vector field's grid; the force and the grid must
+// outlive the resolved one.
+mvfxResolvedForce mvfxResolveForce(const mvfxForce* force, float strength, const mvfxSpaceMap* map,
+                                   uint32_t instanceSeed, const struct mvfxGrid* grid);
 
 // A resolved force as a plan starting at time seconds hands it over.
 mvfxPlannedForce mvfxPlannedForceOf(const mvfxResolvedForce* force, double time);
