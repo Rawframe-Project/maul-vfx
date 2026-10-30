@@ -91,12 +91,21 @@ static const Case s_cases[] = {
     {"a life past its bound", mvfx_errorLimit, "emitters[0].lifetime.range.max", 0, -1, -1},
     {"a size past its bound", mvfx_errorLimit, "emitters[0].size.max[0]", 0, -1, -1},
     {"neighbors in a cycle", mvfx_errorInvalid, "emitters", -1, -1, -1},
+    {"a source that does not write the kind", mvfx_errorInvalid, "emitters[1].eventSpawn.source", 1,
+     -1, -1},
+    {"a beam's points past the capacity", mvfx_errorInvalid, "emitters[0].capacity", 0, -1, -1},
+    {"a beam's head pinned", mvfx_errorInvalid, "emitters[0].ribbon.pinHead", 0, -1, -1},
+    {"a capacity not a multiple of a unit's points", mvfx_errorInvalid, "emitters[0].capacity", 0,
+     -1, -1},
+    {"a rigid sphere's size over life untied", mvfx_errorInvalid, "emitters[0].overLife.size", 0,
+     -1, -1},
+    {"a liquid gas with a source", mvfx_errorInvalid, "gases[0].sources", -1, 0, -1},
 };
 
 // Makes case k's def from valid parts.
 static void Break(Parts* p, int32_t k)
 {
-    MakeParts(p, k == 6 || k == 7);
+    MakeParts(p, k == 6 || k == 7 || k == 21);
     mvfxEmitterDef* e = p->emitters;
     switch (k)
     {
@@ -165,12 +174,54 @@ static void Break(Parts* p, int32_t k)
         e[0].size = (mvfxVectorSource){
             .kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {2.0f * MVFX_MAX_VALUE, 1, 1}};
         break;
-    default:
+    case 15:
         for (int32_t i = 0; i < 2; ++i)
         {
             e[i].neighbors = (mvfxNeighborDef){
                 .enable = true, .source = 1 - i, .radius = 1.0f, .maxNeighbors = 4};
         }
+        break;
+    case 16:
+        e[0].events = mvfx_eventMaskBirth;
+        e[0].eventCapacity = 4;
+        e[1].eventSpawn = (mvfxEventSpawn){.enable = true,
+                                           .source = 0,
+                                           .kind = mvfx_eventDeath,
+                                           .minCount = 1,
+                                           .maxCount = 1,
+                                           .capacity = 4};
+        break;
+    case 17:
+    case 18:
+        e[0].rate = 0.0f;
+        e[0].capacity = k == 17 ? 4 : 16;
+        e[0].ribbon.ids = mvfx_ribbonOne;
+        e[0].ribbon.pinHead = k == 18;
+        e[0].beam = (mvfxBeamDef){.enable = true, .segments = 8};
+        break;
+    case 19:
+        e[0].unit = (mvfxUnitDef){.kind = mvfx_unitChain,
+                                  .points = 3,
+                                  .spacing = 0.1f,
+                                  .direction = {1, 0, 0},
+                                  .substeps = 1};
+        break;
+    case 20:
+        e[0].rigid.enable = true;
+        e[0].rigid.shape = mvfx_rigidSphere;
+        e[0].rigid.density = 1.0f;
+        e[0].rigid.substeps = 1;
+        e[0].overLife.size.enable = true;
+        e[0].overLife.size.perAxis = true;
+        e[0].overLife.size.size[0].value = 1.0f;
+        e[0].overLife.size.size[1].value = 2.0f;
+        e[0].overLife.size.size[2].value = 1.0f;
+        break;
+    default:
+        p->source = (mvfxGasSource){.shape = mvfx_gasBox, .halfExtents = {1, 1, 1}};
+        p->gas.kind = mvfx_gasLiquid;
+        p->gas.sources = &p->source;
+        p->gas.sourceCount = 1;
         break;
     }
 }

@@ -86,9 +86,9 @@ extern "C"
         // velocity, extended two cells into the air, goes back to the
         // particles with each one's affine matrix. Its density is the share
         // of each cell the particles fill (each a cube, or a square, of
-        // the liquid's spacing), its other scalars 0. It has no sources and
-        // no forces of its own (the particles carry gravity and forces) and
-        // one substep; its advection and decays are not read.
+        // the liquid's spacing), its other scalars 0. Its sources, forces
+        // and substeps are as theirs say for a liquid (the particles carry
+        // gravity and forces); its advection and decays are not read.
         mvfx_gasLiquid = 1,
         // A surface: its one field, mvfx_gasDistance, is the signed
         // distance to the surface of one emitter's particles
@@ -96,8 +96,8 @@ extern "C"
         // and Bridson, "Animating Sand as a Fluid", SIGGRAPH 2005, with
         // Solenthaler, Schlafli and Pajarola's correction, CAVW 2007). Any
         // emitter serves: a liquid of either solver, or plain particles.
-        // It has no sources, forces or obstacles, one substep, and no
-        // emitter splats into it or follows it.
+        // Its sources, forces, substeps and obstacles are as theirs say for
+        // a surface, and no emitter splats into it or follows it.
         mvfx_gasSurface = 2,
     };
 
@@ -243,7 +243,8 @@ extern "C"
         // cells). A planned instance counts them from the speed its
         // simulation reported (mvfxInstance_SetLiquidSpeed).
         float courant;
-        // From 1 to MVFX_MAX_GAS_SUBSTEPS: each a share of the step.
+        // From 1 to MVFX_MAX_GAS_SUBSTEPS: each a share of the step; 1 for
+        // a liquid or a surface.
         int32_t substeps;
         // Rates a second at which density, temperature, fuel and velocity
         // decay (each multiplied by exp(-rate h) over a substep of h), each
@@ -253,7 +254,8 @@ extern "C"
         float fuelDecay;
         float velocityDecay;
         // Its sources, from 0 to MVFX_MAX_GAS_SOURCES, NULL when
-        // sourceCount is 0. The effect copies them.
+        // sourceCount is 0; none for a liquid or a surface. The effect
+        // copies them.
         const mvfxGasSource* sources;
         int32_t sourceCount;
         // Its closed walls (mvfxGasWalls); the walls of a 2D gas's Z are
@@ -301,6 +303,7 @@ extern "C"
         // nothing, and the faces beside it take the obstacle's velocity
         // across them, the obstacle's motion since the step before, and let
         // nothing through. The effect copies them and holds their grids.
+        // A surface has none, from the def or the host.
         const mvfxCollider* obstacles;
         int32_t obstacleCount;
         bool hostObstacles;
@@ -308,8 +311,9 @@ extern "C"
         // is 0), each as on an emitter's particles, in the world or the
         // instance's frame: taken at each face, its acceleration across the
         // face, a wind's or a velocity field's pull exact over a substep.
-        // An attractor's kill radius does nothing to a gas. The effect
-        // copies them and holds their grids.
+        // An attractor's kill radius does nothing to a gas. None for a
+        // liquid (its particles carry their forces) or a surface. The
+        // effect copies them and holds their grids.
         const struct mvfxForce* forces;
         int32_t forceCount;
         // A surface gas's particles and field; not read for another kind.

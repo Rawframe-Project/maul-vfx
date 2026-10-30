@@ -1111,8 +1111,9 @@ static void TestRefusedFields(void)
     CHECK(Refused(read, mvfx_errorFormat, 0) && refusal.tagCount == 0 && IsPath(&refusal, ""),
           "the magic: no field");
 
-    // Emitter 1 spawns at emitter 0's births (kind 0, its default, left
-    // out); emitter 0 writing none refuses the kind, at the event spawn.
+    // Emitter 1 spawns at emitter 0's births (source 0 and kind 0, their
+    // defaults, left out); emitter 0 writing none refuses the source, at
+    // the event spawn.
     mvfxEmitterDef two[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
     two[0].events = mvfx_eventMaskBirth;
     two[0].eventCapacity = 4;
@@ -1134,7 +1135,7 @@ static void TestRefusedFields(void)
                          TagOf(EmitterType(), offsetof(mvfxEmitterDef, eventSpawn)));
     read = ReadChanged(bytes, size, events + 8, 0, &refusal);
     CHECK(Refused(read, mvfx_errorFormat, spawn) && refusal.result == mvfx_errorFormat &&
-              IsPath(&refusal, "emitters[1].eventSpawn.kind") && refusal.emitter == 1,
+              IsPath(&refusal, "emitters[1].eventSpawn.source") && refusal.emitter == 1,
           "a field left out: at the struct holding it");
 
     // The writer: the field that refers to an object the table lacks.

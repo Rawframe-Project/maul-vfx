@@ -669,8 +669,8 @@ static mvfxResult CheckBeamPoint(const mvfxFieldPath* at, const mvfxBeamPoint* p
 }
 
 // The field of a beam out of a range that no named bound covers, 0 for
-// none: the emitter's own (capacity, a ribbon's) with *inEmitter, the
-// beam's enable when anything else would spawn or move its points.
+// none: the emitter's capacity with *inEmitter, the beam's enable when
+// anything else would spawn or move its points.
 static uint32_t RefusedBeamField(const mvfxEmitterDef* def, bool* inEmitter)
 {
     const mvfxBeamDef* beam = &def->beam;
@@ -700,9 +700,7 @@ static uint32_t RefusedBeamField(const mvfxEmitterDef* def, bool* inEmitter)
         return MVFX_TAG_BEAM_DEF_ENABLE;
     }
     *inEmitter = true;
-    return def->capacity < beam->segments + 1 ? MVFX_TAG_EMITTER_DEF_CAPACITY
-           : def->ribbon.ids != mvfx_ribbonOne || def->ribbon.pinHead ? MVFX_TAG_EMITTER_DEF_RIBBON
-                                                                      : 0;
+    return def->capacity < beam->segments + 1 ? MVFX_TAG_EMITTER_DEF_CAPACITY : 0;
 }
 
 // Whether a beam is valid: its shape in range, and nothing that would
@@ -727,6 +725,16 @@ static mvfxResult CheckBeam(const mvfxFieldPath* at, const mvfxEmitterDef* def,
     {
         return mvfxRefuseField(inEmitter ? at : &beamAt, refused, mvfx_errorInvalid);
     }
+    // One ribbon through its points, its ends placed: as the ribbon's own
+    // fields say.
+    mvfxFieldPath ribbon = mvfxFieldIn(at, MVFX_TAG_EMITTER_DEF_RIBBON, -1);
+    if (def->ribbon.ids != mvfx_ribbonOne || def->ribbon.pinHead)
+    {
+        return mvfxRefuseField(&ribbon,
+                               def->ribbon.ids != mvfx_ribbonOne ? MVFX_TAG_RIBBON_DEF_IDS
+                                                                 : MVFX_TAG_RIBBON_DEF_PIN_HEAD,
+                               mvfx_errorInvalid);
+    }
     mvfxResult shape = mvfxRefuseField(&beamAt, MVFX_TAG_BEAM_DEF_NOISE_AMPLITUDE,
                                        mvfxUpToBound(beam->noiseAmplitude, 0.0f, MVFX_MAX_EXTENT));
     mvfxFieldPath start = mvfxFieldIn(&beamAt, MVFX_TAG_BEAM_DEF_START, -1);
@@ -750,11 +758,14 @@ static uint32_t RefusedSpawnField(const mvfxEffectDef* def, int32_t i)
     {
         return MVFX_TAG_EVENT_SPAWN_SOURCE;
     }
-    // A kind the source writes: one it does not write is never one.
-    if (spawn->kind > mvfx_eventWater ||
-        (def->emitters[spawn->source].events & (1u << spawn->kind)) == 0)
+    if (spawn->kind > mvfx_eventWater)
     {
         return MVFX_TAG_EVENT_SPAWN_KIND;
+    }
+    // A source that does not write the kind: the reference refused.
+    if ((def->emitters[spawn->source].events & (1u << spawn->kind)) == 0)
+    {
+        return MVFX_TAG_EVENT_SPAWN_SOURCE;
     }
     if (spawn->minCount < 0 || spawn->minCount > spawn->maxCount)
     {

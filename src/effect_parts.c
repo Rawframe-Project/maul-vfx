@@ -443,10 +443,17 @@ static mvfxResult CheckRigid(const mvfxFieldPath* emitter, const mvfxEmitterDef*
     {
         return mvfxRefuseField(&at, refused, mvfx_errorInvalid);
     }
+    // An axis its shape does not set tied to X: as the size's and the
+    // size over life's comments say.
     uint32_t untied = UntiedSize(def);
-    if (untied != 0)
+    if (untied == MVFX_TAG_EMITTER_DEF_SIZE)
     {
         return mvfxRefuseField(emitter, untied, mvfx_errorInvalid);
+    }
+    if (untied != 0)
+    {
+        mvfxFieldPath overLife = mvfxFieldIn(emitter, MVFX_TAG_EMITTER_DEF_OVER_LIFE, -1);
+        return mvfxRefuseField(&overLife, MVFX_TAG_OVER_LIFE_SIZE, mvfx_errorInvalid);
     }
     mvfxResult valid = mvfxRefuseField(&at, MVFX_TAG_RIGID_DEF_DENSITY,
                                        mvfxPositiveUpTo(rigid->density, MVFX_MAX_EXTENT));
