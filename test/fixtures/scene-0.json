@@ -186,10 +186,23 @@
               "seed": 12345
             },
             "strength": {
-              "kind": "mvfx_sourceRange",
+              "kind": "mvfx_sourceCurve",
               "range": {
-                "min": 2.5,
-                "max": 2.5
+                "min": 1.0,
+                "max": 1.0
+              },
+              "curve": {
+                "keys": [
+                  {
+                    "value": 1.0,
+                    "interpolation": "mvfx_interpolationCubic"
+                  },
+                  {
+                    "time": 0.3,
+                    "value": 3.5,
+                    "interpolation": "mvfx_interpolationLinear"
+                  }
+                ]
               }
             }
           }

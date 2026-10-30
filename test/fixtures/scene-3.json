@@ -132,8 +132,8 @@
             "strength": {
               "kind": "mvfx_sourceRange",
               "range": {
-                "min": 4.0,
-                "max": 4.0
+                "min": 3.0,
+                "max": 5.0
               }
             }
           }
