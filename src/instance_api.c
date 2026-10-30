@@ -970,6 +970,10 @@ mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instan
 
 mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance, int32_t* levelOut)
 {
+    if (levelOut != nullptr)
+    {
+        *levelOut = 0;
+    }
     if (context == nullptr || levelOut == nullptr)
     {
         if (context != nullptr)
@@ -978,7 +982,6 @@ mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance
         }
         return mvfx_errorInvalid;
     }
-    *levelOut = 0;
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;

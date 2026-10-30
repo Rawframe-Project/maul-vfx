@@ -12,6 +12,7 @@
 #include "gas.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "refusal.h"
 
 #include "maul-vfx/instance.h"
 
@@ -264,6 +265,10 @@ mvfxResult mvfxInstance_ReadGas(const mvfxContext* context, mvfxInstanceId insta
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ReadGasWork(context, instance, gas, field, out, count);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, count, sizeof(float), alignof(float));
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }

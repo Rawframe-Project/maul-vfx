@@ -161,6 +161,20 @@ static void TestVelocity(void)
     mvfxDestroyContext(s_context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestRefusals(void)
 {
     // A uint32 format; a box past the gas; a range not above its low for a
@@ -196,6 +210,24 @@ static void TestRefusals(void)
     right = right && mvfxInstance_SampleGas(s_context, s_instance, 1, mvfx_gasDensity, bad, 0,
                                             out) == mvfx_errorInvalid;
     CHECK(right, "the reads' refusals");
+    // What a refusal leaves: the span the caller gives zeroed, the rest of
+    // its buffer untouched.
+    const mvfxInstanceId stale = {0};
+    memset(out, 0xEE, sizeof out);
+    CHECK(mvfxInstance_ReadGas(NULL, s_instance, 0, mvfx_gasDensity, out, 48) ==
+                  mvfx_errorInvalid &&
+              Filled(out, 48 * sizeof out[0], 0) && Filled(&out[48], 16 * sizeof out[0], 0xEE),
+          "a cell read with no context: its 48 floats zeroed");
+    memset(out, 0xEE, sizeof out);
+    mvfxGasRead whole = Whole(mvfx_gasDensity, mvfx_formatUnorm8);
+    CHECK(mvfxInstance_ReadGasAs(s_context, stale, 0, &whole, out, 40) == mvfx_errorStale &&
+              Filled(out, 40, 0) && Filled((unsigned char*)out + 40, sizeof out - 40, 0xEE),
+          "a read of a stale instance: its 40 bytes zeroed");
+    memset(out, 0xEE, sizeof out);
+    CHECK(mvfxInstance_SampleGas(s_context, s_instance, 0, mvfx_gasDensity, bad, 1, out) ==
+                  mvfx_errorInvalid &&
+              out[0] == 0.0f && Filled(&out[1], sizeof out - sizeof out[0], 0xEE),
+          "a NaN point: its one sample zeroed");
     mvfxDestroyContext(s_context);
 }
 

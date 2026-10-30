@@ -557,6 +557,61 @@ static void TestRefusals(void)
     mvfxDestroyContext(other);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// What a refused call leaves: the count 0 always; the records, whose size
+// is the layout's stride, zeroed while the layout is live and left when
+// it is stale or no context names it.
+static void TestFailureLeaves(void)
+{
+    mvfxEmitterDef emitter = Held();
+    Scene scene = NewScene(&emitter);
+    mvfxContext* c = scene.context;
+    mvfxInstanceId i = scene.instance;
+    mvfxLayoutId layout = {0};
+    CHECK(Make(c, s_fields, 7, (uint32_t)sizeof(Record), &layout) == mvfx_success, "layout");
+    static const mvfxView view = {.origin = {0, 0, 0}};
+    mvfxInstanceId stale = i;
+    stale.generation += 1;
+    mvfxLayoutId staleLayout = layout;
+    staleLayout.generation += 1;
+    Record records[2];
+    int64_t count = 7;
+    memset(records, 0xEE, sizeof records);
+    CHECK(mvfxInstance_WriteParticles(NULL, i, 0, layout, &view, NULL, 0, records, 2, &count) ==
+                  mvfx_errorInvalid &&
+              count == 0 && Filled(records, sizeof records, 0xEE),
+          "no context: the count 0, the records left");
+    count = 7;
+    CHECK(mvfxInstance_WriteParticles(c, stale, 0, layout, &view, NULL, 0, records, 2, &count) ==
+                  mvfx_errorStale &&
+              count == 0 && Filled(records, sizeof records, 0),
+          "a stale instance: the records zeroed");
+    memset(records, 0xEE, sizeof records);
+    CHECK(mvfxInstance_WriteParticles(c, i, 0, layout, NULL, NULL, 0, records, 2, &count) ==
+                  mvfx_errorInvalid &&
+              Filled(records, sizeof records, 0),
+          "no view: the records zeroed");
+    memset(records, 0xEE, sizeof records);
+    CHECK(mvfxInstance_WriteParticles(c, i, 0, staleLayout, &view, NULL, 0, records, 2, &count) ==
+                  mvfx_errorStale &&
+              Filled(records, sizeof records, 0xEE),
+          "a stale layout: the records left");
+    mvfxDestroyContext(c);
+}
+
 static void TestFrameAsFloat(void)
 {
     // A fixed frame of 5, as binary32.
@@ -719,6 +774,7 @@ int main(void)
     TestRuns();
     TestLocal();
     TestRefusals();
+    TestFailureLeaves();
     TestFrameAsFloat();
     TestMeshIndex();
     return s_failures == 0 ? 0 : 1;

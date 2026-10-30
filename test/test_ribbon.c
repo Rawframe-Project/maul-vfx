@@ -365,6 +365,20 @@ static void TestChecks(void)
     mvfxDestroyContext(context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
@@ -435,6 +449,30 @@ static void TestRefusals(void)
               mvfxInstance_WriteRibbons(NULL, i, 0, l, &view, &good, &points1, &ribbons1) ==
                   mvfx_errorInvalid,
           "stale, no context");
+    // What a refusal leaves: the counts 0; the ribbons zeroed; the points,
+    // whose size is the layout's stride, zeroed while the layout is live
+    // and left otherwise.
+    memset(out, 0xEE, sizeof out);
+    memset(list, 0xEE, sizeof list);
+    points1 = 7;
+    ribbons1 = 7;
+    CHECK(mvfxInstance_WriteRibbons(NULL, i, 0, l, &view, &good, &points1, &ribbons1) ==
+                  mvfx_errorInvalid &&
+              points1 == 0 && ribbons1 == 0 && Filled(out, sizeof out, 0xEE) &&
+              Filled(list, sizeof list, 0),
+          "no context: the points left, the ribbons zeroed");
+    memset(out, 0xEE, sizeof out);
+    memset(list, 0xEE, sizeof list);
+    CHECK(mvfxInstance_WriteRibbons(c, stale, 0, l, &view, &good, &points1, &ribbons1) ==
+                  mvfx_errorStale &&
+              Filled(out, sizeof out, 0) && Filled(list, sizeof list, 0),
+          "a stale instance: both zeroed");
+    memset(out, 0xEE, sizeof out);
+    memset(list, 0xEE, sizeof list);
+    CHECK(mvfxInstance_WriteRibbons(c, i, 0, staleLayout, &view, &good, &points1, &ribbons1) ==
+                  mvfx_errorStale &&
+              Filled(out, sizeof out, 0xEE) && Filled(list, sizeof list, 0),
+          "a stale layout: the points left, the ribbons zeroed");
     mvfxDestroyContext(c);
 }
 

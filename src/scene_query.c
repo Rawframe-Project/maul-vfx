@@ -54,6 +54,14 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
                                         int32_t emitter, const mvfxSceneQuery** queriesOut,
                                         int32_t* countOut)
 {
+    if (queriesOut != nullptr)
+    {
+        *queriesOut = nullptr;
+    }
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     if (context == nullptr || queriesOut == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
@@ -62,8 +70,6 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
         }
         return mvfx_errorInvalid;
     }
-    *queriesOut = nullptr;
-    *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;

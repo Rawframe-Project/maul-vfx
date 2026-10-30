@@ -223,6 +223,10 @@ mvfxResult mvfxInstance_ReadWater(const mvfxContext* context, mvfxInstanceId ins
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ReadWaterWork(context, instance, water, read, out, bytes);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, bytes, 1, 1);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -414,6 +418,10 @@ mvfxResult mvfxInstance_SampleWater(const mvfxContext* context, mvfxInstanceId i
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_SampleWaterWork(context, instance, water, points, count, out);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, count, sizeof(mvfxWaterSample), alignof(mvfxWaterSample));
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }

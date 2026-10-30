@@ -346,6 +346,20 @@ static void TestChecks(void)
     mvfxDestroyContext(context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Sprites(mvfx_billboardCamera);
@@ -395,6 +409,27 @@ static void TestRefusals(void)
               mvfxInstance_ExpandSprites(NULL, i, 0, l, &s_view, &good, &count) ==
                   mvfx_errorInvalid,
           "stale, no context");
+    // What a refusal leaves: the count 0; the indices zeroed; the
+    // vertices, whose size is the layout's stride, zeroed while the layout
+    // is live and left otherwise.
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    count = 7;
+    CHECK(mvfxInstance_ExpandSprites(NULL, i, 0, l, &s_view, &good, &count) == mvfx_errorInvalid &&
+              count == 0 && Filled(vertices, sizeof vertices, 0xEE) &&
+              Filled(indices, sizeof indices, 0),
+          "no context: the vertices left, the indices zeroed");
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    CHECK(mvfxInstance_ExpandSprites(c, stale, 0, l, &s_view, &good, &count) == mvfx_errorStale &&
+              Filled(vertices, sizeof vertices, 0) && Filled(indices, sizeof indices, 0),
+          "a stale instance: both zeroed");
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    CHECK(mvfxInstance_ExpandSprites(c, i, 0, staleLayout, &s_view, &good, &count) ==
+                  mvfx_errorStale &&
+              Filled(vertices, sizeof vertices, 0xEE) && Filled(indices, sizeof indices, 0),
+          "a stale layout: the vertices left, the indices zeroed");
     mvfxDestroyContext(c);
 }
 

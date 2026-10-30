@@ -284,6 +284,20 @@ static void TestOwnSettings(void)
     mvfxDestroyContext(scene.context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -365,6 +379,38 @@ static void TestChecks(void)
     refused += mvfxInstance_ExpandPlexus(context, instance, 0, layout, &s_view, &strips, &a, &b) ==
                mvfx_errorInvalid;
     CHECK(refused == 4 && mvfxGetContextMisuse(context) == misuse + 4, "refused, counted");
+    // What a refusal leaves: the counts 0, and the ribbons and indices
+    // zeroed; the points and vertices too while the layout is live.
+    Record held[2];
+    mvfxRibbon list[2];
+    uint32_t indices[3];
+    memset(held, 0xEE, sizeof held);
+    memset(list, 0xEE, sizeof list);
+    buffers = (mvfxRibbonBuffers){
+        .points = held, .pointCapacity = 2, .ribbons = list, .ribbonCapacity = 2};
+    a = 7;
+    b = 7;
+    CHECK(mvfxInstance_WritePlexus(NULL, instance, 0, layout, &s_view, &buffers, &a, &b) ==
+                  mvfx_errorInvalid &&
+              a == 0 && b == 0 && Filled(held, sizeof held, 0xEE) && Filled(list, sizeof list, 0),
+          "no context: the counts 0, the points left, the ribbons zeroed");
+    memset(held, 0xEE, sizeof held);
+    memset(list, 0xEE, sizeof list);
+    CHECK(mvfxInstance_WritePlexus(context, instance, 1, layout, &s_view, &buffers, &a, &b) ==
+                  mvfx_errorInvalid &&
+              Filled(held, sizeof held, 0) && Filled(list, sizeof list, 0),
+          "an emitter out of range: both zeroed");
+    memset(held, 0xEE, sizeof held);
+    memset(indices, 0xEE, sizeof indices);
+    strips = (mvfxExpandBuffers){
+        .vertices = held, .vertexCapacity = 2, .indices = indices, .indexCapacity = 3};
+    a = 7;
+    b = 7;
+    CHECK(mvfxInstance_ExpandPlexus(context, instance, 1, layout, &s_view, &strips, &a, &b) ==
+                  mvfx_errorInvalid &&
+              a == 0 && b == 0 && Filled(held, sizeof held, 0) &&
+              Filled(indices, sizeof indices, 0),
+          "an emitter out of range: the counts 0, both zeroed");
     mvfxDestroyContext(context);
 }
 

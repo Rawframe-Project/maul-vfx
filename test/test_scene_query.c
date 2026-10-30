@@ -389,6 +389,25 @@ static void TestRefusals(void)
                 mvfx_errorInvalid &&
             mvfxInstance_AnswerSceneQueries(NULL, scene.instance, 0, &good, 1) == mvfx_errorInvalid,
         "stale, no context");
+    // What a refusal leaves: no queries and a count of 0, whichever
+    // argument is refused.
+    static const mvfxSceneQuery earlier[1];
+    queries = earlier;
+    count = 7;
+    CHECK(mvfxInstance_GetSceneQueries(NULL, scene.instance, 0, &queries, &count) ==
+                  mvfx_errorInvalid &&
+              queries == NULL && count == 0,
+          "no context: none");
+    count = 7;
+    CHECK(mvfxInstance_GetSceneQueries(scene.context, scene.instance, 0, NULL, &count) ==
+                  mvfx_errorInvalid &&
+              count == 0,
+          "no queries pointer: the count 0");
+    queries = earlier;
+    CHECK(mvfxInstance_GetSceneQueries(scene.context, scene.instance, 0, &queries, NULL) ==
+                  mvfx_errorInvalid &&
+              queries == NULL,
+          "no count: no queries");
     mvfxDestroyContext(scene.context);
 
     // An emitter without scene queries writes none.

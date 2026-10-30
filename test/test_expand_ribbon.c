@@ -190,6 +190,20 @@ static void TestWidthBetween(void)
     mvfxDestroyContext(scene.context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
@@ -248,6 +262,40 @@ static void TestRefusals(void)
               mvfxInstance_ExpandRibbons(NULL, i, 0, l, &s_view, &good, &vertexCount,
                                          &indexCount) == mvfx_errorInvalid,
           "stale, no context");
+    // What a refusal leaves: the counts 0; the indices zeroed; the
+    // vertices, whose size is the layout's stride, zeroed while the layout
+    // is live and left otherwise.
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    vertexCount = 7;
+    indexCount = 7;
+    CHECK(mvfxInstance_ExpandRibbons(NULL, i, 0, l, &s_view, &good, &vertexCount, &indexCount) ==
+                  mvfx_errorInvalid &&
+              vertexCount == 0 && indexCount == 0 && Filled(vertices, sizeof vertices, 0xEE) &&
+              Filled(indices, sizeof indices, 0),
+          "no context: the vertices left, the indices zeroed");
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    CHECK(mvfxInstance_ExpandRibbons(c, stale, 0, l, &s_view, &good, &vertexCount, &indexCount) ==
+                  mvfx_errorStale &&
+              Filled(vertices, sizeof vertices, 0) && Filled(indices, sizeof indices, 0),
+          "a stale instance: both zeroed");
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    CHECK(mvfxInstance_ExpandRibbons(c, i, 0, staleLayout, &s_view, &good, &vertexCount,
+                                     &indexCount) == mvfx_errorStale &&
+              Filled(vertices, sizeof vertices, 0xEE) && Filled(indices, sizeof indices, 0),
+          "a stale layout: the vertices left, the indices zeroed");
+    // A tube refused leaves the same.
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    vertexCount = 7;
+    indexCount = 7;
+    CHECK(mvfxInstance_ExpandTubes(c, i, 0, l, &s_view, NULL, &good, &vertexCount, &indexCount) ==
+                  mvfx_errorInvalid &&
+              vertexCount == 0 && indexCount == 0 && Filled(vertices, sizeof vertices, 0) &&
+              Filled(indices, sizeof indices, 0),
+          "no tube: the counts 0, both zeroed");
     mvfxDestroyContext(c);
 }
 

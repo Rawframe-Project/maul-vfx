@@ -13,6 +13,7 @@
 #include "maul-vfx/output.h"
 
 #include <math.h>
+#include <string.h>
 
 typedef struct Scene
 {
@@ -237,6 +238,20 @@ static void TestChecks(void)
     mvfxDestroyContext(context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Lit();
@@ -261,6 +276,18 @@ static void TestRefusals(void)
     CHECK(mvfxInstance_WriteLights(c, stale, 0, &view, lights, 1, &count) == mvfx_errorStale &&
               mvfxInstance_WriteLights(NULL, i, 0, &view, lights, 1, &count) == mvfx_errorInvalid,
           "stale, no context");
+    // What a refusal leaves: the count 0 and the lights zeroed.
+    mvfxLight held[2];
+    memset(held, 0xEE, sizeof held);
+    count = 7;
+    CHECK(mvfxInstance_WriteLights(NULL, i, 0, &view, held, 2, &count) == mvfx_errorInvalid &&
+              count == 0 && Filled(held, sizeof held, 0),
+          "no context: the count 0, the lights zeroed");
+    memset(held, 0xEE, sizeof held);
+    count = 7;
+    CHECK(mvfxInstance_WriteLights(c, stale, 0, &view, held, 2, &count) == mvfx_errorStale &&
+              count == 0 && Filled(held, sizeof held, 0),
+          "a stale instance: the lights zeroed");
     mvfxDestroyContext(c);
 }
 

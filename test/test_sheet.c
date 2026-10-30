@@ -53,6 +53,20 @@ typedef struct Scene
 
 static Scene s_scene;
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // A sheet of points across x by rows along z, 0.5 apart, rigid in
 // stretch, shear and bending, eight substeps, under gravity, its first
 // row pinned; room for four.
@@ -364,6 +378,19 @@ static void TestMesh(void)
                                         &s_view, &buffers, &vertexCount,
                                         &indexCount) == mvfx_errorInvalid,
           "misuse");
+    // What a refusal leaves: the counts 0 and the indices zeroed.
+    indexCount = 7;
+    CHECK(mvfxInstance_ExpandSheets(s_scene.context, s_scene.instance, 0, s_scene.layout, &s_view,
+                                    &buffers, NULL, &indexCount) == mvfx_errorInvalid &&
+              indexCount == 0,
+          "no vertex count: the index count 0");
+    vertexCount = 7;
+    indexCount = 7;
+    memset(indices, 0xEE, sizeof indices);
+    CHECK(mvfxInstance_ExpandSheets(NULL, s_scene.instance, 0, s_scene.layout, &s_view, &buffers,
+                                    &vertexCount, &indexCount) == mvfx_errorInvalid &&
+              vertexCount == 0 && indexCount == 0 && Filled(indices, 40 * sizeof indices[0], 0),
+          "no context: the counts 0, the indices zeroed");
     mvfxDestroyContext(s_scene.context);
     // A chain is no sheet.
     emitter = Sheet(4, 3);

@@ -11,6 +11,7 @@
 #include "instance_api.h"
 #include "layout_api.h"
 #include "output.h"
+#include "refusal.h"
 
 #include <math.h>
 
@@ -217,6 +218,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
     mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
     const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* countOut)
 {
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     if (context == nullptr || view == nullptr || buffers == nullptr || countOut == nullptr)
     {
         if (context != nullptr)
@@ -225,7 +230,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
         }
         return mvfx_errorInvalid;
     }
-    *countOut = 0;
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;
@@ -273,6 +277,10 @@ mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId insta
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
         mvfxInstance_ExpandSpritesWork(context, instance, emitter, layout, view, buffers, countOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -386,6 +394,14 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
     const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
     int64_t* indexCountOut)
 {
+    if (vertexCountOut != nullptr)
+    {
+        *vertexCountOut = 0;
+    }
+    if (indexCountOut != nullptr)
+    {
+        *indexCountOut = 0;
+    }
     if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
         indexCountOut == nullptr)
     {
@@ -395,8 +411,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
         }
         return mvfx_errorInvalid;
     }
-    *vertexCountOut = 0;
-    *indexCountOut = 0;
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;
@@ -454,6 +468,10 @@ mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instan
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ExpandSheetsWork(context, instance, emitter, layout, view,
                                                       buffers, vertexCountOut, indexCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }

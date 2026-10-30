@@ -21,6 +21,7 @@
 #include "gas_api.h"
 #include "instance.h"
 #include "marching_table.h"
+#include "refusal.h"
 
 #include "maul-vfx/output.h"
 
@@ -515,6 +516,12 @@ mvfxResult mvfxInstance_WriteSurfaceMesh(mvfxContext* context, mvfxInstanceId in
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_WriteSurfaceMeshWork(context, instance, gas, origin, level,
                                                           buffers, vertexCountOut, indexCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy && buffers != nullptr)
+    {
+        mvfxClearSpan(buffers->positions, buffers->vertexCapacity, 3 * sizeof(float), 4);
+        mvfxClearSpan(buffers->normals, buffers->vertexCapacity, 3 * sizeof(float), 4);
+        mvfxClearSpan(buffers->indices, buffers->indexCapacity, sizeof(uint32_t), 4);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }

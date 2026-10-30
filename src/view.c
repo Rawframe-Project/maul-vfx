@@ -37,6 +37,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetBoundsWork(mvfxContext* context,
                                                            mvfxInstanceId instance, int32_t emitter,
                                                            mvfxBounds* boundsOut)
 {
+    if (boundsOut != nullptr)
+    {
+        *boundsOut = (mvfxBounds){.empty = true};
+    }
     if (context == nullptr || boundsOut == nullptr)
     {
         if (context != nullptr)
@@ -45,7 +49,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetBoundsWork(mvfxContext* context,
         }
         return mvfx_errorInvalid;
     }
-    *boundsOut = (mvfxBounds){.empty = true};
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;
@@ -214,6 +217,10 @@ static MVFX_NOINLINE mvfxResult mvfxContext_OrderEmittersWork(mvfxContext* conte
                                                               mvfxDrawItem* items, int64_t capacity,
                                                               int64_t* countOut)
 {
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     mvfxResult valid = context == nullptr || eye == nullptr || countOut == nullptr ||
                                capacity < 0 || (capacity > 0 && items == nullptr)
                            ? mvfx_errorInvalid
@@ -266,6 +273,10 @@ mvfxResult mvfxContext_OrderEmitters(mvfxContext* context, const double eye[3],
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
         mvfxContext_OrderEmittersWork(context, eye, frustum, items, capacity, countOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearSpan(items, capacity, sizeof(mvfxDrawItem), alignof(mvfxDrawItem));
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }

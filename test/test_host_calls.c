@@ -20,9 +20,11 @@
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
 #include "maul-vfx/modules.h"
+#include "maul-vfx/output.h"
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 // The callback armed to call back in, the context it calls into, the
 // instance it names, and how many calls back in were refused as they
@@ -217,6 +219,117 @@ static void TestCallsBackIn(void)
     mvfxDestroyContext(context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// From a host module, each call that writes the host's buffers, called
+// back in: refused as busy, its counts 0 and its buffers left as they
+// were, since they may be the ones the call in progress fills. The layout
+// is live, so any other refusal would zero them.
+static mvfxLayoutId s_layout;
+static bool s_left;
+
+static void WriteBack(const mvfxModuleCall* call, void* user)
+{
+    (void)call;
+    (void)user;
+    mvfxContext* target = s_target;
+    if (target == NULL)
+    {
+        return;
+    }
+    s_target = NULL;
+    static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
+    static const double eye[3] = {0, 0, 0};
+    static const double origin[3] = {0, 0, 0};
+    static unsigned char records[64];
+    static unsigned char vertices[64];
+    static uint32_t indices[6];
+    static mvfxLight lights[1];
+    static mvfxDrawItem items[1];
+    static mvfxRibbon ribbons[1];
+    static float positions[3];
+    memset(records, 0xEE, sizeof records);
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    memset(lights, 0xEE, sizeof lights);
+    memset(items, 0xEE, sizeof items);
+    memset(ribbons, 0xEE, sizeof ribbons);
+    memset(positions, 0xEE, sizeof positions);
+    const mvfxExpandBuffers expand = {
+        .vertices = vertices, .vertexCapacity = 4, .indices = indices, .indexCapacity = 6};
+    const mvfxRibbonBuffers list = {
+        .points = records, .pointCapacity = 4, .ribbons = ribbons, .ribbonCapacity = 1};
+    const mvfxSurfaceMeshBuffers mesh = {
+        .positions = positions, .vertexCapacity = 1, .indices = indices, .indexCapacity = 6};
+    int64_t n[9] = {7, 7, 7, 7, 7, 7, 7, 7, 7};
+    mvfxInstanceId i = s_instance;
+    mvfxLayoutId l = s_layout;
+    bool busy =
+        mvfxInstance_WriteParticles(target, i, 0, l, &view, NULL, 0, records, 4, &n[0]) ==
+            mvfx_errorBusy &&
+        mvfxInstance_WriteLights(target, i, 0, &view, lights, 1, &n[1]) == mvfx_errorBusy &&
+        mvfxContext_OrderEmitters(target, eye, NULL, items, 1, &n[2]) == mvfx_errorBusy &&
+        mvfxInstance_ExpandSprites(target, i, 0, l, &view, &expand, &n[3]) == mvfx_errorBusy &&
+        mvfxInstance_WriteRibbons(target, i, 0, l, &view, &list, &n[4], &n[5]) == mvfx_errorBusy &&
+        mvfxInstance_ExpandRibbons(target, i, 0, l, &view, &expand, &n[6], &n[7]) ==
+            mvfx_errorBusy &&
+        mvfxInstance_WriteSurfaceMesh(target, i, 0, origin, 0.0f, &mesh, &n[8], &n[8]) ==
+            mvfx_errorBusy;
+    bool counts = true;
+    for (int32_t k = 0; k < 9; ++k)
+    {
+        counts = counts && n[k] == 0;
+    }
+    s_left = busy && counts && Filled(records, sizeof records, 0xEE) &&
+             Filled(vertices, sizeof vertices, 0xEE) && Filled(indices, sizeof indices, 0xEE) &&
+             Filled(lights, sizeof lights, 0xEE) && Filled(items, sizeof items, 0xEE) &&
+             Filled(ribbons, sizeof ribbons, 0xEE) && Filled(positions, sizeof positions, 0xEE);
+}
+
+static const mvfxHostModule s_writeBack = {.stage = mvfx_stageAfterMotion, .function = WriteBack};
+
+static void TestBusyLeavesBuffers(void)
+{
+    mvfxContextDef def = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.hostModules = &s_writeBack;
+    emitter.hostModuleCount = 1;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &s_instance) == mvfx_success, "instance");
+    static const mvfxLayoutField position = {
+        .field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3};
+    mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
+    layoutDef.fields = &position;
+    layoutDef.fieldCount = 1;
+    layoutDef.stride = 16;
+    CHECK(mvfxCreateLayout(context, &layoutDef, &s_layout) == mvfx_success, "layout");
+    s_left = false;
+    s_target = context;
+    CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success && s_target == NULL && s_left,
+          "a host module's writes back in refused as busy, its counts 0, its buffers left");
+    mvfxDestroyContext(context);
+}
+
 static void TestHostSettings(void)
 {
     // An effect's compile allocates inside the library's environment, a
@@ -275,6 +388,7 @@ static void TestHostSettings(void)
 int main(void)
 {
     TestCallsBackIn();
+    TestBusyLeavesBuffers();
     TestHostSettings();
     return s_failures == 0 ? 0 : 1;
 }

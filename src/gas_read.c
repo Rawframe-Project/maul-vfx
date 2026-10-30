@@ -12,6 +12,7 @@
 #include "instance_api.h"
 #include "layout.h"
 #include "read_format.h"
+#include "refusal.h"
 
 #include "maul-vfx/output.h"
 
@@ -122,6 +123,10 @@ mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId ins
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ReadGasAsWork(context, instance, gas, read, out, bytes);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, bytes, 1, 1);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -196,6 +201,10 @@ mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId ins
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
         mvfxInstance_SampleGasWork(context, instance, gas, field, points, count, out);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, count, sizeof(float), alignof(float));
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }

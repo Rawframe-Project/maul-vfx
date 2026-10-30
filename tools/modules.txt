@@ -1,4 +1,4 @@
-expand: appearance context direction elementary fpenv instance_api layout_api output
+expand: appearance context direction elementary fpenv instance_api layout_api output refusal
 beam: direction elementary instance noise
 tube: elementary output
 ribbon: appearance context direction fpenv gradient instance instance_api layout_api output refusal sort spawn tube
@@ -6,8 +6,8 @@ sort: invariant
 bounds: appearance direction instance space spawn
 view: bounds context fpenv gas_api instance instance_api refusal water_api
 layout: allocator elementary fpenv half
-layout_api: context layout slots
-output: appearance context direction fpenv instance instance_api layout layout_api sort space
+layout_api: context layout refusal slots
+output: appearance context direction fpenv instance instance_api layout layout_api refusal sort space
 # The internal module graph: each module and the modules it may use, so
 # dependencies stay one-way. tools/check_modules.py enforces it.
 base:
@@ -93,14 +93,14 @@ file_fields:
 file_codec: file_fields
 file: allocator context effect effect_api effect_check effect_parts file_codec file_fields fpenv
 marching_table:
-surface_mesh: context fpenv gas gas_api instance marching_table
+surface_mesh: context fpenv gas gas_api instance marching_table refusal
 gas_forces: direction elementary force gas
 gas_pressure: gas tasks
-gas_read: context fpenv gas gas_api gas_lattice instance instance_api layout read_format
+gas_read: context fpenv gas gas_api gas_lattice instance instance_api layout read_format refusal
 gas_solid: collide direction gas gas_pressure
 gas_splat: elementary force gas gas_lattice
 gas_step: elementary force gas gas_forces gas_lattice gas_pressure gas_solid gas_splat tasks
-gas_api: box collide context direction force fpenv gas instance instance_api
+gas_api: box collide context direction force fpenv gas instance instance_api refusal
 instance_api: collide context depth effect_api fpenv gas grid_api instance mesh plan_resolved refusal rigid_wake slots spawn
 instance_inputs: context fpenv instance instance_api mesh_api refusal rigid_wake spawn
 step: context effect emitter_step event fpenv force gas_api gas_liquid gas_plan gas_splat gas_step gas_surface instance instance_api planner tasks water_shallow water_step

@@ -692,12 +692,33 @@ static mvfxResult OpenRibbons(mvfxContext* context, mvfxInstanceId instance, int
     return mvfx_success;
 }
 
+// Zeroes a ribbon list's points (mvfxClearRecords) and ribbons after a
+// refused call.
+static void ClearRibbonBuffers(const mvfxContext* context, mvfxLayoutId layout,
+                               const mvfxRibbonBuffers* buffers)
+{
+    if (buffers != nullptr)
+    {
+        mvfxClearRecords(context, layout, buffers->points, buffers->pointCapacity);
+        mvfxClearSpan(buffers->ribbons, buffers->ribbonCapacity, sizeof(mvfxRibbon),
+                      alignof(mvfxRibbon));
+    }
+}
+
 // The ribbons or plexus links of an emitter as points with a list.
 static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                               mvfxLayoutId layout, const mvfxView* view,
                               const mvfxRibbonBuffers* buffers, int64_t* pointCountOut,
                               int64_t* ribbonCountOut, bool plexus)
 {
+    if (pointCountOut != nullptr)
+    {
+        *pointCountOut = 0;
+    }
+    if (ribbonCountOut != nullptr)
+    {
+        *ribbonCountOut = 0;
+    }
     if (context == nullptr || view == nullptr || buffers == nullptr || pointCountOut == nullptr ||
         ribbonCountOut == nullptr)
     {
@@ -707,8 +728,6 @@ static mvfxResult WritePoints(mvfxContext* context, mvfxInstanceId instance, int
         }
         return mvfx_errorInvalid;
     }
-    *pointCountOut = 0;
-    *ribbonCountOut = 0;
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;
@@ -748,6 +767,14 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
     mvfxResult tubed = tube == nullptr || tube->sides == 0
                            ? mvfx_success
                            : mvfxCountUpTo(tube->sides, 3, MVFX_MAX_TUBE_SIDES);
+    if (vertexCountOut != nullptr)
+    {
+        *vertexCountOut = 0;
+    }
+    if (indexCountOut != nullptr)
+    {
+        *indexCountOut = 0;
+    }
     if (context == nullptr || view == nullptr || buffers == nullptr || vertexCountOut == nullptr ||
         indexCountOut == nullptr || tubed != mvfx_success)
     {
@@ -760,8 +787,6 @@ static mvfxResult WriteStrips(mvfxContext* context, mvfxInstanceId instance, int
                    ? mvfx_errorInvalid
                    : tubed;
     }
-    *vertexCountOut = 0;
-    *indexCountOut = 0;
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;
@@ -811,6 +836,10 @@ mvfxResult mvfxInstance_WriteRibbons(mvfxContext* context, mvfxInstanceId instan
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_WriteRibbonsWork(context, instance, emitter, layout, view,
                                                       buffers, pointCountOut, ribbonCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        ClearRibbonBuffers(context, layout, buffers);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -832,6 +861,10 @@ mvfxResult mvfxInstance_ExpandRibbons(mvfxContext* context, mvfxInstanceId insta
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ExpandRibbonsWork(context, instance, emitter, layout, view,
                                                        buffers, vertexCountOut, indexCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -841,6 +874,14 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandTubesWork(
     const mvfxView* view, const mvfxTubeDef* tube, const mvfxExpandBuffers* buffers,
     int64_t* vertexCountOut, int64_t* indexCountOut)
 {
+    if (vertexCountOut != nullptr)
+    {
+        *vertexCountOut = 0;
+    }
+    if (indexCountOut != nullptr)
+    {
+        *indexCountOut = 0;
+    }
     if (tube == nullptr || tube->sides == 0)
     {
         if (context != nullptr)
@@ -861,6 +902,10 @@ mvfxResult mvfxInstance_ExpandTubes(mvfxContext* context, mvfxInstanceId instanc
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ExpandTubesWork(context, instance, emitter, layout, view, tube,
                                                      buffers, vertexCountOut, indexCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -882,6 +927,10 @@ mvfxResult mvfxInstance_WritePlexus(mvfxContext* context, mvfxInstanceId instanc
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_WritePlexusWork(context, instance, emitter, layout, view,
                                                      buffers, pointCountOut, ribbonCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        ClearRibbonBuffers(context, layout, buffers);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -903,6 +952,10 @@ mvfxResult mvfxInstance_ExpandPlexus(mvfxContext* context, mvfxInstanceId instan
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ExpandPlexusWork(context, instance, emitter, layout, view,
                                                       buffers, vertexCountOut, indexCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
     mvfxFloatEnvLeave(env);
     return result;
 }

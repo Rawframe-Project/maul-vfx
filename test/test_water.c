@@ -601,6 +601,20 @@ static void PushRefusals(void)
     mvfxDestroyContext(s_context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestPushes(void)
 {
     mvfxWaterDef water = OpenInFrame();
@@ -715,6 +729,20 @@ static void ReadRefusals(void)
     CHECK(mvfxInstance_ReadWater(s_context, s_instance, 1, &good, out, 99) == mvfx_errorInvalid,
           "index");
     CHECK(mvfxGetContextMisuse(s_context) == misuse + 14, "misuse counted");
+    // What a refusal leaves: the span the caller gives zeroed.
+    memset(out, 0xEE, sizeof out);
+    CHECK(mvfxInstance_ReadWater(s_context, s_instance, 0, &bad[0], out, sizeof out) ==
+                  mvfx_errorInvalid &&
+              Filled(out, sizeof out, 0),
+          "a read refused: its bytes zeroed");
+    const mvfxInstanceId stale = {0};
+    static const double points[6] = {0, 0, 0, 1, 0, 1};
+    mvfxWaterSample samples[3];
+    memset(samples, 0xEE, sizeof samples);
+    CHECK(mvfxInstance_SampleWater(s_context, stale, 0, points, 2, samples) == mvfx_errorStale &&
+              Filled(samples, 2 * sizeof samples[0], 0) &&
+              Filled(&samples[2], sizeof samples[2], 0xEE),
+          "samples of a stale instance: its two zeroed");
     mvfxDestroyContext(s_context);
 }
 
