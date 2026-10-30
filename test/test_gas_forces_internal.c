@@ -31,7 +31,7 @@ static mvfxGasState* Open(const mvfxGasDef* gas, const float rotation[4], float 
     def.gases = gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);

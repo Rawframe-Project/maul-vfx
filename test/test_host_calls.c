@@ -161,7 +161,7 @@ static mvfxContext* Open(mvfxEffectId* effectOut)
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
-    CHECK(mvfxCreateEffect(context, &effectDef, effectOut) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, effectOut, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = *effectOut;
     CHECK(mvfxCreateInstance(context, &instanceDef, &s_instance) == mvfx_success, "instance");
@@ -359,7 +359,7 @@ static void TestBusyLeavesBuffers(void)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &s_instance) == mvfx_success, "instance");
@@ -415,7 +415,7 @@ static void TestHostSettings(void)
     int32_t freedBefore = s_seen[FREE];
     stepped = stepped && mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success;
     body.rigid.hull = mesh;
-    stepped = stepped && mvfxCreateEffect(context, &bodies, &hulled) == mvfx_success;
+    stepped = stepped && mvfxCreateEffect(context, &bodies, &hulled, NULL) == mvfx_success;
     bool freedInside = s_seen[FREE] > freedBefore;
     mvfxDestroyContext(context);
     s_watching = false;

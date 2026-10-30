@@ -47,7 +47,7 @@ static void OpenWith(const mvfxGasDef* gas, const float* parameters, int32_t cou
     def.parameters = parameters;
     def.parameterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);
@@ -290,7 +290,7 @@ static void TestField(void)
     effectDef.gases = &def;
     effectDef.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     bool right = mvfxDestroyGrid(s_context, grid) == mvfx_errorBusy;
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
@@ -329,7 +329,7 @@ static void TestRefusals(void)
         mvfxEffectId effect = {0};
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = c == 0 ? mvfx_errorLimit : mvfx_errorInvalid;
-        right = right && mvfxCreateEffect(s_context, &def, &effect) == want;
+        right = right && mvfxCreateEffect(s_context, &def, &effect, NULL) == want;
     }
     forces[0].kind = mvfx_forceConstant;
     forces[0].strengthFromParameter = false;
@@ -338,7 +338,7 @@ static void TestRefusals(void)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    right = right && mvfxCreateEffect(s_context, &def, &effect) == mvfx_success;
+    right = right && mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success;
     CHECK(right, "the forces' refusals");
     mvfxDestroyContext(s_context);
 }

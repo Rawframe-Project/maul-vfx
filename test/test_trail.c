@@ -44,7 +44,7 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
     effectDef.emitters = emitters;
     effectDef.emitterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -316,13 +316,13 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 5, "every check");
     emitter = Trail();
     emitter.ribbon.breakDistance = 1e6f;
     emitter.ribbon.pinHead = true;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the largest");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the largest");
     mvfxDestroyContext(context);
 }
 

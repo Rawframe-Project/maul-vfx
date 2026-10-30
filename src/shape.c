@@ -20,58 +20,89 @@ static bool IsWithin(float x, float low, float high)
     return x >= low && x <= high;
 }
 
-// A size's status: from 0 up to MVFX_MAX_EXTENT.
-static mvfxResult CheckSize(float x)
+// A size's status: from 0 up to MVFX_MAX_EXTENT, naming the field of a
+// tag below at, at an item (-1 for none).
+static mvfxResult CheckSize(const mvfxFieldPath* at, uint32_t tag, int32_t item, float x)
 {
-    return mvfxUpToBound(x, 0.0f, MVFX_MAX_EXTENT);
+    return mvfxRefuseItem(at, tag, item, mvfxUpToBound(x, 0.0f, MVFX_MAX_EXTENT));
 }
 
-mvfxResult mvfxCheckShape(const mvfxShape* shape)
+// The field of a shape whose rotation, arc, speed, thickness or kind is
+// out of range, 0 for none.
+static uint32_t RefusedForm(const mvfxShape* shape)
 {
     double square = 0.0;
     for (int32_t i = 0; i < 4; ++i)
     {
         if (!IsWithin(shape->rotation[i], -1.001f, 1.001f))
         {
-            return mvfx_errorInvalid;
+            return MVFX_TAG_SHAPE_ROTATION;
         }
         square += (double)shape->rotation[i] * (double)shape->rotation[i];
     }
     bool arcValid = shape->arc > 0.0f && shape->arc <= TWO_PI;
-    if (!(fabs(sqrt(square) - 1.0) <= 0.001) || shape->arcMode > mvfx_arcBurstSpread ||
-        !IsWithin(shape->arcSpeed, 0.0f, 1000.0f) || !IsWithin(shape->thickness, 0.0f, 1.0f) ||
-        ((shape->kind == mvfx_shapeCircle || shape->kind == mvfx_shapeCone) && !arcValid))
+    if (!(fabs(sqrt(square) - 1.0) <= 0.001))
     {
-        return mvfx_errorInvalid;
+        return MVFX_TAG_SHAPE_ROTATION;
     }
-    for (int32_t i = 0; i < 3; ++i)
+    if (shape->arcMode > mvfx_arcBurstSpread)
     {
-        mvfxResult offset = mvfxBounded(shape->offset[i], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
-        if (offset != mvfx_success)
-        {
-            return offset;
-        }
+        return MVFX_TAG_SHAPE_ARC_MODE;
+    }
+    if (!IsWithin(shape->arcSpeed, 0.0f, 1000.0f))
+    {
+        return MVFX_TAG_SHAPE_ARC_SPEED;
+    }
+    if (!IsWithin(shape->thickness, 0.0f, 1.0f))
+    {
+        return MVFX_TAG_SHAPE_THICKNESS;
+    }
+    if ((shape->kind == mvfx_shapeCircle || shape->kind == mvfx_shapeCone) && !arcValid)
+    {
+        return MVFX_TAG_SHAPE_ARC;
+    }
+    return shape->kind > mvfx_shapeMesh ? MVFX_TAG_SHAPE_KIND : 0;
+}
+
+mvfxResult mvfxCheckShape(const mvfxFieldPath* at, const mvfxShape* shape)
+{
+    uint32_t form = RefusedForm(shape);
+    if (form != 0)
+    {
+        return mvfxRefuseField(at, form, mvfx_errorInvalid);
+    }
+    mvfxResult offset = mvfxRefuseVector(at, MVFX_TAG_SHAPE_OFFSET, shape->offset, MVFX_MAX_EXTENT);
+    if (offset != mvfx_success)
+    {
+        return offset;
     }
     switch (shape->kind)
     {
     case mvfx_shapePoint:
         return mvfx_success;
     case mvfx_shapeLine:
-        return CheckSize(shape->length);
+        return CheckSize(at, MVFX_TAG_SHAPE_LENGTH, -1, shape->length);
     case mvfx_shapeCircle:
     case mvfx_shapeSphere:
     case mvfx_shapeHemisphere:
-        return CheckSize(shape->radius);
+        return CheckSize(at, MVFX_TAG_SHAPE_RADIUS, -1, shape->radius);
     case mvfx_shapeBox:
-        return mvfxFirst(
-            CheckSize(shape->halfExtents[0]),
-            mvfxFirst(CheckSize(shape->halfExtents[1]), CheckSize(shape->halfExtents[2])));
-    case mvfx_shapeMesh:
-        return mvfxRequire(shape->meshMode <= mvfx_meshVolume);
+    {
+        mvfxResult sizes = mvfx_success;
+        for (int32_t k = 0; sizes == mvfx_success && k < 3; ++k)
+        {
+            sizes = CheckSize(at, MVFX_TAG_SHAPE_HALF_EXTENTS, k, shape->halfExtents[k]);
+        }
+        return sizes;
+    }
     case mvfx_shapeCone:
     {
-        mvfxResult sizes = mvfxFirst(mvfxUpToBound(shape->angle, 0.0f, MVFX_MAX_CONE_ANGLE),
-                                     mvfxFirst(CheckSize(shape->radius), CheckSize(shape->length)));
+        mvfxResult sizes = mvfxRefuseField(at, MVFX_TAG_SHAPE_ANGLE,
+                                           mvfxUpToBound(shape->angle, 0.0f, MVFX_MAX_CONE_ANGLE));
+        sizes =
+            sizes != mvfx_success ? sizes : CheckSize(at, MVFX_TAG_SHAPE_RADIUS, -1, shape->radius);
+        sizes =
+            sizes != mvfx_success ? sizes : CheckSize(at, MVFX_TAG_SHAPE_LENGTH, -1, shape->length);
         if (sizes != mvfx_success)
         {
             return sizes;
@@ -79,12 +110,15 @@ mvfxResult mvfxCheckShape(const mvfxShape* shape)
         float sine = 0.0f;
         float cosine = 0.0f;
         mvfxSinCos(shape->angle, &sine, &cosine);
-        return mvfxWithinBound((double)shape->radius +
-                                   (double)shape->length * (double)(sine / cosine) <=
-                               (double)MVFX_MAX_EXTENT);
+        return mvfxRefuseField(
+            at, MVFX_TAG_SHAPE_ANGLE,
+            mvfxWithinBound((double)shape->radius +
+                                (double)shape->length * (double)(sine / cosine) <=
+                            (double)MVFX_MAX_EXTENT));
     }
     default:
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_SHAPE_MESH_MODE,
+                               mvfxRequire(shape->meshMode <= mvfx_meshVolume));
     }
 }
 

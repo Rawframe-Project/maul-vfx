@@ -73,6 +73,11 @@ extern "C"
     /// @param capacity    Its size in bytes, at least 0.
     /// @param sizeOut     Receives the file's size in bytes, also when the
     ///                    capacity is too small; 0 on another failure.
+    /// @param refusalOut  Optional: receives why the call failed and the
+    ///                    field refused (mvfxEffectRefusal), a def's field
+    ///                    the validator refuses or the field that refers to
+    ///                    an object the table lacks; on success,
+    ///                    mvfx_success and no field.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, a
     ///         def the def validator refuses (mvfxCreateEffect's checks
     ///         that need no context) or an invalid asset table (a kind past
@@ -89,7 +94,8 @@ extern "C"
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxWriteEffect(const mvfxEffectDef* def,
                                                            const mvfxEffectAsset* assets,
                                                            int32_t assetCount, void* bytesOut,
-                                                           int64_t capacity, int64_t* sizeOut);
+                                                           int64_t capacity, int64_t* sizeOut,
+                                                           mvfxEffectRefusal* refusalOut);
 
     /// Reads a file into an effect def, its arrays in caller memory. Checks
     /// in order the header (its magic, its version, its size), the hash,
@@ -114,6 +120,11 @@ extern "C"
     ///                    that follows: check its result.
     /// @param defOut      Receives the def, with its cookies; zeroed on
     ///                    failure.
+    /// @param refusalOut  Optional: receives why the call failed and the
+    ///                    field at fault (mvfxEffectRefusal): a field of the
+    ///                    effect section the reader refuses, or a def's
+    ///                    field the validator refuses; on success,
+    ///                    mvfx_success and no field.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument,
     ///         memory not aligned or an invalid asset table; `mvfx_errorLimit`
     ///         for a name in the table longer than MVFX_MAX_ASSET_NAME;
@@ -128,16 +139,19 @@ extern "C"
     ///         only a later one writes; `mvfx_errorMissing` for a name the
     ///         table lacks; `mvfx_errorCapacity` when the def does not fit
     ///         in memory. The offset is the first byte at fault: the
-    ///         version's, a tag's, a name's, a count's; the effect
-    ///         section's for a def refused; -1 for a fault outside the
-    ///         file.
+    ///         version's, a tag's, a name's, a count's; for a def refused,
+    ///         the tag of the field refused, or, for a field the file
+    ///         leaves out, of the nearest struct or item holding it that
+    ///         the file has (the effect section's when it has none); -1
+    ///         for a fault outside the file.
     /// @par Thread safety
     /// Safe from any thread.
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxReadEffect(const void* bytes, int64_t size,
                                                           const mvfxEffectAsset* assets,
                                                           int32_t assetCount, void* memoryOut,
                                                           int64_t capacity, int64_t* neededOut,
-                                                          mvfxEffectDef* defOut);
+                                                          mvfxEffectDef* defOut,
+                                                          mvfxEffectRefusal* refusalOut);
 
     /// Creates an effect from a file: reads it into memory from the
     /// context's allocator, creates the effect from the def
@@ -149,8 +163,13 @@ extern "C"
     /// @param assets      The table of assets; NULL when assetCount is 0.
     /// @param assetCount  Its length, at least 0.
     /// @param effectOut   Receives the effect's id; the null id on failure.
-    /// @return As mvfxReadEffect, then as mvfxCreateEffect with the offset
-    ///         -1; `mvfx_errorCapacity` also when the allocator fails. An
+    /// @param refusalOut  Optional: as mvfxReadEffect's, then as
+    ///                    mvfxCreateEffect's.
+    /// @return As mvfxReadEffect, then as mvfxCreateEffect, with the offset
+    ///         of the field refused found as mvfxReadEffect finds it (a
+    ///         mesh that names no live mesh: the tag of its field), -1 for
+    ///         a refusal of no field; `mvfx_errorCapacity` also when the
+    ///         allocator fails. An
     ///         invalid argument (a NULL pointer, NULL bytes with a size, a
     ///         negative size, an invalid asset table or a name in it longer
     ///         than MVFX_MAX_ASSET_NAME) counts as misuse when the context is
@@ -161,7 +180,7 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxFileResult mvfxCreateEffectFromBytes(
         mvfxContext* context, const void* bytes, int64_t size, const mvfxEffectAsset* assets,
-        int32_t assetCount, mvfxEffectId* effectOut);
+        int32_t assetCount, mvfxEffectId* effectOut, mvfxEffectRefusal* refusalOut);
 
 #ifdef __cplusplus
 }

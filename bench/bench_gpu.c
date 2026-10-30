@@ -224,7 +224,7 @@ static double Run(Gpu* gpu, mvfxGpu* kernels, bool colliding, int64_t* uploadedO
     mvfxInstanceId instance = {0};
     mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
     mvfxGpuSim* sim = NULL;
-    made = made && mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    made = made && mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success &&
            (!colliding || (mvfxInstance_SetColliders(context, instance, balls,
@@ -302,7 +302,7 @@ static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, b
     mvfxInstanceId instance = {0};
     mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
     mvfxGpuSim* sim = NULL;
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
     simDef.gpu = kernels;

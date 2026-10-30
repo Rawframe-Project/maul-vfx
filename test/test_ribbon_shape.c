@@ -53,7 +53,7 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -426,20 +426,21 @@ static void TestChecks(void)
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want =
             rule == 1 || rule == 6 || rule == 11 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 12, "every check");
     emitter = Ribbon(MVFX_MAX_RIBBON_PIECES);
     emitter.ribbon.bendAngle = 3.14159265f;
     emitter.ribbon.facing = mvfx_ribbonFaceNormal;
     emitter.ribbon.texture = mvfx_ribbonTileByDistance;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the largest");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the largest");
     emitter = Ribbon(0);
     emitter.ribbon.ids = mvfx_ribbonNone;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "ignored without ribbons");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success,
+          "ignored without ribbons");
     // Unchecked without ribbons, a wild bend angle is never turned.
     emitter.ribbon.bendAngle = -6.3e27f;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a wild angle ignored");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "a wild angle ignored");
     // A side and a face normal have 3 components.
     const mvfxLayoutField wide[2] = {
         {.field = mvfx_recordSide, .format = mvfx_formatFloat32, .components = 4},

@@ -60,7 +60,7 @@ static mvfxEffectId NewEffect(mvfxContext* context)
     def.qualityLevels = s_levels;
     def.qualityLevelCount = 2;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     return effect;
 }
 
@@ -210,7 +210,7 @@ static void TestEdges(void)
     def.emitterCount = 1;
     def.qualityLevels = levels;
     def.qualityLevelCount = 3;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "looping effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "looping effect");
     mvfxInstanceId at[4] = {{0}};
     for (int32_t q = 0; q < 4; ++q)
     {
@@ -273,11 +273,11 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 0 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 9, "every level check");
     levels[0] = (mvfxQualityLevel){.capacityScale = 1.0f, .rateScale = 1.0f, .omitted = 15u};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds of each");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the bounds of each");
     mvfxInstanceId instance = {0};
     uint64_t misuse = mvfxContext_GetMisuse(context);
     CHECK(NewInstance(context, effect, 3, &instance) == mvfx_errorInvalid &&

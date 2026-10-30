@@ -101,7 +101,7 @@ static mvfxResult EffectOf(const mvfxEmitterDef* emitters, int32_t count, mvfxEf
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = count;
-    return mvfxCreateEffect(s_scene.context, &def, effect);
+    return mvfxCreateEffect(s_scene.context, &def, effect, NULL);
 }
 
 // Plays emitters, one body each at place with velocity and spin.

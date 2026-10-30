@@ -83,7 +83,7 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count, const mvfxQ
     def.emitterCount = count;
     def.qualityLevels = level;
     def.qualityLevelCount = level != NULL ? 1 : 0;
-    CHECK(mvfxCreateEffect(scene.context, &def, &scene.effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &def, &scene.effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = scene.effect;
     instanceDef.origin[0] = 5000.0;
@@ -313,7 +313,7 @@ static void TestRecords(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.scale = 2.0f;
@@ -429,7 +429,7 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 0 || rule == 1 || rule == 4 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 12, "every check");
     emitters[0] = Emitter(MVFX_MAX_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBORS);
@@ -437,7 +437,7 @@ static void TestChecks(void)
     emitters[1].neighbors.source = 1;
     emitters[0].neighbors.enable = false;
     emitters[0].neighbors.radius = NAN;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success,
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success,
           "the bounds; its own index; a def not enabled unread");
     static const mvfxLayoutField wrong[3] = {
         {.field = mvfx_recordNeighborCount, .format = mvfx_formatFloat16, .components = 1},

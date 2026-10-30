@@ -109,7 +109,10 @@ extern "C"
     } mvfxColorOverLife;
 
     // Size over life: the particle's size (its initial value, or 1) times
-    // size[0] on every axis, or size[0], [1] and [2] on X, Y and Z.
+    // size[0] on every axis, or size[0], [1] and [2] on X, Y and Z. Per
+    // axis for a rigid sphere or capsule, an axis its shape does not set
+    // takes size[0]'s value and curve, else the effect is refused
+    // (mvfxRigidShape).
     typedef struct mvfxSizeOverLife
     {
         bool enable;
@@ -288,6 +291,7 @@ extern "C"
         // The source's index in the effect's emitters, not its own; it must
         // write the kind.
         int32_t source;
+        // A kind its source writes (source).
         mvfxEventKind kind;
         // From 0 to MVFX_MAX_EVENT_SPAWN, minCount at most maxCount.
         int32_t minCount;
@@ -299,7 +303,9 @@ extern "C"
         // and takes X for the others (mvfxRigidShape).
         bool inheritSize;
         // The most births from events a step, from 1 to
-        // MVFX_MAX_EMITTER_CAPACITY; past it the latest by tick are refused.
+        // MVFX_MAX_EMITTER_CAPACITY (with units, a count of units, at most
+        // the units the emitter's capacity holds); past it the latest by
+        // tick are refused.
         int32_t capacity;
     } mvfxEventSpawn;
 

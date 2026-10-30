@@ -24,7 +24,37 @@ Each function's documentation in its header lists the results it returns and wha
 
 ## An effect that is refused
 
-`mvfxCreateEffect` checks every field of the def and its parts, with the ranges each header states; a refused def answers `mvfx_errorLimit` for a field past a named bound, `mvfx_errorInvalid` for any other (`mvfx_errorFormat` when it comes from a file, whatever the check). A def that is built up in steps is easiest to check one emitter at a time. An effect file refused by `mvfxReadEffect` comes with the offset of the first byte at fault. `tools/effect_json.py to-json` shows a file whole, and refuses a damaged one, a hash that does not match included.
+`mvfxCreateEffect` checks every field of the def and its parts, with the ranges each header states; a refused def answers `mvfx_errorLimit` for a field past a named bound, `mvfx_errorInvalid` for any other (`mvfx_errorFormat` when it comes from a file, whatever the check). Given an `mvfxEffectRefusal`, it also says which field it refused, and `mvfxGetEffectFieldPath` writes that field's path as text:
+
+```c
+mvfxContextDef contextDef = mvfxDefaultContextDef();
+mvfxContext* context = NULL;
+if (mvfxCreateContext(&contextDef, &context) != mvfx_success)
+{
+    return false;
+}
+mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+emitters[1].lifetime.range.min = 0.0f;
+mvfxEffectDef def = mvfxDefaultEffectDef();
+def.emitters = emitters;
+def.emitterCount = 2;
+
+// Refused, with the field at fault and its path as text.
+mvfxEffectId effect = {0};
+mvfxEffectRefusal refusal;
+char path[64];
+int64_t length = 0;
+bool named = mvfxCreateEffect(context, &def, &effect, &refusal) == mvfx_errorInvalid &&
+             mvfxGetEffectFieldPath(&refusal, path, sizeof path, &length) == mvfx_success &&
+             refusal.emitter == 1 && length == 30 &&
+             memcmp(path, "emitters[1].lifetime.range.min", 30) == 0;
+mvfxDestroyContext(context);
+return named;
+```
+
+The path is the field's tags in the effect file ([tools/file-tags.txt](../../tools/file-tags.txt)) from `mvfxEffectDef` down, with the item of each array it steps into, and `emitter`, `gas` and `water` name the part it is in. Tags never change their meaning, so a tool may keep a refusal and name its field in a later release. A rule between two fields names the one whose header comment states it; a reference to another emitter, gas or water surface names the field that refers. A refusal of the def as a whole (its cookie, no parts at all) or of no field (a NULL argument, the context's effects all in use, the allocator) has an empty path. `mvfxWriteEffect` names the same field as `mvfxCreateEffect`, and the field that refers to an object its asset table lacks.
+
+An effect file refused by `mvfxReadEffect` or `mvfxCreateEffectFromBytes` comes with the offset of the first byte at fault and, inside the effect's fields, the field's path too: for a def the checks refuse, the offset of that field's tag, or of the nearest struct or item holding it that the file has when the file leaves the field out as its default. `tools/effect_json.py to-json` shows a file whole, and refuses a damaged one, a hash that does not match included.
 
 ## Particles that are missing
 

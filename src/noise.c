@@ -9,20 +9,33 @@
 
 #include <math.h>
 
-mvfxResult mvfxCheckNoise(const mvfxNoise* noise)
+mvfxResult mvfxCheckNoise(const mvfxFieldPath* at, const mvfxNoise* noise)
 {
-    if (!(noise->frequency > 0.0f) || noise->octaves < 1 ||
-        !(noise->lacunarity >= 1.0f && noise->lacunarity <= 4.0f) ||
-        !(noise->gain >= 0.0f && noise->gain <= 1.0f))
-    {
-        return mvfx_errorInvalid;
-    }
-    mvfxResult scroll =
-        mvfxFirst(mvfxBounded(noise->scroll[0], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                  mvfxFirst(mvfxBounded(noise->scroll[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT),
-                            mvfxBounded(noise->scroll[2], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT)));
-    return mvfxFirst(scroll, mvfxFirst(mvfxPositiveUpTo(noise->frequency, MVFX_MAX_FREQUENCY),
-                                       mvfxWithinBound(noise->octaves <= MVFX_MAX_OCTAVES)));
+    mvfxResult checked =
+        mvfxRefuseField(at, MVFX_TAG_NOISE_FREQUENCY, mvfxRequire(noise->frequency > 0.0f));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_NOISE_OCTAVES, mvfxRequire(noise->octaves >= 1));
+    checked =
+        checked != mvfx_success
+            ? checked
+            : mvfxRefuseField(at, MVFX_TAG_NOISE_LACUNARITY,
+                              mvfxRequire(noise->lacunarity >= 1.0f && noise->lacunarity <= 4.0f));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_NOISE_GAIN,
+                                    mvfxRequire(noise->gain >= 0.0f && noise->gain <= 1.0f));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseVector(at, MVFX_TAG_NOISE_SCROLL, noise->scroll, MVFX_MAX_EXTENT);
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_NOISE_FREQUENCY,
+                                    mvfxPositiveUpTo(noise->frequency, MVFX_MAX_FREQUENCY));
+    return checked != mvfx_success
+               ? checked
+               : mvfxRefuseField(at, MVFX_TAG_NOISE_OCTAVES,
+                                 mvfxWithinBound(noise->octaves <= MVFX_MAX_OCTAVES));
 }
 
 // The twelve edges of a cube, four repeated to fill sixteen (Perlin 2002).
@@ -287,7 +300,8 @@ static MVFX_NOINLINE mvfxResult mvfxBakeCurlNoiseWork(const mvfxNoise* noise, in
     {
         return mvfx_errorInvalid;
     }
-    mvfxResult valid = mvfxCheckNoise(noise);
+    mvfxFieldPath none = mvfxFieldRoot(nullptr);
+    mvfxResult valid = mvfxCheckNoise(&none, noise);
     if (valid != mvfx_success)
     {
         return valid;

@@ -1308,7 +1308,7 @@ static void TestRefused(mvfxGpu* kernels)
     effectDef.emitters = emitters;
     effectDef.emitterCount = 2;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId cpu = {0};
@@ -1342,7 +1342,7 @@ static void TestRefused(mvfxGpu* kernels)
     effectDef.emitterCount = 1;
     effectDef.gases = &gas;
     effectDef.gasCount = 1;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a gas's effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "a gas's effect");
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "a gas planned");
     simDef.effect = effect;
@@ -1356,7 +1356,8 @@ static void TestRefused(mvfxGpu* kernels)
     gas.kind = mvfx_gasSurface;
     gas.surface.emitter = 0;
     gas.surface.radius = 0.1f;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a surface gas's effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success,
+          "a surface gas's effect");
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success,
           "a surface gas planned");
@@ -1387,7 +1388,7 @@ static void TestRefused(mvfxGpu* kernels)
     for (int32_t c = 0; c < 4; ++c)
     {
         effectDef.emitters = &coupled[c];
-        bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+        bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
         instanceDef.effect = effect;
         made = made && mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success;
         simDef.effect = effect;

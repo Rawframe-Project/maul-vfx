@@ -113,7 +113,7 @@ static Scene NewScene(const mvfxEmitterDef* emitter)
     effectDef.emitters = emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -304,11 +304,13 @@ static void TestChecks(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "a mode past the last");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_errorInvalid,
+          "a mode past the last");
     emitter = Sorted(mvfx_sortFrontToBack, 2);
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_errorInvalid, "a measure past the last");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_errorInvalid,
+          "a measure past the last");
     emitter = Sorted(mvfx_sortFrontToBack, mvfx_sortByDepth);
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the last of each");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the last of each");
     mvfxDestroyContext(context);
 }
 

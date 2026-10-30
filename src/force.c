@@ -5,21 +5,24 @@
 
 #include "direction.h"
 #include "elementary.h"
+#include "field_path.h"
 #include "grid.h"
 #include "noise.h"
 #include "refusal.h"
 
 #include <math.h>
 
-// An axis's status: within MVFX_MAX_EXTENT, and of a length to normalize.
-static mvfxResult CheckAxis(const float v[3])
+// An axis's status: within MVFX_MAX_EXTENT, and of a length to normalize;
+// naming the field of a tag below at.
+static mvfxResult CheckAxis(const mvfxFieldPath* at, uint32_t tag, const float v[3])
 {
     float copy[3] = {v[0], v[1], v[2]};
-    mvfxResult within = mvfxBoundedVector(v, MVFX_MAX_EXTENT);
-    return within != mvfx_success ? within : mvfxRequire(mvfxNormalize(copy));
+    mvfxResult within = mvfxRefuseVector(at, tag, v, MVFX_MAX_EXTENT);
+    return within != mvfx_success ? within
+                                  : mvfxRefuseField(at, tag, mvfxRequire(mvfxNormalize(copy)));
 }
 
-static mvfxResult CheckFalloff(const mvfxFalloff* falloff)
+static mvfxResult CheckFalloff(const mvfxFieldPath* at, const mvfxFalloff* falloff)
 {
     if (falloff->kind == mvfx_falloffNone)
     {
@@ -27,20 +30,26 @@ static mvfxResult CheckFalloff(const mvfxFalloff* falloff)
     }
     if (falloff->kind > mvfx_falloffCone)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_FALLOFF_KIND, mvfx_errorInvalid);
     }
-    mvfxResult reach =
-        mvfxFirst(mvfxBoundedVector(falloff->center, MVFX_MAX_EXTENT),
-                  mvfxFirst(mvfxPositiveUpTo(falloff->radius, MVFX_MAX_EXTENT),
-                            mvfxUpToBound(falloff->exponent, 0.0f, MVFX_MAX_FALLOFF_EXPONENT)));
-    if (reach != mvfx_success)
-    {
-        return reach;
-    }
-    mvfxResult axis = falloff->kind == mvfx_falloffSphere ? mvfx_success : CheckAxis(falloff->axis);
-    return mvfxFirst(axis, falloff->kind == mvfx_falloffCone
-                               ? mvfxPositiveUpTo(falloff->angle, MVFX_MAX_CONE_ANGLE)
-                               : mvfx_success);
+    mvfxResult checked =
+        mvfxRefuseVector(at, MVFX_TAG_FALLOFF_CENTER, falloff->center, MVFX_MAX_EXTENT);
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_FALLOFF_RADIUS,
+                                    mvfxPositiveUpTo(falloff->radius, MVFX_MAX_EXTENT));
+    checked =
+        checked != mvfx_success
+            ? checked
+            : mvfxRefuseField(at, MVFX_TAG_FALLOFF_EXPONENT,
+                              mvfxUpToBound(falloff->exponent, 0.0f, MVFX_MAX_FALLOFF_EXPONENT));
+    checked = checked != mvfx_success || falloff->kind == mvfx_falloffSphere
+                  ? checked
+                  : CheckAxis(at, MVFX_TAG_FALLOFF_AXIS, falloff->axis);
+    return checked != mvfx_success || falloff->kind != mvfx_falloffCone
+               ? checked
+               : mvfxRefuseField(at, MVFX_TAG_FALLOFF_ANGLE,
+                                 mvfxPositiveUpTo(falloff->angle, MVFX_MAX_CONE_ANGLE));
 }
 
 // Whether a unit quaternion within 0.001, finite.
@@ -58,38 +67,72 @@ static bool IsRotation(const float q[4])
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-static mvfxResult CheckBox(const mvfxForce* force)
+static mvfxResult CheckBox(const mvfxFieldPath* at, const mvfxForce* force)
 {
-    if (!IsRotation(force->boxRotation) || force->border > mvfx_borderRepeat)
+    if (!IsRotation(force->boxRotation))
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_FORCE_BOX_ROTATION, mvfx_errorInvalid);
     }
-    return mvfxFirst(mvfxPositiveUpTo(force->boxSize[0], MVFX_MAX_EXTENT),
-                     mvfxFirst(mvfxPositiveUpTo(force->boxSize[1], MVFX_MAX_EXTENT),
-                               mvfxPositiveUpTo(force->boxSize[2], MVFX_MAX_EXTENT)));
+    if (force->border > mvfx_borderRepeat)
+    {
+        return mvfxRefuseField(at, MVFX_TAG_FORCE_BORDER, mvfx_errorInvalid);
+    }
+    return mvfxRefuseSizes(at, MVFX_TAG_FORCE_BOX_SIZE, force->boxSize, MVFX_MAX_EXTENT);
 }
 
-mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount)
+// The field of a force whose kind, space, mode, parameter or gas is out
+// of range, 0 for none.
+static uint32_t RefusedChoice(const mvfxForce* force, int32_t parameterCount)
 {
     // A gas past MVFX_MAX_GASES is an index naming no gas, not a count.
-    if (force->kind > mvfx_forceGas || force->space > mvfx_spaceLocal ||
-        force->fieldMode > mvfx_fieldVelocity ||
-        (force->strengthFromParameter &&
-         (force->parameter < 0 || force->parameter >= parameterCount)) ||
-        (force->kind == mvfx_forceGas && (force->gas < 0 || force->gas >= MVFX_MAX_GASES)))
+    if (force->kind > mvfx_forceGas)
     {
-        return mvfx_errorInvalid;
+        return MVFX_TAG_FORCE_KIND;
     }
-    mvfxResult common =
-        mvfxFirst(mvfxFirst(mvfxUpToBound(force->tightness, 0.0f, MVFX_MAX_DRAG),
-                            mvfxBounded(force->strength, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT)),
-                  mvfxFirst(mvfxBoundedVector(force->vector, MVFX_MAX_EXTENT),
-                            mvfxBoundedVector(force->point, MVFX_MAX_EXTENT)));
-    if (common != mvfx_success)
+    if (force->space > mvfx_spaceLocal)
     {
-        return common;
+        return MVFX_TAG_FORCE_SPACE;
     }
-    mvfxResult falloff = CheckFalloff(&force->falloff);
+    if (force->fieldMode > mvfx_fieldVelocity)
+    {
+        return MVFX_TAG_FORCE_FIELD_MODE;
+    }
+    if (force->strengthFromParameter &&
+        (force->parameter < 0 || force->parameter >= parameterCount))
+    {
+        return MVFX_TAG_FORCE_PARAMETER;
+    }
+    return force->kind == mvfx_forceGas && (force->gas < 0 || force->gas >= MVFX_MAX_GASES)
+               ? MVFX_TAG_FORCE_GAS
+               : 0;
+}
+
+mvfxResult mvfxCheckForce(const mvfxFieldPath* at, const mvfxForce* force, int32_t parameterCount)
+{
+    uint32_t choice = RefusedChoice(force, parameterCount);
+    if (choice != 0)
+    {
+        return mvfxRefuseField(at, choice, mvfx_errorInvalid);
+    }
+    mvfxResult checked = mvfxRefuseField(at, MVFX_TAG_FORCE_TIGHTNESS,
+                                         mvfxUpToBound(force->tightness, 0.0f, MVFX_MAX_DRAG));
+    checked =
+        checked != mvfx_success
+            ? checked
+            : mvfxRefuseField(at, MVFX_TAG_FORCE_STRENGTH,
+                              mvfxBounded(force->strength, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseVector(at, MVFX_TAG_FORCE_VECTOR, force->vector, MVFX_MAX_EXTENT);
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseVector(at, MVFX_TAG_FORCE_POINT, force->point, MVFX_MAX_EXTENT);
+    if (checked != mvfx_success)
+    {
+        return checked;
+    }
+    mvfxFieldPath falloffAt = mvfxFieldIn(at, MVFX_TAG_FORCE_FALLOFF, -1);
+    mvfxResult falloff = CheckFalloff(&falloffAt, &force->falloff);
     if (falloff != mvfx_success)
     {
         return falloff;
@@ -97,17 +140,29 @@ mvfxResult mvfxCheckForce(const mvfxForce* force, int32_t parameterCount)
     switch (force->kind)
     {
     case mvfx_forceWind:
-        return mvfxUpToBound(force->strength, 0.0f, MVFX_MAX_DRAG);
+        return mvfxRefuseField(at, MVFX_TAG_FORCE_STRENGTH,
+                               mvfxUpToBound(force->strength, 0.0f, MVFX_MAX_DRAG));
     case mvfx_forceAttractor:
-        return mvfxFirst(mvfxBounded(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT),
-                         mvfxUpToBound(force->killRadius, 0.0f, MVFX_MAX_EXTENT));
+        checked =
+            mvfxRefuseField(at, MVFX_TAG_FORCE_SOFTENING,
+                            mvfxBounded(force->softening, MVFX_MIN_SOFTENING, MVFX_MAX_EXTENT));
+        return checked != mvfx_success
+                   ? checked
+                   : mvfxRefuseField(at, MVFX_TAG_FORCE_KILL_RADIUS,
+                                     mvfxUpToBound(force->killRadius, 0.0f, MVFX_MAX_EXTENT));
     case mvfx_forceVortex:
-        return mvfxFirst(CheckAxis(force->vector),
-                         mvfxBounded(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
+        checked = CheckAxis(at, MVFX_TAG_FORCE_VECTOR, force->vector);
+        return checked != mvfx_success
+                   ? checked
+                   : mvfxRefuseField(at, MVFX_TAG_FORCE_PULL,
+                                     mvfxBounded(force->pull, -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
     case mvfx_forceTurbulence:
-        return mvfxCheckNoise(&force->noise);
+    {
+        mvfxFieldPath noise = mvfxFieldIn(at, MVFX_TAG_FORCE_NOISE, -1);
+        return mvfxCheckNoise(&noise, &force->noise);
+    }
     case mvfx_forceVectorField:
-        return CheckBox(force);
+        return CheckBox(at, force);
     default:
         return mvfx_success;
     }

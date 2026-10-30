@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sirac Ozmen
 """Writes src/file_fields.c, the effect file's table of every def field,
-and test/file_pins.h, the defaults its tag registry pins.
+src/file_tags.h, its tags as constants, and test/file_pins.h, the defaults
+its tag registry pins.
 
 The effect section of an effect file holds an mvfxEffectDef as tagged
 fields: each struct a sequence of its fields that differ from their
@@ -10,8 +11,12 @@ defaults, each field a 32-bit tag, a 32-bit length and its payload. This
 reads the structs reachable from mvfxEffectDef from the public headers,
 gives each field the tag tools/file-tags.txt records for it, and writes a
 table of each struct's fields in ascending tag order (tag, place, kind,
-elements, nested type), which the codec (src/file_codec.c) walks to read,
-write or measure. It also writes the block of defaults an absent field
+elements, nested type, name), which the codec (src/file_codec.c) walks to
+read, write or measure, and mvfxGetEffectFieldPath names a refused field
+by. The validators name the field they refuse by its tag, from
+src/file_tags.h (MVFX_TAG_<STRUCT>_<FIELD>); a path from mvfxEffectDef
+down to a field has at most MVFX_MAX_FIELD_DEPTH steps, which the
+generator checks, since an effect refusal holds no more. It also writes the block of defaults an absent field
 takes: the defs' own (mvfxDefault*Def) and zero bytes for the items of
 other structs. The gate and CI run it with --check.
 
@@ -53,6 +58,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "src" / "file_fields.c"
+TAG_HEADER = ROOT / "src" / "file_tags.h"
 PINS = ROOT / "test" / "file_pins.h"
 TAGS = ROOT / "tools" / "file-tags.txt"
 HEADERS = sorted((ROOT / "include" / "maul-vfx").glob("*.h"))
@@ -391,13 +397,15 @@ def table(typedefs, structs, name, tags, defaults):
     if name in COOKIES:
         # Not stored: tag 0, first, which no field in a file has.
         at = f"offsetof({name}, cookie)"
-        entries.append((0, f"{{0, {at}, mvfx_fieldCookie, 0, 1, nullptr, {COOKIES[name]}, 0}}"))
+        entries.append((0, f"{{0, {at}, mvfx_fieldCookie, 0, 1, nullptr, {COOKIES[name]}, 0, "
+                           f"\"cookie\"}}"))
     for kind, field, dims, pointer, wire in stored(typedefs, structs, name):
         tag = tags[name][field]
         at = f"offsetof({name}, {field})"
         if wire == "module":
             user = f"offsetof({name}, user)"
-            entries.append((tag, f"{{{tag}, {at}, mvfx_fieldModule, 0, 1, nullptr, {user}, 0}}"))
+            entries.append((tag, f"{{{tag}, {at}, mvfx_fieldModule, 0, 1, nullptr, {user}, 0, "
+                                 f"\"{field}\"}}"))
             continue
         if pointer:
             count, cap, per = ARRAYS[(name, field)]
@@ -405,11 +413,11 @@ def table(typedefs, structs, name, tags, defaults):
             if element in ("mvfx_fieldGrid", "mvfx_fieldMesh"):
                 raise SystemExit(f"{name}.{field}: an array of ids is not supported")
             entries.append((tag, f"{{{tag}, {at}, mvfx_fieldArray, {element}, {per}, {type_}, "
-                                 f"offsetof({name}, {count}), {cap}}}"))
+                                 f"offsetof({name}, {count}), {cap}, \"{field}\"}}"))
             continue
         number_ = " * ".join(dims) if dims else "1"
         k, type_ = kind_of(typedefs, kind)
-        entries.append((tag, f"{{{tag}, {at}, {k}, 0, {number_}, {type_}, 0, 0}}"))
+        entries.append((tag, f"{{{tag}, {at}, {k}, 0, {number_}, {type_}, 0, 0, \"{field}\"}}"))
     entries.sort()
     default = (f"offsetof(mvfxFileDefaultBlock, {name})" if name in defaults
                else "MVFX_FILE_NO_DEFAULT")
@@ -418,6 +426,55 @@ def table(typedefs, structs, name, tags, defaults):
     out += ["};", f"static const mvfxFileType s_{name} = MVFX_FILE_TYPE({name}, {len(entries)}, "
                   f"{default});", ""]
     return out
+
+
+def deepest(declared, name):
+    """The most steps of a field path from a struct down to a field, by the
+    registry's wire kinds: a struct's field and every field below it."""
+    best = 0
+    for _, wire in declared[name]:
+        held = re.sub(r"\[\d+\]$", "", wire.split()[-1])
+        best = max(best, 1 + (deepest(declared, held) if held in declared else 0))
+    return best
+
+
+def check_depth(declared, limit):
+    """Refuses a field deeper below mvfxEffectDef than an effect refusal's
+    path holds."""
+    depth = deepest(declared, "mvfxEffectDef")
+    if depth > limit:
+        raise TagError(f"a field is {depth} steps below mvfxEffectDef, past "
+                       f"MVFX_MAX_FIELD_DEPTH ({limit}), which an effect refusal holds")
+
+
+def tag_macro(name, field):
+    """A field's tag's constant: MVFX_TAG_<STRUCT>_<FIELD>."""
+    def upper(text):
+        return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", text).upper()
+    return f"MVFX_TAG_{upper(name[4:])}_{upper(field)}"
+
+
+def tags_header(order, tags):
+    """src/file_tags.h: every stored field's tag as a constant."""
+    lines = [
+        "// SPDX-License-Identifier: MIT",
+        "// Copyright (c) 2026 Sirac Ozmen",
+        "//",
+        "// Generated by tools/gen_file.py from tools/file-tags.txt: do not edit.",
+        "// Each stored field's tag in the effect file, MVFX_TAG_<STRUCT>_<FIELD>,",
+        "// by which the validators name a field they refuse (mvfxEffectRefusal).",
+        "",
+        "#ifndef MAUL_VFX_SRC_FILE_TAGS_H",
+        "#define MAUL_VFX_SRC_FILE_TAGS_H",
+        "",
+    ]
+    for name in order:
+        lines += [f"// {name}"]
+        lines += [f"#define {tag_macro(name, field)} {tag}u"
+                  for field, tag in sorted(tags[name].items(), key=lambda item: item[1])]
+        lines += [""]
+    lines += ["#endif", ""]
+    return "\n".join(lines)
 
 
 def number(text):
@@ -478,6 +535,7 @@ def layout(tables):
     wire = []
     for line in tables:
         line = re.sub(r"offsetof\([^)]*\)", "", line)
+        line = re.sub(r', "\w+"\}', "}", line)
         wire.append(re.sub(r"\bMVFX_\w+\b", lambda m: str(DEFINES.get(m.group(0), m.group(0))),
                            line))
     return hashlib.sha256("\n".join(wire).encode("utf-8")).hexdigest()[:16]
@@ -555,6 +613,7 @@ def generate(registry_text=None):
     places = all_places(typedefs, structs, order)
     try:
         tags = assign_tags(declared, registry_text, places)
+        check_depth(declared, DEFINES["MVFX_MAX_FIELD_DEPTH"])
     except TagError as error:
         raise SystemExit(f"{TAGS.name}: {error}") from error
     defaults = defaulted(typedefs, structs, order)
@@ -613,7 +672,8 @@ def generate(registry_text=None):
         total = sum(value(t) for t in terms)
         lines += [f"static_assert(MVFX_FILE_MAX_{macro} == {' + '.join(terms)}, \"{total}\");"]
     pins = pins_header(typedefs, structs, order, tags, read_registry(registry_text), places)
-    return {OUT: format_c("\n".join(lines) + "\n", OUT), PINS: format_c(pins, PINS)}
+    return {OUT: format_c("\n".join(lines) + "\n", OUT), PINS: format_c(pins, PINS),
+            TAG_HEADER: format_c(tags_header(order, tags), TAG_HEADER)}
 
 
 def root_tags(typedefs, structs, tags, root):
@@ -790,6 +850,14 @@ def self_test():
          "'none' is not a default in hex"),
     ]
     failed = 0
+    try:
+        check_depth({"mvfxEffectDef": [("b", "array mvfxB")], **declared}, 2)
+        message = "accepted"
+    except TagError as error:
+        message = str(error)
+    if "3 steps below mvfxEffectDef, past MVFX_MAX_FIELD_DEPTH (2)" not in message:
+        print(f"gen_file.py --self-test: a field too deep: {message!r}")
+        failed += 1
     for what, text, expected in cases:
         try:
             assign_tags(declared, text, places)

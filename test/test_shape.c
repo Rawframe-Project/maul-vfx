@@ -34,7 +34,8 @@ static mvfxShape BaseShape(mvfxShapeKind kind)
 static mvfxCompiledShape Compile(const mvfxShape* shape)
 {
     mvfxCompiledShape compiled;
-    CHECK(mvfxCheckShape(shape) == mvfx_success, "a valid shape");
+    mvfxFieldPath none = mvfxFieldRoot(NULL);
+    CHECK(mvfxCheckShape(&none, shape) == mvfx_success, "a valid shape");
     mvfxCompileShape(shape, NULL, &compiled);
     return compiled;
 }
@@ -493,7 +494,8 @@ static void TestArcModes(void)
 static mvfxCompiledVelocity CompileVelocity(const mvfxVelocity* velocity)
 {
     mvfxCompiledVelocity compiled;
-    CHECK(mvfxCheckVelocity(velocity) == mvfx_success, "a valid velocity");
+    mvfxFieldPath none = mvfxFieldRoot(NULL);
+    CHECK(mvfxCheckVelocity(&none, velocity) == mvfx_success, "a valid velocity");
     mvfxCompileVelocity(velocity, &compiled);
     return compiled;
 }

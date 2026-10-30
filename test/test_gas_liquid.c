@@ -100,7 +100,7 @@ static bool Open(const mvfxEmitterDef* emitters, int32_t emitterCount, const mvf
     def.gases = gases;
     def.gasCount = gasCount;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(s_context, &def, &effect) != mvfx_success)
+    if (mvfxCreateEffect(s_context, &def, &effect, NULL) != mvfx_success)
     {
         return false;
     }
@@ -616,7 +616,7 @@ static Twin OpenTwin(bool throttled)
     effectDef.gases = &gas;
     effectDef.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(twin.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(twin.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef def = mvfxDefaultInstanceDef();
     def.effect = effect;
     def.seed = 1u;
@@ -888,7 +888,7 @@ static void OpenTwins(const float courant[2], mvfxEffectId effects[2], mvfxInsta
         def.emitterCount = 3;
         def.gases = &gas;
         def.gasCount = 1;
-        CHECK(mvfxCreateEffect(s_context, &def, &effects[k]) == mvfx_success, "effect");
+        CHECK(mvfxCreateEffect(s_context, &def, &effects[k], NULL) == mvfx_success, "effect");
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
         instanceDef.effect = effects[k];
         // One seed: the same draws.

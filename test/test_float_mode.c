@@ -77,7 +77,7 @@ static Run Scene(bool hostMode)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceId instances[2] = {{0}, {0}};
     for (int32_t k = 0; k < 2; ++k)
     {

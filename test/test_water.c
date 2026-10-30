@@ -43,7 +43,7 @@ static bool Open(const mvfxWaterDef* waters, int32_t count)
     def.waters = waters;
     def.waterCount = count;
     mvfxEffectId effect = {0};
-    if (mvfxCreateEffect(s_context, &def, &effect) != mvfx_success)
+    if (mvfxCreateEffect(s_context, &def, &effect, NULL) != mvfx_success)
     {
         mvfxDestroyContext(s_context);
         return false;
@@ -320,7 +320,7 @@ static mvfxInstanceId OpenWide(mvfxContext** context, int32_t nx, float x)
     def.waters = &water;
     def.waterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(*context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(*context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     mvfxInstanceId id = {0};

@@ -788,9 +788,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetCollidersWork(mvfxContext* conte
     mvfxResult valid = count > 0 && colliders == nullptr
                            ? mvfx_errorInvalid
                            : mvfxCountUpTo(count, 0, MVFX_MAX_COLLIDERS);
+    mvfxFieldPath none = mvfxFieldRoot(nullptr);
     for (int32_t c = 0; valid == mvfx_success && c < count; ++c)
     {
-        valid = mvfxCheckCollider(&colliders[c]);
+        valid = mvfxCheckCollider(&none, &colliders[c]);
     }
     if (valid != mvfx_success)
     {

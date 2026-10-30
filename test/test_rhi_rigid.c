@@ -452,7 +452,7 @@ static bool RefusedForRigid(mvfxGpu* kernels, const mvfxEmitterDef* emitter)
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.planned = true;
     mvfxInstanceId planned = {0};
-    bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     made = made && mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success;
     mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();

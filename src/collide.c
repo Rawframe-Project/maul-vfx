@@ -29,19 +29,21 @@ static bool IsRotation(const float q[4])
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
-// A half extent's status: above 0, and at most MVFX_MAX_EXTENT.
-static mvfxResult CheckHalf(float x)
+// A collider's half extent's status: above 0, and at most
+// MVFX_MAX_EXTENT; naming it below at.
+static mvfxResult CheckHalf(const mvfxFieldPath* at, int32_t axis, float x)
 {
-    return mvfxPositiveUpTo(x, MVFX_MAX_EXTENT);
+    return mvfxRefuseItem(at, MVFX_TAG_COLLIDER_HALF_EXTENTS, axis,
+                          mvfxPositiveUpTo(x, MVFX_MAX_EXTENT));
 }
 
-mvfxResult mvfxCheckCollider(const mvfxCollider* c)
+mvfxResult mvfxCheckCollider(const mvfxFieldPath* at, const mvfxCollider* c)
 {
     if (c->space > mvfx_spaceLocal)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_COLLIDER_SPACE, mvfx_errorInvalid);
     }
-    mvfxResult center = mvfxBoundedVector(c->center, MVFX_MAX_EXTENT);
+    mvfxResult center = mvfxRefuseVector(at, MVFX_TAG_COLLIDER_CENTER, c->center, MVFX_MAX_EXTENT);
     if (center != mvfx_success)
     {
         return center;
@@ -51,63 +53,90 @@ mvfxResult mvfxCheckCollider(const mvfxCollider* c)
     {
     case mvfx_colliderPlane:
     {
-        mvfxResult within = mvfxBoundedVector(c->normal, MVFX_MAX_EXTENT);
-        return within != mvfx_success ? within : mvfxRequire(mvfxNormalize(normal));
+        mvfxResult within =
+            mvfxRefuseVector(at, MVFX_TAG_COLLIDER_NORMAL, c->normal, MVFX_MAX_EXTENT);
+        return within != mvfx_success ? within
+                                      : mvfxRefuseField(at, MVFX_TAG_COLLIDER_NORMAL,
+                                                        mvfxRequire(mvfxNormalize(normal)));
     }
     case mvfx_colliderSphere:
-        return mvfxPositiveUpTo(c->radius, MVFX_MAX_EXTENT);
+        return mvfxRefuseField(at, MVFX_TAG_COLLIDER_RADIUS,
+                               mvfxPositiveUpTo(c->radius, MVFX_MAX_EXTENT));
     case mvfx_colliderBox:
     case mvfx_colliderDistance:
-        if (!IsRotation(c->rotation))
-        {
-            return mvfx_errorInvalid;
-        }
-        return mvfxFirst(CheckHalf(c->halfExtents[0]),
-                         mvfxFirst(CheckHalf(c->halfExtents[1]), CheckHalf(c->halfExtents[2])));
     case mvfx_colliderHeightfield:
+    {
         if (!IsRotation(c->rotation))
         {
-            return mvfx_errorInvalid;
+            return mvfxRefuseField(at, MVFX_TAG_COLLIDER_ROTATION, mvfx_errorInvalid);
         }
-        return mvfxFirst(CheckHalf(c->halfExtents[0]), CheckHalf(c->halfExtents[2]));
+        // A heightfield's height is its grid's: no half extent along Y.
+        mvfxResult half = mvfx_success;
+        for (int32_t k = 0; half == mvfx_success && k < 3; ++k)
+        {
+            half = k == 1 && c->kind == mvfx_colliderHeightfield
+                       ? mvfx_success
+                       : CheckHalf(at, k, c->halfExtents[k]);
+        }
+        return half;
+    }
     default:
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_COLLIDER_KIND, mvfx_errorInvalid);
     }
 }
 
 // Whether the scene queries and the depth image an emitter's collision
 // asks for are in range.
-static mvfxResult CheckAsks(const mvfxCollision* c)
+static mvfxResult CheckAsks(const mvfxFieldPath* at, const mvfxCollision* c)
 {
-    if ((c->enableSceneQueries &&
-         (c->queryCapacity < 1 || !(c->lookahead > 0.0f && c->lookahead <= 1.0f))) ||
-        (c->enableDepthImage && c->depthSamples < 1))
+    if (c->enableSceneQueries && c->queryCapacity < 1)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, MVFX_TAG_COLLISION_QUERY_CAPACITY, mvfx_errorInvalid);
     }
-    mvfxResult scene = c->enableSceneQueries
-                           ? mvfxWithinBound(c->queryCapacity <= MVFX_MAX_SCENE_QUERIES)
-                           : mvfx_success;
-    mvfxResult depth = c->enableDepthImage
-                           ? mvfxFirst(mvfxPositiveUpTo(c->depthThickness, MVFX_MAX_EXTENT),
-                                       mvfxWithinBound(c->depthSamples <= MVFX_MAX_DEPTH_SAMPLES))
-                           : mvfx_success;
-    return mvfxFirst(scene, depth);
+    if (c->enableSceneQueries && !(c->lookahead > 0.0f && c->lookahead <= 1.0f))
+    {
+        return mvfxRefuseField(at, MVFX_TAG_COLLISION_LOOKAHEAD, mvfx_errorInvalid);
+    }
+    if (c->enableDepthImage && c->depthSamples < 1)
+    {
+        return mvfxRefuseField(at, MVFX_TAG_COLLISION_DEPTH_SAMPLES, mvfx_errorInvalid);
+    }
+    mvfxResult checked =
+        c->enableSceneQueries
+            ? mvfxRefuseField(at, MVFX_TAG_COLLISION_QUERY_CAPACITY,
+                              mvfxWithinBound(c->queryCapacity <= MVFX_MAX_SCENE_QUERIES))
+            : mvfx_success;
+    checked = checked != mvfx_success || !c->enableDepthImage
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_COLLISION_DEPTH_THICKNESS,
+                                    mvfxPositiveUpTo(c->depthThickness, MVFX_MAX_EXTENT));
+    return checked != mvfx_success || !c->enableDepthImage
+               ? checked
+               : mvfxRefuseField(at, MVFX_TAG_COLLISION_DEPTH_SAMPLES,
+                                 mvfxWithinBound(c->depthSamples <= MVFX_MAX_DEPTH_SAMPLES));
 }
 
-mvfxResult mvfxCheckCollision(const mvfxCollision* c)
+mvfxResult mvfxCheckCollision(const mvfxFieldPath* at, const mvfxCollision* c)
 {
     if (!c->enable)
     {
         return mvfx_success;
     }
-    if (!IsShare(c->restitution) || !IsShare(c->friction) || !IsShare(c->lifeLoss))
+    uint32_t share = !IsShare(c->restitution) ? MVFX_TAG_COLLISION_RESTITUTION
+                     : !IsShare(c->friction)  ? MVFX_TAG_COLLISION_FRICTION
+                     : !IsShare(c->lifeLoss)  ? MVFX_TAG_COLLISION_LIFE_LOSS
+                                              : 0;
+    if (share != 0)
     {
-        return mvfx_errorInvalid;
+        return mvfxRefuseField(at, share, mvfx_errorInvalid);
     }
-    return mvfxFirst(mvfxFirst(mvfxUpToBound(c->restSpeed, 0.0f, MVFX_MAX_EXTENT),
-                               mvfxUpToBound(c->radius, 0.0f, MVFX_MAX_EXTENT)),
-                     CheckAsks(c));
+    mvfxResult checked = mvfxRefuseField(at, MVFX_TAG_COLLISION_REST_SPEED,
+                                         mvfxUpToBound(c->restSpeed, 0.0f, MVFX_MAX_EXTENT));
+    checked = checked != mvfx_success
+                  ? checked
+                  : mvfxRefuseField(at, MVFX_TAG_COLLISION_RADIUS,
+                                    mvfxUpToBound(c->radius, 0.0f, MVFX_MAX_EXTENT));
+    return checked != mvfx_success ? checked : CheckAsks(at, c);
 }
 
 mvfxCollider mvfxCompileCollider(const mvfxCollider* collider)

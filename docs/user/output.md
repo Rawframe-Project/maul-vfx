@@ -22,7 +22,7 @@ effectDef.emitterCount = 1;
 mvfxEffectId effect = {0};
 mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
 mvfxInstanceId instance = {0};
-bool made = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+bool made = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
 instanceDef.effect = effect;
 made = made && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success &&
        mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 4) == mvfx_success;

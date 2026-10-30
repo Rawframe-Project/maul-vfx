@@ -68,7 +68,7 @@ static mvfxEffectId Effect(mvfxContext* context, const mvfxGasDef* gases, int32_
     def.gases = gases;
     def.gasCount = gasCount;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     return effect;
 }
 
@@ -417,7 +417,7 @@ static void TestPlanRoom(void)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceId planned = Instance(context, effect, true);
     // The liquid's births in the first step; no report, so the most after.
     int32_t count = 0;
@@ -507,7 +507,7 @@ static void TestSurfaceMap(void)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a surface gas's effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "a surface gas's effect");
     mvfxInstanceId planned = Instance(context, effect, true);
     const double origin[3] = {-2.0, 1.0, 0.5};
     const float rotation[4] = {sinf(0.2f), 0.0f, 0.0f, cosf(0.2f)};

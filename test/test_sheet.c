@@ -98,7 +98,7 @@ static void Open(const mvfxEmitterDef* emitter, float scale)
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitter;
     def.emitterCount = 1;
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &s_scene.effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &s_scene.effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = s_scene.effect;
     instanceDef.scale = scale;
@@ -474,7 +474,7 @@ static void TestChecks(void)
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want =
             rule == 1 || rule == 2 || rule == 12 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 14, "every check");
     emitter = Sheet(MVFX_MAX_SHEET_SIDE, MVFX_MAX_SHEET_SIDE);
@@ -484,7 +484,7 @@ static void TestChecks(void)
     emitter.unit.downDirection[0] = cosf(0.0698f);
     emitter.unit.downDirection[2] = sinf(0.0698f);
     emitter.unit.shearCompliance = MVFX_MAX_EXTENT;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the bounds");
     // What a chain does not read.
     emitter = Sheet(4, 3);
     emitter.unit.kind = mvfx_unitChain;
@@ -493,7 +493,7 @@ static void TestChecks(void)
     emitter.unit.shearCompliance = -1.0f;
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.capacity = 16;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a chain's unread");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "a chain's unread");
     mvfxDestroyContext(context);
     // A chain pins no row: unpinned and launched sideways, it flies whole.
     emitter = Sheet(4, 3);

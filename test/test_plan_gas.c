@@ -67,7 +67,7 @@ static mvfxEffectId Effect(mvfxContext* context, const mvfxEmitterDef* emitter,
     def.gases = gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     return effect;
 }
 
@@ -307,7 +307,7 @@ static void TestPours(void)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
     static mvfxEmitterView views[2];
     CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &views[0]) == mvfx_success &&
               mvfxEffect_GetEmitterView(context, effect, 1, &views[1]) == mvfx_success &&

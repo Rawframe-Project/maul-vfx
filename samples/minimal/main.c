@@ -50,7 +50,7 @@ int main(void)
     mvfxEffectId effect = {0};
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     mvfxInstanceId instance = {0};
-    bool ok = mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success;
+    bool ok = mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success;
     instanceDef.effect = effect;
     ok = ok && mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success;
     for (int32_t step = 0; ok && step < 60; ++step)

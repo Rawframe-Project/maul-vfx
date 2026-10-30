@@ -49,7 +49,7 @@ static void Open(const mvfxGasDef* gas)
     def.gases = gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
@@ -608,7 +608,7 @@ static void TestHeld(void)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     bool right = mvfxDestroyGrid(s_context, grid) == mvfx_errorBusy;
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
@@ -653,7 +653,7 @@ static void TestRefusals(void)
         def.gases = &gas;
         def.gasCount = 1;
         mvfxEffectId effect = {0};
-        mvfxResult made = mvfxCreateEffect(s_context, &def, &effect);
+        mvfxResult made = mvfxCreateEffect(s_context, &def, &effect, NULL);
         // Past MVFX_MAX_COLLIDERS is past a named bound.
         right = right && made == (c == 0 ? mvfx_errorLimit : mvfx_errorInvalid);
         many[0].radius = 0.5f;
@@ -665,7 +665,7 @@ static void TestRefusals(void)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    right = right && mvfxCreateEffect(s_context, &def, &effect) == mvfx_success;
+    right = right && mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success;
     CHECK(right, "the obstacles' refusals");
     mvfxDestroyContext(s_context);
 }

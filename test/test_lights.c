@@ -30,7 +30,7 @@ static Scene NewScene(const mvfxEmitterDef* emitters, int32_t count)
     effectDef.emitters = emitters;
     effectDef.emitterCount = count;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(scene.context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     CHECK(mvfxCreateInstance(scene.context, &instanceDef, &scene.instance) == mvfx_success,
@@ -227,14 +227,14 @@ static void TestChecks(void)
         }
         // Past a named bound: mvfx_errorLimit.
         mvfxResult want = rule == 5 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refusals += mvfxCreateEffect(context, &def, &effect) == want ? 1 : 0;
+        refusals += mvfxCreateEffect(context, &def, &effect, NULL) == want ? 1 : 0;
     }
     CHECK(refusals == 8, "every check");
     emitter.light = (mvfxLightDef){.every = 0, .intensity = -1.0f};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "ignored when off");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "ignored when off");
     emitter.light = (mvfxLightDef){
         .enable = true, .every = 65536, .intensity = 1e6f, .radius = 1e6f, .radiusBySize = 1e6f};
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the largest");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the largest");
     mvfxDestroyContext(context);
 }
 

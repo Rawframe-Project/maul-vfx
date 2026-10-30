@@ -182,7 +182,7 @@ static void TestCallsBackIn(Gpu* gpu, mvfxGpu* kernels)
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
     mvfxEffectId effect;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.planned = true;
@@ -246,7 +246,8 @@ static void TestFailedMemory(mvfxGpu* kernels)
     effectDef.gases = &gas;
     effectDef.gasCount = 1;
     mvfxEffectId effect;
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect) == mvfx_success, "a liquid gas's effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success,
+          "a liquid gas's effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.planned = true;

@@ -6,6 +6,8 @@
 #ifndef MAUL_VFX_SRC_GRADIENT_H
 #define MAUL_VFX_SRC_GRADIENT_H
 
+#include "field_path.h"
+
 #include "maul-vfx/curve.h"
 
 #include <stdbool.h>
@@ -20,8 +22,9 @@ typedef struct mvfxGradientTable
 // Whether a gradient is valid: both lists present, times in [0, 1] that
 // never decrease, every channel finite (else mvfx_errorInvalid); both
 // lists at most MVFX_CURVE_MAX_KEYS long, every channel at most
-// MVFX_MAX_COLOR in size (else mvfx_errorLimit).
-mvfxResult mvfxCheckGradient(const mvfxGradient* gradient);
+// MVFX_MAX_COLOR in size (else mvfx_errorLimit). Names the field it
+// refuses below at.
+mvfxResult mvfxCheckGradient(const mvfxFieldPath* at, const mvfxGradient* gradient);
 
 // The largest size of a valid gradient's colour keys' channels and of its
 // alpha keys: its baked colours blend its keys, so they bound them.

@@ -75,7 +75,7 @@ static void OpenScaled(const mvfxEmitterDef* emitter, const float* velocity, flo
     def.emitters = emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_scene.context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     instanceDef.scale = scale;
@@ -402,14 +402,14 @@ static void TestChecks(void)
         *drag = rule % 3 == 0 ? -1.0f : rule % 3 == 1 ? NAN : 2.0f * MVFX_MAX_EXTENT;
         // Past MVFX_MAX_EXTENT is past a named bound.
         mvfxResult want = rule % 3 == 2 ? mvfx_errorLimit : mvfx_errorInvalid;
-        refused += mvfxCreateEffect(context, &def, &effect) == want;
+        refused += mvfxCreateEffect(context, &def, &effect, NULL) == want;
     }
     CHECK(refused == 6, "every check");
     emitter = Sheet(MVFX_MAX_EXTENT, MVFX_MAX_EXTENT);
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "the bounds");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "the bounds");
     emitter = Sheet(-1.0f, NAN);
     emitter.unit.kind = mvfx_unitChain;
-    CHECK(mvfxCreateEffect(context, &def, &effect) == mvfx_success, "a chain's unread");
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "a chain's unread");
     mvfxDestroyContext(context);
 }
 

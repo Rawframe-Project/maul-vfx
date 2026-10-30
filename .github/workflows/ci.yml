@@ -71,7 +71,7 @@ jobs:
         run: |
           clang-format --version
           # A checkout git refused would list nothing and pass unchecked.
-          files=$(git ls-files '*.c' '*.h' ':!src/file_fields.c' ':!src/marching_table.c' ':!test/file_pins.h')
+          files=$(git ls-files '*.c' '*.h' ':!src/file_fields.c' ':!src/file_tags.h' ':!src/marching_table.c' ':!test/file_pins.h')
           [ -n "$files" ] || { echo "::error::git listed no sources"; exit 1; }
           echo "$files" | xargs -P 4 -n 32 clang-format --dry-run -Werror
       - name: Family checks

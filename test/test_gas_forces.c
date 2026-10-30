@@ -47,7 +47,7 @@ static void Open(const mvfxGasDef* gas, const float rotation[4], float scale)
     def.gases = gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(s_context, &def, &effect) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
     memcpy(instanceDef.rotation, rotation, sizeof instanceDef.rotation);
@@ -794,7 +794,7 @@ static void TestRefusals(void)
         def.gases = &gas;
         def.gasCount = 1;
         mvfxEffectId effect = {0};
-        right = right && mvfxCreateEffect(s_context, &def, &effect) == mvfx_errorInvalid;
+        right = right && mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_errorInvalid;
     }
     mvfxGasDef gas = mvfxDefaultGasDef();
     gas.ignitionTemperature = -20.0f;
@@ -802,7 +802,7 @@ static void TestRefusals(void)
     def.gases = &gas;
     def.gasCount = 1;
     mvfxEffectId effect = {0};
-    right = right && mvfxCreateEffect(s_context, &def, &effect) == mvfx_success;
+    right = right && mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success;
     CHECK(right, "the forces' refusals");
     mvfxDestroyContext(s_context);
 }

@@ -23,7 +23,28 @@ void mvfxCodecFault(mvfxCodec* codec, mvfxResult fault, int64_t offset)
     {
         codec->fault = fault;
         codec->faultAt = offset;
+        (void)mvfxRefuseHere(&codec->path, fault);
     }
+}
+
+// Steps the walk's path into a field, and back out.
+static void Enter(mvfxCodec* codec, uint32_t tag)
+{
+    MVFX_ASSERT(codec->path.depth < MVFX_MAX_FIELD_DEPTH);
+    codec->path.tags[codec->path.depth] = tag;
+    codec->path.items[codec->path.depth] = -1;
+    codec->path.depth += 1;
+}
+
+static void Leave(mvfxCodec* codec)
+{
+    codec->path.depth -= 1;
+}
+
+// Names an item of the field the walk is in, -1 for none.
+static void AtItem(mvfxCodec* codec, int32_t item)
+{
+    codec->path.items[codec->path.depth - 1] = item;
 }
 
 static uint64_t Load(const uint8_t* place, size_t bytes)
@@ -401,9 +422,11 @@ static void PutItems(mvfxCodec* codec, const mvfxFileType* type, const uint8_t* 
         size_t head = codec->at;
         Put(codec, 0, 4);
         Put(codec, 0, 4);
+        AtItem(codec, (int32_t)i);
         mvfxWriteFields(codec, type, items + i * type->size, bases + i * baseStep);
         Patch(codec, head, (uint32_t)(codec->at - head - HEAD_BYTES));
     }
+    AtItem(codec, -1);
 }
 
 // An array: its count and a zero word, then its items, scalars packed.
@@ -431,6 +454,7 @@ void mvfxPutPayload(mvfxCodec* codec, const mvfxFileField* field, const uint8_t*
                     const uint8_t* base)
 {
     const uint8_t* place = object + field->offset;
+    Enter(codec, field->tag);
     switch (field->kind)
     {
     case mvfx_fieldArray:
@@ -461,6 +485,7 @@ void mvfxPutPayload(mvfxCodec* codec, const mvfxFileField* field, const uint8_t*
         PutScalars(codec, field->kind, place, field->count);
         break;
     }
+    Leave(codec);
 }
 
 // A field that differs from its default: its tag, its payload's length,
@@ -547,6 +572,7 @@ static void TakeItems(mvfxCodec* codec, const mvfxFileType* type, uint8_t* items
             return;
         }
         TakeZero(codec);
+        AtItem(codec, (int32_t)i);
         if (codec->fault == mvfx_success && length > end - codec->at)
         {
             mvfxCodecFault(codec, mvfx_errorFormat, (int64_t)at);
@@ -555,6 +581,7 @@ static void TakeItems(mvfxCodec* codec, const mvfxFileType* type, uint8_t* items
         mvfxReadFields(codec, type, items != nullptr ? items + i * type->size : nullptr,
                        codec->at + length);
     }
+    AtItem(codec, -1);
 }
 
 // An array: its count, a zero word and its items, laid in the memory, each
@@ -595,8 +622,8 @@ static void TakeArray(mvfxCodec* codec, const mvfxFileField* field, uint8_t* obj
 
 // A field's payload, which ends at the codec's end; its length is at
 // lengthAt.
-static void TakeField(mvfxCodec* codec, const mvfxFileField* field, uint8_t* object,
-                      size_t lengthAt)
+static void TakePayload(mvfxCodec* codec, const mvfxFileField* field, uint8_t* object,
+                        size_t lengthAt)
 {
     uint8_t* place = object != nullptr ? object + field->offset : nullptr;
     size_t length = codec->end - codec->at;
@@ -640,6 +667,15 @@ static void TakeField(mvfxCodec* codec, const mvfxFileField* field, uint8_t* obj
     {
         TakeScalars(codec, field->kind, place, field->count);
     }
+}
+
+// TakePayload, the walk's path in the field.
+static void TakeField(mvfxCodec* codec, const mvfxFileField* field, uint8_t* object,
+                      size_t lengthAt)
+{
+    Enter(codec, field->tag);
+    TakePayload(codec, field, object, lengthAt);
+    Leave(codec);
 }
 
 void mvfxReadFields(mvfxCodec* codec, const mvfxFileType* type, uint8_t* object, size_t end)

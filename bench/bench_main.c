@@ -80,7 +80,7 @@ static int Run(const char* name, const mvfxEffectDef* def, int32_t warm)
         mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
         mvfxInstanceId instance = {0};
         if (mvfxCreateContext(&contextDef, &context) != mvfx_success ||
-            mvfxCreateEffect(context, def, &effect) != mvfx_success)
+            mvfxCreateEffect(context, def, &effect, NULL) != mvfx_success)
         {
             return 1;
         }

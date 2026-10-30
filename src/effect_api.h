@@ -19,8 +19,9 @@ mvfxEffect* mvfxContextEffect(const mvfxContext* context, mvfxEffectId effect);
 // program never meets with a def of its own (an invalid def, a grid or a
 // mesh that does not fit what the def asks of it) sets misuseOut; the
 // caller counts it when the def is the program's, and not when it was
-// read from a file, whose contents are untrusted data.
+// read from a file, whose contents are untrusted data. Records the
+// refusal and the field refused into refusal, which it first clears.
 mvfxResult mvfxCreateEffectOf(mvfxContext* context, const mvfxEffectDef* def,
-                              mvfxEffectId* effectOut, bool* misuseOut);
+                              mvfxEffectId* effectOut, mvfxEffectRefusal* refusal, bool* misuseOut);
 
 #endif
